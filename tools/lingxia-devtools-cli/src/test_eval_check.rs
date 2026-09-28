@@ -130,12 +130,11 @@ impl<'a> EvalFinder<'_, 'a> {
         let Some(function) = function.and_then(|expr| self.function_span(expr)) else {
             return;
         };
-        let callee = self
-            .source
-            .get(call.callee.span().start as usize..call.callee.span().end as usize)
-            .unwrap_or("eval")
-            .split_whitespace()
-            .collect::<String>();
+        let callee = compact(
+            self.source
+                .get(call.callee.span().start as usize..call.callee.span().end as usize)
+                .unwrap_or("eval"),
+        );
         let scoping = self.semantic.scoping();
         let mut seen = Vec::<String>::new();
         for (ident_span, name, reference_id) in references_within(self.semantic, function) {
@@ -396,7 +395,7 @@ impl Origin {
             "TestApp" => Some(Self::App),
             "TestPage" => Some(Self::Page),
             "TestLogic" => Some(Self::Logic),
-            "TestView" | "BoundTestView" => Some(Self::View),
+            "TestView" => Some(Self::View),
             _ => None,
         }
     }
@@ -444,6 +443,26 @@ fn collect_bindings(
         }
         _ => {}
     }
+}
+
+/// Source text on one line: whitespace dropped, except one space where it
+/// separates two words (`await t`).
+fn compact(source: &str) -> String {
+    let word = |ch: char| ch.is_alphanumeric() || ch == '_' || ch == '$';
+    let mut out = String::with_capacity(source.len());
+    let mut gap = false;
+    for ch in source.chars() {
+        if ch.is_whitespace() {
+            gap = true;
+            continue;
+        }
+        if gap && word(ch) && out.chars().last().is_some_and(word) {
+            out.push(' ');
+        }
+        gap = false;
+        out.push(ch);
+    }
+    out
 }
 
 /// Every identifier reference inside `span`, in source order.
@@ -524,7 +543,7 @@ mod tests {
     #[test]
     fn arguments_locals_globals_and_types_pass() {
         check(
-            "type Todo = { id: string };\nconst id = 'x';\nspec('x', async (t) => {\n  await t.app.logic.eval(({ getCurrentPages }, wanted: string) => {\n    const pages = getCurrentPages() as unknown as Todo[];\n    const found = pages.filter((page) => page.id === wanted);\n    return JSON.stringify(found) + Math.max(1, 2) + String(setTimeout);\n  }, id);\n  await t.app.view.eval({ page: 'home', timeout: 10 }, ({ document }) => document.title);\n});\n",
+            "type Todo = { id: string };\nconst id = 'x';\nspec('x', async (t) => {\n  await t.app.logic.eval(({ getCurrentPages }, wanted: string) => {\n    const pages = getCurrentPages() as unknown as Todo[];\n    const found = pages.filter((page) => page.id === wanted);\n    return JSON.stringify(found) + Math.max(1, 2) + String(setTimeout);\n  }, id);\n  await t.app.view.eval({ timeout: 10 }, ({ document }) => document.title);\n});\n",
         )
         .unwrap();
     }
@@ -602,12 +621,18 @@ mod tests {
     #[test]
     fn fixed_page_handles_keep_remote_eval_provenance() {
         let message = error(
-            "const captured = 1; spec('page', async t => { const page = await t.app.page({ name: 'home' }); page.view.eval(() => captured); });",
+            "const captured = 1; spec('page', async t => { const page = await t.app.page({ name: 'home' }); page.view.eval(() => captured); await (await t.app.page()).view.eval({ timeout: 5_000 }, () => captured); const other = await t.automation.lxapp('other').page({ instanceId: '7' }, { timeout: 1_000 }); await other.view.eval(() => captured); });",
         );
-        assert!(
-            message.contains("page.view.eval(fn) closes over `captured`"),
-            "{message}"
-        );
+        for callee in [
+            "page.view.eval",
+            "(await t.app.page()).view.eval",
+            "other.view.eval",
+        ] {
+            assert!(
+                message.contains(&format!("{callee}(fn) closes over `captured`")),
+                "{message}"
+            );
+        }
     }
 
     #[test]
@@ -643,6 +668,21 @@ mod helper_tests {
                 "{ logic }: TestApp",
                 "logic",
             ),
+            (
+                "import type { TestPage, PageContract } from '@lingxia/test';",
+                "page: TestPage<PageContract<{ n: number }, {}>>",
+                "page.view",
+            ),
+            (
+                "import type { TestView } from '@lingxia/test';",
+                "view: TestView",
+                "view",
+            ),
+            (
+                "import type { TestPage } from '@lingxia/test';",
+                "{ view }: TestPage",
+                "view",
+            ),
         ] {
             let source = format!(
                 "{import} const captured = 42; async function helper({parameter}) {{ await {call}.eval(() => captured); }}"
@@ -650,6 +690,8 @@ mod helper_tests {
             assert!(error(&source).contains("closes over `captured`"));
         }
         check("interface TestApp { logic: any } const captured = 42; function helper(app: TestApp) { app.logic.eval(() => captured); }").unwrap();
+        // A removed type name proves nothing, even imported from the package.
+        check("import type { BoundTestView } from '@lingxia/test'; const captured = 42; function helper(view: BoundTestView) { view.eval(() => captured); }").unwrap();
         check("import type { TestApp } from '@lingxia/test'; const captured = 42; function helper(app: TestApp) { app.logic.eval((_, value) => value, captured); }").unwrap();
     }
 }

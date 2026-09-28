@@ -14,7 +14,7 @@ spec('relaunch/push/pop churn leaves home bootable', { app: SHOWCASE_APP_ID }, a
     await app.nav.relaunch({ page: 'device' });
   }
   await app.nav.relaunch({ page: 'home' });
-  await app.view.testId('home-page', { page: 'home' }).waitFor({ state: 'visible', timeout: 8_000 });
+  await app.view.testId('home-page').waitFor({ state: 'visible', timeout: 8_000 });
   const current = await app.nav.current();
   expect(current.ready).toBe(true);
 });

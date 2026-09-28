@@ -8,17 +8,20 @@ spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
   const { app } = bindFixture(t, "UI-NAV-001");
 
   await app.nav.relaunch({ page: 'ui', query: { type: 'navigation' } });
-  await app.view.testId('ui-navigate-to', { page: 'ui' }).waitFor({ state: 'visible', timeout: 30_000 });
+  const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
+  await ui.view.testId('ui-navigate-to').waitFor({ state: 'visible', timeout: 30_000 });
 
-  await app.view.testId("ui-navigate-to", { page: 'ui' }).click();
+  await ui.view.testId('ui-navigate-to').click();
   await eventually(() => app.nav.stack(), (stack) => stack.length === 2, {
     describe: 'UI navigateTo to push a second page instance',
   });
 
-  // The push created a fresh instance of this same route; wait for its
+  // The push created a fresh instance of this same route, now current (two
+  // live `ui` instances, so bind it by position, not by name); wait for its
   // document before driving the next control.
-  await app.view.testId('ui-navigate-back', { page: 'ui' }).waitFor({ state: 'visible', timeout: 30_000 });
-  await app.view.testId("ui-navigate-back", { page: 'ui' }).click();
+  const pushed = await app.page();
+  await pushed.view.testId('ui-navigate-back').waitFor({ state: 'visible', timeout: 30_000 });
+  await pushed.view.testId('ui-navigate-back').click();
   await eventually(() => app.nav.stack(), (stack) => stack.length === 1, {
     describe: 'UI navigateBack to pop the page instance',
   });
@@ -42,7 +45,8 @@ spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
     if (!page) throw new Error('current UI PageInstance is missing');
     page.data.events = [];
   });
-  await app.view.testId("ui-redirect-to", { page: 'ui' }).click();
+  // The pop returned to the first instance, which `ui` still holds.
+  await ui.view.testId('ui-redirect-to').click();
   await eventually(() => app.nav.stack(), (stack) => stack.length === 1 && stack[0]?.name === 'ui', {
     describe: 'UI redirectTo to replace the current page',
   });
@@ -54,15 +58,15 @@ spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
     ({ instanceTag, onLoadCount }) => instanceTag !== '' && onLoadCount > 0,
     { describe: 'same-route redirect onLoad lifecycle event' },
   );
+  const replaced = await app.page({ name: 'ui' });
   await waitForElementAttribute(
-    t,
-    'ui',
+    replaced.view,
     '[data-testid="ui-page"]',
     'data-instance-tag',
     redirected.instanceTag,
   );
 
-  await app.view.testId("ui-switch-tab", { page: 'ui' }).click();
+  await replaced.view.testId('ui-switch-tab').click();
   await waitForCurrentPage(app, 'home');
   expect((await app.nav.stack()).map(({ name }) => name)).toEqual(['home']);
 });
@@ -97,7 +101,8 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   });
 
   await app.nav.relaunch({ page: 'ui', query: { type: 'tabbar' } });
-  await app.view.testId('tabbar-show', { page: 'ui' }).waitFor({ state: 'visible', timeout: 30_000 });
+  const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
+  await ui.view.testId('tabbar-show').waitFor({ state: 'visible', timeout: 30_000 });
 
   const automaticDetail = await waitForTabBar(
     ({ visibility, route_visible, effective_visible }) => (
@@ -107,7 +112,7 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   );
   expect(automaticDetail.selected_index).toBe(-1);
 
-  await app.view.testId("tabbar-show", { page: 'ui' }).click();
+  await ui.view.testId('tabbar-show').click();
   const forced = await waitForTabBar(
     ({ visibility, route_visible, effective_visible }) => (
       visibility === 'visible' && !route_visible && effective_visible
@@ -162,7 +167,7 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
     'TabBar badge replacement by a red dot',
   );
 
-  await app.view.testId("tabbar-hide", { page: 'ui' }).click();
+  await ui.view.testId('tabbar-hide').click();
   await waitForTabBar(
     ({ visibility, effective_visible }) => visibility === 'hidden' && !effective_visible,
     'explicitly hidden TabBar',
@@ -179,7 +184,8 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   );
 
   await app.nav.relaunch({ page: 'home' });
-  await app.view.css('body', { page: 'home' }).first().waitFor({ state: 'attached', timeout: 30_000 });
+  const home = await app.page({ name: 'home' }, { timeout: 30_000 });
+  await home.view.css('body').waitFor({ state: 'attached', timeout: 30_000 });
   await waitForTabBar(
     ({ visibility, route_visible, effective_visible, selected_index }) => (
       visibility === 'auto' && route_visible && effective_visible && selected_index === 0
@@ -187,7 +193,7 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
     'automatic visibility after entering a tab route',
   );
 
-  const readHomeViewportHeight = () => app.view.eval({ page: 'home' }, ({ window }) => window.innerHeight);
+  const readHomeViewportHeight = () => home.view.eval(({ window }) => window.innerHeight);
   const viewportBeforeChromeRefresh = await eventually(
     readHomeViewportHeight,
     (height) => height > 0,
@@ -210,17 +216,16 @@ spec('rejects invalid native-surface dimensions before opening a host surface', 
 }, async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
   await app.nav.relaunch({ page: 'ui', query: { type: 'surface' } });
-  await app.view.testId('open-surface', { page: 'ui' }).waitFor({ timeout: 30_000 });
+  const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
+  await ui.view.testId('open-surface').waitFor({ timeout: 30_000 });
 
-  await app.view.css('input[placeholder="width (px or %)"]', { page: 'ui' }).fill('invalid');
-  await app.view.css('input[placeholder="height (px or %)"]', { page: 'ui' }).fill('50%');
-  await waitForElementAttribute(t, 'ui', '[data-testid="open-surface"]', 'data-surface-width', 'invalid');
-  await waitForElementAttribute(t, 'ui', '[data-testid="open-surface"]', 'data-surface-height', '50%');
-  await app.view.testId("open-surface", { page: 'ui' }).click();
-  const sizeError = app.view.testId('size-error', { page: 'ui' });
+  await ui.view.css('input[placeholder="width (px or %)"]').fill('invalid');
+  await ui.view.css('input[placeholder="height (px or %)"]').fill('50%');
+  await waitForElementAttribute(ui.view, '[data-testid="open-surface"]', 'data-surface-width', 'invalid');
+  await waitForElementAttribute(ui.view, '[data-testid="open-surface"]', 'data-surface-height', '50%');
+  await ui.view.testId('open-surface').click();
+  const sizeError = ui.view.testId('size-error');
   await sizeError.waitFor({ timeout: 30_000 });
 
-  const error = await sizeError.query();
-  expect(error.exists).toBeTruthy();
-  expect(error.exists && error.text.trim().length > 0).toBeTruthy();
+  expect((await sizeError.textContent()).length).toBeGreaterThan(0);
 });

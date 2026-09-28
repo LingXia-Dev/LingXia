@@ -289,7 +289,6 @@ export function wrapNetwork(resolve: () => NetworkDriver, host: NetworkHost, sco
         scope.track(route);
         return wrapRoute(route);
       }),
-    removeAll: () => host.act("network.removeAll", "", async () => { await driver().unrouteAll(); }),
     // Spec-scoped: the host log spans the whole run.
     calls: () =>
       host.act("network.calls", "", async () =>

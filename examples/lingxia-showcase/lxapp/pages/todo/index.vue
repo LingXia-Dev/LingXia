@@ -106,29 +106,9 @@ import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 import './index.css';
 
-type Todo = {
-  id: string;
-  text: string;
-  completed: boolean;
-};
+import type { TodoFilter, TodoPage as TodoContract } from './contract';
 
-type TodoFilter = 'all' | 'active' | 'completed';
-
-type PageData = {
-  todos?: Todo[];
-  currentFilter?: TodoFilter;
-};
-
-type PageActions = {
-  data: PageData;
-  addTodo(params: { text: string }): void;
-  toggleTodo(params: { id: string }): void;
-  deleteTodo(params: { id: string }): void;
-  clearCompleted(): void;
-  setFilter(params: { filter: TodoFilter }): void;
-};
-
-const { data, actions } = useLxPage();
+const { data, actions } = useLxPage<TodoContract['data'], TodoContract['actions']>();
 const {
   addTodo,
   toggleTodo,

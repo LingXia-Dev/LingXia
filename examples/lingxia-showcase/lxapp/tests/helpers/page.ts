@@ -1,50 +1,41 @@
 import type { PageInfo } from '@lingxia/types/automation';
-import { expect, type Fixture, type TestApp } from '@lingxia/test';
+import { expect, type Fixture, type TestApp, type TestView } from '@lingxia/test';
 import { eventually } from './poll.js';
 
 // These waits read the first match of `css`, as the page checks they replace
-// did; a selector the page renders once needs no `.first()` of its own. They
-// wait on `t.app` unless given another handle of the app (one reopened since).
+// did; a selector the page renders once needs no `.first()` of its own. Pass
+// the View of a bound page (`(await t.app.page({ name })).view`), or
+// `t.app.view` for whichever page is current.
 
 export async function waitForElementEnabled(
-  t: Fixture,
-  page: string,
+  view: TestView,
   css: string,
   timeoutMs = 10_000,
-  app: TestApp = t.app,
 ): Promise<void> {
-  await expect(app.view.css(css, { page }).first()).toBeEnabled({ timeout: timeoutMs });
+  await expect(view.css(css).first()).toBeEnabled({ timeout: timeoutMs });
 }
 
 export async function waitForElementAttribute(
-  t: Fixture,
-  page: string,
+  view: TestView,
   css: string,
   attribute: string,
   expected: string,
   timeoutMs = 10_000,
-  app: TestApp = t.app,
 ): Promise<void> {
-  await expect(app.view.css(css, { page }).first()).toHaveAttribute(attribute, expected, { timeout: timeoutMs });
+  await expect(view.css(css).first()).toHaveAttribute(attribute, expected, { timeout: timeoutMs });
 }
 
+/** Wait until the element's text passes `predicate`, and resolve to that text. */
 export async function waitForElementText(
   t: Fixture,
-  page: string,
+  view: TestView,
   css: string,
   predicate: (text: string) => boolean,
   timeoutMs = 10_000,
-  app: TestApp = t.app,
 ): Promise<string> {
-  const element = app.view.css(css, { page }).first();
-  const text = await t.waitFor(
-    async () => {
-      const found = await element.query();
-      return found.exists ? found.text : null;
-    },
-    { until: (value) => value !== null && predicate(value), timeout: timeoutMs });
-  if (text === null) throw new Error(`Element disappeared after wait: ${page} ${css}`);
-  return text;
+  const element = view.css(css).first();
+  // Not rendered yet rejects the read, which `t.waitFor` retries.
+  return t.waitFor(() => element.textContent(), { until: predicate, timeout: timeoutMs });
 }
 
 function isCurrentPageTransition(error: unknown): boolean {
@@ -90,6 +81,6 @@ export async function waitForCurrentPageVisible(
       describe: `current page '${page}' to become active`,
       retryIf: isCurrentPageTransition,
     });
-  await app.view.css(css, { page }).first().waitFor({ state: 'visible', timeout: timeoutMs });
+  await app.view.css(css).first().waitFor({ state: 'visible', timeout: timeoutMs });
   return current;
 }

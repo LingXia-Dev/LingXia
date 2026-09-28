@@ -53,8 +53,9 @@ playbackSpec('drive native playback through VideoContext against a local clip', 
     query: { automationFixture: 'video-source', src: `${httpBase}/media/sample.mp4` },
   });
   await waitForCurrentPage(app, 'video');
-  await app.view.testId('video-page', { page: 'video' }).waitFor({ state: 'visible', timeout: 30_000 });
-  await app.view.css(`#${VIDEO_ID}`, { page: 'video' }).first().waitFor({ state: 'visible', timeout: 30_000 });
+  const video = (await app.page({ name: 'video' }, { timeout: 30_000 })).view;
+  await video.testId('video-page').waitFor({ state: 'visible', timeout: 30_000 });
+  await video.css(`#${VIDEO_ID}`).first().waitFor({ state: 'visible', timeout: 30_000 });
   // Autoplay is off for this fixture, so the clock has not started. The event
   // label is not the invariant: a native player may already report buffering
   // as it opens the source.
@@ -62,7 +63,7 @@ playbackSpec('drive native playback through VideoContext against a local clip', 
 
   await t.step('play() starts the clock and reports the clip length', async () => {
     await command('play');
-    await waitForElementText(t, 'video', '[data-testid="video-event"]', (text) => text.includes('Playing'), 15_000);
+    await waitForElementText(t, video, '[data-testid="video-event"]', (text) => text.includes('Playing'), 15_000);
     const playing = await eventually(readState, (state) => state.currentTime > 0 && state.duration > 0, {
       describe: 'timeupdate to advance after play()',
       timeoutMs: 15_000,
@@ -84,7 +85,7 @@ playbackSpec('drive native playback through VideoContext against a local clip', 
     await command('stop');
     await waitForElementText(
       t,
-      'video',
+      video,
       '[data-testid="video-event"]',
       (text) => text.includes('Stopped') || text.includes('Paused') || text.includes('Ended'),
       10_000,

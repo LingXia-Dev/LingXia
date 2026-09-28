@@ -15,15 +15,17 @@ spec("open every component demo through rendered UI and the Logic bridge", { id:
   ] as const;
 
   await app.nav.relaunch({ page: 'components' });
-  await app.view.testId('components-page', { page: 'components' }).waitFor({ timeout: 30_000 });
+  // Each demo is pushed above this instance and popped back to it.
+  const components = (await app.page({ name: 'components' }, { timeout: 30_000 })).view;
+  await components.testId('components-page').waitFor({ timeout: 30_000 });
 
   for (const [testId, destination] of destinations) {
-    await app.view.css(`[data-testid="${testId}"]`, { page: 'components' }).click();
+    await components.testId(testId).click();
     await waitForCurrentPage(app, destination, 30_000);
     expect((await app.nav.current()).name).toBe(destination);
 
     await app.nav.back();
     await waitForCurrentPage(app, 'components', 30_000);
-    await app.view.css(`[data-testid="${testId}"]`, { page: 'components' }).first().waitFor({ timeout: 30_000 });
+    await components.testId(testId).first().waitFor({ timeout: 30_000 });
   }
 });

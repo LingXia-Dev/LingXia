@@ -17,19 +17,21 @@ spec('open the clipboard demo from the API menu and round-trip text', {
   const { app } = bindFixture(t, 'UI-CLIPBOARD-001');
 
   await app.nav.relaunch({ page: 'api' });
-  await app.view.testId('api-device-section', { page: 'api' }).waitFor({ state: 'visible', timeout: 30_000 });
-  await app.view.testId("api-device-section", { page: 'api' }).click();
+  const api = (await app.page({ name: 'api' }, { timeout: 30_000 })).view;
+  await api.testId('api-device-section').waitFor({ state: 'visible', timeout: 30_000 });
+  await api.testId("api-device-section").click();
   // Clipboard sits at the end of the long Device list, below the fold.
-  await app.view.testId('api-clipboard', { page: 'api' }).waitFor({ state: 'attached', timeout: 30_000 });
+  await api.testId('api-clipboard').waitFor({ state: 'attached', timeout: 30_000 });
   // The click scrolls it into view.
-  await app.view.testId('api-clipboard', { page: 'api' }).waitFor({ state: 'visible', timeout: 30_000 });
-  await app.view.testId("api-clipboard", { page: 'api' }).click();
-  await app.view.testId('clipboard-status', { page: 'clipboard' }).waitFor({ state: 'visible', timeout: 30_000 });
+  await api.testId('api-clipboard').waitFor({ state: 'visible', timeout: 30_000 });
+  await api.testId("api-clipboard").click();
+  const clipboard = (await app.page({ name: 'clipboard' }, { timeout: 30_000 })).view;
+  await clipboard.testId('clipboard-status').waitFor({ state: 'visible', timeout: 30_000 });
 
-  await app.view.testId("clipboard-write-text", { page: 'clipboard' }).click();
+  await clipboard.testId("clipboard-write-text").click();
   await waitForElementText(
     t,
-    'clipboard',
+    clipboard,
     '[data-testid="clipboard-status"]',
     (text) => text.includes('Wrote text'),
   );
@@ -37,10 +39,10 @@ spec('open the clipboard demo from the API menu and round-trip text', {
   // HarmonyOS denies the read without READ_PASTEBOARD (see LOGIC-CLIPBOARD-001);
   // the page must say so instead of claiming the clipboard is empty.
   const readsDenied = await runtimePlatform(app) === 'harmony';
-  await app.view.testId("clipboard-read-text", { page: 'clipboard' }).click();
+  await clipboard.testId("clipboard-read-text").click();
   const readStatus = await waitForElementText(
     t,
-    'clipboard',
+    clipboard,
     '[data-testid="clipboard-status"]',
     (text) => readsDenied
       ? text !== 'Wrote text' && !text.includes('Read text')
@@ -48,10 +50,10 @@ spec('open the clipboard demo from the API menu and round-trip text', {
   );
   if (readsDenied) expect(readStatus).not.toContain('No text on clipboard');
 
-  await app.view.testId("clipboard-clear", { page: 'clipboard' }).click();
+  await clipboard.testId("clipboard-clear").click();
   const cleared = await waitForElementText(
     t,
-    'clipboard',
+    clipboard,
     '[data-testid="clipboard-status"]',
     (text) => text.includes('Cleared'),
   );

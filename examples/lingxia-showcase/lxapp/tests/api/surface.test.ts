@@ -1,4 +1,5 @@
-import { expect, rawAutomation, spec } from '@lingxia/test';
+import { expect, spec } from '@lingxia/test';
+import { rawAutomation } from '@lingxia/test/runner';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPageVisible } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
@@ -206,11 +207,12 @@ spec('publish every public runtime and returned-object member', {
       await app.nav.relaunch({ page: 'home' });
       await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
     });
-    await app.view.css('#lx-video-shape-fixture', { page: 'video' }).first().waitFor({ state: 'attached', timeout: 30_000 });
+    const video = await app.page({ name: 'video' }, { timeout: 30_000 });
+    await video.view.css('#lx-video-shape-fixture').first().waitFor({ state: 'attached', timeout: 30_000 });
     let stableRectSamples = 0;
     let previousRect = '';
     await eventually(
-      () => app.view.eval({ page: 'video' }, ({ document }) => {
+      () => video.view.eval(({ document }) => {
         const rect = document.querySelector('#lx-video-shape-fixture')?.getBoundingClientRect();
         return rect && rect.width > 1 && rect.height > 1
           ? [rect.left, rect.top, rect.width, rect.height].map(Math.round).join(',')

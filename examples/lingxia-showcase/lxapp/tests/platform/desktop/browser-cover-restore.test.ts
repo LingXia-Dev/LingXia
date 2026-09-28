@@ -189,13 +189,15 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
 
     const browser = t.automation.browser;
     const platform = await runtimePlatform(app);
-    const renderedBodyLength = async (): Promise<number> => app.view.eval({ page: 'home' }, ({ document }) => (
-      document.body ? (document.body.innerText ?? '').length : -1
-    ));
 
     await app.nav.switchTab({ page: 'home' });
     await waitForCurrentPage(app, 'home');
-    await app.view.testId('home-page', { page: 'home' }).waitFor({ state: 'visible', timeout: 30_000 });
+    // Web tabs cover this home instance and closing them uncovers the same one.
+    const home = await app.page({ name: 'home' });
+    const renderedBodyLength = async (): Promise<number> => home.view.eval(({ document }) => (
+      document.body ? (document.body.innerText ?? '').length : -1
+    ));
+    await home.view.testId('home-page').waitFor({ state: 'visible', timeout: 30_000 });
     await eventually(renderedBodyLength, (length) => length > 0, {
       describe: 'baseline home page to render',
     });

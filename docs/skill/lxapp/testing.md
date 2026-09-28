@@ -1,9 +1,10 @@
 # Testing
 
 `lxdev test` runs `@lingxia/test` specs inside the running app or Runner, on a
-test worker separate from Logic and WebViews. Specs drive the View through
-`t.app.view` and read Logic through `t.app.logic`. Flags and exit codes:
-`lxdev test --help`.
+test worker separate from Logic and WebViews. Specs drive the UI through
+`t.app.view` (the current page) and `t.app.page()` (one fixed page), and reach
+into Logic with `t.app.logic.eval` only for what the UI cannot show. Flags and
+exit codes: `lxdev test --help`.
 
 ## First spec
 
@@ -11,16 +12,10 @@ test worker separate from Logic and WebViews. Specs drive the View through
 // tests/pages/notes.test.ts
 import { spec, expect } from '@lingxia/test';
 
-interface NotesData { notes: { id: string; title: string }[] }
-
-spec('saving a note lists it', async (t) => {
-  await t.app.nav.relaunch({ page: 'notes' });
+spec('saving a note lists it', { start: { page: 'notes' } }, async (t) => {
   await t.app.view.testId('note-title').fill('Groceries');
   await t.app.view.testId('note-save').click();
-  await expect(t.app.view.testId('note-saved')).toBeVisible();
-
-  const data = await t.app.logic.data<NotesData>();
-  expect(data.notes.map((note) => note.title)).toContain('Groceries');
+  await expect(t.app.view.testId('note-list')).toContainText('Groceries');
 });
 ```
 
@@ -31,17 +26,17 @@ lxdev test tests/pages/notes.test.ts
 
 - `testId('x')` matches `[data-testid="x"]` on the current page and must match
   exactly one element (narrow with `.nth(i)`).
-- `t.app.nav.relaunch({ page })` clears the stack and opens a fresh instance of
-  a page, resolving after its `onReady`. `spec(title, { fresh: true }, body)`
-  relaunches home. Neither resets app or backend data.
+- `spec(title, { start: { page, query? } }, body)` relaunches the app on that
+  page before the body, like `t.app.nav.relaunch({ page })` mid-spec: the stack
+  is cleared and a fresh instance opens, ready after its `onReady`. Neither
+  resets app or backend data.
 - One `expect`: `expect(locator)` and `expect.poll(() => read())` retry until
   the matcher passes; `expect(value)` checks once; `expect(fn)` takes only
   `toThrow`. Every `expect` needs a matcher: `await expect(x)` alone is a
   type error and fails the spec. Actions and retries wait
   5 s (`{ timeout }` per call); a spec has 30 s (`spec(title, { timeout },
   body)`). Await every action: a body that returns while one still runs fails,
-  and so does one whose `fetch` or `rawAutomation()` call does not settle
-  soon after it returns.
+  and so does one whose `fetch` call does not settle soon after it returns.
 - Text matchers compare whitespace-normalised text.
 - Setup: `@lingxia/test` on the project's LingXia line and a test tsconfig
   with `lib: ["ES2020"]` (`lingxia new` writes `tsconfig.tests.json`). The test
@@ -52,20 +47,22 @@ lxdev test tests/pages/notes.test.ts
 
 | Task | API |
 |---|---|
-| Start on a known page | `t.app.nav.relaunch({ page, query? })`; `{ fresh: true }` for home |
+| Start on a known page | `spec(title, { start: { page, query? } }, body)`; mid-spec `t.app.nav.relaunch({ page })` |
 | Navigate | `t.app.nav.to` / `.redirect` / `.switchTab` / `.back` |
-| Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })`; fixed page: `(await t.app.page({ name })).view` |
+| Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })` |
+| Another page (below the current one, on a surface) | `(await t.app.page({ name })).view`; [Pages](#pages) |
 | Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)` |
-| Native window input | `t.app.window.pointer` / `.key`; independent of page binding |
+| Read an element once | `locator.textContent()` / `.inputValue()` / `.getAttribute(name)` / `.count()` / `.isVisible()`; no retry, so assert with `expect(locator)` |
+| Native window input | `t.app.window.pointer` / `.key`; independent of pages |
 | Assert UI | `expect(locator).toBeVisible()` / `.toBeInViewport()` / `.toBeAttached()` / `.toHaveText()` / `.toContainText()` / `.toHaveAttribute(name, value?)` / `.toHaveCount()` / `.toHaveValue()` / `.toBeEnabled()`; `.not` |
 | Wait for an element state | `locator.waitFor({ state: 'visible' \| 'inViewport' \| 'attached' \| 'hidden' \| 'detached' })` |
-| Read Logic, call a page method, eval | [Reading Logic](#reading-logic) |
+| Page data, page actions, Logic eval | [Pages](#pages), [Logic eval](#logic-eval) |
 | Wait until a value is ready | `t.waitFor(read, { until })` returns it; `expect.poll(read).toBe(x)` asserts it |
 | Expect a rejection | `await t.reject(() => op(), { code?, message? })`; `code` is a `TestErrorCode` or one the app declared in `AppErrorCodes` |
 | Fake Logic `fetch` / `Rong.SSE` | `t.app.network.route(pattern, handler)`; [Faking the network](#faking-the-network) |
 | Load a scenario file | `t.scenario.use`; [Scenarios in specs](#scenarios-in-specs) |
 | Check responses against OpenAPI | `--openapi`, `toMatchSchema`; [Contract checks](#contract-checks) |
-| Tag specs, file defaults | `spec(title, { tags }, body)`, `spec.configure({ timeout, fresh, tags, requires, … })` |
+| Tag specs, file defaults | `spec(title, { tags }, body)`, `spec.configure({ timeout, start, tags, requires, … })` |
 | Skip without an input | `spec(title, { requires: { args: ['PASSWORD'], openapi: true } }, body)` |
 | Fast-forward Logic time | `t.app.clock`; [Test clock](#test-clock) |
 | Toasts, confirm dialogs, action sheets | `t.app.dialogs`; [Dialogs](#dialogs) |
@@ -83,53 +80,76 @@ lxdev test tests/pages/notes.test.ts
 
 Trigger the behaviour under test through the UI; setup, eval, and backend
 calls do not replace it. Automation types come from `@lingxia/types/automation`.
-`rawAutomation()` from `@lingxia/test` bypasses tracing and fixture guards;
-keep it for setup before any spec. Restore shell pins or device settings a
-spec changes. Routes, `t.scenario.use` scenarios, test clocks and dialog
-answers a spec installs (also through `rawAutomation()`) are removed when it
+`rawAutomation()` from `@lingxia/test/runner` bypasses tracing and fixture
+guards; keep it for a setup module that waits for the app before any spec.
+Restore shell pins or device settings a spec changes. Routes, `t.scenario.use`
+scenarios, test clocks and dialog answers a spec installs are removed when it
 ends; its leftover timers are cancelled.
 
-## Reading Logic
+## Pages
+
+`t.app.view` is whichever page is current at each call. `t.app.page()` binds
+one live page instance — the current one, or the one `{ name }` / `{ instanceId }`
+names, waiting up to `{ timeout }` (5 s) for it to open — and never follows
+navigation: once that instance is replaced or closed, every call on the handle
+rejects. Bind again after navigating.
+
+Keep a type-only `contract.ts` beside each page and type all three sides with
+it: Logic `Page<C['data'], C['actions']>`, View `useLxPage<C['data'], C['actions']>()`,
+tests `t.app.page<C>()`.
 
 ```ts
-import { type LogicPage } from '@lingxia/test';
+// pages/devices/contract.ts
+import type { PageContract } from '@lingxia/types/page';
+export type DevicesPage = PageContract<
+  { devices: { id: string; name: string }[] },
+  { rename(payload: { id: string; name: string }): Promise<boolean> }
+>;
+```
 
-interface DevicesData { devices: { id: string; name: string }[] }
-interface DevicesPage extends LogicPage<DevicesData> {
-  refresh(): Promise<void>;
-  rename(id: string, name: string): Promise<boolean>;
-}
+```ts
+import type { DevicesPage } from '../../pages/devices/contract';
 
-const { devices } = await t.waitFor(
-  () => t.app.logic.data<DevicesData>(),
-  { until: (data) => data.devices.length > 0 },
-);
-await t.app.logic.call<DevicesPage>('refresh');
-const renamed = await t.app.logic.call<DevicesPage, 'rename'>('rename', devices[0].id, 'Office'); // boolean
+const devices = await t.app.page<DevicesPage>({ name: 'devices' });
+const { devices: list } = await t.waitFor(() => devices.data(), { until: (d) => d.devices.length > 0 });
+expect(await devices.actions.rename({ id: list[0].id, name: 'Office' })).toBe(true);
+await expect(devices.view.testId('device-name').first()).toHaveText('Office');
+```
+
+- `data()` is the instance's Logic `data` as `setData` delivers it to the View
+  (undefined members omitted). Contract data must be JSON; a Date, Map or
+  function in it does not compile.
+- `actions.x(payload?)` calls a public page action through the page's own
+  bridge, as the View does, and resolves when Logic settles it. Actions take at
+  most one JSON payload; streamed (generator) actions are for the View.
+- A name open more than once rejects; select it by `{ instanceId }`
+  (`t.app.nav.stack()` lists them).
+
+## Logic eval
+
+```ts
 const path = await t.app.logic.eval(({ lx }) => lx.env.USER_DATA_PATH);
 const label = await t.app.view.eval(({ document }) => document.querySelector('#total')?.textContent);
-const kept = await t.app.view.eval({ page: 'cart' }, ({ document }) => document.title); // a page below the current one
+const slow = await t.app.logic.eval({ timeout: 30_000 }, async ({ lx }, key: string) => lx.getStorage().get(key), 'cache');
 ```
 
 - `logic.eval(fn, ...args)` runs in Logic with `{ lx, getApp,
-  getCurrentPages }`; `view.eval` runs in the page with `{ document, window }`.
+  getCurrentPages, getPage }`; `view.eval` runs in the page with `{ document,
+  window }`. Reach for them when the UI cannot show what a spec checks.
 - `fn` is sent as source: it cannot use spec variables, imports, or helpers
   (`lxdev test` refuses one that does). Pass values as extra arguments;
   arguments and results must be JSON (interfaces work without an index signature).
   Top-level void is allowed; nested undefined, Date, methods and DOM handles reject
   instead of being silently transformed. An error thrown in `fn` fails the eval
   with `E_EVAL_SCRIPT`; catch it inside `fn` to assert an API's own `code`.
-- Options go first: `{ timeout }`, `{ page }` for evals; `{ timeout }`,
-  `{ wait: false }` for `call`. An eval gets a third of the spec's budget (at
-  most 10 s) by default. `logic.call` resolves when the method's promise
-  settles; its types are declared, not validated.
-- `data()` reads the JSON snapshot the View receives (undefined properties
-  omitted, Date serialized); `eval` keeps the strict result boundary above.
-- `t.waitFor` retries failed reads, including remote DOM TypeErrors and nested
-  locator timeouts. Local programming errors and invalid JSON fail immediately
+- Options go first: `{ timeout }`. An eval may take 10 s by default, clamped
+  to what the spec has left.
+- `t.waitFor` and `expect.poll` retry failed reads, including a page eval's
+  `TypeError` (the DOM not rendered yet) and nested locator timeouts. A Logic
+  `TypeError`, other programming errors and invalid JSON fail immediately
   (override with `retryIf`); timeout reports `E_TIMEOUT` and the last observation.
 - Error-code matching also checks the preserved driver cause of a timeout.
-- Type shared helpers against `TestApp`.
+- Type shared helpers against `TestApp`, `TestPage<C>` or `TestView`.
 
 ## Faking the network
 
@@ -253,8 +273,8 @@ lxdev test tests/ --tag routed --openapi api/openapi.yaml
 - Only JSON responses are checked; `$ref`s must be local.
 
 ```ts
-const data = await t.app.logic.data<{ devices: unknown[] }>();
-expect(data.devices[0]).toMatchSchema('Device');                 // #/components/schemas/Device
+const { devices } = await (await t.app.page<DevicesPage>()).data();
+expect(devices[0]).toMatchSchema('Device');                      // #/components/schemas/Device
 expect(problem).toMatchSchema({ ref: '#/components/schemas/Problem', document: 'openapi.yaml' });
 spec.configure({ requires: { openapi: true } });   // skip the file without --openapi
 ```
@@ -263,9 +283,12 @@ spec.configure({ requires: { openapi: true } });   // skip the file without --op
 
 | Layer | Talks to | Typical run |
 |---|---|---|
-| `unit` | nothing: pure Logic helpers through `t.app.logic.eval`, time through `t.app.clock` | every change |
 | `routed` | the UI, with every backend call faked | every change, with `--openapi` |
 | `live` | a real backend or device | nightly, before release |
+
+Pure Logic helpers are plain TypeScript: import them into a Node test runner
+(`node --test`, vitest) instead. `lxdev test` is for behaviour that needs the
+app running.
 
 ```ts
 spec.configure({ tags: ['routed'] });            // every spec in this file
@@ -274,7 +297,7 @@ spec('lists devices', { tags: ['smoke'] }, async (t) => { /* … */ });  // rout
 
 ```bash
 lxdev test tests/ --tag '!live'                # everything except live
-lxdev test tests/ --tag unit,routed --tag smoke   # (unit or routed) and smoke
+lxdev test tests/ --tag routed --tag smoke   # routed and smoke
 ```
 
 - Tag every file with `spec.configure`: an untagged spec matches no `--tag`.
@@ -350,7 +373,7 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
   any run). With it, a missing snapshot starts empty; so does one taken by
   another install of the host, which is moved to `<file>.stale`.
 - `spec(title, { restoreProfile: true }, body)` rolls data back after that
-  spec; `t.app.profile.checkpoint()` / `restore(cp)` / `drop(cp)` do it by
+  spec and starts it on `start` (or home); `t.app.profile.checkpoint()` / `restore(cp)` / `drop(cp)` do it by
   hand. Both need `--profile` and reopen the app.
 - An app that rotates refresh tokens keeps its session through a rollback with
   `keep` (storage-key globs):
@@ -450,7 +473,7 @@ LXDEV_ARG_REGION=eu lxdev test tests/          # a plain --arg REGION=eu
     "entry": "tests/",
     "outputDir": "test-results",
     "presets": {
-      "ci": ["--tag", "unit,routed", "--openapi", "api/openapi.yaml", "--profile", "empty"],
+      "ci": ["--tag", "routed", "--openapi", "api/openapi.yaml", "--profile", "empty"],
       "nightly": ["--profile", "demo", "--profile-save=always", "--secrets-file", ".env.test"]
     }
   }
@@ -475,23 +498,3 @@ lxdev test --preset ci --print-args         # show the effective arguments
 - `tests/api/` — deliberate `lx.*` contract checks.
 
 Run focused specs while iterating and the suite at handoff.
-
-## Fixed page identities and shared contracts
-
-Keep a pure `contract.ts` beside the page: `PageContract<Data, Actions>` from
-`@lingxia/types/page`. Logic uses `Page<Contract['data'], Contract['actions']>`;
-View uses those same types with `useLxPage` / `getPage`. Test imports it with
-`import type`, never by running the Logic module.
-
-```ts
-const page = await t.app.page<HomePage>({ name: 'home' });
-await page.actions.greet({ name: 'Ada' });
-await expect(page.view.testId('home-greeting')).toContainText('Ada');
-```
-
-The handle binds one live instance. Use `{ instanceId }` if a name is ambiguous;
-a replaced/disposed instance fails rather than following another page. Its
-View cannot override the target. `page.data()` and public unary `page.actions`
-share that identity; actions accept one JSON payload and await the actual
-bridge call. App-level `logic.eval` / `logic.call` are lower-level inspection
-of the runtime/current Logic page, not the public View action contract.

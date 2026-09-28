@@ -1,5 +1,6 @@
 // A spec that imports product Logic next to the test SDK.
-import { spec, rawAutomation } from '@lingxia/test';
+import { spec } from '@lingxia/test';
+import { rawAutomation } from '@lingxia/test/runner';
 import type { HostRunAutomation, LxAppDriver } from '@lingxia/types/automation';
 import { hasStorageKey, userDataPath } from './app-logic.js';
 

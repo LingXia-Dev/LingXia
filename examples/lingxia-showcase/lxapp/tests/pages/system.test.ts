@@ -51,31 +51,28 @@ async function waitForSystemState(
 spec("render host app and system information through page actions", { id: "SYSTEM-001", covers: ['lx.host.getBaseInfo', 'lx.host.displayLanguage.get', 'lx.getSystemSetting'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "SYSTEM-001");
 
-
   await app.nav.relaunch({ page: 'system', query: { type: 'appBaseInfo' } });
-  await app.view.testId('system-base-info', { page: 'system' }).waitFor({ timeout: 30_000 });
-  await app.view.testId("system-base-info", { page: 'system' }).click();
+  let system = (await app.page({ name: 'system' }, { timeout: 30_000 })).view;
+  await system.testId('system-base-info').waitFor({ timeout: 30_000 });
+  await system.testId("system-base-info").click();
   const base = await waitForSystemState(
     app,
     (state) => !!state.appBaseInfo?.os && !!state.appBaseInfo?.productName
       && typeof state.displayLanguage === 'string' && state.displayLanguage.length > 0,
   );
-  const baseResultLocator = app.view.testId('system-base-result', { page: 'system' });
-  await baseResultLocator.waitFor({ timeout: 30_000 });
-  const baseResult = await baseResultLocator.query();
-  expect(baseResult.exists && baseResult.text).toContain(base.appBaseInfo?.productName);
+  await expect(system.testId('system-base-result'))
+    .toContainText(base.appBaseInfo!.productName!, { timeout: 30_000 });
 
+  // A relaunch replaces the page instance: bind the new one.
   await app.nav.relaunch({ page: 'system', query: { type: 'systemSetting' } });
-  await app.view.testId('system-setting-info', { page: 'system' }).waitFor({ timeout: 30_000 });
-  await app.view.testId("system-setting-info", { page: 'system' }).click();
+  system = (await app.page({ name: 'system' }, { timeout: 30_000 })).view;
+  await system.testId('system-setting-info').waitFor({ timeout: 30_000 });
+  await system.testId("system-setting-info").click();
   await waitForSystemState(
     app,
     (state) => typeof state.systemSetting?.wifiEnabled === 'boolean',
   );
-  const settingResultLocator = app.view.testId('system-setting-result', { page: 'system' });
-  await settingResultLocator.waitFor({ timeout: 30_000 });
-  const settingResult = await settingResultLocator.query();
-  expect(settingResult.exists && settingResult.text).toContain('WiFi Enabled');
+  await expect(system.testId('system-setting-result')).toContainText('WiFi Enabled', { timeout: 30_000 });
 });
 
 spec('opens the product cache panel from the rendered API menu', {
@@ -86,18 +83,18 @@ spec('opens the product cache panel from the rendered API menu', {
   const { app } = bindFixture(t, 'SYSTEM-CACHE-001');
 
   await app.nav.relaunch({ page: 'api' });
-  await app.view.testId('api-system-section', { page: 'api' }).waitFor({ state: 'visible', timeout: 30_000 });
-  await app.view.testId("api-system-section", { page: 'api' }).click();
-  await app.view.testId('api-system-cache', { page: 'api' }).waitFor({ state: 'visible', timeout: 30_000 });
+  const api = (await app.page({ name: 'api' }, { timeout: 30_000 })).view;
+  await api.testId('api-system-section').waitFor({ state: 'visible', timeout: 30_000 });
+  await api.testId("api-system-section").click();
+  await api.testId('api-system-cache').waitFor({ state: 'visible', timeout: 30_000 });
   // The banner demo row sits above this item; the click scrolls it into view
   // first, or the Windows hit lands on chrome / the tab bar and navigation
   // never starts.
-  await app.view.testId("api-system-cache", { page: 'api' }).click();
-  const panelLocator = app.view.testId('system-cache-panel', { page: 'system' });
-  await panelLocator.waitFor({ state: 'visible', timeout: 30_000 });
-
-  const panel = await panelLocator.query();
-  expect(panel.exists && panel.text).toContain('Product Cache');
+  await api.testId("api-system-cache").click();
+  const system = (await app.page({ name: 'system' }, { timeout: 30_000 })).view;
+  const panel = system.testId('system-cache-panel');
+  await panel.waitFor({ state: 'visible', timeout: 30_000 });
+  await expect(panel).toContainText('Product Cache');
 });
 
 async function bannerPageState(app: TestApp): Promise<BannerPageState> {
@@ -132,7 +129,8 @@ bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page',
   });
 
   await app.nav.relaunch({ page: 'system', query: { type: 'banner' } });
-  await app.view.testId('system-banner-panel', { page: 'system' }).waitFor({ state: 'visible', timeout: 30_000 });
+  const system = (await app.page({ name: 'system' }, { timeout: 30_000 })).view;
+  await system.testId('system-banner-panel').waitFor({ state: 'visible', timeout: 30_000 });
 
   // Re-read only refreshes support — seed a false so the click is proven.
   await app.logic.eval(({ getCurrentPages }) => {
@@ -142,7 +140,7 @@ bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page',
     return page.data.bannerLast;
   });
 
-  await app.view.testId("system-banner-reread", { page: 'system' }).click();
+  await system.testId("system-banner-reread").click();
   const reread = await eventually(
     () => bannerPageState(app),
     (state) => state.bannerSupported && state.bannerLast === 'probe-cleared',
@@ -151,7 +149,7 @@ bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page',
   expect(reread.bannerSupported).toBe(true);
   expect(reread.bannerLast).toBe('probe-cleared');
 
-  await app.view.testId("system-banner-prompt", { page: 'system' }).click();
+  await system.testId("system-banner-prompt").click();
   await eventually(
     () => bannerPageState(app),
     (state) => state.bannerBusy && state.bannerActiveId === 'showcase-banner-prompt',
@@ -160,8 +158,8 @@ bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page',
 
   // After Prompt the native card is WS_EX_TOPMOST over the WebView. Windows
   // CDP clicks then miss the page button; fire the same control from the DOM.
-  await waitForElementEnabled(t, 'system', '[data-testid="system-banner-dismiss"]');
-  await app.view.eval({ page: 'system' }, ({ document }) => {
+  await waitForElementEnabled(system, '[data-testid="system-banner-dismiss"]');
+  await system.eval(({ document }) => {
     const button = document.querySelector('[data-testid="system-banner-dismiss"]') as ProbeElement | null;
     if (!button || button.tagName !== 'BUTTON' || button.disabled) {
       throw new Error('dismiss is not clickable');

@@ -91,7 +91,8 @@ test("routes are traced, scoped to their spec, and removed when it ends", async 
     assert.equal((await t.app.network.calls()).length, 1);
     assert.equal(network.routes.size, 1);
     assert.equal(await route.remove(), undefined);
-    assert.equal(await t.app.network.removeAll(), undefined);
+    assert.equal(await route.remove(), undefined, "removing an expired route is not an error");
+    assert.equal(t.app.network.removeAll, undefined, "routes are spec-scoped; there is no removeAll");
   });
   spec("second", async (t) => {
     seenAfterFirst = network.routes.size;

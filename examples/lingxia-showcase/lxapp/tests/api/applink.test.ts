@@ -24,10 +24,10 @@ spec('route a warm AppLink onto the query page once', {
   expect(result.code).toBe(1);
 
   await waitForCurrentPage(app, 'device', 30_000);
-  await app.view.testId('device-page', { page: 'device' }).waitFor({ timeout: 30_000 });
+  const device = await app.page({ name: 'device' });
+  await device.view.testId('device-page').waitFor({ timeout: 30_000 });
   await waitForElementAttribute(
-    t,
-    'device',
+    device.view,
     '[data-testid="device-page"]',
     'data-mode',
     'screen',
@@ -65,9 +65,9 @@ spec('route a warm AppLink from a product path', {
   expect(result.accepted).toBe(true);
 
   await waitForCurrentPage(app, 'device', 30_000);
+  const device = await app.page({ name: 'device' });
   await waitForElementAttribute(
-    t,
-    'device',
+    device.view,
     '[data-testid="device-page"]',
     'data-mode',
     'screen',

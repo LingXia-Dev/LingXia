@@ -98,6 +98,7 @@ test("arguments that are not JSON are refused with their path before anything is
   cyclic.self = cyclic;
   const messages = [];
   const result = await runOne(async (t) => {
+    const home = await t.app.page();
     const attempts = [
       () => t.app.logic.eval((_, a, b) => [a, b], 1, { items: [1, 2, undefined] }),
       () => t.app.logic.eval((_, a) => a, [() => 1]),
@@ -109,7 +110,7 @@ test("arguments that are not JSON are refused with their path before anything is
       () => t.app.logic.eval((_, a) => a, cyclic),
       () => t.app.logic.eval((_, a) => a, [1, , 3]), // eslint-disable-line no-sparse-arrays
       () => t.app.logic.eval((_, a) => a, 10n),
-      () => t.app.logic.call("save", { onDone: () => 1 }),
+      () => home.actions.save({ onDone: () => 1 }),
       () => t.app.view.eval((_, a) => a, { items: [undefined] }),
     ];
     for (const attempt of attempts) {
@@ -133,12 +134,13 @@ test("arguments that are not JSON are refused with their path before anything is
     "TypeError: t.app.logic.eval: args[0][\"self\"]: circular reference; use JSON values",
     "TypeError: t.app.logic.eval: args[0]: array index 1 is missing or an accessor; use JSON values",
     "TypeError: t.app.logic.eval: args[0]: bigint",
-    "TypeError: t.app.logic.call: args[0][\"onDone\"]: function",
+    "TypeError: page.actions.save: args[0][\"onDone\"]: function",
     "TypeError: t.app.view.eval: args[0][\"items\"][0]: undefined"
   ]);
   // Nothing reached either side.
   assert.deepEqual(world.evaluated, []);
   assert.deepEqual(world.evaluatedPages, []);
+  assert.deepEqual(world.actionCalls, []);
 });
 
 test("JSON arguments cross unchanged, shared references included", async () => {
@@ -166,40 +168,72 @@ test("view function eval gets document and window", async () => {
   assert.ok(result.steps.some((step) => step.name === "view.eval"));
 });
 
-test("view eval takes a page target before the function", async () => {
+test("view eval takes only { timeout }: `page` is a TypeError; a bound page's view evals on its instance", async () => {
   const world = createWorld();
   world.usePage({ document: { title: "Surface" }, window: {} });
   installFakeHost(world);
   const values = [];
+  const messages = [];
+  let surfaceId;
   const result = await runOne(async (t) => {
-    values.push(await t.app.view.eval({ page: "surface" }, ({ document }, suffix) => document.title + suffix, "!"));
+    await t.app.nav.to({ page: "surface" });
+    const surface = await t.app.page({ name: "surface" });
+    surfaceId = surface.instanceId;
+    values.push(await surface.view.eval(({ document }, suffix) => document.title + suffix, "!"));
     values.push(await t.app.view.eval(({ document }) => document.title));
+    for (const view of [t.app.view, surface.view]) {
+      try { await view.eval({ page: "surface" }, ({ document }) => document.title); } catch (error) { messages.push(`${error.name}: ${error.message}`); }
+    }
   });
   assert.equal(result.status, "passed", JSON.stringify(result.error));
   assert.deepEqual(values, ["Surface!", "Surface"]);
-  assert.deepEqual(world.evaluatedPages, ["surface", undefined]);
+  assert.deepEqual(world.evaluatedPages, [surfaceId, undefined]);
+  assert.deepEqual(messages, [
+    "TypeError: t.app.view.eval: page is not an eval option; bind the page with t.app.page({ name }) and use its view",
+    "TypeError: page.view.eval: page is not an eval option; bind the page with t.app.page({ name }) and use its view",
+  ]);
   const actions = result.steps.filter((step) => step.name === "view.eval");
-  assert.match(actions[0].detail, /^surface /);
+  assert.match(actions[0].detail, new RegExp(`^#${surfaceId} `));
 });
 
 test("an eval's own timeout is sent, clamped to the spec budget", async () => {
   const world = logicWorld();
   world.usePage({ document: { title: "Home" }, window: {} });
   installFakeHost(world);
+  let surfaceId;
   const result = await runOne(async (t) => {
     await t.app.logic.eval(() => 1);
     await t.app.logic.eval({ timeout: 20_000 }, (_, n) => n, 2);
     await t.app.logic.eval({ timeout: 600_000 }, () => 3);
-    await t.app.view.eval({ page: "surface", timeout: 15_000 }, ({ document }) => document.title);
+    await t.app.nav.to({ page: "surface" });
+    const surface = await t.app.page({ name: "surface" });
+    await surface.view.eval({ timeout: 15_000 }, ({ document }) => document.title);
+    await surface.view.eval(({ document }) => document.title);
     assert.throws(() => t.app.logic.eval({ timeout: -1 }, () => 4), /positive number of ms/);
+    surfaceId = surface.instanceId;
   }, { timeout: 60_000 });
   assert.equal(result.status, "passed", JSON.stringify(result.error));
-  const [byDefault, own, clamped, view] = world.evalTimeouts;
+  const [byDefault, own, clamped, view, viewDefault] = world.evalTimeouts;
+  // Without its own timeout an eval gets a fixed 10 s, not a share of the budget.
   assert.equal(byDefault, 10_000);
   assert.equal(own, 20_000);
   assert.ok(clamped > 50_000 && clamped < 60_000, String(clamped));
   assert.equal(view, 15_000);
-  assert.equal(world.evaluatedPages.at(-1), "surface");
+  assert.equal(viewDefault, 10_000);
+  assert.equal(world.evaluatedPages.at(-1), surfaceId);
+});
+
+test("the default eval timeout is clamped to what the spec has left", async () => {
+  const world = logicWorld();
+  world.usePage({ document: { title: "Home" }, window: {} });
+  installFakeHost(world);
+  const result = await runOne(async (t) => {
+    await t.app.logic.eval(() => 1);
+    await t.app.view.eval(({ document }) => document.title);
+  }, { timeout: 3_000 });
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
+  assert.equal(world.evalTimeouts.length, 2);
+  for (const timeout of world.evalTimeouts) assert.ok(timeout > 2_000 && timeout < 3_000, String(timeout));
 });
 
 test("the fixture takes eval functions; a script string names the raw driver", async () => {
@@ -225,72 +259,87 @@ test("the fixture takes eval functions; a script string names the raw driver", a
   assert.equal(world.evaluated.length, 1);
 });
 
-test("logic.data reads the current or a named page, logic.call invokes a method", async () => {
+test("page.data() reads the bound instance's Logic data; page.actions invoke its public actions", async () => {
+  const world = createWorld();
+  world.setPageData("home", { greeting: "hi" });
+  world.setPageData("devices", { devices: [{ id: "d1" }] });
   const calls = [];
-  const pages = [
-    { route: "pages/home/index", data: { greeting: "hi" } },
-    {
-      route: "/pages/devices/index",
-      data: { devices: [{ id: "d1" }] },
-      async rename(id, patch) {
-        calls.push([id, patch]);
-        return { ok: true, id };
-      },
-    },
-  ];
-  const world = logicWorld(pages);
+  world.setAction("rename", (payload, page) => { calls.push([page.instanceId, payload]); return { ok: true, id: payload.id }; });
+  world.setAction("refresh", (payload) => ({ refreshed: payload === undefined }));
+  world.setAction("broken", () => { throw new ReferenceError("helper is not defined"); });
+  world.setAction("quota", () => { throw Object.assign(new Error("over quota"), { code: "E_QUOTA" }); });
+  world.setAction("slow", () => { throw Object.assign(new Error("action did not settle"), { code: "E_AUTOMATION_TIMEOUT" }); });
   installFakeHost(world);
   const seen = {};
   const result = await runOne(async (t) => {
-    seen.current = await t.app.logic.data();
-    seen.home = await t.app.logic.data({ page: "home" });
-    seen.byRoute = await t.app.logic.data({ page: "pages/devices/index" });
-    seen.renamed = await t.app.logic.call("rename", "d1", { name: "Office" });
-    await t.reject(() => t.app.logic.data({ page: "settings" }), { message: "t.app.logic.data: page \"settings\" is not in the page stack" });
-    await t.reject(() => t.app.logic.call("missing"), { message: 't.app.logic.call: page "/pages/devices/index" has no method "missing"' });
+    const home = await t.app.page();
+    await t.app.nav.to({ page: "devices" });
+    const current = await t.app.page();
+    const byName = await t.app.page({ name: "home" });
+    const byId = await t.app.page({ instanceId: current.instanceId });
+    seen.ids = [home.instanceId, current.instanceId, byName.instanceId, byId.instanceId];
+    seen.names = [home.name, current.name];
+    seen.home = await home.data();
+    seen.current = await current.data();
+    seen.byId = await byId.data();
+    seen.renamed = await current.actions.rename({ id: "d1", name: "Office" });
+    seen.refreshed = await home.actions.refresh();
+    await t.reject(() => current.actions.missing(), { code: "E_PAGE_ACTION", message: 'no public action "missing"' });
+    seen.quota = await t.reject(() => current.actions.quota(), { code: "E_QUOTA" });
+    seen.slow = await t.reject(() => current.actions.slow(), { code: "E_TIMEOUT" });
+    seen.broken = await t.reject(() => current.actions.broken(), { code: "E_PAGE_ACTION" });
+    seen.removed = [typeof t.app.logic.data, typeof t.app.logic.call];
+    seen.thenable = typeof current.actions.then;
   });
   assert.equal(result.status, "passed", JSON.stringify(result.error));
-  assert.deepEqual(seen.current, { devices: [{ id: "d1" }] });
+  const [homeId, devicesId] = seen.ids;
+  assert.deepEqual(seen.ids, [homeId, devicesId, homeId, devicesId]);
+  assert.deepEqual(seen.names, ["home", "devices"]);
   assert.deepEqual(seen.home, { greeting: "hi" });
-  assert.deepEqual(seen.byRoute, { devices: [{ id: "d1" }] });
+  assert.deepEqual(seen.current, { devices: [{ id: "d1" }] });
+  assert.deepEqual(seen.byId, seen.current);
   assert.deepEqual(seen.renamed, { ok: true, id: "d1" });
-  assert.deepEqual(calls, [["d1", { name: "Office" }]]);
+  assert.deepEqual(seen.refreshed, { refreshed: true });
+  assert.deepEqual(seen.removed, ["undefined", "undefined"]);
+  assert.equal(seen.thenable, "undefined", "awaiting page.actions must not call an action named then");
+  assert.deepEqual(calls, [[devicesId, { id: "d1", name: "Office" }]]);
+  // The app's own code reaches the spec; a driver timeout is E_TIMEOUT with the driver's code as its cause.
+  assert.equal(seen.quota.message, "over quota");
+  assert.equal(seen.slow.name, "TimeoutError");
+  assert.equal(seen.slow.cause.code, "E_AUTOMATION_TIMEOUT");
+  // A failure inside the app's action is the app's: no "closes over the spec" advice.
+  assert.equal(seen.broken.message, "page action broken rejected: ReferenceError: helper is not defined");
+  assert.equal(seen.broken.name, "Error");
+  assert.deepEqual(seen.broken.data, { action: "broken", cause: "ReferenceError: helper is not defined" });
+  // The driver gets the bound instance, the payload only when one was given, and the spec's room.
+  const [rename, refresh] = world.actionCalls;
+  assert.deepEqual({ ...rename, timeoutMs: typeof rename.timeoutMs }, { page: devicesId, name: "rename", payload: { id: "d1", name: "Office" }, timeoutMs: "number" });
+  assert.deepEqual(Object.keys(refresh).sort(), ["name", "page", "timeoutMs"]);
+  assert.ok(rename.timeoutMs > 0 && rename.timeoutMs <= 30_000, String(rename.timeoutMs));
   const names = result.steps.map((step) => step.name);
-  assert.ok(names.includes("logic.data"));
-  assert.ok(names.includes("logic.call"));
+  assert.ok(names.includes("page.bind"));
+  assert.ok(names.includes("page.data"));
+  assert.ok(names.includes("page.action"));
+  assert.ok(result.steps.some((step) => step.name === "page.action" && step.detail === `rename #${devicesId}`));
   // One row per call: the underlying eval is not traced twice.
   assert.ok(!names.includes("logic.eval"));
 });
 
-test("logic.call takes { timeout } and { wait: false } first", async () => {
-  let release;
-  const settled = [];
-  const pages = [{
-    route: "pages/sync/index",
-    data: {},
-    sync(label) {
-      return new Promise((resolve) => { release = () => { settled.push(label); resolve(label); }; });
-    },
-    quick(label) { return `done ${label}`; },
-  }];
-  const world = logicWorld(pages);
+test("page.actions take at most one JSON payload", async () => {
+  const world = createWorld();
+  world.setAction("move", () => "moved");
   installFakeHost(world);
-  const seen = {};
+  const messages = [];
   const result = await runOne(async (t) => {
-    seen.fired = await t.app.logic.call({ wait: false }, "sync", "later");
-    seen.pending = settled.length;
-    release();
-    seen.slow = await t.app.logic.call({ timeout: 20_000 }, "quick", "slow");
-    await t.reject(() => t.app.logic.call({ wait: "no" }, "quick"), { message: /takes a boolean/ });
-    await t.reject(() => t.app.logic.call({ timeout: -1 }, "quick"), { message: /positive number of ms/ });
+    const page = await t.app.page();
+    await t.reject(() => page.actions.move(1, 2), { message: "page.actions.move takes at most one JSON payload" });
+    try { await page.actions.move(new Date(0)); } catch (error) { messages.push(`${error.name}: ${error.message}`); }
+    messages.push(await page.actions.move({ to: 2 }));
   });
   assert.equal(result.status, "passed", JSON.stringify(result.error));
-  assert.equal(seen.fired, undefined);
-  assert.equal(seen.pending, 0, "the call resolved before the method's promise settled");
-  assert.deepEqual(settled, ["later"]);
-  assert.equal(seen.slow, "done slow");
-  assert.ok(world.evalTimeouts.includes(20_000), JSON.stringify(world.evalTimeouts));
-  assert.ok(result.steps.some((step) => step.detail === "sync (not awaited)"));
+  assert.match(messages[0], /^TypeError: page\.actions\.move: args\[0\]: non-plain object/);
+  assert.equal(messages[1], "moved");
+  assert.equal(world.actionCalls.length, 1);
 });
 
 test("waitFor resolves to the accepted value and traces one row", async () => {
@@ -511,29 +560,31 @@ test("JSON arguments keep special keys as own data in Logic and View", async () 
 });
 
 
-test("page handles keep the selected identity and invoke the public bridge", async () => {
+test("page handles keep the selected identity; their view takes no page option", async () => {
   const world = logicWorld();
-  const calls = [];
   world.app.nav.info = async () => ({ path: 'pages/editor/index', instanceId: 'editor:1' });
   world.app.nav.stack = async () => [{ path: 'pages/editor/index', instanceId: 'editor:1' }];
+  world.stack.push({ path: 'pages/editor/index', instanceId: 'editor:1' });
   world.useLogic({ lx: {}, __lxGetPage: id => {
     assert.equal(id, 'editor:1');
     return { data: { title: 'Before' } };
   } });
-  world.usePage({ document: {}, window: {
-    __pageBridge: { __names: ['rename'], __modes: { rename: 'call' } },
-    LingXiaBridge: { raw: { call: async (name, payload, options) => { assert.equal(options.timeoutMs, 0); calls.push([name, payload]); return true; } } },
-  } });
+  world.usePage({ document: { title: 'Editor' }, window: {} });
+  world.app.page.action = async (options) => { world.actionCalls.push(options); return true; };
   installFakeHost(world);
   const result = await runOne(async t => {
     const page = await t.app.page({ name: 'editor' });
     assert.equal(page.instanceId, 'editor:1');
+    assert.equal(page.name, 'pages/editor/index', 'a page the host does not name is named by its path');
     assert.deepEqual(await page.data(), { title: 'Before' });
     assert.equal(await page.actions.rename({ title: 'After' }), true);
-    assert.throws(() => page.view.css('button', { page: 'other' }), /bound page/);
+    assert.throws(() => page.view.css('button', { page: 'other' }), /view\.css\(\) takes no options: bind another page with t\.app\.page\(\{ name \}\)/);
+    assert.throws(() => page.view.testId('save', {}), /view\.testId\(\) takes no options/);
+    assert.throws(() => page.view.screenshot({ page: 'other' }), /view\.screenshot\(\) takes no options/);
+    assert.equal(await page.view.eval(({ document }) => document.title), 'Editor');
   });
   assert.equal(result.status, 'passed', JSON.stringify(result.error));
-  assert.deepEqual(calls, [['rename', { title: 'After' }]]);
+  assert.deepEqual(world.actionCalls.map(({ page, name, payload }) => [page, name, payload]), [['editor:1', 'rename', { title: 'After' }]]);
   assert.deepEqual(world.evaluatedPages, ['editor:1']);
 });
 
@@ -548,7 +599,6 @@ test("page data uses View JSON serialization instead of the eval validator", asy
   installFakeHost(world);
   const result = await runOne(async t => {
     const expected = { at: "2026-01-01T00:00:00.000Z", record: { count: 2 }, items: [null, 1] };
-    assert.deepEqual(await t.app.logic.data(), expected);
     assert.deepEqual(await (await t.app.page()).data(), expected);
   });
   assert.equal(result.status, "passed", JSON.stringify(result.error));

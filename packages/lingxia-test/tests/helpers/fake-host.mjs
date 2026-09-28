@@ -123,6 +123,14 @@ export function createWorld(options = {}) {
   const evaluatedPages = [];
   // The `timeoutMs` each eval (Logic or page) was sent with.
   const evalTimeouts = [];
+  /** Every page-driver call as `[method, page]` (`page`: the target it named, if any). */
+  const pageTargets = [];
+  /** Public page actions by name: `(payload, pageEntry) => result`. */
+  const pageActions = new Map();
+  /** Every `page.action` call as sent. */
+  const actionCalls = [];
+  /** Logic `data` of page instances, by instance id or page name. */
+  const pageData = new Map();
   const keyFor = (map, script) => map.has(script) ? script : [...map.keys()].find((key) => script.includes(key));
 
   // Mirror the targets: a script is evaluated as JS against the given
@@ -149,13 +157,40 @@ export function createWorld(options = {}) {
     return element.tag === css;
   }
 
-  function queryAll(css) {
-    return elements.filter((element) => element.attached !== false && matches(element, css));
+  /**
+   * The live page a page-driver call targets: the current one, or the stack
+   * entry `target` names (an instance id or a page name). A page no longer
+   * live rejects as the host does.
+   */
+  function pageEntry(method, target) {
+    pageTargets.push([method, target]);
+    if (target === undefined) return currentPage;
+    const entry = stack.find((item) => item.instanceId === target || item.name === target);
+    if (!entry) {
+      throw Object.assign(new Error(`E_PAGE_NOT_ACTIVE: page ${target} is not active`), { code: "E_PAGE_NOT_ACTIVE" });
+    }
+    return entry;
+  }
+
+  /** Elements with a `page` (name or instance id) exist on that page only. */
+  function onPage(element, entry) {
+    return element.page === undefined || element.page === entry.name || element.page === entry.instanceId;
+  }
+
+  function queryAll(css, entry = currentPage) {
+    return elements.filter((element) => element.attached !== false && onPage(element, entry) && matches(element, css));
+  }
+
+  /** `getPage(instanceId)` as Logic answers it: a live instance, or undefined. */
+  function getPage(instanceId) {
+    const entry = stack.find((item) => item.instanceId === instanceId);
+    if (!entry) return undefined;
+    return { route: entry.path, data: pageData.get(entry.instanceId) ?? pageData.get(entry.name) ?? {} };
   }
 
   const page = {
-    async query({ css, all, index = 0 }) {
-      const found = queryAll(css);
+    async query({ css, all, index = 0, page: pageName }) {
+      const found = queryAll(css, pageEntry("query", pageName));
       if (all) {
         return {
           count: found.length,
@@ -168,37 +203,66 @@ export function createWorld(options = {}) {
       }
       return serialize(element, index, found.length);
     },
-    async click({ css, index, force }) {
+    async click({ css, index, force, page: pageName }) {
       if (blocked) throw new Error("fixture should not reach the app after abort");
-      const found = queryAll(css);
+      const found = queryAll(css, pageEntry("click", pageName));
       const target = typeof index === "number" ? found[index] : found.find((element) => element.visible !== false);
       if (!target || (target.visible === false && !force)) throw new Error(`click missed ${css}`);
       target.clicked = (target.clicked ?? 0) + 1;
       target.forced = force === true;
       if (typeof target.onClick === "function") target.onClick(target);
     },
-    async fill({ css, text, index, force }) {
+    async fill({ css, text, index, force, page: pageName }, method = "fill") {
       if (blocked) throw new Error("fixture should not reach the app after abort");
-      const found = queryAll(css);
+      const found = queryAll(css, pageEntry(method, pageName));
       const target = typeof index === "number" ? found[index] : found.find((element) => element.visible !== false);
       if (!target || (target.visible === false && !force)) throw new Error(`fill missed ${css}`);
       target.value = text;
       target.forced = force === true;
     },
-    async type({ css, text }) {
-      return page.fill({ css, text });
+    async type({ css, text, index, page: pageName }) {
+      return page.fill({ css, text, index, page: pageName }, "type");
     },
-    async screenshot() {
+    async press({ css, key, index, page: pageName }) {
+      const found = queryAll(css, pageEntry("press", pageName));
+      const element = typeof index === "number" ? found[index] : found[0];
+      if (!element) throw new Error(`press missed ${css}`);
+      (element.pressed ??= []).push(key);
+    },
+    async scroll(options = {}) {
+      pageEntry("scroll", options.page);
+    },
+    async screenshot(options) {
+      pageEntry("screenshot", options?.page);
       return { format: "png", base64: TINY_PNG, width: 1, height: 1 };
+    },
+    /** A page's public action, as the host invokes it through the page's bridge. */
+    async action(options) {
+      const { page: target, name, payload } = options;
+      actionCalls.push({ ...options });
+      if (blocked) throw new Error("fixture should not reach the app after abort");
+      const entry = pageEntry("action", target);
+      const handler = pageActions.get(name);
+      const refused = (cause) => Object.assign(new Error(`page action ${name} rejected: ${cause}`),
+        { code: "E_PAGE_ACTION", data: { action: name, cause } });
+      if (!handler) throw refused(`page ${entry.name} has no public action ${JSON.stringify(name)}`);
+      try {
+        return await handler(payload, entry);
+      } catch (error) {
+        // An action's own code passes through; anything else is E_PAGE_ACTION.
+        if (error?.code) throw error;
+        throw refused(String(error));
+      }
     },
     async eval({ script, page: target, timeoutMs }) {
       evaluatedPages.push(target);
       evalTimeouts.push(timeoutMs);
+      const entry = pageEntry("eval", target);
       if (pageGlobals) return evaluate(pageGlobals, script);
       // The locator's read-only attribute probe.
       const probe = script.match(/querySelectorAll\((".*?")\)\[(\d+)\][\s\S]*for \(const name of (\[.*?\])\)/);
       if (probe) {
-        const element = queryAll(JSON.parse(probe[1]))[Number(probe[2])];
+        const element = queryAll(JSON.parse(probe[1]), entry)[Number(probe[2])];
         const out = {};
         for (const name of JSON.parse(probe[3])) out[name] = element?.attributes?.[name] ?? null;
         return out;
@@ -207,7 +271,7 @@ export function createWorld(options = {}) {
       // fails the hit test, as a real page would.
       const actionability = script.match(/querySelectorAll\((".*?")\)\[(\d+)\][\s\S]*elementFromPoint/);
       if (actionability) {
-        const element = queryAll(JSON.parse(actionability[1]))[Number(actionability[2])];
+        const element = queryAll(JSON.parse(actionability[1]), entry)[Number(actionability[2])];
         if (element?.inViewport === false) return "element is obscured";
       }
       return true;
@@ -287,7 +351,10 @@ export function createWorld(options = {}) {
       // A seeded key names the script, or text inside the function a spec
       // passed to `t.app.logic.eval`.
       const seeded = keyFor(evalResults, script);
-      if (logicGlobals && seeded === undefined) value = await evaluate(logicGlobals, script);
+      // Logic answers `getPage` for the live stack unless a test says otherwise.
+      if (seeded === undefined && (logicGlobals || script.includes("__lxGetPage"))) {
+        value = await evaluate({ __lxGetPage: getPage, ...logicGlobals }, script);
+      }
       if (seeded !== undefined) {
         value = evalResults.get(seeded);
         if (value instanceof Error) throw value;
@@ -344,6 +411,21 @@ export function createWorld(options = {}) {
       elements.push({ attached: true, visible: true, ...element });
       return elements[elements.length - 1];
     },
+    /** Register a public page action: `handler(payload, pageEntry)` answers it. */
+    setAction(name, handler) {
+      pageActions.set(name, handler);
+    },
+    /** Set a page instance's Logic data, by instance id or page name. */
+    setPageData(key, data) {
+      pageData.set(key, data);
+    },
+    /** The live page stack, bottom first. */
+    stack,
+    get currentPage() {
+      return currentPage;
+    },
+    pageTargets,
+    actionCalls,
     setEval(script, value) {
       evalResults.set(script, value);
     },

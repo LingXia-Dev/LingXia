@@ -254,16 +254,17 @@ spec("clear, prefix-list, missing vs null, and persist storage across reLaunch",
     const afterClear = await storage.list(ns);
     const persistGone = await storage.get(persistKey);
     await storage.set(persistKey, { kept: true });
-    return { prefixed, storedNull, missing, listedNull, listedMissing, afterClear, persistGone };
+    // A missing key reads as undefined, which a JSON result cannot carry.
+    return { prefixed, storedNull, missing: missing ?? null, listedNull, listedMissing, afterClear, persistGone: persistGone ?? null };
   }, namespace, persistKey);
 
   expect(first.prefixed).toEqual([`${namespace}-a`, `${namespace}-b`, `${namespace}-null`].sort());
   expect(first.storedNull).toBe(null);
   expect(first.listedNull).toBeTruthy();
   expect(first.listedMissing).toBeFalsy();
-  expect(first.missing == null).toBeTruthy();
+  expect(first.missing).toBe(null);
   expect(first.afterClear).toEqual([]);
-  expect(first.persistGone == null).toBeTruthy();
+  expect(first.persistGone).toBe(null);
 
   await app.nav.relaunch({ page: 'home' });
   await waitForCurrentPage(app, 'home', 30_000);

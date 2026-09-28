@@ -60,12 +60,15 @@ export class AssertionError extends Error {
   readonly matcher: string;
   readonly actual: unknown;
   readonly expected: unknown;
+  /** `E_TIMEOUT` when a retrying assertion ran out of time. */
+  readonly code?: "E_TIMEOUT";
 
-  constructor(matcher: string, actual: unknown, expected: unknown, message: string) {
+  constructor(matcher: string, actual: unknown, expected: unknown, message: string, code?: "E_TIMEOUT") {
     super(message);
     this.matcher = matcher;
     this.actual = actual;
     this.expected = expected;
+    if (code) this.code = code;
   }
 }
 

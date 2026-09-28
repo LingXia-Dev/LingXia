@@ -3,10 +3,12 @@
 `@lingxia/test` executes sequential specs in the host automation context.
 
 Entry points: `@lingxia/test` is what a spec imports (`spec`, `expect`,
-`rawAutomation`, errors, fixture types); `@lingxia/test/runner` holds the
-runner (`run`, `list`, `reset`, `trackPublicSurface`, `renderJUnit`, the
+errors, fixture types); `@lingxia/test/runner` holds the runner (`run`,
+`list`, `reset`, `rawAutomation`, `trackPublicSurface`, `renderJUnit`, the
 capability inventory, version and default budgets), which lxdev reaches
-through the global `__LINGXIA_TEST__` controller instead; and
+through the global `__LINGXIA_TEST__` controller instead. The host contract
+(`AutomationHost`, the controller, the globals) lives in `host-types.ts` and
+never reaches the authoring entry's declarations; and
 `@lingxia/test/report` is types only (`JsonReport` and the records in it).
 `session.test` validates the framework result; `lxdev` journals events and writes
 received artifacts. Keep the following invariants when changing these layers:
@@ -92,13 +94,13 @@ received artifacts. Keep the following invariants when changing these layers:
   a run nobody has polled for `CONTROLLER_LEASE` (180s, above lxdev's longest
   poll gap) through the normal cancel path. `lingxia dev` likewise holds its
   source watcher while a run is on (below).
-- Fixture nav (`t.app.nav.*` and the `fresh` relaunch) sends `waitUntil: 'ready'`
+- Fixture nav (`t.app.nav.*` and the `start` relaunch) sends `waitUntil: 'ready'`
   unless the spec chose `waitUntil`. The driver then polls the landed instance's
   `ready_dispatched` (`lxapp::automation::wait_page_runtime_ready`) off the Logic
   thread; Logic-side `lx.automation()` rejects `'ready'` because awaiting its own
-  `onReady` would deadlock. The raw driver default stays `'commit'`. `fresh`
-  ignores only the "disposed before ready" rejection (the home page's own
-  hand-off); a ready timeout still fails the spec.
+  `onReady` would deadlock. The raw driver default stays `'commit'`. The
+  `start` relaunch ignores only the "disposed before ready" rejection (the
+  page's own hand-off); a ready timeout still fails the spec.
 - Raw `page.waitFor` states follow `lxdev lxapp page wait` on the first match
   (`hidden` = exists and not visible). Locator states in `@lingxia/test` are
   uniqueness-aware (`attached`/`visible`/`inViewport` need exactly one match,
@@ -320,7 +322,11 @@ Development machine: lxdev receives progress, results, and artifacts
   read the page's `visibilityState` and whether an animation frame arrives
   within 300 ms. Report the observation, and covered windows or sleeping
   displays only as likely causes. Locator deadlines never raise a window or
-  run an extra probe after expiry.
+  run an extra probe after expiry. The note explains only a locator failure
+  (a locator action or read in `failedAction`, or a timed-out locator
+  assertion); any other failure, and every contract-phase failure, drops it.
+  When the failed locator is bound to an instance that is not the current
+  page, that — not visibility — is the note.
 - `--shuffle[=SEED]` sends `control.shuffle` (lxdev draws a u32 when no seed
   is given and prints it); the runtime shuffles the planned executions with a
   seeded Fisher–Yates (mulberry32), after `--repeat-each` expansion.
@@ -360,8 +366,8 @@ Development machine: lxdev receives progress, results, and artifacts
   when the id is generated (`generated_id`), the file was one of the run's,
   and no other id shares that line; `--id` on the run's paths otherwise.
 - `PageInfo.ready` means `onReady` ran; `webviewAttached` means the page has a
-  WebView. `fresh` relaunches wait for ready but accept a home page that hands
-  off to another page.
+  WebView. `start` relaunches wait for ready but accept a page that hands off
+  to another page.
 
 ## Automation JS boundary
 
@@ -465,20 +471,22 @@ Development machine: lxdev receives progress, results, and artifacts
   original receiver for native getters and methods; getter-returned drivers must
   be wrapped as namespaces, not rebound as functions.
 - Locator queries, probes, and dispatch carry the same page and match index.
-  Multiple matches remain ambiguous even if only one is visible. Named pages
-  survive remounts; an instance id targets one live instance. Omitted page targets
-  follow the current page on every operation.
+  Multiple matches remain ambiguous even if only one is visible. A locator
+  targets either the current page on every operation (`t.app.view`) or the one
+  live instance a `t.app.page()` handle bound; there is no by-name target that
+  follows remounts. Binding by name waits for an instance and refuses a name
+  with several live instances.
 - `eval<T>` declares the caller's expected result, not runtime validation.
-  Fixture `eval` and `logic.call` results are `Jsonable<R>`: structural,
+  Fixture `eval` and `page.actions` results are `Jsonable<R>`: structural,
   so interfaces without index signatures pass; function members drop out,
   and a function, `Date`, `RegExp`, `Map`/`Set`, promise, symbol, bigint or
   DOM node (`nodeType`, or the `View*` shapes) is `never`.
-- Function-form eval (`t.app.logic.eval(fn, ...args)`, `t.app.view.eval(fn,
-  ...)`, and `logic.data`/`logic.call`, built on it) lives in `@lingxia/test`
-  (`remote.ts`); the drivers still receive `{ script }`. Leading eval options
-  (`logic.eval({ timeout }, fn)`, `view.eval({ page, timeout }, fn)`) are told
-  apart from `fn` by type: `page` goes to the driver's `page.eval`, `timeout`
-  (clamped to `budgetRoom()`) replaces the default share as `timeoutMs`; an
+- Function-form eval (`t.app.logic.eval(fn, ...args)`, `view.eval(fn, ...)`,
+  and `page.data()`, built on it) lives in `@lingxia/test` (`remote.ts`); the
+  drivers still receive `{ script }`. A bound view sends its instance id as
+  the driver's `page`. Leading eval options (`{ timeout }`) are told apart
+  from `fn` by type; `timeout` (clamped to `budgetRoom()`) replaces the
+  10 s default as `timeoutMs`; an
   object with a `script` key is not options, so a script string still fails
   as one. The script is one
   call expression, `((__lxFn, __lxArgs) => __lxFn(scope, ...__lxArgs))(<fn
@@ -489,6 +497,11 @@ Development machine: lxdev receives progress, results, and artifacts
   are rejected before sending (their source is not an expression). A remote
   `ReferenceError` is rethrown named `ReferenceError`, with its code/data and
   a note that `fn` cannot close over spec state; `t.waitFor` then fails fast.
+  A page eval's `TypeError` stays retryable (the DOM may not have rendered);
+  a Logic one does not.
+- `page.actions.x(payload)` goes through the driver's `page.action`, which
+  the page runtime answers through the same bridge path the View's actions
+  take; the SDK knows no bridge internals.
 - The bundler checks those functions before the run (`test_eval_check.rs`):
   for a call `X.eval(fn, …)` / `X.eval(options, fn, …)` whose `X` is a
   `….logic`, `….view`, `(await app.page(…)).view`, a destructured `logic`/`view`, or a

@@ -49,21 +49,21 @@ spec('greets through real page input and the Logic bridge', async (t) => {
     { describe: 'home Logic runtime', timeoutMs: 20_000, retryIf: () => true },
   );
 
+  const home = await app.page({ name: 'home' });
   const name = `Gate ${Date.now()}`;
-  await app.view.testId("home-name", { page: 'home' }).fill(name);
+  await home.view.testId('home-name').fill(name);
   await waitForElementAttribute(
-    t,
-    'home',
+    home.view,
     '[data-testid="home-name"]',
     'data-controlled-value',
     name,
   );
-  await waitForElementEnabled(t, 'home', '[data-testid="home-greet"]');
-  await app.view.testId("home-greet", { page: 'home' }).click();
+  await waitForElementEnabled(home.view, '[data-testid="home-greet"]');
+  await home.view.testId('home-greet').click();
 
   expect(await waitForElementText(
     t,
-    'home',
+    home.view,
     '[data-testid="home-greeting"]',
     (text) => text.includes(name),
     30_000,
@@ -96,9 +96,11 @@ spec('switches display language from the home control', {
     return control.displayLanguage.getPreference();
   });
 
+  // Switching the language re-renders home in place; it does not remount it.
+  const home = await app.page({ name: 'home' });
   try {
-    await waitForElementEnabled(t, 'home', '[data-testid="home-language-zh-CN"]');
-    await app.view.testId('home-language-zh-CN', { page: 'home' }).click();
+    await waitForElementEnabled(home.view, '[data-testid="home-language-zh-CN"]');
+    await home.view.testId('home-language-zh-CN').click();
     await eventually(
       () => app.logic.eval({ timeout: 15_000 }, ({ lx }) => lx.host.control?.displayLanguage.getPreference()),
       (preference) => preference === 'zh-CN',
@@ -110,14 +112,13 @@ spec('switches display language from the home control', {
     );
     expect(await waitForElementText(
       t,
-      'home',
+      home.view,
       '[data-testid="home-tagline"]',
       (text) => text.includes('轻量应用框架'),
       15_000,
     )).toContain('轻量应用框架');
     await waitForElementAttribute(
-      t,
-      'home',
+      home.view,
       '[data-testid="home-language-zh-CN"]',
       'data-selected',
       'true',
@@ -132,8 +133,8 @@ spec('switches display language from the home control', {
       'tab bar labels after zh-CN',
     );
 
-    await waitForElementEnabled(t, 'home', '[data-testid="home-language-en-US"]');
-    await app.view.testId('home-language-en-US', { page: 'home' }).click();
+    await waitForElementEnabled(home.view, '[data-testid="home-language-en-US"]');
+    await home.view.testId('home-language-en-US').click();
     await eventually(
       () => app.logic.eval({ timeout: 15_000 }, ({ lx }) => lx.host.control?.displayLanguage.getPreference()),
       (preference) => preference === 'en-US',
@@ -145,14 +146,13 @@ spec('switches display language from the home control', {
     );
     expect(await waitForElementText(
       t,
-      'home',
+      home.view,
       '[data-testid="home-tagline"]',
       (text) => text.includes('Lightweight Application Framework'),
       15_000,
     )).toContain('Lightweight Application Framework');
     await waitForElementAttribute(
-      t,
-      'home',
+      home.view,
       '[data-testid="home-language-en-US"]',
       'data-selected',
       'true',

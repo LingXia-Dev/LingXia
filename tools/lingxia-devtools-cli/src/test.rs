@@ -1644,7 +1644,7 @@ impl SessionRun {
     }
 }
 
-/// What Ctrl-C acts on: the process's current session run.
+/// What Ctrl-C (and SIGTERM/SIGHUP) acts on: the process's current session run.
 struct InterruptTarget {
     interrupts: Arc<AtomicUsize>,
     ws_url: String,
@@ -1778,9 +1778,10 @@ struct Outcome {
     artifacts: Vec<(String, PathBuf, usize)>,
     partial: bool,
     streamed: Vec<StreamedCase>,
-    /// Work of the run itself that failed after its cases finished (saving
-    /// the profile, the recorded network, the reports): every report and the
-    /// exit code carry it, while each case keeps its verdict.
+    /// Failures of the run itself: why it stopped before its remaining specs,
+    /// or work after its cases (saving the profile, the recorded network, the
+    /// reports). Every report and the exit code carry them; each case keeps
+    /// its verdict.
     run_errors: Vec<String>,
 }
 
@@ -1913,6 +1914,8 @@ fn poll_until_terminal(
     let mut streamed = Vec::new();
     let mut cancel_sent = false;
     let mut app_not_live = false;
+    // Why the run stopped short of its remaining specs; reported as run errors.
+    let mut stop_reasons: Vec<String> = Vec::new();
     let mut cancel_deadline: Option<std::time::Instant> = None;
     let mut last_event_at = std::time::Instant::now();
     let mut case_budget = run_timeout;
@@ -2123,6 +2126,9 @@ fn poll_until_terminal(
                     if phase == "recovery_failed" {
                         app_not_live = true;
                     }
+                    if phase == "run_stopped" || phase == "recovery_failed" {
+                        stop_reasons.push(message.clone());
+                    }
                     if !machine {
                         match level.as_deref() {
                             Some("info") if verbose => eprintln!("note ({phase}): {message}"),
@@ -2326,7 +2332,7 @@ fn poll_until_terminal(
                     .and_then(|r| r.report.as_ref())
                     .is_none_or(|r| r.detail.get("partial") == Some(&json!(true))),
                 streamed,
-                run_errors: Vec::new(),
+                run_errors: std::mem::take(&mut stop_reasons),
             });
         }
         let watchdog_at = last_event_at + case_budget + WATCHDOG_GRACE;
@@ -4288,6 +4294,64 @@ mod lifecycle_tests {
         );
         assert_eq!(seen[2].1["run_id"], "run-5");
         assert_eq!(seen[3].1["run_id"], "run-5");
+    }
+
+    const SIGNAL_CHILD_ENV: &str = "LXDEV_TEST_SIGNAL_CHILD";
+
+    /// Runs only inside the subprocess spawned below: the handler is
+    /// process-wide, so the signal must not reach the shared test process.
+    #[test]
+    fn termination_signal_child() {
+        let Ok(signal) = std::env::var(SIGNAL_CHILD_ENV) else {
+            return;
+        };
+        let interrupts = Arc::new(AtomicUsize::new(0));
+        on_interrupt(InterruptTarget {
+            interrupts: interrupts.clone(),
+            ws_url: "ws://127.0.0.1:9".into(),
+            run_id: "run-1".into(),
+            lease: "lease-1".into(),
+        })
+        .unwrap();
+        let status = std::process::Command::new("kill")
+            .args([format!("-{signal}"), std::process::id().to_string()])
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while interrupts.load(Ordering::SeqCst) == 0 {
+            assert!(
+                Instant::now() < deadline,
+                "SIG{signal} did not interrupt the run"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sigterm_and_sighup_interrupt_the_run_like_ctrl_c() {
+        for signal in ["TERM", "HUP"] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "test::lifecycle_tests::termination_signal_child",
+                    "--nocapture",
+                ])
+                .env(SIGNAL_CHILD_ENV, signal)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "SIG{signal}: {:?}\n{}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                String::from_utf8_lossy(&output.stdout).contains("1 passed"),
+                "child test did not run"
+            );
+        }
     }
 
     #[test]

@@ -35,11 +35,11 @@ async function waitFor<T>(operation: () => Promise<T | undefined>, label: string
   throw new Error(`${label} was not observed`);
 }
 
+/** Enabled Save means dirty Terminal Settings; disabled, applied ones. */
 async function waitForSave(settings: TestApp, enabled: boolean): Promise<void> {
-  await waitFor(async () => {
-    const save = await settings.view.css('#save').first().query();
-    return save.exists && save.enabled === enabled ? true : undefined;
-  }, enabled ? 'dirty Terminal Settings' : 'applied Terminal Settings');
+  const save = settings.view.css('#save').first();
+  if (enabled) await expect(save).toBeEnabled({ timeout: 8_000 });
+  else await expect(save).toBeDisabled({ timeout: 8_000 });
 }
 
 /** Close the surface handles Logic keeps under `key`, and forget them. */

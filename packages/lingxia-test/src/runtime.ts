@@ -13,19 +13,21 @@ import { coverageSummary, parseManifest } from "./coverage.js";
 import { ContractError, ContractLedger, parseOpenApiControl, setActiveOpenApi } from "./openapi.js";
 import { matchesTags, parseTagFilter, tagSummary, validateTags } from "./tags.js";
 import type { SpecApi } from "./spec-api.js";
+import type { LingxiaTestController } from "./host-types.js";
 import type {
   FailOptions,
   FileOptions,
   Fixture,
-  LingxiaTestController,
   RejectExpected,
   SpecBody,
   SpecOptions,
   SpecRequirements,
+  SpecStart,
 } from "./types.js";
 import type {
   CaseRecord,
   FailurePage,
+  ReportError,
   FailureRecord,
   JsonReport,
   ListedSpec,
@@ -57,7 +59,7 @@ interface RegisteredSpec {
   tags: string[];
   timeout: number;
   timeoutCleanup?: number;
-  fresh: boolean;
+  start?: SpecStart;
   restoreProfile: boolean;
   /** `restoreProfile: { keep }`: storage key globs the rollback keeps. */
   restoreKeep?: string[];
@@ -153,6 +155,15 @@ function validateRequires(requires: unknown, where: string): { args: string[]; o
 /** Checks what `spec()` and `spec.configure()` accept alike; throws on the first problem. */
 function validateOptions(options: FileOptions, where: string): void {
   restoreProfileKeep(options.restoreProfile);
+  const start = options.start;
+  if (start !== undefined) {
+    if (!start || typeof start !== "object" || typeof start.page !== "string" || start.page.length === 0) {
+      throw new TypeError(`${where} start must be { page, query? } with a configured page name`);
+    }
+    if (start.query !== undefined && (!start.query || typeof start.query !== "object" || Array.isArray(start.query))) {
+      throw new TypeError(`${where} start.query must be an object`);
+    }
+  }
   for (const [name, value] of Object.entries({ timeout: options.timeout, timeoutCleanup: options.timeoutCleanup })) {
     if (value !== undefined && (!Number.isFinite(value) || value <= 0)) throw new TypeError(`${where} ${name} must be a positive finite number`);
   }
@@ -178,7 +189,7 @@ function settle(item: RegisteredSpec, file: FileOptions | undefined): void {
   item.tags = [...new Set([...validateTags(file?.tags, "spec.configure()"), ...validateTags(own.tags, `spec ${JSON.stringify(item.title)}`)])];
   item.timeout = pick("timeout") ?? DEFAULT_SPEC_TIMEOUT_MS;
   item.timeoutCleanup = pick("timeoutCleanup");
-  item.fresh = pick("fresh") === true;
+  item.start = pick("start");
   item.restoreProfile = restoreProfile === true || restoreKeep !== undefined;
   item.restoreKeep = restoreKeep;
   item.app = pick("app");
@@ -230,7 +241,6 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     covers: [],
     tags: [],
     timeout: DEFAULT_SPEC_TIMEOUT_MS,
-    fresh: false,
     restoreProfile: false,
     forensics: true,
     requires: { args: [], openapi: false },
@@ -476,11 +486,11 @@ async function recoverAppUnderTest(appId: string | undefined): Promise<string | 
   }
 }
 
-async function relaunchHome(app: LxAppDriver): Promise<void> {
-  const pages = await app.pages();
-  const home = pages[0]?.name ?? "home";
+/** Relaunch on the spec's `start` page, or the app's home page. */
+async function relaunchHome(app: LxAppDriver, start?: SpecStart): Promise<void> {
+  const page = start?.page ?? (await app.pages())[0]?.name ?? "home";
   try {
-    await app.nav.relaunch({ page: home, waitUntil: "ready" });
+    await app.nav.relaunch({ page, ...(start?.query ? { query: start.query } : {}), waitUntil: "ready" });
   } catch (error) {
     // The home page may hand off to another page itself (a gate, a login
     // redirect); that is the app's own start, not a failed relaunch.
@@ -825,7 +835,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       await within(Promise.resolve(fixture.raw.network.captureResponses()), CONTRACT_CALL_MS, "captureResponses timed out");
     }
 
-    const shouldRelaunch = item.fresh || item.restoreProfile || forceRelaunchNext;
+    const shouldRelaunch = item.start !== undefined || item.restoreProfile || forceRelaunchNext;
     forceRelaunchNext = false;
     // `restoreProfile`: snapshot the isolated profile now and roll back to it
     // after the spec. Registered as the first cleanup, so it runs last.
@@ -869,7 +879,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         });
         phase = "body";
       }
-      if (shouldRelaunch) await relaunchHome(fixture.raw);
+      if (shouldRelaunch) await relaunchHome(fixture.raw, item.start);
       phase = "beforeEach";
       for (const hook of resetHooks) { if (hookFiles.get(hook) === source.file) await hook.fn(fixture); }
       for (const hook of hooks) {
@@ -1105,10 +1115,14 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     // Test timers dropped with the spec's clock leave the app's polling loops
     // and debounces dead; the next spec starts from a relaunched home page.
     if (fixture.clockScope.dropped > 0) forceRelaunchNext = true;
-    if (item.restoreProfile && !profileRestored && !contaminated) {
-      // The next spec would start on this spec's data: a stuck cleanup.
+    // An abandoned spec stops the run below with its own reason.
+    if (item.restoreProfile && !profileRestored && !contaminated && !stuck) {
+      // The next spec would start on this spec's data.
       contaminated = true;
-      contaminationReason = "Not run: a previous spec's restoreProfile could not roll the app's data back; restart the run.";
+      const what = `"${record.full_name}" could not roll the app's data back (restoreProfile); a later spec would run on its data.`;
+      contaminationReason = `Not run: ${what} Restart the run.`;
+      await host.emit({ type: "diagnostic", phase: "run_stopped",
+        message: `${what} The remaining specs are not run.` });
     }
 
     // Routed responses that break the contract fail the spec like a body
@@ -1190,7 +1204,8 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         record.error.failedAction = fixture.failedAction.action;
       }
       // A spec that never reached a page is not "on" the app's current one.
-      const page = (fixture.usedPage || item.fresh ? failurePage : undefined) ?? pageFromErrorData(record.error.data);
+      const current = fixture.usedPage || item.start ? failurePage : undefined;
+      const page = current ? uiFailureNote(current, record.error, error, fixture) : pageFromErrorData(record.error.data);
       if (page) record.error.page = page;
       const calls = withFunctionCalls(networkCalls(host, caseStarted), scenarioEvidence?.functionCalls ?? []);
       if (calls.length > 0) record.error.network = calls;
@@ -1581,6 +1596,28 @@ function strayAssertionSink(host: ResolvedHost, abandoned: () => string | undefi
       (seen === LISTED_STRAY_ASSERTIONS ? " Further ones are not listed." : "");
     void host.emit({ type: "diagnostic", phase: "late_assertion", message, ...(from !== undefined ? { case: from } : {}) }).catch(() => {});
   };
+}
+
+/** Locator actions and one-shot reads, as the trace names them: `page.<verb> [#instance] selector`. */
+const LOCATOR_ACTION = /^page\.(?:click|fill|type|press|waitFor|count|isVisible|textContent|inputValue|getAttribute)(?: #(\S+))?/;
+
+/**
+ * Whether the page looked hidden explains a failure only when a locator
+ * failed; and when the locator's page was not the current one, that is the
+ * explanation instead.
+ */
+function uiFailureNote(page: FailurePage, report: ReportError, error: unknown, fixture: LiveFixture): FailurePage {
+  const { hidden, ...rest } = page;
+  const asserted = error && typeof error === "object" ? fixture.locatorFailures.get(error) : undefined;
+  const acted = report.failedAction ? LOCATOR_ACTION.exec(report.failedAction) : null;
+  if (report.phase === "contract" || (asserted === undefined && !acted)) return rest;
+  // `#foo` may be a CSS id selector on the current page, not a bound instance.
+  const actedOn = acted?.[1] !== undefined && fixture.boundPages.has(acted[1]) ? acted[1] : null;
+  const target = asserted !== undefined ? asserted : actedOn;
+  if (target !== null && page.instanceId && target !== page.instanceId) {
+    return { ...rest, hidden: `the locator's page #${target} was not the current page` };
+  }
+  return hidden ? { ...rest, hidden } : rest;
 }
 
 /** Attach failure evidence; resolves to the page that was current, if known. */

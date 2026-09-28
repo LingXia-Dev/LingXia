@@ -3,30 +3,10 @@ import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 import './index.css';
 
-type Todo = {
-  id: string;
-  text: string;
-  completed: boolean;
-};
-
-type TodoFilter = 'all' | 'active' | 'completed';
-
-type PageData = {
-  todos?: Todo[];
-  currentFilter?: TodoFilter;
-};
-
-type PageActions = {
-  data: PageData;
-  addTodo(params: { text: string }): void;
-  toggleTodo(params: { id: string }): void;
-  deleteTodo(params: { id: string }): void;
-  clearCompleted(): void;
-  setFilter(params: { filter: TodoFilter }): void;
-};
+import type { TodoFilter, TodoPage as TodoContract } from './contract';
 
 export default function TodoPage() {
-  const { data, actions } = useLxPage();
+  const { data, actions } = useLxPage<TodoContract['data'], TodoContract['actions']>();
   const {
     addTodo,
     toggleTodo,

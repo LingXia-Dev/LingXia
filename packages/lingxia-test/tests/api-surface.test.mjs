@@ -166,10 +166,10 @@ test("spec.configure sets file defaults; a spec's own options override them", as
   const world = createWorld();
   installFakeHost(world);
 
-  spec.configure({ timeout: 1_234, fresh: true, tags: ["routed"], covers: ["DEV-1"], forensics: false });
+  spec.configure({ timeout: 1_234, start: { page: "dashboard" }, tags: ["routed"], covers: ["DEV-1"], forensics: false });
   spec.configure({ tags: ["smoke"] });
   spec("defaults", async () => {});
-  spec("overrides", { timeout: 5_000, fresh: false, tags: ["own"], covers: ["DEV-2"] }, async () => {});
+  spec("overrides", { timeout: 5_000, start: { page: "detail", query: { id: "d1" } }, tags: ["own"], covers: ["DEV-2"] }, async () => {});
 
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
@@ -180,8 +180,11 @@ test("spec.configure sets file defaults; a spec's own options override them", as
   assert.equal(overrides.timeout_ms, 5_000);
   assert.deepEqual(overrides.tags, ["routed", "smoke", "own"]);
   assert.deepEqual(overrides.covers, ["DEV-1", "DEV-2"]);
-  // `fresh` from the file relaunched the first spec only.
-  assert.equal(world.navCalls.filter(([name]) => name === "relaunch").length, 1);
+  // `start`: the file's page for the first spec, the spec's own (with its query) for the second.
+  assert.deepEqual(world.navCalls.filter(([name]) => name === "relaunch").map(([, options]) => options), [
+    { page: "dashboard", waitUntil: "ready" },
+    { page: "detail", query: { id: "d1" }, waitUntil: "ready" },
+  ]);
 });
 
 test("spec.configure rejects an id and malformed options at registration", () => {
@@ -189,6 +192,9 @@ test("spec.configure rejects an id and malformed options at registration", () =>
   assert.throws(() => spec.configure({ timeout: -1 }), /timeout must be a positive finite number/);
   assert.throws(() => spec.configure({ requires: { args: "PASSWORD" } }), /requires\.args must be an array/);
   assert.throws(() => spec("bad", { requires: { openapi: "yes" } }, async () => {}), /requires\.openapi must be a boolean/);
+  assert.throws(() => spec("bad start", { start: "home" }, async () => {}), /start must be \{ page, query\? \}/);
+  assert.throws(() => spec.configure({ start: { page: "" } }), /start must be \{ page, query\? \}/);
+  assert.throws(() => spec("bad query", { start: { page: "home", query: [1] } }, async () => {}), /start\.query must be an object/);
 });
 
 test("requires skips a spec whose run inputs are missing, naming what to pass", async () => {
@@ -280,11 +286,11 @@ test("an idempotent read the transport dropped is retried; input is not", async 
 test("each entry exports only its own job", async () => {
   const main = await import("@lingxia/test");
   assert.deepEqual(Object.keys(main).sort(),
-    ["AssertionError", "TEST_ERROR_CODES", "TimeoutError", "expect", "rawAutomation", "spec"]);
+    ["AssertionError", "TEST_ERROR_CODES", "TimeoutError", "expect", "spec"]);
   const runner = await import("@lingxia/test/runner");
   assert.deepEqual(Object.keys(runner).sort(), [
     "DEFAULT_ACTION_TIMEOUT_MS", "DEFAULT_SPEC_TIMEOUT_MS", "PACKAGE_NAME", "PUBLIC_CAPABILITIES", "VERSION",
-    "list", "renderJUnit", "reset", "run", "trackPublicSurface",
+    "list", "rawAutomation", "renderJUnit", "reset", "run", "trackPublicSurface",
   ]);
   assert.deepEqual(Object.keys(await import("@lingxia/test/report")), []);
 });

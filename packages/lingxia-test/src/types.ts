@@ -23,7 +23,6 @@ import type {
   PageInfo,
   PageKey,
   PagePointer,
-  PageQueryResult,
   PageScrollOptions,
   PageTarget,
   ProfileRestoreResult,
@@ -34,7 +33,6 @@ import type {
   TerminalDriver,
   ToastRecord,
 } from "@lingxia/types/automation";
-import type { ProtocolReport } from "./report-types.js";
 
 /**
  * Every `code` a spec can meet on a rejection or a failed spec: the
@@ -71,18 +69,22 @@ export interface SpecOptions {
   /** Declared coverage tags. Journeys omit this. */
   covers?: readonly string[];
   /**
-   * Selection tags (`unit`, `routed`, `live`, `smoke`, …), merged after the
+   * Selection tags (`routed`, `live`, `smoke`, …), merged after the
    * file's `spec.configure({ tags })`. `lxdev test --tag` selects by them and
    * the report summarizes each. Letters, digits and `_ . : / -`.
    */
   tags?: readonly string[];
   /** Spec budget in ms (default 30_000). */
   timeout?: number;
-  /** Relaunch the home page before the body. */
-  fresh?: boolean;
+  /**
+   * Relaunch the app on this page before the body (and its `beforeEach`
+   * hooks): a fresh instance, every other page unloaded.
+   */
+  start?: SpecStart;
   /**
    * Snapshot the app's isolated data before this spec and roll it back after,
-   * so the next spec never sees this one's writes. Implies `fresh`. Needs an
+   * so the next spec never sees this one's writes. Relaunches the app on
+   * `start`, or on its home page. Needs an
    * isolated run (`lxdev test --profile`); if the rollback fails, the rest of
    * the run is not run. `{ keep: ['auth.*'] }` rolls back everything except
    * the `lx.getStorage()` keys those globs match, which keep their state at
@@ -103,6 +105,14 @@ export interface SpecOptions {
    * file's `spec.configure({ requires })`.
    */
   requires?: SpecRequirements;
+}
+
+/** `start`: the page a spec begins on. */
+export interface SpecStart {
+  /** Configured page name (from lxapp.json). */
+  page: string;
+  /** Query forwarded to the page. */
+  query?: Record<string, unknown>;
 }
 
 /** `requires`: run inputs a spec cannot mean anything without. */
@@ -188,11 +198,6 @@ export interface RejectExpected {
   message?: string | RegExp;
 }
 
-export interface LocatorOptions extends PageTarget {
-  /** Zero-based match index; omit to require a unique match. */
-  index?: number;
-}
-
 /**
  * Locator states are strict about ambiguity (narrow with `.nth()`,
  * `.first()`, `.last()` or `.filter()`):
@@ -228,8 +233,20 @@ export interface Locator {
   last(): Locator;
   /** Narrow the matches; `nth`/`first`/`last` then pick among what is left. */
   filter(options: LocatorFilterOptions): Locator;
-  /** Read once; `expect(locator)` retries. */
-  query(): Promise<PageQueryResult>;
+  /*
+   * One-shot reads: they neither wait nor retry. Assert with
+   * `expect(locator)`, which does.
+   */
+  /** How many elements match now. */
+  count(): Promise<number>;
+  /** Whether exactly one match is rendered now; several matches reject. */
+  isVisible(): Promise<boolean>;
+  /** The single match's text as the user sees it, whitespace-collapsed; rejects unless exactly one matches. */
+  textContent(): Promise<string>;
+  /** The single match's value (input, textarea, select); rejects unless exactly one matches, or it has no value. */
+  inputValue(): Promise<string>;
+  /** The single match's attribute, `null` when absent; rejects unless exactly one matches. */
+  getAttribute(name: string): Promise<string | null>;
 }
 
 /** A value that crosses the eval boundary unchanged. */
@@ -249,6 +266,7 @@ type JsonMember<R> =
     : R extends JsonValue ? R
     : R extends (...args: never[]) => unknown ? never
     : R extends Date | RegExp | Map<unknown, unknown> | Set<unknown> | WeakMap<object, unknown> | WeakSet<object> | PromiseLike<unknown> | symbol | bigint ? never
+    : R extends URL | URLSearchParams | Response | Request | Headers | Blob | ArrayBuffer | ArrayBufferView | Error ? never
     : R extends ViewElement | ViewDocument | ViewWindow ? never
     : R extends readonly unknown[] ? { [K in keyof R]: JsonMember<R[K]> }
     : R extends object ? { [K in keyof R]: JsonMember<R[K]> }
@@ -256,25 +274,6 @@ type JsonMember<R> =
 
 /** A remote result is JSON, or top-level void; nested undefined is rejected. */
 export type Jsonable<R> = R extends undefined | void ? R : JsonMember<R>;
-
-type OmittedJsonValue = undefined | symbol | ((...args: any[]) => unknown);
-
-/** The JSON snapshot of page data, including toJSON and omitted properties. */
-export type JsonSnapshot<T> =
-  0 extends 1 & T ? any
-    : unknown extends T ? unknown
-    : T extends OmittedJsonValue | bigint ? never
-    : T extends { toJSON(): infer R } ? JsonSnapshot<R>
-    : T extends JsonValue ? T
-    : T extends readonly unknown[] ? {
-        [K in keyof T]: JsonSnapshot<T[K]> | (Extract<T[K], OmittedJsonValue> extends never ? never : null)
-      }
-    : T extends object ? {
-        [K in keyof T as K extends symbol ? never : Extract<T[K], OmittedJsonValue> extends never ? K : never]: JsonSnapshot<T[K]>
-      } & {
-        [K in keyof T as K extends symbol ? never : T[K] extends OmittedJsonValue ? never : Extract<T[K], OmittedJsonValue> extends never ? never : K]?: JsonSnapshot<T[K]>
-      }
-    : T;
 
 type CheckedResult<R> = [Awaited<R>] extends [Jsonable<Awaited<R>>] ? unknown : {
   readonly __resultMustBeJson: "Return JSON values or top-level void";
@@ -310,8 +309,8 @@ export interface LogicScope {
   readonly lx: Lx & { automation(): Automation };
   getApp<T extends LogicApp = LogicApp>(): T | null;
   getCurrentPages<T extends LogicPage<any> = AnyLogicPage>(): T[];
-  /** Read a live page service by identity, including surface pages. */
-  getPage(instanceId: string): LogicPage;
+  /** A live page by instance id, surface pages included; `undefined` once it is gone. */
+  getPage<T extends LogicPage<any> = AnyLogicPage>(instanceId: string): T | undefined;
 }
 
 type PageGlobal<K extends string, Fallback> = typeof globalThis extends { [P in K]: infer V } ? V : Fallback;
@@ -384,28 +383,24 @@ export type LogicFunction<R, A extends unknown[]> = ((scope: LogicScope, ...args
 export type ViewFunction<R, A extends unknown[]> = ((scope: ViewScope, ...args: A) => R | Promise<R>) & CheckedResult<R>;
 
 /**
- * `t.app.view`: the current page's View — locators, function eval, and
- * DOM scrolling. Read elements and act on them through locators; they wait
- * for the element and retry, where a raw driver call would not.
+ * A page's View — locators, function eval, and DOM scrolling. `t.app.view`
+ * is whichever page is current at each call; `(await t.app.page()).view` is
+ * one fixed page instance. Read elements and act on them through locators;
+ * they wait for the element and retry, where a raw driver call would not.
  */
 export interface TestView {
-  testId(id: string, options?: LocatorOptions): Locator;
-  css(selector: string, options?: LocatorOptions): Locator;
+  testId(id: string): Locator;
+  css(selector: string): Locator;
   /**
-   * Run `fn` in the current page's WebView with JSON `args` and resolve to
-   * its JSON result. `fn` must be self-contained (see `ViewFunction`).
+   * Run `fn` in the page's WebView with JSON `args` and resolve to its JSON
+   * result. `fn` must be self-contained (see `ViewFunction`).
    */
   eval<R, A extends unknown[]>(fn: ViewFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
-  /**
-   * The same with options: `page` runs it in that page's WebView (a
-   * configured page name or live instance id) instead of the current page's,
-   * like a locator's `{ page }` — a page kept below the current one, or one a
-   * surface shows; `timeout` see `EvalOptions`.
-   */
-  eval<R, A extends unknown[]>(options: ViewEvalOptions, fn: ViewFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
-  screenshot(options?: PageTarget): Promise<Screenshot>;
+  /** The same with a `timeout` (see `EvalOptions`). */
+  eval<R, A extends unknown[]>(options: EvalOptions, fn: ViewFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
+  screenshot(): Promise<Screenshot>;
   /** Scroll the page DOM by a pixel delta (nearest scrollable container). */
-  scroll(options?: PageScrollOptions): Promise<void>;
+  scroll(options?: Omit<PageScrollOptions, "page">): Promise<void>;
 }
 
 /** Native app-window input, independent of a page selector or DOM focus. */
@@ -416,8 +411,8 @@ export interface TestWindow {
 }
 
 /**
- * Leading options of `t.app.logic.eval(options, fn, ...args)`. Without them
- * an eval may take a third of the spec's budget, at most 10 s.
+ * Leading options of `eval(options, fn, ...args)`. Without them an eval may
+ * take 10 s, clamped to the spec's remaining budget.
  */
 export interface EvalOptions {
   /**
@@ -427,68 +422,64 @@ export interface EvalOptions {
   timeout?: number;
 }
 
-/** Leading options of `t.app.view.eval(options, fn, ...args)`. */
-export interface ViewEvalOptions extends PageTarget, EvalOptions {}
+/**
+ * `t.app.page()` selector: a configured page name, which must match exactly
+ * one live instance, or a live instance id.
+ */
+export type PageSelector = { name: string; instanceId?: never } | { instanceId: string; name?: never };
 
-/** Leading options of `t.app.logic.call(options, method, ...args)`. */
-export interface LogicCallOptions extends EvalOptions {
+/** `t.app.page()` options. */
+export interface PageBindOptions {
   /**
-   * `false` resolves once the method was invoked, without awaiting the
-   * promise it returns; a later rejection is logged in Logic. Default `true`.
+   * How long to wait for a matching live instance, in ms (default 5000),
+   * clamped to the spec's remaining budget.
    */
-  wait?: boolean;
+  timeout?: number;
 }
 
-/** `t.app.logic.data()` options. */
-export interface LogicDataOptions {
-  /** Configured page name or route; defaults to the current page. */
-  page?: string;
+/** What a page action that takes more than one parameter becomes. */
+export interface UnaryActionsOnly {
+  readonly __pageActionsTakeOnePayload: "Page actions take at most one JSON payload; change the action to take an object";
 }
 
 /**
- * Names `t.app.logic.call<T>()` accepts: the methods `T` declares, or any
- * name for a page type that does not list its methods (`AnyLogicPage`).
+ * A contract's actions as a test calls them: each takes at most one JSON
+ * payload and resolves to its JSON result once Logic settles it.
+ * Generators (streamed actions) are not callable from a test.
  */
-export type LogicPageMethod<T> = string extends keyof T
-  ? string
-  : { [K in keyof T]-?: T[K] extends (...args: any[]) => unknown ? K : never }[keyof T] & string;
-
-export type LogicMethodArgs<T, K> = K extends keyof T
-  ? T[K] extends (...args: infer A) => unknown ? JsonArgs<A> : JsonValue[]
-  : JsonValue[];
-
-/** What `call<T, K>()` resolves to: `K`'s awaited result as JSON carries it, `unknown` untyped. */
-export type LogicMethodResult<T, K> = K extends keyof T
-  ? T[K] extends (...args: any[]) => infer R ? Jsonable<Awaited<R>> : unknown
-  : unknown;
-
-/** A fixed live page instance. A name lookup must identify exactly one instance. */
-export type PageSelector = { name: string; instanceId?: never } | { instanceId: string; name?: never };
 export type PageActionCalls<A> = {
   readonly [K in keyof A as A[K] extends (...args: any[]) => any ? K : never]:
-    A[K] extends (...args: infer P) => infer R
-      ? P extends [] | [unknown?]
-        ? (...args: JsonArgs<P> & CheckedResult<R>) => Promise<Jsonable<Awaited<R>>>
-        : never
-      : never;
+    A[K] extends (...args: any[]) => AsyncGenerator<any, any, any> | Generator<any, any, any>
+      ? never
+      : A[K] extends (...args: infer P) => infer R
+        ? P extends [] | [unknown?]
+          ? (...args: JsonArgs<P> & CheckedResult<R>) => Promise<Jsonable<Awaited<R>>>
+          : UnaryActionsOnly
+        : never;
 };
+
+/**
+ * One live page instance, fixed when `t.app.page()` resolved: it never
+ * follows navigation or a replacement, and every call on it rejects once
+ * the instance is gone. Type it with the page's `PageContract`.
+ */
 export interface TestPage<C extends PageContract> {
   readonly instanceId: string;
-  readonly view: BoundTestView;
-  data(): Promise<JsonSnapshot<C["data"]>>;
-  /** Public unary actions, through the same bridge as the View. */
+  /** Configured page name. */
+  readonly name: string;
+  /** This instance's View. */
+  readonly view: TestView;
+  /** This instance's Logic `data`, as `setData` delivers it to the View. */
+  data(): Promise<C["data"]>;
+  /** The contract's public actions, invoked through the page's own bridge. */
   readonly actions: PageActionCalls<C["actions"]>;
 }
-export interface BoundTestView {
-  testId(id: string, options?: Omit<LocatorOptions, "page">): Locator;
-  css(selector: string, options?: Omit<LocatorOptions, "page">): Locator;
-  eval<R, A extends unknown[]>(fn: ViewFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
-  eval<R, A extends unknown[]>(options: EvalOptions, fn: ViewFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
-  screenshot(): Promise<Screenshot>;
-  scroll(options?: Omit<PageScrollOptions, "page">): Promise<void>;
-}
 
-/** `t.app.logic`: the app's Logic runtime, read and driven from the spec. */
+/**
+ * `t.app.logic`: the app's Logic runtime, for what the UI cannot show. Read
+ * page state with `(await t.app.page()).data()`; call actions through
+ * `page.actions`.
+ */
 export interface TestLogic {
   /**
    * Run `fn` in the app's Logic runtime with JSON `args` and resolve to its
@@ -497,34 +488,6 @@ export interface TestLogic {
   eval<R, A extends unknown[]>(fn: LogicFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
   /** The same with a `timeout` (see `EvalOptions`). */
   eval<R, A extends unknown[]>(options: EvalOptions, fn: LogicFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
-  /** Read the current (or named) page's Logic `data`. `T` is not validated. */
-  data<T = Record<string, unknown>>(options?: LogicDataOptions): Promise<T>;
-  /**
-   * Call a method of the current page's Logic instance and resolve to its
-   * JSON result once the promise it returns settles. With a page type,
-   * `method` must be one of its methods: `call<TodoPage>('addTodo', 'milk')`;
-   * `call<TodoPage, 'count'>('count')` also types the result. Leading
-   * options: `{ timeout }` (see `EvalOptions`), `{ wait: false }`.
-   */
-  call<T extends LogicPage<any> = AnyLogicPage, K extends LogicPageMethod<T> = LogicPageMethod<T>>(
-    method: K,
-    ...args: LogicMethodArgs<T, K>
-  ): Promise<LogicMethodResult<T, K>>;
-  call<T extends LogicPage<any> = AnyLogicPage, K extends LogicPageMethod<T> = LogicPageMethod<T>>(
-    options: LogicCallOptions & { wait: false },
-    method: K,
-    ...args: LogicMethodArgs<T, K>
-  ): Promise<void>;
-  call<T extends LogicPage<any> = AnyLogicPage, K extends LogicPageMethod<T> = LogicPageMethod<T>>(
-    options: LogicCallOptions & { wait?: true },
-    method: K,
-    ...args: LogicMethodArgs<T, K>
-  ): Promise<LogicMethodResult<T, K>>;
-  call<T extends LogicPage<any> = AnyLogicPage, K extends LogicPageMethod<T> = LogicPageMethod<T>>(
-    options: LogicCallOptions,
-    method: K,
-    ...args: LogicMethodArgs<T, K>
-  ): Promise<LogicMethodResult<T, K> | void>;
 }
 
 /** Nav actions' wait. */
@@ -649,8 +612,6 @@ export interface TestRoute {
 export interface TestNetwork {
   /** The newest matching route handles a request; unmatched requests are untouched. */
   route(pattern: NetworkRoutePattern, handler: NetworkRouteHandler): Promise<TestRoute>;
-  /** Remove every route of this run for the app. */
-  removeAll(): Promise<void>;
   /** Calls this spec's routes handled, oldest first. */
   calls(): Promise<NetworkCall[]>;
 }
@@ -661,14 +622,14 @@ export type ScenarioCallTarget = ScenarioCallFilter;
 /** `t.scenario`. */
 export interface TestScenarios {
   /**
-   * Put the app into a product state from a scenario file (and one of its
+   * Put `t.app` into a product state from a scenario file (and one of its
    * variants), on top of the mock selection: `http` rules answer Logic
    * `fetch`, `function` rules go to the dev session's companion.
    * Spec-scoped: a second call replaces the first, and the spec's end
    * removes it. A failed spec reports its per-rule hits and the calls that
    * reached it.
    */
-  use(definition: ScenarioInput, options?: { variant?: string; app?: string }): Promise<TestScenario>;
+  use(definition: ScenarioInput, options?: { variant?: string }): Promise<TestScenario>;
 }
 
 /** The scenario `t.scenario.use()` installed, spec-scoped. */
@@ -751,13 +712,17 @@ export interface TestDialogs {
  * reaching the app after a profile checkpoint or restore reopens it.
  */
 export interface TestApp {
-  /** Resolve once; the handle never follows a replacement or a later navigation. */
-  page<C extends PageContract>(selector?: PageSelector): Promise<TestPage<C>>;
-  /** The current page's View: locators, `eval(fn)`, screenshots and input. */
+  /**
+   * Bind one live page instance: the current page, or the one `selector`
+   * names (a page kept below the current one, or one a surface shows),
+   * waiting for it to open. The handle never follows navigation.
+   */
+  page<C extends PageContract = PageContract>(selector?: PageSelector, options?: PageBindOptions): Promise<TestPage<C>>;
+  /** The View of whichever page is current at each call. */
   readonly view: TestView;
-  /** Native window input. A page selector never retargets these calls. */
+  /** Native app-window input, independent of pages and DOM focus. */
   readonly window: TestWindow;
-  /** The app's Logic runtime: `eval(fn)`, page `data()` and `call()`. */
+  /** The app's Logic runtime: `eval(fn)`. */
   readonly logic: TestLogic;
   /** The page stack; actions wait for the landed page's `onReady` unless you pass `waitUntil`. */
   readonly nav: TestNav;
@@ -1037,73 +1002,4 @@ export interface SourceLocation {
   source: string;
   line: number;
   column: number;
-}
-
-
-export interface LingxiaTestController {
-  run(): Promise<ProtocolReport>;
-  /** The specs `run()` would run, in `listed`, without running them. */
-  list(): Promise<ProtocolReport>;
-  readonly version: string;
-  /** Clears the registry. Used by this package's own Node tests. */
-  reset(): void;
-}
-
-export interface AutomationHost {
-  args?: Record<string, string>;
-  /** lxdev run controls, kept apart from the user's `args`. */
-  control?: Record<string, string>;
-  attach?: (
-    name: string,
-    artifact: { mimeType: string; base64: string },
-  ) => void | Promise<void>;
-  emit?: (event: Record<string, unknown>) => void | Promise<void>;
-  report?: (event: Record<string, unknown>) => void | Promise<void>;
-  logs?: () => string | string[] | Promise<string | string[]>;
-  /** Logic network calls since `sinceMs`, newest `limit`. */
-  networkLog?: (sinceMs: number, limit?: number) => unknown;
-  /** `lxdev test --record-network`: start, or stop and return the scenario. */
-  networkRecord?: (command: "start" | "stop", name?: string) => unknown;
-  /** Whether the screen is locked; `undefined` where the host cannot tell. */
-  screenLocked?: () => boolean | undefined;
-  /**
-   * Open a spec attempt: routes, mock scenarios and test clocks installed
-   * from now on belong to it. Returns its token.
-   */
-  beginAttempt?: () => number;
-  /**
-   * Close the attempt: installs are refused until the next one opens, and
-   * everything the attempt installed is removed. Rejects when something
-   * could not be removed.
-   */
-  endAttempt?: (token: number) => Promise<AttemptReclaim>;
-  /**
-   * Refuse every further driver call from this run's context and remove
-   * what the open attempt installed: the run stops running spec code.
-   */
-  revoke?: (reason: string) => Promise<AttemptReclaim>;
-}
-
-/** What the host removed when an attempt closed. */
-export interface AttemptReclaim {
-  routes: number;
-  scenarios: number;
-  clocks: number;
-  /** Test timers pending on the removed clocks; they never fired. */
-  droppedTimers: number;
-  /** Dialog watches the attempt left open. */
-  dialogs?: number;
-}
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __LINGXIA_TEST__: LingxiaTestController | undefined;
-  // eslint-disable-next-line no-var
-  var __LINGXIA_AUTOMATION_HOST__: AutomationHost | undefined;
-  // eslint-disable-next-line no-var
-  var __RONG_TEST_HOST__: AutomationHost | undefined;
-  // eslint-disable-next-line no-var
-  var __LINGXIA_TEST_SOURCE_MAP__: unknown;
-  // eslint-disable-next-line no-var
-  var __LINGXIA_CLI_VERSION__: string | undefined;
 }

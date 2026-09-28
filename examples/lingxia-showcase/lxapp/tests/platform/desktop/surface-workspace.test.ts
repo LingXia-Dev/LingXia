@@ -1,4 +1,4 @@
-import type { TestApp } from '@lingxia/test';
+import type { TestApp, TestView } from '@lingxia/test';
 import { expect, spec, type Fixture } from '@lingxia/test';
 import type {
   AutomationShellPin,
@@ -574,8 +574,8 @@ function expectOverlayCoversMain(
 
 const ROOT_EDGE_MARKER_ID = 'surface-switcher-root-edge-marker';
 
-async function setRootEdgeMarker(app: TestApp, visible: boolean): Promise<void> {
-  await app.view.eval({ page: 'todo' }, ({ document }, id, visible) => {
+async function setRootEdgeMarker(todo: TestView, visible: boolean): Promise<void> {
+  await todo.eval(({ document }, id, visible) => {
     (document.getElementById(id) as ProbeElement | null)?.remove();
     if (!visible) return;
     const marker = (document as unknown as ProbeDocument).createElement('div');
@@ -1310,13 +1310,15 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
   let secondaryBrowserTabId: string | undefined;
 
   const typeIntoChatThroughDesktop = async (marker: string): Promise<void> => {
-    const chatApp = automation.lxapp('lingxia-chat');
     let input = await waitForChatInput(
       desktop,
       host!,
       `${platform} Chat input in native accessibility tree`,
     );
-    await chatApp.view.css('textarea[placeholder="Message..."]', { page: 'chat' }).fill('');
+    // Chat may have been reopened since the last call: bind the live page.
+    const chat = await automation.lxapp('lingxia-chat').page({ name: 'chat' });
+    const chatTextarea = chat.view.css('textarea[placeholder="Message..."]');
+    await chatTextarea.fill('');
     host = await ensureHostForeground(desktop, host!);
     input = await waitForValue(
       () => visibleChatInputAxNode(desktop, host!),
@@ -1329,16 +1331,9 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     // owns the caret. The typed DOM value below is the observable end-to-end
     // proof that the physical click focused the real native WebView input.
     await desktop.key.type({ text: marker });
-    await waitForValue(async () => {
-      try {
-        const candidate = await chatApp.view.css('textarea[placeholder="Message..."]', { page: 'chat' }).query();
-        return candidate.exists && candidate.value === marker ? true : undefined;
-      } catch (error) {
-        if (String(error).includes('page WebView is not ready')) return undefined;
-        throw error;
-      }
-    }, `${platform} physical input delivered to Chat`);
-    await chatApp.view.css('textarea[placeholder="Message..."]', { page: 'chat' }).fill('');
+    // Physical input delivered to Chat.
+    await expect(chatTextarea).toHaveValue(marker, { timeout: 30_000 });
+    await chatTextarea.fill('');
   };
 
   try {
@@ -1352,7 +1347,8 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     }, `${platform} expanded root baseline`);
 
     await app.nav.switchTab({ page: 'api' });
-    await app.view.css('body', { page: 'api' }).waitFor({ state: 'attached', timeout: 30_000 });
+    const api = await app.page({ name: 'api' }, { timeout: 30_000 });
+    await api.view.css('body').waitFor({ state: 'attached', timeout: 30_000 });
 
     // Cross from expanded into medium so the adaptive rail is freshly
     // projected. Then use the real native expand control and prove the
@@ -1780,39 +1776,32 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     // Prove the composed overlay is actually the input target, not merely a
     // visible controller behind the main. Page automation only discovers the
     // textarea; the click and typing travel through the real desktop stack.
-    const chatApp = automation.lxapp('lingxia-chat');
-    const chatInput = await waitForValue(async () => {
-      try {
-        const candidate = await chatApp.view.css('textarea[placeholder="Message..."]', { page: 'chat' }).query();
-        return candidate.exists && candidate.visible && candidate.inViewport !== false
-          && candidate.editable
-          ? candidate
-          : undefined;
-      } catch (error) {
-        if (String(error).includes('page WebView is not ready')) return undefined;
-        throw error;
-      }
-    }, 'Chat overlay input');
+    const chat = await automation.lxapp('lingxia-chat').page({ name: 'chat' }, { timeout: 30_000 });
+    const chatTextarea = chat.view.css('textarea[placeholder="Message..."]');
+    await expect(chatTextarea).toBeInViewport({ timeout: 30_000 });
+    await expect(chatTextarea).toBeEditable();
+    const chatInput = await chat.view.eval(({ document }) => {
+      const rect = document.querySelector('textarea[placeholder="Message..."]')!.getBoundingClientRect();
+      return { centerX: rect.left + rect.width / 2, centerY: rect.top + rect.height / 2 };
+    });
     const inputPoint: [number, number] = [
       // LingXia pins WebView2's rasterization scale to 1, so viewport CSS
       // pixels map directly to the physical child-window coordinates. The
       // monitor DPI reported by DesktopWindowInfo scales host DIPs only.
-      overlayWindow.bounds.x + Math.round(chatInput.rect.center_x),
-      overlayWindow.bounds.y + Math.round(chatInput.rect.center_y),
+      overlayWindow.bounds.x + Math.round(chatInput.centerX),
+      overlayWindow.bounds.y + Math.round(chatInput.centerY),
     ];
     const inputMarker = 'physical-overlay-front';
-    await chatApp.view.css('textarea[placeholder="Message..."]', { page: 'chat' }).fill('');
+    await chatTextarea.fill('');
     await desktop.pointer.click({ at: inputPoint });
     await waitForValue(async () => {
       const candidate = await visibleChatInputAxNode(desktop, host!);
       return candidate?.focused ? candidate : undefined;
     }, 'desktop click focused the Chat overlay input');
     await desktop.key.type({ text: inputMarker });
-    await waitForValue(async () => {
-      const candidate = await chatApp.view.css('textarea[placeholder="Message..."]', { page: 'chat' }).query();
-      return candidate.exists && candidate.value === inputMarker ? true : undefined;
-    }, 'desktop input delivered to Chat overlay');
-    await chatApp.view.css('textarea[placeholder="Message..."]', { page: 'chat' }).fill('');
+    // Desktop input delivered to the Chat overlay.
+    await expect(chatTextarea).toHaveValue(inputMarker, { timeout: 30_000 });
+    await chatTextarea.fill('');
 
     host = await resizeHostOnScreen(desktop, host, dockedWidth, 900);
     const dockedLayout = await waitForValue(async () => {
@@ -2196,7 +2185,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
       surfaceFailureDiagnostics(t, app, desktop, host),
       desktop.ax.query({ window: host.id, match: 'Message', all: true })
         .catch((failure) => ({ error: String(failure) })),
-      t.automation.lxapp('lingxia-chat').view.eval({ page: 'chat' }, ({ document }) => JSON.stringify({
+      t.automation.lxapp('lingxia-chat').page({ name: 'chat' }).then((chat) => chat.view.eval(({ document }) => JSON.stringify({
         readyState: (document as unknown as ProbeDocument).readyState,
         input: (() => {
           const input = document.querySelector('textarea');
@@ -2205,7 +2194,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
           return { placeholder: input.getAttribute('placeholder'), disabled: input.disabled,
             rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height } };
         })(),
-      })).catch((failure: unknown) => ({ error: String(failure) })),
+      }))).catch((failure: unknown) => ({ error: String(failure) })),
     ]);
     throw new Error(`${String(error)}; diagnostics: ${JSON.stringify({ surfaces, inputNodes, chatDocument })}`);
   } finally {
@@ -2317,6 +2306,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     originalPage?.startsWith(page.path)
   ))?.name;
   const dockedWidth = Math.round(1_200 * host.scale);
+  let todo: TestView | undefined;
   try {
     await closeChatSurface(t, app);
     await closeDeclaredTerminal(app);
@@ -2324,6 +2314,8 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
     ), 'closed Chat baseline');
     await app.nav.switchTab({ page: 'todo' });
+    // The tab stays alive under Chat, so the marker is removed from this instance.
+    todo = (await app.page({ name: 'todo' })).view;
 
     const pins = await shell.setPin({ ...targetPin, pinned: true });
     const pinIndex = pins.findIndex((pin) => samePin(pin, targetPin));
@@ -2353,7 +2345,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       'Showcase physical main bounds',
     );
     expectSingleWorkspaceHost(host, await desktop.windows());
-    await setRootEdgeMarker(app, true);
+    await setRootEdgeMarker(todo, true);
     await waitForValue(async () => (
       (await rootEdgeMarkerSamples(desktop, baselineMain)).every(Boolean)
         ? true
@@ -2822,7 +2814,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     await clearRetainedDynamicChatHandle(app).catch(() => undefined);
     await closeChatSurface(t, app).catch(() => undefined);
     await closeDeclaredTerminal(app).catch(() => undefined);
-    await setRootEdgeMarker(app, false).catch(() => undefined);
+    if (todo) await setRootEdgeMarker(todo, false).catch(() => undefined);
     await shell.setPin({ ...targetPin, pinned: initiallyPinned });
     await restoreHostBounds(desktop, host.id, originalBounds);
     if (originalPageName) {

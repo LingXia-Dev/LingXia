@@ -11,7 +11,7 @@ const BASE = 'https://api.example.com/lingxia-showcase/route';
 
 spec("route Logic fetch to a faked error and a transport failure", {
   id: "AUT-NET-001",
-  covers: ['NetworkDriver.route', 'NetworkDriver.requests', 'NetworkDriver.unrouteAll', 'NetworkRoute.requests', 'NetworkRoute.unroute'],
+  covers: ['NetworkDriver.route', 'NetworkDriver.requests', 'NetworkRoute.requests', 'NetworkRoute.unroute'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, "AUT-NET-001");
@@ -74,7 +74,6 @@ spec("route Logic fetch to a faked error and a transport failure", {
 
   // `times: 1` already retired the PATCH route; removing it again is no error.
   expect(await patch.remove()).toBeUndefined();
-  expect(await app.network.removeAll()).toBeUndefined();
 });
 
 spec("reject a route handler that mixes fulfill and abort", {
