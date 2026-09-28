@@ -3,9 +3,8 @@ use crate::lxapp::framework::{self, ProjectFramework};
 use crate::lxapp::options::BuildOptions;
 use crate::lxapp::project::Project;
 use crate::lxapp::view::{
-    ViewBuildReport, ViewProgress, extract_page_actions, page_logic_path, page_title,
-    render_page_bridge_import, render_page_bridge_module, render_page_bridge_runtime_module,
-    validate_component_view_bindings,
+    ViewBuildReport, ViewProgress, bridge_metadata_script, extract_page_actions, page_logic_path,
+    page_title, validate_component_view_bindings,
 };
 use anyhow::{Context, Result, anyhow};
 use std::collections::BTreeMap;
@@ -124,10 +123,6 @@ fn build_component_pages(
     let build_root =
         super::vite_tooling::prepare_view_build_root(project.root.as_path(), project.framework)?;
     fs::create_dir_all(&build_root)?;
-    fs::write(
-        build_root.join("__page_bridge_runtime__.js"),
-        render_page_bridge_runtime_module(),
-    )?;
 
     let total = project.pages.len();
     let mut inputs = BTreeMap::new();
@@ -174,7 +169,7 @@ fn build_component_pages(
             project.framework,
             &page_title,
             &app_import,
-            &render_page_bridge_import(),
+            &bridge_metadata_script(&actions),
             wait_for_state,
         );
 
@@ -182,12 +177,6 @@ fn build_component_pages(
         fs::write(
             build_dir.join(scaffold.main_entry_filename),
             scaffold.main_entry,
-        )?;
-        let bridge_runtime_import =
-            relative_import_path(&build_dir, &build_root.join("__page_bridge_runtime__.js"))?;
-        fs::write(
-            build_dir.join("__page_bridge__.js"),
-            render_page_bridge_module(&actions, &bridge_runtime_import),
         )?;
 
         inputs.insert(page_id.clone(), build_dir.join("index.html"));

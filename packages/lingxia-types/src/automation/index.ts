@@ -42,6 +42,8 @@ export const AUTOMATION_ERROR_CODES = [
   'E_PAGE_NOT_ACTIVE',
   /** The page has no WebView or current page to act on yet. */
   'E_PAGE_NOT_READY',
+  /** A page action (`page.action`) rejected without a code of its own. `data: { action, cause }`. */
+  'E_PAGE_ACTION',
   /** No element matched the selector at dispatch. */
   'E_ELEMENT_NOT_FOUND',
   /** The element matched but cannot take the input (disabled, not editable, …). */
@@ -281,6 +283,15 @@ export interface PageEvalOptions extends PageTarget {
   timeoutMs?: number;
 }
 
+export interface PageActionOptions extends PageTarget {
+  /** Name of a unary action of the page's `Page({...})`; stream (generator) actions are refused. */
+  name: string;
+  /** The action's one JSON argument, passed as is; omit for none. */
+  payload?: unknown;
+  /** Budget for the page to become ready and the action to settle (default 5000). */
+  timeoutMs?: number;
+}
+
 export interface PageQueryOptions extends PageTarget {
   /** CSS selector. */
   css: string;
@@ -447,6 +458,14 @@ export interface Screenshot {
 export interface PageDriver {
   /** Evaluate in the page WebView. T describes the expected JSON result; it is not runtime validation. */
   eval<T = unknown>(options: PageEvalOptions): Promise<T>;
+  /**
+   * Invoke a page action as the View would and resolve to its JSON result.
+   * Waits for the page's runtime within `timeoutMs`. A rejection keeps the
+   * action's own `code` and message (`data.cause` has what it rejected with);
+   * `E_PAGE_NOT_READY` if the page never loaded its actions,
+   * `E_AUTOMATION_TIMEOUT` if the action did not settle in time.
+   */
+  action<T = unknown>(options: PageActionOptions): Promise<T>;
   /** Query one element's info. */
   query(options: PageQueryOptions & { all?: false }): Promise<PageQueryResult>;
   /** Query every matching element. */

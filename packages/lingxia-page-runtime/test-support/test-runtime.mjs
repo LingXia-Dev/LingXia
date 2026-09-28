@@ -32,11 +32,34 @@ assert.equal(snapshotRequests, 4, 'never asked again');
 
 // `null` waits without limit and resolves on the host's push.
 const waiting = runtime.whenPageReady({ timeoutMs: null });
+// An action called before the first state is held, then sent.
+const held = [];
+const snapshotCall = window.LingXiaBridge.raw.call;
+window.LingXiaBridge.raw.call = (name, payload) => { held.push(name); return Promise.resolve(payload); };
+const early = actions.save({ id: 1 });
+await sleep(10);
+assert.deepEqual(held, [], 'not sent before the page is ready');
 let heard = 0;
 const stop = runtime.subscribePageSnapshot(() => heard++);
 pushState({ title: 'Hello' }, { rev: 1, initial: true });
 await waiting;
+assert.deepEqual(await early, { id: 1 });
+assert.deepEqual(held, ['save'], 'sent once the page is ready');
+window.LingXiaBridge.raw.call = snapshotCall;
 assert.equal(runtime.isPageReady(), true);
+
+// After the page left, the host answers not-ready: the call is dropped, never reported.
+let reported = 0;
+const warn = console.warn;
+console.warn = () => { reported += 1; };
+window.LingXiaBridge.raw.call = () => Promise.reject(Object.assign(new Error('Bridge not ready'), { code: 'BRIDGE_NOT_READY' }));
+let lateSettled = false;
+actions.save({ late: true }).then(() => { lateSettled = true; }, () => { lateSettled = true; });
+await sleep(10);
+assert.equal(lateSettled, false, 'a departed page never settles the call');
+assert.equal(reported, 0, 'and reports nothing');
+console.warn = warn;
+window.LingXiaBridge.raw.call = snapshotCall;
 assert.deepEqual(runtime.getPageSnapshot(), { title: 'Hello' });
 assert.equal(heard, 1);
 await runtime.whenPageReady({ timeoutMs: 1 });
@@ -62,14 +85,31 @@ window.LingXiaBridge.raw.call = (name, payload, options) => {
   assert.equal(options.timeoutMs, 0);
   return new Promise(resolve => { finishAction = resolve; });
 };
-const { __lx_define_page_bridge } = await import('../../../tools/lingxia-cli/templates/builder-frameworks/page_bridge_runtime.js');
-for (const save of [actions.save, __lx_define_page_bridge('save', 'call')]) {
-const action = save({ title: 'Draft' });
+const action = actions.save({ title: 'Draft' });
 let settled = false;
 void action.then(() => { settled = true; });
 await Promise.resolve();
 assert.equal(settled, false);
 finishAction('saved');
 assert.equal(await action, 'saved');
-}
+
+// The automation hook calls the same unary wire path, with the JSON payload
+// untouched, and refuses what the View could not call as a unary action.
+const invoke = window.__lxInvokePageAction;
+assert.equal(typeof invoke, 'function');
+const bridgeMetadata = window.__pageBridge;
+delete window.__pageBridge;
+await assert.rejects(invoke('save'), { code: 'PAGE_ACTIONS_NOT_READY' });
+window.__pageBridge = { __names: ['save', 'feed'], __modes: { save: 'call', feed: 'stream' } };
+await assert.rejects(invoke('missing'), { code: 'BRIDGE_METHOD_NOT_FOUND', message: /actions: save, feed/ });
+await assert.rejects(invoke('feed'), { code: 'PAGE_ACTION_NOT_UNARY' });
+window.LingXiaBridge.raw.call = (name, payload, options) => {
+  assert.equal(options.timeoutMs, 0);
+  return Promise.resolve({ name, payload });
+};
+const eventShaped = { type: 'submit', detail: 1, extra: true };
+assert.deepEqual(await invoke('save', eventShaped), { name: 'save', payload: eventShaped });
+window.LingXiaBridge.raw.call = () => Promise.reject({ code: 'BRIDGE_INTERNAL_ERROR', message: 'boom' });
+await assert.rejects(invoke('save'), { code: 'BRIDGE_INTERNAL_ERROR', message: 'boom' });
+window.__pageBridge = bridgeMetadata;
 console.log('page runtime: ok');
