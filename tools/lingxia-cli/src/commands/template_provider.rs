@@ -615,13 +615,12 @@ fn remove_from(home: &Path, name: &str) -> Result<()> {
             continue;
         };
         let target = super::skill::skills_root(home).join(name);
+        super::skill::unlink_for_claude(home, &target, |path| {
+            skill_is_owned_by(path, &installed.slug)
+        })?;
         if target.exists() {
             ensure_skill_owned(&target, &installed.slug)?;
             fs::remove_dir_all(target)?;
-        }
-        let legacy = home.join(".claude").join("skills").join(name);
-        if skill_is_owned_by(&legacy, &installed.slug) {
-            fs::remove_dir_all(legacy)?;
         }
     }
     fs::remove_dir_all(installed.root)?;
@@ -728,7 +727,7 @@ fn sync_assets(
     // nothing moved. Answer that before staging: the staging below moves every
     // target aside, so once it starts there is no cheap way back.
     if assets_are_current(home, template, previous)? {
-        return Ok(());
+        return link_skills_for_claude(home, template);
     }
 
     let transaction_root = lingxia_state_root(home);
@@ -786,6 +785,23 @@ fn sync_assets(
         }
         return Err(error);
     }
+    link_skills_for_claude(home, template)
+}
+
+/// Expose each installed skill to Claude Code, replacing this template's old
+/// copies there.
+fn link_skills_for_claude(home: &Path, template: &InstalledTemplate) -> Result<()> {
+    for skill in &template.manifest.skills {
+        let Some(name) = skill.file_name() else {
+            continue;
+        };
+        let target = super::skill::skills_root(home).join(name);
+        if target.is_dir() {
+            super::skill::link_for_claude(home, &target, |path| {
+                skill_is_owned_by(path, &template.slug)
+            })?;
+        }
+    }
     Ok(())
 }
 
@@ -822,10 +838,6 @@ fn assets_are_current(
         let Some(name) = source.file_name() else {
             return Ok(false);
         };
-        let legacy = home.join(".claude").join("skills").join(name);
-        if skill_is_owned_by(&legacy, &template.slug) {
-            return Ok(false);
-        }
         let target = super::skill::skills_root(home).join(name);
         if !skill_is_owned_by(&target, &template.slug) {
             return Ok(false);
@@ -855,11 +867,6 @@ fn asset_targets(
                 .file_name()
                 .ok_or_else(|| anyhow!("Template skill has no directory name"))?;
             targets.insert(super::skill::skills_root(home).join(name), ());
-            // Retire only this provider's old copy in the same rollback transaction.
-            let legacy = home.join(".claude").join("skills").join(name);
-            if skill_is_owned_by(&legacy, &template.slug) {
-                targets.insert(legacy, ());
-            }
         }
     }
     Ok(targets.into_keys().collect())
@@ -1517,17 +1524,80 @@ mod tests {
         assert!(!home.path().join(".local/bin/example").exists());
         fs::remove_dir_all(&user_skill).unwrap();
         sync_assets(home.path(), &template, None).unwrap();
-        assert!(!legacy.exists());
         assert_eq!(
             fs::read_to_string(user_skill.join("SKILL.md")).unwrap(),
             "provider\n"
         );
+        // Claude Code still finds it, through a link to the one real copy.
+        let linked = |path: &Path| {
+            fs::symlink_metadata(path).unwrap().file_type().is_symlink()
+                && fs::canonicalize(path).unwrap() == fs::canonicalize(&user_skill).unwrap()
+        };
+        assert!(linked(&legacy));
+        fs::remove_file(&legacy).unwrap();
         fs::create_dir_all(&legacy).unwrap();
         fs::write(legacy.join(SKILL_OWNER_FILE), &template.slug).unwrap();
         sync_assets(home.path(), &template, None).unwrap();
         assert!(
-            !legacy.exists(),
-            "retire the old copy even when the new copy is current"
+            linked(&legacy),
+            "replace the old copy even when the new copy is current"
+        );
+
+        remove_from_skills(home.path(), &template);
+        assert!(fs::symlink_metadata(&legacy).is_err());
+        assert!(!user_skill.exists());
+    }
+
+    fn remove_from_skills(home: &Path, template: &InstalledTemplate) {
+        let target = home.join(".agents/skills/example");
+        super::super::skill::unlink_for_claude(home, &target, |path| {
+            skill_is_owned_by(path, &template.slug)
+        })
+        .unwrap();
+        fs::remove_dir_all(target).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_claude_skills_root_linked_into_the_agents_root_keeps_the_skill() {
+        let root = tempdir().unwrap();
+        fs::create_dir_all(root.path().join("template")).unwrap();
+        fs::create_dir_all(root.path().join("skills/example")).unwrap();
+        fs::write(root.path().join("template/package.json"), "{}").unwrap();
+        fs::write(root.path().join("template/lxapp.json"), "{}").unwrap();
+        fs::write(root.path().join("skills/example/SKILL.md"), "provider\n").unwrap();
+        fs::write(
+            root.path().join(MANIFEST_FILE),
+            r#"{ "name": "Example", "template": "template", "skills": ["skills/example"] }"#,
+        )
+        .unwrap();
+        let home = tempdir().unwrap();
+        fs::create_dir_all(home.path().join(".agents/skills")).unwrap();
+        fs::create_dir_all(home.path().join(".claude")).unwrap();
+        std::os::unix::fs::symlink(
+            home.path().join(".agents/skills"),
+            home.path().join(".claude/skills"),
+        )
+        .unwrap();
+        let template = InstalledTemplate {
+            slug: "example".to_owned(),
+            root: root.path().to_path_buf(),
+            manifest: load_manifest(root.path()).unwrap(),
+            source: "test".to_owned(),
+            commit: "test".to_owned(),
+        };
+        for _ in 0..2 {
+            sync_assets(home.path(), &template, None).unwrap();
+            assert_eq!(
+                fs::read_to_string(home.path().join(".agents/skills/example/SKILL.md")).unwrap(),
+                "provider\n"
+            );
+        }
+        let canonical = home.path().join(".agents/skills/example");
+        super::super::skill::unlink_for_claude(home.path(), &canonical, |_| true).unwrap();
+        assert!(
+            canonical.join("SKILL.md").is_file(),
+            "never the canonical copy"
         );
     }
 

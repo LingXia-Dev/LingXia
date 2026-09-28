@@ -106,11 +106,11 @@ LingXia's deep reference lives as a portable markdown **skill** — the decision
 The skill ships inside the CLI, so the copy it writes always matches the `lingxia` you are running. `lingxia new` writes it to `~/.agents/skills/lingxia/`; for a project you cloned, run `lingxia skill install`. Every later command rewrites it whenever it differs from the one that CLI carries — after an upgrade, or after you build a CLI yourself.
 
 ```bash
-lingxia skill install       # write it, and refresh this project's AGENTS.md pointer
+lingxia skill install       # write it (prints a fix if this project's AGENTS.md pointer is stale)
 lingxia version --verbose   # ends with: skill: <path> (in sync)
 ```
 
 Follow the project's `AGENTS.md` pointer to `~/.agents/skills/lingxia/SKILL.md`.
 If your agent requires explicit skill registration, add `~/.agents/skills/lingxia/`
-in its skill settings. The CLI removes its old `~/.claude/skills/lingxia/` copy
-only after the new copy is written successfully.
+in its skill settings. With Claude Code installed, `~/.claude/skills/lingxia/`
+is a link to the same copy.
