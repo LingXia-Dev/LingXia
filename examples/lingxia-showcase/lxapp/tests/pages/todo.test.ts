@@ -42,7 +42,7 @@ spec.reset(async t => {
 
 spec("persist todo edits made through the rendered page", { id: "TODO-001", covers: ['lx.getStorage', 'Storage.get', 'Storage.set'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "TODO-001");
-  const todo = app.view.page('todo');
+  const todo = (await app.page({ name: 'todo' })).view;
 
   await expect(todo.testId('todo-page')).toBeVisible();
 
@@ -107,7 +107,7 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
 
 spec("add and delete a todo through the page's Logic methods", { id: "TODO-002", app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "TODO-002");
-  const todo = app.view.page('todo');
+  const todo = (await app.page({ name: 'todo' })).view;
   await expect(todo.testId('todo-page')).toBeVisible();
 
   const text = `logic todo ${Date.now()}`;

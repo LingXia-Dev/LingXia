@@ -316,14 +316,11 @@ Development machine: lxdev receives progress, results, and artifacts
   watchdog between cases, and results on a hidden page are not results. A
   spec whose wait times out on a hidden page while the screen is locked
   names the lock instead of the observation.
-- Hidden-page evidence: after a locator wait times out, the fixture probes
-  the target page's `visibilityState` and whether an animation frame arrives
-  within 300ms, and reports what it observed ("page looked hidden or
-  paused: …"), the covered-window/sleeping-display cause only as the likely
-  one. An observation is keyed by app driver and page instance (`nav.current`
-  / `nav.info`) and reused for that instance for 2s, marked with its age; a
-  navigation (new instance), another page, an older sample or an instance
-  that cannot be named is probed afresh. A visible answer is not cached.
+- Hidden-page evidence belongs to failure forensics, under its separate budget:
+  read the page's `visibilityState` and whether an animation frame arrives
+  within 300 ms. Report the observation, and covered windows or sleeping
+  displays only as likely causes. Locator deadlines never raise a window or
+  run an extra probe after expiry.
 - `--shuffle[=SEED]` sends `control.shuffle` (lxdev draws a u32 when no seed
   is given and prints it); the runtime shuffles the planned executions with a
   seeded Fisher–Yates (mulberry32), after `--repeat-each` expansion.
@@ -494,13 +491,14 @@ Development machine: lxdev receives progress, results, and artifacts
   a note that `fn` cannot close over spec state; `t.waitFor` then fails fast.
 - The bundler checks those functions before the run (`test_eval_check.rs`):
   for a call `X.eval(fn, …)` / `X.eval(options, fn, …)` whose `X` is a
-  `….logic`, `….view`, `….view.page(…)`, a destructured `logic`/`view`, or a
+  `….logic`, `….view`, `(await app.page(…)).view`, a destructured `logic`/`view`, or a
   `const` holding one, it builds `oxc_semantic` for the file and fails on any
   value reference inside `fn` that resolves to a binding declared outside it
   (module `const`s, imports, the fixture `t`), naming file:line and the name.
   Unresolved references are globals and pass; type positions are erased. A
   function passed by name is checked where it is declared. Files under
-  `node_modules` are not checked.
+  `node_modules` are not checked. Helper parameters typed with imported fixture
+  types (including aliased and namespace imports) carry the same provenance.
 - `t.app.nav` is the fixture's own `TestNav`: fixture option names
   (`timeout`), `waitUntil: 'ready'` by default, and the ready bound (default
   15000, the driver's) clamped to `budgetRoom()` and sent as `timeoutMs`; a
@@ -1303,3 +1301,9 @@ the same cases the Rust parsers reject.
 - JSON argument/result checks share one codec. Arguments are parsed as JSON
   in the target context, preserving own `__proto__` fields. Only a top-level
   result may be void; nested undefined, accessors and class instances fail.
+  Page `data()` reads instead use JSON snapshot semantics, matching the View.
+- Remote DOM TypeErrors and nested locator timeouts are retryable reads; local
+  programming and JSON boundary errors fail immediately. Error-code matchers
+  accept a timeout's preserved driver cause as well as its public E_TIMEOUT.
+- Public unary page actions have no bridge timer. Test page actions use the
+  remaining spec budget, so dialogs and pickers are not cut off at five seconds.

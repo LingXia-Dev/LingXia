@@ -144,16 +144,18 @@ spec('typed Logic access', async t => {
   await t.app.view.waitFor({ css: '#save' });
   await t.app.view.screenshot();
   // @ts-expect-error Native keyboard input has no page target.
-  t.app.view.page('cart').key;
+  (await t.app.page({ name: 'cart' })).view.key;
   t.app.window.key;
   t.app.window.pointer;
-  const cart = t.app.view.page('cart');
+  const cart = (await t.app.page({ name: 'cart' })).view;
   await cart.testId('total').click();
   const cartTitle: string = await cart.eval(({ document }) => document.title);
   cartTitle.toUpperCase();
   // @ts-expect-error A bound View cannot retarget another page.
   cart.page('checkout');
-  await t.app.view.page('checkout').screenshot();
+  await (await t.app.page({ name: 'checkout' })).view.screenshot();
+  // @ts-expect-error app.page() is the only page binding entrypoint.
+  t.app.view.page('cart');
 
   // Invalid results fail at the call site, not when a `never` is used later.
   const shaped = await t.app.logic.eval(() => ({ id: 'a', at: 1, tags: ['x'] as const }));
@@ -454,3 +456,22 @@ spec('recursive JSON types cross eval without excessive instantiation', async t 
   const list: JsonValue[] = await t.app.view.eval((_, value) => value, [input] as JsonValue[]);
   void result; void list;
 });
+
+
+function dataSnapshotTypes(data: import('../dist/index.js').JsonSnapshot<{
+  error: string | undefined;
+  empty: undefined;
+  created: Date;
+  items: [undefined, string];
+  record: { value: number; method(): void };
+}>) {
+  const created: string = data.created;
+  const error: string | undefined = data.error;
+  const item: null = data.items[0];
+  data.record.value.toFixed();
+  // @ts-expect-error JSON omits methods.
+  data.record.method();
+  // @ts-expect-error JSON omits undefined properties.
+  data.empty;
+  return { created, error, item };
+}

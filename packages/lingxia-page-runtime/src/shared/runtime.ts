@@ -250,7 +250,8 @@ function definePageBridgeAction(
       return handle;
     }
     if (mode === "call") {
-      const promise = bridge.raw.call(name, payload);
+      // Page actions may wait for user interaction; the bridge lifetime owns cancellation.
+      const promise = bridge.raw.call(name, payload, { timeoutMs: 0 });
       if (promise && typeof promise.catch === "function") {
         promise.catch((err: unknown) => {
           console.warn(`[PageFunc] ${name} failed:`, err instanceof Error ? err.message : err);

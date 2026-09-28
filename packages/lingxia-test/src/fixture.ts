@@ -17,8 +17,8 @@ import { ClockScope, wrapClock } from "./clock.js";
 import { wrapDialogs } from "./dialogs.js";
 import { activeOpenApi } from "./openapi.js";
 import { ActionDeadline, TimeoutError, asFixtureTimeout } from "./deadline.js";
-import { isTransientTransportError } from "./deadline.js";
-import { checkJsonArgs, explainRemoteError, functionDetail, logicScript, pageScript, type RemoteTarget } from "./remote.js";
+import { isTransientTransportError, matchesErrorCode } from "./deadline.js";
+import { checkJsonArgs, explainRemoteError, isRetryableRemoteError, functionDetail, logicScript, pageScript, type RemoteTarget } from "./remote.js";
 import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolveOrigin } from "./ids.js";
 import {
   PageLocator,
@@ -26,7 +26,6 @@ import {
   sleep,
   testIdSelector,
   type LocatorResolve,
-  type PageEvidence,
   type PageLike,
   type QueryMatch,
 } from "./locator.js";
@@ -117,12 +116,6 @@ export class LiveFixture implements Fixture {
   /** Actions still in flight, so an abort can mark them instead of leaving
    *  them at their optimistic default. */
   private readonly openActions = new Set<StepRecord>();
-  /**
-   * Hidden-page observations of this spec, by app and page instance, with
-   * when they were sampled. A navigation is a new instance, so its page is
-   * probed afresh; evidence is never read for another page.
-   */
-  private readonly pageEvidence = new Map<string, { note: string; at: number }>();
   /** Fixture calls that have started and not settled; see `track`. */
   private readonly inFlight = new Set<InFlightCall>();
   cleanupUntil = 0;
@@ -366,7 +359,7 @@ export class LiveFixture implements Fixture {
         );
       }
       const record = received as { code?: unknown; message?: unknown };
-      if (expected.code !== undefined && record.code !== expected.code) {
+      if (expected.code !== undefined && !matchesErrorCode(received, expected.code)) {
         this.noteAssertion({
           matcher: "reject",
           expected: formatValue(expected.code),
@@ -458,7 +451,7 @@ export class LiveFixture implements Fixture {
             lastError = undefined;
             if (accept(value)) return value;
           } catch (error) {
-            if (error instanceof TimeoutError || error instanceof SkipSignal || this.aborted) throw error;
+            if (error instanceof SkipSignal || this.aborted) throw error;
             if (!retryIf(error)) throw error;
             lastError = error;
           }
@@ -869,7 +862,7 @@ export class LiveFixture implements Fixture {
     const input = lazyDriver(() => ({ owner: driver().page, value: driver().page }), fixture, "window.") as PageDriver;
     return {
       page: <C extends PageContract>(selector?: PageSelector) => this.bindPage<C>(driver, selector),
-      view: this.wrapView(() => driver().page, undefined, (target, probe) => this.pageObservation(driver, target, probe)),
+      view: this.wrapView(() => driver().page, undefined),
       window: {
         get pointer() { return input.pointer; },
         get key() { return input.key; },
@@ -951,18 +944,18 @@ export class LiveFixture implements Fixture {
         }
       }
       // Capture this app driver too: reopening the app must not retarget the handle.
-      const view = this.wrapView(() => app.page, instanceId,
-        (target, probe) => this.pageObservation(() => app, target, probe));
+      const view = this.wrapView(() => app.page, instanceId);
       const actions = new Proxy(Object.create(null), {
         get: (_, name) => {
           if (typeof name !== "string" || name === "then") return undefined;
           return (...args: unknown[]) => {
             checkJsonArgs(args, `page.actions.${name}`);
             return this.viewEval(() => app.page, [
+              { timeout: Math.max(1, this.budgetRoom()) },
               async ({ window }: { window: unknown }, method: string, payload: unknown[]) => {
                 const target = window as {
                   __pageBridge?: { __names?: string[]; __modes?: Record<string, string> };
-                  LingXiaBridge?: { raw: { call(name: string, payload?: unknown): Promise<unknown> } };
+                  LingXiaBridge?: { raw: { call(name: string, payload: unknown, options: { timeoutMs: number }): Promise<unknown> } };
                 };
                 if (!target.__pageBridge?.__names?.includes(method)) {
                   throw new Error(`Unknown public page action: ${method}`);
@@ -972,7 +965,7 @@ export class LiveFixture implements Fixture {
                 }
                 if (payload.length > 1) throw new TypeError(`Page action ${method} accepts at most one payload`);
                 if (!target.LingXiaBridge) throw new Error("Page bridge is not ready");
-                return await target.LingXiaBridge.raw.call(method, payload[0]);
+                return await target.LingXiaBridge.raw.call(method, payload[0], { timeoutMs: 0 });
               },
               name, args,
             ], `page.actions.${name}`, instanceId);
@@ -982,7 +975,7 @@ export class LiveFixture implements Fixture {
       return {
         instanceId, view, actions,
         data: () => this.act("page.data", instanceId, () => this.evalLogic(app, {
-          script: logicScript(({ getPage }: LogicScope, id: string) => getPage(id).data, [instanceId], "page.data"),
+          script: logicScript(({ getPage }: LogicScope, id: string) => getPage(id).data, [instanceId], "page.data", "snapshot"),
         })),
       } as TestPage<C>;
     });
@@ -1017,7 +1010,7 @@ export class LiveFixture implements Fixture {
         const target = options?.page;
         return this.act("logic.data", target ?? "", async () => {
           const path = target === undefined ? undefined : await pagePath(driver(), target);
-          const script = logicScript(readPageData, [target ?? null, path ?? null], "t.app.logic.data");
+          const script = logicScript(readPageData, [target ?? null, path ?? null], "t.app.logic.data", "snapshot");
           return remote("t.app.logic.data", "logic", () => this.evalLogic(driver(), { script }));
         });
       },
@@ -1126,8 +1119,8 @@ export class LiveFixture implements Fixture {
       }))));
   }
 
-  /** `bound`: the page `view.page(name)` targets unless a call names another. */
-  private wrapView(page: () => PageDriver, bound: string | undefined, evidence: PageEvidence): TestView {
+  /** `bound` is the immutable instance id captured by app.page(). */
+  private wrapView(page: () => PageDriver, bound: string | undefined): TestView {
     const location = () => {
       const frame = callerLocation();
       return { source: frame.file, line: frame.line, column: frame.column };
@@ -1149,15 +1142,8 @@ export class LiveFixture implements Fixture {
       return bound === undefined ? options : { ...options, page: bound } as T;
     };
     return {
-      testId: (id: string, options?: LocatorOptions) => this.locator(lazyPage, testIdSelector(id), location(), evidence, target(options)),
-      css: (selector: string, options?: LocatorOptions) => this.locator(lazyPage, selector, location(), evidence, target(options)),
-      page: (name: string) => {
-        if (bound !== undefined) throw new TypeError("Select a new page from the app, not a bound view");
-        if (typeof name !== "string" || name.length === 0) {
-          throw new TypeError("t.app.view.page(name) takes a configured page name or instance id");
-        }
-        return this.wrapView(page, name, evidence);
-      },
+      testId: (id: string, options?: LocatorOptions) => this.locator(lazyPage, testIdSelector(id), location(), target(options)),
+      css: (selector: string, options?: LocatorOptions) => this.locator(lazyPage, selector, location(), target(options)),
       eval: ((...args: unknown[]) => this.viewEval(page, args, "t.app.view.eval", bound)) as TestView["eval"],
       screenshot: (options?: PageTarget) => {
         const shot = target(options);
@@ -1171,7 +1157,6 @@ export class LiveFixture implements Fixture {
     page: PageLike,
     selector: string,
     location: SourceLocation,
-    evidence: PageEvidence,
     options?: LocatorOptions,
   ): Locator {
     this.usedPage = true;
@@ -1183,44 +1168,7 @@ export class LiveFixture implements Fixture {
       location,
       options,
       () => this.budgetRoom(),
-      {},
-      evidence,
     );
-  }
-
-  /**
-   * The hidden-page note for `target` after a wait timed out. A hidden page
-   * throttles its timers, so probing it again costs up to the probe budget;
-   * an observation of the same app and page instance sampled moments ago is
-   * reused, saying how old it is. Anything else — another page, a new
-   * instance after navigation, an older sample, a page whose instance cannot
-   * be named — is probed afresh.
-   */
-  private async pageObservation(
-    driver: () => LxAppDriver,
-    target: string | undefined,
-    probe: () => Promise<string | undefined>,
-  ): Promise<string | undefined> {
-    let identity: string | undefined;
-    try {
-      const app = driver();
-      const info = await this.guard(() => (target === undefined ? app.nav.current() : app.nav.info({ page: target })));
-      const instanceId = (info as { instanceId?: unknown } | undefined)?.instanceId;
-      if (typeof instanceId === "string" && instanceId.length > 0) {
-        identity = `${objectKey(app)}#${instanceId}`;
-      }
-    } catch {
-      identity = undefined;
-    }
-    const cached = identity === undefined ? undefined : this.pageEvidence.get(identity);
-    if (cached) {
-      const age = Date.now() - cached.at;
-      if (age <= PAGE_EVIDENCE_FRESH_MS) return `${cached.note} [observed on this page ${age}ms earlier]`;
-      this.pageEvidence.delete(identity!);
-    }
-    const note = await probe();
-    if (identity !== undefined && note !== undefined) this.pageEvidence.set(identity, { note, at: Date.now() });
-    return note;
   }
 
   private locatorMatchers(locator: Locator, inverted: boolean): LocatorMatchers {
@@ -1493,11 +1441,11 @@ function checkpointId(checkpoint: ProfileCheckpoint | string, api: string): stri
 
 /**
  * `t.waitFor` retries a read that says "not yet" by throwing, but not one
- * that is simply wrong: a TypeError, ReferenceError or SyntaxError will not
- * fix itself, and retrying it only hides the bug behind a timeout.
+ * that is invalid locally or violates the eval JSON boundary. Remote DOM
+ * TypeErrors can resolve as rendering catches up.
  */
 function isRetryableReadError(error: unknown): boolean {
-  if (error instanceof AssertionError) return true;
+  if (error instanceof AssertionError || isRetryableRemoteError(error)) return true;
   const name = error instanceof Error ? error.name : undefined;
   return name !== "TypeError" && name !== "ReferenceError" && name !== "SyntaxError";
 }
@@ -1700,21 +1648,6 @@ const NAV_READY_TIMEOUT_MS = 15_000;
 
 /** Actions that reach a page of the app. */
 const PAGE_ACTION = /^(?:page|view|nav)\.|^logic\.(?:data|call)$/;
-
-/** How long a hidden-page observation stands for the same page instance. */
-const PAGE_EVIDENCE_FRESH_MS = 2_000;
-
-const objectKeys = new WeakMap<object, number>();
-let nextObjectKey = 0;
-/** A stable key for one app driver, so evidence stays with its app. */
-function objectKey(value: object): number {
-  let key = objectKeys.get(value);
-  if (key === undefined) {
-    key = ++nextObjectKey;
-    objectKeys.set(value, key);
-  }
-  return key;
-}
 
 /** A nav wait as the driver takes it. */
 interface DriverNavWait {

@@ -109,7 +109,7 @@ test("t.app.view has locators, not raw element methods; t.app.page binds a contr
   const seen = {};
 
   spec("view", { forensics: false }, async (t) => {
-    seen.pageInput = [typeof t.app.view.pointer, typeof t.app.view.key, typeof t.app.view.page("home").key];
+    seen.pageInput = [typeof t.app.view.pointer, typeof t.app.view.key, typeof (await t.app.page()).view.key];
     seen.viewClick = typeof t.app.view.click;
     seen.viewWaitFor = typeof t.app.view.waitFor;
     seen.viewQuery = typeof t.app.view.query;
@@ -296,7 +296,8 @@ test("native input belongs to the app window and keeps its receiver", async () =
   installFakeHost(world);
   spec("window input", { forensics: false }, async (t) => {
     const key = t.app.window.key;
-    t.app.view.page("background");
+    assert.equal(t.app.view.page, undefined);
+    await t.app.page();
     await key.type({ text: "hello" });
   });
   const report = await run();

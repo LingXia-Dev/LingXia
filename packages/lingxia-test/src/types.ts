@@ -257,10 +257,29 @@ type JsonMember<R> =
 /** A remote result is JSON, or top-level void; nested undefined is rejected. */
 export type Jsonable<R> = R extends undefined | void ? R : JsonMember<R>;
 
+type OmittedJsonValue = undefined | symbol | ((...args: any[]) => unknown);
+
+/** The JSON snapshot of page data, including toJSON and omitted properties. */
+export type JsonSnapshot<T> =
+  0 extends 1 & T ? any
+    : unknown extends T ? unknown
+    : T extends OmittedJsonValue | bigint ? never
+    : T extends { toJSON(): infer R } ? JsonSnapshot<R>
+    : T extends JsonValue ? T
+    : T extends readonly unknown[] ? {
+        [K in keyof T]: JsonSnapshot<T[K]> | (Extract<T[K], OmittedJsonValue> extends never ? never : null)
+      }
+    : T extends object ? {
+        [K in keyof T as K extends symbol ? never : Extract<T[K], OmittedJsonValue> extends never ? K : never]: JsonSnapshot<T[K]>
+      } & {
+        [K in keyof T as K extends symbol ? never : T[K] extends OmittedJsonValue ? never : Extract<T[K], OmittedJsonValue> extends never ? never : K]?: JsonSnapshot<T[K]>
+      }
+    : T;
+
 type CheckedResult<R> = [Awaited<R>] extends [Jsonable<Awaited<R>>] ? unknown : {
   readonly __resultMustBeJson: "Return JSON values or top-level void";
 };
-type JsonArgs<A extends unknown[]> = { [K in keyof A]: JsonMember<A[K]> };
+type JsonArgs<A extends unknown[]> = A & { [K in keyof A]: JsonMember<A[K]> };
 
 /** A page instance as app Logic sees it (`getCurrentPages()` entries). */
 export interface LogicPage<TData = Record<string, unknown>> {
@@ -359,10 +378,10 @@ export interface ViewScope {
  * (`fn.toString()`), so it must be self-contained: no variables, imports or
  * helpers from the spec. Pass values as JSON arguments instead.
  */
-export type LogicFunction<R, A extends unknown[]> = (scope: LogicScope, ...args: A) => R | Promise<R>;
+export type LogicFunction<R, A extends unknown[]> = ((scope: LogicScope, ...args: A) => R | Promise<R>) & CheckedResult<R>;
 
 /** A function evaluated in the page WebView; self-contained like `LogicFunction`. */
-export type ViewFunction<R, A extends unknown[]> = (scope: ViewScope, ...args: A) => R | Promise<R>;
+export type ViewFunction<R, A extends unknown[]> = ((scope: ViewScope, ...args: A) => R | Promise<R>) & CheckedResult<R>;
 
 /**
  * `t.app.view`: the current page's View — locators, function eval, and
@@ -373,23 +392,17 @@ export interface TestView {
   testId(id: string, options?: LocatorOptions): Locator;
   css(selector: string, options?: LocatorOptions): Locator;
   /**
-   * This view bound to page `name` (a configured page name or live instance
-   * id): all operations target that page; per-operation retargeting is refused.
-   * Use app.page() when the identity must survive navigation without rebinding.
-   */
-  page(name: string): BoundTestView;
-  /**
    * Run `fn` in the current page's WebView with JSON `args` and resolve to
    * its JSON result. `fn` must be self-contained (see `ViewFunction`).
    */
-  eval<R, A extends unknown[]>(fn: ViewFunction<R, A> & CheckedResult<R>, ...args: A & JsonArgs<A>): Promise<Jsonable<Awaited<R>>>;
+  eval<R, A extends unknown[]>(fn: ViewFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
   /**
    * The same with options: `page` runs it in that page's WebView (a
    * configured page name or live instance id) instead of the current page's,
    * like a locator's `{ page }` — a page kept below the current one, or one a
    * surface shows; `timeout` see `EvalOptions`.
    */
-  eval<R, A extends unknown[]>(options: ViewEvalOptions, fn: ViewFunction<R, A> & CheckedResult<R>, ...args: A & JsonArgs<A>): Promise<Jsonable<Awaited<R>>>;
+  eval<R, A extends unknown[]>(options: ViewEvalOptions, fn: ViewFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
   screenshot(options?: PageTarget): Promise<Screenshot>;
   /** Scroll the page DOM by a pixel delta (nearest scrollable container). */
   scroll(options?: PageScrollOptions): Promise<void>;
@@ -441,7 +454,7 @@ export type LogicPageMethod<T> = string extends keyof T
   : { [K in keyof T]-?: T[K] extends (...args: any[]) => unknown ? K : never }[keyof T] & string;
 
 export type LogicMethodArgs<T, K> = K extends keyof T
-  ? T[K] extends (...args: infer A) => unknown ? A & JsonArgs<A> : JsonValue[]
+  ? T[K] extends (...args: infer A) => unknown ? JsonArgs<A> : JsonValue[]
   : JsonValue[];
 
 /** What `call<T, K>()` resolves to: `K`'s awaited result as JSON carries it, `unknown` untyped. */
@@ -455,22 +468,22 @@ export type PageActionCalls<A> = {
   readonly [K in keyof A as A[K] extends (...args: any[]) => any ? K : never]:
     A[K] extends (...args: infer P) => infer R
       ? P extends [] | [unknown?]
-        ? (...args: P & JsonArgs<P> & CheckedResult<R>) => Promise<Jsonable<Awaited<R>>>
+        ? (...args: JsonArgs<P> & CheckedResult<R>) => Promise<Jsonable<Awaited<R>>>
         : never
       : never;
 };
 export interface TestPage<C extends PageContract> {
   readonly instanceId: string;
   readonly view: BoundTestView;
-  data(): Promise<Jsonable<C["data"]>>;
+  data(): Promise<JsonSnapshot<C["data"]>>;
   /** Public unary actions, through the same bridge as the View. */
   readonly actions: PageActionCalls<C["actions"]>;
 }
 export interface BoundTestView {
   testId(id: string, options?: Omit<LocatorOptions, "page">): Locator;
   css(selector: string, options?: Omit<LocatorOptions, "page">): Locator;
-  eval<R, A extends unknown[]>(fn: ViewFunction<R, A> & CheckedResult<R>, ...args: A & JsonArgs<A>): Promise<Jsonable<Awaited<R>>>;
-  eval<R, A extends unknown[]>(options: EvalOptions, fn: ViewFunction<R, A> & CheckedResult<R>, ...args: A & JsonArgs<A>): Promise<Jsonable<Awaited<R>>>;
+  eval<R, A extends unknown[]>(fn: ViewFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
+  eval<R, A extends unknown[]>(options: EvalOptions, fn: ViewFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
   screenshot(): Promise<Screenshot>;
   scroll(options?: Omit<PageScrollOptions, "page">): Promise<void>;
 }
@@ -481,9 +494,9 @@ export interface TestLogic {
    * Run `fn` in the app's Logic runtime with JSON `args` and resolve to its
    * JSON result. `fn` must be self-contained (see `LogicFunction`).
    */
-  eval<R, A extends unknown[]>(fn: LogicFunction<R, A> & CheckedResult<R>, ...args: A & JsonArgs<A>): Promise<Jsonable<Awaited<R>>>;
+  eval<R, A extends unknown[]>(fn: LogicFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
   /** The same with a `timeout` (see `EvalOptions`). */
-  eval<R, A extends unknown[]>(options: EvalOptions, fn: LogicFunction<R, A> & CheckedResult<R>, ...args: A & JsonArgs<A>): Promise<Jsonable<Awaited<R>>>;
+  eval<R, A extends unknown[]>(options: EvalOptions, fn: LogicFunction<R, A>, ...args: JsonArgs<A>): Promise<Awaited<R>>;
   /** Read the current (or named) page's Logic `data`. `T` is not validated. */
   data<T = Record<string, unknown>>(options?: LogicDataOptions): Promise<T>;
   /**
@@ -1053,11 +1066,6 @@ export interface AutomationHost {
   networkRecord?: (command: "start" | "stop", name?: string) => unknown;
   /** Whether the screen is locked; `undefined` where the host cannot tell. */
   screenLocked?: () => boolean | undefined;
-  /**
-   * Raise the app's window over other apps' windows without taking keyboard
-   * focus; resolves `false` where the host cannot.
-   */
-  raiseWindow?: () => Promise<boolean>;
   /**
    * Open a spec attempt: routes, mock scenarios and test clocks installed
    * from now on belong to it. Returns its token.

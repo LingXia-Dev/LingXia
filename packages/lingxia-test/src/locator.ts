@@ -117,7 +117,6 @@ export class PageLocator implements Locator {
     private readonly options: LocatorOptions = {},
     private readonly room: BudgetRoom = () => Number.POSITIVE_INFINITY,
     private readonly refine: LocatorRefine = {},
-    private readonly evidence: PageEvidence = (_target, probe) => probe(),
   ) {
     this.selector = selector;
     this.options = { ...options };
@@ -130,7 +129,7 @@ export class PageLocator implements Locator {
 
   nth(index: number): Locator {
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
-      { ...this.options, index }, this.room, { ...this.refine, last: false }, this.evidence);
+      { ...this.options, index }, this.room, { ...this.refine, last: false });
   }
 
   first(): Locator {
@@ -140,7 +139,7 @@ export class PageLocator implements Locator {
   last(): Locator {
     const { index: _index, ...options } = this.options;
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
-      options, this.room, { ...this.refine, last: true }, this.evidence);
+      options, this.room, { ...this.refine, last: true });
   }
 
   filter(options: LocatorFilterOptions): Locator {
@@ -149,7 +148,7 @@ export class PageLocator implements Locator {
       throw new TypeError("filter() needs { hasText: string | RegExp }");
     }
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
-      this.options, this.room, { ...this.refine, hasText }, this.evidence);
+      this.options, this.room, { ...this.refine, hasText });
   }
 
   // Actions return the fixture's own call, not a wrapper around it: a call
@@ -365,29 +364,6 @@ export class PageLocator implements Locator {
     return `while trying to ${verb} ${formatValue(this.selector)}\nat ${this.where()}`;
   }
 
-  /**
-   * After a wait timed out: the visibility of the page this locator targets,
-   * when it explains the miss. Never on the happy path, bounded, skipped when
-   * the spec has no room left for it; `evidence` reuses a recent observation
-   * of the same page instance only.
-   */
-  hiddenPageNote(): Promise<string | undefined> {
-    return this.evidence(this.options.page, () => this.probeVisibility());
-  }
-
-  private async probeVisibility(): Promise<string | undefined> {
-    if (!this.page.eval || this.room() < VISIBILITY_PROBE_BUDGET_MS) return undefined;
-    try {
-      const probe = new ActionDeadline(VISIBILITY_PROBE_BUDGET_MS, this.room());
-      const value = await this.guard(() => probe.call("page.eval (visibility)",
-        () => this.page.eval!({ page: this.options.page, script: VISIBILITY_PROBE_SCRIPT, timeoutMs: VISIBILITY_PROBE_BUDGET_MS }),
-        () => ""));
-      return hiddenCause(pageVisibility(value)?.note);
-    } catch {
-      return undefined;
-    }
-  }
-
   private async actionability(index: number, verb: string, deadline: ActionDeadline): Promise<true | string> {
     if (!this.page.eval) return true;
     const script = `(() => {
@@ -539,20 +515,6 @@ function reachedState(resolved: LocatorResolve, state: LocatorState): boolean {
       return resolved.kind === "unique" && resolved.inViewport;
   }
 }
-
-/** `hasText`: a substring (case-insensitive, whitespace-normalized) or a RegExp. */
-/**
- * Runs the hidden-page probe for `target` (a page name or instance id; the
- * current page when undefined), or answers what a recent run of it said about
- * that same page instance.
- */
-export type PageEvidence = (
-  target: string | undefined,
-  probe: () => Promise<string | undefined>,
-) => Promise<string | undefined>;
-
-/** How long raising the app window may take. */
-
 
 /** How long the visibility probe waits for an animation frame. */
 const VISIBILITY_FRAME_WAIT_MS = 300;

@@ -54,9 +54,9 @@ lxdev test tests/pages/notes.test.ts
 |---|---|
 | Start on a known page | `t.app.nav.relaunch({ page, query? })`; `{ fresh: true }` for home |
 | Navigate | `t.app.nav.to` / `.redirect` / `.switchTab` / `.back` |
-| Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })`; another page: `t.app.view.page(name)` or `{ page }` |
+| Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })`; fixed page: `(await t.app.page({ name })).view` |
 | Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)` |
-| Native window input | `t.app.window.pointer` / `.key`; independent of `view.page(name)` |
+| Native window input | `t.app.window.pointer` / `.key`; independent of page binding |
 | Assert UI | `expect(locator).toBeVisible()` / `.toBeInViewport()` / `.toBeAttached()` / `.toHaveText()` / `.toContainText()` / `.toHaveAttribute(name, value?)` / `.toHaveCount()` / `.toHaveValue()` / `.toBeEnabled()`; `.not` |
 | Wait for an element state | `locator.waitFor({ state: 'visible' \| 'inViewport' \| 'attached' \| 'hidden' \| 'detached' })` |
 | Read Logic, call a page method, eval | [Reading Logic](#reading-logic) |
@@ -123,9 +123,12 @@ const kept = await t.app.view.eval({ page: 'cart' }, ({ document }) => document.
   `{ wait: false }` for `call`. An eval gets a third of the spec's budget (at
   most 10 s) by default. `logic.call` resolves when the method's promise
   settles; its types are declared, not validated.
-- `t.waitFor` fails at once on `TypeError`, `ReferenceError`, `SyntaxError`
-  (override with `retryIf`) and retries other errors; on timeout it rejects with
-  `E_TIMEOUT` naming the last value.
+- `data()` reads the JSON snapshot the View receives (undefined properties
+  omitted, Date serialized); `eval` keeps the strict result boundary above.
+- `t.waitFor` retries failed reads, including remote DOM TypeErrors and nested
+  locator timeouts. Local programming errors and invalid JSON fail immediately
+  (override with `retryIf`); timeout reports `E_TIMEOUT` and the last observation.
+- Error-code matching also checks the preserved driver cause of a timeout.
 - Type shared helpers against `TestApp`.
 
 ## Faking the network

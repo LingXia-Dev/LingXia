@@ -1,3 +1,4 @@
+import { matchesErrorCode } from "./deadline.js";
 import { expect, setExpectScope, setStrayAssertionSink, type LoggedAssertion } from "./expect.js";
 import { LiveFixture, SkipSignal, TimeoutError, toReportError } from "./fixture.js";
 import { formatValue } from "./format.js";
@@ -1336,7 +1337,7 @@ function expectedMismatch(error: unknown, expected: RejectExpected): Error | und
   const record = (error && typeof error === "object" ? error : {}) as { code?: unknown; message?: unknown };
   const message = error instanceof Error ? error.message : typeof record.message === "string" ? record.message : String(error);
   const problems: string[] = [];
-  if (expected.code !== undefined && record.code !== expected.code) {
+  if (expected.code !== undefined && !matchesErrorCode(error, expected.code)) {
     problems.push(`code ${formatValue(expected.code)}, got ${formatValue(record.code)}`);
   }
   if (typeof expected.message === "string" && !message.includes(expected.message)) {

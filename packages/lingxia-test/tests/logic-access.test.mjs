@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec } from "../dist/index.js";
+import { spec, expect } from "../dist/index.js";
 import { reset } from "../dist/runner.js";
 
 afterEach(() => {
@@ -522,7 +522,7 @@ test("page handles keep the selected identity and invoke the public bridge", asy
   } });
   world.usePage({ document: {}, window: {
     __pageBridge: { __names: ['rename'], __modes: { rename: 'call' } },
-    LingXiaBridge: { raw: { call: async (name, payload) => { calls.push([name, payload]); return true; } } },
+    LingXiaBridge: { raw: { call: async (name, payload, options) => { assert.equal(options.timeoutMs, 0); calls.push([name, payload]); return true; } } },
   } });
   installFakeHost(world);
   const result = await runOne(async t => {
@@ -535,4 +535,56 @@ test("page handles keep the selected identity and invoke the public bridge", asy
   assert.equal(result.status, 'passed', JSON.stringify(result.error));
   assert.deepEqual(calls, [['rename', { title: 'After' }]]);
   assert.deepEqual(world.evaluatedPages, ['editor:1']);
+});
+
+
+test("page data uses View JSON serialization instead of the eval validator", async () => {
+  const data = { error: undefined, at: new Date("2026-01-01T00:00:00Z"),
+    record: new (class Record { count = 2; method() {} })(), items: [undefined, 1] };
+  const page = { route: "pages/home/index", data };
+  const world = logicWorld([page]);
+  world.app.nav.current = async () => ({ path: page.route, instanceId: "home:1" });
+  world.useLogic({ lx: {}, getCurrentPages: () => [page], __lxGetPage: () => page });
+  installFakeHost(world);
+  const result = await runOne(async t => {
+    const expected = { at: "2026-01-01T00:00:00.000Z", record: { count: 2 }, items: [null, 1] };
+    assert.deepEqual(await t.app.logic.data(), expected);
+    assert.deepEqual(await (await t.app.page()).data(), expected);
+  });
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
+});
+
+test("poll retries remote null reads but rejects malformed JSON results immediately", async () => {
+  const world = createWorld();
+  let reads = 0;
+  world.usePage({ window: {}, document: { querySelector: () => ++reads < 3 ? null : { textContent: "ready" } } });
+  installFakeHost(world);
+  const result = await runOne(async t => {
+    await expect.poll(() => t.app.view.eval(({ document }) => document.querySelector("#total").textContent),
+      { interval: 5, timeout: 500 }).toBe("ready");
+    let invalidReads = 0;
+    await t.reject(() => t.waitFor(() => {
+      invalidReads++;
+      return t.app.view.eval(() => ({ invalid: undefined }));
+    }), { message: "[E_NON_JSON_VALUE]" });
+    assert.equal(invalidReads, 1);
+  });
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
+  assert.equal(reads, 3);
+});
+
+test("waitFor retries an inner locator timeout within its own budget", async () => {
+  const world = createWorld();
+  const element = world.add({ testId: "ready", visible: false });
+  installFakeHost(world);
+  let reads = 0;
+  const result = await runOne(async t => {
+    await t.waitFor(async () => {
+      if (++reads === 2) element.visible = true;
+      await t.app.view.testId("ready").waitFor({ timeout: 30, interval: 5 });
+      return true;
+    }, { timeout: 500, interval: 5 });
+  });
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
+  assert.equal(reads, 2);
 });

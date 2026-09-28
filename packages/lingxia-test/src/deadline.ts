@@ -166,3 +166,14 @@ export function isTransientTransportError(error: unknown): boolean {
   return /os error (?:11|35|54|104)\b|resource temporarily unavailable|connection reset|broken pipe|channel closed|websocket (?:closed|disconnected|frame)/i
     .test(message);
 }
+
+/** Match the public error or a preserved driver cause, without changing either. */
+export function matchesErrorCode(error: unknown, expected: string): boolean {
+  const seen = new Set<object>();
+  while (error !== null && typeof error === "object" && !seen.has(error)) {
+    if (errorCode(error) === expected) return true;
+    seen.add(error);
+    error = (error as { cause?: unknown }).cause;
+  }
+  return false;
+}

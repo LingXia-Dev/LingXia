@@ -5,7 +5,7 @@ export function jsonResult(value: unknown, api: string, allowVoid = true, path =
   const seen = new Set<object>();
   const visit = (item: unknown, path: string): unknown => {
     const fail = (reason: string): never => {
-      throw new TypeError(`${api}: ${path}: ${reason}; use JSON values${allowVoid ? " or no top-level result" : ""}`);
+      throw new TypeError(`${api}: ${path}: ${reason}; use JSON values${allowVoid ? " or no top-level result [E_NON_JSON_VALUE]" : ""}`);
     };
     if (item === null || typeof item === "string" || typeof item === "boolean") return item;
     if (typeof item === "number") return Number.isFinite(item) ? item : fail("non-finite number");
