@@ -160,7 +160,7 @@ impl JSLxAppDriver {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let info = serde_json::to_value(app.runtime_info())
             .map_err(|err| crate::auto_err(err.to_string()))?;
-        json_to_js(&ctx, &info)
+        json_to_js(&ctx, &crate::js_payload::runtime_info(info))
     }
 
     #[js_method]

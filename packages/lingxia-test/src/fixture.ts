@@ -251,7 +251,7 @@ export class LiveFixture implements Fixture {
    * each call, so one saved before the switch follows the reopened app.
    */
   private async reopening<T>(ref: AppRef, op: (driver: LxAppDriver) => Promise<T>): Promise<T> {
-    const appid = ref.appid ?? (await ref.driver.info()).appid;
+    const appid = ref.appid ?? (await ref.driver.info()).appId;
     ref.appid = appid;
     try {
       return await op(ref.driver);
@@ -881,7 +881,7 @@ export class LiveFixture implements Fixture {
       // the spec ends.
       get clock() {
         return wrapClock(
-          () => ({ driver: driver().clock, appid: async () => (await driver().info()).appid }),
+          () => ({ driver: driver().clock, appid: async () => (await driver().info()).appId }),
           fixture,
           fixture.clockScope,
           () => fixture.hostAutomation,

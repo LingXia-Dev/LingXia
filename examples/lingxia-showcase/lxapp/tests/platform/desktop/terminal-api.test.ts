@@ -67,7 +67,7 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
     throw new Error(`terminal settings require macOS or Windows; got ${platform || 'unknown'}`);
   }
   const manager = t.automation.lxapps;
-  const currentApp = async (): Promise<string> => (await manager.current()).appid;
+  const currentApp = async (): Promise<string> => (await manager.current()).appId;
   const stateKey = `__lingxiaTerminal_${namespace.replace(/-/g, '_')}`;
 
   // The automation manager resolves an lxapp from the dev directory, which a

@@ -7,7 +7,7 @@ import { bindFixture, eventually } from '../helpers/poll.js';
 const CHAT_APP_ID = 'lingxia-chat';
 
 const isOpen = (list: LxAppRuntimeInfo[], appid: string): boolean => (
-  list.some((row) => row.appid === appid && row.status === 'opened')
+  list.some((row) => row.appId === appid && row.status === 'opened')
 );
 
 /**
@@ -32,7 +32,7 @@ hopSpec('hop to the bundled chat lxapp and back', {
   const { app, namespace, defer } = bindFixture(t, 'NAV-APP-001');
   const manager = t.automation.lxapps;
   const rows = (): Promise<LxAppRuntimeInfo[]> => manager.list();
-  const currentApp = async (): Promise<string> => (await manager.current()).appid;
+  const currentApp = async (): Promise<string> => (await manager.current()).appId;
 
   // A navigation another case scheduled but did not wait for can land here and
   // take the route back, so settle on home rather than assuming one relaunch wins.

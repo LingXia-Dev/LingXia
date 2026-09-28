@@ -112,7 +112,7 @@ test("a body that resumes late is refused and charged its own late assertion, an
 
 test("a host tier an abandoned body read cannot be fenced: the run stops and the host refuses it after the revoke", async () => {
   const world = createWorld();
-  const lxapps = { async list() { return [{ appid: "demo-app", status: "opened" }]; }, async open() { return {}; } };
+  const lxapps = { async list() { return [{ appId: "demo-app", status: "opened" }]; }, async open() { return {}; } };
   const host = installFakeHost(world, { attempts: true, lxapps });
   let release;
   const late = new Promise((resolve) => { release = resolve; });
@@ -122,7 +122,7 @@ test("a host tier an abandoned body read cannot be fenced: the run stops and the
   spec("keeps a host tier", { timeout: 20, forensics: false }, async () => {
     const manager = rawAutomation().lxapps;
     await late;
-    try { await manager.open({ appid: "other-app" }); outcome = "acted"; } catch (error) { outcome = error.code; }
+    try { await manager.open({ appId: "other-app" }); outcome = "acted"; } catch (error) { outcome = error.code; }
   });
   spec("not run", async () => {});
 
@@ -301,7 +301,7 @@ test("a run started before the host registered its current lxapp waits for it, t
   spec("runs once the app is back", async (t) => {
     // The host loses track of "current" again: the spec's app is pinned by id.
     host.setCurrent(false);
-    seen = (await t.app.info()).appid;
+    seen = (await t.app.info()).appId;
   });
   spec("still pinned", async (t) => { await t.app.info(); });
 

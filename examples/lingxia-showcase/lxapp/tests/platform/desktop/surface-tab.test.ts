@@ -74,7 +74,7 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
   // openUrl accepts https or a file URL inside this lxapp's own directories;
   // the page is written through lx.fs so the whole round trip stays in-process.
   const relative = `${namespace}/tab.html`;
-  const url = fileUrl((await app.info()).data_dir, relative);
+  const url = fileUrl((await app.info()).dataDir, relative);
   const readState = (): Promise<TabState> => app.logic.eval(({ lx }, stateKey, key) => {
     const state = (globalThis as unknown as Record<string, HeldTab | undefined>)[stateKey];
     return {

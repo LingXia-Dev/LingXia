@@ -80,6 +80,8 @@ lxdev test tests/pages/notes.test.ts
 
 Trigger the behaviour under test through the UI; setup, eval, and backend
 calls do not replace it. Automation types come from `@lingxia/types/automation`.
+Read runtime info and element snapshots with camelCase fields (`appId`,
+`currentPage`, `navigationBar`, `rect.centerX`); CLI JSON keeps its wire names.
 `rawAutomation()` from `@lingxia/test/runner` bypasses tracing and fixture
 guards; keep it for a setup module that waits for the app before any spec.
 Restore shell pins or device settings a spec changes. Routes, `t.scenario.use`

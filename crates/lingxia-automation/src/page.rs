@@ -278,7 +278,7 @@ impl JSPageDriver {
         json_to_js(&ctx, &value)
     }
 
-    /// Query element information. Same payload shape as `lxdev lxapp page query`.
+    /// Query element information with JavaScript field names.
     #[js_method]
     async fn query(&self, ctx: JSContext, options: JSQueryOptions) -> JSResult<JSValue> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
@@ -301,7 +301,7 @@ impl JSPageDriver {
         )
         .await
         .map_err(fail(&app, options.page.as_deref()))?;
-        json_to_js(&ctx, &value)
+        json_to_js(&ctx, &crate::js_payload::page_query(value))
     }
 
     #[js_method]

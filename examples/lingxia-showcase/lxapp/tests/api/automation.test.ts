@@ -27,7 +27,14 @@ spec("select and inspect the current lxapp", { id: "AUT-001", covers: ['Automati
     const info = await app.info();
     const pages = await app.pages();
 
-    expect(info.appid).toBe('lingxia-showcase');
+    expect(info.appId).toBe('lingxia-showcase');
+    expect(typeof info.appName).toBe('string');
+    expect(info.pagesCount).toBe(info.pageEntries.length);
+    expect(Object.keys(info).some((key) => key.includes('_'))).toBeFalsy();
+    expect('appid' in info).toBeFalsy();
+    const listed = (await t.automation.lxapps.list()).find((item) => item.appId === info.appId);
+    expect(listed?.appName).toBe(info.appName);
+    expect(Object.keys(listed ?? {}).some((key) => key.includes('_'))).toBeFalsy();
     expect(pages.some((page) => page.name === 'todo')).toBeTruthy();
   });
 
@@ -93,6 +100,10 @@ spec("wait for every page element state", { id: "AUT-004", covers: ['PageDriver.
     // The raw page driver's own wait states are what this spec covers.
     const page = rawAutomation().lxapp(SHOWCASE_APP_ID).page;
 
+    // Evaluation returns application data, so even names that resemble driver fields stay intact.
+    const customData = { aria_label: 'custom', rect: { center_x: 7 }, items: [{ text_truncated: false }] };
+    expect(await home.view.eval((_scope, value) => value, customData)).toEqual(customData);
+
     const id = `automation-wait-${namespace}`;
     const css = `#${id}`;
     await home.view.eval(({ document }, id) => {
@@ -115,6 +126,18 @@ spec("wait for every page element state", { id: "AUT-004", covers: ['PageDriver.
     });
 
     await page.waitFor({ page: 'home', css, state: 'attached' });
+    const match = await page.query({ page: 'home', css });
+    expect(match.exists).toBeTruthy();
+    if (!match.exists) throw new Error('query fixture is missing');
+    expect(match.ariaLabel).toBe(null);
+    expect(match.textTruncated).toBeFalsy();
+    expect(match.valueTruncated).toBeFalsy();
+    expect(typeof match.rect.centerX).toBe('number');
+    expect(typeof match.rect.viewportWidth).toBe('number');
+    expect(Object.keys(match).some((key) => key.includes('_'))).toBeFalsy();
+    expect(Object.keys(match.rect).some((key) => key.includes('_'))).toBeFalsy();
+    const matches = await page.query({ page: 'home', css, all: true });
+    expect(matches.items[0]?.rect).toEqual(match.rect);
     await page.waitFor({ page: 'home', css, state: 'hidden' });
     await expectReject(
       () => page.waitFor({ page: 'home', css, state: 'enabled', timeoutMs: 100 }),

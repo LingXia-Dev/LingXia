@@ -14,7 +14,7 @@ while (Date.now() < deadline) {
   try {
     const app = rawAutomation().lxapp(SHOWCASE_APP_ID);
     const info = await app.info();
-    ready = info.appid === SHOWCASE_APP_ID && (await app.nav.current()).ready;
+    ready = info.appId === SHOWCASE_APP_ID && (await app.nav.current()).ready;
     if (ready) break;
   } catch (error) {
     lastError = error;

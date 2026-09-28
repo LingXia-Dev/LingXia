@@ -11,7 +11,7 @@ function hex(value: string | null | undefined): string {
 }
 
 async function navigationBar(app: TestApp): Promise<LxAppRuntimeNavigationBarInfo> {
-  const state = (await app.info()).navigation_bar;
+  const state = (await app.info()).navigationBar;
   if (state === null || state === undefined) throw new Error('showcase NavigationBar snapshot is missing');
   return state;
 }
@@ -25,7 +25,7 @@ async function waitForNavBar(
 }
 
 async function tabBar(app: TestApp): Promise<LxAppRuntimeTabBarInfo> {
-  const state = (await app.info()).tab_bar;
+  const state = (await app.info()).tabBar;
   if (state === null) throw new Error('showcase TabBar is not declared');
   return state;
 }
@@ -85,11 +85,11 @@ spec("apply navigationBar title, colors, home button, and reset", {
     const styled = await waitForNavBar(
       app,
       (state) => state.title === 'Blue Theme'
-        && hex(state.runtime_style.background_color) === '#3B82F6'
-        && hex(state.runtime_style.foreground_color) === '#FFFFFF',
+        && hex(state.runtimeStyle.backgroundColor) === '#3B82F6'
+        && hex(state.runtimeStyle.foregroundColor) === '#FFFFFF',
       'blue navigationBar preset',
     );
-    expect(styled.home_button).toBe('auto');
+    expect(styled.homeButton).toBe('auto');
     return page;
   });
 
@@ -102,17 +102,17 @@ spec("apply navigationBar title, colors, home button, and reset", {
     });
     const patched = await waitForNavBar(
       app,
-      (state) => hex(state.runtime_style.divider_color) === '#112233'
-        && state.home_button === 'hidden'
-        && state.home_button_visible === false,
+      (state) => hex(state.runtimeStyle.dividerColor) === '#112233'
+        && state.homeButton === 'hidden'
+        && state.homeButtonVisible === false,
       'divider color and hidden home button',
     );
-    expect(hex(patched.runtime_style.background_color)).toBe('#3B82F6');
+    expect(hex(patched.runtimeStyle.backgroundColor)).toBe('#3B82F6');
   });
 
   await t.step('restore the home button from the page control', async () => {
     await ui.view.testId('navbar-home-auto').click();
-    await waitForNavBar(app, (state) => state.home_button === 'auto', 'auto home button');
+    await waitForNavBar(app, (state) => state.homeButton === 'auto', 'auto home button');
   });
 
   await t.step('reject an invalid color without mutating chrome', async () => {
@@ -128,10 +128,10 @@ spec("apply navigationBar title, colors, home button, and reset", {
     await waitForNavBar(
       app,
       (state) => state.title === 'User Interface'
-        && state.runtime_style.background_color === null
-        && state.runtime_style.foreground_color === null
-        && state.runtime_style.divider_color === null
-        && state.home_button === 'auto',
+        && state.runtimeStyle.backgroundColor === null
+        && state.runtimeStyle.foregroundColor === null
+        && state.runtimeStyle.dividerColor === null
+        && state.homeButton === 'auto',
       'navigationBar reset to manifest title',
     );
   });
@@ -395,11 +395,11 @@ spec("assert tabBar failure codes, resets, and button-driven patches", {
   await app.nav.relaunch({ page: 'ui', query: { type: 'tabbar' } });
   const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
   await ui.view.testId('tabbar-show').click({ timeout: 30_000 });
-  await waitForTabBar(app, (state) => state.effective_visible, 'forced tab bar');
+  await waitForTabBar(app, (state) => state.effectiveVisible, 'forced tab bar');
 
   await t.step('drive showcase badge and red-dot buttons', async () => {
     await ui.view.testId('tabbar-reddot-show').click();
-    await waitForTabBar(app, (state) => state.items[1]?.red_dot === true, 'red dot from button');
+    await waitForTabBar(app, (state) => state.items[1]?.redDot === true, 'red dot from button');
     await ui.view.testId('tabbar-badge-input').fill('9');
     await ui.view.testId('tabbar-badge-set').click();
     await waitForTabBar(app, (state) => state.items[1]?.badge === '9', 'badge from button');
@@ -466,7 +466,7 @@ spec("assert tabBar failure codes, resets, and button-driven patches", {
     expect(consistent).toBeTruthy();
   });
 
-  await t.step('switchTab agrees with selected_index after a badge change', async () => {
+  await t.step('switchTab agrees with selectedIndex after a badge change', async () => {
     await app.logic.eval(({ lx }) => {
       void lx.switchTab({ page: 'todo' });
       return 'scheduled';
@@ -474,7 +474,7 @@ spec("assert tabBar failure codes, resets, and button-driven patches", {
     await waitForCurrentPage(app, 'todo');
     const state = await waitForTabBar(
       app,
-      (item) => item.selected_index === 3 && item.route_visible,
+      (item) => item.selectedIndex === 3 && item.routeVisible,
       'todo tab selected',
     );
     expect(state.items[1]?.text === 'API+' || state.items[1]?.text === 'Second' || state.items[1]?.text === 'First')

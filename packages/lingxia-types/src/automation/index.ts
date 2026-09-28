@@ -391,13 +391,13 @@ export interface ElementRect {
   height: number;
   right: number;
   bottom: number;
-  center_x: number;
-  center_y: number;
-  viewport_width: number;
-  viewport_height: number;
+  centerX: number;
+  centerY: number;
+  viewportWidth: number;
+  viewportHeight: number;
 }
 
-/** A matched element. Keys are the raw automation payload (snake_case). */
+/** A matched element. Uses JavaScript field names. */
 export interface PageElement {
   exists: true;
   index: number;
@@ -409,7 +409,7 @@ export interface PageElement {
   id: string | null;
   name: string | null;
   role: string | null;
-  aria_label: string | null;
+  ariaLabel: string | null;
   placeholder: string | null;
   /**
    * Rendered: a non-empty box that is not `display:none`,
@@ -421,9 +421,9 @@ export interface PageElement {
   enabled: boolean;
   editable: boolean;
   text: string;
-  text_truncated: boolean;
+  textTruncated: boolean;
   value: string | null;
-  value_truncated: boolean;
+  valueTruncated: boolean;
   rect: ElementRect;
 }
 
@@ -590,7 +590,7 @@ export interface NavDriver extends LogicNavDriver {
 // ============================ lxapp driver ============================
 
 export interface LxAppSummary {
-  appid: string;
+  appId: string;
   currentPage: string | null;
 }
 
@@ -1438,38 +1438,40 @@ export interface LxAppPageEntry {
   path: string;
 }
 
-/** Runtime snapshot of a running lxapp (raw payload, snake_case keys). */
+/** Runtime snapshot of a running lxapp. */
 export interface LxAppRuntimeInfo {
-  appid: string;
-  app_name: string;
+  appId: string;
+  appName: string;
   version: string;
-  release_type: string;
-  session_id: number;
+  releaseType: string;
+  sessionId: number;
   status: string;
   /** True while the lxapp holds a place in the host's page stack. */
-  in_stack: boolean;
-  is_home: boolean;
-  current_page: string | null;
-  initial_route: string;
-  pages_count: number;
-  page_entries: LxAppPageEntry[];
-  page_stack: string[];
-  tab_bar: LxAppRuntimeTabBarInfo | null;
-  navigation_bar: LxAppRuntimeNavigationBarInfo | null;
-  lxapp_dir: string;
-  data_dir: string;
-  cache_dir: string;
+  inStack: boolean;
+  isHome: boolean;
+  currentPage: string | null;
+  initialRoute: string;
+  pagesCount: number;
+  pageEntries: LxAppPageEntry[];
+  pageStack: string[];
+  tabBar: LxAppRuntimeTabBarInfo | null;
+  navigationBar: LxAppRuntimeNavigationBarInfo | null;
+  lxappDir: string;
+  dataDir: string;
+  cacheDir: string;
+  /** Supported features keyed by Logic context id. */
+  logicFeatures: Record<string, string[]>;
 }
 
 /** Runtime NavigationBar state exposed for deterministic host-level assertions. */
 export interface LxAppRuntimeNavigationBarInfo {
   title: string;
-  home_button: 'auto' | 'hidden';
-  home_button_visible: boolean;
-  runtime_style: {
-    background_color: string | null;
-    foreground_color: string | null;
-    divider_color: string | null;
+  homeButton: 'auto' | 'hidden';
+  homeButtonVisible: boolean;
+  runtimeStyle: {
+    backgroundColor: string | null;
+    foregroundColor: string | null;
+    dividerColor: string | null;
   };
 }
 
@@ -1477,15 +1479,15 @@ export interface LxAppRuntimeNavigationBarInfo {
 export interface LxAppRuntimeTabBarInfo {
   presentation: 'standard' | 'immersive';
   visibility: 'auto' | 'visible' | 'hidden';
-  route_visible: boolean;
-  effective_visible: boolean;
-  selected_index: number;
+  routeVisible: boolean;
+  effectiveVisible: boolean;
+  selectedIndex: number;
   items: Array<{
     index: number;
     text: string | null;
-    icon_path: string | null;
+    iconPath: string | null;
     badge: string | null;
-    red_dot: boolean;
+    redDot: boolean;
   }>;
 }
 
@@ -1496,14 +1498,14 @@ export interface LxAppRef {
 }
 
 export interface LxAppOpenOptions {
-  appid: string;
+  appId: string;
   /** Initial page/path. */
   path?: string;
   channel?: 'release' | 'draft';
 }
 
 export interface LxAppOpenResult {
-  appid: string;
+  appId: string;
   path: string;
 }
 
@@ -1706,9 +1708,9 @@ export interface BrowserElementInfo {
   enabled: boolean;
   editable: boolean;
   text?: string;
-  text_truncated?: boolean;
+  textTruncated?: boolean;
   value?: string;
-  value_truncated?: boolean;
+  valueTruncated?: boolean;
   rect?: ElementRect;
 }
 
