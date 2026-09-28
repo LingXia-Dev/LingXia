@@ -247,7 +247,6 @@ impl DevServerState {
                 }
                 None => {
                     lines.push((root.app_id.clone(), super::mocks::no_mocks_line(baseline)));
-                    loaded.push(super::mocks::AppMocks::empty(&root.app_id, &root.path));
                 }
             }
         }
@@ -333,8 +332,7 @@ impl DevServerState {
         )
     }
 
-    /// A runtime connected: load every lxapp's mocks into it. Failures are
-    /// printed, never fatal.
+    /// Release Logic startup only after the session has installed all mocks.
     fn push_all_mocks(&self) {
         let apps = self.lock_mocks().clone();
         for app in apps {
@@ -343,7 +341,15 @@ impl DevServerState {
                     "[lingxia dev] mocks of {} not loaded into the runtime: {error:#}",
                     app.app_id
                 );
+                return;
             }
+        }
+        if let Err(error) = self.runtime_request(
+            lingxia_control_protocol::methods::session::network::MOCK_READY,
+            serde_json::json!({}),
+            Duration::from_secs(30),
+        ) {
+            eprintln!("[lingxia dev] mock initialization was not acknowledged: {error:#}");
         }
     }
 
@@ -364,11 +370,11 @@ impl DevServerState {
             }
             Err(error) => {
                 let kept = match previous {
-                    Some(count) => format!(
+                    Some(count) if count > 0 => format!(
                         "the last valid mocks ({count} handler{}) keep answering",
                         if count == 1 { "" } else { "s" }
                     ),
-                    None => "no mocks are loaded".to_string(),
+                    _ => "no mock handlers are loaded".to_string(),
                 };
                 eprintln!("  ✗ {error:#}; {kept}");
                 return;
@@ -402,23 +408,15 @@ impl DevServerState {
     /// `mocks/` (or its `index.ts`) is gone: the app has no mocks from now
     /// on, in the runtime and in what the session reports.
     fn unload_mocks(&self, app_id: &str) {
-        let previous = self
-            .lock_mocks()
-            .iter()
-            .find(|app| app.app_id == app_id)
-            .cloned();
-        let Some(previous) = previous else {
-            return;
-        };
-        let empty = super::mocks::AppMocks::empty(app_id, &previous.root);
-        let pushed = self
-            .runtime_sender()
-            .is_some()
-            .then(|| self.push_mocks(&empty));
+        let pushed = self.runtime_sender().is_some().then(|| {
+            self.runtime_request(
+                lingxia_control_protocol::methods::session::network::MOCK_UNLOAD,
+                serde_json::json!({ "appid": app_id }),
+                Duration::from_secs(30),
+            )
+        });
         if !matches!(&pushed, Some(Err(_))) {
-            let mut mocks = self.lock_mocks();
-            mocks.retain(|app| app.app_id != app_id);
-            mocks.push(empty);
+            self.lock_mocks().retain(|app| app.app_id != app_id);
         }
         match pushed {
             Some(Err(error)) => eprintln!(

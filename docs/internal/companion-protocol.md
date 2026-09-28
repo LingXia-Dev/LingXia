@@ -279,8 +279,13 @@ admission closed; `lxdev mock clear` clears the companion before reopening it.
 CLI mutations are serialized per session across local CLI processes. Host-run
 scenario changes likewise serialize per run and revoke the context on an
 unknown outcome. In test runs, atomic `invalid_rules` and `companion_unsupported`
-rejections leave the previous scenario active without revoking the context. A disconnect
-may follow an applied request, so it is never treated as a validation rejection.
+rejections leave the previous scenario active without revoking the context.
+`companion_not_sent` means the transport rejected the request before dispatch;
+installation fails without revoking the context, but clearing previously installed
+rules still needs an acknowledgement. An in-flight disconnect (`connection_lost`)
+or a timeout may follow an applied request and keeps admission closed. Generic
+`unavailable` replies make no atomicity guarantee. An absent companion is
+`companion_unsupported`, for which clearing is a no-op.
 There is one product scenario per run, not one Function owner
 per app; replacing its HTTP target replaces the previous app's rules too.
 This covers new Logic fetch/SSE calls; it cannot undo requests already sent or

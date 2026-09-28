@@ -63,3 +63,14 @@ liveness; failed initialization does not publish a usable Logic context.
 The dev server loads a selection record even for apps with zero handlers,
 so `--mock all` cannot silently fall through to real I/O. Removing handlers
 loads an empty record, preserving the selection and readiness contract.
+
+## Logic mock initialization
+
+A dev Logic bundle waits on the connection's mock bootstrap signal, not on the
+existence of app handlers. A configured dev endpoint initializes the gate as
+pending (home Logic may start before HostAddon services); the bridge also marks
+startup pending before its first connection attempt; a failed attempt or disconnect releases the wait so the app
+can launch offline. A successful connection starts a fresh gate. After loading
+all mocks, the dev server sends `session.network.mock.ready`, including when
+there are no mocks. Connected initialization failures keep the gate closed and
+report the 30-second startup deadline. Readiness uses a watch notification.

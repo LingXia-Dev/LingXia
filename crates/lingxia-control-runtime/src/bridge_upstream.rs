@@ -5,6 +5,7 @@
 //! response arrives, the connection drops, or it times out.
 
 use lingxia_automation::runtime::network::{UpstreamError, UpstreamFuture, set_upstream};
+use lingxia_control_protocol::methods::session::companion::NOT_SENT;
 use lingxia_control_protocol::{ControlRequest, ControlResponse};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -62,7 +63,7 @@ async fn request(method: String, params: Value) -> Result<Value, UpstreamError> 
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let Some(outbox) = outbox.as_ref() else {
             return Err(error(
-                "unavailable",
+                NOT_SENT,
                 "the dev session is not connected (`lingxia dev`)",
             ));
         };
@@ -80,12 +81,15 @@ async fn request(method: String, params: Value) -> Result<Value, UpstreamError> 
         });
         if sent.is_err() {
             pending().get_or_insert_with(HashMap::new).remove(&id);
-            return Err(error("unavailable", "the dev session connection closed"));
+            return Err(error(NOT_SENT, "the dev session connection closed"));
         }
     }
-    answer
-        .await
-        .unwrap_or_else(|_| Err(error("unavailable", "the dev session connection closed")))
+    answer.await.unwrap_or_else(|_| {
+        Err(error(
+            "connection_lost",
+            "the dev session connection closed",
+        ))
+    })
 }
 
 /// A connection is up: requests queue for it.
@@ -105,7 +109,7 @@ pub(crate) fn detach() {
     let waiting = pending().take().unwrap_or_default();
     for (_, pending) in waiting {
         let _ = pending.reply.send(Err(error(
-            "unavailable",
+            "connection_lost",
             "the dev session connection dropped",
         )));
     }
@@ -202,8 +206,8 @@ mod tests {
             let (answer, ()) = tokio::join!(call, drop_it);
             answer
         });
-        assert_eq!(failed.unwrap_err().code, "unavailable");
+        assert_eq!(failed.unwrap_err().code, "connection_lost");
         let offline = runtime.block_on(request("x".into(), Value::Null));
-        assert!(offline.unwrap_err().message.contains("not connected"));
+        assert_eq!(offline.unwrap_err().code, NOT_SENT);
     }
 }
