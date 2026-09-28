@@ -546,6 +546,8 @@ pub fn warmup() {
     }
 }
 
+pub use tabs::{ClosedBrowserTab, recently_closed, reopen_closed};
+
 #[cfg(test)]
 mod authority_tests {
     use super::*;
@@ -562,5 +564,3 @@ mod authority_tests {
         );
     }
 }
-
-pub use tabs::{ClosedBrowserTab, recently_closed, reopen_closed};

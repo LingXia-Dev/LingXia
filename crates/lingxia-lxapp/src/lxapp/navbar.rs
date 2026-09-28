@@ -346,10 +346,12 @@ mod patch_tests {
 
     #[test]
     fn patch_and_rollback_preserve_navigation_owned_visibility() {
-        let mut state = NavigationBarState::default();
-        state.show_navbar = false;
-        state.show_back_button = true;
-        state.navigation_home_button = true;
+        let mut state = NavigationBarState {
+            show_navbar: false,
+            show_back_button: true,
+            navigation_home_button: true,
+            ..NavigationBarState::default()
+        };
         let original = state.clone();
         let patch: NavigationBarPatch = serde_json::from_value(serde_json::json!({
             "title": "Changed",

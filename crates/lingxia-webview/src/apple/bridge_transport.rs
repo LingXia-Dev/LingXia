@@ -687,7 +687,7 @@ mod tests {
     fn new_document_resets_an_old_sequence_without_rejecting_its_handshake() {
         let transport = AppleBridgeTransport::new(WebTag::new("test", "page", None));
         transport.enqueue_message(r#"{"kind":"old"}"#).unwrap();
-        let old_reader = transport.connect_downstream(1).unwrap();
+        let old_reader = transport.connect_downstream(1).unwrap().into_file();
 
         let reader = transport.connect_downstream(0).unwrap();
         transport.enqueue_message(r#"{"kind":"helloAck"}"#).unwrap();

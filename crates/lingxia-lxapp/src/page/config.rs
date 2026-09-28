@@ -287,6 +287,28 @@ impl PageConfig {
     }
 }
 
+/// Convert a page path to its corresponding JSON config path
+fn path_to_json_path(path: &str) -> String {
+    if path.is_empty() || path == "/" {
+        return "pages/index/index.json".to_string();
+    }
+
+    let mut trimmed = path.trim_start_matches('/').to_string();
+    if trimmed.is_empty() {
+        return "pages/index/index.json".to_string();
+    }
+
+    // Remove any extension on the last path segment
+    if let Some(dot_pos) = trimmed.rfind('.') {
+        let last_slash = trimmed.rfind('/');
+        if last_slash.is_none_or(|slash| dot_pos > slash) {
+            trimmed.truncate(dot_pos);
+        }
+    }
+
+    format!("{}.json", trimmed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -339,26 +361,4 @@ mod tests {
         assert_eq!(config.navigation_style, NavigationStyle::Custom);
         assert_eq!(config.navigation_bar.title, "Home");
     }
-}
-
-/// Convert a page path to its corresponding JSON config path
-fn path_to_json_path(path: &str) -> String {
-    if path.is_empty() || path == "/" {
-        return "pages/index/index.json".to_string();
-    }
-
-    let mut trimmed = path.trim_start_matches('/').to_string();
-    if trimmed.is_empty() {
-        return "pages/index/index.json".to_string();
-    }
-
-    // Remove any extension on the last path segment
-    if let Some(dot_pos) = trimmed.rfind('.') {
-        let last_slash = trimmed.rfind('/');
-        if last_slash.is_none_or(|slash| dot_pos > slash) {
-            trimmed.truncate(dot_pos);
-        }
-    }
-
-    format!("{}.json", trimmed)
 }

@@ -147,21 +147,6 @@ fn runner_identity(registered: bool, marker: Option<&str>) -> bool {
     registered || marker.is_some_and(|value| !value.trim().is_empty())
 }
 
-#[cfg(test)]
-mod runner_identity_tests {
-    use super::runner_identity;
-
-    #[test]
-    fn native_runner_identity_survives_missing_or_empty_environment() {
-        assert!(runner_identity(true, None));
-        assert!(runner_identity(true, Some("")));
-        assert!(runner_identity(true, Some("  ")));
-        assert!(runner_identity(false, Some("1")));
-        assert!(!runner_identity(false, None));
-        assert!(!runner_identity(false, Some("")));
-    }
-}
-
 /// Initialize the LxApps singleton using the host app configuration from app-context.
 pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
     init_with_native_authority(runtime, None, None, Box::new(|_, _, _, _| Ok(())))
@@ -390,4 +375,19 @@ fn init_with_native_authority(
         terminal_authority,
         browser_registration_authority,
     ))
+}
+
+#[cfg(test)]
+mod runner_identity_tests {
+    use super::runner_identity;
+
+    #[test]
+    fn native_runner_identity_survives_missing_or_empty_environment() {
+        assert!(runner_identity(true, None));
+        assert!(runner_identity(true, Some("")));
+        assert!(runner_identity(true, Some("  ")));
+        assert!(runner_identity(false, Some("1")));
+        assert!(!runner_identity(false, None));
+        assert!(!runner_identity(false, Some("")));
+    }
 }

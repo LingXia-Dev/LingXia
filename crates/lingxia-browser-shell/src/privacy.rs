@@ -271,6 +271,15 @@ pub(crate) fn register() {
     lxapp::host::register_host_entry(get_site_data_context_host());
 }
 
+fn clear_favicons(since_ms: Option<u64>) -> HostResult<()> {
+    use lingxia_platform::traits::app_runtime::AppRuntime;
+    if let Some(runtime) = lxapp::get_platform() {
+        lingxia_service::favicon::clear_since(&runtime.app_cache_dir(), since_ms)
+            .map_err(|error| LxAppError::Runtime(format!("clear favicon cache: {error}")))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,13 +300,4 @@ mod tests {
             );
         }
     }
-}
-
-fn clear_favicons(since_ms: Option<u64>) -> HostResult<()> {
-    use lingxia_platform::traits::app_runtime::AppRuntime;
-    if let Some(runtime) = lxapp::get_platform() {
-        lingxia_service::favicon::clear_since(&runtime.app_cache_dir(), since_ms)
-            .map_err(|error| LxAppError::Runtime(format!("clear favicon cache: {error}")))?;
-    }
-    Ok(())
 }
