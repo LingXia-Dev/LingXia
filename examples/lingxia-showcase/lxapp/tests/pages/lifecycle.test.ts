@@ -1,4 +1,4 @@
-import type { Fixture, LogicPage, TestApp } from '@lingxia/test';
+import type { Fixture, LogicPage, TestApp, TestView } from '@lingxia/test';
 import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
@@ -107,10 +107,14 @@ async function resetDemoState(app: TestApp): Promise<ResetDemoState | null> {
   });
 }
 
-async function enterResetDemo(app: TestApp): Promise<ResetDemoState> {
+/** The entered demo's state, and the View of that very instance. */
+type ResetDemoEntry = ResetDemoState & { view: TestView };
+
+async function enterResetDemo(app: TestApp): Promise<ResetDemoEntry> {
   await app.nav.to({ page: 'ui' });
   await waitForCurrentPage(app, 'ui');
-  await app.view.testId('ui-navigate-to', { page: 'ui' }).waitFor({ timeout: 30_000 });
+  const { view } = await app.page({ name: 'ui' });
+  await view.testId('ui-navigate-to').waitFor({ timeout: 30_000 });
   const state = await eventually(resetDemoState.bind(null, app), (
     candidate,
   ) => candidate !== null
@@ -119,12 +123,12 @@ async function enterResetDemo(app: TestApp): Promise<ResetDemoState> {
     describe: 'page reset demo to report its current and stored instance tags',
   });
   if (state === null) throw new Error('Page reset demo left the stack while loading');
-  return state;
+  return { ...state, view };
 }
 
-const waitForViewCounter = (t: Fixture, expected: string) => waitForElementText(
+const waitForViewCounter = (t: Fixture, view: TestView, expected: string) => waitForElementText(
   t,
-  'ui',
+  view,
   '[data-testid="lifecycle-view-counter"]',
   (text) => text.trim() === expected,
 );
@@ -145,20 +149,20 @@ spec("reset logic data and the rendered document when a page is re-entered", { i
   // Dirty both layers plus the DOM, and the module-scoped counter that
   // must NOT reset.
   const moduleBase = first.moduleCounter;
-  await app.view.testId('lifecycle-open-popup', { page: 'ui' }).waitFor({ state: 'attached', timeout: 30_000 });
-  await app.view.eval({ page: 'ui' }, ({ document }) => {
+  await first.view.testId('lifecycle-open-popup').waitFor({ state: 'attached', timeout: 30_000 });
+  await first.view.eval(({ document }) => {
     (document.querySelector('[data-testid="lifecycle-open-popup"]') as ProbeElement | null)
       ?.scrollIntoView({ block: 'center' });
   });
-  await app.view.testId("lifecycle-bump-logic", { page: 'ui' }).click();
-  await app.view.testId("lifecycle-bump-view", { page: 'ui' }).click();
-  await app.view.testId("lifecycle-bump-module", { page: 'ui' }).click();
-  await app.view.testId("lifecycle-open-popup", { page: 'ui' }).click();
-  await app.view.testId('lifecycle-popup', { page: 'ui' }).waitFor({ state: 'visible', timeout: 30_000 });
+  await first.view.testId('lifecycle-bump-logic').click();
+  await first.view.testId('lifecycle-bump-view').click();
+  await first.view.testId('lifecycle-bump-module').click();
+  await first.view.testId('lifecycle-open-popup').click();
+  await first.view.testId('lifecycle-popup').waitFor({ state: 'visible', timeout: 30_000 });
   await eventually(resetDemoState.bind(null, app), (
     candidate,
   ) => candidate?.logicCounter === 1, { describe: 'logic counter to reach 1' });
-  await waitForViewCounter(t, '1');
+  await waitForViewCounter(t, first.view, '1');
 
   // Leaving ends the instance; the teardown lands after the pop transition.
   await app.nav.back();
@@ -173,10 +177,9 @@ spec("reset logic data and the rendered document when a page is re-entered", { i
   expect(second.logicCounter).toBe(0);
   // Module scope survives the instance: the fresh entry sees the bump.
   expect(second.moduleCounter).toBe(moduleBase + 1);
-  await waitForViewCounter(t, '0');
+  await waitForViewCounter(t, second.view, '0');
 
-  const popup = await app.view.css('[data-testid="lifecycle-popup"]', { page: 'ui' }).first().query();
-  expect(popup.exists).toBe(false);
+  expect(await second.view.testId('lifecycle-popup').count()).toBe(0);
 });
 
 spec("stack two live instances of one route and unwind them independently", { id: "PAGE-LIFECYCLE-003", covers: ['lx.navigateTo', 'lx.navigateBack'], app: SHOWCASE_APP_ID }, async (t) => {
@@ -212,7 +215,8 @@ spec("stack two live instances of one route and unwind them independently", { id
   if (first === null) throw new Error('first drill-down entry left the stack');
 
   // Distinguish the first instance before drilling deeper.
-  await app.view.testId("lifecycle-bump-logic", { page: 'ui' }).click();
+  const firstUi = await app.page({ name: 'ui' });
+  await firstUi.view.testId('lifecycle-bump-logic').click();
   await eventually(topDemoState, (
     candidate,
   ) => candidate?.logicCounter === 1, { describe: 'first instance counter to reach 1' });
@@ -309,8 +313,8 @@ spec("park a left page instead of re-rendering it off-screen", { id: "PAGE-LIFEC
   // components, media — with nobody on the page.
   await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
 
-  const parked = await app.view.css('[data-testid="ui-navigate-to"]', { page: 'ui' }).first().query();
-  expect(parked.exists).toBe(false);
+  // `first.view` still addresses the left instance's parked document.
+  expect(await first.view.testId('ui-navigate-to').count()).toBe(0);
 
   // The rebuild belongs to the entry: coming back renders a fresh document.
   const second = await enterResetDemo(app);
@@ -367,7 +371,7 @@ spec("unload a pushed page dropped by switchTab", { id: "PAGE-LIFECYCLE-006", co
   await waitForCurrentPage(app, 'home');
 
   const first = await enterResetDemo(app);
-  await app.view.testId("lifecycle-bump-logic", { page: 'ui' }).click();
+  await first.view.testId('lifecycle-bump-logic').click();
   await eventually(resetDemoState.bind(null, app), (
     candidate,
   ) => candidate?.logicCounter === 1, { describe: 'logic counter to reach 1' });

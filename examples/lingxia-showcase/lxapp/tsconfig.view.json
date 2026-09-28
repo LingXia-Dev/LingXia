@@ -8,6 +8,7 @@
   },
   "include": [
     "pages/**/*.tsx",
+    "pages/**/contract.ts",
     "shared/**/*.ts",
     "shared/**/*.tsx",
     ".lingxia/types/**/*.d.ts",

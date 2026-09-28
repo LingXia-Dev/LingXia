@@ -1,4 +1,3 @@
-import type { PageQueryResult } from "@lingxia/types/automation";
 import { cssEscape, formatValue } from "./format.js";
 import {
   ActionDeadline,
@@ -16,7 +15,6 @@ import type {
   InputOptions,
   Locator,
   LocatorFilterOptions,
-  LocatorOptions,
   LocatorState,
   LocatorWaitOptions,
   SourceLocation,
@@ -90,10 +88,17 @@ export interface LocatorResolve {
   kind: "nothing" | "hidden" | "unique" | "many";
 }
 
+/** The page a locator reads (a live instance id; omitted: the current page) and its pick. */
+export interface LocatorTarget {
+  page?: string;
+  /** Zero-based match index; omitted, the locator needs a unique match. */
+  index?: number;
+}
+
 /** Narrowing applied to the raw matches before `nth`/`first`/`last` picks one. */
 export interface LocatorRefine {
   hasText?: string | RegExp;
-  /** Pick the last match (`.last()`); `LocatorOptions.index` picks from the start. */
+  /** Pick the last match (`.last()`); `LocatorTarget.index` picks from the start. */
   last?: boolean;
 }
 
@@ -114,7 +119,7 @@ export class PageLocator implements Locator {
     private readonly record: ActionRecorder,
     selector: string,
     private readonly location: SourceLocation,
-    private readonly options: LocatorOptions = {},
+    private readonly options: LocatorTarget = {},
     private readonly room: BudgetRoom = () => Number.POSITIVE_INFINITY,
     private readonly refine: LocatorRefine = {},
   ) {
@@ -213,20 +218,49 @@ export class PageLocator implements Locator {
     });
   }
 
-  async query(): Promise<PageQueryResult> {
-    if (this.refined()) {
-      // The driver indexes raw DOM matches; read the narrowed pick's own index.
-      const resolved = await this.resolve();
-      if (resolved.kind === "nothing" || resolved.kind === "many") {
-        return { exists: false, index: 0, count: resolved.count, visible: false, enabled: false, editable: false } as PageQueryResult;
-      }
-      return this.guard(() => this.page.query({ page: this.options.page, css: this.selector, index: resolved.index })) as Promise<PageQueryResult>;
-    }
-    return this.guard(() => this.page.query({ ...this.options, css: this.selector })) as Promise<PageQueryResult>;
+  count(): Promise<number> {
+    return this.read("count", async () => (await this.resolve(undefined, "count")).count);
   }
 
-  private refined(): boolean {
-    return this.refine.hasText !== undefined || this.refine.last === true;
+  isVisible(): Promise<boolean> {
+    return this.read("isVisible", async () => {
+      const resolved = await this.resolve(undefined, "isVisible");
+      if (resolved.kind === "many") throw new Error(`isVisible(): ${this.missText(resolved)}; narrow it with nth(), first(), last() or filter()`);
+      return resolved.kind === "unique";
+    });
+  }
+
+  textContent(): Promise<string> {
+    return this.read("textContent", async () => (await this.single("textContent")).text);
+  }
+
+  inputValue(): Promise<string> {
+    return this.read("inputValue", async () => {
+      const resolved = await this.single("inputValue");
+      if (resolved.value === null) throw new Error(`inputValue(): ${this.target()} has no value (not an input, textarea or select)`);
+      return resolved.value;
+    });
+  }
+
+  getAttribute(name: string): Promise<string | null> {
+    if (typeof name !== "string" || name.length === 0) {
+      return Promise.reject(new TypeError("getAttribute(name) takes an attribute name"));
+    }
+    return this.read("getAttribute", async () => (await this.single("getAttribute", [name])).attributes?.[name] ?? null);
+  }
+
+  /** A traced one-shot read. */
+  private read<T>(verb: string, op: () => Promise<T>): Promise<T> {
+    return this.record(`page.${verb}`, this.target(), op);
+  }
+
+  private async single(verb: string, attributes: readonly string[] = []): Promise<LocatorResolve> {
+    const resolved = await this.resolve(undefined, verb, attributes);
+    if (resolved.count !== 1) {
+      throw new Error(`${verb}(): ${this.missText(resolved)}` +
+        (resolved.kind === "many" ? "; narrow it with nth(), first(), last() or filter()" : ""));
+    }
+    return resolved;
   }
 
   /**
@@ -345,6 +379,11 @@ export class PageLocator implements Locator {
     return `locator ${formatValue(this.selector)} resolved to a visible element`;
   }
 
+  /** The page instance this locator is bound to; `null` for the current page. */
+  get boundPage(): string | null {
+    return this.options.page ?? null;
+  }
+
   /** The page, selector and narrowing, as the trace and failures show it. */
   describe(): string {
     return this.target();
@@ -353,7 +392,7 @@ export class PageLocator implements Locator {
   private target(): string {
     const filter = this.refine.hasText === undefined ? "" : ` filter(hasText=${formatValue(this.refine.hasText)})`;
     const pick = this.refine.last ? " [last]" : this.options.index === undefined ? "" : ` [${this.options.index}]`;
-    return `${this.options.page ? this.options.page + " " : ""}${this.selector}${filter}${pick}`;
+    return `${this.options.page ? `#${this.options.page} ` : ""}${this.selector}${filter}${pick}`;
   }
 
   private where(): string {

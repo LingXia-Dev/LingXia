@@ -43,16 +43,17 @@ spec("render device and screen API results after real UI actions", { id: "DEVICE
   const { app } = bindFixture(t, "DEVICE-001");
 
   await app.nav.relaunch({ page: 'device', query: { type: 'device' } });
-  await app.view.testId('device-get-info', { page: 'device' }).waitFor({ timeout: 30_000 });
-  await app.view.testId("device-get-info", { page: 'device' }).click();
+  let page = (await app.page({ name: 'device' }, { timeout: 30_000 })).view;
+  await page.testId('device-get-info').waitFor({ timeout: 30_000 });
+  await page.testId("device-get-info").click();
   const device = await waitForState(app, (state) => !!state.deviceInfo?.osName);
-  await app.view.testId('device-info-result', { page: 'device' }).waitFor({ timeout: 30_000 });
-  const deviceResult = await app.view.testId('device-info-result', { page: 'device' }).query();
-  expect(deviceResult.exists && deviceResult.text).toContain(device.deviceInfo?.osName);
+  await expect(page.testId('device-info-result')).toContainText(device.deviceInfo!.osName!, { timeout: 30_000 });
 
+  // A relaunch replaces the page instance: bind the new one.
   await app.nav.relaunch({ page: 'device', query: { type: 'screen' } });
-  await app.view.testId('device-screen-get-info', { page: 'device' }).waitFor({ timeout: 30_000 });
-  await app.view.testId("device-screen-get-info", { page: 'device' }).click();
+  page = (await app.page({ name: 'device' }, { timeout: 30_000 })).view;
+  await page.testId('device-screen-get-info').waitFor({ timeout: 30_000 });
+  await page.testId("device-screen-get-info").click();
   const screen = await waitForState(
     app,
     (state) => !!state.screenInfo
@@ -60,7 +61,7 @@ spec("render device and screen API results after real UI actions", { id: "DEVICE
       && Number(state.screenInfo.height) > 0
       && Number(state.screenInfo.scale) > 0,
   );
-  await app.view.testId('device-screen-result', { page: 'device' }).waitFor({ timeout: 30_000 });
+  await page.testId('device-screen-result').waitFor({ timeout: 30_000 });
   expect(Number(screen.screenInfo?.width)).toBeGreaterThan(0);
 });
 
@@ -69,8 +70,9 @@ spec("keep network query and listener behavior equivalent across renderers", { i
 
   for (const type of ['networkType', 'localIP'] as const) {
     await app.nav.relaunch({ page: 'device', query: { type } });
-    await app.view.testId('device-network-get-info', { page: 'device' }).waitFor({ timeout: 30_000 });
-    await app.view.testId("device-network-get-info", { page: 'device' }).click();
+    const network = (await app.page({ name: 'device' }, { timeout: 30_000 })).view;
+    await network.testId('device-network-get-info').waitFor({ timeout: 30_000 });
+    await network.testId("device-network-get-info").click();
     const state = await waitForState(
       app,
       (candidate) => typeof candidate.networkInfo?.isConnected === 'boolean'
@@ -78,27 +80,27 @@ spec("keep network query and listener behavior equivalent across renderers", { i
     );
     expect(Array.isArray(state.networkInfo?.ipv4)).toBeTruthy();
     expect(Array.isArray(state.networkInfo?.ipv6)).toBeTruthy();
-    const result = await app.view.testId('device-network-result', { page: 'device' }).query();
-    expect(result.exists && result.text.trim().length > 0).toBeTruthy();
+    expect(await network.testId('device-network-result').textContent()).not.toBe('');
   }
 
   await app.nav.relaunch({ page: 'device', query: { type: 'networkStatus' } });
-  await app.view.testId('device-network-listen-start', { page: 'device' }).waitFor({ timeout: 30_000 });
-  await app.view.testId("device-network-listen-start", { page: 'device' }).click();
+  const page = (await app.page({ name: 'device' }, { timeout: 30_000 })).view;
+  await page.testId('device-network-listen-start').waitFor({ timeout: 30_000 });
+  await page.testId("device-network-listen-start").click();
   await waitForState(app, (state) => state.networkListening);
   await waitForElementText(
     t,
-    'device',
+    page,
     '[data-testid="device-network-status"]',
     (text) => text.includes('Yes'),
     30_000,
   );
 
-  await app.view.testId("device-network-listen-stop", { page: 'device' }).click();
+  await page.testId("device-network-listen-stop").click();
   await waitForState(app, (state) => !state.networkListening);
   await waitForElementText(
     t,
-    'device',
+    page,
     '[data-testid="device-network-status"]',
     (text) => text.includes('No'),
     30_000,
@@ -111,12 +113,13 @@ spec('publishes every device mode in the rendered API menu', {
 }, async (t) => {
   const app = t.app;
   await app.nav.relaunch({ page: 'api' });
-  await app.view.testId('api-device-section', { page: 'api' }).waitFor({ state: 'visible', timeout: 30_000 });
-  await app.view.testId("api-device-section", { page: 'api' }).click();
-  await app.view.testId('api-device-section', { page: 'api' }).waitFor({ state: 'visible', timeout: 30_000 });
+  const api = (await app.page({ name: 'api' }, { timeout: 30_000 })).view;
+  await api.testId('api-device-section').waitFor({ state: 'visible', timeout: 30_000 });
+  await api.testId("api-device-section").click();
+  await api.testId('api-device-section').waitFor({ state: 'visible', timeout: 30_000 });
 
   const text = await eventually(
-    () => app.view.eval({ page: 'api' }, ({ document }) => document.body.innerText ?? ''),
+    () => api.eval(({ document }) => document.body.innerText ?? ''),
     (body) => [
       'Device Info',
       'Screen Info',

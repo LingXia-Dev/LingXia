@@ -64,7 +64,10 @@ spec('exchange messages over the port navigateTo returns', {
   // `surface`, and Windows CI has taken >10s to create that WebView and fire
   // onReady (the page was already current). Match the other cold-nav specs.
   await waitForCurrentPage(app, 'surface', 30_000);
-  await app.view.testId('surface-page', { page: 'surface' }).waitFor({ state: 'visible', timeout: 30_000 });
+  // `surface` is also a desktop tab page, so bind the pushed instance (the
+  // current page) rather than select it by name.
+  const surface = (await app.page()).view;
+  await surface.testId('surface-page').waitFor({ state: 'visible', timeout: 30_000 });
   const port = await eventually(
     () => app.logic.eval((_, key) => {
       const state = (globalThis as unknown as PortStates)[key];
@@ -85,23 +88,23 @@ spec('exchange messages over the port navigateTo returns', {
     }, stateKey, namespace);
     const inbound = await waitForElementText(
       t,
-      'surface',
+      surface,
       '[data-testid="surface-inbound"]',
       (text) => text.includes(namespace),
     );
     expect(JSON.parse(inbound)).toEqual({ ping: namespace });
     expect(await waitForElementText(
       t,
-      'surface',
+      surface,
       '[data-testid="surface-inbound-count"]',
       (text) => text.trim() === '1',
     )).toBe('1');
   });
 
   await t.step('page → opener, then the page pops itself', async () => {
-    await app.view.css(MESSAGE_INPUT, { page: 'surface' }).fill(outbound);
-    await waitForElementAttribute(t, 'surface', MESSAGE_INPUT, 'data-controlled-value', outbound);
-    await app.view.testId("surface-send-message", { page: 'surface' }).click();
+    await surface.css(MESSAGE_INPUT).fill(outbound);
+    await waitForElementAttribute(surface, MESSAGE_INPUT, 'data-controlled-value', outbound);
+    await surface.testId("surface-send-message").click();
 
     const messages = await eventually(
       () => app.logic.eval((_, key) => (globalThis as unknown as PortStates)[key]?.messages ?? [], stateKey),

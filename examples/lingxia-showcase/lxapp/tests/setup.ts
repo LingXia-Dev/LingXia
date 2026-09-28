@@ -1,4 +1,4 @@
-import { rawAutomation } from '@lingxia/test';
+import { rawAutomation } from '@lingxia/test/runner';
 import { SHOWCASE_APP_ID } from './helpers/app.js';
 
 // Before the first spec: the showcase is open and its current page is ready,

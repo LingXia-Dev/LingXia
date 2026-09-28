@@ -1,5 +1,6 @@
 import { currentPageOrNull, waitForCurrentPage } from '../helpers/page.js';
-import { expect, rawAutomation, spec } from '@lingxia/test';
+import { expect, spec } from '@lingxia/test';
+import { rawAutomation } from '@lingxia/test/runner';
 import { bindFixture, expectReject, specNamespace } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import type { ProbeDocument, ProbeElement } from '../helpers/view.js';
@@ -87,13 +88,14 @@ spec("wait for every page element state", { id: "AUT-004", covers: ['PageDriver.
     const current = await currentPageOrNull(app);
     if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
     await waitForCurrentPage(app, 'home');
-    await app.view.testId('home-page', { page: 'home' }).waitFor({ state: 'visible', timeout: 30_000 });
+    const home = await app.page({ name: 'home' });
+    await home.view.testId('home-page').waitFor({ state: 'visible', timeout: 30_000 });
     // The raw page driver's own wait states are what this spec covers.
     const page = rawAutomation().lxapp(SHOWCASE_APP_ID).page;
 
     const id = `automation-wait-${namespace}`;
     const css = `#${id}`;
-    await app.view.eval({ page: 'home' }, ({ document }, id) => {
+    await home.view.eval(({ document }, id) => {
       const doc = document as unknown as ProbeDocument;
       const fixture = doc.createElement('input') as ProbeElement & { id: string; type: string; disabled: boolean };
       fixture.id = id;
@@ -102,7 +104,7 @@ spec("wait for every page element state", { id: "AUT-004", covers: ['PageDriver.
       fixture.disabled = true;
       doc.body.appendChild(fixture);
     }, id);
-    const setFixture = (change: 'show' | 'enable' | 'remove') => app.view.eval({ page: 'home' }, ({ document }, id, change) => {
+    const setFixture = (change: 'show' | 'enable' | 'remove') => home.view.eval(({ document }, id, change) => {
       const fixture = document.getElementById(id) as (ProbeElement & { disabled: boolean }) | null;
       if (change === 'show' && fixture) fixture.style.display = 'block';
       else if (change === 'enable' && fixture) fixture.disabled = false;

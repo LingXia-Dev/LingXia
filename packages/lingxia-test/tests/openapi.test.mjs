@@ -394,6 +394,31 @@ test("routed mismatches fail the spec; the server's are warnings", async () => {
   assert.match(warning.message, /live-list: GET \/devices → 200 from the server does not match/);
 });
 
+test("a contract failure after a locator timed out on a hidden page carries no hidden-page note", async () => {
+  const world = createWorld();
+  world.add({ testId: "sheet", visible: false });
+  const records = [];
+  world.app.network = capturingNetwork(records);
+  // The visibility probe answers as a hidden page does.
+  const evalPage = world.app.page.eval;
+  world.app.page.eval = async (options) => /visibilityState/.test(options.script)
+    ? { state: "hidden", animationFrames: false } : evalPage(options);
+  installFakeHost(world, { control: { openapi: JSON.stringify([{ name: "devices.yaml", doc: API }]) } });
+  spec("stale fixture on a hidden page", async (t) => {
+    // A locator failure the spec expected: not what failed it.
+    await t.reject(() => t.app.view.testId("sheet").click({ timeout: 50 }));
+    records.push({ seq: 1, source: "route", pattern: "**/v1/devices", timestamp: 0,
+      ...response({ body: JSON.stringify({ items: [{ id: "d1" }], total: 1 }) }) });
+  });
+  const report = await run();
+  const failed = report.cases[0];
+  assert.equal(failed.status, "failed");
+  assert.equal(failed.error.code, "E_OPENAPI_CONTRACT");
+  assert.equal(failed.error.phase, "contract");
+  assert.ok(failed.error.page, "the failure still names the current page");
+  assert.equal(failed.error.page.hidden, undefined);
+});
+
 test("a host that cannot capture responses fails the run instead of skipping the contract", async () => {
   const world = createWorld();
   world.app.network = capturingNetwork([], { unsupported: true });

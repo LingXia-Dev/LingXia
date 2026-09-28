@@ -140,7 +140,7 @@ test("locator re-resolves across mutations", async () => {
   assert.equal(protocol.passed, 1, decodeAttachment(attachments, "report.json"));
 });
 
-test("an eval gets a share of the spec budget", async () => {
+test("an eval without its own timeout gets 10 s, clamped to the spec budget", async () => {
   const world = createWorld();
   installFakeHost(world);
   const seen = [];
@@ -151,16 +151,20 @@ test("an eval gets a share of the spec budget", async () => {
     return inner(options);
   };
 
-  spec("takes a third of the spec budget", { timeout: 12_000 }, async (t) => {
+  spec("a roomy budget", { timeout: 12_000 }, async (t) => {
     await t.app.logic.eval(() => 1);
   });
-  spec("caps at the eval ceiling", { timeout: 600_000 }, async (t) => {
+  spec("a long budget", { timeout: 600_000 }, async (t) => {
+    await t.app.logic.eval(() => 1);
+  });
+  spec("a short budget", { timeout: 4_000 }, async (t) => {
     await t.app.logic.eval(() => 1);
   });
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.failed, 0);
-  // Never the whole budget: a call that eats it leaves no room to retry.
-  assert.deepEqual(seen, [4_000, 10_000]);
+  // A fixed default, not a share of the budget; never more than the spec has left.
+  assert.deepEqual(seen.slice(0, 2), [10_000, 10_000]);
+  assert.ok(seen[2] > 3_000 && seen[2] < 4_000, String(seen[2]));
 });
 
 test("wrapping the page driver never writes back onto the driver", async () => {
@@ -184,7 +188,8 @@ test("wrapping the page driver never writes back onto the driver", async () => {
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.failed, 0, JSON.stringify(protocol.cases[0]?.error));
-  assert.deepEqual(budgets, [3_000]);
+  assert.equal(budgets.length, 1);
+  assert.ok(budgets[0] > 8_000 && budgets[0] < 9_000, String(budgets[0]));
   assert.equal(driver.page.eval, wrappedOriginal, "the driver's own eval was replaced");
   assert.equal(driver.page.testId, original.testId);
   assert.equal(driver.page.css, original.css);
@@ -354,19 +359,28 @@ test("a driver timeout reaches the spec as E_TIMEOUT, the driver's code as its c
   assert.deepEqual(seen.eval.data, { driverCode: "E_EVAL_TIMEOUT" });
 });
 
-test("a fresh spec relaunches home and waits for it to be ready", async () => {
+test("a `start` spec relaunches on that page, with its query, before beforeEach, and waits for it to be ready", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
+  const order = [];
 
-  spec("fresh", { fresh: true }, async () => {});
+  spec.beforeEach(async (t) => { order.push(`beforeEach on ${(await t.app.nav.current()).name}`); });
+  spec("home", { start: { page: "home" } }, async () => {});
+  spec("detail", { start: { page: "detail", query: { id: "d1" } } }, async (t) => {
+    order.push(`body on ${(await t.app.nav.current()).name}`);
+  });
 
   await globalThis.__LINGXIA_TEST__.run();
-  assert.deepEqual(world.navCalls, [["relaunch", { page: "home", waitUntil: "ready" }]]);
+  assert.deepEqual(world.navCalls, [
+    ["relaunch", { page: "home", waitUntil: "ready" }],
+    ["relaunch", { page: "detail", query: { id: "d1" }, waitUntil: "ready" }],
+  ]);
+  assert.deepEqual(order, ["beforeEach on home", "beforeEach on detail", "body on detail"]);
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
-  assert.equal(report.cases[0].status, "passed");
+  assert.deepEqual(report.cases.map((item) => item.status), ["passed", "passed"]);
 });
 
-test("a fresh relaunch tolerates the home page handing off, not a timeout", async () => {
+test("a start relaunch tolerates the home page handing off, not a timeout", async () => {
   for (const [message, expected] of [
     ["page instance 7 (pages/home/index) was disposed before runtime became ready; current page is pages/login/index", "passed"],
     ["timed out after 15000ms waiting for page 7 to become ready", "failed"],
@@ -375,7 +389,7 @@ test("a fresh relaunch tolerates the home page handing off, not a timeout", asyn
     const world = createWorld();
     world.failRelaunch(new Error(message));
     const { attachments } = installFakeHost(world);
-    spec("fresh", { fresh: true }, async () => {});
+    spec("start", { start: { page: "home" } }, async () => {});
     await globalThis.__LINGXIA_TEST__.run();
     const report = JSON.parse(decodeAttachment(attachments, "report.json"));
     assert.equal(report.cases[0].status, expected, message);
@@ -552,6 +566,190 @@ test("failure forensics record the page's visibility", async () => {
   assert.match(report.failures[0].page.hidden, /no animation frame/);
 });
 
+test("locator reads are one-shot and traced: count, isVisible, textContent, inputValue, getAttribute", async () => {
+  const world = createWorld();
+  world.add({ testId: "title", text: "  Hello\n  world ", attributes: { "aria-level": "1" } });
+  world.add({ testId: "name", text: "", value: "Ada" });
+  world.add({ testId: "row", text: "a" });
+  world.add({ testId: "row", text: "b" });
+  world.add({ testId: "folded", visible: false, text: "x" });
+  installFakeHost(world);
+  const seen = {};
+  const errors = {};
+  const failure = async (name, read) => {
+    try { await read(); errors[name] = "resolved"; } catch (error) { errors[name] = error.message; }
+  };
+  const result = await (async () => {
+    spec("reads", { forensics: false }, async (t) => {
+      const view = t.app.view;
+      seen.counts = [await view.testId("row").count(), await view.testId("missing").count(), await view.testId("title").count()];
+      seen.visible = [await view.testId("title").isVisible(), await view.testId("folded").isVisible(), await view.testId("missing").isVisible()];
+      seen.text = await view.testId("title").textContent();
+      seen.value = await view.testId("name").inputValue();
+      seen.attributes = [await view.testId("title").getAttribute("aria-level"), await view.testId("title").getAttribute("hidden")];
+      seen.nth = await view.testId("row").nth(1).textContent();
+      await failure("isVisibleMany", () => view.testId("row").isVisible());
+      await failure("textMany", () => view.testId("row").textContent());
+      await failure("textNone", () => view.testId("missing").textContent());
+      await failure("valueNone", () => view.testId("title").inputValue());
+      await failure("attributeMany", () => view.testId("row").getAttribute("id"));
+      await failure("attributeName", () => view.testId("title").getAttribute(""));
+      // No wait: an element that appears later is not seen by a read.
+      setTimeout(() => world.add({ testId: "late", text: "late" }), 30);
+      seen.late = await view.testId("late").count();
+      seen.query = typeof view.testId("title").query;
+    });
+    return (await run()).cases[0];
+  })();
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
+  assert.deepEqual(seen.counts, [2, 0, 1]);
+  assert.deepEqual(seen.visible, [true, false, false]);
+  assert.equal(seen.text, "Hello world");
+  assert.equal(seen.value, "Ada");
+  assert.deepEqual(seen.attributes, ["1", null]);
+  assert.equal(seen.nth, "b");
+  assert.equal(seen.late, 0);
+  assert.equal(seen.query, "undefined");
+  assert.match(errors.isVisibleMany, /^isVisible\(\): locator .* resolved to 2 matches; narrow it with nth\(\)/);
+  assert.match(errors.textMany, /^textContent\(\): locator .* resolved to 2 matches; narrow it/);
+  assert.match(errors.textNone, /^textContent\(\): locator .* resolved to nothing$/);
+  assert.match(errors.valueNone, /^inputValue\(\): \[data-testid="title"\] has no value/);
+  assert.match(errors.attributeMany, /^getAttribute\(\): locator .* resolved to 2 matches/);
+  assert.match(errors.attributeName, /getAttribute\(name\) takes an attribute name/);
+  const traced = new Set(result.steps.map((step) => step.name));
+  for (const verb of ["count", "isVisible", "textContent", "inputValue", "getAttribute"]) assert.ok(traced.has(`page.${verb}`), verb);
+});
+
+test("t.app.view takes no options on testId, css or screenshot, and no page on eval or scroll", async () => {
+  installFakeHost(createWorld());
+  const messages = [];
+  spec("options", { forensics: false }, async (t) => {
+    for (const call of [
+      () => t.app.view.testId("x", { page: "other" }),
+      () => t.app.view.css("#x", { index: 1 }),
+      () => t.app.view.screenshot({ page: "other" }),
+      () => t.app.view.eval({ page: "other" }, () => 1),
+      () => t.app.view.scroll({ page: "other", dy: 1 }),
+    ]) {
+      try { await call(); messages.push("accepted"); } catch (error) { messages.push(`${error.name}: ${error.message}`); }
+    }
+  });
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases[0]?.error));
+  assert.deepEqual(messages.map((message) => message.split(":")[0]), ["TypeError", "TypeError", "TypeError", "TypeError", "TypeError"]);
+  assert.match(messages[0], /view\.testId\(\) takes no options: bind another page with t\.app\.page\(\{ name \}\) and use its view/);
+  assert.match(messages[1], /view\.css\(\) takes no options/);
+  assert.match(messages[2], /view\.screenshot\(\) takes no options/);
+  assert.match(messages[3], /page is not an eval option/);
+  assert.match(messages[4], /view\.scroll\(\) takes no page option: bind another page/);
+});
+
+test("a retrying locator assertion that times out is an AssertionError with code E_TIMEOUT", async () => {
+  const world = createWorld();
+  world.add({ testId: "status", text: "loading" });
+  installFakeHost(world);
+  let caught;
+  spec("times out", { forensics: false }, async (t) => {
+    caught = await t.reject(() => expect(t.app.view.testId("status")).toHaveText("done", { timeout: 60 }), { code: "E_TIMEOUT" });
+    await expect(t.app.view.testId("status")).toHaveText("done", { timeout: 60 });
+  });
+  const report = await run();
+  assert.equal(caught.name, "AssertionError");
+  assert.equal(caught.code, "E_TIMEOUT");
+  assert.match(caught.message, /^Timed out after \d+ms retrying toHaveText\./);
+  assert.equal(report.cases[0].error.code, "E_TIMEOUT");
+  assert.equal(report.cases[0].error.matcher, "toHaveText");
+  // A once-check is not a timeout.
+  try { expect(1).toBe(2); } catch (error) { assert.equal(error.code, undefined); }
+});
+
+test("a remote TypeError from Logic fails a retry at once; one from the page retries", async () => {
+  const world = createWorld();
+  let pageReads = 0;
+  world.usePage({ window: {}, document: { querySelector: () => (++pageReads < 3 ? null : { textContent: "ready" }) } });
+  world.useLogic({ lx: {}, getCurrentPages: () => [] });
+  installFakeHost(world);
+  const seen = {};
+  spec("type errors", { forensics: false }, async (t) => {
+    // In Logic a TypeError is a programming mistake: no retry.
+    let logicReads = 0;
+    seen.waitFor = await t.reject(() => t.waitFor(() => { logicReads += 1; return t.app.logic.eval(({ getCurrentPages }) => getCurrentPages()[0].data); },
+      { timeout: 500, interval: 5 }));
+    seen.waitForReads = logicReads;
+    logicReads = 0;
+    seen.poll = await t.reject(() => expect.poll(() => { logicReads += 1; return t.app.logic.eval(({ getCurrentPages }) => getCurrentPages()[0].data); },
+      { timeout: 500, interval: 5 }).toBe(1));
+    seen.pollReads = logicReads;
+    // In the page a null read can throw until rendering catches up.
+    seen.page = await t.waitFor(() => t.app.view.eval(({ document }) => document.querySelector("#total").textContent),
+      { timeout: 500, interval: 5 });
+  });
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases[0]?.error));
+  assert.equal(seen.waitFor.name, "TypeError");
+  assert.equal(seen.waitForReads, 1);
+  assert.equal(seen.poll.name, "TypeError");
+  assert.equal(seen.pollReads, 1);
+  assert.equal(seen.page, "ready");
+  assert.equal(pageReads, 3);
+});
+
+test("a hidden-page note explains only a locator failure; a bound locator off the current page says so instead", async () => {
+  const cases = [
+    ["action", async (t) => { await t.app.view.testId("sheet").click({ timeout: 80 }); }, "hidden"],
+    // `#sheet` is a CSS id on the current page, not a bound instance.
+    ["css id action", async (t) => { await t.app.view.css("#sheet").click({ timeout: 80 }); }, "hidden"],
+    ["read", async (t) => { await t.app.view.testId("missing").textContent(); }, "hidden"],
+    ["assertion", async (t) => { await expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 }); }, "hidden"],
+    ["logic eval", async (t) => {
+      await t.app.view.testId("sheet").count();
+      await t.app.logic.eval(() => { throw new Error("backend said no"); });
+    }, "none"],
+    ["plain throw", async (t) => {
+      await t.app.view.testId("sheet").count();
+      throw new Error("the spec's own check");
+    }, "none"],
+    ["caught locator failure", async (t) => {
+      await t.reject(() => t.app.view.testId("missing").textContent());
+      throw new Error("a later failure");
+    }, "none"],
+    ["bound current page", async (t) => {
+      const page = await t.app.page();
+      await page.view.testId("sheet").click({ timeout: 80 });
+    }, "hidden"],
+    ["bound action off the current page", async (t) => {
+      const home = await t.app.page();
+      await t.app.nav.to({ page: "other" });
+      await home.view.testId("sheet").click({ timeout: 80 });
+    }, "elsewhere"],
+    ["bound assertion off the current page", async (t) => {
+      const home = await t.app.page();
+      await t.app.nav.to({ page: "other" });
+      await expect(home.view.testId("sheet")).toBeVisible({ timeout: 80 });
+    }, "elsewhere"],
+  ];
+  for (const [name, body, expected] of cases) {
+    reset();
+    const world = createWorld();
+    world.add({ testId: "sheet", id: "sheet", visible: false, text: "" });
+    hidePage(world);
+    installFakeHost(world);
+    spec(name, body);
+    const report = await run();
+    const failed = report.cases[0];
+    assert.equal(failed.status, "failed", name);
+    const page = failed.error.page;
+    assert.ok(page, `${name}: the failure names the current page`);
+    if (expected === "hidden") assert.match(page.hidden ?? "", /page looked hidden or paused/, name);
+    if (expected === "none") assert.equal(page.hidden, undefined, name);
+    if (expected === "elsewhere") {
+      const bound = world.stack[0].instanceId;
+      assert.notEqual(page.instanceId, bound, name);
+      assert.equal(page.hidden, `the locator's page #${bound} was not the current page`, name);
+    }
+  }
+});
+
 test("app.page() binds locators, eval, screenshot and scroll to an instance; calls cannot change the target", async () => {
   const world = createWorld();
   world.add({ testId: "todo-input" });
@@ -572,14 +770,17 @@ test("app.page() binds locators, eval, screenshot and scroll to an instance; cal
     await t.app.nav.to({ page: "other" });
     await todo.testId("todo-input").fill("milk");
     await expect(todo.testId("todo-input")).toHaveValue("milk");
-    assert.throws(() => todo.testId("todo-input", { page: "other" }), /bound page/);
+    assert.throws(() => todo.testId("todo-input", { page: "other" }), /takes no options/);
     await todo.eval(({ document }) => document.title);
-    assert.throws(() => todo.eval({ page: "cart" }, ({ document }) => document.title), /bound page/);
+    assert.throws(() => todo.eval({ page: "cart" }, ({ document }) => document.title), /page is not an eval option/);
     await todo.screenshot();
     await t.app.view.screenshot();
+    await todo.scroll({ dy: 10 });
+    await t.app.view.scroll({ dy: 10 });
+    assert.throws(() => todo.scroll({ page: "cart" }), /takes no page option/);
     await t.reject(() => t.app.page({ name: "" }), { message: /non-empty name or instanceId/ });
-    await t.app.nav.to({ page: "todo" });
-    await t.reject(() => t.app.page({ name: "todo" }), { message: /ambiguous; select an instanceId/ });
+    await t.reject(() => t.app.page({ name: "todo", instanceId: instanceId }), { message: /exactly one/ });
+    await t.reject(() => t.app.page({ name: "todo" }, { timeout: 0 }), { message: /positive number of ms/ });
   });
 
   const report = await run();
@@ -589,4 +790,55 @@ test("app.page() binds locators, eval, screenshot and scroll to an instance; cal
   assert.ok(world.evaluatedPages.includes(instanceId));
   assert.ok(!world.evaluatedPages.includes("cart"));
   assert.deepEqual(shots, [instanceId, undefined]);
+  assert.deepEqual(world.pageTargets.filter(([method]) => method === "scroll"), [["scroll", instanceId], ["scroll", undefined]]);
+});
+
+test("app.page() waits for a page to open, times out naming it, refuses an ambiguous name, and rejects once its instance is gone", async () => {
+  const world = createWorld();
+  world.add({ testId: "title", page: "home", text: "Home" });
+  world.add({ testId: "title", page: "detail", text: "Detail" });
+  installFakeHost(world);
+  const seen = {};
+  spec("binding", { forensics: false }, async (t) => {
+    // Opens later: the bind waits for it.
+    setTimeout(() => { void world.app.nav.to({ page: "detail" }); }, 60);
+    const started = Date.now();
+    const detail = await t.app.page({ name: "detail" }, { timeout: 2_000 });
+    seen.waited = Date.now() - started;
+    seen.detailName = detail.name;
+    const home = await t.app.page({ name: "home" });
+    // Each view reads its own instance; t.app.view reads whichever is current.
+    seen.titles = [await home.view.testId("title").textContent(), await detail.view.testId("title").textContent(),
+      await t.app.view.testId("title").textContent()];
+    // Never opens: the bind times out naming it.
+    seen.timeout = await t.reject(() => t.app.page({ name: "settings" }, { timeout: 120 }), { code: "E_TIMEOUT" });
+    // A second live instance of the name is ambiguous; its instance id is not.
+    await t.app.nav.to({ page: "detail" });
+    const second = await t.app.page();
+    seen.ambiguous = await t.reject(() => t.app.page({ name: "detail" }));
+    seen.byId = (await t.app.page({ instanceId: second.instanceId })).instanceId === second.instanceId;
+    // The handle never follows navigation: once its instance is gone, calls reject.
+    await t.app.nav.back();
+    seen.current = (await t.app.nav.current()).instanceId;
+    seen.gone = await t.reject(() => second.view.testId("title").textContent(), { code: "E_PAGE_NOT_ACTIVE" });
+    seen.goneData = await t.reject(() => second.data(), { message: `page instance #${second.instanceId} is gone` });
+    seen.goneAction = await t.reject(() => second.actions.save(), { code: "E_PAGE_NOT_ACTIVE" });
+    seen.goneBind = await t.reject(() => t.app.page({ instanceId: second.instanceId }, { timeout: 60 }), { code: "E_TIMEOUT" });
+    seen.detailStill = await detail.view.testId("title").textContent();
+    seen.ids = [detail.instanceId, second.instanceId];
+  });
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases[0]?.error));
+  assert.ok(seen.waited >= 40, String(seen.waited));
+  assert.equal(seen.detailName, "detail");
+  assert.deepEqual(seen.titles, ["Home", "Detail", "Detail"]);
+  assert.match(seen.timeout.message, /^Timed out after \d+ms waiting for page "settings" to open/);
+  assert.equal(seen.timeout.name, "TimeoutError");
+  assert.match(seen.ambiguous.message, new RegExp(`page "detail" has 2 live instances \\(#${seen.ids[0]}, #${seen.ids[1]}\\); select one by instanceId`));
+  assert.equal(seen.byId, true);
+  assert.equal(seen.current, seen.ids[0]);
+  assert.match(seen.goneBind.message, new RegExp(`waiting for page instance #${seen.ids[1]} to open`));
+  assert.equal(seen.detailStill, "Detail");
+  const bind = report.cases[0].steps.filter((step) => step.name === "page.bind").map((step) => step.detail);
+  assert.ok(bind.includes("detail"), JSON.stringify(bind));
 });

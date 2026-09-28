@@ -1,4 +1,4 @@
-import { rawAutomation } from '@lingxia/test';
+import { rawAutomation } from '@lingxia/test/runner';
 
 // The automation root is an import; `lx` in a spec program means only the app's.
 void rawAutomation().lxapp().network;

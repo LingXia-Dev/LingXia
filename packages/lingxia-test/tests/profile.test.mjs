@@ -68,15 +68,32 @@ test("restoreProfile rolls a spec's writes back before the next spec", async () 
   assert.equal(profile.checkpoints.size, 0);
   // The checkpoint is taken before the implied relaunch.
   assert.equal(profile.calls[0][1], 0);
-  assert.ok(world.navCalls.some(([name]) => name === "relaunch"), "restoreProfile implies fresh");
+  assert.deepEqual(world.navCalls.filter(([name]) => name === "relaunch"), [["relaunch", { page: "home", waitUntil: "ready" }]],
+    "restoreProfile relaunches on the home page");
   const traced = report.cases[0].steps.map((step) => step.name);
   assert.ok(traced.includes("profile.checkpoint") && traced.includes("profile.restore"));
+});
+
+test("restoreProfile relaunches on the spec's start page, after the checkpoint", async () => {
+  const world = createWorld();
+  const profile = fakeProfile(world);
+  installFakeHost(world);
+  let landed;
+  spec("on detail", { restoreProfile: true, start: { page: "detail", query: { id: "d1" } } }, async (t) => {
+    landed = (await t.app.nav.current()).name;
+  });
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  assert.equal(landed, "detail");
+  assert.deepEqual(world.navCalls, [["relaunch", { page: "detail", query: { id: "d1" }, waitUntil: "ready" }]]);
+  assert.equal(profile.calls[0][0], "checkpoint");
+  assert.equal(profile.calls[0][1], 0, "the checkpoint is taken before the relaunch");
 });
 
 test("a failed rollback stops the run instead of leaking data", async () => {
   const world = createWorld();
   const profile = fakeProfile(world, { failRestore: true });
-  installFakeHost(world);
+  const { events } = installFakeHost(world);
   let secondRan = false;
 
   spec("writes", { restoreProfile: true }, async () => {});
@@ -88,8 +105,36 @@ test("a failed rollback stops the run instead of leaking data", async () => {
   assert.equal(report.cases[0].status, "failed");
   assert.equal(report.cases[0].error.phase, "defer");
   assert.equal(report.cases[1].status, "skipped");
-  assert.match(report.cases[1].reason, /restoreProfile/);
+  assert.match(report.cases[1].reason, /^Not run: "writes" could not roll the app's data back \(restoreProfile\); a later spec would run on its data\. Restart the run\.$/);
   assert.equal(profile.checkpoints.size, 0, "the failed rollback's checkpoint is dropped too");
+  const stopped = events.filter((event) => event.type === "diagnostic" && event.phase === "run_stopped");
+  assert.equal(stopped.length, 1, JSON.stringify(events.filter((event) => event.type === "diagnostic")));
+  assert.equal(stopped[0].message, `"writes" could not roll the app's data back (restoreProfile); a later spec would run on its data. The remaining specs are not run.`);
+});
+
+test("an abandoned restoreProfile spec stops the run with the abandon reason, not a rollback failure", async () => {
+  const world = createWorld();
+  const profile = fakeProfile(world);
+  const { events } = installFakeHost(world);
+  let secondRan = false;
+
+  spec("hangs", { restoreProfile: true, timeout: 40, forensics: false }, async () => {
+    setInterval(() => {}, 100);
+    await new Promise(() => {});
+  });
+  spec("would see its data", async () => { secondRan = true; });
+
+  const report = await run();
+  assert.equal(secondRan, false);
+  assert.deepEqual(report.cases.map((item) => item.status), ["timeout", "skipped"]);
+  // Its cleanup, the rollback included, never ran: the body is still running.
+  assert.ok(!profile.calls.some(([name]) => name === "restore"));
+  assert.match(report.cases[1].reason, /^Not run: "hangs" left its timed-out body pending: .*interval setInterval 100ms/);
+  assert.doesNotMatch(report.cases[1].reason, /could not roll the app's data back/);
+  const stopped = events.filter((event) => event.type === "diagnostic" && event.phase === "run_stopped");
+  assert.equal(stopped.length, 1, JSON.stringify(events.filter((event) => event.type === "diagnostic")));
+  assert.match(stopped[0].message, /^"hangs" left its timed-out body pending: .*The run stopped: abandoned code can resume/);
+  assert.doesNotMatch(stopped[0].message, /roll the app's data back/);
 });
 
 test("restoreProfile outside an isolated run fails before the body", async () => {

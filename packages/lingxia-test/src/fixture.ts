@@ -28,6 +28,7 @@ import {
   type LocatorResolve,
   type PageLike,
   type QueryMatch,
+  type LocatorTarget,
 } from "./locator.js";
 import type {
   ArgOptions,
@@ -35,7 +36,6 @@ import type {
   Fixture,
   Locator,
   LocatorMatchers,
-  LocatorOptions,
   TestAutomation,
   RejectExpected,
   RetryMatchers,
@@ -43,12 +43,9 @@ import type {
   TestApp,
   PageContract,
   PageSelector,
+  PageBindOptions,
   TestPage,
-  JsonValue,
   EvalOptions,
-  LogicCallOptions,
-  LogicDataOptions,
-  ViewEvalOptions,
   LogicScope,
   ProfileCheckpoint,
   ProfileFixture,
@@ -76,7 +73,7 @@ import {
   MAX_EVAL_BUDGET_MS,
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
-import type { HostRunAutomation as Automation, LxAppDriver, NavDriver, PageDriver, PageTarget } from "@lingxia/types/automation";
+import type { HostRunAutomation as Automation, LxAppDriver, NavDriver, PageDriver, PageInfo, PageTarget } from "@lingxia/types/automation";
 
 export { TimeoutError };
 
@@ -130,6 +127,10 @@ export class LiveFixture implements Fixture {
   failurePhase: FailurePhase | null = null;
   /** The last recorded action that failed, and the error it failed with. */
   failedAction: { action: string; error: unknown } | undefined;
+  /** Locator assertions that timed out, by error: the page instance they were bound to. */
+  readonly locatorFailures = new WeakMap<object, string | null>();
+  /** Instance ids `t.app.page()` bound, so a trace detail's `#id` is not read from a CSS selector. */
+  readonly boundPages = new Set<string>();
   /** Set by `t.skip()`; survives a body that catches the signal. */
   skipReason: string | undefined;
   private readonly stepStack: StepRecord[] = [];
@@ -189,10 +190,9 @@ export class LiveFixture implements Fixture {
   }
 
   get scenario(): Fixture["scenario"] {
-    return { use: (definition, options) => {
-      const ref = options?.app === undefined ? this.pinned : this.refFor(options.app);
-      return installScenario(() => ref.driver, this, this.scenarioScope, definition, options?.variant);
-    } };
+    const ref = this.pinned;
+    return { use: (definition, options) =>
+      installScenario(() => ref.driver, this, this.scenarioScope, definition, options?.variant) };
   }
 
   get raw(): LxAppDriver {
@@ -618,7 +618,7 @@ export class LiveFixture implements Fixture {
    */
   pendingCalls(): PendingWork[] {
     return [...this.inFlight].map((call) => ({
-      kind: /^(logic|view)\.(eval|data|call)$/.test(call.name) ? "eval" as const : "action" as const,
+      kind: /^(?:logic|view)\.eval$|^page\.data$/.test(call.name) ? "eval" as const : "action" as const,
       detail: call.detail ? `${call.name} ${call.detail}` : call.name,
       owner: this.specId,
       at_ms: call.started - this.startedAt,
@@ -861,7 +861,8 @@ export class LiveFixture implements Fixture {
     const driver = () => ref.driver;
     const input = lazyDriver(() => ({ owner: driver().page, value: driver().page }), fixture, "window.") as PageDriver;
     return {
-      page: <C extends PageContract>(selector?: PageSelector) => this.bindPage<C>(driver, selector),
+      page: <C extends PageContract>(selector?: PageSelector, options?: PageBindOptions) =>
+        this.bindPage<C>(driver, selector, options),
       view: this.wrapView(() => driver().page, undefined),
       window: {
         get pointer() { return input.pointer; },
@@ -923,60 +924,80 @@ export class LiveFixture implements Fixture {
   private bindPage<C extends PageContract>(
     driver: () => LxAppDriver,
     selector?: PageSelector,
+    options?: PageBindOptions,
   ): Promise<TestPage<C>> {
+    if (selector !== undefined) {
+      const keys = [selector?.name, selector?.instanceId].filter(value => value !== undefined);
+      if (keys.length !== 1 || typeof keys[0] !== "string" || keys[0].trim() === "") {
+        return Promise.reject(new TypeError("t.app.page(selector): select exactly one non-empty name or instanceId"));
+      }
+    }
+    const timeout = options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
+    if (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0) {
+      return Promise.reject(new TypeError("t.app.page(selector, { timeout }) takes a positive number of ms"));
+    }
+    const wanted = selector === undefined ? "the current page" : selector.name !== undefined
+      ? `page ${JSON.stringify(selector.name)}` : `page instance #${selector.instanceId}`;
     return this.act("page.bind", summarise(selector), async () => {
-      if (selector !== undefined) {
-        const keys = [selector.name, selector.instanceId].filter(value => value !== undefined);
-        if (keys.length !== 1 || typeof keys[0] !== "string" || keys[0].trim() === "") {
-          throw new TypeError("page.bind: select exactly one non-empty name or instanceId");
-        }
-      }
+      // Capture this app driver: reopening the app must not retarget the handle.
       const app = driver();
-      const info = await (selector
-        ? app.nav.info({ page: selector.instanceId ?? selector.name })
-        : app.nav.current());
-      const instanceId = info?.instanceId;
-      if (!instanceId) throw new Error("page.bind: no live page instance matches the selector");
+      const deadline = new ActionDeadline(timeout, this.budgetRoom());
+      let info: PageInfo | undefined;
+      let last = "not open";
+      for (;;) {
+        try {
+          const found = await (selector
+            ? app.nav.info({ page: selector.instanceId ?? selector.name })
+            : app.nav.current());
+          if (found?.instanceId) { info = found; break; }
+          last = "no live instance";
+        } catch (error) {
+          // Not open yet is "not yet"; an unknown page name is an answer.
+          if (!matchesErrorCode(error, "E_PAGE_NOT_ACTIVE") && !isTransientTransportError(error)) throw error;
+          last = error instanceof Error ? error.message : String(error);
+        }
+        if (deadline.expired()) {
+          throw new TimeoutError(`Timed out after ${deadline.elapsed()}ms waiting for ${wanted} to open: ${last}.` +
+            (deadline.clampNote() ? `\n${deadline.clampNote()}` : ""));
+        }
+        await sleep(Math.min(DEFAULT_POLL_INTERVAL_MS, Math.max(1, deadline.remaining())));
+      }
+      const instanceId = info.instanceId!;
       if (selector?.name !== undefined) {
-        const matches = (await app.nav.stack()).filter(page => page.path === info.path);
+        const matches = (await app.nav.stack()).filter(page => page.path === info!.path && page.instanceId);
         if (matches.length > 1) {
-          throw new Error(`page.bind: ${selector.name} is ambiguous; select an instanceId`);
+          throw new Error(`t.app.page: ${wanted} has ${matches.length} live instances ` +
+            `(${matches.map(page => `#${page.instanceId}`).join(", ")}); select one by instanceId`);
         }
       }
-      // Capture this app driver too: reopening the app must not retarget the handle.
+      this.boundPages.add(instanceId);
       const view = this.wrapView(() => app.page, instanceId);
       const actions = new Proxy(Object.create(null), {
         get: (_, name) => {
           if (typeof name !== "string" || name === "then") return undefined;
           return (...args: unknown[]) => {
+            if (args.length > 1) {
+              return Promise.reject(new TypeError(`page.actions.${name} takes at most one JSON payload`));
+            }
             checkJsonArgs(args, `page.actions.${name}`);
-            return this.viewEval(() => app.page, [
-              { timeout: Math.max(1, this.budgetRoom()) },
-              async ({ window }: { window: unknown }, method: string, payload: unknown[]) => {
-                const target = window as {
-                  __pageBridge?: { __names?: string[]; __modes?: Record<string, string> };
-                  LingXiaBridge?: { raw: { call(name: string, payload: unknown, options: { timeoutMs: number }): Promise<unknown> } };
-                };
-                if (!target.__pageBridge?.__names?.includes(method)) {
-                  throw new Error(`Unknown public page action: ${method}`);
-                }
-                if (target.__pageBridge.__modes?.[method] !== "call") {
-                  throw new Error(`Page action ${method} is not a unary action`);
-                }
-                if (payload.length > 1) throw new TypeError(`Page action ${method} accepts at most one payload`);
-                if (!target.LingXiaBridge) throw new Error("Page bridge is not ready");
-                return await target.LingXiaBridge.raw.call(method, payload[0], { timeoutMs: 0 });
-              },
-              name, args,
-            ], `page.actions.${name}`, instanceId);
+            // The app's own action failed: no spec source was sent, so no
+            // closure explanation applies.
+            return this.act("page.action", `${name} #${instanceId}`, () => app.page.action({
+              page: instanceId, name, ...(args.length > 0 ? { payload: args[0] } : {}),
+              timeoutMs: Math.max(1, Math.floor(this.budgetRoom())),
+            }));
           };
         },
       });
       return {
-        instanceId, view, actions,
-        data: () => this.act("page.data", instanceId, () => this.evalLogic(app, {
-          script: logicScript(({ getPage }: LogicScope, id: string) => getPage(id).data, [instanceId], "page.data", "snapshot"),
-        })),
+        instanceId,
+        name: info.name ?? info.path,
+        view,
+        actions,
+        data: () => this.act("page.data", `#${instanceId}`, () =>
+          remote("page.data", "logic", () => this.evalLogic(app, {
+            script: logicScript(readPageData, [instanceId], "page.data", "snapshot"),
+          }))),
       } as TestPage<C>;
     });
   }
@@ -999,39 +1020,12 @@ export class LiveFixture implements Fixture {
       eval: (...input: unknown[]) => {
         const { options, fn, args } = evalInput(input);
         if (typeof fn !== "function") {
-          throw new TypeError("t.app.logic.eval(fn, ...args) takes a function; a script string is for the raw driver (rawAutomation().lxapp().eval({ script }) from @lingxia/test)");
+          throw new TypeError("t.app.logic.eval(fn, ...args) takes a function; a script string is for the raw driver (rawAutomation().lxapp().eval({ script }) from @lingxia/test/runner)");
         }
         const script = logicScript(fn, args, "t.app.logic.eval");
         const timeoutMs = this.evalTimeout(options, "t.app.logic.eval");
         return this.act("logic.eval", summarise(functionDetail(fn)), () =>
           remote("t.app.logic.eval", "logic", () => this.evalLogic(driver(), { script, timeoutMs })));
-      },
-      data: (options?: LogicDataOptions) => {
-        const target = options?.page;
-        return this.act("logic.data", target ?? "", async () => {
-          const path = target === undefined ? undefined : await pagePath(driver(), target);
-          const script = logicScript(readPageData, [target ?? null, path ?? null], "t.app.logic.data", "snapshot");
-          return remote("t.app.logic.data", "logic", () => this.evalLogic(driver(), { script }));
-        });
-      },
-      call: (...input: unknown[]) => {
-        const [first, ...rest] = input;
-        const options = first !== null && typeof first === "object" ? first as LogicCallOptions : undefined;
-        const [method, ...args] = options ? rest : input;
-        if (typeof method !== "string" || method.length === 0) {
-          throw new TypeError("t.app.logic.call([options,] method, ...args) needs a method name");
-        }
-        if (options?.wait !== undefined && typeof options.wait !== "boolean") {
-          throw new TypeError("t.app.logic.call({ wait }, method) takes a boolean");
-        }
-        checkJsonArgs(args, "t.app.logic.call");
-        const timeoutMs = this.evalTimeout(options, "t.app.logic.call");
-        const wait = options?.wait !== false;
-        return this.act("logic.call", wait ? method : `${method} (not awaited)`, async () => {
-          const script = logicScript(callPageMethod, [method, args as JsonValue[], wait], "t.app.logic.call");
-          const value = await remote("t.app.logic.call", "logic", () => this.evalLogic(driver(), { script, timeoutMs }));
-          return wait ? value : undefined;
-        });
       },
     } as TestLogic;
   }
@@ -1068,21 +1062,18 @@ export class LiveFixture implements Fixture {
   /**
    * The driver's own eval default is a flat few seconds, so a call that runs
    * long under load fails a spec that still had most of its budget left. An
-   * eval gets a share of the spec's budget instead — a third, capped — never
-   * all of it: a call allowed to run the full budget leaves the spec no room
-   * to retry, so one stalled call takes the whole spec down with it.
+   * eval gets `MAX_EVAL_BUDGET_MS` instead, clamped to what the spec has left.
    */
   private withEvalBudget<T extends { timeoutMs?: number }>(options: T): T {
     if (options && typeof options === "object" && options.timeoutMs === undefined) {
-      const share = Math.floor(this.specBudgetMs / 3);
-      return { ...options, timeoutMs: Math.max(1, Math.min(share, MAX_EVAL_BUDGET_MS)) };
+      return { ...options, timeoutMs: Math.max(1, Math.floor(Math.min(MAX_EVAL_BUDGET_MS, this.budgetRoom()))) };
     }
     return options;
   }
 
   /**
    * An eval's own `timeout`, clamped to the spec's remaining budget; without
-   * one, `withEvalBudget` picks the default share.
+   * one, `withEvalBudget` picks the default.
    */
   private evalTimeout(options: EvalOptions | undefined, api: string): number | undefined {
     const timeout = options?.timeout;
@@ -1094,27 +1085,20 @@ export class LiveFixture implements Fixture {
   }
 
   private viewEval(page: () => PageDriver, input: unknown[], api: string, bound?: string): Promise<unknown> {
-    const parsed = evalInput<ViewEvalOptions>(input);
-    const { fn, args } = parsed;
-    if (bound !== undefined && parsed.options?.page !== undefined && parsed.options.page !== bound) {
-      throw new TypeError("A bound page cannot target another page");
-    }
-    const options = bound === undefined || parsed.options?.page !== undefined
-      ? parsed.options
-      : { ...parsed.options, page: bound };
+    const { options, fn, args } = evalInput(input);
     if (typeof fn !== "function") {
-      throw new TypeError(`${api}(fn, ...args) takes a function; a script string is for the raw driver (rawAutomation().lxapp().page.eval({ script }) from @lingxia/test)`);
+      throw new TypeError(`${api}(fn, ...args) takes a function; a script string is for the raw driver (rawAutomation().lxapp().page.eval({ script }) from @lingxia/test/runner)`);
     }
-    if (options?.page !== undefined && typeof options.page !== "string") {
-      throw new TypeError(`${api}({ page }, fn, ...args) takes a page name or instance id`);
+    if (options && "page" in options) {
+      throw new TypeError(`${api}: page is not an eval option; bind the page with t.app.page({ name }) and use its view`);
     }
     const script = pageScript(fn, args, api);
     const timeoutMs = this.evalTimeout(options, api);
     const detail = summarise(functionDetail(fn));
-    return this.act("view.eval", options?.page ? `${options.page} ${detail}` : detail, () =>
+    return this.act("view.eval", bound ? `#${bound} ${detail}` : detail, () =>
       remote(api, "page", () => page().eval(this.withEvalBudget<{ script: string; page?: string; timeoutMs?: number }>({
         script,
-        ...(options?.page ? { page: options.page } : {}),
+        ...(bound ? { page: bound } : {}),
         ...(timeoutMs !== undefined ? { timeoutMs } : {}),
       }))));
   }
@@ -1135,21 +1119,33 @@ export class LiveFixture implements Fixture {
       eval: (options) => page().eval(options),
     };
     const input = lazyDriver(() => ({ owner: page() as object, value: page() }), this, "page.") as PageDriver;
-    const target = <T extends PageTarget>(options?: T): T | undefined => {
-      if (bound !== undefined && options?.page !== undefined && options.page !== bound) {
-        throw new TypeError("A bound page cannot target another page");
+    const target = bound === undefined ? {} : { page: bound };
+    const noOptions = (api: string, options: unknown) => {
+      if (options !== undefined) {
+        throw new TypeError(`${api}() takes no options: bind another page with t.app.page({ name }) and use its view`);
       }
-      return bound === undefined ? options : { ...options, page: bound } as T;
     };
     return {
-      testId: (id: string, options?: LocatorOptions) => this.locator(lazyPage, testIdSelector(id), location(), target(options)),
-      css: (selector: string, options?: LocatorOptions) => this.locator(lazyPage, selector, location(), target(options)),
-      eval: ((...args: unknown[]) => this.viewEval(page, args, "t.app.view.eval", bound)) as TestView["eval"],
-      screenshot: (options?: PageTarget) => {
-        const shot = target(options);
-        return this.act("page.screenshot", summarise(shot), () => this.readRetrying(() => page().screenshot(shot)));
+      testId: (id: string, options?: unknown) => {
+        noOptions("view.testId", options);
+        return this.locator(lazyPage, testIdSelector(id), location(), target);
       },
-      scroll: (options) => input.scroll(target(options)),
+      css: (selector: string, options?: unknown) => {
+        noOptions("view.css", options);
+        return this.locator(lazyPage, selector, location(), target);
+      },
+      eval: ((...args: unknown[]) => this.viewEval(page, args, bound ? "page.view.eval" : "t.app.view.eval", bound)) as TestView["eval"],
+      screenshot: (options?: unknown) => {
+        noOptions("view.screenshot", options);
+        return this.act("page.screenshot", bound ? `#${bound}` : "", () =>
+          this.readRetrying(() => page().screenshot(bound ? target : undefined)));
+      },
+      scroll: (options) => {
+        if (options && "page" in options) {
+          throw new TypeError("view.scroll() takes no page option: bind another page with t.app.page({ name }) and use its view");
+        }
+        return input.scroll({ ...options, ...target });
+      },
     };
   }
 
@@ -1157,7 +1153,7 @@ export class LiveFixture implements Fixture {
     page: PageLike,
     selector: string,
     location: SourceLocation,
-    options?: LocatorOptions,
+    options?: LocatorTarget,
   ): Locator {
     this.usedPage = true;
     return new PageLocator(
@@ -1290,6 +1286,7 @@ export class LiveFixture implements Fixture {
         location,
         lastError,
         extra: miss,
+        locator: locator instanceof PageLocator ? locator.boundPage : null,
       });
     }), `expect(${target}).${assertion}`);
   }
@@ -1367,6 +1364,8 @@ export class LiveFixture implements Fixture {
     lastError: unknown;
     extra?: string;
     clampNote?: string;
+    /** A locator assertion: the instance id it is bound to, `null` for the current page. */
+    locator?: string | null;
   }): AssertionError {
     const where = displayLocation(input.location.source, input.location.line, input.location.column);
     const last =
@@ -1392,7 +1391,9 @@ export class LiveFixture implements Fixture {
       actual: formatValue(input.actual),
       passed: false,
     });
-    return new AssertionError(input.matcher, input.actual, input.expected, lines.join("\n"));
+    const error = new AssertionError(input.matcher, input.actual, input.expected, lines.join("\n"), "E_TIMEOUT");
+    if (input.locator !== undefined) this.locatorFailures.set(error, input.locator);
+    return error;
   }
 }
 
@@ -1476,50 +1477,11 @@ async function remote<T>(api: string, target: RemoteTarget, op: () => Promise<T>
   }
 }
 
-/** A configured page name to its path, so Logic can match `page.route`. */
-async function pagePath(driver: LxAppDriver, page: string): Promise<string | undefined> {
-  try {
-    const pages = await driver.pages();
-    return pages.find((entry) => entry.name === page)?.path;
-  } catch {
-    return undefined;
-  }
-}
-
-// The two functions below are sent to app Logic as source text: they must
-// stay self-contained.
-
-function readPageData(scope: LogicScope, name: string | null, path: string | null): unknown {
-  const pages = scope.getCurrentPages();
-  const norm = (route: string) => String(route).replace(/^\/+/, "").split("?")[0];
-  const page = name === null
-    ? pages[pages.length - 1]
-    : pages.slice().reverse().find((candidate) => {
-      const route = norm(candidate.route);
-      return route === norm(name) || (path !== null && route === norm(path));
-    });
-  if (!page) {
-    const open = pages.map((candidate) => candidate.route).join(", ") || "none";
-    throw new Error(name === null
-      ? "t.app.logic.data: no page is open"
-      : `t.app.logic.data: page ${JSON.stringify(name)} is not in the page stack (open: ${open})`);
-  }
+// Sent to app Logic as source text: it must stay self-contained.
+function readPageData(scope: LogicScope, instanceId: string): unknown {
+  const page = scope.getPage(instanceId);
+  if (!page) throw new Error(`page.data: page instance #${instanceId} is gone`);
   return page.data;
-}
-
-async function callPageMethod(scope: LogicScope, method: string, args: unknown[], wait: boolean): Promise<unknown> {
-  const pages = scope.getCurrentPages();
-  const page = pages[pages.length - 1];
-  if (!page) throw new Error("t.app.logic.call: no page is open");
-  const member = page[method];
-  if (typeof member !== "function") {
-    throw new Error(`t.app.logic.call: page ${JSON.stringify(page.route)} has no method ${JSON.stringify(method)}`);
-  }
-  const result = member.apply(page, args);
-  if (wait) return await result;
-  // Not awaited: a later rejection is the app's to log, never the spec's.
-  Promise.resolve(result).catch((error: unknown) => console.error(`t.app.logic.call ${method}:`, error));
-  return null;
 }
 
 function resolveLocator(
@@ -1647,7 +1609,7 @@ function matchLocator(
 const NAV_READY_TIMEOUT_MS = 15_000;
 
 /** Actions that reach a page of the app. */
-const PAGE_ACTION = /^(?:page|view|nav)\.|^logic\.(?:data|call)$/;
+const PAGE_ACTION = /^(?:page|view|nav)\./;
 
 /** A nav wait as the driver takes it. */
 interface DriverNavWait {

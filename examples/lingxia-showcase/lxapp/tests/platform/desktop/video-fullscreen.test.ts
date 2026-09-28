@@ -54,8 +54,6 @@ fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
   ));
   const fullscreenWindows = async (): Promise<DesktopWindowInfo[]> => (await desktop.windows())
     .filter((window) => window.visible && coversADisplay(window));
-  const eventLog = () => app.view.testId('video-event', { page: 'video' }).query()
-    .then((element) => (element.exists ? element.text : ''));
 
   const current = await currentPageOrNull(app);
   if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
@@ -105,8 +103,11 @@ fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
     query: { automationFixture: 'video-source', src: `${httpBase}/media/sample.mp4` },
   });
   await waitForCurrentPage(app, 'video');
-  await app.view.testId('video-page', { page: 'video' }).waitFor({ state: 'visible', timeout: 30_000 });
-  await app.view.css(`#${VIDEO_ID}`, { page: 'video' }).first().waitFor({ state: 'visible', timeout: 30_000 });
+  const video = await app.page({ name: 'video' }, { timeout: 30_000 });
+  await video.view.testId('video-page').waitFor({ state: 'visible', timeout: 30_000 });
+  await video.view.css(`#${VIDEO_ID}`).first().waitFor({ state: 'visible', timeout: 30_000 });
+  const eventRow = video.view.testId('video-event');
+  const eventLog = async () => ((await eventRow.count()) > 0 ? eventRow.textContent() : '');
   await eventually(async () => {
     await command('play');
     return eventLog();
@@ -119,7 +120,7 @@ fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
 
   await t.step('requestFullScreen() reports on and presents a display-sized window', async () => {
     await command('requestFullScreen');
-    await waitForElementText(t, 'video', '[data-testid="video-event"]', (text) => text.includes('Fullscreen: on'), 10_000);
+    await waitForElementText(t, video.view, '[data-testid="video-event"]', (text) => text.includes('Fullscreen: on'), 10_000);
     // The physical proof: a window really took a display, not just the event.
     const presented = await eventually(
       async () => (await fullscreenWindows()).filter((window) => !before.has(window.id)),
@@ -131,7 +132,7 @@ fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
 
   await t.step('exitFullScreen() reports off and takes that window down', async () => {
     await command('exitFullScreen');
-    await waitForElementText(t, 'video', '[data-testid="video-event"]', (text) => text.includes('Fullscreen: off'), 10_000);
+    await waitForElementText(t, video.view, '[data-testid="video-event"]', (text) => text.includes('Fullscreen: off'), 10_000);
     await eventually(
       async () => (await fullscreenWindows()).filter((window) => !before.has(window.id)),
       (windows) => windows.length === 0,

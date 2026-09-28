@@ -1,4 +1,4 @@
-import type { Fixture, TestApp } from '@lingxia/test';
+import type { Fixture, TestApp, TestView } from '@lingxia/test';
 import { waitForElementText } from '../helpers/page.js';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, eventually, type Caught } from '../helpers/poll.js';
@@ -27,10 +27,10 @@ async function waitForRefreshState(
   });
 }
 
-async function waitForStatus(t: Fixture, expected: string): Promise<string> {
+async function waitForStatus(t: Fixture, view: TestView, expected: string): Promise<string> {
   return waitForElementText(
     t,
-    'pullToRefresh',
+    view,
     '[data-testid="pull-refresh-status"]',
     (text) => text.includes(expected),
     30_000,
@@ -41,26 +41,26 @@ spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
   const { app } = bindFixture(t, "PULL-001");
 
   await app.nav.relaunch({ page: 'pullToRefresh' });
-  await app.view.testId('pull-refresh-page', { page: 'pullToRefresh' }).waitFor({ timeout: 30_000 });
+  const pull = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
+  await pull.testId('pull-refresh-page').waitFor({ timeout: 30_000 });
 
   const before = await refreshState(app);
-  await app.view.testId("pull-refresh-start", { page: 'pullToRefresh' }).click();
+  await pull.testId("pull-refresh-start").click();
   const refreshing = await waitForRefreshState(
     app,
     (state) => state.refreshing && state.count > before.count,
   );
-  expect(await waitForStatus(t, 'Refreshing')).toContain('Refreshing');
+  expect(await waitForStatus(t, pull, 'Refreshing')).toContain('Refreshing');
+  await expect(pull.testId('pull-refresh-count')).toHaveText(String(refreshing.count));
 
-  const count = await app.view.testId('pull-refresh-count', { page: 'pullToRefresh' }).query();
-  expect(count.exists && Number(count.text)).toBe(refreshing.count);
-
-  await app.view.testId("pull-refresh-stop", { page: 'pullToRefresh' }).click();
+  await pull.testId("pull-refresh-stop").click();
   await waitForRefreshState(app, (state) => !state.refreshing && state.count === refreshing.count);
-  expect(await waitForStatus(t, 'Idle')).toContain('Idle');
+  expect(await waitForStatus(t, pull, 'Idle')).toContain('Idle');
 
   await t.step('start rejects when the current page has not enabled pull-down refresh', async () => {
     await app.nav.relaunch({ page: 'home' });
-    await app.view.testId('home-page', { page: 'home' }).waitFor({ timeout: 30_000 });
+    // The relaunch waited for home to be ready, so it is the current page.
+    await app.view.testId('home-page').waitFor({ timeout: 30_000 });
 
     const rejected: Caught = await app.logic.eval(async ({ lx }) => {
       try {

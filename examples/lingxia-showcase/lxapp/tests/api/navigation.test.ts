@@ -36,15 +36,15 @@ spec("preserve stack, query, redirect, back, and tab semantics", { id: "NAV-001"
 
   await app.nav.to({ page: 'device', query: { type: 'screen' } });
   await waitForCurrent(app, 'device');
-  await app.view.testId('device-page', { page: 'device' }).waitFor({ timeout: 30_000 });
+  const device = await app.page({ name: 'device' });
+  await device.view.testId('device-page').waitFor({ timeout: 30_000 });
   await waitForElementAttribute(
-    t,
-    'device',
+    device.view,
     '[data-testid="device-page"]',
     'data-mode',
     'screen',
   );
-  const mode = await app.view.eval({ page: 'device' }, ({ document }) => document.querySelector('[data-testid="device-page"]')?.getAttribute('data-mode'));
+  const mode = await device.view.eval(({ document }) => document.querySelector('[data-testid="device-page"]')?.getAttribute('data-mode'));
   expect(mode).toBe('screen');
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['home', 'device']);
 
@@ -65,15 +65,16 @@ spec("preserve stack, query, redirect, back, and tab semantics", { id: "NAV-001"
   // inherit the query from the earlier device visit.
   await app.nav.relaunch({ page: 'device' });
   await waitForCurrent(app, 'device');
-  await app.view.testId('device-page', { page: 'device' }).waitFor({ timeout: 30_000 });
+  // The relaunch opened a new device instance: bind it again.
+  const relaunched = await app.page({ name: 'device' });
+  await relaunched.view.testId('device-page').waitFor({ timeout: 30_000 });
   await waitForElementAttribute(
-    t,
-    'device',
+    relaunched.view,
     '[data-testid="device-page"]',
     'data-mode',
     'device',
   );
-  const defaultMode = await app.view.eval({ page: 'device' }, ({ document }) => document.querySelector('[data-testid="device-page"]')?.getAttribute('data-mode'));
+  const defaultMode = await relaunched.view.eval(({ document }) => document.querySelector('[data-testid="device-page"]')?.getAttribute('data-mode'));
   expect(defaultMode).toBe('device');
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['device']);
 });
@@ -197,7 +198,8 @@ async function markWarmApiTab(app: TestApp, marker: string): Promise<PageInfo> {
     (page as unknown as { __relaunchMarker?: string }).__relaunchMarker = marker;
     return true;
   }, marker);
-  await app.view.eval({ page: 'api' }, ({ window }, marker) => {
+  const api = await app.page({ name: 'api' });
+  await api.view.eval(({ window }, marker) => {
     (window as ProbeWindow).__relaunchMarker = marker;
     return true;
   }, marker);
@@ -224,7 +226,9 @@ async function expectFreshApiTab(app: TestApp, stale: PageInfo, landed?: PageInf
     describe: 'the relaunched api page to run onLoad',
   });
   expect(probe).toEqual({ loadCount: 1, logicMarker: null });
-  const windowMarker = await app.view.eval({ page: 'api' }, ({ window }) => (window as ProbeWindow).__relaunchMarker ?? null);
+  const api = await app.page({ name: 'api' });
+  expect(api.instanceId).toBe(current.instanceId);
+  const windowMarker = await api.view.eval(({ window }) => (window as ProbeWindow).__relaunchMarker ?? null);
   expect(windowMarker).toBe(null);
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['api']);
 }
@@ -262,7 +266,8 @@ spec("relaunch onto a warm tab page opens a fresh instance", {
       describe: 'the api tab to run onLoad again',
     });
     expect(probe).toEqual({ loadCount: 1, logicMarker: null });
-    const windowMarker = await app.view.eval({ page: 'api' }, ({ window }) => (window as ProbeWindow).__relaunchMarker ?? null);
+    const api = await app.page({ name: 'api' });
+    const windowMarker = await api.view.eval(({ window }) => (window as ProbeWindow).__relaunchMarker ?? null);
     expect(windowMarker).toBe(null);
   });
 });

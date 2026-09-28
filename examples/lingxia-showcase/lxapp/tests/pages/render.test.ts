@@ -1,4 +1,4 @@
-import type { TestApp } from '@lingxia/test';
+import type { TestView } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { expect, spec } from '@lingxia/test';
 
@@ -28,14 +28,14 @@ function isTransientPageReadinessError(error: unknown): boolean {
 }
 
 async function waitForRenderedFeature(
-  app: TestApp,
+  view: TestView,
   page: string,
   expectedTitle: string,
   expectedText: string | readonly string[],
 ): Promise<DocumentState> {
   const expectedTexts = typeof expectedText === 'string' ? [expectedText] : expectedText;
   const state = await eventually(
-    () => app.view.eval({ page }, ({ document }) => {
+    () => view.eval(({ document }) => {
       const body = document.body;
       if (!body) return null;
       const text = (body.innerText ?? '').trim();
@@ -75,6 +75,8 @@ spec('page manifest matches the running lxapp', async (t) => {
 for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
   spec(`renders showcase feature: ${expectation.page}`, async (t) => {
     const app = t.automation.lxapp(SHOWCASE_APP_ID);
+    // Until the page is bound, a failure shot takes whatever page is current.
+    let view: TestView = app.view;
     try {
       const landed = await app.nav.relaunch({ page: expectation.page });
       expect(landed.name).toBe(expectation.page);
@@ -85,10 +87,11 @@ for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
       const current = await app.nav.current();
       expect(current.name).toBe(expectation.page);
 
-      await app.view.css('body', { page: expectation.page }).first().waitFor({ state: 'attached', timeout: 20_000 });
+      view = (await app.page({ name: expectation.page }, { timeout: 20_000 })).view;
+      await view.css('body').first().waitFor({ state: 'attached', timeout: 20_000 });
 
       const documentState = await waitForRenderedFeature(
-        app,
+        view,
         expectation.page,
         SHOWCASE_PAGE_TITLES[expectation.page],
         expectation.text,
@@ -101,7 +104,7 @@ for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
       expect(ready.ready).toBeTruthy();
     } catch (error) {
       try {
-        const screenshot = await app.view.screenshot({ page: expectation.page });
+        const screenshot = await view.screenshot();
         await attachShot(t, `page-${expectation.page}.png`, {
           mimeType: 'image/png',
           base64: screenshot.base64,

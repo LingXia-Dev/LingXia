@@ -170,20 +170,28 @@ test('page-scoped indexed locators preserve target on every read and input', asy
   }
   world.app.page.press = async options => { calls.push(['press', options]); };
   installFakeHost(world);
+  let editorId;
   spec('scoped input', async t => {
-    const input = t.app.view.testId('field', {page:'editor-instance'}).nth(1);
+    await t.app.nav.to({page:'editor'});
+    const editor = await t.app.page();
+    editorId = editor.instanceId;
+    await t.app.nav.to({page:'other'});
+    calls.length = 0;
+    const input = editor.view.testId('field').nth(1);
     await input.fill('hello');
     await input.press('Enter');
-    const result = await input.query();
-    expect(result.index).toBe(1);
+    expect(await input.inputValue()).toBe('hello');
+    expect(await input.count()).toBe(1);
+    expect(await editor.view.testId('field').count()).toBe(2);
     await expect(input).toHaveValue('hello');
   });
   const report = await run();
-  assert.equal(report.failed,0);
+  assert.equal(report.failed,0, JSON.stringify(report.cases[0]?.error));
   assert.ok(calls.length > 4);
-  assert.ok(calls.every(([, options]) => options.page === 'editor-instance'));
+  assert.ok(calls.every(([, options]) => options.page === editorId), JSON.stringify(calls));
   assert.equal(calls.find(([key]) => key === 'press')[1].index,1);
-  assert.match(report.cases[0].steps[0].detail, /editor-instance.*\[1\]/);
+  const fill = report.cases[0].steps.find(step => step.name === 'page.fill');
+  assert.equal(fill.detail, `#${editorId} [data-testid="field"] [1]`);
 });
 
 test('hidden duplicates remain ambiguous and invalid indexes fail early', async () => {

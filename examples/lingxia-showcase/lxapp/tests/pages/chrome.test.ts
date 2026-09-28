@@ -78,9 +78,10 @@ spec("apply navigationBar title, colors, home button, and reset", {
     }).catch(() => undefined);
   });
 
-  await t.step('drive the ui page presets', async () => {
+  const ui = await t.step('drive the ui page presets', async () => {
     await app.nav.relaunch({ page: 'ui', query: { type: 'navbar' } });
-    await app.view.testId("navbar-preset-blue", { page: 'ui' }).click({ timeout: 30_000 });
+    const page = await app.page({ name: 'ui' }, { timeout: 30_000 });
+    await page.view.testId('navbar-preset-blue').click({ timeout: 30_000 });
     const styled = await waitForNavBar(
       app,
       (state) => state.title === 'Blue Theme'
@@ -89,6 +90,7 @@ spec("apply navigationBar title, colors, home button, and reset", {
       'blue navigationBar preset',
     );
     expect(styled.home_button).toBe('auto');
+    return page;
   });
 
   await t.step('set divider color and hide the home button', async () => {
@@ -109,7 +111,7 @@ spec("apply navigationBar title, colors, home button, and reset", {
   });
 
   await t.step('restore the home button from the page control', async () => {
-    await app.view.testId("navbar-home-auto", { page: 'ui' }).click();
+    await ui.view.testId('navbar-home-auto').click();
     await waitForNavBar(app, (state) => state.home_button === 'auto', 'auto home button');
   });
 
@@ -122,7 +124,7 @@ spec("apply navigationBar title, colors, home button, and reset", {
   });
 
   await t.step('reset title and style with null', async () => {
-    await app.view.testId("navbar-reset", { page: 'ui' }).click();
+    await ui.view.testId('navbar-reset').click();
     await waitForNavBar(
       app,
       (state) => state.title === 'User Interface'
@@ -144,7 +146,8 @@ spec("apply navigationBar title, colors, home button, and reset", {
     await waitForNavBar(app, (state) => state.title === 'Kept Title', 'title before relaunch');
     await app.nav.relaunch({ page: 'ui', query: { type: 'navbar' } });
     await waitForCurrentPage(app, 'ui', 30_000);
-    await app.view.testId('navbar-preset-blue', { page: 'ui' }).waitFor({ state: 'visible', timeout: 30_000 });
+    const relaunched = await app.page({ name: 'ui' });
+    await relaunched.view.testId('navbar-preset-blue').waitFor({ state: 'visible', timeout: 30_000 });
     // Page onLoad sets the demo title again; the style patch is page-scoped and
     // a new instance starts from the manifest unless Logic reapplies it.
     const after = await navigationBar(app);
@@ -171,11 +174,12 @@ spec("round-trip appearance preference through the ui controls", {
   });
 
   await app.nav.relaunch({ page: 'ui', query: { type: 'appearance' } });
-  await app.view.testId('ui-appearance-light', { page: 'ui' }).waitFor({ state: 'visible', timeout: 30_000 });
+  const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
+  await ui.view.testId('ui-appearance-light').waitFor({ state: 'visible', timeout: 30_000 });
 
   for (const preference of ['light', 'dark', 'auto'] as const) {
     await t.step(`set ${preference}`, async () => {
-      await app.view.css(`[data-testid="ui-appearance-${preference}"]`, { page: 'ui' }).click();
+      await ui.view.testId(`ui-appearance-${preference}`).click();
       const state = await eventually(
         () => appearanceOf(app),
         (state) => state.preference === preference && (
@@ -186,7 +190,7 @@ spec("round-trip appearance preference through the ui controls", {
         { describe: `appearance preference ${preference}` },
       );
       await eventually(
-        () => app.view.eval({ page: 'ui' }, ({ document }) =>
+        () => ui.view.eval(({ document }) =>
           document.querySelector('[data-testid="ui-appearance-preference"]')?.textContent ?? ''),
         (text) => text === state.preference,
         { describe: `ui appearance label ${preference}`, timeoutMs: 5_000 },
@@ -212,13 +216,14 @@ spec("round-trip appearance preference through the ui controls", {
   });
 
   await t.step('persist across relaunch', async () => {
-    await app.view.testId("ui-appearance-dark", { page: 'ui' }).click();
+    await ui.view.testId('ui-appearance-dark').click();
     await eventually(() => appearanceOf(app), (state) => state.preference === 'dark', {
       describe: 'dark preference before relaunch',
     });
     await relaunchFromLogic(app, 'ui', { type: 'appearance' });
     await waitForCurrentPage(app, 'ui', 30_000);
-    await app.view.testId('ui-appearance-dark', { page: 'ui' }).waitFor({ state: 'visible', timeout: 30_000 });
+    const relaunched = await app.page({ name: 'ui' });
+    await relaunched.view.testId('ui-appearance-dark').waitFor({ state: 'visible', timeout: 30_000 });
     const after = await appearanceOf(app);
     expect(after.preference).toBe('dark');
     expect(after.resolved).toBe('dark');
@@ -250,33 +255,36 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
   const platform = await runtimePlatform(app);
   const overlays = OVERLAY_SURFACE[platform] ?? 'dom';
 
-  await t.step('show and hide a toast', async () => {
+  // Desktop overlays are drawn in the ui page's own document.
+  const ui = await t.step('show and hide a toast', async () => {
     await app.nav.relaunch({ page: 'ui', query: { type: 'toast' } });
-    await app.view.testId('toast-show', { page: 'ui' }).waitFor({ state: 'visible', timeout: 30_000 });
+    const page = await app.page({ name: 'ui' }, { timeout: 30_000 });
+    await page.view.testId('toast-show').waitFor({ state: 'visible', timeout: 30_000 });
     await app.logic.eval(async ({ lx }) => {
       await lx.showToast({ title: 'Coverage toast', icon: 'none', durationMs: 8000 });
     });
     if (overlays === 'dom') {
-      await app.view.css('.lx-toast-title', { page: 'ui' }).first().waitFor({ state: 'visible', timeout: 30_000 });
-      const shown = await app.view.eval({ page: 'ui' }, ({ document }) =>
+      await page.view.css('.lx-toast-title').first().waitFor({ state: 'visible', timeout: 30_000 });
+      const shown = await page.view.eval(({ document }) =>
         document.querySelector('.lx-toast-title')?.textContent ?? '');
       expect(shown).toBe('Coverage toast');
     } else {
       // A native toast is not in the page; what a caller can rely on is that
       // showing it does not put anything in the page either.
-      const leaked = await app.view.eval({ page: 'ui' }, ({ document }) =>
+      const leaked = await page.view.eval(({ document }) =>
         document.querySelector('.lx-toast-title') ? 'yes' : 'no');
       expect(leaked).toBe('no');
     }
     await app.logic.eval(async ({ lx }) => { await lx.hideToast(); });
     if (overlays === 'dom') {
       await eventually(
-        () => app.view.eval({ page: 'ui' }, ({ document }) =>
+        () => page.view.eval(({ document }) =>
           document.querySelector('.lx-toast-title') ? 'yes' : 'no'),
         (value) => value === 'no',
         { describe: 'toast to disappear after hideToast' },
       );
     }
+    return page;
   });
 
   // A native modal or action sheet only answers a system tap, and this suite
@@ -287,22 +295,22 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
   await t.step('confirm and cancel a modal', async () => {
     const confirmed = app.logic.eval(({ lx }) =>
       lx.showModal({ title: 'Coverage', content: 'Confirm this', showCancel: true, confirmText: 'OK', cancelText: 'Cancel' }));
-    await app.view.css('.lx-modal-btn-confirm', { page: 'ui' }).first().waitFor({ state: 'visible', timeout: 30_000 });
-    await app.view.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
+    await ui.view.css('.lx-modal-btn-confirm').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await ui.view.css('.lx-modal-btn-confirm').click();
     expect((await confirmed).status === 'canceled').toBeFalsy();
 
     const canceled = app.logic.eval(({ lx }) =>
       lx.showModal({ title: 'Coverage', content: 'Cancel this', showCancel: true }));
-    await app.view.css('.lx-modal-btn-cancel', { page: 'ui' }).first().waitFor({ state: 'visible', timeout: 30_000 });
-    await app.view.css('.lx-modal-btn-cancel', { page: 'ui' }).click();
+    await ui.view.css('.lx-modal-btn-cancel').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await ui.view.css('.lx-modal-btn-cancel').click();
     expect((await canceled).status === 'canceled').toBeTruthy();
 
     const noCancel = app.logic.eval(({ lx }) => lx.showModal({ content: 'No cancel', showCancel: false }));
-    await app.view.css('.lx-modal-btn-confirm', { page: 'ui' }).first().waitFor({ state: 'visible', timeout: 30_000 });
-    const cancelCount = await app.view.eval({ page: 'ui' }, ({ document }) =>
+    await ui.view.css('.lx-modal-btn-confirm').first().waitFor({ state: 'visible', timeout: 30_000 });
+    const cancelCount = await ui.view.eval(({ document }) =>
       document.querySelectorAll('.lx-modal-btn-cancel').length);
     expect(cancelCount).toBe(0);
-    await app.view.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
+    await ui.view.css('.lx-modal-btn-confirm').click();
     expect((await noCancel).status === 'canceled').toBeFalsy();
   });
 
@@ -311,32 +319,32 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
       await lx.alert({ title: 'Notice' });
       return 'acknowledged';
     });
-    await app.view.css('.lx-modal-btn-confirm', { page: 'ui' }).first().waitFor({ state: 'visible', timeout: 30_000 });
-    await app.view.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
+    await ui.view.css('.lx-modal-btn-confirm').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await ui.view.css('.lx-modal-btn-confirm').click();
     expect(await alert).toBe('acknowledged');
     const confirmed = app.logic.eval(({ lx }) => lx.confirm({ title: 'Continue?' }));
-    await app.view.css('.lx-modal-btn-confirm', { page: 'ui' }).first().waitFor({ state: 'visible', timeout: 30_000 });
-    await app.view.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
+    await ui.view.css('.lx-modal-btn-confirm').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await ui.view.css('.lx-modal-btn-confirm').click();
     expect(await confirmed).toBe(true);
     const canceled = app.logic.eval(({ lx }) => lx.confirm({ title: 'Continue?' }));
-    await app.view.css('.lx-modal-btn-cancel', { page: 'ui' }).first().waitFor({ state: 'visible', timeout: 30_000 });
-    await app.view.css('.lx-modal-btn-cancel', { page: 'ui' }).click();
+    await ui.view.css('.lx-modal-btn-cancel').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await ui.view.css('.lx-modal-btn-cancel').click();
     expect(await canceled).toBe(false);
   });
 
   await t.step('pick and dismiss an action sheet', async () => {
     const picked = app.logic.eval(({ lx }) =>
       lx.showActionSheet({ items: ['View Details', '查看日志', 'Send Email', '删除'].map((label) => ({ id: label, label })) }));
-    await app.view.css('.lx-as-item', { page: 'ui' }).first().waitFor({ state: 'visible', timeout: 30_000 });
-    await app.view.css('.lx-as-item', { page: 'ui', index: 1 }).click();
+    await ui.view.css('.lx-as-item').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await ui.view.css('.lx-as-item').nth(1).click();
     const selected = await picked;
     expect(selected.status === 'canceled').toBeFalsy();
     expect(selected.status === 'ok' ? selected.id : null).toBe('查看日志');
 
     const dismissed = app.logic.eval(({ lx }) =>
       lx.showActionSheet({ items: ['One', 'Two'].map((label) => ({ id: label, label })) }));
-    await app.view.css('.lx-as-cancel-btn', { page: 'ui' }).first().waitFor({ state: 'visible', timeout: 30_000 });
-    await app.view.css('.lx-as-cancel-btn', { page: 'ui' }).click();
+    await ui.view.css('.lx-as-cancel-btn').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await ui.view.css('.lx-as-cancel-btn').click();
     expect((await dismissed).status === 'canceled').toBeTruthy();
   });
 
@@ -385,17 +393,18 @@ spec("assert tabBar failure codes, resets, and button-driven patches", {
   });
 
   await app.nav.relaunch({ page: 'ui', query: { type: 'tabbar' } });
-  await app.view.testId("tabbar-show", { page: 'ui' }).click({ timeout: 30_000 });
+  const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
+  await ui.view.testId('tabbar-show').click({ timeout: 30_000 });
   await waitForTabBar(app, (state) => state.effective_visible, 'forced tab bar');
 
   await t.step('drive showcase badge and red-dot buttons', async () => {
-    await app.view.testId("tabbar-reddot-show", { page: 'ui' }).click();
+    await ui.view.testId('tabbar-reddot-show').click();
     await waitForTabBar(app, (state) => state.items[1]?.red_dot === true, 'red dot from button');
-    await app.view.testId("tabbar-badge-input", { page: 'ui' }).fill('9');
-    await app.view.testId("tabbar-badge-set", { page: 'ui' }).click();
+    await ui.view.testId('tabbar-badge-input').fill('9');
+    await ui.view.testId('tabbar-badge-set').click();
     await waitForTabBar(app, (state) => state.items[1]?.badge === '9', 'badge from button');
-    await app.view.testId("tabbar-item-text", { page: 'ui' }).fill('API+');
-    await app.view.testId("tabbar-item-update", { page: 'ui' }).click();
+    await ui.view.testId('tabbar-item-text').fill('API+');
+    await ui.view.testId('tabbar-item-update').click();
     await waitForTabBar(app, (state) => state.items[1]?.text === 'API+', 'item text from button');
   });
 

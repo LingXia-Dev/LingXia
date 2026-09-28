@@ -1,6 +1,6 @@
 import { bytesToBase64, utf8ToBase64 } from "./format.js";
 import { PACKAGE_NAME, VERSION } from "./version.js";
-import type { AttemptReclaim, AutomationHost } from "./types.js";
+import type { AttemptReclaim, AutomationHost } from "./host-types.js";
 
 export interface ResolvedHost {
   /** User `--arg`/`--secret-arg` values: what the spec reads with `t.arg()`. */

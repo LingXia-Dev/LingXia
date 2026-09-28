@@ -110,9 +110,10 @@ export function explainRemoteError(error: unknown, api: string, target: RemoteTa
     if (details.code !== undefined) explained.code = details.code;
     if (details.data !== undefined) explained.data = details.data;
   }
-  // A DOM null read can throw TypeError until rendering catches up. JSON
-  // validation errors carry a marker that survives the native error string.
-  if (remoteName === "TypeError" && !message.includes("[E_NON_JSON_VALUE]")) {
+  // A DOM null read can throw TypeError until rendering catches up; in Logic
+  // a TypeError is a programming mistake. JSON validation errors carry a
+  // marker that survives the native error string.
+  if (target === "page" && remoteName === "TypeError" && !message.includes("[E_NON_JSON_VALUE]")) {
     retryableRemoteErrors.add(explained);
   }
   explained.cause = error;

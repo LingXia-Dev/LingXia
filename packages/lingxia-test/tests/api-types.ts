@@ -1,16 +1,28 @@
 import {
-  spec, expect, rawAutomation, TEST_ERROR_CODES, TimeoutError, type JsonValue, type AnyLogicPage, type Fixture, type AutomationErrorCode, type ClockAdvance, type ClockState, type LogicPage, type NetworkCall, type ProfileCheckpoint, type TestApp, type TestErrorCode, type ViewElement,
+  spec, expect, TEST_ERROR_CODES, TimeoutError, type JsonValue, type AnyLogicPage, type Fixture, type AutomationErrorCode, type ClockAdvance, type ClockState, type NetworkCall, type PageContract, type ProfileCheckpoint, type TestApp, type TestErrorCode, type TestPage, type TestView, type UnaryActionsOnly, type ViewElement,
 } from '../dist/index.js';
 import type { FailureRecord, JsonReport, TagSummary } from '@lingxia/test/report';
-import { run, trackPublicSurface, VERSION } from '@lingxia/test/runner';
-import { AUTOMATION_ERROR_CODES, type Automation, type LxAppDriver, type PageDriver, type PageQueryResult } from '@lingxia/types/automation';
+import { run, rawAutomation, trackPublicSurface, VERSION } from '@lingxia/test/runner';
+import { AUTOMATION_ERROR_CODES, type Automation, type LxAppDriver, type PageDriver } from '@lingxia/types/automation';
 
 spec('typed test boundary', async t => {
   const app: TestApp = t.automation.lxapp('example');
-  const input = app.view.testId('input', {page:'editor'}).nth(0);
+  const editor: TestPage<PageContract> = await app.page({ name: 'editor' }, { timeout: 2_000 });
+  editor.instanceId.toUpperCase(); editor.name.toUpperCase();
+  const editorView: TestView = editor.view;
+  const input = editorView.testId('input').nth(0);
   await input.press('Enter');
-  const element: PageQueryResult = await input.query();
-  if (element.exists) element.rect.width.toFixed();
+  // One-shot reads: no wait, no retry.
+  const count: number = await input.count();
+  const visible: boolean = await input.isVisible();
+  const text: string = await input.textContent();
+  const value: string = await input.inputValue();
+  const label: string | null = await input.getAttribute('aria-label');
+  void count; void visible; void text; void value; void label;
+  // @ts-expect-error `query()` is gone: read with count/isVisible/textContent/inputValue/getAttribute.
+  await input.query();
+  // @ts-expect-error getAttribute needs a name.
+  await input.getAttribute();
   const state = await app.logic.eval(() => ({ ready: true }));
   state.ready.valueOf();
   // @ts-expect-error The fixture has no string eval; a script string is for the raw driver.
@@ -19,7 +31,15 @@ spec('typed test boundary', async t => {
   const landed = await app.nav.to({page:'editor', waitUntil:'commit'});
   landed.webviewAttached.valueOf();
   landed.instanceId?.toUpperCase();
-  await t.reject(() => app.view.css('#save', {page:'devices'}).click(), {code:'E_PAGE_NOT_ACTIVE'});
+  await t.reject(async () => (await app.page({ name: 'devices' })).view.css('#save').click(), {code:'E_PAGE_NOT_ACTIVE'});
+  // @ts-expect-error Locators take no page option: bind the page with `app.page({ name })`.
+  app.view.css('#save', {page:'devices'});
+  // @ts-expect-error Nor a match index: use `.nth(i)`.
+  app.view.testId('row', {index:1});
+  // @ts-expect-error A page selector is a name or an instance id, not both.
+  await app.page({ name: 'editor', instanceId: '1' });
+  // @ts-expect-error `app.page()` waits with `timeout`.
+  await app.page({ name: 'editor' }, { timeoutMs: 1_000 });
   await app.nav.back({waitUntil:'ready', timeout:5_000});
   await app.nav.relaunch({page:'editor', timeout:5_000});
   // @ts-expect-error Fixture waits take `timeout`; `timeoutMs` is the raw driver's.
@@ -38,7 +58,7 @@ spec('typed test boundary', async t => {
   await expect(rows.first()).toHaveAttribute('aria-selected', 'true');
   await expect(rows.first()).not.toHaveAttribute('disabled');
   await app.view.css('#save').click({force:true});
-  // @ts-expect-error There is no `t.app.page`: the view holds the locators.
+  // @ts-expect-error `t.app.page` binds a page; its view holds the locators.
   app.page.testId('input');
   // @ts-expect-error Actions do not poll on an interval; assertions do.
   await input.click({interval:10});
@@ -51,10 +71,12 @@ spec('typed test boundary', async t => {
   if (!state.ready) t.skip('not ready');
   // @ts-expect-error Test context has no DOM.
   document.querySelector('button');
-  // @ts-expect-error Queries read once; they do not accept ignored retry options.
-  input.query({timeout:100});
-  // @ts-expect-error Locators require an explicit page string.
-  app.view.css('button', {page:123});
+  // @ts-expect-error Reads are one-shot; they do not accept ignored retry options.
+  input.count({timeout:100});
+  // @ts-expect-error Screenshots take no page option; bind the page.
+  await app.view.screenshot({page:'editor'});
+  // @ts-expect-error Nor does scroll.
+  await app.view.scroll({page:'editor', dy:100});
 });
 
 declare const raw: Automation;
@@ -127,12 +149,15 @@ spec('typed Logic access', async t => {
   value?.toUpperCase();
   const disabled = await t.app.view.eval(({ document }) => document.querySelector('button')?.getAttribute('aria-disabled'));
   disabled?.toUpperCase();
-  const surfaceTitle: string = await t.app.view.eval({ page: 'surface' }, ({ document }, suffix: string) => document.title + suffix, '!');
+  const surface = await t.app.page({ name: 'surface' });
+  const surfaceTitle: string = await surface.view.eval(({ document }, suffix: string) => document.title + suffix, '!');
   surfaceTitle.toUpperCase();
   const slow: number = await t.app.logic.eval({ timeout: 30_000 }, ({ lx }, n: number) => n + lx.env.USER_DATA_PATH.length, 1);
   slow.toFixed();
+  await surface.view.eval({ timeout: 20_000 }, ({ document }) => document.title);
+  // @ts-expect-error `page` is not an eval option: bind the page and use its view.
   await t.app.view.eval({ page: 'surface', timeout: 20_000 }, ({ document }) => document.title);
-  // @ts-expect-error A page target is `{ page }`.
+  // @ts-expect-error Eval options are `{ timeout }`.
   await t.app.view.eval({ css: '#x' }, ({ document }) => document.title);
   // @ts-expect-error ViewDocument is minimal: no DOM writes without the DOM lib.
   await t.app.view.eval(({ document }) => document.write('x'));
@@ -184,37 +209,40 @@ spec('typed Logic access', async t => {
   const maybe = await t.app.view.eval(({ document }) => document.querySelector('x')?.textContent ?? undefined);
   maybe?.toUpperCase();
   interface Devices { devices: { id: string }[] }
-  const data = await t.app.logic.data<Devices>({ page: 'devices' });
-  data.devices[0].id.toUpperCase();
-  // Untyped pages take any method name; the result is unknown.
-  const renamed = await t.app.logic.call('rename', 'dev-1', { name: 'Office' });
-  void renamed;
-  // @ts-expect-error call arguments must be JSON values.
-  await t.app.logic.call('rename', undefined);
-  // A page type restricts the method name and types the result.
-  interface DevicesPage extends LogicPage<Devices> {
-    rename(id: string, patch: { name: string }): Promise<boolean>;
+  // A page contract types the bound page's data and its public actions.
+  type DevicesContract = PageContract<Devices, {
+    rename(patch: { id: string; name: string }): Promise<boolean>;
     count(): number;
-  }
-  const done: boolean = await t.app.logic.call<DevicesPage, 'rename'>('rename', 'dev-1', { name: 'Office' });
+  }>;
+  const devices = await t.app.page<DevicesContract>({ name: 'devices' });
+  const data = await devices.data();
+  data.devices[0].id.toUpperCase();
+  const done: boolean = await devices.actions.rename({ id: 'dev-1', name: 'Office' });
   done.valueOf();
-  const either = await t.app.logic.call<DevicesPage>('count');
-  void either;
-  const slowDone: boolean = await t.app.logic.call<DevicesPage, 'rename'>({ timeout: 30_000 }, 'rename', 'dev-1', { name: 'Office' });
-  slowDone.valueOf();
-  const fired: void = await t.app.logic.call<DevicesPage>({ wait: false }, 'rename', 'dev-1', { name: 'Office' });
-  void fired;
-  // @ts-expect-error `wait` is a boolean.
-  await t.app.logic.call({ wait: 'no' }, 'rename');
-  // @ts-expect-error The method must be one the page type declares.
-  await t.app.logic.call<DevicesPage>('remove');
-  // @ts-expect-error `AnyLogicPage` is the untyped default; it still has to be a page.
-  await t.app.logic.call<{ route: number }>('x');
+  const counted: number = await devices.actions.count();
+  counted.toFixed();
+  // @ts-expect-error The action must be one the contract declares.
+  await devices.actions.remove();
+  // @ts-expect-error The declared action takes no payload.
+  await devices.actions.count(1);
+  // An untyped page reads as `unknown` data.
+  const untypedData = await (await t.app.page({ instanceId: '7' })).data();
+  // @ts-expect-error Untyped data is `unknown` until a contract types it.
+  untypedData.devices;
+  // @ts-expect-error `logic.data` is gone: `(await t.app.page()).data()`.
+  await t.app.logic.data();
+  // @ts-expect-error `logic.call` is gone: `page.actions.<name>(payload)`.
+  await t.app.logic.call('rename', 'dev-1');
   const untyped: AnyLogicPage = null as unknown as AnyLogicPage;
   void untyped.anything;
+  // `getPage` may find nothing: the instance is gone.
+  const gone: boolean = await t.app.logic.eval(({ getPage }, id: string) => getPage(id) === undefined, '7');
+  void gone;
+  // @ts-expect-error getPage can return undefined.
+  await t.app.logic.eval(({ getPage }, id: string) => getPage(id).route, '7');
 
   // waitFor resolves to the accepted value; the test is `until`.
-  const loaded: Devices = await t.waitFor(() => t.app.logic.data<Devices>(), { until: (d) => d.devices.length > 0, timeout: 2_000 });
+  const loaded: Devices = await t.waitFor(() => devices.data(), { until: (d) => d.devices.length > 0, timeout: 2_000 });
   loaded.devices.length.toFixed();
   const truthy: string = await t.waitFor(async () => 'ok');
   truthy.toUpperCase();
@@ -225,7 +253,7 @@ spec('typed Logic access', async t => {
 
   // One expect: a locator retries, a value checks once, expect.poll(read) retries.
   await expect(t.app.view.testId('save')).toBeVisible();
-  await expect.poll(() => t.app.logic.data<Devices>(), { timeout: 2_000 }).toEqual({ devices: [] });
+  await expect.poll(() => devices.data(), { timeout: 2_000 }).toEqual({ devices: [] });
   await expect.poll(async () => [1, 2]).toHaveLength(2);
   await expect.poll(async () => 3).toBeGreaterThan(2);
   // Dialogs: toasts are observed, modals and action sheets answered.
@@ -255,7 +283,7 @@ spec('typed Logic access', async t => {
   // @ts-expect-error Value matchers are not locator matchers.
   expect(3).toBeVisible();
   // @ts-expect-error A promise is neither a value nor a read: await it, or poll it.
-  expect(t.app.logic.data()).toEqual({});
+  expect(devices.data()).toEqual({});
   const readCount = () => 1;
   expect(readCount).not.toThrow();
   // @ts-expect-error A function is only called by toThrow; a read to retry is expect.poll(read).
@@ -300,7 +328,8 @@ spec('network calls', async (t) => {
   first.method?.toUpperCase();
   first.status?.toFixed();
   const removed: void = await route.remove();
-  const all: void = await t.app.network.removeAll();
+  // @ts-expect-error Routes are spec-scoped; each has `remove()`.
+  await t.app.network.removeAll();
   const spec: NetworkCall[] = await t.app.network.calls();
   const scenario = await t.scenario.use({ rules: [{ http: 'GET **/x', json: {} }] }, undefined);
   const hit: NetworkCall = await scenario.waitForCall({ http: 'GET **/x' });
@@ -312,7 +341,9 @@ spec('network calls', async (t) => {
   const gone: void = await scenario.remove();
   // @ts-expect-error The raw driver's `requests()` is `calls()` on the fixture.
   await route.requests();
-  void removed; void all; void spec; void scenarioCalls; void gone;
+  // @ts-expect-error A scenario installs on `t.app`; there is no `app` option.
+  await t.scenario.use({ rules: [] }, { app: 'other' });
+  void removed; void spec; void scenarioCalls; void gone;
   // The test API selects no mocks: the session's selection applies, and
   // only a scenario state goes on top.
   // @ts-expect-error scenarios are `t.scenario.use()`
@@ -394,7 +425,12 @@ spec('contract only', { requires: { openapi: true } }, async (t) => {
   t.openapi?.documents.map((doc) => doc.name.toUpperCase());
 });
 // File defaults: every SpecOptions key but `id`, plus `requires`.
-spec.configure({ timeout: 60_000, fresh: true, requires: { args: ['PASSWORD'] }, forensics: false, covers: ['DEV-2'] });
+spec.configure({ timeout: 60_000, start: { page: 'home' }, requires: { args: ['PASSWORD'] }, forensics: false, covers: ['DEV-2'] });
+spec('starts on a page', { start: { page: 'detail', query: { id: 'd1' } } }, async () => {});
+// @ts-expect-error `fresh` is gone: `start: { page }` relaunches on that page.
+spec('fresh', { fresh: true }, async () => {});
+// @ts-expect-error `start` names a page.
+spec('bad start', { start: 'home' }, async () => {});
 // @ts-expect-error Ids are per spec.
 spec.configure({ id: 'shared' });
 // @ts-expect-error requires.args lists --arg keys.
@@ -408,8 +444,11 @@ spec('host tiers', async (t) => {
 });
 
 
-// The raw root is an import with host authority, never an ambient `lx`.
+// The raw root is a runner import with host authority, never an ambient `lx`.
 const rawRoot = rawAutomation();
+// @ts-expect-error `rawAutomation` is `@lingxia/test/runner`, not the authoring entry.
+import { rawAutomation as mainRaw } from '../dist/index.js';
+void mainRaw;
 void rawRoot.lxapp('example').network;
 void rawRoot.lxapps.list();
 // @ts-expect-error The test program has no ambient `lx`; import rawAutomation instead.
@@ -440,15 +479,62 @@ spec('a page contract binds one identity and checks public action payloads', asy
   await page.view.eval({ page: 'other' }, () => true);
   // @ts-expect-error No private method appears on the public action contract.
   await page.actions._save();
-  interface Methods extends LogicPage { count(): number }
-  const dynamic: import('../dist/index.js').LogicCallOptions = { wait: Math.random() > 0.5 };
-  const value = await t.app.logic.call<Methods, 'count'>(dynamic, 'count');
-  // @ts-expect-error A runtime wait flag may discard the result.
-  const count: number = value;
-  void count;
-  // @ts-expect-error The declared method has no arguments.
-  await t.app.logic.call<Methods, 'count'>('count', 1);
+  // @ts-expect-error A handle's view takes no page option either.
+  page.view.testId('x', { page: 'other' });
+
+  // An action with more than one parameter is not callable: it takes one payload.
+  type Wide = PageContract<{ n: number }, {
+    move(from: number, to: number): void;
+    feed(): AsyncGenerator<number>;
+    optional(input?: { n: number }): number;
+    stamp(at: Date): void;
+  }>;
+  const wide = await t.app.page<Wide>();
+  const branded: UnaryActionsOnly = wide.actions.move;
+  void branded;
+  // @ts-expect-error UnaryActionsOnly: change the action to take an object.
+  await wide.actions.move(1, 2);
+  // @ts-expect-error A streamed (generator) action is not callable from a test.
+  await wide.actions.feed();
+  const optional: number = await wide.actions.optional();
+  const withPayload: number = await wide.actions.optional({ n: 1 });
+  void optional; void withPayload;
+  // @ts-expect-error Payloads are JSON values.
+  await wide.actions.stamp(new Date());
+
+  // A contract whose data is not JSON has no data, and binding it fails.
+  type NotJson = PageContract<{ at: Date }, {}>;
+  // @ts-expect-error PageContract data must be JSON.
+  await t.app.page<NotJson>();
+  // @ts-expect-error Nor a function member.
+  await t.app.page<PageContract<{ save(): void }, {}>>();
 });
+
+// Removed exports do not compile.
+// @ts-expect-error Removed: use `page.actions`.
+type RemovedCallOptions = import('../dist/index.js').LogicCallOptions;
+// @ts-expect-error Removed: `page.data()` returns the contract's data.
+type RemovedSnapshot = import('../dist/index.js').JsonSnapshot<{}>;
+// @ts-expect-error Removed: a bound view is a `TestView`.
+type RemovedBoundView = import('../dist/index.js').BoundTestView;
+// @ts-expect-error Removed: locators take no options.
+type RemovedLocatorOptions = import('../dist/index.js').LocatorOptions;
+// @ts-expect-error Removed: eval options are `EvalOptions`.
+type RemovedViewEvalOptions = import('../dist/index.js').ViewEvalOptions;
+// @ts-expect-error Host-side types are not on the authoring entry.
+type RemovedController = import('../dist/index.js').LingxiaTestController;
+type RunnerController = import('@lingxia/test/runner').LingxiaTestController;
+// @ts-expect-error `t.app.logic` has only `eval`.
+type RemovedLogicData = import('../dist/index.js').TestLogic['data'];
+// @ts-expect-error Nor `call`.
+type RemovedLogicCall = import('../dist/index.js').TestLogic['call'];
+// @ts-expect-error Nor does a locator have `query`.
+type RemovedQuery = import('../dist/index.js').Locator['query'];
+// @ts-expect-error Nor the network `removeAll`.
+type RemovedRemoveAll = import('../dist/index.js').TestNetwork['removeAll'];
+// @ts-expect-error Nor a spec `fresh`.
+type RemovedFresh = import('../dist/index.js').SpecOptions['fresh'];
+export type { RunnerController };
 
 spec('recursive JSON types cross eval without excessive instantiation', async t => {
   const input: JsonValue = JSON.parse('{"nested":[{"ok":true}]}');
@@ -457,21 +543,3 @@ spec('recursive JSON types cross eval without excessive instantiation', async t 
   void result; void list;
 });
 
-
-function dataSnapshotTypes(data: import('../dist/index.js').JsonSnapshot<{
-  error: string | undefined;
-  empty: undefined;
-  created: Date;
-  items: [undefined, string];
-  record: { value: number; method(): void };
-}>) {
-  const created: string = data.created;
-  const error: string | undefined = data.error;
-  const item: null = data.items[0];
-  data.record.value.toFixed();
-  // @ts-expect-error JSON omits methods.
-  data.record.method();
-  // @ts-expect-error JSON omits undefined properties.
-  data.empty;
-  return { created, error, item };
-}

@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture, type TestApp } from '@lingxia/test';
+import { expect, spec, type Fixture, type TestApp, type TestView } from '@lingxia/test';
 import type { DesktopAxNode, DesktopWindowInfo } from '@lingxia/types/automation';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { waitForElementAttribute } from '../../helpers/page.js';
@@ -93,14 +93,16 @@ async function openWindow(
   }, chrome, key);
 }
 
+/** Bind the page the surface window just opened (one at a time) and wait for it to render. */
 async function waitForSurfacePage(
   app: TestApp,
   fixture: string,
   expectedTopInset: number,
-): Promise<SurfacePageSnapshot> {
-  await app.view.testId('surface-page', { page: 'surface' }).waitFor({ state: 'visible', timeout: 15_000 });
-  return eventually(
-    () => app.view.eval({ page: 'surface' }, ({ document, window }): SurfacePageSnapshot => {
+): Promise<{ view: TestView; snapshot: SurfacePageSnapshot }> {
+  const { view } = await app.page({ name: 'surface' }, { timeout: 15_000 });
+  await view.testId('surface-page').waitFor({ state: 'visible', timeout: 15_000 });
+  const snapshot = await eventually(
+    () => view.eval(({ document, window }): SurfacePageSnapshot => {
       const chrome = window.lxPageChrome as { layout?: { topInset: number } } | undefined;
       const layout = chrome && chrome.layout;
       const show = document.querySelector('[data-testid="surface-show-count"]');
@@ -121,6 +123,7 @@ async function waitForSurfacePage(
       timeoutMs: 10_000,
       describe: `surface window page ${fixture} with topInset ${expectedTopInset}`,
     });
+  return { view, snapshot };
 }
 
 function newSurfaceWindow(
@@ -229,16 +232,16 @@ windowTest('open a page window with system chrome and with full chrome', {
     expect(opened.visible).toBeTruthy();
     expect(opened.alive).toBeTruthy();
 
-    const page = await waitForSurfacePage(
+    const { snapshot } = await waitForSurfacePage(
       app,
       key,
       chrome === 'full' ? FULL_DRAG_STRIP_HEIGHT : 0,
     );
-    expect(page.text).toContain('Surface Page');
-    expect(page.topInset).toBe(chrome === 'full' ? FULL_DRAG_STRIP_HEIGHT : 0);
+    expect(snapshot.text).toContain('Surface Page');
+    expect(snapshot.topInset).toBe(chrome === 'full' ? FULL_DRAG_STRIP_HEIGHT : 0);
     // Presenting a window drives exactly one visibility transition, however
     // many times the platform and the opener report it.
-    expect(page.showCount).toBe(1);
+    expect(snapshot.showCount).toBe(1);
 
     const window = await eventually(
       () => desktop.windows(),
@@ -251,7 +254,7 @@ windowTest('open a page window with system chrome and with full chrome', {
     if (!window) {
       throw new Error(`${chrome} chrome did not create a visible top-level window`);
     }
-    seen.set(chrome, { topInset: page.topInset, window });
+    seen.set(chrome, { topInset: snapshot.topInset, window });
 
     await closeKeyedSurface(app, key);
     await eventually(
@@ -472,7 +475,7 @@ windowTest('deliver a child page message to its opener before closing', {
 
   const opened = await openWindow(app, 'system', key);
   expect(opened.kind).toBe('page');
-  await waitForSurfacePage(app, key, 0);
+  const { view: surface } = await waitForSurfacePage(app, key, 0);
 
   await app.logic.eval(({ lx }, key, stateKey) => {
     const handle = lx.surface.getByKey(key) as unknown as SurfaceHandle | null;
@@ -482,7 +485,7 @@ windowTest('deliver a child page message to its opener before closing', {
     (globalThis as unknown as Record<string, HeldSurface | undefined>)[stateKey] = state;
   }, key, stateKey);
 
-  await app.view.eval({ page: 'surface' }, ({ document, window }, marker) => {
+  await surface.eval(({ document, window }, marker) => {
     const page = window as unknown as ProbeWindow & {
       HTMLInputElement: (new () => unknown) & { prototype: object };
       InputEvent: new (type: string, init: { bubbles?: boolean; data?: string; inputType?: string }) => unknown;
@@ -500,13 +503,12 @@ windowTest('deliver a child page message to its opener before closing', {
     return input.value ?? null;
   }, marker);
   await waitForElementAttribute(
-    t,
-    'surface',
+    surface,
     'input[placeholder="Message to parent page"]',
     'data-controlled-value',
     marker,
   );
-  await app.view.testId("surface-send-message", { page: 'surface' }).click();
+  await surface.testId("surface-send-message").click();
 
   const messages = await eventually(
     () => app.logic.eval((_, stateKey) => (globalThis as unknown as Record<string, HeldSurface | undefined>)[stateKey]?.messages ?? [], stateKey),
@@ -536,7 +538,7 @@ windowTest('push a message from the opener into its page window', {
 
   const opened = await openWindow(app, 'system', key);
   expect(opened.alive).toBeTruthy();
-  await waitForSurfacePage(app, key, 0);
+  const { view: surface } = await waitForSurfacePage(app, key, 0);
 
   await app.logic.eval(({ lx }, key, namespace) => {
     const handle = lx.surface.getByKey(key) as unknown as SurfaceHandle | null;
@@ -544,7 +546,7 @@ windowTest('push a message from the opener into its page window', {
     handle.postMessage({ ping: namespace });
   }, key, namespace);
   const inbound = await eventually(
-    () => app.view.eval({ page: 'surface' }, ({ document }) => {
+    () => surface.eval(({ document }) => {
       const text = document.querySelector('[data-testid="surface-inbound"]');
       const count = document.querySelector('[data-testid="surface-inbound-count"]');
       return { text: text?.textContent?.trim() ?? '', count: count?.textContent?.trim() ?? '' };
