@@ -12,7 +12,7 @@ export class TimeoutError extends Error {
 }
 
 /** The driver codes a fixture call reports as `E_TIMEOUT`. */
-const DRIVER_TIMEOUT_CODES = new Set(["E_AUTOMATION_TIMEOUT", "E_EVAL_TIMEOUT"]);
+const DRIVER_TIMEOUT_CODES = new Set(["E_AUTOMATION_TIMEOUT", "E_EVAL_TIMEOUT", "E_DESKTOP_TIMEOUT"]);
 
 /**
  * One timeout code at the fixture boundary: a driver rejection that timed
@@ -76,8 +76,17 @@ export class ActionDeadline {
    * abandoned promise is left to settle on its own.
    */
   async call<T>(label: string, op: () => T | Promise<T>, context: () => string): Promise<T> {
-    const ms = Math.max(1, this.remaining());
-    const task = Promise.resolve().then(op);
+    const ms = this.remaining();
+    const expired = () => new TimeoutError([
+      `${label} was not started because the ${this.timeout}ms action budget expired.`,
+      this.clampNote(),
+      context(),
+    ].filter(Boolean).join("\n"));
+    if (ms <= 0) throw expired();
+    const task = Promise.resolve().then(() => {
+      if (this.expired()) throw expired();
+      return op();
+    });
     let handle: unknown;
     const expiry = new Promise<never>((_, reject) => {
       handle = runnerSetTimeout(() => {

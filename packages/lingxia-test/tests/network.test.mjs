@@ -259,7 +259,7 @@ function fakeScenarios(app) {
   return state;
 }
 
-test("t.app.mock.use installs a variant for one spec, traces it, and lists its calls", async () => {
+test("t.scenario.use installs a variant for one spec, traces it, and lists its calls", async () => {
   const world = createWorld();
   const scenarios = fakeScenarios(world.app);
   installFakeHost(world);
@@ -276,10 +276,10 @@ test("t.app.mock.use installs a variant for one spec, traces it, and lists its c
   };
 
   spec("variants", async (t) => {
-    const a = await t.app.mock.use(wifi, "a");
+    const a = await t.scenario.use(wifi, { variant: "a" });
     assert.equal(a.variant, "a");
     // Switching variants mid-spec replaces the first.
-    const b = await t.app.mock.use(wifi, "b");
+    const b = await t.scenario.use(wifi, { variant: "b" });
     replacedBefore = scenarios.current?.variant;
     assert.deepEqual(b.rules.map((rule) => [rule.index, rule.target]), [
       [1, "GET **/wifi/main"], [2, "function orders.submit"], [3, "GET **/wifi/clients"],
@@ -313,7 +313,7 @@ test("scenario calls name what answered; waitForCall waits per target", async ()
   let failure;
 
   spec("targets", { forensics: false }, async (t) => {
-    const scenario = await t.app.mock.use({
+    const scenario = await t.scenario.use({
       name: "Orders",
       rules: [{ http: "POST **/orders", status: 201, json: {} }, { function: "orders.status", result: "ok" }],
     });
@@ -355,7 +355,7 @@ test("each spec starts with fresh mock handler state; a companion that cannot is
   spec("two", async () => { seen.push(scenarios.resets); });
   spec("three", async (t) => {
     seen.push(scenarios.resets);
-    const scenario = await t.app.mock.use({ rules: [{ http: "GET **/a", json: {} }] });
+    const scenario = await t.scenario.use({ rules: [{ http: "GET **/a", json: {} }] });
     scenarios.hit(null, { kind: "http", method: "GET", url: "https://h/b", status: 200, time: 1, answeredBy: "mock (GET **/b)" });
     scenarios.hit(null, { kind: "function", function: "orders.list", time: 2, answeredBy: "function mock", outcome: "default" });
     const calls = await scenario.calls();
@@ -370,14 +370,14 @@ test("each spec starts with fresh mock handler state; a companion that cannot is
   assert.match(notes[0].message, /not reset per spec: its handlers are rebuilt, not reset/);
 });
 
-test("t.app.mock.use rejections reach the spec as they are", async () => {
+test("t.scenario.use rejections reach the spec as they are", async () => {
   const world = createWorld();
   fakeScenarios(world.app);
   installFakeHost(world);
   let message;
   spec("old format", async (t) => {
     try {
-      await t.app.mock.use({ routes: [] });
+      await t.scenario.use({ routes: [] });
     } catch (error) {
       message = error.message;
     }
@@ -398,11 +398,11 @@ test("a failed spec reports its scenario, per-rule hits and who answered each ca
   ];
 
   spec("shows the wrong network", async (t) => {
-    await t.app.mock.use({
+    await t.scenario.use({
       name: "Wi-Fi",
       rules: [{ http: "PATCH **/devices/*", match: { json: { name: "Office" } }, status: 409 }],
       variants: { b: { rules: [{ http: "GET **/wifi/main", json: { ssid: "B" } }, { function: "orders.submit", fault: "unknown" }] } },
-    }, "b");
+    }, { variant: "b" });
     scenarios.hit(1, { kind: "http", time: 1000 });
     scenarios.hit(2, { kind: "function", function: "orders.submit", time: 1010, rule: 2, answeredBy: "rule 2 (Wi-Fi:b)", outcome: "fault" });
     throw new Error("expected the B network");
@@ -630,7 +630,7 @@ test("scenario waits report calls their log dropped per kind", async () => {
   const scenarios = fakeScenarios(world.app);
   installFakeHost(world);
   const caught = await catching(async (t, caught) => {
-    const scenario = await t.app.mock.use({
+    const scenario = await t.scenario.use({
       name: "Orders",
       rules: [{ http: "POST **/orders", status: 201, json: {} }, { function: "orders.status", result: "ok" }],
     });

@@ -59,7 +59,7 @@ spec('round-trip text, empty clipboard, and typed image items', {
         afterWriteTypes: afterWrite,
         typedEmpty: (typed.status === 'canceled') ? true : (typed.status === 'empty'),
         typedText: typed.status !== 'canceled' && !(typed.status === 'empty')
-          ? typed.items.find((item) => item.type === 'text')?.text
+          ? typed.items.find((item) => item.type === 'text')?.text ?? null
           : null,
         emptyStringEmpty: (emptyString.status === 'canceled') ? null : (emptyString.status === 'empty'),
         emptyStringText: emptyString.status !== 'canceled' && !(emptyString.status === 'empty') ? emptyString.text : null,

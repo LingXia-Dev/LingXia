@@ -64,7 +64,7 @@ transferSpec('abort an in-flight download and reject with E_ABORT', {
       return { ok: true, value };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code, message: String(message ?? error), data };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   }, `${httpBase}/slow?size=400000&chunks=40&delayMs=100`);
 
@@ -119,7 +119,7 @@ transferSpec('stream monotonic download progress across pause and resume', {
       return { ok: true, value };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code, message: String(message ?? error), data };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   }, `${httpBase}/slow.bin?size=1200000&chunks=40&delayMs=60&case=${encodeURIComponent(namespace)}`);
   if (!outcome.ok) {
@@ -183,8 +183,8 @@ transferSpec('stop download iteration without canceling the transfer promise', {
         const completed = await task.result.finally(() => { finallyCount += 1; });
         return {
           firstKind: first.value?.kind ?? null,
-          returnedDone: returned.done,
-          afterReturnDone: afterReturn.done,
+          returnedDone: returned.done ?? false,
+          afterReturnDone: afterReturn.done ?? false,
           completedSize: completed.sizeBytes,
           finallyCount,
         };
@@ -192,7 +192,7 @@ transferSpec('stop download iteration without canceling the transfer promise', {
       return { ok: true, value };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code, message: String(message ?? error), data };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   }, `${httpBase}/slow.bin?size=131072&chunks=8&delayMs=40&case=${encodeURIComponent(namespace)}`);
   if (!outcome.ok) {
@@ -262,7 +262,7 @@ transferSpec('report the server status a failed download saw', {
           return { ok: true, value };
         } catch (error) {
           const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-          return { ok: false, code, message: String(message ?? error), data };
+          return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
         }
       }, `${httpBase}/status?code=`, status);
       expect(outcome.ok).toBeFalsy();
@@ -437,8 +437,8 @@ transferSpec('stop upload iteration and observe rejected promise helpers', {
 
     return {
       firstKind: first.value?.kind ?? null,
-      returnedDone: returned.done,
-      afterReturnDone: afterReturn.done,
+      returnedDone: returned.done ?? false,
+      afterReturnDone: afterReturn.done ?? false,
       completedStatus: completed.statusCode,
       successFinallyCount,
       caught,
@@ -527,7 +527,7 @@ transferSpec('reject multipart-only options when the body is raw', {
       return { ok: true, value };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code, message: String(message ?? error), data };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   }, `${httpBase}/file/raw.bin?size=64`, `${httpBase}/upload-raw`);
   const rejectedName = await app.logic.eval(async ({ lx }, sourceUrl, uploadRawUrl): Promise<Caught> => {
@@ -544,7 +544,7 @@ transferSpec('reject multipart-only options when the body is raw', {
       return { ok: true, value };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code, message: String(message ?? error), data };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   }, `${httpBase}/file/raw.bin?size=64`, `${httpBase}/upload-raw`);
 
@@ -577,7 +577,7 @@ transferSpec('report the refusing status when a raw upload is rejected mid-body'
       return { ok: true, value };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code, message: String(message ?? error), data };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   }, `${httpBase}/file/reject.bin?size=8000000`, `${httpBase}/upload-raw?reject=403`);
 
@@ -636,7 +636,7 @@ transferSpec('deny an upload to a host the lxapp never trusted', {
       return { ok: true, value };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code, message: String(message ?? error), data };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   }, `${httpBase}/file/auth.bin?size=64`);
 
@@ -665,7 +665,7 @@ transferSpec('cancel an upload and reject rather than resolve', {
       return { ok: true, value };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code, message: String(message ?? error), data };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   }, `${httpBase}/file/big.bin?size=2000000`, `${httpBase}/upload?holdMs=3000`);
 

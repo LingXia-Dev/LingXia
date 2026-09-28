@@ -64,10 +64,11 @@ spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
 
     const rejected: Caught = await app.logic.eval(async ({ lx }) => {
       try {
-        return { ok: true, value: await lx.startPullDownRefresh() };
+        await lx.startPullDownRefresh();
+        return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     });
     expect(rejected.ok).toBeFalsy();

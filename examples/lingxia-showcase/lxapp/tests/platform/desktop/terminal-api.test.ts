@@ -140,7 +140,7 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
     try {
       await t.settings.update({ font: { size: nextSize } }, { ifRevision: first.revision });
     } catch (error) {
-      stale = { code: (error as { code?: string } | null)?.code };
+      stale = { code: (error as { code?: string } | null)?.code ?? '' };
     }
 
     const reset = await t.settings.reset({ ifRevision: updated.revision, scope: 'font' });
@@ -169,7 +169,7 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
       stale,
       reset: { revision: reset.revision, size: reset.value.font.size, fontOverride: reset.overrides.font ?? null },
       fonts: { count: fonts.length, monospace: fonts.every((font) => typeof font.monospace === 'boolean'), family: fonts[0]?.family ?? '' },
-      schemes: { count: schemes.length, first: source.name, background: source.scheme.background },
+      schemes: { count: schemes.length, first: source.name, background: source.scheme.background ?? null },
       imported: { name: imported.name, source: imported.source, listed },
       preview: 'shown, cleared, closed',
       windows: typeof t.windows,

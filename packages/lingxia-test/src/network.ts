@@ -183,6 +183,7 @@ export function waitForNextCall(
     host.silenceActions();
     try {
       for (;;) {
+        if (deadline.expired()) break;
         let window: CallWindowRead;
         try {
           window = await deadline.call(`${verb} reading calls`, () => read(cursor.after), () => at);

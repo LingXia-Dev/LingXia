@@ -141,10 +141,11 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
 
   const invalid: Caught = await app.logic.eval(async ({ lx }) => {
     try {
-      return { ok: true, value: await lx.tabBar.update({ visibility: 'hidden', items: [{ index: 99, text: 'Invalid' }] }) };
+      await lx.tabBar.update({ visibility: 'hidden', items: [{ index: 99, text: 'Invalid' }] });
+        return { ok: true };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code, message: String(message ?? error), data };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   });
   expect(invalid.ok).toBeFalsy();

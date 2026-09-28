@@ -60,7 +60,7 @@ function lateFetch(ms) {
 }
 const nativeSetTimeout = globalThis.setTimeout;
 
-test("a body that resumes late is refused and charged its own late assertion, and the next spec runs and passes", async () => {
+test("a body that resumes late is refused and charged its own late assertion, and the shared context stops", async () => {
   const world = createWorld();
   const host = installFakeHost(world, { attempts: true });
   lateFetch(2_400);
@@ -91,12 +91,12 @@ test("a body that resumes late is refused and charged its own late assertion, an
   });
 
   const report = await run();
-  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "passed"], JSON.stringify(report.cases[1].error));
-  assert.equal(report.partial, false);
-  assert.equal(followingRan, true);
+  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"], JSON.stringify(report.cases[1].error));
+  assert.equal(report.partial, true);
+  assert.equal(followingRan, false);
   assert.deepEqual(outcomes, { captured: "E_AUTOMATION_PRIVILEGE", fresh: "E_AUTOMATION_PRIVILEGE", global: "E_AUTOMATION_PRIVILEGE" });
   assert.ok(!world.navCalls.some(([, options]) => String(options?.page).startsWith("zombie")), JSON.stringify(world.navCalls));
-  assert.ok(world.navCalls.some(([, options]) => options?.page === "following"));
+  assert.ok(!world.navCalls.some(([, options]) => options?.page === "following"));
   for (const record of report.cases) {
     assert.ok(!JSON.stringify(record.assertions).includes("late assertion"), `${record.title} holds the late assertion`);
   }
@@ -104,10 +104,10 @@ test("a body that resumes late is refused and charged its own late assertion, an
   assert.ok(note, "the late assertion is noted");
   assert.match(note.message, /no case records it: expect\(received\)\.toBe failed .*It comes from "[^"]*old body", which the run abandoned/);
   assert.match(note.case, /old body/);
-  assert.equal(host.attempts.revoked, undefined, "the run itself is not revoked");
-  assert.equal(host.events.filter((e) => e.type === "diagnostic" && e.phase === "run_stopped").length, 0);
-  const recovered = host.events.find((e) => e.type === "diagnostic" && e.phase === "recovery");
-  assert.match(recovered.message, /Its automation access was revoked and nothing it started is still running\..*the run continues\.$/);
+  assert.ok(host.attempts.revoked, "the shared context is revoked");
+  assert.equal(host.events.filter((e) => e.type === "diagnostic" && e.phase === "run_stopped").length, 1);
+  const recovered = host.events.find((e) => e.type === "diagnostic" && e.phase === "run_stopped");
+  assert.match(recovered.message, /abandoned code can resume through an untracked promise/);
 });
 
 test("a host tier an abandoned body read cannot be fenced: the run stops and the host refuses it after the revoke", async () => {
@@ -130,7 +130,7 @@ test("a host tier an abandoned body read cannot be fenced: the run stops and the
   for (let i = 0; i < 5; i += 1) await tick(5);
   assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
   const stopped = host.events.find((e) => e.type === "diagnostic" && e.phase === "run_stopped");
-  assert.match(stopped.message, /The run stopped: it holds host drivers the run cannot revoke \(rawAutomation\(\)\.lxapps\)/);
+  assert.match(stopped.message, /The run stopped: abandoned code can resume through an untracked promise in this shared JS context; it holds host drivers the run cannot revoke \(rawAutomation\(\)\.lxapps\)/);
   assert.equal(outcome, "E_AUTOMATION_PRIVILEGE");
   assert.ok(host.attempts.refused.includes("lxapps.open"));
 });
@@ -153,9 +153,10 @@ test("a route installed by an abandoned body is removed with its attempt, a late
   spec("uses the real backend", async () => { routesSeenNext = network.routes.size; });
 
   const report = await run();
-  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "passed"]);
-  assert.equal(report.partial, false);
-  assert.equal(routesSeenNext, 0, "no route outlives its spec");
+  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
+  assert.equal(report.partial, true);
+  assert.equal(routesSeenNext, undefined, "no next spec is admitted");
+  assert.equal(network.routes.size, 0, "no route outlives its spec");
   assert.match(reinstall.fixture, /closed/);
   assert.equal(reinstall.raw, "E_AUTOMATION_PRIVILEGE");
 });
@@ -249,7 +250,7 @@ test("a scenario and a clock whose removal fails are cleanup errors, not swallow
   let secondRan = false;
 
   spec("mocks and fakes time", async (t) => {
-    await t.app.mock.use({ name: "s", rules: [] });
+    await t.scenario.use({ name: "s", rules: [] });
     await t.app.clock.install();
   });
   spec("next", async () => { secondRan = true; });

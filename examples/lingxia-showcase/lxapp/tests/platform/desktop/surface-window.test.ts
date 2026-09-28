@@ -14,7 +14,7 @@ const FULL_DRAG_STRIP_HEIGHT = 28;
 
 interface OpenedWindow {
   id: string;
-  key: string | undefined;
+  key: string | null;
   kind: string;
   realized: string;
   visible: boolean;
@@ -83,7 +83,7 @@ async function openWindow(
     });
     return {
       id: handle.id,
-      key: handle.key,
+      key: handle.key ?? null,
       kind: handle.kind,
       realized: handle.realized,
       visible: handle.visible,

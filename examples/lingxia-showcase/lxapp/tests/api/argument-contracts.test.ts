@@ -31,7 +31,7 @@ async function settle(app: TestApp, item: Rejection): Promise<Caught> {
       return { ok: true } as const;
     } catch (error) {
       const { code, message } = error as { code?: string; message?: string };
-      return { ok: false, code, message: String(message ?? error) } as const;
+      return { ok: false, code: code ?? '', message: String(message ?? error) } as const;
     }
   }, item.api, item.args, item.then ?? null);
 }

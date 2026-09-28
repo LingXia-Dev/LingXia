@@ -10,10 +10,13 @@
 //! a reference that resolves to a binding declared outside the function is a
 //! capture. Unresolved references are globals and are left to the target.
 
+use std::collections::HashMap;
+
 use anyhow::{Result, bail};
 use oxc_ast::AstKind;
 use oxc_ast::ast::{
-    Argument, BindingPattern, CallExpression, Expression, IdentifierReference, Program,
+    Argument, BindingPattern, CallExpression, Expression, FormalParameters, IdentifierReference,
+    ImportDeclarationSpecifier, Program, Statement,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_semantic::{Semantic, SemanticBuilder};
@@ -65,7 +68,9 @@ pub(crate) fn check_eval_functions(
         semantic: &semantic,
         source,
         captures: Vec::new(),
+        roots: HashMap::new(),
     };
+    finder.find_roots(program);
     finder.visit_program(program);
     if finder.captures.is_empty() {
         return Ok(());
@@ -92,6 +97,7 @@ struct EvalFinder<'s, 'a> {
     semantic: &'s Semantic<'a>,
     source: &'s str,
     captures: Vec<Capture>,
+    roots: HashMap<oxc_semantic::SymbolId, Origin>,
 }
 
 impl<'a> Visit<'a> for EvalFinder<'_, 'a> {
@@ -185,42 +191,140 @@ impl<'a> EvalFinder<'_, 'a> {
         }
     }
 
-    /// Whether `object.eval(…)` is a fixture Logic or View eval: `….logic`,
-    /// `….view`, `….view.page(name)`, or a `const` holding one of those.
-    fn classify(&self, object: &Expression<'a>, depth: u8) -> Option<Target> {
-        if depth > 8 {
+    fn find_roots(&mut self, program: &Program<'a>) {
+        for statement in &program.body {
+            let Statement::ImportDeclaration(import) = statement else {
+                continue;
+            };
+            if import.source.value != "@lingxia/test" {
+                continue;
+            }
+            for specifier in import.specifiers.iter().flatten() {
+                let (local, origin) = match specifier {
+                    ImportDeclarationSpecifier::ImportSpecifier(specifier)
+                        if crate::test_bundle::module_export_name(&specifier.imported)
+                            .as_deref()
+                            == Some("spec") =>
+                    {
+                        (&specifier.local, Origin::Spec)
+                    }
+                    ImportDeclarationSpecifier::ImportNamespaceSpecifier(specifier) => {
+                        (&specifier.local, Origin::Module)
+                    }
+                    _ => continue,
+                };
+                if let Some(symbol) = local.symbol_id.get() {
+                    self.roots.insert(symbol, origin);
+                }
+            }
+        }
+        // Discover callback bindings before checking bodies, including named
+        // callbacks declared earlier in the file. Names alone prove nothing.
+        for node in self.semantic.nodes().iter() {
+            let AstKind::CallExpression(call) = node.kind() else {
+                continue;
+            };
+            if self.origin(&call.callee, 0) != Some(Origin::Spec) {
+                continue;
+            }
+            let Some(parameters) = call
+                .arguments
+                .iter()
+                .rev()
+                .filter_map(Argument::as_expression)
+                .find_map(|expr| self.parameters(expr, 0))
+            else {
+                continue;
+            };
+            if let Some(parameter) = parameters.items.first() {
+                let mut bindings = HashMap::new();
+                collect_bindings(&parameter.pattern, Origin::Fixture, &mut bindings);
+                self.roots.extend(bindings);
+            }
+        }
+    }
+
+    fn parameters<'e>(
+        &'e self,
+        expr: &'e Expression<'a>,
+        depth: u8,
+    ) -> Option<&'e FormalParameters<'a>> {
+        if depth > 16 {
             return None;
         }
-        match object.get_inner_expression() {
-            Expression::StaticMemberExpression(member) => match member.property.name.as_str() {
-                "logic" => Some(Target::Logic),
-                "view" => Some(Target::View),
+        match expr.get_inner_expression() {
+            Expression::ArrowFunctionExpression(function) => Some(&function.params),
+            Expression::FunctionExpression(function) => Some(&function.params),
+            Expression::Identifier(ident) => match self
+                .semantic
+                .symbol_declaration(self.symbol_of(ident)?)
+                .kind()
+            {
+                AstKind::Function(function) => Some(&function.params),
+                AstKind::VariableDeclarator(declaration) => {
+                    self.parameters(declaration.init.as_ref()?, depth + 1)
+                }
                 _ => None,
             },
+            _ => None,
+        }
+    }
+
+    fn classify(&self, object: &Expression<'a>, depth: u8) -> Option<Target> {
+        match self.origin(object, depth)? {
+            Origin::Logic => Some(Target::Logic),
+            Origin::View => Some(Target::View),
+            _ => None,
+        }
+    }
+
+    fn origin(&self, expression: &Expression<'a>, depth: u8) -> Option<Origin> {
+        if depth > 16 {
+            return None;
+        }
+        match expression.get_inner_expression() {
+            Expression::AwaitExpression(value) => self.origin(&value.argument, depth + 1),
+            Expression::StaticMemberExpression(member) => self
+                .origin(&member.object, depth + 1)?
+                .member(member.property.name.as_str()),
             Expression::CallExpression(call) => {
                 let Expression::StaticMemberExpression(member) = call.callee.get_inner_expression()
                 else {
                     return None;
                 };
-                (member.property.name == "page"
-                    && self.classify(&member.object, depth + 1) == Some(Target::View))
-                .then_some(Target::View)
-            }
-            Expression::Identifier(ident) => {
-                if let Some(symbol) = self.symbol_of(ident)
-                    && let AstKind::VariableDeclarator(declarator) =
-                        self.semantic.symbol_declaration(symbol).kind()
-                    && matches!(declarator.id, BindingPattern::BindingIdentifier(_))
-                    && let Some(init) = &declarator.init
-                {
-                    return self.classify(init, depth + 1);
-                }
-                // A destructured `const { logic, view } = t.app`.
-                match ident.name.as_str() {
-                    "logic" => Some(Target::Logic),
-                    "view" => Some(Target::View),
+                match (
+                    self.origin(&member.object, depth + 1)?,
+                    member.property.name.as_str(),
+                ) {
+                    (Origin::View, "page") => Some(Origin::View),
+                    (Origin::App, "page") => Some(Origin::Page),
+                    (Origin::Automation, "lxapp") => Some(Origin::App),
                     _ => None,
                 }
+            }
+            Expression::Identifier(ident) => {
+                let symbol = self.symbol_of(ident)?;
+                // A reassigned alias no longer proves where an eval runs.
+                if self
+                    .semantic
+                    .scoping()
+                    .get_resolved_references(symbol)
+                    .any(|reference| reference.is_write())
+                {
+                    return None;
+                }
+                if let Some(origin) = self.roots.get(&symbol) {
+                    return Some(*origin);
+                }
+                let AstKind::VariableDeclarator(declaration) =
+                    self.semantic.symbol_declaration(symbol).kind()
+                else {
+                    return None;
+                };
+                let origin = self.origin(declaration.init.as_ref()?, depth + 1)?;
+                let mut bindings = HashMap::new();
+                collect_bindings(&declaration.id, origin, &mut bindings);
+                bindings.get(&symbol).copied()
             }
             _ => None,
         }
@@ -229,6 +333,64 @@ impl<'a> EvalFinder<'_, 'a> {
     fn symbol_of(&self, ident: &IdentifierReference<'a>) -> Option<oxc_semantic::SymbolId> {
         let reference = ident.reference_id.get()?;
         self.semantic.scoping().get_reference(reference).symbol_id()
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Origin {
+    Module,
+    Spec,
+    Fixture,
+    Automation,
+    App,
+    Page,
+    Logic,
+    View,
+}
+
+impl Origin {
+    fn member(self, name: &str) -> Option<Self> {
+        match (self, name) {
+            (Self::Module, "spec") => Some(Self::Spec),
+            (
+                Self::Spec,
+                "only" | "skip" | "fail" | "fixme" | "beforeEach" | "afterEach" | "reset",
+            ) => Some(Self::Spec),
+            (Self::Fixture, "app") => Some(Self::App),
+            (Self::Fixture, "automation") => Some(Self::Automation),
+            (Self::App, "logic") => Some(Self::Logic),
+            (Self::App | Self::Page, "view") => Some(Self::View),
+            _ => None,
+        }
+    }
+}
+
+fn collect_bindings(
+    pattern: &BindingPattern<'_>,
+    origin: Origin,
+    out: &mut HashMap<oxc_semantic::SymbolId, Origin>,
+) {
+    match pattern {
+        BindingPattern::BindingIdentifier(ident) => {
+            if let Some(symbol) = ident.symbol_id.get() {
+                out.insert(symbol, origin);
+            }
+        }
+        BindingPattern::ObjectPattern(object) => {
+            for property in &object.properties {
+                if property.computed
+                    && !matches!(property.key, oxc_ast::ast::PropertyKey::StringLiteral(_))
+                {
+                    continue;
+                }
+                if let Some(name) = property.key.static_name()
+                    && let Some(child) = origin.member(&name)
+                {
+                    collect_bindings(&property.value, child, out);
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -263,6 +425,8 @@ mod tests {
     use oxc_span::SourceType;
 
     fn check(source: &str) -> Result<()> {
+        let source = format!("import {{ spec }} from '@lingxia/test';{source}");
+        let source = source.as_str();
         let allocator = Allocator::default();
         let program = Parser::new(&allocator, source, SourceType::ts())
             .parse()
@@ -334,5 +498,68 @@ mod tests {
             "const script = '1';\nspec('x', async (t) => {\n  await rawAutomation().lxapp().eval({ script });\n  await t.automation.browser.eval({ js: script });\n  const other = { eval: (fn: () => string) => fn() };\n  other.eval(() => script);\n});\n",
         )
         .unwrap();
+    }
+    #[test]
+    fn unrelated_logic_view_and_shadowed_fixtures_are_not_remote() {
+        check("const captured = 1; const logic = { eval: f => f() }; logic.eval(() => captured); const other = { view: logic }; other.view.eval(() => captured); function helper(spec) { spec('local', t => t.app.logic.eval(() => captured)); }").unwrap();
+    }
+
+    #[test]
+    fn renamed_nested_bindings_and_named_callbacks_are_remote() {
+        let message = error(
+            "const captured = 1; function body({ app: { view: screen } }) { const alias = screen.page('home'); alias.eval(() => captured); } spec.only('remote', body);",
+        );
+        assert!(
+            message.contains("alias.eval(fn) closes over `captured`"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn import_aliases_and_hooks_retain_the_fixture_origin() {
+        let message = error(
+            "import * as tests from '@lingxia/test'; const captured = 1; const check = tests.spec; check.beforeEach(({ app }) => { app.logic.eval(() => captured); });",
+        );
+        assert!(
+            message.contains("app.logic.eval(fn) closes over `captured`"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn a_computed_business_key_does_not_prove_a_fixture_member() {
+        check("const key = 'logic'; const captured = 1; spec('x', t => { const { [key]: logic } = t.app; logic.eval(() => captured); });").unwrap();
+    }
+    #[test]
+    fn automation_selectors_and_reset_hooks_retain_the_fixture_origin() {
+        let message = error(
+            "const captured = 1; spec('other', async t => { await t.automation.lxapp('other').view.eval(() => captured); const { automation } = t; const app = automation.lxapp(); const { logic: runtime } = app; await runtime.eval(() => captured); }); spec.reset(async ({ app }) => { await app.logic.eval(() => captured); });",
+        );
+        for callee in [
+            "t.automation.lxapp('other').view.eval",
+            "runtime.eval",
+            "app.logic.eval",
+        ] {
+            assert!(
+                message.contains(&format!("{callee}(fn) closes over `captured`")),
+                "{message}"
+            );
+        }
+    }
+
+    #[test]
+    fn fixed_page_handles_keep_remote_eval_provenance() {
+        let message = error(
+            "const captured = 1; spec('page', async t => { const page = await t.app.page({ name: 'home' }); page.view.eval(() => captured); });",
+        );
+        assert!(
+            message.contains("page.view.eval(fn) closes over `captured`"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn business_selectors_and_raw_automation_are_not_fixture_origins() {
+        check("const captured = 1; const other = { automation: { lxapp: () => ({ logic: { eval: fn => fn() } }) } }; other.automation.lxapp().logic.eval(() => captured); spec('raw', t => { t.automation.browser.eval({ js: String(captured) }); });").unwrap();
     }
 }

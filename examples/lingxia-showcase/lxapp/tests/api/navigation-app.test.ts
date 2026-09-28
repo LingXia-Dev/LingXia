@@ -80,7 +80,7 @@ hopSpec('hop to the bundled chat lxapp and back', {
       lx.navigateToApp({ appId })
         .then(() => { state.settled = { ok: true }; })
         .catch((error: { code?: string; message?: string } | null) => {
-          state.settled = { ok: false, code: error?.code, message: String(error?.message) };
+          state.settled = { ok: false, code: error?.code ?? '', message: String(error?.message) };
         });
       return 'scheduled';
     }, stateKey, CHAT_APP_ID);

@@ -8,6 +8,8 @@
  * the same way, so a spec never meets either heuristic.
  */
 
+import { jsonResult } from "./json-result.js";
+
 export type RemoteTarget = "logic" | "page";
 
 const FUNCTION_SOURCE =
@@ -33,66 +35,14 @@ export function functionSource(fn: unknown, api: string): string {
   return source;
 }
 
-const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
-
-function describeValue(value: unknown): string {
-  if (value === undefined) return "undefined";
-  if (typeof value === "function") return "a function";
-  if (typeof value === "symbol") return "a symbol";
-  if (typeof value === "bigint") return `${value}n (a bigint)`;
-  if (typeof value === "number") return String(value);
-  const name = (value as object).constructor?.name;
-  return name ? `a ${name}` : "an object";
-}
-
-/**
- * Throw unless `value` crosses the boundary as itself: `JSON.stringify` would
- * silently turn `undefined`, functions and non-finite numbers into `null` or
- * drop them, and a Date, Map or class instance into something else.
- */
-function checkJson(value: unknown, path: string, api: string, seen: Set<object>): void {
-  const fail = (what: string, at = path): never => {
-    throw new TypeError(`${api}: ${at}: ${what} is not JSON; pass JSON values (string, finite number, boolean, null, array, plain object)`);
-  };
-  if (value === null || typeof value === "string" || typeof value === "boolean") return;
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) fail(describeValue(value));
-    return;
-  }
-  if (typeof value !== "object") fail(describeValue(value));
-  const object = value as object;
-  if (seen.has(object)) fail("a circular reference");
-  if (Array.isArray(object)) {
-    seen.add(object);
-    for (let index = 0; index < object.length; index++) {
-      if (!(index in object)) fail("an array hole", `${path}[${index}]`);
-      checkJson(object[index], `${path}[${index}]`, api, seen);
-    }
-    seen.delete(object);
-    return;
-  }
-  const proto = Object.getPrototypeOf(object);
-  if (proto !== Object.prototype && proto !== null) fail(describeValue(object));
-  seen.add(object);
-  for (const key of Object.keys(object)) {
-    const child = IDENTIFIER.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`;
-    checkJson((object as Record<string, unknown>)[key], child, api, seen);
-  }
-  seen.delete(object);
-}
-
-/**
- * Check a call's arguments before anything is sent, naming the first value
- * that would not arrive as itself (`args[1].items[2]: undefined is not JSON`).
- */
 export function checkJsonArgs(args: readonly unknown[], api: string): void {
-  const seen = new Set<object>();
-  args.forEach((value, index) => checkJson(value, `args[${index}]`, api, seen));
+  args.forEach((value, index) => jsonResult(value, api, false, `args[${index}]`));
 }
 
 function argsLiteral(args: readonly unknown[], api: string): string {
-  checkJsonArgs(args, api);
-  return JSON.stringify(args);
+  const json = JSON.stringify(args.map((value, index) => jsonResult(value, api, false, `args[${index}]`)));
+  // JSON object keys such as __proto__ must remain data in the target realm.
+  return `JSON.parse(${JSON.stringify(json)})`;
 }
 
 /**
@@ -104,13 +54,14 @@ function argsLiteral(args: readonly unknown[], api: string): string {
 export function logicScript(fn: unknown, args: readonly unknown[], api = "t.app.logic.eval"): string {
   const source = functionSource(fn, api);
   return [
-    "((__lxFn, __lxArgs) => __lxFn({",
+    "((__lxFn, __lxArgs, __lxResult) => Promise.resolve(__lxFn({",
     "  lx,",
+    '  getPage: typeof __lxGetPage === "function" ? __lxGetPage : undefined,',
     '  getApp: typeof getApp === "function" ? getApp : undefined,',
     '  getCurrentPages: typeof getCurrentPages === "function" ? getCurrentPages : undefined,',
-    "}, ...__lxArgs))(",
+    `}, ...__lxArgs)).then(value => __lxResult(value, ${JSON.stringify(api)})))(`,
     source,
-    `, ${argsLiteral(args, api)})`,
+    `, ${argsLiteral(args, api)}, ${jsonResult.toString()})`,
   ].join("\n");
 }
 
@@ -118,9 +69,9 @@ export function logicScript(fn: unknown, args: readonly unknown[], api = "t.app.
 export function pageScript(fn: unknown, args: readonly unknown[], api = "t.app.view.eval"): string {
   const source = functionSource(fn, api);
   return [
-    "((__lxFn, __lxArgs) => __lxFn({ document, window }, ...__lxArgs))(",
+    `((__lxFn, __lxArgs, __lxResult) => Promise.resolve(__lxFn({ document, window }, ...__lxArgs)).then(value => __lxResult(value, ${JSON.stringify(api)})))(`,
     source,
-    `, ${argsLiteral(args, api)})`,
+    `, ${argsLiteral(args, api)}, ${jsonResult.toString()})`,
   ].join("\n");
 }
 
@@ -132,15 +83,17 @@ export function pageScript(fn: unknown, args: readonly unknown[], api = "t.app.v
 export function explainRemoteError(error: unknown, api: string, target: RemoteTarget): unknown {
   const message = error instanceof Error ? error.message : String(error);
   const name = error instanceof Error ? error.name : "";
-  if (name !== "ReferenceError" && !/\bReferenceError\b/.test(message)) return error;
+  const remoteName = ["ReferenceError", "TypeError", "SyntaxError"].find((candidate) =>
+    name === candidate || new RegExp(`\\b${candidate}:`).test(message));
+  if (remoteName === undefined) return error;
   const where = target === "logic" ? "the app's Logic runtime" : "the page WebView";
-  const explained = new Error(
-    `${message}\n${api}(fn) runs fn in ${where} from its source text, so it cannot ` +
+  const explained = new Error(remoteName === "ReferenceError"
+    ? `${message}\n${api}(fn) runs fn in ${where} from its source text, so it cannot ` +
       "use variables, imports or helpers of the spec. Pass values as JSON " +
-      `arguments: ${api}((scope, value) => ..., value).`,
-  ) as Error & { code?: unknown; data?: unknown; cause?: unknown };
-  // Named for what it is, so `t.waitFor` fails fast on it instead of retrying.
-  explained.name = "ReferenceError";
+      `arguments: ${api}((scope, value) => ..., value).`
+    : message) as Error & { code?: unknown; data?: unknown; cause?: unknown };
+  // Keep programming failures recognizable to retrying reads.
+  explained.name = remoteName;
   const details = error as { code?: unknown; data?: unknown };
   if (details && typeof details === "object") {
     if (details.code !== undefined) explained.code = details.code;

@@ -12,7 +12,7 @@ interface OpenedTab {
   realized: string;
   scope: string;
   id: string;
-  key: string | undefined;
+  key: string | null;
   alive: boolean;
   visible: boolean;
   registered: boolean;
@@ -121,7 +121,7 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
       realized: tab.realized,
       scope: tab.scope,
       id: tab.id,
-      key: tab.key,
+      key: tab.key ?? null,
       alive: tab.alive,
       visible: tab.visible,
       registered: registered != null && registered.id === tab.id,
@@ -174,7 +174,7 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
           return { ok: true };
         } catch (error) {
           const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-          return { ok: false, code, message: String(message ?? error), data };
+          return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
         }
       }, stateKey);
       expect(again.ok).toBeTruthy();
@@ -192,7 +192,7 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
             return { ok: true };
           } catch (error) {
             const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-            return { ok: false, code, message: String(message ?? error), data };
+            return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
           }
         }, stateKey, method);
         expect(rejected.ok).toBeFalsy();

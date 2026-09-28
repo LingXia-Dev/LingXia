@@ -103,13 +103,13 @@ test("a failure names its action, the current page instance and the code that ke
   spec("save", (t) => t.app.view.testId("save").click({ timeout: 300, interval: 5 }));
   spec("no forensics", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 300, interval: 5 }));
   spec("asserts", { forensics: false }, (t) => expect.poll(() => 1, { timeout: 20 }).toBe(2));
-  spec.fail("known inactive page", { expected: { code: "E_PAGE_NOT_ACTIVE" }, forensics: false },
+  spec.fail("known inactive page", { expected: { code: "E_TIMEOUT" }, forensics: false },
     (t) => t.app.view.testId("save").click({ timeout: 100, interval: 5 }));
 
   await globalThis.__LINGXIA_TEST__.run();
   const report = decode(attachments, "report.json");
   const [save, noForensics, asserts, known] = report.cases;
-  assert.equal(known.status, "xfail", "a timeout caused by a coded rejection carries its code");
+  assert.equal(known.status, "xfail", "all exhausted fixture budgets use E_TIMEOUT");
   assert.match(save.error.failedAction, /^page\.click .*save/);
   assert.deepEqual(save.error.page, { name: "home", instanceId: "a1b2" });
   assert.deepEqual(noForensics.error.page, { name: "home", instanceId: "c3d4" }, "falls back to the error's data");
@@ -121,7 +121,8 @@ test("a failure names its action, the current page instance and the code that ke
   assert.equal(first.id, save.id);
   assert.equal(first.title, "save");
   assert.equal(first.phase, "body");
-  assert.equal(first.code, "E_PAGE_NOT_ACTIVE");
+  assert.equal(first.code, "E_TIMEOUT");
+  assert.equal(save.error.data.driverCode, "E_PAGE_NOT_ACTIVE");
   assert.match(first.message, /Timed out after \d+ms waiting to click/);
   assert.match(first.message, /page is not active: devices/);
   assert.equal(first.failedAction, save.error.failedAction);
@@ -130,7 +131,7 @@ test("a failure names its action, the current page instance and the code that ke
   assert.equal(report.failures[1].screenshot, undefined);
   assert.equal(
     failedAt(save.error),
-    `failed at ${save.error.failedAction} on page "home" (#a1b2) — E_PAGE_NOT_ACTIVE`,
+    `failed at ${save.error.failedAction} on page "home" (#a1b2) — E_TIMEOUT`,
   );
 });
 

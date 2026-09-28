@@ -423,108 +423,29 @@ function hidePage(world, answer = { state: "hidden", animationFrames: false }) {
   return probes;
 }
 
-test("a timed-out wait on a hidden page says the page is hidden, not only obscured", async () => {
+test("hidden-page actions exhaust their original budget without raising a window or probing afterward", async () => {
   const world = createWorld();
-  world.add({ testId: "open-sheet", inViewport: false, text: "Open" });
-  world.add({ testId: "sheet", visible: false, text: "" });
+  world.add({ testId: "sheet", visible: false });
   const probes = hidePage(world);
-  const { attachments } = installFakeHost(world);
-  const messages = [];
-
-  spec("hidden page", { forensics: false }, async (t) => {
-    for (const wait of [
-      () => t.app.view.testId("open-sheet").click({ timeout: 80 }),
+  installFakeHost(world);
+  let raised = 0;
+  globalThis.__LINGXIA_AUTOMATION_HOST__.raiseWindow = async () => { raised++; return true; };
+  const errors = [];
+  spec("bounded hidden page", { forensics: false }, async t => {
+    for (const action of [
       () => t.app.view.testId("sheet").waitFor({ timeout: 80 }),
-      () => expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 }),
+      () => t.app.view.testId("sheet").click({ timeout: 80 }),
     ]) {
-      try { await wait(); } catch (error) { messages.push(error.message); }
+      const start = Date.now();
+      try { await action(); } catch (error) { errors.push(error); }
+      assert.ok(Date.now() - start < 500, "no extra raise/retry budget");
     }
-    await expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 });
   });
-
-  await globalThis.__LINGXIA_TEST__.run();
-  assert.equal(messages.length, 3);
-  assert.match(messages[0],
-    /page looked hidden or paused: visibilityState "hidden", no animation frame observed within 300ms \(a covered window or a sleeping display pauses a page's animations\)$/m);
-  for (const message of messages.slice(1)) {
-    assert.match(message, /page looked hidden or paused: .* \[observed on this page \d+ms earlier\]/);
-  }
-  assert.match(failedMessage(attachments), /page looked hidden/);
-  // Four timed-out waits on one page moments apart, one probe.
-  assert.equal(probes.count, 1);
-});
-
-test("an action or wait on a hidden page raises the app window and retries once", async () => {
-  const world = createWorld();
-  const sheet = world.add({ testId: "sheet", visible: false, text: "Sheet" });
-  const answer = { state: "hidden", animationFrames: false };
-  hidePage(world, answer);
-  const { events } = installFakeHost(world);
-  let raised = 0;
-  // Raising the window lets the paused animation finish.
-  globalThis.__LINGXIA_AUTOMATION_HOST__.raiseWindow = async () => {
-    raised += 1;
-    Object.assign(answer, { state: "visible", animationFrames: true });
-    sheet.visible = true;
-    return true;
-  };
-
-  spec("covered window", { forensics: false }, async (t) => {
-    await t.app.view.testId("sheet").waitFor({ timeout: 80 });
-    await t.app.view.testId("sheet").click({ timeout: 80 });
-  });
-
-  const protocol = await globalThis.__LINGXIA_TEST__.run();
-  assert.equal(protocol.passed, 1, JSON.stringify(events.filter((event) => event.type === "case_finished")));
-  assert.equal(raised, 1, "the page is visible once raised: the click needs no second raise");
-  assert.equal(sheet.clicked, 1);
-  const note = events.find((event) => event.type === "diagnostic" && event.phase === "window");
-  assert.match(note.message, /The page looked hidden, so the runner raised the app window and retried once \(up to 80ms\)\. \[data-testid="sheet"\]/);
-});
-
-test("a page still hidden after the raise fails once, saying the window was raised", async () => {
-  const world = createWorld();
-  world.add({ testId: "sheet", visible: false, text: "" });
-  hidePage(world);
-  const { attachments } = installFakeHost(world);
-  let raised = 0;
-  globalThis.__LINGXIA_AUTOMATION_HOST__.raiseWindow = async () => { raised += 1; return true; };
-  let message;
-
-  spec("stays covered", { forensics: false }, async (t) => {
-    try { await t.app.view.testId("sheet").click({ timeout: 80 }); } catch (error) { message = error.message; }
-  });
-
-  await globalThis.__LINGXIA_TEST__.run();
-  assert.equal(raised, 1, "one raise and one retry per action");
-  assert.match(message, /Timed out after \d+ms waiting to click/);
-  assert.match(message, /page looked hidden or paused/);
-  assert.match(message, /raised the app window and retried once/);
-  assert.doesNotThrow(() => JSON.parse(decodeAttachment(attachments, "report.json")));
-});
-
-test("the window is not raised for a visible page, a locked screen, or a host that cannot", async () => {
-  for (const setup of ["visible", "locked", "unsupported"]) {
-    reset();
-    const world = createWorld();
-    world.add({ testId: "sheet", visible: false, text: "" });
-    if (setup !== "visible") hidePage(world);
-    else hidePage(world, { state: "visible", animationFrames: true });
-    installFakeHost(world);
-    let raised = 0;
-    globalThis.__LINGXIA_AUTOMATION_HOST__.raiseWindow = async () => { raised += 1; return setup !== "unsupported"; };
-    // Locked mid-spec: a run that starts locked runs nothing.
-    let locked = false;
-    globalThis.__LINGXIA_AUTOMATION_HOST__.screenLocked = () => locked;
-    let message;
-    spec(`no raise: ${setup}`, { forensics: false }, async (t) => {
-      locked = setup === "locked";
-      try { await t.app.view.testId("sheet").waitFor({ timeout: 80 }); } catch (error) { message = error.message; }
-    });
-    await globalThis.__LINGXIA_TEST__.run();
-    assert.equal(raised, setup === "unsupported" ? 1 : 0, setup);
-    assert.doesNotMatch(message, /raised the app window/, setup);
-  }
+  const report = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(report.passed, 1);
+  assert.deepEqual(errors.map(error => error.code), ["E_TIMEOUT", "E_TIMEOUT"]);
+  assert.equal(raised, 0);
+  assert.equal(probes.count, 0);
 });
 
 /** Page eval that answers the visibility probe per target page. */
@@ -548,7 +469,9 @@ async function missOn(locator) {
     await locator.waitFor({ timeout: 60 });
     return "found";
   } catch (error) {
-    return error.message;
+    // Evidence is a separate operation; it never lengthens waitFor itself.
+    const note = await locator.hiddenPageNote();
+    return [error.message, note].filter(Boolean).join("\n");
   }
 }
 
@@ -629,14 +552,14 @@ test("a hidden page on a locked screen names the lock", async () => {
 
   spec("locks mid-spec", { forensics: false }, async (t) => {
     locked = true;
-    try { await t.app.view.testId("sheet").waitFor({ timeout: 80 }); } catch (error) { message = error.message; }
+    message = await missOn(t.app.view.testId("sheet"));
     await t.app.view.testId("sheet").waitFor({ timeout: 80 });
   });
 
   await globalThis.__LINGXIA_TEST__.run();
   assert.match(message, /the screen is locked; unlock it — animations and sheets are paused/);
   assert.doesNotMatch(message, /page looked hidden/);
-  assert.match(failedMessage(attachments), /the screen is locked; unlock it/);
+  assert.match(failedMessage(attachments), /Timed out/);
 });
 
 test("a locked screen stops the run once, before the next spec, instead of failing each", async () => {
@@ -746,7 +669,7 @@ test("failure forensics record the page's visibility", async () => {
   assert.match(report.failures[0].page.hidden, /no animation frame/);
 });
 
-test("view.page(name) binds locators, eval, screenshot and scroll to a page; a call can name another", async () => {
+test("view.page(name) binds locators, eval, screenshot and scroll to a page; calls cannot change the target", async () => {
   const world = createWorld();
   world.add({ testId: "todo-input" });
   installFakeHost(world);
@@ -761,9 +684,9 @@ test("view.page(name) binds locators, eval, screenshot and scroll to a page; a c
     const todo = t.app.view.page("todo");
     await todo.testId("todo-input").fill("milk");
     await expect(todo.testId("todo-input")).toHaveValue("milk");
-    await expect(todo.testId("todo-input", { page: "other" })).toBeVisible();
+    assert.throws(() => todo.testId("todo-input", { page: "other" }), /bound page/);
     await todo.eval(({ document }) => document.title);
-    await todo.eval({ page: "cart" }, ({ document }) => document.title);
+    assert.throws(() => todo.eval({ page: "cart" }, ({ document }) => document.title), /bound page/);
     await todo.screenshot();
     await t.app.view.screenshot();
     await t.reject(() => Promise.resolve().then(() => t.app.view.page("")), { message: /takes a configured page name/ });
@@ -771,8 +694,9 @@ test("view.page(name) binds locators, eval, screenshot and scroll to a page; a c
 
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
-  assert.ok(queried.includes("todo") && queried.includes("other"), JSON.stringify(queried));
+  assert.ok(queried.includes("todo") && !queried.includes("other"), JSON.stringify(queried));
   assert.ok(!queried.includes(undefined), JSON.stringify(queried));
-  assert.deepEqual(world.evaluatedPages.filter((page) => page === "todo" || page === "cart").slice(-2), ["todo", "cart"]);
+  assert.ok(world.evaluatedPages.includes("todo"));
+  assert.ok(!world.evaluatedPages.includes("cart"));
   assert.deepEqual(shots, ["todo", undefined]);
 });

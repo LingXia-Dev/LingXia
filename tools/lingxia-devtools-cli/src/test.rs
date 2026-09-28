@@ -237,7 +237,7 @@ pub struct TestOptions {
     verbose: bool,
 
     /// Record each spec's real Logic fetch traffic into DIR/<spec id>.json,
-    /// a scenario file `t.app.mock.use()` and `lxdev mock use`
+    /// a scenario file `t.scenario.use()` and `lxdev mock use`
     /// can replay. Credentials and secret values are redacted
     #[arg(long, value_name = "DIR", help_heading = "Output")]
     record_network: Option<PathBuf>,

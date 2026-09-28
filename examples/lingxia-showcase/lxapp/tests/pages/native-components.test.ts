@@ -148,35 +148,35 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
       return {
         compileOk: !!(compiled && compiled.ok),
         kinds: children.map((child) => child.kind),
-        cover: cover && {
-          authorType: cover.authorType,
-          automationId: cover.automationId,
-          pointerEvents: cover.props.pointerEvents,
-          scrim: cover.props.scrimPaint && cover.props.scrimPaint.scrim,
-          coverPosition: cover.props.coverPreset && cover.props.coverPreset.position,
-          coverInset: cover.props.coverPreset && cover.props.coverPreset.inset,
+        cover: !cover ? null : {
+          authorType: cover.authorType ?? null,
+          automationId: cover.automationId ?? null,
+          pointerEvents: cover.props.pointerEvents ?? null,
+          scrim: cover.props.scrimPaint?.scrim ?? null,
+          coverPosition: cover.props.coverPreset?.position ?? null,
+          coverInset: cover.props.coverPreset?.inset ?? null,
           childKinds: cover.children.map((child) => child.kind),
         },
-        menu: menu && {
-          authorType: menu.authorType,
-          automationId: menu.automationId,
-          role: menu.props.role,
-          pointerEvents: menu.props.pointerEvents,
+        menu: !menu ? null : {
+          authorType: menu.authorType ?? null,
+          automationId: menu.automationId ?? null,
+          role: menu.props.role ?? null,
+          pointerEvents: menu.props.pointerEvents ?? null,
           nativeStyle: menu.props.nativeStyle ?? {},
           childKinds: menu.children.map((child) => child.kind),
-          childText: menu.children.filter((child) => child.kind === 'text').map((child) => child.text),
+          childText: menu.children.filter((child) => child.kind === 'text').map((child) => child.text ?? null),
         },
-        more: more && {
-          icon: more.props.content && more.props.content.icon && more.props.content.icon.name,
-          label: more.props.content && more.props.content.text,
-          intent: more.props.intent,
-          emphasis: more.props.emphasis,
+        more: !more ? null : {
+          icon: more.props.content?.icon?.name ?? null,
+          label: more.props.content?.text ?? null,
+          intent: more.props.intent ?? null,
+          emphasis: more.props.emphasis ?? null,
           nativeStyle: more.props.nativeStyle ?? {},
         },
-        close: close && {
-          icon: close.props.content && close.props.content.icon && close.props.content.icon.name,
-          label: close.props.content && close.props.content.text,
-          emphasis: close.props.emphasis,
+        close: !close ? null : {
+          icon: close.props.content?.icon?.name ?? null,
+          label: close.props.content?.text ?? null,
+          emphasis: close.props.emphasis ?? null,
           nativeStyle: close.props.nativeStyle ?? {},
         },
       };
@@ -221,13 +221,13 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
     const close = document.querySelector('#video-native-menu-close');
     const rect = menu?.getBoundingClientRect();
     return {
-      menuRole: menu?.getAttribute('role'),
-      moreRole: more?.getAttribute('role'),
-      closeRole: close?.getAttribute('role'),
-      moreAriaLabel: more?.getAttribute('aria-label'),
-      closeAriaLabel: close?.getAttribute('aria-label'),
-      moreTabIndex: more?.getAttribute('tabindex'),
-      closeTabIndex: close?.getAttribute('tabindex'),
+      menuRole: menu?.getAttribute('role') ?? null,
+      moreRole: more?.getAttribute('role') ?? null,
+      closeRole: close?.getAttribute('role') ?? null,
+      moreAriaLabel: more?.getAttribute('aria-label') ?? null,
+      closeAriaLabel: close?.getAttribute('aria-label') ?? null,
+      moreTabIndex: more?.getAttribute('tabindex') ?? null,
+      closeTabIndex: close?.getAttribute('tabindex') ?? null,
       visible: !!rect && rect.top >= 0 && rect.left >= 0
         && rect.top + rect.height <= window.innerHeight && rect.left + rect.width <= window.innerWidth,
     };
@@ -506,7 +506,7 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
     if (!nativeButton.exists) {
       throw new Error('native menu More button disappeared before pointer click');
     }
-    await automation.lxapp(SHOWCASE_APP_ID).view.pointer.click({
+    await automation.lxapp(SHOWCASE_APP_ID).window.pointer.click({
       window: host.id,
       at: [nativeButton.rect.center_x, nativeButton.rect.center_y],
     });

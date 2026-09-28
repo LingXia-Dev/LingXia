@@ -42,6 +42,9 @@ import type {
   RetryMatchers,
   SourceLocation,
   TestApp,
+  PageContract,
+  PageSelector,
+  TestPage,
   JsonValue,
   EvalOptions,
   LogicCallOptions,
@@ -74,7 +77,7 @@ import {
   MAX_EVAL_BUDGET_MS,
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
-import type { HostRunAutomation as Automation, LxAppDriver, NavDriver, PageDriver, PageTarget, ScenarioInput } from "@lingxia/types/automation";
+import type { HostRunAutomation as Automation, LxAppDriver, NavDriver, PageDriver, PageTarget } from "@lingxia/types/automation";
 
 export { TimeoutError };
 
@@ -190,6 +193,13 @@ export class LiveFixture implements Fixture {
 
   get app(): TestApp {
     return this.appOf(this.pinned);
+  }
+
+  get scenario(): Fixture["scenario"] {
+    return { use: (definition, options) => {
+      const ref = options?.app === undefined ? this.pinned : this.refFor(options.app);
+      return installScenario(() => ref.driver, this, this.scenarioScope, definition, options?.variant);
+    } };
   }
 
   get raw(): LxAppDriver {
@@ -856,17 +866,19 @@ export class LiveFixture implements Fixture {
   private wrapApp(ref: AppRef): TestApp {
     const fixture = this;
     const driver = () => ref.driver;
+    const input = lazyDriver(() => ({ owner: driver().page, value: driver().page }), fixture, "window.") as PageDriver;
     return {
+      page: <C extends PageContract>(selector?: PageSelector) => this.bindPage<C>(driver, selector),
       view: this.wrapView(() => driver().page, undefined, (target, probe) => this.pageObservation(driver, target, probe)),
+      window: {
+        get pointer() { return input.pointer; },
+        get key() { return input.key; },
+      },
       logic: this.wrapLogic(driver),
       nav: this.wrapNav(() => driver().nav),
       // Lazy: the driver is read inside each traced call.
       get network() {
         return wrapNetwork(() => driver().network, fixture, fixture.networkScope);
-      },
-      mock: {
-        use: (definition: ScenarioInput, variant?: string) =>
-          installScenario(driver, fixture, fixture.scenarioScope, definition, variant),
       },
       get profile() {
         return fixture.profileFixture(ref);
@@ -913,6 +925,67 @@ export class LiveFixture implements Fixture {
       info: (options?: PageTarget) => read("info", () => nav().info(options), options),
       stack: () => read("stack", () => nav().stack()),
     };
+  }
+
+  private bindPage<C extends PageContract>(
+    driver: () => LxAppDriver,
+    selector?: PageSelector,
+  ): Promise<TestPage<C>> {
+    return this.act("page.bind", summarise(selector), async () => {
+      if (selector !== undefined) {
+        const keys = [selector.name, selector.instanceId].filter(value => value !== undefined);
+        if (keys.length !== 1 || typeof keys[0] !== "string" || keys[0].trim() === "") {
+          throw new TypeError("page.bind: select exactly one non-empty name or instanceId");
+        }
+      }
+      const app = driver();
+      const info = await (selector
+        ? app.nav.info({ page: selector.instanceId ?? selector.name })
+        : app.nav.current());
+      const instanceId = info?.instanceId;
+      if (!instanceId) throw new Error("page.bind: no live page instance matches the selector");
+      if (selector?.name !== undefined) {
+        const matches = (await app.nav.stack()).filter(page => page.path === info.path);
+        if (matches.length > 1) {
+          throw new Error(`page.bind: ${selector.name} is ambiguous; select an instanceId`);
+        }
+      }
+      // Capture this app driver too: reopening the app must not retarget the handle.
+      const view = this.wrapView(() => app.page, instanceId,
+        (target, probe) => this.pageObservation(() => app, target, probe));
+      const actions = new Proxy(Object.create(null), {
+        get: (_, name) => {
+          if (typeof name !== "string" || name === "then") return undefined;
+          return (...args: unknown[]) => {
+            checkJsonArgs(args, `page.actions.${name}`);
+            return this.viewEval(() => app.page, [
+              async ({ window }: { window: unknown }, method: string, payload: unknown[]) => {
+                const target = window as {
+                  __pageBridge?: { __names?: string[]; __modes?: Record<string, string> };
+                  LingXiaBridge?: { raw: { call(name: string, payload?: unknown): Promise<unknown> } };
+                };
+                if (!target.__pageBridge?.__names?.includes(method)) {
+                  throw new Error(`Unknown public page action: ${method}`);
+                }
+                if (target.__pageBridge.__modes?.[method] !== "call") {
+                  throw new Error(`Page action ${method} is not a unary action`);
+                }
+                if (payload.length > 1) throw new TypeError(`Page action ${method} accepts at most one payload`);
+                if (!target.LingXiaBridge) throw new Error("Page bridge is not ready");
+                return await target.LingXiaBridge.raw.call(method, payload[0]);
+              },
+              name, args,
+            ], `page.actions.${name}`, instanceId);
+          };
+        },
+      });
+      return {
+        instanceId, view, actions,
+        data: () => this.act("page.data", instanceId, () => this.evalLogic(app, {
+          script: logicScript(({ getPage }: LogicScope, id: string) => getPage(id).data, [instanceId], "page.data"),
+        })),
+      } as TestPage<C>;
+    });
   }
 
   /** The driver's options for a fixture nav action. */
@@ -1030,6 +1103,9 @@ export class LiveFixture implements Fixture {
   private viewEval(page: () => PageDriver, input: unknown[], api: string, bound?: string): Promise<unknown> {
     const parsed = evalInput<ViewEvalOptions>(input);
     const { fn, args } = parsed;
+    if (bound !== undefined && parsed.options?.page !== undefined && parsed.options.page !== bound) {
+      throw new TypeError("A bound page cannot target another page");
+    }
     const options = bound === undefined || parsed.options?.page !== undefined
       ? parsed.options
       : { ...parsed.options, page: bound };
@@ -1066,12 +1142,17 @@ export class LiveFixture implements Fixture {
       eval: (options) => page().eval(options),
     };
     const input = lazyDriver(() => ({ owner: page() as object, value: page() }), this, "page.") as PageDriver;
-    const target = <T extends PageTarget>(options?: T): T | undefined =>
-      bound === undefined || options?.page !== undefined ? options : { ...options, page: bound } as T;
+    const target = <T extends PageTarget>(options?: T): T | undefined => {
+      if (bound !== undefined && options?.page !== undefined && options.page !== bound) {
+        throw new TypeError("A bound page cannot target another page");
+      }
+      return bound === undefined ? options : { ...options, page: bound } as T;
+    };
     return {
       testId: (id: string, options?: LocatorOptions) => this.locator(lazyPage, testIdSelector(id), location(), evidence, target(options)),
       css: (selector: string, options?: LocatorOptions) => this.locator(lazyPage, selector, location(), evidence, target(options)),
       page: (name: string) => {
+        if (bound !== undefined) throw new TypeError("Select a new page from the app, not a bound view");
         if (typeof name !== "string" || name.length === 0) {
           throw new TypeError("t.app.view.page(name) takes a configured page name or instance id");
         }
@@ -1083,8 +1164,6 @@ export class LiveFixture implements Fixture {
         return this.act("page.screenshot", summarise(shot), () => this.readRetrying(() => page().screenshot(shot)));
       },
       scroll: (options) => input.scroll(target(options)),
-      get pointer() { return input.pointer; },
-      get key() { return input.key; },
     };
   }
 
@@ -1106,7 +1185,6 @@ export class LiveFixture implements Fixture {
       () => this.budgetRoom(),
       {},
       evidence,
-      (message) => { void this.diagnostic("window", message); },
     );
   }
 
@@ -1242,7 +1320,7 @@ export class LiveFixture implements Fixture {
             });
             return;
           } catch (error) {
-            if (error instanceof TimeoutError || this.aborted) throw error;
+            if (error instanceof TimeoutError || this.aborted || !isRetryableReadError(error)) throw error;
             lastError = error;
           }
           if (deadline.expired()) break;
@@ -1255,9 +1333,6 @@ export class LiveFixture implements Fixture {
       }
       const duration = deadline.elapsed();
       const miss = lastResolved && locator instanceof PageLocator ? locator.missText(lastResolved) : undefined;
-      // A wait for the page to change that never saw it change: say when the
-      // page was hidden and its animations paused.
-      const hidden = !inverted && locator instanceof PageLocator ? await locator.hiddenPageNote() : undefined;
       throw this.retryFailure({
         clampNote: deadline.clampNote(),
         matcher: inverted ? `not.${matcher}` : matcher,
@@ -1266,7 +1341,7 @@ export class LiveFixture implements Fixture {
         duration,
         location,
         lastError,
-        extra: [miss, hidden].filter(Boolean).join("\n") || undefined,
+        extra: miss,
       });
     }), `expect(${target}).${assertion}`);
   }
@@ -1304,7 +1379,7 @@ export class LiveFixture implements Fixture {
             });
             return;
           } catch (error) {
-            if (error instanceof TimeoutError || this.aborted) throw error;
+            if (error instanceof TimeoutError || this.aborted || !isRetryableReadError(error)) throw error;
             lastError = error;
           }
           if (deadline.expired()) break;

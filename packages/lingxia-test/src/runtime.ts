@@ -811,9 +811,10 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
 
     // Toasts are recorded and modals / action sheets answered for this spec
     // only; the attempt's end removes the watch whatever happens below.
-    const dialogWatch = watchDialogs(fixture.raw, (message) => {
-      void host.emit({ type: "diagnostic", phase: "dialogs", message });
-    });
+    let dialogWatch: ReturnType<typeof watchDialogs> = undefined;
+    let dialogSetupError: unknown;
+    try { dialogWatch = watchDialogs(fixture.raw); }
+    catch (error) { dialogSetupError = error ?? new Error("dialog watch failed"); }
 
     let status: SpecStatus = "passed";
     let error: unknown;
@@ -848,6 +849,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     const bodyPromise = (async () => {
       // Each spec starts with fresh mock handler state, before its hooks.
       phase = "beforeEach";
+      if (dialogSetupError !== undefined) throw dialogSetupError;
       const mockNote = await resetMocks(fixture.raw, mockResetReasons).catch((error: unknown) =>
         `mock handler state was not reset: ${String((error as Error)?.message ?? error)}`);
       if (mockNote) await host.emit({ type: "diagnostic", phase: "mock", message: mockNote });
@@ -1035,7 +1037,15 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
 
     // An answer the spec queued that no dialog used: the dialog it expected
     // never came.
-    const unusedAnswers = stuck ? undefined : await dialogWatch?.end(fixture.raw);
+    let dialogCleanupError: string | undefined;
+    let unusedAnswers: string | undefined;
+    if (!stuck && dialogWatch) {
+      try {
+        unusedAnswers = await within(dialogWatch.end(fixture.raw), WEDGED_DEFER_BUDGET_MS, "dialog unwatch timed out");
+      } catch (error) {
+        dialogCleanupError = `dialog observation could not finish: ${String(error)}`;
+      }
+    }
     if (unusedAnswers !== undefined) {
       if (status === "passed") {
         status = "failed";
@@ -1049,7 +1059,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     // Framework cleanup is not the spec's: it runs whether or not the body
     // settled, and a resource it cannot remove fails the spec and stops the
     // run — a later spec would run against it.
-    const reclaimFailures: string[] = [];
+    const reclaimFailures: string[] = dialogCleanupError ? [dialogCleanupError] : [];
     if (recordingNetwork) {
       const recordingError = await saveNetworkRecording(host, fixture, record.title);
       if (recordingError !== undefined) reclaimFailures.push(`the network recording was not stopped: ${recordingError}`);
@@ -1194,14 +1204,9 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     if (previous >= 0) cases[previous] = finished; else cases.push(finished);
     await finishCase(host, finished);
     if (stuck) {
-      // The fixture is fenced (aborted and closed) and the spec's raw drivers
-      // refuse, so the abandoned code can no longer act through either. What
-      // could still reach a later spec is work already dispatched: a fetch or
-      // driver call that settles later resumes the spec's code, and a host
-      // tier it read is a native object no grant fences. Give dispatched
-      // work a grace period (the spec still owns what it starts meanwhile),
-      // recover the app as a spec start does, and go on unless something is
-      // left the run cannot take back.
+      // Shared-context user continuations cannot be proven dead. Reclaim and
+      // recover for inspection, then stop; only runner-owned evidence work can
+      // time out without abandoning user code.
       if (stuck.spec) lastAbandoned = record.full_name;
       const inFlight = stuck.spec ? await abandonedWorkInFlight(record.full_name, fixture) : [];
       cancelled += cancelTimersOf(record.full_name);
@@ -1211,6 +1216,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       const summary = `"${record.full_name}" left ${stuck.what} pending: ${describePending(stuck.work)}` +
         (cancelled > 0 ? `; cancelled its ${cancelled} pending ${cancelled === 1 ? "timer" : "timers"}` : "");
       const unsafe = [
+        ...(stuck.spec ? ["abandoned code can resume through an untracked promise in this shared JS context"] : []),
         ...(inFlight.length > 0
           ? [`${describePending(inFlight)} ${inFlight.length === 1 ? "is" : "are"} still running after ${WEDGED_DEFER_BUDGET_MS}ms and would resume its code during a later spec`]
           : []),
@@ -1218,7 +1224,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
           ? [`it holds host drivers the run cannot revoke (${unfenced.map((name) => `rawAutomation().${name}`).join(", ")})`]
           : []),
       ];
-      if (stuck.spec && unsafe.length > 0) {
+      if (stuck.spec) {
         // Isolation cannot be guaranteed: stop, and revoke all spec code.
         const revokeError = await revokeSpecAuthority(host, undefined, `${summary}; the run stopped`);
         const recovered = failure === undefined
@@ -1238,9 +1244,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       } else if (failure === undefined) {
         forceRelaunchNext = false;
         await host.emit({ type: "diagnostic", phase: "recovery",
-          message: `${summary}.` +
-            (stuck.spec ? " Its automation access was revoked and nothing it started is still running." : "") +
-            " Relaunched the app under test on its home page; the run continues." });
+          message: `${summary}. Relaunched the app under test on its home page; the run continues.` });
       } else if (!contaminated) {
         contaminated = true;
         contaminationReason = `Not run: ${summary}, and recovering the app failed: ${failure}. Recover: ${RECOVER_COMMAND}`;

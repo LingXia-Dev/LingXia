@@ -13,36 +13,11 @@ received artifacts. Keep the following invariants when changing these layers:
 
 - New test contexts do not reset product state. Retrying requires a file-scoped
   `spec.reset` hook.
-- Every spec runs in the same JS context, so nothing tells a continuation of
-  an abandoned spec from the next spec's code by itself: `expect`'s scope,
-  the pending-work owner and plain JS state are shared. When spec code may
-  still run after the runner stopped waiting for it — a body still pending
-  after its timeout (plus `WEDGED_DEFER_BUDGET_MS`), a cleanup past its
-  budget, fixture calls the body did not await that do not stop, or
-  fetches/raw driver calls a returned body left in flight that do not settle
-  within `WEDGED_DEFER_BUDGET_MS` (that spec fails, phase `body`) — the spec
-  is **abandoned** (`abandon` in `runtime.ts`): its `rawAutomation()` grant
-  is revoked at once (`pending.ts`: one grant per spec; a handle refuses once
-  its grant is revoked, a fresh `rawAutomation()` or the fenced
-  `lx.automation` global takes the current spec's grant, and between specs
-  there is none), its cleanup is not run (that would reopen the fixture), the
-  fixture stays aborted and closed, its host attempt ends (what it installed
-  is removed and installs are refused until the next attempt opens), and its
-  timers are cancelled. The runner then waits up to `WEDGED_DEFER_BUDGET_MS`
-  for work it dispatched (fetches, raw driver calls, fixture calls; the spec
-  still owns what their continuations start), recovers the app
-  (`reopenAppUnderTest`, then a home relaunch) and **continues** with a
-  `recovery` diagnostic. It stops — the rest not run, the run partial, a
-  `run_stopped` diagnostic (`recovery_failed` when recovery failed) naming
-  why, and whole-run revocation (`revokeSpecAuthority`: every grant and the
-  host's `revoke(reason)`) — only when isolation cannot be guaranteed:
-  dispatched work is still running after the grace period (its settling
-  would resume the spec's code during a later spec), the spec read a host
-  tier or used a handle taken outside it (native objects no grant fences),
-  or recovery failed. A continuation that resumes on something the runner
-  cannot see (a plain promise another spec resolves) and calls `expect` or a
-  fresh `rawAutomation()` while a later spec runs is not attributable; that
-  is the residual risk. Tests: `isolation.test.mjs`, `recovery.test.mjs`.
+- Specs share a JS context. Once any user body, cleanup or unawaited work is
+  abandoned, stop the run, revoke the whole context, and mark remaining cases
+  not run. Settled tracked work does not prove isolation: an untracked promise
+  can resume old code and obtain the next spec's grant. Recovery may restore
+  the app for inspection; it never admits another spec into that context.
 - An `expect` made while no spec runs (a late continuation) goes to the
   stray sink: a `late_assertion` diagnostic naming the spec the run last
   abandoned (`case`), never another case's record. Finished
@@ -1306,3 +1281,25 @@ the same cases the Rust parsers reject.
   unmatched requests, undocumented statuses and skipped responses (no
   schema, not JSON, empty, truncated) are only counted. A host that cannot
   capture responses fails the run: there is no contract run without them.
+
+## Review boundary changes
+
+- Product scenarios belong to `t.scenario`, one per spec/run across apps. Its
+  `use(definition, { app?, variant? })` chooses the HTTP app; Function rules
+  share the same owner. App-local overrides remain on `app.network`.
+- Scenario transitions close new Logic fetch/SSE admission until both halves
+  commit. Unknown outcomes revoke a test run; CLI transitions stay blocked
+  until clear/reinstall. Generation checks reject commits after clear; local
+  CLI mutations hold an OS file lock across their multiple requests. Neither
+  mechanism rolls back requests already dispatched outside the transition.
+- A fixed `app.page<Contract>(selector)` uses one instance id for data, public
+  bridge actions and View. It never follows a replacement or accepts a
+  per-operation target override. Name lookup rejects ambiguous stack entries.
+- Action/wait deadlines include all retries. Expiry does not raise a window,
+  run an extra visibility probe or create another retry budget. Visibility
+  evidence, when requested, is a separate bounded diagnostic.
+- Dialog watch setup, observation and unwatch errors fail the case; teardown
+  failures stop the run. Only an absent driver is treated as unsupported.
+- JSON argument/result checks share one codec. Arguments are parsed as JSON
+  in the target context, preserving own `__proto__` fields. Only a top-level
+  result may be void; nested undefined, accessors and class instances fail.

@@ -52,8 +52,8 @@ spec('capture a host app screenshot into the lxapp sandbox', {
     const stat = await lx.fs.stat(result.uri);
     return {
       path: result.uri,
-      width: result.width,
-      height: result.height,
+      width: result.width ?? null,
+      height: result.height ?? null,
       bytes: stat.size,
     };
   });
@@ -146,7 +146,7 @@ spec('report a surface this platform does not have instead of failing', {
       return { ok: true, value };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code, message: String(message ?? error), data };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   });
   expect(outcome.ok).toBeTruthy();
@@ -159,7 +159,7 @@ spec('report a surface this platform does not have instead of failing', {
       return { ok: true, value };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code, message: String(message ?? error), data };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   });
   expect(bad.ok).toBeFalsy();
@@ -194,7 +194,7 @@ spec('reject a badge value that is neither a string, a number, nor null', {
           return { ok: true };
         } catch (error) {
           const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-          return { ok: false, code, message: String(message ?? error), data };
+          return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
         }
       }, literal);
       expect(outcome.ok).toBeFalsy();
@@ -249,7 +249,7 @@ spec('reject an invalid host display language', {
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     }, language);
     expect(rejected.ok).toBe(false);
@@ -607,7 +607,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     });
     expect(result.ok).toBeTruthy();
@@ -620,7 +620,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     });
     expect(result.ok).toBeTruthy();
@@ -636,7 +636,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
         return { ok: true, value };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     });
     expect(result.ok).toBeTruthy();
@@ -657,7 +657,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     });
     expect(result.ok).toBeTruthy();
@@ -672,7 +672,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     });
     expect(restored.ok).toBeTruthy();
@@ -685,7 +685,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     });
     expect(result.ok).toBeFalsy();
@@ -703,7 +703,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     });
     expect(result.ok).toBeFalsy();
@@ -714,7 +714,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     });
     expect(survivor.ok).toBeTruthy();
@@ -727,7 +727,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     });
     expect(removed.ok).toBeTruthy();
@@ -738,7 +738,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     });
     expect(removedTwice.ok).toBeFalsy();
@@ -751,7 +751,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     });
     expect(cleared.ok).toBeTruthy();
@@ -771,7 +771,7 @@ spec('reject shell surface reconfigure for an id the shell never realized', {
       return { ok: true };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code, message: String(message ?? error), data };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   });
 

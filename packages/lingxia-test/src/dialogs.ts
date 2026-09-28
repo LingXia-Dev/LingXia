@@ -50,39 +50,27 @@ export interface DialogWatch {
 
 /**
  * Watch the app's dialogs for the spec that starts now. `undefined` on a
- * host without dialog watching; a watch the host refuses is reported by
- * `diagnostic` and the spec runs without it.
+ * host without dialog watching. A refused watch fails spec setup.
  */
-export function watchDialogs(driver: LxAppDriver, diagnostic: (message: string) => void): DialogWatch | undefined {
-  let dialogs: DialogDriver | undefined;
-  try {
-    dialogs = (driver as Partial<LxAppDriver>).dialogs;
-  } catch {
-    return undefined;
-  }
+export function watchDialogs(driver: LxAppDriver): DialogWatch | undefined {
+  const dialogs = (driver as Partial<LxAppDriver>).dialogs;
   if (!dialogs || typeof dialogs.watch !== "function") return undefined;
-  try {
-    dialogs.watch();
-  } catch (error) {
-    diagnostic(`dialogs of the app under test are not watched: ${String((error as Error)?.message ?? error)}`);
-    return undefined;
-  }
+  dialogs.watch();
   const watched = dialogs;
+  let observationError: unknown;
   const unanswered = new Promise<string>((resolve) => {
     Promise.resolve()
       .then(() => watched.unanswered())
-      .then((message) => { if (typeof message === "string") resolve(message); }, () => {});
+      .then((message) => { if (typeof message === "string") resolve(message); }, (error: unknown) => {
+        observationError = error ?? new Error("dialog observation failed without an error value");
+        resolve(`dialog observation failed: ${String(error)}`);
+      });
   });
   return {
     unanswered,
     async end(driver) {
-      let left: DialogUnwatchResult;
-      try {
-        left = await driver.dialogs.unwatch();
-      } catch {
-        // The attempt's end removes the watch all the same.
-        return undefined;
-      }
+      const left: DialogUnwatchResult = await driver.dialogs.unwatch();
+      if (observationError !== undefined) throw observationError;
       const parts: string[] = [];
       if (left.modalAnswers > 0) {
         parts.push(`${left.modalAnswers} modal answer${left.modalAnswers === 1 ? "" : "s"} (t.app.dialogs.answerNextModal)`);
