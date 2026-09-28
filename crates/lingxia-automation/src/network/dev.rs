@@ -342,21 +342,24 @@ fn start_recording(owner: &str, appid: Option<&str>, matcher: Option<&str>) -> R
     })
 }
 
-fn stop_recording(owner: &str) -> Option<Recording> {
+fn stop_recording(owner: &str) -> Result<Option<Recording>, String> {
     registry::with_registry(|routes| {
+        let incomplete = routes.calls.incomplete_recording(owner);
+        let in_flight = routes.calls.pending_recording(owner);
+        routes.calls.clear_recording(owner);
         let slot = if owner == DEV_SESSION_OWNER {
             &mut routes.dev_recording
         } else {
             &mut routes.run_recording
         };
-        if slot
-            .as_ref()
-            .is_some_and(|recording| recording.owner == owner)
-        {
-            slot.take()
-        } else {
-            None
+        let stopped = slot.take_if(|recording| recording.owner == owner);
+        if incomplete {
+            return Err("network recording is incomplete: a call it was waiting on was evicted from the call history; recording discarded".to_string());
         }
+        Ok(stopped.map(|mut recording| {
+            recording.dropped += in_flight;
+            recording
+        }))
     })
 }
 
@@ -373,7 +376,7 @@ pub fn record_start(appid: Option<&str>, matcher: Option<&str>) -> Result<(), St
 
 /// Stop the dev recording: `{ scenario, exchanges, dropped }`.
 pub fn record_stop(name: Option<&str>) -> Result<Value, String> {
-    let recording = stop_recording(DEV_SESSION_OWNER)
+    let recording = stop_recording(DEV_SESSION_OWNER)?
         .ok_or_else(|| "no dev-session network recording is running".to_string())?;
     let name = name.map_or_else(
         || {
@@ -395,7 +398,10 @@ pub fn record_stop(name: Option<&str>) -> Result<Value, String> {
 /// recording and mocks go with it (the next session loads its own).
 pub fn session_ended() {
     let had_scenario = end_scenario(DevClearReason::SessionEnded);
-    let had_recording = stop_recording(DEV_SESSION_OWNER).is_some();
+    let had_recording = registry::with_registry(|routes| {
+        routes.calls.clear_recording(DEV_SESSION_OWNER);
+        routes.dev_recording.take().is_some()
+    });
     let had_mocks = registry::with_registry(|routes| {
         let had = !routes.mocks.sets.is_empty();
         routes.mocks.clear();
@@ -422,6 +428,19 @@ pub fn session_starting() {
 
 pub fn mocks_ready() {
     MOCK_BOOTSTRAP.send_replace(false);
+}
+
+/// The baseline is session-wide even when no app supplied a handlers file.
+pub fn mock_baseline(mode: Option<MockMode>) {
+    registry::with_registry(|routes| match mode {
+        Some(mode) => routes
+            .mocks
+            .selection
+            .replace(MockOwner::Baseline, vec![MockEntry::Whole(mode)]),
+        None => {
+            routes.mocks.selection.drop_owner(&MockOwner::Baseline);
+        }
+    });
 }
 
 /// The dev server is still loading mocks: re-arm waiting Logic's deadline.
@@ -555,7 +574,7 @@ pub(crate) fn run_record(
 ) -> Result<Value, String> {
     match command {
         "start" => start_recording(run_id, None, None).map(|()| Value::Null),
-        "stop" => Ok(stop_recording(run_id)
+        "stop" => Ok(stop_recording(run_id)?
             .map(|recording| run_scenario(&recording, name.unwrap_or("recorded"), secrets))
             .unwrap_or(Value::Null)),
         other => Err(format!("unknown networkRecord command '{other}'")),

@@ -193,7 +193,6 @@ pub(crate) async fn install(
         owner,
         label,
         resolved: parsed.resolved,
-        snapshot: installed,
     }))
 }
 
@@ -282,8 +281,6 @@ pub(crate) struct JSScenario {
     owner: String,
     label: String,
     resolved: Resolved,
-    /// As installed; hit counts are read live while it is installed.
-    snapshot: InstalledScenario,
 }
 
 impl JSScenario {
@@ -295,9 +292,9 @@ impl JSScenario {
         }
     }
 
-    fn current(&self) -> InstalledScenario {
+    fn current(&self) -> JSResult<InstalledScenario> {
         registry::with_registry(|routes| routes.scenario(self.id).cloned())
-            .unwrap_or_else(|| self.snapshot.clone())
+            .ok_or_else(|| auto_err("this scenario has ended or was replaced"))
     }
 
     /// HTTP calls that reached the scenario, as the spec sees them.
@@ -456,7 +453,7 @@ impl JSScenario {
     /// counts `http` rules; a `function` rule's is `null` (see `calls()`).
     #[js_method(getter, enumerable)]
     fn rules(&self, ctx: JSContext) -> JSResult<JSValue> {
-        let current = self.current();
+        let current = self.current()?;
         let rules: Vec<Value> = current
             .rules
             .iter()
@@ -480,7 +477,7 @@ impl JSScenario {
     async fn calls(&self, ctx: JSContext, filter: Optional<JSValue>) -> JSResult<JSValue> {
         self.owned(&ctx)?;
         let filter = CallFilter::parse(filter.0)?;
-        let current = self.current();
+        let current = self.current()?;
         let calls: Vec<ScenarioCall> = current.calls.iter().cloned().collect();
         let mut out = self.http_calls(&calls);
         if current.companion && filter.wants_functions() {
@@ -490,6 +487,7 @@ impl JSScenario {
                     .map_err(auto_err)?
                     .0,
             );
+            self.current()?;
             out.sort_by_key(|call| call["time"].as_u64().unwrap_or_default());
         }
         out.retain(|call| filter.keeps(call));
@@ -510,7 +508,7 @@ impl JSScenario {
         } else {
             0
         };
-        let current = self.current();
+        let current = self.current()?;
         let functions = match &filter {
             CallFilter::Any => {
                 return Err(auto_err(
@@ -539,6 +537,7 @@ impl JSScenario {
         } else {
             (Vec::new(), 0)
         };
+        self.current()?;
         calls.retain(|call| filter.keeps(call));
         json_to_js(
             &ctx,

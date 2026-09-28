@@ -331,8 +331,8 @@ impl Mocks {
     }
 
     /// Who answers a call routes and rules passed on, and the selection
-    /// layer that decided it (`None` when `appid` has no mocks: they cannot
-    /// answer, whatever the selection says).
+    /// layer that decided it. A selected `all` with no loaded set fails
+    /// closed, including for an app not known when the dev session started.
     pub(crate) fn decide(
         &mut self,
         appid: &str,
@@ -340,15 +340,22 @@ impl Mocks {
         url: &str,
         run_active: bool,
     ) -> (MockDecision, Option<&'static str>) {
-        if self.set(appid).is_none() {
-            return (MockDecision::Real, None);
-        }
         let (mode, layer) = self.mode(appid, method, url, run_active);
         if mode == MockMode::None {
             return (MockDecision::Real, Some(layer));
         }
         let Some(set) = self.set_mut(appid) else {
-            return (MockDecision::Real, None);
+            return (
+                MockDecision::Unhandled {
+                    detail: format!(
+                        "no mock handlers loaded for {appid}; blocked {} {} under mock all",
+                        method.to_ascii_uppercase(),
+                        redact_url(url, REDACTED)
+                    ),
+                    first: true,
+                },
+                Some(layer),
+            );
         };
         let decision = match set.key_index(method, url) {
             Some(index) => {
@@ -604,6 +611,27 @@ mod tests {
         assert_eq!(set.unhandled[0].count, 2);
         assert_eq!(suggested_glob("https://h/a/b"), "**/a/b");
         assert_eq!(suggested_glob("https://h"), "**/");
+    }
+
+    #[test]
+    fn baseline_all_blocks_an_app_without_a_loaded_set() {
+        let mut mocks = Mocks::new();
+        mocks
+            .selection
+            .replace(MockOwner::Baseline, vec![MockEntry::Whole(MockMode::All)]);
+        let (decision, layer) = mocks.decide(
+            "missing.app",
+            "GET",
+            "https://api.example.com/orders?token=secret",
+            false,
+        );
+        assert_eq!(layer, Some("--mock"));
+        let MockDecision::Unhandled { detail, .. } = decision else {
+            panic!("mock all must not fall through to the real backend");
+        };
+        assert!(detail.contains("no mock handlers loaded for missing.app"));
+        assert!(detail.contains("token=***"));
+        assert!(!detail.contains("token=secret"));
     }
 
     #[test]

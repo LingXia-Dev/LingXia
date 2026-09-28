@@ -8,8 +8,9 @@
 //!   `lxdev test --openapi`).
 //!
 //! The `fetch` wrapper opens a call with `observe`, which says whether a
-//! consumer wants the response body; it then reads that body once, hands the
-//! app an equivalent buffered `Response`, and closes the call with `settle`.
+//! consumer wants the response body; the wrapper reads a clone of a buffered
+//! body (a streamed one once, handing the app an equivalent `Response`) and
+//! closes the call with `settle`.
 //! Each consumer applies its own bounds and redaction here. Pure Rust, so it
 //! is unit-testable without a JS engine.
 
@@ -246,6 +247,8 @@ pub(crate) struct Call {
     pub(crate) raw_url: String,
     /// Who wants this call's response.
     pub(crate) watch: Watch,
+    /// The run capturing this call when it was sent, not when it settles.
+    pub(crate) contract_owner: Option<String>,
     /// Owner of the recording that keeps this call's response.
     pub(crate) recorder: Option<String>,
 }
@@ -330,6 +333,9 @@ pub(crate) struct Settled {
 pub(crate) struct CallLog {
     next_id: u64,
     calls: VecDeque<Call>,
+    /// Recording owners that lost an unfinished call to eviction.
+    incomplete_recordings: Vec<String>,
+    incomplete_contract_apps: std::collections::BTreeSet<String>,
 }
 
 impl CallLog {
@@ -337,6 +343,8 @@ impl CallLog {
         Self {
             next_id: 0,
             calls: VecDeque::new(),
+            incomplete_recordings: Vec::new(),
+            incomplete_contract_apps: std::collections::BTreeSet::new(),
         }
     }
 
@@ -349,8 +357,18 @@ impl CallLog {
         watch: Watch,
     ) -> u64 {
         self.next_id += 1;
-        if self.calls.len() >= MAX_CALLS {
-            self.calls.pop_front();
+        if self.calls.len() >= MAX_CALLS
+            && let Some(evicted) = self.calls.pop_front()
+            && evicted.duration_ms.is_none()
+        {
+            if evicted.watch.contract {
+                self.incomplete_contract_apps.insert(evicted.appid.clone());
+            }
+            if let Some(owner) = evicted.recorder
+                && !self.incomplete_recordings.contains(&owner)
+            {
+                self.incomplete_recordings.push(owner);
+            }
         }
         self.calls.push_back(Call {
             id: self.next_id,
@@ -369,6 +387,7 @@ impl CallLog {
             selection: None,
             raw_url: url.to_string(),
             watch,
+            contract_owner: None,
             recorder: None,
         });
         self.next_id
@@ -382,6 +401,75 @@ impl CallLog {
 
     pub(crate) fn find(&mut self, id: u64) -> Option<&mut Call> {
         self.calls.iter_mut().rev().find(|call| call.id == id)
+    }
+
+    pub(crate) fn set_recorder(&mut self, id: u64, recorder: Option<String>) {
+        if let Some(call) = self.find(id) {
+            call.recorder = recorder;
+        }
+    }
+
+    /// `owner`'s recorded calls still waiting for their response.
+    pub(crate) fn pending_recording(&self, owner: &str) -> usize {
+        self.calls
+            .iter()
+            .filter(|call| call.recorder.as_deref() == Some(owner) && call.duration_ms.is_none())
+            .count()
+    }
+
+    /// Snapshot only calls already in flight at a contract read boundary.
+    pub(crate) fn pending_contract_ids(&self, appid: &str) -> Vec<u64> {
+        self.calls
+            .iter()
+            .filter(|call| call.appid == appid && call.watch.contract && call.duration_ms.is_none())
+            .map(|call| call.id)
+            .collect()
+    }
+
+    pub(crate) fn pending_contract_count(&self, ids: &[u64]) -> usize {
+        self.calls
+            .iter()
+            .filter(|call| ids.contains(&call.id) && call.duration_ms.is_none())
+            .count()
+    }
+
+    /// Whether a contract call of `appid` was evicted unfinished; clears it.
+    pub(crate) fn take_incomplete_contract(&mut self, appid: &str) -> bool {
+        self.incomplete_contract_apps.remove(appid)
+    }
+
+    pub(crate) fn clear_contract_status(&mut self, appid: &str) {
+        self.incomplete_contract_apps.remove(appid);
+    }
+
+    pub(crate) fn clear_contract_run(&mut self, run_id: &str) {
+        for call in &mut self.calls {
+            if call
+                .contract_owner
+                .as_ref()
+                .is_some_and(|owner| owner == run_id)
+            {
+                call.watch.contract = false;
+                call.contract_owner = None;
+            }
+        }
+    }
+
+    pub(crate) fn incomplete_recording(&self, owner: &str) -> bool {
+        self.incomplete_recordings
+            .iter()
+            .any(|incomplete| incomplete == owner)
+    }
+
+    pub(crate) fn clear_recording(&mut self, owner: &str) {
+        self.incomplete_recordings
+            .retain(|incomplete| incomplete != owner);
+        for call in &mut self.calls {
+            if call.recorder.as_deref() == Some(owner) {
+                call.recorder = None;
+                call.watch.record = false;
+            }
+        }
     }
 
     /// Note the route that answered call `id`. Returns the call when a
@@ -513,7 +601,8 @@ pub(crate) struct Recording {
     pub matcher: Option<UrlMatcher>,
     pub started_ms: u64,
     pub exchanges: Vec<Exchange>,
-    /// Exchanges past [`MAX_EXCHANGES`] or the body budget.
+    /// Exchanges past [`MAX_EXCHANGES`] or the body budget, or still in
+    /// flight when the recording stopped.
     pub dropped: usize,
     body_bytes: usize,
 }
@@ -633,7 +722,7 @@ impl Recording {
         );
         if self.dropped > 0 {
             description.push_str(&format!(
-                "; {} more were not kept (recording limit)",
+                "; {} more were not kept (recording limit, or still in flight at stop)",
                 self.dropped
             ));
         }
@@ -787,6 +876,7 @@ pub(crate) struct Observed<'a> {
     pub status: u16,
     pub content_type: Option<&'a str>,
     pub body: Option<&'a str>,
+    pub body_truncated: bool,
 }
 
 impl<'a> Observed<'a> {
@@ -808,6 +898,7 @@ impl<'a> Observed<'a> {
                 Some(RecordedBody::Text(text)) => Some(text),
                 _ => None,
             },
+            body_truncated: matches!(settled.body.as_ref(), Some(RecordedBody::Omitted(_))),
         })
     }
 }
@@ -828,6 +919,7 @@ pub(crate) struct Captures {
     captures: Vec<Capture>,
     log: VecDeque<ResponseEntry>,
     bytes: usize,
+    dropped_through: Vec<((String, String), u64)>,
 }
 
 impl Captures {
@@ -837,6 +929,7 @@ impl Captures {
             captures: Vec::new(),
             log: VecDeque::new(),
             bytes: 0,
+            dropped_through: Vec::new(),
         }
     }
 
@@ -882,19 +975,50 @@ impl Captures {
         self.captures.iter().any(|capture| capture.appid == appid)
     }
 
+    /// The run capturing `appid` now.
+    pub(crate) fn owner(&self, appid: &str) -> Option<String> {
+        self.captures
+            .iter()
+            .rev()
+            .find(|capture| capture.appid == appid)
+            .map(|capture| capture.run_id.clone())
+    }
+
+    pub(crate) fn apps_in_run(&self, run_id: &str) -> Vec<String> {
+        self.captures
+            .iter()
+            .filter(|capture| capture.run_id == run_id)
+            .map(|capture| capture.appid.clone())
+            .collect()
+    }
+
     /// Record a response of `appid`; `false` when nobody captures it.
+    #[cfg(test)]
     pub(crate) fn record(&mut self, appid: &str, observed: Observed<'_>) -> bool {
+        let owner = self.owner(appid);
+        self.record_owned(appid, owner.as_ref(), observed)
+    }
+
+    pub(crate) fn record_owned(
+        &mut self,
+        appid: &str,
+        owner: Option<&String>,
+        observed: Observed<'_>,
+    ) -> bool {
+        let Some(run_id) = owner else {
+            return false;
+        };
         let Some(capture) = self
             .captures
             .iter()
             .rev()
-            .find(|capture| capture.appid == appid)
+            .find(|capture| capture.appid == appid && capture.run_id == *run_id)
         else {
             return false;
         };
         let json = observed.content_type.is_some_and(is_json_type);
         let (body, body_truncated) = match observed.body.filter(|_| json) {
-            None => (None, false),
+            None => (None, observed.body_truncated),
             Some(text) if text.len() <= capture.body_limit => (Some(text.to_string()), false),
             Some(text) => {
                 let mut end = capture.body_limit;
@@ -925,6 +1049,16 @@ impl Captures {
         {
             if let Some(old) = self.log.pop_front() {
                 self.bytes -= old.body.as_ref().map_or(0, String::len);
+                let key = (old.run_id, old.appid);
+                if let Some((_, through)) = self
+                    .dropped_through
+                    .iter_mut()
+                    .find(|(owner, _)| owner == &key)
+                {
+                    *through = old.seq;
+                } else {
+                    self.dropped_through.push((key, old.seq));
+                }
             }
         }
         self.bytes += len;
@@ -941,9 +1075,29 @@ impl Captures {
             .collect()
     }
 
+    /// [`Self::responses`], refused once when the bounded log discarded
+    /// responses past `since` that were never read.
+    pub(crate) fn read(
+        &mut self,
+        run_id: &str,
+        appid: &str,
+        since: u64,
+    ) -> Result<Vec<ResponseEntry>, String> {
+        let before = self.dropped_through.len();
+        self.dropped_through.retain(|((owner, app), dropped)| {
+            !(owner == run_id && app == appid && *dropped > since)
+        });
+        if self.dropped_through.len() != before {
+            return Err("captured responses are incomplete: the bounded response log discarded unchecked responses".into());
+        }
+        Ok(self.responses(run_id, appid, since))
+    }
+
     /// Stop capturing for a run and drop what it recorded.
     pub(crate) fn clear_run(&mut self, run_id: &str) {
         self.captures.retain(|capture| capture.run_id != run_id);
+        self.dropped_through
+            .retain(|((owner, _), _)| owner != run_id);
         self.log.retain(|entry| entry.run_id != run_id);
         self.bytes = self
             .log
@@ -970,6 +1124,7 @@ mod tests {
             status: 200,
             content_type,
             body,
+            body_truncated: false,
         }
     }
 
@@ -1070,6 +1225,9 @@ mod tests {
             );
         }
         assert_eq!(captures.log.len(), MAX_CAPTURED);
+        assert!(captures.read("run", "app", 0).is_err());
+        // Reported once: the next read goes on.
+        assert!(captures.read("run", "app", 0).is_ok());
         captures.clear_run("run");
     }
 }

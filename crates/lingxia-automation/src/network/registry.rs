@@ -832,13 +832,17 @@ impl Registry {
             && self.active_runs.is_empty()
             && self.dev.is_none()
             && self.mocks.sets.is_empty()
+            && self.mocks.selection.owners().is_empty()
         {
             return None;
         }
         let id = self.calls.begin(appid, kind, method, url, watch);
-        if let Some(call) = self.calls.find(id) {
-            call.recorder = recorder;
+        if watch.contract
+            && let Some(call) = self.calls.find(id)
+        {
+            call.contract_owner = self.captures.owner(appid);
         }
+        self.calls.set_recorder(id, recorder);
         Some((id, watch))
     }
 
@@ -862,7 +866,8 @@ impl Registry {
         if call.watch.contract
             && let Some(observed) = Observed::settled(&call, &settled)
         {
-            self.captures.record(&call.appid, observed);
+            self.captures
+                .record_owned(&call.appid, call.contract_owner.as_ref(), observed);
         }
         // An app cancelling its own request is not something the server said.
         if !call.watch.record
@@ -963,6 +968,7 @@ impl Registry {
         {
             self.run_recording = None;
         }
+        self.calls.clear_recording(run_id);
         if run_id == DEV_SESSION_OWNER {
             self.dev = None;
         }
@@ -978,7 +984,14 @@ impl Registry {
         self.log.retain(|entry| entry.run_id != run_id);
         self.log_dropped.retain(|dropped| dropped.run_id != run_id);
         self.log_body_bytes = self.log.iter().map(|entry| entry.request.body_len()).sum();
+        let captured_apps = self.captures.apps_in_run(run_id);
         self.captures.clear_run(run_id);
+        self.calls.clear_contract_run(run_id);
+        for appid in captured_apps {
+            if !self.captures.capturing(&appid) {
+                self.calls.clear_contract_status(&appid);
+            }
+        }
     }
 
     /// Remove the dev scenario's routes, remembering why. Returns the
@@ -1205,8 +1218,9 @@ impl Registry {
                 Some(ResponseBody::Text(text)) => Some(text.as_str()),
                 _ => None,
             };
-            self.captures.record(
+            self.captures.record_owned(
                 &observed.appid,
+                observed.contract_owner.as_ref(),
                 Observed {
                     method: &observed.method,
                     url: &observed.raw_url,
@@ -1215,6 +1229,7 @@ impl Registry {
                     status: fulfill.status,
                     content_type,
                     body,
+                    body_truncated: false,
                 },
             );
         }
@@ -1434,8 +1449,9 @@ impl Registry {
                 Some(ResponseBody::Text(text)) => Some(text.as_str()),
                 _ => None,
             };
-            self.captures.record(
+            self.captures.record_owned(
                 &appid,
+                observed.contract_owner.as_ref(),
                 Observed {
                     method: &method,
                     url: &url,
@@ -1444,6 +1460,7 @@ impl Registry {
                     status: fulfill.status,
                     content_type,
                     body,
+                    body_truncated: false,
                 },
             );
         }
@@ -1553,6 +1570,7 @@ impl Registry {
             + usize::from(self.run_recording.is_some())
             + self.captures.len()
             + self.mocks.sets.len()
+            + usize::from(!self.mocks.selection.owners().is_empty())
             + self.scenario_pending.len()
     }
 }
@@ -1785,6 +1803,29 @@ mod tests {
             next(&mut registry, "https://h/devices/1", true).1,
             MockDecision::Mock { .. }
         ));
+    }
+
+    #[test]
+    fn mock_selection_watches_even_without_loaded_app_handlers() {
+        let mut registry = Registry::default();
+        registry.mocks.selection.set(
+            lingxia_control_protocol::mock::MockOwner::Baseline,
+            lingxia_control_protocol::mock::MockMode::All,
+            Vec::new(),
+        );
+        assert_ne!(registry.watched(), 0);
+        let (id, _) = registry
+            .observe("unlisted.app", "fetch", "POST", "https://h/orders")
+            .expect("a session selection must keep observation active without a mock set");
+        let (_, _, decision) = registry.decide_call(
+            "unlisted.app",
+            "POST",
+            "https://h/orders",
+            SentRequest::default,
+            || true,
+            id,
+        );
+        assert!(matches!(decision, MockDecision::Unhandled { .. }));
     }
 
     #[test]
