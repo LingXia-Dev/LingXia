@@ -1,8 +1,8 @@
 import type { PageQueryResult } from "@lingxia/types/automation";
-import { AssertionError } from "./expect.js";
 import { cssEscape, formatValue } from "./format.js";
 import {
   ActionDeadline,
+  TimeoutError,
   errorCode,
   isElementRefusal,
   isPreDispatchPageError,
@@ -118,8 +118,6 @@ export class PageLocator implements Locator {
     private readonly room: BudgetRoom = () => Number.POSITIVE_INFINITY,
     private readonly refine: LocatorRefine = {},
     private readonly evidence: PageEvidence = (_target, probe) => probe(),
-    /** A line for the spec's trace (the window was raised). */
-    private readonly note: (message: string) => void = () => {},
   ) {
     this.selector = selector;
     this.options = { ...options };
@@ -132,7 +130,7 @@ export class PageLocator implements Locator {
 
   nth(index: number): Locator {
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
-      { ...this.options, index }, this.room, { ...this.refine, last: false }, this.evidence, this.note);
+      { ...this.options, index }, this.room, { ...this.refine, last: false }, this.evidence);
   }
 
   first(): Locator {
@@ -142,7 +140,7 @@ export class PageLocator implements Locator {
   last(): Locator {
     const { index: _index, ...options } = this.options;
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
-      options, this.room, { ...this.refine, last: true }, this.evidence, this.note);
+      options, this.room, { ...this.refine, last: true }, this.evidence);
   }
 
   filter(options: LocatorFilterOptions): Locator {
@@ -151,7 +149,7 @@ export class PageLocator implements Locator {
       throw new TypeError("filter() needs { hasText: string | RegExp }");
     }
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
-      this.options, this.room, { ...this.refine, hasText }, this.evidence, this.note);
+      this.options, this.room, { ...this.refine, hasText }, this.evidence);
   }
 
   // Actions return the fixture's own call, not a wrapper around it: a call
@@ -189,35 +187,30 @@ export class PageLocator implements Locator {
     }
     const deadline = new ActionDeadline(timeout, this.room());
     return this.record("page.waitFor", `${this.target()} ${state}`, async () => {
-      let reason = "";
-      const until = async (budget: ActionDeadline): Promise<boolean> => {
-        while (true) {
-          try {
-            const resolved = await this.resolve(budget, "waitFor");
-            if (reachedState(resolved, state)) return true;
-            reason = this.missText(resolved);
-          } catch (error) {
-            // A page mid-transition, or a read the transport dropped, is not an
-            // answer yet; anything else is.
-            if (!isTransientPageError(error) && !isTransientTransportError(error)) throw error;
-            reason = transientReason(error);
-          }
-          if (budget.expired()) return false;
-          await sleep(Math.min(interval, Math.max(1, budget.remaining())));
+      let reason = "not observed";
+      let cause: unknown;
+      while (!deadline.expired()) {
+        try {
+          const resolved = await this.resolve(deadline, "waitFor");
+          if (reachedState(resolved, state)) return;
+          reason = this.missText(resolved);
+          cause = undefined;
+        } catch (error) {
+          // A page mid-transition, or a read the transport dropped, is not an
+          // answer yet; anything else is.
+          if (!isTransientPageError(error) && !isTransientTransportError(error)) throw error;
+          reason = transientReason(error);
+          cause = error;
         }
-      };
-      if (await until(deadline)) return;
-      const hidden = await this.hiddenPageNote();
-      const raised = await this.raiseHidden(hidden, timeout);
-      if (raised && await until(raised.retry)) return;
-      throw new AssertionError("waitFor", reason, state, [
+        if (deadline.expired()) break;
+        await sleep(Math.min(interval, Math.max(1, deadline.remaining())));
+      }
+      throw withCause(new TimeoutError([
         `Timed out after ${deadline.elapsed()}ms waiting for ${formatValue(this.selector)} to be ${state}.`,
         reason,
-        hidden,
-        raised?.note,
         deadline.clampNote(),
         `at ${this.where()}`,
-      ].filter(Boolean).join("\n"));
+      ].filter(Boolean).join("\n")), cause);
     });
   }
 
@@ -395,29 +388,6 @@ export class PageLocator implements Locator {
     }
   }
 
-  /**
-   * After a wait ran out on a page that looked hidden: raise the app's window
-   * (the app orders its own window, so no Accessibility grant) and hand back
-   * a budget for one more try. `undefined` when the page was not hidden, the
-   * screen is locked, the host cannot raise it, or the spec has no room.
-   */
-  private async raiseHidden(hidden: string | undefined, timeout: number): Promise<{ retry: ActionDeadline; note: string } | undefined> {
-    if (hidden === undefined || hidden === SCREEN_LOCKED_NOTE) return undefined;
-    const raise = resolveHost().raiseWindow;
-    if (!raise || this.room() < RAISE_BUDGET_MS + MIN_RAISED_RETRY_MS) return undefined;
-    let raised = false;
-    try {
-      raised = await new ActionDeadline(RAISE_BUDGET_MS, this.room()).call("raise the app window", raise, () => "");
-    } catch {
-      return undefined;
-    }
-    if (!raised) return undefined;
-    const retry = new ActionDeadline(Math.min(timeout, RAISED_RETRY_MS), this.room());
-    const note = `The page looked hidden, so the runner raised the app window and retried once (up to ${retry.timeout}ms).`;
-    this.note(`${note} ${this.target()} at ${this.where()}`);
-    return { retry, note };
-  }
-
   private async actionability(index: number, verb: string, deadline: ActionDeadline): Promise<true | string> {
     if (!this.page.eval) return true;
     const script = `(() => {
@@ -452,9 +422,7 @@ export class PageLocator implements Locator {
       let last: LocatorResolve | undefined;
       let previousRect: string | undefined;
       let reason = "not attached";
-      // The coded driver rejection behind `reason`, if one is: a timeout it
-      // caused reports its code, so `spec.fail({ expected: { code } })` and
-      // the failure line can name it.
+      // Preserve the last driver failure as the timeout cause.
       let cause: unknown;
       const until = async (budget: ActionDeadline): Promise<boolean> => {
         while (!budget.expired()) {
@@ -523,17 +491,9 @@ export class PageLocator implements Locator {
         return false;
       };
       if (await until(deadline)) return;
-      const hidden = await this.hiddenPageNote();
-      const raised = await this.raiseHidden(hidden, timeout);
-      if (raised) {
-        previousRect = undefined;
-        if (await until(raised.retry)) return;
-      }
-      throw withCause(new AssertionError(verb, reason, force ? "attached, enabled element" : "stable, enabled, unobscured element", [
+      throw withCause(new TimeoutError([
         `Timed out after ${deadline.elapsed()}ms waiting to ${verb} ${formatValue(this.selector)}.`,
         reason,
-        hidden,
-        raised?.note,
         deadline.clampNote(),
         `at ${this.where()}`,
       ].filter(Boolean).join("\n")), cause);
@@ -541,12 +501,17 @@ export class PageLocator implements Locator {
   }
 }
 
-/** Carry the `code`/`data` of the driver rejection that kept an action from running. */
-function withCause(error: AssertionError, cause: unknown): AssertionError {
+/** Preserve the last driver failure without changing the public timeout code. */
+function withCause(error: TimeoutError, cause: unknown): TimeoutError {
+  if (cause === undefined) return error;
+  Object.assign(error, { cause });
   const code = errorCode(cause);
-  if (code === undefined) return error;
-  const data = (cause as { data?: unknown }).data;
-  return Object.assign(error, { code, ...(data === undefined ? {} : { data }) });
+  const data = cause && typeof cause === "object" ? (cause as { data?: unknown }).data : undefined;
+  error.data = {
+    ...(data && typeof data === "object" ? data : {}),
+    ...(code === undefined ? {} : { driverCode: code }),
+  };
+  return error;
 }
 
 /** A dispatch error that must propagate as is, never be retried. */
@@ -587,10 +552,7 @@ export type PageEvidence = (
 ) => Promise<string | undefined>;
 
 /** How long raising the app window may take. */
-const RAISE_BUDGET_MS = 2_000;
-/** The one retry after raising the window: enough for paused animations to finish. */
-const RAISED_RETRY_MS = 3_000;
-const MIN_RAISED_RETRY_MS = 250;
+
 
 /** How long the visibility probe waits for an animation frame. */
 const VISIBILITY_FRAME_WAIT_MS = 300;

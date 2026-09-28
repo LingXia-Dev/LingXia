@@ -28,12 +28,14 @@ import type { TerminalSettingsValue } from '../generated/logic.js';
 
 /**
  * Stable `code`s of automation driver rejections. Anything without a more
- * specific code rejects with `E_AUTOMATION`; desktop automation uses its own
- * `E_DESKTOP_<CODE>` family. Messages are unchanged, so match on the code.
+ * specific code rejects with `E_AUTOMATION`. Desktop codes describe OS
+ * automation failures. Match on the code, not the message.
  */
 export const AUTOMATION_ERROR_CODES = [
   /** Fallback for a failure with no more specific code. */
   'E_AUTOMATION',
+  /** A scenario changed only partially or its outcome is unknown; the run is revoked. */
+  'E_SCENARIO_STATE_UNKNOWN',
   /** The caller lacks the `automation`/`host` privilege the call needs. */
   'E_AUTOMATION_PRIVILEGE',
   /** The target page is not the active instance: not open, or replaced. `data: { page, instanceId?, current? }`. */
@@ -56,6 +58,15 @@ export const AUTOMATION_ERROR_CODES = [
   'E_CLOCK_NOT_INSTALLED',
   /** `clock.install()` while this lxapp's Logic already runs on a test clock. */
   'E_CLOCK_INSTALLED',
+  'E_DESKTOP_USAGE',
+  'E_DESKTOP_NOT_FOUND',
+  'E_DESKTOP_AMBIGUOUS',
+  'E_DESKTOP_TIMEOUT',
+  'E_DESKTOP_PERMISSION',
+  'E_DESKTOP_UNSUPPORTED',
+  'E_DESKTOP_UNAVAILABLE',
+  'E_DESKTOP_STALE',
+  'E_DESKTOP_FAILED',
 ] as const;
 
 export type AutomationErrorCode = (typeof AUTOMATION_ERROR_CODES)[number];

@@ -26,7 +26,7 @@ desktopSpec('reject haptics and the dialer with E_NOT_SUPPORTED on a desktop', {
       try { fn(); return { threw: false }; }
       catch (error) {
         const failure = error as { code?: string; message?: string } | null;
-        return { threw: true, code: failure?.code, message: String(failure?.message) };
+        return { threw: true, code: failure?.code ?? '', message: String(failure?.message) };
       }
     };
     return {

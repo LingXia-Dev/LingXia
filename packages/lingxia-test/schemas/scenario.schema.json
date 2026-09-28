@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lingxia.app/schemas/scenario.schema.json",
   "title": "LingXia scenario",
-  "description": "A product state for `lxdev mock use` and `t.app.mock.use()`: rules that answer the lxapp's HTTP requests (`http`) and Worker Function calls (`function`), tried in file order, and named variants whose rules go before the shared ones.",
+  "description": "A product state for `lxdev mock use` and `t.scenario.use()`: rules that answer the lxapp's HTTP requests (`http`) and Worker Function calls (`function`), tried in file order, and named variants whose rules go before the shared ones.",
   "type": "object",
   "properties": {
     "$schema": { "type": "string" },
@@ -11,7 +11,7 @@
     "rules": { "$ref": "#/$defs/rules", "description": "Shared by every variant. The first rule that matches a call answers it; nothing matched goes to the real backend." },
     "variants": {
       "type": "object",
-      "description": "States of this scenario: `lxdev mock use <name>:<variant>`, `t.app.mock.use(file, '<variant>')`.",
+      "description": "States of this scenario: `lxdev mock use <name>:<variant>`, `t.scenario.use(file, { variant: '<variant>' })`.",
       "patternProperties": {
         "^[A-Za-z0-9._-]+$": {
           "type": "object",

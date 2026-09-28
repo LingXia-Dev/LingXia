@@ -144,7 +144,7 @@ spec("serve a scenario file with a sequence, relative times and file-order prece
 }, async (t) => {
   const { app } = bindFixture(t, "AUT-NET-004");
 
-  const scenario = await app.mock.use(outage);
+  const scenario = await t.scenario.use(outage);
   expect(scenario.name).toBe('showcase-outage');
   expect(scenario.variant).toBe(null);
   expect(scenario.rules.map((rule) => rule.target)).toEqual(outage.rules.map((rule) => rule.http));
@@ -193,22 +193,23 @@ spec("reject a scenario the host cannot install, naming the rule", {
 }, async (t) => {
   const { app } = bindFixture(t, "AUT-NET-006");
   await t.reject(
-    () => app.mock.use({ rules: [{ http: `GET ${BASE}/x`, stauts: 200 }] }),
+    () => t.scenario.use({ rules: [{ http: `GET ${BASE}/x`, stauts: 200 }] }),
     { message: "rules[0]: unknown route handler option 'stauts'" },
   );
   await t.reject(
     // The old `routes` form, as an older file would still have it.
-    () => app.mock.use({ routes: [{ url: `${BASE}/x`, status: 200 }] } as object as ScenarioInput),
+    () => t.scenario.use({ routes: [{ url: `${BASE}/x`, status: 200 }] } as object as ScenarioInput),
     { message: "'routes' is the old scenario format" },
   );
   await t.reject(
-    () => app.mock.use(status, 'degraded'),
+    () => t.scenario.use(status, { variant: 'degraded' }),
     { message: "no variant 'degraded' (variants: " },
   );
   // Function rules need a companion that answers them; this session has
   // none, so nothing of the scenario is installed.
+  const previous = await t.scenario.use({ rules: [{ http: `GET ${BASE}/status`, status: 207 }] });
   await t.reject(
-    () => app.mock.use({
+    () => t.scenario.use({
       rules: [
         { http: `GET ${BASE}/status`, status: 200 },
         { function: 'orders.submit', fault: 'unknown' },
@@ -216,6 +217,11 @@ spec("reject a scenario the host cannot install, naming the rule", {
     }),
     { message: '1 function rule (rule 2 function orders.submit) cannot be installed' },
   );
+  const response = await app.logic.eval(async (_, url) => (await fetch(url)).status, `${BASE}/status`);
+  expect(response).toBe(207);
+  expect((await previous.calls()).length).toBe(1);
+  await previous.remove();
+
 });
 
 spec("switch a scenario's variant mid-spec and answer renames by their JSON body", {
@@ -233,13 +239,13 @@ spec("switch a scenario's variant mid-spec and answer renames by their JSON body
     return { status: response.status, up: (await response.json() as { up: boolean }).up };
   }, `${BASE}/status`);
 
-  const online = await app.mock.use(status, 'online');
+  const online = await t.scenario.use(status, { variant: 'online' });
   expect(online.variant).toBe('online');
   expect(online.rules.map((rule) => rule.target)[0]).toBe(`GET ${BASE}/status`);
   expect(await readStatus()).toEqual({ status: 200, up: true });
 
   // The next call answers from the other variant.
-  const offline = await app.mock.use(status, 'offline');
+  const offline = await t.scenario.use(status, { variant: 'offline' });
   expect(await readStatus()).toEqual({ status: 503, up: false });
 
   const result = await app.logic.eval(async (_scope, base) => {

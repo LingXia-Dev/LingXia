@@ -60,7 +60,7 @@ async function caughtChromeUpdate(
       return { ok: true };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code, message: String(message ?? error), data };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   }, target, patch);
 }
@@ -203,7 +203,7 @@ spec("round-trip appearance preference through the ui controls", {
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     }, 'sepia');
     expect(rejected.ok).toBeFalsy();
@@ -347,7 +347,7 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     });
     expect(rejected.ok).toBeFalsy();

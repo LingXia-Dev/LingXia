@@ -234,3 +234,44 @@ test("waitFor retries a page that is not ready yet", async () => {
 
   assert.equal((await runOne()).status, "passed");
 });
+
+for (const action of ["click", "waitFor"]) {
+  test(`${action} reports E_TIMEOUT when the element never appears`, async () => {
+    installFakeHost(createWorld());
+    spec("absent", { forensics: false }, (t) =>
+      t.app.view.testId("absent")[action]({ timeout: 80, interval: 5 }));
+    const result = await runOne();
+    assert.equal(result.error.name, "TimeoutError");
+    assert.equal(result.error.code, "E_TIMEOUT");
+  });
+}
+
+for (const ErrorType of [TypeError, ReferenceError, SyntaxError]) {
+  test(`expect.poll does not retry ${ErrorType.name}`, async () => {
+    installFakeHost(createWorld());
+    let calls = 0;
+    spec("invalid read", { forensics: false }, () =>
+      expect.poll(() => { calls++; throw new ErrorType("invalid read"); }, { timeout: 1_000 }).toBe(1));
+    const result = await runOne();
+    assert.equal(result.error.name, ErrorType.name);
+    assert.equal(calls, 1);
+  });
+}
+
+test("an expired action budget never dispatches new work", async () => {
+  const { ActionDeadline } = await import("../dist/deadline.js");
+  const deadline = new ActionDeadline(1);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  let calls = 0;
+  await assert.rejects(deadline.call("input", () => { calls++; }, () => "test"), { code: "E_TIMEOUT" });
+  assert.equal(calls, 0);
+});
+
+test("desktop timeouts normalize while preserving the native cause", async () => {
+  const { asFixtureTimeout } = await import("../dist/deadline.js");
+  const native = Object.assign(new Error("window wait expired"), { code: "E_DESKTOP_TIMEOUT", data: { window: "main" } });
+  const normalized = asFixtureTimeout(native);
+  assert.equal(normalized.code, "E_TIMEOUT");
+  assert.equal(normalized.cause, native);
+  assert.deepEqual(normalized.data, { window: "main", driverCode: "E_DESKTOP_TIMEOUT" });
+});

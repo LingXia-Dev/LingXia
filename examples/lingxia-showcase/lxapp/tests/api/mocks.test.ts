@@ -36,12 +36,12 @@ spec("answer the selected calls from mocks/ handlers, with a scenario state on t
   expect((await read()).body).toEqual({ id: 'u1', name: 'Lin', plan: 'free', visits: 2 });
 
   // A scenario variant answers before the handlers...
-  const suspended = await app.mock.use(profile, 'suspended');
+  const suspended = await t.scenario.use(profile, { variant: 'suspended' });
   expect(suspended.variant).toBe('suspended');
   expect(await read()).toEqual({ status: 403, body: { error: 'suspended' } });
   // ...or lets the handler answer and patches it. A second `use` replaces
   // the first.
-  const patched = await app.mock.use(profile, 'renamed');
+  const patched = await t.scenario.use(profile, { variant: 'renamed' });
   expect((await read()).body).toEqual({ id: 'u1', name: 'Grace', plan: 'free', visits: 3 });
   const calls = await patched.calls({ http: `GET ${BASE}/profile` });
   expect(calls.map((call) => [call.answeredBy, call.rule])).toEqual([['rule', 1]]);

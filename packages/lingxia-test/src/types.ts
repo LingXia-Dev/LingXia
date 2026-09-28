@@ -1,5 +1,7 @@
 /// <reference types="@lingxia/types/testing" preserve="true" />
 /// <reference types="@lingxia/types/logic-globals" preserve="true" />
+import type { PageContract } from "@lingxia/types/page";
+export type { PageContract } from "@lingxia/types/page";
 import type {
   ActionSheetAnswer,
   ActionSheetRecord,
@@ -41,7 +43,7 @@ import type { ProtocolReport } from "./report-types.js";
  * `E_TIMEOUT`, with the driver's own code in `error.cause.code`.
  */
 export type TestErrorCode =
-  | Exclude<AutomationErrorCode, "E_AUTOMATION_TIMEOUT" | "E_EVAL_TIMEOUT">
+  | Exclude<AutomationErrorCode, "E_AUTOMATION_TIMEOUT" | "E_EVAL_TIMEOUT" | "E_DESKTOP_TIMEOUT">
   | "E_OPENAPI_CONTRACT"
   | "E_TIMEOUT"
   | "E_SKIPPED";
@@ -239,20 +241,26 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
-/**
- * `R` as it arrives after a JSON round trip: function members are dropped,
- * and a function, `Date`, `Map`, `Set`, `RegExp`, promise, symbol, bigint or
- * DOM node is `never`, so using one fails where the eval returns it.
- */
-export type Jsonable<R> =
+/** JSON members preserve their shape; unsupported values reject at runtime. */
+type JsonMember<R> =
   0 extends 1 & R ? any
-    : R extends string | number | boolean | null | undefined | void ? R
+    : unknown extends R ? unknown
+    // Do not recursively expand the recursive JsonValue union.
+    : R extends JsonValue ? R
     : R extends (...args: never[]) => unknown ? never
     : R extends Date | RegExp | Map<unknown, unknown> | Set<unknown> | WeakMap<object, unknown> | WeakSet<object> | PromiseLike<unknown> | symbol | bigint ? never
-    : R extends { readonly nodeType: number } | ViewElement | ViewDocument | ViewWindow ? never
-    : R extends readonly unknown[] ? { [K in keyof R]: Jsonable<R[K]> }
-    : R extends object ? { [K in keyof R as R[K] extends (...args: never[]) => unknown ? never : K]: Jsonable<R[K]> }
-    : R;
+    : R extends ViewElement | ViewDocument | ViewWindow ? never
+    : R extends readonly unknown[] ? { [K in keyof R]: JsonMember<R[K]> }
+    : R extends object ? { [K in keyof R]: JsonMember<R[K]> }
+    : never;
+
+/** A remote result is JSON, or top-level void; nested undefined is rejected. */
+export type Jsonable<R> = R extends undefined | void ? R : JsonMember<R>;
+
+type CheckedResult<R> = [Awaited<R>] extends [Jsonable<Awaited<R>>] ? unknown : {
+  readonly __resultMustBeJson: "Return JSON values or top-level void";
+};
+type JsonArgs<A extends unknown[]> = { [K in keyof A]: JsonMember<A[K]> };
 
 /** A page instance as app Logic sees it (`getCurrentPages()` entries). */
 export interface LogicPage<TData = Record<string, unknown>> {
@@ -283,6 +291,8 @@ export interface LogicScope {
   readonly lx: Lx & { automation(): Automation };
   getApp<T extends LogicApp = LogicApp>(): T | null;
   getCurrentPages<T extends LogicPage<any> = AnyLogicPage>(): T[];
+  /** Read a live page service by identity, including surface pages. */
+  getPage(instanceId: string): LogicPage;
 }
 
 type PageGlobal<K extends string, Fallback> = typeof globalThis extends { [P in K]: infer V } ? V : Fallback;
@@ -349,14 +359,14 @@ export interface ViewScope {
  * (`fn.toString()`), so it must be self-contained: no variables, imports or
  * helpers from the spec. Pass values as JSON arguments instead.
  */
-export type LogicFunction<R, A extends JsonValue[]> = (scope: LogicScope, ...args: A) => R | Promise<R>;
+export type LogicFunction<R, A extends unknown[]> = (scope: LogicScope, ...args: A) => R | Promise<R>;
 
 /** A function evaluated in the page WebView; self-contained like `LogicFunction`. */
-export type ViewFunction<R, A extends JsonValue[]> = (scope: ViewScope, ...args: A) => R | Promise<R>;
+export type ViewFunction<R, A extends unknown[]> = (scope: ViewScope, ...args: A) => R | Promise<R>;
 
 /**
  * `t.app.view`: the current page's View — locators, function eval, and
- * page-level input. Read elements and act on them through locators; they wait
+ * DOM scrolling. Read elements and act on them through locators; they wait
  * for the element and retry, where a raw driver call would not.
  */
 export interface TestView {
@@ -364,28 +374,31 @@ export interface TestView {
   css(selector: string, options?: LocatorOptions): Locator;
   /**
    * This view bound to page `name` (a configured page name or live instance
-   * id): its locators, `eval`, `screenshot` and `scroll` target that page
-   * unless a call names another.
+   * id): all operations target that page; per-operation retargeting is refused.
+   * Use app.page() when the identity must survive navigation without rebinding.
    */
-  page(name: string): TestView;
+  page(name: string): BoundTestView;
   /**
    * Run `fn` in the current page's WebView with JSON `args` and resolve to
    * its JSON result. `fn` must be self-contained (see `ViewFunction`).
    */
-  eval<R, A extends JsonValue[]>(fn: ViewFunction<R, A>, ...args: A): Promise<Jsonable<Awaited<R>>>;
+  eval<R, A extends unknown[]>(fn: ViewFunction<R, A> & CheckedResult<R>, ...args: A & JsonArgs<A>): Promise<Jsonable<Awaited<R>>>;
   /**
    * The same with options: `page` runs it in that page's WebView (a
    * configured page name or live instance id) instead of the current page's,
    * like a locator's `{ page }` — a page kept below the current one, or one a
    * surface shows; `timeout` see `EvalOptions`.
    */
-  eval<R, A extends JsonValue[]>(options: ViewEvalOptions, fn: ViewFunction<R, A>, ...args: A): Promise<Jsonable<Awaited<R>>>;
+  eval<R, A extends unknown[]>(options: ViewEvalOptions, fn: ViewFunction<R, A> & CheckedResult<R>, ...args: A & JsonArgs<A>): Promise<Jsonable<Awaited<R>>>;
   screenshot(options?: PageTarget): Promise<Screenshot>;
   /** Scroll the page DOM by a pixel delta (nearest scrollable container). */
   scroll(options?: PageScrollOptions): Promise<void>;
-  /** App-window pointer input at page coordinates. */
+}
+
+/** Native app-window input, independent of a page selector or DOM focus. */
+export interface TestWindow {
+  /** Pointer input; coordinates and window selection follow the native driver. */
   readonly pointer: PagePointer;
-  /** App-window keyboard input. */
   readonly key: PageKey;
 }
 
@@ -427,10 +440,40 @@ export type LogicPageMethod<T> = string extends keyof T
   ? string
   : { [K in keyof T]-?: T[K] extends (...args: any[]) => unknown ? K : never }[keyof T] & string;
 
+export type LogicMethodArgs<T, K> = K extends keyof T
+  ? T[K] extends (...args: infer A) => unknown ? A & JsonArgs<A> : JsonValue[]
+  : JsonValue[];
+
 /** What `call<T, K>()` resolves to: `K`'s awaited result as JSON carries it, `unknown` untyped. */
 export type LogicMethodResult<T, K> = K extends keyof T
   ? T[K] extends (...args: any[]) => infer R ? Jsonable<Awaited<R>> : unknown
   : unknown;
+
+/** A fixed live page instance. A name lookup must identify exactly one instance. */
+export type PageSelector = { name: string; instanceId?: never } | { instanceId: string; name?: never };
+export type PageActionCalls<A> = {
+  readonly [K in keyof A as A[K] extends (...args: any[]) => any ? K : never]:
+    A[K] extends (...args: infer P) => infer R
+      ? P extends [] | [unknown?]
+        ? (...args: P & JsonArgs<P> & CheckedResult<R>) => Promise<Jsonable<Awaited<R>>>
+        : never
+      : never;
+};
+export interface TestPage<C extends PageContract> {
+  readonly instanceId: string;
+  readonly view: BoundTestView;
+  data(): Promise<Jsonable<C["data"]>>;
+  /** Public unary actions, through the same bridge as the View. */
+  readonly actions: PageActionCalls<C["actions"]>;
+}
+export interface BoundTestView {
+  testId(id: string, options?: Omit<LocatorOptions, "page">): Locator;
+  css(selector: string, options?: Omit<LocatorOptions, "page">): Locator;
+  eval<R, A extends unknown[]>(fn: ViewFunction<R, A> & CheckedResult<R>, ...args: A & JsonArgs<A>): Promise<Jsonable<Awaited<R>>>;
+  eval<R, A extends unknown[]>(options: EvalOptions, fn: ViewFunction<R, A> & CheckedResult<R>, ...args: A & JsonArgs<A>): Promise<Jsonable<Awaited<R>>>;
+  screenshot(): Promise<Screenshot>;
+  scroll(options?: Omit<PageScrollOptions, "page">): Promise<void>;
+}
 
 /** `t.app.logic`: the app's Logic runtime, read and driven from the spec. */
 export interface TestLogic {
@@ -438,9 +481,9 @@ export interface TestLogic {
    * Run `fn` in the app's Logic runtime with JSON `args` and resolve to its
    * JSON result. `fn` must be self-contained (see `LogicFunction`).
    */
-  eval<R, A extends JsonValue[]>(fn: LogicFunction<R, A>, ...args: A): Promise<Jsonable<Awaited<R>>>;
+  eval<R, A extends unknown[]>(fn: LogicFunction<R, A> & CheckedResult<R>, ...args: A & JsonArgs<A>): Promise<Jsonable<Awaited<R>>>;
   /** The same with a `timeout` (see `EvalOptions`). */
-  eval<R, A extends JsonValue[]>(options: EvalOptions, fn: LogicFunction<R, A>, ...args: A): Promise<Jsonable<Awaited<R>>>;
+  eval<R, A extends unknown[]>(options: EvalOptions, fn: LogicFunction<R, A> & CheckedResult<R>, ...args: A & JsonArgs<A>): Promise<Jsonable<Awaited<R>>>;
   /** Read the current (or named) page's Logic `data`. `T` is not validated. */
   data<T = Record<string, unknown>>(options?: LogicDataOptions): Promise<T>;
   /**
@@ -452,18 +495,23 @@ export interface TestLogic {
    */
   call<T extends LogicPage<any> = AnyLogicPage, K extends LogicPageMethod<T> = LogicPageMethod<T>>(
     method: K,
-    ...args: JsonValue[]
+    ...args: LogicMethodArgs<T, K>
   ): Promise<LogicMethodResult<T, K>>;
   call<T extends LogicPage<any> = AnyLogicPage, K extends LogicPageMethod<T> = LogicPageMethod<T>>(
     options: LogicCallOptions & { wait: false },
     method: K,
-    ...args: JsonValue[]
+    ...args: LogicMethodArgs<T, K>
   ): Promise<void>;
+  call<T extends LogicPage<any> = AnyLogicPage, K extends LogicPageMethod<T> = LogicPageMethod<T>>(
+    options: LogicCallOptions & { wait?: true },
+    method: K,
+    ...args: LogicMethodArgs<T, K>
+  ): Promise<LogicMethodResult<T, K>>;
   call<T extends LogicPage<any> = AnyLogicPage, K extends LogicPageMethod<T> = LogicPageMethod<T>>(
     options: LogicCallOptions,
     method: K,
-    ...args: JsonValue[]
-  ): Promise<LogicMethodResult<T, K>>;
+    ...args: LogicMethodArgs<T, K>
+  ): Promise<LogicMethodResult<T, K> | void>;
 }
 
 /** Nav actions' wait. */
@@ -597,8 +645,8 @@ export interface TestNetwork {
 /** `scenario.waitForCall()` target: a rule's target as the file writes it, or its number. */
 export type ScenarioCallTarget = ScenarioCallFilter;
 
-/** `t.app.mock`. */
-export interface TestMock {
+/** `t.scenario`. */
+export interface TestScenarios {
   /**
    * Put the app into a product state from a scenario file (and one of its
    * variants), on top of the mock selection: `http` rules answer Logic
@@ -607,10 +655,10 @@ export interface TestMock {
    * removes it. A failed spec reports its per-rule hits and the calls that
    * reached it.
    */
-  use(definition: ScenarioInput, variant?: string): Promise<TestScenario>;
+  use(definition: ScenarioInput, options?: { variant?: string; app?: string }): Promise<TestScenario>;
 }
 
-/** The scenario `t.app.mock.use()` installed, spec-scoped. */
+/** The scenario `t.scenario.use()` installed, spec-scoped. */
 export interface TestScenario {
   readonly name: string | null;
   readonly variant: string | null;
@@ -690,21 +738,18 @@ export interface TestDialogs {
  * reaching the app after a profile checkpoint or restore reopens it.
  */
 export interface TestApp {
+  /** Resolve once; the handle never follows a replacement or a later navigation. */
+  page<C extends PageContract>(selector?: PageSelector): Promise<TestPage<C>>;
   /** The current page's View: locators, `eval(fn)`, screenshots and input. */
   readonly view: TestView;
+  /** Native window input. A page selector never retargets these calls. */
+  readonly window: TestWindow;
   /** The app's Logic runtime: `eval(fn)`, page `data()` and `call()`. */
   readonly logic: TestLogic;
   /** The page stack; actions wait for the landed page's `onReady` unless you pass `waitUntil`. */
   readonly nav: TestNav;
   /** Spec-scoped test routing of Logic `fetch`. */
   readonly network: TestNetwork;
-  /**
-   * The app's mocks. Specs answer from the session's selection
-   * (`mocks/config.json`, over it `lingxia dev --mock`; live `lxdev mock`
-   * changes stand aside during a run), and each spec starts with fresh
-   * handler state and no scenario.
-   */
-  readonly mock: TestMock;
   /** Spec-scoped test clock for the app's Logic. */
   readonly clock: TestClock;
   /** Toasts, modals and action sheets the app's Logic opens during the spec. */
@@ -908,6 +953,8 @@ export interface Fixture {
   /** Guarded host drivers; use these in tests so actions are traced and stop with the fixture. */
   readonly automation: TestAutomation;
   readonly app: TestApp;
+  /** One product scenario per spec; replacing it replaces HTTP and Function rules together. */
+  readonly scenario: TestScenarios;
   /**
    * The OpenAPI documents this run checks against (`lxdev test --openapi`),
    * or `undefined` without them. A spec that only means something against a

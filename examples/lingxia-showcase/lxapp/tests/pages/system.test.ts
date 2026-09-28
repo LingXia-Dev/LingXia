@@ -32,7 +32,7 @@ async function systemState(app: TestApp): Promise<SystemPageState> {
     const data = page?.data as Partial<SystemPageState> | undefined;
     return {
       appBaseInfo: data?.appBaseInfo ?? null,
-      displayLanguage: data?.displayLanguage ?? undefined,
+      displayLanguage: data?.displayLanguage ?? '',
       systemSetting: data?.systemSetting ?? null,
     };
   });

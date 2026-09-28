@@ -101,10 +101,11 @@ androidMediaSpec('save an image and a video into the photo library', {
   await t.step('a missing source rejects instead of reporting a save', async () => {
     const rejected: Caught = await app.logic.eval(async ({ lx }) => {
       try {
-        return { ok: true, value: await lx.saveImageToPhotosAlbum({ filePath: 'lx://temp/does-not-exist.png' }) };
+        await lx.saveImageToPhotosAlbum({ filePath: 'lx://temp/does-not-exist.png' });
+        return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code, message: String(message ?? error), data };
+        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
       }
     });
     expect(rejected.ok).toBeFalsy();

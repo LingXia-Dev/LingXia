@@ -48,8 +48,8 @@ test("a spec abandoned with a fetch still in flight stops the run: the app is re
   const stopped = events.filter((e) => e.type === "diagnostic" && e.phase === "run_stopped");
   assert.equal(stopped.length, 1, JSON.stringify(events.filter((e) => e.type === "diagnostic")));
   assert.match(stopped[0].message,
-    /^"leaves work pending" left its timed-out body pending: fetch GET https:\/\/backend\.example\.test\/slow \(started \d+ms into the spec\), interval setInterval 100ms .*; cancelled its 1 pending timer\. The run stopped: fetch GET https:\/\/backend\.example\.test\/slow \(started \d+ms into the spec\) is still running after 2000ms and would resume its code during a later spec\. Relaunched the app under test on its home page for inspection\. Make the spec settle \(await its work\), or give it a longer timeout\. The remaining specs are not run\.$/);
-  assert.match(report.cases[1].reason, /^Not run: "leaves work pending" left its timed-out body pending: .*The run stopped: fetch GET/);
+    /^"leaves work pending" left its timed-out body pending: fetch GET https:\/\/backend\.example\.test\/slow \(started \d+ms into the spec\), interval setInterval 100ms .*; cancelled its 1 pending timer\. The run stopped: abandoned code can resume through an untracked promise in this shared JS context; fetch GET https:\/\/backend\.example\.test\/slow \(started \d+ms into the spec\) is still running after 2000ms and would resume its code during a later spec\. Relaunched the app under test on its home page for inspection\. Make the spec settle \(await its work\), or give it a longer timeout\. The remaining specs are not run\.$/);
+  assert.match(report.cases[1].reason, /^Not run: "leaves work pending" left its timed-out body pending: .*The run stopped: abandoned code can resume through an untracked promise in this shared JS context; fetch GET/);
   assert.ok(world.navCalls.some(([method, options]) => method === "relaunch" && options.page === "home"));
 
   // The abandoned spec's poll was cancelled, so it never fires into later specs.
@@ -58,7 +58,7 @@ test("a spec abandoned with a fetch still in flight stops the run: the app is re
   assert.equal(ticks, after);
 });
 
-test("a body that never settles is abandoned and the run continues: its timers are cancelled, the app relaunched, the next spec runs", async () => {
+test("an abandoned body stops the shared context even when no tracked work remains", async () => {
   const world = createWorld();
   const { events } = installFakeHost(world);
   let ticks = 0;
@@ -74,13 +74,12 @@ test("a body that never settles is abandoned and the run continues: its timers a
   });
 
   const report = await run();
-  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "passed"]);
-  assert.equal(nextRan, true);
-  assert.equal(report.partial, false);
-  assert.equal(events.filter((e) => e.type === "diagnostic" && e.phase === "run_stopped").length, 0);
-  const recovered = events.find((e) => e.type === "diagnostic" && e.phase === "recovery");
-  assert.match(recovered.message,
-    /^"awaits forever" left its timed-out body pending: interval setInterval 30ms \(started \d+ms into the spec\); cancelled its 1 pending timer\. Its automation access was revoked and nothing it started is still running\. Relaunched the app under test on its home page; the run continues\.$/);
+  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
+  assert.equal(nextRan, false);
+  assert.equal(report.partial, true);
+  assert.equal(events.filter((e) => e.type === "diagnostic" && e.phase === "run_stopped").length, 1);
+  const recovered = events.find((e) => e.type === "diagnostic" && e.phase === "run_stopped");
+  assert.match(recovered.message, /abandoned code can resume through an untracked promise/);
   assert.ok(world.navCalls.some(([method, options]) => method === "relaunch" && options.page === "home"));
   const after = ticks;
   await new Promise((resolve) => setTimeout(resolve, 100));
@@ -94,8 +93,8 @@ test("a body awaiting nothing the runtime tracks says so", async () => {
   spec("runs next", async () => {});
 
   const report = await run();
-  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "passed"]);
-  const recovered = events.find((e) => e.type === "diagnostic" && e.phase === "recovery");
+  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
+  const recovered = events.find((e) => e.type === "diagnostic" && e.phase === "run_stopped");
   assert.match(recovered.message, /"awaits forever" left its timed-out body pending: an awaited promise that no timer, fetch or fixture call of the spec backs/);
 });
 
@@ -111,7 +110,7 @@ test("a hung raw-driver eval cannot be taken back: it is named and the run stops
   const report = await run();
   assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
   const stopped = events.find((e) => e.type === "diagnostic" && e.phase === "run_stopped");
-  assert.match(stopped.message, /^"hung eval" left its timed-out body pending: eval rawAutomation\(\)\.lxapp\(\)\.eval\(\) \(started \d+ms into the spec\)\. The run stopped: eval rawAutomation\(\)\.lxapp\(\)\.eval\(\) .* is still running after 2000ms/);
+  assert.match(stopped.message, /^"hung eval" left its timed-out body pending: eval rawAutomation\(\)\.lxapp\(\)\.eval\(\) \(started \d+ms into the spec\)\. The run stopped: .*eval rawAutomation\(\)\.lxapp\(\)\.eval\(\) .* is still running after 2000ms/);
 });
 
 test("when recovery fails, the rest are not run and the reason names the stuck work and the fix", async () => {
@@ -151,8 +150,8 @@ test("the runner's own timers are not reported as spec work", async () => {
   spec("next", async () => {});
 
   const report = await run();
-  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "passed"]);
-  const recovered = events.find((e) => e.type === "diagnostic" && e.phase === "recovery");
+  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
+  const recovered = events.find((e) => e.type === "diagnostic" && e.phase === "run_stopped");
   assert.match(recovered.message, /pending: an awaited promise that no timer/);
 });
 
@@ -218,7 +217,8 @@ test("a live spec reads every host tier through rawAutomation() with its full su
   assert.deepEqual(seen.pointer, []);
   assert.deepEqual(seen.cookies, []);
   assert.equal(seen.lxapp, "function");
-  assert.deepEqual(report.cases.map((c) => c.status), ["passed", "timeout", "passed"]);
+  assert.deepEqual(report.cases.map((c) => c.status), ["passed", "timeout", "skipped"]);
+  release();
   for (let i = 0; i < 5 && lateRead === undefined; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
   assert.equal(lateRead, "E_AUTOMATION_PRIVILEGE", "the abandoned spec's handle refuses");
 });

@@ -14,7 +14,7 @@ test('empty selections fail unless explicitly allowed', async () => {
   assert.equal((await run()).total, 0);
 });
 
-test('cleanup has a hard deadline; cleanup that never settles is abandoned and the run continues', async () => {
+test('cleanup has a hard deadline; cleanup that never settles is abandoned and the run stops', async () => {
   const world = createWorld();
   const { events } = installFakeHost(world);
   let next = false;
@@ -23,14 +23,14 @@ test('cleanup has a hard deadline; cleanup that never settles is abandoned and t
   });
   spec('runs after it', () => { next = true; });
   const report = await run();
-  assert.equal(next, true);
-  assert.equal(report.partial, false);
+  assert.equal(next, false);
+  assert.equal(report.partial, true);
   assert.equal(report.cases[0].status, 'failed');
   assert.equal(report.cases[0].error.phase, 'defer');
   assert.match(report.cases[0].error.message, /cleanup budget/);
-  assert.equal(report.cases[1].status, 'passed');
-  const recovered = events.find(event => event.type === 'diagnostic' && event.phase === 'recovery');
-  assert.match(recovered.message, /^"stalled cleanup" left its cleanup \(t\.defer \/ afterEach\) pending: .*the run continues\.$/);
+  assert.equal(report.cases[1].status, 'skipped');
+  const recovered = events.find(event => event.type === 'diagnostic' && event.phase === 'run_stopped');
+  assert.match(recovered.message, /^"stalled cleanup" left its cleanup \(t\.defer \/ afterEach\) pending: .*The remaining specs are not run\.$/);
   assert.ok(world.navCalls.some(([method]) => method === 'relaunch'));
 });
 
@@ -47,7 +47,7 @@ test('a timed-out body cannot regain access through cleanup', async () => {
   const report = await run();
   assert.equal(report.timeout, 1);
   assert.equal(cleanup, false);
-  assert.equal(next, true);
+  assert.equal(next, false);
   await assert.rejects(() => fixture.app.logic.eval(() => 1), /closed/);
 });
 

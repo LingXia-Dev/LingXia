@@ -202,3 +202,21 @@ test("a host without dialog watching runs specs as before", async () => {
   assert.equal(protocol.passed, 1, JSON.stringify(finished(events)));
   assert.equal(events.some((event) => event.phase === "dialogs"), false);
 });
+
+
+for (const failing of ['watch', 'unanswered', 'unwatch']) {
+  test(`dialog ${failing} failures cannot produce a passed spec`, async () => {
+    const world = createWorld();
+    world.app.dialogs[failing] = () => { throw new Error(`${failing} unavailable`); };
+    installFakeHost(world);
+    let ran = false;
+    spec('dialog failure', { forensics: false }, async () => {
+      ran = true;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    });
+    const report = await globalThis.__LINGXIA_TEST__.run();
+    assert.equal(report.cases[0].status, 'failed');
+    assert.match(report.cases[0].error.message, new RegExp(`${failing} unavailable`));
+    if (failing === 'watch') assert.equal(ran, false);
+  });
+}

@@ -19,7 +19,7 @@ never imports them; release builds contain none.
 
 With none of them, everything is real. Specs see the first two (live changes
 stand aside during a run) and add scenario states with
-[`t.app.mock.use`](#in-specs).
+[`t.scenario.use`](#in-specs).
 
 ## `mocks/index.ts`: the handlers
 
@@ -126,7 +126,7 @@ GET https://api.example.com/qoe/summary → 200  answered by: real · live targe
 ```ts
 import checkout from '../scenarios/checkout.json';
 
-const scenario = await t.app.mock.use(checkout, 'unknown');
+const scenario = await t.scenario.use(checkout, { variant: 'unknown' });
 // { name, variant, rules, calls(filter?), waitForCall(target), remove() }
 ```
 

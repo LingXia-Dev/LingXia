@@ -189,7 +189,7 @@ test("spec.fail with expected grades only the matching failure xfail", async () 
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
   assert.deepEqual(report.cases.map((c) => c.status), ["xfail", "xfail", "failed", "xpass"]);
   assert.match(report.cases[2].error.message,
-    /spec\.fail expected a failure with code "E_QUOTA", got undefined and a message containing "quota"; the body failed differently/);
+    /spec\.fail expected a failure with code "E_QUOTA", got "E_TIMEOUT" and a message containing "quota"; the body failed differently/);
   assert.throws(() => spec("not fail", { expected: { code: "X" } }, () => {}), /only meaningful for spec\.fail/);
   assert.throws(() => spec.fail("empty", { expected: {} }, () => {}), /needs a code or a message/);
 });

@@ -276,7 +276,7 @@ spec("clear, prefix-list, missing vs null, and persist storage across reLaunch",
       return { ok: true };
     } catch (error) {
       const { code, message } = error as { code?: string; message?: string };
-      return { ok: false, code, message: String(message ?? error) };
+      return { ok: false, code: code ?? '', message: String(message ?? error) };
     }
   }, namespace);
   expect(oversized.ok).toBeFalsy();
@@ -338,7 +338,7 @@ spec("read directories, LxFile.exists/path, and deny escaped paths", {
       return { ok: true };
     } catch (error) {
       const { code, message } = error as { code?: string; message?: string };
-      return { ok: false, code, message: String(message ?? error) };
+      return { ok: false, code: code ?? '', message: String(message ?? error) };
     }
   }, path);
   const escaped = await statCaught('../secret');

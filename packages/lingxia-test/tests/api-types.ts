@@ -1,5 +1,5 @@
 import {
-  spec, expect, rawAutomation, TEST_ERROR_CODES, TimeoutError, type AnyLogicPage, type Fixture, type AutomationErrorCode, type ClockAdvance, type ClockState, type LogicPage, type NetworkCall, type ProfileCheckpoint, type TestApp, type TestErrorCode,
+  spec, expect, rawAutomation, TEST_ERROR_CODES, TimeoutError, type JsonValue, type AnyLogicPage, type Fixture, type AutomationErrorCode, type ClockAdvance, type ClockState, type LogicPage, type NetworkCall, type ProfileCheckpoint, type TestApp, type TestErrorCode, type ViewElement,
 } from '../dist/index.js';
 import type { FailureRecord, JsonReport, TagSummary } from '@lingxia/test/report';
 import { run, trackPublicSurface, VERSION } from '@lingxia/test/runner';
@@ -143,23 +143,40 @@ spec('typed Logic access', async t => {
   // @ts-expect-error The view exposes locators, not raw element methods.
   await t.app.view.waitFor({ css: '#save' });
   await t.app.view.screenshot();
+  // @ts-expect-error Native keyboard input has no page target.
+  t.app.view.page('cart').key;
+  t.app.window.key;
+  t.app.window.pointer;
   const cart = t.app.view.page('cart');
   await cart.testId('total').click();
   const cartTitle: string = await cart.eval(({ document }) => document.title);
   cartTitle.toUpperCase();
-  await cart.page('checkout').screenshot();
+  // @ts-expect-error A bound View cannot retarget another page.
+  cart.page('checkout');
+  await t.app.view.page('checkout').screenshot();
 
-  // Results are typed as JSON carries them.
-  const shaped = await t.app.logic.eval(() => ({ id: 'a', at: 1, tags: ['x'] as const, save() {} }));
+  // Invalid results fail at the call site, not when a `never` is used later.
+  const shaped = await t.app.logic.eval(() => ({ id: 'a', at: 1, tags: ['x'] as const }));
   shaped.id.toUpperCase(); shaped.tags[0].toUpperCase();
-  // @ts-expect-error A method does not cross the boundary.
-  shaped.save();
-  const when = await t.app.logic.eval(() => new Date());
-  // @ts-expect-error A Date arrives as a string, so it is typed `never`.
-  when.getTime();
-  const body = await t.app.view.eval(({ document }) => document.body);
-  // @ts-expect-error A DOM element does not cross the boundary.
-  body.tagName;
+  // @ts-expect-error Methods cannot cross the JSON boundary.
+  await t.app.logic.eval(() => ({ save() {} }));
+  // @ts-expect-error Convert a Date explicitly before returning it.
+  await t.app.logic.eval(() => new Date());
+  // @ts-expect-error Return element data rather than a DOM handle.
+  await t.app.view.eval(({ document }) => document.body);
+  // @ts-expect-error Nested undefined would silently become null.
+  await t.app.logic.eval(() => [undefined]);
+  interface Payload { id: string; items: readonly number[] }
+  const payload: Payload = { id: 'a', items: [1] };
+  const echoed = await t.app.logic.eval((_, value: Payload) => value, payload);
+  echoed.id.toUpperCase();
+  interface TreeNode { nodeType: number; label: string }
+  const node: TreeNode = { nodeType: 1, label: 'folder' };
+  const logicNode: TreeNode = await t.app.logic.eval((_, value: TreeNode) => value, node);
+  const viewNode: TreeNode = await t.app.view.eval(() => ({ nodeType: 1, label: 'folder' }));
+  logicNode.nodeType.toFixed(); viewNode.label.toUpperCase();
+  // @ts-expect-error A DOM handle is still not a JSON argument.
+  await t.app.logic.eval((_, element: ViewElement) => element.id, {} as ViewElement);
   const anyValue = await t.app.logic.eval(() => JSON.parse('1') as any);
   anyValue.whatever;
   const maybe = await t.app.view.eval(({ document }) => document.querySelector('x')?.textContent ?? undefined);
@@ -283,7 +300,7 @@ spec('network calls', async (t) => {
   const removed: void = await route.remove();
   const all: void = await t.app.network.removeAll();
   const spec: NetworkCall[] = await t.app.network.calls();
-  const scenario = await t.app.mock.use({ rules: [{ http: 'GET **/x', json: {} }] }, undefined);
+  const scenario = await t.scenario.use({ rules: [{ http: 'GET **/x', json: {} }] }, undefined);
   const hit: NetworkCall = await scenario.waitForCall({ http: 'GET **/x' });
   const fn: NetworkCall = await scenario.waitForCall({ function: 'orders.submit' }, { timeout: 1_000 });
   hit.rule?.toFixed(); fn.function?.toUpperCase();
@@ -296,7 +313,7 @@ spec('network calls', async (t) => {
   void removed; void all; void spec; void scenarioCalls; void gone;
   // The test API selects no mocks: the session's selection applies, and
   // only a scenario state goes on top.
-  // @ts-expect-error scenarios are `t.app.mock.use()`
+  // @ts-expect-error scenarios are `t.scenario.use()`
   await t.app['scenario']({ rules: [] });
   // @ts-expect-error `lxdev mock` and `lingxia dev --mock` select, not specs
   await t.app.mock.all();
@@ -405,3 +422,35 @@ void run; void trackPublicSurface; VERSION.toUpperCase();
 // @ts-expect-error The runner is `@lingxia/test/runner`.
 import { run as mainRun } from '../dist/index.js';
 void mainRun;
+
+
+spec('a page contract binds one identity and checks public action payloads', async t => {
+  type Contract = import('../dist/index.js').PageContract<
+    { title: string }, { rename(input: { title: string }): Promise<boolean> }
+  >;
+  const page = await t.app.page<Contract>({ name: 'editor' });
+  const title: string = (await page.data()).title;
+  const done: boolean = await page.actions.rename({ title });
+  void done;
+  // @ts-expect-error The contract determines the payload.
+  await page.actions.rename({ title: 1 });
+  // @ts-expect-error A handle cannot retarget one operation.
+  await page.view.eval({ page: 'other' }, () => true);
+  // @ts-expect-error No private method appears on the public action contract.
+  await page.actions._save();
+  interface Methods extends LogicPage { count(): number }
+  const dynamic: import('../dist/index.js').LogicCallOptions = { wait: Math.random() > 0.5 };
+  const value = await t.app.logic.call<Methods, 'count'>(dynamic, 'count');
+  // @ts-expect-error A runtime wait flag may discard the result.
+  const count: number = value;
+  void count;
+  // @ts-expect-error The declared method has no arguments.
+  await t.app.logic.call<Methods, 'count'>('count', 1);
+});
+
+spec('recursive JSON types cross eval without excessive instantiation', async t => {
+  const input: JsonValue = JSON.parse('{"nested":[{"ok":true}]}');
+  const result: JsonValue = await t.app.logic.eval((_, value) => value, input);
+  const list: JsonValue[] = await t.app.view.eval((_, value) => value, [input] as JsonValue[]);
+  void result; void list;
+});

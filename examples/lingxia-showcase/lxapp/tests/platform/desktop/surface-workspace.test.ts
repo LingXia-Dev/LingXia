@@ -1215,8 +1215,8 @@ desktopTest('projects the declared terminal aside and restores its baseline stat
       const shown = await snapshot();
       output = {
         id: terminal.id,
-        role: (terminal as WithRole<typeof terminal>).role,
-        presentation: (terminal as WithRole<typeof terminal>).presentation,
+        role: (terminal as WithRole<typeof terminal>).role ?? null,
+        presentation: (terminal as WithRole<typeof terminal>).presentation ?? null,
         opened,
         hidden,
         shown,
@@ -2857,7 +2857,7 @@ desktopTest('rejects stable-root mutations without changing the host model', {
       rootId,
       closeError,
       roleError,
-      role: (root as WithRole<typeof root>).role,
+      role: (root as WithRole<typeof root>).role ?? null,
       visible: root.visible,
       alive: root.alive,
       beforeRejections,
@@ -2918,7 +2918,7 @@ desktopTest('migrates one keyed workspace across aside edges and main exactly on
       const aside = await snapshot();
       const main = await lx.shell.openDeclared('terminal', { key, as: 'main' });
       const mainLayout = await snapshot();
-      const roleAfterMain = (main as WithRole<typeof main>).role;
+      const roleAfterMain = (main as WithRole<typeof main>).role ?? null;
       let hideError = '';
       try { await main.hide(); } catch (error) { hideError = String(error); }
       const afterRejectedHide = await snapshot();
@@ -2946,8 +2946,8 @@ desktopTest('migrates one keyed workspace across aside edges and main exactly on
         sameAsideId: docked.id === surface.id,
         sameAsideHandle: docked === surface,
         roleAfterMain,
-        roleAfterDock: (docked as WithRole<typeof docked>).role,
-        presentationAfterDock: (docked as WithRole<typeof docked>).presentation,
+        roleAfterDock: (docked as WithRole<typeof docked>).role ?? null,
+        presentationAfterDock: (docked as WithRole<typeof docked>).presentation ?? null,
         hideError,
         aliveAfterClose: docked.alive,
         visibleAfterClose: docked.visible,
@@ -3144,8 +3144,8 @@ desktopTest('switches, deduplicates concurrent opens, and leaves no ghost rows',
           concurrent: concurrentFirst.id,
         },
         firstState: {
-          role: (first as WithRole<typeof first>).role,
-          presentation: (first as WithRole<typeof first>).presentation,
+          role: (first as WithRole<typeof first>).role ?? null,
+          presentation: (first as WithRole<typeof first>).presentation ?? null,
           alive: first.alive,
         },
         distinctIds: first.id !== second.id && second.id !== concurrentFirst.id,

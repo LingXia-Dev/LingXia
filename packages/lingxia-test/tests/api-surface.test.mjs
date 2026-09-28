@@ -102,13 +102,14 @@ test("expect.poll(fn).toHaveLength retries until the length matches", async () =
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
 });
 
-test("t.app.view has locators, not raw element methods; there is no t.app.page or t.app.eval", async () => {
+test("t.app.view has locators, not raw element methods; t.app.page binds a contract and there is no t.app.eval", async () => {
   const world = createWorld();
   const save = world.add({ testId: "save" });
   installFakeHost(world);
   const seen = {};
 
   spec("view", { forensics: false }, async (t) => {
+    seen.pageInput = [typeof t.app.view.pointer, typeof t.app.view.key, typeof t.app.view.page("home").key];
     seen.viewClick = typeof t.app.view.click;
     seen.viewWaitFor = typeof t.app.view.waitFor;
     seen.viewQuery = typeof t.app.view.query;
@@ -122,7 +123,8 @@ test("t.app.view has locators, not raw element methods; there is no t.app.page o
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
   assert.deepEqual([seen.viewClick, seen.viewWaitFor, seen.viewQuery], ["undefined", "undefined", "undefined"]);
-  assert.deepEqual([seen.page, seen.eval], ["undefined", "undefined"]);
+  assert.deepEqual([seen.page, seen.eval], ["function", "undefined"]);
+  assert.deepEqual(seen.pageInput, ["undefined", "undefined", "undefined"]);
   assert.equal(save.clicked, 2);
   assert.equal(seen.shot, "png");
 });
@@ -285,4 +287,20 @@ test("each entry exports only its own job", async () => {
     "list", "renderJUnit", "reset", "run", "trackPublicSurface",
   ]);
   assert.deepEqual(Object.keys(await import("@lingxia/test/report")), []);
+});
+
+test("native input belongs to the app window and keeps its receiver", async () => {
+  const world = createWorld();
+  const input = [];
+  world.app.page.key = { async type(options) { assert.equal(this, world.app.page.key); input.push(options); } };
+  installFakeHost(world);
+  spec("window input", { forensics: false }, async (t) => {
+    const key = t.app.window.key;
+    t.app.view.page("background");
+    await key.type({ text: "hello" });
+  });
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  assert.deepEqual(input, [{ text: "hello" }]);
+  assert.ok(report.cases[0].steps.some((step) => step.name === "window.key.type"));
 });

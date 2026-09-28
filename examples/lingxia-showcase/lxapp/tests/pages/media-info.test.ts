@@ -143,7 +143,7 @@ mediaSpec('cancel an in-flight compressVideo and reject with E_ABORT', {
       return { ok: true, value: await task.result };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code, message: String(message ?? error), data };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   }, httpBase);
 

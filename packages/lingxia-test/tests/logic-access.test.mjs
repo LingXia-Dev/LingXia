@@ -52,7 +52,7 @@ test("function eval runs in Logic with the scope and JSON args", async () => {
   const action = result.steps.find((step) => step.name === "logic.eval");
   assert.match(action.detail, /^\(\{ lx, getApp, getCurrentPages \}, extra, label\) =>/);
   // The script sent is one call expression, not a statement body.
-  assert.match(world.evaluated[0], /^\(\(__lxFn, __lxArgs\) => __lxFn\(/);
+  assert.match(world.evaluated[0], /^\(\(__lxFn, __lxArgs, __lxResult\) => Promise\.resolve\(__lxFn\(/);
 });
 
 test("a closure over spec variables fails with an explanation", async () => {
@@ -123,18 +123,18 @@ test("arguments that are not JSON are refused with their path before anything is
   });
   assert.equal(result.status, "passed", JSON.stringify(result.error));
   assert.deepEqual(messages, [
-    "TypeError: t.app.logic.eval: args[1].items[2]: undefined",
-    "TypeError: t.app.logic.eval: args[0][0]: a function",
-    "TypeError: t.app.logic.eval: args[0].drop: undefined",
-    "TypeError: t.app.logic.eval: args[0].total: NaN",
-    "TypeError: t.app.logic.eval: args[0][1]: Infinity",
-    'TypeError: t.app.logic.eval: args[0]["odd key"].at: a Date',
-    "TypeError: t.app.logic.eval: args[0]: a Point",
-    "TypeError: t.app.logic.eval: args[0].self: a circular reference",
-    "TypeError: t.app.logic.eval: args[0][1]: an array hole",
-    "TypeError: t.app.logic.eval: args[0]: 10n (a bigint)",
-    "TypeError: t.app.logic.call: args[0].onDone: a function",
-    "TypeError: t.app.view.eval: args[0].items[0]: undefined",
+    "TypeError: t.app.logic.eval: args[1][\"items\"][2]: undefined",
+    "TypeError: t.app.logic.eval: args[0][0]: function",
+    "TypeError: t.app.logic.eval: args[0][\"drop\"]: undefined",
+    "TypeError: t.app.logic.eval: args[0][\"total\"]: non-finite number; use JSON values",
+    "TypeError: t.app.logic.eval: args[0][1]: non-finite number; use JSON values",
+    "TypeError: t.app.logic.eval: args[0][\"odd key\"][\"at\"]: non-plain object",
+    "TypeError: t.app.logic.eval: args[0]: non-plain object",
+    "TypeError: t.app.logic.eval: args[0][\"self\"]: circular reference; use JSON values",
+    "TypeError: t.app.logic.eval: args[0]: array index 1 is missing or an accessor; use JSON values",
+    "TypeError: t.app.logic.eval: args[0]: bigint",
+    "TypeError: t.app.logic.call: args[0][\"onDone\"]: function",
+    "TypeError: t.app.view.eval: args[0][\"items\"][0]: undefined"
   ]);
   // Nothing reached either side.
   assert.deepEqual(world.evaluated, []);
@@ -432,4 +432,107 @@ test("t.arg names a key given in another case, without reading it", async () => 
   assert.equal(seen.optional, undefined);
   assert.match(seen.error, /Missing test arg "password".*"PASSWORD" was given, and arg keys are case-sensitive/);
   assert.doesNotMatch(seen.error, /from-env/);
+});
+
+for (const [name, fn] of [
+  ["array undefined", () => [undefined]],
+  ["object undefined", () => ({ missing: undefined })],
+  ["date", () => new Date(0)],
+  ["method", () => ({ save() {} })],
+  ["non-finite number", () => ({ n: Infinity })],
+  ["cycle", () => { const item = {}; item.self = item; return item; }],
+  ["accessor", () => ({ get value() { return 1; } })],
+]) {
+  test(`eval refuses a lossy ${name} result in Logic and View`, async () => {
+    const world = logicWorld();
+    world.usePage({ document: {}, window: {} });
+    installFakeHost(world);
+    const failures = [];
+    const result = await runOne(async (t) => {
+      for (const target of [t.app.logic, t.app.view]) {
+        try { await target.eval(fn); }
+        catch (error) { failures.push(error.message); }
+      }
+    });
+    assert.equal(result.status, "passed", JSON.stringify(result.error));
+    assert.equal(failures.length, 2);
+    for (const message of failures) assert.match(message, /result.*JSON|result.*reference|result.*accessor/);
+  });
+}
+
+test("JSON arguments reject before dispatch and do not invoke getters", async () => {
+  const world = logicWorld();
+  installFakeHost(world);
+  let reads = 0;
+  const result = await runOne(async (t) => {
+    for (const value of [undefined, [undefined], new Date(0), { get id() { reads++; return 1; } }]) {
+      assert.throws(() => t.app.logic.eval((_, item) => item, value), TypeError);
+    }
+  });
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
+  assert.equal(reads, 0);
+  assert.deepEqual(world.evaluated, []);
+});
+
+test("JSON results preserve tuples, repeated references and a literal __proto__ key", async () => {
+  installFakeHost(logicWorld());
+  let result;
+  const outcome = await runOne(async (t) => {
+    result = await t.app.logic.eval(() => {
+      const item = { id: 1 };
+      return { list: [item, item], ["__proto__"]: "data" };
+    });
+  });
+  assert.equal(outcome.status, "passed", JSON.stringify(outcome.error));
+  assert.deepEqual(result, JSON.parse('{"list":[{"id":1},{"id":1}],"__proto__":"data"}'));
+});
+
+test("JSON arguments keep special keys as own data in Logic and View", async () => {
+  const world = logicWorld();
+  world.usePage({ document: {}, window: {} });
+  installFakeHost(world);
+  const payload = JSON.parse('{"__proto__":{"role":"admin"},"nested":{"__proto__":null},"nodeType":1,"label":"quotes \\" and \\\\ and \\n"}');
+  const seen = [];
+  const result = await runOne(async (t) => {
+    for (const target of [t.app.logic, t.app.view]) {
+      seen.push(await target.eval((_, value) => ({
+        own: Object.prototype.hasOwnProperty.call(value, "__proto__"),
+        hasRole: "role" in value,
+        ordinary: Object.getPrototypeOf(value) === Object.prototype,
+        value,
+      }), payload));
+    }
+  });
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
+  assert.deepEqual(seen, [
+    { own: true, hasRole: false, ordinary: true, value: payload },
+    { own: true, hasRole: false, ordinary: true, value: payload },
+  ]);
+});
+
+
+test("page handles keep the selected identity and invoke the public bridge", async () => {
+  const world = logicWorld();
+  const calls = [];
+  world.app.nav.info = async () => ({ path: 'pages/editor/index', instanceId: 'editor:1' });
+  world.app.nav.stack = async () => [{ path: 'pages/editor/index', instanceId: 'editor:1' }];
+  world.useLogic({ lx: {}, __lxGetPage: id => {
+    assert.equal(id, 'editor:1');
+    return { data: { title: 'Before' } };
+  } });
+  world.usePage({ document: {}, window: {
+    __pageBridge: { __names: ['rename'], __modes: { rename: 'call' } },
+    LingXiaBridge: { raw: { call: async (name, payload) => { calls.push([name, payload]); return true; } } },
+  } });
+  installFakeHost(world);
+  const result = await runOne(async t => {
+    const page = await t.app.page({ name: 'editor' });
+    assert.equal(page.instanceId, 'editor:1');
+    assert.deepEqual(await page.data(), { title: 'Before' });
+    assert.equal(await page.actions.rename({ title: 'After' }), true);
+    assert.throws(() => page.view.css('button', { page: 'other' }), /bound page/);
+  });
+  assert.equal(result.status, 'passed', JSON.stringify(result.error));
+  assert.deepEqual(calls, [['rename', { title: 'After' }]]);
+  assert.deepEqual(world.evaluatedPages, ['editor:1']);
 });

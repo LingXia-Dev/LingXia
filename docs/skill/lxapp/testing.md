@@ -56,13 +56,14 @@ lxdev test tests/pages/notes.test.ts
 | Navigate | `t.app.nav.to` / `.redirect` / `.switchTab` / `.back` |
 | Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })`; another page: `t.app.view.page(name)` or `{ page }` |
 | Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)` |
+| Native window input | `t.app.window.pointer` / `.key`; independent of `view.page(name)` |
 | Assert UI | `expect(locator).toBeVisible()` / `.toBeInViewport()` / `.toBeAttached()` / `.toHaveText()` / `.toContainText()` / `.toHaveAttribute(name, value?)` / `.toHaveCount()` / `.toHaveValue()` / `.toBeEnabled()`; `.not` |
 | Wait for an element state | `locator.waitFor({ state: 'visible' \| 'inViewport' \| 'attached' \| 'hidden' \| 'detached' })` |
 | Read Logic, call a page method, eval | [Reading Logic](#reading-logic) |
 | Wait until a value is ready | `t.waitFor(read, { until })` returns it; `expect.poll(read).toBe(x)` asserts it |
 | Expect a rejection | `await t.reject(() => op(), { code?, message? })`; `code` is a `TestErrorCode` or one the app declared in `AppErrorCodes` |
 | Fake Logic `fetch` / `Rong.SSE` | `t.app.network.route(pattern, handler)`; [Faking the network](#faking-the-network) |
-| Load a scenario file | `t.app.mock.use(json, variant?)`; [Scenarios in specs](#scenarios-in-specs) |
+| Load a scenario file | `t.scenario.use`; [Scenarios in specs](#scenarios-in-specs) |
 | Check responses against OpenAPI | `--openapi`, `toMatchSchema`; [Contract checks](#contract-checks) |
 | Tag specs, file defaults | `spec(title, { tags }, body)`, `spec.configure({ timeout, fresh, tags, requires, … })` |
 | Skip without an input | `spec(title, { requires: { args: ['PASSWORD'], openapi: true } }, body)` |
@@ -84,7 +85,7 @@ Trigger the behaviour under test through the UI; setup, eval, and backend
 calls do not replace it. Automation types come from `@lingxia/types/automation`.
 `rawAutomation()` from `@lingxia/test` bypasses tracing and fixture guards;
 keep it for setup before any spec. Restore shell pins or device settings a
-spec changes. Routes, `t.app.mock.use` scenarios, test clocks and dialog
+spec changes. Routes, `t.scenario.use` scenarios, test clocks and dialog
 answers a spec installs (also through `rawAutomation()`) are removed when it
 ends; its leftover timers are cancelled.
 
@@ -114,9 +115,9 @@ const kept = await t.app.view.eval({ page: 'cart' }, ({ document }) => document.
   getCurrentPages }`; `view.eval` runs in the page with `{ document, window }`.
 - `fn` is sent as source: it cannot use spec variables, imports, or helpers
   (`lxdev test` refuses one that does). Pass values as extra arguments;
-  arguments and results must be JSON — an argument holding `undefined`, a
-  function, `NaN`/`Infinity`, a Date or a class instance is refused before
-  anything is sent, naming its path (`args[1].items[2]`). An error thrown in `fn` fails the eval
+  arguments and results must be JSON (interfaces work without an index signature).
+  Top-level void is allowed; nested undefined, Date, methods and DOM handles reject
+  instead of being silently transformed. An error thrown in `fn` fails the eval
   with `E_EVAL_SCRIPT`; catch it inside `fn` to assert an API's own `code`.
 - Options go first: `{ timeout }`, `{ page }` for evals; `{ timeout }`,
   `{ wait: false }` for `call`. An eval gets a third of the spec's budget (at
@@ -218,7 +219,7 @@ session's [mock selection](./mock.md):
 import checkout from '../scenarios/checkout.json';
 
 spec('an unknown payment result settles as paid', async (t) => {
-  const scenario = await t.app.mock.use(checkout, 'unknown');
+  const scenario = await t.scenario.use(checkout, { variant: 'unknown' });
   await t.app.nav.relaunch({ page: 'checkout' });
   await t.app.view.testId('pay').click();
   await expect(t.app.view.testId('paid')).toBeVisible();
@@ -362,8 +363,8 @@ spec('edits a device', { restoreProfile: { keep: ['auth.*'] } }, async (t) => { 
 - **`force` is a last resort.** `click({ force: true })` / `fill(text, {
   force: true })` dispatch DOM events directly; use only after
   `element is obscured`. A run raises the host window when it starts, and
-  an action or `waitFor` about to fail on a hidden page raises it once more
-  and retries (the trace says so); keep it uncovered (`lxdev host focus`).
+  actions and waits keep their original deadline without raising it again;
+  keep the window uncovered (`lxdev host focus`).
 - **A locked screen stops the run** on macOS: pages are hidden, so the rest
   are reported as not run. Unlock it and run again.
 - **`fill` updates framework state**; assert the state, not only the DOM.
@@ -378,16 +379,12 @@ spec('edits a device', { restoreProfile: { keep: ['auth.*'] } }, async (t) => { 
 - **`t.arg('k')` throws** when missing; pass `{ default }` or
   `{ required: false }`.
 - **Timeouts never outlive the spec**; a longer one is clamped.
-- **A spec that never settles is abandoned; the run goes on.** Its timers
-  are cancelled, its drivers (`t`, `rawAutomation()` handles) refuse with
-  `E_AUTOMATION_PRIVILEGE`, what it installed is removed, the app is
-  relaunched, and the next spec runs; an `expect` it makes later is a
-  `late_assertion` diagnostic charged to it. The run stops (the rest not run)
-  only when it cannot be isolated: a fetch or driver call it started is still
-  running after 2s, it read a host tier (`rawAutomation().lxapps`, …), or the
-  app could not be recovered — the message names which. A route, scenario or
-  clock the run cannot remove after a spec stops it too. Await everything, or
-  raise `timeout`.
+- **An abandoned spec stops the run.** Its timers and automation grants are
+  revoked, owned resources reclaimed, and remaining specs skipped. Untracked
+  promises could otherwise resume inside the next spec's shared JS context.
+  App recovery is for inspection; await all work or raise `timeout`.
+- **Dialog observation is required.** Setup, observation, or teardown errors
+  fail the spec instead of disabling dialog checks.
 - **Live `lxdev mock` changes** (scenarios and selections) stand aside
   during a run; specs see `mocks/config.json` and `lingxia dev --mock`.
 
@@ -475,3 +472,23 @@ lxdev test --preset ci --print-args         # show the effective arguments
 - `tests/api/` — deliberate `lx.*` contract checks.
 
 Run focused specs while iterating and the suite at handoff.
+
+## Fixed page identities and shared contracts
+
+Keep a pure `contract.ts` beside the page: `PageContract<Data, Actions>` from
+`@lingxia/types/page`. Logic uses `Page<Contract['data'], Contract['actions']>`;
+View uses those same types with `useLxPage` / `getPage`. Test imports it with
+`import type`, never by running the Logic module.
+
+```ts
+const page = await t.app.page<HomePage>({ name: 'home' });
+await page.actions.greet({ name: 'Ada' });
+await expect(page.view.testId('home-greeting')).toContainText('Ada');
+```
+
+The handle binds one live instance. Use `{ instanceId }` if a name is ambiguous;
+a replaced/disposed instance fails rather than following another page. Its
+View cannot override the target. `page.data()` and public unary `page.actions`
+share that identity; actions accept one JSON payload and await the actual
+bridge call. App-level `logic.eval` / `logic.call` are lower-level inspection
+of the runtime/current Logic page, not the public View action contract.

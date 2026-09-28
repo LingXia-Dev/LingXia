@@ -13,12 +13,13 @@ import type { ScenarioReport } from "./report-types.js";
 import { runnerSetTimeout } from "./pending.js";
 
 /**
- * The scenario one spec installed with `t.app.mock.use()`. Installing
+ * The scenario one spec installed with `t.scenario.use()`. Installing
  * another replaces it (the host does the same for its run), and the runner
  * removes it when the spec ends.
  */
 export class ScenarioScope {
   current: { raw: Scenario; label: string } | undefined;
+  failure: unknown;
 
   track(raw: Scenario, label: string): void {
     this.current = { raw, label };
@@ -26,6 +27,7 @@ export class ScenarioScope {
 
   /** Remove the scenario; one already removed counts as removed. */
   async reclaim(): Promise<void> {
+    if (this.failure !== undefined) throw this.failure;
     const current = this.current;
     if (!current) return;
     // Raw handle: the fixture is closed by now.
@@ -100,7 +102,7 @@ function validTarget(target: unknown): target is ScenarioCallTarget {
 }
 
 /**
- * `t.app.mock.use(file, variant?)`: the host installs the scenario for the
+ * `t.scenario.use(file, variant?)`: the host installs the scenario for the
  * run, on top of the mock selection; the fixture removes it when the spec
  * ends and traces every call.
  */
@@ -112,9 +114,15 @@ export function installScenario(
   variant?: string,
 ): Promise<TestScenario> {
   return host.act("mock.use", describeScenario(definition, variant), async () => {
-    const raw = variant === undefined
-      ? await resolve().mock.use(definition)
-      : await resolve().mock.use(definition, variant);
+    let raw: Scenario;
+    try {
+      raw = variant === undefined
+        ? await resolve().mock.use(definition)
+        : await resolve().mock.use(definition, variant);
+    } catch (error) {
+      if ((error as { code?: string })?.code === "E_SCENARIO_STATE_UNKNOWN") scope.failure = error;
+      throw error;
+    }
     const label = scenarioLabel(definition, variant);
     scope.track(raw, label);
     const read = async (filter?: ScenarioCallFilter) => (await raw.calls(filter)).map(scenarioCall);
@@ -141,8 +149,8 @@ export function installScenario(
       },
       remove: () =>
         host.act("scenario.remove", label, async () => {
-          if (scope.current?.raw === raw) scope.current = undefined;
           await raw.unroute();
+          if (scope.current?.raw === raw) scope.current = undefined;
         }),
     };
     return wrapped;
