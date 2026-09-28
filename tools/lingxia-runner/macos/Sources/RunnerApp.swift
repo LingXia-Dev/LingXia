@@ -68,10 +68,6 @@ public class RunnerApp {
     private(set) var deviceOrientation: RunnerDeviceOrientation = .portrait
     private(set) var deviceSize: MobileDeviceSize = .defaultDevice
     private(set) var simulatedAppearance: RunnerAppearance = .system
-    /// Whether the simulated host capsule is enabled. Default on: the capsule
-    /// is real host chrome for every non-home lxapp, so hiding it is the
-    /// opt-in for developing home-style products.
-    private(set) var capsuleEnabled: Bool = true
     /// The enclosing host's home lxapp, when that is what `lingxia dev`
     /// launched: like the real host, it gets no capsule.
     private let hostHomeAppId: String? = ProcessInfo.processInfo
@@ -139,21 +135,10 @@ public class RunnerApp {
         NotificationCenter.default.post(name: Self.appearanceDidChange, object: nil)
     }
 
-    /// Enable or disable the simulated host capsule (`lxdev runner set --capsule`).
-    public func setCapsuleEnabled(_ enabled: Bool) {
-        guard capsuleEnabled != enabled else { return }
-        capsuleEnabled = enabled
-        for suspended in suspendedPhoneControllers {
-            suspended.applyCapsuleEnabled()
-        }
-        if let active = windowController {
-            refreshCapsulePageChrome(for: active)
-        }
-    }
-
-    /// Whether `appId`'s window draws the capsule.
+    /// Whether `appId`'s window draws the capsule: every lxapp but the host's
+    /// home one, as on the real host.
     func capsuleShown(for appId: String) -> Bool {
-        capsuleEnabled && appId != hostHomeAppId
+        appId != hostHomeAppId
     }
 
     func capsuleDidBecomeReady(_ controller: SimulatorWindowController) {
@@ -162,7 +147,7 @@ public class RunnerApp {
     }
 
     private func refreshCapsulePageChrome(for controller: SimulatorWindowController) {
-        controller.applyCapsuleEnabled()
+        controller.applyCapsuleVisibility()
         guard controller.webTargetTabId == nil else { return }
         RunnerSupport.PageChrome.republish(appId: controller.appId)
     }

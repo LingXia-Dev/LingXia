@@ -245,8 +245,6 @@ struct DeviceSetOpt {
     landscape: Option<bool>,
     /// Simulated appearance: "system" | "light" | "dark"; omit to keep.
     appearance: Option<String>,
-    /// Show (`true`) or hide (`false`) the simulated host capsule; omit to keep.
-    capsule: Option<bool>,
 }
 
 #[js_class(rename = "DeviceDriver")]
@@ -276,13 +274,9 @@ impl JSDeviceDriver {
     #[js_method]
     async fn set(&self, ctx: JSContext, options: DeviceSetOpt) -> JSResult<JSValue> {
         require_host_context(&ctx)?;
-        if options.id.is_none()
-            && options.landscape.is_none()
-            && options.appearance.is_none()
-            && options.capsule.is_none()
-        {
+        if options.id.is_none() && options.landscape.is_none() && options.appearance.is_none() {
             return Err(auto_err(
-                "set requires at least one of id, landscape, appearance, capsule",
+                "set requires at least one of id, landscape, appearance",
             ));
         }
         let appearance = options
@@ -291,14 +285,9 @@ impl JSDeviceDriver {
             .map(str::parse::<lxapp::device::Appearance>)
             .transpose()
             .map_err(auto_err)?;
-        let state = lxapp::device::device_set(
-            options.id.as_deref(),
-            options.landscape,
-            appearance,
-            options.capsule,
-        )
-        .await
-        .map_err(auto_err)?;
+        let state = lxapp::device::device_set(options.id.as_deref(), options.landscape, appearance)
+            .await
+            .map_err(auto_err)?;
         to_js(&ctx, &state)
     }
 }

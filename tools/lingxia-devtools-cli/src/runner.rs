@@ -1,5 +1,5 @@
 //! `lxdev runner`: the simulated environment owned by the runner host —
-//! device preset, orientation, appearance, and the simulated host capsule.
+//! device preset, orientation and appearance.
 //! Runner sessions only.
 
 use crate::client;
@@ -43,10 +43,6 @@ pub enum RunnerCommand {
         /// Simulated appearance for the device screen
         #[arg(long, value_enum)]
         appearance: Option<AppearanceArg>,
-        /// Show or hide the simulated host capsule (phone presets draw it by
-        /// default, as a real host does for a non-home lxapp)
-        #[arg(long, value_enum)]
-        capsule: Option<CapsuleArg>,
         /// Print JSON output
         #[arg(long)]
         json: bool,
@@ -70,20 +66,6 @@ impl AppearanceArg {
             AppearanceArg::Light => "light",
             AppearanceArg::Dark => "dark",
         }
-    }
-}
-
-#[derive(ValueEnum, Clone, Copy)]
-pub enum CapsuleArg {
-    /// Draw the host capsule over phone presets (the non-home default)
-    On,
-    /// Hide the capsule, simulating a home-lxapp placement
-    Off,
-}
-
-impl CapsuleArg {
-    fn as_bool(self) -> bool {
-        matches!(self, CapsuleArg::On)
     }
 }
 
@@ -113,13 +95,11 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
             landscape,
             portrait,
             appearance,
-            capsule,
             json,
         } => {
-            if id.is_none() && !landscape && !portrait && appearance.is_none() && capsule.is_none()
-            {
+            if id.is_none() && !landscape && !portrait && appearance.is_none() {
                 anyhow::bail!(
-                    "nothing to change: pass --id, --landscape/--portrait, --appearance, or --capsule"
+                    "nothing to change: pass --id, --landscape/--portrait, or --appearance"
                 );
             }
             // Leave orientation to the runner's normal selector behavior
@@ -138,7 +118,6 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
                     "id": id,
                     "landscape": orientation,
                     "appearance": appearance.map(AppearanceArg::as_str),
-                    "capsule": capsule.map(CapsuleArg::as_bool),
                 })),
             )?
             .unwrap_or(Value::Null);
@@ -208,13 +187,8 @@ fn describe_state(data: &Value) -> Result<String> {
         .get("appearance")
         .and_then(Value::as_str)
         .unwrap_or("system");
-    let capsule = match data.get("capsule").and_then(Value::as_bool) {
-        Some(true) => "on",
-        Some(false) => "off",
-        None => anyhow::bail!("the Runner reported its environment without `capsule`"),
-    };
     Ok(format!(
-        "{name} ({id})  {width}x{height}  {orientation}  appearance: {appearance}  capsule: {capsule}"
+        "{name} ({id})  {width}x{height}  {orientation}  appearance: {appearance}"
     ))
 }
 
@@ -233,17 +207,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_environment_always_names_the_capsule() {
+    fn the_environment_names_device_orientation_and_appearance() {
         let state = json!({
             "name": "iPhone 15 Pro", "id": "iphone-15-pro", "width": 393, "height": 852,
-            "landscape": false, "appearance": "dark", "capsule": false,
+            "landscape": false, "appearance": "dark",
         });
         assert_eq!(
             describe_state(&state).unwrap(),
-            "iPhone 15 Pro (iphone-15-pro)  393x852  portrait  appearance: dark  capsule: off"
+            "iPhone 15 Pro (iphone-15-pro)  393x852  portrait  appearance: dark"
         );
-        let mut without = state.clone();
-        without.as_object_mut().unwrap().remove("capsule");
-        assert!(describe_state(&without).is_err());
     }
 }

@@ -799,7 +799,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         self.floatingCapsuleCloseButton = closeButton
         self.floatingCapsuleDivider = divider
         applyCapsuleChrome(from: RunnerSupport.Navigation.currentState())
-        applyCapsuleEnabled()
+        applyCapsuleVisibility()
         RunnerApp.shared.capsuleDidBecomeReady(self)
     }
 
@@ -832,8 +832,8 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         floatingCapsuleCloseButton?.contentTintColor = foreground
     }
 
-    /// Re-apply the capsule setting to the live pill.
-    func applyCapsuleEnabled() {
+    /// Show the pill unless this is the host's home lxapp or the preset has no phone chrome.
+    func applyCapsuleVisibility() {
         let phoneChrome = Self.currentDeviceSize.usesPhoneChrome && webTarget == nil
         floatingCapsuleContainer?.isHidden = !phoneChrome || !RunnerApp.shared.capsuleShown(for: appId)
     }

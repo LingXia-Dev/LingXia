@@ -19,10 +19,6 @@ static LANDSCAPE: AtomicBool = AtomicBool::new(false);
 /// (0 system / 1 light / 2 dark), applied through the WebView2 profile's
 /// preferred color scheme, `lx.appearance` Auto, and `runner.get`.
 static APPEARANCE: AtomicUsize = AtomicUsize::new(0);
-/// Whether the simulated host capsule is enabled (`lxdev runner set
-/// --capsule`). Default on: the capsule is real host chrome for every
-/// non-home lxapp, so hiding it is the opt-in.
-static CAPSULE_ENABLED: AtomicBool = AtomicBool::new(true);
 /// The enclosing host's home lxapp, when `lingxia dev` launched it: like the
 /// real host, it gets no capsule. Only from the launch argument, never an
 /// inherited environment variable.
@@ -127,7 +123,7 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
         frame_spec(
             default_device,
             initial_landscape,
-            capsule_enabled() && HOST_HOME_APP_ID.get().is_none(),
+            HOST_HOME_APP_ID.get().is_none(),
         )
     };
     if let Err(err) = lingxia_windows_sdk::set_windows_browser_emulation_profile(
@@ -308,7 +304,6 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
         id: Option<&str>,
         landscape: Option<bool>,
         appearance: Option<lingxia::dev::Appearance>,
-        capsule: Option<bool>,
     ) -> Result<lingxia::dev::DeviceState, String> {
         // Validate the preset before any side effect so a typo cannot leave a
         // half-applied environment.
@@ -330,21 +325,10 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
         if let Some(appearance) = appearance {
             set_appearance(appearance)?;
         }
-        let previous_capsule = capsule_enabled();
-        let capsule_changed = capsule.is_some_and(|enabled| enabled != previous_capsule);
-        if let Some(enabled) = capsule {
-            CAPSULE_ENABLED.store(enabled, Ordering::Release);
-        }
         // A bare appearance change must not rebuild frames or re-run browser
-        // emulation; only a device, orientation, or capsule request touches
-        // the frame (the capsule is part of the frame spec).
-        if (id.is_some() || landscape.is_some() || capsule_changed)
-            && let Err(err) = apply_device(index, landscape_value)
-        {
-            if capsule_changed {
-                CAPSULE_ENABLED.store(previous_capsule, Ordering::Release);
-            }
-            return Err(err);
+        // emulation; only a device or orientation request touches the frame.
+        if id.is_some() || landscape.is_some() {
+            apply_device(index, landscape_value)?;
         }
         Ok(device_state(index, landscape_value))
     }
@@ -367,18 +351,13 @@ fn device_state(index: usize, landscape: bool) -> lingxia::dev::DeviceState {
         height: height.max(0) as u32,
         landscape,
         appearance: simulated_appearance(),
-        capsule: capsule_enabled(),
     }
 }
 
-/// The configured capsule setting (`runner.set --capsule`).
-pub(crate) fn capsule_enabled() -> bool {
-    CAPSULE_ENABLED.load(Ordering::Acquire)
-}
-
-/// Whether `appid`'s frame draws the capsule.
+/// Whether `appid`'s frame draws the capsule: every lxapp but the host's
+/// home one, as on the real host.
 fn capsule_shown(appid: &str) -> bool {
-    capsule_enabled() && HOST_HOME_APP_ID.get().is_none_or(|home| home != appid)
+    HOST_HOME_APP_ID.get().is_none_or(|home| home != appid)
 }
 
 /// The configured simulated appearance (the `runner.set` pin, `System` when

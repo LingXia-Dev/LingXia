@@ -761,14 +761,14 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
         return;
     }
     // Same device geometry, different toolbar model (appearance glyph or
-    // capsule on/off): repaint the existing layered shell in place instead of
+    // capsule presence): repaint the existing layered shell in place instead of
     // rebuilding every companion window, which visibly flashes the bezel.
     // Never take this path when the content window no longer matches the
     // spec screen — that is how the selector can say "iPhone 15 Pro" while
     // the WebView is still a desktop-sized expanded surface. Capsule items
     // live on the toolbar spec, so this path must still create or destroy
     // the floating overlay — a paint-only update leaves the pill on screen
-    // after `--capsule off`.
+    // when the spec drops the capsule.
     let toolbar_only = frame_state(handle, |state| {
         let mut probe = state.spec.clone();
         probe.toolbar = spec.toolbar.clone();
