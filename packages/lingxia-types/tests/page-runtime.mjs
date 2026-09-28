@@ -11,6 +11,8 @@ globalThis.PageSvc = class {
 };
 `, context);
 vm.runInContext(source, context);
+// As the Logic worker does once its timer module is up.
+vm.runInContext('__lxCaptureTimers()', context);
 const run = (script) => vm.runInContext(script, context);
 run(`__registerPage('home', { data: { count: 0, profile: null } });
 globalThis.page = __LX_CREATE_PAGE__('home');

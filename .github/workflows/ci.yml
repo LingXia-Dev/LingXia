@@ -134,6 +134,7 @@ jobs:
               - 'i18n/**'
             npm:
               - 'packages/**'
+              - 'crates/lingxia-lxapp/src/appservice/scripts/**'
             # Source of truth for the generated @lingxia/types Logic API.
             typegen_src:
               - 'crates/lingxia-logic/**'
@@ -1490,6 +1491,10 @@ jobs:
           # The lxapp logic bundler inlines the `import` condition verbatim, so a
           # CommonJS target there silently produces a logic bundle that throws.
           npm run check:esm --workspace @lingxia/types
+          # The Logic page runtime (lingxia-lxapp's Page.js) and error runtime
+          # against the published types.
+          node lingxia-types/tests/error-runtime.mjs
+          node lingxia-types/tests/page-runtime.mjs
 
       # The test SDK grades every other suite, so its own specs gate here.
       - name: Test (@lingxia/test)
