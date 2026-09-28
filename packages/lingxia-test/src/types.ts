@@ -154,6 +154,8 @@ export interface ExpectOptions {
   timeout?: number;
   /** Poll interval in ms (default 50). */
   interval?: number;
+  /** Business intent shown beside this assertion in the report. */
+  message?: string;
 }
 
 /** `type` / `press` options. */
@@ -458,6 +460,19 @@ export type PageActionCalls<A> = {
         : never;
 };
 
+/** Call controls kept separate from an action's JSON payload. */
+export interface PageInvokeOptions {
+  /** Per-call budget in ms; defaults to the spec's remaining budget. */
+  timeout?: number;
+}
+
+export type PageInvokeCalls<A> = {
+  readonly [K in keyof PageActionCalls<A>]: PageActionCalls<A>[K] extends (...args: infer P) => infer R
+    ? (name: K, options: PageInvokeOptions & (P extends [] ? { payload?: never }
+      : [] extends P ? { payload?: P[0] } : { payload: P[0] })) => R
+    : never;
+};
+
 /**
  * One live page instance, fixed when `t.app.page()` resolved: it never
  * follows navigation or a replacement, and every call on it rejects once
@@ -473,6 +488,11 @@ export interface TestPage<C extends PageContract> {
   data(): Promise<C["data"]>;
   /** The contract's public actions, invoked through the page's own bridge. */
   readonly actions: PageActionCalls<C["actions"]>;
+  /** Invoke one action with a local timeout, separate from its payload. */
+  invoke<K extends keyof PageInvokeCalls<C["actions"]>>(
+    name: K,
+    options: Parameters<Extract<PageInvokeCalls<C["actions"]>[K], (...args: any[]) => any>>[1],
+  ): ReturnType<Extract<PageInvokeCalls<C["actions"]>[K], (...args: any[]) => any>>;
 }
 
 /**
@@ -622,14 +642,16 @@ export type ScenarioCallTarget = ScenarioCallFilter;
 /** `t.scenario`. */
 export interface TestScenarios {
   /**
-   * Put `t.app` into a product state from a scenario file (and one of its
+   * Put an app into a product state from a scenario file (and one of its
    * variants), on top of the mock selection: `http` rules answer Logic
    * `fetch`, `function` rules go to the dev session's companion.
+   * `app` installs `http` rules on that lxapp instead of `t.app`; a
+   * scenario with `function` rules rejects, since those are not app-scoped.
    * Spec-scoped: a second call replaces the first, and the spec's end
    * removes it. A failed spec reports its per-rule hits and the calls that
    * reached it.
    */
-  use(definition: ScenarioInput, options?: { variant?: string }): Promise<TestScenario>;
+  use(definition: ScenarioInput, options?: { app?: string; variant?: string }): Promise<TestScenario>;
 }
 
 /** The scenario `t.scenario.use()` installed, spec-scoped. */
@@ -682,9 +704,8 @@ export interface TestClock {
 /**
  * `t.app.dialogs`: the dialogs the app's Logic opens during this spec, all
  * recorded. Toasts are always drawn. Modals (`lx.showModal`, `alert`,
- * `confirm`) are drawn, for the spec to tap, until it queues a modal answer;
- * from then on they are answered from the queue, never drawn, and one that
- * finds no answer fails the spec at once, naming it. Likewise action sheets.
+ * `confirm`) and action sheets are drawn unless an answer is queued for the
+ * next one or strict answer mode is explicitly enabled.
  * An answer no dialog used fails the spec when it ends. Each spec starts
  * with nothing recorded or queued; outside a test run dialogs draw as usual.
  */
@@ -697,14 +718,20 @@ export interface TestDialogs {
   actionSheets(): Promise<ActionSheetRecord[]>;
   /**
    * Answer the next modal: `{ confirm: true }` confirms, `{ confirm: false }`
-   * cancels. From now on the spec's modals are answered, never drawn.
+   * cancels. Later modals draw normally unless strict mode is enabled.
    */
   answerNextModal(answer: ModalAnswer): Promise<void>;
   /**
    * Answer the next action sheet: `{ index }` picks that item, `{ cancel: true }`
-   * dismisses it. From now on the spec's action sheets are answered, never drawn.
+   * dismisses it. Later sheets draw normally unless strict mode is enabled.
    */
   answerNextActionSheet(answer: ActionSheetAnswer): Promise<void>;
+  /** Require queued answers for every dialog of a kind until changed again. Returns the prior modes. */
+  setAnswerMode(mode: { modals?: "draw" | "strict"; actionSheets?: "draw" | "strict" }):
+    Promise<{ modals: "draw" | "strict"; actionSheets: "draw" | "strict" }>;
+  /** Apply answer modes while `body` runs, then restore the previous modes, including when it throws. Await scopes sequentially. */
+  withAnswerMode<T>(mode: { modals?: "draw" | "strict"; actionSheets?: "draw" | "strict" },
+    body: () => T | Promise<T>): Promise<T>;
 }
 
 /**
@@ -780,7 +807,7 @@ export interface ProfileRestoreOptions {
  * spec like `t.app`.
  */
 export interface TestAutomation extends Omit<HostRunAutomation, "lxapp" | "browser" | "desktop" | "terminal"> {
-  /** The current lxapp, or another running one by id, as a fixture app. */
+  /** The app `t.app` is pinned to (the same object), or another running one by id. */
   lxapp(): TestApp;
   lxapp(appId: string): TestApp;
   /**
@@ -893,6 +920,7 @@ export type ExpectResult<T> =
  */
 export interface Expect {
   <T>(subject: T): ExpectResult<T>;
+  <T>(subject: T, message: string): ExpectResult<T>;
   poll<T>(read: () => T | Promise<T>, options?: ExpectOptions): RetryMatchers<Awaited<T>>;
   /**
    * Equal (in `toEqual`, `toContainEqual` and friends) to any object with
@@ -927,6 +955,11 @@ export interface OpenApiRun {
   documents: Array<{ name: string; version: string; title?: string }>;
 }
 
+/** Explicit parent for nested steps; scoped calls preserve the report tree. */
+export interface StepScope {
+  step<T>(name: string, body: (scope: StepScope) => T | Promise<T>): Promise<T>;
+}
+
 export interface Fixture {
   /** Guarded host drivers; use these in tests so actions are traced and stop with the fixture. */
   readonly automation: TestAutomation;
@@ -945,7 +978,8 @@ export interface Fixture {
    */
   arg(name: string, options: { required: false; default?: undefined }): string | undefined;
   arg(name: string, options?: ArgOptions): string;
-  step<T>(name: string, body: () => T | Promise<T>): Promise<T>;
+  /** Top-level steps must not overlap. Nest through the callback's scope. */
+  step<T>(name: string, body: (scope: StepScope) => T | Promise<T>): Promise<T>;
   reject(
     operation: () => unknown | Promise<unknown>,
     expected?: RejectExpected,

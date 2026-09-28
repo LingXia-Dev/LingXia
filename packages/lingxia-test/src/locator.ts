@@ -160,7 +160,7 @@ export class PageLocator implements Locator {
   // the spec never awaited is then the very promise the runtime stops.
   press(key: string, options?: InputOptions): Promise<void> {
     if (!this.page.press) return Promise.reject(new Error("This page driver does not support press"));
-    return this.act("press", options, (css, index) => this.page.press!({ page: this.options.page, css, index, key }));
+    return this.act("press", options, (css, index) => this.page.press!({ page: this.options.page, css, index, key }), `key=${formatValue(key)}`);
   }
 
   click(options?: ActionOptions): Promise<void> {
@@ -172,11 +172,11 @@ export class PageLocator implements Locator {
   fill(text: string, options?: ActionOptions): Promise<void> {
     const force = options?.force === true;
     return this.act("fill", options, (css, index) =>
-      this.page.fill({ page: this.options.page, css, text, index, ...(force ? { force } : {}) }));
+      this.page.fill({ page: this.options.page, css, text, index, ...(force ? { force } : {}) }), this.inputDetail(text));
   }
 
   type(text: string, options?: InputOptions): Promise<void> {
-    return this.act("type", options, (css, index) => this.page.type({ page: this.options.page, css, text, index }));
+    return this.act("type", options, (css, index) => this.page.type({ page: this.options.page, css, text, index }), this.inputDetail(text));
   }
 
   waitFor(options?: LocatorWaitOptions): Promise<void> {
@@ -389,6 +389,15 @@ export class PageLocator implements Locator {
     return this.target();
   }
 
+  private inputDetail(text: string): string {
+    // Locator names commonly reveal password fields. Declared --secret-arg
+    // values are also scrubbed from the final report by the run redactor.
+    if (/(?:password|passwd|passphrase|secret|token|credential|api[-_]?key)/i.test(this.selector)) {
+      return `value=[redacted, ${text.length} chars]`;
+    }
+    return `value=${formatValue(text)}`;
+  }
+
   private target(): string {
     const filter = this.refine.hasText === undefined ? "" : ` filter(hasText=${formatValue(this.refine.hasText)})`;
     const pick = this.refine.last ? " [last]" : this.options.index === undefined ? "" : ` [${this.options.index}]`;
@@ -424,6 +433,7 @@ export class PageLocator implements Locator {
     verb: string,
     options: ActionOptions | undefined,
     run: (css: string, index: number) => Promise<void>,
+    input?: string,
   ): Promise<void> {
     const force = options?.force === true;
     const timeout = options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
@@ -433,7 +443,7 @@ export class PageLocator implements Locator {
     }
     const deadline = new ActionDeadline(timeout, this.room());
     const context = () => this.callContext(verb);
-    return this.record(`page.${verb}`, this.target(), async () => {
+    return this.record(`page.${verb}`, `${this.target()}${input ? ` ${input}` : ""}`, async () => {
       let last: LocatorResolve | undefined;
       let previousRect: string | undefined;
       let reason = "not attached";

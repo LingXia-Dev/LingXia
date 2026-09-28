@@ -41,7 +41,7 @@ ${body}  </testsuite>
 
 function renderCase(item: CaseRecord, suite: string): string {
   const attrs = [
-    `name="${attr(item.title)}"`,
+    `name="${attr(item.title + (item.repeat === undefined ? "" : ` [repeat ${item.repeat}]`))}"`,
     `classname="${attr(suite)}"`,
     `time="${seconds(item.duration_ms)}"`,
     item.file ? `file="${attr(item.file)}"` : "",

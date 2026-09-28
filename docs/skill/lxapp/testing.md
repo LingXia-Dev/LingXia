@@ -78,6 +78,10 @@ lxdev test tests/pages/notes.test.ts
 | Host shell, terminal, desktop | `t.automation.shell`, `.terminal`, `.desktop` where the host has them |
 | External fixtures and service results | test-context `fetch` |
 
+Await `t.step` calls one at a time, and nest through the callback's scope:
+`await t.step('outer', async (step) => { await step.step('inner', async () => { /* checks */ }); });`.
+Overlapping steps fail the spec, even if the rejection is caught.
+
 Trigger the behaviour under test through the UI; setup, eval, and backend
 calls do not replace it. Automation types come from `@lingxia/types/automation`.
 Read runtime info and element snapshots with camelCase fields (`appId`,
@@ -124,6 +128,10 @@ await expect(devices.view.testId('device-name').first()).toHaveText('Office');
 - `actions.x(payload?)` calls a public page action through the page's own
   bridge, as the View does, and resolves when Logic settles it. Actions take at
   most one JSON payload; streamed (generator) actions are for the View.
+- `page.invoke('rename', { payload: { id, name }, timeout: 2_000 })` gives one
+  action its own timeout (default: the spec's remaining budget). A timed-out
+  action may still run, so the spec fails even if it catches the timeout, and
+  the next spec starts from a relaunched app.
 - A name open more than once rejects; select it by `{ instanceId }`
   (`t.app.nav.stack()` lists them).
 
@@ -145,7 +153,8 @@ const slow = await t.app.logic.eval({ timeout: 30_000 }, async ({ lx }, key: str
   instead of being silently transformed. An error thrown in `fn` fails the eval
   with `E_EVAL_SCRIPT`; catch it inside `fn` to assert an API's own `code`.
 - Options go first: `{ timeout }`. An eval may take 10 s by default, clamped
-  to what the spec has left.
+  to what the spec has left. A timed-out eval fails the spec even if caught
+  (its script may still run); the next spec starts from a relaunched app.
 - `t.waitFor` and `expect.poll` retry failed reads, including a page eval's
   `TypeError` (the DOM not rendered yet) and nested locator timeouts. A Logic
   `TypeError`, other programming errors and invalid JSON fail immediately
@@ -255,6 +264,8 @@ spec('an unknown payment result settles as paid', async (t) => {
 
 - One scenario per spec; a second call replaces it. Routes take precedence
   over its rules. Each spec starts with fresh mock handler state.
+- `t.scenario.use(checkout, { app: 'other-app' })` installs the scenario's
+  `http` rules for that app; a scenario with `function` rules rejects.
 - It returns `{ name, variant, rules, calls(filter?), waitForCall(target),
   remove() }`; filter with `{ http: 'METHOD url' }`, `{ function: 'name' }`,
   or `{ rule: n }`.
@@ -273,6 +284,9 @@ lxdev test tests/ --tag routed --openapi api/openapi.yaml
 - A routed (or `patchJson`-patched) response that breaks its OpenAPI 3.x schema
   fails the spec with `E_OPENAPI_CONTRACT`; a real server's break is a warning.
 - Only JSON responses are checked; `$ref`s must be local.
+- A JSON response too large to capture is skipped, not checked. A response
+  that cannot be attributed to the spec (still in flight, or from an earlier
+  one) fails that spec.
 
 ```ts
 const { devices } = await (await t.app.page<DevicesPage>()).data();
@@ -350,14 +364,17 @@ spec('deleting asks first', async (t) => {
 - Toasts are recorded (`{ title, icon, duration, at }`) and still drawn;
   never stub `lx.showToast` in Logic.
 - Modals (`lx.showModal` / `alert` / `confirm`) and `lx.showActionSheet` are
-  drawn until the spec queues an answer of that kind, so a spec can tap them
+  drawn unless the spec queues an answer for the next one, so a spec can tap them
   (`.lx-modal-btn-confirm`); `modals()` / `actionSheets()` record them with
   `drawn: true` and the user's choice as `answer`.
-- After `answerNextModal({ confirm })` (or `answerNextActionSheet({ index } |
-  { cancel: true })`) they are answered from the queue, never drawn, for the
-  rest of the spec. One with no answer left rejects in Logic and fails the
-  spec at once, naming its title and content; an answer no dialog used fails
-  the spec when it ends.
+- `answerNextModal({ confirm })` and `answerNextActionSheet({ index } |
+  { cancel: true })` each answer the next dialog only; later ones are drawn.
+  An unused answer fails the spec when it ends.
+- `setAnswerMode({ modals: 'strict', actionSheets: 'strict' })` makes a dialog
+  with no queued answer fail the spec at once; `withAnswerMode(mode, body)`
+  applies it only while `body` runs.
+- Another app's dialogs (`t.automation.lxapp(appId).dialogs`) are recorded
+  from the first call on it.
 - Each spec starts with nothing recorded or queued. Outside a test run
   dialogs draw as usual.
 

@@ -446,7 +446,8 @@ test("a failed spec reports the app's last Logic network calls, secrets masked",
 
   const report = await run();
   assert.equal(report.failed, 1);
-  assert.deepEqual(asked, [["number", 20]], "only the failed spec reads the log");
+  // Every attempt summarizes its calls; the failure evidence reads the latest 20.
+  assert.deepEqual(asked, [["number", 200], ["number", 200], ["number", 20]]);
   const failure = report.failures[0];
   assert.equal(failure.network.length, 3);
   assert.equal(failure.network[0].url, "https://h/v1/me?key=***");

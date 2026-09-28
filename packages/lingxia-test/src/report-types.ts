@@ -19,6 +19,18 @@ export interface AssertionRecord {
   actual: string;
   passed: boolean;
   step?: string;
+  /** The locator or poll description, when available. */
+  target?: string;
+  /** Optional business intent supplied by the spec author. */
+  message?: string;
+  /** Authored source location. */
+  location?: string;
+  duration_ms?: number;
+  /** First unequal path or string offset, computed before preview truncation. */
+  difference?: string;
+  /** Order within this spec's attempt, shared with steps and attachments. */
+  sequence?: number;
+  at_ms?: number;
 }
 
 export interface StepRecord {
@@ -32,6 +44,10 @@ export interface StepRecord {
   repeat?: number;
   status: StepStatus;
   duration_ms: number;
+  /** Event-only recovery could not measure elapsed time; 0 is a placeholder. */
+  duration_unknown?: boolean;
+  sequence?: number;
+  at_ms?: number;
   error?: ReportError;
   steps: StepRecord[];
   attachments: AttachmentRef[];
@@ -42,6 +58,12 @@ export interface AttachmentRef {
   name: string;
   path: string;
   mimeType: string;
+  sequence?: number;
+  at_ms?: number;
+  /** Authored step in which the attachment was created. Failure evidence is attempt-scoped. */
+  step?: string;
+  /** Captured after an attempt failed, rather than attached by the spec body. */
+  purpose?: "failure_evidence";
 }
 
 /** A page instance, as a failure names it. */
@@ -72,6 +94,10 @@ export interface PageVisibility {
 export interface FailureNetworkCall {
   /** Epoch milliseconds when the request started. */
   time: number;
+  /** Milliseconds from this attempt's start when included in `network_calls`. */
+  at_ms?: number;
+  /** Deepest authored step active when the request started. Time overlap is not causation. */
+  observed_during?: string;
   /** `function`: a Worker Function call the dev session's companion saw. */
   kind: "fetch" | "sse" | "function";
   /** Empty for a `function` call. */
@@ -123,6 +149,7 @@ export interface ReportError {
   matcher?: string;
   expected?: string;
   actual?: string;
+  difference?: string;
   location?: string;
   step?: string;
 }
@@ -159,6 +186,15 @@ export interface CaseRecord {
    * exercised.
    */
   observed?: string[];
+  /** Scenario selected by this attempt, including passing attempts. */
+  scenario?: { label: string; name: string | null; variant: string | null };
+  /** Bounded Logic call provenance, including passing attempts. */
+  network_summary?: { observed: number; routed: number; real: number; limit_reached: boolean };
+  /** Recent Logic calls made during this attempt, ordered by request start time.
+   * Time proximity to a step is evidence, not proof that the step caused it. */
+  network_calls?: FailureNetworkCall[];
+  /** The action trace hit its bounded record limit. */
+  trace_truncated?: boolean;
   steps: StepRecord[];
   assertions: AssertionRecord[];
   attachments: AttachmentRef[];
@@ -310,6 +346,11 @@ export interface FailureRecord {
 
 export interface JsonReport {
   schema_version?: number;
+  /** Added by lxdev when the host run is finalized. */
+  run_id?: string;
+  state?: string;
+  error?: { code?: string; message: string; data?: unknown } | null;
+  run_errors?: Array<{ message: string }>;
   framework: { name: string; version: string };
   meta: RunMeta;
   partial: boolean;

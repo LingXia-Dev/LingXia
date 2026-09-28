@@ -191,7 +191,7 @@ test('page-scoped indexed locators preserve target on every read and input', asy
   assert.ok(calls.every(([, options]) => options.page === editorId), JSON.stringify(calls));
   assert.equal(calls.find(([key]) => key === 'press')[1].index,1);
   const fill = report.cases[0].steps.find(step => step.name === 'page.fill');
-  assert.equal(fill.detail, `#${editorId} [data-testid="field"] [1]`);
+  assert.equal(fill.detail, `#${editorId} [data-testid="field"] [1] value="hello"`);
 });
 
 test('hidden duplicates remain ambiguous and invalid indexes fail early', async () => {

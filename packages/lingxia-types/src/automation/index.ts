@@ -1150,20 +1150,24 @@ export interface NetworkDriver {
   requests(): Promise<NetworkRouteRequest[]>;
   /**
    * Record the app's Logic `fetch` responses — status, content type and
-   * JSON body, never headers — until the run ends. A JSON response is read
-   * once and handed to the app as an equivalent buffered `Response`.
+   * JSON body, never headers — until the run ends. A buffered body is read
+   * from a clone without delaying the app's fetch; a streamed one (no or a
+   * large Content-Length) is read once and the app gets an equivalent
+   * buffered `Response`.
    *
    * @internal Test-runner plumbing for `lxdev test --openapi`.
    */
   captureResponses(options?: NetworkCaptureOptions): Promise<void>;
   /**
    * Responses captured for the app in this run, oldest first; `since` skips
-   * records up to that `seq`. At most 500 records and 8 MiB of bodies are
-   * kept; the oldest go first.
+   * records up to that `seq`. `waitMs` (0..3000) first waits for captures
+   * already in flight; one still unfinished is returned by a later read.
+   * Rejects once when unread responses were lost. At most 500 records and
+   * 8 MiB of bodies are kept; the oldest go first.
    *
    * @internal Test-runner plumbing for `lxdev test --openapi`.
    */
-  responses(options?: { since?: number }): Promise<NetworkResponseRecord[]>;
+  responses(options?: { since?: number; waitMs?: number }): Promise<NetworkResponseRecord[]>;
 }
 
 /**
@@ -1339,10 +1343,9 @@ export interface DialogUnwatchResult {
  * The dialogs the selected lxapp's Logic opens while a spec of a host
  * automation run (`lxdev test`) watches it; outside one every call rejects
  * with `E_AUTOMATION`. Toasts, modals (`showModal`, `alert`, `confirm`) and
- * `showActionSheet` are recorded and drawn. Once a modal answer is queued,
- * modals are answered from the queue instead of drawn, and one with no
- * answer queued rejects in Logic and resolves `unanswered()`; likewise
- * action sheets. An unwatched app presents every dialog as usual.
+ * `showActionSheet` are recorded and drawn. A queued answer applies once;
+ * later dialogs are drawn unless strict mode explicitly requires an answer.
+ * An unwatched app presents every dialog as usual.
  */
 export interface DialogDriver {
   /** Start watching for the open spec attempt, with nothing recorded or queued. */
@@ -1356,6 +1359,9 @@ export interface DialogDriver {
   actionSheets(): ActionSheetRecord[];
   answerNextModal(answer: ModalAnswer): void;
   answerNextActionSheet(answer: ActionSheetAnswer): void;
+  /** Strict mode refuses an unqueued dialog; returns the previous modes. */
+  setAnswerMode(mode: { modals?: "draw" | "strict"; actionSheets?: "draw" | "strict" }):
+    { modals: "draw" | "strict"; actionSheets: "draw" | "strict" };
 }
 
 /** Capability for one selected running lxapp, as app Logic sees it. */

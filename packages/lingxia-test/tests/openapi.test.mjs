@@ -23,8 +23,16 @@ test("3.0 nullable widens the type; 3.1 spells null in a type array", () => {
   assert.deepEqual(check(null, { type: ["string", "null"] }, "3.1"), []);
   assert.deepEqual(check("a", { type: ["string", "null"] }, "3.1"), []);
   assert.match(check(1, { type: ["string", "null"] }, "3.1")[0].message, /expected string or null, got integer 1/);
-  // A nullable enum admits null without listing it.
-  assert.deepEqual(check(null, { type: "string", enum: ["a"], nullable: true }, "3.0"), []);
+  // Nullable widens only the type; enum and composition still constrain null.
+  assert.match(check(null, { type: "string", enum: ["a"], nullable: true }, "3.0")[0].message,
+    /expected one of/);
+  assert.deepEqual(check(null, { type: "string", enum: ["a", null], nullable: true }, "3.0"), []);
+  assert.match(check(null, { type: "string", nullable: true, not: { enum: [null] } }, "3.0")[0].message,
+    /matches the schema under `not`/);
+  assert.match(check(null, { type: "string", nullable: true, allOf: [{ enum: ["a"] }] }, "3.0")[0].message,
+    /expected one of/);
+  assert.match(check(null, { type: "string", nullable: true, oneOf: [{ enum: ["a"] }] }, "3.0")[0].message,
+    /matches none/);
   assert.match(check("b", { type: "string", enum: ["a"] })[0].message, /expected one of \["a"\]/);
 });
 
@@ -260,6 +268,7 @@ test("a response is checked by operation, status and JSON media type", () => {
   assert.equal(index.check(response({ url: "https://cdn.example.com/logo.png" })).kind, "unmatched");
   assert.deepEqual(index.check(response({ contentType: "text/html", body: null })), { kind: "skipped", operation: "GET /devices", status: 200, reason: "not_json" });
   assert.equal(index.check(response({ bodyTruncated: true })).reason, "truncated");
+  assert.equal(index.check(response({ bodyTruncated: true, body: null })).reason, "truncated", "an omitted body is not empty");
   assert.equal(index.check(response({ method: "PATCH", url: "https://api.example.com/v1/devices/d1", status: 204, contentType: null, body: null })).reason, "no_schema");
   assert.equal(index.check(response({ body: "{oops" })).issues[0].message.startsWith("the body is not JSON"), true);
   assert.throws(() => new OpenApiIndex([{ name: "old.json", doc: { swagger: "2.0" } }]), /OpenAPI 3.0 or 3.1/);
@@ -419,11 +428,17 @@ test("a contract failure after a locator timed out on a hidden page carries no h
   assert.equal(failed.error.page.hidden, undefined);
 });
 
-test("a host that cannot capture responses fails the run instead of skipping the contract", async () => {
+test("a host that cannot capture responses fails the spec through normal cleanup", async () => {
   const world = createWorld();
   world.app.network = capturingNetwork([], { unsupported: true });
-  installFakeHost(world, { control: { openapi: JSON.stringify([{ name: "api.json", doc: API }]) } });
+  const { attempts } = installFakeHost(world, {
+    control: { openapi: JSON.stringify([{ name: "api.json", doc: API }]) }, attempts: true,
+  });
   spec("one", async () => {});
-  await assert.rejects(() => run(), /captureResponses is not a function/);
+  spec("two", async () => {});
+  const report = await run();
+  assert.equal(report.cases[0].status, "failed");
+  assert.match(report.cases[0].error.message, /captureResponses is not a function/);
+  assert.equal(report.cases[1].status, "failed", "the run goes on; each case fails on its own setup");
+  assert.equal(attempts.open, undefined);
 });
-

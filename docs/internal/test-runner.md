@@ -520,6 +520,12 @@ Development machine: lxdev receives progress, results, and artifacts
   `E_EVAL_TIMEOUT` become a `TimeoutError` (`E_TIMEOUT`) with the driver's
   error as `cause` and `data.driverCode`, so a spec meets one timeout code;
   `TestErrorCode` and `TEST_ERROR_CODES` leave the two driver codes out.
+  A Logic/View eval (`E_EVAL_TIMEOUT`) or page action
+  (`E_AUTOMATION_TIMEOUT`) that timed out may still run in the app: the case
+  fails even if the body caught it, and `forceRelaunchNext` relaunches the
+  app before the next spec; the run goes on.
+- A `t.waitFor` read its deadline dropped is marked `detached`: it settles on
+  its own and never counts as a call the body did not await.
 - Every fixture call runs through `LiveFixture.track` (`act`, the locator
   and poll retries): it is in `inFlight` until it settles, with an `Error`
   captured at its start for the spec line. Public fixture methods return
@@ -932,6 +938,9 @@ route table (`Registry`) under its one lock.
   and attaches the stopped scenario as `network.scenario.json` (masked like
   any attachment); lxdev copies each to `<dir>/<spec id>.json` after the
   run, suffixing `-2`, `-3`… when two spec ids sanitize to one name.
+  An unconfirmed start fails the case and attempts a stop, since the
+  recording may have started before its acknowledgement failed; the run goes
+  on. A stop while calls are still in flight counts them as `dropped`.
   `lxdev network record stop --out [--name]` creates a placeholder next to the output
   before `RECORD_STOP` and renames over it after writing; on a write failure
   it prints the scenario to stdout and fails.
@@ -947,8 +956,15 @@ route table (`Registry`) under its one lock.
   headers. Bodies are not redacted, because schemas validate them; they stay
   in the process and only issue paths and messages reach the report, which
   masks `--secret-arg` values like the rest. The process log holds at most
-  500 records and 8 MiB of bodies; `responses({ since })` reads past a
-  `seq`.
+  500 records and 8 MiB of bodies. The wrapper reads a buffered body from a
+  clone without delaying the app's `fetch`; Rong cannot clone a streamed body
+  (no or a large `Content-Length`), so that one is read once and the app gets
+  an equivalent buffered `Response`. `responses({ since, waitMs })` reads past
+  a `seq`, first waiting up to `waitMs` for captures already in flight; one
+  still unfinished is read next time. It needs a live run, not an open spec.
+  A response the bounded log or call history lost unread rejects the read
+  once, then reads go on. A body over the capture bound arrives
+  `bodyTruncated` and is counted as skipped (`truncated`).
 
 ## Isolated data profiles
 
@@ -1282,16 +1298,18 @@ the same cases the Rust parsers reject.
   `lxapp().network.captureResponses()` for the spec's app before each body
   (idempotent); how responses are captured is in
   [Network observation](#network-observation).
-- After each spec's cleanup the runtime reads `responses({ since })` past a
-  run-wide watermark, so a response that arrives after a spec ended is
-  checked with the next spec. Routed (`route`, `patch`) mismatches become a
+  A failed `captureResponses` fails that case; the run goes on.
+- After each spec's cleanup the runtime reads `responses({ since, waitMs:
+  2500 })` past a run-wide watermark, so a response that arrives after a
+  spec ended is checked with the next spec. A failed read (including a lost
+  response) fails the case (phase `capture`); the run goes on. Routed (`route`, `patch`) mismatches become a
   `ContractError` (`E_OPENAPI_CONTRACT`, phase `contract`) before `spec.fail`
   grading, so a known break can be declared; a spec that already failed gets
   the violations appended. Real-server mismatches are `contract.warnings` on
   the case, `openapi.warnings` (at most 100) and a `contract` diagnostic;
   unmatched requests, undocumented statuses and skipped responses (no
   schema, not JSON, empty, truncated) are only counted. A host that cannot
-  capture responses fails the run: there is no contract run without them.
+  capture responses fails every case: there is no contract run without them.
 
 ## Review boundary changes
 

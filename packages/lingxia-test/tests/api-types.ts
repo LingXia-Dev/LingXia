@@ -341,8 +341,9 @@ spec('network calls', async (t) => {
   const gone: void = await scenario.remove();
   // @ts-expect-error The raw driver's `requests()` is `calls()` on the fixture.
   await route.requests();
-  // @ts-expect-error A scenario installs on `t.app`; there is no `app` option.
   await t.scenario.use({ rules: [] }, { app: 'other' });
+  // @ts-expect-error `app` names an lxapp id, not a driver.
+  await t.scenario.use({ rules: [] }, { app: 1 });
   void removed; void spec; void scenarioCalls; void gone;
   // The test API selects no mocks: the session's selection applies, and
   // only a scenario state goes on top.

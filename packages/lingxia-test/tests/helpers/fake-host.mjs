@@ -32,7 +32,7 @@ function createDialogs() {
   const driver = {
     watch() {
       end();
-      watch = { toasts: [], modals: [], sheets: [], modalAnswers: [], sheetAnswers: [], answeringModals: false, answeringSheets: false, waiters: [], failure: undefined };
+      watch = { toasts: [], modals: [], sheets: [], modalAnswers: [], sheetAnswers: [], strictModals: false, strictSheets: false, waiters: [], failure: undefined };
     },
     unwatch() {
       const left = { modalAnswers: watch?.modalAnswers.length ?? 0, actionSheetAnswers: watch?.sheetAnswers.length ?? 0 };
@@ -50,14 +50,24 @@ function createDialogs() {
     answerNextModal(answer) {
       if (typeof answer?.confirm !== "boolean" || Object.keys(answer).length !== 1) throw new Error("answerNextModal takes { confirm: true | false }");
       watched().modalAnswers.push(answer.confirm);
-      watch.answeringModals = true;
     },
     answerNextActionSheet(answer) {
       const valid = answer && Object.keys(answer).length === 1 &&
         (answer.cancel === true || (Number.isInteger(answer.index) && answer.index >= 0));
       if (!valid) throw new Error("answerNextActionSheet takes { index } or { cancel: true }");
       watched().sheetAnswers.push(answer);
-      watch.answeringSheets = true;
+    },
+    setAnswerMode(mode) {
+      const current = watched();
+      for (const [key, value] of Object.entries(mode ?? {})) {
+        if (!["modals", "actionSheets"].includes(key) || !["draw", "strict"].includes(value)) {
+          throw new Error(`setAnswerMode: ${key} must be 'draw' or 'strict'`);
+        }
+      }
+      const previous = { modals: current.strictModals ? "strict" : "draw", actionSheets: current.strictSheets ? "strict" : "draw" };
+      if (mode.modals !== undefined) current.strictModals = mode.modals === "strict";
+      if (mode.actionSheets !== undefined) current.strictSheets = mode.actionSheets === "strict";
+      return previous;
     },
   };
   const logic = {
@@ -72,7 +82,7 @@ function createDialogs() {
       if (confirmText !== undefined) record.confirmText = confirmText;
       if (cancelText !== undefined && showCancel) record.cancelText = cancelText;
       watch.modals.push(record);
-      if (!watch.answeringModals) {
+      if (confirm === undefined && !watch.strictModals) {
         record.drawn = true;
         return { drawn: true, close: (choice) => { record.answer = { confirm: choice }; } };
       }
@@ -86,7 +96,7 @@ function createDialogs() {
       const answer = watch.sheetAnswers.shift();
       const record = { items, answer: answer ?? null };
       watch.sheets.push(record);
-      if (!watch.answeringSheets) {
+      if (answer === undefined && !watch.strictSheets) {
         record.drawn = true;
         return { drawn: true, close: (choice) => { record.answer = choice; } };
       }
@@ -573,6 +583,7 @@ export function installFakeHost(world, options = {}) {
     logs: logs === undefined
       ? undefined
       : async () => logs,
+    ...(options.networkLog ? { networkLog: options.networkLog } : {}),
     ...attempts.functions,
   };
 

@@ -256,6 +256,7 @@ const DIALOG_DRIVER_API = [
   'answerNextActionSheet',
   'answerNextModal',
   'modals',
+  'setAnswerMode',
   'toasts',
   'unanswered',
   'unwatch',

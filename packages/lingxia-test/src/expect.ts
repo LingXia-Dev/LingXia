@@ -1,5 +1,5 @@
 import { isEqual, objectContaining } from "./equal.js";
-import { formatValue } from "./format.js";
+import { firstDifference, formatValue } from "./format.js";
 import { activeOpenApi, type SchemaTarget } from "./openapi.js";
 import { formatIssues } from "./schema.js";
 import { displayLocation, parseFrames, resolveOrigin } from "./ids.js";
@@ -10,6 +10,11 @@ export interface LoggedAssertion {
   expected: string;
   actual: string;
   passed: boolean;
+  target?: string;
+  message?: string;
+  location?: string;
+  duration_ms?: number;
+  difference?: string;
 }
 
 /**
@@ -18,12 +23,13 @@ export interface LoggedAssertion {
  */
 export interface ExpectScope {
   note(entry: LoggedAssertion): void;
-  locator(locator: Locator): LocatorMatchers;
+  locator(locator: Locator, message?: string): LocatorMatchers;
   poll(read: () => unknown, options: ExpectOptions | undefined): RetryMatchers<unknown>;
 }
 
 let activeScope: ExpectScope | undefined;
 let assertionSilence = 0;
+let assertionMeta: Pick<LoggedAssertion, "target" | "message" | "location"> | undefined;
 /** Where an assertion goes that ran while no spec was running. */
 let straySink: ((entry: LoggedAssertion) => void) | undefined;
 
@@ -51,8 +57,32 @@ export function popAssertionSilence(): void {
 
 function recordAssertion(entry: LoggedAssertion): void {
   if (assertionSilence > 0) return;
-  if (activeScope) activeScope.note(entry);
-  else straySink?.(entry);
+  const record = { ...entry, ...assertionMeta };
+  if (activeScope) activeScope.note(record);
+  else straySink?.(record);
+}
+
+/** Bind one synchronous value matcher to the authored expect call. */
+function annotateMatchers<M extends object>(matchers: M, meta: NonNullable<typeof assertionMeta>): M {
+  return new Proxy(matchers, {
+    get(target, key, receiver) {
+      const value = Reflect.get(target, key, receiver);
+      if (key === "not" && value && typeof value === "object") return annotateMatchers(value, meta);
+      if (key === "then" || typeof value !== "function") return value;
+      return (...args: unknown[]) => {
+        const previous = assertionMeta;
+        assertionMeta = meta;
+        try {
+          return Reflect.apply(value, target, args);
+        } catch (error) {
+          if (meta.message && error instanceof AssertionError) error.message = `${meta.message}\n${error.message}`;
+          throw error;
+        } finally {
+          assertionMeta = previous;
+        }
+      };
+    },
+  });
 }
 
 export class AssertionError extends Error {
@@ -96,6 +126,8 @@ function message(
     extra ?? "",
     `Expected: ${inverted ? "not " : ""}${formatValue(expected)}`,
     `Received: ${formatValue(actual)}`,
+    !inverted && ["toBe", "toEqual"].includes(matcher)
+      ? firstDifference(expected, actual) ?? "" : "",
   ].filter((line) => line.length > 0);
   return lines.join("\n");
 }
@@ -114,6 +146,8 @@ function settle(
     expected: inverted ? `not ${formatValue(expected)}` : formatValue(expected),
     actual: formatValue(actual),
     passed: ok,
+    difference: !ok && !inverted && ["toBe", "toEqual"].includes(matcher)
+      ? firstDifference(expected, actual) : undefined,
   });
   if (!ok) fail(matcher, actual, expected, inverted, extra);
 }
@@ -287,6 +321,11 @@ function isThenable(value: unknown): boolean {
     typeof (value as { then?: unknown }).then === "function";
 }
 
+function truncateTarget(value: unknown): string {
+  const text = typeof value === "function" ? value.name || "function" : formatValue(value);
+  return text.length > 120 ? `${text.slice(0, 119)}…` : text;
+}
+
 function runningScope(api: string): ExpectScope {
   if (!activeScope) throw new Error(`${api} retries inside a spec's budget; call it from a running spec`);
   return activeScope;
@@ -347,19 +386,25 @@ function refuseAwait<M extends object>(matchers: M, api: string, example: string
  * calls `read` until the matcher passes.
  */
 export const expect: Expect = Object.assign(
-  (subject: unknown) => {
+  (subject: unknown, description?: string) => {
     const origin = new Error();
+    if (description !== undefined && (typeof description !== "string" || description.trim() === "")) {
+      throw new TypeError("expect(subject, message) needs a non-empty message");
+    }
     if (isLocator(subject)) {
-      return refuseAwait(runningScope("expect(locator)").locator(subject), "expect(locator)",
+      return refuseAwait(runningScope("expect(locator)").locator(subject, description), "expect(locator)",
         "await expect(locator).toBeVisible()", origin);
     }
     if (isThenable(subject)) {
       throw new TypeError("expect(promise): await the value first, or retry a read with expect.poll(() => promise)");
     }
+    const at = resolveOrigin(parseFrames(origin.stack));
+    const meta = { target: truncateTarget(subject), message: description,
+      location: displayLocation(at.file, at.line, at.column) };
     if (typeof subject === "function") {
-      return refuseAwait(functionMatchers(subject, false), "expect(fn)", "expect(fn).toThrow()", origin);
+      return annotateMatchers(refuseAwait(functionMatchers(subject, false), "expect(fn)", "expect(fn).toThrow()", origin), meta);
     }
-    return refuseAwait(createMatchers(subject, false), "expect(value)", "expect(value).toBe(expected)", origin);
+    return annotateMatchers(refuseAwait(createMatchers(subject, false), "expect(value)", "expect(value).toBe(expected)", origin), meta);
   },
   {
     objectContaining,

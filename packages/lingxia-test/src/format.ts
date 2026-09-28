@@ -103,6 +103,62 @@ export function formatValue(value: unknown): string {
   }
 }
 
+/** Locate the first unequal value before report previews truncate it. */
+export function firstDifference(expected: unknown, actual: unknown): string | undefined {
+  const seen = new WeakMap<object, WeakSet<object>>();
+  let visited = 0;
+  const scan = (left: unknown, right: unknown, path: string, depth: number): string | undefined => {
+    if (Object.is(left, right)) return undefined;
+    if (++visited > 512 || depth > 8) return `${path}: comparison stopped at evidence limit`;
+    if (typeof left === "string" && typeof right === "string") {
+      let index = 0;
+      const limit = Math.min(left.length, right.length, 100_000);
+      while (index < limit && left[index] === right[index]) index += 1;
+      if (index === 100_000 && left.length > limit && right.length > limit) {
+        return `${path}: strings differ after first 100000 UTF-16 code units; position not retained`;
+      }
+      return `${path}: string differs at UTF-16 offset ${index} (expected length ${left.length}, actual length ${right.length})`;
+    }
+    if (typeof left !== typeof right || left === null || right === null ||
+        typeof left !== "object" || typeof right !== "object") {
+      return typeof left === typeof right
+        ? `${path}: expected ${formatValue(left)}, actual ${formatValue(right)}`
+        : `${path}: expected ${typeof left}, actual ${typeof right}`;
+    }
+    const previous = seen.get(left as object);
+    if (previous?.has(right as object)) return `${path}: cyclic values differ`;
+    if (previous) previous.add(right as object);
+    else seen.set(left as object, new WeakSet([right as object]));
+    if (Array.isArray(left) && Array.isArray(right)) {
+      const length = Math.min(left.length, right.length);
+      for (let index = 0; index < length; index += 1) {
+        if (hasOwn.call(left, index) !== hasOwn.call(right, index)) return `${path}[${index}]: one array has no element`;
+        const difference = scan(left[index], right[index], `${path}[${index}]`, depth + 1);
+        if (difference) return difference;
+      }
+      if (left.length !== right.length) return `${path}.length: expected ${left.length}, actual ${right.length}`;
+      return `${path}: equal contents, different arrays`;
+    }
+    if (isPlainObject(left) && isPlainObject(right)) {
+      const leftObject = left as Record<string, unknown>;
+      const rightObject = right as Record<string, unknown>;
+      const keys = [...new Set([...Object.keys(leftObject), ...Object.keys(rightObject)])].sort();
+      for (const key of keys) {
+        const next = `${path}[${JSON.stringify(truncate(key, 80))}]`;
+        if (!hasOwn.call(leftObject, key) || !hasOwn.call(rightObject, key)) return `${next}: key exists on one side only`;
+        const difference = scan(leftObject[key], rightObject[key], next, depth + 1);
+        if (difference) return difference;
+      }
+    }
+    return `${path}: values differ`;
+  };
+  // Two scalars already show in full as Expected/Received.
+  const scalar = (value: unknown) => value === null || (typeof value !== "object" && typeof value !== "string");
+  if (scalar(expected) && scalar(actual)) return undefined;
+  try { return scan(expected, actual, "$", 0); }
+  catch { return "$: values differ; comparison details unavailable"; }
+}
+
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /**

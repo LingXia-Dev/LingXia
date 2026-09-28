@@ -20,19 +20,35 @@ function describeSheetAnswer(answer: ActionSheetAnswer): string {
  * `resolve` reads the raw driver lazily, inside each traced call: a host
  * without dialog watching fails that call, never the `t.app.dialogs` read.
  */
-export function wrapDialogs(resolve: () => DialogDriver, host: DialogsHost): TestDialogs {
+export function wrapDialogs(resolve: () => DialogDriver, host: DialogsHost, ensure: () => Promise<void>): TestDialogs {
+  const setMode: TestDialogs["setAnswerMode"] = (mode) =>
+    host.act("dialogs.setAnswerMode", JSON.stringify(mode), async () => {
+      await ensure();
+      return resolve().setAnswerMode(mode);
+    });
   return {
-    toasts: () => host.act("dialogs.toasts", "", () => resolve().toasts()),
-    modals: () => host.act("dialogs.modals", "", () => resolve().modals()),
-    actionSheets: () => host.act("dialogs.actionSheets", "", () => resolve().actionSheets()),
+    toasts: () => host.act("dialogs.toasts", "", async () => { await ensure(); return resolve().toasts(); }),
+    modals: () => host.act("dialogs.modals", "", async () => { await ensure(); return resolve().modals(); }),
+    actionSheets: () => host.act("dialogs.actionSheets", "", async () => { await ensure(); return resolve().actionSheets(); }),
     answerNextModal: (answer: ModalAnswer) =>
-      host.act("dialogs.answerNextModal", answer?.confirm === true ? "confirm" : "cancel", () => {
+      host.act("dialogs.answerNextModal", answer?.confirm === true ? "confirm" : "cancel", async () => {
+        await ensure();
         resolve().answerNextModal(answer);
       }),
     answerNextActionSheet: (answer: ActionSheetAnswer) =>
-      host.act("dialogs.answerNextActionSheet", answer && typeof answer === "object" ? describeSheetAnswer(answer) : "", () => {
+      host.act("dialogs.answerNextActionSheet", answer && typeof answer === "object" ? describeSheetAnswer(answer) : "", async () => {
+        await ensure();
         resolve().answerNextActionSheet(answer);
       }),
+    setAnswerMode: setMode,
+    withAnswerMode: async (mode, body) => {
+      const previous = await setMode(mode);
+      try {
+        return await body();
+      } finally {
+        await setMode(previous);
+      }
+    },
   };
 }
 

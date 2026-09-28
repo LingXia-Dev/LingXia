@@ -58,13 +58,14 @@ test("a queued answer answers the next modal, and every modal is recorded", asyn
   ]);
 });
 
-test("once answering, a modal with no answer queued fails the spec at once, naming it; the run goes on", async () => {
+test("in strict mode, a modal with no answer queued fails the spec at once, naming it; the run goes on", async () => {
   const world = createWorld();
   world.add({ testId: "delete", onClick: () => { try { world.dialogs.logic.showModal({ title: "Delete?", content: "Gone for good." }); } catch {} } });
   const { events } = installFakeHost(world);
   let next = false;
 
   spec("answers one modal, then meets a second", { timeout: 20_000, forensics: false }, async (t) => {
+    await t.app.dialogs.setAnswerMode({ modals: "strict" });
     await t.app.dialogs.answerNextModal({ confirm: true });
     await t.app.view.testId("delete").click();
     await t.app.view.testId("delete").click();
@@ -110,7 +111,7 @@ test("a spec that queues no answer sees modals and action sheets drawn and recor
   assert.deepEqual(sheets, [{ items: ["Edit", "Delete"], drawn: true, answer: { index: 1 } }]);
 });
 
-test("queuing a modal answer answers modals from then on; action sheets stay drawn", async () => {
+test("a queued answer answers the next modal only; later modals and action sheets are drawn", async () => {
   const world = createWorld();
   const seen = [];
   world.add({ testId: "ask", onClick: () => { try { seen.push(world.dialogs.logic.showModal({ title: "Ask" })); } catch (error) { seen.push(error.message); } } });
@@ -121,6 +122,7 @@ test("queuing a modal answer answers modals from then on; action sheets stay dra
     await t.app.view.testId("ask").click();       // before any answer: drawn
     await t.app.dialogs.answerNextModal({ confirm: false });
     await t.app.view.testId("ask").click();       // answered
+    await t.app.view.testId("ask").click();       // one-shot: drawn again
     await t.app.view.testId("more").click();      // sheets are not answering
   });
 
@@ -129,6 +131,48 @@ test("queuing a modal answer answers modals from then on; action sheets stay dra
   assert.equal(seen[0].drawn, true);
   assert.deepEqual(seen[1], { confirm: false });
   assert.equal(seen[2].drawn, true);
+  assert.equal(seen[3].drawn, true);
+});
+
+test("withAnswerMode scopes strict mode and restores the previous modes, also on a throw", async () => {
+  const world = createWorld();
+  const seen = [];
+  world.add({ testId: "ask", onClick: () => { try { seen.push(world.dialogs.logic.showModal({ title: "Ask" })); } catch (error) { seen.push(error.message); } } });
+  const { events } = installFakeHost(world);
+  const modes = [];
+
+  spec("scoped strictness", { forensics: false }, async (t) => {
+    modes.push(await t.app.dialogs.setAnswerMode({}));
+    await t.app.dialogs.withAnswerMode({ modals: "strict" }, async () => {
+      modes.push(await t.app.dialogs.setAnswerMode({}));
+      await t.app.dialogs.answerNextModal({ confirm: true });
+      await t.app.view.testId("ask").click();     // answered inside the scope
+    });
+    await t.reject(() => t.app.dialogs.withAnswerMode({ actionSheets: "strict" }, () => { throw new Error("boom"); }),
+      { message: "boom" });
+    modes.push(await t.app.dialogs.setAnswerMode({}));
+    await t.app.view.testId("ask").click();       // drawn again after the scope
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.passed, 1, JSON.stringify(finished(events)));
+  assert.deepEqual(modes, [
+    { modals: "draw", actionSheets: "draw" },
+    { modals: "strict", actionSheets: "draw" },
+    { modals: "draw", actionSheets: "draw" },
+  ]);
+  assert.deepEqual(seen[0], { confirm: true });
+  assert.equal(seen[1].drawn, true);
+});
+
+test("setAnswerMode refuses an unknown mode", async () => {
+  const world = createWorld();
+  const { events } = installFakeHost(world);
+  spec("bad mode", async (t) => {
+    await assert.rejects(t.app.dialogs.setAnswerMode({ modals: "always" }), /modals must be 'draw' or 'strict'/);
+  });
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.passed, 1, JSON.stringify(finished(events)));
 });
 
 test("an answer no dialog used fails the spec when it ends", async () => {
@@ -147,7 +191,7 @@ test("an answer no dialog used fails the spec when it ends", async () => {
     /1 modal answer \(t\.app\.dialogs\.answerNextModal\) and 1 action sheet answer \(t\.app\.dialogs\.answerNextActionSheet\) queued but no dialog appeared to use them/);
 });
 
-test("action sheets take an index or a cancel; once answering, an unanswered one fails the spec", async () => {
+test("action sheets take an index or a cancel; in strict mode an unanswered one fails the spec", async () => {
   const world = createWorld();
   const picked = [];
   world.add({ testId: "more", onClick: () => { try { picked.push(world.dialogs.logic.showActionSheet(["Edit", "Delete"])); } catch (error) { picked.push(error.message); } } });
@@ -162,6 +206,7 @@ test("action sheets take an index or a cancel; once answering, an unanswered one
     sheets = await t.app.dialogs.actionSheets();
   });
   spec("runs out of answers", { forensics: false }, async (t) => {
+    await t.app.dialogs.setAnswerMode({ actionSheets: "strict" });
     await t.app.dialogs.answerNextActionSheet({ index: 0 });
     await t.app.view.testId("more").click();
     await t.app.view.testId("more").click();

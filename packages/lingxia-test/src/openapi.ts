@@ -123,10 +123,11 @@ export class OpenApiIndex {
     if (!media) {
       return { kind: "skipped", operation: label, status: record.status, reason: record.contentType && !JSON_TYPE.test(record.contentType) ? "not_json" : "no_schema" };
     }
+    // Before `empty`: a body the capture bound omitted arrives as null.
+    if (record.bodyTruncated) return { kind: "skipped", operation: label, status: record.status, reason: "truncated" };
     if (record.body === null || record.body === "") {
       return { kind: "skipped", operation: label, status: record.status, reason: "empty" };
     }
-    if (record.bodyTruncated) return { kind: "skipped", operation: label, status: record.status, reason: "truncated" };
     let value: unknown;
     try {
       value = JSON.parse(record.body);

@@ -6,7 +6,7 @@ import {
   pushAssertionSilence,
   setExpectScope,
 } from "./expect.js";
-import { formatValue, truncate } from "./format.js";
+import { firstDifference, formatValue, truncate } from "./format.js";
 import type { PendingWork } from "./pending.js";
 import { encodeAttachPayload, remapStack, type ResolvedHost } from "./host.js";
 import type { Redactor } from "./redact.js";
@@ -14,7 +14,7 @@ import { rememberInline } from "./report.js";
 import { NetworkScope, wrapNetwork } from "./network.js";
 import { ScenarioScope, installScenario } from "./mock.js";
 import { ClockScope, wrapClock } from "./clock.js";
-import { wrapDialogs } from "./dialogs.js";
+import { watchDialogs, wrapDialogs, type DialogWatch } from "./dialogs.js";
 import { activeOpenApi } from "./openapi.js";
 import { ActionDeadline, TimeoutError, asFixtureTimeout } from "./deadline.js";
 import { isTransientTransportError, matchesErrorCode } from "./deadline.js";
@@ -34,6 +34,7 @@ import type {
   ArgOptions,
   ExpectOptions,
   Fixture,
+  StepScope,
   Locator,
   LocatorMatchers,
   TestAutomation,
@@ -90,7 +91,7 @@ export class SkipSignal extends Error {
   }
 }
 
-export type FailurePhase = "beforeEach" | "body" | "defer" | "forensics" | "timeout" | "contract";
+export type FailurePhase = "beforeEach" | "body" | "defer" | "forensics" | "timeout" | "contract" | "capture";
 
 export class LiveFixture implements Fixture {
   readonly automation: TestAutomation;
@@ -110,6 +111,8 @@ export class LiveFixture implements Fixture {
   abortError: Error | null = null;
   private actionSilence = 0;
   private actionCount = 0;
+  traceTruncated = false;
+  private eventSequence = 0;
   /** Actions still in flight, so an abort can mark them instead of leaving
    *  them at their optimistic default. */
   private readonly openActions = new Set<StepRecord>();
@@ -131,16 +134,29 @@ export class LiveFixture implements Fixture {
   readonly locatorFailures = new WeakMap<object, string | null>();
   /** Instance ids `t.app.page()` bound, so a trace detail's `#id` is not read from a CSS selector. */
   readonly boundPages = new Set<string>();
+  /** A driver timeout does not prove its remote app task has stopped. */
+  remoteTimeoutKind: "Logic eval" | "View eval" | "page action" | undefined;
   /** Set by `t.skip()`; survives a body that catches the signal. */
   skipReason: string | undefined;
   private readonly stepStack: StepRecord[] = [];
+  /** An overlap cannot be attributed safely without async-local JS context. */
+  stepConflict: Error | undefined;
+  private readonly stepStarted = new WeakMap<StepRecord, number>();
   /** The app `t.app` is pinned to. */
   private readonly pinned: AppRef;
   /** Every app a fixture app reaches; a profile switch re-selects them. */
   private readonly appRefs: AppRef[] = [];
+  private readonly dialogWatches = new Map<string, { ref: AppRef; watch: DialogWatch | undefined; label: (message: string) => string }>();
+  private readonly dialogInitializers = new Map<AppRef, Promise<void>>();
+  private readonly resolveDialogFailure: (message: string) => void;
+  readonly dialogFailure: Promise<string>;
   private readonly hostAutomation: Automation;
   /** When this spec's budget started; the runtime arms its timer right after construction. */
   private readonly startedAt: number;
+
+  private traceMeta(): { sequence: number; at_ms: number } {
+    return { sequence: ++this.eventSequence, at_ms: Math.max(0, Date.now() - this.startedAt) };
+  }
   private readonly networkScope = new NetworkScope();
   /** The scenario this spec installed; removed when it ends. */
   readonly scenarioScope = new ScenarioScope();
@@ -158,16 +174,20 @@ export class LiveFixture implements Fixture {
     private readonly specBudgetMs: number = DEFAULT_SPEC_TIMEOUT_MS,
     private readonly redactor?: Redactor,
     appId?: string,
+    traceOriginMs?: number,
   ) {
     this.pinned = { appid: appId, driver: rawApp };
     this.appRefs.push(this.pinned);
     this.hostAutomation = automation;
-    this.startedAt = Date.now();
+    this.startedAt = traceOriginMs ?? Date.now();
     this.argValues = args;
     this.specDeadline = Date.now() + specBudgetMs;
+    let resolveDialogFailure!: (message: string) => void;
+    this.dialogFailure = new Promise<string>((resolve) => { resolveDialogFailure = resolve; });
+    this.resolveDialogFailure = resolveDialogFailure;
     setExpectScope({
       note: (entry) => this.noteAssertion(entry),
-      locator: (locator) => this.locatorMatchers(locator, false),
+      locator: (locator, message) => this.locatorMatchers(locator, false, message),
       poll: (read, options) => this.pollMatchers(read, options, false, "expect.poll"),
     });
     const root = guardObject(automation, this, "", ["lxapp", ...HOST_TIERS]);
@@ -175,7 +195,7 @@ export class LiveFixture implements Fixture {
       get: (target, prop) => prop === "lxapp"
         ? (appId?: string) => {
           this.assertRunnable();
-          return this.appOf(appId === undefined ? this.trackRef({ appid: undefined, driver: automation.lxapp() }) : this.refFor(appId));
+          return this.appOf(appId === undefined ? this.pinned : this.refFor(appId));
         }
         // Reading a host tier never throws, even on a host without it; each
         // call resolves it and rejects there instead.
@@ -190,13 +210,68 @@ export class LiveFixture implements Fixture {
   }
 
   get scenario(): Fixture["scenario"] {
-    const ref = this.pinned;
-    return { use: (definition, options) =>
-      installScenario(() => ref.driver, this, this.scenarioScope, definition, options?.variant) };
+    return { use: async (definition, options) => {
+      const app = options?.app;
+      if (app === undefined) {
+        return installScenario(() => this.pinned.driver, this, this.scenarioScope, definition, options?.variant);
+      }
+      if (typeof app !== "string" || app.trim() === "") {
+        throw new TypeError("t.scenario.use { app } must be a non-empty app id");
+      }
+      // Function rules go to the run's companion, which no app scopes.
+      const appScoped = "t.scenario.use { app } takes a scenario of http rules only; function rules are not app-scoped";
+      if (hasFunctionRules(definition, options?.variant)) throw new TypeError(appScoped);
+      const ref = this.refFor(app);
+      const scenario = await installScenario(() => ref.driver, this, this.scenarioScope, definition, options?.variant);
+      if (scenario.rules.some((rule) => rule.kind === "function")) {
+        await scenario.remove();
+        throw new TypeError(appScoped);
+      }
+      return scenario;
+    } };
   }
 
   get raw(): LxAppDriver {
     return this.pinned.driver;
+  }
+
+  async watchPrimaryDialogs(): Promise<void> {
+    await this.ensureDialogWatch(this.pinned);
+  }
+
+  private ensureDialogWatch(ref: AppRef): Promise<void> {
+    const pending = this.dialogInitializers.get(ref);
+    if (pending) return pending;
+    const task = this.startDialogWatch(ref).finally(() => { this.dialogInitializers.delete(ref); });
+    this.dialogInitializers.set(ref, task);
+    return task;
+  }
+
+  private async startDialogWatch(ref: AppRef): Promise<void> {
+    const appid = ref.appid ?? (await new ActionDeadline(DEFAULT_ACTION_TIMEOUT_MS, this.budgetRoom())
+      .call("dialog watch app info", () => ref.driver.info(), () => "starting dialog watch")).appId;
+    ref.appid = appid;
+    if (this.dialogWatches.has(appid)) return;
+    const watch = watchDialogs(ref.driver);
+    // Only another app's dialog needs its app named.
+    const label = (message: string) => ref === this.pinned ? message : `${appid}: ${message}`;
+    this.dialogWatches.set(appid, { ref, watch, label });
+    if (watch) void watch.unanswered.then((message) => this.resolveDialogFailure(label(message)));
+  }
+
+  async endDialogWatches(): Promise<{ unused: string[]; failures: string[] }> {
+    const unused: string[] = [];
+    const failures: string[] = [];
+    for (const [appid, entry] of this.dialogWatches) {
+      try {
+        const message = await entry.watch?.end(entry.ref.driver);
+        if (message) unused.push(entry.label(message));
+      } catch (error) {
+        failures.push(entry.label(String(error)));
+      }
+      this.dialogWatches.delete(appid);
+    }
+    return { unused, failures };
   }
 
   /** One fixture app per reached app, so a saved handle stays the same object. */
@@ -253,6 +328,12 @@ export class LiveFixture implements Fixture {
   private async reopening<T>(ref: AppRef, op: (driver: LxAppDriver) => Promise<T>): Promise<T> {
     const appid = ref.appid ?? (await ref.driver.info()).appId;
     ref.appid = appid;
+    // The no-arg alias is `pinned`; an explicit same-app alias can still be
+    // reached before its id was known. A closed unrelated app must not block
+    // this profile switch just because its handle was read earlier.
+    if (this.pinned.appid === undefined && ref !== this.pinned) {
+      try { this.pinned.appid = (await this.pinned.driver.info()).appId; } catch { /* unavailable alias */ }
+    }
     try {
       return await op(ref.driver);
     } finally {
@@ -262,28 +343,43 @@ export class LiveFixture implements Fixture {
     }
   }
 
-  step<T>(name: string, body: () => T | Promise<T>): Promise<T> {
-    return this.guard(async () => {
+  step<T>(name: string, body: (scope: StepScope) => T | Promise<T>): Promise<T> {
+    return this.runStep(name, body);
+  }
+
+  private runStep<T>(name: string, body: (scope: StepScope) => T | Promise<T>, parent?: StepRecord): Promise<T> {
+    return this.track("t.step", name, () => this.guard(async () => {
+      const active = this.stepStack[this.stepStack.length - 1];
+      if (active !== parent) {
+        const conflict = new Error("Overlapping t.step calls cannot share an implicit step owner. Await top-level steps sequentially; nest with the callback scope: t.step('outer', async (step) => step.step('inner', ...)).");
+        this.stepConflict ??= conflict;
+        throw conflict;
+      }
       const record: StepRecord = {
         name,
-        path: [...this.stepStack.map((step) => step.name), name].join(" > "),
+        ...this.traceMeta(),
+        path: parent ? `${parent.path} > ${name}` : name,
         status: "passed",
         duration_ms: 0,
         steps: [],
         attachments: [],
         assertions: [],
       };
-      const parent = this.stepStack[this.stepStack.length - 1];
       (parent ? parent.steps : this.steps).push(record);
       this.stepStack.push(record);
+      const started = Date.now();
+      this.stepStarted.set(record, started);
       await this.emitTrace({
         type: "step_started",
         name,
         path: record.path,
       });
-      const started = Date.now();
       try {
-        const result = await body();
+        const scope: StepScope = {
+          step: <U>(childName: string, childBody: (scope: StepScope) => U | Promise<U>) =>
+            this.runStep(childName, childBody, record),
+        };
+        const result = await body(scope);
         record.duration_ms = Date.now() - started;
         await this.emitTrace({
           type: "step_finished",
@@ -319,9 +415,11 @@ export class LiveFixture implements Fixture {
         });
         throw error;
       } finally {
-        this.stepStack.pop();
+        this.stepStarted.delete(record);
+        const index = this.stepStack.lastIndexOf(record);
+        if (index >= 0) this.stepStack.splice(index, 1);
       }
-    });
+    }));
   }
 
   async reject(
@@ -427,15 +525,14 @@ export class LiveFixture implements Fixture {
     }
     const accept: (value: Awaited<T>) => boolean = options.until ?? Boolean;
     const requested = options.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
-    // Past the spec budget the spec timer fires first and reports a bare
-    // timeout; ending a little earlier keeps the last value in the error.
-    const remaining = this.specBudgetMs - (Date.now() - this.startedAt) - WAIT_FOR_MARGIN_MS;
-    const timeout = Math.max(0, Math.min(requested, remaining));
     const interval = options.interval ?? DEFAULT_POLL_INTERVAL_MS;
+    if (!Number.isFinite(requested) || requested <= 0 || !Number.isFinite(interval) || interval <= 0) {
+      throw new TypeError("t.waitFor timeout and interval must be positive finite numbers");
+    }
     const retryIf = options.retryIf ?? isRetryableReadError;
     const detail = truncate(read.name || functionDetail(read), 80);
     return this.act("waitFor", detail, async (): Promise<Awaited<T>> => {
-      const started = Date.now();
+      const deadline = new ActionDeadline(requested, this.budgetRoom());
       let attempts = 0;
       let hasValue = false;
       let lastValue: Awaited<T> | undefined;
@@ -443,20 +540,29 @@ export class LiveFixture implements Fixture {
       this.silenceActions();
       try {
         for (;;) {
+          if (deadline.expired()) break;
           attempts += 1;
+          const before = new Set(this.inFlight);
           try {
-            const value = (await read()) as Awaited<T>;
+            const value = await deadline.call("t.waitFor read", read, () =>
+              `${detail} at ${displayLocation(location.file, location.line, location.column)}`) as Awaited<T>;
+            if (deadline.expired()) break;
             lastValue = value;
             hasValue = true;
             lastError = undefined;
             if (accept(value)) return value;
           } catch (error) {
             if (error instanceof SkipSignal || this.aborted) throw error;
+            if (error instanceof TimeoutError && deadline.expired()) {
+              for (const call of this.inFlight) if (!before.has(call)) call.detached = true;
+              break;
+            }
             if (!retryIf(error)) throw error;
             lastError = error;
           }
-          if (Date.now() - started + interval > timeout) break;
-          await sleep(interval);
+          const pause = Math.min(interval, deadline.remaining());
+          if (pause <= 0) break;
+          await sleep(pause);
           if (this.aborted && this.abortError) throw this.abortError;
         }
       } finally {
@@ -469,9 +575,9 @@ export class LiveFixture implements Fixture {
           : "No read completed.";
       throw new TimeoutError(
         [
-          `t.waitFor timed out after ${Date.now() - started}ms (${attempts} ${attempts === 1 ? "read" : "reads"}).`,
+          `t.waitFor timed out after ${deadline.elapsed()}ms (${attempts} ${attempts === 1 ? "read" : "reads"}).`,
           last,
-          timeout < requested ? `Clamped from ${requested}ms to the spec's remaining budget.` : undefined,
+          deadline.clampNote(),
           `at ${displayLocation(location.file, location.line, location.column)}`,
           this.stepPathLine(),
         ].filter(Boolean).join("\n"),
@@ -493,7 +599,7 @@ export class LiveFixture implements Fixture {
     });
   }
 
-  async attachRaw(name: string, input: unknown): Promise<AttachmentRef> {
+  async attachRaw(name: string, input: unknown, purpose?: AttachmentRef["purpose"]): Promise<AttachmentRef> {
     // Declared secrets are masked in the data itself, before it is encoded
     // or previewed, so neither the file nor the report carries them.
     const data = this.redactor ? this.redactor.attachment(input) : input;
@@ -510,8 +616,9 @@ export class LiveFixture implements Fixture {
     } else if (isPreviewable(payload.mimeType)) {
       rememberInline(this.specId, name, { text: previewText(data, payload) });
     }
-    const ref: AttachmentRef = { name, path, mimeType: payload.mimeType };
     const current = this.stepStack[this.stepStack.length - 1];
+    const ref: AttachmentRef = { name, path, mimeType: payload.mimeType, ...this.traceMeta(),
+      ...(current ? { step: current.path } : {}), ...(purpose ? { purpose } : {}) };
     (current ? current.attachments : this.attachments).push(ref);
     return ref;
   }
@@ -525,6 +632,7 @@ export class LiveFixture implements Fixture {
     this.aborted = true;
     this.abortError = reason;
     this.failurePhase = as === "timeout" ? "timeout" : "body";
+    this.finishOpenSteps(reason, as);
     for (const record of this.openActions) {
       record.status = as;
       record.error = toReportError(reason, record.path);
@@ -553,6 +661,12 @@ export class LiveFixture implements Fixture {
       try {
         return await op();
       } catch (error) {
+        const code = error && typeof error === "object" ? (error as { code?: unknown }).code : undefined;
+        if (code === "E_EVAL_TIMEOUT" && (name === "logic.eval" || name === "page.data" || name === "view.eval")) {
+          this.remoteTimeoutKind ??= name === "view.eval" ? "View eval" : "Logic eval";
+        } else if (code === "E_AUTOMATION_TIMEOUT" && name === "page.action") {
+          this.remoteTimeoutKind ??= "page action";
+        }
         throw asFixtureTimeout(error);
       }
     }));
@@ -577,13 +691,18 @@ export class LiveFixture implements Fixture {
     return promise;
   }
 
+  /** A read `t.waitFor` gave up on is still running in the app. */
+  detachedInFlight(): boolean {
+    return [...this.inFlight].some((entry) => entry.detached);
+  }
+
   /**
    * The fixture calls still running, as a body that returned without
    * awaiting them left them: what each is and where the spec started it.
    */
   unsettledCalls(): Array<{ call: string; at: string; ageMs: number }> {
     const now = Date.now();
-    return [...this.inFlight].map((entry) => {
+    return [...this.inFlight].filter((entry) => !entry.detached).map((entry) => {
       const frame = resolveOrigin(parseFrames(entry.origin.stack));
       return {
         call: entry.label ?? (entry.detail ? `${entry.name} ${entry.detail}` : entry.name),
@@ -630,6 +749,7 @@ export class LiveFixture implements Fixture {
     // Past the cap, keep recording failures: the action that finally breaks is
     // the one row worth having, and dropping it leaves nothing pointing at it.
     if (this.actionCount >= MAX_ACTIONS) {
+      this.traceTruncated = true;
       try {
         return await this.guard(op);
       } catch (error) {
@@ -647,7 +767,8 @@ export class LiveFixture implements Fixture {
       previous?.kind === "action" &&
       previous.status === "passed" &&
       previous.name === name &&
-      previous.detail === detail
+      previous.detail === detail &&
+      previous.sequence === this.eventSequence
     ) {
       const started = Date.now();
       try {
@@ -659,6 +780,7 @@ export class LiveFixture implements Fixture {
         // A failure is its own row: it is the one attempt worth reading.
         const failed: StepRecord = {
           name,
+          ...this.traceMeta(),
           detail,
           kind: "action",
           path: previous.path,
@@ -677,6 +799,7 @@ export class LiveFixture implements Fixture {
     this.actionCount += 1;
     const record: StepRecord = {
       name,
+      ...this.traceMeta(),
       detail,
       kind: "action",
       path: [...this.stepStack.map((step) => step.name), name].join(" > "),
@@ -766,6 +889,7 @@ export class LiveFixture implements Fixture {
     const path = [...this.stepStack.map((step) => step.name), name].join(" > ");
     (parent ? parent.steps : this.steps).push({
       name,
+      ...this.traceMeta(),
       detail,
       kind: "action",
       path,
@@ -810,16 +934,29 @@ export class LiveFixture implements Fixture {
     return current?.path ?? this.lastStepPath;
   }
 
-  noteAssertion(entry: { matcher: string; expected: string; actual: string; passed: boolean }): void {
+  noteAssertion(entry: Omit<AssertionRecord, "step">): void {
     const record: AssertionRecord = {
       ...entry,
+      ...this.traceMeta(),
       step: this.currentStepPath(),
     };
     const current = this.stepStack[this.stepStack.length - 1];
     (current ? current.assertions : this.assertions).push(record);
   }
 
-  close(): void { this.closed = true; }
+  close(): void {
+    this.closed = true;
+    this.finishOpenSteps(new Error("step was still running when the spec ended"), "failed");
+  }
+
+  private finishOpenSteps(reason: Error, status: "timeout" | "failed"): void {
+    for (const record of this.stepStack) {
+      if (record.status !== "passed") continue;
+      record.status = status;
+      record.duration_ms = Date.now() - (this.stepStarted.get(record) ?? Date.now());
+      record.error = toReportError(reason, record.path);
+    }
+  }
 
   /**
    * Remove what the framework installed for this spec — its routes, mock
@@ -890,7 +1027,7 @@ export class LiveFixture implements Fixture {
       // Lazy and non-throwing like `clock`; the runner watches the app under
       // test for each spec.
       get dialogs() {
-        return wrapDialogs(() => driver().dialogs, fixture);
+        return wrapDialogs(() => driver().dialogs, fixture, () => fixture.ensureDialogWatch(ref));
       },
       info: () => this.act("app.info", "", () => this.readRetrying(() => driver().info())),
       pages: () => this.act("app.pages", "", () => this.readRetrying(() => driver().pages())),
@@ -946,12 +1083,14 @@ export class LiveFixture implements Fixture {
       let last = "not open";
       for (;;) {
         try {
-          const found = await (selector
+          const found = await deadline.call("t.app.page binding read", () => selector
             ? app.nav.info({ page: selector.instanceId ?? selector.name })
-            : app.nav.current());
+            : app.nav.current(), () => `waiting for ${wanted}`);
+          if (deadline.expired()) break;
           if (found?.instanceId) { info = found; break; }
           last = "no live instance";
         } catch (error) {
+          if (error instanceof TimeoutError && deadline.expired()) break;
           // Not open yet is "not yet"; an unknown page name is an answer.
           if (!matchesErrorCode(error, "E_PAGE_NOT_ACTIVE") && !isTransientTransportError(error)) throw error;
           last = error instanceof Error ? error.message : String(error);
@@ -962,9 +1101,18 @@ export class LiveFixture implements Fixture {
         }
         await sleep(Math.min(DEFAULT_POLL_INTERVAL_MS, Math.max(1, deadline.remaining())));
       }
+      if (!info) {
+        throw new TimeoutError(`Timed out after ${deadline.elapsed()}ms waiting for ${wanted} to open: ${last}.` +
+          (deadline.clampNote() ? `\n${deadline.clampNote()}` : ""));
+      }
       const instanceId = info.instanceId!;
       if (selector?.name !== undefined) {
-        const matches = (await app.nav.stack()).filter(page => page.path === info!.path && page.instanceId);
+        const stack = await deadline.call("t.app.page stack read", () => app.nav.stack(), () =>
+          `checking whether ${wanted} is ambiguous`);
+        if (deadline.expired()) {
+          throw new TimeoutError(`Timed out after ${deadline.elapsed()}ms checking ${wanted}.`);
+        }
+        const matches = stack.filter(page => page.path === info!.path && page.instanceId);
         if (matches.length > 1) {
           throw new Error(`t.app.page: ${wanted} has ${matches.length} live instances ` +
             `(${matches.map(page => `#${page.instanceId}`).join(", ")}); select one by instanceId`);
@@ -972,21 +1120,34 @@ export class LiveFixture implements Fixture {
       }
       this.boundPages.add(instanceId);
       const view = this.wrapView(() => app.page, instanceId);
+      const invoke = (name: string, args: unknown[], timeout?: number) => {
+        if (typeof name !== "string" || name.trim() === "") {
+          return Promise.reject(new TypeError("page.invoke needs a non-empty action name"));
+        }
+        if (args.length > 1) {
+          return Promise.reject(new TypeError(`page.actions.${name} takes at most one JSON payload`));
+        }
+        if (timeout !== undefined && (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0)) {
+          return Promise.reject(new TypeError("page.invoke({ timeout }) takes a positive number of ms"));
+        }
+        checkJsonArgs(args, `page.actions.${name}`);
+        // A timeout stops waiting, but cannot undo a side effect already
+        // performed by the action. Never retry dispatch automatically.
+        return this.act("page.action", `${name} #${instanceId}`, () => {
+          const budget = Math.floor(Math.min(timeout ?? Number.POSITIVE_INFINITY, this.budgetRoom()));
+          if (budget < 1) {
+            throw new TimeoutError(`page.action ${name} #${instanceId} was not dispatched: its action budget expired`);
+          }
+          return app.page.action({
+            page: instanceId, name, ...(args.length > 0 ? { payload: args[0] } : {}),
+            timeoutMs: budget,
+          });
+        });
+      };
       const actions = new Proxy(Object.create(null), {
         get: (_, name) => {
           if (typeof name !== "string" || name === "then") return undefined;
-          return (...args: unknown[]) => {
-            if (args.length > 1) {
-              return Promise.reject(new TypeError(`page.actions.${name} takes at most one JSON payload`));
-            }
-            checkJsonArgs(args, `page.actions.${name}`);
-            // The app's own action failed: no spec source was sent, so no
-            // closure explanation applies.
-            return this.act("page.action", `${name} #${instanceId}`, () => app.page.action({
-              page: instanceId, name, ...(args.length > 0 ? { payload: args[0] } : {}),
-              timeoutMs: Math.max(1, Math.floor(this.budgetRoom())),
-            }));
-          };
+          return (...args: unknown[]) => invoke(name, args);
         },
       });
       return {
@@ -994,6 +1155,12 @@ export class LiveFixture implements Fixture {
         name: info.name ?? info.path,
         view,
         actions,
+        invoke: (name: string, options: { payload?: unknown; timeout?: number }) => {
+          if (!options || typeof options !== "object" || Array.isArray(options)) {
+            return Promise.reject(new TypeError("page.invoke(name, { payload?, timeout? }) needs an options object"));
+          }
+          return invoke(name, Object.prototype.hasOwnProperty.call(options, "payload") ? [options.payload] : [], options.timeout);
+        },
         data: () => this.act("page.data", `#${instanceId}`, () =>
           remote("page.data", "logic", () => this.evalLogic(app, {
             script: logicScript(readPageData, [instanceId], "page.data", "snapshot"),
@@ -1024,7 +1191,8 @@ export class LiveFixture implements Fixture {
         }
         const script = logicScript(fn, args, "t.app.logic.eval");
         const timeoutMs = this.evalTimeout(options, "t.app.logic.eval");
-        return this.act("logic.eval", summarise(functionDetail(fn)), () =>
+        const detail = `${summarise(functionDetail(fn))}${args.length ? ` args=${summarise(args)}` : ""}`;
+        return this.act("logic.eval", detail, () =>
           remote("t.app.logic.eval", "logic", () => this.evalLogic(driver(), { script, timeoutMs })));
       },
     } as TestLogic;
@@ -1038,7 +1206,7 @@ export class LiveFixture implements Fixture {
    */
   private async evalLogic(driver: LxAppDriver, options: { script: string; timeoutMs?: number }): Promise<unknown> {
     const result = (await driver.eval({
-      ...this.withEvalBudget(options),
+      ...this.withEvalBudget(options, "Logic eval"),
       captureCalls: true,
     })) as unknown;
     // The marker, not the shape, identifies the envelope: a script that
@@ -1064,11 +1232,10 @@ export class LiveFixture implements Fixture {
    * long under load fails a spec that still had most of its budget left. An
    * eval gets `MAX_EVAL_BUDGET_MS` instead, clamped to what the spec has left.
    */
-  private withEvalBudget<T extends { timeoutMs?: number }>(options: T): T {
-    if (options && typeof options === "object" && options.timeoutMs === undefined) {
-      return { ...options, timeoutMs: Math.max(1, Math.floor(Math.min(MAX_EVAL_BUDGET_MS, this.budgetRoom()))) };
-    }
-    return options;
+  private withEvalBudget<T extends { timeoutMs?: number }>(options: T, name: string): T {
+    const budget = Math.floor(Math.min(options.timeoutMs ?? MAX_EVAL_BUDGET_MS, this.budgetRoom()));
+    if (budget < 1) throw new TimeoutError(`${name} was not dispatched: its action budget expired`);
+    return { ...options, timeoutMs: budget };
   }
 
   /**
@@ -1081,7 +1248,7 @@ export class LiveFixture implements Fixture {
     if (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0) {
       throw new TypeError(`${api}({ timeout }, fn, ...args) takes a positive number of ms`);
     }
-    return Math.max(1, Math.min(timeout, this.budgetRoom()));
+    return Math.min(timeout, this.budgetRoom());
   }
 
   private viewEval(page: () => PageDriver, input: unknown[], api: string, bound?: string): Promise<unknown> {
@@ -1094,13 +1261,13 @@ export class LiveFixture implements Fixture {
     }
     const script = pageScript(fn, args, api);
     const timeoutMs = this.evalTimeout(options, api);
-    const detail = summarise(functionDetail(fn));
+    const detail = `${summarise(functionDetail(fn))}${args.length ? ` args=${summarise(args)}` : ""}`;
     return this.act("view.eval", bound ? `#${bound} ${detail}` : detail, () =>
       remote(api, "page", () => page().eval(this.withEvalBudget<{ script: string; page?: string; timeoutMs?: number }>({
         script,
         ...(bound ? { page: bound } : {}),
         ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-      }))));
+      }, "View eval"))));
   }
 
   /** `bound` is the immutable instance id captured by app.page(). */
@@ -1167,32 +1334,34 @@ export class LiveFixture implements Fixture {
     );
   }
 
-  private locatorMatchers(locator: Locator, inverted: boolean): LocatorMatchers {
+  private locatorMatchers(locator: Locator, inverted: boolean, message?: string): LocatorMatchers {
+    const withMessage = (options?: ExpectOptions): ExpectOptions | undefined =>
+      message === undefined || options?.message !== undefined ? options : { ...options, message };
     const self = {
       toBeVisible: (options: ExpectOptions | undefined) =>
-        this.retryLocator(locator, "toBeVisible", inverted, options, inverted ? "not visible" : "visible"),
+        this.retryLocator(locator, "toBeVisible", inverted, withMessage(options), inverted ? "not visible" : "visible"),
       toBeInViewport: (options?: ExpectOptions) =>
-        this.retryLocator(locator, "toBeInViewport", inverted, options, inverted ? "not in viewport" : "in viewport"),
-      toBeHidden: (options?: ExpectOptions) => this.retryLocator(locator, "toBeHidden", inverted, options, true),
-      toBeAttached: (options?: ExpectOptions) => this.retryLocator(locator, "toBeAttached", inverted, options, true),
-      toBeEnabled: (options?: ExpectOptions) => this.retryLocator(locator, "toBeEnabled", inverted, options, true),
-      toBeDisabled: (options?: ExpectOptions) => this.retryLocator(locator, "toBeDisabled", inverted, options, true),
-      toBeEditable: (options?: ExpectOptions) => this.retryLocator(locator, "toBeEditable", inverted, options, true),
+        this.retryLocator(locator, "toBeInViewport", inverted, withMessage(options), inverted ? "not in viewport" : "in viewport"),
+      toBeHidden: (options?: ExpectOptions) => this.retryLocator(locator, "toBeHidden", inverted, withMessage(options), true),
+      toBeAttached: (options?: ExpectOptions) => this.retryLocator(locator, "toBeAttached", inverted, withMessage(options), true),
+      toBeEnabled: (options?: ExpectOptions) => this.retryLocator(locator, "toBeEnabled", inverted, withMessage(options), true),
+      toBeDisabled: (options?: ExpectOptions) => this.retryLocator(locator, "toBeDisabled", inverted, withMessage(options), true),
+      toBeEditable: (options?: ExpectOptions) => this.retryLocator(locator, "toBeEditable", inverted, withMessage(options), true),
       toHaveText: (expected: string | RegExp, options?: ExpectOptions) =>
-        this.retryLocator(locator, "toHaveText", inverted, options, expected),
+        this.retryLocator(locator, "toHaveText", inverted, withMessage(options), expected),
       toContainText: (expected: string | RegExp, options?: ExpectOptions) =>
-        this.retryLocator(locator, "toContainText", inverted, options, expected),
+        this.retryLocator(locator, "toContainText", inverted, withMessage(options), expected),
       toHaveAttribute: (name: string, value?: string | RegExp, options?: ExpectOptions) => {
         if (typeof name !== "string" || !name) throw new TypeError("toHaveAttribute needs an attribute name");
-        return this.retryLocator(locator, "toHaveAttribute", inverted, options, new AttributeExpectation(name, value));
+        return this.retryLocator(locator, "toHaveAttribute", inverted, withMessage(options), new AttributeExpectation(name, value));
       },
       toHaveCount: (expected: number, options?: ExpectOptions) =>
-        this.retryLocator(locator, "toHaveCount", inverted, options, expected),
+        this.retryLocator(locator, "toHaveCount", inverted, withMessage(options), expected),
       toHaveValue: (expected: string | RegExp, options?: ExpectOptions) =>
-        this.retryLocator(locator, "toHaveValue", inverted, options, expected),
+        this.retryLocator(locator, "toHaveValue", inverted, withMessage(options), expected),
     };
     Object.defineProperty(self, "not", {
-      get: () => this.locatorMatchers(locator, !inverted),
+      get: () => this.locatorMatchers(locator, !inverted, message),
       configurable: true,
     });
     return self as LocatorMatchers;
@@ -1261,6 +1430,10 @@ export class LiveFixture implements Fixture {
               expected: formatValue(expected),
               actual: formatValue(locatorActual(matcher, lastResolved, expected)),
               passed: true,
+              target,
+              message: options?.message,
+              location: displayLocation(location.source, location.line, location.column),
+              duration_ms: deadline.elapsed(),
             });
             return;
           } catch (error) {
@@ -1287,6 +1460,8 @@ export class LiveFixture implements Fixture {
         lastError,
         extra: miss,
         locator: locator instanceof PageLocator ? locator.boundPage : null,
+        target,
+        message: options?.message,
       });
     }), `expect(${target}).${assertion}`);
   }
@@ -1321,6 +1496,10 @@ export class LiveFixture implements Fixture {
               expected: formatValue(expected),
               actual: formatValue(lastActual),
               passed: true,
+              target: source,
+              message: options?.message,
+              location: displayLocation(location.source, location.line, location.column),
+              duration_ms: deadline.elapsed(),
             });
             return;
           } catch (error) {
@@ -1343,6 +1522,8 @@ export class LiveFixture implements Fixture {
         duration: deadline.elapsed(),
         location,
         lastError,
+        target: source,
+        message: options?.message,
       });
     }), `${api}(${source}).${assertion}`);
   }
@@ -1364,6 +1545,8 @@ export class LiveFixture implements Fixture {
     lastError: unknown;
     extra?: string;
     clampNote?: string;
+    target?: string;
+    message?: string;
     /** A locator assertion: the instance id it is bound to, `null` for the current page. */
     locator?: string | null;
   }): AssertionError {
@@ -1375,6 +1558,7 @@ export class LiveFixture implements Fixture {
           ? input.lastError.message
           : undefined;
     const lines = [
+      input.message,
       `Timed out after ${input.duration}ms retrying ${input.matcher}.`,
       input.extra,
       `Expected: ${formatValue(input.expected)}`,
@@ -1390,6 +1574,12 @@ export class LiveFixture implements Fixture {
       expected: formatValue(input.expected),
       actual: formatValue(input.actual),
       passed: false,
+      difference: ["toBe", "toEqual"].includes(input.matcher)
+        ? firstDifference(input.expected, input.actual) : undefined,
+      target: input.target,
+      message: input.message,
+      location: where,
+      duration_ms: input.duration,
     });
     const error = new AssertionError(input.matcher, input.actual, input.expected, lines.join("\n"), "E_TIMEOUT");
     if (input.locator !== undefined) this.locatorFailures.set(error, input.locator);
@@ -1414,10 +1604,20 @@ interface InFlightCall {
   /** Captured when the call started; its stack names the spec line. */
   origin: Error;
   promise?: Promise<unknown>;
+  /** A `t.waitFor` read dropped at its deadline: settles alone, never "not awaited". */
+  detached?: boolean;
 }
 
-/** Room left before the spec timer, so `t.waitFor` reports its own failure. */
-const WAIT_FOR_MARGIN_MS = 100;
+/** An inline scenario (or its selected variant) with `function` rules. */
+function hasFunctionRules(definition: unknown, variant: string | undefined): boolean {
+  if (!definition || typeof definition !== "object") return false;
+  const record = definition as { rules?: unknown; variants?: Record<string, { rules?: unknown }> };
+  const rules = [
+    ...(Array.isArray(record.rules) ? record.rules : []),
+    ...(variant !== undefined && Array.isArray(record.variants?.[variant]?.rules) ? record.variants![variant]!.rules as unknown[] : []),
+  ];
+  return rules.some((rule) => !!rule && typeof rule === "object" && "function" in rule);
+}
 
 /** Extra attempts of an idempotent read the transport dropped, and the backoff step. */
 const TRANSPORT_RETRIES = 2;
@@ -1750,6 +1950,8 @@ export function toReportError(error: unknown, step?: string): ReportError {
       matcher: error.matcher,
       expected: formatValue(error.expected),
       actual: formatValue(error.actual),
+      difference: ["toBe", "toEqual"].includes(error.matcher)
+        ? firstDifference(error.expected, error.actual) : undefined,
       location: firstLocation(stack, error),
       step,
     };
