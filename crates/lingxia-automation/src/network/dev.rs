@@ -89,6 +89,17 @@ pub fn use_scenario(
     source: Option<&str>,
     dry_run: bool,
 ) -> Result<Value, String> {
+    use_scenario_generation(appid, scenario, variant, source, dry_run, None)
+}
+
+pub fn use_scenario_generation(
+    appid: &str,
+    scenario: &Value,
+    variant: Option<&str>,
+    source: Option<&str>,
+    dry_run: bool,
+    generation: Option<u64>,
+) -> Result<Value, String> {
     let parsed = scenario::parse_scenario(scenario, variant)?;
     if dry_run {
         return Ok(json!({
@@ -101,6 +112,15 @@ pub fn use_scenario(
     let http = parsed.http.len();
     let functions = parsed.resolved.rules.len() - http;
     let (dev, replaced) = registry::with_registry(|routes| {
+        if let Some(generation) = generation {
+            if routes.dev_scenario_generation != generation
+                || !routes.scenario_pending.contains(DEV_SESSION_OWNER)
+            {
+                return Err("scenario transaction expired or was cleared".to_string());
+            }
+        } else if routes.scenario_pending.contains(DEV_SESSION_OWNER) {
+            return Err("scenario transaction requires its generation".to_string());
+        }
         let replaced = routes.end_dev_scenario(DevClearReason::Replaced, now_ms());
         let dev = routes.install_scenario(DEV_SESSION_OWNER, appid, slot, parsed.http, || true)?;
         routes.dev = Some(dev.clone());
@@ -138,6 +158,19 @@ pub fn use_scenario(
 
 fn plural(n: usize) -> &'static str {
     if n == 1 { "" } else { "s" }
+}
+
+/// Close admission while the CLI coordinates the HTTP and companion halves.
+pub fn pause_scenario(recover: bool) -> Result<u64, String> {
+    registry::with_registry(|routes| {
+        if !routes.scenario_pending.insert(DEV_SESSION_OWNER.into()) && !recover {
+            return Err(
+                "a scenario transition is pending; run lxdev mock clear before retrying".into(),
+            );
+        }
+        routes.dev_scenario_generation += 1;
+        Ok(routes.dev_scenario_generation)
+    })
 }
 
 /// Remove the dev scenario (`lxdev mock clear`). Returns whether one was
@@ -257,7 +290,9 @@ pub(crate) fn status_of(routes: &Registry) -> Value {
             })
         });
     json!({
+        "scope": "session",
         "active": scenario.is_some(),
+        "transitionPending": routes.scenario_pending.contains(DEV_SESSION_OWNER),
         // Dev routes stand aside while a test run is active, and answer
         // again when it ends.
         "suspended": scenario.is_some() && routes.runs_active(),

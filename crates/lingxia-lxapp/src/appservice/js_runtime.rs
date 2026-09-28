@@ -810,14 +810,24 @@ pub(crate) async fn lxapp_service_handler(
                 return;
             };
             match source {
-                Ok(Some(js)) => match ctx.eval::<()>(js) {
-                    Ok(_) => {
+                Ok(Some(js)) => match lxapp
+                    .session
+                    .while_alive(ctx.eval_async::<JSValue>(js))
+                    .await
+                {
+                    None => {
+                        shutdown_app_context(&ctx).await;
+                        return;
+                    }
+                    Some(Ok(_)) => {
                         info!("[Worker {}] Successfully loaded logic JS", worker_id)
                             .with_appid(lxapp.appid.clone());
                     }
-                    Err(e) => {
-                        info!("[Worker {}] eval logic JS  failed: {}", worker_id, e)
+                    Some(Err(e)) => {
+                        error!("[Worker {}] eval logic JS failed: {}", worker_id, e)
                             .with_appid(lxapp.appid.clone());
+                        shutdown_app_context(&ctx).await;
+                        return;
                     }
                 },
                 Ok(None) => {

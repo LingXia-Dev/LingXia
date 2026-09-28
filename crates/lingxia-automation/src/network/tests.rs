@@ -198,6 +198,16 @@ mod interceptor {
         run: &'static str,
         script: &'static str,
     ) -> String {
+        eval_with_interceptor_deadline(appid, run, script, std::time::Duration::from_secs(30))
+            .unwrap()
+    }
+
+    fn eval_with_interceptor_deadline(
+        appid: &'static str,
+        run: &'static str,
+        script: &'static str,
+        timeout: std::time::Duration,
+    ) -> JSResult<String> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -308,7 +318,11 @@ mod interceptor {
                 })
                 .await
                 .unwrap();
-            handle.join().await.unwrap()
+            // Rong cancels the Rust future and interrupts the context on expiry;
+            // dropping a plain tokio timeout around join would leave it running.
+            let result = handle.join_with_timeout(timeout).await;
+            pool.shutdown()?;
+            result
         })
     }
 
@@ -665,6 +679,68 @@ ${{error && error.stack}}` }});
         assert!(out["elapsed"].as_u64().unwrap() >= 70, "{out}");
         assert_eq!(out["whileOpen"], "pending");
         assert_eq!(out["afterUnroute"], "data: hello\n\n");
+        clear_run(OWNER);
+    }
+
+    #[test]
+    fn an_unsettled_interceptor_test_is_cancelled_by_its_host_deadline() {
+        let _serial = serial();
+        let error = eval_with_interceptor_deadline(
+            "network-interceptor-deadline",
+            "network-interceptor-deadline-run",
+            "new Promise(() => {})",
+            std::time::Duration::from_millis(100),
+        )
+        .unwrap_err();
+        assert!(error.is_code(rong::error::E_TIMEOUT), "{error}");
+        // Returning from the helper includes shutting down its worker/context.
+        assert_eq!(
+            eval_with_interceptor(
+                "network-interceptor-after-deadline",
+                "network-interceptor-after-deadline-run",
+                "'ready'",
+            ),
+            "ready"
+        );
+    }
+
+    #[test]
+    fn aborting_an_async_mock_does_not_wait_for_or_apply_its_answer() {
+        let _serial = serial();
+        const APP: &str = "network-mock-cancel";
+        const OWNER: &str = "network-mock-cancel-run";
+        let out = eval_with_interceptor(
+            APP,
+            OWNER,
+            r#"(async () => {
+          __mockLoad(`({ 'GET **/pending': (req) => new Promise(resolve => {
+            globalThis.releaseMock = resolve;
+            globalThis.mockSignal = req.signal;
+          }) })`, ['GET **/pending'], JSON.stringify({ mock: 'all' }));
+          const controller = new AbortController();
+          const request = new Request('https://api.test/pending', { signal: controller.signal });
+          const pending = fetch(request).then(() => 'resolved', error => error);
+          // Let the handler start, without relying on a native timer tick.
+          await Promise.resolve();
+          await Promise.resolve();
+          controller.abort('cancelled');
+          const outcome = await pending;
+          const observed = globalThis.mockSignal.aborted;
+          // Invalid late answers would otherwise become mock failures.
+          globalThis.releaseMock({ sequence: [] });
+          await Promise.resolve();
+          await Promise.resolve();
+          return JSON.stringify({ outcome, observed });
+        })()"#,
+        );
+        let out: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(
+            out,
+            serde_json::json!({ "outcome": "cancelled", "observed": true })
+        );
+        registry::with_registry(|routes| {
+            assert!(routes.mocks.set(APP).unwrap().errors.is_empty());
+        });
         clear_run(OWNER);
     }
 

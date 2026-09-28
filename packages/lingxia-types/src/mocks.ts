@@ -29,6 +29,8 @@ export type MockAnswer = NetworkRouteAnswer;
 
 /** The call a handler answers. */
 export type MockRequest = {
+  /** Fetch cancellation when supplied; null otherwise (including SSE). */
+  signal: AbortSignal | null;
   /** Upper-case. */
   method: string;
   url: URL;

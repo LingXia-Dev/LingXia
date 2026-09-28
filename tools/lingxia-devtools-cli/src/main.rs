@@ -483,7 +483,7 @@ mod tests {
                 "mock",
                 "use",
                 "tests/scenarios/offline.json",
-                "--appid",
+                "--app",
                 "app",
                 "--json",
             ],

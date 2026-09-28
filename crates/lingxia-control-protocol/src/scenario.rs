@@ -1,4 +1,4 @@
-//! Scenario files: the format `lxdev mock use` and `t.app.mock.use()`
+//! Scenario files: the format `lxdev mock use` and `t.scenario.use()`
 //! share, and the companion protocol that carries `function` rules.
 //!
 //! ```json
@@ -40,7 +40,7 @@ pub const MAX_DELAY_MS: u64 = 30_000;
 /// Owner of the scenario a dev session installed (`lxdev mock use`).
 pub const DEV_OWNER: &str = "dev";
 
-/// Owner of the scenario a test run installed (`t.app.mock.use()`).
+/// Owner of the scenario a test run installed (`t.scenario.use()`).
 pub fn test_owner(run_id: &str) -> String {
     format!("test:{run_id}")
 }

@@ -632,9 +632,10 @@ pub(crate) struct Registry {
     /// routes stand aside and Logic `fetch` calls are logged.
     active_runs: Vec<String>,
     pub(crate) dev: Option<InstalledScenario>,
-    /// Scenarios host runs installed (`t.app.mock.use()`), one per run and
-    /// app at a time.
+    /// Scenarios host runs installed (`t.scenario.use()`), one per run.
     pub(crate) run_scenarios: Vec<InstalledScenario>,
+    pub(crate) scenario_pending: std::collections::BTreeSet<String>,
+    pub(crate) dev_scenario_generation: u64,
     /// The dev scenario cleared last, and why.
     pub(crate) dev_cleared: Option<ClearedDevScenario>,
     pub(crate) calls: CallLog,
@@ -713,8 +714,7 @@ impl Registry {
     }
 
     /// Install a resolved scenario for `owner` and `appid`, replacing the
-    /// scenario that owner installed for the app before (a dev session's,
-    /// or the run's previous `t.app.mock.use()`). All or nothing.
+    /// scenario that owner installed before, even for another app. All or nothing.
     /// `routes` are `(rule index, spec)` of its `http` rules in precedence
     /// order; `rules` lists every rule. Returns the installed scenario.
     pub(crate) fn install_scenario(
@@ -757,8 +757,17 @@ impl Registry {
             }
         }
         if owner != DEV_SESSION_OWNER {
-            self.remove_run_scenario(owner, appid);
+            let previous_apps: Vec<_> = self
+                .run_scenarios
+                .iter()
+                .filter(|scenario| scenario.owner == owner)
+                .map(|scenario| scenario.appid.clone())
+                .collect();
+            for previous_app in previous_apps {
+                self.remove_run_scenario(owner, &previous_app);
+            }
             self.run_scenarios.push(installed.clone());
+            self.scenario_pending.remove(owner);
         }
         Ok(installed)
     }
@@ -944,6 +953,7 @@ impl Registry {
 
     /// Drop every route and log entry a run owns, and end it.
     pub(crate) fn clear_run(&mut self, run_id: &str) {
+        self.scenario_pending.remove(run_id);
         self.active_runs.retain(|run| run != run_id);
         // A dev recording outlives a scenario change; the session end stops it.
         if self
@@ -1312,6 +1322,19 @@ impl Registry {
         allowed: impl Fn() -> bool,
         call: u64,
     ) -> (Option<Decision>, Option<NoMatch>, MockDecision) {
+        let blocked = if self.active_runs.is_empty() {
+            self.scenario_pending.contains(DEV_SESSION_OWNER)
+        } else {
+            self.active_runs
+                .iter()
+                .any(|owner| self.scenario_pending.contains(owner))
+        };
+        if blocked {
+            return (None, None, MockDecision::Unhandled {
+                detail: "scenario transition has not committed; clear or reinstall the scenario before making requests".into(),
+                first: false,
+            });
+        }
         let (decision, no_match) = self.decide_route(appid, method, url, request, &allowed, call);
         let passes = decision.as_ref().is_none_or(|decision| {
             matches!(
@@ -1530,6 +1553,7 @@ impl Registry {
             + usize::from(self.run_recording.is_some())
             + self.captures.len()
             + self.mocks.sets.len()
+            + self.scenario_pending.len()
     }
 }
 
@@ -1570,6 +1594,8 @@ static ROUTES: Mutex<Registry> = Mutex::new(Registry {
     active_runs: Vec::new(),
     dev: None,
     run_scenarios: Vec::new(),
+    scenario_pending: std::collections::BTreeSet::new(),
+    dev_scenario_generation: 0,
     dev_cleared: None,
     calls: CallLog::new(),
     dev_recording: None,
@@ -2416,5 +2442,51 @@ mod tests {
             scenario.calls.back().map(|call| call.seq),
             Some(MAX_SCENARIO_CALLS as u64 + 3)
         );
+    }
+    #[test]
+    fn replacing_a_scenario_on_another_app_removes_the_old_http_half() {
+        let mut routes = Registry::default();
+        let install = |routes: &mut Registry, app: &str| {
+            let parsed = crate::network::scenario::parse_scenario(
+                &serde_json::json!({ "rules": [{ "http": "GET **", "status": 200 }] }),
+                None,
+            )
+            .unwrap();
+            let slot = crate::network::dev::installed(&parsed, None);
+            routes
+                .install_scenario("run", app, slot, parsed.http, || true)
+                .unwrap()
+        };
+        let first = install(&mut routes, "first");
+        let second = install(&mut routes, "second");
+        assert!(routes.scenario(first.id).is_none());
+        assert!(routes.scenario(second.id).is_some());
+        assert_eq!(routes.run_scenarios.len(), 1);
+        assert!(routes.routes.iter().all(|route| route.appid == "second"));
+    }
+
+    #[test]
+    fn incomplete_scenario_transitions_never_fall_through_to_real_network() {
+        let mut routes = Registry::default();
+        routes.scenario_pending.insert(DEV_SESSION_OWNER.into());
+        let (_, _, next) = routes.decide_call(
+            "app",
+            "GET",
+            "https://h.test/x",
+            SentRequest::default,
+            || true,
+            0,
+        );
+        assert!(matches!(next, MockDecision::Unhandled { .. }));
+        routes.clear_run(DEV_SESSION_OWNER);
+        let (_, _, next) = routes.decide_call(
+            "app",
+            "GET",
+            "https://h.test/x",
+            SentRequest::default,
+            || true,
+            0,
+        );
+        assert!(matches!(next, MockDecision::Real));
     }
 }

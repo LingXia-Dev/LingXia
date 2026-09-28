@@ -245,7 +245,10 @@ impl DevServerState {
                     lines.push((root.app_id.clone(), app.summary(baseline)));
                     loaded.push(app);
                 }
-                None => lines.push((root.app_id.clone(), super::mocks::no_mocks_line(baseline))),
+                None => {
+                    lines.push((root.app_id.clone(), super::mocks::no_mocks_line(baseline)));
+                    loaded.push(super::mocks::AppMocks::empty(&root.app_id, &root.path));
+                }
             }
         }
         let functions = self.companion_mock_summary();
@@ -399,22 +402,24 @@ impl DevServerState {
     /// `mocks/` (or its `index.ts`) is gone: the app has no mocks from now
     /// on, in the runtime and in what the session reports.
     fn unload_mocks(&self, app_id: &str) {
-        let had = {
-            let mut mocks = self.lock_mocks();
-            let before = mocks.len();
-            mocks.retain(|app| app.app_id != app_id);
-            mocks.len() != before
-        };
-        if !had {
+        let previous = self
+            .lock_mocks()
+            .iter()
+            .find(|app| app.app_id == app_id)
+            .cloned();
+        let Some(previous) = previous else {
             return;
+        };
+        let empty = super::mocks::AppMocks::empty(app_id, &previous.root);
+        let pushed = self
+            .runtime_sender()
+            .is_some()
+            .then(|| self.push_mocks(&empty));
+        if !matches!(&pushed, Some(Err(_))) {
+            let mut mocks = self.lock_mocks();
+            mocks.retain(|app| app.app_id != app_id);
+            mocks.push(empty);
         }
-        let pushed = self.runtime_sender().is_some().then(|| {
-            self.runtime_request(
-                lingxia_control_protocol::methods::session::network::MOCK_UNLOAD,
-                serde_json::json!({ "appid": app_id }),
-                Duration::from_secs(30),
-            )
-        });
         match pushed {
             Some(Err(error)) => eprintln!(
                 "  ✗ mocks of {app_id} removed, but the runtime did not drop them — {error:#}"
@@ -1397,7 +1402,7 @@ fn route_runtime_message(
                 let _ = tx.send(payload);
             }
         }
-        // A host run's `t.app.mock.use()` reaches the companion this way;
+        // A host run's `t.scenario.use()` reaches the companion this way;
         // the relay can wait on it, so it must not hold up this connection.
         DevSessionMessage::Request(request)
             if request

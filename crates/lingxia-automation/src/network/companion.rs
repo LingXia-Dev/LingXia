@@ -1,5 +1,5 @@
 //! The path from a host run to the dev session's companion, for the
-//! `function` rules of `t.app.mock.use()`.
+//! `function` rules of `t.scenario.use()`.
 //!
 //! This crate does not know how the host reaches `lingxia dev`: the dev
 //! bridge registers an [`Upstream`] that sends a request over its session

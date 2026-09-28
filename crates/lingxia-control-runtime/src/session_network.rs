@@ -23,35 +23,44 @@ pub(crate) fn handle(handler: &str, args: Option<Value>) -> Result<Option<Value>
                 .ok_or_else(|| "(usage): scenario is required".to_string())?;
             let explicit = text("appid");
             let dry_run = args.get("dryRun").and_then(Value::as_bool) == Some(true);
-            let appid = if dry_run {
-                explicit.clone().unwrap_or_default()
+            let appid = target_appid(explicit.clone())?;
+            let generation = if dry_run {
+                None
             } else {
-                target_appid(explicit.clone())?
+                Some(
+                    args["generation"]
+                        .as_u64()
+                        .ok_or("scenario use requires a pause generation")?,
+                )
             };
-            let mut status = network::use_scenario(
+            let mut status = network::use_scenario_generation(
                 &appid,
                 scenario,
                 text("variant").as_deref(),
                 text("source").as_deref(),
                 dry_run,
+                generation,
             )
             .map_err(|err| format!("(usage): invalid scenario: {err}"))?;
-            if let Some(warning) = explicit.and_then(|appid| unknown_app_warning(&appid)) {
+            status["target"] = json!({ "appid": appid });
+            if let Some(warning) = unknown_app_warning(&appid) {
                 status["warning"] = json!(warning);
             }
             Ok(Some(status))
         }
+        method::SCENARIO_PAUSE => {
+            let generation = network::pause_scenario(args["recover"] == true)?;
+            Ok(Some(json!({ "paused": true, "generation": generation })))
+        }
         method::SCENARIO_CLEAR => Ok(Some(json!({ "cleared": network::clear_scenario() }))),
         method::STATUS => Ok(Some(network::status())),
         method::RECORD_START => {
-            let appid = match text("appid") {
-                Some(appid) => Some(appid),
-                None => target_appid(None).ok(),
-            };
+            let appid = Some(target_appid(text("appid"))?);
             network::record_start(appid.as_deref(), text("match").as_deref())
                 .map_err(|err| format!("(usage): {err}"))?;
             let mut status = network::status();
-            if let Some(warning) = text("appid").and_then(|appid| unknown_app_warning(&appid)) {
+            status["target"] = json!({ "appid": appid });
+            if let Some(warning) = appid.as_deref().and_then(unknown_app_warning) {
                 status["warning"] = json!(warning);
             }
             Ok(Some(status))
@@ -120,15 +129,18 @@ fn mode_arg(args: &Value, key: &str) -> Result<Option<MockMode>, String> {
 /// The app a dev scenario applies to: the one named, the home lxapp, or the
 /// current one.
 fn target_appid(explicit: Option<String>) -> Result<String, String> {
-    if let Some(appid) = explicit {
-        return Ok(appid);
-    }
-    if let Some(home) = lingxia_app_context::home_app_id() {
-        return Ok(home.to_string());
+    match explicit.as_deref() {
+        Some("home") => {
+            return lingxia_app_context::home_app_id()
+                .map(str::to_string)
+                .ok_or_else(|| "(unavailable): this host has no home lxapp".into());
+        }
+        Some(appid) if appid != "current" => return Ok(appid.to_string()),
+        _ => {}
     }
     let (current, _, _) = lxapp::get_current_lxapp();
     if current.is_empty() {
-        Err("(unavailable): no lxapp is running; open one or pass --appid".to_string())
+        Err("(unavailable): no lxapp is current; pass --app <id>".into())
     } else {
         Ok(current)
     }
@@ -176,6 +188,9 @@ mod tests {
     fn a_dev_scenario_reports_why_it_stopped_answering() {
         let _serial = serial();
         let appid = "control.runtime.scenario.test";
+        let generation = handle(method::SCENARIO_PAUSE, None).unwrap().unwrap()["generation"]
+            .as_u64()
+            .unwrap();
         let scenario = |rules: Value| {
             Some(json!({
                 "scenario": {
@@ -186,6 +201,7 @@ mod tests {
                 "variant": "offline",
                 "source": "wifi",
                 "appid": appid,
+                "generation": generation,
             }))
         };
         let status = handle(
@@ -323,6 +339,25 @@ mod tests {
              nothing is affected until an app with that id opens"
                     .to_string()
             )
+        );
+    }
+    #[test]
+    fn clear_invalidates_a_late_scenario_commit() {
+        let _serial = serial();
+        handle(method::SCENARIO_CLEAR, None).unwrap();
+        let paused = handle(method::SCENARIO_PAUSE, None).unwrap().unwrap();
+        handle(method::SCENARIO_CLEAR, None).unwrap();
+        let result = handle(
+            method::SCENARIO_USE,
+            Some(json!({
+                "appid": "late-scenario-app", "scenario": { "rules": [] },
+                "generation": paused["generation"],
+            })),
+        );
+        assert!(result.unwrap_err().contains("expired or was cleared"));
+        assert_eq!(
+            handle(method::STATUS, None).unwrap().unwrap()["active"],
+            false
         );
     }
 }

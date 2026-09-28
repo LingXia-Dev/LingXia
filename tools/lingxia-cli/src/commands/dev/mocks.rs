@@ -36,6 +36,20 @@ pub(super) struct AppMocks {
 }
 
 impl AppMocks {
+    pub fn empty(app_id: &str, root: &Path) -> Self {
+        Self {
+            app_id: app_id.into(),
+            root: root.into(),
+            bundle: MocksBundle {
+                source: "({})".into(),
+                keys: Vec::new(),
+                entry: String::new(),
+            },
+            config: None,
+            parsed: None,
+        }
+    }
+
     /// `session.network.mock.load` params.
     pub fn load_params(&self, baseline: Option<MockMode>) -> Value {
         json!({
@@ -128,6 +142,15 @@ mod tests {
             "lxapp.json",
             r#"{ "appId": "demo.app", "appName": "Demo", "version": "1.0.0", "pages": [] }"#,
         );
+    }
+
+    #[test]
+    fn empty_handlers_still_carry_the_startup_selection() {
+        let params = AppMocks::empty("demo", Path::new("/demo")).load_params(Some(MockMode::All));
+        assert_eq!(params["appid"], "demo");
+        assert_eq!(params["keys"], json!([]));
+        assert_eq!(params["baseline"], "all");
+        assert_eq!(params["source"], "({})");
     }
 
     #[test]

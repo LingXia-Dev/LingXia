@@ -22,7 +22,7 @@ its `session.prepare` result's `capabilities` (the two are merged):
 without its capability:
 
 - Without `scenario.function`, every scenario with a `function` rule is
-  refused as a whole — by `lxdev mock use` and by `t.app.mock.use()` —
+  refused as a whole — by `lxdev mock use` and by `t.scenario.use()` —
   before anything is installed, with a message naming the rules and the
   reason (no companion, or a companion without the capability).
 - Without `mock`, the HTTP half of a mock selection applies and one line
@@ -49,7 +49,7 @@ forwards the `scenario.*` and `mock.*` methods below (anything else is
 
 - `lxdev mock …` and `lxdev network status` send them over their client
   websocket.
-- A host test run (`t.app.mock.*`) sends them up the runtime's dev bridge
+- A host test run (`t.scenario.use()`) sends them up the runtime's dev bridge
   (`lingxia-control-runtime/src/bridge_upstream.rs`); the dev server answers
   on the same connection. A host without a dev bridge refuses `function`
   rules and Function targets.
@@ -164,8 +164,8 @@ Exactly as for `http` rules:
 - `dev`: installed by `lxdev mock use`. The dev server clears it when the
   runtime connection drops (a dev scenario fails closed, like its HTTP half),
   and `lxdev mock use` of a file without `function` rules clears it.
-- `test:<run id>`: installed by `t.app.mock.use()` in that run; one per run,
-  replaced by the next `t.app.mock.use()` and emptied (`scenario.use` with no
+- `test:<run id>`: installed by `t.scenario.use()` in that run; one per run,
+  replaced by the next `t.scenario.use()` and emptied (`scenario.use` with no
   rules) at the spec's end. When a run starts while `dev` has rules, the dev
   server installs the run's owner empty right away. It clears the owner when
   it sees the run reach a terminal state.
@@ -269,3 +269,23 @@ owner: from then until it is dropped, `dev` stands aside.
   project's files.
 - It hot-reloads its own mock handlers when their files change.
 - When the session ends the companion process ends with it.
+
+## Coordinated scenario changes
+
+The CLI validates locally, pauses new Logic network calls with a host-issued
+scenario generation, updates the companion, then commits HTTP rules with that
+generation. Clear invalidates the generation. A failed/unknown change keeps
+admission closed; `lxdev mock clear` clears the companion before reopening it.
+CLI mutations are serialized per session across local CLI processes. Host-run
+scenario changes likewise serialize per run and revoke the context on an
+unknown outcome. In test runs, atomic `invalid_rules` and `companion_unsupported`
+rejections leave the previous scenario active without revoking the context. A disconnect
+may follow an applied request, so it is never treated as a validation rejection.
+There is one product scenario per run, not one Function owner
+per app; replacing its HTTP target replaces the previous app's rules too.
+This covers new Logic fetch/SSE calls; it cannot undo requests already sent or
+coordinate unrelated clients talking directly to the companion.
+
+`lxdev mock reset` requires every participating phase to succeed. A refused
+handler reset returns a nonzero exit code and per-phase results; absence of the
+mock capability is reported as not applicable, not a successful reset.
