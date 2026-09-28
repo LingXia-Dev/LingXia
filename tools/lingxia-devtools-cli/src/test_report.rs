@@ -76,6 +76,19 @@ pub fn render(report: &Value, run_dir: &Path, failures_only: bool) -> String {
             let _ = writeln!(out, "Incomplete run; not every selected spec ran.");
         }
     }
+    if let Some(state) = report["state"].as_str() {
+        let _ = writeln!(out, "  state: {state}");
+    }
+    if let Some(message) = report["error"]["message"].as_str() {
+        let _ = writeln!(out, "Run error: {message}");
+    }
+    if let Some(errors) = report["run_errors"].as_array() {
+        for error in errors {
+            if let Some(message) = error["message"].as_str().or_else(|| error.as_str()) {
+                let _ = writeln!(out, "Run error: {message}");
+            }
+        }
+    }
     let rerun = report["meta"]["rerun"].as_str();
     let mut failed = 0usize;
     for case in cases {
@@ -183,6 +196,21 @@ mod tests {
         let mut legacy = report();
         legacy["meta"] = json!({});
         assert!(!render(&legacy, Path::new("/r"), false).contains("Rerun"));
+    }
+
+    #[test]
+    fn run_errors_remain_visible_when_every_case_passed() {
+        let report = json!({
+            "state": "failed", "passed": 1, "cases": [{ "status": "passed" }],
+            "error": { "message": "profile save failed" },
+            "run_errors": [{ "message": "report export failed" }]
+        });
+        for failures_only in [false, true] {
+            let rendered = render(&report, Path::new("/r"), failures_only);
+            assert!(rendered.contains("state: failed"));
+            assert!(rendered.contains("Run error: profile save failed"));
+            assert!(rendered.contains("Run error: report export failed"));
+        }
     }
 
     #[test]
