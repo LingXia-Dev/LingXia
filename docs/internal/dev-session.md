@@ -54,3 +54,12 @@ refreshed first.
   Window screenshots are occlusion-independent, but separate native popups may
   need their own capture. Owner-drawn Win32 controls may expose no
   accessibility nodes.
+
+## Mock readiness
+
+Dev Logic bundles await the context-bound `__lxWaitForDevMocks` gate before
+executing user modules. The host awaits that bundle promise under session
+liveness; failed initialization does not publish a usable Logic context.
+The dev server loads a selection record even for apps with zero handlers,
+so `--mock all` cannot silently fall through to real I/O. Removing handlers
+loads an empty record, preserving the selection and readiness contract.

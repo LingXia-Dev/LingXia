@@ -191,6 +191,8 @@ pub mod methods {
             pub const SCENARIO_USE: &str = "session.network.scenario.use";
             /// Remove the dev scenario. Returns `{ cleared }`.
             pub const SCENARIO_CLEAR: &str = "session.network.scenario.clear";
+            /// Refuse new Logic network calls until scenario use/clear commits.
+            pub const SCENARIO_PAUSE: &str = "session.network.scenario.pause";
             /// The dev scenario and recording, if any, and the scenario
             /// cleared last (`lastCleared: { reason, clearedAt, … }`).
             pub const STATUS: &str = "session.network.status";

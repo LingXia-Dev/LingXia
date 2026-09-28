@@ -1,5 +1,5 @@
 //! Requests the runtime sends up its dev session connection, and their
-//! answers: how a host run's `t.app.mock.use()` reaches the dev session's
+//! answers: how a host run's `t.scenario.use()` reaches the dev session's
 //! companion. The bridge thread owns the websocket, so a request is queued
 //! here, sent on the bridge's next turn, and resolved when the matching
 //! response arrives, the connection drops, or it times out.

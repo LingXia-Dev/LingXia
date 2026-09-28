@@ -44,7 +44,16 @@ pub(crate) fn init_automation_context(
     // A bare `lx` namespace carrying only the automation factory.
     ctx.global().set("lx", JSObject::new(ctx))?;
     init_automation(ctx, shared)?;
-    crate::network::attach_run_scope(ctx, shared.run_id.clone(), admission(shared), live(shared));
+    let network_authority = shared.authority.clone();
+    crate::network::attach_run_scope(
+        ctx,
+        shared.run_id.clone(),
+        admission(shared),
+        live(shared),
+        move |reason| {
+            network_authority.revoke(reason);
+        },
+    );
     crate::clock::attach_run_scope(ctx, shared.run_id.clone(), admission(shared), live(shared));
     crate::dialogs::attach_run_scope(ctx, shared.run_id.clone(), admission(shared), live(shared));
     if let Some(profile) = shared.profile() {

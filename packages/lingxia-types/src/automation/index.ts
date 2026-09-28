@@ -985,7 +985,7 @@ export interface MockDriver {
    * Install a scenario file (with one of its variants) for the host run:
    * `http` rules answer Logic `fetch` before the mock selection, `function`
    * rules go to the dev session's companion. Validated as a whole; it
-   * replaces the scenario the run installed for this app before, and the
+   * replaces the scenario the run installed before (including another app), and the
    * run's end removes it. Routes added with `network.route()` take
    * precedence over it.
    */

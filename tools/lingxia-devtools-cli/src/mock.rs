@@ -13,7 +13,7 @@
 //!   `function` rules through the companion. `use` validates everything
 //!   before it changes anything, so an invalid file leaves the active
 //!   scenario answering.
-//! - `reset` returns to the project defaults: the config selection, no
+//! - `reset` restores the startup selection, no
 //!   scenario, fresh handler state.
 //!
 //! All of it is live and session-scoped, affects later calls only, and
@@ -96,12 +96,12 @@ enum MockCommand {
         /// `name` or `name:variant` under tests/scenarios/ (without
         /// `.json`), or a file (`path.json:variant`)
         scenario: String,
-        /// Target lxapp (default: the home lxapp, else the current one)
-        #[arg(long)]
+        /// Target lxapp id, or current
+        #[arg(long = "app", default_value = "current")]
         appid: Option<String>,
         /// Keep running and reinstall the scenario whenever the file is
-        /// saved; an invalid save is reported and the last valid version
-        /// keeps answering
+        /// saved. Local validation errors keep the last version; a failed
+        /// cross-end change blocks new Logic requests until mock clear.
         #[arg(long)]
         watch: bool,
         /// Print JSON output
@@ -120,7 +120,7 @@ enum MockCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Back to project defaults: the config selection, no scenario, fresh
+    /// Restore the startup selection, no scenario, fresh
     /// handler state
     Reset {
         /// Print JSON output
@@ -363,6 +363,11 @@ pub(crate) struct CallError {
 
 /// What `lxdev mock` needs from a dev session.
 pub(crate) trait Session {
+    /// Keep a multi-request mutation exclusive across local lxdev processes.
+    fn mutation_lock(&self) -> Result<Option<std::fs::File>> {
+        Ok(None)
+    }
+
     /// A `session.network.*` request to the app host.
     fn host(&self, method: &str, params: Option<Value>) -> Result<Value>;
     /// A `session.companion.*` request to the dev server.
@@ -375,6 +380,22 @@ pub(crate) struct Live {
 }
 
 impl Session for Live {
+    fn mutation_lock(&self) -> Result<Option<std::fs::File>> {
+        use sha2::{Digest, Sha256};
+        let digest: String = Sha256::digest(self.ws.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let name = format!("lingxia-mock-{digest}.lock");
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(std::env::temp_dir().join(name))?;
+        file.try_lock()
+            .context("another lxdev mock change is in progress; retry after it finishes")?;
+        Ok(Some(file))
+    }
     fn host(&self, method: &str, params: Option<Value>) -> Result<Value> {
         network::call(&self.ws, method, params)
     }
@@ -401,28 +422,22 @@ impl Session for Live {
 /// Whether the session's companion answers `function` rules, and if not,
 /// why.
 pub(crate) fn companion_support(session: &dyn Session) -> Result<(), String> {
-    match session.companion(companion_method::CAPABILITIES, None) {
-        Ok(caps) => {
-            let declared = caps["capabilities"]
-                .as_array()
-                .is_some_and(|list| list.iter().any(|cap| cap == SCENARIO_FUNCTION));
-            if declared {
-                Ok(())
-            } else if caps["companion"] == true {
-                Err(
-                    "the dev session's companion does not answer function rules yet (it did not \
-                     declare the `scenario.function` capability)"
-                        .into(),
-                )
-            } else {
-                Err(
-                    "this dev session has no companion (.lingxia/dev-companion.json), so nothing \
-                     answers function rules"
-                        .into(),
-                )
-            }
-        }
-        Err(err) => Err(err.message),
+    let caps = session
+        .companion(companion_method::CAPABILITIES, None)
+        .map_err(|error| error.message)?;
+    scenario_support(&caps)
+}
+
+fn scenario_support(caps: &Value) -> Result<(), String> {
+    if caps["capabilities"]
+        .as_array()
+        .is_some_and(|list| list.iter().any(|cap| cap == SCENARIO_FUNCTION))
+    {
+        Ok(())
+    } else if caps["companion"] == true {
+        Err("the dev session's companion does not answer function rules yet (it did not declare the `scenario.function` capability)".into())
+    } else {
+        Err("this dev session has no companion (.lingxia/dev-companion.json), so nothing answers function rules".into())
     }
 }
 
@@ -439,36 +454,50 @@ fn host_args(loaded: &Loaded, target: &Target, appid: Option<&str>, dry_run: boo
 
 /// Install `loaded` (with `target.variant`) as the dev scenario, replacing
 /// the active one. Everything is validated first; `function` rules are
-/// installed before `http` rules and rolled back if those fail, so a
-/// failure leaves no part of the new scenario installed. Returns the
-/// status.
+/// installed before `http` rules while new Logic network calls are blocked.
+/// A failed commit leaves admission closed until an explicit clear. Returns
+/// the committed status.
 pub(crate) fn install(
     session: &dyn Session,
     loaded: &Loaded,
     target: &Target,
     appid: Option<&str>,
 ) -> Result<Value> {
+    let _lock = session.mutation_lock()?;
     let source = &target.source;
     let resolved = loaded
         .file
         .resolve(target.variant.as_deref())
         .map_err(|err| anyhow!("{source}: {err}"))?;
-    session
+    let checked = session
         .host(
             method::SCENARIO_USE,
             Some(host_args(loaded, target, appid, true)),
         )
         .with_context(|| format!("{source} is not a valid scenario"))?;
+    let appid = checked["target"]["appid"].as_str().or(appid);
     let functions = resolved.function_rules().count();
-    let support = companion_support(session);
+    // A failed discovery is not evidence that no companion participates.
+    let caps = session
+        .companion(companion_method::CAPABILITIES, None)
+        .map_err(|error| anyhow!("cannot discover scenario participants: {}", error.message))?;
+    let support = scenario_support(&caps);
+    if functions > 0
+        && let Err(reason) = &support
+    {
+        bail!("{source}: {}", resolved.functions_unsupported(reason));
+    }
+    let paused = session.host(method::SCENARIO_PAUSE, None)?;
+    let generation = paused["generation"]
+        .as_u64()
+        .context("host did not return a scenario generation")?;
     if functions > 0 {
-        if let Err(reason) = &support {
-            bail!("{source}: {}", resolved.functions_unsupported(reason));
-        }
         let params = serde_json::to_value(resolved.companion_use(DEV_OWNER, Some(source)))?;
         session
             .companion(companion_method::SCENARIO_USE, Some(params))
-            .map_err(|err| anyhow!("{source}: {}", companion_failure(&resolved, &err)))?;
+            .map_err(|err| {
+                scenario_transition_error(source, "functions", companion_failure(&resolved, &err))
+            })?;
     } else if support.is_ok() {
         // The previous scenario's function rules must not outlive it.
         session
@@ -477,29 +506,27 @@ pub(crate) fn install(
                 Some(json!({ "owner": DEV_OWNER })),
             )
             .map_err(|err| {
-                anyhow!(
-                    "cannot clear the companion's previous scenario: {}",
-                    err.message
-                )
+                scenario_transition_error(source, "functionClear", err.message.clone())
             })?;
     }
-    match session.host(
-        method::SCENARIO_USE,
-        Some(host_args(loaded, target, appid, false)),
-    ) {
+    let mut commit = host_args(loaded, target, appid, false);
+    commit["generation"] = json!(generation);
+    match session.host(method::SCENARIO_USE, Some(commit)) {
         Ok(status) => Ok(status),
-        Err(err) => {
-            if functions > 0 {
-                let _ = session.companion(
-                    companion_method::SCENARIO_CLEAR,
-                    Some(json!({ "owner": DEV_OWNER })),
-                );
-            }
-            Err(err.context(format!(
-                "{source} failed to install; nothing of it stays installed"
-            )))
-        }
+        Err(err) => Err(scenario_transition_error(
+            source,
+            "httpCommit",
+            format!("{err:#}"),
+        )),
     }
+}
+
+fn scenario_transition_error(source: &str, phase: &str, detail: String) -> anyhow::Error {
+    crate::client::CommandError {
+        code: "scenario_state_unknown".into(),
+        message: format!("{source} did not commit ({phase}): {detail}; new Logic network calls remain blocked until mock clear succeeds"),
+        data: Some(json!({ "scope": "session", "phase": phase, "networkBlocked": true })),
+    }.into()
 }
 
 fn companion_failure(resolved: &Resolved, err: &CallError) -> String {
@@ -562,24 +589,40 @@ pub(crate) fn reached(status: &Value) -> u64 {
     requests + functions
 }
 
-/// Clear the dev scenario on both sides; both are asked even when one
-/// fails.
+/// Clear both halves while admission stays closed; reopen only after both confirm.
 pub(crate) fn clear(session: &dyn Session) -> Result<Value> {
-    let host = session.host(method::SCENARIO_CLEAR, None);
-    let companion = match companion_support(session) {
+    let _lock = session.mutation_lock()?;
+    clear_locked(session)
+}
+
+fn clear_locked(session: &dyn Session) -> Result<Value> {
+    let caps = session
+        .companion(companion_method::CAPABILITIES, None)
+        .map_err(|error| anyhow!("cannot discover scenario participants: {}", error.message))?;
+    session.host(method::SCENARIO_PAUSE, Some(json!({ "recover": true })))?;
+    let companion = match scenario_support(&caps) {
         Ok(()) => Some(session.companion(
             companion_method::SCENARIO_CLEAR,
             Some(json!({ "owner": DEV_OWNER })),
         )),
         Err(_) => None,
     };
-    let host = host?;
     let companion_cleared = match companion {
         Some(Ok(result)) => result["cleared"] == true,
-        Some(Err(err)) => bail!("cannot clear the companion's scenario: {}", err.message),
+        Some(Err(err)) => {
+            return Err(scenario_transition_error(
+                "mock clear",
+                "functionClear",
+                err.message,
+            ));
+        }
         None => false,
     };
+    let host = session
+        .host(method::SCENARIO_CLEAR, None)
+        .map_err(|err| scenario_transition_error("mock clear", "httpClear", format!("{err:#}")))?;
     Ok(json!({
+        "scope": "session",
         "cleared": host["cleared"] == true || companion_cleared,
         "http": host["cleared"],
         "function": companion_cleared,
@@ -593,7 +636,7 @@ pub(crate) fn clear(session: &dyn Session) -> Result<Value> {
 pub(crate) enum WatchEvent {
     /// The file changed and installed.
     Installed(Value),
-    /// The file changed but did not install; the last valid one answers.
+    /// The file changed but did not install; inspect status for a pending transition.
     Rejected(String),
 }
 
@@ -733,9 +776,10 @@ pub(crate) fn select(
     targets: &[String],
     content_root: &Path,
 ) -> Result<Value> {
+    let _lock = session.mutation_lock()?;
     let (http, functions) = split_targets(targets)?;
     let whole = targets.is_empty();
-    let mut out = json!({});
+    let mut out = json!({ "scope": "session" });
     if whole || !http.is_empty() {
         if mode == MockMode::All {
             let status = session.host(method::MOCK_STATUS, None)?;
@@ -761,29 +805,82 @@ pub(crate) fn select(
     Ok(out)
 }
 
-/// `lxdev mock reset`: back to the project defaults on both halves — the
-/// config selection, no scenario, fresh handler state.
+/// `lxdev mock reset`: restore the startup selection on both halves,
+/// no scenario, and fresh handler state.
 pub(crate) fn reset(session: &dyn Session) -> Result<Value> {
-    session.host(
-        method::MOCK_RESET,
-        Some(json!({ "owner": mock::DEV_OWNER })),
-    )?;
-    let cleared = clear(session)?;
-    let mut functions = Value::Null;
-    if mock_support(session).is_ok() {
-        let _ = session.companion(
-            companion_method::MOCK_SET,
-            Some(json!({ "owner": mock::DEV_OWNER, "mode": "default" })),
+    let _lock = session.mutation_lock()?;
+    // Capability discovery must succeed before modifying either side.
+    let caps = session
+        .companion(companion_method::CAPABILITIES, None)
+        .map_err(|error| anyhow!("cannot discover reset participants: {}", error.message))?;
+    let participates = caps["capabilities"]
+        .as_array()
+        .is_some_and(|values| values.iter().any(|value| value == MOCK));
+    let mut phases = serde_json::Map::new();
+    let mut failed = false;
+    let mut record = |name: &str, result: Result<Value>| {
+        let value = match result {
+            Ok(value) => json!({ "state": "applied", "result": value }),
+            Err(error) => {
+                failed = true;
+                json!({ "state": "failed", "message": format!("{error:#}") })
+            }
+        };
+        phases.insert(name.to_string(), value);
+    };
+    record(
+        "http",
+        session.host(
+            method::MOCK_RESET,
+            Some(json!({ "owner": mock::DEV_OWNER })),
+        ),
+    );
+    record("scenario", clear_locked(session));
+    if participates {
+        record(
+            "functionSelection",
+            session
+                .companion(
+                    companion_method::MOCK_SET,
+                    Some(json!({ "owner": mock::DEV_OWNER, "mode": "default" })),
+                )
+                .map_err(|error| anyhow!("{}", error.message)),
         );
-        functions = session
-            .companion(
-                companion_method::MOCK_RESET,
-                Some(json!({ "owner": mock::DEV_OWNER })),
-            )
-            .unwrap_or_else(|err| json!({ "reset": false, "reason": err.message }));
+        record(
+            "functionState",
+            session
+                .companion(
+                    companion_method::MOCK_RESET,
+                    Some(json!({ "owner": mock::DEV_OWNER })),
+                )
+                .map_err(|error| anyhow!("{}", error.message))
+                .and_then(|value| {
+                    if value["reset"] == true {
+                        Ok(value)
+                    } else {
+                        Err(anyhow!(
+                            "{}",
+                            value["reason"]
+                                .as_str()
+                                .unwrap_or("handler state was not reset")
+                        ))
+                    }
+                }),
+        );
+    }
+    if !participates {
+        phases.insert("functions".into(), json!({ "state": "not_applicable" }));
+    }
+    if failed {
+        return Err(crate::client::CommandError {
+            code: "partial_reset".into(),
+            message: "mock reset did not complete; inspect phases before retrying".into(),
+            data: Some(json!({ "scope": "session", "phases": phases })),
+        }
+        .into());
     }
     let status = session.host(method::MOCK_STATUS, None)?;
-    Ok(json!({ "scenario": cleared, "functions": functions, "status": status }))
+    Ok(json!({ "scope": "session", "phases": phases, "status": status }))
 }
 
 /// `mock: <selection> · N handlers` per app (`<appid>: …` with several).
@@ -822,6 +919,13 @@ fn clock(iso: &Value) -> String {
 pub(crate) fn status_lines(status: &Value, functions: Option<&str>) -> Vec<String> {
     let mock = &status["mock"];
     let mut lines = selection_lines(mock);
+    if status["transitionPending"] == true {
+        lines.insert(
+            0,
+            "network blocked: scenario transition incomplete; run lxdev mock clear before retrying"
+                .into(),
+        );
+    }
     if let Some(functions) = functions {
         lines.push(functions.to_string());
     }
@@ -1145,7 +1249,7 @@ pub fn execute(info: Option<&SessionInfo>, options: MockOptions) -> Result<()> {
                                 println!("{}", json!({ "event": "rejected", "error": error }));
                             } else {
                                 eprintln!(
-                                    "{} {error}\n  the last valid version keeps answering",
+                                    "{} {error}\n  inspect `lxdev mock` before retrying",
                                     "error".red().bold()
                                 );
                             }
@@ -1169,17 +1273,9 @@ pub fn execute(info: Option<&SessionInfo>, options: MockOptions) -> Result<()> {
         MockCommand::Reset { json } => {
             let result = reset(&session)?;
             network::print(&result, json, |result| {
-                println!("back to the project defaults: no scenario, fresh handler state");
+                println!("startup selection restored: no scenario, fresh handler state");
                 for line in selection_lines(&result["status"]) {
                     println!("{line}");
-                }
-                if result["functions"]["reset"] == false {
-                    println!(
-                        "functions: handler state not reset — {}",
-                        result["functions"]["reason"]
-                            .as_str()
-                            .unwrap_or("the companion refused")
-                    );
                 }
                 hint();
             })
@@ -1600,6 +1696,10 @@ mod tests {
                 }
                 return Ok(json!({ "active": !dry }));
             }
+            if method == method::SCENARIO_PAUSE {
+                self.log.borrow_mut().push("host pause".into());
+                return Ok(json!({ "generation": 1 }));
+            }
             if method == method::MOCK_SET {
                 self.log
                     .borrow_mut()
@@ -1703,13 +1803,14 @@ mod tests {
     }
 
     #[test]
-    fn a_capable_companion_gets_the_function_rules_first_and_loses_them_on_failure() {
+    fn a_failed_commit_keeps_network_admission_closed() {
         let session = Fake::new(Some(vec!["requests", SCENARIO_FUNCTION]));
         install(&session, &loaded(CHECKOUT), &target(None), None).unwrap();
         assert_eq!(
             session.log(),
             [
                 "host use (dry run)",
+                "host pause",
                 "companion session.companion.scenario.use \"dev\"",
                 "host use"
             ]
@@ -1719,16 +1820,16 @@ mod tests {
         failing.host_fails = true;
         let err = install(&failing, &loaded(CHECKOUT), &target(None), None).unwrap_err();
         assert!(
-            format!("{err:#}").contains("nothing of it stays installed"),
+            format!("{err:#}").contains("network calls remain blocked"),
             "{err:#}"
         );
         assert_eq!(
             failing.log(),
             [
                 "host use (dry run)",
+                "host pause",
                 "companion session.companion.scenario.use \"dev\"",
-                "host use",
-                "companion session.companion.scenario.clear \"dev\""
+                "host use"
             ]
         );
 
@@ -1742,10 +1843,11 @@ mod tests {
         let err = install(&refusing, &loaded(CHECKOUT), &target(None), None)
             .unwrap_err()
             .to_string();
-        assert_eq!(
-            err,
-            "checkout: rule 2 (rules[1]) function orders.submit: unknown Function"
+        assert!(
+            err.contains("rule 2 (rules[1]) function orders.submit: unknown Function"),
+            "{err}"
         );
+        assert!(err.contains("network calls remain blocked"), "{err}");
         assert!(!refusing.log().contains(&"host use".to_string()));
     }
 
@@ -1757,6 +1859,7 @@ mod tests {
             session.log(),
             [
                 "host use (dry run)",
+                "host pause",
                 "companion session.companion.scenario.clear \"dev\"",
                 "host use"
             ]
@@ -1764,7 +1867,10 @@ mod tests {
         // Without a companion there is nothing to clear.
         let plain = Fake::new(None);
         install(&plain, &loaded(WIFI), &target(Some("b")), None).unwrap();
-        assert_eq!(plain.log(), ["host use (dry run)", "host use"]);
+        assert_eq!(
+            plain.log(),
+            ["host use (dry run)", "host pause", "host use"]
+        );
         // An unknown variant fails before anything is sent.
         let err = install(&plain, &loaded(WIFI), &target(Some("c")), None)
             .unwrap_err()
@@ -1806,13 +1912,17 @@ mod tests {
         assert_eq!(
             session.log(),
             [
-                "host session.network.scenario.clear",
-                "companion session.companion.scenario.clear \"dev\""
+                "host pause",
+                "companion session.companion.scenario.clear \"dev\"",
+                "host session.network.scenario.clear"
             ]
         );
         let plain = Fake::new(None);
         clear(&plain).unwrap();
-        assert_eq!(plain.log(), ["host session.network.scenario.clear"]);
+        assert_eq!(
+            plain.log(),
+            ["host pause", "host session.network.scenario.clear"]
+        );
     }
 
     #[test]
@@ -1941,21 +2051,15 @@ mod tests {
     }
 
     #[test]
-    fn reset_returns_both_halves_to_the_project_defaults() {
+    fn reset_reports_partial_failure_instead_of_claiming_success() {
         let session = Fake::new(Some(vec![MOCK, SCENARIO_FUNCTION]));
-        let result = reset(&session).unwrap();
-        assert_eq!(
-            session.log(),
-            [
-                "host session.network.mock.reset",
-                "host session.network.scenario.clear",
-                "companion session.companion.scenario.clear \"dev\"",
-                "companion session.companion.mock.set \"default\" null",
-                "companion session.companion.mock.reset \"dev\"",
-                "host session.network.mock.status"
-            ]
-        );
-        assert_eq!(result["functions"]["reason"], "handlers rebuild");
+        let error = reset(&session).unwrap_err();
+        let error = error.downcast_ref::<crate::client::CommandError>().unwrap();
+        assert_eq!(error.code, "partial_reset");
+        let phases = &error.data.as_ref().unwrap()["phases"];
+        assert_eq!(phases["http"]["state"], "applied");
+        assert_eq!(phases["functionState"]["state"], "failed");
+        assert_eq!(phases["functionState"]["message"], "handlers rebuild");
     }
 
     #[test]

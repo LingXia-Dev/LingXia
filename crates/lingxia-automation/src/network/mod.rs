@@ -49,6 +49,8 @@ pub(crate) struct NetworkRunScope {
     run_id: String,
     admit: Admit,
     live: Arc<dyn Fn() -> bool + Send + Sync>,
+    revoke: Arc<dyn Fn(String) + Send + Sync>,
+    scenario_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 /// Bind a host automation context to its run. Routes and scenarios
@@ -59,6 +61,7 @@ pub(crate) fn attach_run_scope(
     run_id: String,
     admit: impl Fn() -> Result<Option<u64>, String> + Send + Sync + 'static,
     live: impl Fn() -> bool + Send + Sync + 'static,
+    revoke: impl Fn(String) + Send + Sync + 'static,
 ) {
     registry::with_registry(|routes| {
         routes.begin_run(&run_id);
@@ -76,6 +79,8 @@ pub(crate) fn attach_run_scope(
         run_id,
         admit: Arc::new(admit),
         live: Arc::new(live),
+        revoke: Arc::new(revoke),
+        scenario_lock: Arc::new(tokio::sync::Mutex::new(())),
     });
 }
 
@@ -89,8 +94,13 @@ pub(crate) fn clear_run(run_id: &str) {
 /// including a scenario's `function` rules in the companion. Resolves how
 /// many of each; a scenario the companion could not clear is an error.
 pub(crate) async fn reclaim_attempt(run_id: &str, attempt: u64) -> Result<(usize, usize), String> {
-    let (routes, scenarios) =
-        registry::with_registry(|registry| registry.reclaim_attempt(run_id, attempt));
+    let (routes, scenarios) = registry::with_registry(|registry| {
+        let result = registry.reclaim_attempt(run_id, attempt);
+        if result.1.iter().any(|scenario| scenario.companion) {
+            registry.scenario_pending.insert(run_id.to_string());
+        }
+        result
+    });
     let owner = lingxia_control_protocol::scenario::test_owner(run_id);
     for scenario in scenarios.iter().filter(|scenario| scenario.companion) {
         test_scenario::clear_functions_checked(&owner)
@@ -101,6 +111,11 @@ pub(crate) async fn reclaim_attempt(run_id: &str, attempt: u64) -> Result<(usize
                     scenario.label()
                 )
             })?;
+    }
+    if scenarios.iter().any(|scenario| scenario.companion) {
+        registry::with_registry(|registry| {
+            registry.scenario_pending.remove(run_id);
+        });
     }
     Ok((routes, scenarios.len()))
 }
@@ -1062,7 +1077,7 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
     const url = c.url;
     const init = c.init;
     const id = c.id;
-    const signal = init && init.signal;
+    const signal = init && init.signal !== undefined ? init.signal : c.input && c.input.signal;
     if (typeof hit.patch === 'string') {
       // The patch reads the answer's body anyway: settle the call with the
       // patched text the app receives.
@@ -1567,7 +1582,7 @@ const MOCK_RUNNER: &str = r#"(function (host) {
     if (typeof Decoder !== 'function') return Promise.reject(new TypeError('mock handler cannot decode a binary body here'));
     return Promise.resolve(new Decoder().decode(bytes));
   };
-  const request = function (method, url, input, init) {
+  const request = function (method, url, input, init, signal) {
     const sent = typeof RequestCtor === 'function' && input instanceof RequestCtor ? input : null;
     let headers = null;
     if (typeof HeadersCtor === 'function') {
@@ -1592,6 +1607,7 @@ const MOCK_RUNNER: &str = r#"(function (host) {
       method: method,
       url: parsed,
       headers: headers,
+      signal: signal,
       text: text,
       json: function () { return text().then(function (body) { return JSON.parse(body); }); },
     };
@@ -1612,6 +1628,9 @@ const MOCK_RUNNER: &str = r#"(function (host) {
     return handlers;
   };
   const run = function (key, method, url, input, init, call) {
+    const sent = typeof RequestCtor === 'function' && input instanceof RequestCtor ? input : null;
+    const signal = init && init.signal !== undefined ? init.signal : sent && sent.signal;
+    if (signal && signal.aborted) return Promise.reject(signal.reason);
     let handler;
     try {
       const map = instance();
@@ -1624,15 +1643,36 @@ const MOCK_RUNNER: &str = r#"(function (host) {
         return host.mockFailed(key, "mock handler '" + key + "' is missing from the default export of mocks/index.ts", call);
       });
     }
-    return new Promise(function (resolve) {
-      resolve(typeof handler === 'function' ? handler(request(method, url, input, init), context) : handler);
-    }).then(function (answer) {
-      if (answer === undefined) {
-        return host.mockFailed(key, "mock handler '" + key + "' returned undefined; return an answer or { continue: true }", call);
-      }
-      return host.mockAnswer(key, answer, call);
-    }, function (error) {
-      return host.mockFailed(key, "mock handler '" + key + "' threw: " + message(error), call);
+    // Aborting stops the fetch wait even when the handler never settles.
+    // A late answer must not create holds, record a response, or reach real I/O.
+    return new Promise(function (resolve, reject) {
+      let done = false;
+      const listens = signal && typeof signal.addEventListener === 'function';
+      const cleanup = function () {
+        done = true;
+        if (listens) signal.removeEventListener('abort', onAbort);
+      };
+      const onAbort = function () { cleanup(); reject(signal.reason); };
+      if (listens) signal.addEventListener('abort', onAbort);
+      if (signal && signal.aborted) { onAbort(); return; }
+      Promise.resolve().then(function () {
+        if (done) return;
+        return typeof handler === 'function' ? handler(request(method, url, input, init, signal || null), context) : handler;
+      }).then(function (answer) {
+        if (done) return;
+        if (signal && signal.aborted) { onAbort(); return; }
+        cleanup();
+        try {
+          resolve(answer === undefined
+            ? host.mockFailed(key, "mock handler '" + key + "' returned undefined; return an answer or { continue: true }", call)
+            : host.mockAnswer(key, answer, call));
+        } catch (error) { reject(error); }
+      }, function (error) {
+        if (done) return;
+        cleanup();
+        try { resolve(host.mockFailed(key, "mock handler '" + key + "' threw: " + message(error), call)); }
+        catch (failure) { reject(failure); }
+      });
     });
   };
   const runner = Object.freeze({ run: run });
@@ -2149,6 +2189,29 @@ fn logic_target(ctx: &JSContext) -> Option<LogicTarget> {
 
 /// Logic-context hook: route an lxapp's `fetch` by its appid and policy.
 pub(crate) fn install_logic_fetch_interceptor(ctx: &JSContext) -> JSResult<()> {
+    // Read-only bootstrap gate, bound to this context's app. It grants no
+    // authority to install handlers or alter another app's selection.
+    ctx.global().set(
+        "__lxWaitForDevMocks",
+        JSFunc::new(ctx, |ctx: JSContext| {
+            let target = logic_target(&ctx).map(|target| target.appid);
+            async move {
+                let appid = target.ok_or_else(|| auto_err("dev mocks require an lxapp context"))?;
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                loop {
+                    if registry::with_registry(|routes| routes.mocks.set(&appid).is_some()) {
+                        return Ok(());
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        return Err(auto_err(
+                            "dev mock initialization timed out; Logic was not started",
+                        ));
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+            }
+        })?,
+    )?;
     install_fetch_interceptor(ctx, logic_target)
 }
 

@@ -4,8 +4,8 @@
 //! - `use(file, variant?)` installs a scenario file. Its `http` rules
 //!   become routes of the run; its `function` rules go to the dev session's
 //!   companion under the run's owner (`test:<run>`), above any dev scenario
-//!   there. A run holds one scenario per app: installing another replaces
-//!   it, and the run's end removes it.
+//!   there. A run holds one product scenario: installing another replaces
+//!   both halves, and the run's end removes it.
 //! - `reset()` starts the app's mock handler state over (each spec starts
 //!   fresh), and asks a companion that switches mocks to do the same for
 //!   the run's owner.
@@ -49,7 +49,7 @@ impl JSMockDriver {
     /// Install a scenario file (a `variant` of it) for this lxapp in the
     /// host run: its `http` rules answer Logic `fetch` before the mock
     /// selection, its `function` rules go to the dev session's companion.
-    /// Replaces the scenario the run installed for this app before; the
+    /// Replaces the scenario the run installed before; the
     /// run's end removes it.
     #[js_method(rename = "use")]
     async fn use_scenario(
@@ -107,7 +107,7 @@ impl JSMockDriver {
 }
 
 /// Install `definition` with `variant` for the app, replacing the scenario
-/// this run installed for it before.
+/// this run installed before.
 pub(crate) async fn install(
     ctx: JSContext,
     lxapp: &Weak<LxApp>,
@@ -128,32 +128,64 @@ pub(crate) async fn install(
     let appid = app.appid.clone();
     let label = parsed.resolved.label("scenario");
 
-    // The previous scenario of this run and app stops answering first, so a
-    // failure below leaves nothing of either.
-    let previous =
-        registry::with_registry(|routes| routes.remove_run_scenario(&scope.run_id, &appid));
+    // One product scenario per run, including its shared companion half.
+    let _guard = scope.scenario_lock.lock().await;
+    let attempt = (scope.admit)().map_err(auto_err)?;
+    let previous = registry::with_registry(|routes| {
+        routes
+            .run_scenarios
+            .iter()
+            .find(|scenario| scenario.owner == scope.run_id)
+            .cloned()
+    });
     let functions = parsed.has_function_rules();
-    if functions {
-        use_functions(&owner, &parsed.resolved)
-            .await
-            .map_err(auto_err)?;
+    registry::with_registry(|routes| {
+        routes.scenario_pending.insert(scope.run_id.clone());
+    });
+    let update = if functions {
+        use_functions(&owner, &parsed.resolved).await
     } else if previous.as_ref().is_some_and(|previous| previous.companion) {
-        clear_functions(&owner).await;
+        clear_functions_checked(&owner)
+            .await
+            .map_err(FunctionChangeError::Unknown)
+    } else {
+        Ok(())
+    };
+    if let Err(error) = update {
+        let error = match error {
+            FunctionChangeError::Rejected(message) => {
+                registry::with_registry(|routes| {
+                    routes.scenario_pending.remove(&scope.run_id);
+                });
+                return Err(auto_err(message));
+            }
+            FunctionChangeError::Unknown(message) => message,
+        };
+        // A transport timeout may mean the companion applied the change. Keep
+        // the old HTTP rules, but never let this context continue on that guess.
+        (scope.revoke)(format!("scenario replacement did not complete: {error}"));
+        return Err(HostError::new("E_SCENARIO_STATE_UNKNOWN", error).into());
     }
 
     let mut slot = super::dev::installed(&parsed, None);
     slot.companion = functions;
     let installed = registry::with_registry(|routes| {
-        routes
-            .install_scenario_admitted(&scope.run_id, &appid, slot, parsed.http, || (scope.admit)())
+        routes.install_scenario_admitted(&scope.run_id, &appid, slot, parsed.http, || {
+            let current = (scope.admit)()?;
+            if current != attempt {
+                return Err("scenario attempt ended during installation".into());
+            }
+            Ok(current)
+        })
     });
     let installed = match installed {
         Ok(installed) => installed,
         Err(err) => {
+            (scope.revoke)(format!("scenario installation did not complete: {err}"));
             if functions {
                 clear_functions(&owner).await;
             }
-            return Err(auto_err(err));
+            return Err(HostError::new("E_SCENARIO_STATE_UNKNOWN", err).into());
         }
     };
     Ok(Class::lookup::<JSScenario>(&ctx)?.instance(JSScenario {
@@ -167,30 +199,43 @@ pub(crate) async fn install(
     }))
 }
 
-async fn use_functions(owner: &str, resolved: &Resolved) -> Result<(), String> {
+#[derive(Debug)]
+enum FunctionChangeError {
+    Rejected(String),
+    Unknown(String),
+}
+
+impl FunctionChangeError {
+    fn from_upstream(resolved: &Resolved, error: UpstreamError) -> Self {
+        let message = if error.code == method::UNSUPPORTED {
+            resolved.functions_unsupported(&error.message)
+        } else {
+            resolved.companion_error(&error.code, &error.message, error.data.as_ref())
+        };
+        let message = format!("scenario: {message}");
+        // These protocol rejections guarantee the previous rules still answer.
+        // A disconnect, including `unavailable`, may follow an applied request.
+        if error.code == method::UNSUPPORTED || error.code == "invalid_rules" {
+            Self::Rejected(message)
+        } else {
+            Self::Unknown(message)
+        }
+    }
+}
+
+async fn use_functions(owner: &str, resolved: &Resolved) -> Result<(), FunctionChangeError> {
     if let Some(reason) = companion::unavailable() {
-        return Err(format!(
+        return Err(FunctionChangeError::Rejected(format!(
             "scenario: {}",
             resolved.functions_unsupported(reason)
-        ));
+        )));
     }
-    let params =
-        serde_json::to_value(resolved.companion_use(owner, None)).map_err(|err| err.to_string())?;
-    match companion::request(method::SCENARIO_USE, params).await {
-        Ok(_) => Ok(()),
-        Err(UpstreamError { code, message, .. }) if code == method::UNSUPPORTED => Err(format!(
-            "scenario: {}",
-            resolved.functions_unsupported(&message)
-        )),
-        Err(UpstreamError {
-            code,
-            message,
-            data,
-        }) => Err(format!(
-            "scenario: {}",
-            resolved.companion_error(&code, &message, data.as_ref())
-        )),
-    }
+    let params = serde_json::to_value(resolved.companion_use(owner, None))
+        .map_err(|err| FunctionChangeError::Rejected(err.to_string()))?;
+    companion::request(method::SCENARIO_USE, params)
+        .await
+        .map(|_| ())
+        .map_err(|error| FunctionChangeError::from_upstream(resolved, error))
 }
 
 async fn clear_functions(owner: &str) {
@@ -207,9 +252,7 @@ pub(crate) async fn clear_functions_checked(owner: &str) -> Result<(), String> {
     let params = json!({ "owner": owner, "scenario": {}, "rules": [] });
     match companion::request(method::SCENARIO_USE, params).await {
         Ok(_) => Ok(()),
-        Err(UpstreamError { code, .. }) if code == method::UNSUPPORTED || code == "unavailable" => {
-            Ok(())
-        }
+        Err(UpstreamError { code, .. }) if code == method::UNSUPPORTED => Ok(()),
         Err(UpstreamError { code, message, .. }) => Err(format!("{code}: {message}")),
     }
 }
@@ -492,6 +535,8 @@ impl JSScenario {
     #[js_method]
     async fn unroute(&self, ctx: JSContext) -> JSResult<u32> {
         self.owned(&ctx)?;
+        let scope = run_scope(&ctx)?;
+        let _guard = scope.scenario_lock.lock().await;
         let removed = registry::with_registry(|routes| {
             let installed = routes
                 .scenario(self.id)
@@ -500,6 +545,7 @@ impl JSScenario {
             if !installed {
                 return None;
             }
+            routes.scenario_pending.insert(self.run_id.clone());
             let still = routes
                 .scenario(self.id)
                 .map(|scenario| {
@@ -521,9 +567,50 @@ impl JSScenario {
             .iter()
             .filter(|rule| rule.kind == "function")
             .count();
-        if scenario.companion {
-            clear_functions(&self.owner).await;
+        if scenario.companion
+            && let Err(error) = clear_functions_checked(&self.owner).await
+        {
+            (scope.revoke)(format!("scenario removal did not complete: {error}"));
+            return Err(HostError::new("E_SCENARIO_STATE_UNKNOWN", error).into());
         }
+        registry::with_registry(|routes| {
+            routes.scenario_pending.remove(&self.run_id);
+        });
         Ok((still + functions) as u32)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_atomic_protocol_rejections_preserve_the_previous_scenario() {
+        let parsed = scenario::parse_scenario(
+            &json!({ "rules": [{ "function": "orders.submit", "result": {} }] }),
+            None,
+        )
+        .unwrap();
+        for code in [
+            method::UNSUPPORTED,
+            "invalid_rules",
+            "unavailable",
+            "timeout",
+            "internal_error",
+        ] {
+            let error = FunctionChangeError::from_upstream(
+                &parsed.resolved,
+                UpstreamError {
+                    code: code.into(),
+                    message: "refused".into(),
+                    data: None,
+                },
+            );
+            assert_eq!(
+                matches!(error, FunctionChangeError::Rejected(_)),
+                matches!(code, method::UNSUPPORTED | "invalid_rules"),
+                "{code}: {error:?}"
+            );
+        }
     }
 }
