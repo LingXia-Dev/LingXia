@@ -35,22 +35,43 @@ pub fn package_roots(project_root: &Path) -> Vec<PathBuf> {
     roots
 }
 
-/// The installed `@lingxia/*` packages of the project, first copy of each.
+// Node resolves a package from the closest node_modules, including workspace
+// hoists. Deduplicate only within one importing root, never across lxapps.
+fn resolved_packages(root: &Path) -> Vec<Component> {
+    let mut seen = std::collections::HashSet::new();
+    root.ancestors()
+        .flat_map(compat::installed_packages)
+        .filter(|package| seen.insert(package.name.clone()))
+        .collect()
+}
+
+/// Every installed copy, including different versions in bundled lxapps.
 pub fn project_packages(project_root: &Path) -> Vec<Component> {
     let mut packages: Vec<Component> = Vec::new();
     for root in package_roots(project_root) {
-        for package in compat::installed_packages(&root) {
-            if !packages.iter().any(|known| known.name == package.name) {
-                packages.push(package);
-            }
-        }
+        packages.extend(resolved_packages(&root));
     }
     packages
 }
 
 /// Fail fast on a version skew (or warn under `LINGXIA_ALLOW_SKEW=1`).
 pub fn ensure_project(project_root: &Path, hosts: &[Component]) -> Result<()> {
-    match compat::check(&cli(), hosts, &project_packages(project_root)) {
+    let cli = cli();
+    let mut failures = Vec::new();
+    if let Err(skew) = compat::check(&cli, hosts, &[]) {
+        failures.push(skew.to_string());
+    }
+    for root in package_roots(project_root) {
+        if let Err(skew) = compat::check(&cli, &[], &resolved_packages(&root)) {
+            failures.push(format!("{}: {skew}", root.display()));
+        }
+    }
+    let result = if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("\n"))
+    };
+    match result {
         Ok(()) => Ok(()),
         Err(skew) if compat::skew_allowed() => {
             eprintln!("{} {skew}", "warning:".yellow());
@@ -69,8 +90,10 @@ pub fn print_project_report(project_root: &Path) -> bool {
     if packages.is_empty() {
         println!("  packages  none installed under node_modules/@lingxia (run npm install?)");
     }
-    for package in &packages {
-        println!("  {}", describe(package));
+    for root in package_roots(project_root) {
+        for package in resolved_packages(&root) {
+            println!("  {} [{}]", describe(&package), root.display());
+        }
     }
     let mut ok = match compat::check(&cli, &[], &packages) {
         Ok(()) => {
@@ -117,6 +140,33 @@ mod tests {
     }
 
     #[test]
+    fn hoisted_packages_are_checked_and_nearest_copies_win() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = dir.path().join("apps/demo");
+        std::fs::create_dir_all(&app).unwrap();
+        install(dir.path(), "react", "0.1.0");
+        assert!(
+            resolved_packages(&app)
+                .iter()
+                .any(|p| p.name == "@lingxia/react" && p.version == "0.1.0")
+        );
+        install(&app, "react", "0.2.0");
+        let packages = resolved_packages(&app);
+        assert_eq!(
+            packages
+                .iter()
+                .filter(|p| p.name == "@lingxia/react")
+                .count(),
+            1
+        );
+        assert!(
+            packages
+                .iter()
+                .any(|p| p.name == "@lingxia/react" && p.version == "0.2.0")
+        );
+    }
+
+    #[test]
     fn a_host_project_checks_its_bundled_lxapps_too() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
@@ -138,6 +188,17 @@ mod tests {
         );
         assert_eq!(package_roots(dir.path()).len(), 2);
         assert!(ensure_project(dir.path(), &[]).is_ok());
+
+        // A compatible root copy must not conceal an older bundled copy.
+        install(dir.path(), "react", &format!("{}.{}.7", line.0, line.1));
+        install(&dir.path().join("lxapp"), "react", "0.1.0");
+        let err = ensure_project(dir.path(), &[]).unwrap_err().to_string();
+        assert!(err.contains("@lingxia/react 0.1.0"), "{err}");
+        assert!(
+            err.contains(&dir.path().join("lxapp").display().to_string()),
+            "{err}"
+        );
+        assert_eq!(project_packages(dir.path()).len(), 2);
 
         install(&dir.path().join("lxapp"), "test", "0.1.0");
         let err = ensure_project(dir.path(), &[]).unwrap_err().to_string();

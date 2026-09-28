@@ -48,7 +48,7 @@ pub struct LogsOptions {
     pub limit: usize,
 
     /// Print matching entries as JSONL
-    #[arg(long, conflicts_with = "pretty")]
+    #[arg(long = "jsonl", conflicts_with = "color")]
     pub json: bool,
 
     /// Keep running and stream new matching entries as they are appended
@@ -57,7 +57,7 @@ pub struct LogsOptions {
 
     /// Colorize output by level (TTY decoration; not for machine consumption)
     #[arg(long)]
-    pub pretty: bool,
+    pub color: bool,
 }
 
 struct Filters {
@@ -84,7 +84,7 @@ struct RenderOpts {
 pub fn execute(session: &SessionInfo, options: LogsOptions) -> Result<()> {
     let log_file = Path::new(&session.log_file);
     if options.origins {
-        return list_origins(log_file, options.json || options.pretty, options.pretty);
+        return list_origins(log_file, options.json);
     }
 
     let filters = Filters {
@@ -96,7 +96,7 @@ pub fn execute(session: &SessionInfo, options: LogsOptions) -> Result<()> {
     };
     let render = RenderOpts {
         json: options.json,
-        pretty: options.pretty,
+        pretty: options.color,
         show_origin: options.origin.is_none(),
         show_appid: matches!(session.content, Some(SessionContent::Host { .. })),
     };
@@ -112,7 +112,7 @@ pub fn execute(session: &SessionInfo, options: LogsOptions) -> Result<()> {
     Ok(())
 }
 
-fn list_origins(log_file: &Path, json: bool, pretty: bool) -> Result<()> {
+fn list_origins(log_file: &Path, json: bool) -> Result<()> {
     let mut origins = std::collections::BTreeSet::new();
     for path in existing_log_files(log_file)? {
         let file =
@@ -130,16 +130,10 @@ fn list_origins(log_file: &Path, json: bool, pretty: bool) -> Result<()> {
         }
     }
 
-    if json {
-        let encoded = if pretty {
-            serde_json::to_string_pretty(&origins)
+    for origin in origins {
+        if json {
+            println!("{}", serde_json::to_string(&origin)?);
         } else {
-            serde_json::to_string(&origins)
-        }
-        .context("Failed to encode session origins")?;
-        println!("{encoded}");
-    } else {
-        for origin in origins {
             println!("{origin}");
         }
     }

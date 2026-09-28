@@ -104,6 +104,9 @@ lxdev mock use checkout:empty-cart
 lxdev network status              # who answered each call
 ```
 
+Mock selection, clear, and reset affect the whole session; an app target does
+not narrow that scope. A partial reset fails and reports the unfinished phases.
+
 Everything else: [Mocks](../lxapp/mock.md).
 
 ## `lxdev test`
@@ -113,12 +116,9 @@ profiles, secrets, reports, and exit codes: [Testing](../lxapp/testing.md).
 
 ## `lxdev logs`
 
-The session's JSONL log stream: tail, or `-f` to follow. Filter by origin
-prefix, `--level`, `--path`, `--grep`, or `--app <id>`; `--origins` lists the
-origins; `--json` keeps whole events. `-f` exits when the session ends and
-does not follow a later session. The log (`.lingxia/logs/<session>.jsonl`)
-rotates at 8 MiB and keeps two older files, which `lxdev logs` reads first;
-only the last 10 sessions' logs are kept.
+The session's log stream. Use `lxdev logs --help` for filtering and output
+options. An app filter matches the recorded app id, not the current live app.
+Following ends with this session; it never attaches to a later session.
 
 ## `lxdev desktop`
 
@@ -144,12 +144,11 @@ with `lxapp page click`.
 
 ## Output
 
-- Text by default; `--json` compact, `--pretty` indented.
-- `eval` / `query` always emit JSON; `eval` prints nothing for `null`.
-- Mutating commands print nothing unless `--json`, which returns an
-  acknowledgement with the resolved target.
-- Exit `0` on success. With `--json`/`--pretty`, stderr carries
-  `{error:{code,message,causes,exit_code}}`.
+Use each command's `--help` to choose its machine-readable output. Eval and
+query return JSON; eval emits nothing for `null`. Structured failures retain
+the host error in `error.domain`; inspect it when CLI classification alone
+is insufficient. A nonzero exit can mean partial completion: read the result
+before retrying a mutation.
 
 ## Symptoms
 

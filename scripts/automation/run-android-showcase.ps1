@@ -302,10 +302,10 @@ try {
           Invoke-ProcessRestoreProbe $resultDirectory
           $nativeVideoProbeRan = $true
         }
-        & $lxdev logs --json --limit 5000 |
+        & $lxdev logs --jsonl --limit 5000 |
           Set-Content -LiteralPath (Join-Path $resultDirectory 'session.jsonl') -Encoding utf8
         if ($LASTEXITCODE -ne 0) { throw 'Failed to collect Android session logs.' }
-        $errorLogs = (& $lxdev logs --level error --json --limit 1000 | Out-String).Trim()
+        $errorLogs = (& $lxdev logs --level error --jsonl --limit 1000 | Out-String).Trim()
         if ($LASTEXITCODE -ne 0) { throw 'Failed to inspect Android error logs.' }
         $unexpected = Get-UnexpectedAndroidSessionErrors $errorLogs
         if ($unexpected) {

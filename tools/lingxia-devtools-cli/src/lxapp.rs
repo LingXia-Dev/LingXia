@@ -53,7 +53,7 @@ pub enum LxAppCommand {
     },
     /// Print lxapp runtime summary
     Info {
-        #[arg(default_value = "current")]
+        #[arg(long, default_value = "current")]
         app: String,
         /// Print pretty JSON
         #[arg(long)]
@@ -61,7 +61,7 @@ pub enum LxAppCommand {
     },
     /// Print configured lxapp pages
     Pages {
-        #[arg(default_value = "current")]
+        #[arg(long, default_value = "current")]
         app: String,
         /// Print pretty JSON
         #[arg(long)]
@@ -101,7 +101,7 @@ pub enum LxAppCommand {
     },
     /// Close an lxapp
     Close {
-        #[arg(default_value = "current")]
+        #[arg(long, default_value = "current")]
         app: String,
         /// Print JSON output
         #[arg(long)]
@@ -109,7 +109,7 @@ pub enum LxAppCommand {
     },
     /// Restart an lxapp without rebuilding
     Restart {
-        #[arg(default_value = "current")]
+        #[arg(long, default_value = "current")]
         app: String,
         /// Print JSON output
         #[arg(long)]
@@ -117,7 +117,7 @@ pub enum LxAppCommand {
     },
     /// Uninstall an lxapp and its data
     Uninstall {
-        #[arg(default_value = "current")]
+        #[arg(long, default_value = "current")]
         app: String,
         /// Print JSON output
         #[arg(long)]
@@ -1263,7 +1263,7 @@ mod tests {
 
     #[test]
     fn parses_restart() {
-        let cli = parse_lxapp_cli(args(&["restart", "demo", "--json"])).unwrap();
+        let cli = parse_lxapp_cli(args(&["restart", "--app", "demo", "--json"])).unwrap();
 
         let LxAppCommand::Restart { app, json } = cli.command else {
             panic!("expected restart command");
