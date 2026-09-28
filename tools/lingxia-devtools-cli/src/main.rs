@@ -129,12 +129,14 @@ fn main() {
                 .skip(1)
                 .map(ToString::to_string)
                 .collect::<Vec<_>>();
+            let domain = command_error_domain(&err);
             let envelope = serde_json::json!({
                 "error": {
                     "code": code,
                     "message": err.to_string(),
                     "causes": causes,
                     "exit_code": exit_code,
+                    "domain": domain,
                 }
             });
             let encoded = if pretty_errors {
@@ -272,9 +274,44 @@ fn run() -> Result<()> {
     }
 }
 
+fn command_error_domain(error: &anyhow::Error) -> Option<serde_json::Value> {
+    error.chain().find_map(|cause| cause.downcast_ref::<client::CommandError>())
+        .map(|error| serde_json::json!({ "code": error.code, "message": error.message, "data": error.data }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn json_errors_preserve_domains_through_context_layers() {
+        let error = anyhow::Error::new(client::CommandError {
+            code: "E_NOT_FOUND".into(),
+            message: "page disposed".into(),
+            data: Some(serde_json::json!({ "instanceId": "p-7" })),
+        })
+        .context("query page")
+        .context("command failed");
+        let domain = command_error_domain(&error).unwrap();
+        assert_eq!(domain["code"], "E_NOT_FOUND");
+        assert_eq!(domain["data"]["instanceId"], "p-7");
+        assert!(command_error_domain(&anyhow::anyhow!("plain error")).is_none());
+    }
+
+    #[test]
+    fn application_selectors_and_log_formats_have_one_spelling() {
+        for args in [
+            vec!["lxdev", "lxapp", "info", "--app", "home"],
+            vec!["lxdev", "logs", "--jsonl"],
+            vec!["lxdev", "logs", "--color"],
+        ] {
+            assert!(Cli::try_parse_from(&args).is_ok(), "{args:?}");
+        }
+        assert!(Cli::try_parse_from(["lxdev", "logs", "--json"]).is_err());
+        assert!(Cli::try_parse_from(["lxdev", "logs", "--pretty"]).is_err());
+        assert!(Cli::try_parse_from(["lxdev", "logs", "--jsonl", "--color"]).is_err());
+        assert!(Cli::try_parse_from(["lxdev", "lxapp", "info", "home"]).is_err());
+    }
+
     #[test]
     fn remote_control_options_are_not_exposed() {
         assert!(Cli::try_parse_from(["lxdev", "attach", "ws://host:39000"]).is_err());

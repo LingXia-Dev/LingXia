@@ -43,8 +43,8 @@ enum RecordCommand {
         /// Only record URLs matching this glob (or /regex/flags)
         #[arg(long = "match", value_name = "GLOB")]
         matcher: Option<String>,
-        /// Target lxapp (default: the home lxapp, else the current one)
-        #[arg(long)]
+        /// Target lxapp id, or current
+        #[arg(long = "app", default_value = "current")]
         appid: Option<String>,
         /// Print JSON output
         #[arg(long)]
@@ -295,7 +295,7 @@ pub(crate) fn print_last_cleared(status: &Value) {
     );
 }
 
-/// The host's warning about the request, such as an unknown `--appid`.
+/// The host's warning about the request, such as an unknown `--app`.
 pub(crate) fn print_warning(status: &Value) {
     if let Some(warning) = status["warning"].as_str() {
         eprintln!("{} {warning}", "warning".yellow().bold());
