@@ -1542,9 +1542,6 @@ export interface DeviceState {
   landscape: boolean;
   /** Simulated system appearance of the device screen. */
   appearance: "system" | "light" | "dark";
-  /** Whether the simulated host capsule is enabled (the setting, not
-   * per-device visibility: desktop presets draw no phone chrome either way). */
-  capsule: boolean;
 }
 
 export interface DeviceSetOptions {
@@ -1555,8 +1552,6 @@ export interface DeviceSetOptions {
   landscape?: boolean;
   /** Simulated appearance; omit to keep. */
   appearance?: "system" | "light" | "dark";
-  /** Show (`true`) or hide (`false`) the simulated host capsule; omit to keep. */
-  capsule?: boolean;
 }
 
 /**

@@ -86,16 +86,6 @@ pub struct DeviceState {
     /// Simulated system appearance of the device screen.
     #[serde(default = "Appearance::default_system")]
     pub appearance: Appearance,
-    /// Whether the simulated host capsule is enabled. This is the setting, not
-    /// per-device visibility: a desktop preset draws no phone chrome either
-    /// way. Defaults to true — the capsule is real host chrome for every
-    /// non-home lxapp, so hiding it is the opt-in.
-    #[serde(default = "default_capsule")]
-    pub capsule: bool,
-}
-
-fn default_capsule() -> bool {
-    true
 }
 
 /// Host-provided controller for switching the simulated device. Implemented by
@@ -112,7 +102,6 @@ pub trait DeviceController: Send + Sync {
         id: Option<&str>,
         landscape: Option<bool>,
         appearance: Option<Appearance>,
-        capsule: Option<bool>,
     ) -> Result<DeviceState, String>;
 }
 
@@ -192,10 +181,9 @@ pub async fn device_set(
     id: Option<&str>,
     landscape: Option<bool>,
     appearance: Option<Appearance>,
-    capsule: Option<bool>,
 ) -> Result<DeviceState, String> {
     let id = id.map(str::to_owned);
-    crate::executor::spawn(async move { change_device(id, landscape, appearance, capsule).await })
+    crate::executor::spawn(async move { change_device(id, landscape, appearance).await })
         .await
         .map_err(|error| format!("device transition failed: {error}"))?
 }
@@ -203,7 +191,7 @@ pub async fn device_set(
 /// Native UI entry: never block a platform's main thread waiting for Logic.
 pub fn request_device_set(id: String, landscape: Option<bool>) {
     std::mem::drop(crate::executor::spawn(async move {
-        if let Err(error) = device_set(Some(&id), landscape, None, None).await {
+        if let Err(error) = device_set(Some(&id), landscape, None).await {
             crate::error!("Runner device change failed: {error}");
         }
     }));
@@ -213,10 +201,9 @@ async fn apply_device(
     id: Option<String>,
     landscape: Option<bool>,
     appearance: Option<Appearance>,
-    capsule: Option<bool>,
 ) -> Result<DeviceState, String> {
     tokio::task::spawn_blocking(move || {
-        device_controller()?.set(id.as_deref(), landscape, appearance, capsule)
+        device_controller()?.set(id.as_deref(), landscape, appearance)
     })
     .await
     .map_err(|error| format!("device controller failed: {error}"))?
@@ -239,7 +226,6 @@ async fn change_device(
     id: Option<String>,
     landscape: Option<bool>,
     appearance: Option<Appearance>,
-    capsule: Option<bool>,
 ) -> Result<DeviceState, String> {
     let _change = DEVICE_CHANGE.lock().await;
     let (previous, target_group) = tokio::task::spawn_blocking({
@@ -262,7 +248,7 @@ async fn change_device(
     .await
     .map_err(|error| error.to_string())??;
     if (previous.group == "desktop") == (target_group == "desktop") {
-        return apply_device(id, landscape, appearance, capsule).await;
+        return apply_device(id, landscape, appearance).await;
     }
 
     let pause = CreationPause::begin();
@@ -285,13 +271,12 @@ async fn change_device(
         failures.extend(resume_apps(&apps).await);
         return Err(failures.join("; "));
     }
-    let applied = apply_device(id, landscape, appearance, capsule).await;
+    let applied = apply_device(id, landscape, appearance).await;
     if applied.is_err()
         && let Err(error) = apply_device(
             Some(previous.id),
             Some(previous.landscape),
             Some(previous.appearance),
-            Some(previous.capsule),
         )
         .await
     {

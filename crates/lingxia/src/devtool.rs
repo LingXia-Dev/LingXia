@@ -622,7 +622,6 @@ pub async fn lxapp_dev_restart(
                             Some(&device.id),
                             Some(device.landscape),
                             Some(device.appearance),
-                            Some(device.capsule),
                         )
                         .await
                         .map_err(|error| {
