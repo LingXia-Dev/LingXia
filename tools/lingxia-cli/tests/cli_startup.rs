@@ -53,20 +53,53 @@ fn skill_install_writes_the_skill_and_refreshes_a_stale_pointer() {
             .unwrap()
     };
 
+    let legacy = home.join(".claude/skills/lingxia");
+    std::fs::create_dir_all(&legacy).unwrap();
+    std::fs::write(legacy.join("SKILL.md"), "old").unwrap();
     let output = install(&["skill", "install"]);
     assert!(
         output.status.success(),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(home.join(".claude/skills/lingxia/SKILL.md").is_file());
+    assert!(home.join(".agents/skills/lingxia/SKILL.md").is_file());
+    assert!(!legacy.exists());
     let agents = std::fs::read_to_string(project.join("AGENTS.md")).unwrap();
     assert!(agents.contains("run `lingxia skill install`."), "{agents}");
     assert!(!agents.contains("--user"), "{agents}");
+    assert!(
+        agents.contains("~/.agents/skills/lingxia/SKILL.md"),
+        "{agents}"
+    );
 
     let again = install(&["skill", "install"]);
     assert!(again.status.success());
     assert!(String::from_utf8_lossy(&again.stdout).contains("is current"));
+
+    // A normal command also migrates an old install and refreshes its pointer.
+    std::fs::remove_dir_all(home.join(".agents/skills/lingxia")).unwrap();
+    std::fs::create_dir_all(&legacy).unwrap();
+    std::fs::write(legacy.join("SKILL.md"), "old").unwrap();
+    std::fs::write(
+        project.join("AGENTS.md"),
+        format!("{MARKER}\n~/.claude/skills/lingxia/SKILL.md\n{MARKER}\n"),
+    )
+    .unwrap();
+    let synced = install(&["auth", "status", "--json"]);
+    assert!(
+        synced.status.success(),
+        "{}",
+        String::from_utf8_lossy(&synced.stderr)
+    );
+    serde_json::from_slice::<serde_json::Value>(&synced.stdout)
+        .expect("sync must not pollute JSON output");
+    assert!(!legacy.exists());
+    assert!(home.join(".agents/skills/lingxia/SKILL.md").is_file());
+    assert!(
+        std::fs::read_to_string(project.join("AGENTS.md"))
+            .unwrap()
+            .contains("~/.agents/skills/lingxia/SKILL.md")
+    );
 
     // Clean break: the flag the stale pointer named is not accepted.
     assert!(!install(&["skill", "install", "--user"]).status.success());

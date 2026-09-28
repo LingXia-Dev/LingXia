@@ -209,7 +209,7 @@ enum DevAction {
 
 #[derive(Subcommand)]
 enum SkillAction {
-    /// Write the skill to ~/.claude/skills/lingxia and refresh this project's
+    /// Write the skill to ~/.agents/skills/lingxia and refresh this project's
     /// AGENTS.md pointer
     Install,
 }
