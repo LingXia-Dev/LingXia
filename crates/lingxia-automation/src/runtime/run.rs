@@ -39,7 +39,8 @@ pub(crate) struct RunShared {
     inner: Arc<Mutex<RunInner>>,
     log_ring: Mutex<VecDeque<String>>,
     /// The isolated profile this run owns, if any, and its teardown.
-    profile: RunProfileSlot,
+    profile: Arc<RunProfileSlot>,
+    companion_owner_touched: AtomicBool,
     teardown: TeardownFn,
     spawn: SpawnFn,
     quarantine: Arc<Quarantine>,
@@ -87,7 +88,8 @@ impl RunShared {
             last_contact: Mutex::new(Instant::now()),
             cancel_error: Mutex::new(None),
             log_ring: Mutex::new(VecDeque::new()),
-            profile: RunProfileSlot::new(None),
+            profile: Arc::new(RunProfileSlot::new(None)),
+            companion_owner_touched: AtomicBool::new(false),
             teardown: super::profile::DEFAULT_TEARDOWN,
             spawn: super::profile::DEFAULT_SPAWN,
             quarantine: Arc::default(),
@@ -118,7 +120,7 @@ impl RunShared {
         spawn: SpawnFn,
         quarantine: Arc<Quarantine>,
     ) -> Self {
-        self.profile = RunProfileSlot::new(profile);
+        self.profile = Arc::new(RunProfileSlot::new(profile));
         self.teardown = teardown;
         self.spawn = spawn;
         self.quarantine = quarantine;
@@ -127,6 +129,21 @@ impl RunShared {
 
     pub fn profile(&self) -> Option<&AutomationProfile> {
         self.profile.profile()
+    }
+
+    pub(crate) fn mark_companion_owner_touched(&self) {
+        self.companion_owner_touched.store(true, Ordering::SeqCst);
+    }
+
+    fn profile_finish(&self) -> ProfileFinish {
+        ProfileFinish {
+            profile: self.profile.clone(),
+            inner: self.inner.clone(),
+            run_id: self.run_id.clone(),
+            teardown: self.teardown,
+            spawn: self.spawn,
+            quarantine: self.quarantine.clone(),
+        }
     }
 
     /// `Running` until the run completely finished, teardown included.
@@ -307,14 +324,21 @@ impl RunShared {
         crate::network::clear_run(&self.run_id);
         crate::clock::clear_run(&self.run_id);
         crate::dialogs::clear_run(&self.run_id);
-        let inner = self.inner.clone();
-        self.profile.begin_teardown(
-            &self.run_id,
-            self.teardown,
-            self.spawn,
-            &self.quarantine,
-            Box::new(move |teardown| complete(&inner, teardown)),
-        );
+        if !self.companion_owner_touched.load(Ordering::SeqCst) {
+            self.profile_finish().run(Ok(()));
+            return true;
+        }
+        let job = self.profile_finish();
+        let started = std::thread::Builder::new()
+            .name("lingxia-test-companion-clear".to_string())
+            .spawn(move || {
+                let cleanup = clear_companion_owner(&job.run_id);
+                job.run(cleanup);
+            });
+        if started.is_err() {
+            self.profile_finish()
+                .run(Err("companion cleanup could not start".into()));
+        }
         true
     }
 
@@ -375,15 +399,74 @@ impl RunShared {
     }
 }
 
-/// The teardown finished: publish the ending, made a failure when the app
-/// could not be returned to its own data.
-fn complete(inner: &Mutex<RunInner>, teardown: Result<(), String>) {
+/// Profile teardown, detached from the run so it can start once the
+/// companion cleanup outcome is known.
+struct ProfileFinish {
+    profile: Arc<RunProfileSlot>,
+    inner: Arc<Mutex<RunInner>>,
+    run_id: String,
+    teardown: TeardownFn,
+    spawn: SpawnFn,
+    quarantine: Arc<Quarantine>,
+}
+
+impl ProfileFinish {
+    fn run(self, cleanup: Result<(), String>) {
+        let inner = self.inner;
+        self.profile.begin_teardown(
+            &self.run_id,
+            self.teardown,
+            self.spawn,
+            &self.quarantine,
+            Box::new(move |teardown| complete(&inner, teardown, cleanup)),
+        );
+    }
+}
+
+fn clear_companion_owner(run_id: &str) -> Result<(), String> {
+    if crate::network::companion::upstream().is_none() {
+        return Err("the dev session connection ended before cleanup was confirmed".to_string());
+    }
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("companion cleanup runtime: {err}"))?;
+    // The timer must be created inside the runtime it runs on.
+    runtime
+        .block_on(async {
+            tokio::time::timeout(
+                Duration::from_secs(20),
+                crate::network::clear_test_owner(run_id),
+            )
+            .await
+        })
+        .map_err(|_| "companion owner cleanup timed out".to_string())?
+}
+
+/// The teardown finished: publish the ending, made a failure when the
+/// companion or the app's own data could not be restored.
+fn complete(inner: &Mutex<RunInner>, teardown: Result<(), String>, cleanup: Result<(), String>) {
     let mut inner = inner.lock().unwrap_or_else(|err| err.into_inner());
     let Some(ending) = inner.ending.take() else {
         return;
     };
     let mut state = ending.state;
     let mut error = ending.error;
+    if let Err(message) = cleanup {
+        let cleanup_error = AutomationRunError {
+            name: "CompanionCleanupError".to_string(),
+            message: format!("the test companion owner was not confirmed clear: {message}"),
+            stack: None,
+            causes: Vec::new(),
+        };
+        match &mut error {
+            Some(error) => error.causes.push(cleanup_error),
+            None => error = Some(cleanup_error),
+        }
+        if state == AutomationRunState::Succeeded {
+            state = AutomationRunState::InternalError;
+        }
+    }
     if let Err(message) = teardown {
         let teardown_error = AutomationRunError {
             name: "ProfileTeardownError".to_string(),
@@ -503,6 +586,25 @@ fn validate_attachment_name(name: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Runs on a plain thread, as at run end: no ambient Tokio runtime.
+    #[test]
+    fn companion_cleanup_runs_without_an_ambient_runtime() {
+        use crate::network::companion::{Upstream, set_upstream};
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        let upstream: Upstream = Arc::new(move |method: &str, _| {
+            log.lock().unwrap().push(method.to_string());
+            Box::pin(async { Ok(serde_json::json!({})) })
+        });
+        set_upstream(Some(upstream));
+        let result = std::thread::spawn(|| clear_companion_owner("run-cleanup"))
+            .join()
+            .expect("cleanup must not panic");
+        set_upstream(None);
+        assert_eq!(result, Ok(()));
+        assert_eq!(seen.lock().unwrap().len(), 2);
+    }
 
     fn shared() -> RunShared {
         RunShared::new("run".into(), Duration::from_secs(60))

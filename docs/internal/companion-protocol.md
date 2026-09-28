@@ -164,11 +164,11 @@ Exactly as for `http` rules:
 - `dev`: installed by `lxdev mock use`. The dev server clears it when the
   runtime connection drops (a dev scenario fails closed, like its HTTP half),
   and `lxdev mock use` of a file without `function` rules clears it.
-- `test:<run id>`: installed by `t.scenario.use()` in that run; one per run,
-  replaced by the next `t.scenario.use()` and emptied (`scenario.use` with no
-  rules) at the spec's end. When a run starts while `dev` has rules, the dev
-  server installs the run's owner empty right away. It clears the owner when
-  it sees the run reach a terminal state.
+- `test:<run id>`: the host installs an empty owner and waits for its
+  acknowledgement before evaluating test JavaScript. `t.scenario.use()`
+  replaces its rules; the spec's end empties them. The dev server clears the
+  owner when it sees the run reach a terminal state, including when startup
+  acknowledgement was lost. Cleanup failure stops later test starts.
 - A test owner sits above `dev`, even when empty: while one exists, `dev`
   rules stand aside (only the test owner's rules answer; a call they do not
   match goes to the mock selection), and `dev` answers again once the test
@@ -243,7 +243,7 @@ the layer is the highest active owner with entries (`test:…`, `dev`,
 `{ "reset": false, "reason": "…" }`.
 
 Start mock handler memory over (a fresh module instance), for the owner's
-calls when one is named. Sent at each spec start of a test run
+calls when one is named. Sent before a test run's code starts and at each of its spec starts
 (`owner: "test:<run id>"`) and by `lxdev mock reset` (`owner: "dev"`). A
 companion that cannot do it cheaply answers `false` with a reason; LingXia
 prints it once per run and goes on.
@@ -256,10 +256,10 @@ owner: from then until it is dropped, `dev` stands aside.
 - `dev`: set by `lxdev mock all|none`. The dev server drops it
   (`mock.set { owner: "dev", mode: "default" }`) on `lxdev mock reset` and
   when the runtime connection drops, like a dev scenario.
-- `test:<run id>`: created at the run's first spec (`mock.reset`) and set by
-  the run's own selection; the dev server drops it
-  (`mock.set { owner, mode: "default" }`) when it sees the run reach a
-  terminal state.
+- `test:<run id>`: the host creates it (`mock.reset`) before any test code
+  runs and drops it (`mock.set { owner, mode: "default" }`) at run end; the
+  run's own selection sets it in between. The dev server repeats the drop
+  when it sees the run reach a terminal state.
 - Handler memory is not preserved across a run: after a run the dev
   handlers may start fresh.
 

@@ -23,8 +23,8 @@ pub use manager::AutomationRuntime;
 pub mod network {
     pub use crate::network::companion::{Upstream, UpstreamError, UpstreamFuture, set_upstream};
     pub use crate::network::dev::{
-        clear_scenario, mock_load, mock_reset, mock_set, mock_status, mock_unload, mocks_ready,
-        pause_scenario, record_start, record_stop, resume_scenario, session_ended,
+        clear_scenario, mock_baseline, mock_load, mock_reset, mock_set, mock_status, mock_unload,
+        mocks_ready, pause_scenario, record_start, record_stop, resume_scenario, session_ended,
         session_starting, status, use_scenario, use_scenario_generation,
     };
 }

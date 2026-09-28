@@ -1214,6 +1214,50 @@ ${{error && error.stack}}` }});
         });
     }
 
+    /// Rong streams a body without a Content-Length and cannot clone it.
+    #[test]
+    fn captures_a_chunked_response_the_runtime_cannot_clone() {
+        use std::io::{Read, Write};
+        let _serial = serial();
+        const APP: &str = "network-interceptor-chunked";
+        const OWNER: &str = "network-interceptor-chunked-run";
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            let Some(Ok(mut stream)) = listener.incoming().next() else {
+                return;
+            };
+            let _ = stream.read(&mut [0u8; 4096]);
+            let _ = stream.write_all(
+                b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
+                  transfer-encoding: chunked\r\nconnection: close\r\n\r\n\
+                  7\r\n{\"id\":1\r\n1\r\n}\r\n0\r\n\r\n",
+            );
+        });
+        registry::with_registry(|routes| {
+            routes.begin_run(OWNER);
+            routes.captures.enable(OWNER, APP, 1024, || true)
+        })
+        .unwrap();
+        let script: &'static str = Box::leak(
+            format!(
+                r#"(async () => {{
+              const response = await fetch('{base}/chunked');
+              return JSON.stringify({{ body: await response.json(), url: response.url }});
+            }})()"#
+            )
+            .into_boxed_str(),
+        );
+        let out: Value = serde_json::from_str(&eval_with_interceptor(APP, OWNER, script)).unwrap();
+        assert_eq!(out["body"]["id"], 1, "{out}");
+        assert!(out["url"].as_str().unwrap().ends_with("/chunked"), "{out}");
+        let log = registry::with_registry(|routes| routes.captures.responses(OWNER, APP, 0));
+        assert_eq!(log.len(), 1);
+        assert_eq!(log[0].body.as_deref(), Some(r#"{"id":1}"#));
+        assert!(!log[0].body_truncated);
+        clear_run(OWNER);
+    }
+
     #[test]
     fn unwatched_calls_reach_the_natives_and_wrapping_is_idempotent() {
         let rt = tokio::runtime::Builder::new_current_thread()

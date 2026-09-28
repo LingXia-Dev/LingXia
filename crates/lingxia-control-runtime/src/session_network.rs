@@ -82,6 +82,9 @@ pub(crate) fn handle(handler: &str, args: Option<Value>) -> Result<Option<Value>
             .map(Some)
             .map_err(|err| format!("(usage): {err}")),
         method::MOCK_READY => {
+            if args.get("baseline").is_some() {
+                network::mock_baseline(mode_arg(&args, "baseline")?);
+            }
             network::mocks_ready();
             Ok(Some(json!({ "ready": true })))
         }

@@ -91,6 +91,18 @@ impl AutomationRuntime {
     }
 
     pub fn start(&self, args: AutomationStartArgs) -> Result<AutomationStartResponse, String> {
+        self.start_with_profile(args, || Ok(None), |_| {})
+    }
+
+    /// Admit a run before preparing its data profile. The slot stays held
+    /// through preparation, submission and rollback, so a rejected start
+    /// cannot switch the app or consume a staged seed.
+    pub fn start_with_profile(
+        &self,
+        mut args: AutomationStartArgs,
+        prepare: impl FnOnce() -> Result<Option<super::profile::AutomationProfile>, String>,
+        rollback: impl FnOnce(super::profile::AutomationProfile),
+    ) -> Result<AutomationStartResponse, String> {
         if args.source.is_empty() {
             return Err("automation source must not be empty".to_string());
         }
@@ -127,13 +139,18 @@ impl AutomationRuntime {
             .quarantine
             .admit(self.inner.teardown, self.inner.spawn)?;
 
+        let profile = match args.profile.take() {
+            Some(profile) => Some(profile),
+            None => prepare()?,
+        };
+
         let shared = Arc::new(
             RunShared::new(
                 uuid::Uuid::new_v4().to_string(),
                 Duration::from_millis(timeout_ms),
             )
             .with_profile(
-                args.profile,
+                profile.clone(),
                 self.inner.teardown,
                 self.inner.spawn,
                 self.inner.quarantine.clone(),
@@ -148,10 +165,12 @@ impl AutomationRuntime {
             args: args.args,
             control: args.control,
         };
-        self.inner
-            .sender
-            .send(request)
-            .map_err(|_| "automation runtime executor is unavailable".to_string())?;
+        if self.inner.sender.send(request).is_err() {
+            if let Some(profile) = profile {
+                rollback(profile);
+            }
+            return Err("automation runtime executor is unavailable".to_string());
+        }
         state.active = Some(shared.clone());
         Ok(AutomationStartResponse {
             run_id: shared.run_id.clone(),
@@ -475,6 +494,43 @@ async fn run_on_worker(runtime: Arc<RuntimeInner>, js_runtime: JSRuntime, reques
     let shared = request.shared;
     let mut cancel_rx = shared.cancel_receiver();
     let ctx = js_runtime.context();
+
+    if crate::network::companion::upstream().is_some() {
+        shared.mark_companion_owner_touched();
+    }
+
+    let prepared = tokio::select! {
+        biased;
+        _ = cancel_rx.wait_for(|cancelled| *cancelled) => {
+            shared.finalize(AutomationRunState::Cancelled, shared.take_cancel_error(), None);
+            teardown(&ctx).await;
+            note_worker_recovered(&runtime);
+            return;
+        }
+        result = tokio::time::timeout(
+            shared.remaining(),
+            crate::network::prepare_test_owner(&shared.run_id),
+        ) => result,
+    };
+    match prepared {
+        Ok(Ok(())) => {}
+        Ok(Err(message)) => {
+            shared.finalize(
+                AutomationRunState::InternalError,
+                Some(internal_error(message)),
+                None,
+            );
+            teardown(&ctx).await;
+            note_worker_recovered(&runtime);
+            return;
+        }
+        Err(_) => {
+            shared.finalize(AutomationRunState::TimedOut, None, None);
+            teardown(&ctx).await;
+            note_worker_recovered(&runtime);
+            return;
+        }
+    }
 
     if let Err(err) =
         context::init_automation_context(&ctx, &shared, &request.args, &request.control)
@@ -1106,14 +1162,18 @@ mod tests {
         assert!(runtime.active().is_none(), "the slot itself is free");
 
         let refused = runtime
-            .start(AutomationStartArgs {
-                source: "true".to_string(),
-                source_name: None,
-                timeout_ms: Some(5_000),
-                args: HashMap::new(),
-                control: HashMap::new(),
-                profile: None,
-            })
+            .start_with_profile(
+                AutomationStartArgs {
+                    source: "true".to_string(),
+                    source_name: None,
+                    timeout_ms: Some(5_000),
+                    args: HashMap::new(),
+                    control: HashMap::new(),
+                    profile: None,
+                },
+                || panic!("a refused run must not prepare a profile"),
+                |_| {},
+            )
             .expect_err("no run while the app may still use the profile");
         assert!(
             refused.starts_with("automation_profile_unrecovered"),

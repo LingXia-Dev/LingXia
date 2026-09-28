@@ -23,6 +23,49 @@ mod test_scenario;
 
 pub(crate) use test_scenario::{JSMockDriver, JSScenario};
 
+/// Establish the test owner before its first line of JavaScript runs. An
+/// empty owner keeps dev Function rules from answering during the run.
+pub(crate) async fn prepare_test_owner(run_id: &str) -> Result<(), String> {
+    let owner = lingxia_control_protocol::scenario::test_owner(run_id);
+    test_scenario::clear_functions_checked(&owner)
+        .await
+        .map_err(|err| format!("could not prepare the test Function owner: {err}"))?;
+    use lingxia_control_protocol::methods::session::companion as method;
+    // `{ reset: false }` (a `shared` companion) still creates the owner.
+    match companion::request(method::MOCK_RESET, serde_json::json!({ "owner": owner })).await {
+        Ok(_) => Ok(()),
+        Err(err) if err.code == method::UNSUPPORTED => Ok(()),
+        Err(err) => Err(format!(
+            "could not prepare the test Function mock owner: {}: {}",
+            err.code, err.message
+        )),
+    }
+}
+
+/// Clear both companion overlays at run end. The host owns this transition;
+/// CLI terminal observation is only an idempotent fallback.
+pub(crate) async fn clear_test_owner(run_id: &str) -> Result<(), String> {
+    use lingxia_control_protocol::methods::session::companion as method;
+    let owner = lingxia_control_protocol::scenario::test_owner(run_id);
+    let (scenario, mock) = tokio::join!(
+        companion::request(
+            method::SCENARIO_CLEAR,
+            serde_json::json!({ "owner": owner.clone() }),
+        ),
+        companion::request(
+            method::MOCK_SET,
+            serde_json::json!({ "owner": owner, "mode": "default" }),
+        ),
+    );
+    let confirmed = |phase: &str, result: Result<Value, companion::UpstreamError>| match result {
+        Ok(_) => Ok(()),
+        Err(err) if err.code == method::UNSUPPORTED && companion::upstream().is_some() => Ok(()),
+        Err(err) => Err(format!("{phase}: {}: {}", err.code, err.message)),
+    };
+    confirmed("scenario clear", scenario)?;
+    confirmed("mock owner drop", mock)
+}
+
 use crate::auto_err;
 use crate::resolve::{json_to_js, upgrade_authorized};
 use lxapp::LxApp;
@@ -298,21 +341,53 @@ impl JSNetworkDriver {
     }
 
     /// Captured responses of the app in this run, oldest first; `{ since }`
-    /// skips entries up to that `seq`.
+    /// skips entries up to that `seq`. `{ waitMs }` first waits (bounded) for
+    /// calls already in flight; one still unfinished is read next time.
     #[js_method]
     async fn responses(&self, ctx: JSContext, options: Optional<JSValue>) -> JSResult<JSValue> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let scope = run_scope(&ctx)?;
-        let since = match options.0.and_then(JSValue::into_object) {
-            None => 0,
-            Some(object) => object
-                .get_opt::<_, f64>("since")?
-                .filter(|since| *since > 0.0)
-                .map_or(0, |since| since as u64),
+        if !(scope.live)() {
+            return Err(auto_err(
+                "the automation run that owns this driver has ended",
+            ));
+        }
+        let (since, wait_ms) = match options.0.and_then(JSValue::into_object) {
+            None => (0, 0),
+            Some(object) => {
+                let since = object
+                    .get_opt::<_, f64>("since")?
+                    .filter(|since| *since > 0.0)
+                    .map_or(0, |since| since as u64);
+                let wait = object.get_opt::<_, f64>("waitMs")?.unwrap_or(0.0);
+                if !wait.is_finite() || wait.fract() != 0.0 || !(0.0..=3000.0).contains(&wait) {
+                    return Err(auto_err("responses waitMs must be an integer in 0..=3000"));
+                }
+                (since, wait as u64)
+            }
         };
+        if wait_ms > 0 {
+            let pending =
+                registry::with_registry(|routes| routes.calls.pending_contract_ids(&app.appid));
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait_ms);
+            while tokio::time::Instant::now() < deadline
+                && registry::with_registry(|routes| routes.calls.pending_contract_count(&pending))
+                    > 0
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        }
+        // Each loss is reported once; later reads go on.
         let entries = registry::with_registry(|routes| {
-            routes.captures.responses(&scope.run_id, &app.appid, since)
-        });
+            if routes.calls.take_incomplete_contract(&app.appid) {
+                return Err(
+                    "captured responses are incomplete: the call log evicted an unfinished response"
+                        .to_string(),
+                );
+            }
+            routes.captures.read(&scope.run_id, &app.appid, since)
+        })
+        .map_err(auto_err)?;
         let list: Vec<Value> = entries
             .into_iter()
             .map(|entry| {
@@ -887,8 +962,8 @@ fn parse_sse_item(value: &Value, last: bool) -> Result<SseStep, String> {
 ///   `[id, record, contract]`: `record` asks for the real response body
 ///   whatever its type (a recording), `contract` for the status and content
 ///   type of what the app receives and its body when JSON (a contract
-///   capture). Either way the body is read once, here, and the app gets an
-///   equivalent buffered `Response`.
+///   capture). A buffered body is read from a clone; a streamed one is read
+///   once and the app gets an equivalent buffered `Response`.
 /// - `decide(method, url, headersJson, body, bodyOverflow, id)` returns
 ///   `undefined` to pass through, a fulfillment record, `{ sse }` (a
 ///   `text/event-stream` answer, held open while `holds(hold)`), `{ patch }`
@@ -915,6 +990,8 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
   const holds = host.holds;
   const bodyLimit = host.bodyLimit;
   const binaryLimit = host.binaryLimit;
+  const textLimit = host.textLimit;
+  const contractLimit = host.contractLimit;
   const ResponseCtor = globalThis.Response;
   const RequestCtor = globalThis.Request;
   const HeadersCtor = globalThis.Headers;
@@ -980,25 +1057,42 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
   const typeOf = function (response) {
     try { return String(response.headers.get('content-type') || '').toLowerCase(); } catch (_) { return ''; }
   };
-  // The one place a response body is read for the Rust side: read it once,
-  // settle the call with it, and hand the app an equivalent Response. A
-  // recording takes any body (event streams and large binary bodies are only
-  // noted); a contract capture only a JSON one. Anything else is settled
-  // without reading, and the app gets its response untouched.
+  // A buffered body is observed through a clone, so the app's fetch is not
+  // delayed. Rong cannot clone a streamed body (no or a large Content-Length):
+  // that one is read once and the app gets an equivalent buffered Response.
+  // Bodies are read with text()/arrayBuffer(), which undo Content-Encoding.
   const consume = function (id, response, url, watch) {
     const status = response.status;
     const type = typeOf(response);
+    const contractJson = watch.contract && JSON_TYPE.test(type);
     let isText = true;
     let note = null;
+    const declared = Number(response.headers.get('content-length'));
     if (watch.record) {
       isText = textual(type);
-      const declared = Number(response.headers.get('content-length'));
       if (type.indexOf('text/event-stream') === 0) note = 'event stream body not recorded; write an sse answer';
       else if (!isText && declared > binaryLimit) note = 'binary body of ' + declared + ' bytes not recorded';
+      else if (/(?:ndjson|json-seq)/.test(type) || (type.indexOf('text/plain') === 0 && !declared)) {
+        note = 'streaming body not recorded';
+      }
     }
-    const read = watch.record ? note === null : watch.contract && JSON_TYPE.test(type);
+    let read = watch.record ? note === null : contractJson;
+    if (read && declared > (contractJson ? contractLimit : isText ? textLimit : binaryLimit)) {
+      read = false;
+      note = 'body exceeds capture limit';
+    }
     if (!read) {
       try { settle(id, status, null, type, null, note); } catch (_) {}
+      return response;
+    }
+    let copy = null;
+    try { copy = response.clone(); } catch (_) {}
+    if (copy !== null) {
+      (isText ? copy.text() : copy.arrayBuffer()).then(function (body) {
+        try { settle(id, status, null, type, body, null); } catch (_) {}
+      }, function (error) {
+        try { settle(id, status, null, type, null, 'body observation failed: ' + errorText(error)); } catch (_) {}
+      });
       return response;
     }
     return (isText ? response.text() : response.arrayBuffer()).then(function (body) {
@@ -1711,6 +1805,8 @@ fn interceptor_host(ctx: &JSContext, resolve: Resolve) -> JSResult<JSObject> {
     host.set("active", JSFunc::new(ctx, registry::any_active)?)?;
     host.set("bodyLimit", registry::MAX_REQUEST_BODY_BYTES as f64)?;
     host.set("binaryLimit", capture::MAX_BINARY_BODY_BYTES as f64)?;
+    host.set("textLimit", capture::MAX_TEXT_BODY_BYTES as f64)?;
+    host.set("contractLimit", capture::MAX_CAPTURE_BODY_BYTES as f64)?;
     let decide_target = resolve.clone();
     host.set(
         "decide",

@@ -75,40 +75,27 @@ fn handle_session_test_command_impl(
         methods::session::test::START => {
             let args: TestStartArgs = parse(handler, args)?;
             let runtime = runtime()?;
-            let profile = if session_profile::wants_isolation(args.profile.as_ref()) {
-                // Refuse before touching the app: a held slot must not cost
-                // the running test its data.
-                if let Some(active) = runtime.active() {
-                    return Err(format!(
-                        "{RUN_IN_PROGRESS}: run {} is active",
-                        active.run_id
-                    ));
-                }
-                Some(session_profile::enter(
-                    args.profile
+            let profile_args = args
+                .profile
+                .filter(|profile| session_profile::wants_isolation(Some(profile)));
+            let started = runtime.start_with_profile(
+                AutomationStartArgs {
+                    source: args.source,
+                    source_name: args.source_name,
+                    timeout_ms: args.timeout_ms,
+                    args: args.args,
+                    control: args.control,
+                    profile: None,
+                },
+                || {
+                    profile_args
                         .as_ref()
-                        .expect("isolation implies profile args"),
-                )?)
-            } else {
-                None
-            };
-            let started = runtime.start(AutomationStartArgs {
-                source: args.source,
-                source_name: args.source_name,
-                timeout_ms: args.timeout_ms,
-                args: args.args,
-                control: args.control,
-                profile: profile.clone(),
-            });
-            let response = match started {
-                Ok(response) => response,
-                Err(err) => {
-                    if let Some(profile) = profile {
-                        session_profile::abandon(profile);
-                    }
-                    return Err(err);
-                }
-            };
+                        .map(session_profile::enter)
+                        .transpose()
+                },
+                session_profile::abandon,
+            );
+            let response = started?;
             respond(TestStartResponse {
                 run_id: response.run_id,
                 state: TestRunState::Running,
