@@ -90,6 +90,16 @@ impl DevServerState {
             .and_then(|params| params.get("mode"))
             .and_then(serde_json::Value::as_str)
             == Some("default");
+        let _scenario_guard = matches!(forward, protocol::USE | protocol::CLEAR).then(|| {
+            self.companion_scenario_lock
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+        });
+        let _mock_guard = matches!(forward, mock::SET | mock::RESET).then(|| {
+            self.companion_mock_lock
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+        });
         match link.request(forward, params, COMPANION_TIMEOUT) {
             Ok(result) => {
                 if let Some(owner) = owner {
@@ -97,8 +107,10 @@ impl DevServerState {
                         self.lock_companion_owners().insert(owner);
                     } else if forward == protocol::CLEAR {
                         self.lock_companion_owners().remove(&owner);
+                        self.note_companion_cleanup("scenario", &owner, true);
                     } else if forward == mock::SET && dropping {
                         self.lock_companion_mock_owners().remove(&owner);
+                        self.note_companion_cleanup("mock", &owner, true);
                     } else if forward == mock::SET || forward == mock::RESET {
                         // A run's owner exists from its first spec's reset.
                         self.lock_companion_mock_owners().insert(owner);
@@ -130,71 +142,112 @@ impl DevServerState {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    pub(super) fn companion_cleanup_error(&self) -> Option<String> {
+        let failed = self
+            .companion_cleanup_failed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if failed.is_empty() {
+            None
+        } else {
+            let mut owners: Vec<_> = failed.iter().cloned().collect();
+            owners.sort();
+            Some(format!(
+                "companion cleanup was not confirmed for {}; restart the dev session before starting another test",
+                owners.join(", ")
+            ))
+        }
+    }
+
+    /// Only a test owner's leftovers can change a later run's precedence.
+    fn note_companion_cleanup(&self, kind: &str, owner: &str, success: bool) {
+        if !owner.starts_with("test:") {
+            return;
+        }
+        let mut failed = self
+            .companion_cleanup_failed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let key = format!("{kind}:{owner}");
+        if success {
+            failed.remove(&key);
+        } else {
+            failed.insert(key);
+        }
+    }
+
     /// Drop `owner`'s mock selection in the companion if it holds one: its
-    /// test run ended, or (for `dev`) the runtime connection dropped. Off
-    /// the calling thread.
+    /// test run ended, or (for `dev`) the runtime connection dropped.
+    /// Keep ownership until the companion confirms the change.
     pub(super) fn drop_companion_mock_owner(&self, owner: String) {
-        if !self.lock_companion_mock_owners().remove(&owner) {
+        let _mock_guard = self
+            .companion_mock_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let tracked = self.lock_companion_mock_owners().contains(&owner);
+        if !tracked && !owner.starts_with("test:") {
             return;
         }
         let Some(link) = self.companion.get().cloned() else {
             return;
         };
-        std::thread::spawn(move || {
-            let params = serde_json::json!({ "owner": owner, "mode": "default" });
-            if let Err(error) = link.request(mock::SET, Some(params), COMPANION_TIMEOUT) {
+        if !link.supports(capabilities::MOCK) {
+            return;
+        }
+        let params = serde_json::json!({ "owner": owner, "mode": "default" });
+        match link.request(mock::SET, Some(params), COMPANION_TIMEOUT) {
+            Ok(_) => {
+                self.lock_companion_mock_owners().remove(&owner);
+                self.note_companion_cleanup("mock", &owner, true);
+            }
+            Err(error) => {
+                // Untracked: the host cleared it already, or it never existed.
+                if tracked {
+                    self.note_companion_cleanup("mock", &owner, false);
+                }
                 eprintln!(
                     "[lingxia dev] could not drop the companion's mock selection for {owner}: {}",
                     error.message
                 );
             }
-        });
-    }
-
-    /// A test run started while a dev scenario has `function` rules: give
-    /// the run an empty owner, which sits above `dev`, so the dev rules
-    /// stand aside until the run ends — as its `http` rules do.
-    pub(super) fn hide_companion_dev_scenario(&self, owner: String) {
-        if !self
-            .lock_companion_owners()
-            .contains(lingxia_control_protocol::scenario::DEV_OWNER)
-        {
-            return;
         }
-        let Some(link) = self.companion.get().cloned() else {
-            return;
-        };
-        self.lock_companion_owners().insert(owner.clone());
-        std::thread::spawn(move || {
-            let params = serde_json::json!({ "owner": owner, "scenario": {}, "rules": [] });
-            if let Err(error) = link.request(protocol::USE, Some(params), COMPANION_TIMEOUT) {
-                eprintln!(
-                    "[lingxia dev] could not set the dev scenario's function rules aside for {owner}: {}",
-                    error.message
-                );
-            }
-        });
     }
 
     /// Clear `owner`'s rules in the companion if it has any: its test run
-    /// ended, or (for `dev`) the runtime connection dropped. Off the calling
-    /// thread, which may be the connection's reader.
+    /// ended, or (for `dev`) the runtime connection dropped. Keep ownership
+    /// until the companion confirms removal.
     pub(super) fn clear_companion_owner(&self, owner: String) {
-        if !self.lock_companion_owners().remove(&owner) {
+        let _scenario_guard = self
+            .companion_scenario_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let tracked = self.lock_companion_owners().contains(&owner);
+        if !tracked && !owner.starts_with("test:") {
             return;
         }
         let Some(link) = self.companion.get().cloned() else {
             return;
         };
-        std::thread::spawn(move || {
-            let params = serde_json::json!({ "owner": owner });
-            if let Err(error) = link.request(protocol::CLEAR, Some(params), COMPANION_TIMEOUT) {
+        if !link.supports(capabilities::SCENARIO_FUNCTION) {
+            return;
+        }
+        let params = serde_json::json!({ "owner": owner });
+        match link.request(protocol::CLEAR, Some(params), COMPANION_TIMEOUT) {
+            Ok(_) => {
+                self.lock_companion_owners().remove(&owner);
+                self.note_companion_cleanup("scenario", &owner, true);
+            }
+            Err(error) => {
+                // Untracked: the host cleared it already, or it never existed.
+                if tracked {
+                    self.note_companion_cleanup("scenario", &owner, false);
+                }
                 eprintln!(
                     "[lingxia dev] could not clear the companion's scenario for {owner}: {}",
                     error.message
                 );
             }
-        });
+        }
     }
 }
 
@@ -360,28 +413,13 @@ mod tests {
         // Clearing an owner with nothing installed sends nothing.
         state.clear_companion_owner("dev".into());
 
-        // A dev scenario with function rules stands aside during a run.
-        state.hide_companion_dev_scenario("test:run-2".into());
-        assert!(
-            !state.lock_companion_owners().contains("test:run-2"),
-            "no dev scenario, nothing to hide"
-        );
+        // The host initializes its test owner before evaluating test code.
         let dev = serde_json::json!({ "owner": "dev", "scenario": {}, "rules": [{ "function": "f", "result": 1 }] });
         result_of(state.companion_reply("8".into(), method::SCENARIO_USE, Some(dev)));
-        state.hide_companion_dev_scenario("test:run-2".into());
+        let empty = serde_json::json!({ "owner": "test:run-2", "scenario": {}, "rules": [] });
+        result_of(state.companion_reply("9".into(), method::SCENARIO_USE, Some(empty)));
         assert!(state.lock_companion_owners().contains("test:run-2"));
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        let requests = loop {
-            let text = std::fs::read_to_string(&log).unwrap_or_default();
-            if text.lines().count() >= 4 {
-                break text;
-            }
-            assert!(
-                std::time::Instant::now() < deadline,
-                "the hiding owner never arrived: {text}"
-            );
-            std::thread::sleep(Duration::from_millis(20));
-        };
+        let requests = std::fs::read_to_string(&log).unwrap();
         let hidden: serde_json::Value =
             serde_json::from_str(requests.lines().nth(3).unwrap()).unwrap();
         assert_eq!(hidden["method"], protocol::USE);
@@ -495,6 +533,56 @@ mod tests {
             "unknown Function"
         );
         assert!(!state.lock_companion_owners().contains("dev"));
+        drop(companion);
+    }
+
+    #[test]
+    fn failed_cleanup_keeps_owner_and_blocks_later_test_start() {
+        let root = tempfile::tempdir().unwrap();
+        let companion = companion(
+            root.path(),
+            r#"["requests","scenario.function","mock"]"#,
+            r#""error":{"code":"temporary","message":"companion unavailable"}"#,
+        );
+        let state = state();
+        let _ = state.companion.set(companion.link());
+        state.lock_companion_owners().insert("test:old".into());
+        state.lock_companion_mock_owners().insert("test:old".into());
+
+        state.clear_companion_owner("test:old".into());
+        state.drop_companion_mock_owner("test:old".into());
+
+        assert!(state.lock_companion_owners().contains("test:old"));
+        assert!(state.lock_companion_mock_owners().contains("test:old"));
+        let reason = state
+            .companion_cleanup_error()
+            .expect("cleanup must gate a later run");
+        assert!(reason.contains("scenario:test:old"));
+        assert!(reason.contains("mock:test:old"));
+        drop(companion);
+    }
+
+    #[test]
+    fn terminal_cleanup_reaches_preflight_owners_even_if_ack_was_lost() {
+        let root = tempfile::tempdir().unwrap();
+        let companion = companion(
+            root.path(),
+            r#"["requests","scenario.function","mock"]"#,
+            r#""result":{"cleared":true}"#,
+        );
+        let state = state();
+        let _ = state.companion.set(companion.link());
+        state.clear_companion_owner("test:unknown".into());
+        state.drop_companion_mock_owner("test:unknown".into());
+        assert!(state.companion_cleanup_error().is_none());
+        let requests = std::fs::read_to_string(root.path().join("requests.log")).unwrap();
+        let calls: Vec<serde_json::Value> = requests
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0]["method"], protocol::CLEAR);
+        assert_eq!(calls[1]["method"], mock::SET);
         drop(companion);
     }
 }
