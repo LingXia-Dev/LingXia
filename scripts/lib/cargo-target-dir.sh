@@ -16,10 +16,12 @@ resolve_cargo_target_dir() {
 
   local cargo_bin="${CARGO_BIN:-cargo}" metadata target_dir
   metadata="$("$cargo_bin" metadata --no-deps --format-version 1 --manifest-path "$manifest_path")"
+  # The last sed unescapes JSON Windows separators (C:\\t -> C:\t).
   target_dir="$(
     printf '%s\n' "$metadata" |
       sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p' |
-      head -n 1
+      head -n 1 |
+      sed 's/\\\\/\\/g'
   )"
 
   if [[ -n "$target_dir" ]]; then

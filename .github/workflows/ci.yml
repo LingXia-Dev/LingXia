@@ -1467,10 +1467,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-
       - name: Cache npm
         uses: actions/cache@v4
         with:
@@ -1505,6 +1501,14 @@ jobs:
         run: |
           npm run test:types --workspace @lingxia/react
           npm run test:components --workspace @lingxia/vue
+
+      # Its lxapp bundle builds through the CLI (`build:lxapp`), which the
+      # showcase host build covers; only its JS checks run here.
+      - name: Check terminal settings themes and i18n
+        working-directory: packages
+        run: |
+          npm run check:themes --workspace @lingxia/terminal-settings
+          npm test --workspace @lingxia/terminal-settings
 
       # A page mounts once its first state arrives; the page hooks read it.
       - name: Test the page runtime and page hooks

@@ -194,6 +194,9 @@ if [[ "$PUBLISH" -eq 1 ]]; then
 fi
 
 BUILT_ASSETS=()
+# shellcheck source=../lib/cargo-target-dir.sh
+source "$ROOT_DIR/scripts/lib/cargo-target-dir.sh"
+CARGO_TARGET_BASE="$(resolve_cargo_target_dir "$ROOT_DIR")"
 
 for platform in "${TARGETS[@]}"; do
   read -r rust_target slug ext <<< "$(cli_target_info "$platform")"
@@ -209,7 +212,7 @@ for platform in "${TARGETS[@]}"; do
   fi
 
   for bin in "${CLI_BINS[@]}"; do
-    bin_src="$ROOT_DIR/target/$rust_target/release/${bin}${ext}"
+    bin_src="$CARGO_TARGET_BASE/$rust_target/release/${bin}${ext}"
     asset_out="$OUT_DIR/${bin}-${slug}${ext}"
     [[ -f "$bin_src" ]] || {
       echo "ERROR: binary not found: $bin_src" >&2

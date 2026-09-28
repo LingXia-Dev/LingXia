@@ -35,8 +35,12 @@ if [[ "$profile" != "debug" && "$profile" != "release" ]]; then
   exit 2
 fi
 
+# shellcheck source=../lib/cargo-target-dir.sh
+source "$repo_root/scripts/lib/cargo-target-dir.sh"
+built_dir=""
 if [[ -z "$dest" ]]; then
-  dest="$repo_root/target/$profile"
+  built_dir="$(resolve_cargo_target_dir "$repo_root")/$profile"
+  dest="$built_dir"
 fi
 
 exe=""
@@ -131,7 +135,7 @@ echo "Building lingxia + lxdev from this checkout ($profile)..." >&2
   fi
 )
 mkdir -p "$dest"
-built_dir="$repo_root/target/$profile"
+[[ -n "$built_dir" ]] || built_dir="$(resolve_cargo_target_dir "$repo_root")/$profile"
 if [[ "$(cd "$dest" && pwd)" != "$(cd "$built_dir" && pwd)" ]]; then
   cp "$built_dir/lingxia$exe" "$lingxia"
   cp "$built_dir/lxdev$exe" "$lxdev"

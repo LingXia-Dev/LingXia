@@ -61,9 +61,12 @@ let projectRoot = findProjectRoot()
 let buildConfig = ProcessInfo.processInfo.environment["LINGXIA_BUILD_CONFIG"] ?? "release"
 let runnerTargetTriple = ProcessInfo.processInfo.environment["RUNNER_TARGET_TRIPLE"]?.lowercased()
 let cargoTargetDir: String = {
-    if let explicit = ProcessInfo.processInfo.environment["LINGXIA_CARGO_TARGET_DIR"],
-       !explicit.isEmpty {
-        return URL(fileURLWithPath: explicit).standardizedFileURL.path
+    let env = ProcessInfo.processInfo.environment
+    for key in ["LINGXIA_CARGO_TARGET_DIR", "CARGO_TARGET_DIR"] {
+        if let explicit = env[key], !explicit.isEmpty {
+            return URL(fileURLWithPath: explicit, relativeTo: URL(fileURLWithPath: projectRoot))
+                .standardizedFileURL.path
+        }
     }
     return "\(projectRoot)/target"
 }()

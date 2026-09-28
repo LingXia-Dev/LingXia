@@ -22,7 +22,8 @@ lingxia-control-commands = { workspace = true, features = ["desktop-local"] }
 tungstenite = { version = "0.30", features = ["native-tls"] }
 owo-colors = "4.4"
 base64 = { workspace = true }
-ctrlc = "3.5"
+# `termination`: SIGTERM/SIGHUP take the Ctrl-C path, so a killed run is cancelled.
+ctrlc = { version = "3.5", features = ["termination"] }
 sha2 = "0.11"
 # `--openapi` / `--covers-manifest` files may be YAML.
 serde_yaml_ng = "0.10"
