@@ -173,6 +173,19 @@ pub fn pause_scenario(recover: bool) -> Result<u64, String> {
     })
 }
 
+/// Abandon the paused transition `generation`: the active scenario stays and
+/// Logic network calls are admitted again. A stale generation changes nothing.
+pub fn resume_scenario(generation: u64) -> Result<(), String> {
+    registry::with_registry(|routes| {
+        if routes.dev_scenario_generation != generation
+            || !routes.scenario_pending.remove(DEV_SESSION_OWNER)
+        {
+            return Err("scenario transaction expired or was cleared".to_string());
+        }
+        Ok(())
+    })
+}
+
 /// Remove the dev scenario (`lxdev mock clear`). Returns whether one was
 /// installed.
 pub fn clear_scenario() -> bool {
@@ -411,20 +424,33 @@ pub fn mocks_ready() {
     MOCK_BOOTSTRAP.send_replace(false);
 }
 
-pub(crate) async fn wait_for_mocks() -> Result<(), String> {
-    wait_for_bootstrap(MOCK_BOOTSTRAP.subscribe()).await
+/// The dev server is still loading mocks: re-arm waiting Logic's deadline.
+fn mock_bootstrap_progress() {
+    MOCK_BOOTSTRAP.send_if_modified(|pending| *pending);
 }
 
-async fn wait_for_bootstrap(mut state: tokio::sync::watch::Receiver<bool>) -> Result<(), String> {
-    tokio::time::timeout(std::time::Duration::from_secs(30), async {
-        while *state.borrow_and_update() {
-            if state.changed().await.is_err() {
-                break;
+/// Longest silence from the dev server while mocks are pending. It bounds a
+/// stalled server, not the number of apps it loads.
+const MOCK_BOOTSTRAP_IDLE: std::time::Duration = std::time::Duration::from_secs(30);
+
+pub(crate) async fn wait_for_mocks() -> Result<(), String> {
+    wait_for_bootstrap(MOCK_BOOTSTRAP.subscribe(), MOCK_BOOTSTRAP_IDLE).await
+}
+
+async fn wait_for_bootstrap(
+    mut state: tokio::sync::watch::Receiver<bool>,
+    idle: std::time::Duration,
+) -> Result<(), String> {
+    while *state.borrow_and_update() {
+        match tokio::time::timeout(idle, state.changed()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(_)) => break,
+            Err(_) => {
+                return Err("dev mock initialization timed out; Logic was not started".to_string());
             }
         }
-    })
-    .await
-    .map_err(|_| "dev mock initialization timed out; Logic was not started".to_string())
+    }
+    Ok(())
 }
 
 // --------------------------------- mocks ---------------------------------
@@ -441,6 +467,7 @@ pub fn mock_load(
     config: Option<&Value>,
     baseline: Option<MockMode>,
 ) -> Result<Value, String> {
+    mock_bootstrap_progress();
     let generation = registry::with_registry(|routes| {
         let generation = routes.mocks.load(appid, source, keys, config)?;
         match baseline {
@@ -555,13 +582,15 @@ pub(crate) fn run_calls(since_ms: u64, limit: Option<usize>, secrets: &[String])
 mod bootstrap_tests {
     use super::*;
 
+    const IDLE: std::time::Duration = MOCK_BOOTSTRAP_IDLE;
+
     #[tokio::test]
     async fn bootstrap_waits_for_a_signal_and_offline_launches_do_not_wait() {
         let (signal, state) = tokio::sync::watch::channel(false);
-        wait_for_bootstrap(state.clone()).await.unwrap();
+        wait_for_bootstrap(state.clone(), IDLE).await.unwrap();
         for _ in 0..2 {
             signal.send_replace(true);
-            let waiting = wait_for_bootstrap(state.clone());
+            let waiting = wait_for_bootstrap(state.clone(), IDLE);
             tokio::pin!(waiting);
             assert!(
                 tokio::time::timeout(std::time::Duration::from_millis(5), &mut waiting)
@@ -572,7 +601,26 @@ mod bootstrap_tests {
             // release startup. A reconnect opens a fresh gate.
             signal.send_replace(false);
             waiting.await.unwrap();
-            wait_for_bootstrap(state.clone()).await.unwrap();
+            wait_for_bootstrap(state.clone(), IDLE).await.unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn bootstrap_progress_rearms_the_deadline_and_silence_expires_it() {
+        let idle = std::time::Duration::from_millis(80);
+        let (signal, state) = tokio::sync::watch::channel(true);
+        let waiting = tokio::spawn(wait_for_bootstrap(state.clone(), idle));
+        // Several loads, together longer than one idle window, keep it waiting.
+        for _ in 0..4 {
+            tokio::time::sleep(idle / 2).await;
+            signal.send_if_modified(|pending| *pending);
+        }
+        assert!(!waiting.is_finished());
+        signal.send_replace(false);
+        waiting.await.unwrap().unwrap();
+
+        signal.send_replace(true);
+        let error = wait_for_bootstrap(state, idle).await.unwrap_err();
+        assert!(error.contains("timed out"), "{error}");
     }
 }

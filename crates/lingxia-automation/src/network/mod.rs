@@ -90,16 +90,32 @@ pub(crate) fn clear_run(run_id: &str) {
     registry::with_registry(|routes| routes.clear_run(run_id));
 }
 
+/// The run's scenario lock, when `ctx` is a host automation context.
+pub(crate) fn scenario_lock(ctx: &JSContext) -> Option<Arc<tokio::sync::Mutex<()>>> {
+    ctx.get_state::<NetworkRunScope>()
+        .map(|scope| scope.scenario_lock.clone())
+}
+
 /// Remove the routes and scenarios attempt `attempt` of `run_id` installed,
 /// including a scenario's `function` rules in the companion. Resolves how
 /// many of each; a scenario the companion could not clear is an error.
-pub(crate) async fn reclaim_attempt(run_id: &str, attempt: u64) -> Result<(usize, usize), String> {
-    let (routes, scenarios) = registry::with_registry(|registry| {
-        let result = registry.reclaim_attempt(run_id, attempt);
-        if result.1.iter().any(|scenario| scenario.companion) {
-            registry.scenario_pending.insert(run_id.to_string());
-        }
-        result
+/// `lock` is the run's scenario lock: a late install from the abandoned spec
+/// settles before this touches the scenario or its admission.
+pub(crate) async fn reclaim_attempt(
+    lock: Option<Arc<tokio::sync::Mutex<()>>>,
+    run_id: &str,
+    attempt: u64,
+) -> Result<(usize, usize), String> {
+    let _guard = match &lock {
+        Some(lock) => Some(lock.lock().await),
+        None => None,
+    };
+    let (routes, scenarios, owns_pending) = registry::with_registry(|registry| {
+        let (routes, scenarios) = registry.reclaim_attempt(run_id, attempt);
+        // Pending set by a failed transition stays: only its clear reopens it.
+        let owns_pending = scenarios.iter().any(|scenario| scenario.companion)
+            && registry.scenario_pending.insert(run_id.to_string());
+        (routes, scenarios, owns_pending)
     });
     let owner = lingxia_control_protocol::scenario::test_owner(run_id);
     for scenario in scenarios.iter().filter(|scenario| scenario.companion) {
@@ -112,7 +128,7 @@ pub(crate) async fn reclaim_attempt(run_id: &str, attempt: u64) -> Result<(usize
                 )
             })?;
     }
-    if scenarios.iter().any(|scenario| scenario.companion) {
+    if owns_pending {
         registry::with_registry(|registry| {
             registry.scenario_pending.remove(run_id);
         });

@@ -183,7 +183,7 @@ mod interceptor {
     const RUN: &str = "network-interceptor-run";
 
     /// Tests that count the process call log take turns.
-    fn serial() -> std::sync::MutexGuard<'static, ()> {
+    pub(super) fn serial() -> std::sync::MutexGuard<'static, ()> {
         static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
         SERIAL
             .lock()
@@ -2577,5 +2577,92 @@ mod scenarios {
         let text = scenario.to_string();
         assert!(!text.contains("s3cr3t"), "{text}");
         assert_eq!(scenario["rules"][0]["body"], "key=***");
+    }
+}
+
+mod reclaim {
+    use super::super::scenario::parse_scenario;
+    use super::super::*;
+    use serde_json::json;
+
+    fn install_companion_scenario(run_id: &str) {
+        let file = json!({ "name": "fn", "rules": [{ "http": "GET **/reclaim", "json": {} }] });
+        let scenario = parse_scenario(&file, None).unwrap();
+        let mut slot = super::super::dev::installed(&scenario, None);
+        slot.companion = true;
+        // Not begun as a run: its pending state then blocks no other test.
+        registry::with_registry(|routes| {
+            routes
+                .install_scenario_admitted(run_id, "app", slot, scenario.http, || Ok(Some(1)))
+                .unwrap();
+        });
+    }
+
+    fn pending(run_id: &str) -> bool {
+        registry::with_registry(|routes| routes.scenario_pending.contains(run_id))
+    }
+
+    fn serialized(test: impl std::future::Future<Output = ()>) {
+        let _serial = super::interceptor::serial();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap()
+            .block_on(test);
+    }
+
+    #[test]
+    fn reclaim_waits_for_an_inflight_install_and_keeps_its_pending_state() {
+        serialized(reclaim_waits());
+    }
+
+    async fn reclaim_waits() {
+        let run_id = "reclaim-waits-run";
+        install_companion_scenario(run_id);
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        // A late install holds the lock with its transition pending.
+        let install = lock.clone().lock_owned().await;
+        registry::with_registry(|routes| routes.scenario_pending.insert(run_id.into()));
+
+        let reclaiming = tokio::spawn(reclaim_attempt(Some(lock.clone()), run_id, 1));
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        assert!(
+            !reclaiming.is_finished(),
+            "reclaim must wait for the install"
+        );
+        assert_eq!(
+            registry::with_registry(|routes| routes
+                .run_scenarios
+                .iter()
+                .filter(|scenario| scenario.owner == run_id)
+                .count()),
+            1
+        );
+
+        // The install ended with an unknown outcome: its pending state stays.
+        drop(install);
+        assert_eq!(reclaiming.await.unwrap().unwrap(), (0, 1));
+        assert!(
+            pending(run_id),
+            "only the transition that set it reopens it"
+        );
+        registry::with_registry(|routes| routes.clear_run(run_id));
+    }
+
+    #[test]
+    fn reclaim_reopens_admission_it_closed_itself() {
+        serialized(reclaim_reopens());
+    }
+
+    async fn reclaim_reopens() {
+        let run_id = "reclaim-own-run";
+        install_companion_scenario(run_id);
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        assert_eq!(
+            reclaim_attempt(Some(lock), run_id, 1).await.unwrap(),
+            (0, 1)
+        );
+        assert!(!pending(run_id));
+        registry::with_registry(|routes| routes.clear_run(run_id));
     }
 }

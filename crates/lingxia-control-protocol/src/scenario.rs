@@ -887,6 +887,14 @@ pub mod companion {
     /// [`RuleErrors`].
     pub const INVALID_RULES: &str = "invalid_rules";
 
+    /// Whether a failed `scenario.*` request left the owner's previous rules
+    /// answering: no companion, a refusal before dispatch, or an atomic
+    /// rule rejection. Any other failure may follow an applied request.
+    pub fn left_previous_rules(code: &str) -> bool {
+        use crate::methods::session::companion::{NOT_SENT, UNSUPPORTED};
+        matches!(code, UNSUPPORTED | NOT_SENT | INVALID_RULES)
+    }
+
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     pub struct ScenarioRef {
         #[serde(default, skip_serializing_if = "Option::is_none")]

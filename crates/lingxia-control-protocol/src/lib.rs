@@ -195,6 +195,9 @@ pub mod methods {
             pub const SCENARIO_CLEAR: &str = "session.network.scenario.clear";
             /// Refuse new Logic network calls until scenario use/clear commits.
             pub const SCENARIO_PAUSE: &str = "session.network.scenario.pause";
+            /// Abandon the paused transition `{ generation }`, keeping the
+            /// active scenario, and admit Logic network calls again.
+            pub const SCENARIO_RESUME: &str = "session.network.scenario.resume";
             /// The dev scenario and recording, if any, and the scenario
             /// cleared last (`lastCleared: { reason, clearedAt, … }`).
             pub const STATUS: &str = "session.network.status";

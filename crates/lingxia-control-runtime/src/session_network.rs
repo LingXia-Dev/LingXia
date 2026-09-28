@@ -58,6 +58,13 @@ pub(crate) fn handle(handler: &str, args: Option<Value>) -> Result<Option<Value>
             let generation = network::pause_scenario(args["recover"] == true)?;
             Ok(Some(json!({ "paused": true, "generation": generation })))
         }
+        method::SCENARIO_RESUME => {
+            let generation = args["generation"]
+                .as_u64()
+                .ok_or("(usage): generation is required")?;
+            network::resume_scenario(generation)?;
+            Ok(Some(json!({ "resumed": true })))
+        }
         method::SCENARIO_CLEAR => Ok(Some(json!({ "cleared": network::clear_scenario() }))),
         method::STATUS => Ok(Some(network::status())),
         method::RECORD_START => {
@@ -375,6 +382,46 @@ mod tests {
             handle(method::STATUS, None).unwrap().unwrap()["active"],
             false
         );
+    }
+
+    #[test]
+    fn resume_abandons_a_rejected_transition_and_keeps_the_scenario() {
+        let _serial = serial();
+        handle(method::SCENARIO_CLEAR, None).unwrap();
+        let generation = |paused: Option<Value>| paused.unwrap()["generation"].clone();
+        let first = generation(handle(method::SCENARIO_PAUSE, None).unwrap());
+        handle(
+            method::SCENARIO_USE,
+            Some(json!({
+                "appid": "resume-scenario-app", "scenario": { "rules": [{ "http": "GET **/kept", "status": 200 }] },
+                "generation": first,
+            })),
+        )
+        .unwrap();
+        let second = generation(handle(method::SCENARIO_PAUSE, None).unwrap());
+        assert_eq!(
+            handle(method::STATUS, None).unwrap().unwrap()["transitionPending"],
+            true
+        );
+        // A stale generation cannot reopen someone else's transition.
+        assert!(
+            handle(
+                method::SCENARIO_RESUME,
+                Some(json!({ "generation": first }))
+            )
+            .is_err()
+        );
+        handle(
+            method::SCENARIO_RESUME,
+            Some(json!({ "generation": second })),
+        )
+        .unwrap();
+        let status = handle(method::STATUS, None).unwrap().unwrap();
+        assert_eq!(status["transitionPending"], false);
+        assert_eq!(status["active"], true);
+        // The next transition pauses without a recover.
+        handle(method::SCENARIO_PAUSE, None).unwrap();
+        handle(method::SCENARIO_CLEAR, None).unwrap();
     }
 }
 

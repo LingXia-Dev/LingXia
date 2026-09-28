@@ -72,11 +72,6 @@ pub fn build(
     }
 
     let bundle = bundler.render_bundle(options.release)?;
-    let bundle = if options.dev_session {
-        format!("(async () => {{ await globalThis.__lxWaitForDevMocks?.();\n{bundle}\n}})()")
-    } else {
-        bundle
-    };
     let output_path = project.output_dir.join(logic_entry);
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)?;
@@ -696,7 +691,18 @@ fn rewrite_module_source(
             }
             Statement::ExportNamedDeclaration(export_decl) => {
                 for specifier in &export_decl.specifiers {
-                    if specifier.export_kind == ImportOrExportKind::Type {
+                    if export_decl.export_kind == ImportOrExportKind::Type
+                        || specifier.export_kind == ImportOrExportKind::Type
+                    {
+                        continue;
+                    }
+                    // `export { T }` of a type-only import has no runtime value.
+                    let local = module_export_name(&specifier.local);
+                    if imports.iter().any(|import| {
+                        import.bindings.iter().any(|binding| {
+                            binding.type_only && Some(&binding.local) == local.as_ref()
+                        })
+                    }) {
                         continue;
                     }
                     exports.push((
@@ -1733,6 +1739,35 @@ mod tests {
         let bundle = build_test_bundle(temp.path(), "entry.ts");
         assert!(
             bundle.contains("`# Title\n\n## Section\nbody\n`"),
+            "{bundle}"
+        );
+    }
+
+    #[test]
+    fn type_only_reexports_emit_no_runtime_export() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("types.ts"),
+            "export interface Chart { x: number }\nexport interface Point { y: number }\n",
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("entry.ts"),
+            "import type { Chart, Point } from './types';\nexport type { Chart };\nexport { Point };\nexport const beta = 3;\n",
+        )
+        .unwrap();
+
+        let bundle = build_test_bundle(temp.path(), "entry.ts");
+        assert!(
+            !bundle.contains("__lx_module_exports[\"Chart\"]"),
+            "{bundle}"
+        );
+        assert!(
+            !bundle.contains("__lx_module_exports[\"Point\"]"),
+            "{bundle}"
+        );
+        assert!(
+            bundle.contains("__lx_module_exports[\"beta\"] = beta;"),
             "{bundle}"
         );
     }
