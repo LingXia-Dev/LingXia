@@ -2190,22 +2190,22 @@ fn poll_until_terminal(
                                 .unwrap_or(DEFAULT_CASE_TIMEOUT)
                                 + Duration::from_secs(27)
                         });
+                    // The display name carries the repeat ordinal, so a retry
+                    // replaces its own execution, not an earlier repeat.
                     let same = |case: &StreamedCase| {
-                        id.as_ref()
-                            .map(|id| case.record["id"].as_str() == Some(id))
-                            .unwrap_or(case.full_name == *full_name)
+                        case.full_name == *full_name
+                            && id
+                                .as_ref()
+                                .is_none_or(|id| case.record["id"].as_str() == Some(id))
                     };
-                    // `--repeat-each` lists one entry per execution: fill the
-                    // next unstarted one. A retry reuses its finished entry.
                     let index = streamed
                         .iter()
                         .position(|case| {
-                            same(case)
-                                && case.status.is_none()
-                                && case.record["started"] != true
-                                && case.full_name == *full_name
+                            same(case) && case.status.is_none() && case.record["started"] != true
                         })
                         .or_else(|| streamed.iter().position(same));
+                    // Fresh per attempt: a retry must not inherit the finished
+                    // attempt's status or error.
                     let record = json!({ "id": id.as_deref().unwrap_or(full_name), "file": file, "line": line, "started": true });
                     let case = StreamedCase {
                         record,
@@ -3112,6 +3112,12 @@ fn write_partial_report(
             if let (Some(target), Some(record)) = (value.as_object_mut(), case.record.as_object()) {
                 target.extend(record.clone());
             }
+            // Normalize whichever steps won the merge to the report schema.
+            let steps = normalized_steps(
+                value["steps"].as_array().map(Vec::as_slice).unwrap_or(&[]),
+                status,
+            );
+            value["steps"] = json!(steps);
             value
         })
         .collect::<Vec<_>>();
@@ -3151,6 +3157,58 @@ fn write_partial_report(
     write(&path, &serde_json::to_vec_pretty(&envelope)?)
         .with_context(|| format!("failed to write {}", path.display()))?;
     Ok(())
+}
+
+/// Event-only recovery has less evidence than an in-framework report, but
+/// its shape and terminal status still obey the published report contract.
+fn normalized_steps(steps: &[serde_json::Value], case_status: &str) -> Vec<serde_json::Value> {
+    steps
+        .iter()
+        .map(|step| {
+            let mut step = step.clone();
+            if !step.is_object() {
+                return json!({
+                    "name": "unknown step", "path": "unknown step", "kind": "step",
+                    "status": "failed", "duration_ms": 0, "duration_unknown": true,
+                    "steps": [], "assertions": [], "attachments": [],
+                });
+            }
+            let unfinished = step["status"]
+                .as_str()
+                .is_none_or(|status| status == "running");
+            if unfinished {
+                step["status"] = json!(match case_status {
+                    "timeout" => "timeout",
+                    "skipped" => "skipped",
+                    _ => "failed",
+                });
+                step["duration_unknown"] = json!(true);
+                step["error"] = json!({
+                    "name": "TestRunInterrupted",
+                    "message": "step did not finish before the run was interrupted",
+                });
+            }
+            if step["duration_ms"].as_u64().is_none() {
+                step["duration_ms"] = json!(0);
+                step["duration_unknown"] = json!(true);
+            }
+            if step["error"].is_null() {
+                step.as_object_mut().unwrap().remove("error");
+            }
+            if step["kind"].is_null() {
+                step["kind"] = json!("step");
+            }
+            if !step["assertions"].is_array() {
+                step["assertions"] = json!([]);
+            }
+            if !step["attachments"].is_array() {
+                step["attachments"] = json!([]);
+            }
+            let children = step["steps"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+            step["steps"] = json!(normalized_steps(children, case_status));
+            step
+        })
+        .collect()
 }
 
 /// The runtime already validated the name; re-validate before touching the
@@ -3483,6 +3541,14 @@ fn complete_client_reports(
                     case["reason"] = json!("Not run: the test run was interrupted");
                 }
             }
+            if outcome.partial {
+                let status = case["status"].as_str().unwrap_or("failed");
+                let steps = normalized_steps(
+                    case["steps"].as_array().map(Vec::as_slice).unwrap_or(&[]),
+                    status,
+                );
+                case["steps"] = json!(steps);
+            }
         }
     }
     let cases = report["cases"].as_array().cloned().unwrap_or_default();
@@ -3493,6 +3559,10 @@ fn complete_client_reports(
     report["failures"] = failure_records(&cases);
     let title = if outcome.partial {
         "Incomplete test run"
+    } else if outcome.result.as_ref().is_some_and(|r| r.error.is_some())
+        || !outcome.run_errors.is_empty()
+    {
+        "Failed test run"
     } else {
         "Test report"
     };
@@ -3500,30 +3570,8 @@ fn complete_client_reports(
         "<!doctype html><meta charset=\"utf-8\"><title>{title}</title><style>body{{font:16px system-ui;max-width:1000px;margin:40px auto;padding:20px}}td,th{{text-align:left;padding:12px;border-bottom:1px solid #ddd}}pre{{white-space:pre-wrap}}a{{color:#2563eb}}</style><h1>{title}</h1><p>{}</p><p><a href=\"report.json\">JSON report</a> · <a href=\"events.jsonl\">Event journal</a></p><table><tr><th>Test</th><th>Status</th><th>Details</th></tr>",
         escape_markup(&message)
     );
-    let failures = cases
-        .iter()
-        .filter(|c| matches!(c["status"].as_str(), Some("failed" | "timeout" | "xpass")))
-        .count();
-    let skipped = cases.iter().filter(|c| c["status"] == "skipped").count();
     let has_run_error =
         outcome.partial || outcome.result.as_ref().is_some_and(|r| r.error.is_some());
-    let errors = usize::from(has_run_error) + outcome.run_errors.len();
-    let mut xml = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><testsuites><testsuite name=\"lxdev\" tests=\"{}\" errors=\"{errors}\" failures=\"{failures}\" skipped=\"{skipped}\">",
-        cases.len() + errors
-    );
-    if has_run_error {
-        xml.push_str(&format!(
-            "<testcase name=\"run interrupted\"><error message=\"{}\"/></testcase>",
-            escape_markup(&message)
-        ));
-    }
-    for run_error in &outcome.run_errors {
-        xml.push_str(&format!(
-            "<testcase name=\"run error\"><error message=\"{}\"/></testcase>",
-            escape_markup(run_error)
-        ));
-    }
 
     for case in &cases {
         let name = escape_markup(case["full_name"].as_str().unwrap_or("unknown"));
@@ -3546,20 +3594,10 @@ fn complete_client_reports(
         html.push_str(&format!(
             "<tr><td>{name}</td><td>{status}</td><td><pre>{detail}</pre>{network}</td></tr>"
         ));
-        xml.push_str(&format!(
-            "<testcase name=\"{name}\" time=\"{}\">",
-            case["duration_ms"].as_u64().unwrap_or_default() as f64 / 1000.0
-        ));
-        if matches!(status, "failed" | "timeout" | "xpass") {
-            xml.push_str(&format!("<failure message=\"{detail}\"/>"));
-        } else if status == "skipped" {
-            xml.push_str(&format!("<skipped message=\"{detail}\"/>"));
-        }
-        xml.push_str("</testcase>");
     }
     html.push_str("</table>");
     html.push_str(&run_errors_html(&outcome.run_errors));
-    xml.push_str("</testsuite></testsuites>");
+    let xml = render_final_junit(&report, outcome, has_run_error, &message);
     let json_path = &path;
     write(json_path, &serde_json::to_vec_pretty(&report)?)
         .with_context(|| format!("failed to write {}", json_path.display()))?;
@@ -3584,8 +3622,11 @@ fn complete_client_reports(
         );
         banner.push_str(&run_errors_html(&outcome.run_errors));
         banner.push_str("</section>");
-        write(&html_path, with_banner(&page, &banner).as_bytes())
-            .with_context(|| format!("failed to write {}", html_path.display()))?;
+        write(
+            &html_path,
+            with_banner(&page, &banner, outcome.partial).as_bytes(),
+        )
+        .with_context(|| format!("failed to write {}", html_path.display()))?;
     }
     let junit_path = output.join("junit.xml");
     write(&junit_path, xml.as_bytes())
@@ -3604,8 +3645,181 @@ fn run_errors_html(errors: &[String]) -> String {
     format!("<h2>Run errors</h2><ul class=\"run-errors\">{items}</ul>")
 }
 
+/// The final JUnit, from the same cases as report.json plus one testcase
+/// per run error.
+fn render_final_junit(
+    report: &serde_json::Value,
+    outcome: &Outcome,
+    has_run_error: bool,
+    message: &str,
+) -> String {
+    let cases = report["cases"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    let mut groups: Vec<(&str, Vec<&serde_json::Value>)> = Vec::new();
+    for case in cases {
+        let suite = case["suite"].as_str().unwrap_or("specs");
+        if let Some((_, items)) = groups.iter_mut().find(|(name, _)| *name == suite) {
+            items.push(case);
+        } else {
+            groups.push((suite, vec![case]));
+        }
+    }
+    let run_error_count = usize::from(has_run_error) + outcome.run_errors.len();
+    let failures = cases
+        .iter()
+        .filter(|case| {
+            matches!(
+                case["status"].as_str(),
+                Some("failed" | "timeout" | "xpass")
+            )
+        })
+        .count();
+    let skipped = cases
+        .iter()
+        .filter(|case| case["status"] == "skipped")
+        .count();
+    let mut xml = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><testsuites name=\"@lingxia/test\" tests=\"{}\" failures=\"{failures}\" errors=\"{run_error_count}\" skipped=\"{skipped}\" time=\"{:.3}\">",
+        cases.len() + run_error_count,
+        report["duration_ms"].as_u64().unwrap_or_default() as f64 / 1000.0,
+    );
+    for (suite, items) in groups {
+        let suite_failures = items
+            .iter()
+            .filter(|case| {
+                matches!(
+                    case["status"].as_str(),
+                    Some("failed" | "timeout" | "xpass")
+                )
+            })
+            .count();
+        let suite_skipped = items
+            .iter()
+            .filter(|case| case["status"] == "skipped")
+            .count();
+        let duration: u64 = items
+            .iter()
+            .map(|case| case["duration_ms"].as_u64().unwrap_or_default())
+            .sum();
+        xml.push_str(&format!(
+            "<testsuite name=\"{}\" tests=\"{}\" failures=\"{suite_failures}\" errors=\"0\" skipped=\"{suite_skipped}\" time=\"{:.3}\" timestamp=\"{}\">",
+            escape_markup(suite), items.len(), duration as f64 / 1000.0,
+            escape_markup(report["meta"]["started_at"].as_str().unwrap_or("")),
+        ));
+        for case in items {
+            let title = case["title"]
+                .as_str()
+                .or(case["name"].as_str())
+                .unwrap_or("unknown");
+            let name = match case["repeat"].as_u64() {
+                Some(repeat) => format!("{title} [repeat {repeat}]"),
+                None => title.to_owned(),
+            };
+            xml.push_str(&format!(
+                "<testcase name=\"{}\" classname=\"{}\" time=\"{:.3}\"",
+                escape_markup(&name),
+                escape_markup(suite),
+                case["duration_ms"].as_u64().unwrap_or_default() as f64 / 1000.0,
+            ));
+            if let Some(file) = case["file"].as_str() {
+                xml.push_str(&format!(" file=\"{}\"", escape_markup(file)));
+            }
+            if let Some(line) = case["line"].as_u64() {
+                xml.push_str(&format!(" line=\"{line}\""));
+            }
+            xml.push('>');
+            let status = case["status"].as_str().unwrap_or("skipped");
+            if status == "skipped" {
+                xml.push_str(&format!(
+                    "<skipped message=\"{}\"/>",
+                    escape_markup(case["reason"].as_str().unwrap_or("pending"))
+                ));
+            } else if matches!(status, "failed" | "timeout" | "xpass") {
+                let error = &case["error"];
+                let detail = error["message"].as_str().unwrap_or(status);
+                let stack = error["stack"].as_str().unwrap_or("");
+                xml.push_str(&format!(
+                    "<failure message=\"{}\" type=\"{}\">{}{}</failure>",
+                    escape_markup(detail.lines().next().unwrap_or(detail)),
+                    escape_markup(error["name"].as_str().unwrap_or("Error")),
+                    escape_markup(detail),
+                    if stack.is_empty() {
+                        String::new()
+                    } else {
+                        format!("&#10;&#10;{}", escape_markup(stack))
+                    },
+                ));
+            }
+            if case["flaky"] == true {
+                let attempts = case["attempts"].as_array().map(Vec::len).unwrap_or(1);
+                xml.push_str(&format!(
+                    "<system-out>Flaky: passed after {attempts} attempts</system-out>"
+                ));
+            }
+            if status == "xfail" {
+                xml.push_str("<system-out>spec.fail: failed as declared</system-out>");
+            }
+            let mut properties = String::new();
+            for key in ["covers", "tags"] {
+                if let Some(values) = case[key].as_array() {
+                    let values = values
+                        .iter()
+                        .filter_map(|value| value.as_str())
+                        .collect::<Vec<_>>();
+                    if !values.is_empty() {
+                        properties.push_str(&format!(
+                            "<property name=\"{key}\" value=\"{}\"/>",
+                            escape_markup(&values.join(" "))
+                        ));
+                    }
+                }
+            }
+            if !properties.is_empty() {
+                xml.push_str(&format!("<properties>{properties}</properties>"));
+            }
+            xml.push_str("</testcase>");
+        }
+        xml.push_str("</testsuite>");
+    }
+    if run_error_count > 0 {
+        xml.push_str(&format!("<testsuite name=\"runner\" tests=\"{run_error_count}\" failures=\"0\" errors=\"{run_error_count}\">"));
+        if has_run_error {
+            let label = if outcome.partial {
+                "run interrupted"
+            } else {
+                "run error"
+            };
+            xml.push_str(&format!(
+                "<testcase name=\"{label}\"><error message=\"{}\"/></testcase>",
+                escape_markup(message)
+            ));
+        }
+        for error in &outcome.run_errors {
+            xml.push_str(&format!(
+                "<testcase name=\"run error\"><error message=\"{}\"/></testcase>",
+                escape_markup(error)
+            ));
+        }
+        xml.push_str("</testsuite>");
+    }
+    xml.push_str("</testsuites>");
+    xml
+}
+
 /// `page` with `banner` at the top of its body.
-fn with_banner(page: &str, banner: &str) -> String {
+fn with_banner(page: &str, banner: &str, partial: bool) -> String {
+    let verdict = if partial { "Incomplete" } else { "Run failed" };
+    let tone = if partial {
+        "hero tone-warn"
+    } else {
+        "hero tone-fail"
+    };
+    let page = page
+        .replacen(
+            "<span class=\"verdict\">Passed</span>",
+            &format!("<span class=\"verdict\">{verdict}</span>"),
+            1,
+        )
+        .replacen("hero tone-pass", tone, 1);
     let at = page
         .find("<body")
         .and_then(|start| page[start..].find('>').map(|end| start + end + 1))
@@ -3665,6 +3879,55 @@ fn print_code_frame(position: &MappedPosition, bundle: &TestBundle) {
 #[cfg(test)]
 mod recovery_tests {
     use super::*;
+
+    #[test]
+    fn interrupted_steps_keep_the_public_shape_and_never_pass_silently() {
+        let steps = normalized_steps(
+            &[json!({
+                "name": "wait for order", "path": "wait for order", "status": "running",
+                "steps": [{"name": "read status", "path": "wait for order > read status", "status": "running"}]
+            })],
+            "timeout",
+        );
+        for step in [&steps[0], &steps[0]["steps"][0]] {
+            assert_eq!(step["status"], "timeout");
+            assert_eq!(step["duration_unknown"], true);
+            assert!(step["duration_ms"].is_number());
+            assert!(step["steps"].is_array());
+            assert!(step["assertions"].is_array());
+            assert!(step["attachments"].is_array());
+        }
+    }
+
+    #[test]
+    fn final_junit_keeps_finished_case_identity_when_run_errors_arrive() {
+        let report = json!({
+            "duration_ms": 15, "meta": {"started_at": "2026-01-01T00:00:00Z"},
+            "cases": [{
+                "title": "saves order", "suite": "orders.test.ts", "repeat": 2,
+                "file": "orders.test.ts", "line": 42, "status": "passed", "duration_ms": 15,
+                "covers": ["ORDER-1"], "tags": ["checkout"], "flaky": true,
+                "attempts": [{}, {}]
+            }]
+        });
+        let outcome = Outcome {
+            app_not_live: false,
+            state: TestRunState::InternalError,
+            result: None,
+            console: vec![],
+            artifacts: vec![],
+            partial: false,
+            streamed: vec![],
+            run_errors: vec!["profile export failed".into()],
+        };
+        let xml = render_final_junit(&report, &outcome, false, "Run completed");
+        assert!(xml.contains("name=\"orders.test.ts\""));
+        assert!(xml.contains("name=\"saves order [repeat 2]\""));
+        assert!(xml.contains("file=\"orders.test.ts\" line=\"42\""));
+        assert!(xml.contains("name=\"covers\" value=\"ORDER-1\""));
+        assert!(xml.contains("Flaky: passed after 2 attempts"));
+        assert!(xml.contains("profile export failed"));
+    }
 
     #[test]
     fn interrupted_run_keeps_failures_and_creates_all_reports() {
