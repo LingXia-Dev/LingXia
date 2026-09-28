@@ -460,6 +460,16 @@ impl PendingRequestRegistry {
     }
 }
 
+#[cfg(test)]
+impl PendingRequestGuard {
+    pub(crate) fn detached_for_test(
+        id: &str,
+        work_id: SessionWorkId,
+    ) -> (oneshot::Receiver<()>, Self) {
+        Arc::new(PendingRequestRegistry::default()).register(id.to_owned(), work_id)
+    }
+}
+
 impl Drop for PendingRequestGuard {
     fn drop(&mut self) {
         self.registry.complete(&self.key, self.token);

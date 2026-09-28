@@ -57,9 +57,10 @@ refreshed first.
 
 ## Mock readiness
 
-Dev Logic bundles await the context-bound `__lxWaitForDevMocks` gate before
-executing user modules. The host awaits that bundle promise under session
-liveness; failed initialization does not publish a usable Logic context.
+The host awaits the context-bound `__lxWaitForDevMocks` gate (installed by
+automation) under session liveness before evaluating the Logic bundle; a
+failed gate tears the context down before any user module runs. A module that
+throws while the bundle evaluates is logged and the context is kept.
 The dev server loads a selection record even for apps with zero handlers,
 so `--mock all` cannot silently fall through to real I/O. Removing handlers
 loads an empty record, preserving the selection and readiness contract.
@@ -70,7 +71,10 @@ A dev Logic bundle waits on the connection's mock bootstrap signal, not on the
 existence of app handlers. A configured dev endpoint initializes the gate as
 pending (home Logic may start before HostAddon services); the bridge also marks
 startup pending before its first connection attempt; a failed attempt or disconnect releases the wait so the app
-can launch offline. A successful connection starts a fresh gate. After loading
-all mocks, the dev server sends `session.network.mock.ready`, including when
-there are no mocks. Connected initialization failures keep the gate closed and
-report the 30-second startup deadline. Readiness uses a watch notification.
+can launch offline. A successful connection starts a fresh gate. After every
+app's mock load has settled, the dev server sends `session.network.mock.ready`,
+including when there are no mocks or a load failed (that app runs without
+mocks). The 30-second startup deadline is an idle window: the connection and
+each `mock.load` re-arm it, so it bounds a stalled dev server, not the number
+of apps; each load is capped well below it. Readiness uses a watch
+notification.

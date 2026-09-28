@@ -274,17 +274,22 @@ owner: from then until it is dropped, `dev` stands aside.
 
 The CLI validates locally, pauses new Logic network calls with a host-issued
 scenario generation, updates the companion, then commits HTTP rules with that
-generation. Clear invalidates the generation. A failed/unknown change keeps
-admission closed; `lxdev mock clear` clears the companion before reopening it.
-CLI mutations are serialized per session across local CLI processes. Host-run
-scenario changes likewise serialize per run and revoke the context on an
-unknown outcome. In test runs, atomic `invalid_rules` and `companion_unsupported`
-rejections leave the previous scenario active without revoking the context.
-`companion_not_sent` means the transport rejected the request before dispatch;
-installation fails without revoking the context, but clearing previously installed
-rules still needs an acknowledgement. An in-flight disconnect (`connection_lost`)
-or a timeout may follow an applied request and keeps admission closed. Generic
-`unavailable` replies make no atomicity guarantee. An absent companion is
+generation. Clear invalidates the generation. `invalid_rules`,
+`companion_unsupported` and `companion_not_sent`
+(`scenario::companion::left_previous_rules`) leave the companion's previous
+rules answering: the change fails, the previous scenario stays whole and
+admission reopens (`session.network.scenario.resume` with the generation; in
+test runs without revoking the context). Any other failure — an in-flight
+disconnect (`connection_lost`), a timeout, a generic `unavailable` — may follow
+an applied request and keeps admission closed. `lxdev mock clear` asks the
+companion first, then always clears the host, reopening admission; a companion
+that did not confirm makes the clear partial (`partial_clear`, nonzero exit,
+per-phase results). CLI mutations are serialized per session across local CLI
+processes. Host-run scenario changes, and attempt reclamation, serialize per
+run on its scenario lock and revoke the context on an unknown outcome;
+reclamation reopens only the admission it closed itself. Clearing the rules of
+a scenario that is being removed still needs an acknowledgement:
+`companion_not_sent` there is a failure. An absent companion is
 `companion_unsupported`, for which clearing is a no-op.
 There is one product scenario per run, not one Function owner
 per app; replacing its HTTP target replaces the previous app's rules too.

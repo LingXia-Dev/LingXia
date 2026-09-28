@@ -413,6 +413,51 @@ fn script_looks_like_function_body(script: &str) -> bool {
         || trimmed.contains(';')
 }
 
+fn reply_to_view_req(
+    page_svc: &PageSvc,
+    work_id: Option<bridge::SessionWorkId>,
+    outbound: Option<&bridge::OutboundContext>,
+    id: String,
+    result: Result<String, bridge::RpcError>,
+) {
+    let bridge = page_svc.bridge();
+    let (sent, canceled) = match result {
+        Ok(json) => (
+            bridge.send_res_ok_for_context(page_svc, work_id, outbound, id, json),
+            false,
+        ),
+        Err(err) => {
+            let canceled = err.code == bridge::BRIDGE_CANCELED;
+            (
+                bridge.send_res_err_for_context(
+                    page_svc,
+                    work_id,
+                    outbound,
+                    id,
+                    &err.code,
+                    err.message,
+                    err.data,
+                ),
+                canceled,
+            )
+        }
+    };
+    let Err(e) = sent else {
+        return;
+    };
+    let page = page_svc.get_page();
+    // Cancellation is teardown control flow; a concurrent WebView detach is expected.
+    if canceled || page.document_is_departing() || page.webview().is_none() {
+        debug!("Dropping bridge response for departed page: {}", e)
+            .with_appid(page.appid())
+            .with_path(page.path());
+    } else {
+        error!("Bridge response failed: {}", e)
+            .with_appid(page.appid())
+            .with_path(page.path());
+    }
+}
+
 // Handles a bridge-routed message that must enter the JS runtime worker.
 async fn handle_bridge_source(
     page_svc: &PageSvc,
@@ -473,52 +518,39 @@ async fn handle_bridge_source(
             if !page_svc.session_work_is_active(work_id).await {
                 return Ok(());
             }
-            let bridge = page_svc.bridge();
-            let result = page::with_document_callback_work(
-                work_id,
-                outbound.clone(),
-                page_svc.handle_req(
+            let Some(ctx) = page_svc.get_ctx() else {
+                drop(pending_request);
+                let _ = page_svc.bridge().send_res_err_for_context(
+                    page_svc,
+                    work_id,
+                    outbound.as_ref(),
+                    id,
+                    bridge::BRIDGE_CANCELED,
+                    None,
+                    None,
+                );
+                return Ok(());
+            };
+            // Off the message pump, like notify: an action may await work that
+            // only later messages (evals, clock ticks, other actions) can drive.
+            let page_svc = page_svc.clone();
+            context_lifecycle::spawn(&ctx, move |_ctx| async move {
+                let result = page::with_document_callback_work(
                     work_id,
                     outbound.clone(),
-                    &id,
-                    &method,
-                    params_json.as_deref(),
-                    cancel_rx,
-                ),
-            )
-            .await;
-            drop(pending_request);
-            match result {
-                Ok(json) => bridge.send_res_ok_for_context(
-                    page_svc,
-                    work_id,
-                    outbound.as_ref(),
-                    id,
-                    json,
-                )?,
-                Err(err) if err.code == bridge::BRIDGE_CANCELED => {
-                    // Cancellation is teardown control flow. Reply while a cached
-                    // View still exists, but tolerate a concurrent WebView detach.
-                    let _ = bridge.send_res_err_for_context(
-                        page_svc,
+                    page_svc.handle_req(
                         work_id,
-                        outbound.as_ref(),
-                        id,
-                        &err.code,
-                        err.message,
-                        err.data,
-                    );
-                }
-                Err(err) => bridge.send_res_err_for_context(
-                    page_svc,
-                    work_id,
-                    outbound.as_ref(),
-                    id,
-                    &err.code,
-                    err.message,
-                    err.data,
-                )?,
-            }
+                        outbound.clone(),
+                        &id,
+                        &method,
+                        params_json.as_deref(),
+                        cancel_rx,
+                    ),
+                )
+                .await;
+                drop(pending_request);
+                reply_to_view_req(&page_svc, work_id, outbound.as_ref(), id, result);
+            });
             Ok(())
         }
         AppServiceCommand::Notify {
@@ -810,26 +842,42 @@ pub(crate) async fn lxapp_service_handler(
                 return;
             };
             match source {
-                Ok(Some(js)) => match lxapp
-                    .session
-                    .while_alive(ctx.eval_async::<JSValue>(js))
-                    .await
-                {
-                    None => {
-                        shutdown_app_context(&ctx).await;
-                        return;
+                Ok(Some(js)) => {
+                    // A dev session's mocks must be loaded before user code can
+                    // reach real I/O; a context whose gate failed never runs it.
+                    let gate = Source::from_bytes("globalThis.__lxWaitForDevMocks?.()");
+                    match lxapp
+                        .session
+                        .while_alive(ctx.eval_async::<JSValue>(gate))
+                        .await
+                    {
+                        None => {
+                            shutdown_app_context(&ctx).await;
+                            return;
+                        }
+                        Some(Err(e)) => {
+                            error!("[Worker {}] Logic was not started: {}", worker_id, e)
+                                .with_appid(lxapp.appid.clone());
+                            shutdown_app_context(&ctx).await;
+                            return;
+                        }
+                        Some(Ok(_)) => {}
                     }
-                    Some(Ok(_)) => {
-                        info!("[Worker {}] Successfully loaded logic JS", worker_id)
-                            .with_appid(lxapp.appid.clone());
+                    // A throwing module breaks only what it registers; the
+                    // context stays usable for the rest.
+                    match ctx.eval::<()>(js) {
+                        Ok(_) => {
+                            info!("[Worker {}] Successfully loaded logic JS", worker_id)
+                                .with_appid(lxapp.appid.clone());
+                        }
+                        Err(e) => {
+                            // Resolve a thrown value so the log names it.
+                            let e = e.into_host_in(&ctx);
+                            error!("[Worker {}] eval logic JS failed: {}", worker_id, e)
+                                .with_appid(lxapp.appid.clone());
+                        }
                     }
-                    Some(Err(e)) => {
-                        error!("[Worker {}] eval logic JS failed: {}", worker_id, e)
-                            .with_appid(lxapp.appid.clone());
-                        shutdown_app_context(&ctx).await;
-                        return;
-                    }
-                },
+                }
                 Ok(None) => {
                     info!(
                         "[Worker {}] Logic disabled; skipping JS bootstrap",
@@ -1595,6 +1643,148 @@ mod worker_assignment_tests {
                         .unwrap()
                         .unwrap(),
                     "\"seven\""
+                );
+            })
+            .await;
+    }
+
+    /// A pending page action must not hold the pump either: the action may
+    /// wait on work only a later message drives (an eval, a test clock tick,
+    /// another action), which would otherwise queue behind it forever.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_pending_page_action_leaves_the_message_pump_free() {
+        use crate::bridge::{AppServiceCommand, PendingRequestGuard, SessionWorkId};
+        use rong::{JSEngine, RongJS, Source};
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let platform = Arc::new(
+                    lingxia_platform::Platform::new(
+                        root.path().join("data").display().to_string(),
+                        root.path().join("cache").display().to_string(),
+                        "en-US".to_string(),
+                    )
+                    .unwrap(),
+                );
+                let appid = format!("app.lingxia.logic-action.{}", uuid::Uuid::new_v4());
+                crate::lxapp::register_synthetic_lxapp(appid.clone());
+                let app = Arc::new(
+                    crate::LxApp::new_with_session_class_for_test(
+                        appid.clone(),
+                        platform,
+                        crate::appservice::LxAppWorkers::init(1),
+                        crate::lxapp::AppSessionClass::StandardApp,
+                    )
+                    .unwrap(),
+                );
+                app.bind_arc();
+                let runtime = RongJS::runtime();
+                let ctx = runtime.context();
+                super::register_app_ctx(&ctx, &app);
+                super::app::init(&ctx).unwrap();
+                super::page::init(&ctx).unwrap();
+                rong_modules::init(&ctx, super::RONG_MODULES).unwrap();
+                let page = crate::page::PageInstance::new_headless(
+                    appid.clone(),
+                    "pages/home/index".to_string(),
+                    &app,
+                );
+                let instance = page.instance_id_string();
+                app.state
+                    .lock()
+                    .unwrap()
+                    .pages_by_id
+                    .lock()
+                    .unwrap()
+                    .insert(instance.clone(), page);
+                let script = format!(
+                    "__registerApp({{ onLaunch() {{}} }}, '[\"onLaunch\"]'); \
+                     __registerPage('pages/home/index', {{ data: {{}}, \
+                       async start() {{ \
+                         await new Promise((resolve) => {{ globalThis.__release = resolve; }}); \
+                         globalThis.__settled = true; \
+                       }} }}); \
+                     __LX_CREATE_PAGE__('pages/home/index', null, {instance:?});"
+                );
+                ctx.eval::<()>(Source::from_bytes(script)).unwrap();
+                let mut current = Some(ctx);
+                let bridge_message = |message| super::ServiceMessage::CallPageSvc {
+                    lxapp: app.clone(),
+                    path: "pages/home/index".to_string(),
+                    page_instance_id: Some(instance.clone()),
+                    source: super::PageSvcSource::Bridge { message },
+                };
+                let eval = |script: &str| {
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+                    let message = super::ServiceMessage::Eval {
+                        capture_calls: false,
+                        lxapp: app.clone(),
+                        script: script.to_string(),
+                        tx,
+                    };
+                    (message, rx)
+                };
+
+                let work_id = SessionWorkId::for_test(1);
+                super::lxapp_service_handler(
+                    0,
+                    runtime.clone(),
+                    bridge_message(AppServiceCommand::BeginSessionWork { work_id }),
+                    &mut current,
+                )
+                .await;
+                let (cancel_rx, pending_request) =
+                    PendingRequestGuard::detached_for_test("c1", work_id);
+                tokio::time::timeout(
+                    Duration::from_secs(5),
+                    super::lxapp_service_handler(
+                        0,
+                        runtime.clone(),
+                        bridge_message(AppServiceCommand::Req {
+                            work_id: Some(work_id),
+                            outbound: None,
+                            id: "c1".to_string(),
+                            method: "start".to_string(),
+                            params_json: None,
+                            cancel_rx,
+                            pending_request,
+                        }),
+                        &mut current,
+                    ),
+                )
+                .await
+                .expect("the pump took the next message while the action waited");
+
+                let (release, release_rx) = eval(
+                    "(async () => { \
+                       while (!globalThis.__release) await Promise.resolve(); \
+                       globalThis.__release(); \
+                       return 'released'; \
+                     })()",
+                );
+                super::lxapp_service_handler(0, runtime.clone(), release, &mut current).await;
+                assert_eq!(
+                    tokio::time::timeout(Duration::from_secs(5), release_rx)
+                        .await
+                        .expect("an eval ran while the action was pending")
+                        .unwrap()
+                        .unwrap(),
+                    "\"released\""
+                );
+                let (settled, settled_rx) = eval(
+                    "(async () => { \
+                       while (!globalThis.__settled) await new Promise((r) => setTimeout(r, 1)); \
+                       return globalThis.__settled; \
+                     })()",
+                );
+                super::lxapp_service_handler(0, runtime.clone(), settled, &mut current).await;
+                assert_eq!(
+                    tokio::time::timeout(Duration::from_secs(5), settled_rx)
+                        .await
+                        .expect("the released action settled")
+                        .unwrap()
+                        .unwrap(),
+                    "true"
                 );
             })
             .await;

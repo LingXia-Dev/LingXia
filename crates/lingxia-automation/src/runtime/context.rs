@@ -307,10 +307,14 @@ fn attempt_error(message: impl Into<String>) -> RongJSError {
 
 /// Remove what attempt `attempt` of the run installed. Every kind is tried;
 /// the error names each that failed.
-async fn reclaim(run_id: &str, attempt: u64) -> JSResult<Reclaimed> {
+async fn reclaim(
+    scenario_lock: Option<Arc<tokio::sync::Mutex<()>>>,
+    run_id: &str,
+    attempt: u64,
+) -> JSResult<Reclaimed> {
     let mut reclaimed = Reclaimed::default();
     let mut failed = Vec::new();
-    match crate::network::reclaim_attempt(run_id, attempt).await {
+    match crate::network::reclaim_attempt(scenario_lock, run_id, attempt).await {
         Ok((routes, scenarios)) => {
             reclaimed.routes = routes as f64;
             reclaimed.scenarios = scenarios as f64;
@@ -349,26 +353,28 @@ fn attach_attempts(ctx: &JSContext, host: &JSObject, shared: &Arc<RunShared>) ->
     let run = Arc::downgrade(shared);
     host.set(
         "endAttempt",
-        JSFunc::new(ctx, move |token: f64| {
+        JSFunc::new(ctx, move |ctx: JSContext, token: f64| {
             // Only what the future needs: it must not keep the run alive.
             let target = live_run(&run).map(|run| (run.run_id.clone(), run.authority.clone()));
+            let lock = crate::network::scenario_lock(&ctx);
             async move {
                 let (run_id, authority) = target?;
                 let token = token as u64;
                 authority.end(token).map_err(attempt_error)?;
-                reclaim(&run_id, token).await
+                reclaim(lock, &run_id, token).await
             }
         })?,
     )?;
     let run = Arc::downgrade(shared);
     host.set(
         "revoke",
-        JSFunc::new(ctx, move |reason: String| {
+        JSFunc::new(ctx, move |ctx: JSContext, reason: String| {
             let target = live_run(&run).map(|run| (run.run_id.clone(), run.authority.clone()));
+            let lock = crate::network::scenario_lock(&ctx);
             async move {
                 let (run_id, authority) = target?;
                 match authority.revoke(reason) {
-                    Some(open) => reclaim(&run_id, open).await,
+                    Some(open) => reclaim(lock, &run_id, open).await,
                     None => Ok(Reclaimed::default()),
                 }
             }

@@ -145,9 +145,7 @@ pub(crate) async fn install(
     let update = if functions {
         use_functions(&owner, &parsed.resolved).await
     } else if previous.as_ref().is_some_and(|previous| previous.companion) {
-        clear_functions_checked(&owner)
-            .await
-            .map_err(FunctionChangeError::Unknown)
+        clear_functions_checked(&owner).await
     } else {
         Ok(())
     };
@@ -199,30 +197,38 @@ pub(crate) async fn install(
     }))
 }
 
+/// A companion change that failed: `Rejected` left the owner's previous
+/// rules answering; after `Unknown` it may or may not have applied.
 #[derive(Debug)]
-enum FunctionChangeError {
+pub(crate) enum FunctionChangeError {
     Rejected(String),
     Unknown(String),
 }
 
+impl std::fmt::Display for FunctionChangeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Rejected(message) | Self::Unknown(message) => f.write_str(message),
+        }
+    }
+}
+
 impl FunctionChangeError {
+    fn classify(code: &str, message: String) -> Self {
+        if protocol::left_previous_rules(code) {
+            Self::Rejected(message)
+        } else {
+            Self::Unknown(message)
+        }
+    }
+
     fn from_upstream(resolved: &Resolved, error: UpstreamError) -> Self {
         let message = if error.code == method::UNSUPPORTED {
             resolved.functions_unsupported(&error.message)
         } else {
             resolved.companion_error(&error.code, &error.message, error.data.as_ref())
         };
-        let message = format!("scenario: {message}");
-        // These protocol rejections guarantee the previous rules still answer.
-        // A disconnect, including `unavailable`, may follow an applied request.
-        if matches!(
-            error.code.as_str(),
-            method::UNSUPPORTED | method::NOT_SENT | "invalid_rules"
-        ) {
-            Self::Rejected(message)
-        } else {
-            Self::Unknown(message)
-        }
+        Self::classify(&error.code, format!("scenario: {message}"))
     }
 }
 
@@ -251,12 +257,19 @@ async fn clear_functions(owner: &str) {
 /// cleared: the run's owner keeps a dev scenario's function rules aside
 /// until the run ends, when the dev server clears it. A host without a dev
 /// session, or a companion without scenarios, holds none.
-pub(crate) async fn clear_functions_checked(owner: &str) -> Result<(), String> {
+pub(crate) async fn clear_functions_checked(owner: &str) -> Result<(), FunctionChangeError> {
     let params = json!({ "owner": owner, "scenario": {}, "rules": [] });
-    match companion::request(method::SCENARIO_USE, params).await {
+    clear_outcome(companion::request(method::SCENARIO_USE, params).await)
+}
+
+fn clear_outcome(outcome: Result<Value, UpstreamError>) -> Result<(), FunctionChangeError> {
+    match outcome {
         Ok(_) => Ok(()),
         Err(UpstreamError { code, .. }) if code == method::UNSUPPORTED => Ok(()),
-        Err(UpstreamError { code, message, .. }) => Err(format!("{code}: {message}")),
+        Err(UpstreamError { code, message, .. }) => Err(FunctionChangeError::classify(
+            &code,
+            format!("{code}: {message}"),
+        )),
     }
 }
 
@@ -574,7 +587,7 @@ impl JSScenario {
             && let Err(error) = clear_functions_checked(&self.owner).await
         {
             (scope.revoke)(format!("scenario removal did not complete: {error}"));
-            return Err(HostError::new("E_SCENARIO_STATE_UNKNOWN", error).into());
+            return Err(HostError::new("E_SCENARIO_STATE_UNKNOWN", error.to_string()).into());
         }
         registry::with_registry(|routes| {
             routes.scenario_pending.remove(&self.run_id);
@@ -617,6 +630,31 @@ mod tests {
                     method::UNSUPPORTED | method::NOT_SENT | "invalid_rules"
                 ),
                 "{code}: {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn clearing_shares_the_classifier_and_treats_an_absent_companion_as_empty() {
+        let refused = |code: &str| {
+            clear_outcome(Err(UpstreamError {
+                code: code.into(),
+                message: "refused".into(),
+                data: None,
+            }))
+        };
+        assert!(clear_outcome(Ok(json!({ "installed": 0 }))).is_ok());
+        assert!(refused(method::UNSUPPORTED).is_ok());
+        for code in [method::NOT_SENT, "invalid_rules"] {
+            assert!(
+                matches!(refused(code), Err(FunctionChangeError::Rejected(_))),
+                "{code}"
+            );
+        }
+        for code in ["unavailable", "timeout", "connection_lost"] {
+            assert!(
+                matches!(refused(code), Err(FunctionChangeError::Unknown(_))),
+                "{code}"
             );
         }
     }

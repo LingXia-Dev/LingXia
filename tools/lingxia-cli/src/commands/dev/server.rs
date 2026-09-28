@@ -323,31 +323,32 @@ impl DevServerState {
         }
     }
 
-    /// Push one lxapp's mocks to the runtime.
+    /// Push one lxapp's mocks to the runtime. Kept well under the runtime's
+    /// 30 s startup idle window, which each load re-arms.
     fn push_mocks(&self, app: &super::mocks::AppMocks) -> Result<serde_json::Value> {
         self.runtime_request(
             lingxia_control_protocol::methods::session::network::MOCK_LOAD,
             app.load_params(super::mocks::baseline()),
-            Duration::from_secs(30),
+            Duration::from_secs(10),
         )
     }
 
-    /// Release Logic startup only after the session has installed all mocks.
+    /// Release Logic startup once every app's mocks have settled. An app whose
+    /// mocks fail to load runs without them; it never holds the others back.
     fn push_all_mocks(&self) {
         let apps = self.lock_mocks().clone();
         for app in apps {
             if let Err(error) = self.push_mocks(&app) {
                 eprintln!(
-                    "[lingxia dev] mocks of {} not loaded into the runtime: {error:#}",
+                    "[lingxia dev] mocks of {} not loaded into the runtime; it runs without them: {error:#}",
                     app.app_id
                 );
-                return;
             }
         }
         if let Err(error) = self.runtime_request(
             lingxia_control_protocol::methods::session::network::MOCK_READY,
             serde_json::json!({}),
-            Duration::from_secs(30),
+            Duration::from_secs(10),
         ) {
             eprintln!("[lingxia dev] mock initialization was not acknowledged: {error:#}");
         }

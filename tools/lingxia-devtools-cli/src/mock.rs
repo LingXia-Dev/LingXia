@@ -495,13 +495,11 @@ pub(crate) fn install(
     let generation = paused["generation"]
         .as_u64()
         .context("host did not return a scenario generation")?;
-    if functions > 0 {
+    let companion_change = if functions > 0 {
         let params = serde_json::to_value(resolved.companion_use(DEV_OWNER, Some(source)))?;
         session
             .companion(companion_method::SCENARIO_USE, Some(params))
-            .map_err(|err| {
-                scenario_transition_error(source, "functions", companion_failure(&resolved, &err))
-            })?;
+            .map_err(|err| ("functions", companion_failure(&resolved, &err), err.code))
     } else if support.is_ok() {
         // The previous scenario's function rules must not outlive it.
         session
@@ -509,9 +507,29 @@ pub(crate) fn install(
                 companion_method::SCENARIO_CLEAR,
                 Some(json!({ "owner": DEV_OWNER })),
             )
-            .map_err(|err| {
-                scenario_transition_error(source, "functionClear", err.message.clone())
-            })?;
+            .map_err(|err| ("functionClear", err.message, err.code))
+    } else {
+        Ok(Value::Null)
+    };
+    if let Err((phase, detail, code)) = companion_change {
+        // The companion kept its previous rules and the host has not changed:
+        // the previous scenario stays whole, so admission can reopen.
+        if companion::left_previous_rules(&code)
+            && session
+                .host(
+                    method::SCENARIO_RESUME,
+                    Some(json!({ "generation": generation })),
+                )
+                .is_ok()
+        {
+            return Err(CommandError {
+                code: "scenario_rejected".into(),
+                message: format!("{source} was not installed ({phase}): {detail}; the previous scenario stays active"),
+                data: Some(json!({ "scope": "session", "phase": phase, "networkBlocked": false })),
+            }
+            .into());
+        }
+        return Err(scenario_transition_error(source, phase, detail));
     }
     let mut commit = host_args(loaded, target, appid, false);
     commit["generation"] = json!(generation);
@@ -593,38 +611,52 @@ pub(crate) fn reached(status: &Value) -> u64 {
     requests + functions
 }
 
-/// Clear both halves while admission stays closed; reopen only after both confirm.
+/// Clear both halves while admission stays closed. The host side is always
+/// cleared, reopening admission; a companion that did not confirm makes the
+/// clear partial (an error naming its phases).
 pub(crate) fn clear(session: &dyn Session) -> Result<Value> {
     let _lock = session.mutation_lock()?;
     clear_locked(session)
 }
 
 fn clear_locked(session: &dyn Session) -> Result<Value> {
-    let caps = session
-        .companion(companion_method::CAPABILITIES, None)
-        .map_err(|error| anyhow!("cannot discover scenario participants: {}", error.message))?;
     session.host(method::SCENARIO_PAUSE, Some(json!({ "recover": true })))?;
-    let companion = match scenario_support(&caps) {
-        Ok(()) => Some(session.companion(
-            companion_method::SCENARIO_CLEAR,
-            Some(json!({ "owner": DEV_OWNER })),
-        )),
-        Err(_) => None,
-    };
-    let companion_cleared = match companion {
-        Some(Ok(result)) => result["cleared"] == true,
-        Some(Err(err)) => {
-            return Err(scenario_transition_error(
-                "mock clear",
-                "functionClear",
-                err.message,
-            ));
-        }
-        None => false,
-    };
+    let companion = session
+        .companion(companion_method::CAPABILITIES, None)
+        .map_err(|error| format!("cannot discover scenario participants: {}", error.message))
+        .and_then(|caps| match scenario_support(&caps) {
+            Ok(()) => session
+                .companion(
+                    companion_method::SCENARIO_CLEAR,
+                    Some(json!({ "owner": DEV_OWNER })),
+                )
+                .map(|result| Some(result["cleared"] == true))
+                .map_err(|error| error.message),
+            Err(_) => Ok(None),
+        });
     let host = session
         .host(method::SCENARIO_CLEAR, None)
         .map_err(|err| scenario_transition_error("mock clear", "httpClear", format!("{err:#}")))?;
+    let companion_cleared = match companion {
+        Ok(cleared) => cleared.unwrap_or(false),
+        Err(message) => {
+            return Err(CommandError {
+                code: "partial_clear".into(),
+                message: format!(
+                    "mock clear did not complete: the companion kept its function rules ({message}); \
+                     the HTTP rules were cleared and Logic network calls are admitted again"
+                ),
+                data: Some(json!({
+                    "scope": "session",
+                    "phases": {
+                        "http": { "state": "applied", "result": host },
+                        "functionClear": { "state": "failed", "message": message },
+                    },
+                })),
+            }
+            .into());
+        }
+    };
     Ok(json!({
         "scope": "session",
         "cleared": host["cleared"] == true || companion_cleared,
@@ -1659,6 +1691,7 @@ mod tests {
         host_fails: bool,
         target_appid: Option<&'static str>,
         companion_error: Option<CallError>,
+        clear_error: Option<CallError>,
         status: Value,
         mock_status: Value,
     }
@@ -1671,6 +1704,7 @@ mod tests {
                 host_fails: false,
                 target_appid: Some("app"),
                 companion_error: None,
+                clear_error: None,
                 status: json!({ "active": true, "scenario": { "rules": [] } }),
                 mock_status: json!({ "apps": [{
                     "appid": "app", "handlers": 2,
@@ -1751,6 +1785,11 @@ mod tests {
                 .push(format!("companion {method} {owner}"));
             if method == companion_method::SCENARIO_USE
                 && let Some(err) = &self.companion_error
+            {
+                return Err(err.clone());
+            }
+            if method == companion_method::SCENARIO_CLEAR
+                && let Some(err) = &self.clear_error
             {
                 return Err(err.clone());
             }
@@ -1867,8 +1906,58 @@ mod tests {
             err.contains("rule 2 (rules[1]) function orders.submit: unknown Function"),
             "{err}"
         );
-        assert!(err.contains("network calls remain blocked"), "{err}");
+        assert!(err.contains("the previous scenario stays active"), "{err}");
         assert!(!refusing.log().contains(&"host use".to_string()));
+    }
+
+    #[test]
+    fn a_rejection_that_left_the_companion_unchanged_reopens_admission() {
+        for (code, file, phase) in [
+            (companion::INVALID_RULES, CHECKOUT, "scenario.use"),
+            (companion_method::NOT_SENT, CHECKOUT, "scenario.use"),
+            (companion_method::NOT_SENT, WIFI, "scenario.clear"),
+        ] {
+            let mut refusing = Fake::new(Some(vec![SCENARIO_FUNCTION]));
+            let error = CallError {
+                code: code.into(),
+                message: "refused".into(),
+                data: None,
+            };
+            if file == WIFI {
+                refusing.clear_error = Some(error);
+            } else {
+                refusing.companion_error = Some(error);
+            }
+            let variant = (file == WIFI).then_some("b");
+            let err = install(&refusing, &loaded(file), &target(variant), None).unwrap_err();
+            let err = format!("{err:#}");
+            assert!(
+                err.contains("the previous scenario stays active"),
+                "{code}: {err}"
+            );
+            let log = refusing.log();
+            assert!(
+                log.contains(&format!("companion session.companion.{phase} \"dev\"")),
+                "{log:?}"
+            );
+            assert_eq!(
+                log.last().unwrap(),
+                "host session.network.scenario.resume",
+                "{code}"
+            );
+            assert!(!log.contains(&"host use".to_string()), "{code}");
+        }
+
+        // An outcome the companion may have applied keeps admission closed.
+        let mut lost = Fake::new(Some(vec![SCENARIO_FUNCTION]));
+        lost.companion_error = Some(CallError {
+            code: "connection_lost".into(),
+            message: "gone".into(),
+            data: None,
+        });
+        let err = install(&lost, &loaded(CHECKOUT), &target(None), None).unwrap_err();
+        assert!(format!("{err:#}").contains("network calls remain blocked"));
+        assert!(!lost.log().iter().any(|line| line.contains("resume")));
     }
 
     #[test]
@@ -1942,6 +2031,30 @@ mod tests {
         assert_eq!(
             plain.log(),
             ["host pause", "host session.network.scenario.clear"]
+        );
+    }
+
+    #[test]
+    fn clear_reopens_the_host_even_when_the_companion_is_gone() {
+        let mut dead = Fake::new(Some(vec![SCENARIO_FUNCTION]));
+        dead.clear_error = Some(CallError {
+            code: "unavailable".into(),
+            message: "the companion exited".into(),
+            data: None,
+        });
+        let err = clear(&dead).unwrap_err();
+        let command = err.downcast_ref::<CommandError>().unwrap();
+        assert_eq!(command.code, "partial_clear");
+        let phases = &command.data.as_ref().unwrap()["phases"];
+        assert_eq!(phases["http"]["state"], "applied");
+        assert_eq!(phases["functionClear"]["state"], "failed");
+        assert_eq!(
+            dead.log(),
+            [
+                "host pause",
+                "companion session.companion.scenario.clear \"dev\"",
+                "host session.network.scenario.clear"
+            ]
         );
     }
 
