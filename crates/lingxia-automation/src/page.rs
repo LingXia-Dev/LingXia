@@ -157,7 +157,11 @@ fn action_script(
         Some((name, payload)) => {
             let name = serde_json::to_string(name).expect("name serializes");
             let payload = payload
-                .map(|value| value.to_string())
+                .map(|value| {
+                    let json = value.to_string();
+                    let encoded = serde_json::to_string(&json).expect("JSON serializes");
+                    format!("JSON.parse({encoded})")
+                })
                 .unwrap_or_else(|| "undefined".to_string());
             format!(
                 r#"{{
@@ -760,6 +764,29 @@ mod action_script_tests {
             answers[4],
             json!({ "state": "lost" }),
             "a read outcome is released"
+        );
+    }
+
+    #[test]
+    fn action_payload_preserves_own_proto_keys() {
+        let payload: Value = serde_json::from_str(
+            r#"{"__proto__":{"role":"admin"},"nested":{"__proto__":"value"}}"#,
+        )
+        .unwrap();
+        let answers = run(
+            "window.__lxInvokePageAction = (_name, payload) => ({ \
+                own: Object.prototype.hasOwnProperty.call(payload, '__proto__'), \
+                role: payload.__proto__.role, \
+                nestedOwn: Object.prototype.hasOwnProperty.call(payload.nested, '__proto__'), \
+                nestedValue: payload.nested.__proto__ \
+            });",
+            vec![action_script("t", Some(("save", Some(&payload))), 1000)],
+        );
+        assert_eq!(
+            answers[0],
+            json!({ "state": "settled", "ok": true, "value": {
+                "own": true, "role": "admin", "nestedOwn": true, "nestedValue": "value"
+            } })
         );
     }
 

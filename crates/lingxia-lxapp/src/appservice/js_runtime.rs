@@ -1212,7 +1212,13 @@ pub(crate) async fn lxapp_service_handler(
             // pump to deliver the View's answer, and awaiting the eval here
             // would hold that answer behind it until the caller timed out.
             context_lifecycle::spawn(ctx, move |ctx| async move {
-                let _ = tx.send(eval_logic_script_inner(&ctx, &script, capture_calls).await);
+                let mut tx = tx;
+                tokio::select! {
+                    _ = tx.closed() => {},
+                    result = eval_logic_script_inner(&ctx, &script, capture_calls) => {
+                        let _ = tx.send(result);
+                    }
+                }
             });
         }
     }
