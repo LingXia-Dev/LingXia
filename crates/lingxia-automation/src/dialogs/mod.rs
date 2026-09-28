@@ -3,13 +3,10 @@
 //! The test runner watches the app under test for each spec. While it does,
 //! toasts are recorded as they are presented (the host still draws them),
 //! and so are modals and `lx.showActionSheet`: drawn, with how the user
-//! closed them. Once the spec queued a modal answer, modals are answered
-//! from the queue instead of being drawn (likewise action sheets); from then
-//! on one with no queued answer rejects in Logic and is reported to the
-//! runner, which fails the spec at once: nothing is left on screen waiting
-//! for a tap that never comes. A watch belongs to the spec attempt that opened it and ends with
-//! it; an app nobody watches (a dev session, any other run) presents every
-//! dialog as usual.
+//! closed them. Queued answers apply once; later dialogs are drawn unless
+//! the spec explicitly selects strict mode, where a missing answer fails
+//! immediately. A watch belongs to its spec attempt; an unwatched app
+//! presents every dialog as usual.
 
 use crate::auto_err;
 use crate::resolve::{js_object_to_json, json_to_js, upgrade_authorized};
@@ -51,10 +48,9 @@ struct Watch {
     sheets: VecDeque<(u64, Value)>,
     modal_answers: VecDeque<bool>,
     sheet_answers: VecDeque<SheetAnswer>,
-    /// The spec queued a modal (action sheet) answer: from then on those are
-    /// answered from the queue, never drawn.
-    answering_modals: bool,
-    answering_sheets: bool,
+    /// Only explicit strict mode refuses an unqueued dialog.
+    strict_modals: bool,
+    strict_sheets: bool,
     next_id: u64,
     /// The first dialog that found no answer. Dropping the sender (the watch
     /// ended) wakes a waiting `unanswered()` with nothing.
@@ -71,8 +67,8 @@ impl Watch {
             sheets: VecDeque::new(),
             modal_answers: VecDeque::new(),
             sheet_answers: VecDeque::new(),
-            answering_modals: false,
-            answering_sheets: false,
+            strict_modals: false,
+            strict_sheets: false,
             next_id: 0,
             unanswered: watch::channel(None).0,
         }
@@ -196,7 +192,7 @@ impl DialogHook for Hook {
             if let Some(text) = &modal.cancel_text {
                 record["cancelText"] = json!(text);
             }
-            let drawn = !watch.answering_modals;
+            let drawn = answer.is_none() && !watch.strict_modals;
             let id = record_dialog(&mut watch.modals, &mut watch.next_id, record, drawn);
             if drawn {
                 return DialogDecision::Draw(id);
@@ -223,7 +219,7 @@ impl DialogHook for Hook {
                 return DialogDecision::Present;
             };
             let answer = watch.sheet_answers.pop_front();
-            let drawn = !watch.answering_sheets;
+            let drawn = answer.is_none() && !watch.strict_sheets;
             let id = record_dialog(
                 &mut watch.sheets,
                 &mut watch.next_id,
@@ -495,8 +491,7 @@ impl JSDialogDriver {
         })
     }
 
-    /// Queue the answer of the next modal: `{ confirm: true | false }`. From
-    /// now until the watch ends, modals are answered, never drawn.
+    /// Queue one modal answer; later unqueued modals are drawn by default.
     #[js_method(rename = "answerNextModal")]
     fn answer_next_modal(&self, ctx: JSContext, answer: JSObject) -> JSResult<()> {
         let confirm = parse_modal_answer(&js_object_to_json(&answer)?).map_err(auto_err)?;
@@ -507,14 +502,13 @@ impl JSDialogDriver {
                 )));
             }
             watch.modal_answers.push_back(confirm);
-            watch.answering_modals = true;
             Ok(())
         })?
     }
 
     /// Queue the answer of the next `lx.showActionSheet`: `{ index }` picks
-    /// that item, `{ cancel: true }` dismisses it. From now until the watch
-    /// ends, action sheets are answered, never drawn.
+    /// that item, `{ cancel: true }` dismisses it. Later unqueued sheets
+    /// are drawn by default.
     #[js_method(rename = "answerNextActionSheet")]
     fn answer_next_action_sheet(&self, ctx: JSContext, answer: JSObject) -> JSResult<()> {
         let answer = parse_sheet_answer(&js_object_to_json(&answer)?).map_err(auto_err)?;
@@ -525,9 +519,41 @@ impl JSDialogDriver {
                 )));
             }
             watch.sheet_answers.push_back(answer);
-            watch.answering_sheets = true;
             Ok(())
         })?
+    }
+
+    /// Select whether an unqueued dialog is drawn or fails this watch.
+    /// Returns the prior modes so a caller can restore a temporary scope.
+    #[js_method(rename = "setAnswerMode")]
+    fn set_answer_mode(&self, ctx: JSContext, mode: JSObject) -> JSResult<JSValue> {
+        let mode = js_object_to_json(&mode)?;
+        let fields = mode
+            .as_object()
+            .ok_or_else(|| auto_err("setAnswerMode takes an options object"))?;
+        for (key, value) in fields {
+            if !matches!(key.as_str(), "modals" | "actionSheets")
+                || !matches!(value.as_str(), Some("draw" | "strict"))
+            {
+                return Err(auto_err(format!(
+                    "setAnswerMode: {key} must be 'draw' or 'strict'"
+                )));
+            }
+        }
+        let previous = self.with_watch(&ctx, |watch| {
+            let previous = json!({
+                "modals": if watch.strict_modals { "strict" } else { "draw" },
+                "actionSheets": if watch.strict_sheets { "strict" } else { "draw" },
+            });
+            if let Some(value) = fields.get("modals") {
+                watch.strict_modals = value.as_str() == Some("strict");
+            }
+            if let Some(value) = fields.get("actionSheets") {
+                watch.strict_sheets = value.as_str() == Some("strict");
+            }
+            previous
+        })?;
+        json_to_js(&ctx, &previous)
     }
 }
 
@@ -612,13 +638,44 @@ mod tests {
     }
 
     #[test]
+    fn queued_answer_is_one_shot_without_strict_mode() {
+        let hook = Hook;
+        watched("dialogs-once", "run-once", 1);
+        with_watches(|watches| {
+            let watch = watches.get_mut("dialogs-once").unwrap();
+            watch.modal_answers.push_back(true);
+            watch.sheet_answers.push_back(SheetAnswer::Cancel);
+        });
+        assert_eq!(
+            hook.modal("dialogs-once", &modal("First")),
+            DialogDecision::Answer(true)
+        );
+        assert!(matches!(
+            hook.modal("dialogs-once", &modal("Second")),
+            DialogDecision::Draw(_)
+        ));
+        let sheet = ActionSheetShown {
+            items: vec!["A".into()],
+        };
+        assert_eq!(
+            hook.action_sheet("dialogs-once", &sheet),
+            DialogDecision::Answer(None)
+        );
+        assert!(matches!(
+            hook.action_sheet("dialogs-once", &sheet),
+            DialogDecision::Draw(_)
+        ));
+        clear_run("run-once");
+    }
+
+    #[test]
     fn queued_answers_answer_modals_in_order_and_a_missing_one_refuses() {
         let hook = Hook;
         watched("dialogs-modal", "run-m", 1);
         with_watches(|watches| {
             let watch = watches.get_mut("dialogs-modal").unwrap();
             watch.modal_answers.extend([true, false]);
-            watch.answering_modals = true;
+            watch.strict_modals = true;
         });
         let mut receiver = with_watches(|watches| watches["dialogs-modal"].unanswered.subscribe());
         assert_eq!(
@@ -675,7 +732,7 @@ mod tests {
                 SheetAnswer::Cancel,
                 SheetAnswer::Index(5),
             ]);
-            watch.answering_sheets = true;
+            watch.strict_sheets = true;
         });
         let sheet = ActionSheetShown {
             items: vec!["Edit".into(), "Delete".into()],
