@@ -44,7 +44,6 @@ const hasLingxiaPackageModule = (id, packageName, workspaceDir, moduleNames) =>
 
 const manualChunks = (rawId) => {
   const id = normalizeModuleId(rawId);
-  if (id.includes('__page_bridge_runtime__.js')) return 'page-bridge-runtime';
   if (id.includes('/node_modules/react/') || id.includes('/node_modules/react-dom/') || id.includes('/node_modules/scheduler/')) return 'react-runtime';
   if (id.includes('/node_modules/vue/') || id.includes('/node_modules/@vue/')) return 'vue-runtime';
   if (

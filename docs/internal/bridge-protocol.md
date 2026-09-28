@@ -745,6 +745,16 @@ The CLI maps generator shape to streaming; all ordinary actions are awaitable, i
 | non-void return | `raw.call()` |
 | `async function*`, `AsyncIterable`, `AsyncIterator`, `AsyncGenerator` | `raw.stream()` |
 
+A unary action call has no bridge deadline (`timeoutMs: 0`): it settles when
+Logic settles it; a transport reset rejects it, and a departing document takes
+it along. The page runtime holds a call made before the page's first state
+(native components fire early) and drops, unsettled and unreported, one the
+host answers `BRIDGE_NOT_READY` after it: that document's session has ended.
+Logic runs each
+`req` as its own context task, never on the worker's message pump — an action
+may await work that only a later message drives (an eval, a test clock tick,
+another action), so awaiting it inline deadlocks the app's Logic.
+
 ### 9.4 Backend Capabilities
 
 | Backend | `req` | `notify` | `ch.open` |

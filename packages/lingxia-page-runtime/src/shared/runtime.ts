@@ -250,8 +250,7 @@ function definePageBridgeAction(
       return handle;
     }
     if (mode === "call") {
-      // Page actions may wait for user interaction; the bridge lifetime owns cancellation.
-      const promise = bridge.raw.call(name, payload, { timeoutMs: 0 });
+      const promise = callUnaryPageAction(bridge, name, payload);
       if (promise && typeof promise.catch === "function") {
         promise.catch((err: unknown) => {
           console.warn(`[PageFunc] ${name} failed:`, err instanceof Error ? err.message : err);
@@ -268,6 +267,80 @@ function definePageBridgeAction(
     __bridgeMode: mode,
   });
   return action;
+}
+
+/**
+ * The one wire path of a unary action. It has no bridge deadline: an action
+ * may wait for a person or poll for minutes, and settles when Logic settles
+ * or the document goes away.
+ */
+async function callUnaryPageAction(
+  bridge: NonNullable<Window["LingXiaBridge"]>,
+  name: string,
+  payload: unknown,
+): Promise<unknown> {
+  // Native components fire events before the page's first state arrives,
+  // and the host refuses calls until then: hold the call instead.
+  if (!isPageReady()) await whenPageReady({ timeoutMs: null });
+  try {
+    return await bridge.raw.call(name, payload, { timeoutMs: 0 });
+  } catch (error) {
+    // Once the page has had its state, a not-ready answer means the host
+    // ended this document's session: the page has left, and a native
+    // component's late event has no one to report to. Drop it quietly.
+    if ((error as { code?: unknown } | null)?.code === "BRIDGE_NOT_READY") return new Promise<never>(() => {});
+    throw error;
+  }
+}
+
+const PAGE_ACTIONS_NOT_READY = "PAGE_ACTIONS_NOT_READY";
+
+function pageActionError(code: string, message: string): Error {
+  return Object.assign(new Error(message), { code });
+}
+
+/**
+ * Automation entry (`PageDriver.action`): invoke one unary action of this
+ * page with a JSON payload, as the View would. The payload is passed as is —
+ * no DOM-event repackaging.
+ */
+function invokePageActionForAutomation(name: unknown, payload?: unknown): Promise<unknown> {
+  if (typeof name !== "string" || name === "") {
+    return Promise.reject(pageActionError("BRIDGE_MALFORMED_MESSAGE", "Page action name must be a non-empty string"));
+  }
+  const metadata = window.__pageBridge as PageBridgeMetadata | undefined;
+  const bridge = window.LingXiaBridge;
+  if (!Array.isArray(metadata?.__names) || !bridge?.raw) {
+    return Promise.reject(pageActionError(PAGE_ACTIONS_NOT_READY, "Page actions are not ready yet"));
+  }
+  if (!metadata.__names.includes(name)) {
+    const known = metadata.__names.length ? metadata.__names.join(", ") : "none";
+    return Promise.reject(pageActionError(
+      "BRIDGE_METHOD_NOT_FOUND",
+      `'${name}' is not an action of this page (actions: ${known})`,
+    ));
+  }
+  if (metadata.__modes?.[name] !== "call") {
+    return Promise.reject(pageActionError(
+      "PAGE_ACTION_NOT_UNARY",
+      `Page action '${name}' is a stream action; only unary actions can be invoked`,
+    ));
+  }
+  return callUnaryPageAction(bridge, name, payload);
+}
+
+declare global {
+  interface Window {
+    /** Automation-only; see `invokePageActionForAutomation`. */
+    __lxInvokePageAction?: (name: string, payload?: unknown) => Promise<unknown>;
+  }
+}
+
+if (typeof window !== "undefined") {
+  Object.defineProperty(window, "__lxInvokePageAction", {
+    value: invokePageActionForAutomation,
+    configurable: true,
+  });
 }
 
 function filterPayload(name: string, args: unknown[]): unknown {

@@ -38,6 +38,37 @@ pub(crate) const E_CLOCK_NOT_INSTALLED: &str = "E_CLOCK_NOT_INSTALLED";
 #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
 pub(crate) const E_CLOCK_INSTALLED: &str = "E_CLOCK_INSTALLED";
 
+/// A page action rejected without a code of its own (or with one past the
+/// intern bound); `data.cause` still carries what it rejected with.
+pub(crate) const E_PAGE_ACTION: &str = "E_PAGE_ACTION";
+
+/// A page action's own rejection code, kept verbatim so a spec sees what the
+/// View's promise rejected with. Codes are a small, app-defined set; the
+/// bound only stops a pathological app from growing it without limit.
+pub(crate) fn page_action_code(code: &str) -> &'static str {
+    use std::collections::HashSet;
+    use std::sync::{Mutex, OnceLock};
+    const MAX_CODES: usize = 256;
+    static CODES: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
+    let code = code.trim();
+    if code.is_empty() || code.len() > 64 {
+        return E_PAGE_ACTION;
+    }
+    let mut codes = CODES
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(interned) = codes.get(code) {
+        return interned;
+    }
+    if codes.len() >= MAX_CODES {
+        return E_PAGE_ACTION;
+    }
+    let interned: &'static str = Box::leak(code.to_owned().into_boxed_str());
+    codes.insert(interned);
+    interned
+}
+
 /// The code for a driver or lower-half failure message.
 pub(crate) fn code_for(message: &str) -> &'static str {
     if message.contains("_privilege_required:") {
@@ -167,16 +198,27 @@ pub(crate) fn page_error(
     code: &'static str,
     message: impl Into<String>,
 ) -> RongJSError {
+    page_error_with(app, requested, code, message, Map::new())
+}
+
+/// [`page_error`] with extra `data` fields beside the page ones.
+pub(crate) fn page_error_with(
+    app: &Arc<LxApp>,
+    requested: Option<&str>,
+    code: &'static str,
+    message: impl Into<String>,
+    extra: Map<String, Value>,
+) -> RongJSError {
     let requested = requested
         .map(str::trim)
         .filter(|page| !page.is_empty() && !page.eq_ignore_ascii_case("current"));
     let target = PageRef::resolve(app, requested);
     let current = PageRef::resolve(app, None);
-    with_json_data(
-        coded(code, message),
-        &page_data(requested, target.as_ref(), current.as_ref()),
-    )
-    .into()
+    let mut data = page_data(requested, target.as_ref(), current.as_ref());
+    if let Value::Object(fields) = &mut data {
+        fields.extend(extra);
+    }
+    with_json_data(coded(code, message), &data).into()
 }
 
 /// A failure concerning one known page instance (for example one the app's
@@ -204,6 +246,21 @@ pub(crate) fn instance_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn page_action_codes_pass_through_verbatim() {
+        assert_eq!(
+            page_action_code("BRIDGE_INTERNAL_ERROR"),
+            "BRIDGE_INTERNAL_ERROR"
+        );
+        assert_eq!(page_action_code("3000"), "3000");
+        assert!(std::ptr::eq(
+            page_action_code("E_QUOTA"),
+            page_action_code("E_QUOTA")
+        ));
+        assert_eq!(page_action_code(""), E_PAGE_ACTION);
+        assert_eq!(page_action_code(&"X".repeat(65)), E_PAGE_ACTION);
+    }
 
     #[test]
     fn lower_half_messages_map_to_stable_codes() {

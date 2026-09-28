@@ -277,6 +277,7 @@ const LXAPP_MANAGER_API = [
   'windows',
 ] as const;
 const PAGE_DRIVER_API = [
+  'action',
   'click',
   'eval',
   'fill',
