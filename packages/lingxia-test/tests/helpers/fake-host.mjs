@@ -503,6 +503,16 @@ export function installFakeHost(world, options = {}) {
         },
         ...(options.lxapps ? { lxapps: options.lxapps } : {}),
       };
+      // `hostTiers`: the host's own shape — tiers are getters on the root's
+      // prototype returning callable objects whose methods live on their
+      // prototypes, as Rong host objects on JavaScriptCore are.
+      if (options.hostTiers) {
+        const proto = { lxapp: root.lxapp };
+        for (const [name, tier] of Object.entries(options.hostTiers)) {
+          Object.defineProperty(proto, name, { get() { return tier; }, enumerable: true, configurable: true });
+        }
+        return Object.create(proto);
+      }
       if (!options.attempts) return root;
       return {
         lxapp: (appId) => attempts.gate(root.lxapp(appId), `lxapp(${appId ? JSON.stringify(appId) : ""}).`),
