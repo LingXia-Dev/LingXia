@@ -540,8 +540,40 @@ fn hash_resource_bundle_inputs(plan: &ResourceBundlePlan) -> Result<String> {
         &plan.bundle_dir,
         &["dist", "node_modules", ".git", ".lingxia"],
     )?);
+    // A linked `@lingxia/*` package changes without touching the lockfile.
+    for package in lingxia_packages(&plan.bundle_dir) {
+        hasher.update(path_key(&package).as_bytes());
+        hasher.update(fs::read(package.join("package.json")).unwrap_or_default());
+        let dist = package.join("dist");
+        if dist.is_dir() {
+            hasher.update(hash_tree(&dist, &[])?);
+        }
+    }
 
     Ok(sha256_hex(&hasher.finalize()))
+}
+
+/// Every `@lingxia/*` package node resolution can reach from `dir`, direct or
+/// transitive, by real path and in a stable order.
+fn lingxia_packages(dir: &Path) -> Vec<PathBuf> {
+    let mut found = std::collections::BTreeSet::new();
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(from) = pending.pop() {
+        for ancestor in from.ancestors() {
+            let Ok(entries) = fs::read_dir(ancestor.join("node_modules").join("@lingxia")) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                if let Ok(package) = entry.path().canonicalize()
+                    && package.join("package.json").is_file()
+                    && found.insert(package.clone())
+                {
+                    pending.push(package);
+                }
+            }
+        }
+    }
+    found.into_iter().collect()
 }
 
 /// The CLI build that produces bundles. Dirty builds share a version string, so
@@ -649,6 +681,30 @@ fn is_apple_junk_entry(name: &std::ffi::OsStr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn linked_lingxia_packages_are_found_transitively_by_real_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let package = |name: &str| {
+            let dir = root.join("packages").join(name);
+            fs::create_dir_all(dir.join("dist")).unwrap();
+            fs::write(dir.join("package.json"), "{}").unwrap();
+            dir
+        };
+        let react = package("react");
+        let runtime = package("page-runtime");
+        // Workspace hoisting: react's dependency resolves from packages/node_modules.
+        let hoisted = root.join("packages/node_modules/@lingxia");
+        fs::create_dir_all(&hoisted).unwrap();
+        std::os::unix::fs::symlink(&runtime, hoisted.join("page-runtime")).unwrap();
+        let app = root.join("app");
+        fs::create_dir_all(app.join("node_modules/@lingxia")).unwrap();
+        std::os::unix::fs::symlink(&react, app.join("node_modules/@lingxia/react")).unwrap();
+
+        assert_eq!(lingxia_packages(&app), vec![runtime, react]);
+    }
 
     #[test]
     fn browser_webui_manifest_requires_exact_control_protocol_version() {
