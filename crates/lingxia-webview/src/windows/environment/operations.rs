@@ -367,6 +367,18 @@ pub(crate) fn start_call_devtools_protocol(
     params: &str,
     resp: Sender<StdResult<String>>,
 ) {
+    start_cdp(webview, method, params, resp, |result| result);
+}
+
+/// [`start_call_devtools_protocol`], with the outcome mapped to what `resp`
+/// carries.
+fn start_cdp<T: Send + 'static>(
+    webview: &ICoreWebView2,
+    method: &str,
+    params: &str,
+    resp: Sender<T>,
+    map: fn(StdResult<String>) -> T,
+) {
     let sent = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let handler_sent = sent.clone();
     let handler_resp = resp.clone();
@@ -376,7 +388,7 @@ pub(crate) fn start_call_devtools_protocol(
             let response = result
                 .map(|()| return_json)
                 .map_err(|err| WebViewError::WebView(format!("CDP {method_name} failed: {err}")));
-            send_once(&handler_sent, &handler_resp, response);
+            send_once(&handler_sent, &handler_resp, map(response));
             Ok(())
         }));
     let started = unsafe {
@@ -392,9 +404,9 @@ pub(crate) fn start_call_devtools_protocol(
         send_once(
             &sent,
             &resp,
-            Err(WebViewError::WebView(format!(
+            map(Err(WebViewError::WebView(format!(
                 "CallDevToolsProtocolMethod failed: {err}"
-            ))),
+            )))),
         );
     }
 }
@@ -486,18 +498,69 @@ pub(crate) fn start_execute_script<T: Send + 'static>(
     }
 }
 
-pub(crate) fn decode_script_result(
+/// Expression passed to CDP `Runtime.evaluate`.
+///
+/// `ExecuteScript` JSON-encodes a returned Promise as `{}` and does not wait
+/// for it. Page evals return Promises, so the script is awaited here.
+pub(crate) fn awaiting_eval_expression(js: &str) -> String {
+    format!(
+        "(async () => {{ {} }})()",
+        crate::input_helper::build_async_eval_body(js, None)
+    )
+}
+
+pub(crate) fn decode_cdp_eval_result(
     raw: &str,
 ) -> std::result::Result<serde_json::Value, WebViewScriptError> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Ok(serde_json::Value::Null);
+    let value: serde_json::Value = serde_json::from_str(raw).map_err(|err| {
+        WebViewScriptError::Platform(format!("WebView2 returned invalid CDP eval JSON: {err}"))
+    })?;
+    if let Some(details) = value.get("exceptionDetails") {
+        let message = details
+            .pointer("/exception/description")
+            .and_then(|item| item.as_str())
+            .or_else(|| details.get("text").and_then(|item| item.as_str()))
+            .unwrap_or("JavaScript evaluation failed");
+        return Err(WebViewScriptError::Js(message.to_string()));
     }
-    serde_json::from_str(trimmed).map_err(|err| {
-        WebViewScriptError::Platform(format!(
-            "WebView2 returned invalid JavaScript result JSON: {err}; raw={trimmed}"
-        ))
+    let result = value.get("result").ok_or_else(|| {
+        WebViewScriptError::Platform(format!("CDP eval response has no result: {raw}"))
+    })?;
+    if result.get("subtype").and_then(|item| item.as_str()) == Some("error") {
+        let message = result
+            .get("description")
+            .and_then(|item| item.as_str())
+            .unwrap_or("JavaScript evaluation failed");
+        return Err(WebViewScriptError::Js(message.to_string()));
+    }
+    // The wrapper always answers with its JSON envelope as a string.
+    match result.get("value") {
+        Some(serde_json::Value::String(text)) => {
+            crate::input_helper::parse_wrapped_eval_result(text)
+        }
+        _ => Err(WebViewScriptError::Platform(format!(
+            "CDP eval answered without the result envelope: {raw}"
+        ))),
+    }
+}
+
+/// Evaluate `js`, waiting for a returned Promise, and send the JSON value.
+pub(crate) fn start_awaiting_eval(
+    webview: &ICoreWebView2,
+    js: &str,
+    resp: Sender<std::result::Result<serde_json::Value, WebViewScriptError>>,
+) {
+    let params = serde_json::json!({
+        "expression": awaiting_eval_expression(js),
+        "awaitPromise": true,
+        "returnByValue": true,
     })
+    .to_string();
+    start_cdp(webview, "Runtime.evaluate", &params, resp, |result| {
+        result
+            .map_err(|err| WebViewScriptError::Platform(err.to_string()))
+            .and_then(|json| decode_cdp_eval_result(&json))
+    });
 }
 
 pub(crate) fn read_stream_to_end(stream: &IStream) -> WinResult<Vec<u8>> {
@@ -604,4 +667,38 @@ fn is_webview2_runtime_missing(err: &webview2_com::Error) -> bool {
         webview2_com::Error::WindowsError(err)
             if err.code().0 == HRESULT_FROM_WIN32_ERROR_FILE_NOT_FOUND
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn awaiting_eval_wraps_the_script_in_an_async_iife() {
+        let expression = awaiting_eval_expression("document.title");
+        assert!(expression.starts_with("(async () => {"));
+        assert!(expression.contains("await (document.title)"));
+        assert!(expression.ends_with("})()"));
+    }
+
+    #[test]
+    fn cdp_eval_result_unwraps_a_resolved_value() {
+        let raw = r#"{"result":{"type":"string","value":"{\"ok\":true,\"value\":{\"title\":\"Home\"}}"}}"#;
+        let value = decode_cdp_eval_result(raw).unwrap();
+        assert_eq!(value["title"], "Home");
+    }
+
+    #[test]
+    fn cdp_eval_result_without_the_envelope_is_a_platform_error() {
+        let raw = r#"{"result":{"type":"object","value":{"title":"Home"}}}"#;
+        let err = decode_cdp_eval_result(raw).unwrap_err();
+        assert!(matches!(err, WebViewScriptError::Platform(_)), "{err}");
+    }
+
+    #[test]
+    fn cdp_eval_result_surfaces_a_script_exception() {
+        let raw = r#"{"exceptionDetails":{"text":"Uncaught","exception":{"description":"TypeError: missing"}},"result":{"type":"object","subtype":"error"}}"#;
+        let err = decode_cdp_eval_result(raw).unwrap_err();
+        assert!(err.to_string().contains("TypeError: missing"), "{err}");
+    }
 }

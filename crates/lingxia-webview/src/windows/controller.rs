@@ -1453,9 +1453,7 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             });
         }
         UiCommand::EvalJs { js, resp } => {
-            start_execute_script(&state.webview, &js, resp, |result| {
-                result.and_then(|json| decode_script_result(&json))
-            });
+            start_awaiting_eval(&state.webview, &js, resp);
         }
         UiCommand::PostMessage { message, resp } => {
             let result = unsafe {
