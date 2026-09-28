@@ -278,11 +278,6 @@ fn make_host(
     // waiting on a sheet cannot pass. `undefined` where the platform cannot
     // tell.
     host.set("screenLocked", JSFunc::new(ctx, screen_locked)?)?;
-    // A covered window pauses its pages' animation frames. The app raises
-    // its own window, as `lxdev host focus` does, so no Accessibility grant
-    // is involved; keyboard focus stays where the user left it. `false`
-    // where the platform cannot.
-    host.set("raiseWindow", JSFunc::new(ctx, raise_window)?)?;
     crate::network::attach_host_functions(
         ctx,
         &host,
@@ -380,23 +375,6 @@ fn attach_attempts(ctx: &JSContext, host: &JSObject, shared: &Arc<RunShared>) ->
         })?,
     )?;
     Ok(())
-}
-
-async fn raise_window() -> JSResult<bool> {
-    use lingxia_platform::error::PlatformError;
-    use lingxia_platform::traits::screenshot::AppScreenshot;
-    let Some(platform) = lxapp::get_platform() else {
-        return Ok(false);
-    };
-    match platform.bring_app_window_to_front(None, false).await {
-        Ok(_) => Ok(true),
-        Err(PlatformError::NotSupported(_)) => Ok(false),
-        Err(err) => Err(HostError::new(
-            "E_AUTOMATION",
-            format!("could not raise the app window: {err}"),
-        )
-        .into()),
-    }
 }
 
 fn screen_locked() -> Option<bool> {

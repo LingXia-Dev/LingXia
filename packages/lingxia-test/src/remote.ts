@@ -51,7 +51,7 @@ function argsLiteral(args: readonly unknown[], api: string): string {
  * `getCurrentPages` are read defensively: a missing one must surface as
  * `undefined` in the scope, not as a ReferenceError blamed on the spec.
  */
-export function logicScript(fn: unknown, args: readonly unknown[], api = "t.app.logic.eval"): string {
+export function logicScript(fn: unknown, args: readonly unknown[], api = "t.app.logic.eval", result: "strict" | "snapshot" = "strict"): string {
   const source = functionSource(fn, api);
   return [
     "((__lxFn, __lxArgs, __lxResult) => Promise.resolve(__lxFn({",
@@ -61,8 +61,14 @@ export function logicScript(fn: unknown, args: readonly unknown[], api = "t.app.
     '  getCurrentPages: typeof getCurrentPages === "function" ? getCurrentPages : undefined,',
     `}, ...__lxArgs)).then(value => __lxResult(value, ${JSON.stringify(api)})))(`,
     source,
-    `, ${argsLiteral(args, api)}, ${jsonResult.toString()})`,
+    `, ${argsLiteral(args, api)}, ${(result === "snapshot" ? jsonSnapshot : jsonResult).toString()})`,
   ].join("\n");
+}
+
+/** Page data crosses the same JSON boundary as setData. Sent as source. */
+function jsonSnapshot(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  return JSON.parse(JSON.stringify(value));
 }
 
 /** WebView: evaluated as `await (<expression>)`. */
@@ -73,6 +79,11 @@ export function pageScript(fn: unknown, args: readonly unknown[], api = "t.app.v
     source,
     `, ${argsLiteral(args, api)}, ${jsonResult.toString()})`,
   ].join("\n");
+}
+
+const retryableRemoteErrors = new WeakSet<object>();
+export function isRetryableRemoteError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && retryableRemoteErrors.has(error);
 }
 
 /**
@@ -98,6 +109,11 @@ export function explainRemoteError(error: unknown, api: string, target: RemoteTa
   if (details && typeof details === "object") {
     if (details.code !== undefined) explained.code = details.code;
     if (details.data !== undefined) explained.data = details.data;
+  }
+  // A DOM null read can throw TypeError until rendering catches up. JSON
+  // validation errors carry a marker that survives the native error string.
+  if (remoteName === "TypeError" && !message.includes("[E_NON_JSON_VALUE]")) {
+    retryableRemoteErrors.add(explained);
   }
   explained.cause = error;
   return explained;

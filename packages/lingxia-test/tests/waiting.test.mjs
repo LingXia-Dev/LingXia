@@ -428,8 +428,6 @@ test("hidden-page actions exhaust their original budget without raising a window
   world.add({ testId: "sheet", visible: false });
   const probes = hidePage(world);
   installFakeHost(world);
-  let raised = 0;
-  globalThis.__LINGXIA_AUTOMATION_HOST__.raiseWindow = async () => { raised++; return true; };
   const errors = [];
   spec("bounded hidden page", { forensics: false }, async t => {
     for (const action of [
@@ -444,122 +442,7 @@ test("hidden-page actions exhaust their original budget without raising a window
   const report = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(report.passed, 1);
   assert.deepEqual(errors.map(error => error.code), ["E_TIMEOUT", "E_TIMEOUT"]);
-  assert.equal(raised, 0);
   assert.equal(probes.count, 0);
-});
-
-/** Page eval that answers the visibility probe per target page. */
-function pageVisibility(world, answerFor) {
-  const original = world.app.page.eval;
-  const probed = [];
-  world.app.page.eval = async (options) => {
-    if (/visibilityState/.test(options.script) && /requestAnimationFrame/.test(options.script)) {
-      probed.push(options.page);
-      return answerFor(options.page);
-    }
-    return original(options);
-  };
-  return probed;
-}
-const HIDDEN = { state: "hidden", animationFrames: false };
-const VISIBLE = { state: "visible", animationFrames: true };
-
-async function missOn(locator) {
-  try {
-    await locator.waitFor({ timeout: 60 });
-    return "found";
-  } catch (error) {
-    // Evidence is a separate operation; it never lengthens waitFor itself.
-    const note = await locator.hiddenPageNote();
-    return [error.message, note].filter(Boolean).join("\n");
-  }
-}
-
-test("hidden-page evidence belongs to the page it was observed on", async () => {
-  const world = createWorld();
-  const probed = pageVisibility(world, (page) => (page === "cart" ? HIDDEN : VISIBLE));
-  installFakeHost(world);
-  const messages = [];
-
-  spec("two pages", { forensics: false }, async (t) => {
-    await t.app.nav.to({ page: "cart" });
-    await t.app.nav.to({ page: "profile" });
-    // Hidden first, then visible: the visible page is not called hidden.
-    messages.push(await missOn(t.app.view.page("cart").testId("missing")));
-    messages.push(await missOn(t.app.view.page("profile").testId("missing")));
-    // Visible first, then hidden again: the hidden page is still named.
-    messages.push(await missOn(t.app.view.page("profile").testId("missing")));
-    messages.push(await missOn(t.app.view.page("cart").testId("missing")));
-  });
-
-  await globalThis.__LINGXIA_TEST__.run();
-  assert.match(messages[0], /page looked hidden/);
-  assert.doesNotMatch(messages[1], /hidden/);
-  assert.doesNotMatch(messages[2], /hidden/);
-  assert.match(messages[3], /page looked hidden or paused: .* \[observed on this page \d+ms earlier\]/);
-  // The visible page is probed each time (cheap); the hidden one once.
-  assert.deepEqual(probed, ["cart", "profile", "profile"]);
-});
-
-test("a navigation invalidates hidden-page evidence", async () => {
-  const world = createWorld();
-  let hidden = true;
-  const probed = pageVisibility(world, () => (hidden ? HIDDEN : VISIBLE));
-  installFakeHost(world);
-  const messages = [];
-
-  spec("navigates", { forensics: false }, async (t) => {
-    messages.push(await missOn(t.app.view.testId("missing")));
-    hidden = false;
-    await t.app.nav.to({ page: "next" });
-    messages.push(await missOn(t.app.view.testId("missing")));
-  });
-
-  await globalThis.__LINGXIA_TEST__.run();
-  assert.match(messages[0], /page looked hidden/);
-  assert.doesNotMatch(messages[1], /hidden/, "the new page instance is probed, not described by the old one");
-  assert.equal(probed.length, 2);
-});
-
-test("a page that became visible is re-observed once the earlier sample is stale", async () => {
-  const world = createWorld();
-  let hidden = true;
-  const probed = pageVisibility(world, () => (hidden ? HIDDEN : VISIBLE));
-  installFakeHost(world);
-  const messages = [];
-
-  spec("hidden then visible", { forensics: false, timeout: 10_000 }, async (t) => {
-    messages.push(await missOn(t.app.view.testId("missing")));
-    hidden = false;
-    await new Promise((resolve) => setTimeout(resolve, 2_100));
-    messages.push(await missOn(t.app.view.testId("missing")));
-  });
-
-  await globalThis.__LINGXIA_TEST__.run();
-  assert.match(messages[0], /page looked hidden/);
-  assert.doesNotMatch(messages[1], /hidden/);
-  assert.equal(probed.length, 2);
-});
-
-test("a hidden page on a locked screen names the lock", async () => {
-  const world = createWorld();
-  world.add({ testId: "sheet", visible: false, text: "" });
-  hidePage(world);
-  const { attachments } = installFakeHost(world);
-  let locked = false;
-  globalThis.__LINGXIA_AUTOMATION_HOST__.screenLocked = () => locked;
-  let message;
-
-  spec("locks mid-spec", { forensics: false }, async (t) => {
-    locked = true;
-    message = await missOn(t.app.view.testId("sheet"));
-    await t.app.view.testId("sheet").waitFor({ timeout: 80 });
-  });
-
-  await globalThis.__LINGXIA_TEST__.run();
-  assert.match(message, /the screen is locked; unlock it — animations and sheets are paused/);
-  assert.doesNotMatch(message, /page looked hidden/);
-  assert.match(failedMessage(attachments), /Timed out/);
 });
 
 test("a locked screen stops the run once, before the next spec, instead of failing each", async () => {
@@ -669,7 +552,7 @@ test("failure forensics record the page's visibility", async () => {
   assert.match(report.failures[0].page.hidden, /no animation frame/);
 });
 
-test("view.page(name) binds locators, eval, screenshot and scroll to a page; calls cannot change the target", async () => {
+test("app.page() binds locators, eval, screenshot and scroll to an instance; calls cannot change the target", async () => {
   const world = createWorld();
   world.add({ testId: "todo-input" });
   installFakeHost(world);
@@ -680,8 +563,13 @@ test("view.page(name) binds locators, eval, screenshot and scroll to a page; cal
   const screenshot = world.app.page.screenshot;
   world.app.page.screenshot = (options) => { shots.push(options?.page); return screenshot(options); };
 
+  let instanceId;
   spec("bound", { forensics: false }, async (t) => {
-    const todo = t.app.view.page("todo");
+    await t.app.nav.to({ page: "todo" });
+    const page = await t.app.page({ name: "todo" });
+    instanceId = page.instanceId;
+    const todo = page.view;
+    await t.app.nav.to({ page: "other" });
     await todo.testId("todo-input").fill("milk");
     await expect(todo.testId("todo-input")).toHaveValue("milk");
     assert.throws(() => todo.testId("todo-input", { page: "other" }), /bound page/);
@@ -689,14 +577,16 @@ test("view.page(name) binds locators, eval, screenshot and scroll to a page; cal
     assert.throws(() => todo.eval({ page: "cart" }, ({ document }) => document.title), /bound page/);
     await todo.screenshot();
     await t.app.view.screenshot();
-    await t.reject(() => Promise.resolve().then(() => t.app.view.page("")), { message: /takes a configured page name/ });
+    await t.reject(() => t.app.page({ name: "" }), { message: /non-empty name or instanceId/ });
+    await t.app.nav.to({ page: "todo" });
+    await t.reject(() => t.app.page({ name: "todo" }), { message: /ambiguous; select an instanceId/ });
   });
 
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
-  assert.ok(queried.includes("todo") && !queried.includes("other"), JSON.stringify(queried));
+  assert.ok(queried.includes(instanceId) && !queried.includes("other"), JSON.stringify(queried));
   assert.ok(!queried.includes(undefined), JSON.stringify(queried));
-  assert.ok(world.evaluatedPages.includes("todo"));
+  assert.ok(world.evaluatedPages.includes(instanceId));
   assert.ok(!world.evaluatedPages.includes("cart"));
-  assert.deepEqual(shots, ["todo", undefined]);
+  assert.deepEqual(shots, [instanceId, undefined]);
 });

@@ -1891,7 +1891,7 @@ require("node:vm").runInThisContext(require("node:fs").readFileSync(process.argv
         write(
             &dir,
             "tests/helper.ts",
-            "export const label = 'x';\nexport const read = (t: any) => t.app.view.eval(() => label);\n",
+            "import type { Fixture } from '@lingxia/test';\nexport const label = 'x';\nexport const read = (t: Fixture) => t.app.view.eval(() => label);\n",
         );
         let entry = write(
             &dir,

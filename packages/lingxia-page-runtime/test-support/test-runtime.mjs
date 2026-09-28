@@ -54,4 +54,22 @@ assert.throws(() => { dev.items[0].id = 'draft'; }, TypeError);
 assert.deepEqual(dev, { title: 'Dev', items: [{ id: 'a' }] });
 delete window.__LX_BRIDGE_CFG;
 
+// Long unary actions settle with the business operation, without a bridge timer.
+let finishAction;
+window.LingXiaBridge.raw.call = (name, payload, options) => {
+  assert.equal(name, 'save');
+  assert.deepEqual(payload, { title: 'Draft' });
+  assert.equal(options.timeoutMs, 0);
+  return new Promise(resolve => { finishAction = resolve; });
+};
+const { __lx_define_page_bridge } = await import('../../../tools/lingxia-cli/templates/builder-frameworks/page_bridge_runtime.js');
+for (const save of [actions.save, __lx_define_page_bridge('save', 'call')]) {
+const action = save({ title: 'Draft' });
+let settled = false;
+void action.then(() => { settled = true; });
+await Promise.resolve();
+assert.equal(settled, false);
+finishAction('saved');
+assert.equal(await action, 'saved');
+}
 console.log('page runtime: ok');

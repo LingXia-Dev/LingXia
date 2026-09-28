@@ -17,6 +17,7 @@ export type {
   InputOptions,
   JsonValue,
   Jsonable,
+  JsonSnapshot,
   Locator,
   LocatorFilterOptions,
   LocatorMatchers,

@@ -16,7 +16,7 @@ use anyhow::{Result, bail};
 use oxc_ast::AstKind;
 use oxc_ast::ast::{
     Argument, BindingPattern, CallExpression, Expression, FormalParameters, IdentifierReference,
-    ImportDeclarationSpecifier, Program, Statement,
+    ImportDeclarationSpecifier, Program, Statement, TSType, TSTypeName,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_semantic::{Semantic, SemanticBuilder};
@@ -192,6 +192,7 @@ impl<'a> EvalFinder<'_, 'a> {
     }
 
     fn find_roots(&mut self, program: &Program<'a>) {
+        let mut types = HashMap::new();
         for statement in &program.body {
             let Statement::ImportDeclaration(import) = statement else {
                 continue;
@@ -200,6 +201,13 @@ impl<'a> EvalFinder<'_, 'a> {
                 continue;
             }
             for specifier in import.specifiers.iter().flatten() {
+                if let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier
+                    && let Some(name) = crate::test_bundle::module_export_name(&specifier.imported)
+                    && let Some(origin) = Origin::from_type(&name)
+                    && let Some(symbol) = specifier.local.symbol_id.get()
+                {
+                    types.insert(symbol, origin);
+                }
                 let (local, origin) = match specifier {
                     ImportDeclarationSpecifier::ImportSpecifier(specifier)
                         if crate::test_bundle::module_export_name(&specifier.imported)
@@ -216,6 +224,39 @@ impl<'a> EvalFinder<'_, 'a> {
                 if let Some(symbol) = local.symbol_id.get() {
                     self.roots.insert(symbol, origin);
                 }
+            }
+        }
+        // Typed helpers are fixture entrypoints too; resolve the imported type's
+        // symbol so a same-named application type never makes this check fire.
+        for node in self.semantic.nodes().iter() {
+            let AstKind::FormalParameter(parameter) = node.kind() else {
+                continue;
+            };
+            let Some(annotation) = &parameter.type_annotation else {
+                continue;
+            };
+            let TSType::TSTypeReference(reference) = &annotation.type_annotation else {
+                continue;
+            };
+            let origin = match &reference.type_name {
+                TSTypeName::IdentifierReference(ident) => self
+                    .symbol_of(ident)
+                    .and_then(|symbol| types.get(&symbol).copied()),
+                TSTypeName::QualifiedName(name) => match &name.left {
+                    TSTypeName::IdentifierReference(ident)
+                        if self
+                            .symbol_of(ident)
+                            .and_then(|symbol| self.roots.get(&symbol))
+                            == Some(&Origin::Module) =>
+                    {
+                        Origin::from_type(name.right.name.as_str())
+                    }
+                    _ => None,
+                },
+                _ => None,
+            };
+            if let Some(origin) = origin {
+                collect_bindings(&parameter.pattern, origin, &mut self.roots);
             }
         }
         // Discover callback bindings before checking bodies, including named
@@ -296,7 +337,6 @@ impl<'a> EvalFinder<'_, 'a> {
                     self.origin(&member.object, depth + 1)?,
                     member.property.name.as_str(),
                 ) {
-                    (Origin::View, "page") => Some(Origin::View),
                     (Origin::App, "page") => Some(Origin::Page),
                     (Origin::Automation, "lxapp") => Some(Origin::App),
                     _ => None,
@@ -349,6 +389,18 @@ enum Origin {
 }
 
 impl Origin {
+    fn from_type(name: &str) -> Option<Self> {
+        match name {
+            "Fixture" => Some(Self::Fixture),
+            "TestAutomation" => Some(Self::Automation),
+            "TestApp" => Some(Self::App),
+            "TestPage" => Some(Self::Page),
+            "TestLogic" => Some(Self::Logic),
+            "TestView" | "BoundTestView" => Some(Self::View),
+            _ => None,
+        }
+    }
+
     fn member(self, name: &str) -> Option<Self> {
         match (self, name) {
             (Self::Module, "spec") => Some(Self::Spec),
@@ -424,7 +476,7 @@ mod tests {
     use oxc_parser::Parser;
     use oxc_span::SourceType;
 
-    fn check(source: &str) -> Result<()> {
+    pub(super) fn check(source: &str) -> Result<()> {
         let source = format!("import {{ spec }} from '@lingxia/test';{source}");
         let source = source.as_str();
         let allocator = Allocator::default();
@@ -434,7 +486,7 @@ mod tests {
         check_eval_functions(&program, source, "tests/a.test.ts")
     }
 
-    fn error(source: &str) -> String {
+    pub(super) fn error(source: &str) -> String {
         format!("{:#}", check(source).expect_err("the capture is refused"))
     }
 
@@ -480,7 +532,7 @@ mod tests {
     #[test]
     fn page_views_saved_views_and_named_functions_are_checked() {
         let message = error(
-            "const label = 'x';\nfunction read({ document }: any) { return document.title === label; }\nspec('x', async (t) => {\n  const todo = t.app.view.page('todo');\n  await todo.eval(read);\n  const { logic } = t.app;\n  await logic.eval(() => label);\n});\n",
+            "const label = 'x';\nfunction read({ document }: any) { return document.title === label; }\nspec('x', async (t) => {\n  const todo = (await t.app.page({ name: 'todo' })).view;\n  await todo.eval(read);\n  const { logic } = t.app;\n  await logic.eval(() => label);\n});\n",
         );
         assert!(
             message.contains("todo.eval(fn) closes over `label`"),
@@ -507,7 +559,7 @@ mod tests {
     #[test]
     fn renamed_nested_bindings_and_named_callbacks_are_remote() {
         let message = error(
-            "const captured = 1; function body({ app: { view: screen } }) { const alias = screen.page('home'); alias.eval(() => captured); } spec.only('remote', body);",
+            "const captured = 1; function body({ app: { view: screen } }) { const alias = screen; alias.eval(() => captured); } spec.only('remote', body);",
         );
         assert!(
             message.contains("alias.eval(fn) closes over `captured`"),
@@ -561,5 +613,43 @@ mod tests {
     #[test]
     fn business_selectors_and_raw_automation_are_not_fixture_origins() {
         check("const captured = 1; const other = { automation: { lxapp: () => ({ logic: { eval: fn => fn() } }) } }; other.automation.lxapp().logic.eval(() => captured); spec('raw', t => { t.automation.browser.eval({ js: String(captured) }); });").unwrap();
+    }
+}
+
+#[cfg(test)]
+mod helper_tests {
+    use super::tests::{check, error};
+
+    #[test]
+    fn typed_helpers_keep_the_eval_boundary() {
+        for (import, parameter, call) in [
+            (
+                "import type { TestApp } from '@lingxia/test';",
+                "app: TestApp",
+                "app.logic",
+            ),
+            (
+                "import type { TestApp as App } from '@lingxia/test';",
+                "app: App",
+                "app.view",
+            ),
+            (
+                "import type * as test from '@lingxia/test';",
+                "app: test.TestPage",
+                "app.view",
+            ),
+            (
+                "import type { TestApp } from '@lingxia/test';",
+                "{ logic }: TestApp",
+                "logic",
+            ),
+        ] {
+            let source = format!(
+                "{import} const captured = 42; async function helper({parameter}) {{ await {call}.eval(() => captured); }}"
+            );
+            assert!(error(&source).contains("closes over `captured`"));
+        }
+        check("interface TestApp { logic: any } const captured = 42; function helper(app: TestApp) { app.logic.eval(() => captured); }").unwrap();
+        check("import type { TestApp } from '@lingxia/test'; const captured = 42; function helper(app: TestApp) { app.logic.eval((_, value) => value, captured); }").unwrap();
     }
 }

@@ -226,6 +226,9 @@ export function createWorld(options = {}) {
     async current() {
       return currentPage;
     },
+    async stack() {
+      return stack.map(entry => ({ ...entry }));
+    },
     async info(options) {
       const name = options?.page;
       if (name === undefined) return currentPage;

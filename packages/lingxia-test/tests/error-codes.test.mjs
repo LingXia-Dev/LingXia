@@ -103,13 +103,13 @@ test("a failure names its action, the current page instance and the code that ke
   spec("save", (t) => t.app.view.testId("save").click({ timeout: 300, interval: 5 }));
   spec("no forensics", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 300, interval: 5 }));
   spec("asserts", { forensics: false }, (t) => expect.poll(() => 1, { timeout: 20 }).toBe(2));
-  spec.fail("known inactive page", { expected: { code: "E_TIMEOUT" }, forensics: false },
+  spec.fail("known inactive page", { expected: { code: "E_PAGE_NOT_ACTIVE" }, forensics: false },
     (t) => t.app.view.testId("save").click({ timeout: 100, interval: 5 }));
 
   await globalThis.__LINGXIA_TEST__.run();
   const report = decode(attachments, "report.json");
   const [save, noForensics, asserts, known] = report.cases;
-  assert.equal(known.status, "xfail", "all exhausted fixture budgets use E_TIMEOUT");
+  assert.equal(known.status, "xfail", "matching preserves the underlying driver code");
   assert.match(save.error.failedAction, /^page\.click .*save/);
   assert.deepEqual(save.error.page, { name: "home", instanceId: "a1b2" });
   assert.deepEqual(noForensics.error.page, { name: "home", instanceId: "c3d4" }, "falls back to the error's data");

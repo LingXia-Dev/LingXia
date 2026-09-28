@@ -58,7 +58,8 @@ export function __lx_define_page_bridge(name, mode) {
       return handle;
     }
     if (mode === 'call') {
-      const promise = bridge.raw.call(name, payload);
+      // User interaction belongs to the action, not the bridge default deadline.
+      const promise = bridge.raw.call(name, payload, { timeoutMs: 0 });
       if (promise && typeof promise.catch === 'function') {
         promise.catch((err) => {
           console.warn(`[PageFunc] ${name} failed:`, err && err.message ? err.message : err);
