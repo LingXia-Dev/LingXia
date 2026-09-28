@@ -53,7 +53,7 @@ pub(crate) fn unavailable() -> Option<&'static str> {
 pub(crate) async fn request(method: &str, params: Value) -> Result<Value, UpstreamError> {
     let Some(upstream) = upstream() else {
         return Err(UpstreamError {
-            code: "unavailable".into(),
+            code: lingxia_control_protocol::methods::session::companion::UNSUPPORTED.into(),
             message: unavailable().unwrap_or_default().into(),
             data: None,
         });

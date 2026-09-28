@@ -96,8 +96,8 @@ enum MockCommand {
         /// `name` or `name:variant` under tests/scenarios/ (without
         /// `.json`), or a file (`path.json:variant`)
         scenario: String,
-        /// Target lxapp id, or current
-        #[arg(long = "app", default_value = "current")]
+        /// Target lxapp id, home, or current (default: home, then current)
+        #[arg(long = "app")]
         appid: Option<String>,
         /// Keep running and reinstall the scenario whenever the file is
         /// saved. Local validation errors keep the last version; a failed
@@ -475,7 +475,11 @@ pub(crate) fn install(
             Some(host_args(loaded, target, appid, true)),
         )
         .with_context(|| format!("{source} is not a valid scenario"))?;
-    let appid = checked["target"]["appid"].as_str().or(appid);
+    let appid = Some(
+        checked["target"]["appid"]
+            .as_str()
+            .ok_or_else(|| anyhow!("no home or current lxapp; pass --app <id>"))?,
+    );
     let functions = resolved.function_rules().count();
     // A failed discovery is not evidence that no companion participates.
     let caps = session
@@ -1653,6 +1657,7 @@ mod tests {
         log: RefCell<Vec<String>>,
         companion: Option<Vec<&'static str>>,
         host_fails: bool,
+        target_appid: Option<&'static str>,
         companion_error: Option<CallError>,
         status: Value,
         mock_status: Value,
@@ -1664,6 +1669,7 @@ mod tests {
                 log: RefCell::new(Vec::new()),
                 companion,
                 host_fails: false,
+                target_appid: Some("app"),
                 companion_error: None,
                 status: json!({ "active": true, "scenario": { "rules": [] } }),
                 mock_status: json!({ "apps": [{
@@ -1694,7 +1700,9 @@ mod tests {
                 if !dry && self.host_fails {
                     bail!("host refused");
                 }
-                return Ok(json!({ "active": !dry }));
+                return Ok(
+                    json!({ "active": !dry, "target": self.target_appid.map(|appid| json!({ "appid": appid })) }),
+                );
             }
             if method == method::SCENARIO_PAUSE {
                 self.log.borrow_mut().push("host pause".into());
@@ -1777,6 +1785,18 @@ mod tests {
             { "function": "orders.submit", "fault": "unknown" }
         ]
     }"#;
+
+    #[test]
+    fn a_missing_apply_target_never_pauses_or_changes_the_companion() {
+        let mut session = Fake::new(Some(vec![SCENARIO_FUNCTION]));
+        session.target_appid = None;
+        for selector in [None, Some("home"), Some("current")] {
+            session.log.borrow_mut().clear();
+            let error = install(&session, &loaded(CHECKOUT), &target(None), selector).unwrap_err();
+            assert!(error.to_string().contains("no home or current lxapp"));
+            assert_eq!(session.log(), ["host use (dry run)"]);
+        }
+    }
 
     #[test]
     fn function_rules_need_a_companion_that_declared_them_and_nothing_installs_otherwise() {

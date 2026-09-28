@@ -72,6 +72,8 @@ pub fn start_dev_session_bridge_from_env() {
     // Specs drive this app from a terminal or editor, often with its window
     // covered: keep its pages and timers running meanwhile.
     lxapp::keep_responsive_for_development();
+    #[cfg(feature = "test-runtime")]
+    lingxia_automation::runtime::network::session_starting();
     thread::spawn(move || run_dev_bridge(ws_url));
 }
 
@@ -161,6 +163,8 @@ fn run_dev_bridge(ws_url: String) {
     loop {
         match connect_with_timeout(ws_url.as_str()) {
             Ok(mut websocket) => {
+                #[cfg(feature = "test-runtime")]
+                lingxia_automation::runtime::network::session_starting();
                 if connect_failures > 0 {
                     log::info!(
                         "Connected devtool websocket after {} failed attempts",
@@ -180,6 +184,8 @@ fn run_dev_bridge(ws_url: String) {
                         build: Some(PeerBuild::current()),
                     },
                 ) {
+                    #[cfg(feature = "test-runtime")]
+                    crate::session_network::session_ended();
                     log::warn!("Failed to send devtool hello: {}", err);
                     thread::sleep(Duration::from_millis(500));
                     continue;
@@ -196,6 +202,8 @@ fn run_dev_bridge(ws_url: String) {
                     Ok(attached) => attached,
                     Err(err) => {
                         log::warn!("Failed to attach devtool log stream: {}", err);
+                        #[cfg(feature = "test-runtime")]
+                        crate::session_network::session_ended();
                         drop(_display_language_lease);
                         thread::sleep(Duration::from_millis(500));
                         continue;
@@ -220,6 +228,8 @@ fn run_dev_bridge(ws_url: String) {
                 crate::session_network::session_ended();
             }
             Err(err) => {
+                #[cfg(feature = "test-runtime")]
+                crate::session_network::session_ended();
                 connect_failures = connect_failures.saturating_add(1);
                 log_connect_failure(connect_failures, &err);
             }

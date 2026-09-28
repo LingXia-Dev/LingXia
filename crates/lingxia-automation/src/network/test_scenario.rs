@@ -215,7 +215,10 @@ impl FunctionChangeError {
         let message = format!("scenario: {message}");
         // These protocol rejections guarantee the previous rules still answer.
         // A disconnect, including `unavailable`, may follow an applied request.
-        if error.code == method::UNSUPPORTED || error.code == "invalid_rules" {
+        if matches!(
+            error.code.as_str(),
+            method::UNSUPPORTED | method::NOT_SENT | "invalid_rules"
+        ) {
             Self::Rejected(message)
         } else {
             Self::Unknown(message)
@@ -593,6 +596,7 @@ mod tests {
         .unwrap();
         for code in [
             method::UNSUPPORTED,
+            method::NOT_SENT,
             "invalid_rules",
             "unavailable",
             "timeout",
@@ -608,7 +612,10 @@ mod tests {
             );
             assert_eq!(
                 matches!(error, FunctionChangeError::Rejected(_)),
-                matches!(code, method::UNSUPPORTED | "invalid_rules"),
+                matches!(
+                    code,
+                    method::UNSUPPORTED | method::NOT_SENT | "invalid_rules"
+                ),
                 "{code}: {error:?}"
             );
         }

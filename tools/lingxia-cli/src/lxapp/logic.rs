@@ -73,7 +73,7 @@ pub fn build(
 
     let bundle = bundler.render_bundle(options.release)?;
     let bundle = if options.dev_session {
-        format!("(async () => {{ await globalThis.__lxWaitForDevMocks();\n{bundle}\n}})()")
+        format!("(async () => {{ await globalThis.__lxWaitForDevMocks?.();\n{bundle}\n}})()")
     } else {
         bundle
     };

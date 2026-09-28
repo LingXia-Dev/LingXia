@@ -176,6 +176,8 @@ pub mod methods {
             pub const MOCK_RESET: &str = "session.companion.mock.reset";
             /// Error code when no companion handles `function` rules.
             pub const UNSUPPORTED: &str = "companion_unsupported";
+            /// The transport refused the request before dispatch; prior rules are unchanged.
+            pub const NOT_SENT: &str = "companion_not_sent";
         }
 
         /// Mocks, network scenarios and recordings for a running lxapp's
@@ -211,6 +213,8 @@ pub mod methods {
             /// `{ handlers, generation }`; an invalid load keeps the
             /// previous one and errors.
             pub const MOCK_LOAD: &str = "session.network.mock.load";
+            /// All initial mock loads finished, including a session with no mocks.
+            pub const MOCK_READY: &str = "session.network.mock.ready";
             /// Drop an lxapp's mock handlers and config: its `mocks/` is
             /// gone. Args: `{ appid }`. Returns `{ unloaded }` (false when
             /// none were loaded).

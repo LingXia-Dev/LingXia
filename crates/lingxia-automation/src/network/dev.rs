@@ -389,9 +389,42 @@ pub fn session_ended() {
         routes.release_mock_holds(None);
         had
     });
+    mocks_ready();
     if had_scenario || had_recording || had_mocks {
         log::warn!("dev session ended: its network scenario, recording and mocks were removed");
     }
+}
+
+// The gate belongs to the live dev connection, not to the presence of any
+// app's handlers. Offline launches and apps without mocks are immediately ready.
+static MOCK_BOOTSTRAP: std::sync::LazyLock<tokio::sync::watch::Sender<bool>> =
+    std::sync::LazyLock::new(|| {
+        // Home Logic can start before HostAddon::start_services dials the bridge.
+        tokio::sync::watch::channel(lxapp::is_dev_session()).0
+    });
+
+pub fn session_starting() {
+    MOCK_BOOTSTRAP.send_replace(true);
+}
+
+pub fn mocks_ready() {
+    MOCK_BOOTSTRAP.send_replace(false);
+}
+
+pub(crate) async fn wait_for_mocks() -> Result<(), String> {
+    wait_for_bootstrap(MOCK_BOOTSTRAP.subscribe()).await
+}
+
+async fn wait_for_bootstrap(mut state: tokio::sync::watch::Receiver<bool>) -> Result<(), String> {
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        while *state.borrow_and_update() {
+            if state.changed().await.is_err() {
+                break;
+            }
+        }
+    })
+    .await
+    .map_err(|_| "dev mock initialization timed out; Logic was not started".to_string())
 }
 
 // --------------------------------- mocks ---------------------------------
@@ -516,4 +549,30 @@ pub(crate) fn run_calls(since_ms: u64, limit: Option<usize>, secrets: &[String])
     Value::Array(registry::with_registry(|routes| {
         routes.calls.recent(since_ms, limit, secrets)
     }))
+}
+
+#[cfg(test)]
+mod bootstrap_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn bootstrap_waits_for_a_signal_and_offline_launches_do_not_wait() {
+        let (signal, state) = tokio::sync::watch::channel(false);
+        wait_for_bootstrap(state.clone()).await.unwrap();
+        for _ in 0..2 {
+            signal.send_replace(true);
+            let waiting = wait_for_bootstrap(state.clone());
+            tokio::pin!(waiting);
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(5), &mut waiting)
+                    .await
+                    .is_err()
+            );
+            // Both successful initialization (even zero handlers) and disconnect
+            // release startup. A reconnect opens a fresh gate.
+            signal.send_replace(false);
+            waiting.await.unwrap();
+            wait_for_bootstrap(state.clone()).await.unwrap();
+        }
+    }
 }

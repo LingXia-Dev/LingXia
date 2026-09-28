@@ -309,7 +309,6 @@ mod tests {
         assert!(Cli::try_parse_from(["lxdev", "logs", "--json"]).is_err());
         assert!(Cli::try_parse_from(["lxdev", "logs", "--pretty"]).is_err());
         assert!(Cli::try_parse_from(["lxdev", "logs", "--jsonl", "--color"]).is_err());
-        assert!(Cli::try_parse_from(["lxdev", "lxapp", "info", "home"]).is_err());
     }
 
     #[test]

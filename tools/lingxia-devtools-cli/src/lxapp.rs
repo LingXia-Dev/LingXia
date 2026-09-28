@@ -1084,6 +1084,12 @@ mod tests {
     }
 
     #[test]
+    fn app_selectors_use_the_named_option() {
+        assert!(parse_lxapp_cli(args(&["info", "--app", "home"])).is_ok());
+        assert!(parse_lxapp_cli(args(&["info", "home"])).is_err());
+    }
+
+    #[test]
     fn parses_nav_switch_tab_by_page_name() {
         let cli = parse_lxapp_cli(args(&[
             "nav",

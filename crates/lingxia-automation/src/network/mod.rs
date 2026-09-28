@@ -2196,19 +2196,8 @@ pub(crate) fn install_logic_fetch_interceptor(ctx: &JSContext) -> JSResult<()> {
         JSFunc::new(ctx, |ctx: JSContext| {
             let target = logic_target(&ctx).map(|target| target.appid);
             async move {
-                let appid = target.ok_or_else(|| auto_err("dev mocks require an lxapp context"))?;
-                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-                loop {
-                    if registry::with_registry(|routes| routes.mocks.set(&appid).is_some()) {
-                        return Ok(());
-                    }
-                    if std::time::Instant::now() >= deadline {
-                        return Err(auto_err(
-                            "dev mock initialization timed out; Logic was not started",
-                        ));
-                    }
-                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-                }
+                target.ok_or_else(|| auto_err("dev mocks require an lxapp context"))?;
+                dev::wait_for_mocks().await.map_err(auto_err)
             }
         })?,
     )?;

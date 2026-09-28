@@ -43,8 +43,8 @@ enum RecordCommand {
         /// Only record URLs matching this glob (or /regex/flags)
         #[arg(long = "match", value_name = "GLOB")]
         matcher: Option<String>,
-        /// Target lxapp id, or current
-        #[arg(long = "app", default_value = "current")]
+        /// Target lxapp id, home, or current (default: home, then current)
+        #[arg(long = "app")]
         appid: Option<String>,
         /// Print JSON output
         #[arg(long)]

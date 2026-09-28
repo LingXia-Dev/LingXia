@@ -23,7 +23,11 @@ pub(crate) fn handle(handler: &str, args: Option<Value>) -> Result<Option<Value>
                 .ok_or_else(|| "(usage): scenario is required".to_string())?;
             let explicit = text("appid");
             let dry_run = args.get("dryRun").and_then(Value::as_bool) == Some(true);
-            let appid = target_appid(explicit.clone())?;
+            let appid = if dry_run {
+                target_appid(explicit).unwrap_or_default()
+            } else {
+                target_appid(explicit)?
+            };
             let generation = if dry_run {
                 None
             } else {
@@ -42,9 +46,11 @@ pub(crate) fn handle(handler: &str, args: Option<Value>) -> Result<Option<Value>
                 generation,
             )
             .map_err(|err| format!("(usage): invalid scenario: {err}"))?;
-            status["target"] = json!({ "appid": appid });
-            if let Some(warning) = unknown_app_warning(&appid) {
-                status["warning"] = json!(warning);
+            if !appid.is_empty() {
+                status["target"] = json!({ "appid": appid });
+                if let Some(warning) = unknown_app_warning(&appid) {
+                    status["warning"] = json!(warning);
+                }
             }
             Ok(Some(status))
         }
@@ -68,6 +74,10 @@ pub(crate) fn handle(handler: &str, args: Option<Value>) -> Result<Option<Value>
         method::RECORD_STOP => network::record_stop(text("name").as_deref())
             .map(Some)
             .map_err(|err| format!("(usage): {err}")),
+        method::MOCK_READY => {
+            network::mocks_ready();
+            Ok(Some(json!({ "ready": true })))
+        }
         method::MOCK_LOAD => {
             let appid = text("appid").ok_or("(usage): appid is required")?;
             let source = args
@@ -130,6 +140,11 @@ fn mode_arg(args: &Value, key: &str) -> Result<Option<MockMode>, String> {
 /// current one.
 fn target_appid(explicit: Option<String>) -> Result<String, String> {
     match explicit.as_deref() {
+        None => {
+            if let Some(home) = lingxia_app_context::home_app_id() {
+                return Ok(home.to_string());
+            }
+        }
         Some("home") => {
             return lingxia_app_context::home_app_id()
                 .map(str::to_string)
@@ -350,14 +365,29 @@ mod tests {
         let result = handle(
             method::SCENARIO_USE,
             Some(json!({
-                "appid": "late-scenario-app", "scenario": { "rules": [] },
+                "appid": "late-scenario-app", "scenario": { "rules": [{ "http": "GET **/late", "status": 200 }] },
                 "generation": paused["generation"],
             })),
         );
-        assert!(result.unwrap_err().contains("expired or was cleared"));
+        let error = result.unwrap_err();
+        assert!(error.contains("expired or was cleared"), "{error}");
         assert_eq!(
             handle(method::STATUS, None).unwrap().unwrap()["active"],
             false
         );
+    }
+}
+
+#[cfg(test)]
+mod validation_tests {
+    use super::*;
+
+    #[test]
+    fn dry_run_needs_no_current_or_home_app() {
+        let result = handle(method::SCENARIO_USE, Some(json!({
+            "dryRun": true, "scenario": { "rules": [{ "http": "GET **/status", "status": 200 }] }
+        }))).unwrap().unwrap();
+        assert_eq!(result["valid"], true);
+        assert_eq!(result["http"], 1);
     }
 }
