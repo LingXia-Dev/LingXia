@@ -39,6 +39,9 @@
       "types": "./dist/error.d.ts",
       "import": "./dist/esm/error.js",
       "require": "./dist/error.js"
+    },
+    "./page": {
+      "types": "./dist/page.d.ts"
     }
   },
   "files": [

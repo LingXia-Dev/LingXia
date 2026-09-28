@@ -2196,6 +2196,32 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
     let get_current_pages = rong::JSFunc::new(ctx, get_current_pages)?;
     ctx.global().set("getCurrentPages", get_current_pages)?;
+    ctx.global().set(
+        "__lxGetPage",
+        rong::JSFunc::new(ctx, |ctx: JSContext, id: String| -> JSResult<JSObject> {
+            let app = LxApp::from_ctx(&ctx)?;
+            if app.get_page_by_instance_id_str(&id).is_none() {
+                return Err(HostError::new(
+                    rong::error::E_NOT_FOUND,
+                    format!("Page instance disposed: {id}"),
+                )
+                .into());
+            }
+            super::with_page_svc_map(&ctx, |pages| {
+                pages
+                    .borrow()
+                    .get(&id)
+                    .and_then(|page| page.this.get())
+                    .ok_or_else(|| {
+                        HostError::new(
+                            rong::error::E_NOT_FOUND,
+                            format!("Page service not ready: {id}"),
+                        )
+                        .into()
+                    })
+            })
+        })?,
+    )?;
 
     Ok(())
 }

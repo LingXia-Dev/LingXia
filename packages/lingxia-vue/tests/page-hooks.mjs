@@ -14,7 +14,7 @@ globalThis.window = {
     state: { subscribe: (callback) => { pushState = callback; return () => {}; } },
     raw: { call: () => new Promise(() => {}) },
   },
-  __pageBridge: { __names: ['save'], __modes: { save: 'notify' } },
+  __pageBridge: { __names: ['save'], __modes: { save: 'call' } },
 };
 const { nextTick } = await import('vue');
 // Enough of a document for the runtime's own <html> stamps and CSS variables

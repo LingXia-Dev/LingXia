@@ -252,6 +252,10 @@ void pageReady().then(() => {
 });
 ```
 
+`pageReady()` shows a startup fault after 10 seconds and still mounts when
+state arrives. Pass `{ timeoutMs }` only when the caller handles rejection.
+Read `useLxPage()` during component setup/render; pass its actions into helpers.
+
 ### Host facts
 
 ```ts

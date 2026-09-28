@@ -13,8 +13,8 @@ globalThis.window = {
 const runtime = await import('../dist/test/runtime.mjs');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Actions: never cached empty before the page's metadata exists, then one object.
-assert.deepEqual(runtime.getPageActions(), {});
+// An early read must not hand out a permanently empty, apparently typed object.
+assert.throws(() => runtime.getPageActions(), /Page actions are not ready/);
 window.__pageBridge = { __names: ['save'], __modes: { save: 'call' } };
 const actions = runtime.getPageActions();
 assert.equal(typeof actions.save, 'function');

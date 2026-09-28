@@ -23,6 +23,7 @@ import {
   getPageSnapshot,
   subscribePageSnapshot,
   type ActionMap,
+  type PageActions,
   type DeepReadonly,
   type Snapshot,
 } from "@lingxia/page-runtime";
@@ -37,7 +38,7 @@ import {
 export function useLxPage<
   TData = Snapshot,
   TActions extends ActionMap = ActionMap,
->(): { data: DeepReadonly<TData>; actions: TActions } {
+>(): { data: DeepReadonly<TData>; actions: PageActions<TActions> } {
   const data = React.useSyncExternalStore(
     subscribePageSnapshot,
     getPageSnapshot<DeepReadonly<TData>>,

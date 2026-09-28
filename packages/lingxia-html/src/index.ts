@@ -3,7 +3,9 @@ import {
   getPageSnapshot,
   subscribePageSnapshot,
   whenPageReady,
+  waitForPageState,
   type ActionMap,
+  type PageActions,
   type DeepReadonly,
   type Snapshot,
 } from "@lingxia/page-runtime";
@@ -12,12 +14,12 @@ export { getHost, subscribeHost, type LxHost } from "@lingxia/bridge";
 export type { ActionMap, DeepReadonly, Snapshot } from "@lingxia/page-runtime";
 
 /**
- * Resolves once the page's first state has arrived; rejects if Logic never
- * delivers it. Plain HTML has no mount to gate, so await this before reading
- * `getPage()`.
+ * Resolves once the first state arrives. By default a delayed startup shows
+ * a fault panel and keeps waiting, just like React/Vue. An explicit timeout
+ * rejects instead; `null` waits without the panel. Await before `getPage()`.
  */
-export function pageReady(options?: { timeoutMs?: number }): Promise<void> {
-  return whenPageReady(options);
+export function pageReady(options?: { timeoutMs?: number | null }): Promise<void> {
+  return options?.timeoutMs === undefined ? waitForPageState() : whenPageReady(options);
 }
 
 /**
@@ -26,7 +28,7 @@ export function pageReady(options?: { timeoutMs?: number }): Promise<void> {
  */
 export function getPage<TData = Snapshot, TActions extends ActionMap = ActionMap>(): {
   data: DeepReadonly<TData>;
-  actions: TActions;
+  actions: PageActions<TActions>;
 } {
   return { data: getPageSnapshot<DeepReadonly<TData>>(), actions: getPageActions<TActions>() };
 }
