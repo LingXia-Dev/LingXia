@@ -125,15 +125,15 @@ The deep reference for LingXia lives as a portable markdown skill. It documents 
 The skill ships inside the CLI, so an installed copy always matches the `lingxia` that wrote it and cannot describe commands that version does not have:
 
 - `lingxia new` writes it to `~/.agents/skills/lingxia/` and points the new project's `AGENTS.md` at it.
-- `lingxia skill install` does the same for a project you cloned, and refreshes the project's `AGENTS.md` pointer.
+- `lingxia skill install` writes it for a project you cloned. It never edits the project; when the project's `AGENTS.md` pointer is out of date it prints the replacement block.
 - Every later `lingxia` command compares the installed copy with the one it carries and rewrites it when they differ — including after `lingxia upgrade`, and including a CLI you built yourself with edited docs.
 - `lingxia version --verbose` prints where it is and whether it is in sync.
 
 The content is plain markdown with a `SKILL.md` entrypoint and relative reference files.
 Agents can follow the project's `AGENTS.md` pointer; for tools that require explicit
 skill registration, add `~/.agents/skills/lingxia/` in their skill settings.
-Existing CLI-installed copies under `~/.claude/skills/lingxia/` are removed after
-the new copy is written successfully.
+When Claude Code is installed, `~/.claude/skills/lingxia/` is a link to that
+copy (an older CLI-written copy there is replaced by the link).
 
 You can browse the same content in this repo at [`docs/skill/SKILL.md`](./skill/SKILL.md) without installing anything.
 

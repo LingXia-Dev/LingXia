@@ -7,6 +7,9 @@
 //! `lingxia new`, `lingxia upgrade` and `lingxia skill install` write it; every
 //! other run reconciles a copy that exists with the one compiled in, so an edit
 //! to the skill reaches the agent as soon as the CLI that carries it runs.
+//!
+//! `~/.agents/skills/<name>` is the one real copy. Claude Code only discovers
+//! `~/.claude/skills`, so the entry there is a link to it.
 
 use anyhow::{Context, Result};
 use include_dir::{Dir, include_dir};
@@ -45,49 +48,204 @@ pub enum Sync {
 /// a skills root is already there to receive it: a machine that has never run
 /// an agent does not grow a `~/.agents` because a build ran.
 pub fn sync_home_skill(create_if_missing: bool) -> Result<Sync> {
-    let home = home_dir()?;
-    let result = sync_for_home(&home, create_if_missing)?;
-    if !matches!(result, Sync::Skipped) {
-        refresh_pointer(
-            &std::env::current_dir()?,
-            &skills_root(&home).join(SKILL_DIR_NAME),
-        )?;
-    }
-    Ok(result)
+    sync_for_home(&home_dir()?, create_if_missing)
 }
 
 pub(crate) fn skills_root(home: &Path) -> PathBuf {
     home.join(".agents").join("skills")
 }
 
+/// Where Claude Code discovers user skills.
+pub(crate) fn claude_skills_root(home: &Path) -> PathBuf {
+    home.join(".claude").join("skills")
+}
+
 fn sync_for_home(home: &Path, create_if_missing: bool) -> Result<Sync> {
     let dest = skills_root(home).join(SKILL_DIR_NAME);
-    let legacy = home.join(".claude").join("skills").join(SKILL_DIR_NAME);
+    let claude = claude_skills_root(home).join(SKILL_DIR_NAME);
     let result = sync(
         &dest,
-        create_if_missing || legacy.join("SKILL.md").is_file(),
+        create_if_missing || claude.join("SKILL.md").is_file(),
     )?;
     if !matches!(result, Sync::Skipped) {
-        remove_legacy_skill(&legacy)?;
+        // A real directory there is a copy an older CLI wrote; a live link
+        // elsewhere is the user's own choice.
+        link_for_claude(home, &dest, |path| {
+            !fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink())
+        })?;
     }
     Ok(result)
 }
 
-fn remove_legacy_skill(path: &Path) -> Result<()> {
-    match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.is_dir() => fs::remove_dir_all(path),
-        Ok(_) => fs::remove_file(path),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => Err(error),
+/// Make `~/.claude/skills/<name>` resolve to the canonical copy at `canonical`,
+/// when Claude Code is on this machine. An entry that already resolves there
+/// (this link, or a `~/.claude/skills` that is itself a link into
+/// `~/.agents/skills`) is left alone; another entry is replaced only when
+/// `replaceable` says it is an old copy the CLI owns.
+pub(crate) fn link_for_claude(
+    home: &Path,
+    canonical: &Path,
+    replaceable: impl Fn(&Path) -> bool,
+) -> Result<()> {
+    let claude = home.join(".claude");
+    let Some(name) = canonical.file_name() else {
+        return Ok(());
+    };
+    if !claude.is_dir() {
+        return Ok(());
     }
-    .with_context(|| format!("Failed to remove the old skill at {}", path.display()))
+    let link = claude_skills_root(home).join(name);
+    let target = fs::canonicalize(canonical)
+        .with_context(|| format!("Failed to resolve {}", canonical.display()))?;
+    if resolves_to(&link, &target) {
+        return Ok(());
+    }
+    match fs::symlink_metadata(&link) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error).with_context(|| format!("Failed to inspect {}", link.display()));
+        }
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            // Dangling, or pointing at a copy the CLI owns elsewhere.
+            if link.exists() && !replaceable(&link) {
+                return Ok(());
+            }
+            remove_link(&link)?;
+        }
+        Ok(metadata) if metadata.is_dir() => {
+            if !replaceable(&link) {
+                return Ok(());
+            }
+            // The copy fallback of a Windows machine without directory links.
+            if cfg!(windows) && tree_digest(&link).ok() == Some(tree_digest(canonical)?) {
+                return Ok(());
+            }
+            fs::remove_dir_all(&link).with_context(|| {
+                format!("Failed to replace the old skill at {}", link.display())
+            })?;
+        }
+        Ok(_) => return Ok(()),
+    }
+    let parent = link
+        .parent()
+        .context("The Claude skill link has no parent")?;
+    fs::create_dir_all(parent).with_context(|| format!("Failed to create {}", parent.display()))?;
+    create_dir_link(canonical, &link)
+        .with_context(|| format!("Failed to expose the skill at {}", link.display()))
 }
 
-fn refresh_pointer(cwd: &Path, dest: &Path) -> Result<()> {
-    if let Some(project_dir) = pointer_project(cwd) {
-        write_agents_pointer(&project_dir, dest)?;
+/// Remove `~/.claude/skills/<name>` when it is the link to `canonical`, or an
+/// old copy `replaceable` accepts. Never touches the canonical copy itself.
+pub(crate) fn unlink_for_claude(
+    home: &Path,
+    canonical: &Path,
+    replaceable: impl Fn(&Path) -> bool,
+) -> Result<()> {
+    let Some(name) = canonical.file_name() else {
+        return Ok(());
+    };
+    let link = claude_skills_root(home).join(name);
+    let Ok(metadata) = fs::symlink_metadata(&link) else {
+        return Ok(());
+    };
+    let target = fs::canonicalize(canonical).ok();
+    if metadata.file_type().is_symlink() {
+        if target.is_some_and(|target| resolves_to(&link, &target)) || replaceable(&link) {
+            remove_link(&link)?;
+        }
+        return Ok(());
+    }
+    // Reached through a linked `~/.claude/skills`: this is the canonical copy.
+    if target.is_some_and(|target| resolves_to(&link, &target)) {
+        return Ok(());
+    }
+    if metadata.is_dir() && replaceable(&link) {
+        fs::remove_dir_all(&link)
+            .with_context(|| format!("Failed to remove the old skill at {}", link.display()))?;
     }
     Ok(())
+}
+
+fn resolves_to(path: &Path, target: &Path) -> bool {
+    fs::canonicalize(path).is_ok_and(|resolved| resolved == target)
+}
+
+fn remove_link(link: &Path) -> Result<()> {
+    // A directory symlink or junction is a directory entry on Windows.
+    #[cfg(windows)]
+    let removed = fs::remove_dir(link).or_else(|_| fs::remove_file(link));
+    #[cfg(not(windows))]
+    let removed = fs::remove_file(link);
+    removed.with_context(|| format!("Failed to remove the link at {}", link.display()))
+}
+
+#[cfg(unix)]
+fn create_dir_link(target: &Path, link: &Path) -> Result<()> {
+    std::os::unix::fs::symlink(target, link)?;
+    Ok(())
+}
+
+/// A directory symlink needs Developer Mode or elevation; a junction does not.
+/// Where neither works, a copy the next run refreshes.
+#[cfg(windows)]
+fn create_dir_link(target: &Path, link: &Path) -> Result<()> {
+    if std::os::windows::fs::symlink_dir(target, link).is_ok() {
+        return Ok(());
+    }
+    let junction = std::process::Command::new("cmd")
+        .arg("/C")
+        .arg("mklink")
+        .arg("/J")
+        .arg(link)
+        .arg(target)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    if junction.is_ok_and(|status| status.success()) {
+        return Ok(());
+    }
+    copy_tree(target, link)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn create_dir_link(target: &Path, link: &Path) -> Result<()> {
+    copy_tree(target, link)
+}
+
+#[cfg(not(unix))]
+fn copy_tree(source: &Path, target: &Path) -> Result<()> {
+    fs::create_dir_all(target)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let to = target.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_tree(&entry.path(), &to)?;
+        } else {
+            fs::copy(entry.path(), &to)?;
+        }
+    }
+    Ok(())
+}
+
+/// Content hash of a directory tree, paths included.
+fn tree_digest(root: &Path) -> Result<String> {
+    fn collect(root: &Path, dir: &Path, out: &mut Vec<(PathBuf, Vec<u8>)>) -> Result<()> {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                collect(root, &path, out)?;
+            } else {
+                let relative = path.strip_prefix(root)?.to_path_buf();
+                out.push((relative, fs::read(&path)?));
+            }
+        }
+        Ok(())
+    }
+    let mut files = Vec::new();
+    collect(root, root, &mut files)?;
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(digest_of(&files))
 }
 
 fn sync(dest: &Path, create_if_missing: bool) -> Result<Sync> {
@@ -124,9 +282,9 @@ fn skills_root_exists(dest: &Path) -> bool {
     dest.parent().is_some_and(Path::is_dir)
 }
 
-/// `lingxia skill install`: write the skill where the agent looks for it, and
-/// refresh the pointer block of the nearest `AGENTS.md` that already has one --
-/// a pointer an older CLI wrote may name a command that no longer exists.
+/// `lingxia skill install`: write the skill where the agent looks for it. It is
+/// a user-level install and never edits the project the shell is in; a stale
+/// pointer block in the nearest `AGENTS.md` is reported with its replacement.
 pub fn install(cwd: &Path) -> Result<()> {
     let dest = user_destination()?;
     match sync_for_home(&home_dir()?, true)? {
@@ -136,7 +294,25 @@ pub fn install(cwd: &Path) -> Result<()> {
             println!("Installed the LingXia skill to {}", dest.display())
         }
     }
-    refresh_pointer(cwd, &dest)
+    if let Some(suggestion) = stale_pointer(cwd, &dest) {
+        println!("{suggestion}");
+    }
+    Ok(())
+}
+
+/// The nearest pointer block that differs from the one `lingxia new` writes
+/// now, as a message carrying the replacement block.
+fn stale_pointer(cwd: &Path, dest: &Path) -> Option<String> {
+    let project_dir = pointer_project(cwd)?;
+    let path = project_dir.join("AGENTS.md");
+    let existing = fs::read_to_string(&path).ok()?;
+    let block = agents_block(&portable_reference(&project_dir, dest));
+    (replace_block(&existing, &block) != existing).then(|| {
+        format!(
+            "{} has an outdated LingXia pointer; replace the block between its `{AGENTS_MARKER}` lines with:\n\n{block}",
+            path.display()
+        )
+    })
 }
 
 /// The nearest directory at or above `cwd` whose `AGENTS.md` carries this
@@ -434,13 +610,69 @@ mod tests {
             sync_for_home(home.path(), false).unwrap(),
             Sync::Created
         ));
-        assert!(!old.exists());
+        let canonical = fs::canonicalize(skill_dir(home.path())).unwrap();
+        assert!(fs::symlink_metadata(&old).unwrap().file_type().is_symlink());
+        assert_eq!(fs::canonicalize(&old).unwrap(), canonical);
         assert!(other.is_dir());
         assert!(skill_dir(home.path()).join("SKILL.md").is_file());
         assert!(matches!(
             sync_for_home(home.path(), false).unwrap(),
             Sync::Current
         ));
+        assert_eq!(fs::canonicalize(&old).unwrap(), canonical);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_claude_skills_root_linked_into_the_agents_root_is_left_alone() {
+        let home = TempDir::new().unwrap();
+        fs::create_dir_all(skills_root(home.path())).unwrap();
+        fs::create_dir_all(home.path().join(".claude")).unwrap();
+        std::os::unix::fs::symlink(skills_root(home.path()), claude_skills_root(home.path()))
+            .unwrap();
+        for _ in 0..2 {
+            sync_for_home(home.path(), true).unwrap();
+            assert!(skill_dir(home.path()).join("SKILL.md").is_file());
+        }
+        // A stale copy is rewritten, never deleted through the linked root.
+        fs::write(skill_dir(home.path()).join(MANIFEST_NAME), "{}").unwrap();
+        sync_for_home(home.path(), false).unwrap();
+        assert!(skill_dir(home.path()).join("SKILL.md").is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_users_own_link_elsewhere_is_kept_and_no_claude_means_no_link() {
+        let home = TempDir::new().unwrap();
+        sync_for_home(home.path(), true).unwrap();
+        assert!(!home.path().join(".claude").exists());
+
+        let checkout = TempDir::new().unwrap();
+        fs::write(checkout.path().join("SKILL.md"), "dev").unwrap();
+        fs::create_dir_all(claude_skills_root(home.path())).unwrap();
+        let link = claude_skills_root(home.path()).join(SKILL_DIR_NAME);
+        std::os::unix::fs::symlink(checkout.path(), &link).unwrap();
+        fs::write(skill_dir(home.path()).join(MANIFEST_NAME), "{}").unwrap();
+        sync_for_home(home.path(), false).unwrap();
+        assert_eq!(fs::read_to_string(link.join("SKILL.md")).unwrap(), "dev");
+    }
+
+    #[test]
+    fn a_user_level_install_never_edits_the_project_agents_file() {
+        let project = TempDir::new().unwrap();
+        let agents = project.path().join("AGENTS.md");
+        let stale = format!("# Mine\n\n{AGENTS_MARKER}\nold wording\n{AGENTS_MARKER}\n");
+        fs::write(&agents, &stale).unwrap();
+        let dest = skill_dir(project.path());
+        let suggestion = stale_pointer(project.path(), &dest).expect("a stale block is reported");
+        assert!(
+            suggestion.contains("run `lingxia skill install`."),
+            "{suggestion}"
+        );
+        assert_eq!(fs::read_to_string(&agents).unwrap(), stale);
+
+        write_agents_pointer(project.path(), &dest).unwrap();
+        assert_eq!(stale_pointer(project.path(), &dest), None);
     }
 
     #[test]

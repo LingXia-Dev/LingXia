@@ -82,7 +82,7 @@ LingXia ships an agent-oriented markdown skill inside the CLI. It contains the d
 
 `lingxia new` writes the skill to `~/.agents/skills/lingxia/`; for a project you cloned, run `lingxia skill install`. Every later `lingxia` command rewrites the skill whenever it differs from the one that CLI carries, so the skill on disk always describes the CLI on this machine.
 
-`lingxia new` also writes a pointer from `<project>/AGENTS.md` to the installed `SKILL.md`. Agents can share that directory; register it in your agent's skill settings if required. The CLI removes its old Claude-specific copy after installing the new one successfully.
+`lingxia new` also writes a pointer from `<project>/AGENTS.md` to the installed `SKILL.md`. Agents can share that directory; register it in your agent's skill settings if required. When Claude Code is installed, `~/.claude/skills/lingxia` is a link to the same copy, so Claude Code discovers it too.
 
 Browse the source directly at [docs/skill/SKILL.md](docs/skill/SKILL.md) — that directory is what the CLI embeds.
 
