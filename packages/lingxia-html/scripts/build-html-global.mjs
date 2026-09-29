@@ -1,97 +1,42 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawn } from "node:child_process";
+import { rolldown } from "rolldown";
 import ts from "typescript";
-import { resolveBin } from "./resolve-bin.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(__dirname, "..");
-const pageRuntimeDir = path.resolve(packageDir, "../lingxia-page-runtime");
-const bridgeDir = path.resolve(packageDir, "../lingxia-bridge");
+const bridgeModules = path.resolve(packageDir, "../lingxia-bridge/dist/es2020");
 const distDir = path.join(packageDir, "dist");
-const entryFile = path.join(distDir, "__entry__.js");
-const runtimeShimFile = path.join(distDir, "__page_runtime_runtime__.js");
+const bridgeFacadeFile = path.join(distDir, "__bridge_facade__.js");
 const bundleFile = path.join(distDir, "global.bundle.js");
 const modernFile = path.join(distDir, "global.es2020.js");
 const legacyFile = path.join(distDir, "global.es5.js");
-const rolldownBin = resolveBin(packageDir, "rolldown");
 
-await writeEntryFile();
-await runRolldown(entryFile, bundleFile, "iife", "LingXiaPage");
-await fs.copyFile(bundleFile, modernFile);
-await writeLegacyBundle(bundleFile, legacyFile);
-
+// The host already booted the bridge; importing its index would boot another.
+// The page API needs only the fault panel and the host store.
+await fs.writeFile(
+  bridgeFacadeFile,
+  [
+    `export { renderPageFault } from ${JSON.stringify(path.join(bridgeModules, "error.js"))};`,
+    `export { getHost, subscribeHost } from ${JSON.stringify(path.join(bridgeModules, "host.js"))};`,
+    "",
+  ].join("\n"),
+);
 try {
+  const bundle = await rolldown({
+    input: path.join(distDir, "global.js"),
+    resolve: { alias: { "@lingxia/bridge": bridgeFacadeFile } },
+  });
+  await bundle.write({ file: bundleFile, format: "iife", name: "LingXiaPage" });
+  await bundle.close();
+  await fs.copyFile(bundleFile, modernFile);
+  await writeLegacyBundle(bundleFile, legacyFile);
   await stripSourceMap(modernFile);
   await stripSourceMap(legacyFile);
 } finally {
   await fs.rm(bundleFile, { force: true });
-  await fs.rm(entryFile, { force: true });
-  await fs.rm(runtimeShimFile, { force: true });
-}
-
-async function writeEntryFile() {
-  await writeRuntimeShimFile();
-  const importPath = normalizeImportPath(path.relative(distDir, runtimeShimFile));
-  // The host store only: the bridge's index also boots the bridge and
-  // registers its UI handlers, which the host's own runtime already did.
-  const bridgeImportPath = normalizeImportPath(
-    path.relative(distDir, path.join(bridgeDir, "dist", "es2020", "host.js")),
-  );
-  // The same page API as the `@lingxia/html` module: `pageReady`, `getPage` /
-  // `subscribePage`, and the host facts through `getHost` / `subscribeHost`.
-  const source = [
-    'import {',
-    '  getPageActions,',
-    '  getPageSnapshot,',
-    '  subscribePageSnapshot,',
-    '  whenPageReady,',
-    `} from "${importPath}";`,
-    `export { getHost, subscribeHost } from "${bridgeImportPath}";`,
-    'export function pageReady(options) { return whenPageReady(options); }',
-    'export function getPage() { return { data: getPageSnapshot(), actions: getPageActions() }; }',
-    'export function subscribePage(listener) { return subscribePageSnapshot(listener); }',
-    "",
-  ].join("\n");
-  await fs.writeFile(entryFile, source, "utf8");
-}
-
-async function writeRuntimeShimFile() {
-  const pageRuntimeFile = path.join(pageRuntimeDir, "dist", "shared", "runtime.js");
-  const pageChromeFile = path.join(pageRuntimeDir, "dist", "page-chrome.js");
-  const bridgeModuleFile = path.join(bridgeDir, "dist", "es2020", "index.js");
-  const bridgeImportPath = normalizeImportPath(path.relative(distDir, bridgeModuleFile));
-  const source = await fs.readFile(pageRuntimeFile, "utf8");
-  const pageChromeSource = await fs.readFile(pageChromeFile, "utf8");
-  const rewritten = source.replaceAll('"@lingxia/bridge"', `"${bridgeImportPath}"`);
-  await fs.writeFile(runtimeShimFile, `${rewritten}\n${pageChromeSource}`, "utf8");
-}
-
-function runRolldown(inputFile, outputFile, format, globalName) {
-  const args = [inputFile, "--file", outputFile, "--format", format];
-  if (globalName) {
-    args.push("--name", globalName);
-  }
-  return new Promise((resolve, reject) => {
-    const child = spawn(rolldownBin, args, {
-      cwd: packageDir,
-      stdio: "inherit",
-      // On Windows the .bin entry is rolldown.cmd; route through the shell so
-      // it resolves (node's spawn can't exec a .cmd directly -> spawn EINVAL).
-      shell: process.platform === "win32",
-      env: process.env,
-    });
-
-    child.on("exit", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`rolldown failed with exit code ${code ?? "unknown"}`));
-      }
-    });
-    child.on("error", reject);
-  });
+  await fs.rm(bridgeFacadeFile, { force: true });
 }
 
 async function writeLegacyBundle(sourceFile, outputFile) {
@@ -109,9 +54,4 @@ async function writeLegacyBundle(sourceFile, outputFile) {
 async function stripSourceMap(file) {
   const source = await fs.readFile(file, "utf8");
   await fs.writeFile(file, source.replace(/\/\/# sourceMappingURL=.*\n?$/, ""));
-}
-
-function normalizeImportPath(relativePath) {
-  const normalized = relativePath.split(path.sep).join("/");
-  return normalized.startsWith(".") ? normalized : `./${normalized}`;
 }
