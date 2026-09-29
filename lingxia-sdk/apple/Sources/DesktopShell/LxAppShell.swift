@@ -216,6 +216,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var isApplyingSurfaceSizeClass = false
     private var mediumSidebarExpandedByUser = false
     private var panelFramePreservationGeneration: UInt = 0
+    /// Our own `setFrame` also moves the window. That must not look like a drag.
+    private var suppressFrameRestorationMove = false
     private let sidebarRevealButton = NSButton()
     private var currentViewController: macOSLxAppViewController?
     private var viewControllers: [String: macOSLxAppViewController] = [:]
@@ -547,8 +549,22 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         reportSurfaceWidth()
     }
 
+    public func windowWillMove(_ notification: Notification) {
+        invalidateFrameRestorationAfterUserMove()
+    }
+
     public func windowDidMove(_ notification: Notification) {
         scheduleWindowFrameSave()
+    }
+
+    /// A title-bar drag is not a live resize, so it never reached
+    /// `windowWillStartLiveResize`. The panel-layout snapshot from the previous
+    /// action would otherwise `setFrame` the window back on the next one. Only
+    /// `windowWillMove` sees the drag event; `windowDidMove` does not.
+    private func invalidateFrameRestorationAfterUserMove() {
+        guard !suppressFrameRestorationMove else { return }
+        guard NSApp.currentEvent?.type == .leftMouseDragged else { return }
+        panelFramePreservationGeneration &+= 1
     }
 
     /// Move and resize fire for every step of a drag, and a programmatic
@@ -2656,8 +2672,12 @@ extension LxAppShell {
         // The enlarged minima only protect the synchronous constraint pass. Leaving
         // them installed until the animation settles can permanently capture this
         // window size when panel operations overlap and blocks live resizing.
+        // Putting the original minima back snaps the origin to the frame AppKit
+        // stashed when they were first applied — the position before a user drag —
+        // without changing the size, which the size-only check used to ignore.
         window.minSize = minSizeBefore
         window.contentMinSize = contentMinSizeBefore
+        restoreWindowFrameIfNeeded(frameBefore, reason: "\(reason):minSize")
 
         // Panel animations and AppKit constraint passes may settle on the next ticks.
         DispatchQueue.main.async { [weak self, weak window] in
@@ -2679,13 +2699,21 @@ extension LxAppShell {
     private func restoreWindowFrameIfNeeded(_ frameBefore: NSRect, reason: String) {
         guard let window else { return }
         let current = window.frame
-        guard abs(current.width - frameBefore.width) > 0.5 || abs(current.height - frameBefore.height) > 0.5 else {
-            return
+        guard !sameFrame(current, frameBefore) else { return }
+        let sizeChanged = abs(current.width - frameBefore.width) > 0.5
+            || abs(current.height - frameBefore.height) > 0.5
+        if sizeChanged {
+            let message = "Panel layout changed window frame; restoring reason=\(reason) before=\(formatFrame(frameBefore)) current=\(formatFrame(current))"
+            lxShellStdoutLog(message, level: 4)
+            LXLog.error(message, category: "LxAppShell")
+        } else {
+            lxShellStdoutLog(
+                "preserveFrame pinOrigin reason=\(reason) before=\(formatFrame(frameBefore)) current=\(formatFrame(current))"
+            )
         }
-        let message = "Panel layout changed window frame; restoring reason=\(reason) before=\(String(format: "%.1fx%.1f", frameBefore.width, frameBefore.height)) current=\(String(format: "%.1fx%.1f", current.width, current.height))"
-        lxShellStdoutLog(message, level: 4)
-        LXLog.error(message, category: "LxAppShell")
+        suppressFrameRestorationMove = true
         window.setFrame(frameBefore, display: true)
+        suppressFrameRestorationMove = false
     }
 
     private func attachPanelWebViewWhenReady(panelId: String, appId: String, path: String, attempt: Int) {

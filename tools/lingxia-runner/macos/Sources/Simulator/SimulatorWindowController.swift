@@ -71,6 +71,15 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     // `windowDidChangeScreen` so a spurious screen notification (or the resize
     // itself crossing a screen edge) doesn't re-fit when the scale is unchanged.
     private var appliedScale: CGFloat = 1
+    /// Where the user dragged this window. A later refit must not aim at the
+    /// frame AppKit still has from creation.
+    private var placedOrigin: NSPoint?
+    /// A title-bar drag is only visible in `windowWillMove`; the moves that follow
+    /// carry no drag event, so they are attributed to it until the button is up.
+    private var userDragging = false
+    /// Set when automation is about to move a window; the following `windowDidMove` is that move.
+    private var captureNextPlacement = false
+    nonisolated(unsafe) private var automationMoveObserver: NSObjectProtocol?
 
     // MARK: - DevTools
 
@@ -156,6 +165,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     deinit {
         navigationBarObserver.map(NotificationCenter.default.removeObserver)
         navBarStateChangedObserver.map(NotificationCenter.default.removeObserver)
+        automationMoveObserver.map(NotificationCenter.default.removeObserver)
         clockTimer?.invalidate()
         appearanceObservation?.invalidate()
     }
@@ -248,6 +258,21 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     
     private func setupSimulatorMode() {
         self.window?.delegate = self
+        automationMoveObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("LingXiaAutomationWindowMutation"),
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            if Thread.isMainThread {
+                MainActor.assumeIsolated {
+                    self?.captureNextPlacement = true
+                }
+            } else {
+                Task { @MainActor in
+                    self?.captureNextPlacement = true
+                }
+            }
+        }
 
         guard let window = self.window, let contentView = window.contentView else { return }
 
@@ -362,10 +387,10 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         )
         guard let window = self.window else { return }
 
-        let cur = window.frame
-        let newOrigin = NSPoint(x: cur.midX - newSize.width / 2, y: cur.midY - newSize.height / 2)
+        let newOrigin = centeredOrigin(for: newSize, around: anchorFrame(of: window))
         let newFrame = NSRect(origin: newOrigin, size: newSize)
 
+        placeWindow(at: newFrame.origin)
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.25
             ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -900,13 +925,11 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
         guard let window = self.window else { return }
 
-        // Centered on the current position.
-        let currentFrame = window.frame
-        let newOrigin = NSPoint(
-            x: currentFrame.midX - newWindowSize.width / 2,
-            y: currentFrame.midY - newWindowSize.height / 2
-        )
+        // Centered on where the window actually is, or where the user left it
+        // when a later pass has already snapped the frame back.
+        let newOrigin = centeredOrigin(for: newWindowSize, around: anchorFrame(of: window))
         let newFrame = NSRect(origin: newOrigin, size: newWindowSize)
+        placeWindow(at: newFrame.origin)
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.3
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -1425,6 +1448,44 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     
     // MARK: - NSWindowDelegate
     
+    public func windowWillMove(_ notification: Notification) {
+        if NSApp.currentEvent?.type == .leftMouseDragged {
+            userDragging = true
+        }
+    }
+
+    public func windowDidMove(_ notification: Notification) {
+        guard userDragging || captureNextPlacement else { return }
+        captureNextPlacement = false
+        placedOrigin = window?.frame.origin
+        // The last move of a drag arrives with the button already released.
+        if NSEvent.pressedMouseButtons & 1 == 0 {
+            userDragging = false
+        }
+    }
+
+    /// Our own refit decides the placement; its animation steps must not be
+    /// taken for a user or automation move.
+    private func placeWindow(at origin: NSPoint) {
+        userDragging = false
+        captureNextPlacement = false
+        placedOrigin = origin
+    }
+
+    /// Frame to keep in place. Prefers the user's drag when the live frame has
+    /// been put back at the pre-move origin.
+    private func anchorFrame(of window: NSWindow) -> NSRect {
+        let live = window.frame
+        guard let placed = placedOrigin else { return live }
+        let drifted = abs(live.origin.x - placed.x) > 0.5 || abs(live.origin.y - placed.y) > 0.5
+        guard drifted else { return live }
+        return NSRect(origin: placed, size: live.size)
+    }
+
+    private func centeredOrigin(for size: NSSize, around frame: NSRect) -> NSPoint {
+        NSPoint(x: frame.midX - size.width / 2, y: frame.midY - size.height / 2)
+    }
+
     public func windowWillClose(_ notification: Notification) {
         phoneBrowserSurface.dismiss(closeTab: !preserveBrowserTabsOnClose)
         if webTarget != nil {
