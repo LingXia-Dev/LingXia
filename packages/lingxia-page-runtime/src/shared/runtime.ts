@@ -1,12 +1,25 @@
 import { type StateInfo, type LxStream } from "@lingxia/bridge";
 
 export type ActionMap = Record<string, (...args: never[]) => unknown>;
-/** Unary actions always acknowledge completion; streams keep their stream handle. */
+/**
+ * The View's side of a page action: at most one JSON payload; unary actions
+ * acknowledge completion, generators arrive as a stream handle.
+ */
 export type PageActions<A extends ActionMap> = {
   readonly [K in keyof A]: A[K] extends (...args: infer P) => infer R
-    ? (...args: P) => R extends LxStream<any, any> ? R : Promise<Awaited<R>>
+    ? number extends P["length"]
+      ? (payload?: unknown) => ViewActionResult<R>
+      : P extends [] | [unknown] | [unknown?]
+        ? (...args: P) => ViewActionResult<R>
+        : (error: "a page action takes at most one JSON payload") => never
     : never;
 };
+type ViewActionResult<R> =
+  R extends LxStream<any, any>
+    ? R
+    : R extends AsyncGenerator<infer T, infer TReturn, any>
+      ? LxStream<T, TReturn>
+      : Promise<Awaited<R>>;
 export type Snapshot = Record<string, unknown>;
 
 /**
@@ -278,6 +291,7 @@ async function callUnaryPageAction(
   bridge: NonNullable<Window["LingXiaBridge"]>,
   name: string,
   payload: unknown,
+  dropWhenGone = true,
 ): Promise<unknown> {
   // Native components fire events before the page's first state arrives,
   // and the host refuses calls until then: hold the call instead.
@@ -288,9 +302,23 @@ async function callUnaryPageAction(
     // Once the page has had its state, a not-ready answer means the host
     // ended this document's session: the page has left, and a native
     // component's late event has no one to report to. Drop it quietly.
-    if ((error as { code?: unknown } | null)?.code === "BRIDGE_NOT_READY") return new Promise<never>(() => {});
+    // Automation has a caller waiting, so it gets the error.
+    if (dropWhenGone && (error as { code?: unknown } | null)?.code === "BRIDGE_NOT_READY") {
+      return new Promise<never>(() => {});
+    }
     throw error;
   }
+}
+
+/**
+ * A DOM or framework event, in this realm or another. A JSON payload never
+ * carries methods, so event methods tell the two apart.
+ */
+function isEventLike(value: unknown): boolean {
+  if (typeof Event !== "undefined" && value instanceof Event) return true;
+  if (!value || typeof value !== "object") return false;
+  const event = value as { preventDefault?: unknown; stopPropagation?: unknown };
+  return typeof event.preventDefault === "function" && typeof event.stopPropagation === "function";
 }
 
 const PAGE_ACTIONS_NOT_READY = "PAGE_ACTIONS_NOT_READY";
@@ -326,7 +354,7 @@ function invokePageActionForAutomation(name: unknown, payload?: unknown): Promis
       `Page action '${name}' is a stream action; only unary actions can be invoked`,
     ));
   }
-  return callUnaryPageAction(bridge, name, payload);
+  return callUnaryPageAction(bridge, name, payload, false);
 }
 
 declare global {
@@ -346,38 +374,15 @@ if (typeof window !== "undefined") {
 function filterPayload(name: string, args: unknown[]): unknown {
   const clean: unknown[] = [];
   for (const value of args) {
-    // CustomEvent carries serializable data on `.detail`, but the DOM Event
-    // wrapper itself is not portable across the bridge. Repackage as a plain
-    // `{detail, type}` so page actions bound directly to DOM listeners (e.g.
-    // `onVideoEnded={action}`) keep the familiar `event.detail` shape without
-    // forwarding the live Event instance. Without this rewrite the bare Event
-    // was stripped wholesale, producing `event = undefined` on the receiving
-    // side — surfaced in the showcase as "video ended undefined".
-    if (typeof CustomEvent !== "undefined" && value instanceof CustomEvent) {
-      clean.push({ type: value.type, detail: value.detail });
-      continue;
-    }
-    // Some framework wrappers / WebView realms do not preserve
-    // `instanceof CustomEvent`, but still expose the portable event payload
-    // shape. Keep it before the generic Event stripping path so page actions
-    // receive `event.detail` consistently.
-    const maybeEvent = value as { type?: unknown; detail?: unknown } | null;
-    if (maybeEvent && typeof maybeEvent === "object" && typeof maybeEvent.type === "string" && "detail" in maybeEvent) {
-      clean.push({
-        type: maybeEvent.type,
-        detail: maybeEvent.detail,
-      });
-      continue;
-    }
-    // Generic Event / event-like objects with non-serializable methods stay
-    // stripped — there's no portable payload to extract.
-    if (value instanceof Event) continue;
-    if (
-      value &&
-      typeof value === "object" &&
-      "stopPropagation" in value &&
-      typeof (value as { stopPropagation?: unknown }).stopPropagation === "function"
-    ) {
+    // A DOM event bound straight to an action (`onVideoEnded={action}`)
+    // crosses as its portable `{ type, detail }`; one without `detail`
+    // carries nothing portable. A business payload passes as is, whatever
+    // its field names.
+    if (isEventLike(value)) {
+      const event = value as { type?: unknown; detail?: unknown };
+      if (typeof event.type === "string" && "detail" in event) {
+        clean.push({ type: event.type, detail: event.detail });
+      }
       continue;
     }
     clean.push(value);
