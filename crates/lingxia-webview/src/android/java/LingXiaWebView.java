@@ -1450,65 +1450,88 @@ public class LingXiaWebView extends WebView {
     @Override
     public void destroy() {
         Log.d(TAG, "Destroying WebView for appId=" + appId + ", path=" + currentPath);
-
-        // Ensure all View operations happen on the main (UI) thread
-        ensureMainThread(new Runnable() {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            destroyOnMainThread();
+            return;
+        }
+        // Block until the view is gone: the caller may create a replacement
+        // next, and every WebView shares one renderer. Never call this from a
+        // thread the main thread is waiting on.
+        final CountDownLatch done = new CountDownLatch(1);
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
             @Override
             public void run() {
                 try {
-                    setVisibility(View.GONE);
-                    stopLoading();
-                    setWebViewClient(new WebViewClient());
-                    setWebChromeClient(new WebChromeClient());
-                    revokeDocumentTransport();
-                    createPortMethod = null;
-                    sendPortMethod = null;
-                    renewPortMethod = null;
-                    postMessageMethod = null;
-                    cleanupMethod = null;
-                    messagePortCapable = false;
-
-                    try {
-                        clearHistory();
-                        clearCache(true);
-                        clearFormData();
-                    } catch (Exception e) {
-                        Log.w(TAG, "Error clearing WebView data: " + e.getMessage());
-                    }
-
-                    try {
-                        ViewGroup parent = (ViewGroup) getParent();
-                        if (parent != null) {
-                            parent.removeView(LingXiaWebView.this);
-                        }
-                    } catch (Exception e) {
-                        Log.w(TAG, "Error removing WebView from parent: " + e.getMessage());
-                    }
-
-                    for (ValueCallback<android.net.Uri[]> callback : pendingFileChoosers.values()) {
-                        if (callback != null) {
-                            callback.onReceiveValue(null);
-                        }
-                    }
-                    pendingFileChoosers.clear();
-                    LingXiaWebView.super.destroy();
-                    String profileName = ephemeralProfileName;
-                    ephemeralProfileName = null;
-                    if (profileName != null) {
-                        deleteEphemeralProfile(profileName, 5);
-                    }
-                    if (usesGlobalEphemeralFallback) {
-                        usesGlobalEphemeralFallback = false;
-                        CookieManager cookieManager = CookieManager.getInstance();
-                        cookieManager.removeAllCookies(value -> cookieManager.flush());
-                        WebStorage.getInstance().deleteAllData();
-                    }
-                    Log.d(TAG, "WebView destroyed successfully");
-                } catch (Exception e) {
-                    Log.e(TAG, "Critical error during WebView destruction", e);
+                    destroyOnMainThread();
+                } finally {
+                    done.countDown();
                 }
             }
         });
+        try {
+            if (!done.await(5, TimeUnit.SECONDS)) {
+                Log.e(TAG, "Timed out waiting for WebView destroy on the main thread");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            Log.w(TAG, "Interrupted waiting for WebView destroy");
+        }
+    }
+
+    private void destroyOnMainThread() {
+        try {
+            setVisibility(View.GONE);
+            stopLoading();
+            setWebViewClient(new WebViewClient());
+            setWebChromeClient(new WebChromeClient());
+            revokeDocumentTransport();
+            createPortMethod = null;
+            sendPortMethod = null;
+            renewPortMethod = null;
+            postMessageMethod = null;
+            cleanupMethod = null;
+            messagePortCapable = false;
+
+            try {
+                clearHistory();
+                // No clearCache(true): it clears the process-wide HTTP cache,
+                // including the document a replacement WebView is loading.
+                clearFormData();
+            } catch (Exception e) {
+                Log.w(TAG, "Error clearing WebView data: " + e.getMessage());
+            }
+
+            try {
+                ViewGroup parent = (ViewGroup) getParent();
+                if (parent != null) {
+                    parent.removeView(LingXiaWebView.this);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Error removing WebView from parent: " + e.getMessage());
+            }
+
+            for (ValueCallback<android.net.Uri[]> callback : pendingFileChoosers.values()) {
+                if (callback != null) {
+                    callback.onReceiveValue(null);
+                }
+            }
+            pendingFileChoosers.clear();
+            LingXiaWebView.super.destroy();
+            String profileName = ephemeralProfileName;
+            ephemeralProfileName = null;
+            if (profileName != null) {
+                deleteEphemeralProfile(profileName, 5);
+            }
+            if (usesGlobalEphemeralFallback) {
+                usesGlobalEphemeralFallback = false;
+                CookieManager cookieManager = CookieManager.getInstance();
+                cookieManager.removeAllCookies(value -> cookieManager.flush());
+                WebStorage.getInstance().deleteAllData();
+            }
+            Log.d(TAG, "WebView destroyed successfully");
+        } catch (Exception e) {
+            Log.e(TAG, "Critical error during WebView destruction", e);
+        }
     }
 
     public String getAppId() {

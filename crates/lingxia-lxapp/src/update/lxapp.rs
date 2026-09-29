@@ -403,6 +403,8 @@ impl UpdateManager {
             && prev.exists()
             && prev != install_path
         {
+            // The live session is already dropped, and Android's WebView
+            // destroy blocks until its view is gone, so nothing still loads from here.
             let _ = fs::remove_dir_all(&prev);
         }
 
