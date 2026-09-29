@@ -1,12 +1,6 @@
 import React from 'react';
-import { LxMediaSwiper, useLxPage } from '@lingxia/react';
+import { LxMediaSwiper, useLxPage, type LxMediaSwiperRef } from '@lingxia/react';
 import '../../tailwind.css';
-
-type MediaSwiperElement = HTMLElement & {
-  next(): void;
-  previous(): void;
-  goToIndex(index: number): void;
-};
 
 type SwiperItem = {
   id: string;
@@ -60,7 +54,7 @@ const peekPresets: number[] = [0, 16, 32, 48];
 
 export default function SwiperPage() {
   const { data, actions } = useLxPage<PageData, PageActions>();
-  const swiperRef = React.useRef<MediaSwiperElement | null>(null);
+  const swiperRef = React.useRef<LxMediaSwiperRef | null>(null);
 
   const items = data?.items ?? [];
   const index = typeof data?.index === 'number' ? data.index : 0;
@@ -127,9 +121,7 @@ export default function SwiperPage() {
             </div>
           ) : (
             <LxMediaSwiper
-              ref={(el) => {
-                swiperRef.current = el as MediaSwiperElement | null;
-              }}
+              ref={swiperRef}
               id="lx-media-swiper-demo"
               items={items}
               index={index}

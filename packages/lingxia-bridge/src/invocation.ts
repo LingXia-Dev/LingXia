@@ -3,11 +3,33 @@ import { BRIDGE_ERROR } from "./types";
 
 export type ParamsSource<T> = T | (() => T);
 
-export type MethodParams<TMethod> = TMethod extends () => any
-  ? undefined
-  : TMethod extends (params: infer P) => any
-    ? P
-    : never;
+/** The one payload a method takes: `undefined` for none, `P | undefined` when optional. */
+export type MethodParams<TMethod> = TMethod extends (...args: infer A) => any
+  ? A extends []
+    ? undefined
+    : A extends [infer P]
+      ? P
+      : A extends [(infer P)?]
+        ? P | undefined
+        : never
+  : never;
+
+/** Whether calling `TMethod` needs its payload. */
+export type RequiresParams<TMethod> = TMethod extends (...args: infer A) => any
+  ? [] extends A
+    ? false
+    : true
+  : never;
+
+/** `params`, required exactly when the method requires its payload. */
+export type ParamsOption<TMethod, TSource> = RequiresParams<TMethod> extends true
+  ? { params: TSource }
+  : { params?: TSource };
+
+/** A hook's options argument: required when `params` is. */
+export type OptionsArg<TMethod, TOptions> = RequiresParams<TMethod> extends true
+  ? [options: TOptions]
+  : [options?: TOptions];
 
 export type StreamData<TMethod> =
   TMethod extends (...args: any[]) => LxStream<infer TData, any> ? TData : never;

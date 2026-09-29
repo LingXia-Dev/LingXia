@@ -19,8 +19,13 @@ function hasNativePicker(): boolean {
 const HARMONY_PROPS_PREFIX = "data:application/json,";
 
 // Type definitions
-export type LxPickerColumn = string[];
-export type LxPickerCascadingColumns = [string[], Record<string, string[]>];
+export type LxPickerColumn = readonly string[];
+export type LxPickerCascadingColumns = readonly [
+  readonly string[],
+  Readonly<Record<string, readonly string[]>>,
+];
+/** Selector or multi-column columns, or cascading keys and their options. */
+export type LxPickerColumns = readonly LxPickerColumn[] | LxPickerCascadingColumns;
 type LxPickerViewEventHandler = (e: LxPickerEvent) => void;
 
 export interface LxPickerEventDetail {
@@ -37,7 +42,7 @@ export interface LxPickerEvent extends CustomEvent<LxPickerEventDetail> {
 export type LxPickerAttributes = {
   id?: string;
   mode?: 'selector' | 'multiSelector' | 'cascading' | 'date' | 'time';
-  columns?: LxPickerColumn[] | LxPickerCascadingColumns;
+  columns?: LxPickerColumns;
   defaultIndex?: number | number[];
   value?: string;
   start?: string;
@@ -54,7 +59,6 @@ export type LxPickerAttributes = {
   ref?: any;
   onChange?: LxPickerViewEventHandler;
   onScroll?: LxPickerViewEventHandler;
-  pageBindings?: Record<string, string>;
 };
 
 declare global {
@@ -91,7 +95,6 @@ export class LxPickerElement extends HTMLElement {
   private unregister?: () => void;
   private _handlers: Record<string, EventListenerOrEventListenerObject> = {};
   private rawHandlers: Record<string, EventListenerOrEventListenerObject> = {};
-  private _pageBindings: Record<string, string> = {};
   private harmonyEmbed?: HTMLEmbedElement;
   private lastHarmonyProps?: string;
   private webCleanup?: () => void;
@@ -112,19 +115,7 @@ export class LxPickerElement extends HTMLElement {
     self[propName] = value;
   }
 
-  set pageBindings(bindings: Record<string, string>) {
-    this._pageBindings = bindings ?? {};
-    if (this.isConnected) {
-      this.mountPicker();
-    }
-  }
-
-  get pageBindings(): Record<string, string> {
-    return this._pageBindings;
-  }
-
   connectedCallback() {
-    this.upgradeProperty("pageBindings");
     this.upgradeProperty("onchange");
 
     this.componentId = ensureComponentId(this, "lx-picker", this.componentId);
@@ -266,42 +257,10 @@ export class LxPickerElement extends HTMLElement {
     this.attrObserver = undefined;
   }
 
-  private dataAttrToDatasetKey(attr: string): string {
-    const raw = attr.slice(5).trim();
-    if (!raw) return "";
-    const parts = raw.split("-").filter(Boolean);
-    if (parts.length === 0) return "";
-    return parts
-      .map((segment, index) => {
-        if (index === 0) return segment.toLowerCase();
-        return segment.charAt(0).toUpperCase() + segment.slice(1);
-      })
-      .join("");
-  }
-
-  private collectDataset(): Record<string, string> {
-    const dataset: Record<string, string> = {};
-    const attrs = this.getAttributeNames();
-    for (const attr of attrs) {
-      if (!attr.startsWith("data-")) continue;
-      const key = this.dataAttrToDatasetKey(attr);
-      if (!key) continue;
-      const value = this.getAttribute(attr);
-      if (value == null) continue;
-      dataset[key] = value;
-    }
-    return dataset;
-  }
-
   private async mountPicker() {
     if (!this.componentId) return;
 
     const props = this.collectProps();
-    const dataset = this.collectDataset();
-    props.dataset = dataset;
-    props.datasetJson = JSON.stringify(dataset);
-    props.pageFuncBindings = this._pageBindings;
-    props.pageFuncBindingsJson = JSON.stringify(this._pageBindings);
     const { rect, cornerRadius } = measureElement(this);
 
     if (isHarmony()) {

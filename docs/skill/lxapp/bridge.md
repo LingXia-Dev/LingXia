@@ -154,7 +154,9 @@ useEffect(() => {
 ```
 
 The channel reopens when `params` changes; `{ manual: true }` leaves opening
-to `reopen()`.
+to `reopen()`. `send` returns `false`, sending nothing, while no channel is
+open. A method whose payload is required needs `params` (a type error
+otherwise), for `useLxStream` too.
 
 ## Errors
 

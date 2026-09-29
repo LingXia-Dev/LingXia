@@ -14,6 +14,7 @@ import {
 import {
   assignForwardedRef,
   bindElementEvents,
+  pickDomEventHandlers,
   unbindElementEvents,
 } from './text_component_shared.js';
 
@@ -57,7 +58,6 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>(({
   onQualityChange,
   onRateChange,
   onVolumeChange,
-  pageBindings,
   className,
   style,
   ...rest
@@ -143,14 +143,6 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>(({
     }
   }, [contentRotate, objectFit]);
 
-  // Set pageBindings property on custom element
-  useEffect(() => {
-    const el = elementRef.current as any;
-    if (el && pageBindings) {
-      el.pageBindings = pageBindings;
-    }
-  }, [pageBindings]);
-
   const domProps = buildVideoNativeAttrs({
     id: resolvedId,
     src,
@@ -167,6 +159,7 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>(({
   }, rest as Record<string, unknown>);
 
   return React.createElement('lx-video', {
+    ...pickDomEventHandlers(rest as Record<string, unknown>),
     ref: elementRefCallback,
     className,
     style,

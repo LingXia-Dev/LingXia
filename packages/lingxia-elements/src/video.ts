@@ -51,8 +51,8 @@ export type LxVideoAttributes = {
   progressBar?: boolean;
   live?: boolean;
   volume?: string | number;
-  qualities?: LxVideoQuality[];
-  playbackRates?: number[];
+  qualities?: readonly LxVideoQuality[];
+  playbackRates?: readonly number[];
   className?: string;
   style?: unknown;
   ref?: unknown;
@@ -70,7 +70,6 @@ export type LxVideoAttributes = {
   onQualityChange?: (event: CustomEvent<LxVideoEventPayloads["onQualityChange"]>) => void;
   onRateChange?: (event: CustomEvent<LxVideoEventPayloads["onRateChange"]>) => void;
   onVolumeChange?: (event: CustomEvent<LxVideoEventPayloads["onVolumeChange"]>) => void;
-  pageBindings?: Record<string, string>;
 };
 
 type LxObjectFit = "cover" | "contain" | "fill" | "fit";
@@ -114,24 +113,6 @@ export class LxVideoElement extends HTMLElement {
   private unregister?: () => void;
   private handlers: Record<string, EventListenerOrEventListenerObject> = {};
   private rawHandlers: Record<string, EventListenerOrEventListenerObject> = {};
-  private bindings: Record<string, string> = {};
-
-  set pageBindings(bindings: Record<string, string>) {
-    this.bindings = bindings ?? {};
-    if (this.isConnected) this.requestRootCompile();
-  }
-
-  get pageBindings(): Record<string, string> {
-    return this.bindings;
-  }
-
-  get pageFuncBindings(): Record<string, string> {
-    return this.bindings;
-  }
-
-  get pageFuncBindingsJson(): string {
-    return JSON.stringify(this.bindings);
-  }
 
   set src(value: string | null | undefined) {
     if (value == null) {
@@ -160,7 +141,6 @@ export class LxVideoElement extends HTMLElement {
 
   connectedCallback(): void {
     for (const property of [
-      "pageBindings",
       "contentRotate",
       "src",
       "onplayrequest",

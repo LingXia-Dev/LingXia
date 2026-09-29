@@ -7,8 +7,6 @@ import { ensureComponentId, NativeComponentUpdateState, iOSNativeComponentHelper
 import { measureElement } from "./dom.js";
 import { isAndroid, isHarmony, isIOS } from "./platform.js";
 
-type LxMediaSwiperEventHandler = (e: Event) => void;
-
 export type LxMediaSwiperItem =
   | {
       id?: string;
@@ -66,6 +64,28 @@ export type LxMediaSwiperItemEvent = CustomEvent<LxMediaSwiperEventDetail>;
 export type LxMediaSwiperEndReachedEvent = CustomEvent<LxMediaSwiperEndReachedEventDetail>;
 export type LxMediaSwiperErrorEvent = CustomEvent<LxMediaSwiperErrorEventDetail>;
 
+/** What each framework callback receives: the event's `detail`. */
+export interface LxMediaSwiperEventPayloads {
+  onChange: LxMediaSwiperChangeEventDetail;
+  onTransitionEnd: LxMediaSwiperTransitionEndEventDetail;
+  onEndReached: LxMediaSwiperEndReachedEventDetail;
+  onTap: LxMediaSwiperEventDetail;
+  onVideoEnded: LxMediaSwiperEventDetail;
+  onError: LxMediaSwiperErrorEventDetail;
+}
+
+/** The framework callbacks: each receives its event's payload. */
+export type LxMediaSwiperEventHandlers = {
+  [K in keyof LxMediaSwiperEventPayloads]?: (payload: LxMediaSwiperEventPayloads[K]) => void;
+};
+
+/** Imperative control of a mounted swiper (React ref, Vue template ref). */
+export interface LxMediaSwiperHandle {
+  next(): void;
+  previous(): void;
+  goToIndex(index: number): void;
+}
+
 /**
  * Peek leaves part of the previous and next pages visible alongside the current
  * page so users get a hint that more content exists. A single `number` applies
@@ -81,7 +101,7 @@ export type LxMediaSwiperPeek = number | { previous?: number; next?: number };
 
 export type LxMediaSwiperAttributes = {
   id?: string;
-  items?: LxMediaSwiperItem[];
+  items?: readonly LxMediaSwiperItem[];
   index?: number;
   initialIndex?: number;
   loop?: boolean;
@@ -100,13 +120,12 @@ export type LxMediaSwiperAttributes = {
   className?: string;
   style?: any;
   ref?: any;
-  onChange?: LxMediaSwiperEventHandler;
-  onTransitionEnd?: LxMediaSwiperEventHandler;
-  onEndReached?: LxMediaSwiperEventHandler;
-  onTap?: LxMediaSwiperEventHandler;
-  onVideoEnded?: LxMediaSwiperEventHandler;
-  onError?: LxMediaSwiperEventHandler;
-  pageBindings?: Record<string, string>;
+  onChange?: (event: LxMediaSwiperChangeEvent) => void;
+  onTransitionEnd?: (event: LxMediaSwiperTransitionEndEvent) => void;
+  onEndReached?: (event: LxMediaSwiperEndReachedEvent) => void;
+  onTap?: (event: LxMediaSwiperItemEvent) => void;
+  onVideoEnded?: (event: LxMediaSwiperItemEvent) => void;
+  onError?: (event: LxMediaSwiperErrorEvent) => void;
 };
 
 type ObjectFit = "cover" | "contain" | "fill" | "fit";
@@ -129,7 +148,7 @@ declare global {
   }
 }
 
-export class LxMediaSwiperElement extends HTMLElement {
+export class LxMediaSwiperElement extends HTMLElement implements LxMediaSwiperHandle {
   static get observedAttributes() {
     return [
       "id",
@@ -163,7 +182,6 @@ export class LxMediaSwiperElement extends HTMLElement {
   private iOSHelper?: iOSNativeComponentHelper;
   private rawHandlers: Record<string, EventListenerOrEventListenerObject> = {};
   private handlers: Record<string, EventListenerOrEventListenerObject> = {};
-  private _pageBindings: Record<string, string> = {};
   // Monotonic command counter used as the Harmony bridge fallback. Harmony's
   // Web.onNativeEmbedDataInfo channel only delivers attribute-derived props,
   // so imperative API calls have to piggyback into a prop the Builder polls.
@@ -179,7 +197,7 @@ export class LxMediaSwiperElement extends HTMLElement {
   private harmonyEmbed?: HTMLEmbedElement;
   private lastHarmonyProps?: string;
 
-  set items(value: LxMediaSwiperItem[] | string | null | undefined) {
+  set items(value: readonly LxMediaSwiperItem[] | string | null | undefined) {
     if (typeof value === "string") {
       const trimmed = value.trim();
       if (trimmed.length === 0) {
@@ -237,23 +255,6 @@ export class LxMediaSwiperElement extends HTMLElement {
     return this.parseRotate(this.getAttribute("content-rotate"));
   }
 
-  set pageBindings(bindings: Record<string, string>) {
-    this.setPageBindings(bindings);
-  }
-
-  get pageBindings(): Record<string, string> {
-    return this._pageBindings;
-  }
-
-  set pageFuncBindings(bindings: Record<string, string>) {
-    this.setPageBindings(bindings);
-  }
-
-  setPageBindings(bindings: Record<string, string>) {
-    this._pageBindings = bindings ?? {};
-    if (this.isConnected) this.mountOrUpdate(true);
-  }
-
   next(): void {
     this.sendCommand("next");
   }
@@ -272,8 +273,6 @@ export class LxMediaSwiperElement extends HTMLElement {
     this.upgradeProperty("index");
     this.upgradeProperty("initialIndex");
     this.upgradeProperty("contentRotate");
-    this.upgradeProperty("pageBindings");
-    this.upgradeProperty("pageFuncBindings");
     for (const prop of Object.keys(EVENT_MAP)) this.upgradeProperty(prop);
 
     this.componentId = ensureComponentId(this, "lx-media-swiper", this.componentId);
@@ -377,7 +376,6 @@ export class LxMediaSwiperElement extends HTMLElement {
   private collectProps(): Record<string, unknown> {
     const objectFit = this.parseObjectFit(this.getAttribute("object-fit"));
     const dots = this.parseDots();
-    const dataset = this.collectDataset();
     // Always emit a normalised peek object so removing the attribute (or setting it
     // to 0) propagates as an explicit reset. JSON.stringify would drop `undefined`,
     // which makes native think peek hasn't changed and keep the old padding.
@@ -399,10 +397,6 @@ export class LxMediaSwiperElement extends HTMLElement {
       dots,
       swipeEnabled: this.getAttribute("swipe-enabled") !== "false",
       peek,
-      pageFuncBindings: this._pageBindings,
-      pageFuncBindingsJson: JSON.stringify(this._pageBindings),
-      dataset,
-      datasetJson: JSON.stringify(dataset),
     };
     return props;
   }
@@ -809,16 +803,6 @@ export class LxMediaSwiperElement extends HTMLElement {
     }
   }
 
-  private collectDataset(): Record<string, string> {
-    const dataset: Record<string, string> = {};
-    for (const attr of this.getAttributeNames()) {
-      if (!attr.startsWith("data-")) continue;
-      const key = attr.slice(5).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-      const value = this.getAttribute(attr);
-      if (key && value != null) dataset[key] = value;
-    }
-    return dataset;
-  }
 }
 
 export function registerMediaSwiperComponent() {

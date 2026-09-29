@@ -14,6 +14,8 @@ import {
   type ChannelIn,
   type ChannelOut,
   type MethodParams,
+  type OptionsArg,
+  type ParamsOption,
   type ParamsSource,
   type StreamData,
   type StreamResult,
@@ -57,12 +59,18 @@ export function useLxHost(): LxHost {
   return React.useSyncExternalStore(subscribeHost, getHost, getHost);
 }
 
-export interface LxStreamOptions<TData, TReduced> {
-  params?: unknown | (() => unknown);
+type StreamMethod = (...args: any[]) => LxStream<any, any>;
+type ChannelMethod = (...args: any[]) => Promise<LxChannel<any, any>>;
+
+export type LxStreamOptions<TMethod> = ParamsOption<TMethod, ParamsSource<MethodParams<TMethod>>> & {
   manual?: boolean;
-  reduce?: (accumulated: TReduced, chunk: TData) => TReduced;
-  initial?: TReduced;
-}
+};
+
+/** A reducer folds chunks into `data`, starting from `initial`. */
+export type LxReducedStreamOptions<TMethod, TReduced> = LxStreamOptions<TMethod> & {
+  reduce: (accumulated: TReduced, chunk: StreamData<TMethod>) => TReduced;
+  initial: TReduced;
+};
 
 export interface LxStreamState<TData, TResult = unknown> {
   data: TData | undefined;
@@ -73,21 +81,27 @@ export interface LxStreamState<TData, TResult = unknown> {
   start: () => void;
 }
 
-export function useLxStream<
-  TMethod extends (...args: any[]) => LxStream<any, any>,
-  TReduced = StreamData<TMethod>,
->(
+export function useLxStream<TMethod extends StreamMethod, TReduced>(
   method: TMethod,
-  options?: LxStreamOptions<StreamData<TMethod>, TReduced> & {
-    params?: ParamsSource<MethodParams<TMethod>>;
+  options: LxReducedStreamOptions<TMethod, TReduced>,
+): LxStreamState<TReduced, StreamResult<TMethod>>;
+export function useLxStream<TMethod extends StreamMethod>(
+  method: TMethod,
+  ...options: OptionsArg<TMethod, LxStreamOptions<TMethod>>
+): LxStreamState<StreamData<TMethod>, StreamResult<TMethod>>;
+export function useLxStream(
+  method: StreamMethod,
+  options?: {
+    params?: ParamsSource<unknown>;
+    manual?: boolean;
+    reduce?: (accumulated: unknown, chunk: unknown) => unknown;
+    initial?: unknown;
   },
-): LxStreamState<
-  TReduced extends StreamData<TMethod> ? StreamData<TMethod> : TReduced,
-  StreamResult<TMethod>
-> {
-  type TData = StreamData<TMethod>;
-  type TResult = StreamResult<TMethod>;
-  type TOut = TReduced extends TData ? TData : TReduced;
+): LxStreamState<unknown, unknown> {
+  type TData = unknown;
+  type TResult = unknown;
+  type TReduced = unknown;
+  type TOut = unknown;
 
   const [state, setState] = React.useState<{
     data: TOut | undefined;
@@ -206,31 +220,28 @@ export function useLxStream<
   return { ...state, cancel, start };
 }
 
-export interface LxChannelOptions {
-  params?: unknown | (() => unknown);
+export type LxChannelOptions<TMethod> = ParamsOption<TMethod, ParamsSource<MethodParams<TMethod>>> & {
   manual?: boolean;
-}
+};
 
 export interface LxChannelState<TData, TOut = TData> {
   last: TData | undefined;
   error: LxBridgeError | undefined;
   connecting: boolean;
   connected: boolean;
-  send: (payload: TOut) => void;
+  /** Sends when connected; `false` when there is no open channel to send on. */
+  send: (payload: TOut) => boolean;
   close: (code?: string, reason?: string) => void;
   reopen: () => void;
 }
 
-export function useLxChannel<
-  TMethod extends (...args: any[]) => Promise<LxChannel<any, any>>,
->(
+export function useLxChannel<TMethod extends ChannelMethod>(
   method: TMethod,
-  options?: LxChannelOptions & {
-    params?: ParamsSource<MethodParams<TMethod>>;
-  },
+  ...args: OptionsArg<TMethod, LxChannelOptions<TMethod>>
 ): LxChannelState<ChannelIn<TMethod>, ChannelOut<TMethod>> {
   type TIn = ChannelIn<TMethod>;
   type TOut = ChannelOut<TMethod>;
+  const options = args[0] as { params?: ParamsSource<unknown>; manual?: boolean } | undefined;
 
   const [state, setState] = React.useState<{
     last: TIn | undefined;
@@ -256,7 +267,10 @@ export function useLxChannel<
   paramsRef.current = resolvedParams;
 
   const send = React.useCallback((payload: TOut) => {
-    chRef.current?.send(payload);
+    const ch = chRef.current;
+    if (!ch) return false;
+    ch.send(payload);
+    return true;
   }, []);
 
   const close = React.useCallback((code?: string, reason?: string) => {
@@ -278,9 +292,10 @@ export function useLxChannel<
       connected: false,
     });
 
-    Promise.resolve(
-      invokeMethod(methodRef.current, paramsRef.current) as Promise<LxChannel<TIn, TOut>>,
-    )
+    // In the executor: a method that throws synchronously lands in `.catch`.
+    new Promise<LxChannel<TIn, TOut>>((resolve) => {
+      resolve(invokeMethod(methodRef.current, paramsRef.current) as Promise<LxChannel<TIn, TOut>>);
+    })
       .then((ch) => {
         if (runIdRef.current !== runId) {
           ch.close();
