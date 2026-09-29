@@ -198,8 +198,11 @@ A host build is `dev` or `prod` (`lingxia {build,dev,package} --env`; default
 | `dev` | `.dev` | red `D` badge |
 | `prod` | none | unmodified |
 
-Envs install side by side. The default lxapp channel follows the env
-(`dev` → `draft`, `prod` → `release`); prod hosts may open `draft`.
+Envs install side by side. The default lxapp channel follows the running
+service env (`dev` → `draft`, `prod` → `release`); prod builds switched to
+the dev service open `draft` by default. An explicit `channel` works on any
+host. Lxapp data is kept per channel, so switching service env shows a
+separate set of lxapp data.
 
 ```yaml
 app:
@@ -210,8 +213,10 @@ app:
 ```
 
 A map may omit an env, which then cannot be built. A prod build can switch
-service servers at runtime; package id, icon, and App Link hosts stay with the
-build env. Read the env with `lx.host.env` (JS) or `lingxia::app::env()` (Rust).
+service servers at runtime; package id, icon, and signed App Link entitlements
+stay with the build env. Read the build env with `lx.host.env` (JS) or
+`lingxia::app::env()` (Rust), and the running service env with
+`lx.host.getServiceEnv()` (JS) or `lingxia::app::service_env()` (Rust).
 
 ## `features`
 

@@ -1346,7 +1346,7 @@ export type NavigateToAppOptions = {
     page?: ExternalPageName;
     query?: PageQuery;
     /**
-     * Lxapp publish channel. Defaults from the host env
+     * Lxapp publish channel. Defaults from the running service env
      * (`dev` → `draft`, `prod` → `release`).
      */
     channel?: LxAppEnvVersion;
@@ -1903,7 +1903,7 @@ export type ShellOpenAppOptions = {
     page?: ExternalPageName;
     query?: PageQuery;
     /**
-     * Lxapp publish channel. Defaults from the host env
+     * Lxapp publish channel. Defaults from the running service env
      * (`dev` → `draft`, `prod` → `release`).
      */
     channel?: LxAppEnvVersion;

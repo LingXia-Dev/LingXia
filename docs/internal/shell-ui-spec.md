@@ -911,7 +911,8 @@ semantics every language surface MUST share.
   `{ surface }` so its tray anchor, dismissal policy, and presentation contract
   exist. `page` is the configured page name; full routes are not JS API input.
   `query`, `channel`, and `targetVersion` are optional startup inputs, and
-  `channel` defaults from the host env. `edge` is valid only with `as: 'aside'`:
+  `channel` defaults from the running service env. `edge` is valid only with
+  `as: 'aside'`:
   `aside` chooses the companion region, while `edge` is its preferred docking
   side on layouts with room. Omit it for the default; compact hosts may
   reproject the same aside.
@@ -961,8 +962,9 @@ Surface identity and role do not.
 
 App navigation accepts the same optional startup selectors as a dynamic App
 Surface: `page`, `query`, `channel`, and `targetVersion`; `page` is the
-configured page name, full routes are rejected, and `channel` defaults from the host env. If the
-target appId is already owned by another live Surface, navigation fails with
+configured page name, full routes are rejected, and `channel` defaults from
+the running service env. If the target appId is already owned by another live
+Surface, navigation fails with
 `E_SURFACE_CONFLICT` rather than stealing or cloning that instance.
 
 ### 7.2 Handles, messaging, and context

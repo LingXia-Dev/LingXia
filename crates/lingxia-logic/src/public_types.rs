@@ -1110,7 +1110,7 @@ rong::js_api! {
     page?: ExternalPageName;
     query?: PageQuery;
     /**
-     * Lxapp publish channel. Defaults from the host env
+     * Lxapp publish channel. Defaults from the running service env
      * (`dev` → `draft`, `prod` → `release`).
      */
     channel?: LxAppEnvVersion;
@@ -1788,7 +1788,7 @@ true
     page?: ExternalPageName;
     query?: PageQuery;
     /**
-     * Lxapp publish channel. Defaults from the host env
+     * Lxapp publish channel. Defaults from the running service env
      * (`dev` → `draft`, `prod` → `release`).
      */
     channel?: LxAppEnvVersion;
