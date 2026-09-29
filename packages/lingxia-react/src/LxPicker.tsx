@@ -1,5 +1,5 @@
 import React, { forwardRef, useCallback, useId, useRef, useState } from 'react';
-import { registerPickerComponent } from '@lingxia/elements';
+import { registerPickerComponent, type LxPickerColumns } from '@lingxia/elements';
 import {
   buildPickerNativeAttrs,
   getPickerDisplayText,
@@ -8,13 +8,14 @@ import {
 import {
   assignForwardedRef,
   bindElementEvents,
+  pickDomEventHandlers,
   getCustomEventDetail,
   unbindElementEvents,
 } from './text_component_shared.js';
 
 export interface LxPickerProps extends Omit<React.HTMLAttributes<HTMLElement>, 'onChange'> {
   // For selector/multiSelector/cascading mode
-  columns?: string[][] | [string[], Record<string, string[]>];
+  columns?: LxPickerColumns;
 
   // For date/time mode
   mode?: 'date' | 'time';
@@ -23,7 +24,7 @@ export interface LxPickerProps extends Omit<React.HTMLAttributes<HTMLElement>, '
   fields?: 'year' | 'month' | 'day' | 'range';
 
   // Value (type depends on mode)
-  value?: string | string[];
+  value?: string | readonly string[];
 
   // Callbacks. `value` is a string for single-column / date / time pickers
   // and a string[] for multi-column / cascading pickers.
@@ -31,9 +32,6 @@ export interface LxPickerProps extends Omit<React.HTMLAttributes<HTMLElement>, '
   onCancel?: () => void;
   /** Fires while the user scrolls columns, before confirm. */
   onColumnChange?: (value: string | string[]) => void;
-
-  // Logic bindings (CLI-generated)
-  pageBindings?: Record<string, string>;
 
   // UI
   placeholder?: string;
@@ -59,7 +57,6 @@ if (typeof window !== "undefined") {
 export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
   id,
   columns, mode, start, end, fields, value, onConfirm, onCancel, onColumnChange, placeholder = 'Please select',
-  pageBindings,
   className, style, disabled, cancelText, cancelTextColor, cancelButtonColor,
   confirmText, confirmTextColor, confirmButtonColor, children,
   ...rest
@@ -129,12 +126,7 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
     boundElementRef.current = bindElementEvents(boundElementRef.current, element, listenerMapRef.current);
     elementRef.current = element;
     assignForwardedRef(ref, element);
-
-    // Set pageBindings on custom element
-    if (element && pageBindings) {
-      (element as any).pageBindings = pageBindings;
-    }
-  }, [ref, pageBindings]);
+  }, [ref]);
   React.useEffect(() => () => {
     unbindElementEvents(boundElementRef.current, listenerMapRef.current);
     boundElementRef.current = null;
@@ -158,13 +150,36 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
     confirmButtonColor,
   }, rest as Record<string, unknown>);
   const displayText = getPickerDisplayText(value, fields);
+  const domHandlers = pickDomEventHandlers(rest as Record<string, unknown>) as React.DOMAttributes<HTMLDivElement>;
+  // The default trigger is a button itself; given children, those are the
+  // control and the wrapper only opens the picker.
+  const buttonProps: React.HTMLAttributes<HTMLDivElement> = children ? {} : {
+    role: 'button',
+    tabIndex: disabled ? -1 : 0,
+    'aria-disabled': disabled || undefined,
+    onKeyDown: (event) => {
+      domHandlers.onKeyDown?.(event);
+      if (!event.defaultPrevented && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        handleClick();
+      }
+    },
+  };
+  const triggerProps: React.HTMLAttributes<HTMLDivElement> = {
+    ...domHandlers,
+    className,
+    onClick: (event) => {
+      domHandlers.onClick?.(event);
+      if (!event.defaultPrevented) handleClick();
+    },
+    ...buttonProps,
+  };
 
   return (
     <>
       {children ? (
         <div
-          onClick={handleClick}
-          className={className}
+          {...triggerProps}
           style={{
             cursor: disabled ? 'not-allowed' : 'pointer',
             opacity: disabled ? 0.5 : 1,
@@ -175,8 +190,7 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
         </div>
       ) : (
         <div
-          onClick={handleClick}
-          className={className}
+          {...triggerProps}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '12px 14px', backgroundColor: '#fff', border: '1px solid #e5e7eb',

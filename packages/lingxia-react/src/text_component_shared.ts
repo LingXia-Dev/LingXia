@@ -41,3 +41,16 @@ export function unbindElementEvents(
     boundElement.removeEventListener(event, listener);
   }
 }
+
+/**
+ * The DOM event handlers among a component's pass-through props (`onClick`,
+ * `onKeyDown`, …). The native attribute builders take attributes only, so
+ * these go on the rendered element directly.
+ */
+export function pickDomEventHandlers(props: Record<string, unknown>): Record<string, unknown> {
+  const handlers: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(props)) {
+    if (/^on[A-Z]/.test(key) && typeof value === "function") handlers[key] = value;
+  }
+  return handlers;
+}

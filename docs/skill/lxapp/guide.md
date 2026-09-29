@@ -282,9 +282,10 @@ re-serves the page. Logic reads the OS with `lx.device.getDeviceInfo()`.
 
 ## Events
 
-Use framework syntax (`onX` in React, `@event` in Vue). A handler that is an
-`actions.*` function is delivered straight to Logic; a local View function gets
-a DOM event. Native component callbacks and their payload shapes:
+Use framework syntax (`onX` in React, `@event` in Vue). A handler can be an
+`actions.*` function or a local View function; either receives what the
+component reports, and an `actions.*` handler forwards it to Logic as its
+payload. Native component callbacks and their payload shapes:
 [Components](./components.md#callback-shapes).
 
 ### `lx.on*` subscriptions

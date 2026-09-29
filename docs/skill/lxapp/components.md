@@ -39,7 +39,7 @@ View event.
 |---|---|---|
 | Island nodes (`LxNativeButton`, `LxVideo`, Root) | **Payload first** in React/Vue; HTML still reads `CustomEvent.detail` | `onPress(({ source }) => …)`, `onTimeUpdate(({ currentTime }) => …)` |
 | `LxPicker` | **Resolved value directly** — `string \| string[]` | `onConfirm(value)`, `onColumnChange(value)` |
-| `LxMediaSwiper` | **Raw DOM `CustomEvent`** with a typed `detail` | `onChange(event)` → `event.detail.index` |
+| `LxMediaSwiper` | **Payload first** in React/Vue; HTML reads `CustomEvent.detail` | `onChange(({ index }) => …)` |
 | `LxNavigator` | Raw DOM `CustomEvent` | `onSuccess(event)` → `event.detail.success` |
 
 ## Text inputs
@@ -180,9 +180,11 @@ type LxMediaSwiperItem =
   | { id?: string; type: 'video'; src: string; poster?: string; controls?: boolean; muted?: boolean };
 ```
 
-Handlers get a `CustomEvent`: `onChange` / `onTransitionEnd` →
+Handlers get the payload: `onChange` / `onTransitionEnd` →
 `{ index, previousIndex, item, source }`; `onTap` / `onVideoEnded` →
 `{ index, item }`; `onEndReached` at the last item; `onError` → `{ code }`.
+The ref (React `LxMediaSwiperRef`, Vue `LxMediaSwiperHandle`) has `next()`,
+`previous()` and `goToIndex(index)`.
 
 ```tsx
 <LxMediaSwiper
@@ -192,7 +194,7 @@ Handlers get a `CustomEvent`: `onChange` / `onTransitionEnd` →
   ]}
   loop
   dots
-  onChange={(e) => actions.onSlideChange({ index: e.detail.index })}
+  onChange={({ index }) => actions.onSlideChange({ index })}
   onEndReached={actions.loadMore}
 />
 ```

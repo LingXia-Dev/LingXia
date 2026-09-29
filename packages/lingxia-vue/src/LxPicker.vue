@@ -131,7 +131,16 @@ const renderPicker = () => visible.value ? h('lx-picker', { ref: pickerRef, ...p
 
 <template>
   <slot :open="handleClick" :disabled="props.disabled">
-    <div :class="props.class ?? attrs.class" :style="[triggerStyle, props.style ?? attrs.style]" @click="handleClick">
+    <div
+      :class="props.class ?? attrs.class"
+      :style="[triggerStyle, props.style ?? attrs.style]"
+      role="button"
+      :tabindex="props.disabled ? -1 : 0"
+      :aria-disabled="props.disabled || undefined"
+      @click="handleClick"
+      @keydown.enter.prevent="handleClick"
+      @keydown.space.prevent="handleClick"
+    >
       <span :style="{ color: modelValue ? '#111' : '#9ca3af' }">{{ displayText || placeholder }}</span>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2">
         <path d="M6 9l6 6 6-6" />

@@ -1,3 +1,4 @@
+import type { LxPickerCascadingColumns, LxPickerColumns } from "./picker.js";
 import type {
   NavigatorChannel,
   NavigatorEdge,
@@ -96,19 +97,18 @@ export function buildNavigatorNativeAttrs(
   return result;
 }
 
-export type PickerColumns = string[][] | [string[], Record<string, string[]>];
-export type PickerValue = string | string[] | undefined;
+export type PickerValue = string | readonly string[] | undefined;
 export type PickerFields = "year" | "month" | "day" | "range";
 
 export interface PickerNativeAttrOptions {
   id?: string;
-  columns?: PickerColumns;
+  columns?: LxPickerColumns;
   mode?: "date" | "time";
   start?: string;
   end?: string;
   fields?: PickerFields;
-  modelValue?: string | string[];
-  value?: string | string[];
+  modelValue?: string | readonly string[];
+  value?: string | readonly string[];
   cancelText?: string;
   cancelTextColor?: string;
   cancelButtonColor?: string;
@@ -121,16 +121,16 @@ export function isPickerDateMode(mode?: "date" | "time"): boolean {
   return mode === "date" || mode === "time";
 }
 
-export function isPickerCascading(columns?: PickerColumns): columns is [string[], Record<string, string[]>] {
+export function isPickerCascading(columns?: LxPickerColumns): columns is LxPickerCascadingColumns {
   return !!columns && columns.length === 2 && typeof columns[1] === "object" && !Array.isArray(columns[1]);
 }
 
-export function isPickerSingle(columns?: PickerColumns): boolean {
+export function isPickerSingle(columns?: LxPickerColumns): boolean {
   return !!columns && columns.length === 1;
 }
 
 export function getPickerIndexFromValue(
-  columns: PickerColumns | undefined,
+  columns: LxPickerColumns | undefined,
   value: PickerValue
 ): number | number[] {
   if (!columns) return 0;
@@ -154,7 +154,7 @@ export function getPickerIndexFromValue(
 }
 
 export function getPickerValueFromIndex(
-  columns: PickerColumns | undefined,
+  columns: LxPickerColumns | undefined,
   index: number | number[]
 ): string | string[] {
   if (!columns) return "";
@@ -244,8 +244,8 @@ export interface VideoNativeAttrOptions {
   progressBar?: boolean;
   live?: boolean;
   volume?: string | number;
-  qualities?: LxVideoQuality[];
-  playbackRates?: number[];
+  qualities?: readonly LxVideoQuality[];
+  playbackRates?: readonly number[];
 }
 
 export function buildVideoNativeAttrs(
@@ -285,7 +285,7 @@ export const MEDIA_SWIPER_DOM_EVENT_MAP = {
 
 export interface MediaSwiperNativeAttrOptions {
   id?: string;
-  items?: LxMediaSwiperItem[];
+  items?: readonly LxMediaSwiperItem[];
   index?: number;
   initialIndex?: number;
   loop?: boolean;

@@ -4,6 +4,7 @@ export {
   type LxVideoAttributes,
   type LxVideoEventPayloads,
   type LxVideoEventHandlers,
+  type LxVideoQuality,
 } from "./video.js";
 
 export {
@@ -11,6 +12,9 @@ export {
   LxMediaSwiperElement,
   type LxMediaSwiperAttributes,
   type LxMediaSwiperItem,
+  type LxMediaSwiperEventPayloads,
+  type LxMediaSwiperEventHandlers,
+  type LxMediaSwiperHandle,
   type LxMediaSwiperChangeEvent,
   type LxMediaSwiperChangeEventDetail,
   type LxMediaSwiperTransitionEndEvent,
@@ -31,6 +35,7 @@ export {
   type LxPickerAttributes,
   type LxPickerColumn,
   type LxPickerCascadingColumns,
+  type LxPickerColumns,
   type LxPickerEvent,
   type LxPickerEventDetail,
 } from "./picker.js";

@@ -263,7 +263,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { useLxPage } from '@lingxia/vue';
+import { useLxPage, type LxMediaSwiperHandle } from '@lingxia/vue';
 import { LxMediaSwiper } from '@lingxia/vue';
 import '../../tailwind.css';
 
@@ -271,12 +271,6 @@ type SwiperItem = { id: string; type: 'image' | 'video'; src: string };
 type ObjectFit = 'cover' | 'contain' | 'fill';
 type Animation = 'slide' | 'none';
 type Direction = 'horizontal' | 'vertical';
-
-type SwiperEl = HTMLElement & {
-  next(): void;
-  previous(): void;
-  goToIndex(index: number): void;
-};
 
 const fits: ObjectFit[] = ['cover', 'contain', 'fill'];
 const animations: Animation[] = ['slide', 'none'];
@@ -304,7 +298,7 @@ const {
   onSwiperError,
 } = actions;
 
-const swiperRef = ref<SwiperEl | null>(null);
+const swiperRef = ref<LxMediaSwiperHandle | null>(null);
 
 const items = computed<SwiperItem[]>(() => data?.items ?? []);
 const index = computed<number>(() =>

@@ -4,6 +4,7 @@ export {
   useLxStream,
   useLxChannel,
   type LxStreamOptions,
+  type LxReducedStreamOptions,
   type LxStreamState,
   type LxChannelOptions,
   type LxChannelState,
@@ -32,5 +33,13 @@ export type {
   LxNavigatorEvent,
 } from "./types.js";
 
-export type { LxVideoEventPayloads, LxVideoEventHandlers, NativeActionIcon } from "@lingxia/elements";
+export type {
+  LxVideoEventPayloads,
+  LxVideoEventHandlers,
+  LxMediaSwiperEventPayloads,
+  LxMediaSwiperEventHandlers,
+  LxMediaSwiperHandle,
+  LxMediaSwiperItem,
+  NativeActionIcon,
+} from "@lingxia/elements";
 export type { NativeStyle } from "./types.js";

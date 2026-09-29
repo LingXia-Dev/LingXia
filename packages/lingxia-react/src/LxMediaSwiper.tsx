@@ -3,26 +3,35 @@ import {
   buildMediaSwiperNativeAttrs,
   MEDIA_SWIPER_DOM_EVENT_MAP,
   registerMediaSwiperComponent,
+  unwrapNativeEventPayload,
   type LxMediaSwiperAttributes,
+  type LxMediaSwiperEventHandlers,
+  type LxMediaSwiperEventPayloads,
+  type LxMediaSwiperHandle,
 } from '@lingxia/elements';
 import {
   assignForwardedRef,
   bindElementEvents,
+  pickDomEventHandlers,
   unbindElementEvents,
 } from './text_component_shared.js';
 
 export interface LxMediaSwiperProps
-  extends LxMediaSwiperAttributes,
+  extends Omit<LxMediaSwiperAttributes, keyof LxMediaSwiperEventPayloads | "ref">,
+    LxMediaSwiperEventHandlers,
     Omit<
       React.HTMLAttributes<HTMLElement>,
-      keyof LxMediaSwiperAttributes | "children" | "dangerouslySetInnerHTML" | "ref" | "onChange" | "onTransitionEnd" | "onError"
+      keyof LxMediaSwiperAttributes | "children" | "dangerouslySetInnerHTML" | "ref"
     > {}
+
+/** The swiper element as a ref sees it. */
+export type LxMediaSwiperRef = HTMLElement & LxMediaSwiperHandle;
 
 if (typeof window !== "undefined") {
   registerMediaSwiperComponent();
 }
 
-export const LxMediaSwiper = forwardRef<HTMLElement, LxMediaSwiperProps>(({
+export const LxMediaSwiper = forwardRef<LxMediaSwiperRef, LxMediaSwiperProps>(({
   id,
   items,
   index,
@@ -46,7 +55,6 @@ export const LxMediaSwiper = forwardRef<HTMLElement, LxMediaSwiperProps>(({
   onTap,
   onVideoEnded,
   onError,
-  pageBindings,
   className,
   style,
   ...rest
@@ -82,9 +90,11 @@ export const LxMediaSwiper = forwardRef<HTMLElement, LxMediaSwiperProps>(({
         eventName,
         {
           handleEvent: (event: Event) => {
-            const handler = handlerRef.current[propKey as keyof typeof handlerRef.current];
+            const handler = handlerRef.current[propKey as keyof typeof handlerRef.current] as
+              | ((payload: unknown) => void)
+              | undefined;
             if (typeof handler === "function") {
-              handler(event);
+              handler(unwrapNativeEventPayload(event));
             }
           },
         } satisfies EventListenerObject,
@@ -95,7 +105,7 @@ export const LxMediaSwiper = forwardRef<HTMLElement, LxMediaSwiperProps>(({
   const elementRefCallback = useCallback((element: HTMLElement | null) => {
     boundElementRef.current = bindElementEvents(boundElementRef.current, element, listenerMapRef.current);
     elementRef.current = element;
-    assignForwardedRef(ref, element);
+    assignForwardedRef(ref, element as LxMediaSwiperRef | null);
   }, [ref]);
 
   useEffect(() => () => {
@@ -103,13 +113,6 @@ export const LxMediaSwiper = forwardRef<HTMLElement, LxMediaSwiperProps>(({
     boundElementRef.current = null;
     elementRef.current = null;
   }, []);
-
-  useEffect(() => {
-    const el = elementRef.current as any;
-    if (el) {
-      el.pageBindings = pageBindings ?? {};
-    }
-  }, [pageBindings]);
 
   const domProps = buildMediaSwiperNativeAttrs({
     id: resolvedId,
@@ -132,6 +135,7 @@ export const LxMediaSwiper = forwardRef<HTMLElement, LxMediaSwiperProps>(({
   }, rest as Record<string, unknown>);
 
   return React.createElement('lx-media-swiper', {
+    ...pickDomEventHandlers(rest as Record<string, unknown>),
     ref: elementRefCallback,
     className,
     style,

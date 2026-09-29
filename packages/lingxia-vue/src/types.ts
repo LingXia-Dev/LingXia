@@ -1,6 +1,11 @@
 import type { CSSProperties } from 'vue';
 import type {
   LxMediaSwiperAttributes,
+  LxMediaSwiperEventHandlers,
+  LxMediaSwiperEventPayloads,
+  LxMediaSwiperItem,
+  LxPickerColumns,
+  LxVideoQuality,
   LxNavigatorEvent,
   LxVideoAttributes,
   LxVideoEventHandlers,
@@ -36,8 +41,8 @@ export interface LxVideoProps {
   progressBar?: boolean;
   live?: boolean;
   volume?: string | number;
-  qualities?: Array<{ label: string; url?: string }>;
-  playbackRates?: number[];
+  qualities?: readonly LxVideoQuality[];
+  playbackRates?: readonly number[];
   class?: string;
   style?: NativeStyle;
   onPlayRequest?: (payload: LxVideoEventPayloads["onPlayRequest"]) => void;
@@ -54,7 +59,6 @@ export interface LxVideoProps {
   onQualityChange?: (payload: LxVideoEventPayloads["onQualityChange"]) => void;
   onRateChange?: (payload: LxVideoEventPayloads["onRateChange"]) => void;
   onVolumeChange?: (payload: LxVideoEventPayloads["onVolumeChange"]) => void;
-  pageBindings?: Record<string, string>;
 }
 
 export interface LxNativeNodeProps {
@@ -106,20 +110,9 @@ export interface LxNativeButtonProps extends LxNativeNodeProps {
   tabIndex?: 0 | -1;
 }
 
-type LxMediaSwiperItem =
-  | { id?: string; type: 'image'; src: string }
-  | {
-      id?: string;
-      type: 'video';
-      src: string;
-      poster?: string;
-      controls?: boolean;
-      muted?: boolean;
-    };
-
 export interface LxMediaSwiperProps {
   id?: string;
-  items?: LxMediaSwiperItem[];
+  items?: readonly LxMediaSwiperItem[];
   index?: number;
   initialIndex?: number;
   loop?: boolean;
@@ -137,13 +130,12 @@ export interface LxMediaSwiperProps {
   peek?: number | { previous?: number; next?: number };
   class?: string;
   style?: CSSProperties;
-  onChange?: (event: Event) => void;
-  onTransitionEnd?: (event: Event) => void;
-  onEndReached?: (event: Event) => void;
-  onTap?: (event: Event) => void;
-  onVideoEnded?: (event: Event) => void;
-  onError?: (event: Event) => void;
-  pageBindings?: Record<string, string>;
+  onChange?: (payload: LxMediaSwiperEventPayloads["onChange"]) => void;
+  onTransitionEnd?: (payload: LxMediaSwiperEventPayloads["onTransitionEnd"]) => void;
+  onEndReached?: (payload: LxMediaSwiperEventPayloads["onEndReached"]) => void;
+  onTap?: (payload: LxMediaSwiperEventPayloads["onTap"]) => void;
+  onVideoEnded?: (payload: LxMediaSwiperEventPayloads["onVideoEnded"]) => void;
+  onError?: (payload: LxMediaSwiperEventPayloads["onError"]) => void;
 }
 
 type IsExact<Left, Right> =
@@ -164,17 +156,21 @@ type _VideoHandlersMatchElements = AssertExact<IsExact<
   LxVideoEventHandlers
 >>;
 type _MediaSwiperPropsMatchElements = AssertExact<IsExact<
-  Omit<LxMediaSwiperAttributes, 'ref' | 'className' | 'style'>,
-  Omit<LxMediaSwiperProps, 'class' | 'style'>
+  Omit<LxMediaSwiperAttributes, 'ref' | 'className' | 'style' | `on${string}`>,
+  Omit<LxMediaSwiperProps, 'class' | 'style' | keyof LxMediaSwiperEventHandlers>
+>>;
+type _MediaSwiperHandlersMatchElements = AssertExact<IsExact<
+  Pick<LxMediaSwiperProps, keyof LxMediaSwiperEventHandlers>,
+  LxMediaSwiperEventHandlers
 >>;
 
 export interface LxPickerProps {
-  columns?: string[][] | [string[], Record<string, string[]>];
+  columns?: LxPickerColumns;
   mode?: 'date' | 'time';
   start?: string;
   end?: string;
   fields?: 'year' | 'month' | 'day' | 'range';
-  modelValue?: string | string[];
+  modelValue?: string | readonly string[];
   placeholder?: string;
   class?: string;
   style?: CSSProperties;
@@ -185,7 +181,6 @@ export interface LxPickerProps {
   confirmText?: string;
   confirmTextColor?: string;
   confirmButtonColor?: string;
-  pageBindings?: Record<string, string>;
 }
 
 export interface LxNavigatorProps {
