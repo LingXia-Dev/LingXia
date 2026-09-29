@@ -250,6 +250,13 @@ if (-not ($abis -contains 'arm64-v8a') -and -not ($abis -contains 'armeabi-v7a')
   throw "Unsupported Android device ABIs '$abiList'; use an ARM64 or ARMv7 device/emulator."
 }
 
+# Device preconditions no app can set for itself: Android 10+ gives apps no
+# Wi-Fi switch, and a dark screen pauses WebViews. Keep the screen on and the
+# radio up for the whole run.
+Invoke-Checked $adb ($adbTarget + @('shell', 'svc', 'power', 'stayon', 'true'))
+Invoke-Checked $adb ($adbTarget + @('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'))
+Invoke-Checked $adb ($adbTarget + @('shell', 'svc', 'wifi', 'enable'))
+
 Push-Location $showcaseRoot
 try {
   # A captured native-process pipeline waits for descendant handles on Windows.

@@ -18,6 +18,8 @@ const androidMediaSpec = platform === 'android' && httpBase ? spec : spec.skip;
  */
 
 interface WifiRoundTrip {
+  /** The device's Wi-Fi is switched off: an app cannot turn it on. */
+  radioOff?: true;
   started: boolean;
   list: { count: number; named: number; sample: string };
   connected: { ssid: string; frequency: number; signal: number };
@@ -39,7 +41,15 @@ androidSpec('scan, read, and observe Wi-Fi on a real radio', {
   });
 
   const result: WifiRoundTrip = await app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
-    await lx.startWifi();
+    try {
+      await lx.startWifi();
+    } catch (error) {
+      // 12009: Wi-Fi is off, a device precondition rather than a failure.
+      if ((error as { data?: { bizCode?: number } }).data?.bizCode === 12009) {
+        return { radioOff: true } as WifiRoundTrip;
+      }
+      throw error;
+    }
     const list = await lx.getWifiList();
     const connected = await lx.getConnectedWifi();
     // A listener handle must be a function and stay inert after unsubscribe.
@@ -65,6 +75,7 @@ androidSpec('scan, read, and observe Wi-Fi on a real radio', {
     };
   });
 
+  if (result.radioOff) t.skip("the device's Wi-Fi is off; turn it on (adb shell svc wifi enable)");
   // A scan on a real radio sees the networks around it, and every entry is shaped.
   expect(result.list.count).toBeGreaterThan(0);
   expect(result.list.named).toBe(result.list.count);
