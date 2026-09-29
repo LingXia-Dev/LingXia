@@ -49,7 +49,9 @@ import android.view.animation.AccelerateDecelerateInterpolator
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import com.lingxia.app.LxLog
+import androidx.lifecycle.Lifecycle
 import com.lingxia.app.NativeApi
+import com.lingxia.app.PageWebViewCallback
 import com.lingxia.app.Lingxia
 import com.lingxia.app.PermissionManager
 import com.lingxia.app.UpdateManager
@@ -136,8 +138,8 @@ class LxAppActivity : AppCompatActivity() {
         const val EXTRA_PATH = "path"
         const val EXTRA_SESSION_ID = "sessionId"
         internal const val DEFAULT_NAV_BAR_HEIGHT_DP = 44
-        private const val NAVIGATE_WEBVIEW_RETRY_LIMIT = 20
-        private const val NAVIGATE_WEBVIEW_RETRY_DELAY_MS = 100L
+        /** A first screen retired while awaited is looked up again, this many times. */
+        private const val FIRST_SCREEN_RESOLVE_LIMIT = 3
 
         /**
          * Update TabBar UI for a specific appId
@@ -477,19 +479,6 @@ class LxAppActivity : AppCompatActivity() {
             Log.w(TAG, "Failed to apply initial orientation before first frame: ${error.message}")
         }
 
-        // Start WebView creation in parallel while setting up UI
-        var webViewFuture: java.util.concurrent.Future<com.lingxia.lxapp.WebView?>? = null
-        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
-
-        try {
-            webViewFuture = executor.submit<com.lingxia.lxapp.WebView?> {
-
-                findWebView(appId, initialPath)
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to start parallel WebView creation: ${e.message}")
-        }
-
         // Create root container first
         rootContainer = FrameLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -576,20 +565,7 @@ class LxAppActivity : AppCompatActivity() {
             insets
         }
 
-        // Setup WebView content using parallel result
-        try {
-            val webViewResult = webViewFuture?.get(500, java.util.concurrent.TimeUnit.MILLISECONDS)
-            if (webViewResult != null) {
-                setupWebViewContentWithExisting(webViewResult)
-            } else {
-                setupWebViewContent(appId, initialPath)
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Parallel WebView creation timeout/error, falling back to sync: ${e.message}")
-            setupWebViewContent(appId, initialPath)
-        } finally {
-            executor.shutdown()
-        }
+        presentFirstScreen(initialPath)
         if (forceHostImmersive) {
             enterImmersiveMode()
         }
@@ -1052,19 +1028,6 @@ class LxAppActivity : AppCompatActivity() {
 
 
 
-    // Find WebView - ONLY find WebView, nothing else
-    private fun findWebView(appId: String, path: String, sessionId: Long = currentSessionId): com.lingxia.lxapp.WebView? {
-        if (sessionId <= 0L) {
-            Log.w(TAG, "findWebView called with invalid sessionId for appId=$appId, path=$path")
-            return null
-        }
-        val webView = com.lingxia.lxapp.WebView.findWebView(appId, path, sessionId)
-        if (webView == null) {
-            Log.w(TAG, "WebView not found for appId=$appId, path=$path")
-        }
-        return webView
-    }
-
     // Get navbar state
     private fun getNavBarState(appId: String, path: String): NavigationBarState? {
         return NativeApi.getNavigationBarState(appId, path)
@@ -1126,14 +1089,80 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupWebViewContent(appId: String, path: String) {
-        val initialWebView = findWebView(appId, path)
-        if (initialWebView == null) {
-            LxLog.e(TAG, "Initial WebView missing for appId=$appId, path=$path")
-            finishWithSessionClose("initial_webview_missing")
+    /** What a container was asked to show, kept while its WebView is not ready. */
+    private class Presentation(
+        val path: String,
+        val pageConfig: NavigationBarState?,
+        val isReplace: Boolean,
+        val isBackNavigation: Boolean,
+        val firstScreen: Boolean
+    )
+
+    /** Ticket of the latest [present]; an older wait that resolves later is dropped. */
+    private var presentTicket = 0
+
+    /**
+     * Show the first page: the app's current one, which is not the page the
+     * activity was started for when the lxapp relaunched from `onLaunch`.
+     */
+    private fun presentFirstScreen(path: String, resolvesLeft: Int = FIRST_SCREEN_RESOLVE_LIMIT) {
+        present(null, Presentation(path, null, isReplace = true, isBackNavigation = false, firstScreen = true), resolvesLeft)
+    }
+
+    /**
+     * Show the page the runtime named. [webtag] names one page instance exactly
+     * (null: the app's current page). A page's WebView is created
+     * asynchronously, so it may not exist yet; the runtime then calls back once
+     * it does, and a newer request supersedes the older one.
+     */
+    private fun present(webtag: String?, request: Presentation, resolvesLeft: Int = FIRST_SCREEN_RESOLVE_LIMIT) {
+        val ticket = ++presentTicket
+        val ready = NativeApi.awaitPageWebView(appId, currentSessionId, webtag) { webView, status ->
+            runOnUiThread { onPresentResult(ticket, webtag, request, webView, status, resolvesLeft) }
+        }
+        if (ready != null) showPresentation(ready, request)
+    }
+
+    private fun onPresentResult(
+        ticket: Int,
+        webtag: String?,
+        request: Presentation,
+        webView: com.lingxia.lxapp.WebView?,
+        status: Int,
+        resolvesLeft: Int
+    ) {
+        if (ticket != presentTicket || isFinishing || isDestroyed) return
+        if (webView != null) {
+            showPresentation(webView, request)
             return
         }
-        setupWebViewContentWithExisting(initialWebView)
+        when {
+            // The awaited page was retired; the first screen follows the app's
+            // current page, a navigation has its own newer request.
+            status == PageWebViewCallback.GONE && request.firstScreen && resolvesLeft > 0 -> {
+                presentFirstScreen(request.path, resolvesLeft - 1)
+                return
+            }
+            status == PageWebViewCallback.GONE && !request.firstScreen -> {
+                Log.d(TAG, "Page for ${request.path} is gone; a newer navigation supersedes it")
+                return
+            }
+        }
+        LxLog.e(TAG, "WebView not available for appId=$appId, path=${request.path} (status=$status)")
+        if (currentWebView == null) finishWithSessionClose("initial_webview_missing")
+    }
+
+    private fun showPresentation(webView: com.lingxia.lxapp.WebView, request: Presentation) {
+        if (request.firstScreen) {
+            setupWebViewContentWithExisting(webView)
+            // Resumed while it had no page: the resume-time notification found
+            // nobody to tell.
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                NativeBridge.notifyPageActive(webView)
+            }
+        } else {
+            navigateToPage(webView, request.path, request.pageConfig, request.isReplace, request.isBackNavigation)
+        }
     }
 
     private fun finishWithSessionClose(reason: String) {
@@ -1511,12 +1540,13 @@ class LxAppActivity : AppCompatActivity() {
     /**
      * Navigate to any page - super simple
      */
-    internal fun navigate(targetPath: String, animationType: AnimationType): Boolean {
+    /** [webtag] names the page instance to show; null: the app's current page. */
+    internal fun navigate(targetPath: String, webtag: String?, animationType: AnimationType): Boolean {
         if (!::appId.isInitialized) return false
 
         try {
             // Coordinate all UI updates in the same step for consistency
-            return coordinatedNavigationUpdate(targetPath, animationType)
+            return coordinatedNavigationUpdate(targetPath, webtag, animationType)
         } catch (e: Exception) {
             LxLog.e(TAG, "Navigation failed: ${e.message}", e)
             return false
@@ -1529,13 +1559,13 @@ class LxAppActivity : AppCompatActivity() {
      * IMPROVEMENT: Ensures WebView, NavBar, and TabBar updates are synchronized
      * to prevent timing issues and provide smooth, coordinated transitions
      */
-    private fun coordinatedNavigationUpdate(targetPath: String, animationType: AnimationType): Boolean {
+    private fun coordinatedNavigationUpdate(targetPath: String, webtag: String?, animationType: AnimationType): Boolean {
 
         val pageConfig = getNavBarState(appId, targetPath)
 
         applyAnimationTypeUpdates(animationType, targetPath)
 
-        return navigateToPageWithCoordination(targetPath, animationType, pageConfig)
+        return navigateToPageWithCoordination(targetPath, webtag, animationType, pageConfig)
     }
 
     /**
@@ -1729,22 +1759,23 @@ class LxAppActivity : AppCompatActivity() {
      */
     private fun navigateToPageWithCoordination(
         targetPath: String,
+        webtag: String?,
         animationType: AnimationType,
         pageConfig: NavigationBarState?
     ): Boolean {
         // All animation types use coordinated logic
         val success = when (animationType) {
             AnimationType.FORWARD -> {
-                navigateToPage(targetPath, pageConfig, isReplace = false, isBackNavigation = false)
+                present(webtag, Presentation(targetPath, pageConfig, isReplace = false, isBackNavigation = false, firstScreen = false))
                 true
             }
             AnimationType.BACKWARD -> {
-                navigateToPage(targetPath, pageConfig, isReplace = false, isBackNavigation = true)
+                present(webtag, Presentation(targetPath, pageConfig, isReplace = false, isBackNavigation = true, firstScreen = false))
                 true
             }
             AnimationType.NONE -> {
                 // No animation - used for Launch/Replace/SwitchTab semantics
-                navigateToPage(targetPath, pageConfig, isReplace = true, isBackNavigation = false)
+                present(webtag, Presentation(targetPath, pageConfig, isReplace = true, isBackNavigation = false, firstScreen = false))
                 true
             }
         }
@@ -1971,44 +2002,15 @@ class LxAppActivity : AppCompatActivity() {
      * @param isBackNavigation Whether this is a back navigation
      */
     private fun navigateToPage(
+        newWebView: com.lingxia.lxapp.WebView,
         targetPath: String,
         pageConfig: NavigationBarState? = null,
         isReplace: Boolean = false,
-        isBackNavigation: Boolean = false,
-        attempt: Int = 0
+        isBackNavigation: Boolean = false
     ) {
         try {
             // Get current WebView before changes
             val oldWebView = currentWebView
-
-            // Find WebView for the target page
-            val newWebView = findWebView(appId, targetPath)
-            if (newWebView == null) {
-                val current = NativeApi.getCurrentLxApp()
-                val currentPath = current?.path?.substringBefore('?')?.substringBefore('#')
-                val normalizedTarget = targetPath.substringBefore('?').substringBefore('#')
-                if (current != null &&
-                    current.isValid() &&
-                    current.appId == appId &&
-                    current.sessionId == currentSessionId &&
-                    currentPath == normalizedTarget
-                ) {
-                    // A fresh page instance creates its WebView asynchronously,
-                    // so a navigation can land here before the WebView
-                    // registers. Retry while the runtime still targets this
-                    // path; a newer navigation flips the stale check above.
-                    if (attempt < NAVIGATE_WEBVIEW_RETRY_LIMIT) {
-                        rootContainer.postDelayed({
-                            navigateToPage(targetPath, pageConfig, isReplace, isBackNavigation, attempt + 1)
-                        }, NAVIGATE_WEBVIEW_RETRY_DELAY_MS)
-                        return
-                    }
-                    LxLog.e(TAG, "Failed to find WebView for current path: $targetPath")
-                } else {
-                    Log.d(TAG, "Ignoring stale navigation to $targetPath")
-                }
-                return
-            }
 
             if (oldWebView != null && oldWebView != newWebView) {
                 NativeBridge.notifyPageInactive(oldWebView)
@@ -2519,7 +2521,7 @@ class LxAppActivity : AppCompatActivity() {
 
             // 3. Call navigate as entry point
             if (path.isNotEmpty()) {
-                navigate(path, AnimationType.NONE)
+                navigate(path, null, AnimationType.NONE)
             } else {
                 LxLog.e(TAG, "No valid path to navigate to")
             }

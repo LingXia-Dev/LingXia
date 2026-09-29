@@ -98,3 +98,55 @@ pub fn find_page_by_instance_id(id: &str) -> Option<PageInstance> {
             .find_map(|entry| entry.value().get_page_by_instance_id_str(id))
     })
 }
+
+/// The page a platform container was told to present: `webtag` names one
+/// instance exactly; without it, the app's current page.
+fn resolve_presented_page(
+    appid: &str,
+    session_id: u64,
+    webtag: Option<&str>,
+) -> Option<PageInstance> {
+    let app = try_get(appid).filter(|app| app.session_id() == session_id)?;
+    match webtag {
+        Some(key) => {
+            // `appid:route#<instance id>#<session>`
+            let instance_id = key.rsplit('#').nth(1)?;
+            app.get_page_by_instance_id_str(instance_id)
+                .filter(|page| page.webtag().key() == key)
+        }
+        None => {
+            let path = app.peek_current_page_path()?;
+            app.get_page(&path)
+        }
+    }
+}
+
+/// Result of [`await_page_webview`].
+pub enum PageWebView {
+    /// Ready now; `done` is not called.
+    Ready(PageInstance),
+    /// Not ready; `done` is called once, later.
+    Pending,
+}
+
+/// Find the WebView of a page a container must present, or be told when it
+/// is ready. `done` is called exactly once unless the page is ready now,
+/// including when there is no such page ([`crate::PageWebViewAwait::Gone`]).
+pub fn await_page_webview(
+    appid: &str,
+    session_id: u64,
+    webtag: Option<&str>,
+    done: impl FnOnce(crate::PageWebViewAwait) + Send + 'static,
+) -> PageWebView {
+    let Some(page) = resolve_presented_page(appid, session_id, webtag) else {
+        std::mem::drop(crate::executor::spawn(async move {
+            done(crate::PageWebViewAwait::Gone);
+        }));
+        return PageWebView::Pending;
+    };
+    if page.webview_ready_now() {
+        return PageWebView::Ready(page);
+    }
+    page.on_webview_ready(done);
+    PageWebView::Pending
+}

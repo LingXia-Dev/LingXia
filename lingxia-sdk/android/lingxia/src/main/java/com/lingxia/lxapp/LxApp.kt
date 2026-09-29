@@ -211,12 +211,12 @@ object LxApp {
     }
 
     @JvmStatic
-    fun navigate(appId: String, path: String, animationTypeInt: Int): Boolean {
+    fun navigate(appId: String, path: String, webtag: String, animationTypeInt: Int): Boolean {
         val animationType = AnimationType.fromInt(animationTypeInt)
         Log.d(TAG, "navigate called for appId: $appId, path: $path, type: $animationType")
         val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
         return if (activity != null) {
-            activity.runOnUiThread { activity.navigate(path, animationType) }
+            activity.runOnUiThread { activity.navigate(path, webtag, animationType) }
             true
         } else {
             Log.w(TAG, "No matching activity for appId: $appId")

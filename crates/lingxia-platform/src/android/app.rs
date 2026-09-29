@@ -534,7 +534,7 @@ impl AppRuntime for Platform {
         &self,
         appid: String,
         path: String,
-        _webtag: String,
+        webtag: String,
         animation_type: crate::traits::app_runtime::AnimationType,
     ) -> Result<(), PlatformError> {
         let bridge_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
@@ -543,15 +543,17 @@ impl AppRuntime for Platform {
         with_env(|env| -> Result<(), PlatformError> {
             let appid_jstring = env.new_string(&appid)?;
             let path_jstring = env.new_string(&path)?;
+            let webtag_jstring = env.new_string(&webtag)?;
             let anim_type_int = animation_type as i32;
 
             let result = env.call_static_method(
                 bridge_class,
                 jni_str!("navigate"),
-                jni_sig!("(Ljava/lang/String;Ljava/lang/String;I)Z"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Z"),
                 &[
                     JValue::Object(&appid_jstring),
                     JValue::Object(&path_jstring),
+                    JValue::Object(&webtag_jstring),
                     JValue::Int(anim_type_int),
                 ],
             )?;
