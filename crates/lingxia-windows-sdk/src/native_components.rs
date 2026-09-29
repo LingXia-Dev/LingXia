@@ -1197,9 +1197,7 @@ fn purge_component_state(key: &str) {
 // ---------------------------------------------------------------------------
 
 /// Emits a component event to the page: queued until the view announces
-/// `component.ready`, then delivered to the view's component handler and,
-/// when the component declared page-function bindings, to the page's
-/// logic service through `lxapp::on_native_component_event`.
+/// `component.ready`, then delivered to the view's component handler.
 fn emit_event(key: &str, event: &str, detail: Value) {
     let snapshot = {
         let mut components = components();
@@ -1213,14 +1211,9 @@ fn emit_event(key: &str, event: &str, detail: Value) {
             entry.pending.push((event.to_string(), detail));
             return;
         }
-        (
-            entry.context.clone(),
-            entry.component_id.clone(),
-            entry.state.bindings_json.clone(),
-            entry.state.dataset_json.clone(),
-        )
+        (entry.context.clone(), entry.component_id.clone())
     };
-    let (context, component_id, bindings_json, dataset_json) = snapshot;
+    let (context, component_id) = snapshot;
     let event = event.to_string();
 
     // Hop off the UI thread: posting to the view dispatches a synchronous
@@ -1228,28 +1221,14 @@ fn emit_event(key: &str, event: &str, detail: Value) {
     let spawned = std::thread::Builder::new()
         .name(format!("lingxia-nc-event-{}", component_id))
         .spawn(move || {
-            deliver_event(
-                &context,
-                &component_id,
-                &event,
-                detail,
-                bindings_json,
-                dataset_json,
-            );
+            deliver_event(&context, &component_id, &event, detail);
         });
     if let Err(err) = spawned {
         log::warn!("failed to spawn native-component event thread: {err}");
     }
 }
 
-fn deliver_event(
-    context: &PageContext,
-    component_id: &str,
-    event: &str,
-    detail: Value,
-    bindings_json: Option<String>,
-    dataset_json: Option<String>,
-) {
+fn deliver_event(context: &PageContext, component_id: &str, event: &str, detail: Value) {
     let payload = json!({
         "action": "component.event",
         "id": component_id,
@@ -1259,8 +1238,8 @@ fn deliver_event(
         "pageId": format!("{}:{}", context.appid, context.path),
     });
 
-    // 1) The view's registered component handler (drives the DOM events the
-    //    page sees: input/focus/blur/confirm).
+    // The view's registered component handler drives the DOM events the
+    // page sees (input/focus/blur/confirm).
     let view_message = json!({
         "type": "event",
         "name": "nativecomponent",
@@ -1274,36 +1253,6 @@ fn deliver_event(
     {
         log::debug!("failed to post native-component event to view: {err}");
     }
-
-    // 2) Page-function bindings (lx-input page-bindings attribute), same
-    //    enriched event shape the macOS manager builds.
-    let Some(bindings_json) = bindings_json else {
-        return;
-    };
-    let dataset: Value = dataset_json
-        .and_then(|json| serde_json::from_str(&json).ok())
-        .unwrap_or_else(|| json!({}));
-    let target = json!({ "id": component_id, "dataset": dataset });
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_millis() as u64)
-        .unwrap_or(0);
-    let page_event = json!({
-        "type": event,
-        "detail": payload.get("detail").cloned().unwrap_or_else(|| json!({})),
-        "target": target,
-        "currentTarget": target,
-        "timeStamp": timestamp,
-    })
-    .to_string();
-    let _ = lxapp::on_native_component_event(
-        &context.appid,
-        &context.path,
-        component_id,
-        event,
-        &page_event,
-        &bindings_json,
-    );
 }
 
 // ---------------------------------------------------------------------------

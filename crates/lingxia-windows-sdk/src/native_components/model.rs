@@ -39,8 +39,6 @@ pub(super) struct ComponentProps {
     /// (label, url) quality presets for the controls-bar quality menu.
     pub(super) qualities: Option<Vec<(String, Option<String>)>>,
     pub(super) playback_rates: Option<Vec<f64>>,
-    pub(super) bindings_json: Option<String>,
-    pub(super) dataset_json: Option<String>,
 }
 
 impl ComponentProps {
@@ -70,8 +68,6 @@ impl ComponentProps {
         take!(progress_bar);
         take!(qualities);
         take!(playback_rates);
-        take!(bindings_json);
-        take!(dataset_json);
     }
 }
 
@@ -164,16 +160,6 @@ pub(super) fn parse_props(raw: Option<&Value>) -> ComponentProps {
         .get("playbackRates")
         .and_then(Value::as_array)
         .map(|rates| rates.iter().filter_map(Value::as_f64).collect());
-    props.bindings_json = raw
-        .get("pageFuncBindingsJson")
-        .and_then(Value::as_str)
-        .filter(|json| !json.is_empty() && *json != "{}")
-        .map(str::to_string);
-    props.dataset_json = raw
-        .get("datasetJson")
-        .and_then(Value::as_str)
-        .filter(|json| !json.is_empty())
-        .map(str::to_string);
     props
 }
 

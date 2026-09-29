@@ -47,6 +47,6 @@ natively). `position: fixed` inputs are the edge case to test.
 
 ## Event paths
 
-A handler that is one of `useLxPage().actions` is routed native → Rust → Logic
-through CLI-generated `pageFuncBindings`, skipping the WebView round trip. A
-local View function is routed native → WebView `CustomEvent` → handler.
+Every native component event is routed native → WebView `CustomEvent` →
+handler. A handler that is one of `useLxPage().actions` then calls Logic like
+any other action.

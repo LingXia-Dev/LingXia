@@ -218,7 +218,7 @@ export function getOrCreateEmbedManager(webTag: string): NativeComponentEmbedMan
   };
   if (!manager) {
     registerDefaultBuilders();
-    manager = new NativeComponentEmbedManager(webTag, dispatcher);
+    manager = new NativeComponentEmbedManager(dispatcher);
     webViewEmbedManagers.set(webTag, manager);
   } else {
     manager.setEventDispatcher(dispatcher);
