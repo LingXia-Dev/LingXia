@@ -742,25 +742,6 @@ pub fn on_lxapp_event(appid: String, event_type: UiEventType, data: String) -> b
         .unwrap_or(false)
 }
 
-#[napi]
-pub fn on_native_component_event(
-    appid: String,
-    path: String,
-    component_id: String,
-    event_name: String,
-    payload_json: String,
-    bindings_json: String,
-) -> bool {
-    lxapp::on_native_component_event(
-        &appid,
-        &path,
-        &component_id,
-        &event_name,
-        &payload_json,
-        &bindings_json,
-    )
-}
-
 /// Handle AppLink URL by processing the path without host
 #[napi]
 pub fn on_applink_received(applink_url: String) -> i32 {

@@ -407,26 +407,6 @@ declare module 'liblingxia.so' {
   ): boolean;
 
   /**
-   * Dispatch NativeComponent event payload to Rust runtime.
-   * Rust resolves bindings and invokes the target Page({}) function.
-   * @param appid - LxApp ID
-   * @param path - Page path
-   * @param componentId - Native component ID
-   * @param eventName - Normalized event name
-   * @param payloadJson - Standardized event object as JSON string
-   * @param bindingsJson - JSON object map: eventName -> pageFunctionName
-   * @returns true if dispatch accepted by runtime
-   */
-  export function onNativeComponentEvent(
-    appid: string,
-    path: string,
-    componentId: string,
-    eventName: string,
-    payloadJson: string,
-    bindingsJson: string
-  ): boolean;
-
-  /**
    * Push: deliver device token from ArkTS to native
    * @param token - Push device token string
    * @returns 0 on success

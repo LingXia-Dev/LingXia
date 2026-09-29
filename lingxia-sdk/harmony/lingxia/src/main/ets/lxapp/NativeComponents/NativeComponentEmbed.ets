@@ -11,7 +11,7 @@ import {
   nativeComponentLog
 } from './NativeComponentTypes';
 import { getComponentCallback, removeComponentCallback } from './NativeCallbackRegistry';
-import { onNativeComponentEvent, onCallback } from 'liblingxia.so';
+import { onCallback } from 'liblingxia.so';
 import { NativeComponentNodeController, NodeControllerParams, NodeControllerUpdateParams } from './NativeComponentNodeController';
 import { LxNativeVideoPlayer } from '../APIs/media/player/LxNativeVideoPlayer';
 
@@ -26,11 +26,6 @@ class ComponentCommand {
   constructor(command: string) {
     this.__command = command;
   }
-}
-
-class WebTagRoute {
-  appId: string = '';
-  path: string = '';
 }
 
 interface EmbedInfoLike {
@@ -55,7 +50,6 @@ interface EmbedDataLike {
  * Manager for handling same-level embedding in a Web component
  */
 export class NativeComponentEmbedManager {
-  private webTag: string;
   private nodeControllerMap: Map<string, NativeComponentNodeController> = new Map();
   private componentIdArr: string[] = [];
   private islandComponentIds: Set<string> = new Set();
@@ -64,8 +58,6 @@ export class NativeComponentEmbedManager {
   private onComponentsChanged?: () => void;
   private eventDispatcher?: (payload: NativeComponentRecord) => void;
   private pendingUnmountTimers: Map<string, number> = new Map();
-  private componentPageFuncBindings: Map<string, Map<string, string>> = new Map();
-  private componentDataset: Map<string, NativeComponentRecord> = new Map();
   private componentPlaybackIntent: Map<string, boolean> = new Map();
   private componentsPendingAutoResume: Set<string> = new Set();
   private lifecyclePaused: boolean = false;
@@ -74,8 +66,7 @@ export class NativeComponentEmbedManager {
   private focusedComponentType: string = '';
   private focusedAdjustPosition: boolean = true;
 
-  constructor(webTag: string, eventDispatcher?: (payload: NativeComponentRecord) => void) {
-    this.webTag = webTag;
+  constructor(eventDispatcher?: (payload: NativeComponentRecord) => void) {
     this.eventDispatcher = eventDispatcher;
   }
 
@@ -147,8 +138,6 @@ export class NativeComponentEmbedManager {
         controller.rebuild();
       }
       this.nodeControllerMap.delete(componentId);
-      this.componentPageFuncBindings.delete(componentId);
-      this.componentDataset.delete(componentId);
       this.componentPlaybackIntent.delete(componentId);
       this.componentsPendingAutoResume.delete(componentId);
     });
@@ -217,8 +206,6 @@ export class NativeComponentEmbedManager {
       );
     }
     this.updateComponentAdjustPosition(componentId, props);
-    this.updatePageFuncBindings(componentId, props);
-    this.updateComponentDataset(componentId, props);
 
     const xPx = this.readEmbedInfoNumber(embed, 'x');
     const yPx = this.readEmbedInfoNumber(embed, 'y');
@@ -289,8 +276,6 @@ export class NativeComponentEmbedManager {
     // This provides a robust fallback when bridge-driven updates are delayed.
     const props = this.parseEmbedProps(embed);
     this.updateComponentAdjustPosition(componentId, props);
-    this.updatePageFuncBindings(componentId, props);
-    this.updateComponentDataset(componentId, props);
     updateParams.props = props;
     nodeController.updateRenderOption(updateParams);
     if (isVideoComponent) {
@@ -324,8 +309,6 @@ export class NativeComponentEmbedManager {
       this.focusedComponentType = '';
       this.focusedAdjustPosition = true;
     }
-    this.componentPageFuncBindings.delete(componentId);
-    this.componentDataset.delete(componentId);
     this.componentPlaybackIntent.delete(componentId);
     this.componentsPendingAutoResume.delete(componentId);
     const index = this.componentIdArr.indexOf(componentId);
@@ -412,16 +395,12 @@ export class NativeComponentEmbedManager {
     if (!nodeController) {
       this.pendingPropsByComponentId.set(componentId, freshProps);
       this.updateComponentAdjustPosition(componentId, freshProps);
-      this.updatePageFuncBindings(componentId, freshProps);
-      this.updateComponentDataset(componentId, freshProps);
       // Treat as accepted. Pending props are applied once CREATE arrives.
       return true;
     }
 
     this.pendingPropsByComponentId.delete(componentId);
     this.updateComponentAdjustPosition(componentId, freshProps);
-    this.updatePageFuncBindings(componentId, freshProps);
-    this.updateComponentDataset(componentId, freshProps);
 
     const updateParams = new NodeControllerUpdateParams();
     updateParams.props = freshProps;
@@ -658,155 +637,7 @@ export class NativeComponentEmbedManager {
     payload.set('detail', detail ?? new NativeComponentEmptyDetail());
     this.updatePlaybackIntent(componentId, normalizedEventName);
     this.eventDispatcher?.(payload);
-    this.dispatchPageFunc(componentId, payload);
   }
-
-  private parseObjectRecord(raw: NativeComponentValue | undefined): NativeComponentRecord | null {
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-      return null;
-    }
-    const plain = raw as Record<string, NativeComponentValue>;
-    const record = new NativeComponentRecord();
-    let count = 0;
-    Object.keys(plain).forEach((key: string) => {
-      const normalized = key.trim();
-      if (!normalized) {
-        return;
-      }
-      record.set(normalized, plain[key]);
-      count += 1;
-    });
-    return count > 0 ? record : null;
-  }
-
-  private parseObjectRecordFromJson(raw: NativeComponentValue | undefined): NativeComponentRecord | null {
-    if (typeof raw !== 'string') {
-      return null;
-    }
-    try {
-      const parsed: ESObject = JSON.parse(raw) as ESObject;
-      return this.parseObjectRecord(parsed as Record<string, NativeComponentValue>);
-    } catch (_error) {
-      return null;
-    }
-  }
-
-  private updatePageFuncBindings(componentId: string, props: NativeComponentRecord): void {
-    if (!props.has('pageFuncBindings') && !props.has('pageFuncBindingsJson')) {
-      return;
-    }
-    const rawRecord =
-      this.parseObjectRecord(props.get('pageFuncBindings')) ??
-      this.parseObjectRecordFromJson(props.get('pageFuncBindingsJson'));
-    if (!rawRecord) {
-      this.componentPageFuncBindings.delete(componentId);
-      return;
-    }
-    const next = new Map<string, string>();
-    rawRecord.forEach((eventName: string, rawValue: NativeComponentValue) => {
-      const eventKey = eventName.trim().toLowerCase();
-      if (!eventKey) {
-        return;
-      }
-      if (typeof rawValue !== 'string') {
-        return;
-      }
-      const fnName = rawValue.trim();
-      if (!fnName) {
-        return;
-      }
-      next.set(eventKey, fnName);
-    });
-    if (next.size === 0) {
-      this.componentPageFuncBindings.delete(componentId);
-      return;
-    }
-    this.componentPageFuncBindings.set(componentId, next);
-  }
-
-  private updateComponentDataset(componentId: string, props: NativeComponentRecord): void {
-    if (!props.has('dataset') && !props.has('datasetJson')) {
-      return;
-    }
-    const next =
-      this.parseObjectRecord(props.get('dataset')) ??
-      this.parseObjectRecordFromJson(props.get('datasetJson'));
-    if (!next) {
-      this.componentDataset.delete(componentId);
-      return;
-    }
-    this.componentDataset.set(componentId, next);
-  }
-
-  private parseWebTagRoute(): WebTagRoute | null {
-    const logicalTag = (this.webTag.split('#')[0] || this.webTag).trim();
-    const separator = logicalTag.indexOf(':');
-    if (separator <= 0 || separator >= logicalTag.length - 1) {
-      return null;
-    }
-    const appId = logicalTag.substring(0, separator);
-    const path = logicalTag.substring(separator + 1);
-    if (!appId || !path) {
-      return null;
-    }
-    const route = new WebTagRoute();
-    route.appId = appId;
-    route.path = path;
-    return route;
-  }
-
-  private dispatchPageFunc(componentId: string, payload: NativeComponentRecord): void {
-    const eventValue = payload.get('event');
-    if (typeof eventValue !== 'string') {
-      return;
-    }
-    const eventName = eventValue.trim().toLowerCase();
-    if (!eventName) {
-      return;
-    }
-    const bindings = this.componentPageFuncBindings.get(componentId);
-    if (!bindings || bindings.size === 0) {
-      return;
-    }
-    const boundFunctionName = bindings.get(eventName);
-    if (!boundFunctionName) {
-      return;
-    }
-    const route = this.parseWebTagRoute();
-    if (!route) {
-      nativeComponentError(`drop nativecomponent event: invalid webTag=${this.webTag} componentId=${componentId}`);
-      return;
-    }
-    const pageEvent = new NativeComponentRecord();
-    const detail = payload.has('detail') ? payload.get('detail') : new NativeComponentEmptyDetail();
-    const dataset = this.componentDataset.get(componentId) ?? new NativeComponentRecord();
-    const target = new NativeComponentRecord();
-    target.set('id', componentId);
-    target.set('dataset', dataset);
-    pageEvent.set('type', eventName);
-    pageEvent.set('detail', detail);
-    pageEvent.set('id', componentId);
-    pageEvent.set('dataset', dataset);
-    pageEvent.set('target', target);
-    pageEvent.set('currentTarget', target);
-    pageEvent.set('timeStamp', Date.now());
-
-    const bindingsPayload = new NativeComponentRecord();
-    bindingsPayload.set(eventName, boundFunctionName);
-
-    const accepted: boolean = onNativeComponentEvent(
-      route.appId,
-      route.path,
-      componentId,
-      eventName,
-      pageEvent.toJSONString(),
-      bindingsPayload.toJSONString()
-    );
-    if (!accepted) {
-      nativeComponentError(`drop nativecomponent event: runtime rejected appid=${route.appId} path=${route.path} componentId=${componentId} event=${eventName}`);
-    }
-  }
-
 
   /**
    * Pause all native components (e.g., on page navigate away)
@@ -913,8 +744,6 @@ export class NativeComponentEmbedManager {
     this.nodeControllerMap.clear();
     this.componentIdArr = [];
     this.islandComponentIds.clear();
-    this.componentPageFuncBindings.clear();
-    this.componentDataset.clear();
   }
 
   private readBooleanProp(props: NativeComponentRecord, key: string, fallback: boolean): boolean {

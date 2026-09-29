@@ -137,9 +137,7 @@ pub use lxapp::{
 };
 #[doc(hidden)]
 pub use native_authority::NativeControlPlaneAuthority;
-pub use native_component::{
-    NativeComponentHost, on_native_component_event, register_native_component_host,
-};
+pub use native_component::{NativeComponentHost, register_native_component_host};
 pub use page::config::{OrientationConfig, PageOrientation};
 pub use page::{
     NavigationType, PageAutomationState, PageInstance, PageInstanceId, ViewCallOptions,

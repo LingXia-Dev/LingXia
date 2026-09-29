@@ -449,27 +449,6 @@ internal object NativeApi {
     external fun onCallback(id: Long, success: Boolean, data: String): Boolean
 
     /**
-     * Dispatch NativeComponent event to Rust runtime for binding resolution + Page invocation.
-     *
-     * @param appId The app id owning the page
-     * @param path The page path owning the component
-     * @param componentId Component id emitting the event
-     * @param eventName Native event name (normalized lower-case)
-     * @param payloadJson Standardized event object JSON
-     * @param bindingsJson JSON object map: eventName -> pageFunctionName
-     * @return true when dispatch request is accepted, false otherwise
-     */
-    @JvmStatic
-    external fun onNativeComponentEvent(
-        appId: String,
-        path: String,
-        componentId: String,
-        eventName: String,
-        payloadJson: String,
-        bindingsJson: String
-    ): Boolean
-
-    /**
      * Returns a bitmask of host app capabilities.
      * Check against Lingxia.CAP_* constants to determine enabled host capabilities.
      */
