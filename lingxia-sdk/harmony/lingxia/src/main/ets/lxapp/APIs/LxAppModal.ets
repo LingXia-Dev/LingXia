@@ -25,12 +25,22 @@ export interface ModalResult {
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Modal';
+// A prompt raised during launch (an update-ready handler) can arrive before
+// the page that hosts ModalManager is built.
+const MANAGER_WAIT_MS = 10000;
+
+interface PendingModal {
+  config: ModalConfig;
+  callbackId: string;
+  timer: number;
+}
 
 /**
  * Modal Manager - Handles modal display and lifecycle
  */
 export class LxAppModal {
   private static modalManagerRef: ModalManager | null = null;
+  private static pending: PendingModal[] = [];
 
   public static normalizeNativeArgs(rawArgs: Object[]): Object[] | null {
     if (!Array.isArray(rawArgs)) {
@@ -96,10 +106,19 @@ export class LxAppModal {
 
     if (LxAppModal.modalManagerRef) {
       LxAppModal.modalManagerRef.showModal(config, cb);
-    } else {
+      return;
+    }
+    const pending: PendingModal = { config: config, callbackId: cb, timer: 0 };
+    pending.timer = setTimeout(() => {
+      const index = LxAppModal.pending.indexOf(pending);
+      if (index < 0) {
+        return;
+      }
+      LxAppModal.pending.splice(index, 1);
       hilog.warn(DOMAIN, TAG, 'Modal manager not initialized');
       onCallback(cb, false, '1000');
-    }
+    }, MANAGER_WAIT_MS);
+    LxAppModal.pending.push(pending);
   }
 
   /**
@@ -107,6 +126,12 @@ export class LxAppModal {
    */
   public static setManagerRef(manager: ModalManager): void {
     LxAppModal.modalManagerRef = manager;
+    const waiting = LxAppModal.pending;
+    LxAppModal.pending = [];
+    for (const item of waiting) {
+      clearTimeout(item.timer);
+      manager.showModal(item.config, item.callbackId);
+    }
   }
 
   /**

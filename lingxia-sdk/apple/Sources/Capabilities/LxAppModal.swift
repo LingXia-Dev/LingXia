@@ -15,6 +15,10 @@ class LxAppModal {
     /// no presenter, serialization — reports the generic failure code, so
     /// `status: 'canceled'` on the JS side can only ever mean the user said no.
     private static let modalFailureCode = LxAppDismissal.failureCode
+    /// A prompt raised during launch (an update-ready handler) can arrive before
+    /// the first view controller is presented; retry until one is stable.
+    private static let presenterWait: TimeInterval = 10
+    private static let presenterRetryInterval: TimeInterval = 0.1
 
 
     private final class CallbackOnce {
@@ -66,7 +70,8 @@ class LxAppModal {
                 showCancel: showCancel,
                 cancelText: cancelText,
                 confirmText: confirmText,
-                callback_id: callback_id
+                callback: CallbackOnce(callbackId: callback_id),
+                deadline: Date().addingTimeInterval(presenterWait)
             )
         }
         #elseif os(macOS)
@@ -84,6 +89,27 @@ class LxAppModal {
     }
 
     #if os(iOS)
+    /// The topmost view controller, when it can present right now.
+    @MainActor
+    private static func stableModalPresenter() -> UIViewController? {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
+              let rootViewController = window.rootViewController else {
+            return nil
+        }
+        var topViewController = rootViewController
+        while let presentedViewController = topViewController.presentedViewController {
+            topViewController = presentedViewController
+        }
+        guard topViewController.view.window != nil,
+              !topViewController.isBeingPresented,
+              !topViewController.isBeingDismissed,
+              topViewController.transitionCoordinator == nil else {
+            return nil
+        }
+        return topViewController
+    }
+
     /// Show iOS modal using UIAlertController
     @MainActor
     private static func showIOSModal(
@@ -92,28 +118,26 @@ class LxAppModal {
     showCancel: Bool,
     cancelText: String,
     confirmText: String,
-    callback_id: UInt64
+    callback: CallbackOnce,
+    deadline: Date
 ) {
-    let callback = CallbackOnce(callbackId: callback_id)
-    guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-          let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
-          let rootViewController = window.rootViewController else {
-        LXLog.error("Could not find root view controller", category: "Modal")
-        callback.send(success: false, payload: modalFailureCode)
-        return
-    }
-
-    // Find the topmost view controller
-    var topViewController = rootViewController
-    while let presentedViewController = topViewController.presentedViewController {
-        topViewController = presentedViewController
-    }
-    guard topViewController.view.window != nil,
-          !topViewController.isBeingPresented,
-          !topViewController.isBeingDismissed,
-          topViewController.transitionCoordinator == nil else {
-        LXLog.error("Could not find a stable modal presenter", category: "Modal")
-        callback.send(success: false, payload: modalFailureCode)
+    guard let topViewController = stableModalPresenter() else {
+        guard Date() < deadline else {
+            LXLog.error("Could not find a stable modal presenter", category: "Modal")
+            callback.send(success: false, payload: modalFailureCode)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + presenterRetryInterval) {
+            showIOSModal(
+                title: title,
+                content: content,
+                showCancel: showCancel,
+                cancelText: cancelText,
+                confirmText: confirmText,
+                callback: callback,
+                deadline: deadline
+            )
+        }
         return
     }
 

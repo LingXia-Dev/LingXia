@@ -36,6 +36,9 @@ object LxApp {
         internal set
 
     private var currentActivity: LxAppActivity? = null
+    private const val ACTIVITY_WAIT_MS = 10_000L
+    /** Prompts raised before an activity could present them. Main thread only. */
+    private val activityWaiters = ArrayList<(LxAppActivity?) -> Unit>()
     private val appearanceByApp = ConcurrentHashMap<String, Boolean>()
     private val activityStart = LxAppActivityStartGate()
 
@@ -47,6 +50,14 @@ object LxApp {
         currentActivity = activity
         UpdateManager.init(activity)
         if (activity == null) return
+        if (activityWaiters.isNotEmpty()) {
+            val prompts = activityWaiters.toList()
+            activityWaiters.clear()
+            // After onCreate returns, so the content view exists.
+            Handler(Looper.getMainLooper()).post {
+                prompts.forEach { it(getCurrentActivity()) }
+            }
+        }
         val waiting = activityStart.activityReady()
         if (waiting.isEmpty()) return
         // Finish the initial page attachment before replaying queued navigation.
@@ -67,6 +78,27 @@ object LxApp {
 
     @JvmStatic
     fun getCurrentActivity(): LxAppActivity? = currentActivity?.takeIf { it.canPresentLxApp }
+
+    /**
+     * Runs [block] on the main thread with the presenting activity. A prompt
+     * raised during a cold start, such as an update-ready handler, arrives
+     * before that activity exists, so wait for it; null after the timeout.
+     */
+    @JvmStatic
+    internal fun withCurrentActivity(block: (LxAppActivity?) -> Unit) {
+        val main = Handler(Looper.getMainLooper())
+        main.post {
+            val activity = getCurrentActivity()
+            if (activity != null) {
+                block(activity)
+                return@post
+            }
+            activityWaiters.add(block)
+            main.postDelayed({
+                if (activityWaiters.remove(block)) block(null)
+            }, ACTIVITY_WAIT_MS)
+        }
+    }
 
     internal fun clearCurrentActivity(activity: LxAppActivity) {
         if (currentActivity === activity) setCurrentActivity(null)

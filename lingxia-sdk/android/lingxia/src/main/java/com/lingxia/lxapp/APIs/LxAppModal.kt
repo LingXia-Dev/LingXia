@@ -60,18 +60,6 @@ internal object LxAppModal {
         confirmColor: String?,
         callbackId: Long
     ) {
-        val activity = LxApp.getCurrentActivity()
-        if (activity == null) {
-            LxLog.e(TAG, "showModal: current activity is null")
-            val result = JSONObject().apply {
-                put("confirm", false)
-                put("cancel", true)
-                put("error", "No active activity")
-            }
-            NativeApi.onCallback(callbackId, false, result.toString())
-            return
-        }
-
         val config = ModalConfig(
             title = title,
             content = content,
@@ -81,7 +69,17 @@ internal object LxAppModal {
             confirmColor = confirmColor?.takeIf { it.isNotBlank() }
         )
 
-        activity.runOnUiThread {
+        LxApp.withCurrentActivity { activity ->
+            if (activity == null) {
+                LxLog.e(TAG, "showModal: no activity to present on")
+                val result = JSONObject().apply {
+                    put("confirm", false)
+                    put("cancel", true)
+                    put("error", "No active activity")
+                }
+                NativeApi.onCallback(callbackId, false, result.toString())
+                return@withCurrentActivity
+            }
             showModalInternal(activity, config, callbackId)
         }
     }
