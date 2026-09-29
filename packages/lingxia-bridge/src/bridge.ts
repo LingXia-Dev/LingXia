@@ -939,6 +939,16 @@ function createStreamHandle(
             pendingReads.push({ resolve, reject });
           });
         },
+        // Leaving a `for await` early cancels the stream, as with a
+        // ReadableStream: nothing is left buffering for a gone reader.
+        return(): Promise<IteratorResult<unknown, unknown>> {
+          iteratorRequested = false;
+          pendingData.length = 0;
+          // The cancel settles `result` with BRIDGE_CANCELED; the reader asked for it.
+          result.catch(() => {});
+          handle.cancel();
+          return Promise.resolve({ done: true, value: undefined });
+        },
       };
     },
     cancel(): void {
@@ -1013,6 +1023,7 @@ function createChannel(
   let open = false;
   let outboundSeq = 0;
   let closed = false;
+  let closeEmitted = false;
   // Only buffer for the async iterator or pre-first-listener replay;
   // otherwise a listener-driven channel would accumulate payloads forever.
   let iteratorRequested = false;
@@ -1082,12 +1093,19 @@ function createChannel(
             pendingReads.push({ resolve, reject });
           });
         },
+        // Leaving a `for await` early closes the channel, as with a
+        // ReadableStream: nothing is left buffering for a gone reader.
+        return(): Promise<IteratorResult<unknown, void>> {
+          iteratorRequested = false;
+          pendingData.length = 0;
+          channel.close();
+          return Promise.resolve({ done: true, value: undefined });
+        },
       };
     },
     close(code?: string, reason?: string): void {
       if (!open) return;
       open = false;
-      closed = true;
       closeFn(code, reason);
       channel._emitClose(code, reason);
     },
@@ -1107,7 +1125,11 @@ function createChannel(
       }
     },
     _emitClose(code?: string, reason?: string): void {
+      // One close notification, whichever side closed first.
+      open = false;
       closed = true;
+      if (closeEmitted) return;
+      closeEmitted = true;
       while (pendingReads.length > 0) {
         pendingReads.shift()!.resolve({ done: true, value: undefined });
       }
@@ -1120,6 +1142,7 @@ function createChannel(
       }
     },
     _reject(err: LxBridgeError): void {
+      open = false;
       closed = true;
       while (pendingReads.length > 0) {
         pendingReads.shift()!.reject(err);
@@ -2303,7 +2326,18 @@ function wrapNativeChannel<TIn, TOut>(
 ): NativeChannel<TIn, TOut> {
   const messageListeners = new Set<(message: TOut) => void>();
   const closeListeners = new Set<(event: ChannelCloseEvent) => void>();
+  // Messages that arrive with the open ack, before the caller could call
+  // `onMessage`, wait for it until the next task; a channel nobody listens
+  // to buffers nothing after that.
+  let early: TOut[] | null = [];
+  setTimeout(() => {
+    early = null;
+  }, 0);
   channel.on("data", (message) => {
+    if (messageListeners.size === 0) {
+      early?.push(message);
+      return;
+    }
     for (const listener of messageListeners) listener(message);
   });
   channel.on("close", (code, reason) => {
@@ -2316,6 +2350,9 @@ function wrapNativeChannel<TIn, TOut>(
     },
     onMessage(listener: (message: TOut) => void): () => void {
       messageListeners.add(listener);
+      const replay = early;
+      early = null;
+      for (const message of replay ?? []) listener(message);
       return () => {
         messageListeners.delete(listener);
       };

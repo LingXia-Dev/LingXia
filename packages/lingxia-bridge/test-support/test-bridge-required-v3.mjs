@@ -248,6 +248,35 @@ assert.deepEqual(channelData, ['native-data']);
 channel.send('document-data');
 channel.close('DONE', 'complete');
 
+// A message that arrives with the open ack reaches the first onMessage.
+const publicOpen = bridge.LingXiaBridge.channel('demo.channel');
+const publicRequest = decoded().at(-1);
+receive({ v: 3, kind: 'ch.ack', sessionId, id: publicRequest.id, ok: true });
+receive({ v: 3, kind: 'ch.data', sessionId, id: publicRequest.id, seq: 0, payload: 'first' });
+const publicChannel = await publicOpen;
+const publicMessages = [];
+publicChannel.onMessage((message) => publicMessages.push(message));
+assert.deepEqual(publicMessages, ['first']);
+// Once the host closed it, the channel sends nothing and closes once.
+const publicCloses = [];
+publicChannel.onClose((event) => publicCloses.push(event.code));
+receive({ v: 3, kind: 'ch.close', sessionId, id: publicRequest.id, code: 'GONE' });
+const sentBeforeLateUse = sent.length;
+publicChannel.send('late');
+publicChannel.close();
+assert.equal(sent.length, sentBeforeLateUse);
+assert.deepEqual(publicCloses, ['GONE']);
+
+// Leaving an iteration early cancels the stream.
+const iterated = bridge.LingXiaBridge.raw.stream('host.watch', undefined, { cap: 'host' });
+const iteratedRequest = decoded().at(-1);
+const iterator = iterated[Symbol.asyncIterator]();
+const firstRead = iterator.next();
+receive({ v: 3, kind: 'event', sessionId, id: iteratedRequest.id, seq: 0, payload: 'tick' });
+assert.deepEqual(await firstRead, { done: false, value: 'tick' });
+await iterator.return();
+assert.deepEqual(decoded().at(-1), { ...decoded().at(-1), kind: 'cancel', id: iteratedRequest.id });
+
 receive({
   v: 3,
   kind: 'req',
