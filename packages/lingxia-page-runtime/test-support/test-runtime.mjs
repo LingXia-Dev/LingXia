@@ -65,6 +65,17 @@ assert.equal(heard, 1);
 await runtime.whenPageReady({ timeoutMs: 1 });
 stop();
 
+// A business payload that happens to have `type` and `detail` is not an event.
+let sentPayload;
+window.LingXiaBridge.raw.call = (_name, payload) => { sentPayload = payload; return Promise.resolve(); };
+await actions.save({ type: 'invoice', detail: { amount: 10 }, id: 'inv-1' });
+assert.deepEqual(sentPayload, { type: 'invoice', detail: { amount: 10 }, id: 'inv-1' });
+// A DOM event crosses as its portable part, even from another realm.
+const foreignEvent = { type: 'ended', detail: { at: 3 }, target: {}, preventDefault() {}, stopPropagation() {} };
+await actions.save(foreignEvent);
+assert.deepEqual(sentPayload, { type: 'ended', detail: { at: 3 } });
+window.LingXiaBridge.raw.call = snapshotCall;
+
 // Outside a dev session the data is left as pushed; in one, a View write
 // throws at the write, at any depth.
 assert.equal(Object.isFrozen(runtime.getPageSnapshot()), false);
@@ -111,5 +122,8 @@ const eventShaped = { type: 'submit', detail: 1, extra: true };
 assert.deepEqual(await invoke('save', eventShaped), { name: 'save', payload: eventShaped });
 window.LingXiaBridge.raw.call = () => Promise.reject({ code: 'BRIDGE_INTERNAL_ERROR', message: 'boom' });
 await assert.rejects(invoke('save'), { code: 'BRIDGE_INTERNAL_ERROR', message: 'boom' });
+// A departed page answers automation with the error instead of never settling.
+window.LingXiaBridge.raw.call = () => Promise.reject({ code: 'BRIDGE_NOT_READY', message: 'Bridge not ready' });
+await assert.rejects(invoke('save'), { code: 'BRIDGE_NOT_READY' });
 window.__pageBridge = bridgeMetadata;
 console.log('page runtime: ok');
