@@ -374,6 +374,21 @@ internal object NativeApi {
     @JvmStatic
     external fun findWebView(appId: String, path: String, sessionId: Long): com.lingxia.lxapp.WebView?
 
+    /**
+     * The WebView of the page a container must present. [webtag] names one page
+     * instance exactly; null means the app's current page.
+     *
+     * Returns the WebView when it is ready now. Otherwise returns null and
+     * [callback] is called exactly once, later, on a runtime thread.
+     */
+    @JvmStatic
+    external fun awaitPageWebView(
+        appId: String,
+        sessionId: Long,
+        webtag: String?,
+        callback: PageWebViewCallback
+    ): com.lingxia.lxapp.WebView?
+
     @JvmStatic
     external fun findWebViewByPageInstanceId(pageInstanceId: String): com.lingxia.lxapp.WebView?
 
@@ -473,4 +488,16 @@ internal object NativeApi {
      */
     @JvmStatic
     external fun onAppHide(lxappId: String)
+}
+
+/** How waiting for a page's WebView ended. */
+internal fun interface PageWebViewCallback {
+    /** [status]: 0 ready ([webView] set), 1 failed, 2 the page is gone. */
+    fun onResult(webView: com.lingxia.lxapp.WebView?, status: Int)
+
+    companion object {
+        const val READY = 0
+        const val FAILED = 1
+        const val GONE = 2
+    }
 }

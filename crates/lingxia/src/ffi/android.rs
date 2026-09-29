@@ -404,22 +404,96 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_findWebView<'a>(
             );
             return Ok(JObject::null());
         };
-        let Some(webview) = page.webview() else {
-            return Ok(JObject::null());
-        };
+        java_webview_of(env, &page)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
 
-        // A cached page re-enters the transition immediately; stamp the live
-        // scheme before it becomes visible, not after the show animation.
-        if let Some(app) = lxapp::try_get(&page.appid()) {
-            app.republish_page_scheme(&page);
-        }
+/// The WebView object of `page`, ready to hand to a container. A cached page
+/// re-enters the transition immediately, so its live scheme is stamped before
+/// it becomes visible, not after the show animation.
+fn java_webview_of<'l>(
+    env: &mut Env<'l>,
+    page: &lxapp::PageInstance,
+) -> Result<JObject<'l>, jni::errors::Error> {
+    let Some(webview) = page.webview() else {
+        return Ok(JObject::null());
+    };
+    let _ = lxapp::touch_page_instance_by_id(&page.instance_id_string());
+    if let Some(app) = lxapp::try_get(&page.appid()) {
+        app.republish_page_scheme(page);
+    }
+    let local_ref = env.new_local_ref(webview.get_java_webview())?;
+    Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) })
+}
 
-        match env.new_local_ref(webview.get_java_webview()) {
-            Ok(local_ref) => Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) }),
-            Err(e) => {
-                error!("Failed to create local reference to WebView: {:?}", e);
-                Ok(JObject::null())
+/// Tell `callback` how waiting for a page's WebView ended:
+/// status 0 ready, 1 failed, 2 the page is gone.
+fn deliver_page_webview(
+    callback: &jni::objects::Global<JObject<'static>>,
+    outcome: lxapp::PageWebViewAwait,
+) {
+    let _ = with_env(|env| -> Result<(), jni::errors::Error> {
+        let (webview, status): (JObject, jint) = match &outcome {
+            lxapp::PageWebViewAwait::Ready(page) => {
+                let webview = java_webview_of(env, page)?;
+                let status = if webview.is_null() { 1 } else { 0 };
+                (webview, status)
             }
+            lxapp::PageWebViewAwait::Failed(reason) => {
+                warn!("page WebView is not available: {reason}");
+                (JObject::null(), 1)
+            }
+            lxapp::PageWebViewAwait::Gone => (JObject::null(), 2),
+        };
+        env.call_method(
+            callback,
+            jni_str!("onResult"),
+            jni_sig!("(Lcom/lingxia/lxapp/WebView;I)V"),
+            &[(&webview).into(), status.into()],
+        )?;
+        Ok(())
+    });
+}
+
+/// The WebView of the page a container must present, or a callback when it
+/// is ready. `webtag` names one page instance exactly; null means the app's
+/// current page. Returns the WebView when it is ready now (`callback` is then
+/// not called); otherwise returns null and calls
+/// `callback.onResult(webView, status)` once, later, on a runtime thread.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_awaitPageWebView<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+    session_id: jlong,
+    webtag: JString<'a>,
+    callback: JObject<'a>,
+) -> JObject<'a> {
+    env.with_env(|env| -> Result<JObject, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let webtag: Option<String> = if webtag.is_null() {
+            None
+        } else {
+            Some(webtag.try_to_string(env)?)
+        };
+        let callback = std::sync::Arc::new(env.new_global_ref(&callback)?);
+        let done = || {
+            let callback = callback.clone();
+            move |outcome| deliver_page_webview(&callback, outcome)
+        };
+        match lxapp::await_page_webview(&appid, session_id as u64, webtag.as_deref(), done()) {
+            lxapp::PageWebView::Ready(page) => {
+                let webview = java_webview_of(env, &page)?;
+                if webview.is_null() {
+                    // Discarded between the readiness check and here: wait for
+                    // it to be recreated rather than leave the caller waiting
+                    // for a callback that would never come.
+                    page.on_webview_ready(done());
+                }
+                Ok(webview)
+            }
+            lxapp::PageWebView::Pending => Ok(JObject::null()),
         }
     })
     .resolve::<ThrowRuntimeExAndDefault>()
@@ -441,23 +515,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_findWebViewByPageInstanceI
         let Some(page) = lxapp::find_page_by_instance_id(page_instance_id) else {
             return Ok(JObject::null());
         };
-        let Some(webview) = page.webview() else {
-            return Ok(JObject::null());
-        };
-
-        // A cached page re-enters the transition immediately; stamp the live
-        // scheme before it becomes visible, not after the show animation.
-        if let Some(app) = lxapp::try_get(&page.appid()) {
-            app.republish_page_scheme(&page);
-        }
-
-        match env.new_local_ref(webview.get_java_webview()) {
-            Ok(local_ref) => Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) }),
-            Err(e) => {
-                error!("Failed to create local reference to WebView: {:?}", e);
-                Ok(JObject::null())
-            }
-        }
+        java_webview_of(env, &page)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

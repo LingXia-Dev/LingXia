@@ -94,6 +94,16 @@ fn signal_home_first_ready() {
     }
 }
 
+/// How waiting for a page's WebView ended.
+pub enum PageWebViewAwait {
+    /// Attached and loaded.
+    Ready(PageInstance),
+    /// The WebView could not be created or its document not loaded.
+    Failed(String),
+    /// The page was removed while waiting.
+    Gone,
+}
+
 type WebviewReadyReceiver = Arc<Mutex<watch::Receiver<Option<Result<(), String>>>>>;
 
 const DEFAULT_VIEW_CALL_TIMEOUT: Duration = Duration::from_secs(15);
@@ -1446,6 +1456,62 @@ impl PageInstance {
         if ok {
             crate::lxapp::page_discard::enforce_page_webview_budget();
         }
+    }
+
+    /// Whether the WebView is attached and its document loaded.
+    pub(crate) fn webview_ready_now(&self) -> bool {
+        self.inner
+            .webview_ready_rx
+            .lock()
+            .is_ok_and(|rx| matches!(*rx.borrow(), Some(Ok(()))))
+            && self.webview().is_some()
+    }
+
+    /// Call `done` once the WebView is ready, failed, or the page is gone.
+    ///
+    /// Holds no strong reference to the page while waiting: a page that is
+    /// removed and dropped resolves as [`PageWebViewAwait::Gone`].
+    pub fn on_webview_ready(&self, done: impl FnOnce(PageWebViewAwait) + Send + 'static) {
+        if self.is_discarded() {
+            self.ensure_live_webview();
+        }
+        let Some(mut rx) = self.inner.webview_ready_rx.lock().ok().map(|rx| rx.clone()) else {
+            done(PageWebViewAwait::Gone);
+            return;
+        };
+        let page = Arc::downgrade(&self.inner);
+        std::mem::drop(crate::executor::spawn(async move {
+            let state = loop {
+                let state = rx.borrow().clone();
+                if state.is_some() {
+                    break Some(state);
+                }
+                if rx.changed().await.is_err() {
+                    break None;
+                }
+            };
+            // A retired page can still be held by its own creation task and
+            // WebView delegate, so being dropped is not the test: it must
+            // still be registered.
+            let outcome = match (
+                page.upgrade().map(PageInstance::from_inner),
+                state.flatten(),
+            ) {
+                (Some(page), Some(result))
+                    if page
+                        .owning_lxapp()
+                        .get_page_by_instance_id(&page.instance_id())
+                        .is_some() =>
+                {
+                    match result {
+                        Ok(()) => PageWebViewAwait::Ready(page),
+                        Err(error) => PageWebViewAwait::Failed(error),
+                    }
+                }
+                _ => PageWebViewAwait::Gone,
+            };
+            done(outcome);
+        }));
     }
 
     pub(crate) fn mark_page_svc_ready(&self) {

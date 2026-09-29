@@ -1,6 +1,5 @@
 package com.lingxia.lxapp
 
-import com.lingxia.app.NativeApi
 
 import android.content.Context
 import android.os.Handler
@@ -17,11 +16,6 @@ internal class WebView(context: Context) : LingXiaWebView(context) {
 
     companion object {
         private const val TAG = "LingXia.WebView"
-
-        fun findWebView(appId: String, path: String, sessionId: Long): WebView? {
-            Log.d(TAG, "Finding WebView for appId: $appId, path: $path")
-            return NativeApi.findWebView(appId, path, sessionId)
-        }
 
         /**
          * This affects all WebView instances created after this call

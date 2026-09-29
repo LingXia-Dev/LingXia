@@ -107,7 +107,9 @@ pub use runtime_ops::{
     uninstall_lxapp,
 };
 pub(crate) use runtime_registry::get_lxapps_manager;
-pub use runtime_registry::{find_page_by_instance_id, get_platform, try_get};
+pub use runtime_registry::{
+    PageWebView, await_page_webview, find_page_by_instance_id, get_platform, try_get,
+};
 pub use surface::{
     HostMainSurfaceRegistration, HostSurfaceMenuExecution, LxAppRuntimeSurfaceInfo,
     ManagedNativeSurface, PageSurface, PageSurfaceRequest, PageSurfaceTarget, UrlCallbackSurface,

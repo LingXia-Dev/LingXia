@@ -335,10 +335,9 @@ pub trait AppRuntime:
     fn get_system_locale(&self) -> &str;
 
     /// Show the UI container for the given LxApp and route.
-    /// `webtag` is the page instance's full webview tag; page tags are
-    /// per-instance, so shells must not reconstruct them from the route.
-    /// Platforms whose containers resolve through the runtime by path may
-    /// ignore it.
+    /// `webtag` is the page instance's full webview tag and is the
+    /// authoritative identity of the page to present (see [`Self::navigate`]);
+    /// `path` is kept for shells that have not moved to the tag yet.
     fn show_lxapp(
         &self,
         appid: String,
@@ -503,10 +502,13 @@ pub trait AppRuntime:
     }
 
     /// Navigates within the given LxApp using an animation.
-    /// `webtag` is the destination page instance's full webview tag; page
-    /// tags are per-instance, so shells must not reconstruct them from the
-    /// route. Platforms whose containers resolve through the runtime by path
-    /// may ignore it.
+    /// `webtag` is the destination page instance's full webview tag and is the
+    /// authoritative identity of what to present: page tags are per-instance,
+    /// so shells must not reconstruct them from the route, and two instances of
+    /// one route differ only by it. The page's WebView may not exist yet when
+    /// this is called; containers wait for that exact instance rather than
+    /// re-resolving `path`, which is kept for shells that have not moved to
+    /// the tag yet.
     fn navigate(
         &self,
         appid: String,

@@ -98,12 +98,12 @@ pub use lxapp::{
     LxApp, LxAppMoreAction, LxAppMoreActions, LxAppOpenRegion, LxAppRuntimeInfo,
     LxAppRuntimePageInfo, LxAppRuntimeSurfaceInfo, LxAppSecurityPrivilege, ManagedNativeSurface,
     PageDefinition, PageInstanceEvent, PageInstanceRuntimeInfo, PageOwner, PageQueryInput,
-    PageSurface, PageSurfaceRequest, PageSurfaceTarget, PageTarget, PresentationKind, ResolvedPage,
-    SceneId, SurfaceKind, SurfacePosition, SurfaceRole, UrlCallbackSurface, UrlCallbackWaitError,
-    add_display_language_effective_listener, add_display_language_state_listener,
-    block_lxapp_admission, bundled_lxapp_asset_available,
-    clear_active_display_language_session_override, clear_display_language_session_override,
-    close_lxapp,
+    PageSurface, PageSurfaceRequest, PageSurfaceTarget, PageTarget, PageWebView, PresentationKind,
+    ResolvedPage, SceneId, SurfaceKind, SurfacePosition, SurfaceRole, UrlCallbackSurface,
+    UrlCallbackWaitError, add_display_language_effective_listener,
+    add_display_language_state_listener, await_page_webview, block_lxapp_admission,
+    bundled_lxapp_asset_available, clear_active_display_language_session_override,
+    clear_display_language_session_override, close_lxapp,
     config::LxAppInfo,
     create_page_instance, display_language, display_language_state, display_language_state_update,
     dispose_page_instance, dispose_page_instance_by_id, drain_lxapps, ensure_builtin_lxapp,
@@ -140,8 +140,8 @@ pub use native_authority::NativeControlPlaneAuthority;
 pub use native_component::{NativeComponentHost, register_native_component_host};
 pub use page::config::{OrientationConfig, PageOrientation};
 pub use page::{
-    NavigationType, PageAutomationState, PageInstance, PageInstanceId, ViewCallOptions,
-    register_page_resolver, resolve_page_path,
+    NavigationType, PageAutomationState, PageInstance, PageInstanceId, PageWebViewAwait,
+    ViewCallOptions, register_page_resolver, resolve_page_path,
 };
 pub use plugin::{build_plugin_page_path, parse_plugin_page_path, parse_plugin_url};
 pub use provider::{
