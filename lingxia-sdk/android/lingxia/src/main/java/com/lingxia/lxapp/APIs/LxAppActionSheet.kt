@@ -28,13 +28,12 @@ internal object LxAppActionSheet {
 
     @JvmStatic
     fun showActionSheet(options: Array<String>, cancelText: String, itemColor: String, callbackId: Long) {
-        val activity = LxApp.getCurrentActivity()
-        if (activity == null) {
-            LxLog.e(TAG, "showActionSheet: current activity is null")
-            sendActionSheetError(callbackId, 1000)
-            return
-        }
-        activity.runOnUiThread {
+        LxApp.withCurrentActivity { activity ->
+            if (activity == null) {
+                LxLog.e(TAG, "showActionSheet: no activity to present on")
+                sendActionSheetError(callbackId, 1000)
+                return@withCurrentActivity
+            }
             showActionSheet(activity, options.toList(), cancelText, itemColor, callbackId)
         }
     }
