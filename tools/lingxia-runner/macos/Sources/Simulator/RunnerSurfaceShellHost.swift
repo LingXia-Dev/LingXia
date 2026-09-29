@@ -234,6 +234,9 @@ final class RunnerSurfaceShellHost {
 
     private func configureWindow(for device: MobileDeviceSize, center: Bool) {
         guard let window = shell.window else { return }
+        // A device switch resizes in place: keep the top-left where the user
+        // left it, so a taller device grows downward instead of under the menu bar.
+        let topLeft = NSPoint(x: window.frame.minX, y: window.frame.maxY)
 
         let contentSize = NSSize(width: device.width, height: device.height)
         window.title = "LingXia Runner - \(device.orientedDisplayName)"
@@ -265,6 +268,12 @@ final class RunnerSurfaceShellHost {
 
         if center {
             window.center()
+        } else {
+            let drifted = abs(window.frame.minX - topLeft.x) > 0.5
+                || abs(window.frame.maxY - topLeft.y) > 0.5
+            if drifted {
+                window.setFrameTopLeftPoint(topLeft)
+            }
         }
     }
 }
