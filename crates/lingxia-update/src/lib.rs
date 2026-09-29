@@ -46,15 +46,15 @@ impl From<Channel> for lingxia_provider::LxAppChannel {
     }
 }
 
-/// Default lxapp channel for this host, derived from the host env:
+/// Default lxapp channel for this host, derived from the running service env:
 /// `dev` → `draft`, `prod` → `release`. An open can pass an explicit
 /// channel to override; the client does not forbid `draft` on a prod
 /// host — the registry decides per-channel access.
 ///
 /// Host self-update does **not** carry a channel: the host talks to the
-/// server for its env.
+/// server for its build env.
 pub fn default_channel() -> Channel {
-    match lingxia_app_context::env() {
+    match lingxia_app_context::service_env() {
         lingxia_app_context::AppEnv::Dev => Channel::Draft,
         lingxia_app_context::AppEnv::Prod => Channel::Release,
     }
