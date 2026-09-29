@@ -44,6 +44,8 @@ export class ActionDeadline {
   readonly timeout: number;
   /** The timeout the caller asked for, when the spec budget cut it. */
   readonly clampedFrom: number | undefined;
+  /** The budget's timer fired: a timer can fire a millisecond before `Date.now()` agrees. */
+  private lapsed = false;
 
   constructor(requested: number, room: number = Number.POSITIVE_INFINITY) {
     const available = Math.max(1, Math.floor(room));
@@ -60,7 +62,7 @@ export class ActionDeadline {
   }
 
   expired(): boolean {
-    return this.remaining() <= 0;
+    return this.lapsed || this.remaining() <= 0;
   }
 
   /** One line explaining a clamp, or `undefined` when the timeout is as asked. */
@@ -90,6 +92,7 @@ export class ActionDeadline {
     let handle: unknown;
     const expiry = new Promise<never>((_, reject) => {
       handle = runnerSetTimeout(() => {
+        this.lapsed = true;
         task.catch(() => {});
         reject(new TimeoutError([
           `${label} did not return within ${ms}ms, the rest of the ${this.timeout}ms action budget.`,
