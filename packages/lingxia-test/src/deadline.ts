@@ -167,13 +167,22 @@ export function isTransientTransportError(error: unknown): boolean {
     .test(message);
 }
 
-/** Match the public error or a preserved driver cause, without changing either. */
+/**
+ * Match the public error or a preserved cause, without changing either: an
+ * error's `cause`, or the `data.cause` a driver reports for what the app
+ * rejected with (a page action, an `lx.*` error thrown in `logic.eval`).
+ */
 export function matchesErrorCode(error: unknown, expected: string): boolean {
   const seen = new Set<object>();
-  while (error !== null && typeof error === "object" && !seen.has(error)) {
-    if (errorCode(error) === expected) return true;
-    seen.add(error);
-    error = (error as { cause?: unknown }).cause;
+  const pending: unknown[] = [error];
+  while (pending.length > 0) {
+    const next = pending.pop();
+    if (next === null || typeof next !== "object" || seen.has(next)) continue;
+    if (errorCode(next) === expected) return true;
+    seen.add(next);
+    pending.push((next as { cause?: unknown }).cause);
+    const data = (next as { data?: unknown }).data;
+    if (data && typeof data === "object") pending.push((data as { cause?: unknown }).cause);
   }
   return false;
 }

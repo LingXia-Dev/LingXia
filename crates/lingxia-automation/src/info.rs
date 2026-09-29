@@ -61,6 +61,23 @@ fn logic_eval_code(err: &lxapp::LxAppError) -> &'static str {
     }
 }
 
+/// A failed Logic evaluation. A coded rejection the script threw (an `lx.*`
+/// error) rides along as `data.cause`, as a page action's does.
+fn logic_eval_error(err: lxapp::LxAppError) -> HostError {
+    let error = crate::error::coded(logic_eval_code(&err), err.to_string());
+    match err {
+        lxapp::LxAppError::RongJSHost {
+            code,
+            message,
+            data,
+        } => crate::error::with_json_data(
+            error,
+            &serde_json::json!({ "cause": { "code": code, "message": message, "data": data } }),
+        ),
+        _ => error,
+    }
+}
+
 #[derive(FromJSObject)]
 struct JSEvalOptions {
     script: String,
@@ -213,7 +230,7 @@ impl JSLxAppDriver {
         let value = tokio::time::timeout(timeout, evaluation)
             .await
             .map_err(|_| crate::error::coded(crate::error::E_EVAL_TIMEOUT, "lxapp eval timed out"))?
-            .map_err(|err| crate::error::coded(logic_eval_code(&err), err.to_string()))?;
+            .map_err(logic_eval_error)?;
         json_to_js(&ctx, &value)
     }
 }

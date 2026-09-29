@@ -284,7 +284,23 @@ pub(crate) fn eval_error_from_rong(ctx: &JSContext, error: RongJSError) -> LxApp
                 .get::<_, String>("name")
                 .unwrap_or_else(|_| "Error".to_string());
             if let Ok(message) = object.get::<_, String>("message") {
-                return LxAppError::RongJS(format!("{name}: {message}"));
+                let message = format!("{name}: {message}");
+                // A coded rejection (every `lx.*` error) keeps its code and
+                // data, e.g. `{ bizCode }`, for the caller to act on.
+                if let Ok(code) = object.get::<_, String>("code") {
+                    let data = object
+                        .get::<_, JSValue>("data")
+                        .ok()
+                        .and_then(|value| js_value_to_json_string(value).ok())
+                        .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+                        .filter(|value| !value.is_null());
+                    return LxAppError::RongJSHost {
+                        code,
+                        message,
+                        data,
+                    };
+                }
+                return LxAppError::RongJS(message);
             }
         }
     }
@@ -2024,6 +2040,44 @@ mod eval_script_shape_tests {
     #[test]
     fn a_plain_expression_is_not_a_function_body() {
         assert!(!script_looks_like_function_body("lx.host.getBaseInfo()"));
+    }
+
+    /// An `lx.*` rejection reaches the eval caller with its code and data.
+    #[test]
+    fn a_coded_rejection_keeps_its_code_and_data() {
+        use rong::{Rong, RongJS};
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let error = rt.block_on(async {
+            let pool = Rong::<RongJS>::builder()
+                .shared()
+                .workers(1)
+                .build()
+                .unwrap();
+            let worker = pool.worker(0).unwrap();
+            let handle = worker
+                .spawn(
+                    async move |js_runtime, _receiver| -> rong::JSResult<String> {
+                        let ctx = js_runtime.context();
+                        let script = "(async () => { const e = new Error('Wi-Fi is off'); \
+                        e.code = 'E_INVALID_STATE'; e.data = { bizCode: 12009 }; throw e; })()";
+                        let error = super::eval_logic_script_inner(&ctx, script, false)
+                            .await
+                            .unwrap_err();
+                        Ok(format!("{error:?}"))
+                    },
+                )
+                .await
+                .unwrap();
+            let error = handle.join().await.unwrap();
+            pool.shutdown().unwrap();
+            error
+        });
+        assert!(error.contains("RongJSHost"), "{error}");
+        assert!(error.contains("E_INVALID_STATE"), "{error}");
+        assert!(error.contains("12009"), "{error}");
     }
 }
 
