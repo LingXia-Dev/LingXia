@@ -87,6 +87,25 @@ test("t.reject and spec.fail pin a driver failure by code", async () => {
   assert.match(protocol.cases[2].error.message, /code "E_PAGE_NOT_ACTIVE", got "E_EVAL_SCRIPT"/);
 });
 
+test("an lx.* error thrown in logic.eval is matched by its own code", async () => {
+  const world = createWorld();
+  world.app.eval = async () => {
+    throw coded("E_EVAL_SCRIPT", "E_INVALID_STATE: Error: Wi-Fi is off", {
+      cause: { code: "E_INVALID_STATE", message: "Error: Wi-Fi is off", data: { bizCode: 12009 } },
+    });
+  };
+  installFakeHost(world);
+  spec("rejects by the app's code", async (t) => {
+    await t.reject(() => t.app.logic.eval(() => 1), { code: "E_INVALID_STATE" });
+  });
+  spec.fail("known Wi-Fi state", { expected: { code: "E_INVALID_STATE" }, forensics: false }, async (t) => {
+    await t.app.logic.eval(() => 1);
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.deepEqual(protocol.cases.map((c) => c.status), ["passed", "xfail"]);
+});
+
 test("a failure names its action, the current page instance and the code that kept it from running", async () => {
   const world = createWorld();
   world.add({ testId: "save" });

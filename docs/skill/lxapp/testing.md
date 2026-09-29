@@ -151,7 +151,8 @@ const slow = await t.app.logic.eval({ timeout: 30_000 }, async ({ lx }, key: str
   arguments and results must be JSON (interfaces work without an index signature).
   Top-level void is allowed; nested undefined, Date, methods and DOM handles reject
   instead of being silently transformed. An error thrown in `fn` fails the eval
-  with `E_EVAL_SCRIPT`; catch it inside `fn` to assert an API's own `code`.
+  with `E_EVAL_SCRIPT`; an `lx.*` error keeps its own `code` for `t.reject` and
+  `expected.code`, and its `data` (e.g. `bizCode`) is readable inside `fn`.
 - Options go first: `{ timeout }`. An eval may take 10 s by default, clamped
   to what the spec has left. A timed-out eval fails the spec even if caught
   (its script may still run); the next spec starts from a relaunched app.
@@ -159,7 +160,7 @@ const slow = await t.app.logic.eval({ timeout: 30_000 }, async ({ lx }, key: str
   `TypeError` (the DOM not rendered yet) and nested locator timeouts. A Logic
   `TypeError`, other programming errors and invalid JSON fail immediately
   (override with `retryIf`); timeout reports `E_TIMEOUT` and the last observation.
-- Error-code matching also checks the preserved driver cause of a timeout.
+- Error-code matching also checks a preserved cause: a timeout's driver error, or the app error behind `E_EVAL_SCRIPT` or a page action.
 - Type shared helpers against `TestApp`, `TestPage<C>` or `TestView`.
 
 ## Faking the network
