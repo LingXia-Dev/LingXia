@@ -229,6 +229,9 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             defer: false
         )
         window.center()
+        // A window opened again (the app reopened) comes back where the last
+        // one was left, not on the centre.
+        RunnerWindowPlacement.restore(window)
         window.isReleasedWhenClosed = false
         window.title = "LingXia Simulator"
         return window
@@ -1487,6 +1490,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     public func windowWillClose(_ notification: Notification) {
+        if let window { RunnerWindowPlacement.remember(window) }
         phoneBrowserSurface.dismiss(closeTab: !preserveBrowserTabsOnClose)
         if webTarget != nil {
             RunnerApp.shared.handleWindowClosed(self)

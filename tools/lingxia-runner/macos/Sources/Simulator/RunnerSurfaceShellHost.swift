@@ -58,6 +58,7 @@ final class RunnerSurfaceShellHost {
         observeClose()
         installDeviceSelector()
         configureWindow(for: device, center: true)
+        if let window = shell.window { RunnerWindowPlacement.restore(window) }
         open(appId: appId, path: path, sessionId: sessionId)
     }
 
@@ -78,6 +79,7 @@ final class RunnerSurfaceShellHost {
         observeClose()
         installDeviceSelector()
         configureWindow(for: device, center: true)
+        if let window = shell.window { RunnerWindowPlacement.restore(window) }
         activate()
         presentBrowserTab(id: webTarget.tabId)
     }
@@ -206,6 +208,7 @@ final class RunnerSurfaceShellHost {
             guard let self else { return }
             Task { @MainActor in
                 guard !self.isHiddenForHostSwitch else { return }
+                if let window = self.shell.window { RunnerWindowPlacement.remember(window) }
                 self.onClose?(self)
             }
         }
