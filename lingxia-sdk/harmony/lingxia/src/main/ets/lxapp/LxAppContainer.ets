@@ -162,6 +162,8 @@ export struct LxAppContainer {
   private programmaticRefreshPending: boolean = false
   @State private enablePullDownRefresh: boolean = false
   @State private refreshingWebTag: string = ''
+  // Safety timer of the refresh in progress; at most one per container.
+  private refreshTimeoutId: number = -1
   @State private keyboardOffsetVp: number = 0
 
   private webViewUiCallback = (action: string, info: WebViewInfo) => {
@@ -320,6 +322,7 @@ export struct LxAppContainer {
 
     // Remove WebView UI callback when container is destroyed
     removeWebViewUiCallback(this.webViewUiCallback);
+    this.clearRefreshTimeout();
     this.stopKeyboardMonitor();
     hilog.info(DOMAIN, TAG, `Container destroyed for ${this.appId}:${this.path}`);
   }
@@ -1180,17 +1183,33 @@ export struct LxAppContainer {
   private handlePullToRefresh(webTag: string): void {
     let _: boolean = onLxappEvent(this.appId, UiEventType.PullDownRefresh, webTag);
 
-    // Set a safety timeout to stop refreshing if the app doesn't respond
-    setTimeout(() => {
-      if (this.isRefreshing) {
-        hilog.warn(DOMAIN, TAG, 'Pull-to-refresh timed out, stopping automatically')
-        this.isRefreshing = false
-        this.programmaticRefreshPending = false
-        this.refreshingWebTag = ''
+    // Safety timeout: stop this refresh if the app never answers. It guards
+    // only the refresh it was armed for, so a later one keeps its own budget.
+    this.clearRefreshTimeout();
+    this.refreshTimeoutId = setTimeout(() => {
+      this.refreshTimeoutId = -1;
+      if (this.isRefreshing && this.refreshingWebTag === webTag) {
+        hilog.warn(DOMAIN, TAG, `Pull-to-refresh timed out for ${webTag}, stopping automatically`)
+        this.endRefresh();
         // Restore the correct state for the current page
         this.loadPullDownRefreshState(this.path);
       }
     }, 10000)
+  }
+
+  private clearRefreshTimeout(): void {
+    if (this.refreshTimeoutId !== -1) {
+      clearTimeout(this.refreshTimeoutId);
+      this.refreshTimeoutId = -1;
+    }
+  }
+
+  /** End the refresh in progress; its indicator, identity, echo guard and timer go together. */
+  private endRefresh(): void {
+    this.clearRefreshTimeout();
+    this.isRefreshing = false
+    this.programmaticRefreshPending = false
+    this.refreshingWebTag = ''
   }
 
   /**
@@ -1202,9 +1221,7 @@ export struct LxAppContainer {
       hilog.warn(DOMAIN, TAG, `Ignoring stop for ${webTag}, current refreshing is ${this.refreshingWebTag}`);
       return;
     }
-    this.isRefreshing = false
-    this.programmaticRefreshPending = false
-    this.refreshingWebTag = ''
+    this.endRefresh();
     // Restore the correct state for the current page
     this.loadPullDownRefreshState(this.path);
   }
@@ -1384,8 +1401,7 @@ export struct LxAppContainer {
     // Stop any active refresh when navigating away, unless we are navigating TO the refreshing page
     if (this.isRefreshing && this.refreshingWebTag !== newWebTag) {
       hilog.info(DOMAIN, TAG, `Navigating away from ${this.refreshingWebTag} to ${newWebTag}, stopping refresh`);
-      this.isRefreshing = false;
-      this.refreshingWebTag = '';
+      this.endRefresh();
     }
 
     const webViewController = WebViewManager.getController(newWebTag);
