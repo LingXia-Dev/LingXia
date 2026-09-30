@@ -315,21 +315,33 @@ spec('request permission and replace local notifications by id', {
     }
     let scheduled = null;
     let replaced = null;
+    let scheduleUnsupported = false;
+    // A platform that cannot schedule for this app says so with E_NOT_SUPPORTED
+    // (HarmonyOS without the agent-reminder privilege), never a generic error.
+    const orUnsupported = async <T,>(call: () => Promise<T>): Promise<T | null> => {
+      try {
+        return await call();
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'E_NOT_SUPPORTED') throw error;
+        scheduleUnsupported = true;
+        return null;
+      }
+    };
     if (permission === 'granted') {
-      scheduled = await n.show({
+      scheduled = await orUnsupported(() => n.show({
         id: 'automation-local',
         title: 'LingXia automation',
         body: 'scheduled',
         schedule: { delayMs: 60_000 },
         silent: true,
-      });
-      replaced = await n.show({
+      }));
+      replaced = await orUnsupported(() => n.show({
         id: 'automation-local',
         title: 'LingXia automation',
         body: 'replaces the schedule',
         schedule: { at: Date.now() + 120_000 },
         silent: true,
-      });
+      }));
     }
     await n.cancel('automation-local');
     await n.cancel('never-shown');
@@ -345,6 +357,7 @@ spec('request permission and replace local notifications by id', {
       immediate,
       scheduled,
       replaced,
+      scheduleUnsupported,
       rejected: {
         http: await rejects({ title: 'bad', applink: 'http://example.com/x' }),
         page: await rejects({ title: 'bad', target: { kind: 'page', page: '/pages/system/index' } }),
@@ -363,7 +376,7 @@ spec('request permission and replace local notifications by id', {
     expect(result.immediate.id).toBe('automation-local');
     expect(['posted', 'suppressed']).toContain(result.immediate.status);
   }
-  if (result.permission === 'granted') {
+  if (result.permission === 'granted' && !result.scheduleUnsupported) {
     expect(result.scheduled).toEqual({ id: 'automation-local', status: 'scheduled' });
     expect(result.replaced).toEqual({ id: 'automation-local', status: 'scheduled' });
   }
