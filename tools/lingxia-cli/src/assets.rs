@@ -124,13 +124,13 @@ fn collect_view_target_warnings(
     warnings
 }
 
-/// Whether any path-based lxapp bundle in the host config opts into the
-/// legacy ES5 view pipeline. When true, the bundle's emitted HTML carries a
-/// `<script src="lx://assets/polyfills.es5.js">` tag (see vite_html.rs /
-/// vite_pipeline.rs), so the polyfills asset has to ship alongside it.
-/// Decoupled from the global runtime decision: a single bundle in legacy
-/// mode still needs the polyfills script even on a minSdk-modern app.
-fn any_path_bundle_targets_es5(project_root: &Path, config: &LingXiaConfig) -> bool {
+/// Whether any path-based lxapp bundle in the host config emits HTML carrying
+/// a `<script src="lx://assets/polyfills.es5.js">` tag (see vite_html.rs /
+/// vite_pipeline.rs), so the polyfills asset has to ship alongside it: the
+/// legacy ES5 view pipeline, or any build with View plugins.
+/// Decoupled from the global runtime decision: a single such bundle still
+/// needs the polyfills script even on a minSdk-modern app.
+fn any_path_bundle_loads_es5_polyfills(project_root: &Path, config: &LingXiaConfig) -> bool {
     let Some(resources) = config.resources.as_ref() else {
         return false;
     };
@@ -143,9 +143,13 @@ fn any_path_bundle_targets_es5(project_root: &Path, config: &LingXiaConfig) -> b
         else {
             continue;
         };
-        if let Ok(Some(target)) = crate::lxapp::view_target_from_dir(&project_root.join(path))
+        let bundle_dir = project_root.join(path);
+        if let Ok(Some(target)) = crate::lxapp::view_target_from_dir(&bundle_dir)
             && target.eq_ignore_ascii_case("es5")
         {
+            return true;
+        }
+        if let Ok(true) = crate::lxapp::view_plugins_configured(&bundle_dir) {
             return true;
         }
     }
@@ -245,15 +249,15 @@ pub(crate) fn prepare_configured_host_assets(
         None
     };
     // Polyfills ship whenever a bundle's HTML references them — i.e., the
-    // bundle opts into view.target = 'es5'. Independent of needs_es5_runtime:
-    // an app with minSdk >= 24 can still contain a single bundle in legacy
-    // mode whose HTML loads polyfills.es5.js.
-    let prepared_polyfills_es5 = if has_android && any_path_bundle_targets_es5(project_root, config)
-    {
-        Some(prepare_polyfills_es5_asset())
-    } else {
-        None
-    };
+    // bundle opts into view.target = 'es5' or View plugins. Independent of
+    // needs_es5_runtime: an app with minSdk >= 24 can still contain a single
+    // such bundle whose HTML loads polyfills.es5.js.
+    let prepared_polyfills_es5 =
+        if has_android && any_path_bundle_loads_es5_polyfills(project_root, config) {
+            Some(prepare_polyfills_es5_asset())
+        } else {
+            None
+        };
 
     // Deduplicate resource destinations (iOS/macOS can share the same Swift package dir).
     let mut prepared_resource_roots: HashSet<PathBuf> = HashSet::new();

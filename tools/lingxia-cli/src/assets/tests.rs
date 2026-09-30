@@ -1,5 +1,5 @@
 use super::{
-    any_path_bundle_targets_es5, build_app_json_from_config, build_ui_json_from_config,
+    any_path_bundle_loads_es5_polyfills, build_app_json_from_config, build_ui_json_from_config,
     build_windows_ui_json_from_config, collect_view_target_warnings, prepare_app_ui_icons,
     validate_app_ui_svg_icon,
 };
@@ -1235,7 +1235,7 @@ mod polyfills_asset_decision {
             "muke",
             "export default { view: { target: 'es5' } };",
         );
-        assert!(any_path_bundle_targets_es5(
+        assert!(any_path_bundle_loads_es5_polyfills(
             temp.path(),
             &config_with_bundle("muke"),
         ));
@@ -1249,10 +1249,25 @@ mod polyfills_asset_decision {
             "muke",
             "export default { view: { target: \"ES5\" } };",
         );
-        assert!(any_path_bundle_targets_es5(
+        assert!(any_path_bundle_loads_es5_polyfills(
             temp.path(),
             &config_with_bundle("muke"),
         ));
+    }
+
+    #[test]
+    fn true_when_bundle_uses_view_plugins_without_es5_target() {
+        for config in [
+            "export default { view: { plugins: [] } };",
+            "export default { view: { target: 'es2020', plugins: [] } };",
+        ] {
+            let temp = TempDir::new().unwrap();
+            write_lxapp_config(temp.path(), "muke", config);
+            assert!(
+                any_path_bundle_loads_es5_polyfills(temp.path(), &config_with_bundle("muke")),
+                "{config}"
+            );
+        }
     }
 
     #[test]
@@ -1263,7 +1278,7 @@ mod polyfills_asset_decision {
             "muke",
             "export default { view: { target: 'es2015' } };",
         );
-        assert!(!any_path_bundle_targets_es5(
+        assert!(!any_path_bundle_loads_es5_polyfills(
             temp.path(),
             &config_with_bundle("muke"),
         ));
@@ -1274,7 +1289,7 @@ mod polyfills_asset_decision {
         // No lxapp.config.ts ⇒ default (modern) pipeline, no polyfills script.
         let temp = TempDir::new().unwrap();
         fs::create_dir_all(temp.path().join("muke")).unwrap();
-        assert!(!any_path_bundle_targets_es5(
+        assert!(!any_path_bundle_loads_es5_polyfills(
             temp.path(),
             &config_with_bundle("muke"),
         ));
@@ -1285,6 +1300,6 @@ mod polyfills_asset_decision {
         let temp = TempDir::new().unwrap();
         let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "muke");
         config.resources = None;
-        assert!(!any_path_bundle_targets_es5(temp.path(), &config));
+        assert!(!any_path_bundle_loads_es5_polyfills(temp.path(), &config));
     }
 }
