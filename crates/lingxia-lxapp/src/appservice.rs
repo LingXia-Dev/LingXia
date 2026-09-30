@@ -13,6 +13,40 @@ pub(crate) use js_runtime::event_bus;
 #[cfg(feature = "js-appservice")]
 pub(crate) use js_worker_pool::LxAppWorkers;
 
+/// Completes after Logic teardown has returned its dedicated worker to the pool.
+#[derive(Clone, Debug)]
+pub(crate) struct WorkerTermination {
+    result: tokio::sync::watch::Receiver<Option<Result<(), crate::LxAppError>>>,
+}
+
+impl WorkerTermination {
+    #[cfg(feature = "js-appservice")]
+    fn pending() -> (
+        tokio::sync::watch::Sender<Option<Result<(), crate::LxAppError>>>,
+        Self,
+    ) {
+        let (tx, result) = tokio::sync::watch::channel(None);
+        (tx, Self { result })
+    }
+
+    fn completed() -> Self {
+        Self {
+            result: tokio::sync::watch::channel(Some(Ok(()))).1,
+        }
+    }
+
+    pub(crate) async fn wait(mut self) -> Result<(), crate::LxAppError> {
+        loop {
+            if let Some(result) = self.result.borrow_and_update().clone() {
+                return result;
+            }
+            self.result.changed().await.map_err(|_| {
+                crate::LxAppError::Runtime("Worker termination completion channel closed".into())
+            })?;
+        }
+    }
+}
+
 #[cfg(not(feature = "js-appservice"))]
 pub(crate) mod event_bus {
     pub const BROWSER_TAB_CLOSED_EVENT: &str = "__lingxiaBrowserTabClosed";
@@ -80,8 +114,8 @@ mod no_js_runtime {
         pub fn terminate_app_svc(
             &self,
             _lxapp: Arc<crate::lxapp::LxApp>,
-        ) -> Result<(), LxAppError> {
-            Ok(())
+        ) -> Result<super::WorkerTermination, LxAppError> {
+            Ok(super::WorkerTermination::completed())
         }
 
         pub fn restart_app_svc(&self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {

@@ -273,7 +273,6 @@ impl LxAppWorkers {
                     .lock()
                     .unwrap()
                     .get(&k)
-                    .copied()
                     .map(WorkerAssignment::worker_id)
             }),
         };
@@ -342,7 +341,10 @@ impl LxAppWorkers {
     }
 
     /// Terminate a lxapp service for a specific instance.
-    pub fn terminate_app_svc(&self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {
+    pub fn terminate_app_svc(
+        &self,
+        lxapp: Arc<crate::lxapp::LxApp>,
+    ) -> Result<super::WorkerTermination, LxAppError> {
         lxapp.cancel_all_page_bridge_work();
         terminate_app_svc(
             lxapp,
@@ -364,8 +366,6 @@ impl LxAppWorkers {
         lxapp.cancel_all_page_bridge_work();
         restart_app_svc(lxapp, &self.sender, &self.instance_assignments)
     }
-
-    // ACK-based helpers removed; use LxApp state subscriptions instead.
 
     /// Create a new page service in an existing lxapp and notify when ready
     pub fn create_page_svc_with_ack(
