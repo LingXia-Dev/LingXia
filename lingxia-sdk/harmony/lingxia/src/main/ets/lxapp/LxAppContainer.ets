@@ -167,11 +167,8 @@ export struct LxAppContainer {
   private programmaticRefreshPending: boolean = false
   @State private enablePullDownRefresh: boolean = false
   @State private refreshingWebTag: string = ''
-  // How much of the finger's travel the content follows at the current pull offset.
-  @State private pullFollowRatio: number = 1
-  @State private pullPastTrigger: boolean = false
-  // Safety timer of the refresh in progress; at most one per container.
-  private refreshTimeoutId: number = -1
+  // How far the content is pulled down right now (vp).
+  @State private pullOffsetVp: number = 0
   @State private keyboardOffsetVp: number = 0
 
   private webViewUiCallback = (action: string, info: WebViewInfo) => {
@@ -330,7 +327,6 @@ export struct LxAppContainer {
 
     // Remove WebView UI callback when container is destroyed
     removeWebViewUiCallback(this.webViewUiCallback);
-    this.clearRefreshTimeout();
     this.stopKeyboardMonitor();
     hilog.info(DOMAIN, TAG, `Container destroyed for ${this.appId}:${this.path}`);
   }
@@ -1126,10 +1122,13 @@ export struct LxAppContainer {
    */
   @Builder
   RefreshHeaderBuilder() {
-    // The container no longer reserves the navbar area, so the pull header
-    // must clear the current page's navbar itself.
+    // Refresh hangs the header off the top of the web stack, which sits under
+    // the page's navbar; shift it by that inset so it shows in the strip the
+    // pull opens. A margin would only grow the header upward, out of sight.
     RefreshHeader({ isRefreshing: this.isRefreshing })
-      .margin({ top: this.getCurrentNavTop() } as Margin)
+      .offset({ y: this.getCurrentNavTop() })
+      // At rest the shifted header sits behind the navbar, which may be translucent.
+      .visibility(this.pullOffsetVp > 0 || this.isRefreshing ? Visibility.Visible : Visibility.Hidden)
   }
 
   /**
@@ -1154,16 +1153,15 @@ export struct LxAppContainer {
         this.isRefreshing = false
       }
     })
-    .pullDownRatio(this.enablePullDownRefresh ? this.pullFollowRatio : 0) // Disable pull effect if not enabled
+    // Rubber band: follow the finger at first, resist more the further the
+    // content is pulled, and never pass the maximum.
+    .pullDownRatio(this.enablePullDownRefresh ? Math.max(0, 1 - this.pullOffsetVp / PULL_MAX_VP) : 0)
     // The content holds at the header's height while refreshing, but only a
     // pull released past the trigger distance starts a refresh.
     .refreshOffset(PULL_HOLD_VP)
-    .pullToRefresh(this.pullPastTrigger || this.isRefreshing)
+    .pullToRefresh(this.pullOffsetVp >= PULL_TRIGGER_VP || this.isRefreshing)
     .onOffsetChange((offset: number) => {
-      // Rubber band: follow the finger at first, resist more the further the
-      // content is pulled, and never pass the maximum.
-      this.pullFollowRatio = Math.max(0, 1 - offset / PULL_MAX_VP)
-      this.pullPastTrigger = offset >= PULL_TRIGGER_VP
+      this.pullOffsetVp = offset
     })
     // The strip a pull opens above the web stack is this component's own
     // background: the stack inside is transparent, so without a colour here
@@ -1200,31 +1198,10 @@ export struct LxAppContainer {
    */
   private handlePullToRefresh(webTag: string): void {
     let _: boolean = onLxappEvent(this.appId, UiEventType.PullDownRefresh, webTag);
-
-    // Safety timeout: stop this refresh if the app never answers. It guards
-    // only the refresh it was armed for, so a later one keeps its own budget.
-    this.clearRefreshTimeout();
-    this.refreshTimeoutId = setTimeout(() => {
-      this.refreshTimeoutId = -1;
-      if (this.isRefreshing && this.refreshingWebTag === webTag) {
-        hilog.warn(DOMAIN, TAG, `Pull-to-refresh timed out for ${webTag}, stopping automatically`)
-        this.endRefresh();
-        // Restore the correct state for the current page
-        this.loadPullDownRefreshState(this.path);
-      }
-    }, 10000)
   }
 
-  private clearRefreshTimeout(): void {
-    if (this.refreshTimeoutId !== -1) {
-      clearTimeout(this.refreshTimeoutId);
-      this.refreshTimeoutId = -1;
-    }
-  }
-
-  /** End the refresh in progress; its indicator, identity, echo guard and timer go together. */
+  /** End the refresh in progress; its indicator, identity and echo guard go together. */
   private endRefresh(): void {
-    this.clearRefreshTimeout();
     this.isRefreshing = false
     this.programmaticRefreshPending = false
     this.refreshingWebTag = ''
