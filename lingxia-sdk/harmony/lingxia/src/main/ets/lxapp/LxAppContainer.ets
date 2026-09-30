@@ -153,6 +153,9 @@ export struct LxAppContainer {
   @State private fullscreenComponentId: string = ''
   // Pull-to-refresh state
   @State private isRefreshing: boolean = false
+  // A programmatic start already reported the refresh; `Refresh` echoes the
+  // bound `refreshing` flip through onRefreshing, which must not report it twice.
+  private programmaticRefreshPending: boolean = false
   @State private enablePullDownRefresh: boolean = false
   @State private refreshingPath: string = ''
   @State private keyboardOffsetVp: number = 0
@@ -1132,6 +1135,10 @@ export struct LxAppContainer {
       this.renderWebStackBuilder()
     }
     .onRefreshing(() => {
+      if (this.programmaticRefreshPending) {
+        this.programmaticRefreshPending = false
+        return
+      }
       if (this.enablePullDownRefresh) {
         this.refreshingPath = this.path;
         this.handlePullToRefresh()
@@ -1183,6 +1190,7 @@ export struct LxAppContainer {
       if (this.isRefreshing) {
         hilog.warn(DOMAIN, TAG, 'Pull-to-refresh timed out, stopping automatically')
         this.isRefreshing = false
+        this.programmaticRefreshPending = false
         this.refreshingPath = ''
         // Restore the correct state for the current page
         this.loadPullDownRefreshState(this.path);
@@ -1200,6 +1208,7 @@ export struct LxAppContainer {
       return;
     }
     this.isRefreshing = false
+    this.programmaticRefreshPending = false
     this.refreshingPath = ''
     // Restore the correct state for the current page
     this.loadPullDownRefreshState(this.path);
@@ -1229,6 +1238,7 @@ export struct LxAppContainer {
       }
 
       this.refreshingPath = targetPath || this.path;
+      this.programmaticRefreshPending = !this.isRefreshing
       this.isRefreshing = true
       this.handlePullToRefresh(targetPath)
     } else {
