@@ -309,6 +309,10 @@ Development machine: lxdev receives progress, results, and artifacts
   display that is already asleep, and holds an `NSProcessInfo` activity with
   `NSActivityIdleDisplaySleepDisabled`, which keeps it on; both end with the
   run. Neither unlocks the screen.
+- Display (HarmonyOS): each run holds the app window's keep-screen-on flag
+  (`setWindowKeepScreenOn`) and clears it when the run ends. An off screen
+  stops ArkUI building new pages (a relaunch waits until the screen is back)
+  and pauses media. It does not wake an off screen or unlock one.
 - Locked screen: the host's `screenLocked()` answers from
   `CGSessionCopyCurrentDictionary` (`CGSSessionScreenIsLocked`) on macOS and
   `undefined` elsewhere. The runtime asks before each spec; the first `true`

@@ -348,6 +348,9 @@ async fn execute_run(
     #[cfg(target_os = "macos")]
     let _display_awake =
         lingxia_webview::platform::apple::keep_display_awake("LingXia automation run");
+    // HarmonyOS stops building pages on an off screen: hold it on for the run.
+    #[cfg(all(target_os = "linux", target_env = "ohos"))]
+    let _display_awake = lingxia_webview::platform::harmony::keep_display_awake();
     raise_app_window().await;
     let pool = match rong {
         Some(pool) => pool,

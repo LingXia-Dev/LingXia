@@ -1,7 +1,9 @@
+mod display;
 pub(crate) mod schemehandler;
 pub mod tsfn;
 mod webview;
 
+pub use display::{DisplayAwake, keep_display_awake};
 pub(crate) use webview::apply_http_proxy;
 pub use webview::{
     WebViewInner, check_navigation_policy, complete_pending_screenshot_request,
