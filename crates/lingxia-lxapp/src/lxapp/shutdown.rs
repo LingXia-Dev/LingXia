@@ -272,8 +272,8 @@ mod tests {
         assert_ne!(replacement.session_id(), app.session_id());
     }
 
-    #[test]
-    fn recreate_prunes_the_replaced_instance_once_its_logic_acknowledges() {
+    #[tokio::test]
+    async fn recreate_prunes_the_replaced_instance_once_its_logic_acknowledges() {
         #[cfg(target_vendor = "apple")]
         let _host = crate::apple_host_stubs::headless_lifecycle();
         let manager = manager();
@@ -292,7 +292,10 @@ mod tests {
         let old = manager.ensure_lxapp(id.clone(), Channel::Release).unwrap();
         // The old Logic ACK is still pending when the replacement is created.
         old.logic_contexts.send_replace(1);
-        let replacement = manager.recreate_lxapp(id, Channel::Release).unwrap();
+        let replacement = manager
+            .recreate_lxapp(id, Channel::Release, old.session_id())
+            .await
+            .unwrap();
         assert!(tracked(&old));
         old.logic_contexts.send_replace(0);
         manager.ensure_lxapp(other, Channel::Release).unwrap();

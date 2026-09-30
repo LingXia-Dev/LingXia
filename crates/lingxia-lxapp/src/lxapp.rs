@@ -25,7 +25,7 @@ use self::page_chrome::{
     AppearancePreference, EffectivePageChromeLayout, LxAppAppearanceState, TabBarPresentation,
     TabBarVisibilityPreference, VisibilityPreference,
 };
-use crate::appservice::LxAppWorkers;
+use crate::appservice::{LxAppWorkers, WorkerTermination};
 use crate::error::LxAppError;
 use crate::page::config::{OrientationConfig, PageConfig};
 use crate::page::{PageInstance, PageInstanceId, ViewCallOptions};
@@ -702,22 +702,53 @@ impl LxApps {
 
     /// Recreate the LxApp instance for a given appid with a brand new instance.
     /// Used by restart to force a fresh session and runtime state.
-    fn recreate_lxapp(
+    async fn recreate_lxapp(
         &self,
         appid: String,
         release_type: Channel,
+        from_session: u64,
     ) -> Result<Arc<LxApp>, LxAppError> {
         let _admission = self.admission.enter(&appid)?;
-        let transition_appid = appid.clone();
-        self.with_session_transition(&transition_appid, move || {
+        let (old_app, session_class, termination) = self.with_session_transition(&appid, || {
+            let old_app = self
+                .lxapps
+                .get(&appid)
+                .map(|entry| entry.value().clone())
+                .filter(|app| app.session_id() == from_session)
+                .ok_or_else(|| {
+                    LxAppError::Runtime("Restart session is no longer current".into())
+                })?;
             let session_class = self.session_class_for(&appid);
+            let termination = {
+                let _open = old_app
+                    .presentation_open_lock
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                // A retained Arc must not revive the dying session while we await its worker.
+                old_app.session.retired.store(true, Ordering::SeqCst);
+                self.cancel_delayed_destroy(&appid);
+                old_app.shutdown_with_completion(true)?
+            };
+            Ok::<_, LxAppError>((old_app, session_class, termination))
+        })?;
 
-            // Close handshake is handled by restart state machine; avoid a second hide while recreating.
-            self.destroy_lxapp_with_options(&appid, true);
+        // UI close and a zero Logic context count can both precede worker release.
+        // Do not hold session/presentation locks while waiting for the actual handoff.
+        termination.wait().await?;
 
-            // Delegate to ensure_lxapp so pending downloaded updates are applied
-            // consistently (same path as cold-start navigation).
-            self.ensure_lxapp_with_session_class(appid, release_type, session_class)
+        self.with_session_transition(&appid, || {
+            if !self
+                .lxapps
+                .get(&appid)
+                .is_some_and(|current| Arc::ptr_eq(current.value(), &old_app))
+            {
+                return Err(LxAppError::Runtime(
+                    "Restart session was replaced or removed".into(),
+                ));
+            }
+            self.remove_from_stack(&appid);
+            self.lxapps.remove(&appid);
+            self.ensure_lxapp_with_session_class(appid.clone(), release_type, session_class)
         })
     }
 
@@ -1981,7 +2012,6 @@ impl LxApp {
         Ok(())
     }
 
-    // AppService state subscriptions removed for simplicity; rely on FIFO ordering.
     /// Shutdown this LxApp completely. Idempotent.
     ///
     /// Order:
@@ -1992,6 +2022,10 @@ impl LxApp {
     /// 5) Clear page stack and surfaces
     /// 6) Send TerminateAppSvc (receiver handles teardown)
     pub fn shutdown_with_options(&self, skip_hide: bool) -> Result<(), LxAppError> {
+        self.shutdown_with_completion(skip_hide).map(|_| ())
+    }
+
+    fn shutdown_with_completion(&self, skip_hide: bool) -> Result<WorkerTermination, LxAppError> {
         self.session.cancel();
         // Mark closing to suppress TerminatePage from PageInstance drops
         self.set_status(LxAppSessionStatus::Closing);
@@ -2053,11 +2087,11 @@ impl LxApp {
         }
         let _ = self.clear_page_stack();
         // Terminate AppService (receiver handles its own state)
-        let _ = self.executor.terminate_app_svc(self.clone_arc());
+        let termination = self.executor.terminate_app_svc(self.clone_arc());
         self.app_launch_dispatched.store(false, Ordering::SeqCst);
         self.launch_settled.send_replace(false);
         self.clear_open_region();
-        Ok(())
+        termination
     }
 
     pub fn shutdown(&self) -> Result<(), LxAppError> {
@@ -3862,7 +3896,10 @@ impl LxApp {
 
             // 1) Replace LxApp instance in manager with a brand new one for this appid.
             if let Some(manager) = get_lxapps_manager() {
-                let new_app = match manager.recreate_lxapp(appid.clone(), release_type) {
+                let new_app = match manager
+                    .recreate_lxapp(appid.clone(), release_type, from_session)
+                    .await
+                {
                     Ok(app) => app,
                     Err(e) => {
                         error!("Failed to recreate lxapp after restart: {}", e)
@@ -4116,8 +4153,8 @@ mod delayed_destroy_tests {
         manager.retire_lxapp(&appid).unwrap();
     }
 
-    #[test]
-    fn app_session_class_is_constructor_assigned_and_preserved_on_rebuild() {
+    #[tokio::test]
+    async fn app_session_class_is_constructor_assigned_and_preserved_on_rebuild() {
         let appid = format!("app.lingxia.class-test.{}", Uuid::new_v4());
         register_synthetic_lxapp(appid.clone());
 
@@ -4145,7 +4182,8 @@ mod delayed_destroy_tests {
         );
 
         let rebuilt = manager
-            .recreate_lxapp(appid.clone(), Channel::Release)
+            .recreate_lxapp(appid.clone(), Channel::Release, control.session_id())
+            .await
             .expect("rebuilt control app");
         assert!(!manager.session_transition_locks.contains_key(&appid));
         assert_eq!(rebuilt.app_session_class(), AppSessionClass::ControlApp);
@@ -4197,8 +4235,36 @@ mod delayed_destroy_tests {
         );
     }
 
-    #[test]
-    fn control_surface_is_not_home_and_keeps_its_class_on_ordinary_ensure() {
+    #[tokio::test]
+    async fn stale_restart_cannot_shutdown_a_replacement_session() {
+        let appid = format!("app.lingxia.stale-restart.{}", Uuid::new_v4());
+        register_synthetic_lxapp(appid.clone());
+        let runtime = class_test_runtime();
+        let manager = LxApps::new((*runtime).clone(), LxAppWorkers::init(1), 1);
+        let old = manager
+            .ensure_lxapp(appid.clone(), Channel::Release)
+            .unwrap();
+        let replacement = manager
+            .recreate_lxapp(appid.clone(), Channel::Release, old.session_id())
+            .await
+            .unwrap();
+        assert!(
+            manager
+                .recreate_lxapp(appid.clone(), Channel::Release, old.session_id())
+                .await
+                .is_err()
+        );
+        assert!(!replacement.session.is_cancelled());
+        assert!(!replacement.session.is_retired());
+        assert!(Arc::ptr_eq(
+            &replacement,
+            manager.lxapps.get(&appid).unwrap().value()
+        ));
+        assert!(!manager.session_transition_locks.contains_key(&appid));
+    }
+
+    #[tokio::test]
+    async fn control_surface_is_not_home_and_keeps_its_class_on_ordinary_ensure() {
         let appid = format!("app.lingxia.surface-test.{}", Uuid::new_v4());
         register_synthetic_lxapp(appid.clone());
 
@@ -4225,7 +4291,8 @@ mod delayed_destroy_tests {
             .expect("ordinary ensure keeps the live surface");
         assert!(Arc::ptr_eq(&ensured, &surface));
         let rebuilt = manager
-            .recreate_lxapp(appid, Channel::Release)
+            .recreate_lxapp(appid, Channel::Release, surface.session_id())
+            .await
             .expect("rebuilt surface");
         assert_eq!(rebuilt.app_session_class(), AppSessionClass::ControlSurface);
         assert!(!rebuilt.is_home_lxapp);

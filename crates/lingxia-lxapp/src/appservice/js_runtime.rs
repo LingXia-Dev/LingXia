@@ -1,3 +1,4 @@
+use super::WorkerTermination;
 use crate::bridge::{self, AppServiceCommand};
 use crate::error::LxAppError;
 #[cfg(feature = "process")]
@@ -178,16 +179,20 @@ pub(crate) enum ServiceMessage {
     },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub(crate) enum WorkerAssignment {
     Active(usize),
-    Terminating { worker_id: usize, token: u64 },
+    Terminating {
+        worker_id: usize,
+        token: u64,
+        completion: WorkerTermination,
+    },
 }
 
 impl WorkerAssignment {
-    pub(crate) fn worker_id(self) -> usize {
+    pub(crate) fn worker_id(&self) -> usize {
         match self {
-            Self::Active(worker_id) | Self::Terminating { worker_id, .. } => worker_id,
+            Self::Active(worker_id) | Self::Terminating { worker_id, .. } => *worker_id,
         }
     }
 }
@@ -1312,7 +1317,7 @@ fn reactivate_or_reuse_locked(
             "Cannot start a terminated LxApp session".into(),
         ));
     }
-    let Some(assignment) = assignments.get(&key).copied() else {
+    let Some(assignment) = assignments.get(&key).cloned() else {
         return Ok(false);
     };
 
@@ -1341,21 +1346,22 @@ pub(crate) fn terminate_app_svc(
     sender: &mpsc::Sender<ServiceMessage>,
     instance_assignments: &Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
     free_workers: &Arc<Mutex<VecDeque<usize>>>,
-) -> Result<(), LxAppError> {
+) -> Result<WorkerTermination, LxAppError> {
     let appid = lxapp_arc.appid.clone();
     let key = lxapp_arc.as_ref() as *const _ as usize;
+    let (done_tx, completion) = WorkerTermination::pending();
     let (worker_id, token, rx) = {
         let mut assignments = instance_assignments.lock().unwrap();
-        let Some(assignment) = assignments.get(&key).copied() else {
+        let Some(assignment) = assignments.get(&key).cloned() else {
             info!(
                 "No active worker mapping for app {}; skipping terminate",
                 appid
             );
-            return Ok(());
+            return Ok(WorkerTermination::completed());
         };
-        if matches!(assignment, WorkerAssignment::Terminating { .. }) {
+        if let WorkerAssignment::Terminating { completion, .. } = assignment {
             info!("Worker termination already pending for app {}", appid);
-            return Ok(());
+            return Ok(completion);
         }
 
         let worker_id = assignment.worker_id();
@@ -1368,7 +1374,14 @@ pub(crate) fn terminate_app_svc(
             worker_id,
             ack_tx: tx,
         })?;
-        assignments.insert(key, WorkerAssignment::Terminating { worker_id, token });
+        assignments.insert(
+            key,
+            WorkerAssignment::Terminating {
+                worker_id,
+                token,
+                completion: completion.clone(),
+            },
+        );
         (worker_id, token, rx)
     };
 
@@ -1380,12 +1393,13 @@ pub(crate) fn terminate_app_svc(
         worker_id,
         token,
         rx,
+        done_tx,
         assignments,
         free_workers,
         Duration::from_secs(3),
     ));
 
-    Ok(())
+    Ok(completion)
 }
 
 async fn await_termination_ack(
@@ -1394,6 +1408,7 @@ async fn await_termination_ack(
     worker_id: usize,
     token: u64,
     mut rx: oneshot::Receiver<()>,
+    done_tx: tokio::sync::watch::Sender<Option<Result<(), LxAppError>>>,
     assignments: Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
     free_workers: Arc<Mutex<VecDeque<usize>>>,
     ack_timeout: Duration,
@@ -1401,11 +1416,18 @@ async fn await_termination_ack(
     match tokio::time::timeout(ack_timeout, &mut rx).await {
         Ok(Ok(())) => {
             info!("Terminate ACK received").with_appid(appid.clone());
-            let released =
-                take_terminated_assignment(&mut assignments.lock().unwrap(), key, worker_id, token);
+            let mut assignments = assignments.lock().unwrap();
+            let released = take_terminated_assignment(&mut assignments, key, worker_id, token);
             if let Some(worker_id) = released {
                 free_workers.lock().unwrap().push_back(worker_id);
                 info!("Released dedicated worker {} from app {}", worker_id, appid);
+                // Wake restart only after the worker can be assigned again. Keep
+                // the mapping lock until then, including for repeated shutdowns.
+                done_tx.send_replace(Some(Ok(())));
+            } else {
+                done_tx.send_replace(Some(Err(LxAppError::Runtime(
+                    "Worker termination was superseded".into(),
+                ))));
             }
         }
         Ok(Err(_)) => {
@@ -1415,10 +1437,16 @@ async fn await_termination_ack(
                 error!("Terminate ACK channel closed; quarantining worker {worker_id}")
                     .with_appid(appid);
             }
+            done_tx.send_replace(Some(Err(LxAppError::Runtime(
+                "Worker termination ACK channel closed".into(),
+            ))));
         }
         Err(_) => {
             let quarantined =
                 take_terminated_assignment(&mut assignments.lock().unwrap(), key, worker_id, token);
+            done_tx.send_replace(Some(Err(LxAppError::Runtime(
+                "Worker termination ACK timed out".into(),
+            ))));
             if quarantined.is_none() {
                 return;
             }
@@ -1451,9 +1479,13 @@ fn take_terminated_assignment(
     worker_id: usize,
     token: u64,
 ) -> Option<usize> {
-    let expected = WorkerAssignment::Terminating { worker_id, token };
-    if assignments.get(&key) == Some(&expected) {
-        assignments.remove(&key).map(WorkerAssignment::worker_id)
+    if matches!(assignments.get(&key), Some(WorkerAssignment::Terminating {
+        worker_id: assigned_worker, token: assigned_token, ..
+    }) if *assigned_worker == worker_id && *assigned_token == token)
+    {
+        assignments
+            .remove(&key)
+            .map(|assignment| assignment.worker_id())
     } else {
         None
     }
@@ -1467,7 +1499,7 @@ pub(crate) fn restart_app_svc(
     let _creation = crate::device::logic_creation_guard()?;
     let key = lxapp.as_ref() as *const _ as usize;
     let mut assignments = instance_assignments.lock().unwrap();
-    let Some(assignment) = assignments.get(&key).copied() else {
+    let Some(assignment) = assignments.get(&key).cloned() else {
         return Err(LxAppError::Runtime(format!(
             "No active worker mapping for app {}",
             lxapp.appid
@@ -1518,7 +1550,9 @@ fn release_logic_context(lxapp: &LxApp) {
 
 #[cfg(test)]
 mod worker_assignment_tests {
-    use super::{WorkerAssignment, await_termination_ack, take_terminated_assignment};
+    use super::{
+        WorkerAssignment, WorkerTermination, await_termination_ack, take_terminated_assignment,
+    };
     use std::collections::{HashMap, VecDeque};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
@@ -1922,7 +1956,10 @@ mod worker_assignment_tests {
         let mut assignments = HashMap::from([(7, WorkerAssignment::Active(3))]);
 
         assert_eq!(take_terminated_assignment(&mut assignments, 7, 3, 11), None);
-        assert_eq!(assignments.get(&7), Some(&WorkerAssignment::Active(3)));
+        assert!(matches!(
+            assignments.get(&7),
+            Some(WorkerAssignment::Active(3))
+        ));
     }
 
     #[test]
@@ -1932,6 +1969,7 @@ mod worker_assignment_tests {
             WorkerAssignment::Terminating {
                 worker_id: 3,
                 token: 12,
+                completion: WorkerTermination::completed(),
             },
         )]);
 
@@ -1945,11 +1983,13 @@ mod worker_assignment_tests {
 
     #[tokio::test]
     async fn timeout_quarantines_worker_until_late_ack() {
+        let (done_tx, completion) = WorkerTermination::pending();
         let assignments = Arc::new(Mutex::new(HashMap::from([(
             7,
             WorkerAssignment::Terminating {
                 worker_id: 3,
                 token: 12,
+                completion: completion.clone(),
             },
         )])));
         let free_workers = Arc::new(Mutex::new(VecDeque::new()));
@@ -1961,6 +2001,7 @@ mod worker_assignment_tests {
             3,
             12,
             rx,
+            done_tx,
             assignments.clone(),
             free_workers.clone(),
             Duration::from_millis(1),
@@ -1979,19 +2020,131 @@ mod worker_assignment_tests {
 
         assert!(!assignments.lock().unwrap().contains_key(&7));
         assert!(free_workers.lock().unwrap().is_empty());
+        assert!(completion.clone().wait().await.is_err());
 
         tx.send(()).unwrap();
         wait.await.unwrap();
+        assert!(
+            completion.wait().await.is_err(),
+            "late ACK must not revive a timed-out restart"
+        );
         assert_eq!(free_workers.lock().unwrap().pop_front(), Some(3));
     }
 
     #[tokio::test]
-    async fn acknowledged_termination_releases_worker_immediately() {
+    async fn single_worker_restart_waits_for_release_and_joins_pending_termination() {
+        use std::future::Future;
+        let root = tempfile::tempdir().unwrap();
+        let platform = Arc::new(
+            lingxia_platform::Platform::new(
+                root.path().join("data").display().to_string(),
+                root.path().join("cache").display().to_string(),
+                "en-US".to_string(),
+            )
+            .unwrap(),
+        );
+        let workers = crate::appservice::LxAppWorkers::init(1);
+        let appid = format!("app.lingxia.worker-restart.{}", uuid::Uuid::new_v4());
+        crate::lxapp::register_synthetic_lxapp(appid.clone());
+        let make_app = || {
+            let app = Arc::new(
+                crate::LxApp::new_with_session_class_for_test(
+                    appid.clone(),
+                    platform.clone(),
+                    workers.clone(),
+                    crate::lxapp::AppSessionClass::StandardApp,
+                )
+                .unwrap(),
+            );
+            app.bind_arc();
+            app
+        };
+        let old = make_app();
+        let replacement = make_app();
+        let assignments = Arc::new(Mutex::new(HashMap::new()));
+        let free_workers = Arc::new(Mutex::new(VecDeque::from([0])));
+        let (sender, receiver) = std::sync::mpsc::channel();
+        super::create_app_svc(old.clone(), &sender, &assignments, &free_workers).unwrap();
+        assert!(matches!(
+            receiver.recv().unwrap(),
+            super::ServiceMessage::CreateAppSvc { .. }
+        ));
+
+        let completion =
+            super::terminate_app_svc(old.clone(), &sender, &assignments, &free_workers).unwrap();
+        let joined = super::terminate_app_svc(old, &sender, &assignments, &free_workers).unwrap();
+        let super::ServiceMessage::TerminateAppSvc { ack_tx, .. } = receiver.recv().unwrap() else {
+            panic!("expected termination request");
+        };
+        assert!(
+            receiver.try_recv().is_err(),
+            "repeated shutdown must join the same termination"
+        );
+        let wait = completion.wait();
+        tokio::pin!(wait);
+        std::future::poll_fn(|cx| {
+            assert!(wait.as_mut().poll(cx).is_pending());
+            std::task::Poll::Ready(())
+        })
+        .await;
+        assert!(
+            super::create_app_svc(replacement.clone(), &sender, &assignments, &free_workers)
+                .is_err()
+        );
+
+        ack_tx.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(1), wait)
+            .await
+            .unwrap()
+            .unwrap();
+        joined.wait().await.unwrap();
+        super::create_app_svc(replacement, &sender, &assignments, &free_workers).unwrap();
+        assert!(matches!(
+            receiver.recv().unwrap(),
+            super::ServiceMessage::CreateAppSvc { .. }
+        ));
+        assert!(free_workers.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn closed_ack_fails_restart_without_releasing_worker() {
+        let (done_tx, completion) = WorkerTermination::pending();
         let assignments = Arc::new(Mutex::new(HashMap::from([(
             7,
             WorkerAssignment::Terminating {
                 worker_id: 3,
                 token: 12,
+                completion: completion.clone(),
+            },
+        )])));
+        let free_workers = Arc::new(Mutex::new(VecDeque::new()));
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        drop(tx);
+        await_termination_ack(
+            "test.app".into(),
+            7,
+            3,
+            12,
+            rx,
+            done_tx,
+            assignments,
+            free_workers.clone(),
+            Duration::from_secs(1),
+        )
+        .await;
+        assert!(completion.wait().await.is_err());
+        assert!(free_workers.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn acknowledged_termination_releases_worker_immediately() {
+        let (done_tx, completion) = WorkerTermination::pending();
+        let assignments = Arc::new(Mutex::new(HashMap::from([(
+            7,
+            WorkerAssignment::Terminating {
+                worker_id: 3,
+                token: 12,
+                completion: completion.clone(),
             },
         )])));
         let free_workers = Arc::new(Mutex::new(VecDeque::new()));
@@ -2004,12 +2157,14 @@ mod worker_assignment_tests {
             3,
             12,
             rx,
+            done_tx,
             assignments.clone(),
             free_workers.clone(),
             Duration::from_secs(1),
         )
         .await;
 
+        completion.wait().await.unwrap();
         assert!(!assignments.lock().unwrap().contains_key(&7));
         assert_eq!(free_workers.lock().unwrap().pop_front(), Some(3));
     }
