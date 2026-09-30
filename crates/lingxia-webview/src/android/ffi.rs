@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 // Import from webview.rs
-use crate::android::webview::{WEBVIEW_SENDERS, WebViewInner, complete_pending_eval_request};
+use crate::android::webview::{WebViewInner, complete_pending_eval_request};
 
 static BROWSER_CONTROL_API_BELOW_23: AtomicU64 = AtomicU64::new(0);
 static BROWSER_CONTROL_MESSAGE_PORT_UNAVAILABLE: AtomicU64 = AtomicU64::new(0);
@@ -1234,108 +1234,119 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
             None
         };
 
-        // Retrieve the sender from our global map and send the WebView instance
-        if let Some(senders) = WEBVIEW_SENDERS.get() {
-            let webtag = WebTag::new(&appid, &path, session_id);
-            let mut matched_pending = false;
+        let webtag = WebTag::new(&appid, &path, session_id);
+        let Some(pending) = crate::android_create::take(request_id as u64) else {
+            log::warn!(
+                "notifyWebViewReady without pending sender for {} request={}",
+                webtag.as_str(),
+                request_id
+            );
+            return Ok(());
+        };
+        // Create global reference to the passed WebView object
+        match env.new_global_ref(webview_obj) {
+            Ok(global_ref) => {
+                // Create WebViewInner from the Java object
+                let webview_inner = WebViewInner::from_java_object(
+                    global_ref,
+                    webtag.clone(),
+                    pending.sender.native_view_id(),
+                );
 
-            if let Ok(mut senders_map) = senders.lock()
-                && let Some(pending) = senders_map.remove(&(request_id as u64))
-            {
-                matched_pending = true;
-                // Create global reference to the passed WebView object
-                match env.new_global_ref(webview_obj) {
-                    Ok(global_ref) => {
-                        // Create WebViewInner from the Java object
-                        let webview_inner = WebViewInner::from_java_object(
-                            global_ref,
-                            webtag.clone(),
-                            pending.sender.native_view_id(),
-                        );
+                // Create WebView wrapper
+                let webview = Arc::new(crate::WebView::new(
+                    webview_inner,
+                    pending.effective_options.clone(),
+                    pending.sender.native_view_id(),
+                ));
 
-                        // Create WebView wrapper
-                        let webview = Arc::new(crate::WebView::new(
-                            webview_inner,
-                            pending.effective_options.clone(),
-                            pending.sender.native_view_id(),
-                        ));
-
-                        // A same-route relaunch can destroy generation N while
-                        // Android is still preparing it, then request N+1. The
-                        // request id keeps the callbacks distinct; discard N
-                        // instead of registering a zombie under N+1's tag.
-                        if pending.sender.is_destroyed() {
-                            log::info!(
-                                "Android WebView request {} for {} was destroyed during creation; discarding",
-                                request_id,
-                                webtag.as_str()
-                            );
-                            drop(webview);
-                            return Ok(());
-                        }
-
-                        // Bind Java callbacks to the native instance before it
-                        // enters the reusable WebTag registry. A late callback
-                        // from a replaced Java WebView must not resolve only by
-                        // appid/path/session into its successor.
-                        if let Err(error) = env.call_method(
-                            webview.get_java_webview().as_obj(),
-                            jni_str!("setNativeViewId"),
-                            jni_sig!("(J)V"),
-                            &[JValue::Long(webview.native_view_id().raw() as i64)],
-                        ) {
-                            pending.sender.fail(
-                                WebViewCreateStage::Requested,
-                                WebViewError::WebView(format!(
-                                    "Failed to bind Android WebView native identity: {error:?}"
-                                )),
-                            );
-                            return Ok(());
-                        }
-
-                        if !register_android_webview_if_current(webview.clone(), &pending.sender) {
-                            log::info!(
-                                "Android WebView request {} for {} is no longer current; discarding",
-                                request_id,
-                                webtag.as_str()
-                            );
-                            pending.sender.cancel_superseded();
-                            drop(webview);
-                            return Ok(());
-                        }
-
-                        // Destruction can race registry insertion. Re-check so
-                        // this generation cannot block the next same-tag create.
-                        if pending.sender.is_destroyed() {
-                            crate::webview::destroy_webview_if_matches(&webtag, &webview);
-                            return Ok(());
-                        }
-
-                        // Send the WebView instance through the channel
-                        pending.sender.succeed(webview);
-                    }
-                    Err(e) => {
-                        pending.sender.fail(
-                            WebViewCreateStage::Requested,
-                            WebViewError::WebView(format!("Failed to create global ref: {:?}", e)),
-                        );
-                    }
+                // A same-route relaunch can destroy generation N while
+                // Android is still preparing it, then request N+1. The
+                // request id keeps the callbacks distinct; discard N
+                // instead of registering a zombie under N+1's tag.
+                if pending.sender.is_destroyed() {
+                    log::info!(
+                        "Android WebView request {} for {} was destroyed during creation; discarding",
+                        request_id,
+                        webtag.as_str()
+                    );
+                    drop(webview);
+                    return Ok(());
                 }
-            }
 
-            if !matched_pending {
-                log::warn!(
-                    "notifyWebViewReady without pending sender for {} request={}",
-                    webtag.as_str(),
-                    request_id
+                // Bind Java callbacks to the native instance before it
+                // enters the reusable WebTag registry. A late callback
+                // from a replaced Java WebView must not resolve only by
+                // appid/path/session into its successor.
+                if let Err(error) = env.call_method(
+                    webview.get_java_webview().as_obj(),
+                    jni_str!("setNativeViewId"),
+                    jni_sig!("(J)V"),
+                    &[JValue::Long(webview.native_view_id().raw() as i64)],
+                ) {
+                    pending.sender.fail(
+                        WebViewCreateStage::Requested,
+                        WebViewError::WebView(format!(
+                            "Failed to bind Android WebView native identity: {error:?}"
+                        )),
+                    );
+                    return Ok(());
+                }
+
+                if !register_android_webview_if_current(webview.clone(), &pending.sender) {
+                    log::info!(
+                        "Android WebView request {} for {} is no longer current; discarding",
+                        request_id,
+                        webtag.as_str()
+                    );
+                    pending.sender.cancel_superseded();
+                    drop(webview);
+                    return Ok(());
+                }
+
+                // Destruction can race registry insertion. Re-check so
+                // this generation cannot block the next same-tag create.
+                if pending.sender.is_destroyed() {
+                    crate::webview::destroy_webview_if_matches(&webtag, &webview);
+                    return Ok(());
+                }
+
+                // Send the WebView instance through the channel
+                pending.sender.succeed(webview);
+            }
+            Err(e) => {
+                pending.sender.fail(
+                    WebViewCreateStage::Requested,
+                    WebViewError::WebView(format!("Failed to create global ref: {:?}", e)),
                 );
             }
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Java could not create the WebView for `request_id`; fail the waiting session.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewFailed(
+    mut env: EnvUnowned,
+    _class: JObject,
+    request_id: jlong,
+    message: JString,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let message: String = if message.is_null() {
+            "unknown error".to_string()
         } else {
-            log::warn!(
-                "notifyWebViewReady called before sender map initialization for {}:{}",
-                appid,
-                path
-            );
+            message.try_to_string(env)?
+        };
+        if crate::android_create::fail(
+            request_id as u64,
+            format!("Android WebView creation failed: {message}"),
+        ) {
+            log::error!("Android WebView request {request_id} failed: {message}");
+        } else {
+            log::warn!("notifyWebViewFailed without pending sender for request={request_id}");
         }
         Ok(())
     })

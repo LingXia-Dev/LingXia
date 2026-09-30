@@ -25,6 +25,7 @@ import android.webkit.WebViewClient;
 import java.io.ByteArrayOutputStream;
 import androidx.webkit.ProxyConfig;
 import androidx.webkit.ProxyController;
+import androidx.webkit.Profile;
 import androidx.webkit.ProfileStore;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
@@ -224,7 +225,8 @@ public class LingXiaWebView extends WebView {
 
     /**
      * Request WebView creation for Rust layer
-     * Creates WebView asynchronously and notifies Rust via notifyWebViewReady callback
+     * Creates WebView asynchronously and answers Rust exactly once, via
+     * notifyWebViewReady or notifyWebViewFailed
      */
     public static void requestWebView(final String appId, final String path, final long sessionId, final long requestId, final String optionsToken) {
         // WebView creation must happen on the main thread
@@ -254,14 +256,29 @@ public class LingXiaWebView extends WebView {
                     final LingXiaWebView createdWebView = webView;
                     createdWebView.applyCreateOptionsToken(optionsToken);
                     createdWebView.prepareDataMode(() -> {
-                        createdWebView.initializeWebView(appId, path, sessionId);
-                        notifyWebViewReady(appId, path, sessionId, requestId, createdWebView);
-                    });
+                        try {
+                            createdWebView.initializeWebView(appId, path, sessionId);
+                            notifyWebViewReady(appId, path, sessionId, requestId, createdWebView);
+                        } catch (Throwable e) {
+                            failWebViewRequest(requestId, e);
+                        }
+                    }, e -> failWebViewRequest(requestId, e));
                 } catch (Throwable e) {
-                    Log.e(TAG, "Failed to create WebView: " + e.getMessage(), e);
+                    failWebViewRequest(requestId, e);
                 }
             }
         });
+    }
+
+    // Rust parks the request until it is answered; an unreported failure
+    // would leave the page waiting for its WebView forever.
+    private static void failWebViewRequest(long requestId, Throwable error) {
+        Log.e(TAG, "Failed to create WebView: " + error.getMessage(), error);
+        try {
+            notifyWebViewFailed(requestId, String.valueOf(error));
+        } catch (Throwable t) {
+            Log.e(TAG, "Failed to report WebView creation failure", t);
+        }
     }
 
     /**
@@ -491,7 +508,7 @@ public class LingXiaWebView extends WebView {
         );
     }
 
-    private void prepareDataMode(Runnable continuation) {
+    private void prepareDataMode(Runnable continuation, ValueCallback<Throwable> onError) {
         if (!"ephemeral".equals(this.createOptions.dataMode)) {
             continuation.run();
             return;
@@ -503,8 +520,13 @@ public class LingXiaWebView extends WebView {
             this.usesGlobalEphemeralFallback = true;
             CookieManager cookieManager = CookieManager.getInstance();
             cookieManager.removeAllCookies(value -> {
-                cookieManager.flush();
-                WebStorage.getInstance().deleteAllData();
+                try {
+                    cookieManager.flush();
+                    WebStorage.getInstance().deleteAllData();
+                } catch (Throwable e) {
+                    onError.onReceiveValue(e);
+                    return;
+                }
                 new Handler(Looper.getMainLooper()).post(continuation);
             });
             return;
@@ -695,6 +717,37 @@ public class LingXiaWebView extends WebView {
                     return;
                 }
                 settings.setUserAgentString(useDefault ? null : userAgent);
+            }
+        });
+    }
+
+    /**
+     * Clear the website data of the profile this WebView uses: HTTP cache,
+     * cookies, and DOM/web storage. An ephemeral WebView clears only its own
+     * profile; every other WebView shares the default one.
+     */
+    public void clearBrowsingData() {
+        ensureMainThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    clearCache(true);
+                    final CookieManager cookies;
+                    final WebStorage storage;
+                    if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+                        Profile profile = WebViewCompat.getProfile(LingXiaWebView.this);
+                        cookies = profile.getCookieManager();
+                        storage = profile.getWebStorage();
+                    } else {
+                        cookies = CookieManager.getInstance();
+                        storage = WebStorage.getInstance();
+                    }
+                    cookies.removeAllCookies(value -> cookies.flush());
+                    storage.deleteAllData();
+                    Log.i(TAG, "Cleared browsing data for appId=" + appId + ", path=" + currentPath);
+                } catch (Throwable t) {
+                    Log.e(TAG, "Failed to clear browsing data", t);
+                }
             }
         });
     }
@@ -1523,6 +1576,12 @@ public class LingXiaWebView extends WebView {
         return sessionId;
     }
 
+    /** The tag the runtime knows this WebView by: appId:path[#session]. */
+    public String getWebTag() {
+        String tag = appId + ":" + currentPath;
+        return sessionId > 0L ? tag + "#" + sessionId : tag;
+    }
+
     public boolean isPageLoaded() {
         return pageLoaded;
     }
@@ -1778,4 +1837,5 @@ public class LingXiaWebView extends WebView {
     );
     native boolean dispatchDocumentMessage(long requestId);
     native static void notifyWebViewReady(String appId, String path, long sessionId, long requestId, Object webView);
+    native static void notifyWebViewFailed(long requestId, String message);
 }

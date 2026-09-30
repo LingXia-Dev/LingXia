@@ -4,7 +4,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use crate::input_helper::{build_async_eval_body, new_eval_token, parse_wrapped_eval_result};
 use crate::webview::{
     EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, WebTag,
-    WebViewCreateSender, WebViewCreateStage,
+    WebViewCreateSender,
 };
 use crate::{
     DocumentGeneration, DocumentOutboundGate, LoadDataRequest, NativeWebViewId, UserAgentOverride,
@@ -30,13 +30,6 @@ fn encode_options_token(options: &EffectiveWebViewCreateOptions) -> Result<Strin
     Ok(URL_SAFE_NO_PAD.encode(json))
 }
 
-// Type alias for WebView senders map to reduce complexity
-pub(crate) struct PendingWebViewCreation {
-    pub sender: WebViewCreateSender,
-    pub effective_options: EffectiveWebViewCreateOptions,
-}
-
-type WebViewSendersMap = Arc<Mutex<HashMap<u64, PendingWebViewCreation>>>;
 type PendingEvalRequests = Arc<Mutex<HashMap<u64, PendingEvalEntry>>>;
 type PendingScreenshotRequests = Arc<Mutex<HashMap<u64, PendingScreenshotEntry>>>;
 type PendingDocumentMessages = Arc<Mutex<HashMap<u64, PendingDocumentMessage>>>;
@@ -71,9 +64,6 @@ pub(crate) struct PendingDocumentMessage {
     pub(crate) message: String,
 }
 
-// Global map to store senders for WebView creation
-pub(crate) static WEBVIEW_SENDERS: OnceLock<WebViewSendersMap> = OnceLock::new();
-static NEXT_CREATE_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 static PENDING_EVAL_REQUESTS: OnceLock<PendingEvalRequests> = OnceLock::new();
 static PENDING_SCREENSHOT_REQUESTS: OnceLock<PendingScreenshotRequests> = OnceLock::new();
 static NEXT_EVAL_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
@@ -254,30 +244,9 @@ impl WebViewInner {
         effective_options: EffectiveWebViewCreateOptions,
         sender: WebViewCreateSender,
     ) {
-        // Store sender in global map for callback
-        let request_id = NEXT_CREATE_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
-        let senders = WEBVIEW_SENDERS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())));
-
-        if let Ok(mut senders_map) = senders.lock() {
-            senders_map.insert(
-                request_id,
-                PendingWebViewCreation {
-                    sender,
-                    effective_options: effective_options.clone(),
-                },
-            );
-        }
-
-        // Helper function to remove sender and send error
+        let request_id = crate::android_create::register(sender, effective_options.clone());
         let remove_and_send_error = |error_msg: String| {
-            if let Ok(mut senders_map) = senders.lock()
-                && let Some(pending) = senders_map.remove(&request_id)
-            {
-                pending.sender.fail(
-                    WebViewCreateStage::Requested,
-                    WebViewError::WebView(error_msg),
-                );
-            }
+            crate::android_create::fail(request_id, error_msg);
         };
 
         let appid_owned = appid.to_string();
