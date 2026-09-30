@@ -6,6 +6,7 @@ use crate::appservice::js_runtime::{
 use crate::lifecycle::AppServiceEvent;
 use crate::lifecycle::PageLifecycleEvent;
 use crate::{LxAppError, debug, error, info};
+use std::time::Duration;
 
 use rong::{JSContext, Rong, RongJS, TaskHandle, TaskMessage, Worker};
 use std::collections::{HashMap, VecDeque};
@@ -27,6 +28,8 @@ pub struct LxAppWorkers {
     instance_assignments: Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
     /// Available worker IDs for new mini-apps (FIFO)
     free_workers: Arc<Mutex<VecDeque<usize>>>,
+    /// How long a terminating Logic may take to acknowledge before its worker is quarantined.
+    terminate_ack_timeout: Duration,
 }
 
 /// Whether a message can arrive after its lxapp's worker is gone without that
@@ -47,13 +50,16 @@ fn tolerates_missing_worker(message: &ServiceMessage) -> bool {
 impl LxAppWorkers {
     /// Lets lifecycle tests control when the worker acknowledges queued messages.
     #[cfg(test)]
-    pub(crate) fn manual_for_test() -> (Arc<Self>, mpsc::Receiver<ServiceMessage>) {
+    pub(crate) fn manual_for_test(
+        terminate_ack_timeout: Duration,
+    ) -> (Arc<Self>, mpsc::Receiver<ServiceMessage>) {
         let (sender, receiver) = mpsc::channel();
         (
             Arc::new(Self {
                 sender,
                 instance_assignments: Arc::new(Mutex::new(HashMap::new())),
                 free_workers: Arc::new(Mutex::new(VecDeque::from([0]))),
+                terminate_ack_timeout,
             }),
             receiver,
         )
@@ -101,6 +107,7 @@ impl LxAppWorkers {
             sender,
             instance_assignments,
             free_workers,
+            terminate_ack_timeout: Duration::from_secs(3),
         })
     }
 
@@ -365,6 +372,7 @@ impl LxAppWorkers {
             &self.sender,
             &self.instance_assignments,
             &self.free_workers,
+            self.terminate_ack_timeout,
         )
     }
 

@@ -12,14 +12,18 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
+        Self::with_ack_timeout(Duration::from_secs(3))
+    }
+
+    fn with_ack_timeout(ack_timeout: Duration) -> Self {
         let root = tempfile::tempdir().unwrap();
         let runtime = Platform::new(
             root.path().join("data").display().to_string(),
             root.path().join("cache").display().to_string(),
-            "en-US".into(),
+            "en-US".to_string(),
         )
         .unwrap();
-        let (workers, messages) = LxAppWorkers::manual_for_test();
+        let (workers, messages) = LxAppWorkers::manual_for_test(ack_timeout);
         let manager = LxApps::new(runtime, workers.clone(), 1);
         let appid = format!("app.lingxia.restart.{}", Uuid::new_v4());
         register_synthetic_lxapp(&appid);
@@ -64,11 +68,24 @@ impl Fixture {
     }
 }
 
-fn assert_retired_removed(manager: &LxApps, old: &LxApp) {
+fn assert_replaced(manager: &LxApps, old: &LxApp, replacement: &Arc<LxApp>) {
     assert!(old.session.is_retired());
-    assert!(!manager.lxapps.contains_key(&old.appid));
-    assert!(!manager.lxapp_stack.lock().unwrap().contains(&old.appid));
+    assert_ne!(replacement.session_id(), old.session_id());
+    assert!(!replacement.session.is_retired());
+    assert!(Arc::ptr_eq(
+        manager.lxapps.get(&old.appid).unwrap().value(),
+        replacement
+    ));
     assert!(!manager.session_transition_locks.contains_key(&old.appid));
+    replacement.config().logic = Some(LxAppLogicEntry::Enabled(true));
+}
+
+fn tracked(manager: &LxApps, app: &LxApp) -> bool {
+    manager
+        .instances
+        .lock()
+        .unwrap()
+        .contains_key(&app.session_id())
 }
 
 #[tokio::test]
@@ -130,7 +147,7 @@ async fn recreate_waits_for_worker_release_and_joins_pending_termination() {
 }
 
 #[tokio::test]
-async fn failed_restart_removes_retired_instance_when_ack_closes() {
+async fn restart_still_replaces_the_session_when_ack_closes() {
     let f = Fixture::new();
     let restart =
         f.manager
@@ -138,14 +155,11 @@ async fn failed_restart_removes_retired_instance_when_ack_closes() {
     tokio::pin!(restart);
     assert!(futures::poll!(restart.as_mut()).is_pending());
     drop(f.take_ack());
-    let error = time::timeout(Duration::from_secs(1), restart)
+    let replacement = time::timeout(Duration::from_secs(1), restart)
         .await
         .unwrap()
-        .err()
         .unwrap();
-    assert!(error.to_string().contains("ACK channel closed"));
-    assert_retired_removed(&f.manager, &f.old);
-    let replacement = f.ensure_replacement();
+    assert_replaced(&f.manager, &f.old, &replacement);
     assert!(
         matches!(
             f.workers.create_app_svc(replacement),
@@ -156,26 +170,26 @@ async fn failed_restart_removes_retired_instance_when_ack_closes() {
 }
 
 #[tokio::test]
-async fn failed_restart_can_reopen_after_timeout_and_late_ack() {
-    let f = Fixture::new();
+async fn restart_replaces_a_hung_session_and_prunes_it_after_a_late_ack() {
+    let f = Fixture::with_ack_timeout(Duration::from_millis(50));
     let restart =
         f.manager
             .recreate_lxapp(f.old.appid.clone(), Channel::Release, f.old.session_id());
     tokio::pin!(restart);
     assert!(futures::poll!(restart.as_mut()).is_pending());
     let ack = f.take_ack();
-    let error = time::timeout(Duration::from_secs(10), restart)
+    let replacement = time::timeout(Duration::from_secs(5), restart)
         .await
         .unwrap()
-        .err()
         .unwrap();
-    assert!(error.to_string().contains("ACK timed out"));
-    assert_retired_removed(&f.manager, &f.old);
-    let replacement = f.ensure_replacement();
+    assert_replaced(&f.manager, &f.old, &replacement);
     assert!(matches!(
         f.workers.create_app_svc(replacement.clone()),
         Err(LxAppError::ResourceExhausted(_))
     ));
+    // The hung Logic is still live, so a shutdown drain must keep seeing it.
+    f.manager.track_instance(&replacement);
+    assert!(tracked(&f.manager, &f.old));
 
     f.old.logic_contexts.send_replace(0);
     ack.send(()).unwrap();
@@ -190,10 +204,16 @@ async fn failed_restart_can_reopen_after_timeout_and_late_ack() {
     })
     .await
     .expect("late ACK must make a later open possible");
+    f.manager.track_instance(&replacement);
+    assert!(
+        !tracked(&f.manager, &f.old),
+        "a replaced instance must not outlive its ACK"
+    );
+    assert!(tracked(&f.manager, &replacement));
 }
 
 #[tokio::test]
-async fn failed_restart_removes_retired_instance_when_dispatch_fails() {
+async fn restart_still_replaces_the_session_when_dispatch_fails() {
     let Fixture {
         manager,
         old,
@@ -202,22 +222,47 @@ async fn failed_restart_removes_retired_instance_when_dispatch_fails() {
         ..
     } = Fixture::new();
     drop(messages);
-    let error = manager
+    let replacement = manager
         .recreate_lxapp(old.appid.clone(), Channel::Release, old.session_id())
         .await
-        .err()
         .unwrap();
-    assert!(matches!(error, LxAppError::ChannelError(_)));
-    assert_retired_removed(&manager, &old);
-    let replacement = manager
-        .ensure_lxapp(old.appid.clone(), Channel::Release)
-        .unwrap();
-    assert_ne!(replacement.session_id(), old.session_id());
-    assert!(!replacement.session.is_retired());
+    assert_replaced(&manager, &old, &replacement);
 }
 
 #[tokio::test]
-async fn restart_completion_cannot_remove_a_session_replaced_during_wait() {
+async fn open_during_the_handoff_gets_a_fresh_session_that_restart_adopts() {
+    let f = Fixture::new();
+    let restart =
+        f.manager
+            .recreate_lxapp(f.old.appid.clone(), Channel::Release, f.old.session_id());
+    tokio::pin!(restart);
+    assert!(futures::poll!(restart.as_mut()).is_pending());
+    let ack = f.take_ack();
+    let opened = f.ensure_replacement();
+    assert!(futures::poll!(restart.as_mut()).is_pending());
+    ack.send(()).unwrap();
+    let replacement = time::timeout(Duration::from_secs(1), restart)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(Arc::ptr_eq(&replacement, &opened));
+    assert!(!opened.session.is_cancelled());
+}
+
+#[tokio::test]
+async fn restart_does_not_hold_admission_while_waiting_for_the_worker() {
+    let f = Fixture::new();
+    let restart =
+        f.manager
+            .recreate_lxapp(f.old.appid.clone(), Channel::Release, f.old.session_id());
+    tokio::pin!(restart);
+    assert!(futures::poll!(restart.as_mut()).is_pending());
+    let _ack = f.take_ack();
+    assert_eq!(*f.manager.admission.active.borrow(), 0);
+}
+
+#[tokio::test]
+async fn restart_survives_the_old_session_being_destroyed_during_the_wait() {
     #[cfg(target_vendor = "apple")]
     let _host = crate::apple_host_stubs::headless_lifecycle();
     for acknowledge in [true, false] {
@@ -228,30 +273,19 @@ async fn restart_completion_cannot_remove_a_session_replaced_during_wait() {
         tokio::pin!(restart);
         assert!(futures::poll!(restart.as_mut()).is_pending());
         let ack = f.take_ack();
+        // LRU eviction can pick the retired session while it is still published.
         f.manager
             .with_session_transition(&f.old.appid, || f.manager.destroy_lxapp(&f.old.appid));
-        let replacement = f.ensure_replacement();
-        f.manager
-            .lxapp_stack
-            .lock()
-            .unwrap()
-            .push_back(f.old.appid.clone());
         if acknowledge {
             ack.send(()).unwrap();
         } else {
             drop(ack);
         }
-        let error = time::timeout(Duration::from_secs(1), restart)
+        let replacement = time::timeout(Duration::from_secs(1), restart)
             .await
             .unwrap()
-            .err()
             .unwrap();
-        assert!(error.to_string().contains("replaced or removed"));
-        assert!(Arc::ptr_eq(
-            f.manager.lxapps.get(&f.old.appid).unwrap().value(),
-            &replacement
-        ));
+        assert_replaced(&f.manager, &f.old, &replacement);
         assert!(!replacement.session.is_cancelled());
-        assert!(f.manager.lxapp_stack.lock().unwrap().contains(&f.old.appid));
     }
 }
