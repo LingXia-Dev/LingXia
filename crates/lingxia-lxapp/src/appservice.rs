@@ -8,6 +8,8 @@ mod js_worker_pool;
 #[cfg(feature = "js-appservice")]
 pub use js_runtime::PageSvc;
 
+#[cfg(all(test, feature = "js-appservice"))]
+pub(crate) use js_runtime::ServiceMessage;
 #[cfg(feature = "js-appservice")]
 pub(crate) use js_runtime::event_bus;
 #[cfg(feature = "js-appservice")]
