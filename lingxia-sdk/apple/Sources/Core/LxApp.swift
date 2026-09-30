@@ -84,17 +84,21 @@ final class LxAppCore {
 
     private init() {}
 
-    /// Shared openLxApp logic - used by both iOS and macOS platforms
+    /// Shared openLxApp logic - used by both iOS and macOS platforms.
+    /// `pageInstanceId` is the page the runtime named when it asked for this
+    /// open; an open that starts here lands on the instance its route resolves
+    /// to. Returns the instance presented, or nil when the open was rejected.
     internal static func executeOpenLxApp(
         appId: String,
         path: String,
         sessionId: UInt64,
         presentation: Int32 = 0,
-        panelId: String = ""
-    ) -> Bool {
+        panelId: String = "",
+        pageInstanceId: String? = nil
+    ) -> String? {
         guard sessionId > 0 else {
             LXLog.error("executeOpenLxApp rejected invalid session for \(appId)", category: "LxAppCore")
-            return false
+            return nil
         }
 
         // owner_page_instance_id is for nested page ownership, not UI panel id.
@@ -111,14 +115,15 @@ final class LxAppCore {
                 created.ok ? "true" : "false",
                 createError
             )
-            return false
+            return nil
         }
+        let presentedPageId = pageInstanceId ?? created.page_instance_id.toString()
         appSessions[appId] = sessionId
         let isPanel = (presentation == 1)
 
         // Check for custom handler first (e.g., Runner's Capsule mode)
         if let handler = openLxAppHandler, handler(appId, finalPath) {
-            return true
+            return presentedPageId
         }
 
         // Panel presentation bypasses normal tab routing on macOS.
@@ -127,25 +132,43 @@ final class LxAppCore {
            macOSLxApp.handlePanelLxAppOpened(
             appId: appId,
             path: finalPath,
+            pageInstanceId: presentedPageId,
             sessionId: sessionId,
             panelId: panelId
            ) {
-            return true
+            return presentedPageId
         }
         #endif
 
         // Direct platform calls instead of using renderer protocol
         #if os(iOS)
-        return iOSLxApp.openLxAppDirect(appId: appId, path: finalPath, sessionId: sessionId)
+        return iOSLxApp.openLxAppDirect(
+            appId: appId,
+            path: finalPath,
+            pageInstanceId: presentedPageId,
+            sessionId: sessionId
+        ) ? presentedPageId : nil
         #elseif os(macOS)
-        macOSLxApp.openLxAppDirect(appId: appId, path: finalPath, sessionId: sessionId)
-        return true
+        macOSLxApp.openLxAppDirect(
+            appId: appId,
+            path: finalPath,
+            pageInstanceId: presentedPageId,
+            sessionId: sessionId
+        )
+        return presentedPageId
         #endif
     }
 
-    /// Shared navigate logic - used by both iOS and macOS platforms
+    /// Shared navigate logic - used by both iOS and macOS platforms.
+    /// `pageInstanceId` names the page to present; nil presents the app's
+    /// current page.
     @discardableResult
-    internal static func executeNavigation(appId: String, path: String, animationType: LxAppAnimation) -> Bool {
+    internal static func executeNavigation(
+        appId: String,
+        path: String,
+        pageInstanceId: String?,
+        animationType: LxAppAnimation
+    ) -> Bool {
         os_log("Core executeNavigation: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: animationType))
 
         guard !appId.isEmpty else {
@@ -160,9 +183,19 @@ final class LxAppCore {
 
         // Direct platform calls - no need for complex preparation logic
         #if os(iOS)
-        return iOSLxApp.handleNavigationDirect(appId: appId, path: path, animationType: animationType)
+        return iOSLxApp.handleNavigationDirect(
+            appId: appId,
+            path: path,
+            pageInstanceId: pageInstanceId,
+            animationType: animationType
+        )
         #elseif os(macOS)
-        macOSLxApp.handleNavigationDirect(appId: appId, path: path, animationType: animationType)
+        macOSLxApp.handleNavigationDirect(
+            appId: appId,
+            path: path,
+            pageInstanceId: pageInstanceId,
+            animationType: animationType
+        )
         return true
         #endif
     }
@@ -323,14 +356,19 @@ final class LxAppCore {
         return appId == homeLxAppId
     }
 
-    /// Set current app state - shared across platforms
-    static func setCurrentApp(appId: String, path: String) {
+    /// Set current app state - shared across platforms. `pageInstanceId`
+    /// names the page at `path`; nil means the app's current page.
+    static func setCurrentApp(appId: String, path: String, pageInstanceId: String?) {
         currentAppId = appId
         currentPath = path
 
         // Update WebView cache when app/path changes
         if let sessionId = appSessions[appId], sessionId > 0 {
-            currentWebView = WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId)
+            currentWebView = WebViewManager.pageWebView(
+                appId: appId,
+                sessionId: sessionId,
+                pageInstanceId: pageInstanceId
+            )
         } else {
             currentWebView = nil
         }
@@ -342,14 +380,19 @@ final class LxAppCore {
         return currentPath.isEmpty ? "/" : currentPath
     }
 
-    /// Update current path
-    static func setCurrentPath(_ path: String) {
+    /// Update current path. `pageInstanceId` names the page at `path`; nil
+    /// means the app's current page.
+    static func setCurrentPath(_ path: String, pageInstanceId: String?) {
         guard let appId = currentAppId else { return }
         currentPath = path
 
         // Update WebView cache when path changes
         if let sessionId = appSessions[appId], sessionId > 0 {
-            currentWebView = WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId)
+            currentWebView = WebViewManager.pageWebView(
+                appId: appId,
+                sessionId: sessionId,
+                pageInstanceId: pageInstanceId
+            )
         } else {
             currentWebView = nil
         }

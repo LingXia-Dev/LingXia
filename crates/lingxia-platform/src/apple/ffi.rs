@@ -108,7 +108,7 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.openLxApp")]
         fn open_lxapp(
             appid: &str,
-            path: &str,
+            webtag: &str,
             session_id: u64,
             presentation: i32,
             panel_id: &str,
@@ -118,7 +118,7 @@ mod bridge {
         fn close_lxapp(appid: &str, session_id: u64) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.navigate")]
-        fn navigate(appid: &str, path: &str, animation_type: i32) -> bool;
+        fn navigate(appid: &str, webtag: &str, animation_type: i32) -> bool;
 
         // TabBar UI update callback
         #[swift_bridge(swift_name = "LxApp.updateTabBarUI")]
@@ -302,10 +302,10 @@ mod bridge {
         fn present_surface(
             id: &str,
             appid: &str,
-            path: &str,
-            session_id: u64,
-            page_instance_id: &str,
+            owner_session_id: u64,
             content: i32,
+            webtag: &str,
+            url: &str,
             kind: i32,
             width: f64,
             height: f64,
@@ -484,10 +484,10 @@ mod bridge {
 
         // Pull-to-refresh functions
         #[swift_bridge(swift_name = "LxApp.startPullDownRefresh")]
-        fn start_pull_down_refresh(appid: &str, path: &str) -> bool;
+        fn start_pull_down_refresh(appid: &str, webtag: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.stopPullDownRefresh")]
-        fn stop_pull_down_refresh(appid: &str, path: &str) -> bool;
+        fn stop_pull_down_refresh(appid: &str, webtag: &str) -> bool;
 
         // WiFi APIs
         #[swift_bridge(swift_name = "LxAppWifi.startWifi")]

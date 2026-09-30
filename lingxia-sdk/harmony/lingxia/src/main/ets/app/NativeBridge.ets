@@ -115,13 +115,14 @@ class NativeBridge {
    */
   private registerDefaultCallbacks(): void {
     // Core LxApp functions
-    this.register('openLxApp', (appId: string, path: string, sessionIdRaw?: Object) => {
+    // `webtag` names the page instance to present.
+    this.register('openLxApp', (appId: string, webtag: string, sessionIdRaw?: Object) => {
       const sessionId = parseSessionId(sessionIdRaw);
       if (sessionId === null) {
         LxLog.e(TAG, `openLxApp missing/invalid sessionId: appId=${appId}`);
         return false;
       }
-      LxApp.openLxAppWithSession(appId, path, sessionId);
+      LxApp.showLxApp(appId, webtag, sessionId);
       return true;
     });
 
@@ -148,9 +149,9 @@ class NativeBridge {
       return true;
     });
 
-    // Navigate with animation type
+    // Navigate to the page instance `webtag` names, with animation type
     // 0=None, 1=Forward, 2=Backward
-    this.register('navigate', (appId: string, path: string, animationType: number) => {
+    this.register('navigate', (appId: string, webtag: string, animationType: number) => {
       // Use helper function from NavigationBar to convert int to enum
       const animType = animationTypeFromInt(animationType);
       if (animType === null) {
@@ -159,7 +160,7 @@ class NativeBridge {
       }
 
       // Call LxApp.navigate with enum
-      return LxApp.navigate(appId, path, animType);
+      return LxApp.navigate(appId, webtag, animType);
     });
 
     // Launch URL (external or in-app browser)
@@ -329,11 +330,12 @@ class NativeBridge {
     this.register('presentSurface', (
       id: string,
       appId: string,
-      path: string,
-      sessionId: string,
+      ownerSessionId: string,
+      content: string,
+      webTag: string,
       pageInstanceId: string,
-      source: string,
-      form: string,
+      url: string,
+      kind: string,
 	      width: string,
 	      height: string,
 	      widthRatio: string,
@@ -349,11 +351,12 @@ class NativeBridge {
 	      return LxAppSurface.present(
 	        id,
 	        appId,
-        path,
-        sessionId,
+        ownerSessionId,
+        content,
+        webTag,
         pageInstanceId,
-        source,
-        form,
+        url,
+        kind,
         width,
 	        height,
 	        widthRatio,
@@ -648,15 +651,15 @@ class NativeBridge {
     });
 
 
-    // Pull-to-Refresh APIs
-    this.register('startPullDownRefresh', (appId: string, path: string): void => {
-      LxAppContainer.startPullRefresh(appId, path);
-      hilog.info(DOMAIN, TAG, `startPullDownRefresh called for ${appId}:${path}`);
+    // Pull-to-Refresh APIs: `webtag` names the page instance
+    this.register('startPullDownRefresh', (appId: string, webtag: string): void => {
+      LxAppContainer.startPullRefresh(appId, webtag);
+      hilog.info(DOMAIN, TAG, `startPullDownRefresh called for ${webtag}`);
     });
 
-    this.register('stopPullDownRefresh', (appId: string, path: string): void => {
-      LxAppContainer.stopPullRefresh(appId);
-      hilog.info(DOMAIN, TAG, `stopPullDownRefresh called for ${appId}:${path}`);
+    this.register('stopPullDownRefresh', (appId: string, webtag: string): void => {
+      LxAppContainer.stopPullRefresh(appId, webtag);
+      hilog.info(DOMAIN, TAG, `stopPullDownRefresh called for ${webtag}`);
     });
 
     // The result is reported back to Rust using the shared callback mechanism

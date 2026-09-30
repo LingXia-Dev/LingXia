@@ -1,6 +1,6 @@
 use super::app::Platform;
 use crate::error::{PlatformError, unmounted_presenter_or};
-use crate::traits::ui::UIUpdate;
+use crate::traits::ui::{Appearance, LaunchFace, UIUpdate};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static HOST_APPEARANCE_DARK: AtomicBool = AtomicBool::new(false);
@@ -9,7 +9,7 @@ pub fn set_harmony_host_appearance_dark(dark: bool) {
     HOST_APPEARANCE_DARK.store(dark, Ordering::Release);
 }
 
-impl UIUpdate for Platform {
+impl Appearance for Platform {
     fn host_appearance_dark(&self) -> bool {
         HOST_APPEARANCE_DARK.load(Ordering::Acquire)
     }
@@ -20,6 +20,17 @@ impl UIUpdate for Platform {
             .map_err(|error| PlatformError::Platform(error.to_string()))
     }
 
+    fn set_host_color_mode(&self, dark: Option<bool>) {
+        let mode = match dark {
+            Some(true) => "dark",
+            Some(false) => "light",
+            None => "auto",
+        };
+        let _ = lingxia_webview::platform::harmony::tsfn::call_arkts("setHostColorMode", &[mode]);
+    }
+}
+
+impl LaunchFace for Platform {
     fn notify_home_first_ready(&self) {
         let _ = lingxia_webview::platform::harmony::tsfn::call_arkts("onHomeFirstReady", &[]);
     }
@@ -31,16 +42,9 @@ impl UIUpdate for Platform {
             &[&image_path, &duration],
         );
     }
+}
 
-    fn set_host_color_mode(&self, dark: Option<bool>) {
-        let mode = match dark {
-            Some(true) => "dark",
-            Some(false) => "light",
-            None => "auto",
-        };
-        let _ = lingxia_webview::platform::harmony::tsfn::call_arkts("setHostColorMode", &[mode]);
-    }
-
+impl UIUpdate for Platform {
     async fn measure_page_chrome_capsule(
         &self,
         appid: String,

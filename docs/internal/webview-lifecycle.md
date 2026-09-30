@@ -336,8 +336,8 @@ Surfaces are secondary presentation targets (overlays, windows) opened via
      derived from `SurfaceKind`. Creates an **isolated** instance — a full
      `StrictDefault` WebView with complete page lifecycle — with a 30-second
      dispose TTL.
-   - **URL target** (`PageSurfaceTarget::Url`): no Rust WebView. The URL and
-     `SurfaceContent::Url` are passed to the platform's
+   - **URL target** (`PageSurfaceTarget::Url`): no Rust WebView. The URL is
+     passed as `SurfaceContent::Url { url }` to the platform's
      `SurfacePresenter::present_surface()`, which owns the view. URL surfaces are
      gated by the lxapp security policy (`is_domain_allowed`), and `query`,
      percentage sizes, and `position` have overlay-only / kind-specific
@@ -345,7 +345,11 @@ Surfaces are secondary presentation targets (overlays, windows) opened via
 3. A `SurfaceRecord` is stored in `LxApp.state.surfaces`, keyed by surface id. It
    records **two** ids: `owner_page_instance_id` (who opened it) and
    `content_page_instance_id` (the page hosted *inside* it, for page targets).
-4. The platform `SurfacePresenter` presents the native overlay/window UI.
+4. The platform `SurfacePresenter` presents the native overlay/window UI. A
+   page target reaches it as `SurfaceContent::Page { webtag }`: the instance's
+   full webview tag is the only identity in the request, and the shell mounts
+   that WebView. `owner_session_id` names the opening lxapp session (a stale
+   session's request is refused; a URL surface's browser tab is owned by it).
 
 An isolated page's `PageSvc` is created by the **opener**, not by the setup
 callback: `prepare_isolated_page_svc()` runs `__LX_CREATE_PAGE__` on the JS
@@ -661,6 +665,14 @@ Callbacks:
   (both profiles); strict carries an additional (currently inert) top-level
   `https://` interception behind it.
 
+Presentation:
+- `show_lxapp` / `navigate` hand Swift the page's webtag. `LxApp.openLxApp` and
+  `LxApp.navigate` resolve it to the page instance id once
+  (`pageBindingForWebTag`); containers find and await the WebView by that id
+  (`WebViewManager.pageWebView`, `awaitPageWebView`). A caller with no instance
+  in hand passes nil, meaning the app's current page — never a route lookup.
+- Browser tab WebViews are found by tab id (`browserTabBinding`).
+
 Visibility hook:
 - `WebViewManager.attachWebViewToContainer()` (Swift) reparents the view,
   resumes it, and triggers `onPageShow(appId, path)` for tagged WebViews.
@@ -697,7 +709,11 @@ Rendering and visibility:
   delegate start/finish.
 - Navigation: ArkTS `onLoadIntercept` → NAPI `check_navigation_policy(webtag, url)`
   → the creator's navigation handler (`NavigationPolicy::Cancel` intercepts).
-- `LxAppContainer.finishTransition()` triggers `onPageShow`.
+- `openLxApp` / `navigate` carry the page instance's full webtag. `LxAppContainer`
+  looks the controller up by that tag and, when it does not exist yet, waits
+  for that tag's `create` event; a route never identifies a page.
+- `LxAppContainer.finishTransition()` triggers `onPageShow`, reporting the
+  page as `route#instance#session` so two instances of one route stay distinct.
 - `Web.onAppear` does the controller-created ack only (avoids a duplicate
   `onPageShow`).
 
@@ -711,6 +727,9 @@ suppressed in strict, allowed in browser.
 - Rust requests Java-side creation (`requestWebView`), stores the oneshot sender.
 - Java→JNI callback (`notifyWebViewReady`) completes creation and registers the
   delegate callbacks.
+- Java answers every request exactly once: a creation that throws reports
+  `notifyWebViewFailed`, which fails the session so `wait_ready` returns the
+  error instead of staying pending.
 - JNI forwards page events (`onPageStarted`/`onPageFinished`) to the
   `WebViewDelegate`.
 - Direct native HTML loads receive an opaque, process-monotonic load token.

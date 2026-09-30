@@ -2,7 +2,7 @@ use super::ffi;
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::AppRuntime;
-use crate::traits::app_runtime::LxAppOpenMode;
+use crate::traits::app_runtime::ShowLxApp;
 use crate::traits::media_runtime::MediaRuntime;
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 #[cfg(target_os = "macos")]
@@ -160,22 +160,18 @@ impl AppRuntime for Platform {
         &self.locale
     }
 
-    fn show_lxapp(
-        &self,
-        appid: String,
-        _title: String,
-        path: String,
-        _webtag: String,
-        session_id: u64,
-        open_mode: LxAppOpenMode,
-        panel_id: String,
-    ) -> Result<(), PlatformError> {
-        if ffi::open_lxapp(&appid, &path, session_id, open_mode as i32, &panel_id) {
+    fn show_lxapp(&self, request: ShowLxApp) -> Result<(), PlatformError> {
+        if ffi::open_lxapp(
+            &request.appid,
+            &request.webtag,
+            request.session_id,
+            request.open_mode as i32,
+            &request.panel_id,
+        ) {
             Ok(())
         } else {
             Err(PlatformError::Platform(format!(
-                "Failed to show lxapp: appid={}, path={}, session_id={}, open_mode={:?}, panel_id={}",
-                appid, path, session_id, open_mode, panel_id
+                "Failed to show lxapp: {request:?}"
             )))
         }
     }
@@ -385,16 +381,15 @@ impl AppRuntime for Platform {
     fn navigate(
         &self,
         appid: String,
-        path: String,
-        _webtag: String,
+        webtag: String,
         animation_type: crate::traits::app_runtime::AnimationType,
     ) -> Result<(), PlatformError> {
-        if ffi::navigate(&appid, &path, animation_type as i32) {
+        if ffi::navigate(&appid, &webtag, animation_type as i32) {
             Ok(())
         } else {
             Err(PlatformError::Platform(format!(
-                "Failed to navigate: appid={}, path={}, animation_type={:?}",
-                appid, path, animation_type
+                "Failed to navigate: appid={}, webtag={}, animation_type={:?}",
+                appid, webtag, animation_type
             )))
         }
     }

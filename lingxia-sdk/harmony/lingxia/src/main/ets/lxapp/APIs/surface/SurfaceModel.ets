@@ -9,9 +9,13 @@ export enum SurfacePosition {
 export interface SurfaceLayoutConfig {
   id: string;
   appId: string;
-  path: string;
-  pageInstanceId: string;
   content: number;
+  // Page content: the instance's webview tag, and the id its lifecycle
+  // reports take. Empty for URL content.
+  webTag: string;
+  pageInstanceId: string;
+  // URL content: the document to load. Empty for page content.
+  url: string;
   kind: number;
   role: number;
   closeButton: boolean;

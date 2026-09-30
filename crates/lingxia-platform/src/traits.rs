@@ -45,7 +45,7 @@ pub mod prelude {
     pub use super::screenshot::AppScreenshot;
     pub use super::secure_store::SecureStore;
     pub use super::share::ShareService;
-    pub use super::ui::{SurfacePresenter, UIUpdate, UserFeedback};
+    pub use super::ui::{Appearance, LaunchFace, SurfacePresenter, UIUpdate, UserFeedback};
     pub use super::update::UpdateService;
     pub use super::video_player::{VideoPlayerHandle, VideoPlayerManager};
     pub use super::wifi::Wifi;

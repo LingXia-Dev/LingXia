@@ -279,9 +279,9 @@ public final class LxAppHostView: LxAppPlatformView {
         }
 
         for _ in 0..<Self.mountRetryCount {
-            let pageInstanceId = WebViewManager.resolvePageInstanceId(
+            // A session that names no instance shows its app's current page.
+            let pageInstanceId = WebViewManager.currentPageInstanceId(
                 appId: session.appId,
-                path: session.path,
                 sessionId: session.id.rawValue
             )
 
@@ -314,9 +314,8 @@ public final class LxAppHostView: LxAppPlatformView {
         if case .string(let pageInstanceId)? = mountedSession?.userInfo["pageInstanceId"] {
             _ = notifyPageInstanceHidden(pageInstanceId, reason)
         } else if let session = mountedSession {
-            if let pageInstanceId = WebViewManager.resolvePageInstanceId(
+            if let pageInstanceId = WebViewManager.currentPageInstanceId(
                 appId: session.appId,
-                path: session.path,
                 sessionId: session.id.rawValue
             ) {
                 _ = notifyPageInstanceHidden(pageInstanceId, reason)
@@ -374,7 +373,7 @@ public final class LxAppHostView: LxAppPlatformView {
             for await event in controller.events {
                 guard let self else { return }
                 switch event {
-                case .didNavigate(let sessionId, _, _):
+                case .didNavigate(let sessionId, _, _, _):
                     guard mountedSession?.id == sessionId else { continue }
                     try? await mount(sessionId: sessionId)
                 case .didClose(let session):

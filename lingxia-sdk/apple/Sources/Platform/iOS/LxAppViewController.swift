@@ -57,6 +57,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
     // after a successful attach, so a first-resolve miss (WebView still
     // registering) would strand every retry and leave the container blank.
     private var pendingNavigationPath: String?
+    private var pendingNavigationPageId: String?
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
     nonisolated(unsafe) private var tabBarObserver: NSObjectProtocol?
 
@@ -300,21 +301,29 @@ final class LxAppViewController: UIViewController, ObservableObject {
         }
     }
 
-    /// Unified navigation entry point - handles all animation types
-    public func navigate(appId: String, to path: String, with animationType: LxAppAnimation) {
+    /// Unified navigation entry point - handles all animation types.
+    /// `pageInstanceId` names the page to present; nil presents the app's
+    /// current page.
+    public func navigate(
+        appId: String,
+        to path: String,
+        pageInstanceId: String?,
+        with animationType: LxAppAnimation
+    ) {
         os_log("Navigate: %@ to %@ with type: %@", log: Self.log, type: .info, appId, path, String(describing: animationType))
 
         // Ensure view is loaded before navigation
         if !isViewLoaded {
             DispatchQueue.main.async { [weak self] in
-                self?.navigate(appId: appId, to: path, with: animationType)
+                self?.navigate(
+                    appId: appId, to: path, pageInstanceId: pageInstanceId, with: animationType)
             }
             return
         }
 
         // Set current app ID immediately to ensure all subsequent logic
         // operates on the correct app context.
-        LxAppCore.setCurrentApp(appId: appId, path: path)
+        LxAppCore.setCurrentApp(appId: appId, path: path, pageInstanceId: pageInstanceId)
 
         // Update NavigationBar state and UI
         updateNavigationBar(appId: appId, path: path)
@@ -330,7 +339,12 @@ final class LxAppViewController: UIViewController, ObservableObject {
         _ = applyOrientationFromRuntime(for: appId)
 
         // Setup or switch WebView
-        handleNavigation(appId: appId, path: path, animationType: animationType)
+        handleNavigation(
+            appId: appId,
+            path: path,
+            pageInstanceId: pageInstanceId,
+            animationType: animationType
+        )
 
         // Update status bar style
         setNeedsStatusBarAppearanceUpdate()
@@ -388,8 +402,9 @@ final class LxAppViewController: UIViewController, ObservableObject {
         }
     }
 
-    /// Opens a LxApp - creates new state if needed, switches if already exists
-    public func openLxApp(appId: String, path: String, sessionId: UInt64) {
+    /// Opens a LxApp - creates new state if needed, switches if already exists.
+    /// `pageInstanceId` names the page at `path`; nil means the app's current page.
+    public func openLxApp(appId: String, path: String, pageInstanceId: String?, sessionId: UInt64) {
         os_log("Opening LxApp: %@ at path: %@", log: Self.log, type: .info, appId, path)
         guard sessionId > 0 else {
             LXLog.error("openLxApp rejected invalid session for \(appId)", category: "LxAppViewController")
@@ -398,10 +413,10 @@ final class LxAppViewController: UIViewController, ObservableObject {
         currentSessionId = sessionId
 
         // Set current app state
-        LxAppCore.setCurrentApp(appId: appId, path: path)
+        LxAppCore.setCurrentApp(appId: appId, path: path, pageInstanceId: pageInstanceId)
 
         // Use unified navigation entry point
-        navigate(appId: appId, to: path, with: .none)
+        navigate(appId: appId, to: path, pageInstanceId: pageInstanceId, with: .none)
     }
 
     /// Closes a LxApp and removes its state
@@ -442,20 +457,32 @@ final class LxAppViewController: UIViewController, ObservableObject {
         let currentLxApp = getCurrentLxApp()
         let appidStr = currentLxApp.appid.toString()
         let pathStr = currentLxApp.path.toString()
+        let pageInstanceId = currentLxApp.page_instance_id.toString()
         let nextSessionId = currentLxApp.session_id
         if !appidStr.isEmpty && nextSessionId > 0 {
             os_log("Opening next LxApp from stack: %@:%@", log: Self.log, type: .info, appidStr, pathStr)
             // Use openLxApp instead of navigate since this is opening a new LxApp
-            iOSLxApp.openLxApp(appId: appidStr, path: pathStr, sessionId: nextSessionId)
+            iOSLxApp.openLxApp(
+                appId: appidStr,
+                path: pathStr,
+                pageInstanceId: pageInstanceId.isEmpty ? nil : pageInstanceId,
+                sessionId: nextSessionId
+            )
         } else {
             os_log("No more LxApps in stack, view controller will remain empty", log: Self.log, type: .info)
         }
     }
 
-    public func handleNavigation(appId: String, path: String, animationType: LxAppAnimation) {
+    public func handleNavigation(
+        appId: String,
+        path: String,
+        pageInstanceId: String?,
+        animationType: LxAppAnimation
+    ) {
         guard LxAppCore.currentAppId == appId else { return }
 
         pendingNavigationPath = path
+        pendingNavigationPageId = pageInstanceId
         let currentPath = getCurrentPath()
 
         if let existingWebView = getCurrentWebView(),
@@ -463,7 +490,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
             NativeBridge.notifyPageInactive(for: existingWebView)
         }
 
-        if let targetWebView = iOSLxApp.resolveWebView(appId: appId, path: path, sessionId: currentSessionId) {
+        if let targetWebView = iOSLxApp.pageWebView(
+            appId: appId, sessionId: currentSessionId, pageInstanceId: pageInstanceId) {
 
             // Handle navigation animations for all cases
             if let existingWebView = getCurrentWebView() {
@@ -472,7 +500,14 @@ final class LxAppViewController: UIViewController, ObservableObject {
                 switch animationType {
                 case .push, .pop:
                     // Forward/backward use slide animation
-                    performSlideTransition(from: existingWebView, to: targetWebView, animationType: animationType, appId: appId, path: path)
+                    performSlideTransition(
+                        from: existingWebView,
+                        to: targetWebView,
+                        animationType: animationType,
+                        appId: appId,
+                        path: path,
+                        pageInstanceId: pageInstanceId
+                    )
                     return // Early return as performSlideTransition handles the rest
                 case .none, .fade:
                     // No animation - immediate transition
@@ -482,7 +517,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
             }
 
             // Show target WebView using shared logic
-            attachWebViewToUI(webView: targetWebView, for: appId, path: path)
+            attachWebViewToUI(
+                webView: targetWebView, for: appId, path: path, pageInstanceId: pageInstanceId)
             // Pin the target explicitly: the cached current webview can lag
             // this navigation and must never receive the target's pin.
             updateWebViewConstraints(for: appId, webView: targetWebView)
@@ -490,6 +526,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
             showWhenWebViewReady(
                 appId: appId,
                 path: path,
+                pageInstanceId: pageInstanceId,
                 sessionId: currentSessionId,
                 animationType: animationType
             )
@@ -500,33 +537,46 @@ final class LxAppViewController: UIViewController, ObservableObject {
     }
 
     /// The page's WebView does not exist yet: show it when the runtime reports
-    /// it. A newer navigation replaces `pendingNavigationPath`, which drops this
+    /// it. A newer navigation replaces the pending target, which drops this
     /// request.
     private func showWhenWebViewReady(
         appId: String,
         path: String,
+        pageInstanceId: String?,
         sessionId: UInt64,
         animationType: LxAppAnimation
     ) {
-        WebViewManager.awaitPageWebView(appId: appId, sessionId: sessionId) { [weak self] ready in
+        WebViewManager.awaitPageWebView(
+            appId: appId,
+            sessionId: sessionId,
+            pageInstanceId: pageInstanceId
+        ) { [weak self] ready in
             guard let self,
                   LxAppCore.currentAppId == appId,
                   self.currentSessionId == sessionId,
-                  self.pendingNavigationPath == path else {
+                  self.pendingNavigationPath == path,
+                  self.pendingNavigationPageId == pageInstanceId else {
                 return
             }
 
             guard ready,
-                  let targetWebView = iOSLxApp.resolveWebView(appId: appId, path: path, sessionId: sessionId) else {
+                  let targetWebView = iOSLxApp.pageWebView(
+                      appId: appId, sessionId: sessionId, pageInstanceId: pageInstanceId) else {
                 // The page asked for was replaced (an lxapp that relaunches
                 // from `onLaunch`): follow the runtime's current page.
                 let current = getCurrentLxApp()
-                let currentPath = current.path.toString()
-                if ready,
+                let currentPageId = current.page_instance_id.toString()
+                if pageInstanceId != nil,
                    current.appid.toString() == appId,
                    current.session_id == sessionId,
-                   currentPath != path {
-                    self.handleNavigation(appId: appId, path: currentPath, animationType: .none)
+                   !currentPageId.isEmpty,
+                   currentPageId != pageInstanceId {
+                    self.handleNavigation(
+                        appId: appId,
+                        path: current.path.toString(),
+                        pageInstanceId: currentPageId,
+                        animationType: .none
+                    )
                     return
                 }
                 os_log("WebView not available for %@:%@", log: Self.log, type: .error, appId, path)
@@ -542,7 +592,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
                         to: targetWebView,
                         animationType: animationType,
                         appId: appId,
-                        path: path
+                        path: path,
+                        pageInstanceId: pageInstanceId
                     )
                     return
                 case .none, .fade:
@@ -551,7 +602,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
                 }
             }
 
-            self.attachWebViewToUI(webView: targetWebView, for: appId, path: path)
+            self.attachWebViewToUI(
+                webView: targetWebView, for: appId, path: path, pageInstanceId: pageInstanceId)
             self.updateWebViewConstraints(for: appId, webView: targetWebView)
             self.bringUIElementsToFront()
         }
@@ -650,7 +702,12 @@ final class LxAppViewController: UIViewController, ObservableObject {
         }
     }
 
-    private func attachWebViewToUI(webView: WKWebView, for appId: String, path: String) {
+    private func attachWebViewToUI(
+        webView: WKWebView,
+        for appId: String,
+        path: String,
+        pageInstanceId: String?
+    ) {
         // Check if WebView is already properly attached
         if webView.superview == rootContainer && !webView.isHidden {
             // WebView is already attached and visible, just ensure it's configured
@@ -659,7 +716,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
             webView.resumeWebView()
 
             // Update current app state AFTER successful attach/switch
-            LxAppCore.setCurrentPath(path)
+            LxAppCore.setCurrentPath(path, pageInstanceId: pageInstanceId)
             _ = applyOrientationFromRuntime(for: appId)
 
             // Always trigger onPageShow for page content changes, even if same WebView
@@ -677,7 +734,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
         if rootContainer == nil {
             // If view hasn't loaded yet, defer WebView attachment
             DispatchQueue.main.async { [weak self] in
-                self?.attachWebViewToUI(webView: webView, for: appId, path: path)
+                self?.attachWebViewToUI(
+                    webView: webView, for: appId, path: path, pageInstanceId: pageInstanceId)
             }
             return
         }
@@ -715,7 +773,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
         currentWebViewBottomConstraint = bottomConstraint
 
         // Update current app state AFTER successful attach/switch
-        LxAppCore.setCurrentPath(path)
+        LxAppCore.setCurrentPath(path, pageInstanceId: pageInstanceId)
         _ = applyOrientationFromRuntime(for: appId)
 
         updateNavigationBar(appId: appId, path: path)
@@ -960,13 +1018,14 @@ final class LxAppViewController: UIViewController, ObservableObject {
     }
 
     private func handlePullToRefresh() {
-        guard let appId = LxAppCore.currentAppId else {
+        guard let webView = pullToRefreshHelper?.webView,
+              let appId = webView.appId,
+              let webtag = webView.pageWebTag else {
             pullToRefreshHelper?.endRefreshing()
             return
         }
 
-        let currentPath = getCurrentPath()
-        let _ = onLxappEvent(appId, LxAppEvent.pullDownRefresh, currentPath)
+        let _ = onLxappEvent(appId, LxAppEvent.pullDownRefresh, webtag)
     }
 
     private func normalizePath(_ rawPath: String) -> String {
@@ -1175,14 +1234,23 @@ final class LxAppViewController: UIViewController, ObservableObject {
         setupPullToRefresh(for: webView, appId: appId, path: currentPath)
     }
 
-    /// Start pull-to-refresh programmatically (called from API)
-    internal func startPullDownRefreshProgrammatically() {
-        pullToRefreshHelper?.startRefreshing()
+    /// The refresh helper of the page instance `webtag` names. The helper
+    /// follows the presented page, so any other instance has none.
+    private func refreshHelper(forPage webtag: String) -> PullToRefreshHelper? {
+        guard let helper = pullToRefreshHelper, helper.webView?.pageWebTag == webtag else {
+            return nil
+        }
+        return helper
     }
 
-    /// Stop pull-to-refresh programmatically (called from API)
-    internal func stopPullDownRefreshProgrammatically() {
-        pullToRefreshHelper?.endRefreshing()
+    /// Show the indicator of the page instance `webtag` names.
+    internal func startPullDownRefresh(webtag: String) {
+        refreshHelper(forPage: webtag)?.startRefreshing()
+    }
+
+    /// Hide the indicator of the page instance `webtag` names.
+    internal func stopPullDownRefresh(webtag: String) {
+        refreshHelper(forPage: webtag)?.endRefreshing()
     }
 
     private func setupGlobalNavigationBar() {
@@ -1252,9 +1320,14 @@ final class LxAppViewController: UIViewController, ObservableObject {
     }
 
     /// Finalize WebView attachment after animation completes
-    private func finalizeWebViewAttachment(webView: WKWebView, appId: String, path: String) {
+    private func finalizeWebViewAttachment(
+        webView: WKWebView,
+        appId: String,
+        path: String,
+        pageInstanceId: String?
+    ) {
         // Update current app state first
-        LxAppCore.setCurrentPath(path)
+        LxAppCore.setCurrentPath(path, pageInstanceId: pageInstanceId)
         _ = applyOrientationFromRuntime(for: appId)
 
         // Always trigger onPageShow for navigation transitions
@@ -1294,7 +1367,13 @@ final class LxAppViewController: UIViewController, ObservableObject {
     }
 
     /// Screenshot-based animation for same WebView navigation
-    private func performSameWebViewAnimation(webView: WKWebView, animationType: LxAppAnimation, appId: String, path: String) {
+    private func performSameWebViewAnimation(
+        webView: WKWebView,
+        animationType: LxAppAnimation,
+        appId: String,
+        path: String,
+        pageInstanceId: String?
+    ) {
         let isBackward = animationType == .pop
 
         // Prepare snapshot early for backward BEFORE any UI updates
@@ -1364,12 +1443,20 @@ final class LxAppViewController: UIViewController, ObservableObject {
             containerSnapshot.transform = CGAffineTransform(translationX: snapshotSlide, y: 0)
         }, completion: { _ in
             containerSnapshot.removeFromSuperview()
-            self.finalizeWebViewAttachment(webView: webView, appId: appId, path: path)
+            self.finalizeWebViewAttachment(
+                webView: webView, appId: appId, path: path, pageInstanceId: pageInstanceId)
         })
     }
 
     /// Perform slide transition between WebViews for forward/backward navigation
-    private func performSlideTransition(from currentWebView: WKWebView, to targetWebView: WKWebView, animationType: LxAppAnimation, appId: String, path: String) {
+    private func performSlideTransition(
+        from currentWebView: WKWebView,
+        to targetWebView: WKWebView,
+        animationType: LxAppAnimation,
+        appId: String,
+        path: String,
+        pageInstanceId: String?
+    ) {
         let isBackNavigation = animationType == .pop
         let animationDuration: TimeInterval = 0.3
 
@@ -1399,7 +1486,13 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
         // Handle same WebView case (forward/backward to same page)
         if currentWebView == targetWebView {
-            performSameWebViewAnimation(webView: currentWebView, animationType: animationType, appId: appId, path: path)
+            performSameWebViewAnimation(
+                webView: currentWebView,
+                animationType: animationType,
+                appId: appId,
+                path: path,
+                pageInstanceId: pageInstanceId
+            )
             return
 
         } else {
@@ -1491,7 +1584,12 @@ final class LxAppViewController: UIViewController, ObservableObject {
                 currentWebView.transform = .identity
 
                 // Properly attach WebView to UI after animation
-                self.finalizeWebViewAttachment(webView: targetWebView, appId: appId, path: path)
+                self.finalizeWebViewAttachment(
+                    webView: targetWebView,
+                    appId: appId,
+                    path: path,
+                    pageInstanceId: pageInstanceId
+                )
             })
         }
     }

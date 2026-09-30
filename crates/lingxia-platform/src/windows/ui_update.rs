@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use super::Platform;
 use crate::error::PlatformError;
-use crate::traits::ui::UIUpdate;
+use crate::traits::ui::{Appearance, LaunchFace, UIUpdate};
 
 type WindowsUiUpdateHandler = Arc<dyn Fn(String) + Send + Sync>;
 static WINDOWS_UI_UPDATE_HANDLER: Mutex<Option<WindowsUiUpdateHandler>> = Mutex::new(None);
@@ -105,61 +105,7 @@ pub fn sync_windows_ui(appid: &str) {
     invoke_windows_ui_update_handler(appid.to_string());
 }
 
-impl UIUpdate for Platform {
-    fn notify_home_first_ready(&self) {
-        let handler = WINDOWS_HOME_FIRST_READY_HANDLER
-            .lock()
-            .ok()
-            .and_then(|slot| slot.clone());
-        if let Some(handler) = handler {
-            handler();
-        }
-    }
-
-    fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError> {
-        invoke_windows_ui_update_handler(appid);
-        Ok(())
-    }
-
-    async fn measure_page_chrome_capsule(
-        &self,
-        appid: String,
-    ) -> Result<Option<String>, PlatformError> {
-        let provider = WINDOWS_CAPSULE_RECT_PROVIDER
-            .lock()
-            .ok()
-            .and_then(|slot| slot.clone());
-        Ok(provider.and_then(|provider| provider(&appid)))
-    }
-
-    fn update_tabbar_ui(&self, appid: String) -> Result<(), PlatformError> {
-        invoke_windows_ui_update_handler(appid);
-        Ok(())
-    }
-
-    async fn update_tabbar_ui_async(&self, appid: String) -> Result<(), PlatformError> {
-        let handler = WINDOWS_UI_UPDATE_ASYNC_HANDLER
-            .lock()
-            .ok()
-            .and_then(|slot| slot.clone());
-        let Some(handler) = handler else {
-            // No async handler registered (bare host apps): the sync handler
-            // applies the update inline, so resolving afterwards is accurate.
-            return self.update_tabbar_ui(appid);
-        };
-        crate::rt::native_call_ui(|callback_id| {
-            handler(
-                appid.clone(),
-                Box::new(move |ok| {
-                    let result = if ok { Ok("{}".to_string()) } else { Err(1000) };
-                    lingxia_messaging::invoke_callback(callback_id, result);
-                }),
-            );
-            Ok(())
-        })
-        .await
-    }
-
+impl Appearance for Platform {
     fn host_appearance_dark(&self) -> bool {
         // The system's answer. What the product renders in resolves the user's
         // preference against this, and the shell reads that, not this.
@@ -211,6 +157,64 @@ impl UIUpdate for Platform {
 
     fn clear_lxapp_appearance(&self, appid: &str) {
         lingxia_webview::platform::windows::clear_windows_lxapp_preferred_color_scheme(appid);
+    }
+}
+
+impl LaunchFace for Platform {
+    fn notify_home_first_ready(&self) {
+        let handler = WINDOWS_HOME_FIRST_READY_HANDLER
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone());
+        if let Some(handler) = handler {
+            handler();
+        }
+    }
+}
+
+impl UIUpdate for Platform {
+    fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError> {
+        invoke_windows_ui_update_handler(appid);
+        Ok(())
+    }
+
+    async fn measure_page_chrome_capsule(
+        &self,
+        appid: String,
+    ) -> Result<Option<String>, PlatformError> {
+        let provider = WINDOWS_CAPSULE_RECT_PROVIDER
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone());
+        Ok(provider.and_then(|provider| provider(&appid)))
+    }
+
+    fn update_tabbar_ui(&self, appid: String) -> Result<(), PlatformError> {
+        invoke_windows_ui_update_handler(appid);
+        Ok(())
+    }
+
+    async fn update_tabbar_ui_async(&self, appid: String) -> Result<(), PlatformError> {
+        let handler = WINDOWS_UI_UPDATE_ASYNC_HANDLER
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone());
+        let Some(handler) = handler else {
+            // No async handler registered (bare host apps): the sync handler
+            // applies the update inline, so resolving afterwards is accurate.
+            return self.update_tabbar_ui(appid);
+        };
+        crate::rt::native_call_ui(|callback_id| {
+            handler(
+                appid.clone(),
+                Box::new(move |ok| {
+                    let result = if ok { Ok("{}".to_string()) } else { Err(1000) };
+                    lingxia_messaging::invoke_callback(callback_id, result);
+                }),
+            );
+            Ok(())
+        })
+        .await
     }
 }
 

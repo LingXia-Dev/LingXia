@@ -65,12 +65,12 @@ enum RunnerBridge {
         LxAppCore.removeSessionId(for: appId)
     }
 
-    static func setCurrentApp(appId: String, path: String) {
-        LxAppCore.setCurrentApp(appId: appId, path: path)
+    static func setCurrentApp(appId: String, path: String, pageInstanceId: String?) {
+        LxAppCore.setCurrentApp(appId: appId, path: path, pageInstanceId: pageInstanceId)
     }
 
-    static func setCurrentPath(_ path: String) {
-        LxAppCore.setCurrentPath(path)
+    static func setCurrentPath(_ path: String, pageInstanceId: String?) {
+        LxAppCore.setCurrentPath(path, pageInstanceId: pageInstanceId)
     }
 
     static func currentWebView() -> WKWebView? {
@@ -88,12 +88,8 @@ enum RunnerBridge {
         LxAppCore.getHomeLxAppId()
     }
 
-    static func resolveWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
-        WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId)
-    }
-
-    static func resolveWebView(appId: String, path: String) -> WKWebView? {
-        WebViewManager.resolveWebView(appId: appId, path: path)
+    static func pageWebView(appId: String, pageInstanceId: String?) -> WKWebView? {
+        WebViewManager.pageWebView(appId: appId, pageInstanceId: pageInstanceId)
     }
 
     static func attachWebView(_ webView: WKWebView, to container: NSView) {
@@ -166,13 +162,7 @@ enum RunnerBridge {
         let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return nil }
 
-        let appId = getBuiltinBrowserAppId().toString()
-        let sessionId = getLxAppSessionId(appId)
-        guard sessionId > 0 else { return nil }
-
-        let path = browserTabPathForId(normalized).toString()
-        guard !path.isEmpty else { return nil }
-        return WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId)
+        return WebViewManager.browserTabWebView(tabId: normalized)
     }
 
     static func navigateBrowserTab(tabId: String, url: String) -> Bool {
@@ -330,9 +320,11 @@ enum RunnerBridge {
         _ shell: LxAppShell,
         appId: String,
         path: String,
+        pageInstanceId: String?,
         sessionId: UInt64
     ) {
-        shell.openLxApp(appId: appId, path: path, sessionId: sessionId)
+        shell.openLxApp(
+            appId: appId, path: path, pageInstanceId: pageInstanceId, sessionId: sessionId)
         shell.reconcileSidebarAutoHide()
     }
 
@@ -340,11 +332,12 @@ enum RunnerBridge {
         _ shell: LxAppShell,
         appId: String,
         path: String,
+        pageInstanceId: String?,
         animationType: LxAppAnimation
     ) {
         shell.browserCoordinator.deactivate()
-        shell.ensureViewController(for: appId, path: path)?
-            .navigate(appId: appId, to: path, with: animationType)
+        shell.ensureViewController(for: appId, path: path, pageInstanceId: pageInstanceId)?
+            .navigate(appId: appId, to: path, pageInstanceId: pageInstanceId, with: animationType)
         shell.reconcileSidebarAutoHide()
     }
 

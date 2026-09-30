@@ -321,7 +321,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         LxAppCore.setSessionId(sessionId, for: appId)
     }
 
-    func ensureViewController(for appId: String, path: String) -> macOSLxAppViewController? {
+    func ensureViewController(
+        for appId: String,
+        path: String,
+        pageInstanceId: String?
+    ) -> macOSLxAppViewController? {
         if let viewController = getViewController(for: appId) {
             return viewController
         }
@@ -333,6 +337,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         let viewController = macOSLxAppViewController(
             appId: appId,
             path: path,
+            pageInstanceId: pageInstanceId,
             sessionId: sessionId
         )
         viewControllers[appId] = viewController
@@ -1325,13 +1330,18 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             return
         }
         storeSession(sessionId, for: homeLxAppId)
-        LxAppCore.setCurrentApp(appId: homeLxAppId, path: resolvedPath)
+        LxAppCore.setCurrentApp(
+            appId: homeLxAppId,
+            path: resolvedPath,
+            pageInstanceId: created.page_instance_id.toString()
+        )
         tabManager.addTab(appId: homeLxAppId)
     }
 
-    func openLxApp(appId: String, path: String, sessionId: UInt64) {
+    /// `pageInstanceId` names the page at `path`; nil means the app's current page.
+    func openLxApp(appId: String, path: String, pageInstanceId: String?, sessionId: UInt64) {
         storeSession(sessionId, for: appId)
-        LxAppCore.setCurrentApp(appId: appId, path: path)
+        LxAppCore.setCurrentApp(appId: appId, path: path, pageInstanceId: pageInstanceId)
         tabManager.addTab(appId: appId)
         // A managed main reopened by the runtime (an update restart) has no
         // switcher click behind it: its surface stayed active while its
@@ -1343,7 +1353,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
            !browserCoordinator.isActive {
             mountLxAppMainProvider(appId: appId)
         }
-        macOSLxApp.navigate(appId: appId, path: path, animationType: .none)
+        macOSLxApp.navigate(
+            appId: appId,
+            path: path,
+            pageInstanceId: pageInstanceId,
+            animationType: .none
+        )
     }
 
     private func switchToTab(_ appId: String) {
@@ -1358,9 +1373,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         // find it. Do not call `resolveMainProviderPath` here: that mints a
         // page while `viewControllers[appId]` is still nil and can nest a
         // second VC. Peek this app's stack-top, else let Rust resolve "".
-        let pathForOpen = peekExistingPath(for: appId)
+        let existing = peekExistingPage(for: appId)
+        let pathForOpen = existing.path
         let viewController = viewControllers[appId] ?? {
-            let vc = macOSLxAppViewController(appId: appId, path: pathForOpen, sessionId: sessionId)
+            let vc = macOSLxAppViewController(
+                appId: appId,
+                path: pathForOpen,
+                pageInstanceId: existing.pageInstanceId,
+                sessionId: sessionId
+            )
             viewControllers[appId] = vc
             return vc
         }()
@@ -1381,7 +1402,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 return
             }
             if viewController.currentPath.isEmpty || viewController.currentPath != resolvedPath {
-                viewController.navigate(appId: appId, to: resolvedPath, with: .none)
+                viewController.navigate(
+                    appId: appId,
+                    to: resolvedPath,
+                    pageInstanceId: created.page_instance_id.toString(),
+                    with: .none
+                )
             }
         }
 
@@ -1456,30 +1482,34 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         // reconcile that reaches an appId whose VC was not yet created.
         if let viewController = viewControllers[appId] {
             presentMain(.lxapp(viewController))
-        } else if let path = resolveMainProviderPath(for: appId) {
-            _ = ensureViewController(for: appId, path: path)
+        } else if let page = resolveMainProviderPage(for: appId) {
+            _ = ensureViewController(
+                for: appId, path: page.path, pageInstanceId: page.pageInstanceId)
         }
     }
 
-    /// This app's stack-top path when it is already current; otherwise empty.
-    /// Empty lets `createPageInstance` resolve the initial route instead of
-    /// pinning another lxapp's global current path onto a new VC.
-    private func peekExistingPath(for appId: String) -> String {
+    /// This app's stack-top page when it is already current; otherwise an
+    /// empty path. Empty lets `createPageInstance` resolve the initial route
+    /// instead of pinning another lxapp's global current page onto a new VC.
+    private func peekExistingPage(for appId: String) -> (path: String, pageInstanceId: String?) {
         let current = getCurrentLxApp()
-        guard current.appid.toString() == appId else { return "" }
-        return current.path.toString()
+        guard current.appid.toString() == appId else { return ("", nil) }
+        let pageInstanceId = current.page_instance_id.toString()
+        return (current.path.toString(), pageInstanceId.isEmpty ? nil : pageInstanceId)
     }
 
-    /// Resolve the page path to pin a freshly-created main VC to. A dynamic
+    /// Resolve the page to pin a freshly-created main VC to. A dynamic
     /// open commits its layout before the runtime finishes pushing the target
-    /// app onto the navigation stack, so the global current path can still
+    /// app onto the navigation stack, so the global current page can still
     /// belong to the previous app at reconcile time; a VC pinned to another
-    /// app's path never finds its WebView and stays blank. Resolve within the
+    /// app's page never finds its WebView and stays blank. Resolve within the
     /// target app instead: its own stack-top page when it already leads the
     /// stack, else Rust's page-instance resolution for its current route.
-    private func resolveMainProviderPath(for appId: String) -> String? {
-        let existing = peekExistingPath(for: appId)
-        if !existing.isEmpty { return existing }
+    private func resolveMainProviderPage(
+        for appId: String
+    ) -> (path: String, pageInstanceId: String?)? {
+        let existing = peekExistingPage(for: appId)
+        if !existing.path.isEmpty { return existing }
         guard let sessionId = resolvedSessionId(for: appId) else { return nil }
         let created = createPageInstance(appId, "", sessionId, 0, "")
         let resolvedPath = created.resolved_path.toString()
@@ -1494,7 +1524,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             return nil
         }
         storeSession(sessionId, for: appId)
-        return resolvedPath
+        return (resolvedPath, created.page_instance_id.toString())
     }
 
     /// What can fill the single main content area (`workspaceManager.contentContainer`).
@@ -1798,10 +1828,16 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         let currentLxApp = getCurrentLxApp()
         let appidStr = currentLxApp.appid.toString()
         let pathStr = currentLxApp.path.toString()
+        let pageInstanceId = currentLxApp.page_instance_id.toString()
         let nextSessionId = currentLxApp.session_id
         if !appidStr.isEmpty && nextSessionId > 0 {
             os_log("Opening next LxApp from stack as tab: %@:%@", log: Self.log, type: .info, appidStr, pathStr)
-            macOSLxApp.openLxApp(appId: appidStr, path: pathStr, sessionId: nextSessionId)
+            macOSLxApp.openLxApp(
+                appId: appidStr,
+                path: pathStr,
+                pageInstanceId: pageInstanceId.isEmpty ? nil : pageInstanceId,
+                sessionId: nextSessionId
+            )
         } else if closeWindowWhenEmpty && !tabManager.hasTabs {
             window?.close()
         }
@@ -2489,7 +2525,13 @@ extension LxAppShell {
     private static let panelAttachMaxRetry = 240
     private static let panelAttachRetryDelay: TimeInterval = 0.05
 
-    func showPanelWithContent(id: String, position: PanelPosition, appId: String, path: String) {
+    func showPanelWithContent(
+        id: String,
+        position: PanelPosition,
+        appId: String,
+        path: String,
+        pageInstanceId: String?
+    ) {
         let wasRegistered = workspaceManager.isPanelRegistered(id: id)
         lxShellStdoutLog(
             "showPanelWithContent start id=\(id) position=\(position.rawValue) registered=\(wasRegistered) appId=\(appId) path=\(path) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))"
@@ -2509,7 +2551,8 @@ extension LxAppShell {
         lxShellStdoutLog(
             "showPanelWithContent afterShow id=\(id) containerFrame=\(lxShellFormatRect(workspaceManager.panelContainer(id: id)?.frame ?? .zero)) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))"
         )
-        attachPanelWebViewWhenReady(panelId: id, appId: appId, path: path, attempt: 0)
+        attachPanelWebViewWhenReady(
+            panelId: id, appId: appId, path: path, pageInstanceId: pageInstanceId, attempt: 0)
     }
 
     func showPanelWithNativeContent(
@@ -2580,12 +2623,19 @@ extension LxAppShell {
 
     /// Register an aside panel and attach an lxapp webview WITHOUT showing or
     /// placing it (placement is owned by the reconciler).
-    func registerPanelWithContent(id: String, position: PanelPosition, appId: String, path: String) {
+    func registerPanelWithContent(
+        id: String,
+        position: PanelPosition,
+        appId: String,
+        path: String,
+        pageInstanceId: String?
+    ) {
         if !workspaceManager.isPanelRegistered(id: id) {
             let config = PanelConfig(id: id, position: position)
             workspaceManager.registerPanel(config)
         }
-        attachPanelWebViewWhenReady(panelId: id, appId: appId, path: path, attempt: 0)
+        attachPanelWebViewWhenReady(
+            panelId: id, appId: appId, path: path, pageInstanceId: pageInstanceId, attempt: 0)
     }
 
     func unregisterPanel(id: String) {
@@ -2716,16 +2766,23 @@ extension LxAppShell {
         suppressFrameRestorationMove = false
     }
 
-    private func attachPanelWebViewWhenReady(panelId: String, appId: String, path: String, attempt: Int) {
+    /// `pageInstanceId` names the panel's page; nil means the app's current page.
+    private func attachPanelWebViewWhenReady(
+        panelId: String,
+        appId: String,
+        path: String,
+        pageInstanceId: String?,
+        attempt: Int
+    ) {
         guard let sessionId = appSessions[appId],
               let container = workspaceManager.panelContainer(id: panelId) else {
             return
         }
 
-        if let webView = WebViewManager.resolveWebView(
+        if let webView = WebViewManager.pageWebView(
             appId: appId,
-            path: path,
-            sessionId: sessionId
+            sessionId: sessionId,
+            pageInstanceId: pageInstanceId
         ), webView.url != nil, !webView.isLoading {
             // One lxapp, one region — a re-open with a DIFFERENT page replaces
             // the older content: clear previous subviews (stale webview or the
@@ -2743,7 +2800,13 @@ extension LxAppShell {
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.panelAttachRetryDelay) { [weak self] in
-            self?.attachPanelWebViewWhenReady(panelId: panelId, appId: appId, path: path, attempt: attempt + 1)
+            self?.attachPanelWebViewWhenReady(
+                panelId: panelId,
+                appId: appId,
+                path: path,
+                pageInstanceId: pageInstanceId,
+                attempt: attempt + 1
+            )
         }
     }
 

@@ -221,11 +221,12 @@ public class RunnerApp {
             for await event in controller.events {
                 guard let self else { return }
                 switch event {
-                case .didNavigate(let sessionId, let path, let animation):
+                case .didNavigate(let sessionId, let path, let pageInstanceId, let animation):
                     guard let session = controller.sessions[sessionId] else { continue }
                     self.handleNavigation(
                         appId: session.appId,
                         path: path,
+                        pageInstanceId: pageInstanceId,
                         animationType: animation
                     )
                 case .didClose(let session):
@@ -618,6 +619,7 @@ public class RunnerApp {
         handleNavigation(
             appId: windowController?.appId ?? surfaceShellHost?.appId ?? "",
             path: path,
+            pageInstanceId: nil,
             animationType: .none
         )
     }
@@ -674,11 +676,19 @@ public class RunnerApp {
     }
     
     /// Handle navigation with animation type (called from SDK handler)
-    public func handleNavigation(appId: String, path: String, animationType: LxAppAnimation) {
+    /// `pageInstanceId` names the page to present; nil presents the app's
+    /// current page.
+    public func handleNavigation(
+        appId: String,
+        path: String,
+        pageInstanceId: String?,
+        animationType: LxAppAnimation
+    ) {
         if windowController?.appId == appId {
-            windowController?.navigate(to: path, animationType: animationType)
+            windowController?.navigate(
+                to: path, pageInstanceId: pageInstanceId, animationType: animationType)
         } else if let host = surfaceShellHost, host.appId == appId {
-            host.navigate(to: path, animationType: animationType)
+            host.navigate(to: path, pageInstanceId: pageInstanceId, animationType: animationType)
         }
     }
     

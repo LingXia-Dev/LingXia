@@ -1088,9 +1088,7 @@ pub(crate) fn run_ui_thread_inner(
                 .map_err(|error| WebViewError::WebView(format!("register accelerator: {error}")))?;
         }
         configure_settings(&webview, &effective_options)?;
-        let menu_appid = webtag.extract_appid();
-        let menu_path = webtag.extract_parts().1;
-        configure_context_menu(&webview, &env, &menu_appid, &menu_path, &effective_options)?;
+        configure_context_menu(&webview, &env, &webtag, &effective_options)?;
         // lxapp pages (non-relaxed) get the runtime-owned selection/copy baseline;
         // browser tabs render arbitrary external pages and must not be restyled.
         let inject_platform_baseline = effective_options.profile != SecurityProfile::BrowserRelaxed;

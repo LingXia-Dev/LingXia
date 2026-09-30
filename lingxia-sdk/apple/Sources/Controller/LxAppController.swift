@@ -126,8 +126,13 @@ public final class LxAppController {
     ///
     /// This is used by FFI-driven runtime callbacks that already resolved the
     /// correct session on the Rust side and must not look it up again.
+    /// `pageInstanceId` is the page the runtime named for this open.
     @discardableResult
-    internal func openSync(_ request: LxAppOpenRequest, sessionId: UInt64) throws -> LxAppSession {
+    internal func openSync(
+        _ request: LxAppOpenRequest,
+        sessionId: UInt64,
+        pageInstanceId: String? = nil
+    ) throws -> LxAppSession {
         guard interceptors.isEmpty else {
             throw LxAppErrorPayload(
                 code: "SYNC_OPEN_UNSUPPORTED",
@@ -147,12 +152,13 @@ public final class LxAppController {
 
         emit(.willOpen(request))
 
-        guard LxAppCore.executeOpenLxApp(
+        guard let presentedPageId = LxAppCore.executeOpenLxApp(
             appId: request.appId,
             path: request.path,
             sessionId: sessionId,
             presentation: request.presentation.ffiValue,
-            panelId: request.panelId ?? ""
+            panelId: request.panelId ?? "",
+            pageInstanceId: pageInstanceId
         ) else {
             let error = LxAppErrorPayload(
                 code: "OPEN_REJECTED",
@@ -167,12 +173,7 @@ public final class LxAppController {
             appId: request.appId,
             path: request.path,
             presentation: request.presentation,
-            userInfo: userInfoWithPageInstanceId(
-                request.userInfo,
-                appId: request.appId,
-                path: request.path,
-                sessionId: sessionId
-            ),
+            userInfo: sessionUserInfo(request.userInfo, pageInstanceId: presentedPageId),
             openedAt: Date()
         )
         sessions[session.id] = session
@@ -194,10 +195,12 @@ public final class LxAppController {
 
     // MARK: - Internal
 
-    /// Handle an incoming open request with event emission.
+    /// Handle an incoming open request with event emission. `pageInstanceId`
+    /// is the page the runtime named for this open, when it asked for it.
     internal func handleOpen(
         appId: String,
         path: String,
+        pageInstanceId: String? = nil,
         sessionId: UInt64,
         presentation: LxAppOpenPresentation = .normal,
         panelId: String = "",
@@ -254,12 +257,13 @@ public final class LxAppController {
         }
 
         // Perform the platform open.
-        guard LxAppCore.executeOpenLxApp(
+        guard let presentedPageId = LxAppCore.executeOpenLxApp(
             appId: appId,
             path: path,
             sessionId: sessionId,
             presentation: presentation.ffiValue,
-            panelId: panelId
+            panelId: panelId,
+            pageInstanceId: pageInstanceId
         ) else {
             let error = LxAppErrorPayload(
                 code: "OPEN_REJECTED",
@@ -274,12 +278,7 @@ public final class LxAppController {
             appId: appId,
             path: path,
             presentation: presentation,
-            userInfo: userInfoWithPageInstanceId(
-                request.userInfo,
-                appId: appId,
-                path: path,
-                sessionId: sessionId
-            ),
+            userInfo: sessionUserInfo(request.userInfo, pageInstanceId: presentedPageId),
             openedAt: Date()
         )
         sessions[session.id] = session
@@ -335,18 +334,24 @@ public final class LxAppController {
         guard LxAppCore.executeNavigation(
             appId: session.appId,
             path: request.path,
+            pageInstanceId: request.pageInstanceId,
             animationType: request.animation
         ) else { return false }
 
+        let pageInstanceId = request.pageInstanceId
+            ?? WebViewManager.currentPageInstanceId(
+                appId: session.appId,
+                sessionId: request.sessionId.rawValue
+            )
         session.path = request.path
-        session.userInfo = userInfoWithPageInstanceId(
-            session.userInfo,
-            appId: session.appId,
-            path: request.path,
-            sessionId: request.sessionId.rawValue
-        )
+        session.userInfo = sessionUserInfo(session.userInfo, pageInstanceId: pageInstanceId)
         sessions[request.sessionId] = session
-        emit(.didNavigate(sessionId: request.sessionId, to: request.path, animation: request.animation))
+        emit(.didNavigate(
+            sessionId: request.sessionId,
+            to: request.path,
+            pageInstanceId: pageInstanceId,
+            animation: request.animation
+        ))
         return true
     }
 
@@ -391,18 +396,12 @@ public final class LxAppController {
         }
     }
 
-    private func userInfoWithPageInstanceId(
+    private func sessionUserInfo(
         _ userInfo: [String: LxAppJSONValue],
-        appId: String,
-        path: String,
-        sessionId: UInt64
+        pageInstanceId: String?
     ) -> [String: LxAppJSONValue] {
         var result = userInfo
-        if let pageInstanceId = WebViewManager.resolvePageInstanceId(
-            appId: appId,
-            path: path,
-            sessionId: sessionId
-        ) {
+        if let pageInstanceId, !pageInstanceId.isEmpty {
             result["pageInstanceId"] = .string(pageInstanceId)
         } else {
             result.removeValue(forKey: "pageInstanceId")

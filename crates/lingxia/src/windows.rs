@@ -130,9 +130,9 @@ fn install_aside_panel_bridge() {
 
 fn install_url_surface_bridge() {
     lingxia_platform::set_windows_url_surface_handler(Arc::new(|request| {
-        if request.content != SurfaceContent::Url {
+        let SurfaceContent::Url { url } = &request.content else {
             return None;
-        }
+        };
         // The data mode is orthogonal to browser behavior, so ephemeral (auth
         // handoff) and ordinary URL surfaces share the same tab delegate and
         // error UI.
@@ -148,15 +148,15 @@ fn install_url_surface_bridge() {
         // it (plain builds), a browser-profile WebView2 renders the URL
         // directly.
         #[cfg(feature = "browser-runtime")]
-        if let Some(resolved) = resolve_url_surface_as_browser_tab(request, data_mode) {
+        if let Some(resolved) = resolve_url_surface_as_browser_tab(request, url, data_mode) {
             return Some(resolved);
         }
         // `teardown_surface` destroys this webview by its webtag, so no cleanup hook.
-        let webtag = WebTag::new(&request.app_id, &request.path, Some(request.session_id));
-        let url = request.path.clone();
+        let webtag = WebTag::new(&request.app_id, url, Some(request.owner_session_id));
+        let load_url = url.clone();
         let url_callback = request.url_callback;
         let app_id = request.app_id.clone();
-        let session_id = request.session_id;
+        let session_id = request.owner_session_id;
         let session = lingxia_webview::WebViewBuilder::browser(webtag)
             .data_mode(data_mode)
             .on_navigation(move |request| url_surface_navigation_policy(url_callback, &request.url))
@@ -177,17 +177,17 @@ fn install_url_surface_bridge() {
         std::mem::drop(crate::task::spawn(async move {
             match session.wait_ready().await {
                 Ok(webview) => {
-                    if let Err(err) = webview.load_url(&url) {
-                        log::error!("URL surface failed to load {url}: {err}");
+                    if let Err(err) = webview.load_url(&load_url) {
+                        log::error!("URL surface failed to load {load_url}: {err}");
                     }
                 }
-                Err(err) => log::error!("URL surface webview create failed for {url}: {err}"),
+                Err(err) => log::error!("URL surface webview create failed for {load_url}: {err}"),
             }
         }));
         Some(lingxia_platform::WindowsUrlSurfaceWebTag {
             app_id: request.app_id.clone(),
-            path: request.path.clone(),
-            session_id: request.session_id,
+            path: url.clone(),
+            session_id: request.owner_session_id,
             cleanup: None,
         })
     }));
@@ -222,17 +222,18 @@ fn url_surface_new_window_policy(
 #[cfg(feature = "browser-runtime")]
 fn resolve_url_surface_as_browser_tab(
     request: &lingxia_platform::traits::ui::SurfaceRequest,
+    url: &str,
     data_mode: WebViewDataMode,
 ) -> Option<lingxia_platform::WindowsUrlSurfaceWebTag> {
     let tab_id = crate::browser::open_standalone_for_app(
         &request.app_id,
-        request.session_id,
-        &request.path,
+        request.owner_session_id,
+        url,
         None,
         data_mode,
         request.url_callback,
     )
-    .inspect_err(|err| log::warn!("URL surface browser tab failed for {}: {err}", request.path))
+    .inspect_err(|err| log::warn!("URL surface browser tab failed for {url}: {err}"))
     .ok()?;
     let tab = crate::browser::tab_summary(&tab_id)?;
     let close_tab_id = tab_id.clone();

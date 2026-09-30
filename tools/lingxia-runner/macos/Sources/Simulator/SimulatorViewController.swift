@@ -14,6 +14,8 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     
     public let appId: String
     public private(set) var currentPath: String
+    /// The page instance shown at `currentPath`; nil follows the app's current page.
+    private var currentPageInstanceId: String?
     private var displayScale: CGFloat
     
     private var webViewContainer: NSView!
@@ -268,15 +270,16 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     }
     
     private func loadWebViewContent() {
-        if let webView = RunnerSupport.WebView.resolve(appId: appId, path: currentPath) {
-            showWebViewToUser(webView, path: currentPath)
+        if let webView = RunnerSupport.WebView.page(
+            appId: appId, pageInstanceId: currentPageInstanceId) {
+            showWebViewToUser(webView, pageInstanceId: currentPageInstanceId)
         }
     }
     
     /// Unified method to show a WebView to the user
     private func showWebViewToUser(
         _ webView: WKWebView,
-        path: String,
+        pageInstanceId: String?,
         animation: LxAppAnimation = .none
     ) {
         // Sliding a page that has not painted yet shows its content settling
@@ -285,9 +288,12 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         // screen while we wait, so it reads as the animation starting a moment
         // later rather than as a stall. Mirrors the SDK's macOS controller.
         if RunnerPageTransition.needsPaintWait(webView, animation: animation) {
+            let path = currentPath
             pageTransition.whenPagePaints(
                 webView,
-                stillCurrent: { [weak self] in self?.currentPath == path },
+                stillCurrent: { [weak self] in
+                    self?.currentPath == path && self?.currentPageInstanceId == pageInstanceId
+                },
                 swap: { [weak self] in self?.performWebViewSwap(webView, animation: animation) }
             )
             return
@@ -344,20 +350,27 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
 
     // MARK: - Navigation
 
-    public func navigate(to path: String, animationType: LxAppAnimation = .none) {
+    /// `pageInstanceId` names the page to present; nil presents the app's
+    /// current page.
+    public func navigate(
+        to path: String,
+        pageInstanceId: String? = nil,
+        animationType: LxAppAnimation = .none
+    ) {
         self.currentPath = path
+        self.currentPageInstanceId = pageInstanceId
         
         // Update UI components
         updateNavigationBar(appId: appId, path: path)
         updateTabBar()
         
         // Show WebView
-        if let webView = RunnerSupport.WebView.resolve(appId: appId, path: path) {
-            showWebViewToUser(webView, path: path, animation: animationType)
+        if let webView = RunnerSupport.WebView.page(appId: appId, pageInstanceId: pageInstanceId) {
+            showWebViewToUser(webView, pageInstanceId: pageInstanceId, animation: animationType)
         }
 
         // Update app state
-        RunnerSupport.Runtime.setCurrentPath(path)
+        RunnerSupport.Runtime.setCurrentPath(path, pageInstanceId: pageInstanceId)
     }
     
     public func setSelectedTabIndex(_ index: Int) {

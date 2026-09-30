@@ -953,15 +953,8 @@ internal object LxAppBrowser {
     private fun tabIdsForMode(aside: Boolean = isAsideActive): List<String> =
         openTabIds.filter { tabIsAside(it) == aside }
 
-    private fun findManagedWebView(tabId: String): WebView? {
-        val appId = NativeApi.getBuiltinBrowserAppId()?.takeIf { it.isNotBlank() } ?: return null
-        val path = NativeApi.browserTabPathForId(tabId)?.takeIf { it.isNotBlank() } ?: return null
-        val sessionId = NativeApi.getLxAppSessionId(appId)
-        if (sessionId <= 0L) {
-            return null
-        }
-        return NativeApi.findWebView(appId, path, sessionId)
-    }
+    private fun findManagedWebView(tabId: String): WebView? =
+        NativeApi.findBrowserTabWebView(tabId)
 
     private fun closeBrowserTab(tabId: String) {
         if (tabId.isBlank()) return

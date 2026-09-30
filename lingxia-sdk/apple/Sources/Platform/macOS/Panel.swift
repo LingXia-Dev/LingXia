@@ -17,12 +17,14 @@ extension macOSLxApp {
     internal static func handlePanelLxAppOpened(
         appId: String,
         path: String,
+        pageInstanceId: String,
         sessionId: UInt64,
         panelId: String
     ) -> Bool {
         LxAppMacAppUIRuntime.handlePanelLxAppOpened(
             appId: appId,
             path: path,
+            pageInstanceId: pageInstanceId,
             sessionId: sessionId,
             panelId: panelId
         )

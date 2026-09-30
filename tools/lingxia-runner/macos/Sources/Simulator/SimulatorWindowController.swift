@@ -1579,10 +1579,12 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - Navigation
     
     public func navigate(to path: String) {
-        navigate(to: path, animationType: .none)
+        navigate(to: path, pageInstanceId: nil, animationType: .none)
     }
     
-    public func navigate(to path: String, animationType: LxAppAnimation) {
+    /// `pageInstanceId` names the page to present; nil presents the app's
+    /// current page.
+    public func navigate(to path: String, pageInstanceId: String?, animationType: LxAppAnimation) {
         self.currentPath = path
 
         DevToolsLogger.shared.log("Navigate → \(path)", level: .nav)
@@ -1591,6 +1593,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         let navState = RunnerSupport.Navigation.state(appId: appId, path: path)
         updateNavigationBar(with: navState)
 
-        viewController?.navigate(to: path, animationType: animationType)
+        viewController?.navigate(
+            to: path, pageInstanceId: pageInstanceId, animationType: animationType)
     }
 }

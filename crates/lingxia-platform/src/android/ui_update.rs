@@ -1,11 +1,11 @@
 use super::app::Platform;
 use crate::error::{PlatformError, unmounted_presenter_or};
-use crate::traits::ui::UIUpdate;
+use crate::traits::ui::{Appearance, LaunchFace, UIUpdate};
 use jni::objects::{JClass, JValue};
 use jni::sys::jlong;
 use jni::{jni_sig, jni_str};
 
-impl UIUpdate for Platform {
+impl Appearance for Platform {
     fn host_appearance_dark(&self) -> bool {
         let Ok(lxapp_class) = super::get_cached_class(super::CachedClass::LxApp) else {
             return false;
@@ -20,37 +20,6 @@ impl UIUpdate for Platform {
             .and_then(|value| value.z())
         })
         .unwrap_or(false)
-    }
-
-    fn notify_home_first_ready(&self) {
-        let Ok(lxapp_class) = super::get_cached_class(super::CachedClass::LxApp) else {
-            return;
-        };
-        let _ = super::with_env(|env| {
-            env.call_static_method(
-                lxapp_class,
-                jni_str!("onHomeFirstReady"),
-                jni_sig!("()V"),
-                &[],
-            )
-            .map(|_| ())
-        });
-    }
-
-    fn show_splash_campaign(&self, image_path: String, duration_ms: u32) {
-        let Ok(lxapp_class) = super::get_cached_class(super::CachedClass::LxApp) else {
-            return;
-        };
-        let _ = super::with_env(|env| {
-            let path = env.new_string(&image_path)?;
-            env.call_static_method(
-                lxapp_class,
-                jni_str!("showSplashCampaign"),
-                jni_sig!("(Ljava/lang/String;I)V"),
-                &[JValue::Object(&path), JValue::Int(duration_ms as i32)],
-            )
-            .map(|_| ())
-        });
     }
 
     fn set_host_color_mode(&self, dark: Option<bool>) {
@@ -94,7 +63,42 @@ impl UIUpdate for Platform {
             }
         })
     }
+}
 
+impl LaunchFace for Platform {
+    fn notify_home_first_ready(&self) {
+        let Ok(lxapp_class) = super::get_cached_class(super::CachedClass::LxApp) else {
+            return;
+        };
+        let _ = super::with_env(|env| {
+            env.call_static_method(
+                lxapp_class,
+                jni_str!("onHomeFirstReady"),
+                jni_sig!("()V"),
+                &[],
+            )
+            .map(|_| ())
+        });
+    }
+
+    fn show_splash_campaign(&self, image_path: String, duration_ms: u32) {
+        let Ok(lxapp_class) = super::get_cached_class(super::CachedClass::LxApp) else {
+            return;
+        };
+        let _ = super::with_env(|env| {
+            let path = env.new_string(&image_path)?;
+            env.call_static_method(
+                lxapp_class,
+                jni_str!("showSplashCampaign"),
+                jni_sig!("(Ljava/lang/String;I)V"),
+                &[JValue::Object(&path), JValue::Int(duration_ms as i32)],
+            )
+            .map(|_| ())
+        });
+    }
+}
+
+impl UIUpdate for Platform {
     async fn measure_page_chrome_capsule(
         &self,
         appid: String,

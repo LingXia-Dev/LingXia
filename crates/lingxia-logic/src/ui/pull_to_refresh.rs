@@ -23,11 +23,9 @@ fn start_pull_down_refresh(ctx: JSContext) -> JSResult<()> {
             "lx.startPullDownRefresh requires enablePullDownRefresh: true in the current page config",
         ));
     }
-    let path = page.path();
-
     lxapp
         .runtime
-        .start_pull_down_refresh(&lxapp.appid, &path)
+        .start_pull_down_refresh(&lxapp.appid, page.webtag().key())
         .map_err(|e| {
             lxapp::error!("start_pull_down_refresh failed: {}", e);
             js_error_from_platform_error(&e)
@@ -42,13 +40,13 @@ fn start_pull_down_refresh(ctx: JSContext) -> JSResult<()> {
 /// This should be called after the refresh operation is complete.
 fn stop_pull_down_refresh(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let path = lxapp
-        .peek_current_page_path()
-        .ok_or_else(|| js_service_unavailable_error("No current page found"))?;
+    let page = lxapp
+        .current_page()
+        .map_err(|_| js_service_unavailable_error("No current page found"))?;
 
     lxapp
         .runtime
-        .stop_pull_down_refresh(&lxapp.appid, &path)
+        .stop_pull_down_refresh(&lxapp.appid, page.webtag().key())
         .map_err(|e| {
             lxapp::error!("stop_pull_down_refresh failed: {}", e);
             js_error_from_platform_error(&e)

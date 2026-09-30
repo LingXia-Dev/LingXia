@@ -62,7 +62,7 @@ object LxApp {
         if (waiting.isEmpty()) return
         // Finish the initial page attachment before replaying queued navigation.
         Handler(Looper.getMainLooper()).post {
-            for (open in waiting) openWithSession(open.appId, open.path, open.sessionId)
+            for (open in waiting) openInCurrentActivity(open)
         }
     }
 
@@ -140,6 +140,7 @@ object LxApp {
         return true
     }
 
+    /** Open [appId] at a route; blank means its initial route. */
     @JvmStatic
     fun open(appId: String, path: String) {
         val sessionId = NativeApi.getLxAppSessionId(appId)
@@ -147,18 +148,16 @@ object LxApp {
             LxLog.e(TAG, "Missing valid session for appId=$appId")
             return
         }
-        openWithSession(appId, path, sessionId)
+        openInCurrentActivity(LxAppActivityStartGate.Open(appId, path, sessionId))
     }
 
-    /** Runtime bridge entry (called from Rust/JNI) with explicit session. */
+    /**
+     * Runtime bridge entry (JNI): show [appId]. [webtag] names the page
+     * instance the open is for; the activity presents the app's current page.
+     */
     @JvmStatic
-    fun open(appId: String, path: String, sessionId: Long) {
-        openWithSession(appId, path, sessionId)
-    }
-
-    @JvmStatic
-    internal fun openWithSession(appId: String, path: String, sessionId: Long) {
-        openInCurrentActivity(appId, path, sessionId)
+    fun show(appId: String, webtag: String, sessionId: Long) {
+        openInCurrentActivity(LxAppActivityStartGate.Open(appId, "", sessionId, webtag))
     }
 
     @JvmStatic
@@ -175,7 +174,7 @@ object LxApp {
             LxLog.e(TAG, "Missing valid session for home app: $homeId")
             return
         }
-        openWithSession(homeId, "", sessionId)
+        openInCurrentActivity(LxAppActivityStartGate.Open(homeId, "", sessionId))
     }
 
     @JvmStatic
@@ -210,13 +209,14 @@ object LxApp {
         closeWithSession(appId, sessionId)
     }
 
+    /** Runtime bridge entry (JNI): present the page instance [webtag] names. */
     @JvmStatic
-    fun navigate(appId: String, path: String, webtag: String, animationTypeInt: Int): Boolean {
+    fun navigate(appId: String, webtag: String, animationTypeInt: Int): Boolean {
         val animationType = AnimationType.fromInt(animationTypeInt)
-        Log.d(TAG, "navigate called for appId: $appId, path: $path, type: $animationType")
+        Log.d(TAG, "navigate called for appId: $appId, page: $webtag, type: $animationType")
         val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
         return if (activity != null) {
-            activity.runOnUiThread { activity.navigate(path, webtag, animationType) }
+            activity.runOnUiThread { activity.navigate(webtag, animationType) }
             true
         } else {
             Log.w(TAG, "No matching activity for appId: $appId")
@@ -344,28 +344,35 @@ object LxApp {
         return result.get()
     }
 
-    private fun openInCurrentActivity(appId: String, path: String, sessionId: Long) {
+    private fun openInCurrentActivity(request: LxAppActivityStartGate.Open) {
+        val appId = request.appId
+        val sessionId = request.sessionId
+        val webtag = request.webtag
         if (sessionId <= 0L) {
             LxLog.e(TAG, "Refusing to open LxApp without valid sessionId: appId=$appId")
             return
         }
         val openTask = Runnable {
             try {
-                val resolvedPath = NativeApi.onLxAppOpened(appId, path, sessionId)
+                val resolvedPath = if (webtag != null) {
+                    NativeApi.onLxAppPageOpened(appId, webtag, sessionId)
+                } else {
+                    NativeApi.onLxAppOpened(appId, request.path, sessionId)
+                }
                 if (resolvedPath.isBlank()) {
                     Log.w(TAG, "onLxAppOpened rejected open request (stale session?) appId=$appId sessionId=$sessionId")
                     return@Runnable
                 }
                 val activity = getCurrentActivity()
                 if (activity != null) {
-                    activity.openLxApp(appId, resolvedPath, sessionId)
+                    activity.openLxApp(appId, sessionId)
                 } else {
                     val ctx = Lingxia.applicationContext()
                     if (ctx == null) {
                         LxLog.e(TAG, "Lingxia not initialized; cannot start LxAppActivity")
                         return@Runnable
                     }
-                    val open = LxAppActivityStartGate.Open(appId, resolvedPath, sessionId)
+                    val open = LxAppActivityStartGate.Open(appId, resolvedPath, sessionId, webtag)
                     when (activityStart.request(open)) {
                         LxAppActivityStartGate.Decision.START -> Unit
                         LxAppActivityStartGate.Decision.COVERED -> return@Runnable

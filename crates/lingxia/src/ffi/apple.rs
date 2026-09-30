@@ -118,6 +118,7 @@ mod bridge {
     pub struct CurrentLxApp {
         pub appid: String,
         pub path: String,
+        pub page_instance_id: String,
         pub session_id: u64,
     }
 
@@ -134,6 +135,7 @@ mod bridge {
     #[swift_bridge(swift_repr = "struct")]
     pub struct PageBindingResult {
         pub page_instance_id: String,
+        pub path: String,
         pub webview_ptr: usize,
     }
 
@@ -284,14 +286,33 @@ mod bridge {
         #[swift_bridge(swift_name = "findWebViewByPageInstanceId")]
         fn find_webview_by_page_instance_id(page_instance_id: &str) -> usize;
 
-        // Wait for the app's current page to have its WebView ready. Returns
+        // Wait for a page to have its WebView ready: the instance named, or
+        // the app's current page when `page_instance_id` is empty. Returns
         // true when it is ready now; otherwise `LxApp.pageWebViewReady` is
         // called once with `callback_id`, later.
         #[swift_bridge(swift_name = "awaitPageWebView")]
-        fn await_page_webview(appid: &str, session_id: u64, callback_id: u64) -> bool;
+        fn await_page_webview(
+            appid: &str,
+            session_id: u64,
+            page_instance_id: &str,
+            callback_id: u64,
+        ) -> bool;
 
-        #[swift_bridge(swift_name = "resolvePageBinding")]
-        fn resolve_page_binding(appid: &str, path: &str, session_id: u64) -> PageBindingResult;
+        // The full webview tag of a page instance; empty when it is gone.
+        #[swift_bridge(swift_name = "pageWebTag")]
+        fn page_webtag(page_instance_id: &str) -> String;
+
+        // The page instance a webtag names; empty when it is gone.
+        #[swift_bridge(swift_name = "pageBindingForWebTag")]
+        fn page_binding_for_webtag(appid: &str, webtag: &str) -> PageBindingResult;
+
+        // The page instance named, or the app's current page when
+        // `page_instance_id` is empty.
+        #[swift_bridge(swift_name = "pageBinding")]
+        fn page_binding(appid: &str, session_id: u64, page_instance_id: &str) -> PageBindingResult;
+
+        #[swift_bridge(swift_name = "browserTabBinding")]
+        fn browser_tab_binding(tab_id: &str) -> PageBindingResult;
 
         #[swift_bridge(swift_name = "resolveLxAppPageTarget")]
         fn resolve_lxapp_page_target(
@@ -1874,9 +1895,15 @@ pub fn start_browser_tab_download(
 /// Get current active LxApp ID and path from Rust stack
 pub fn get_current_lxapp() -> self::bridge::CurrentLxApp {
     let (current_appid, current_path, current_session_id) = lxapp::get_current_lxapp();
+    let page_instance_id = lxapp::try_get(&current_appid)
+        .filter(|app| app.session_id() == current_session_id)
+        .and_then(|app| app.current_page().ok())
+        .map(|page| page.instance_id_string())
+        .unwrap_or_default();
     self::bridge::CurrentLxApp {
         appid: current_appid,
         path: current_path,
+        page_instance_id,
         session_id: current_session_id,
     }
 }
@@ -1910,7 +1937,22 @@ pub fn find_webview_by_page_instance_id(page_instance_id: &str) -> usize {
         .unwrap_or(0)
 }
 
-pub fn await_page_webview(appid: &str, session_id: u64, callback_id: u64) -> bool {
+pub fn await_page_webview(
+    appid: &str,
+    session_id: u64,
+    page_instance_id: &str,
+    callback_id: u64,
+) -> bool {
+    let webtag = match page_instance_id.trim() {
+        "" => None,
+        id => match lxapp::try_get(appid).and_then(|app| app.get_page_by_instance_id_str(id)) {
+            Some(page) => Some(page.webtag().key().to_string()),
+            None => {
+                self::bridge::page_webview_ready(callback_id, false);
+                return false;
+            }
+        },
+    };
     let done = move |outcome: lxapp::PageWebViewAwait| {
         self::bridge::page_webview_ready(
             callback_id,
@@ -1918,65 +1960,71 @@ pub fn await_page_webview(appid: &str, session_id: u64, callback_id: u64) -> boo
         );
     };
     matches!(
-        lxapp::await_page_webview(appid, session_id, None, done),
+        lxapp::await_page_webview(appid, session_id, webtag.as_deref(), done),
         lxapp::PageWebView::Ready(_)
     )
 }
 
-fn resolve_page_instance_id(appid: &str, path: &str, session_id: u64) -> String {
-    if session_id == 0 {
-        return String::new();
-    }
-
-    fn normalize_lookup_path(path: &str) -> &str {
-        let path = path.split('?').next().unwrap_or(path);
-        path.split('#').next().unwrap_or(path)
-    }
-
-    let Some(lxapp) = lxapp::try_get(appid) else {
-        return String::new();
+fn page_binding_of(page: Option<lxapp::PageInstance>) -> self::bridge::PageBindingResult {
+    let Some(page) = page else {
+        return self::bridge::PageBindingResult {
+            page_instance_id: String::new(),
+            path: String::new(),
+            webview_ptr: 0,
+        };
     };
-    if lxapp.session_id() != session_id {
-        return String::new();
-    }
-
-    let normalized_path = normalize_lookup_path(path);
-    let resolved_path = lxapp
-        .find_page_path(normalized_path)
-        .unwrap_or_else(|| normalized_path.to_string());
-    let page_instance_id = lxapp
-        .page_instance_id_for_path(&resolved_path)
-        .unwrap_or_default();
-    if !page_instance_id.is_empty() {
-        let _ = lxapp::touch_page_instance_by_id(&page_instance_id);
-    }
-    page_instance_id
-}
-
-pub fn resolve_page_binding(
-    appid: &str,
-    path: &str,
-    session_id: u64,
-) -> self::bridge::PageBindingResult {
-    let page_instance_id = resolve_page_instance_id(appid, path, session_id);
-    let mut webview_ptr = if page_instance_id.is_empty() {
-        0
-    } else {
-        find_webview_by_page_instance_id(&page_instance_id)
-    };
-    if webview_ptr == 0 {
-        // Browser tabs showing external documents have no bound lxapp
-        // PageInstance — the WebView belongs to the tab, not a page.
-        // Resolve it directly from the webview registry by webtag.
-        let webtag = lingxia_webview::WebTag::new(appid, path, Some(session_id));
-        if let Some(webview) = lingxia_webview::runtime::find_webview(&webtag) {
-            webview_ptr = webview.get_swift_webview_ptr();
-        }
-    }
+    let page_instance_id = page.instance_id_string();
+    let _ = lxapp::touch_page_instance_by_id(&page_instance_id);
     self::bridge::PageBindingResult {
         page_instance_id,
-        webview_ptr,
+        path: page.path(),
+        webview_ptr: page
+            .webview()
+            .map(|webview| webview.get_swift_webview_ptr())
+            .unwrap_or(0),
     }
+}
+
+pub fn page_webtag(page_instance_id: &str) -> String {
+    lxapp::find_page_by_instance_id(page_instance_id.trim())
+        .map(|page| page.webtag().key().to_string())
+        .unwrap_or_default()
+}
+
+pub fn page_binding_for_webtag(appid: &str, webtag: &str) -> self::bridge::PageBindingResult {
+    page_binding_of(lxapp::find_page_by_webtag(appid, webtag))
+}
+
+pub fn page_binding(
+    appid: &str,
+    session_id: u64,
+    page_instance_id: &str,
+) -> self::bridge::PageBindingResult {
+    let app = lxapp::try_get(appid).filter(|app| session_id != 0 && app.session_id() == session_id);
+    let page = app.and_then(|app| match page_instance_id.trim() {
+        "" => app.current_page().ok(),
+        id => app.get_page_by_instance_id_str(id),
+    });
+    page_binding_of(page)
+}
+
+/// A tab showing an internal page has a headless page keyed by the tab's own
+/// path; one showing an external document has only the tab's WebView.
+pub fn browser_tab_binding(tab_id: &str) -> self::bridge::PageBindingResult {
+    let appid = crate::browser::APP_ID;
+    let path = crate::browser::tab_path(tab_id);
+    let Some(app) = lxapp::try_get(appid).filter(|_| !path.is_empty()) else {
+        return page_binding_of(None);
+    };
+    let mut binding = page_binding_of(app.get_page(&path));
+    if binding.webview_ptr == 0 {
+        let webtag = lingxia_webview::WebTag::new(appid, &path, Some(app.session_id()));
+        if let Some(webview) = lingxia_webview::runtime::find_webview(&webtag) {
+            binding.webview_ptr = webview.get_swift_webview_ptr();
+        }
+    }
+    binding.path = path;
+    binding
 }
 
 pub fn resolve_lxapp_page_target(

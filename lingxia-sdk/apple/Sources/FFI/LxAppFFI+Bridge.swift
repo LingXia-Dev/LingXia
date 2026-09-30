@@ -105,17 +105,22 @@ extension LxApp {
 
     nonisolated static func openLxApp(
         appid: RustStr,
-        path: RustStr,
+        webtag: RustStr,
         session_id: UInt64,
         presentation: Int32,
         panel_id: RustStr
     ) -> Bool {
         let appIdString = appid.toString()
-        let pathString = path.toString()
+        let webtagString = webtag.toString()
         let panelIdString = panel_id.toString()
         guard session_id > 0 else { return false }
 
         return executeOnMain {
+            guard let page = WebViewManager.page(appId: appIdString, webtag: webtagString) else {
+                LXLog.error("openLxApp: no page for \(webtagString)", category: "LxAppFFI")
+                return false
+            }
+            let pathString = page.path
             if let controller = LxAppActiveHost.activeController {
                 let openPresentation: LxAppOpenPresentation = presentation == 1 ? .panel : .normal
                 let request = LxAppOpenRequest(
@@ -129,6 +134,7 @@ extension LxApp {
                         _ = await controller.handleOpen(
                             appId: appIdString,
                             path: pathString,
+                            pageInstanceId: page.pageInstanceId,
                             sessionId: session_id,
                             presentation: openPresentation,
                             panelId: panelIdString
@@ -139,7 +145,8 @@ extension LxApp {
                 do {
                     _ = try controller.openSync(
                         request,
-                        sessionId: session_id
+                        sessionId: session_id,
+                        pageInstanceId: page.pageInstanceId
                     )
                     return true
                 } catch {
@@ -156,8 +163,9 @@ extension LxApp {
                     path: pathString,
                     sessionId: session_id,
                     presentation: presentation,
-                    panelId: panelIdString
-                )
+                    panelId: panelIdString,
+                    pageInstanceId: page.pageInstanceId
+                ) != nil
             }
         }
     }
@@ -189,10 +197,10 @@ extension LxApp {
     nonisolated static func presentSurface(
         id: RustStr,
         appid: RustStr,
-        path: RustStr,
-        session_id: UInt64,
-        page_instance_id: RustStr,
+        owner_session_id: UInt64,
         content: Int32,
+        webtag: RustStr,
+        url: RustStr,
         kind: Int32,
         width: Double,
         height: Double,
@@ -209,24 +217,31 @@ extension LxApp {
     ) -> Bool {
         let idString = id.toString()
         let appIdString = appid.toString()
-        let pathString = path.toString()
-        let pageInstanceId = page_instance_id.toString()
-        guard !idString.isEmpty, !appIdString.isEmpty, session_id > 0 else {
+        let webtagString = webtag.toString()
+        let urlString = url.toString()
+        guard !idString.isEmpty, !appIdString.isEmpty, owner_session_id > 0 else {
             LXLog.error(
-                "presentSurface rejected invalid args id=\(idString) app=\(appIdString) session=\(session_id)",
+                "presentSurface rejected invalid args id=\(idString) app=\(appIdString) session=\(owner_session_id)",
                 category: "LxAppFFI"
             )
             return false
         }
 
         return executeOnMain {
-            LxAppSurface.present(
+            guard let surfaceContent = LxAppSurfaceContent(
+                kind: content, appId: appIdString, webtag: webtagString, url: urlString)
+            else {
+                LXLog.error(
+                    "presentSurface: no content for id=\(idString) app=\(appIdString) webtag=\(webtagString)",
+                    category: "LxAppFFI"
+                )
+                return false
+            }
+            return LxAppSurface.present(
                 id: idString,
                 appId: appIdString,
-                path: pathString,
-                sessionId: session_id,
-                pageInstanceId: pageInstanceId,
-                content: content,
+                sessionId: owner_session_id,
+                content: surfaceContent,
                 kind: kind,
                 width: width,
                 height: height,
@@ -797,9 +812,9 @@ extension LxApp {
         }
     }
 
-    nonisolated static func navigate(appid: RustStr, path: RustStr, animation_type: Int32) -> Bool {
+    nonisolated static func navigate(appid: RustStr, webtag: RustStr, animation_type: Int32) -> Bool {
         let appIdString = appid.toString()
-        let pathString = path.toString()
+        let webtagString = webtag.toString()
 
         let animationType: LxAppAnimation
         switch animation_type {
@@ -809,15 +824,25 @@ extension LxApp {
         }
 
         return executeOnMain {
+            guard let page = WebViewManager.page(appId: appIdString, webtag: webtagString) else {
+                LXLog.error("navigate: no page for \(webtagString)", category: "LxAppFFI")
+                return false
+            }
             if let controller = LxAppActiveHost.activeController,
                let session = controller.session(forAppId: appIdString) {
                 return controller.navigateReturningSuccess(LxAppNavigateRequest(
                     sessionId: session.id,
-                    path: pathString,
+                    path: page.path,
+                    pageInstanceId: page.pageInstanceId,
                     animation: animationType
                 ))
             } else {
-                return LxAppPlatform.navigate(appId: appIdString, path: pathString, animationType: animationType)
+                return LxAppPlatform.navigate(
+                    appId: appIdString,
+                    path: page.path,
+                    pageInstanceId: page.pageInstanceId,
+                    animationType: animationType
+                )
             }
         }
     }

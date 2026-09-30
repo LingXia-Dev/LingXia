@@ -738,16 +738,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     }
 
     private func findManagedBrowserWebView(tabId: String) -> WKWebView? {
-        let appId = getBuiltinBrowserAppId().toString()
-        let sessionId = getLxAppSessionId(appId)
-        guard sessionId > 0 else {
-            return nil
-        }
-        return WebViewManager.resolveWebView(
-            appId: appId,
-            path: browserTabPathForId(tabId).toString(),
-            sessionId: sessionId
-        )
+        WebViewManager.browserTabWebView(tabId: tabId)
     }
 
     private func observeManagedWebView(_ webView: WKWebView) {

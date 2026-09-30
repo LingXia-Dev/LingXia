@@ -76,9 +76,17 @@ final class MacPullToRefreshController {
         return controller
     }
 
+    /// Controllers that have refreshed, by page webtag: a stop has to reach
+    /// the indicator even after the runtime has dropped the page it names.
+    private static let refreshed =
+        NSMapTable<NSString, MacPullToRefreshController>.strongToWeakObjects()
+
     /// The controller for a page, addressed the way the runtime addresses one.
-    static func controller(appId: String, path: String) -> MacPullToRefreshController? {
-        WebViewManager.resolveWebView(appId: appId, path: path)?.lxPullToRefreshController
+    static func controller(appId: String, webtag: String) -> MacPullToRefreshController? {
+        if let known = refreshed.object(forKey: webtag as NSString) { return known }
+        guard let page = WebViewManager.page(appId: appId, webtag: webtag) else { return nil }
+        return WebViewManager.pageWebView(appId: appId, pageInstanceId: page.pageInstanceId)?
+            .lxPullToRefreshController
     }
 
     private init(webView: WKWebView) {
@@ -404,8 +412,12 @@ final class MacPullToRefreshController {
         indicator.startLoading()
         setPageOffset(Self.restingDistance, animated: true)
 
-        guard let webView, let appId = webView.appId else { return }
-        _ = onLxappEvent(appId, LxAppEvent.pullDownRefresh, webView.currentPath ?? "")
+        guard let webView, let appId = webView.appId, let webtag = webView.pageWebTag else {
+            finishRefreshing()
+            return
+        }
+        Self.refreshed.setObject(self, forKey: webtag as NSString)
+        _ = onLxappEvent(appId, LxAppEvent.pullDownRefresh, webtag)
     }
 
     func endRefreshing() {

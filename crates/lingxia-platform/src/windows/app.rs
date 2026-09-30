@@ -12,7 +12,7 @@ use crate::AssetFileEntry;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::{
     AnimationType, AppRuntime, BuiltinBrowserPage, DesktopBannerOutcome, DesktopBannerShow,
-    LocalNotificationShow, LxAppOpenMode, OpenUrlRequest, OpenUrlResult,
+    LocalNotificationShow, LxAppOpenMode, OpenUrlRequest, OpenUrlResult, ShowLxApp,
 };
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 use crate::traits::stream_decoder::{VideoStreamDecoderHandle, VideoStreamDecoderManager};
@@ -526,16 +526,15 @@ impl AppRuntime for Platform {
         &self.locale
     }
 
-    fn show_lxapp(
-        &self,
-        appid: String,
-        title: String,
-        _path: String,
-        webtag: String,
-        _session_id: u64,
-        open_mode: LxAppOpenMode,
-        panel_id: String,
-    ) -> Result<(), PlatformError> {
+    fn show_lxapp(&self, request: ShowLxApp) -> Result<(), PlatformError> {
+        let ShowLxApp {
+            appid,
+            title,
+            webtag,
+            open_mode,
+            panel_id,
+            ..
+        } = request;
         // Page webtags are per-instance; the runtime hands us the exact tag
         // instead of a route to reconstruct.
         let webtag = WebTag::from(webtag.as_str());
@@ -700,7 +699,6 @@ impl AppRuntime for Platform {
     fn navigate(
         &self,
         appid: String,
-        _path: String,
         webtag: String,
         animation_type: AnimationType,
     ) -> Result<(), PlatformError> {

@@ -297,7 +297,7 @@ declare module 'liblingxia.so' {
    * @param appid - LxApp ID
    * @param path - Page path
    * @param session_id - Runtime session id used to guard stale callbacks
-   * @returns Resolved route path
+   * @returns Webtag of the page instance the open landed on; empty when rejected
    */
   export function onLxappOpened(appid: string, path: string, session_id: number): string;
 
@@ -312,7 +312,7 @@ declare module 'liblingxia.so' {
   /**
    * Notify that a page is being shown (WebView becomes visible)
    * @param appid - LxApp ID
-   * @param path - Page path
+   * @param path - The page's webtag without its `appid:` prefix (`route#instance#session`)
    * @returns Status code (0 for success, -1 for error)
    */
   export function onPageShow(appid: string, path: string): number;

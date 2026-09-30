@@ -17,6 +17,7 @@ extension WKWebView {
     private static var currentPathKey: UInt8 = 0
     private static var nativeComponentPageInstanceKey: UInt8 = 0
     private static var nativeComponentAttachmentGenerationKey: UInt8 = 0
+    private static var pageWebTagKey: UInt8 = 0
 
     var appId: String? {
         get {
@@ -34,6 +35,27 @@ extension WKWebView {
         set {
             objc_setAssociatedObject(self, &Self.currentPathKey, newValue, .OBJC_ASSOCIATION_COPY_NONATOMIC)
         }
+    }
+
+    /// The full webview tag of the lxapp page this web view shows, the way
+    /// the runtime names it. Kept from bind time, so it still names the page
+    /// once the runtime has dropped the instance.
+    var pageWebTag: String? {
+        objc_getAssociatedObject(self, &Self.pageWebTagKey) as? String
+    }
+
+    @MainActor
+    fileprivate func bindPageWebTag(pageInstanceId: String) {
+        let bound = objc_getAssociatedObject(
+            self, &Self.nativeComponentPageInstanceKey) as? String ?? ""
+        guard pageWebTag == nil || bound != pageInstanceId else { return }
+        let webtag = pageInstanceId.isEmpty ? "" : lingxia.pageWebTag(pageInstanceId).toString()
+        objc_setAssociatedObject(
+            self,
+            &Self.pageWebTagKey,
+            webtag.isEmpty ? nil : webtag,
+            .OBJC_ASSOCIATION_COPY_NONATOMIC
+        )
     }
 
     var nativeComponentSurfaceBinding: NativeComponentSurfaceBinding {
@@ -170,13 +192,15 @@ final class WebViewManager {
     private static var pageWaiters: [UInt64: @MainActor (Bool) -> Void] = [:]
     private static var nextPageWaiterId: UInt64 = 1
 
-    /// Run `completion` once the app's current page has its WebView ready, or
-    /// with `false` when it never will (failed, or no longer there). The page's
-    /// WebView is created asynchronously, so a container asked to show it early
-    /// waits for the runtime instead of polling.
+    /// Run `completion` once a page has its WebView ready, or with `false`
+    /// when it never will (failed, or no longer there): the instance named,
+    /// or the app's current page when `pageInstanceId` is nil. The page's
+    /// WebView is created asynchronously, so a container asked to show it
+    /// early waits for the runtime instead of polling.
     static func awaitPageWebView(
         appId: String,
         sessionId: UInt64,
+        pageInstanceId: String?,
         completion: @escaping @MainActor (Bool) -> Void
     ) {
         guard sessionId > 0 else {
@@ -186,7 +210,7 @@ final class WebViewManager {
         let id = nextPageWaiterId
         nextPageWaiterId += 1
         pageWaiters[id] = completion
-        if lingxia.awaitPageWebView(appId, sessionId, id) {
+        if lingxia.awaitPageWebView(appId, sessionId, pageInstanceId ?? "", id) {
             pageWaiters.removeValue(forKey: id)?(true)
         }
     }
@@ -195,86 +219,95 @@ final class WebViewManager {
         pageWaiters.removeValue(forKey: callbackId)?(ready)
     }
 
+    /// The page instance a webtag from the runtime names, with its route.
+    static func page(
+        appId: String,
+        webtag: String
+    ) -> (pageInstanceId: String, path: String)? {
+        let binding = pageBindingForWebTag(appId, webtag)
+        let pageInstanceId = binding.page_instance_id.toString()
+        guard !pageInstanceId.isEmpty else { return nil }
+        return (pageInstanceId, binding.path.toString())
+    }
+
+    /// The instance id of the app's current page.
+    static func currentPageInstanceId(appId: String, sessionId: UInt64) -> String? {
+        guard sessionId > 0 else { return nil }
+        let pageInstanceId = pageBinding(appId, sessionId, "").page_instance_id.toString()
+        return pageInstanceId.isEmpty ? nil : pageInstanceId
+    }
+
     static func findWebView(pageInstanceId: String) -> WKWebView? {
         let trimmed = pageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        let webViewPtr = lingxia.findWebViewByPageInstanceId(trimmed)
-        guard webViewPtr != 0 else { return nil }
-        guard let rawPointer = UnsafeRawPointer(bitPattern: webViewPtr) else {
-            LXLog.error("Warning: Invalid WebView pointer received from Rust layer", category: "WebView")
-            return nil
-        }
-        let webView = Unmanaged<WKWebView>.fromOpaque(rawPointer).takeUnretainedValue()
-        webView.bindNativeComponentPageInstance(trimmed)
-        if debuggingEnabled {
-            if #available(iOS 16.4, macOS 13.3, *) {
-                webView.isInspectable = true
-            }
-        }
-        #if os(iOS)
-        NativeBridge.attachIfNeeded(to: webView)
-        #endif
-        return webView
+        return managedWebView(
+            pointer: lingxia.findWebViewByPageInstanceId(trimmed),
+            pageInstanceId: trimmed
+        )
     }
 
-    private static func lookupBinding(
+    /// The WebView of a page an lxapp container presents: the instance named,
+    /// or the app's current page when the caller has none in hand.
+    static func pageWebView(
         appId: String,
-        path: String,
-        sessionId: UInt64
-    ) -> (pageInstanceId: String, webViewPtr: UInt)? {
+        sessionId: UInt64,
+        pageInstanceId: String?
+    ) -> WKWebView? {
         guard sessionId > 0 else {
-            LXLog.error("lookupBinding rejected invalid session for \(appId)", category: "WebView")
+            LXLog.error("pageWebView rejected invalid session for \(appId)", category: "WebView")
             return nil
         }
-        let binding = resolvePageBinding(appId, path, sessionId)
-        let pageInstanceId = binding.page_instance_id
-            .toString()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        // Browser tabs showing external documents have a WebView but no bound
-        // lxapp PageInstance — a valid pointer alone is a usable binding.
-        guard !pageInstanceId.isEmpty || binding.webview_ptr != 0 else {
-            return nil
-        }
-        return (pageInstanceId: pageInstanceId, webViewPtr: binding.webview_ptr)
-    }
-
-    static func resolvePageInstanceId(appId: String, path: String, sessionId: UInt64) -> String? {
-        guard let binding = lookupBinding(appId: appId, path: path, sessionId: sessionId),
-              !binding.pageInstanceId.isEmpty else {
-            return nil
-        }
-        return binding.pageInstanceId
-    }
-
-    static func resolveWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
-        guard let binding = lookupBinding(appId: appId, path: path, sessionId: sessionId) else { return nil }
-        let webViewPtr = binding.webViewPtr
-        guard webViewPtr != 0 else { return nil }
-        guard let rawPointer = UnsafeRawPointer(bitPattern: webViewPtr) else {
-            LXLog.error("Warning: Invalid WebView pointer received from Rust layer", category: "WebView")
-            return nil
-        }
-        let webView = Unmanaged<WKWebView>.fromOpaque(rawPointer).takeUnretainedValue()
-        webView.bindNativeComponentPageInstance(binding.pageInstanceId)
-        if debuggingEnabled {
-            if #available(iOS 16.4, macOS 13.3, *) {
-                webView.isInspectable = true
-            }
-        }
-        #if os(iOS)
-        NativeBridge.attachIfNeeded(to: webView)
-        #endif
-        webView.setup(appId: appId, path: path)
+        let binding = pageBinding(appId, sessionId, pageInstanceId ?? "")
+        let webView = managedWebView(
+            pointer: binding.webview_ptr,
+            pageInstanceId: binding.page_instance_id.toString()
+        )
+        webView?.setup(appId: appId, path: binding.path.toString())
         return webView
     }
 
     /// Convenience resolve using stored runtime session for the app.
-    static func resolveWebView(appId: String, path: String) -> WKWebView? {
+    static func pageWebView(appId: String, pageInstanceId: String?) -> WKWebView? {
         guard let sessionId = LxAppCore.sessionId(for: appId), sessionId > 0 else {
-            LXLog.error("resolveWebView missing session for \(appId)", category: "WebView")
+            LXLog.error("pageWebView missing session for \(appId)", category: "WebView")
             return nil
         }
-        return resolveWebView(appId: appId, path: path, sessionId: sessionId)
+        return pageWebView(appId: appId, sessionId: sessionId, pageInstanceId: pageInstanceId)
+    }
+
+    /// The WebView of a browser tab. A tab showing an internal page is bound
+    /// to that page's instance; one showing an external document is not.
+    static func browserTabWebView(tabId: String) -> WKWebView? {
+        let binding = browserTabBinding(tabId)
+        let webView = managedWebView(
+            pointer: binding.webview_ptr,
+            pageInstanceId: binding.page_instance_id.toString()
+        )
+        webView?.setup(
+            appId: getBuiltinBrowserAppId().toString(),
+            path: binding.path.toString()
+        )
+        return webView
+    }
+
+    private static func managedWebView(pointer: UInt, pageInstanceId: String) -> WKWebView? {
+        guard pointer != 0 else { return nil }
+        guard let rawPointer = UnsafeRawPointer(bitPattern: pointer) else {
+            LXLog.error("Warning: Invalid WebView pointer received from Rust layer", category: "WebView")
+            return nil
+        }
+        let webView = Unmanaged<WKWebView>.fromOpaque(rawPointer).takeUnretainedValue()
+        webView.bindPageWebTag(pageInstanceId: pageInstanceId)
+        webView.bindNativeComponentPageInstance(pageInstanceId)
+        if debuggingEnabled {
+            if #available(iOS 16.4, macOS 13.3, *) {
+                webView.isInspectable = true
+            }
+        }
+        #if os(iOS)
+        NativeBridge.attachIfNeeded(to: webView)
+        #endif
+        return webView
     }
 
     /// Switch between WebViews

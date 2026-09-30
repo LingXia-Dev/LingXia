@@ -336,11 +336,7 @@ final class DockedBrowser: NSObject {
     }
 
     private func resolveWebView(browserTabId: String) -> WKWebView? {
-        let appId = getBuiltinBrowserAppId().toString()
-        let sessionId = getLxAppSessionId(appId)
-        guard sessionId > 0 else { return nil }
-        let path = browserTabPathForId(browserTabId).toString()
-        return WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId)
+        WebViewManager.browserTabWebView(tabId: browserTabId)
     }
 
     private func attach(_ webView: WKWebView, to tab: Tab) {

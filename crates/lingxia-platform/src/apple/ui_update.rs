@@ -1,9 +1,9 @@
 use super::app::Platform;
 use super::ffi;
 use crate::error::PlatformError;
-use crate::traits::ui::UIUpdate;
+use crate::traits::ui::{Appearance, LaunchFace, UIUpdate};
 
-impl UIUpdate for Platform {
+impl Appearance for Platform {
     fn host_appearance_dark(&self) -> bool {
         ffi::host_appearance_dark()
     }
@@ -16,14 +16,6 @@ impl UIUpdate for Platform {
         });
     }
 
-    fn notify_home_first_ready(&self) {
-        ffi::on_home_first_ready();
-    }
-
-    fn show_splash_campaign(&self, image_path: String, duration_ms: u32) {
-        ffi::show_splash_campaign(&image_path, duration_ms);
-    }
-
     fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), PlatformError> {
         if ffi::apply_appearance(appid, dark) {
             Ok(())
@@ -33,7 +25,19 @@ impl UIUpdate for Platform {
             )))
         }
     }
+}
 
+impl LaunchFace for Platform {
+    fn notify_home_first_ready(&self) {
+        ffi::on_home_first_ready();
+    }
+
+    fn show_splash_campaign(&self, image_path: String, duration_ms: u32) {
+        ffi::show_splash_campaign(&image_path, duration_ms);
+    }
+}
+
+impl UIUpdate for Platform {
     async fn measure_page_chrome_capsule(
         &self,
         appid: String,

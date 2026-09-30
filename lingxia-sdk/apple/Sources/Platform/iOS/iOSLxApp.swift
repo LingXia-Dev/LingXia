@@ -148,9 +148,14 @@ class iOSLxApp {
     }
 
     /// Opens a lxapp
-    static func openLxApp(appId: String, path: String, sessionId: UInt64) {
+    static func openLxApp(appId: String, path: String, pageInstanceId: String?, sessionId: UInt64) {
         os_log("iOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
-        _ = LxAppCore.executeOpenLxApp(appId: appId, path: path, sessionId: sessionId)
+        _ = LxAppCore.executeOpenLxApp(
+            appId: appId,
+            path: path,
+            sessionId: sessionId,
+            pageInstanceId: pageInstanceId
+        )
     }
 
     /// Opens the home mini app
@@ -177,7 +182,7 @@ class iOSLxApp {
             return
         }
         LxAppCore.setSessionId(sessionId, for: homeLxAppId)
-        openLxApp(appId: homeLxAppId, path: "", sessionId: sessionId)
+        openLxApp(appId: homeLxAppId, path: "", pageInstanceId: nil, sessionId: sessionId)
     }
 
     /// Closes a mini app with the specified appId
@@ -194,17 +199,40 @@ class iOSLxApp {
 
     /// Navigate to a page with specific animation type
     @discardableResult
-    static func navigate(appId: String, path: String, animationType: LxAppAnimation) -> Bool {
+    static func navigate(
+        appId: String,
+        path: String,
+        pageInstanceId: String?,
+        animationType: LxAppAnimation
+    ) -> Bool {
         os_log("iOS navigate: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: animationType))
-        return LxAppCore.executeNavigation(appId: appId, path: path, animationType: animationType)
+        return LxAppCore.executeNavigation(
+            appId: appId,
+            path: path,
+            pageInstanceId: pageInstanceId,
+            animationType: animationType
+        )
     }
 
-    /// Resolve WebView for the given appId/path/session through pageInstanceId.
-    internal static func resolveWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
-        return WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId)
+    /// The WebView of a page of the app: the instance named, or its current page.
+    internal static func pageWebView(
+        appId: String,
+        sessionId: UInt64,
+        pageInstanceId: String?
+    ) -> WKWebView? {
+        return WebViewManager.pageWebView(
+            appId: appId,
+            sessionId: sessionId,
+            pageInstanceId: pageInstanceId
+        )
     }
 
-    private func openLxAppInManager(appId: String, path: String, sessionId: UInt64) {
+    private func openLxAppInManager(
+        appId: String,
+        path: String,
+        pageInstanceId: String?,
+        sessionId: UInt64
+    ) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first else {
             LXLog.error("Failed to get window for presenting LxAppManager", category: "iOSLxApp")
@@ -225,7 +253,12 @@ class iOSLxApp {
         }
 
         // Open LxApp in manager
-        lxAppManager?.openLxApp(appId: appId, path: actualPath, sessionId: sessionId)
+        lxAppManager?.openLxApp(
+            appId: appId,
+            path: actualPath,
+            pageInstanceId: pageInstanceId,
+            sessionId: sessionId
+        )
     }
 
     /// Sets up the single LxAppManager for all lxapps
@@ -308,7 +341,12 @@ class iOSLxApp {
 
 extension iOSLxApp {
     /// Direct openLxApp implementation (called from LxAppCore)
-    internal static func openLxAppDirect(appId: String, path: String, sessionId: UInt64) -> Bool {
+    internal static func openLxAppDirect(
+        appId: String,
+        path: String,
+        pageInstanceId: String,
+        sessionId: UInt64
+    ) -> Bool {
         guard let instance = getInstanceUnsafe() else {
             LXLog.error("openLxApp rejected: iOS host is not initialized", category: "iOSLxApp")
             return false
@@ -322,19 +360,34 @@ extension iOSLxApp {
             LXLog.error("openLxApp rejected: no active iOS app manager", category: "iOSLxApp")
             return false
         }
-        manager.openLxApp(appId: appId, path: path, sessionId: sessionId)
+        manager.openLxApp(
+            appId: appId,
+            path: path,
+            pageInstanceId: pageInstanceId,
+            sessionId: sessionId
+        )
         return true
     }
 
     /// Direct navigation implementation (called from LxAppCore)
-    internal static func handleNavigationDirect(appId: String, path: String, animationType: LxAppAnimation) -> Bool {
+    internal static func handleNavigationDirect(
+        appId: String,
+        path: String,
+        pageInstanceId: String?,
+        animationType: LxAppAnimation
+    ) -> Bool {
         guard let manager = getInstanceUnsafe()?.lxAppManager else {
             LXLog.error("navigate rejected: iOS host is not initialized", category: "iOSLxApp")
             return false
         }
 
         // Platform-specific setup/switch WebView - this will handle all UI updates internally
-        manager.handleNavigation(appId: appId, path: path, animationType: animationType)
+        manager.handleNavigation(
+            appId: appId,
+            path: path,
+            pageInstanceId: pageInstanceId,
+            animationType: animationType
+        )
         return true
     }
 
@@ -355,35 +408,35 @@ extension iOSLxApp {
 
 extension LxApp {
     /// Start pull-to-refresh animation programmatically
-    @objc nonisolated public static func startPullDownRefresh(appid: RustStr, path: RustStr) -> Bool {
+    @objc nonisolated public static func startPullDownRefresh(appid: RustStr, webtag: RustStr) -> Bool {
         let appidStr = appid.toString()
-        let pathStr = path.toString()
+        let webtagStr = webtag.toString()
         
         DispatchQueue.main.async {
             // Access instance through a non-isolated path
             guard let instance = iOSLxApp.getInstanceUnsafe() else { return }
             guard let manager = instance.currentLxAppManager else { return }
             
-            manager.startPullDownRefreshProgrammatically()
+            manager.startPullDownRefresh(webtag: webtagStr)
             
-            os_log("startPullDownRefresh called for %@:%@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appidStr, pathStr)
+            os_log("startPullDownRefresh called for %@ %@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appidStr, webtagStr)
         }
         return true
     }
 
     /// Stop pull-to-refresh animation
-    @objc nonisolated public static func stopPullDownRefresh(appid: RustStr, path: RustStr) -> Bool {
+    @objc nonisolated public static func stopPullDownRefresh(appid: RustStr, webtag: RustStr) -> Bool {
         let appidStr = appid.toString()
-        let pathStr = path.toString()
+        let webtagStr = webtag.toString()
         
         DispatchQueue.main.async {
             // Access instance through a non-isolated path
             guard let instance = iOSLxApp.getInstanceUnsafe() else { return }
             guard let manager = instance.currentLxAppManager else { return }
             
-            manager.stopPullDownRefreshProgrammatically()
+            manager.stopPullDownRefresh(webtag: webtagStr)
             
-            os_log("stopPullDownRefresh called for %@:%@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appidStr, pathStr)
+            os_log("stopPullDownRefresh called for %@ %@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appidStr, webtagStr)
         }
         return true
     }

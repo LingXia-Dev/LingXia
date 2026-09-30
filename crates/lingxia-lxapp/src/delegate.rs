@@ -6,7 +6,7 @@ use crate::update::UpdateManager;
 use crate::{LxApp, debug, error, info, lxapp, warn};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::pull_to_refresh::PullToRefresh;
-use lingxia_platform::traits::ui::UIUpdate;
+use lingxia_platform::traits::ui::Appearance;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -601,36 +601,22 @@ impl LxApp {
         false
     }
 
-    /// Handle pull-to-refresh event
-    /// data: page path
-    fn handle_pull_down_refresh(self: &Arc<Self>, data: String) -> bool {
-        let path = if data.is_empty() {
-            match self.peek_current_page_path() {
-                Some(p) => p,
-                None => return false,
-            }
-        } else {
-            data
-        };
-
-        if !self.is_pull_down_refresh_enabled(&path) {
-            if let Err(e) = self.runtime.stop_pull_down_refresh(&self.appid, &path) {
+    /// The user pulled the page instance `webtag` names.
+    fn handle_pull_down_refresh(self: &Arc<Self>, webtag: String) -> bool {
+        let page = self
+            .get_page_by_webtag(&webtag)
+            .filter(|page| page.is_pull_down_refresh_enabled());
+        let Some(page) = page else {
+            // No page will answer this pull, so its indicator is put away here.
+            warn!("No page to refresh for pull on {}", webtag).with_appid(self.appid.clone());
+            if let Err(e) = self.runtime.stop_pull_down_refresh(&self.appid, &webtag) {
                 error!("Failed to stop pull-to-refresh: {}", e).with_appid(self.appid.clone());
             }
             return false;
-        }
+        };
 
-        if let Some(page) = self.get_page(&path) {
-            page.dispatch_lifecycle_event(PageLifecycleEvent::OnPullDownRefresh);
-            true
-        } else {
-            error!("PageInstance not found for pull-to-refresh: {}", path)
-                .with_appid(self.appid.clone());
-            if let Err(e) = self.runtime.stop_pull_down_refresh(&self.appid, &path) {
-                error!("Failed to stop pull-to-refresh: {}", e).with_appid(self.appid.clone());
-            }
-            false
-        }
+        page.dispatch_lifecycle_event(PageLifecycleEvent::OnPullDownRefresh);
+        true
     }
 }
 

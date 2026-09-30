@@ -515,7 +515,8 @@ pub fn get_navigation_bar_state(appid: String, path: String) -> Option<Navigatio
     })
 }
 
-/// Notify that LxApp was opened
+/// Notify that LxApp was opened. Returns the webtag of the page instance the
+/// open landed on, empty when the open is rejected.
 #[napi]
 pub fn on_lxapp_opened(appid: String, path: String, session_id: i64) -> String {
     if session_id <= 0 {
@@ -539,7 +540,9 @@ pub fn on_lxapp_opened(appid: String, path: String, session_id: i64) -> String {
         query: None,
         surface: PresentationKind::Window,
     })
-    .map(|created| created.resolved_path)
+    .ok()
+    .and_then(|created| lxapp_instance.get_page_by_instance_id(&created.page_instance_id))
+    .map(|page| page.webtag().key().to_string())
     .unwrap_or_default()
 }
 

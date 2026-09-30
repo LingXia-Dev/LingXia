@@ -1091,12 +1091,13 @@ pub(super) fn install() {
     // layer that builds the menu sits below lxapp / i18n / pull-refresh, so it
     // calls back here for the label and the action.
     lingxia_webview::platform::windows::set_windows_context_menu_refresh_provider(
-        Arc::new(|appid: &str, path: &str| {
-            lxapp::is_pull_down_refresh_enabled(appid, path)
+        Arc::new(|webtag: &WebTag| {
+            lxapp::find_page_by_webtag(&webtag.extract_appid(), webtag.key())
+                .is_some_and(|page| page.is_pull_down_refresh_enabled())
                 .then(|| lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonRefresh))
         }),
-        Arc::new(|appid: &str, path: &str| {
-            crate::pull_to_refresh::request_refresh(appid, path);
+        Arc::new(|webtag: &WebTag| {
+            crate::pull_to_refresh::request_refresh(webtag.key());
         }),
     );
     // Mirror browser tab list/title changes into the sidebar. The handler
@@ -1686,9 +1687,8 @@ fn sync_app_shell_layout(appid: &str) {
     let Some(app) = lxapp::try_get(appid) else {
         return;
     };
-    if let Some(path) = app.peek_current_page().filter(|path| !path.is_empty())
-        && let Some(webtag) = app.get_page(&path).map(|page| page.webtag())
-    {
+    if let Ok(page) = app.current_page() {
+        let (path, webtag) = (page.path(), page.webtag());
         let is_active_content = active_host_window_webtag_key().as_deref() == Some(webtag.key());
         let layout = build_window_layout(&app, &path);
         #[cfg(feature = "browser-runtime")]
@@ -3582,12 +3582,13 @@ fn reconcile_lxapp_main_from_layout(plan: &LayoutPresentationPlan) {
     };
     // A first open activates before its page WebView exists; `show_lxapp`
     // presents it once created, so there is nothing to reconcile yet.
-    let path = app
-        .peek_current_page()
-        .unwrap_or_else(|| app.initial_route());
-    let page_ready = app.get_page(&path).is_some_and(|page| {
-        lingxia_webview::platform::windows::find_webview_handler(&page.webtag()).is_some()
-    });
+    let page_ready = app
+        .current_page()
+        .ok()
+        .or_else(|| app.get_page(&app.initial_route()))
+        .is_some_and(|page| {
+            lingxia_webview::platform::windows::find_webview_handler(&page.webtag()).is_some()
+        });
     if !page_ready {
         log::debug!("lxapp main not ready to reconcile yet: {app_id}");
         return;
@@ -4433,17 +4434,15 @@ fn active_host_is_browser() -> bool {
 fn present_current_lxapp_main(app: &LxApp) -> bool {
     #[cfg(feature = "shell-chrome")]
     dismiss_owner_tabbar_overflow(&app.appid);
-    let path = app
-        .peek_current_page()
-        .unwrap_or_else(|| app.initial_route());
-    if path.is_empty() {
-        return false;
-    }
-    // Page webtags are per-instance; resolve the live instance instead of
-    // reconstructing a tag from the route.
-    let Some(webtag) = app.get_page(&path).map(|page| page.webtag()) else {
+    // The current instance; a first open has not pushed one yet.
+    let Some(page) = app
+        .current_page()
+        .ok()
+        .or_else(|| app.get_page(&app.initial_route()))
+    else {
         return false;
     };
+    let (path, webtag) = (page.path(), page.webtag());
     log::debug!(
         "presenting current Windows lxapp main appid={} path={} webtag={}",
         app.appid,
