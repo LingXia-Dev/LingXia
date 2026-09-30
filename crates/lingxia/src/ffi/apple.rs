@@ -284,6 +284,12 @@ mod bridge {
         #[swift_bridge(swift_name = "findWebViewByPageInstanceId")]
         fn find_webview_by_page_instance_id(page_instance_id: &str) -> usize;
 
+        // Wait for the app's current page to have its WebView ready. Returns
+        // true when it is ready now; otherwise `LxApp.pageWebViewReady` is
+        // called once with `callback_id`, later.
+        #[swift_bridge(swift_name = "awaitPageWebView")]
+        fn await_page_webview(appid: &str, session_id: u64, callback_id: u64) -> bool;
+
         #[swift_bridge(swift_name = "resolvePageBinding")]
         fn resolve_page_binding(appid: &str, path: &str, session_id: u64) -> PageBindingResult;
 
@@ -797,6 +803,11 @@ mod bridge {
         // suspended. Host chrome shows the notice; there is no JS catch here.
         #[swift_bridge(swift_name = "LxApp.showLxappUnavailable")]
         fn show_lxapp_unavailable(status: &str);
+
+        // The page an `awaitPageWebView` call waits for has its WebView
+        // (`ready`), or never will (failed, or no longer there).
+        #[swift_bridge(swift_name = "LxApp.pageWebViewReady")]
+        fn page_webview_ready(callback_id: u64, ready: bool);
     }
 }
 
@@ -1897,6 +1908,19 @@ pub fn find_webview_by_page_instance_id(page_instance_id: &str) -> usize {
         .and_then(|page| page.webview())
         .map(|webview| webview.get_swift_webview_ptr())
         .unwrap_or(0)
+}
+
+pub fn await_page_webview(appid: &str, session_id: u64, callback_id: u64) -> bool {
+    let done = move |outcome: lxapp::PageWebViewAwait| {
+        self::bridge::page_webview_ready(
+            callback_id,
+            matches!(outcome, lxapp::PageWebViewAwait::Ready(_)),
+        );
+    };
+    matches!(
+        lxapp::await_page_webview(appid, session_id, None, done),
+        lxapp::PageWebView::Ready(_)
+    )
 }
 
 fn resolve_page_instance_id(appid: &str, path: &str, session_id: u64) -> String {

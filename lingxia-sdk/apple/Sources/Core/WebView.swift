@@ -167,6 +167,34 @@ final class WebViewManager {
         #endif
     }
 
+    private static var pageWaiters: [UInt64: @MainActor (Bool) -> Void] = [:]
+    private static var nextPageWaiterId: UInt64 = 1
+
+    /// Run `completion` once the app's current page has its WebView ready, or
+    /// with `false` when it never will (failed, or no longer there). The page's
+    /// WebView is created asynchronously, so a container asked to show it early
+    /// waits for the runtime instead of polling.
+    static func awaitPageWebView(
+        appId: String,
+        sessionId: UInt64,
+        completion: @escaping @MainActor (Bool) -> Void
+    ) {
+        guard sessionId > 0 else {
+            completion(false)
+            return
+        }
+        let id = nextPageWaiterId
+        nextPageWaiterId += 1
+        pageWaiters[id] = completion
+        if lingxia.awaitPageWebView(appId, sessionId, id) {
+            pageWaiters.removeValue(forKey: id)?(true)
+        }
+    }
+
+    static func pageWebViewReady(callbackId: UInt64, ready: Bool) {
+        pageWaiters.removeValue(forKey: callbackId)?(ready)
+    }
+
     static func findWebView(pageInstanceId: String) -> WKWebView? {
         let trimmed = pageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }

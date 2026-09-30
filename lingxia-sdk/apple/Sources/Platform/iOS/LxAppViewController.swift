@@ -31,8 +31,6 @@ private final class LxAppRootContainer: UIView {
 @MainActor
 final class LxAppViewController: UIViewController, ObservableObject {
     private static let log = lxAppViewControllerLog
-    private static let navigationRetryDelayNs: UInt64 = 80_000_000
-    private static let navigationRetryCount = 20
 
     // Platform-specific UI constraint only - WebView is managed by WebViewManager
     private var currentWebViewTopConstraint: NSLayoutConstraint?
@@ -489,12 +487,11 @@ final class LxAppViewController: UIViewController, ObservableObject {
             // this navigation and must never receive the target's pin.
             updateWebViewConstraints(for: appId, webView: targetWebView)
         } else {
-            retryShowWebView(
+            showWhenWebViewReady(
                 appId: appId,
                 path: path,
                 sessionId: currentSessionId,
-                animationType: animationType,
-                remainingAttempts: Self.navigationRetryCount
+                animationType: animationType
             )
         }
 
@@ -502,17 +499,16 @@ final class LxAppViewController: UIViewController, ObservableObject {
         bringUIElementsToFront()
     }
 
-    private func retryShowWebView(
+    /// The page's WebView does not exist yet: show it when the runtime reports
+    /// it. A newer navigation replaces `pendingNavigationPath`, which drops this
+    /// request.
+    private func showWhenWebViewReady(
         appId: String,
         path: String,
         sessionId: UInt64,
-        animationType: LxAppAnimation,
-        remainingAttempts: Int
+        animationType: LxAppAnimation
     ) {
-        guard remainingAttempts > 0 else { return }
-
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: Self.navigationRetryDelayNs)
+        WebViewManager.awaitPageWebView(appId: appId, sessionId: sessionId) { [weak self] ready in
             guard let self,
                   LxAppCore.currentAppId == appId,
                   self.currentSessionId == sessionId,
@@ -520,14 +516,20 @@ final class LxAppViewController: UIViewController, ObservableObject {
                 return
             }
 
-            guard let targetWebView = iOSLxApp.resolveWebView(appId: appId, path: path, sessionId: sessionId) else {
-                self.retryShowWebView(
-                    appId: appId,
-                    path: path,
-                    sessionId: sessionId,
-                    animationType: animationType,
-                    remainingAttempts: remainingAttempts - 1
-                )
+            guard ready,
+                  let targetWebView = iOSLxApp.resolveWebView(appId: appId, path: path, sessionId: sessionId) else {
+                // The page asked for was replaced (an lxapp that relaunches
+                // from `onLaunch`): follow the runtime's current page.
+                let current = getCurrentLxApp()
+                let currentPath = current.path.toString()
+                if ready,
+                   current.appid.toString() == appId,
+                   current.session_id == sessionId,
+                   currentPath != path {
+                    self.handleNavigation(appId: appId, path: currentPath, animationType: .none)
+                    return
+                }
+                os_log("WebView not available for %@:%@", log: Self.log, type: .error, appId, path)
                 return
             }
 

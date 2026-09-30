@@ -9,8 +9,6 @@ import os.log
 class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     private static let log = OSLog(subsystem: "LingXia", category: "macOSLxAppViewController")
 
-    private static let navigationRetryDelayNs: UInt64 = 80_000_000
-    private static let navigationRetryCount = 20
     /// Page-navigation slide duration; matches the iOS/Android 300ms transition.
 
     var appId: String
@@ -99,12 +97,11 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         } else {
             // The first mount can race the page's WebView creation; converge
             // like navigate() does instead of silently staying blank.
-            retryShowWebView(
+            showWhenWebViewReady(
                 appId: appId,
                 path: currentPath,
                 sessionId: sessionId,
-                animationType: .none,
-                remainingAttempts: Self.navigationRetryCount
+                animationType: .none
             )
         }
     }
@@ -360,43 +357,44 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         if let webView = findManagedWebView(path: path) {
             showWebViewToUser(webView, path: path, animation: animationType)
         } else {
-            retryShowWebView(
+            showWhenWebViewReady(
                 appId: appId,
                 path: path,
                 sessionId: sessionId,
-                animationType: animationType,
-                remainingAttempts: Self.navigationRetryCount
+                animationType: animationType
             )
         }
         LxAppCore.setCurrentPath(path)
     }
 
+    /// The page's WebView does not exist yet: show it when the runtime reports
+    /// it. A newer navigation changes `currentPath`, which drops this request.
     @MainActor
-    private func retryShowWebView(
+    private func showWhenWebViewReady(
         appId: String,
         path: String,
         sessionId: UInt64,
-        animationType: LxAppAnimation,
-        remainingAttempts: Int
+        animationType: LxAppAnimation
     ) {
-        guard remainingAttempts > 0 else { return }
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: Self.navigationRetryDelayNs)
+        WebViewManager.awaitPageWebView(appId: appId, sessionId: sessionId) { [weak self] ready in
             guard let self,
                   self.appId == appId,
                   self.sessionId == sessionId,
                   self.currentPath == path else { return }
-            if let webView = self.findManagedWebView(path: path) {
-                self.showWebViewToUser(webView, path: path, animation: animationType)
-            } else {
-                self.retryShowWebView(
-                    appId: appId,
-                    path: path,
-                    sessionId: sessionId,
-                    animationType: animationType,
-                    remainingAttempts: remainingAttempts - 1
-                )
+            guard ready, let webView = self.findManagedWebView(path: path) else {
+                // The page asked for was replaced (an lxapp that relaunches
+                // from `onLaunch`): follow the runtime's current page.
+                let current = getCurrentLxApp()
+                let currentPath = current.path.toString()
+                if ready,
+                   current.appid.toString() == appId,
+                   current.session_id == sessionId,
+                   currentPath != path {
+                    self.navigate(appId: appId, to: currentPath, with: .none)
+                }
+                return
             }
+            self.showWebViewToUser(webView, path: path, animation: animationType)
         }
     }
 
