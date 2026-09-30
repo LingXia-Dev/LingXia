@@ -233,6 +233,7 @@ static NEXT_EVAL_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 static NEXT_SCREENSHOT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
 const EVAL_PARSE_GUARD_MS: u64 = 1000;
+const EVAL_PROXY_WAIT_MS: u64 = 5000;
 const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn pending_eval_requests() -> &'static PendingEvalRequests {
@@ -1374,16 +1375,25 @@ impl WebViewController for WebViewInner {
         let token_json = serde_json::to_string(&token).map_err(|err| {
             WebViewScriptError::Platform(format!("Failed to encode eval token: {err}"))
         })?;
-        let resolve_expr =
-            format!("LingXiaProxy.resolveEval({request_id_json}, {token_json}, __lxR)");
-        let body = build_async_eval_body(js, Some(&resolve_expr));
+        // A script sent while a new page loads can run before ArkWeb injects
+        // LingXiaProxy into that document; answering then threw and the eval
+        // waited out EVAL_TIMEOUT. Hold the answer until the proxy exists.
+        let send_answer = format!(
+            "const __lxSend=(p)=>{{ const t0=Date.now(); const go=()=>{{ \
+               if (typeof LingXiaProxy!=='undefined' && LingXiaProxy.resolveEval) {{ \
+                 try {{ LingXiaProxy.resolveEval({request_id_json}, {token_json}, p); }} catch(_){{}} \
+               }} else if (Date.now()-t0<{EVAL_PROXY_WAIT_MS}) {{ setTimeout(go, 20); }} \
+             }}; go(); }};"
+        );
+        let body = build_async_eval_body(js, Some("__lxSend(__lxR)"));
         let parse_guard_script = format!(
             "(function(){{ \
-               const id={request_id_json}; const token={token_json}; \
+               {send_answer} \
+               const id={request_id_json}; \
                const timers=window.__LingXiaEvalParseTimers||(window.__LingXiaEvalParseTimers=Object.create(null)); \
                if (timers[id]) clearTimeout(timers[id]); \
                timers[id]=setTimeout(function(){{ \
-                 try {{ LingXiaProxy.resolveEval(id, token, JSON.stringify({{ok:false, error:'JavaScript evaluation failed to start; source may contain a syntax error'}})); }} catch(_){{}} \
+                 __lxSend(JSON.stringify({{ok:false, error:'JavaScript evaluation failed to start; source may contain a syntax error'}})); \
                }}, {EVAL_PARSE_GUARD_MS}); \
              }})()"
         );
@@ -1394,9 +1404,11 @@ impl WebViewController for WebViewInner {
              }} catch(_){{}}"
         );
         let script = format!(
-            "(async () => {{ {clear_parse_guard} {body} }})().catch(e => {{ \
-               try {{ LingXiaProxy.resolveEval({request_id_json}, {token_json}, JSON.stringify({{ok:false, error: String(e)}})); }} catch(_){{}} \
-             }})"
+            "(() => {{ {send_answer} \
+               (async () => {{ {clear_parse_guard} {body} }})().catch(e => {{ \
+                 __lxSend(JSON.stringify({{ok:false, error: String(e)}})); \
+               }}); \
+             }})()"
         );
 
         if let Err(err) = self.dispatch_javascript_without_result(&parse_guard_script) {
