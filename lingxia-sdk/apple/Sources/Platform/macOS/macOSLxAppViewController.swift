@@ -13,6 +13,9 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     var appId: String
     internal var currentPath: String
+    /// The page instance shown at `currentPath`; nil follows the app's current
+    /// page until the runtime names one.
+    private var currentPageInstanceId: String?
     private var sessionId: UInt64
     private var webViewContainer: NSView!
     private weak var activeWebView: WKWebView?
@@ -26,9 +29,10 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
 
-    init(appId: String, path: String, sessionId: UInt64) {
+    init(appId: String, path: String, pageInstanceId: String?, sessionId: UInt64) {
         self.appId = appId
         self.currentPath = path
+        self.currentPageInstanceId = pageInstanceId
         self.sessionId = sessionId
         super.init(nibName: nil, bundle: nil)
     }
@@ -92,14 +96,14 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     // MARK: - WebView
 
     private func loadWebViewContent() {
-        if let webView = findManagedWebView(path: currentPath) {
-            showWebViewToUser(webView, path: currentPath)
+        if let webView = findManagedWebView(pageInstanceId: currentPageInstanceId) {
+            showWebViewToUser(webView, pageInstanceId: currentPageInstanceId)
         } else {
             // The first mount can race the page's WebView creation; converge
             // like navigate() does instead of silently staying blank.
             showWhenWebViewReady(
                 appId: appId,
-                path: currentPath,
+                pageInstanceId: currentPageInstanceId,
                 sessionId: sessionId,
                 animationType: .none
             )
@@ -108,7 +112,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     private func showWebViewToUser(
         _ webView: WKWebView,
-        path: String,
+        pageInstanceId: String?,
         animation: LxAppAnimation = .none
     ) {
         // A controller-backed host can observe the same committed navigation
@@ -140,11 +144,13 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
            activeWebView !== webView,
            LxAppPageTransition.needsPaintWait(webView, animation: animation) {
             let sessionId = self.sessionId
+            let path = currentPath
             pageTransition.whenPagePaints(
                 webView,
                 stillCurrent: { [weak self] in
                     guard let self else { return false }
                     return self.sessionId == sessionId && self.currentPath == path
+                        && self.currentPageInstanceId == pageInstanceId
                         && self.activeWebView !== webView
                 },
                 swap: { [weak self] in
@@ -344,8 +350,15 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     // MARK: - Navigation
 
+    /// `pageInstanceId` names the page to present; nil presents the app's
+    /// current page.
     @MainActor
-    func navigate(appId: String, to path: String, with animationType: LxAppAnimation) {
+    func navigate(
+        appId: String,
+        to path: String,
+        pageInstanceId: String?,
+        with animationType: LxAppAnimation
+    ) {
         guard !appId.isEmpty else { return }
 
         // A restart can navigate before the view loads; force it so `webViewContainer`
@@ -353,48 +366,62 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         _ = self.view
 
         self.currentPath = path
+        self.currentPageInstanceId = pageInstanceId
         updateNavigationBar(appId: appId, path: path)
-        if let webView = findManagedWebView(path: path) {
-            showWebViewToUser(webView, path: path, animation: animationType)
+        if let webView = findManagedWebView(pageInstanceId: pageInstanceId) {
+            showWebViewToUser(webView, pageInstanceId: pageInstanceId, animation: animationType)
         } else {
             showWhenWebViewReady(
                 appId: appId,
-                path: path,
+                pageInstanceId: pageInstanceId,
                 sessionId: sessionId,
                 animationType: animationType
             )
         }
-        LxAppCore.setCurrentPath(path)
+        LxAppCore.setCurrentPath(path, pageInstanceId: pageInstanceId)
     }
 
     /// The page's WebView does not exist yet: show it when the runtime reports
-    /// it. A newer navigation changes `currentPath`, which drops this request.
+    /// it. A newer navigation changes the current page, which drops this
+    /// request.
     @MainActor
     private func showWhenWebViewReady(
         appId: String,
-        path: String,
+        pageInstanceId: String?,
         sessionId: UInt64,
         animationType: LxAppAnimation
     ) {
-        WebViewManager.awaitPageWebView(appId: appId, sessionId: sessionId) { [weak self] ready in
+        let path = currentPath
+        WebViewManager.awaitPageWebView(
+            appId: appId,
+            sessionId: sessionId,
+            pageInstanceId: pageInstanceId
+        ) { [weak self] ready in
             guard let self,
                   self.appId == appId,
                   self.sessionId == sessionId,
-                  self.currentPath == path else { return }
-            guard ready, let webView = self.findManagedWebView(path: path) else {
+                  self.currentPath == path,
+                  self.currentPageInstanceId == pageInstanceId else { return }
+            guard ready, let webView = self.findManagedWebView(pageInstanceId: pageInstanceId) else {
                 // The page asked for was replaced (an lxapp that relaunches
                 // from `onLaunch`): follow the runtime's current page.
                 let current = getCurrentLxApp()
-                let currentPath = current.path.toString()
-                if ready,
+                let currentPageId = current.page_instance_id.toString()
+                if pageInstanceId != nil,
                    current.appid.toString() == appId,
                    current.session_id == sessionId,
-                   currentPath != path {
-                    self.navigate(appId: appId, to: currentPath, with: .none)
+                   !currentPageId.isEmpty,
+                   currentPageId != pageInstanceId {
+                    self.navigate(
+                        appId: appId,
+                        to: current.path.toString(),
+                        pageInstanceId: currentPageId,
+                        with: .none
+                    )
                 }
                 return
             }
-            self.showWebViewToUser(webView, path: path, animation: animationType)
+            self.showWebViewToUser(webView, pageInstanceId: pageInstanceId, animation: animationType)
         }
     }
 
@@ -409,47 +436,33 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         NavigationBarStateManager.shared.updateState(appId: appId, path: path)
     }
 
-    private func findManagedWebView(path: String) -> WKWebView? {
-        if let exactMatch = WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId) {
-            return exactMatch
-        }
-
-        let lookupPath = normalizePath(path)
-        guard lookupPath != path else { return nil }
-        let fallback = WebViewManager.resolveWebView(appId: appId, path: lookupPath, sessionId: sessionId)
-        return fallback
-    }
-
-    private func normalizePath(_ rawPath: String) -> String {
-        if rawPath.isEmpty { return "" }
-        if let queryIndex = rawPath.firstIndex(of: "?") {
-            return String(rawPath[..<queryIndex])
-        }
-        if let hashIndex = rawPath.firstIndex(of: "#") {
-            return String(rawPath[..<hashIndex])
-        }
-        return rawPath
+    private func findManagedWebView(pageInstanceId: String?) -> WKWebView? {
+        WebViewManager.pageWebView(
+            appId: appId,
+            sessionId: sessionId,
+            pageInstanceId: pageInstanceId
+        )
     }
 
     // MARK: - Native Components
 
     @MainActor
     func pauseNativeComponents() {
-        if let webView = findManagedWebView(path: currentPath) {
+        if let webView = findManagedWebView(pageInstanceId: currentPageInstanceId) {
             MacNativeBridge.notifyPageInactive(for: webView)
         }
     }
 
     @MainActor
     func resumeNativeComponents() {
-        if let webView = findManagedWebView(path: currentPath) {
+        if let webView = findManagedWebView(pageInstanceId: currentPageInstanceId) {
             MacNativeBridge.notifyPageActive(for: webView)
         }
     }
 
     @MainActor
     func destroyNativeComponents() {
-        if let webView = findManagedWebView(path: currentPath) {
+        if let webView = findManagedWebView(pageInstanceId: currentPageInstanceId) {
             MacNativeBridge.notifyPageDestroyed(for: webView)
         }
     }

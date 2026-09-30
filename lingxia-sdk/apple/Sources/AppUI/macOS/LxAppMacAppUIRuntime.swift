@@ -268,11 +268,18 @@ final class LxAppMacAppUIRuntime: NSObject {
     static func handlePanelLxAppOpened(
         appId: String,
         path: String,
+        pageInstanceId: String,
         sessionId: UInt64,
         panelId: String
     ) -> Bool {
         guard let active else { return false }
-        return active.handleOpenedPanel(appId: appId, path: path, sessionId: sessionId, panelId: panelId)
+        return active.handleOpenedPanel(
+            appId: appId,
+            path: path,
+            pageInstanceId: pageInstanceId,
+            sessionId: sessionId,
+            panelId: panelId
+        )
     }
 
     static func handleAppActivation() -> Bool {
@@ -330,6 +337,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     private func handleOpenedPanel(
         appId: String,
         path: String,
+        pageInstanceId: String,
         sessionId: UInt64,
         panelId: String
     ) -> Bool {
@@ -341,7 +349,13 @@ final class LxAppMacAppUIRuntime: NSObject {
             // tab path — an aside must never enter the sidebar.
             guard let primaryAppId = graphOwnerAppId else { return false }
             shell.storeSession(sessionId, for: appId)
-            shell.registerPanelWithContent(id: panelId, position: .right, appId: appId, path: path)
+            shell.registerPanelWithContent(
+                id: panelId,
+                position: .right,
+                appId: appId,
+                path: path,
+                pageInstanceId: pageInstanceId
+            )
             runtimeLxAppPanels[panelId] = RuntimeLxAppPanel(appId: appId, path: path)
             _ = registerHostAside(primaryAppId, panelId, managedEdgeOverrides[panelId]?.rawValue ?? "right")
             openedSurfaceIDs.insert(panelId)
@@ -355,14 +369,7 @@ final class LxAppMacAppUIRuntime: NSObject {
            let panel = independentPanelWindows[panelId] {
             let hasPendingOpenTask = independentPanelOpenTasks[panelId] != nil
             if !hasPendingOpenTask && !openedSurfaceIDs.contains(panelId) {
-                if let pageInstanceId = resolveSurfacePageInstanceId(
-                    surface,
-                    appIdHint: appId,
-                    pathHint: path,
-                    sessionIdHint: sessionId
-                ) {
-                    _ = notifyPageInstanceHidden(pageInstanceId, "programmatic")
-                }
+                _ = notifyPageInstanceHidden(pageInstanceId, "programmatic")
                 os_log(
                     "ignore stale panel-open callback panel=%{public}@ appId=%{public}@ path=%{public}@",
                     log: Self.log,
@@ -372,14 +379,6 @@ final class LxAppMacAppUIRuntime: NSObject {
                     path
                 )
                 return true
-            }
-            guard let pageInstanceId = WebViewManager.resolvePageInstanceId(
-                appId: appId,
-                path: path,
-                sessionId: sessionId
-            ) else {
-                LXLog.error("independent panel missing page instance id panel=\(panelId) appId=\(appId) path=\(path)", category: "MacAppUI")
-                return false
             }
             surfacePageInstanceIDs[panelId] = pageInstanceId
             shell.storeSession(sessionId, for: appId)
@@ -446,7 +445,13 @@ final class LxAppMacAppUIRuntime: NSObject {
         // Register the aside lxapp panel slot/content (hidden) before mutating
         // the Rust surface graph. The registerHostAside commit below is the only
         // layout-plan delivery that places and shows it.
-        shell.registerPanelWithContent(id: panelId, position: position, appId: appId, path: path)
+        shell.registerPanelWithContent(
+            id: panelId,
+            position: position,
+            appId: appId,
+            path: path,
+            pageInstanceId: pageInstanceId
+        )
         registerHostAsideForSurface(surface)
         openedSurfaceIDs.insert(panelId)
         visibleSurfaceIDs.insert(panelId)
@@ -1931,27 +1936,15 @@ final class LxAppMacAppUIRuntime: NSObject {
         surface.role == .float && surface.anchor == .activator
     }
 
-    private func resolveSurfacePageInstanceId(
-        _ surface: LxAppUIConfig.Surface,
-        appIdHint: String? = nil,
-        pathHint: String? = nil,
-        sessionIdHint: UInt64? = nil
-    ) -> String? {
+    /// The page a surface's lxapp shows now, for a surface that recorded none.
+    private func resolveSurfacePageInstanceId(_ surface: LxAppUIConfig.Surface) -> String? {
         guard case .lxapp = surface.content.kind else { return nil }
-        let appId = (appIdHint ?? surface.content.appId ?? "")
+        let appId = (surface.content.appId ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !appId.isEmpty else { return nil }
-
-        let configuredPath = pathHint ?? (try? surface.content.resolvedLxAppPath())
-        let normalized = normalizedPath(configuredPath)
-        let sessionId = sessionIdHint ?? shell.resolvedSessionId(for: appId) ?? 0
-        guard sessionId > 0 else { return nil }
-
-        return WebViewManager.resolvePageInstanceId(
-            appId: appId,
-            path: normalized,
-            sessionId: sessionId
-        )
+        guard !appId.isEmpty, let sessionId = shell.resolvedSessionId(for: appId) else {
+            return nil
+        }
+        return WebViewManager.currentPageInstanceId(appId: appId, sessionId: sessionId)
     }
 
     private func resolvedWindowSize(for surface: LxAppUIConfig.Surface) -> CGSize? {

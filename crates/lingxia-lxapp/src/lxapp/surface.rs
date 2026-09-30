@@ -3,7 +3,7 @@ use crate::LxAppDelegate;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::ui::{
     ManagedSurfaceProvider, ManagedSurfaceProviderDestroyRequest, ManagedSurfaceProviderRequest,
-    SurfaceContent, SurfaceKind, SurfacePosition, SurfacePresenter,
+    SurfaceContent, SurfaceContentKind, SurfaceKind, SurfacePosition, SurfacePresenter,
     SurfaceRequest as PlatformSurfaceRequest, SurfaceRole as PlatformSurfaceRole, WindowChrome,
 };
 use std::collections::HashMap;
@@ -1467,7 +1467,7 @@ pub(crate) struct SurfaceRecord {
     /// reclaim after long hide) so the owner's `Surface` handle reliably
     /// receives an onClose event.
     pub content_page_instance_id: Option<String>,
-    pub content: SurfaceContent,
+    pub content: SurfaceContentKind,
     pub target: String,
     pub kind: SurfaceKind,
     pub role: lingxia_surface::Role,
@@ -1558,11 +1558,11 @@ impl LxApp {
                 (
                     created.resolved_path.clone(),
                     created.page_instance_id.to_string(),
-                    SurfaceContent::Page,
+                    SurfaceContentKind::Page,
                     Some(created.resolved_path),
                 )
             }
-            PageSurfaceTarget::Url(url) => (url, String::new(), SurfaceContent::Url, None),
+            PageSurfaceTarget::Url(url) => (url, String::new(), SurfaceContentKind::Url, None),
         };
 
         let content_page_instance_id = if page_instance_id.is_empty() {
@@ -1643,31 +1643,35 @@ impl LxApp {
             );
         }
 
-        let present_result = self.runtime.present_surface(PlatformSurfaceRequest {
-            id: id.clone(),
-            app_id: self.appid.clone(),
-            path,
-            session_id: self.session_id(),
-            page_instance_id: page_instance_id.clone(),
-            content,
-            kind: present_kind,
-            width: finite_or_nan(request.width),
-            height: finite_or_nan(request.height),
-            width_ratio: finite_or_nan(request.width_ratio),
-            height_ratio: finite_or_nan(request.height_ratio),
-            position: present_position,
-            role: present_role.into(),
-            interaction,
-            chrome,
-            ephemeral_web_data,
-            url_callback,
-        });
+        let present_result = self
+            .platform_surface_content(content, &path, &page_instance_id)
+            .and_then(|content| {
+                self.runtime
+                    .present_surface(PlatformSurfaceRequest {
+                        id: id.clone(),
+                        app_id: self.appid.clone(),
+                        owner_session_id: self.session_id(),
+                        content,
+                        kind: present_kind,
+                        width: finite_or_nan(request.width),
+                        height: finite_or_nan(request.height),
+                        width_ratio: finite_or_nan(request.width_ratio),
+                        height_ratio: finite_or_nan(request.height_ratio),
+                        position: present_position,
+                        role: present_role.into(),
+                        interaction,
+                        chrome,
+                        ephemeral_web_data,
+                        url_callback,
+                    })
+                    .map_err(LxAppError::from)
+            });
         if let Err(err) = present_result {
             self.forget_surface(&id);
             if !page_instance_id.is_empty() {
                 let _ = dispose_page_instance_by_id(&page_instance_id, CloseReason::Programmatic);
             }
-            return Err(err.into());
+            return Err(err);
         }
 
         // Now that the replacement is up, close the surfaces the core evicted.
@@ -1712,6 +1716,31 @@ impl LxApp {
     /// the `SurfaceRecord` bookkeeping so close()/dispose work, and presents
     /// directly with `kind: Window` / `role: Main` so macOS routes it to the
     /// bare-window (kindWindow) path in `LxAppSurface`.
+    /// What a shell is asked to show: a page by its instance's webview tag,
+    /// a URL as given.
+    fn platform_surface_content(
+        &self,
+        kind: SurfaceContentKind,
+        target: &str,
+        page_instance_id: &str,
+    ) -> Result<SurfaceContent, LxAppError> {
+        match kind {
+            SurfaceContentKind::Url => Ok(SurfaceContent::Url {
+                url: target.to_string(),
+            }),
+            SurfaceContentKind::Page => self
+                .get_page_by_instance_id_str(page_instance_id)
+                .map(|page| SurfaceContent::Page {
+                    webtag: page.webtag().key().to_string(),
+                })
+                .ok_or_else(|| {
+                    LxAppError::ResourceNotFound(format!(
+                        "surface page instance is gone: {page_instance_id}"
+                    ))
+                }),
+        }
+    }
+
     fn open_window_surface(
         &self,
         id: String,
@@ -1738,7 +1767,7 @@ impl LxApp {
                 (
                     created.resolved_path.clone(),
                     created.page_instance_id.to_string(),
-                    SurfaceContent::Page,
+                    SurfaceContentKind::Page,
                     Some(created.resolved_path),
                 )
             }
@@ -1795,26 +1824,30 @@ impl LxApp {
 
         // Present directly with the authoritative window mapping; do NOT consult
         // the graph (no open_node / present_params_for_role / commit).
-        let present_result = self.runtime.present_surface(PlatformSurfaceRequest {
-            id: id.clone(),
-            app_id: self.appid.clone(),
-            path,
-            session_id: self.session_id(),
-            page_instance_id: page_instance_id.clone(),
-            content,
-            kind: SurfaceKind::Window,
-            width: finite_or_nan(request.width),
-            height: finite_or_nan(request.height),
-            width_ratio: finite_or_nan(request.width_ratio),
-            height_ratio: finite_or_nan(request.height_ratio),
-            position: SurfacePosition::Center,
-            role: PlatformSurfaceRole::Main,
-            interaction,
-            chrome,
-            // Window surfaces host this lxapp's own pages, never external web.
-            ephemeral_web_data: false,
-            url_callback: false,
-        });
+        let present_result = self
+            .platform_surface_content(content, &path, &page_instance_id)
+            .and_then(|content| {
+                self.runtime
+                    .present_surface(PlatformSurfaceRequest {
+                        id: id.clone(),
+                        app_id: self.appid.clone(),
+                        owner_session_id: self.session_id(),
+                        content,
+                        kind: SurfaceKind::Window,
+                        width: finite_or_nan(request.width),
+                        height: finite_or_nan(request.height),
+                        width_ratio: finite_or_nan(request.width_ratio),
+                        height_ratio: finite_or_nan(request.height_ratio),
+                        position: SurfacePosition::Center,
+                        role: PlatformSurfaceRole::Main,
+                        interaction,
+                        chrome,
+                        // Window surfaces host this lxapp's own pages, never external web.
+                        ephemeral_web_data: false,
+                        url_callback: false,
+                    })
+                    .map_err(LxAppError::from)
+            });
         if let Err(err) = present_result {
             // Remove only our bookkeeping; there is no graph node to close.
             if let Ok(state) = self.state.lock() {
@@ -1823,7 +1856,7 @@ impl LxApp {
             if !page_instance_id.is_empty() {
                 let _ = dispose_page_instance_by_id(&page_instance_id, CloseReason::Programmatic);
             }
-            return Err(err.into());
+            return Err(err);
         }
 
         Ok(PageSurface {
@@ -2682,7 +2715,7 @@ impl LxApp {
     fn build_surface_node(
         &self,
         id: &str,
-        content: SurfaceContent,
+        content: SurfaceContentKind,
         position: SurfacePosition,
         path_or_url: &str,
         page_path: &Option<String>,
@@ -2708,11 +2741,11 @@ impl LxApp {
             None
         };
         let node_content = match content {
-            SurfaceContent::Page => LxContent::Page {
+            SurfaceContentKind::Page => LxContent::Page {
                 app_id: self.appid.clone(),
                 path: page_path.clone().unwrap_or_else(|| path_or_url.to_string()),
             },
-            SurfaceContent::Url => LxContent::Browser {
+            SurfaceContentKind::Url => LxContent::Browser {
                 initial_url: path_or_url.to_string(),
                 reuse_by_url: !url_callback,
             },
@@ -3029,10 +3062,10 @@ fn finite_or_nan(value: Option<f64>) -> f64 {
     }
 }
 
-fn surface_content_str(content: SurfaceContent) -> &'static str {
+fn surface_content_str(content: SurfaceContentKind) -> &'static str {
     match content {
-        SurfaceContent::Page => "page",
-        SurfaceContent::Url => "url",
+        SurfaceContentKind::Page => "page",
+        SurfaceContentKind::Url => "url",
     }
 }
 
@@ -3343,7 +3376,7 @@ mod tests {
             chrome: WindowChrome::System,
             owner_page_instance_id: Some("owner".to_string()),
             content_page_instance_id: None,
-            content: SurfaceContent::Url,
+            content: SurfaceContentKind::Url,
             target: "https://example.com/login".to_string(),
             kind: SurfaceKind::Overlay,
             role: lingxia_surface::Role::Aside,

@@ -843,8 +843,7 @@ fn post_island_payload(context: &PageContext, payload: Value) {
         "payload": payload,
     })
     .to_string();
-    let page = lxapp::try_get(&context.appid).and_then(|app| app.get_page(&context.path));
-    if let Some(page) = page
+    if let Some(page) = context.page()
         && let Some(webview) = page.webview()
         && let Err(err) = webview.post_message(&view_message)
     {
@@ -864,6 +863,7 @@ mod tests {
             page_key: page.to_string(),
             appid: "missing-app".to_string(),
             path: "pages/video/index".to_string(),
+            instance_id: "missing-instance".to_string(),
         };
         {
             let mut sessions = sessions().lock().unwrap();

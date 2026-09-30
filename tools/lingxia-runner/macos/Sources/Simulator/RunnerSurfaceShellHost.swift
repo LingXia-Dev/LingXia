@@ -112,12 +112,13 @@ final class RunnerSurfaceShellHost {
         DevToolsLogger.shared.log("Opened \(appId) in SDK shell -> \(path)", level: .nav)
     }
 
-    func navigate(to path: String, animationType: LxAppAnimation) {
+    func navigate(to path: String, pageInstanceId: String?, animationType: LxAppAnimation) {
         currentPath = path
         RunnerSupport.SurfaceShell.navigate(
             shell,
             appId: appId,
             path: path,
+            pageInstanceId: pageInstanceId,
             animationType: animationType
         )
     }
@@ -146,10 +147,7 @@ final class RunnerSurfaceShellHost {
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.isHiddenForHostSwitch else { return }
             guard RunnerSupport.Runtime.currentAppId() == self.appId,
-                  let webView = RunnerSupport.WebView.resolve(
-                    appId: self.appId,
-                    path: self.currentPath
-                  ),
+                  let webView = RunnerSupport.WebView.page(appId: self.appId),
                   webView.window != nil
             else {
                 self.retrySurfaceMetricsReport(after: attempt)

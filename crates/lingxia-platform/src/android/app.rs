@@ -2,7 +2,7 @@ use super::with_env;
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::AppRuntime;
-use crate::traits::app_runtime::LxAppOpenMode;
+use crate::traits::app_runtime::ShowLxApp;
 use jni::objects::{Global, JClass, JObject, JString, JValue};
 use jni::sys::jobject;
 use jni::{Env, jni_sig, jni_str};
@@ -464,29 +464,26 @@ impl AppRuntime for Platform {
         &self.locale
     }
 
-    fn show_lxapp(
-        &self,
-        appid: String,
-        _title: String,
-        path: String,
-        _webtag: String,
-        session_id: u64,
-        _open_mode: LxAppOpenMode,
-        _panel_id: String,
-    ) -> Result<(), PlatformError> {
+    fn show_lxapp(&self, request: ShowLxApp) -> Result<(), PlatformError> {
+        let ShowLxApp {
+            appid,
+            webtag,
+            session_id,
+            ..
+        } = request;
         let bridge_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
         with_env(|env| -> Result<(), PlatformError> {
             let appid_jstring = env.new_string(&appid)?;
-            let path_jstring = env.new_string(&path)?;
+            let webtag_jstring = env.new_string(&webtag)?;
 
             env.call_static_method(
                 bridge_class,
-                jni_str!("open"),
+                jni_str!("show"),
                 jni_sig!("(Ljava/lang/String;Ljava/lang/String;J)V"),
                 &[
                     JValue::Object(&appid_jstring),
-                    JValue::Object(&path_jstring),
+                    JValue::Object(&webtag_jstring),
                     JValue::Long(session_id as i64),
                 ],
             )?;
@@ -533,7 +530,6 @@ impl AppRuntime for Platform {
     fn navigate(
         &self,
         appid: String,
-        path: String,
         webtag: String,
         animation_type: crate::traits::app_runtime::AnimationType,
     ) -> Result<(), PlatformError> {
@@ -542,33 +538,31 @@ impl AppRuntime for Platform {
 
         with_env(|env| -> Result<(), PlatformError> {
             let appid_jstring = env.new_string(&appid)?;
-            let path_jstring = env.new_string(&path)?;
             let webtag_jstring = env.new_string(&webtag)?;
             let anim_type_int = animation_type as i32;
 
             let result = env.call_static_method(
                 bridge_class,
                 jni_str!("navigate"),
-                jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Z"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;I)Z"),
                 &[
                     JValue::Object(&appid_jstring),
-                    JValue::Object(&path_jstring),
                     JValue::Object(&webtag_jstring),
                     JValue::Int(anim_type_int),
                 ],
             )?;
             if !result.z()? {
                 return Err(PlatformError::Platform(format!(
-                    "Navigation returned false: appid={}, path={}, animation_type={:?}",
-                    appid, path, animation_type
+                    "Navigation returned false: appid={}, webtag={}, animation_type={:?}",
+                    appid, webtag, animation_type
                 )));
             }
             Ok(())
         })
         .map_err(|_| {
             PlatformError::Platform(format!(
-                "Failed to navigate: appid={}, path={}, animation_type={:?}",
-                appid, path, animation_type
+                "Failed to navigate: appid={}, webtag={}, animation_type={:?}",
+                appid, webtag, animation_type
             ))
         })
     }

@@ -95,6 +95,13 @@ internal class PullToRefreshHelper(
     }
 
     fun attachToWebView(webView: View) {
+        // One indicator serves every page of the activity, so a refresh ends
+        // with the page that started it.
+        if (isRefreshing && this.webView !== webView) {
+            isRefreshing = false
+            returnAnimator?.cancel()
+            resetState()
+        }
         this.webView = webView
         ensureIndicatorAttached()
 

@@ -11,7 +11,7 @@ use super::page_chrome::{AppearancePreference, ResolvedAppearance};
 use super::runtime_registry::{get_lxapps_manager, get_platform};
 use crate::error::LxAppError;
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lingxia_platform::traits::ui::UIUpdate;
+use lingxia_platform::traits::ui::Appearance;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock, RwLock};

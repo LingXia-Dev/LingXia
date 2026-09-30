@@ -5,7 +5,7 @@ import { common } from '@kit.AbilityKit';
 import { display, window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { LingXiaWebView } from '../LingXiaWebView';
-import { addWebViewUiCallback, extractWebTag, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
+import { addWebViewUiCallback, extractWebTag, removeWebViewUiCallback, WebViewInfo, WebViewManager } from '../WebViewBridge';
 import { browserTabClose, browserTabPathForId, disposePageInstance, getBuiltinBrowserAppId, getLxappSessionId, notifyPageInstanceHidden, notifyPageInstanceMounted, notifyPageInstanceVisible, onSurfaceClosed, openStandaloneBrowserTab, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
 import { FloatSurfaceWindowManager } from './surface/FloatSurfaceWindow';
 import { SurfaceCloseButton } from './surface/SurfaceChrome';
@@ -90,10 +90,11 @@ export class LxAppSurface {
   public static present(
     id: string,
     appId: string,
-    path: string,
-    sessionId: string,
-    pageInstanceId: string,
+    ownerSessionId: string,
     contentValue: string,
+    webTag: string,
+    pageInstanceId: string,
+    url: string,
     kindValue: string,
     widthValue: string,
 	    heightValue: string,
@@ -110,17 +111,17 @@ export class LxAppSurface {
 	    const content = parseInt(contentValue, 10);
 	    const kind = parseInt(kindValue, 10);
     const role = normalizeRole(roleValue);
-	    if (!id || !appId || !path || parseInt(sessionId, 10) <= 0) {
+	    if (!id || !appId || parseInt(ownerSessionId, 10) <= 0) {
 	      return false;
 	    }
 	    if (kind !== KIND_POPUP && kind !== KIND_WINDOW) {
 	      return false;
 	    }
-	    if (content === CONTENT_PAGE && !pageInstanceId) {
+	    if (content === CONTENT_PAGE && (!webTag || !pageInstanceId)) {
       return false;
     }
     const urlCallback = urlCallbackValue === 'true';
-    if (content === CONTENT_URL && !isSupportedUrl(path, urlCallback)) {
+    if (content === CONTENT_URL && !isSupportedUrl(url, urlCallback)) {
       return false;
     }
     if (content !== CONTENT_PAGE && content !== CONTENT_URL) {
@@ -146,8 +147,8 @@ export class LxAppSurface {
     if (content === CONTENT_URL) {
       browserTabId = String(openStandaloneBrowserTab(
         appId,
-        Math.trunc(Number(sessionId)),
-        path,
+        Math.trunc(Number(ownerSessionId)),
+        url,
         ephemeralWebDataValue === 'true',
         urlCallback
       ) ?? '').trim();
@@ -156,9 +157,10 @@ export class LxAppSurface {
     const layout: SurfaceLayoutConfig = {
       id,
       appId,
-	      path,
-	      pageInstanceId,
 	      content,
+	      webTag,
+	      pageInstanceId,
+	      url,
       kind,
       role,
 	      closeButton: closeButtonValue === 'true',
@@ -470,7 +472,7 @@ export class LxAppSurface {
   public static isSurfacePageWebView(appId: string, webTag: string): boolean {
     let matched = false;
     LxAppSurface.layouts.forEach((layout: SurfaceLayoutConfig) => {
-      if (!matched && layout.appId === appId && layout.pageInstanceId && LxAppSurface.matchesPageSurface(layout, webTag)) {
+      if (!matched && layout.appId === appId && layout.content === CONTENT_PAGE && layout.webTag === webTag) {
         matched = true;
       }
     });
@@ -479,11 +481,6 @@ export class LxAppSurface {
 
   private static surfaceKey(id: string, appId: string): string {
     return `${appId}::${id}`;
-  }
-
-  private static matchesPageSurface(layout: SurfaceLayoutConfig, webTag: string): boolean {
-    const exactTag = `${toWebTag(layout.appId, layout.path)}#${layout.pageInstanceId}`;
-    return webTag === exactTag || webTag.startsWith(`${exactTag}#`);
   }
 
 	  private static showPageSurfaceWhenReady(layout: SurfaceLayoutConfig, attempt: number = 0): boolean {
@@ -503,7 +500,7 @@ export class LxAppSurface {
       }, SURFACE_NOTIFY_RETRY_DELAY_MS);
       return true;
     }
-    LxLog.e(TAG, `showPageSurfaceWhenReady failed id=${layout.id} appId=${layout.appId} path=${layout.path} pageInstanceId=${layout.pageInstanceId}`);
+    LxLog.e(TAG, `showPageSurfaceWhenReady failed id=${layout.id} appId=${layout.appId} webtag=${layout.webTag}`);
     LxAppSurface.failPageSurface(layout);
     return false;
 	  }
@@ -728,9 +725,10 @@ function surfaceRenderState(layout: SurfaceLayoutConfig, isVisible: boolean, pag
   return {
     id: layout.id,
     appId: layout.appId,
-    path: layout.path,
-    pageInstanceId: layout.pageInstanceId,
     content: layout.content,
+    webTag: layout.webTag,
+    pageInstanceId: layout.pageInstanceId,
+    url: layout.url,
     kind: layout.kind,
     role: layout.role,
     closeButton: layout.closeButton,
@@ -768,7 +766,7 @@ export struct SurfaceManager {
     }
     for (let i = 0; i < this.surfaces.length; i++) {
       const surface = this.surfaces[i];
-      if (surface.content === CONTENT_PAGE && this.matchesPageSurface(surface, info.webtag)) {
+      if (surface.content === CONTENT_PAGE && surface.webTag === info.webtag) {
         this.attachPageSurface(surface);
       } else if (surface.content === CONTENT_URL) {
         this.attachUrlSurface(surface);
@@ -821,7 +819,7 @@ export struct SurfaceManager {
       this.attachUrlSurface(state);
     }
     this.syncFullscreenMode();
-    hilog.info(DOMAIN, TAG, `present surface id=${state.id} role=${state.role} content=${state.content} pos=${state.position} url=${state.path} frame=${state.leftVp},${state.topVp},${state.widthVp},${state.heightVp}`);
+    hilog.info(DOMAIN, TAG, `present surface id=${state.id} role=${state.role} content=${state.content} pos=${state.position} webtag=${state.webTag} url=${state.url} frame=${state.leftVp},${state.topVp},${state.widthVp},${state.heightVp}`);
     return true;
   }
 
@@ -834,7 +832,7 @@ export struct SurfaceManager {
     const infos = WebViewManager.getAllWebViewInfos();
     for (let i = 0; i < infos.length; i++) {
       const info = infos[i];
-      if (this.matchesPageSurface(layout, info.webtag)) {
+      if (info.webtag === layout.webTag) {
         const alreadyAttached = current.pageWebTag === info.webtag;
         this.pageControllers.set(key, info.controller);
         this.replaceSurface(surfaceRenderState(current, true, info.webtag));
@@ -847,7 +845,7 @@ export struct SurfaceManager {
         return true;
       }
     }
-    hilog.warn(DOMAIN, TAG, `attachPageSurface: WebView not found for ${layout.appId}:${layout.path}#${layout.pageInstanceId}`);
+    hilog.warn(DOMAIN, TAG, `attachPageSurface: WebView not found for ${layout.webTag}`);
     return false;
   }
 
@@ -1028,13 +1026,13 @@ export struct SurfaceManager {
                 }
                 this.loadWebSurfaceError(
                   this.getWebController(surface),
-                  event.request.getRequestUrl() ?? surface.path
+                  event.request.getRequestUrl() ?? surface.url
                 );
               })
               .width('100%')
               .height('100%')
               .onAppear(() => {
-                const url = surface.path;
+                const url = surface.url;
                 const controller = this.getWebController(surface);
                 const isEphemeral = surface.ephemeralWebData;
                 setTimeout(() => {
@@ -1247,11 +1245,6 @@ export struct SurfaceManager {
 
   private getPageController(surface: SurfaceRenderState): webview.WebviewController {
     return this.pageControllers.get(this.surfaceKey(surface.id, surface.appId)) ?? new webview.WebviewController();
-  }
-
-  private matchesPageSurface(layout: SurfaceLayoutConfig, webTag: string): boolean {
-    const exactTag = `${toWebTag(layout.appId, layout.path)}#${layout.pageInstanceId}`;
-    return webTag === exactTag || webTag.startsWith(`${exactTag}#`);
   }
 
   private surfaceKey(id: string, appId: string): string {

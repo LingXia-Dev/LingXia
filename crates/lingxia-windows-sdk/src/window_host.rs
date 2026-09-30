@@ -9060,17 +9060,16 @@ fn restore_previous_lxapp_after_hide(host: Option<HWND>, hidden: &WebTag) {
     if active_webtag_key_for_window(host).as_deref() != Some(hidden.key()) {
         return;
     }
-    let (appid, path, session_id) = lxapp::get_current_lxapp();
-    if appid.is_empty() || path.is_empty() {
+    let (appid, _, session_id) = lxapp::get_current_lxapp();
+    if appid.is_empty() {
         return;
     }
     if appid == hidden.extract_appid() && session_id == hidden.session_id().unwrap_or_default() {
         return;
     }
-    // Page webtags are per-instance; resolve the live instance rather than
-    // reconstructing a tag from the path.
-    let Some(restore) =
-        lxapp::try_get(&appid).and_then(|app| app.get_page(&path).map(|page| page.webtag()))
+    let Some(restore) = lxapp::try_get(&appid)
+        .and_then(|app| app.current_page().ok())
+        .map(|page| page.webtag())
     else {
         return;
     };

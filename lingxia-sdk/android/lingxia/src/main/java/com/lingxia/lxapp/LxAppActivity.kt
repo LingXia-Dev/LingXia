@@ -135,6 +135,7 @@ class LxAppActivity : AppCompatActivity() {
         private const val TAG = "LingXia.WebView"
         const val META_FORCE_IMMERSIVE = "com.lingxia.FORCE_IMMERSIVE"
         const val EXTRA_APP_ID = "appId"
+        /** Route of the first page: only the orientation to take before its WebView exists. */
         const val EXTRA_PATH = "path"
         const val EXTRA_SESSION_ID = "sessionId"
         internal const val DEFAULT_NAV_BAR_HEIGHT_DP = 44
@@ -565,7 +566,7 @@ class LxAppActivity : AppCompatActivity() {
             insets
         }
 
-        presentFirstScreen(initialPath)
+        presentFirstScreen()
         if (forceHostImmersive) {
             enterImmersiveMode()
         }
@@ -1089,10 +1090,8 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
-    /** What a container was asked to show, kept while its WebView is not ready. */
+    /** How a container was asked to show a page, kept while its WebView is not ready. */
     private class Presentation(
-        val path: String,
-        val pageConfig: NavigationBarState?,
         val isReplace: Boolean,
         val isBackNavigation: Boolean,
         val firstScreen: Boolean
@@ -1102,11 +1101,12 @@ class LxAppActivity : AppCompatActivity() {
     private var presentTicket = 0
 
     /**
-     * Show the first page: the app's current one, which is not the page the
-     * activity was started for when the lxapp relaunched from `onLaunch`.
+     * Show the first page: the app's current one. A navigation issued before
+     * this activity existed had nobody to present it, so the page the open
+     * named may no longer be the one to show.
      */
-    private fun presentFirstScreen(path: String, resolvesLeft: Int = FIRST_SCREEN_RESOLVE_LIMIT) {
-        present(null, Presentation(path, null, isReplace = true, isBackNavigation = false, firstScreen = true), resolvesLeft)
+    private fun presentFirstScreen(resolvesLeft: Int = FIRST_SCREEN_RESOLVE_LIMIT) {
+        present(null, Presentation(isReplace = true, isBackNavigation = false, firstScreen = true), resolvesLeft)
     }
 
     /**
@@ -1140,15 +1140,15 @@ class LxAppActivity : AppCompatActivity() {
             // The awaited page was retired; the first screen follows the app's
             // current page, a navigation has its own newer request.
             status == PageWebViewCallback.GONE && request.firstScreen && resolvesLeft > 0 -> {
-                presentFirstScreen(request.path, resolvesLeft - 1)
+                presentFirstScreen(resolvesLeft - 1)
                 return
             }
             status == PageWebViewCallback.GONE && !request.firstScreen -> {
-                Log.d(TAG, "Page for ${request.path} is gone; a newer navigation supersedes it")
+                Log.d(TAG, "Page ${webtag ?: "current"} is gone; a newer navigation supersedes it")
                 return
             }
         }
-        LxLog.e(TAG, "WebView not available for appId=$appId, path=${request.path} (status=$status)")
+        LxLog.e(TAG, "WebView not available for appId=$appId, page=${webtag ?: "current"} (status=$status)")
         if (currentWebView == null) finishWithSessionClose("initial_webview_missing")
     }
 
@@ -1161,7 +1161,7 @@ class LxAppActivity : AppCompatActivity() {
                 NativeBridge.notifyPageActive(webView)
             }
         } else {
-            navigateToPage(webView, request.path, request.pageConfig, request.isReplace, request.isBackNavigation)
+            navigateToPage(webView, request.isReplace, request.isBackNavigation)
         }
     }
 
@@ -1266,15 +1266,15 @@ class LxAppActivity : AppCompatActivity() {
             return
         }
 
-        val path = normalizePath(currentWebView?.getCurrentPath())
-        if (path.isEmpty()) {
+        val webtag = currentWebView?.getWebTag()
+        if (webtag.isNullOrEmpty()) {
             helper.endRefreshing()
             return
         }
 
-        // Notify Rust layer via onLxappEvent
+        // The runtime is told which page instance was pulled, by its webtag.
         try {
-            NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_PULL_DOWN_REFRESH, path)
+            NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_PULL_DOWN_REFRESH, webtag)
         } catch (e: Exception) {
             LxLog.e(TAG, "onLxappEvent pull-to-refresh failed: ${e.message}")
             helper.endRefreshing()
@@ -1537,41 +1537,29 @@ class LxAppActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    /**
-     * Navigate to any page - super simple
-     */
     /** [webtag] names the page instance to show; null: the app's current page. */
-    internal fun navigate(targetPath: String, webtag: String?, animationType: AnimationType): Boolean {
+    internal fun navigate(webtag: String?, animationType: AnimationType): Boolean {
         if (!::appId.isInitialized) return false
 
         try {
-            // Coordinate all UI updates in the same step for consistency
-            return coordinatedNavigationUpdate(targetPath, webtag, animationType)
+            syncTabBarFromRuntime()
+            // Launch/Replace/SwitchTab arrive as NONE and swap without animation.
+            present(
+                webtag,
+                Presentation(
+                    isReplace = animationType == AnimationType.NONE,
+                    isBackNavigation = animationType == AnimationType.BACKWARD,
+                    firstScreen = false
+                )
+            )
+            return true
         } catch (e: Exception) {
             LxLog.e(TAG, "Navigation failed: ${e.message}", e)
             return false
         }
     }
 
-    /**
-     * Coordinate all UI updates (TabBar, NavBar, WebView) in the same step
-     *
-     * IMPROVEMENT: Ensures WebView, NavBar, and TabBar updates are synchronized
-     * to prevent timing issues and provide smooth, coordinated transitions
-     */
-    private fun coordinatedNavigationUpdate(targetPath: String, webtag: String?, animationType: AnimationType): Boolean {
-
-        val pageConfig = getNavBarState(appId, targetPath)
-
-        applyAnimationTypeUpdates(animationType, targetPath)
-
-        return navigateToPageWithCoordination(targetPath, webtag, animationType, pageConfig)
-    }
-
-    /**
-     * Apply animation type specific UI updates with smooth animations
-     */
-    private fun applyAnimationTypeUpdates(animationType: AnimationType, targetPath: String) {
+    private fun syncTabBarFromRuntime() {
         // Reflect visibility from Rust TabBarState only
         val tabBarConfig = NativeApi.getTabBarState(appId)
         val visible = tabBarConfig?.visible ?: false
@@ -1752,37 +1740,6 @@ class LxAppActivity : AppCompatActivity() {
     /**
      * Show WebView with appropriate animation and trigger onPageShow
      */
-    /**
-     * Navigate to page with coordinated UI updates
-     *
-     * IMPROVEMENT: Coordinates WebView navigation with navbar updates for smooth transitions
-     */
-    private fun navigateToPageWithCoordination(
-        targetPath: String,
-        webtag: String?,
-        animationType: AnimationType,
-        pageConfig: NavigationBarState?
-    ): Boolean {
-        // All animation types use coordinated logic
-        val success = when (animationType) {
-            AnimationType.FORWARD -> {
-                present(webtag, Presentation(targetPath, pageConfig, isReplace = false, isBackNavigation = false, firstScreen = false))
-                true
-            }
-            AnimationType.BACKWARD -> {
-                present(webtag, Presentation(targetPath, pageConfig, isReplace = false, isBackNavigation = true, firstScreen = false))
-                true
-            }
-            AnimationType.NONE -> {
-                // No animation - used for Launch/Replace/SwitchTab semantics
-                present(webtag, Presentation(targetPath, pageConfig, isReplace = true, isBackNavigation = false, firstScreen = false))
-                true
-            }
-        }
-
-        return success
-    }
-
     /**
      * Animate old container out with cleanup
      */
@@ -1996,19 +1953,16 @@ class LxAppActivity : AppCompatActivity() {
      * Navigate to a page with coordinated navbar and webview updates
      *
      * IMPROVEMENT: Coordinates navbar and webview updates in the same step
-     * @param targetPath Path of the page to navigate to
-     * @param pageConfig Navigation bar configuration (optional, will be fetched if null)
      * @param isReplace Whether this is a replace navigation
      * @param isBackNavigation Whether this is a back navigation
      */
     private fun navigateToPage(
         newWebView: com.lingxia.lxapp.WebView,
-        targetPath: String,
-        pageConfig: NavigationBarState? = null,
         isReplace: Boolean = false,
         isBackNavigation: Boolean = false
     ) {
         try {
+            val targetPath = normalizePath(newWebView.getCurrentPath())
             // Get current WebView before changes
             val oldWebView = currentWebView
 
@@ -2016,7 +1970,7 @@ class LxAppActivity : AppCompatActivity() {
                 NativeBridge.notifyPageInactive(oldWebView)
             }
 
-            val navbarState = pageConfig ?: getNavBarState(appId, targetPath)
+            val navbarState = getNavBarState(appId, targetPath)
 
             // Keep the container this WebView already lives in when it is
             // still attached. Taking a WebView out of the window destroys its
@@ -2495,13 +2449,13 @@ class LxAppActivity : AppCompatActivity() {
         // Get next LxApp from Rust stack and open it
         val currentLxApp = NativeApi.getCurrentLxApp()
         if (currentLxApp != null && currentLxApp.isValid()) {
-            openLxApp(currentLxApp.appId, currentLxApp.path, currentLxApp.sessionId)
+            openLxApp(currentLxApp.appId, currentLxApp.sessionId)
         } else {
         }
     }
 
-    // Switch to a different LxApp in the current activity
-    fun openLxApp(appId: String, path: String, sessionId: Long) {
+    /** Switch to a different LxApp in the current activity, on its current page. */
+    fun openLxApp(appId: String, sessionId: Long) {
         if (sessionId <= 0L) {
             LxLog.e(TAG, "Refusing to open app without valid sessionId: appId=$appId")
             return
@@ -2520,11 +2474,7 @@ class LxAppActivity : AppCompatActivity() {
             updateCapsuleButtonVisibility(appId)
 
             // 3. Call navigate as entry point
-            if (path.isNotEmpty()) {
-                navigate(path, null, AnimationType.NONE)
-            } else {
-                LxLog.e(TAG, "No valid path to navigate to")
-            }
+            navigate(null, AnimationType.NONE)
         }
     }
 

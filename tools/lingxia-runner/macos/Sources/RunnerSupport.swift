@@ -50,12 +50,13 @@ enum RunnerSupport {
             LingxiaRunnerSPI.Runtime.removeSessionId(for: appId)
         }
 
-        static func setCurrentApp(appId: String, path: String) {
-            LingxiaRunnerSPI.Runtime.setCurrentApp(appId: appId, path: path)
+        static func setCurrentApp(appId: String, path: String, pageInstanceId: String? = nil) {
+            LingxiaRunnerSPI.Runtime.setCurrentApp(
+                appId: appId, path: path, pageInstanceId: pageInstanceId)
         }
 
-        static func setCurrentPath(_ path: String) {
-            LingxiaRunnerSPI.Runtime.setCurrentPath(path)
+        static func setCurrentPath(_ path: String, pageInstanceId: String? = nil) {
+            LingxiaRunnerSPI.Runtime.setCurrentPath(path, pageInstanceId: pageInstanceId)
         }
     }
 
@@ -83,12 +84,9 @@ enum RunnerSupport {
             LingxiaRunnerSPI.WebView.removeCurrentFromSuperview()
         }
 
-        static func resolve(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
-            LingxiaRunnerSPI.WebView.resolve(appId: appId, path: path, sessionId: sessionId)
-        }
-
-        static func resolve(appId: String, path: String) -> WKWebView? {
-            LingxiaRunnerSPI.WebView.resolve(appId: appId, path: path)
+        /// The instance named, or the app's current page when nil.
+        static func page(appId: String, pageInstanceId: String? = nil) -> WKWebView? {
+            LingxiaRunnerSPI.WebView.page(appId: appId, pageInstanceId: pageInstanceId)
         }
 
         static func attach(_ webView: WKWebView, to container: NSView) {
@@ -296,12 +294,14 @@ enum RunnerSupport {
             _ shell: LxAppShell,
             appId: String,
             path: String,
+            pageInstanceId: String?,
             animationType: LxAppAnimation
         ) {
             LingxiaRunnerSPI.SurfaceShell.navigate(
                 shell,
                 appId: appId,
                 path: path,
+                pageInstanceId: pageInstanceId,
                 animationType: animationType
             )
         }

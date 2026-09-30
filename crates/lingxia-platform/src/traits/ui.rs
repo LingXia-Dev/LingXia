@@ -90,9 +90,45 @@ impl From<SurfaceRole> for lingxia_surface::Role {
     }
 }
 
+/// What a surface shows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SurfaceContent {
+    /// One of the lxapp's own page instances, named by its full webview tag.
+    Page { webtag: String },
+    /// An external document.
+    Url { url: String },
+}
+
+impl SurfaceContent {
+    pub fn kind(&self) -> SurfaceContentKind {
+        match self {
+            Self::Page { .. } => SurfaceContentKind::Page,
+            Self::Url { .. } => SurfaceContentKind::Url,
+        }
+    }
+
+    /// The page instance's webview tag; empty for `Url` content.
+    pub fn webtag(&self) -> &str {
+        match self {
+            Self::Page { webtag } => webtag,
+            Self::Url { .. } => "",
+        }
+    }
+
+    /// The document's URL; empty for `Page` content.
+    pub fn url(&self) -> &str {
+        match self {
+            Self::Page { .. } => "",
+            Self::Url { url } => url,
+        }
+    }
+}
+
+/// [`SurfaceContent`] without its payload; the discriminant platform shells
+/// receive.
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SurfaceContent {
+pub enum SurfaceContentKind {
     #[default]
     Page = 0,
     Url = 1,
@@ -137,9 +173,10 @@ impl WindowChrome {
 pub struct SurfaceRequest {
     pub id: String,
     pub app_id: String,
-    pub path: String,
-    pub session_id: u64,
-    pub page_instance_id: String,
+    /// The lxapp session opening the surface. Not part of what is shown: a
+    /// shell refuses a request from a session it has replaced, and the
+    /// browser tab behind `Url` content is owned by this session.
+    pub owner_session_id: u64,
     pub content: SurfaceContent,
     pub kind: SurfaceKind,
     pub width: f64,
@@ -258,6 +295,42 @@ pub trait SurfacePresenter: Send + Sync + 'static {
     }
 }
 
+/// The scheme an lxapp and the host draw in.
+pub trait Appearance: Send + Sync + 'static {
+    /// Effective host/Runner scheme used when an lxapp preference is `auto`.
+    fn host_appearance_dark(&self) -> bool {
+        false
+    }
+
+    /// Apply an lxapp-scoped scheme to native Page Chrome and every matching
+    /// WebView. Shared shell and unrelated browser/lxapp WebViews are excluded.
+    fn apply_lxapp_appearance(&self, _appid: &str, _dark: bool) -> Result<(), PlatformError> {
+        Ok(())
+    }
+
+    /// Clear platform state retained for a closed lxapp session.
+    fn clear_lxapp_appearance(&self, _appid: &str) {}
+
+    /// Persist the appearance the app draws in, so what the platform itself
+    /// draws from its night mode — the activity theme, the canvas behind a
+    /// page — matches. `None` follows the system again. No-op where the
+    /// platform has no such lever (iOS).
+    fn set_host_color_mode(&self, _dark: Option<bool>) {}
+}
+
+/// The launch face the OS frame carries until the home page can draw itself.
+pub trait LaunchFace: Send + Sync + 'static {
+    /// The home lxapp's entry page finished its first render (fired at most
+    /// once per process). Hosts dismiss the startup splash overlay on it.
+    fn notify_home_first_ready(&self) {}
+
+    /// Hand the launch face over to the host's campaign screen instead of
+    /// dismissing it: the same layer, new art, plus a countdown the user can
+    /// skip. The platform owns the countdown and lifts the layer when it ends
+    /// — the runtime has already said everything it knows.
+    fn show_splash_campaign(&self, _image_path: String, _duration_ms: u32) {}
+}
+
 pub trait UIUpdate: Send + Sync + 'static {
     fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError>;
     fn update_tabbar_ui(&self, appid: String) -> Result<(), PlatformError>;
@@ -274,36 +347,6 @@ pub trait UIUpdate: Send + Sync + 'static {
             "update_orientation_ui not implemented for this platform".to_string(),
         ))
     }
-
-    /// Effective host/Runner scheme used when an lxapp preference is `auto`.
-    fn host_appearance_dark(&self) -> bool {
-        false
-    }
-
-    /// Apply an lxapp-scoped scheme to native Page Chrome and every matching
-    /// WebView. Shared shell and unrelated browser/lxapp WebViews are excluded.
-    fn apply_lxapp_appearance(&self, _appid: &str, _dark: bool) -> Result<(), PlatformError> {
-        Ok(())
-    }
-
-    /// Clear platform state retained for a closed lxapp session.
-    fn clear_lxapp_appearance(&self, _appid: &str) {}
-
-    /// The home lxapp's entry page finished its first render (fired at most
-    /// once per process). Hosts dismiss the startup splash overlay on it.
-    fn notify_home_first_ready(&self) {}
-
-    /// Hand the launch face over to the host's campaign screen instead of
-    /// dismissing it: the same layer, new art, plus a countdown the user can
-    /// skip. The platform owns the countdown and lifts the layer when it ends
-    /// — the runtime has already said everything it knows.
-    fn show_splash_campaign(&self, _image_path: String, _duration_ms: u32) {}
-
-    /// Persist the appearance the app draws in, so what the platform itself
-    /// draws from its night mode — the activity theme, the canvas behind a
-    /// page — matches. `None` follows the system again. No-op where the
-    /// platform has no such lever (iOS).
-    fn set_host_color_mode(&self, _dark: Option<bool>) {}
 
     /// Measure the visible capsule after native Page Chrome has laid out.
     /// The JSON payload is an internal transport; app code only sees the

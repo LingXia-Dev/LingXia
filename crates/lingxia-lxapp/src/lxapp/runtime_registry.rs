@@ -99,6 +99,11 @@ pub fn find_page_by_instance_id(id: &str) -> Option<PageInstance> {
     })
 }
 
+/// The live page instance of `appid` a full page webtag names.
+pub fn find_page_by_webtag(appid: &str, webtag: &str) -> Option<PageInstance> {
+    try_get(appid)?.get_page_by_webtag(webtag)
+}
+
 /// The page a platform container was told to present: `webtag` names one
 /// instance exactly; without it, the app's current page.
 fn resolve_presented_page(
@@ -108,12 +113,7 @@ fn resolve_presented_page(
 ) -> Option<PageInstance> {
     let app = try_get(appid).filter(|app| app.session_id() == session_id)?;
     match webtag {
-        Some(key) => {
-            // `appid:route#<instance id>#<session>`
-            let instance_id = key.rsplit('#').nth(1)?;
-            app.get_page_by_instance_id_str(instance_id)
-                .filter(|page| page.webtag().key() == key)
-        }
+        Some(key) => app.get_page_by_webtag(key),
         None => {
             let path = app.peek_current_page_path()?;
             app.get_page(&path)

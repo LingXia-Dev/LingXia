@@ -83,7 +83,7 @@ fn signal_home_first_ready() {
     let Some(platform) = lxapp::runtime_registry::get_platform() else {
         return;
     };
-    use lingxia_platform::traits::ui::UIUpdate;
+    use lingxia_platform::traits::ui::LaunchFace;
     // The launch face has done its job. If the host resolved a campaign in
     // time, it takes over the same layer with its own countdown; otherwise the
     // face lifts straight into the app. A campaign that is not ready by this
@@ -1971,7 +1971,6 @@ impl PageInstance {
         (*lxapp.runtime)
             .navigate(
                 self.appid(),
-                path,
                 target_page.webtag().key().to_string(),
                 nav_type.to_animation(),
             )
@@ -2044,7 +2043,6 @@ impl PageInstance {
 
             (*lxapp.runtime).navigate(
                 self.appid(),
-                path.clone(),
                 dest.webtag().key().to_string(),
                 NavigationType::Backward.to_animation(),
             )?;

@@ -26,9 +26,14 @@ class macOSLxApp: ObservableObject {
         LxAppActiveHost.activeShell
     }
 
-    static func openLxApp(appId: String, path: String, sessionId: UInt64) {
+    static func openLxApp(appId: String, path: String, pageInstanceId: String?, sessionId: UInt64) {
         os_log("macOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
-        _ = LxAppCore.executeOpenLxApp(appId: appId, path: path, sessionId: sessionId)
+        _ = LxAppCore.executeOpenLxApp(
+            appId: appId,
+            path: path,
+            sessionId: sessionId,
+            pageInstanceId: pageInstanceId
+        )
     }
 
     private static func openShellWindow() {
@@ -60,18 +65,34 @@ class macOSLxApp: ObservableObject {
         let currentLxApp = getCurrentLxApp()
         let appidStr = currentLxApp.appid.toString()
         let pathStr = currentLxApp.path.toString()
+        let pageInstanceId = currentLxApp.page_instance_id.toString()
         let nextSession = currentLxApp.session_id
         if !appidStr.isEmpty && nextSession > 0 {
             os_log("Opening next LxApp from stack: %@:%@", log: log, type: .info, appidStr, pathStr)
-            openLxApp(appId: appidStr, path: pathStr, sessionId: nextSession)
+            openLxApp(
+                appId: appidStr,
+                path: pathStr,
+                pageInstanceId: pageInstanceId.isEmpty ? nil : pageInstanceId,
+                sessionId: nextSession
+            )
         } else {
             os_log("No more LxApps in stack", log: log, type: .info)
         }
     }
 
     @discardableResult
-    static func navigate(appId: String, path: String, animationType: LxAppAnimation) -> Bool {
-        return LxAppCore.executeNavigation(appId: appId, path: path, animationType: animationType)
+    static func navigate(
+        appId: String,
+        path: String,
+        pageInstanceId: String?,
+        animationType: LxAppAnimation
+    ) -> Bool {
+        return LxAppCore.executeNavigation(
+            appId: appId,
+            path: path,
+            pageInstanceId: pageInstanceId,
+            animationType: animationType
+        )
     }
 
     internal static func openHomeLxApp() {
@@ -140,12 +161,32 @@ class macOSLxApp: ObservableObject {
 
 // MARK: - Direct platform implementation
 extension macOSLxApp {
-    internal static func openLxAppDirect(appId: String, path: String, sessionId: UInt64) {
-        shared.handleOpenLxApp(appId: appId, path: path, sessionId: sessionId)
+    internal static func openLxAppDirect(
+        appId: String,
+        path: String,
+        pageInstanceId: String,
+        sessionId: UInt64
+    ) {
+        shared.handleOpenLxApp(
+            appId: appId,
+            path: path,
+            pageInstanceId: pageInstanceId,
+            sessionId: sessionId
+        )
     }
 
-    internal static func handleNavigationDirect(appId: String, path: String, animationType: LxAppAnimation) {
-        shared.handleRegularNavigation(appId: appId, path: path, animationType: animationType)
+    internal static func handleNavigationDirect(
+        appId: String,
+        path: String,
+        pageInstanceId: String?,
+        animationType: LxAppAnimation
+    ) {
+        shared.handleRegularNavigation(
+            appId: appId,
+            path: path,
+            pageInstanceId: pageInstanceId,
+            animationType: animationType
+        )
         updateNavigationBarDirect(appId: appId, path: path)
         updateSidebarDirect(appId: appId, path: path)
     }
@@ -161,24 +202,41 @@ extension macOSLxApp {
         NotificationCenter.default.post(name: .sidebarNeedsRefresh, object: appId)
     }
 
-    private func handleOpenLxApp(appId: String, path: String, sessionId: UInt64) {
+    private func handleOpenLxApp(
+        appId: String,
+        path: String,
+        pageInstanceId: String,
+        sessionId: UInt64
+    ) {
         if let s = Self.activeShell() {
-            s.openLxApp(appId: appId, path: path, sessionId: sessionId)
+            s.openLxApp(appId: appId, path: path, pageInstanceId: pageInstanceId, sessionId: sessionId)
             s.window?.makeKeyAndOrderFront(nil)
         } else {
             Self.openShellWindow()
-            Self.activeShell()?.openLxApp(appId: appId, path: path, sessionId: sessionId)
+            Self.activeShell()?.openLxApp(
+                appId: appId,
+                path: path,
+                pageInstanceId: pageInstanceId,
+                sessionId: sessionId
+            )
         }
     }
 
-    fileprivate func handleRegularNavigation(appId: String, path: String, animationType: LxAppAnimation) {
+    fileprivate func handleRegularNavigation(
+        appId: String,
+        path: String,
+        pageInstanceId: String?,
+        animationType: LxAppAnimation
+    ) {
         if let s = Self.activeShell() {
            s.browserCoordinator.deactivate()
         }
 
         if let s = Self.activeShell(),
-           let viewController = s.ensureViewController(for: appId, path: path) {
-            viewController.navigate(appId: appId, to: path, with: animationType)
+           let viewController = s.ensureViewController(
+               for: appId, path: path, pageInstanceId: pageInstanceId) {
+            viewController.navigate(
+                appId: appId, to: path, pageInstanceId: pageInstanceId, with: animationType)
         }
     }
 
@@ -245,28 +303,28 @@ extension macOSLxApp {
 
 // MARK: - Pull-to-Refresh Bridge Functions
 extension LxApp {
-    @objc nonisolated public static func startPullDownRefresh(appid: RustStr, path: RustStr) -> Bool {
+    @objc nonisolated public static func startPullDownRefresh(appid: RustStr, webtag: RustStr) -> Bool {
         let appIdStr = appid.toString()
-        let pathStr = path.toString()
+        let webtagStr = webtag.toString()
 
         Task { @MainActor in
             // Addressed by page, not by host: the indicator belongs to the web
             // view, so every host that mounts one drives the same controller.
-            MacPullToRefreshController.controller(appId: appIdStr, path: pathStr)?
+            MacPullToRefreshController.controller(appId: appIdStr, webtag: webtagStr)?
                 .startRefreshing()
-            os_log("startPullDownRefresh called for %@:%@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appIdStr, pathStr)
+            os_log("startPullDownRefresh called for %@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, webtagStr)
         }
         return true
     }
 
-    @objc nonisolated public static func stopPullDownRefresh(appid: RustStr, path: RustStr) -> Bool {
+    @objc nonisolated public static func stopPullDownRefresh(appid: RustStr, webtag: RustStr) -> Bool {
         let appIdStr = appid.toString()
-        let pathStr = path.toString()
+        let webtagStr = webtag.toString()
 
         Task { @MainActor in
-            MacPullToRefreshController.controller(appId: appIdStr, path: pathStr)?
+            MacPullToRefreshController.controller(appId: appIdStr, webtag: webtagStr)?
                 .endRefreshing()
-            os_log("stopPullDownRefresh called for %@:%@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appIdStr, pathStr)
+            os_log("stopPullDownRefresh called for %@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, webtagStr)
         }
         return true
     }

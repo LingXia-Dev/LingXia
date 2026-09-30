@@ -5,7 +5,8 @@ use crate::traits::pull_to_refresh::PullToRefresh;
 
 use super::Platform;
 
-type WindowsPullToRefreshHandler = Arc<dyn Fn(String, String, bool) -> bool + Send + Sync>;
+/// `(page webtag, refreshing)`; returns whether the indicator took the state.
+type WindowsPullToRefreshHandler = Arc<dyn Fn(&str, bool) -> bool + Send + Sync>;
 static WINDOWS_PULL_TO_REFRESH_HANDLER: Mutex<Option<WindowsPullToRefreshHandler>> =
     Mutex::new(None);
 
@@ -15,19 +16,17 @@ pub fn set_windows_pull_to_refresh_handler(handler: WindowsPullToRefreshHandler)
     }
 }
 
-fn invoke_windows_pull_to_refresh_handler(app_id: &str, path: &str, refreshing: bool) -> bool {
+fn invoke_windows_pull_to_refresh_handler(webtag: &str, refreshing: bool) -> bool {
     let handler = WINDOWS_PULL_TO_REFRESH_HANDLER
         .lock()
         .ok()
         .and_then(|slot| slot.clone());
-    handler
-        .map(|handler| handler(app_id.to_string(), path.to_string(), refreshing))
-        .unwrap_or(false)
+    handler.is_some_and(|handler| handler(webtag, refreshing))
 }
 
 impl PullToRefresh for Platform {
-    fn start_pull_down_refresh(&self, app_id: &str, path: &str) -> Result<(), PlatformError> {
-        if invoke_windows_pull_to_refresh_handler(app_id, path, true) {
+    fn start_pull_down_refresh(&self, _app_id: &str, webtag: &str) -> Result<(), PlatformError> {
+        if invoke_windows_pull_to_refresh_handler(webtag, true) {
             Ok(())
         } else {
             Err(PlatformError::Platform(
@@ -36,8 +35,8 @@ impl PullToRefresh for Platform {
         }
     }
 
-    fn stop_pull_down_refresh(&self, app_id: &str, path: &str) -> Result<(), PlatformError> {
-        if invoke_windows_pull_to_refresh_handler(app_id, path, false) {
+    fn stop_pull_down_refresh(&self, _app_id: &str, webtag: &str) -> Result<(), PlatformError> {
+        if invoke_windows_pull_to_refresh_handler(webtag, false) {
             Ok(())
         } else {
             Err(PlatformError::Platform(

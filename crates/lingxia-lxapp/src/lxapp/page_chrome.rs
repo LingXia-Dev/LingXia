@@ -4,7 +4,7 @@ use super::navbar::NavigationBarPatch;
 use super::tabbar::TabBarPatch;
 use crate::{LxApp, LxAppError, PageInstance, debug, warn};
 use lingxia_platform::PlatformError;
-use lingxia_platform::traits::ui::UIUpdate;
+use lingxia_platform::traits::ui::{Appearance, UIUpdate};
 use lingxia_webview::WebViewController;
 
 /// Defined with the app config, where `theme.defaultAppearance` also uses it.

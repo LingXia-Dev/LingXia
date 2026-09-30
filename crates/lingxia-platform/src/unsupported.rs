@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::PlatformError;
 use crate::traits::app_runtime::{
-    AnimationType, AppRuntime, LxAppOpenMode, OpenUrlRequest, OpenUrlResult,
+    AnimationType, AppRuntime, OpenUrlRequest, OpenUrlResult, ShowLxApp,
 };
 use crate::traits::clipboard::{
     ClipboardContents, ClipboardReadRequest, ClipboardService, ClipboardTypes, ClipboardWrite,
@@ -32,7 +32,9 @@ use crate::traits::screenshot::AppScreenshot;
 use crate::traits::secure_store::SecureStore;
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 use crate::traits::stream_decoder::{VideoStreamDecoderHandle, VideoStreamDecoderManager};
-use crate::traits::ui::{ModalOptions, SurfacePresenter, ToastOptions, UIUpdate, UserFeedback};
+use crate::traits::ui::{
+    Appearance, LaunchFace, ModalOptions, SurfacePresenter, ToastOptions, UIUpdate, UserFeedback,
+};
 use crate::traits::update::UpdateService;
 use crate::traits::video_player::{VideoPlayerHandle, VideoPlayerManager};
 use crate::traits::wifi::Wifi;
@@ -275,6 +277,10 @@ impl ShareService for Platform {
     }
 }
 
+impl Appearance for Platform {}
+
+impl LaunchFace for Platform {}
+
 impl UIUpdate for Platform {
     fn update_navbar_ui(&self, _appid: String) -> Result<(), PlatformError> {
         not_supported("update_navbar_ui")
@@ -312,11 +318,11 @@ impl UserFeedback for Platform {
 }
 
 impl PullToRefresh for Platform {
-    fn start_pull_down_refresh(&self, _app_id: &str, _path: &str) -> Result<(), PlatformError> {
+    fn start_pull_down_refresh(&self, _app_id: &str, _webtag: &str) -> Result<(), PlatformError> {
         not_supported("start_pull_down_refresh")
     }
 
-    fn stop_pull_down_refresh(&self, _app_id: &str, _path: &str) -> Result<(), PlatformError> {
+    fn stop_pull_down_refresh(&self, _app_id: &str, _webtag: &str) -> Result<(), PlatformError> {
         not_supported("stop_pull_down_refresh")
     }
 }
@@ -367,16 +373,7 @@ impl AppRuntime for Platform {
         &self.locale
     }
 
-    fn show_lxapp(
-        &self,
-        _appid: String,
-        _title: String,
-        _path: String,
-        _webtag: String,
-        _session_id: u64,
-        _open_mode: LxAppOpenMode,
-        _panel_id: String,
-    ) -> Result<(), PlatformError> {
+    fn show_lxapp(&self, _request: ShowLxApp) -> Result<(), PlatformError> {
         not_supported("show_lxapp")
     }
 
@@ -391,7 +388,6 @@ impl AppRuntime for Platform {
     fn navigate(
         &self,
         _appid: String,
-        _path: String,
         _webtag: String,
         _animation_type: AnimationType,
     ) -> Result<(), PlatformError> {

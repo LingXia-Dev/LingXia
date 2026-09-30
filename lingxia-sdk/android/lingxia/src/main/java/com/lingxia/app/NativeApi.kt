@@ -142,6 +142,14 @@ internal object NativeApi {
     external fun onLxAppOpened(appId: String, path: String, sessionId: Long): String
 
     /**
+     * [onLxAppOpened] for an open the runtime asked for: [webtag] names the
+     * page instance to present, so the route comes from it.
+     * @return The resolved path, blank when the open is rejected
+     */
+    @JvmStatic
+    external fun onLxAppPageOpened(appId: String, webtag: String, sessionId: Long): String
+
+    /**
      * Notify native layer that an LxApp has been closed
      * @param appId The ID of the closed app
      * @param sessionId Runtime session id
@@ -312,11 +320,9 @@ internal object NativeApi {
     @JvmStatic
     external fun getBuiltinBrowserAppId(): String?
 
-    /**
-     * Resolve managed browser tab path from tabId.
-     */
+    /** The WebView a managed browser tab shows, or null while it has none. */
     @JvmStatic
-    external fun browserTabPathForId(tabId: String): String?
+    external fun findBrowserTabWebView(tabId: String): com.lingxia.lxapp.WebView?
 
     /**
      * Get complete TabBar state with items array (unified API)
@@ -366,13 +372,6 @@ internal object NativeApi {
      */
     @JvmStatic
     external fun onPageShow(appId: String, path: String)
-
-    /**
-     * Resolve and find an existing WebView instance for app/path/session in one call.
-     * @return WebView instance or null if not found
-     */
-    @JvmStatic
-    external fun findWebView(appId: String, path: String, sessionId: Long): com.lingxia.lxapp.WebView?
 
     /**
      * The WebView of the page a container must present. [webtag] names one page

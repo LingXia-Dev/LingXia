@@ -7,7 +7,7 @@ import { Lingxia } from '../app/Lingxia';
 import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
 import { SplashResources } from './SplashOverlay';
-import { pauseAllComponentsByAppId } from './WebViewBridge';
+import { extractWebTag, pauseAllComponentsByAppId } from './WebViewBridge';
 import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onLxappEvent, UiEventType, splashMarkLaunchFace, devServiceBanner } from 'liblingxia.so';
 import { ToastManager } from './APIs/LxAppToast';
 import { ModalManager } from './APIs/LxAppModal';
@@ -59,7 +59,8 @@ export enum AnimationType {
 export struct LxAppNavigation {
   @State isReady: boolean = false
   @State homeAppId: string = ''
-  @State homeAppPath: string = ''
+  // Webtag of the page instance the home container presents.
+  @State homeWebTag: string = ''
   @State errorMessage: string = ''
   // Prod build on the dev service. A corner chip, never a control.
   @State private devServiceMark: boolean = false
@@ -85,7 +86,7 @@ export struct LxAppNavigation {
 
   // Current modal LxApp state (only one modal app can be shown at a time)
   @State private currentModalAppId: string = ''
-  @State private currentModalAppPath: string = ''
+  @State private currentModalWebTag: string = ''
   @State private modalAppVisible: boolean = false
 
   // Navigation state for triggering path changes
@@ -401,36 +402,63 @@ export struct LxAppNavigation {
   }
 
   public openLxAppWithSession(appId: string, path: string, sessionId: number): void {
+    this.openAndPresent(appId, path, sessionId, '');
+  }
+
+  /** Show an lxapp presenting the page instance the runtime named by `webtag`. */
+  public showLxApp(appId: string, webtag: string, sessionId: number): void {
+    const route: string = extractWebTag(webtag)?.path ?? '';
+    if (route.length === 0) {
+      LxLog.e(TAG, `showLxApp requires a page webtag for ${appId}: ${webtag}`);
+      return;
+    }
+    this.openAndPresent(appId, route, sessionId, webtag);
+  }
+
+  /**
+   * Report the open to the runtime, then present `namedWebTag`; when it is
+   * empty the open came from this side by route, and the runtime says which
+   * page instance that route landed on.
+   */
+  private openAndPresent(appId: string, path: string, sessionId: number, namedWebTag: string): void {
     if (!Number.isFinite(sessionId) || sessionId <= 0) {
-      LxLog.e(TAG, `openLxAppWithSession requires valid sessionId for ${appId}`);
+      LxLog.e(TAG, `Opening an lxapp requires a valid sessionId for ${appId}`);
       return;
     }
     hilog.info(DOMAIN, TAG, `Opening lxapp: ${appId}:${path} (session=${sessionId})`);
 
     try {
-      const resolvedPath: string = onLxappOpened(appId, path, sessionId);
-      if (!resolvedPath || resolvedPath.length === 0) {
+      const openedWebTag: string = onLxappOpened(appId, path, sessionId);
+      if (!openedWebTag || openedWebTag.length === 0) {
         hilog.warn(DOMAIN, TAG, `onLxappOpened rejected open request (stale session?): ${appId} (session=${sessionId})`);
         return;
       }
+      const webtag: string = namedWebTag.length > 0 ? namedWebTag : openedWebTag;
 
       // UI layer distinction: Home LxApp vs Modal LxApp
       if (appId === this.homeAppId) {
-        hilog.info(DOMAIN, TAG, `Showing home app: ${appId} with path: ${resolvedPath}`);
+        hilog.info(DOMAIN, TAG, `Showing home app page: ${webtag}`);
         this.modalAppVisible = false;
-        this.homeAppPath = resolvedPath;
-        // Trigger navigation to show the home app
-        this.navigationTrigger++;
+        this.presentHomePage(webtag);
         return;
       }
 
       // For modal apps, show modal over home
-      hilog.info(DOMAIN, TAG, `Showing modal LxApp: ${appId}:${resolvedPath}`);
+      hilog.info(DOMAIN, TAG, `Showing modal LxApp page: ${webtag}`);
       this.currentModalAppId = appId;
-      this.currentModalAppPath = resolvedPath;
+      this.currentModalWebTag = webtag;
       this.modalAppVisible = true;
     } catch (error) {
       LxLog.e(TAG, `Failed to open LxApp ${appId}: ${error}`);
+    }
+  }
+
+  /** Point the home container at `webtag`; the trigger re-presents a page it already targets. */
+  private presentHomePage(webtag: string): void {
+    if (this.homeWebTag === webtag) {
+      this.navigationTrigger++;
+    } else {
+      this.homeWebTag = webtag;
     }
   }
 
@@ -492,17 +520,17 @@ export struct LxAppNavigation {
   /**
    * Navigate to page with animation type behavior
    * @param appId - LxApp ID
-   * @param path - Page path to navigate to
+   * @param webtag - Webtag of the page instance to navigate to
    * @param animationType - Type of animation
    * @returns boolean - True if navigation was successful, false otherwise
    */
-  public navigate(appId: string, path: string, animationType: AnimationType): boolean {
+  public navigate(appId: string, webtag: string, animationType: AnimationType): boolean {
     const typeName = AnimationType[animationType];
-    hilog.info(DOMAIN, TAG, `navigate: ${appId}:${path} (${typeName})`);
+    hilog.info(DOMAIN, TAG, `navigate: ${webtag} (${typeName})`);
 
     try {
       // Execute navigation with animation type information
-      return this.navigateToPage(appId, path, animationType);
+      return this.navigateToPage(appId, webtag, animationType);
     } catch (error) {
       LxLog.e(TAG, `Navigation failed: ${error}`);
       return false;
@@ -541,34 +569,28 @@ export struct LxAppNavigation {
   /**
    * Navigate to a specific page within an LxApp
    * @param appId - LxApp ID
-   * @param path - Page path to navigate to
+   * @param webtag - Webtag of the page instance to navigate to
    * @param animationType - Animation type for animation control
    * @returns boolean - True if navigation was successful, false otherwise
    */
-  private navigateToPage(appId: string, path: string, animationType: AnimationType = AnimationType.None): boolean {
-    hilog.info(DOMAIN, TAG, `Navigating to page: ${appId}:${path}`);
+  private navigateToPage(appId: string, webtag: string, animationType: AnimationType = AnimationType.None): boolean {
+    hilog.info(DOMAIN, TAG, `Navigating to page: ${webtag}`);
 
-    // For home app, update the path and trigger navigation
+    // For home app, update the target page and trigger navigation
     if (appId === this.homeAppId) {
-      hilog.info(DOMAIN, TAG, `Navigating page in home app ${appId} to ${path} with type: ${AnimationType[animationType]}`);
-      this.homeAppPath = path;
+      hilog.info(DOMAIN, TAG, `Navigating page in home app to ${webtag} with type: ${AnimationType[animationType]}`);
       // Pass animation type to container for animation control
       LxAppContainer.setAnimationType(appId, animationType);
-      // Increment trigger to force UI update
-      this.navigationTrigger++;
-      hilog.info(DOMAIN, TAG, `Updated homeAppPath to: ${path}, trigger: ${this.navigationTrigger}`);
+      this.presentHomePage(webtag);
       return true;
     }
 
     // For modal apps, check if it's the current modal app
     if (appId === this.currentModalAppId && this.modalAppVisible) {
-      hilog.info(DOMAIN, TAG, `Navigating page in modal app ${appId} to ${path} with type: ${AnimationType[animationType]}`);
-      this.currentModalAppPath = path;
+      hilog.info(DOMAIN, TAG, `Navigating page in modal app to ${webtag} with type: ${AnimationType[animationType]}`);
       // Pass animation type to container for animation control
       LxAppContainer.setAnimationType(appId, animationType);
-      // Trigger UI update by updating the path
-      this.currentModalAppPath = path;
-      hilog.info(DOMAIN, TAG, `Updated modal app ${appId} path to: ${path}`);
+      this.currentModalWebTag = webtag;
       return true;
     }
 
@@ -583,8 +605,7 @@ export struct LxAppNavigation {
   buildModalLxApp(): void {
     LxAppContainer({
       appId: this.currentModalAppId,
-      initialPath: this.currentModalAppPath,
-      externalPath: this.currentModalAppPath,
+      targetWebTag: this.currentModalWebTag,
       navigationMode: true,
       closeCallback: 'navigation',
       navigationTrigger: 0
@@ -609,11 +630,10 @@ export struct LxAppNavigation {
         .backgroundColor(Color.White)
         .zIndex(0)
 
-      if (this.isReady && this.homeAppId && this.homeAppPath) {
+      if (this.isReady && this.homeAppId && this.homeWebTag) {
         LxAppContainer({
           appId: this.homeAppId,
-          initialPath: this.homeAppPath,
-          externalPath: this.homeAppPath,
+          targetWebTag: this.homeWebTag,
           navigationMode: false,
           closeCallback: undefined,
           navigationTrigger: this.navigationTrigger

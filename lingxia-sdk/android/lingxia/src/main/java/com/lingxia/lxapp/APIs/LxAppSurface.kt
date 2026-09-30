@@ -92,10 +92,14 @@ internal object LxAppSurface {
     private data class Request(
         val id: String,
         val appId: String,
-        val path: String,
-        val sessionId: Long,
-        val pageInstanceId: String,
+        /** The lxapp session opening the surface; a URL surface's browser tab is owned by it. */
+        val ownerSessionId: Long,
         val content: Int,
+        /** Page content: the instance's webview tag, and the id its lifecycle reports take. */
+        val webtag: String,
+        val pageInstanceId: String,
+        /** URL content: the document to load. */
+        val url: String,
         val kind: Int,
         val width: Double,
         val height: Double,
@@ -109,7 +113,10 @@ internal object LxAppSurface {
         val ephemeralWebData: Boolean,
         val urlCallback: Boolean,
         val browserTabId: String? = null
-    )
+    ) {
+        /** What the surface shows, as log context. */
+        val logPath: String get() = if (content == CONTENT_URL) url else webtag
+    }
 
     private enum class PendingVisibility {
         SHOW,
@@ -127,10 +134,11 @@ internal object LxAppSurface {
     fun present(
         id: String,
         appId: String,
-        path: String,
-        sessionId: Long,
-        pageInstanceId: String,
+        ownerSessionId: Long,
         content: Int,
+        webtag: String,
+        pageInstanceId: String,
+        url: String,
         kind: Int,
         width: Double,
         height: Double,
@@ -144,24 +152,25 @@ internal object LxAppSurface {
         ephemeralWebData: Boolean,
         urlCallback: Boolean
     ): Boolean {
-        if (id.isBlank() || appId.isBlank() || sessionId <= 0L) return false
+        if (id.isBlank() || appId.isBlank() || ownerSessionId <= 0L) return false
         if (kind != KIND_POPUP && kind != KIND_WINDOW) return false
-        if (content == CONTENT_PAGE && pageInstanceId.isBlank()) return false
-        if (content == CONTENT_URL && !isSupportedUrl(path, urlCallback)) return false
+        if (content == CONTENT_PAGE && (webtag.isBlank() || pageInstanceId.isBlank())) return false
+        if (content == CONTENT_URL && !isSupportedUrl(url, urlCallback)) return false
         if (content != CONTENT_PAGE && content != CONTENT_URL) return false
         val activity = LxApp.getCurrentActivity() ?: return false
         if (activity.getAppId() != appId) {
-            LxLog.w(TAG, "present: active appId=${activity.getAppId()} does not match $appId", appId = appId, path = path)
+            LxLog.w(TAG, "present: active appId=${activity.getAppId()} does not match $appId", appId = appId)
             return false
         }
 
         val request = Request(
             id = id,
             appId = appId,
-            path = path,
-            sessionId = sessionId,
-            pageInstanceId = pageInstanceId,
+            ownerSessionId = ownerSessionId,
             content = content,
+            webtag = webtag,
+            pageInstanceId = pageInstanceId,
+            url = url,
             kind = kind,
             width = width,
             height = height,
@@ -182,8 +191,8 @@ internal object LxAppSurface {
             if (request.content == CONTENT_URL) {
                 val tabId = NativeApi.openStandaloneBrowserTab(
                     request.appId,
-                    request.sessionId,
-                    request.path,
+                    request.ownerSessionId,
+                    request.url,
                     request.ephemeralWebData,
                     request.urlCallback
                 )
@@ -193,7 +202,7 @@ internal object LxAppSurface {
                         request,
                         createExternalWebView(
                             activity,
-                            request.path,
+                            request.url,
                             request.ephemeralWebData,
                             request.urlCallback
                         )
@@ -330,7 +339,7 @@ internal object LxAppSurface {
                     pendingRequests.remove(request.id)
                     pendingVisibility.remove(request.id)
                 }
-                LxLog.e(TAG, "present failed: WebView not ready for pageInstanceId=${request.pageInstanceId}", appId = request.appId, path = request.path)
+                LxLog.e(TAG, "present failed: WebView not ready for ${request.webtag}", appId = request.appId, path = request.logPath)
                 NativeApi.disposePageInstance(request.pageInstanceId, "failed")
                 NativeApi.onSurfaceClosed(request.appId, request.id, "failed")
             }
@@ -342,14 +351,7 @@ internal object LxAppSurface {
     private fun mountManagedUrlWhenReady(activity: Activity, request: Request, attempt: Int) {
         if (synchronized(stateLock) { !pendingRequests.containsKey(request.id) }) return
         val tabId = request.browserTabId ?: return
-        val browserAppId = NativeApi.getBuiltinBrowserAppId()?.takeIf { it.isNotBlank() }
-        val path = NativeApi.browserTabPathForId(tabId)?.takeIf { it.isNotBlank() }
-        val sessionId = browserAppId?.let { NativeApi.getLxAppSessionId(it) } ?: 0L
-        val webView = if (browserAppId != null && path != null && sessionId > 0L) {
-            NativeApi.findWebView(browserAppId, path, sessionId)
-        } else {
-            null
-        }
+        val webView = NativeApi.findBrowserTabWebView(tabId)
         if (webView == null) {
             if (attempt < MOUNT_RETRY_COUNT) {
                 activity.window?.decorView?.postDelayed(
@@ -362,7 +364,7 @@ internal object LxAppSurface {
                     pendingVisibility.remove(request.id)
                 }
                 NativeApi.browserTabClose(tabId)
-                LxLog.e(TAG, "present failed: managed URL WebView not ready for tabId=$tabId", appId = request.appId, path = request.path)
+                LxLog.e(TAG, "present failed: managed URL WebView not ready for tabId=$tabId", appId = request.appId, path = request.logPath)
                 NativeApi.onSurfaceClosed(request.appId, request.id, "failed")
             }
             return
@@ -529,7 +531,7 @@ internal object LxAppSurface {
             ImmersiveWindowUi.apply(activity.window, keepScreenOn = false)
         }
 
-        Log.d(TAG, "presented id=${request.id} appId=${request.appId} path=${request.path} fillsScreen=$fillsScreen immersive=$immersive role=${request.role}")
+        Log.d(TAG, "presented id=${request.id} appId=${request.appId} content=${request.logPath} fillsScreen=$fillsScreen immersive=$immersive role=${request.role}")
     }
 
     /**

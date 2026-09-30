@@ -626,17 +626,7 @@ final class BrowserTabCoordinator: NSObject {
     // MARK: - WebView Management
 
     private func findWebView(for id: String) -> WKWebView? {
-        let appId = getBuiltinBrowserAppId().toString()
-        let sessionId = getLxAppSessionId(appId)
-        guard sessionId > 0 else {
-            return nil
-        }
-        let path = browserTabPathForId(tabIdString(id)).toString()
-        return WebViewManager.resolveWebView(
-            appId: appId,
-            path: path,
-            sessionId: sessionId
-        )
+        WebViewManager.browserTabWebView(tabId: tabIdString(id))
     }
 
     private func attachWebViewToContainer(_ webView: WKWebView) {

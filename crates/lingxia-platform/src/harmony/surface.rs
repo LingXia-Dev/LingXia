@@ -2,6 +2,7 @@ use super::app::Platform;
 use crate::error::PlatformError;
 use crate::traits::ui::{SurfaceKind, SurfacePresenter, SurfaceRequest};
 use lingxia_surface::LayoutPresentationPlan;
+use lingxia_webview::WebTag;
 
 impl SurfacePresenter for Platform {
     fn present_layout(
@@ -26,13 +27,15 @@ impl SurfacePresenter for Platform {
             ));
         }
 
+        let webtag = WebTag::from(request.content.webtag());
         let args = vec![
             request.id,
             request.app_id,
-            request.path,
-            request.session_id.to_string(),
-            request.page_instance_id,
-            (request.content as i32).to_string(),
+            request.owner_session_id.to_string(),
+            (request.content.kind() as i32).to_string(),
+            webtag.key().to_string(),
+            webtag.page_instance_id().unwrap_or("").to_string(),
+            request.content.url().to_string(),
             (request.kind as i32).to_string(),
             double_arg(request.width),
             double_arg(request.height),

@@ -1131,35 +1131,32 @@ pub(super) fn present_surface(
     request: SurfaceRequest,
     product_name: &str,
 ) -> Result<(), PlatformError> {
-    // A page-content surface's webview is created with a per-instance webtag
-    // (`{path}#{page_instance_id}`, see lxapp create_page_instance), so the
-    // plain path would never match. Url-content surfaces carry no instance id.
     let mut cleanup = None;
-    let webtag = if request.content == SurfaceContent::Url {
-        if let Some(resolved) = resolve_url_surface(&request) {
-            cleanup = resolved.cleanup;
-            WebTag::new(&resolved.app_id, &resolved.path, Some(resolved.session_id))
-        } else {
-            WebTag::new(&request.app_id, &request.path, Some(request.session_id))
+    let (webtag, title, is_web) = match &request.content {
+        SurfaceContent::Page { webtag } => (
+            WebTag::from(webtag.as_str()),
+            product_name.to_string(),
+            false,
+        ),
+        SurfaceContent::Url { url } => {
+            // The host names the WebView it opens for the URL; without one the
+            // URL itself is the tag's path.
+            let webtag = if let Some(resolved) = resolve_url_surface(&request) {
+                cleanup = resolved.cleanup;
+                WebTag::new(&resolved.app_id, &resolved.path, Some(resolved.session_id))
+            } else {
+                WebTag::new(&request.app_id, url, Some(request.owner_session_id))
+            };
+            (webtag, url.clone(), true)
         }
-    } else if request.page_instance_id.is_empty() {
-        WebTag::new(&request.app_id, &request.path, Some(request.session_id))
-    } else {
-        WebTag::new(
-            &request.app_id,
-            &format!("{}#{}", request.path, request.page_instance_id),
-            Some(request.session_id),
-        )
     };
     let id = request.id.clone();
     let kind = request.kind;
-    let title = if request.content == SurfaceContent::Url {
-        request.path.clone()
-    } else {
-        product_name.to_string()
-    };
-    let page_instance_id =
-        (!request.page_instance_id.is_empty()).then(|| request.page_instance_id.clone());
+    // The page lifecycle reports (visible, hidden, dispose) take the instance id.
+    let page_instance_id = webtag
+        .page_instance_id()
+        .filter(|_| !is_web)
+        .map(str::to_string);
     let placement = OverlayPlacement {
         width: finite_or_zero(request.width),
         height: finite_or_zero(request.height),
@@ -1167,9 +1164,8 @@ pub(super) fn present_surface(
         height_ratio: finite_or_zero(request.height_ratio),
         position: request.position as u8,
     };
-    let is_web = request.content == SurfaceContent::Url;
     log::info!(
-        "windows surface present: id={} role={:?} kind={:?} web={} close_button={} dismiss={:?} modal={} path={}",
+        "windows surface present: id={} role={:?} kind={:?} web={} close_button={} dismiss={:?} modal={} webtag={}",
         request.id,
         request.role,
         request.kind,
@@ -1177,7 +1173,7 @@ pub(super) fn present_surface(
         request.interaction.close_button,
         request.interaction.dismiss,
         request.interaction.modal,
-        request.path
+        webtag
     );
     // A surface page instance has its own WebView parent. `Window` presents
     // that parent as a standalone top-level window; `Overlay` positions it

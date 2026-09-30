@@ -19,7 +19,7 @@ import { display } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { Lingxia } from '../../../app/Lingxia';
 import { LingXiaWebView } from '../../LingXiaWebView';
-import { addWebViewUiCallback, extractWebTag, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../../WebViewBridge';
+import { addWebViewUiCallback, extractWebTag, removeWebViewUiCallback, WebViewInfo, WebViewManager } from '../../WebViewBridge';
 import { browserTabPathForId, getBuiltinBrowserAppId, notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
 import type { SurfaceLayoutConfig } from './SurfaceModel';
 import { isExternalWindowUrl, isFileUrl, isHttpUrl } from './SurfaceUrlPolicy';
@@ -235,11 +235,10 @@ struct LingXiaFloatSurfacePage {
     if (!layout || layout.content !== FLOAT_CONTENT_PAGE || this.pageWebTag.length > 0) {
       return;
     }
-    const exactTag = `${toWebTag(layout.appId, layout.path)}#${layout.pageInstanceId}`;
     const infos = WebViewManager.getAllWebViewInfos();
     for (let i = 0; i < infos.length; i++) {
       const info = infos[i];
-      if (info.webtag === exactTag || info.webtag.startsWith(`${exactTag}#`)) {
+      if (info.webtag === layout.webTag) {
         this.pageController = info.controller;
         this.pageWebTag = info.webtag;
         this.appearanceDark = FloatSurfaceWindowManager.appearanceDarkForWebTag(info.webtag);
@@ -304,7 +303,7 @@ struct LingXiaFloatSurfacePage {
             })
           } else if (this.layout!.content === FLOAT_CONTENT_URL && !this.layout!.browserTabId) {
             Web({
-              src: this.layout!.path,
+              src: this.layout!.url,
               controller: this.urlController,
               incognitoMode: this.layout!.ephemeralWebData
             })
@@ -316,7 +315,7 @@ struct LingXiaFloatSurfacePage {
                 if (!event || !event.request || !event.error || !event.request.isMainFrame()) return;
                 const info = (event.error.getErrorInfo() ?? '').toLowerCase();
                 if (info === 'err_aborted' || info === 'net::err_aborted') return;
-                const failingUrl = event.request.getRequestUrl() ?? this.layout!.path;
+                const failingUrl = event.request.getRequestUrl() ?? this.layout!.url;
                 const html: string = webviewLoadErrorDocument(failingUrl);
                 this.urlController.loadData(html, 'text/html', 'UTF-8', failingUrl, failingUrl);
               })

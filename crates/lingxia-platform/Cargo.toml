@@ -96,6 +96,7 @@ android_logger = "0.15.1"
 serde_json = { workspace = true }
 ndk-sys = "0.6.0"
 base64 = { workspace = true }
+lingxia-webview = { workspace = true }
 
 # Apple-specific dependencies (iOS and macOS)
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]

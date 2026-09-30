@@ -65,12 +65,18 @@ import WebKit
             RunnerBridge.removeSessionId(for: appId)
         }
 
-        public static func setCurrentApp(appId: String, path: String) {
-            RunnerBridge.setCurrentApp(appId: appId, path: path)
+        /// `pageInstanceId` names the page at `path`; nil means the app's
+        /// current page.
+        public static func setCurrentApp(
+            appId: String,
+            path: String,
+            pageInstanceId: String? = nil
+        ) {
+            RunnerBridge.setCurrentApp(appId: appId, path: path, pageInstanceId: pageInstanceId)
         }
 
-        public static func setCurrentPath(_ path: String) {
-            RunnerBridge.setCurrentPath(path)
+        public static func setCurrentPath(_ path: String, pageInstanceId: String? = nil) {
+            RunnerBridge.setCurrentPath(path, pageInstanceId: pageInstanceId)
         }
     }
 
@@ -84,16 +90,10 @@ import WebKit
             RunnerBridge.removeCurrentWebViewFromSuperview()
         }
 
-        public static func resolve(
-            appId: String,
-            path: String,
-            sessionId: UInt64
-        ) -> WKWebView? {
-            RunnerBridge.resolveWebView(appId: appId, path: path, sessionId: sessionId)
-        }
-
-        public static func resolve(appId: String, path: String) -> WKWebView? {
-            RunnerBridge.resolveWebView(appId: appId, path: path)
+        /// The WebView of a page of `appId`: the instance named, or the
+        /// app's current page when `pageInstanceId` is nil.
+        public static func page(appId: String, pageInstanceId: String? = nil) -> WKWebView? {
+            RunnerBridge.pageWebView(appId: appId, pageInstanceId: pageInstanceId)
         }
 
         public static func attach(_ webView: WKWebView, to container: NSView) {
@@ -342,12 +342,14 @@ import WebKit
             _ shell: LxAppShell,
             appId: String,
             path: String,
+            pageInstanceId: String? = nil,
             sessionId: UInt64
         ) {
             RunnerBridge.openInSurfaceShell(
                 shell,
                 appId: appId,
                 path: path,
+                pageInstanceId: pageInstanceId,
                 sessionId: sessionId
             )
         }
@@ -356,12 +358,14 @@ import WebKit
             _ shell: LxAppShell,
             appId: String,
             path: String,
+            pageInstanceId: String? = nil,
             animationType: LxAppAnimation
         ) {
             RunnerBridge.navigateSurfaceShell(
                 shell,
                 appId: appId,
                 path: path,
+                pageInstanceId: pageInstanceId,
                 animationType: animationType
             )
         }

@@ -7,16 +7,16 @@ use jni::strings::JNIString;
 use super::Platform;
 
 impl PullToRefresh for Platform {
-    fn start_pull_down_refresh(&self, app_id: &str, path: &str) -> Result<(), PlatformError> {
-        call_pull_to_refresh("startPullDownRefresh", app_id, path)
+    fn start_pull_down_refresh(&self, app_id: &str, webtag: &str) -> Result<(), PlatformError> {
+        call_pull_to_refresh("startPullDownRefresh", app_id, webtag)
     }
 
-    fn stop_pull_down_refresh(&self, app_id: &str, path: &str) -> Result<(), PlatformError> {
-        call_pull_to_refresh("stopPullDownRefresh", app_id, path)
+    fn stop_pull_down_refresh(&self, app_id: &str, webtag: &str) -> Result<(), PlatformError> {
+        call_pull_to_refresh("stopPullDownRefresh", app_id, webtag)
     }
 }
 
-fn call_pull_to_refresh(method: &str, app_id: &str, path: &str) -> Result<(), PlatformError> {
+fn call_pull_to_refresh(method: &str, app_id: &str, webtag: &str) -> Result<(), PlatformError> {
     let method_name = method.to_string();
     let clazz: &JClass = super::get_cached_class(super::CachedClass::LxAppPullToRefresh)
         .map_err(|e| PlatformError::Platform(e.to_string()))?;
@@ -27,8 +27,8 @@ fn call_pull_to_refresh(method: &str, app_id: &str, path: &str) -> Result<(), Pl
             PlatformError::Platform(format!("Failed to create app_id string: {:?}", e))
         })?;
 
-        let path_jstring = env.new_string(path).map_err(|e| {
-            PlatformError::Platform(format!("Failed to create path string: {:?}", e))
+        let webtag_jstring = env.new_string(webtag).map_err(|e| {
+            PlatformError::Platform(format!("Failed to create webtag string: {:?}", e))
         })?;
 
         if let Err(e) = env.call_static_method(
@@ -37,7 +37,7 @@ fn call_pull_to_refresh(method: &str, app_id: &str, path: &str) -> Result<(), Pl
             jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
             &[
                 JValue::Object(&app_id_jstring),
-                JValue::Object(&path_jstring),
+                JValue::Object(&webtag_jstring),
             ],
         ) {
             let _ = env.exception_clear();

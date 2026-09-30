@@ -4,6 +4,7 @@ use crate::traits::ui::{SurfaceKind, SurfacePresenter, SurfaceRequest};
 use jni::objects::{JClass, JObject, JValue};
 use jni::{jni_sig, jni_str};
 use lingxia_surface::LayoutPresentationPlan;
+use lingxia_webview::WebTag;
 
 impl SurfacePresenter for Platform {
     fn present_layout(
@@ -55,21 +56,24 @@ impl SurfacePresenter for Platform {
         super::with_env(|env| -> Result<(), PlatformError> {
             let id = env.new_string(&request.id)?;
             let app_id = env.new_string(&request.app_id)?;
-            let path = env.new_string(&request.path)?;
-            let page_instance_id = env.new_string(&request.page_instance_id)?;
+            let webtag = WebTag::from(request.content.webtag());
+            let page_instance_id = env.new_string(webtag.page_instance_id().unwrap_or(""))?;
+            let webtag = env.new_string(webtag.key())?;
+            let url = env.new_string(request.content.url())?;
 
             let ok = env
                 .call_static_method(
                     surface_class,
                     jni_str!("present"),
-                    jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;IIDDDDIIZZZZZ)Z"),
+                    jni_sig!("(Ljava/lang/String;Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IDDDDIIZZZZZ)Z"),
                     &[
                         JValue::Object(&JObject::from(id)),
                         JValue::Object(&JObject::from(app_id)),
-                        JValue::Object(&JObject::from(path)),
-                        JValue::Long(request.session_id as i64),
+                        JValue::Long(request.owner_session_id as i64),
+                        JValue::Int(request.content.kind() as i32),
+                        JValue::Object(&JObject::from(webtag)),
                         JValue::Object(&JObject::from(page_instance_id)),
-                        JValue::Int(request.content as i32),
+                        JValue::Object(&JObject::from(url)),
                         JValue::Int(request.kind as i32),
                         JValue::Double(request.width),
                         JValue::Double(request.height),
@@ -93,8 +97,8 @@ impl SurfacePresenter for Platform {
                 Ok(())
             } else {
                 Err(PlatformError::Platform(format!(
-                    "Failed to present surface: id={}, appid={}, path={}",
-                    request.id, request.app_id, request.path
+                    "Failed to present surface: id={}, appid={}, content={:?}",
+                    request.id, request.app_id, request.content
                 )))
             }
         })

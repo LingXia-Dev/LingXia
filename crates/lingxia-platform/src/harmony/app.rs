@@ -1,7 +1,7 @@
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::AppRuntime;
-use crate::traits::app_runtime::LxAppOpenMode;
+use crate::traits::app_runtime::ShowLxApp;
 use crate::traits::media_interaction::MediaKind;
 use crate::traits::media_runtime::MediaRuntime;
 use libc::free;
@@ -600,20 +600,11 @@ impl AppRuntime for Platform {
         &self.locale
     }
 
-    fn show_lxapp(
-        &self,
-        appid: String,
-        _title: String,
-        path: String,
-        _webtag: String,
-        session_id: u64,
-        _open_mode: LxAppOpenMode,
-        _panel_id: String,
-    ) -> Result<(), PlatformError> {
-        let session = session_id.to_string();
+    fn show_lxapp(&self, request: ShowLxApp) -> Result<(), PlatformError> {
+        let session = request.session_id.to_string();
         lingxia_webview::platform::harmony::tsfn::call_arkts(
             "openLxApp",
-            &[&appid, &path, &session],
+            &[&request.appid, &request.webtag, &session],
         )
         .map_err(|e| PlatformError::Platform(format!("Failed to show lxapp: {}", e)))
     }
@@ -673,19 +664,18 @@ impl AppRuntime for Platform {
     fn navigate(
         &self,
         appid: String,
-        path: String,
-        _webtag: String,
+        webtag: String,
         animation_type: crate::traits::app_runtime::AnimationType,
     ) -> Result<(), PlatformError> {
         let anim_type_int = animation_type as i32;
         lingxia_webview::platform::harmony::tsfn::call_arkts(
             "navigate",
-            &[&appid, &path, &anim_type_int.to_string()],
+            &[&appid, &webtag, &anim_type_int.to_string()],
         )
         .map_err(|_| {
             PlatformError::Platform(format!(
-                "Failed to navigate: appid={}, path={}, animation_type={:?}",
-                appid, path, animation_type
+                "Failed to navigate: webtag={}, animation_type={:?}",
+                webtag, animation_type
             ))
         })
     }

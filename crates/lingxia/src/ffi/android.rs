@@ -36,27 +36,6 @@ where
     vm.attach_current_thread(f)
 }
 
-fn normalize_lookup_path(path: &str) -> &str {
-    let path = path.split('?').next().unwrap_or(path);
-    path.split('#').next().unwrap_or(path)
-}
-
-fn resolve_page_instance_id(appid: &str, path: &str, session_id: u64) -> Option<String> {
-    let lxapp_instance = lxapp::try_get(appid)?;
-    if lxapp_instance.session_id() != session_id {
-        return None;
-    }
-
-    let resolved_path = lxapp_instance
-        .find_page_path(normalize_lookup_path(path))
-        .unwrap_or_else(|| normalize_lookup_path(path).to_string());
-    let id = lxapp_instance.page_instance_id_for_path(&resolved_path)?;
-    if !id.is_empty() {
-        let _ = lxapp::touch_page_instance_by_id(&id);
-    }
-    Some(id)
-}
-
 fn parse_close_reason(reason: &str) -> CloseReason {
     match reason.trim().to_ascii_lowercase().as_str() {
         "user" => CloseReason::User,
@@ -342,69 +321,6 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_onPageShow(
             lxapp.on_page_show(path);
         }
         Ok(())
-    })
-    .resolve::<ThrowRuntimeExAndDefault>()
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_app_NativeApi_findWebView<'a>(
-    mut env: EnvUnowned<'a>,
-    _class: JClass<'a>,
-    appid: JString<'a>,
-    path: JString<'a>,
-    session_id: jlong,
-) -> JObject<'a> {
-    env.with_env(|env| -> Result<JObject, jni::errors::Error> {
-        let appid: String = appid.try_to_string(env)?;
-        let path: String = path.try_to_string(env)?;
-        if session_id <= 0 {
-            warn!(
-                "findWebView called without valid session_id for {}:{}",
-                appid, path
-            );
-            return Ok(JObject::null());
-        }
-
-        let Some(page_instance_id) = resolve_page_instance_id(&appid, &path, session_id as u64)
-        else {
-            // Browser tabs showing external documents have no bound lxapp
-            // PageInstance — the WebView belongs to the tab, not a page.
-            // Resolve it directly from the webview registry by webtag.
-            let webtag = lingxia_webview::WebTag::new(&appid, &path, Some(session_id as u64));
-            if let Some(webview) = lingxia_webview::runtime::find_webview(&webtag) {
-                return match env.new_local_ref(webview.get_java_webview()) {
-                    Ok(local_ref) => Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) }),
-                    Err(e) => {
-                        error!("Failed to create local reference to WebView: {:?}", e);
-                        Ok(JObject::null())
-                    }
-                };
-            }
-            let (current_appid, current_path, current_session_id) = lxapp::get_current_lxapp();
-            if current_appid == appid
-                && current_session_id == session_id as u64
-                && normalize_lookup_path(&current_path) == normalize_lookup_path(&path)
-            {
-                error!(
-                    "WebView resolve failed for current page {}:{} (session={})",
-                    appid, path, session_id
-                );
-            } else {
-                info!(
-                    "Ignoring stale WebView lookup for {}:{} (session={})",
-                    appid, path, session_id
-                );
-            }
-            return Ok(JObject::null());
-        };
-        let Some(page) = lxapp::find_page_by_instance_id(&page_instance_id) else {
-            error!(
-                "Page instance not found for {}:{} (session={}, page_instance_id={})",
-                appid, path, session_id, page_instance_id
-            );
-            return Ok(JObject::null());
-        };
-        java_webview_of(env, &page)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
@@ -933,6 +849,44 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_onLxAppOpened<'a>(
                 })
             }
         }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Like `onLxAppOpened`, for an open the runtime asked for: `webtag` names
+/// the page instance to present and the route comes from it. When that
+/// instance is already gone the app's current page stands in.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_onLxAppPageOpened<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+    webtag: JString<'a>,
+    session_id: jlong,
+) -> JString<'a> {
+    env.with_env(|env| -> Result<JString, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let webtag: String = webtag.try_to_string(env)?;
+        let Some(app) = lxapp::try_get(&appid)
+            .filter(|app| session_id > 0 && app.session_id() == session_id as u64)
+        else {
+            return env.new_string("");
+        };
+        let route = lxapp::find_page_by_webtag(&appid, &webtag)
+            .map(|page| page.path())
+            .or_else(|| app.peek_current_page_path())
+            .unwrap_or_default();
+
+        let resolved_path = lxapp::create_page_instance(CreatePageInstanceRequest {
+            owner: PageOwner::Scene(SceneId("system".to_string())),
+            appid,
+            target: PageTarget::Path(route),
+            query: None,
+            surface: PresentationKind::Window,
+        })
+        .map(|created| created.resolved_path)
+        .unwrap_or_default();
+        env.new_string(&resolved_path)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
@@ -1629,19 +1583,34 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getBuiltinBrowserAppId<'a>
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// The WebView a browser tab shows. A tab on an internal page has a page
+/// instance keyed by the tab's path; one on an external document has only
+/// the tab's own WebView.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_app_NativeApi_browserTabPathForId<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_findBrowserTabWebView<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     tab_id: JString<'a>,
-) -> JString<'a> {
-    env.with_env(|env| -> Result<JString, jni::errors::Error> {
-        let tab_id: String = match tab_id.try_to_string(env) {
-            Ok(s) => s.to_string(),
-            Err(_) => return Ok(JString::null()),
-        };
+) -> JObject<'a> {
+    env.with_env(|env| -> Result<JObject, jni::errors::Error> {
+        let tab_id: String = tab_id.try_to_string(env)?;
         let path = crate::browser::tab_path(&tab_id);
-        env.new_string(path).or_else(|_| Ok(JString::null()))
+        let Some(app) = lxapp::try_get(crate::browser::APP_ID).filter(|_| !path.is_empty()) else {
+            return Ok(JObject::null());
+        };
+        if let Some(page) = app.get_page(&path) {
+            let webview = java_webview_of(env, &page)?;
+            if !webview.is_null() {
+                return Ok(webview);
+            }
+        }
+        let webtag =
+            lingxia_webview::WebTag::new(crate::browser::APP_ID, &path, Some(app.session_id()));
+        let Some(webview) = lingxia_webview::runtime::find_webview(&webtag) else {
+            return Ok(JObject::null());
+        };
+        let local_ref = env.new_local_ref(webview.get_java_webview())?;
+        Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) })
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

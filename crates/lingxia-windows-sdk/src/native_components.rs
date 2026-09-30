@@ -99,6 +99,7 @@ impl lxapp::NativeComponentHost for ShellNativeComponentHost {
             page_key: webtag.key().to_string(),
             appid: page.appid(),
             path: page.path(),
+            instance_id: page.instance_id_string(),
         };
         let target = find_webview_content_window(&webtag);
         handle_message(context, target, &message);
@@ -114,6 +115,14 @@ struct PageContext {
     page_key: String,
     appid: String,
     path: String,
+    instance_id: String,
+}
+
+impl PageContext {
+    /// The instance the components were mounted in; a route can have several.
+    fn page(&self) -> Option<lxapp::PageInstance> {
+        lxapp::try_get(&self.appid)?.get_page_by_instance_id_str(&self.instance_id)
+    }
 }
 
 struct ComponentEntry {
@@ -156,8 +165,8 @@ struct PageView {
 /// event (the pause/resume hooks remain event-driven).
 fn page_is_foreground(context: &PageContext) -> bool {
     lxapp::try_get(&context.appid)
-        .and_then(|app| app.peek_current_page())
-        .is_some_and(|current| current == context.path)
+        .and_then(|app| app.current_page().ok())
+        .is_some_and(|current| current.instance_id_string() == context.instance_id)
 }
 
 static COMPONENTS: OnceLock<Mutex<HashMap<String, ComponentEntry>>> = OnceLock::new();
@@ -1246,8 +1255,7 @@ fn deliver_event(context: &PageContext, component_id: &str, event: &str, detail:
         "payload": payload,
     })
     .to_string();
-    let page = lxapp::try_get(&context.appid).and_then(|app| app.get_page(&context.path));
-    if let Some(page) = page.as_ref()
+    if let Some(page) = context.page()
         && let Some(webview) = page.webview()
         && let Err(err) = webview.post_message(&view_message)
     {

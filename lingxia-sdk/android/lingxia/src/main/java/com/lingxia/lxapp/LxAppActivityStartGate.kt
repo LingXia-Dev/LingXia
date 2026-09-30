@@ -16,7 +16,17 @@ internal class LxAppActivityStartGate(
     private val staleAfterMs: Long = STALE_AFTER_MS,
     private val clock: () -> Long = { android.os.SystemClock.uptimeMillis() },
 ) {
-    data class Open(val appId: String, val path: String, val sessionId: Long)
+    data class Open(val appId: String, val path: String, val sessionId: Long) {
+        // The page instance a runtime open is for. Not what makes two opens
+        // the same: one route is one open whichever instance each names.
+        var webtag: String? = null
+            private set
+
+        constructor(appId: String, path: String, sessionId: Long, webtag: String?) :
+            this(appId, path, sessionId) {
+            this.webtag = webtag
+        }
+    }
 
     enum class Decision {
         /** No start is in flight: start the activity for this open. */

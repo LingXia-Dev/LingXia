@@ -1,8 +1,8 @@
 use dashmap::DashMap;
 use http::Uri as HttpUri;
 use lingxia_platform::Platform;
-use lingxia_platform::traits::app_runtime::AppRuntime;
-use lingxia_platform::traits::ui::UIUpdate;
+use lingxia_platform::traits::app_runtime::{AppRuntime, ShowLxApp};
+use lingxia_platform::traits::ui::{Appearance, UIUpdate};
 #[cfg(feature = "js-appservice")]
 use rong::{JSContext, JSResult, Source, error::HostError};
 use serde::Serialize;
@@ -111,7 +111,7 @@ pub use runtime_ops::{
 pub(crate) use runtime_registry::get_lxapps_manager;
 pub use runtime_registry::{
     PageWebView, await_page_webview, await_page_webview_then, find_page_by_instance_id,
-    get_platform, try_get,
+    find_page_by_webtag, get_platform, try_get,
 };
 pub use surface::{
     HostMainSurfaceRegistration, HostSurfaceMenuExecution, LxAppRuntimeSurfaceInfo,
@@ -3101,6 +3101,13 @@ impl LxApp {
             .cloned()
     }
 
+    /// The live page instance a full page webtag names.
+    pub fn get_page_by_webtag(&self, webtag: &str) -> Option<PageInstance> {
+        let tag = lingxia_webview::WebTag::from(webtag);
+        self.get_page_by_instance_id_str(tag.page_instance_id()?)
+            .filter(|page| page.webtag() == tag)
+    }
+
     pub(crate) fn cancel_all_page_bridge_work(&self) {
         let pages = {
             let state = self.state.lock().unwrap();
@@ -3584,15 +3591,14 @@ impl LxApp {
             ) {
                 self.set_active_main();
             }
-            self.runtime.show_lxapp(
-                self.appid.clone(),
+            self.runtime.show_lxapp(ShowLxApp {
+                appid: self.appid.clone(),
                 title,
-                current_path,
-                page.webtag().key().to_string(),
-                self.session.id,
-                stored.open_mode,
-                stored.panel_id.clone(),
-            )?;
+                webtag: page.webtag().key().to_string(),
+                session_id: self.session.id,
+                open_mode: stored.open_mode,
+                panel_id: stored.panel_id,
+            })?;
         } else {
             self.runtime.request_lxapp_main_activation(&self.appid);
             self.emit_app_show(true);
@@ -3711,15 +3717,14 @@ impl LxApp {
             }
         }
 
-        self.runtime.show_lxapp(
-            self.appid.clone(),
+        self.runtime.show_lxapp(ShowLxApp {
+            appid: self.appid.clone(),
             title,
-            startup_options.path.clone(),
-            page.webtag().key().to_string(),
-            self.session.id,
-            startup_options.open_mode,
-            startup_options.panel_id.clone(),
-        )?;
+            webtag: page.webtag().key().to_string(),
+            session_id: self.session.id,
+            open_mode: startup_options.open_mode,
+            panel_id: startup_options.panel_id.clone(),
+        })?;
 
         #[cfg(target_os = "windows")]
         if !is_panel {

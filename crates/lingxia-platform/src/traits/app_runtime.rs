@@ -14,7 +14,7 @@ use super::media_runtime::MediaRuntime;
 use super::network::Network;
 use super::secure_store::SecureStore;
 use super::share::ShareService;
-use super::ui::{SurfacePresenter, UIUpdate, UserFeedback};
+use super::ui::{Appearance, LaunchFace, SurfacePresenter, UIUpdate, UserFeedback};
 use super::update::UpdateService;
 use super::wifi::Wifi;
 
@@ -222,6 +222,20 @@ pub enum LxAppOpenMode {
     Panel = 1,
 }
 
+/// One lxapp to put on screen, and the page instance to present in it.
+#[derive(Debug, Clone)]
+pub struct ShowLxApp {
+    pub appid: String,
+    /// Listing name, for shells that title a window with it.
+    pub title: String,
+    /// The page instance's full webview tag (see [`AppRuntime::navigate`]).
+    pub webtag: String,
+    pub session_id: u64,
+    pub open_mode: LxAppOpenMode,
+    /// Target panel when `open_mode` is [`LxAppOpenMode::Panel`], else empty.
+    pub panel_id: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenUrlTarget {
     External = 0,
@@ -286,6 +300,8 @@ impl From<i32> for AnimationType {
 pub trait AppRuntime:
     Send
     + Sync
+    + Appearance
+    + LaunchFace
     + MediaInteraction
     + MediaRuntime
     + Network
@@ -334,20 +350,8 @@ pub trait AppRuntime:
     /// Returns the current system locale.
     fn get_system_locale(&self) -> &str;
 
-    /// Show the UI container for the given LxApp and route.
-    /// `webtag` is the page instance's full webview tag and is the
-    /// authoritative identity of the page to present (see [`Self::navigate`]);
-    /// `path` is kept for shells that have not moved to the tag yet.
-    fn show_lxapp(
-        &self,
-        appid: String,
-        title: String,
-        path: String,
-        webtag: String,
-        session_id: u64,
-        open_mode: LxAppOpenMode,
-        panel_id: String,
-    ) -> Result<(), PlatformError>;
+    /// Show the UI container for an lxapp, presenting the page `request` names.
+    fn show_lxapp(&self, request: ShowLxApp) -> Result<(), PlatformError>;
 
     /// Notify the desktop skin that the next layout publication is an explicit
     /// request to put this lxapp in front. Most skins reconcile directly from
@@ -501,18 +505,14 @@ pub trait AppRuntime:
         Ok(())
     }
 
-    /// Navigates within the given LxApp using an animation.
-    /// `webtag` is the destination page instance's full webview tag and is the
-    /// authoritative identity of what to present: page tags are per-instance,
-    /// so shells must not reconstruct them from the route, and two instances of
-    /// one route differ only by it. The page's WebView may not exist yet when
-    /// this is called; containers wait for that exact instance rather than
-    /// re-resolving `path`, which is kept for shells that have not moved to
-    /// the tag yet.
+    /// Present another page of the given lxapp, with an animation.
+    /// `webtag` is the destination page instance's full webview tag and the
+    /// only identity of what to present: page tags are per-instance, so two
+    /// instances of one route differ only by it. The page's WebView may not
+    /// exist yet when this is called; containers wait for that exact instance.
     fn navigate(
         &self,
         appid: String,
-        path: String,
         webtag: String,
         animation_type: AnimationType,
     ) -> Result<(), PlatformError>;

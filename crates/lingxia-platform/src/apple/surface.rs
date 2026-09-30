@@ -43,10 +43,10 @@ impl SurfacePresenter for Platform {
         if present_surface(
             &request.id,
             &request.app_id,
-            &request.path,
-            request.session_id,
-            &request.page_instance_id,
-            request.content as i32,
+            request.owner_session_id,
+            request.content.kind() as i32,
+            request.content.webtag(),
+            request.content.url(),
             request.kind as i32,
             request.width,
             request.height,
@@ -70,8 +70,8 @@ impl SurfacePresenter for Platform {
             Ok(())
         } else {
             Err(PlatformError::Platform(format!(
-                "Failed to present surface: id={}, appid={}, path={}, kind={:?}",
-                request.id, request.app_id, request.path, request.kind
+                "Failed to present surface: id={}, appid={}, content={:?}, kind={:?}",
+                request.id, request.app_id, request.content, request.kind
             )))
         }
     }

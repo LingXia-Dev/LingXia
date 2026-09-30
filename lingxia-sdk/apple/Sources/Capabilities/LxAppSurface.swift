@@ -2,6 +2,40 @@ import Foundation
 import CLingXiaRustAPI
 import CLingXiaSwiftAPI
 
+/// What a surface shows.
+enum LxAppSurfaceContent {
+    /// One of the lxapp's own page instances, at the route it is on.
+    case page(instanceId: String, path: String)
+    /// An external document.
+    case url(String)
+
+    private static let kindPage: Int32 = 0
+    private static let kindUrl: Int32 = 1
+
+    /// Decodes the runtime's request, where `webtag` names the page instance
+    /// of page content. Nil when it names no live page.
+    @MainActor
+    init?(kind: Int32, appId: String, webtag: String, url: String) {
+        switch kind {
+        case Self.kindPage:
+            guard let page = WebViewManager.page(appId: appId, webtag: webtag) else { return nil }
+            self = .page(instanceId: page.pageInstanceId, path: page.path)
+        case Self.kindUrl:
+            self = .url(url)
+        default:
+            return nil
+        }
+    }
+
+    /// Route or URL, as log context.
+    var logPath: String {
+        switch self {
+        case .page(_, let path): return path
+        case .url(let url): return url
+        }
+    }
+}
+
 #if os(macOS)
 import AppKit
 import WebKit
@@ -26,8 +60,6 @@ enum LxAppSurface {
     private static let roleAside: Int32 = 1
     private static let roleFloat: Int32 = 2
     private static let positionBottom: Int32 = 1
-    private static let contentPage: Int32 = 0
-    private static let contentUrl: Int32 = 1
     private static let transientCornerRadius: CGFloat = 12
     private static var entries: [String: Entry] = [:]
     private static var runnerUserAgentOverride: String?
@@ -316,10 +348,8 @@ enum LxAppSurface {
     static func present(
         id: String,
         appId: String,
-        path: String,
         sessionId: UInt64,
-        pageInstanceId rawPageInstanceId: String,
-        content: Int32,
+        content: LxAppSurfaceContent,
         kind: Int32,
         width: Double,
         height: Double,
@@ -353,16 +383,15 @@ enum LxAppSurface {
         // device screen, mirroring a real iOS phone. URL asides degrade to the
         // in-app browser upstream, so only pages reach here; desktop is untouched.
         if LxAppActiveHost.activeShell == nil,
-           content == contentPage,
+           case .page(let pageInstanceId, let path) = content,
            kind == kindWindow || (kind == kindPopup && role == roleAside),
            let context = phoneDeviceScreenContext() {
             return presentPhoneFullScreen(
                 id: id,
                 appId: appId,
-                path: path,
                 sessionId: sessionId,
-                pageInstanceId: rawPageInstanceId,
-                content: content,
+                pageInstanceId: pageInstanceId,
+                path: path,
                 context: context,
                 closeButton: closeButton
             )
@@ -379,9 +408,7 @@ enum LxAppSurface {
             return presentDockedAside(
                 id: id,
                 appId: appId,
-                path: path,
                 sessionId: sessionId,
-                pageInstanceId: rawPageInstanceId,
                 content: content,
                 panelPosition: panelPosition,
                 width: width,
@@ -473,18 +500,9 @@ enum LxAppSurface {
         var browserTabId: String?
 
         switch content {
-        case contentPage:
+        case .page(let instanceId, let path):
             browserTabId = nil
-            pageInstanceId = rawPageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
-            if path.isEmpty || pageInstanceId.isEmpty {
-                LXLog.error(
-                    "present page requires path and pageInstanceId id=\(id) app=\(appId) path=\(path) pageInstanceId=\(pageInstanceId) content=\(content) kind=\(kind)",
-                    category: "Surface",
-                    appId: appId,
-                    path: path
-                )
-                return false
-            }
+            pageInstanceId = instanceId
 
             let controller = LxAppActiveHost.activeController ?? LxAppController()
             let lxHostView = LxAppHostView(controller: controller)
@@ -523,9 +541,9 @@ enum LxAppSurface {
                 }
             }
 
-        case contentUrl:
-            guard let url = URL(string: path), supportsWebSurfaceURL(url, urlCallback: urlCallback) else {
-                LXLog.error("invalid web surface url id=\(id) url=\(path)", category: "Surface", appId: appId, path: path)
+        case .url(let urlString):
+            guard let url = URL(string: urlString), supportsWebSurfaceURL(url, urlCallback: urlCallback) else {
+                LXLog.error("invalid web surface url id=\(id) url=\(urlString)", category: "Surface", appId: appId, path: urlString)
                 return false
             }
             pageInstanceId = ""
@@ -561,10 +579,6 @@ enum LxAppSurface {
                 webView = wkWebView
                 navigationDelegate = delegate
             }
-
-        default:
-            LXLog.error("unsupported surface content=\(content) id=\(id) app=\(appId) path=\(path) kind=\(kind)", category: "Surface", appId: appId, path: path)
-            return false
         }
 
         if kind == kindWindow && chrome == chromeFull {
@@ -645,21 +659,12 @@ enum LxAppSurface {
     private static func presentPhoneFullScreen(
         id: String,
         appId: String,
-        path: String,
         sessionId: UInt64,
-        pageInstanceId rawPageInstanceId: String,
-        content: Int32,
+        pageInstanceId: String,
+        path: String,
         context: SurfaceContext,
         closeButton: Bool
     ) -> Bool {
-        let pageInstanceId = rawPageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
-        if path.isEmpty || pageInstanceId.isEmpty {
-            LXLog.error(
-                "fullscreen page requires path and pageInstanceId id=\(id) app=\(appId) path=\(path) pageInstanceId=\(pageInstanceId)",
-                category: "Surface", appId: appId, path: path
-            )
-            return false
-        }
 
         let window = makeWindow(kind: kindPopup, frame: context.frame, chrome: chromeSystem)
         let windowContent = NSView(frame: NSRect(origin: .zero, size: context.frame.size))
@@ -778,10 +783,8 @@ enum LxAppSurface {
     private static func presentDockedAside(
         id: String,
         appId: String,
-        path: String,
         sessionId: UInt64,
-        pageInstanceId rawPageInstanceId: String,
-        content: Int32,
+        content: LxAppSurfaceContent,
         panelPosition: PanelPosition,
         width: Double,
         height: Double,
@@ -803,15 +806,8 @@ enum LxAppSurface {
         let dockedBrowser: DockedBrowser?
 
         switch content {
-        case contentPage:
-            pageInstanceId = rawPageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
-            if path.isEmpty || pageInstanceId.isEmpty {
-                LXLog.error(
-                    "aside page requires path and pageInstanceId id=\(id) app=\(appId) path=\(path) pageInstanceId=\(pageInstanceId)",
-                    category: "Surface", appId: appId, path: path
-                )
-                return false
-            }
+        case .page(let instanceId, let path):
+            pageInstanceId = instanceId
             let controller = LxAppActiveHost.activeController ?? LxAppController()
             let lxHostView = LxAppHostView(controller: controller)
             lxHostView.translatesAutoresizingMaskIntoConstraints = false
@@ -846,9 +842,9 @@ enum LxAppSurface {
                 }
             }
 
-        case contentUrl:
-            guard let url = URL(string: path), supportsWebSurfaceURL(url, urlCallback: urlCallback) else {
-                LXLog.error("invalid web aside url id=\(id) url=\(path)", category: "Surface", appId: appId, path: path)
+        case .url(let urlString):
+            guard let url = URL(string: urlString), supportsWebSurfaceURL(url, urlCallback: urlCallback) else {
+                LXLog.error("invalid web aside url id=\(id) url=\(urlString)", category: "Surface", appId: appId, path: urlString)
                 return false
             }
             // Every web-aside node is a tab in the single per-window browser
@@ -876,7 +872,7 @@ enum LxAppSurface {
                 onCloseTab: onCloseTab,
                 onCloseAside: onCloseAside
             ) else {
-                LXLog.error("failed to open docked aside tab id=\(id) url=\(path)", category: "Surface", appId: appId, path: path)
+                LXLog.error("failed to open docked aside tab id=\(id) url=\(urlString)", category: "Surface", appId: appId, path: urlString)
                 return false
             }
             guard opened.isNew else {
@@ -905,10 +901,6 @@ enum LxAppSurface {
             container.addSubview(opened.browser.containerView)
             opened.browser.containerView.translatesAutoresizingMaskIntoConstraints = false
             pinToEdges(opened.browser.containerView, in: container)
-
-        default:
-            LXLog.error("unsupported aside content=\(content) id=\(id) app=\(appId)", category: "Surface", appId: appId, path: path)
-            return false
         }
 
         if closeButton {
@@ -987,15 +979,7 @@ enum LxAppSurface {
         attempt: Int
     ) {
         guard let entry = entries[id], entry.browserTabId == tabId else { return }
-        let browserAppId = getBuiltinBrowserAppId().toString()
-        let sessionId = getLxAppSessionId(browserAppId)
-        let path = browserTabPathForId(tabId).toString()
-        if sessionId > 0,
-           let webView = WebViewManager.resolveWebView(
-               appId: browserAppId,
-               path: path,
-               sessionId: sessionId
-           ) {
+        if let webView = WebViewManager.browserTabWebView(tabId: tabId) {
             WebViewManager.configureWebViewTransparency(webView, transparent: false)
             WebViewManager.attachWebViewToContainer(webView, container: container)
             if let close = container.subviews.first(where: {
@@ -1506,8 +1490,6 @@ import WebKit
 enum LxAppSurface {
     private static let kindWindow: Int32 = 0
     private static let kindPopup: Int32 = 1
-    private static let contentPage: Int32 = 0
-    private static let contentUrl: Int32 = 1
     // Arbitrated role (mirrors lingxia_platform SurfaceRole). On a phone there is
     // no docking: an aside has no side-by-side room, so the core promotes it to a
     // main (kind Window) and an aside that survives as such (kind Overlay) is
@@ -1793,10 +1775,8 @@ enum LxAppSurface {
     static func present(
         id: String,
         appId: String,
-        path: String,
         sessionId: UInt64,
-        pageInstanceId rawPageInstanceId: String,
-        content: Int32,
+        content: LxAppSurfaceContent,
         kind: Int32,
         width: Double,
         height: Double,
@@ -1819,15 +1799,11 @@ enum LxAppSurface {
         // full-screen — the same way the primary lxapp page is shown. A float
         // (kind Overlay, role Float) keeps the positioned-popup treatment below.
         guard kind == kindPopup || kind == kindWindow else {
-            LXLog.error("unsupported mobile surface kind=\(kind) id=\(id) app=\(appId)", category: "Surface", appId: appId, path: path)
-            return false
-        }
-        guard content == contentPage || content == contentUrl else {
-            LXLog.error("unsupported surface content=\(content) id=\(id) app=\(appId)", category: "Surface", appId: appId, path: path)
+            LXLog.error("unsupported mobile surface kind=\(kind) id=\(id) app=\(appId)", category: "Surface", appId: appId, path: content.logPath)
             return false
         }
         guard let windowScene = activeWindowScene() else {
-            LXLog.error("no active window scene for surface id=\(id) app=\(appId)", category: "Surface", appId: appId, path: path)
+            LXLog.error("no active window scene for surface id=\(id) app=\(appId)", category: "Surface", appId: appId, path: content.logPath)
             return false
         }
 
@@ -1883,13 +1859,9 @@ enum LxAppSurface {
         var browserTabId: String?
 
         switch content {
-        case contentPage:
+        case .page(let instanceId, let path):
             browserTabId = nil
-            pageInstanceId = rawPageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !path.isEmpty, !pageInstanceId.isEmpty else {
-                LXLog.error("present page requires path and pageInstanceId id=\(id) app=\(appId)", category: "Surface", appId: appId, path: path)
-                return false
-            }
+            pageInstanceId = instanceId
 
             let activeController = LxAppActiveHost.activeController ?? LxAppController()
             let lxHostView = LxAppHostView(controller: activeController)
@@ -1919,9 +1891,9 @@ enum LxAppSurface {
                 }
             }
 
-        case contentUrl:
-            guard let url = URL(string: path), supportsWebSurfaceURL(url, urlCallback: urlCallback) else {
-                LXLog.error("invalid web surface url id=\(id) url=\(path)", category: "Surface", appId: appId, path: path)
+        case .url(let urlString):
+            guard let url = URL(string: urlString), supportsWebSurfaceURL(url, urlCallback: urlCallback) else {
+                LXLog.error("invalid web surface url id=\(id) url=\(urlString)", category: "Surface", appId: appId, path: urlString)
                 return false
             }
             pageInstanceId = ""
@@ -1963,9 +1935,6 @@ enum LxAppSurface {
                 webView = wkWebView
                 navigationDelegate = delegate
             }
-
-        default:
-            return false
         }
 
         entries[id] = Entry(
@@ -2012,15 +1981,7 @@ enum LxAppSurface {
         attempt: Int
     ) {
         guard let entry = entries[id], entry.browserTabId == tabId else { return }
-        let browserAppId = getBuiltinBrowserAppId().toString()
-        let sessionId = getLxAppSessionId(browserAppId)
-        let path = browserTabPathForId(tabId).toString()
-        if sessionId > 0,
-           let webView = WebViewManager.resolveWebView(
-               appId: browserAppId,
-               path: path,
-               sessionId: sessionId
-           ) {
+        if let webView = WebViewManager.browserTabWebView(tabId: tabId) {
             // Preserve the pre-managed URL-surface presentation: the document
             // extends through the sheet safe area without an opaque WebKit band.
             webView.scrollView.contentInsetAdjustmentBehavior = .never
@@ -2212,10 +2173,8 @@ enum LxAppSurface {
     static func present(
         id: String,
         appId: String,
-        path: String,
         sessionId: UInt64,
-        pageInstanceId: String,
-        content: Int32,
+        content: LxAppSurfaceContent,
         kind: Int32,
         width: Double,
         height: Double,
@@ -2228,9 +2187,7 @@ enum LxAppSurface {
     ) -> Bool {
         _ = id
         _ = appId
-        _ = path
         _ = sessionId
-        _ = pageInstanceId
         _ = content
         _ = kind
         _ = width

@@ -7,7 +7,7 @@ import { LxApp } from './LxApp';
 import { Lingxia } from '../app/Lingxia';
 import { LxAppSurface } from './APIs/LxAppSurface';
 import {
-  findWebview,
+  WebViewManager,
   toWebTag,
   extractWebTag,
   addWebViewUiCallback,
@@ -82,6 +82,11 @@ const KEYBOARD_MONITOR_INTERVAL_MS = 80;
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Container';
 
+/** `route#instance#session` of a page webtag: how the runtime names a shown page. */
+function pageIdentity(webTag: string): string {
+  return webTag.substring(webTag.indexOf(':') + 1);
+}
+
 interface RenderableWebEntry {
   webTag: string;
   controller: webview.WebviewController;
@@ -96,7 +101,6 @@ interface RenderableWebEntry {
 @Component
 export struct LxAppContainer {
   @Prop appId: string
-  @Prop initialPath: string
   @Prop navigationMode: boolean = false
   @Prop closeCallback: string = ''
   @State path: string = ''
@@ -157,7 +161,7 @@ export struct LxAppContainer {
   // bound `refreshing` flip through onRefreshing, which must not report it twice.
   private programmaticRefreshPending: boolean = false
   @State private enablePullDownRefresh: boolean = false
-  @State private refreshingPath: string = ''
+  @State private refreshingWebTag: string = ''
   @State private keyboardOffsetVp: number = 0
 
   private webViewUiCallback = (action: string, info: WebViewInfo) => {
@@ -178,7 +182,7 @@ export struct LxAppContainer {
   private navbarShownByPath: Map<string, boolean> = new Map();
   // Overflow tabs are created on first pick. Harmony WebView creation is a
   // queued ArkTS call, so navigate can land before the controller exists.
-  private pendingNavigatePath: string = '';
+  private pendingWebTag: string = '';
 
   /**
    * Trigger onPageShow if WebView hasn't triggered it yet
@@ -199,14 +203,14 @@ export struct LxAppContainer {
         if (isFirstPage) {
           // Delay first page to ensure LxApp runtime is ready
           setTimeout(() => {
-            hilog.info(DOMAIN, TAG, `Triggering onPageShow for first page: ${appId}:${actualPath}`);
-            onPageShow(appId, actualPath);
+            hilog.info(DOMAIN, TAG, `Triggering onPageShow for first page: ${webTag}`);
+            onPageShow(appId, pageIdentity(webTag));
             Lingxia.updateOrientationUI(appId, actualPath);
           }, 100);
         } else {
           // Subsequent pages without delay
-          hilog.info(DOMAIN, TAG, `Triggering onPageShow for: ${appId}:${actualPath}`);
-          onPageShow(appId, actualPath);
+          hilog.info(DOMAIN, TAG, `Triggering onPageShow for: ${webTag}`);
+          onPageShow(appId, pageIdentity(webTag));
           Lingxia.updateOrientationUI(appId, actualPath);
         }
       }
@@ -225,17 +229,17 @@ export struct LxAppContainer {
     if (!container) {
       return;
     }
-    const path: string = container.path;
-    if (!path) {
+    const webTag: string = container.currentWebTag;
+    if (!webTag) {
       return;
     }
-    hilog.info(DOMAIN, TAG, `notifyForeground onPageShow ${appId}:${path}`);
-    onPageShow(appId, path);
-    Lingxia.updateOrientationUI(appId, path);
+    hilog.info(DOMAIN, TAG, `notifyForeground onPageShow ${webTag}`);
+    onPageShow(appId, pageIdentity(webTag));
+    Lingxia.updateOrientationUI(appId, container.path);
   }
 
-  // Listen for external path changes from LxApp.navigate API
-  @Watch('onExternalPathChange') @Prop externalPath: string = ''
+  // Webtag of the page instance to present, as the runtime named it
+  @Watch('onTargetWebTagChange') @Prop targetWebTag: string = ''
 
   // Listen for navigation trigger changes (unified method for all LxApps)
   @Watch('onNavigationTriggerChange') @Prop navigationTrigger: number = 0
@@ -251,7 +255,7 @@ export struct LxAppContainer {
     this.appearanceDark = LxAppContainer.appearanceByApp.get(this.appId) ?? hostDark;
     LxAppContainer.currentAppearanceDark = this.appearanceDark;
 
-    this.path = this.initialPath;
+    this.path = extractWebTag(this.targetWebTag)?.path ?? '';
     hilog.info(DOMAIN, TAG, `Container creating for ${this.appId}:${this.path}, isHome=${this.isHomeApp()}`);
     hilog.info(DOMAIN, TAG, `Layout info: statusBarHeight=${this.statusBarHeight}, showCapsule=${this.shouldShowCapsuleButton()}`);
 
@@ -294,10 +298,8 @@ export struct LxAppContainer {
       hilog.info(DOMAIN, TAG, `Set animation type to None for page with ${this.tabBarState.items.length} tabs`);
     }
 
-    // Initial currentWebTag will be promoted from the first 'create' event;
-    // do not assume a specific tag format here to keep instance IDs opaque.
+    // The 'create' event of the target page's WebView promotes it to current.
     this.currentWebTag = '';
-    const initialWebTag = toWebTag(this.appId, this.path);
 
     // Explicitly replay existing WebViews for this appId so containers created
     // after WebViews still receive 'create' events and can mark currentWebTag.
@@ -613,10 +615,10 @@ export struct LxAppContainer {
    * Stop pull-to-refresh animation programmatically
    * Called from NativeBridge via static entry
    */
-  public static stopPullRefresh(appId: string, path?: string): void {
+  public static stopPullRefresh(appId: string, webTag: string): void {
     const container = LxAppContainer.activeContainers.get(appId);
     if (container) {
-      container.stopPullDownRefresh(path);
+      container.stopPullDownRefresh(webTag);
     } else {
       hilog.warn(DOMAIN, TAG, `stopPullRefresh: no active container for ${appId}`);
     }
@@ -626,33 +628,33 @@ export struct LxAppContainer {
    * Start pull-to-refresh animation programmatically
    * Called from NativeBridge via static entry
    */
-  public static startPullRefresh(appId: string, path: string): void {
+  public static startPullRefresh(appId: string, webTag: string): void {
     const container = LxAppContainer.activeContainers.get(appId);
     if (container) {
-      container.startPullDownRefresh(path);
+      container.startPullDownRefresh(webTag);
     } else {
       hilog.warn(DOMAIN, TAG, `startPullRefresh: no active container for ${appId}`);
     }
   }
 
   /**
-   * Handle external path changes from LxApp.navigate API
+   * Handle target page changes from LxApp.navigate API
    */
-  onExternalPathChange() {
-    if (this.externalPath) {
-      hilog.info(DOMAIN, TAG, `External path change: ${this.externalPath}`);
-      this.navigateToPage(this.externalPath);
+  onTargetWebTagChange() {
+    if (this.targetWebTag) {
+      hilog.info(DOMAIN, TAG, `Target page change: ${this.targetWebTag}`);
+      this.navigateToPage(this.targetWebTag);
     }
   }
 
   private onNavigationTriggerChange() {
-    if (!this.externalPath) {
-      hilog.info(DOMAIN, TAG, 'navigationTrigger changed but externalPath is empty, skipping navigate');
+    if (!this.targetWebTag) {
+      hilog.info(DOMAIN, TAG, 'navigationTrigger changed but targetWebTag is empty, skipping navigate');
       return;
     }
 
-    hilog.info(DOMAIN, TAG, `navigationTrigger updated -> navigating to ${this.externalPath}`);
-    this.navigateToPage(this.externalPath);
+    hilog.info(DOMAIN, TAG, `navigationTrigger updated -> navigating to ${this.targetWebTag}`);
+    this.navigateToPage(this.targetWebTag);
   }
 
   /**
@@ -674,14 +676,10 @@ export struct LxAppContainer {
           hilog.info(DOMAIN, TAG, `Surface WebView is owned by SurfaceManager: ${info.webtag}`);
           break;
         }
-        const createdPath: string = extracted.path;
         // Mark current BEFORE inserting into the ForEach. Harmony ArkWeb
         // never paints a Web that first lays out translated off-screen;
         // overflow tabs then stay blank after switchTab.
-        const wantCurrent: boolean = !this.currentWebTag
-          || this.pathsEqual(createdPath, this.pendingNavigatePath)
-          || this.pathsEqual(createdPath, this.path)
-          || this.pathsEqual(createdPath, this.externalPath);
+        const wantCurrent: boolean = info.webtag === this.targetWebTag;
         if (wantCurrent) {
           this.currentWebTag = info.webtag;
         }
@@ -689,11 +687,10 @@ export struct LxAppContainer {
         this.webViewKeys = Array.from(this.webViewComponents.keys());
         hilog.info(DOMAIN, TAG, `Stored WebView component: ${info.webtag}, total components: ${this.webViewComponents.size}`);
 
-        if (this.pendingNavigatePath && this.pathsEqual(createdPath, this.pendingNavigatePath)) {
-          const pendingPath: string = this.pendingNavigatePath;
-          this.pendingNavigatePath = '';
-          hilog.info(DOMAIN, TAG, `Pending navigate now that WebView exists: ${pendingPath}`);
-          this.navigateToPage(pendingPath);
+        if (this.pendingWebTag === info.webtag) {
+          this.pendingWebTag = '';
+          hilog.info(DOMAIN, TAG, `Pending navigate now that WebView exists: ${info.webtag}`);
+          this.navigateToPage(info.webtag);
         } else if (wantCurrent) {
           hilog.info(DOMAIN, TAG, `Promoting ${info.webtag} as current after create`);
           this.triggerOnPageShowIfNeeded(info.webtag);
@@ -1140,8 +1137,8 @@ export struct LxAppContainer {
         return
       }
       if (this.enablePullDownRefresh) {
-        this.refreshingPath = this.path;
-        this.handlePullToRefresh()
+        this.refreshingWebTag = this.currentWebTag;
+        this.handlePullToRefresh(this.currentWebTag)
       } else {
         this.isRefreshing = false
       }
@@ -1178,12 +1175,10 @@ export struct LxAppContainer {
   }
   
   /**
-   * Handle pull-to-refresh action
+   * Tell the runtime the page instance `webTag` names is being refreshed
    */
-  private handlePullToRefresh(path?: string): void {
-    // Notify Rust core about the event
-    const eventPath = path || this.path;
-    let _: boolean = onLxappEvent(this.appId, UiEventType.PullDownRefresh, eventPath);
+  private handlePullToRefresh(webTag: string): void {
+    let _: boolean = onLxappEvent(this.appId, UiEventType.PullDownRefresh, webTag);
 
     // Set a safety timeout to stop refreshing if the app doesn't respond
     setTimeout(() => {
@@ -1191,7 +1186,7 @@ export struct LxAppContainer {
         hilog.warn(DOMAIN, TAG, 'Pull-to-refresh timed out, stopping automatically')
         this.isRefreshing = false
         this.programmaticRefreshPending = false
-        this.refreshingPath = ''
+        this.refreshingWebTag = ''
         // Restore the correct state for the current page
         this.loadPullDownRefreshState(this.path);
       }
@@ -1202,14 +1197,14 @@ export struct LxAppContainer {
    * Stop pull-to-refresh animation programmatically
    * Called from Rust via FFI
    */
-  public stopPullDownRefresh(path?: string): void {
-    if (path && this.refreshingPath && path !== this.refreshingPath) {
-      hilog.warn(DOMAIN, TAG, `Ignoring stop for ${path}, current refreshing is ${this.refreshingPath}`);
+  public stopPullDownRefresh(webTag: string): void {
+    if (this.refreshingWebTag && webTag !== this.refreshingWebTag) {
+      hilog.warn(DOMAIN, TAG, `Ignoring stop for ${webTag}, current refreshing is ${this.refreshingWebTag}`);
       return;
     }
     this.isRefreshing = false
     this.programmaticRefreshPending = false
-    this.refreshingPath = ''
+    this.refreshingWebTag = ''
     // Restore the correct state for the current page
     this.loadPullDownRefreshState(this.path);
   }
@@ -1218,13 +1213,13 @@ export struct LxAppContainer {
    * Start pull-to-refresh animation programmatically
    * Called from Rust via FFI
    */
-  public startPullDownRefresh(targetPath?: string): void {
-    // If targetPath is provided and differs from current path, check config for targetPath
+  public startPullDownRefresh(targetWebTag: string): void {
+    const targetPath: string = extractWebTag(targetWebTag)?.path ?? this.path;
+    // A target that is not the current page yet answers for its own config
     let shouldRefresh = this.enablePullDownRefresh;
 
-    if (targetPath && targetPath !== this.path) {
-      hilog.info(DOMAIN, TAG, `startPullDownRefresh: target path ${targetPath} differs from current ${this.path}`);
-      // Check if target path has refresh enabled
+    if (targetWebTag !== this.currentWebTag) {
+      hilog.info(DOMAIN, TAG, `startPullDownRefresh: target ${targetWebTag} differs from current ${this.currentWebTag}`);
       shouldRefresh = isPullDownRefreshEnabled(this.appId, targetPath);
     }
 
@@ -1237,10 +1232,10 @@ export struct LxAppContainer {
         this.enablePullDownRefresh = true;
       }
 
-      this.refreshingPath = targetPath || this.path;
       this.programmaticRefreshPending = !this.isRefreshing
+      this.refreshingWebTag = targetWebTag;
       this.isRefreshing = true
-      this.handlePullToRefresh(targetPath)
+      this.handlePullToRefresh(targetWebTag)
     } else {
       hilog.warn(DOMAIN, TAG, 'startPullDownRefresh ignored: refresh not enabled for this page')
     }
@@ -1337,33 +1332,6 @@ export struct LxAppContainer {
     let _: boolean = onLxappEvent(this.appId, UiEventType.TabBarClick, index.toString());
   }
 
-  /** Compare lxapp page paths ignoring slash, /index, and view suffix. */
-  private pathsEqual(left: string, right: string): boolean {
-    if (!left || !right) {
-      return false;
-    }
-    return LxAppContainer.normalizePagePath(left) === LxAppContainer.normalizePagePath(right);
-  }
-
-  private static normalizePagePath(path: string): string {
-    let normalized: string = path.trim();
-    if (normalized.startsWith('/')) {
-      normalized = normalized.substring(1);
-    }
-    const suffixes: string[] = ['.tsx', '.ts', '.jsx', '.js', '.vue', '.html'];
-    for (let i = 0; i < suffixes.length; i++) {
-      const suffix: string = suffixes[i];
-      if (normalized.toLowerCase().endsWith(suffix)) {
-        normalized = normalized.substring(0, normalized.length - suffix.length);
-        break;
-      }
-    }
-    if (normalized.endsWith('/index')) {
-      normalized = normalized.substring(0, normalized.length - '/index'.length);
-    }
-    return normalized;
-  }
-
   /**
    * Load navbar state for a page (common for all navigation types)
    */
@@ -1407,51 +1375,32 @@ export struct LxAppContainer {
   }
 
   /**
-   * Navigate to any page with animation support
+   * Present the page instance `newWebTag` names, with animation support
    */
-  private navigateToPage(path: string): boolean {
-    hilog.info(DOMAIN, TAG, `navigate: ${this.appId}:${path} with type: ${AnimationType[this.currentAnimationType]}`);
+  private navigateToPage(newWebTag: string): boolean {
+    const path: string = extractWebTag(newWebTag)?.path ?? '';
+    hilog.info(DOMAIN, TAG, `navigate: ${newWebTag} with type: ${AnimationType[this.currentAnimationType]}`);
 
     // Stop any active refresh when navigating away, unless we are navigating TO the refreshing page
-    if (this.isRefreshing && this.refreshingPath !== path) {
-      hilog.info(DOMAIN, TAG, `Navigating away from ${this.refreshingPath} to ${path}, stopping refresh`);
+    if (this.isRefreshing && this.refreshingWebTag !== newWebTag) {
+      hilog.info(DOMAIN, TAG, `Navigating away from ${this.refreshingWebTag} to ${newWebTag}, stopping refresh`);
       this.isRefreshing = false;
-      this.refreshingPath = '';
+      this.refreshingWebTag = '';
     }
 
-    // Find WebView controller for the new page (logical lookup)
-    const webViewController = findWebview(this.appId, path);
+    const webViewController = WebViewManager.getController(newWebTag);
 
     if (!webViewController) {
-      const logicalTag = toWebTag(this.appId, path);
-      this.pendingNavigatePath = path;
-      hilog.warn(DOMAIN, TAG, `WebView not found for page: ${logicalTag}; waiting for create`);
+      this.pendingWebTag = newWebTag;
+      hilog.warn(DOMAIN, TAG, `WebView not found for page: ${newWebTag}; waiting for create`);
       return false;
     }
-    this.pendingNavigatePath = '';
-
-    // Determine the concrete webTag (Ark-facing) for this controller.
-    // Prefer an existing entry from webViewComponents to keep instance IDs opaque.
-    let newWebTag: string = '';
-    const entries = this.webViewComponents.entries();
-    for (let entry of entries) {
-      const tag = entry[0];
-      const controller = entry[1];
-      if (controller === webViewController) {
-        newWebTag = tag;
-        break;
-      }
-    }
-
-    if (!newWebTag) {
-      // Fallback: use logical tag when no prior UI entry exists.
-      newWebTag = toWebTag(this.appId, path);
-    }
+    this.pendingWebTag = '';
 
     // Store previous WebView for animation
     const oldWebTag = this.currentWebTag;
 
-    // Ensure WebView component is tracked under the resolved tag
+    // Ensure WebView component is tracked under its tag
     this.webViewComponents.set(newWebTag, webViewController);
     this.webViewKeys = Array.from(this.webViewComponents.keys());
     this.pageShowTriggered.delete(newWebTag);
