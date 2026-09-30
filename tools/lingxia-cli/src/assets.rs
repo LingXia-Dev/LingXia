@@ -143,13 +143,9 @@ fn any_path_bundle_loads_es5_polyfills(project_root: &Path, config: &LingXiaConf
         else {
             continue;
         };
-        let bundle_dir = project_root.join(path);
-        if let Ok(Some(target)) = crate::lxapp::view_target_from_dir(&bundle_dir)
-            && target.eq_ignore_ascii_case("es5")
+        if crate::lxapp::read_view_build_config(&project_root.join(path))
+            .is_ok_and(|view| view.es5() || view.plugins)
         {
-            return true;
-        }
-        if let Ok(true) = crate::lxapp::view_plugins_configured(&bundle_dir) {
             return true;
         }
     }

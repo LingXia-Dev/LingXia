@@ -15,20 +15,29 @@ use std::path::{Path, PathBuf};
 pub(crate) const INTEGRITY_MANIFEST: &str = "lxapp.integrity.json";
 
 pub(crate) fn harden_release_output(project: &Project) -> Result<()> {
-    let preserve_view_js = crate::lxapp::view::view_target_from_dir(&project.root)?
-        .is_some_and(|target| target.eq_ignore_ascii_case("es5"))
-        || crate::lxapp::view::view_plugins_configured(&project.root)?;
+    let view = crate::lxapp::view::read_view_build_config(&project.root)?;
+    let preserve_view_js = view.es5() || view.plugins;
     harden_text_artifacts(project, preserve_view_js)?;
     audit_release_output(project)?;
     write_integrity_manifest(project)?;
     Ok(())
 }
 
-fn harden_javascript_source(path: &Path, source: &str, preserve_js: bool) -> Result<String> {
+fn harden_javascript_source(path: &Path, source: &str) -> Result<String> {
     let allocator = Allocator::default();
-    let source_type = SourceType::from_path(path)
-        .map_err(|_| anyhow!("Unsupported JavaScript release artifact {}", path.display()))?;
-    minify_javascript_with_source_type(&allocator, path, source, source_type, preserve_js)
+    minify_javascript_with_source_type(&allocator, path, source, source_type(path)?)
+}
+
+/// Oxc can undo the target an ES5 or plugin View build chose, so that output
+/// ships as built; it still has to parse.
+fn check_javascript_source(path: &Path, source: &str) -> Result<()> {
+    let allocator = Allocator::default();
+    parse_javascript(&allocator, path, source, source_type(path)?).map(drop)
+}
+
+fn source_type(path: &Path) -> Result<SourceType> {
+    SourceType::from_path(path)
+        .map_err(|_| anyhow!("Unsupported JavaScript release artifact {}", path.display()))
 }
 
 pub(crate) fn harden_logic_bundle(source: &str) -> Result<String> {
@@ -38,17 +47,15 @@ pub(crate) fn harden_logic_bundle(source: &str) -> Result<String> {
         Path::new("logic.js"),
         source,
         SourceType::script(),
-        false,
     )
 }
 
-fn minify_javascript_with_source_type<'a>(
+fn parse_javascript<'a>(
     allocator: &'a Allocator,
     path: &Path,
     source: &'a str,
     source_type: SourceType,
-    preserve_js: bool,
-) -> Result<String> {
+) -> Result<oxc_ast::ast::Program<'a>> {
     let parse_result = Parser::new(allocator, source, source_type).parse();
     if !parse_result.diagnostics.is_empty() {
         bail!(
@@ -57,14 +64,16 @@ fn minify_javascript_with_source_type<'a>(
             format_diagnostics(&parse_result.diagnostics)
         );
     }
+    Ok(parse_result.program)
+}
 
-    // Oxc can undo the target chosen by a View plugin, including in inline scripts.
-    // Preserve its output before integrity generation, as with the ES5 pipeline.
-    if preserve_js {
-        return Ok(source.to_string());
-    }
-
-    let mut program = parse_result.program;
+fn minify_javascript_with_source_type<'a>(
+    allocator: &'a Allocator,
+    path: &Path,
+    source: &'a str,
+    source_type: SourceType,
+) -> Result<String> {
+    let mut program = parse_javascript(allocator, path, source, source_type)?;
     let minifier_return = Minifier::new(MinifierOptions {
         compress: Some(CompressOptions {
             drop_console: true,
@@ -104,11 +113,11 @@ fn harden_text_artifacts(project: &Project, preserve_view_js: bool) -> Result<()
             Some("js") | Some("mjs") | Some("cjs") => {
                 let source = fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read {}", path.display()))?;
-                let hardened = harden_javascript_source(
-                    &path,
-                    &source,
-                    preserve_view_js && logic_path.as_ref() != Some(&path),
-                )?;
+                if preserve_view_js && logic_path.as_ref() != Some(&path) {
+                    check_javascript_source(&path, &source)?;
+                    continue;
+                }
+                let hardened = harden_javascript_source(&path, &source)?;
                 fs::write(&path, hardened)
                     .with_context(|| format!("Failed to write {}", path.display()))?;
             }
@@ -357,17 +366,8 @@ fn minify_embedded_body(element: &str, body: &str, preserve_js: bool) -> String 
     }
     match element {
         "style" => minify_css(body),
-        _ => {
-            let allocator = Allocator::default();
-            minify_javascript_with_source_type(
-                &allocator,
-                Path::new("inline-script.js"),
-                body,
-                SourceType::script(),
-                preserve_js,
-            )
-            .unwrap_or_else(|_| body.to_string())
-        }
+        _ if preserve_js => body.to_string(),
+        _ => harden_logic_bundle(body).unwrap_or_else(|_| body.to_string()),
     }
 }
 
@@ -513,7 +513,7 @@ mod tests {
     #[test]
     fn hardens_javascript_and_drops_console() {
         let source = "function verboseName(value) { console.log(value); return value + 1; }\nverboseName(1);";
-        let output = harden_javascript_source(Path::new("app.js"), source, false).unwrap();
+        let output = harden_javascript_source(Path::new("app.js"), source).unwrap();
         assert!(!output.contains("verboseName"));
         assert!(!output.contains("console.log"));
         assert!(!output.contains('\n'));
@@ -555,7 +555,7 @@ mod tests {
 
     #[test]
     fn preserving_view_javascript_still_rejects_parse_errors() {
-        let error = harden_javascript_source(Path::new("view.js"), "function {", true)
+        let error = check_javascript_source(Path::new("view.js"), "function {")
             .unwrap_err()
             .to_string();
         assert!(

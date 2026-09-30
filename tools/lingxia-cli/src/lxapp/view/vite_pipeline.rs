@@ -219,14 +219,11 @@ fn build_html_pages(
     install_duration: Option<Duration>,
     progress: Option<ViewProgress>,
 ) -> Result<ViewBuildReport> {
-    let mode = match super::vite_html::html_view_target(project)?.as_deref() {
-        Some(target)
-            if target.eq_ignore_ascii_case("es5")
-                && !super::vite_html::view_plugins_configured(&project.root)? =>
-        {
-            HtmlBundleMode::LegacyEs5
-        }
-        _ => HtmlBundleMode::Modern,
+    let view = super::vite_html::read_view_build_config(&project.root)?;
+    let mode = if view.es5() && !view.plugins {
+        HtmlBundleMode::LegacyEs5
+    } else {
+        HtmlBundleMode::Modern
     };
     if matches!(mode, HtmlBundleMode::LegacyEs5) {
         return build_html_pages_legacy(project, options, install_duration, progress);
@@ -479,7 +476,8 @@ fn finalize_component_pages(
         return Err(anyhow!("Missing Vite dist output: {}", dist_dir.display()));
     }
 
-    if super::vite_html::view_plugins_configured(&project.root)? {
+    let plugins = super::vite_html::read_view_build_config(&project.root)?.plugins;
+    if plugins {
         // Plugins may emit resources under pages/ or at the output root.
         super::vite_assets::copy_dir_recursive(dist_dir, &project.output_dir)?;
         for page in pages {
@@ -497,7 +495,7 @@ fn finalize_component_pages(
     }
 
     for page in pages {
-        finalize_component_page(project, dist_dir, page)?;
+        finalize_component_page(project, dist_dir, page, plugins)?;
     }
     Ok(())
 }
@@ -506,6 +504,7 @@ fn finalize_component_page(
     project: &Project,
     dist_dir: &Path,
     page: &ComponentPageBuild,
+    plugins: bool,
 ) -> Result<()> {
     let page_output_dir = project.output_dir.join(
         Path::new(&page.page_path)
@@ -553,9 +552,7 @@ fn finalize_component_page(
         .with_context(|| format!("Failed to read {}", html_path.display()))?;
     html = super::vite_html::rewrite_entry_script_path(html, &page.page_id);
     // Plugin polyfills can run after the bridge; supply its API shims first.
-    // Leave existing component builds unchanged when plugins are not configured.
-    let include_polyfills = super::vite_html::view_plugins_configured(&project.root)?;
-    html = super::vite_html::inject_runtime_script(html, include_polyfills);
+    html = super::vite_html::inject_runtime_script(html, plugins);
     html = super::vite_html::inject_bridge_metadata(html, &page.actions);
     let page_file = page_output_dir.join(format!("{base}{}", page.output_extension));
     fs::write(&page_file, html)

@@ -22,9 +22,7 @@ pub(super) fn copy_html_page(project: &Project, page_path: &str) -> Result<()> {
     }
     let html = fs::read_to_string(&source_path)
         .with_context(|| format!("Failed to read {}", source_path.display()))?;
-    let include_polyfills = html_view_target(project)?
-        .as_deref()
-        .is_some_and(|t| t.eq_ignore_ascii_case("es5"));
+    let include_polyfills = read_view_build_config(&project.root)?.es5();
     let output_html = inject_runtime_script(html, include_polyfills);
     fs::write(&output_path, &output_html)
         .with_context(|| format!("Failed to write {}", output_path.display()))?;
@@ -50,7 +48,7 @@ pub(super) fn copy_html_page(project: &Project, page_path: &str) -> Result<()> {
 }
 
 pub(super) fn html_pages_require_bundling(project: &Project) -> Result<bool> {
-    if view_plugins_configured(&project.root)? {
+    if read_view_build_config(&project.root)?.plugins {
         return Ok(true);
     }
     for page_path in &project.pages {
@@ -64,10 +62,6 @@ pub(super) fn html_pages_require_bundling(project: &Project) -> Result<bool> {
     Ok(false)
 }
 
-pub(super) fn html_view_target(project: &Project) -> Result<Option<String>> {
-    view_target_from_dir(&project.root)
-}
-
 /// Read `view.target` from a bundle's `lxapp.config.ts`, if present.
 /// Public so the build-time WebView-compatibility check in `assets.rs` can
 /// use the same parser as the legacy-mode detector here.
@@ -75,17 +69,21 @@ pub(crate) fn view_target_from_dir(bundle_dir: &Path) -> Result<Option<String>> 
     Ok(read_view_build_config(bundle_dir)?.target)
 }
 
-pub(crate) fn view_plugins_configured(bundle_dir: &Path) -> Result<bool> {
-    Ok(read_view_build_config(bundle_dir)?.plugins)
-}
-
 #[derive(Default, Serialize)]
-pub(super) struct ViewBuildConfig {
+pub(crate) struct ViewBuildConfig {
     target: Option<String>,
-    plugins: bool,
+    pub(crate) plugins: bool,
 }
 
-pub(super) fn read_view_build_config(bundle_dir: &Path) -> Result<ViewBuildConfig> {
+impl ViewBuildConfig {
+    pub(crate) fn es5(&self) -> bool {
+        self.target
+            .as_deref()
+            .is_some_and(|target| target.eq_ignore_ascii_case("es5"))
+    }
+}
+
+pub(crate) fn read_view_build_config(bundle_dir: &Path) -> Result<ViewBuildConfig> {
     let config_path = bundle_dir.join("lxapp.config.ts");
     if !config_path.exists() {
         return Ok(ViewBuildConfig::default());
