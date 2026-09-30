@@ -15,17 +15,29 @@ use std::path::{Path, PathBuf};
 pub(crate) const INTEGRITY_MANIFEST: &str = "lxapp.integrity.json";
 
 pub(crate) fn harden_release_output(project: &Project) -> Result<()> {
-    harden_text_artifacts(&project.output_dir)?;
+    let view = crate::lxapp::view::read_view_build_config(&project.root)?;
+    let preserve_view_js = view.es5() || view.plugins;
+    harden_text_artifacts(project, preserve_view_js)?;
     audit_release_output(project)?;
     write_integrity_manifest(project)?;
     Ok(())
 }
 
-pub(crate) fn harden_javascript_source(path: &Path, source: &str) -> Result<String> {
+fn harden_javascript_source(path: &Path, source: &str) -> Result<String> {
     let allocator = Allocator::default();
-    let source_type = SourceType::from_path(path)
-        .map_err(|_| anyhow!("Unsupported JavaScript release artifact {}", path.display()))?;
-    minify_javascript_with_source_type(&allocator, path, source, source_type)
+    minify_javascript_with_source_type(&allocator, path, source, source_type(path)?)
+}
+
+/// Oxc can undo the target an ES5 or plugin View build chose, so that output
+/// ships as built; it still has to parse.
+fn check_javascript_source(path: &Path, source: &str) -> Result<()> {
+    let allocator = Allocator::default();
+    parse_javascript(&allocator, path, source, source_type(path)?).map(drop)
+}
+
+fn source_type(path: &Path) -> Result<SourceType> {
+    SourceType::from_path(path)
+        .map_err(|_| anyhow!("Unsupported JavaScript release artifact {}", path.display()))
 }
 
 pub(crate) fn harden_logic_bundle(source: &str) -> Result<String> {
@@ -38,12 +50,12 @@ pub(crate) fn harden_logic_bundle(source: &str) -> Result<String> {
     )
 }
 
-fn minify_javascript_with_source_type<'a>(
+fn parse_javascript<'a>(
     allocator: &'a Allocator,
     path: &Path,
     source: &'a str,
     source_type: SourceType,
-) -> Result<String> {
+) -> Result<oxc_ast::ast::Program<'a>> {
     let parse_result = Parser::new(allocator, source, source_type).parse();
     if !parse_result.diagnostics.is_empty() {
         bail!(
@@ -52,8 +64,16 @@ fn minify_javascript_with_source_type<'a>(
             format_diagnostics(&parse_result.diagnostics)
         );
     }
+    Ok(parse_result.program)
+}
 
-    let mut program = parse_result.program;
+fn minify_javascript_with_source_type<'a>(
+    allocator: &'a Allocator,
+    path: &Path,
+    source: &'a str,
+    source_type: SourceType,
+) -> Result<String> {
+    let mut program = parse_javascript(allocator, path, source, source_type)?;
     let minifier_return = Minifier::new(MinifierOptions {
         compress: Some(CompressOptions {
             drop_console: true,
@@ -82,12 +102,21 @@ fn minify_javascript_with_source_type<'a>(
     Ok(output)
 }
 
-fn harden_text_artifacts(output_dir: &Path) -> Result<()> {
-    for path in collect_files(output_dir)? {
+fn harden_text_artifacts(project: &Project, preserve_view_js: bool) -> Result<()> {
+    // Logic runs in the native JS runtime and may have a custom entry path.
+    let logic_path = project
+        .logic_entry
+        .as_ref()
+        .map(|entry| project.output_dir.join(entry));
+    for path in collect_files(&project.output_dir)? {
         match extension(&path).as_deref() {
             Some("js") | Some("mjs") | Some("cjs") => {
                 let source = fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read {}", path.display()))?;
+                if preserve_view_js && logic_path.as_ref() != Some(&path) {
+                    check_javascript_source(&path, &source)?;
+                    continue;
+                }
                 let hardened = harden_javascript_source(&path, &source)?;
                 fs::write(&path, hardened)
                     .with_context(|| format!("Failed to write {}", path.display()))?;
@@ -95,14 +124,14 @@ fn harden_text_artifacts(output_dir: &Path) -> Result<()> {
             Some("html") | Some("htm") => {
                 let source = fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read {}", path.display()))?;
-                fs::write(&path, minify_html(&source))
+                fs::write(&path, minify_html(&source, preserve_view_js))
                     .with_context(|| format!("Failed to write {}", path.display()))?;
             }
             Some("ts") | Some("tsx") | Some("vue") => {
                 let source = fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read {}", path.display()))?;
                 if is_html_document(&source) {
-                    fs::write(&path, minify_html(&source))
+                    fs::write(&path, minify_html(&source, preserve_view_js))
                         .with_context(|| format!("Failed to write {}", path.display()))?;
                 }
             }
@@ -290,7 +319,7 @@ fn relative_path(root: &Path, path: &Path) -> String {
 /// joins two ASI-separated statements into one and silently kills the whole
 /// element. Hand each body to the minifier for its own language, and never let
 /// the markup scanner see it.
-fn minify_html(source: &str) -> String {
+fn minify_html(source: &str, preserve_js: bool) -> String {
     let mut out = String::with_capacity(source.len());
     let mut rest = source;
     while let Some((element, open_at)) = next_embedded_element(rest) {
@@ -303,7 +332,11 @@ fn minify_html(source: &str) -> String {
         };
         let close_at = body_at + close_at;
         out.push_str(&minify_markup(&rest[..body_at]));
-        out.push_str(&minify_embedded_body(element, &rest[body_at..close_at]));
+        out.push_str(&minify_embedded_body(
+            element,
+            &rest[body_at..close_at],
+            preserve_js,
+        ));
         rest = &rest[close_at..];
     }
     out.push_str(&minify_markup(rest));
@@ -327,12 +360,13 @@ fn find_ascii_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {
 
 /// A body the minifier for that language could not parse is kept verbatim:
 /// shrinking a page is never worth breaking it.
-fn minify_embedded_body(element: &str, body: &str) -> String {
+fn minify_embedded_body(element: &str, body: &str, preserve_js: bool) -> String {
     if body.trim().is_empty() {
         return body.to_string();
     }
     match element {
         "style" => minify_css(body),
+        _ if preserve_js => body.to_string(),
         _ => harden_logic_bundle(body).unwrap_or_else(|_| body.to_string()),
     }
 }
@@ -485,6 +519,131 @@ mod tests {
         assert!(!output.contains('\n'));
     }
 
+    // The spread helper's lazy array initialization was recompressed to ||=,
+    // preventing the entire View bundle from parsing in older WebViews.
+    const LEGACY_VIEW: &str = r#"
+        window.copy = function (to, from) {
+            for (var i = 0, length = from.length, copy; i < length; i++) {
+                if (copy || !(i in from)) {
+                    copy || (copy = Array.prototype.slice.call(from, 0, i));
+                    copy[i] = from[i];
+                }
+            }
+            console.log("copied");
+            debugger;
+            return to.concat(copy || Array.prototype.slice.call(from));
+        };
+        window.update = function (item, value) {
+            item.a || (item.a = value);
+            item.b && (item.b = value);
+            item.c != null ? item.c : (item.c = value);
+        };
+        window.read = function (item) { return item == null ? void 0 : item.value; };
+        window.fallback = function (item, value) { return item == null ? value : item; };
+        window.power = function (a, b) { return Math.pow(a, b); };
+        window.label = function (value) { return 'value:'.concat(value); };
+        window.globals = { Map: Map };
+        window.attempt = function () { try { window.run(); } catch (error) { window.recover(); } };
+    "#;
+
+    fn assert_legacy_view(source: &str) {
+        for syntax in ["||=", "&&=", "??", "?.", "**", "`", "catch{"] {
+            assert!(!source.contains(syntax), "introduced {syntax}: {source}");
+        }
+        assert!(source.contains("window.copy"), "{source}");
+    }
+
+    #[test]
+    fn preserving_view_javascript_still_rejects_parse_errors() {
+        let error = check_javascript_source(Path::new("view.js"), "function {")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("Failed to parse release JavaScript"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn release_preserves_view_targets_and_inline_scripts_but_not_native_logic() {
+        for config in [
+            "export default { view: { target: 'es5' } };",
+            "export default { view: { plugins: [] } };",
+            "export default { view: { target: 'es2020', plugins: [] } };",
+            "const view = { plugins: [] }; const config = { view }; export default { ...config };",
+        ] {
+            assert_release_view_target(config);
+        }
+    }
+
+    fn assert_release_view_target(config: &str) {
+        let temp = tempdir().unwrap();
+        let mut project = project(temp.path());
+        project.logic_entry = Some("native/app.js".to_string());
+        fs::write(project.root.join("lxapp.config.ts"), config).unwrap();
+        let scripts = [
+            "pages/home/view.js",
+            "static/helper.js",
+            "pages/widget/logic.js",
+        ];
+        for rel in scripts.iter().copied().chain(["native/app.js"]) {
+            let path = project.output_dir.join(rel);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, LEGACY_VIEW).unwrap();
+        }
+        for rel in [
+            "pages/home/index.html",
+            "pages/home/index.tsx",
+            "pages/home/index.vue",
+        ] {
+            fs::write(
+                project.output_dir.join(rel),
+                format!("<!doctype html><html><body><script>{LEGACY_VIEW}</script></body></html>"),
+            )
+            .unwrap();
+        }
+
+        harden_release_output(&project).unwrap();
+
+        for rel in scripts.iter().copied().chain([
+            "pages/home/index.html",
+            "pages/home/index.tsx",
+            "pages/home/index.vue",
+        ]) {
+            assert_legacy_view(&fs::read_to_string(project.output_dir.join(rel)).unwrap());
+        }
+        for rel in scripts {
+            assert_eq!(
+                fs::read_to_string(project.output_dir.join(rel)).unwrap(),
+                LEGACY_VIEW
+            );
+        }
+        let logic = fs::read_to_string(project.output_dir.join("native/app.js")).unwrap();
+        assert!(
+            logic.contains("||="),
+            "native Logic must keep its own target: {logic}"
+        );
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(project.output_dir.join(INTEGRITY_MANIFEST)).unwrap())
+                .unwrap();
+        for file in manifest["files"].as_array().unwrap() {
+            let bytes = fs::read(project.output_dir.join(file["path"].as_str().unwrap())).unwrap();
+            assert_eq!(file["sha256"].as_str().unwrap(), sha256_hex(&bytes));
+            assert_eq!(file["size"].as_u64().unwrap(), bytes.len() as u64);
+        }
+    }
+
+    #[test]
+    fn release_without_view_target_keeps_existing_compression() {
+        let temp = tempdir().unwrap();
+        let project = project(temp.path());
+        fs::create_dir_all(&project.output_dir).unwrap();
+        fs::write(project.output_dir.join("view.js"), LEGACY_VIEW).unwrap();
+        harden_release_output(&project).unwrap();
+        let output = fs::read_to_string(project.output_dir.join("view.js")).unwrap();
+        assert!(output.contains("||="), "{output}");
+    }
+
     #[test]
     fn css_minify_preserves_semantic_whitespace() {
         let out = minify_css(
@@ -505,6 +664,7 @@ mod tests {
         let out = minify_html(
             "<meta name=\"viewport\" content=\"width=device-width\">\n\
              <style>\n  .a .b { color: red; }\n  .a :hover { width: calc(1em + 2px); }\n</style>",
+            false,
         );
         assert!(out.contains("name=\"viewport\" content="), "{out}");
         assert!(out.contains(".a .b{"), "{out}");
@@ -520,6 +680,7 @@ mod tests {
     fn html_minify_leaves_an_inline_script_parseable() {
         let out = minify_html(
             "<div>x</div>\n<script>\n  (function () {\n    var s = String(1)\n      .replace(/\"/g, '&quot;')\n      .replace(/</g, '&lt;');\n    window.marker = s\n    window.other = 2\n  })();\n</script>",
+            false,
         );
         let body = out
             .split_once("<script>")
@@ -534,7 +695,7 @@ mod tests {
     #[test]
     fn html_minify_keeps_an_unparseable_script_verbatim() {
         let source = "<script>\n  this is not javascript(\n</script>";
-        assert_eq!(minify_html(source), source);
+        assert_eq!(minify_html(source, false), source);
     }
 
     #[test]

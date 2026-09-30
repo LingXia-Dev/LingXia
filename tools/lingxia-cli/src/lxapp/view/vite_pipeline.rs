@@ -219,9 +219,11 @@ fn build_html_pages(
     install_duration: Option<Duration>,
     progress: Option<ViewProgress>,
 ) -> Result<ViewBuildReport> {
-    let mode = match super::vite_html::html_view_target(project)?.as_deref() {
-        Some(target) if target.eq_ignore_ascii_case("es5") => HtmlBundleMode::LegacyEs5,
-        _ => HtmlBundleMode::Modern,
+    let view = super::vite_html::read_view_build_config(&project.root)?;
+    let mode = if view.es5() && !view.plugins {
+        HtmlBundleMode::LegacyEs5
+    } else {
+        HtmlBundleMode::Modern
     };
     if matches!(mode, HtmlBundleMode::LegacyEs5) {
         return build_html_pages_legacy(project, options, install_duration, progress);
@@ -417,8 +419,6 @@ fn finalize_html_legacy_page(
         return Err(anyhow!("Missing Vite dist output: {}", dist_dir.display()));
     }
 
-    copy_shared_vite_assets(project, &dist_dir)?;
-
     let page_output_dir = project.output_dir.join(
         Path::new(&page.page_path)
             .parent()
@@ -429,6 +429,7 @@ fn finalize_html_legacy_page(
     let page_dist_dir = dist_dir.join("pages").join(&page.page_id);
     let view_js = page_dist_dir.join(format!("{}.js", page.page_id));
     super::vite_tooling::transpile_file_to_es5(project.root.as_path(), &view_js)?;
+    copy_shared_vite_assets(project, &dist_dir)?;
     fs::copy(&view_js, page_output_dir.join("view.js"))
         .with_context(|| format!("Failed to copy {}", view_js.display()))?;
 
@@ -475,10 +476,26 @@ fn finalize_component_pages(
         return Err(anyhow!("Missing Vite dist output: {}", dist_dir.display()));
     }
 
-    copy_shared_vite_assets(project, dist_dir)?;
+    let plugins = super::vite_html::read_view_build_config(&project.root)?.plugins;
+    if plugins {
+        // Plugins may emit resources under pages/ or at the output root.
+        super::vite_assets::copy_dir_recursive(dist_dir, &project.output_dir)?;
+        for page in pages {
+            // These intermediate entries are replaced by the public page routes.
+            fs::remove_file(
+                project
+                    .output_dir
+                    .join("pages")
+                    .join(&page.page_id)
+                    .join("index.html"),
+            )?;
+        }
+    } else {
+        copy_shared_vite_assets(project, dist_dir)?;
+    }
 
     for page in pages {
-        finalize_component_page(project, dist_dir, page)?;
+        finalize_component_page(project, dist_dir, page, plugins)?;
     }
     Ok(())
 }
@@ -487,6 +504,7 @@ fn finalize_component_page(
     project: &Project,
     dist_dir: &Path,
     page: &ComponentPageBuild,
+    plugins: bool,
 ) -> Result<()> {
     let page_output_dir = project.output_dir.join(
         Path::new(&page.page_path)
@@ -533,8 +551,8 @@ fn finalize_component_page(
     let mut html = fs::read_to_string(&html_path)
         .with_context(|| format!("Failed to read {}", html_path.display()))?;
     html = super::vite_html::rewrite_entry_script_path(html, &page.page_id);
-    // Modern pipeline targets Chromium >= 51 (Android 7+); no polyfills.
-    html = super::vite_html::inject_runtime_script(html, false);
+    // Plugin polyfills can run after the bridge; supply its API shims first.
+    html = super::vite_html::inject_runtime_script(html, plugins);
     html = super::vite_html::inject_bridge_metadata(html, &page.actions);
     let page_file = page_output_dir.join(format!("{base}{}", page.output_extension));
     fs::write(&page_file, html)
@@ -545,16 +563,11 @@ fn finalize_component_page(
 fn copy_shared_vite_assets(project: &Project, dist_dir: &Path) -> Result<()> {
     for entry in fs::read_dir(dist_dir)? {
         let entry = entry?;
-        let entry_path = entry.path();
-        let file_type = entry.file_type()?;
-        if !file_type.is_dir() {
-            continue;
-        }
-        if entry.file_name() == "pages" {
+        if !entry.file_type()?.is_dir() || entry.file_name() == "pages" {
             continue;
         }
         super::vite_assets::copy_dir_recursive(
-            &entry_path,
+            &entry.path(),
             &project.output_dir.join(entry.file_name()),
         )?;
     }
@@ -591,7 +604,7 @@ fn write_vite_config_with_target(
     let lxapp_config_path = project.root.join("lxapp.config.ts");
     let maybe_config_import = if lxapp_config_path.exists() {
         format!(
-            "let projectConfig = {{}};\ntry {{\n  const mod = await import({});\n  projectConfig = mod.default ?? mod ?? {{}};\n}} catch {{\n  projectConfig = {{}};\n}}\n",
+            "const mod = await import({});\nconst projectConfig = mod.default ?? mod;\n",
             serde_json::to_string(&lxapp_config_path.to_string_lossy())
                 .unwrap_or_else(|_| "\"\"".to_string())
         )
@@ -619,6 +632,10 @@ fn write_vite_config_with_target(
         )
         .replace("__INPUT_ENTRIES_JSON__", &input_json)
         .replace("__MAYBE_CONFIG_IMPORT__", &maybe_config_import)
+        .replace(
+            "__VIEW_CONFIG_JSON__",
+            &serde_json::to_string(&super::vite_html::read_view_build_config(&project.root)?)?,
+        )
         .replace(
             "__BUILD_TARGET_JSON__",
             &serde_json::to_string(build_target).unwrap_or_else(|_| "\"esnext\"".to_string()),
@@ -741,18 +758,28 @@ mod tests {
 
     #[test]
     fn component_finalize_preserves_canonical_vite_entry_for_lazy_chunks() {
-        let temp = tempdir().unwrap();
-        let root = temp.path().join("project");
-        let vite_dist = temp.path().join("vite-dist");
-        let page_id = "pages_home_index";
-        let vite_page = vite_dist.join("pages").join(page_id);
-        fs::create_dir_all(&vite_page).unwrap();
-        fs::write(
-            vite_page.join(format!("{page_id}.js")),
-            "export const shared = true;",
-        )
-        .unwrap();
-        fs::write(
+        for (framework, extension) in [
+            (ProjectFramework::React, ".tsx"),
+            (ProjectFramework::Vue, ".vue"),
+        ] {
+            let temp = tempdir().unwrap();
+            let root = temp.path().join("project");
+            let vite_dist = temp.path().join("vite-dist");
+            let page_id = "pages_home_index";
+            let vite_page = vite_dist.join("pages").join(page_id);
+            fs::create_dir_all(&vite_page).unwrap();
+            fs::create_dir_all(&root).unwrap();
+            fs::write(
+                root.join("lxapp.config.ts"),
+                "export default { view: { target: 'es5' } };",
+            )
+            .unwrap();
+            fs::write(
+                vite_page.join(format!("{page_id}.js")),
+                "export const shared = true;",
+            )
+            .unwrap();
+            fs::write(
             vite_page.join("index.html"),
             format!(
                 "<div id=\"root\"></div><script type=\"module\" src=\"/pages/{page_id}/{page_id}.js\"></script>"
@@ -760,42 +787,139 @@ mod tests {
         )
         .unwrap();
 
+            let project = Project {
+                root: root.clone(),
+                kind: ProjectKind::LxApp,
+                framework,
+                output_dir: root.join("dist"),
+                pages: vec![format!("pages/home/index{extension}")],
+                page_names: Vec::new(),
+                logic_entry: None,
+                plugin_id: None,
+                package_name: Some("test-app".to_string()),
+                version: "0.0.1".to_string(),
+            };
+            let page = ComponentPageBuild {
+                page_path: format!("pages/home/index{extension}"),
+                page_id: page_id.to_string(),
+                output_extension: extension,
+                actions: Vec::new(),
+            };
+
+            finalize_component_pages(&project, &vite_dist, &[page]).unwrap();
+
+            let built = fs::read_to_string(
+                project
+                    .output_dir
+                    .join(format!("pages/home/index{extension}")),
+            )
+            .unwrap();
+            assert!(!built.contains("polyfills.es5.js"));
+            assert!(
+                !project
+                    .output_dir
+                    .join("pages")
+                    .join(page_id)
+                    .join("index.html")
+                    .exists()
+            );
+            assert!(
+                built.contains("data-lx-chrome=\"no-scrollbar\""),
+                "React/Vue finalize must stamp CSS scrollbar hiding: {built}"
+            );
+            assert!(built.contains("scrollbar-width:none!important"), "{built}");
+
+            assert!(project.output_dir.join("pages/home/view.js").is_file());
+            assert!(
+                project
+                    .output_dir
+                    .join("pages")
+                    .join(page_id)
+                    .join(format!("{page_id}.js"))
+                    .is_file()
+            );
+        }
+    }
+
+    #[test]
+    fn finalize_preserves_legacy_loader_polyfills_and_plugin_assets() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("project");
+        let vite_dist = temp.path().join("vite-dist");
+        let page_id = "pages_home_index";
+        let html_dir = vite_dist.join("pages").join(page_id);
+        fs::create_dir_all(&html_dir).unwrap();
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("lxapp.config.ts"),
+            "export default { view: { plugins: [] } }",
+        )
+        .unwrap();
+        let files = [
+            (
+                "pages/pages_home_index-legacy/pages_home_index.js",
+                "System.register([], function () {});",
+            ),
+            ("pages/polyfills-legacy/polyfills.js", "window.System = {};"),
+            (
+                "assets/lazy-legacy.js",
+                "System.register([], function () {});",
+            ),
+            ("plugin-manifest.json", "{}"),
+        ];
+        for (relative, content) in files {
+            let file = vite_dist.join(relative);
+            fs::create_dir_all(file.parent().unwrap()).unwrap();
+            fs::write(file, content).unwrap();
+        }
+        let loader = r#"<script id="vite-legacy-polyfill" src="/pages/polyfills-legacy/polyfills.js"></script><script id="vite-legacy-entry" data-src="/pages/pages_home_index-legacy/pages_home_index.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>"#;
+        fs::write(
+            html_dir.join("index.html"),
+            format!("<html><head></head><body>{loader}</body></html>"),
+        )
+        .unwrap();
         let project = Project {
             root: root.clone(),
             kind: ProjectKind::LxApp,
-            framework: ProjectFramework::React,
+            framework: ProjectFramework::Html,
             output_dir: root.join("dist"),
-            pages: vec!["pages/home/index.tsx".to_string()],
+            pages: vec!["pages/home/index.html".into()],
             page_names: Vec::new(),
             logic_entry: None,
             plugin_id: None,
-            package_name: Some("test-app".to_string()),
-            version: "0.0.1".to_string(),
+            package_name: Some("test-app".into()),
+            version: "0.0.1".into(),
         };
-        let page = ComponentPageBuild {
-            page_path: "pages/home/index.tsx".to_string(),
-            page_id: page_id.to_string(),
-            output_extension: ".tsx",
-            actions: Vec::new(),
-        };
-
-        finalize_component_page(&project, &vite_dist, &page).unwrap();
-
-        let built = fs::read_to_string(project.output_dir.join("pages/home/index.tsx")).unwrap();
+        finalize_component_pages(
+            &project,
+            &vite_dist,
+            &[ComponentPageBuild {
+                page_path: "pages/home/index.html".into(),
+                page_id: page_id.into(),
+                output_extension: ".html",
+                actions: Vec::new(),
+            }],
+        )
+        .unwrap();
+        for (relative, content) in files {
+            assert_eq!(
+                fs::read_to_string(project.output_dir.join(relative)).unwrap(),
+                content
+            );
+        }
+        let html = fs::read_to_string(project.output_dir.join("pages/home/index.html")).unwrap();
+        assert!(html.contains(loader));
+        assert!(html.find("polyfills.es5.js").unwrap() < html.find("bridge-runtime.js").unwrap());
+        assert!(html.find("bridge-runtime.js").unwrap() < html.find("vite-legacy-entry").unwrap());
+        assert!(html.contains("data-lingxia-bridge-runtime=\"v3-bootstrap\""));
+        assert!(!project.output_dir.join("pages/home/view.js").exists());
         assert!(
-            built.contains("data-lx-chrome=\"no-scrollbar\""),
-            "React/Vue finalize must stamp CSS scrollbar hiding: {built}"
-        );
-        assert!(built.contains("scrollbar-width:none!important"), "{built}");
-
-        assert!(project.output_dir.join("pages/home/view.js").is_file());
-        assert!(
-            project
+            !project
                 .output_dir
                 .join("pages")
                 .join(page_id)
-                .join(format!("{page_id}.js"))
-                .is_file()
+                .join("index.html")
+                .exists()
         );
     }
 }

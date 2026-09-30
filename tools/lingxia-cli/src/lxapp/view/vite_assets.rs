@@ -289,7 +289,10 @@ fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
         let Statement::ExportDefaultDeclaration(export_default) = statement else {
             continue;
         };
-        object_expr = extract_config_object_expression(export_default.declaration.to_expression());
+        object_expr = export_default
+            .declaration
+            .as_expression()
+            .and_then(extract_config_object_expression);
         if object_expr.is_some() {
             break;
         }
@@ -365,7 +368,7 @@ fn extract_config_object_expression<'a>(
         Expression::CallExpression(call) => call
             .arguments
             .first()
-            .map(|arg| arg.to_expression())
+            .and_then(|arg| arg.as_expression())
             .and_then(extract_config_object_expression),
         _ => None,
     }

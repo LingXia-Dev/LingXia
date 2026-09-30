@@ -85,6 +85,16 @@ const manualChunks = (rawId) => {
 __MAYBE_CONFIG_IMPORT__
 
 const viewConfig = projectConfig.view ?? {};
+const hasViewPlugins = Object.hasOwn(viewConfig, 'plugins');
+const expectedViewConfig = __VIEW_CONFIG_JSON__;
+// Rust selects the HTML pipeline before Vite evaluates this config.
+if ((hasViewPlugins || expectedViewConfig.plugins) &&
+    ((viewConfig.target ?? null) !== expectedViewConfig.target || hasViewPlugins !== expectedViewConfig.plugins)) {
+  throw new Error('lxapp.config.ts view.target and view.plugins must be statically resolvable when using View plugins');
+}
+if (hasViewPlugins && !Array.isArray(viewConfig.plugins)) {
+  throw new Error('lxapp.config.ts view.plugins must be an array of Vite plugins');
+}
 const css = typeof viewConfig.cssConfig === 'function' ? await viewConfig.cssConfig(buildDir) : undefined;
 const defaultBuildTarget = __BUILD_TARGET_JSON__;
 // Rolldown only supports ES2015+. For `target: 'es5'` users, this template
@@ -169,11 +179,12 @@ export default defineConfig({
   root: buildDir,
   base: '/',
   logLevel: 'warn',
-  plugins: [lingxiaWorkspaceResolver, lingxiaMocksGuard, ...frameworkPlugins],
+  plugins: [lingxiaWorkspaceResolver, lingxiaMocksGuard, ...frameworkPlugins, ...(viewConfig.plugins ?? [])],
   css,
   resolve: { alias, dedupe: ['react', 'react-dom', 'vue'] },
   build: {
     target: buildTarget,
+    ...(viewConfig.cssTarget ? { cssTarget: viewConfig.cssTarget } : {}),
     outDir: path.join(buildDir, 'dist'),
     emptyOutDir: true,
     sourcemap: __SOURCEMAP__,
