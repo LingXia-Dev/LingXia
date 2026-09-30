@@ -6,6 +6,17 @@ import { noteCapsuleFrame } from './capsuleGeometry';
 
 // Capsule button constants
 const CAPSULE_BUTTON_TOTAL_WIDTH = 84.5;
+// The home glyph is an outline (Android draws the same paths as strokes).
+const HOME_ICON_HOUSE = 'M4 12L14 4L24 12V23C24 23.5304 23.7893 24.0391 23.4142 24.4142C23.0391 24.7893 22.5304 25 22 25H6C5.46957 25 4.96086 24.7893 4.58579 24.4142C4.21071 24.0391 4 23.5304 4 23V12Z';
+const HOME_ICON_DOOR = 'M10 25V15H18V25';
+const HOME_ICON_VIEWBOX = 28;
+const HOME_ICON_SIZE = 20;
+const HOME_ICON_STROKE = 2;
+
+/** Path commands are in px; scale the 28-unit glyph to the drawn size. */
+function scaleSvgPath(commands: string, factor: number): string {
+  return commands.replace(/-?\d+(\.\d+)?/g, (value: string) => (parseFloat(value) * factor).toFixed(2));
+}
 const CAPSULE_BUTTON_HEIGHT = 32;
 const CAPSULE_BUTTON_BUTTON_WIDTH = 38;
 const CAPSULE_BUTTON_EDGE_PADDING = 4;
@@ -54,11 +65,22 @@ export struct NavigationButton {
 
   build() {
     Column() {
-      Image($rawfile(this.isBackButton ? 'icons/icon_back.svg' : 'icons/icon_home.svg'))
-        .width(20)
-        .height(20)
-        .objectFit(ImageFit.Contain)
-        .fillColor(argbColor(this.color))
+      if (this.isBackButton) {
+        Image($rawfile('icons/icon_back.svg'))
+          .width(20)
+          .height(20)
+          .objectFit(ImageFit.Contain)
+          .fillColor(argbColor(this.color))
+      } else {
+        // fillColor tints by filling, which turns an outline into a solid
+        // blob; stroke the outline instead.
+        Stack() {
+          this.homeIconPath(HOME_ICON_HOUSE)
+          this.homeIconPath(HOME_ICON_DOOR)
+        }
+        .width(HOME_ICON_SIZE)
+        .height(HOME_ICON_SIZE)
+      }
     }
     .width('100%')
     .height('100%')
@@ -86,6 +108,19 @@ export struct NavigationButton {
       }
     })
     .hitTestBehavior(HitTestMode.Block)
+  }
+
+  @Builder
+  homeIconPath(commands: string) {
+    Path()
+      .commands(scaleSvgPath(commands, this.getUIContext().vp2px(HOME_ICON_SIZE) / HOME_ICON_VIEWBOX))
+      .width(HOME_ICON_SIZE)
+      .height(HOME_ICON_SIZE)
+      .fill(Color.Transparent)
+      .stroke(argbColor(this.color))
+      .strokeWidth(HOME_ICON_STROKE * HOME_ICON_SIZE / HOME_ICON_VIEWBOX)
+      .strokeLineCap(LineCapStyle.Round)
+      .strokeLineJoin(LineJoinStyle.Round)
   }
 }
 
