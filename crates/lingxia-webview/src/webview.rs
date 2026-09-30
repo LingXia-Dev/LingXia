@@ -3019,6 +3019,17 @@ impl WebTag {
         }
     }
 
+    /// The page-instance segment of a page tag (`appid:route#instance#session`);
+    /// `None` for a tag that names no page instance.
+    pub fn page_instance_id(&self) -> Option<&str> {
+        let (_, route_with_suffix) = self.0.split_once(':')?;
+        let mut segments = route_with_suffix.rsplitn(3, '#');
+        let _session = segments.next()?;
+        let instance = segments.next()?;
+        segments.next()?;
+        (!instance.is_empty()).then_some(instance)
+    }
+
     /// Extract session id (if present) from the webtag
     pub fn session_id(&self) -> Option<u64> {
         self.0
@@ -3433,6 +3444,21 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex, mpsc};
     use std::thread;
+
+    #[test]
+    fn page_instance_id_is_the_segment_between_route_and_session() {
+        let page = WebTag::from("app:pages/home/index#pi_7#3");
+        assert_eq!(page.page_instance_id(), Some("pi_7"));
+        assert_eq!(page.session_id(), Some(3));
+        assert_eq!(
+            WebTag::new("app", "pages/home/index", Some(3)).page_instance_id(),
+            None
+        );
+        assert_eq!(
+            WebTag::new("app", "pages/home/index", None).page_instance_id(),
+            None
+        );
+    }
 
     fn message(body: &str, native_view: crate::NativeWebViewId) -> IncomingWebMessage {
         IncomingWebMessage::new(
@@ -3978,5 +4004,31 @@ mod tests {
         );
         drop(sessions);
         assert!(remove_session_signals_if_matches(&webtag, &current));
+    }
+
+    #[test]
+    fn failed_android_create_resolves_the_waiting_session() {
+        let webtag = WebTag::from("test:pages/create-failed#9174");
+        let signals = WebViewSessionSignals::new();
+        let session = signals.subscribe(webtag.clone());
+        replace_session_signals(&webtag, signals.clone());
+        let (options, _) = WebViewCreateOptions::strict().normalize().unwrap();
+        let request_id = crate::android_create::register(
+            WebViewCreateSender::new(webtag.clone(), signals.clone()),
+            options,
+        );
+
+        let waiter = thread::spawn(move || block_on_scheme_future(session.wait_ready()));
+        assert!(crate::android_create::fail(
+            request_id,
+            "profile store unavailable".to_string()
+        ));
+
+        let error = waiter.join().unwrap().err().unwrap();
+        assert!(error.to_string().contains("profile store unavailable"));
+        // The session is no longer current, and a second answer finds nothing.
+        assert!(!remove_session_signals_if_matches(&webtag, &signals));
+        assert!(!crate::android_create::fail(request_id, "late".to_string()));
+        assert!(crate::android_create::take(request_id).is_none());
     }
 }
