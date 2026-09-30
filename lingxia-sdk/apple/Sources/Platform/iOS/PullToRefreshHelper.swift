@@ -13,7 +13,8 @@ class PullToRefreshHelper: NSObject {
     private var isRefreshing = false
     private var isEnabled = true
     private var onRefresh: (() -> Void)?
-    private var originalContentInsetTop: CGFloat = 0
+    // What startRefreshing added to contentInset.top and has not yet taken back.
+    private var appliedInsetTop: CGFloat = 0
     
     private let triggerDistance: CGFloat = 80.0
     private let maxPullDistance: CGFloat = 150.0
@@ -55,7 +56,7 @@ class PullToRefreshHelper: NSObject {
         if enabled {
             webView?.scrollView.alwaysBounceVertical = true
         } else {
-            isRefreshing = false
+            endRefreshing()
             resetState()
         }
     }
@@ -103,35 +104,45 @@ class PullToRefreshHelper: NSObject {
         guard !isRefreshing, isEnabled, let webView = webView, let indicator = refreshIndicator else { return }
         
         isRefreshing = true
-        originalContentInsetTop = webView.scrollView.contentInset.top
-        
+
         indicator.isHidden = false
         indicator.alpha = 1.0
         indicator.startLoading()
-        
-        let refreshPosition = triggerDistance * 0.8
+
+        let holdInset = triggerDistance * 0.8
+        appliedInsetTop = holdInset
+        let restingInset = webView.scrollView.contentInset.top + holdInset
         UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseOut]) {
-            webView.scrollView.contentInset.top = self.originalContentInsetTop + refreshPosition
-            webView.scrollView.contentOffset.y = -(self.originalContentInsetTop + refreshPosition)
+            webView.scrollView.contentInset.top = restingInset
+            webView.scrollView.contentOffset.y = -restingInset
         }
-        
+
         onRefresh?()
         os_log("Pull-to-refresh started", log: Self.log, type: .info)
     }
-    
+
     @MainActor
     func endRefreshing() {
-        guard isRefreshing, let webView = webView else { return }
-        
+        guard isRefreshing else { return }
+
         isRefreshing = false
         refreshIndicator?.stopLoading()
-        
-        UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseOut]) {
-            webView.scrollView.contentInset.top = self.originalContentInsetTop
-        } completion: { [weak self] _ in
-            self?.resetState()
+
+        let inset = takeAppliedInset()
+        if let webView = webView {
+            UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseOut]) {
+                webView.scrollView.contentInset.top -= inset
+            } completion: { [weak self] _ in
+                self?.resetState()
+            }
         }
         os_log("Pull-to-refresh ended", log: Self.log, type: .info)
+    }
+
+    /// The inset still owed back to the scroll view; zero after this, so it is paid once.
+    private func takeAppliedInset() -> CGFloat {
+        defer { appliedInsetTop = 0 }
+        return appliedInsetTop
     }
     
     @MainActor
@@ -142,16 +153,15 @@ class PullToRefreshHelper: NSObject {
     }
     
     deinit {
-        let wasRefreshing = isRefreshing
-        let restoreTo = originalContentInsetTop
+        let owedInset = appliedInsetTop
         let targetWebView = webView
         let indicator = refreshIndicator
-        
+
         targetWebView?.scrollView.removeObserver(self, forKeyPath: "contentOffset")
-        
+
         let cleanup = {
-            if wasRefreshing, let webView = targetWebView {
-                webView.scrollView.contentInset.top = restoreTo
+            if owedInset != 0, let webView = targetWebView {
+                webView.scrollView.contentInset.top -= owedInset
             }
             indicator?.stopLoading()
             indicator?.removeFromSuperview()
