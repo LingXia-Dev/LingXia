@@ -38,13 +38,11 @@ impl WorkerTermination {
     }
 
     pub(crate) async fn wait(mut self) -> Result<(), crate::LxAppError> {
-        loop {
-            if let Some(result) = self.result.borrow_and_update().clone() {
-                return result;
-            }
-            self.result.changed().await.map_err(|_| {
-                crate::LxAppError::Runtime("Worker termination completion channel closed".into())
-            })?;
+        match self.result.wait_for(Option::is_some).await {
+            Ok(result) => result.clone().unwrap_or(Ok(())),
+            Err(_) => Err(crate::LxAppError::Runtime(
+                "Worker termination completion channel closed".into(),
+            )),
         }
     }
 }

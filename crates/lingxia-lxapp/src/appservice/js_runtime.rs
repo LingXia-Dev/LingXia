@@ -1346,6 +1346,7 @@ pub(crate) fn terminate_app_svc(
     sender: &mpsc::Sender<ServiceMessage>,
     instance_assignments: &Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
     free_workers: &Arc<Mutex<VecDeque<usize>>>,
+    ack_timeout: Duration,
 ) -> Result<WorkerTermination, LxAppError> {
     let appid = lxapp_arc.appid.clone();
     let key = lxapp_arc.as_ref() as *const _ as usize;
@@ -1396,7 +1397,7 @@ pub(crate) fn terminate_app_svc(
         done_tx,
         assignments,
         free_workers,
-        Duration::from_secs(3),
+        ack_timeout,
     ));
 
     Ok(completion)

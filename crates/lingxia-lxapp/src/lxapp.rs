@@ -560,6 +560,16 @@ impl LxApps {
         release_type: Channel,
         session_class: AppSessionClass,
     ) -> Result<Arc<LxApp>, LxAppError> {
+        // A session retired by restart stays published while its worker is handed
+        // back; an open in that window gets a fresh session, never the dead one.
+        if self
+            .lxapps
+            .remove_if(&appid, |_, app| app.session.is_retired())
+            .is_some()
+        {
+            self.remove_from_stack(&appid);
+        }
+
         let has_pending_update = metadata::downloaded_get(&appid, release_type)
             .map(|opt| opt.is_some())
             .unwrap_or(false);
@@ -713,8 +723,8 @@ impl LxApps {
         release_type: Channel,
         from_session: u64,
     ) -> Result<Arc<LxApp>, LxAppError> {
-        let _admission = self.admission.enter(&appid)?;
-        let (old_app, session_class, termination) = self.with_session_transition(&appid, || {
+        let admission = self.admission.enter(&appid)?;
+        let (session_class, termination) = self.with_session_transition(&appid, || {
             let old_app = self
                 .lxapps
                 .get(&appid)
@@ -724,41 +734,35 @@ impl LxApps {
                     LxAppError::Runtime("Restart session is no longer current".into())
                 })?;
             let session_class = self.session_class_for(&appid);
-            let termination = {
-                let _open = old_app
-                    .presentation_open_lock
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner());
-                // A retained Arc must not revive the dying session while we await its worker.
-                old_app.session.retired.store(true, Ordering::SeqCst);
-                self.cancel_delayed_destroy(&appid);
-                old_app.shutdown_with_completion(true)
-            };
-            Ok::<_, LxAppError>((old_app, session_class, termination))
+            let _open = old_app
+                .presentation_open_lock
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            // A retained Arc must not revive the dying session while we await its worker.
+            old_app.session.retired.store(true, Ordering::SeqCst);
+            self.cancel_delayed_destroy(&appid);
+            // The restart state machine already ran the close handshake; skip a second hide.
+            let termination = old_app.shutdown_with_completion(true);
+            Ok::<_, LxAppError>((session_class, termination))
         })?;
 
         // UI close and a zero Logic context count can both precede worker release.
-        // Do not hold session/presentation locks while waiting for the actual handoff.
+        // Wait without the transition lock or the admission permit, so opens and
+        // a shutdown drain are not stalled behind a slow Logic.
+        drop(admission);
         let terminated = match termination {
             Ok(completion) => completion.wait().await,
             Err(error) => Err(error),
         };
+        if let Err(error) = terminated {
+            // A hung Logic is the usual reason to restart. Its worker stays
+            // quarantined; the replacement takes another one if the pool has it.
+            warn!("Restarting without the previous worker: {}", error).with_appid(appid.clone());
+        }
 
+        let _admission = self.admission.enter(&appid)?;
         self.with_session_transition(&appid, || {
-            if !self
-                .lxapps
-                .get(&appid)
-                .is_some_and(|current| Arc::ptr_eq(current.value(), &old_app))
-            {
-                return Err(LxAppError::Runtime(
-                    "Restart session was replaced or removed".into(),
-                ));
-            }
-            self.remove_from_stack(&appid);
-            self.lxapps.remove(&appid);
-            // A failed handoff must not leave a retired instance blocking later opens.
-            // The worker pool still quarantines any worker that has not acknowledged.
-            terminated?;
+            // Drops the retired session, or adopts whatever an open built meanwhile.
             self.ensure_lxapp_with_session_class(appid.clone(), release_type, session_class)
         })
     }

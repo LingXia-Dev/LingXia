@@ -12,7 +12,7 @@ struct AdmissionState {
 
 pub(super) struct Admission {
     state: Mutex<AdmissionState>,
-    active: watch::Sender<usize>,
+    pub(super) active: watch::Sender<usize>,
 }
 
 impl Default for Admission {
