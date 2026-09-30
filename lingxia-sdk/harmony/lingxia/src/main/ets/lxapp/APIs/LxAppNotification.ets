@@ -24,6 +24,9 @@ function numericId(id: string): number {
   return hash === 0 ? 1 : hash;
 }
 
+/** What this app cannot do on this device, as opposed to a call that failed. */
+class NotSupportedError extends Error {}
+
 function describe(error: Object): string {
   const err = error as BusinessError;
   return `${err.code ?? ''} ${err.message ?? String(error)}`.trim();
@@ -31,7 +34,8 @@ function describe(error: Object): string {
 
 /**
  * Every call completes through its callback id, after the system has answered:
- * a word on success, `error:<why>` otherwise.
+ * a word on success, `unsupported:<why>` for a capability this app lacks,
+ * `error:<why>` otherwise.
  */
 export class LxAppNotification {
   private static store(): preferences.Preferences | null {
@@ -49,6 +53,12 @@ export class LxAppNotification {
   private static fail(callbackId: string, why: string): void {
     LxLog.e(TAG, why);
     onCallback(callbackId, true, `error:${why}`);
+  }
+
+  /** A capability this app lacks on this device: callers get E_NOT_SUPPORTED, not a failure. */
+  private static unsupported(callbackId: string, why: string): void {
+    LxLog.w(TAG, why);
+    onCallback(callbackId, true, `unsupported:${why}`);
   }
 
   private static async currentPermission(): Promise<string> {
@@ -163,7 +173,7 @@ export class LxAppNotification {
         // 1700002 with a quota of zero: the system grants agent reminders per
         // app, and this one has none. Nothing else fires after we are suspended.
         if ((error as BusinessError).code === 1700002) {
-          throw new Error('scheduling needs the HarmonyOS agent-reminder privilege for this app');
+          throw new NotSupportedError('scheduling needs the HarmonyOS agent-reminder privilege for this app');
         }
         throw error as Error;
       }
@@ -217,7 +227,9 @@ export class LxAppNotification {
   ): void {
     LxAppNotification.post(id, title, body, String(activationToken ?? '').trim(), Number(deliverAtMs))
       .then((word: string) => LxAppNotification.done(callbackId, word))
-      .catch((error: Object) => LxAppNotification.fail(callbackId, `show: ${describe(error)}`));
+      .catch((error: Object) => error instanceof NotSupportedError
+        ? LxAppNotification.unsupported(callbackId, `show: ${(error as Error).message}`)
+        : LxAppNotification.fail(callbackId, `show: ${describe(error)}`));
   }
 
   /**

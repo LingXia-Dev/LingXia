@@ -814,8 +814,9 @@ pub(super) mod ffi {
     }
 }
 
-/// ArkTS answers through the callback once the system has: a word, or
-/// `error:<why>`. Returning before that would report work that never happened.
+/// ArkTS answers through the callback once the system has: a word,
+/// `unsupported:<why>`, or `error:<why>`. Returning before that would report
+/// work that never happened.
 fn notification_call(name: &'static str, args: &[&str]) -> Result<String, PlatformError> {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
     let word =
@@ -826,6 +827,9 @@ fn notification_call(name: &'static str, args: &[&str]) -> Result<String, Platfo
             lingxia_webview::platform::harmony::tsfn::call_arkts(name, &call)
                 .map_err(|e| PlatformError::Platform(format!("{name} failed: {e}")))
         }))?;
+    if let Some(why) = word.strip_prefix("unsupported:") {
+        return Err(PlatformError::NotSupported(why.to_string()));
+    }
     match word.strip_prefix("error:") {
         Some(why) => Err(PlatformError::Platform(why.to_string())),
         None => Ok(word),
