@@ -48,6 +48,8 @@ pub(crate) mod page_discard;
 mod page_instance_host;
 mod permissions;
 pub(crate) mod registry;
+#[cfg(all(test, feature = "js-appservice"))]
+mod restart_tests;
 mod runtime_bootstrap;
 mod runtime_ops;
 pub(crate) mod runtime_registry;
@@ -730,14 +732,17 @@ impl LxApps {
                 // A retained Arc must not revive the dying session while we await its worker.
                 old_app.session.retired.store(true, Ordering::SeqCst);
                 self.cancel_delayed_destroy(&appid);
-                old_app.shutdown_with_completion(true)?
+                old_app.shutdown_with_completion(true)
             };
             Ok::<_, LxAppError>((old_app, session_class, termination))
         })?;
 
         // UI close and a zero Logic context count can both precede worker release.
         // Do not hold session/presentation locks while waiting for the actual handoff.
-        termination.wait().await?;
+        let terminated = match termination {
+            Ok(completion) => completion.wait().await,
+            Err(error) => Err(error),
+        };
 
         self.with_session_transition(&appid, || {
             if !self
@@ -751,6 +756,9 @@ impl LxApps {
             }
             self.remove_from_stack(&appid);
             self.lxapps.remove(&appid);
+            // A failed handoff must not leave a retired instance blocking later opens.
+            // The worker pool still quarantines any worker that has not acknowledged.
+            terminated?;
             self.ensure_lxapp_with_session_class(appid.clone(), release_type, session_class)
         })
     }

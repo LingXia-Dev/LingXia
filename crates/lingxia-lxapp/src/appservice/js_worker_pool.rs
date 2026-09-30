@@ -45,6 +45,20 @@ fn tolerates_missing_worker(message: &ServiceMessage) -> bool {
 }
 
 impl LxAppWorkers {
+    /// Lets lifecycle tests control when the worker acknowledges queued messages.
+    #[cfg(test)]
+    pub(crate) fn manual_for_test() -> (Arc<Self>, mpsc::Receiver<ServiceMessage>) {
+        let (sender, receiver) = mpsc::channel();
+        (
+            Arc::new(Self {
+                sender,
+                instance_assignments: Arc::new(Mutex::new(HashMap::new())),
+                free_workers: Arc::new(Mutex::new(VecDeque::from([0]))),
+            }),
+            receiver,
+        )
+    }
+
     /// Initialize the LxApp executor system
     /// This is the main entry point for the entire LxApp system
     ///

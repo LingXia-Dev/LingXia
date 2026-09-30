@@ -1349,8 +1349,7 @@ pub(crate) fn terminate_app_svc(
 ) -> Result<WorkerTermination, LxAppError> {
     let appid = lxapp_arc.appid.clone();
     let key = lxapp_arc.as_ref() as *const _ as usize;
-    let (done_tx, completion) = WorkerTermination::pending();
-    let (worker_id, token, rx) = {
+    let (worker_id, token, rx, done_tx, completion) = {
         let mut assignments = instance_assignments.lock().unwrap();
         let Some(assignment) = assignments.get(&key).cloned() else {
             info!(
@@ -1374,6 +1373,7 @@ pub(crate) fn terminate_app_svc(
             worker_id,
             ack_tx: tx,
         })?;
+        let (done_tx, completion) = WorkerTermination::pending();
         assignments.insert(
             key,
             WorkerAssignment::Terminating {
@@ -1382,7 +1382,7 @@ pub(crate) fn terminate_app_svc(
                 completion: completion.clone(),
             },
         );
-        (worker_id, token, rx)
+        (worker_id, token, rx, done_tx, completion)
     };
 
     let assignments = instance_assignments.clone();
@@ -2029,81 +2029,6 @@ mod worker_assignment_tests {
             "late ACK must not revive a timed-out restart"
         );
         assert_eq!(free_workers.lock().unwrap().pop_front(), Some(3));
-    }
-
-    #[tokio::test]
-    async fn single_worker_restart_waits_for_release_and_joins_pending_termination() {
-        use std::future::Future;
-        let root = tempfile::tempdir().unwrap();
-        let platform = Arc::new(
-            lingxia_platform::Platform::new(
-                root.path().join("data").display().to_string(),
-                root.path().join("cache").display().to_string(),
-                "en-US".to_string(),
-            )
-            .unwrap(),
-        );
-        let workers = crate::appservice::LxAppWorkers::init(1);
-        let appid = format!("app.lingxia.worker-restart.{}", uuid::Uuid::new_v4());
-        crate::lxapp::register_synthetic_lxapp(appid.clone());
-        let make_app = || {
-            let app = Arc::new(
-                crate::LxApp::new_with_session_class_for_test(
-                    appid.clone(),
-                    platform.clone(),
-                    workers.clone(),
-                    crate::lxapp::AppSessionClass::StandardApp,
-                )
-                .unwrap(),
-            );
-            app.bind_arc();
-            app
-        };
-        let old = make_app();
-        let replacement = make_app();
-        let assignments = Arc::new(Mutex::new(HashMap::new()));
-        let free_workers = Arc::new(Mutex::new(VecDeque::from([0])));
-        let (sender, receiver) = std::sync::mpsc::channel();
-        super::create_app_svc(old.clone(), &sender, &assignments, &free_workers).unwrap();
-        assert!(matches!(
-            receiver.recv().unwrap(),
-            super::ServiceMessage::CreateAppSvc { .. }
-        ));
-
-        let completion =
-            super::terminate_app_svc(old.clone(), &sender, &assignments, &free_workers).unwrap();
-        let joined = super::terminate_app_svc(old, &sender, &assignments, &free_workers).unwrap();
-        let super::ServiceMessage::TerminateAppSvc { ack_tx, .. } = receiver.recv().unwrap() else {
-            panic!("expected termination request");
-        };
-        assert!(
-            receiver.try_recv().is_err(),
-            "repeated shutdown must join the same termination"
-        );
-        let wait = completion.wait();
-        tokio::pin!(wait);
-        std::future::poll_fn(|cx| {
-            assert!(wait.as_mut().poll(cx).is_pending());
-            std::task::Poll::Ready(())
-        })
-        .await;
-        assert!(
-            super::create_app_svc(replacement.clone(), &sender, &assignments, &free_workers)
-                .is_err()
-        );
-
-        ack_tx.send(()).unwrap();
-        tokio::time::timeout(Duration::from_secs(1), wait)
-            .await
-            .unwrap()
-            .unwrap();
-        joined.wait().await.unwrap();
-        super::create_app_svc(replacement, &sender, &assignments, &free_workers).unwrap();
-        assert!(matches!(
-            receiver.recv().unwrap(),
-            super::ServiceMessage::CreateAppSvc { .. }
-        ));
-        assert!(free_workers.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
