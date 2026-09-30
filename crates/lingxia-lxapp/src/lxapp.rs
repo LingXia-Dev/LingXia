@@ -108,7 +108,8 @@ pub use runtime_ops::{
 };
 pub(crate) use runtime_registry::get_lxapps_manager;
 pub use runtime_registry::{
-    PageWebView, await_page_webview, find_page_by_instance_id, get_platform, try_get,
+    PageWebView, await_page_webview, await_page_webview_then, find_page_by_instance_id,
+    get_platform, try_get,
 };
 pub use surface::{
     HostMainSurfaceRegistration, HostSurfaceMenuExecution, LxAppRuntimeSurfaceInfo,

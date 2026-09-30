@@ -398,6 +398,14 @@ pub fn install_default_windows_host() {
     lingxia_platform::set_windows_home_first_ready_handler(std::sync::Arc::new(
         window_host::reveal_initial_home_window,
     ));
+    lingxia_platform::set_windows_page_webview_awaiter(std::sync::Arc::new(|webtag, done| {
+        lxapp::await_page_webview_then(
+            &webtag.extract_appid(),
+            webtag.session_id().unwrap_or(0),
+            Some(webtag.key()),
+            move |outcome| done(matches!(outcome, lxapp::PageWebViewAwait::Ready(_))),
+        );
+    }));
     install_windows_components();
     #[cfg(feature = "shell-chrome")]
     shell::install();

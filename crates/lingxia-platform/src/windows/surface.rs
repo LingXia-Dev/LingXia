@@ -28,6 +28,30 @@ use crate::traits::ui::{
     WindowChrome,
 };
 
+/// Waits until the page named by a webtag has its WebView ready, then calls
+/// the callback once with whether it is (false: failed or gone). May call it
+/// inline when it is ready already. Installed by the SDK, which owns the
+/// runtime; without one the callback runs at once.
+pub type PageWebViewAwaiter = Arc<dyn Fn(WebTag, Box<dyn FnOnce(bool) + Send>) + Send + Sync>;
+static PAGE_WEBVIEW_AWAITER: Mutex<Option<PageWebViewAwaiter>> = Mutex::new(None);
+
+pub fn set_windows_page_webview_awaiter(awaiter: PageWebViewAwaiter) {
+    if let Ok(mut slot) = PAGE_WEBVIEW_AWAITER.lock() {
+        *slot = Some(awaiter);
+    }
+}
+
+fn await_page_webview(webtag: WebTag, done: Box<dyn FnOnce(bool) + Send>) {
+    let awaiter = PAGE_WEBVIEW_AWAITER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone());
+    match awaiter {
+        Some(awaiter) => awaiter(webtag, done),
+        None => done(true),
+    }
+}
+
 static WINDOWS_SHOW_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 static WINDOWS_SHOW_REQUESTS: LazyLock<Mutex<HashMap<String, u64>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -84,9 +108,20 @@ pub(super) fn show_webtag_window(
     }
     let request_key = show_request_key(&webtag, open_mode, &panel_id);
     let request_id = remember_show_request(&request_key);
-    if let Some(handler) = find_webview_handler(&webtag) {
-        if show_request_is_current(&request_key, request_id) {
-            install_close_handler(&webtag, close_action_for_mode(open_mode));
+    let tag = webtag.clone();
+    await_page_webview(
+        webtag,
+        Box::new(move |_ready| {
+            if !show_request_is_current(&request_key, request_id) {
+                return;
+            }
+            // Not every webtag is a page instance the runtime can await
+            // (a panel's surface, for one), so the handler decides.
+            let Some(handler) = find_webview_handler(&tag) else {
+                log::error!("No Windows WebView for {}", tag.key());
+                return;
+            };
+            install_close_handler(&tag, close_action_for_mode(open_mode));
             show_webview_handler_for_mode(
                 handler,
                 &host_title,
@@ -95,66 +130,28 @@ pub(super) fn show_webtag_window(
                 open_mode,
                 &panel_id,
             );
-        }
-        return;
-    }
-
-    let _ = thread::Builder::new()
-        .name(format!("lingxia-windows-show-{}", webtag.key()))
-        .spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(5);
-            while Instant::now() < deadline {
-                if !show_request_is_current(&request_key, request_id) {
-                    return;
-                }
-                if let Some(handler) = find_webview_handler(&webtag) {
-                    install_close_handler(&webtag, close_action_for_mode(open_mode));
-                    show_webview_handler_for_mode(
-                        handler,
-                        &host_title,
-                        &surface_title,
-                        activate,
-                        open_mode,
-                        &panel_id,
-                    );
-                    return;
-                }
-                thread::sleep(Duration::from_millis(50));
-            }
-            log::error!("Timed out waiting for Windows WebView {}", webtag.key());
-        });
+        }),
+    );
 }
 
 pub(super) fn navigate_webtag_window(webtag: WebTag, title: String, animation: AnimationType) {
     let animation = nav_animation(animation);
     let request_key = show_request_key(&webtag, LxAppOpenMode::Normal, "");
     let request_id = remember_show_request(&request_key);
-    if let Some(handler) = find_webview_handler(&webtag) {
-        if show_request_is_current(&request_key, request_id) {
-            show_webview_handler_navigate(handler, &title, animation);
-        }
-        return;
-    }
-
-    let _ = thread::Builder::new()
-        .name(format!("lingxia-windows-navigate-{}", webtag.key()))
-        .spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(5);
-            while Instant::now() < deadline {
-                if !show_request_is_current(&request_key, request_id) {
-                    return;
-                }
-                if let Some(handler) = find_webview_handler(&webtag) {
-                    show_webview_handler_navigate(handler, &title, animation);
-                    return;
-                }
-                thread::sleep(Duration::from_millis(50));
+    let tag = webtag.clone();
+    await_page_webview(
+        webtag,
+        Box::new(move |_ready| {
+            if !show_request_is_current(&request_key, request_id) {
+                return;
             }
-            log::error!(
-                "Timed out waiting for Windows navigation WebView {}",
-                webtag.key()
-            );
-        });
+            let Some(handler) = find_webview_handler(&tag) else {
+                log::error!("No Windows WebView for navigation to {}", tag.key());
+                return;
+            };
+            show_webview_handler_navigate(handler, &title, animation);
+        }),
+    );
 }
 
 fn nav_animation(animation: AnimationType) -> WindowsNavAnimation {
@@ -166,7 +163,7 @@ fn nav_animation(animation: AnimationType) -> WindowsNavAnimation {
 }
 
 pub(super) fn hide_lxapp_window(appid: &str, session_id: u64) {
-    // Invalidate any pending show request first so the polling waiter thread
+    // Invalidate any pending show request first so a waiting request
     // cannot re-show the window after this hide.
     invalidate_show_request(&format!("main:{appid}#{session_id}"));
     let removed_panel_ids = RUNTIME_LXAPP_ASIDES
