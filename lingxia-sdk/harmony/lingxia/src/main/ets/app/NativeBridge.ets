@@ -30,6 +30,7 @@ import {
   captureScreenshot
 } from '../lxapp/WebViewBridge';
 import { captureAppScreenshot } from './AppScreenshot';
+import { setKeepScreenOn } from './DisplayAwake';
 import { animationTypeFromInt } from '../lxapp/NavigationBar';
 import { PermissionManager } from './PermissionManager';
 import { LxNativeVideoPlayer } from '../lxapp/APIs/media/player/LxNativeVideoPlayer';
@@ -251,6 +252,10 @@ class NativeBridge {
     // App/window screenshot — entire host window contents, not a single WebView.
     this.register('captureAppScreenshot', (callbackIdStr: string) => {
       return captureAppScreenshot(callbackIdStr);
+    });
+
+    this.register('setKeepScreenOn', (on: string) => {
+      setKeepScreenOn(on === 'true');
     });
 
     this.register('completeWebFileChooserRequest', (requestId: string, selectedJson: string): boolean => {

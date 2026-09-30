@@ -262,10 +262,11 @@ pub mod platform {
     #[cfg(all(target_os = "linux", target_env = "ohos"))]
     pub mod harmony {
         pub use crate::harmony::{
-            check_navigation_policy, complete_pending_screenshot_request, notify_webview_state,
-            on_document_commit, on_file_chooser_requested, on_page_begin, on_page_end,
-            on_render_exited, schemehandler::register_custom_schemes, tsfn,
-            webview_controller_created, webview_controller_destroyed,
+            DisplayAwake, check_navigation_policy, complete_pending_screenshot_request,
+            keep_display_awake, notify_webview_state, on_document_commit,
+            on_file_chooser_requested, on_page_begin, on_page_end, on_render_exited,
+            schemehandler::register_custom_schemes, tsfn, webview_controller_created,
+            webview_controller_destroyed,
         };
 
         #[doc(hidden)]
