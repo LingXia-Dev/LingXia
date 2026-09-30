@@ -868,6 +868,16 @@ extension LxApp {
         }
     }
 
+    /// Runtime signal: the page an `awaitPageWebView` call waits for has its
+    /// WebView, or never will.
+    nonisolated static func pageWebViewReady(callback_id: UInt64, ready: Bool) {
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                WebViewManager.pageWebViewReady(callbackId: callback_id, ready: ready)
+            }
+        }
+    }
+
     /// Runtime signal: the home page finished its first render — dismiss the
     /// startup splash overlay.
     nonisolated static func onHomeFirstReady() {
