@@ -2,7 +2,12 @@ use super::PageAction;
 use super::bridge_metadata_script;
 use super::vite_assets::copy_dir_recursive;
 use crate::lxapp::project::Project;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
+use oxc_allocator::Allocator;
+use oxc_ast::ast::{Expression, ObjectPropertyKind, Statement};
+use oxc_parser::Parser;
+use oxc_span::SourceType;
+use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -44,6 +49,9 @@ pub(super) fn copy_html_page(project: &Project, page_path: &str) -> Result<()> {
 }
 
 pub(super) fn html_pages_require_bundling(project: &Project) -> Result<bool> {
+    if view_plugins_configured(&project.root)? {
+        return Ok(true);
+    }
     for page_path in &project.pages {
         let source_path = project.root.join(page_path);
         let html = fs::read_to_string(&source_path)
@@ -63,13 +71,28 @@ pub(super) fn html_view_target(project: &Project) -> Result<Option<String>> {
 /// Public so the build-time WebView-compatibility check in `assets.rs` can
 /// use the same parser as the legacy-mode detector here.
 pub(crate) fn view_target_from_dir(bundle_dir: &Path) -> Result<Option<String>> {
+    Ok(read_view_build_config(bundle_dir)?.target)
+}
+
+pub(super) fn view_plugins_configured(bundle_dir: &Path) -> Result<bool> {
+    Ok(read_view_build_config(bundle_dir)?.plugins)
+}
+
+#[derive(Default, Serialize)]
+pub(super) struct ViewBuildConfig {
+    target: Option<String>,
+    plugins: bool,
+}
+
+pub(super) fn read_view_build_config(bundle_dir: &Path) -> Result<ViewBuildConfig> {
     let config_path = bundle_dir.join("lxapp.config.ts");
     if !config_path.exists() {
-        return Ok(None);
+        return Ok(ViewBuildConfig::default());
     }
     let source = fs::read_to_string(&config_path)
         .with_context(|| format!("Failed to read {}", config_path.display()))?;
-    Ok(extract_view_target(&source))
+    parse_view_build_config(&source)
+        .with_context(|| format!("Invalid View config in {}", config_path.display()))
 }
 
 pub(super) fn copy_html_page_support_files(
@@ -522,19 +545,59 @@ fn html_source_has_module_script(source: &str) -> bool {
     false
 }
 
-fn extract_view_target(source: &str) -> Option<String> {
-    let view_index = source.find("view")?;
-    let target_index = source[view_index..].find("target")? + view_index;
-    let after_target = &source[target_index + "target".len()..];
-    let colon_index = after_target.find(':')?;
-    let value = after_target[colon_index + 1..].trim_start();
-    let quote = value.chars().next()?;
-    if quote != '"' && quote != '\'' {
-        return None;
+fn parse_view_build_config(source: &str) -> Result<ViewBuildConfig> {
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, source, SourceType::ts()).parse();
+    if !parsed.diagnostics.is_empty() {
+        bail!("Failed to parse lxapp.config.ts: {:?}", parsed.diagnostics);
     }
-    let rest = &value[quote.len_utf8()..];
-    let end = rest.find(quote)?;
-    Some(rest[..end].to_string())
+    let mut config = ViewBuildConfig::default();
+    for statement in &parsed.program.body {
+        let Statement::ExportDefaultDeclaration(export) = statement else {
+            continue;
+        };
+        let object = export
+            .declaration
+            .as_expression()
+            .and_then(super::vite_assets::extract_config_object_expression)
+            .context("lxapp.config.ts must export an inline configuration object")?;
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else {
+                bail!("lxapp.config.ts must declare view explicitly, without spreads");
+            };
+            if property.computed {
+                bail!("lxapp.config.ts must use explicit configuration keys");
+            }
+            if super::property_name(&property.key).as_deref() != Some("view") {
+                continue;
+            }
+            let Expression::ObjectExpression(view) = super::unwrap_expression(&property.value)
+            else {
+                bail!("view must be an inline object in lxapp.config.ts");
+            };
+            for property in &view.properties {
+                let ObjectPropertyKind::ObjectProperty(property) = property else {
+                    bail!("view must declare target and plugins directly, without spreads");
+                };
+                if property.computed {
+                    bail!("view must use explicit configuration keys");
+                }
+                let value = super::unwrap_expression(&property.value);
+                match super::property_name(&property.key).as_deref() {
+                    Some("target") => {
+                        let Expression::StringLiteral(target) = value else {
+                            bail!("view.target must be a string literal");
+                        };
+                        config.target = Some(target.value.to_string());
+                    }
+                    Some("plugins") => config.plugins = true,
+                    _ => {}
+                }
+            }
+        }
+        return Ok(config);
+    }
+    bail!("lxapp.config.ts must export an inline configuration object")
 }
 
 fn is_html_name_char(byte: u8) -> bool {
@@ -844,12 +907,61 @@ mod tests {
     #[test]
     fn extract_view_target_from_config_source() {
         assert_eq!(
-            extract_view_target("export default { view: { target: 'es5' } };").as_deref(),
+            parse_view_build_config("export default { view: { target: 'es5' } };")
+                .unwrap()
+                .target
+                .as_deref(),
             Some("es5")
         );
         assert_eq!(
-            extract_view_target("export default { view: { target: \"es2020\" } };").as_deref(),
+            parse_view_build_config("export default { view: { target: \"es2020\" } };")
+                .unwrap()
+                .target
+                .as_deref(),
             Some("es2020")
         );
+    }
+
+    #[test]
+    fn view_config_leaves_plugin_options_to_vite() {
+        let config = parse_view_build_config(
+            r#"
+            // view: { target: 'wrong' }
+            export default defineConfig({ view: {
+                plugins: [plugin({ targets: ['chrome >= 37'] })], target: 'es5'
+            } } satisfies Config);
+        "#,
+        )
+        .unwrap();
+        assert_eq!(config.target.as_deref(), Some("es5"));
+        assert!(config.plugins);
+        assert!(
+            parse_view_build_config("export default { view: { plugins: makePlugins() } }")
+                .unwrap()
+                .plugins
+        );
+        assert!(
+            !parse_view_build_config("export default { view: { target: 'es5' } }")
+                .unwrap()
+                .plugins
+        );
+    }
+
+    #[test]
+    fn view_config_rejects_unresolved_pipeline_settings() {
+        for source in [
+            "const config = { view: { target: 'es5' } }; export default config;",
+            "const config = { view: { target: 'es5' } }; export default { ...config };",
+            "const view = { target: 'es5' }; export default { view };",
+            "export default { view: { ...settings } };",
+            "export default { view: { target: process.env.TARGET } };",
+            "export default { ['vi' + 'ew']: { target: 'es5' } };",
+            "export default { view: { ['tar' + 'get']: 'es5' } };",
+            "export default function config() { return { view: { target: 'es5' } }; }",
+            "export default class Config {}",
+            "export default defineConfig(...configs);",
+        ] {
+            assert!(parse_view_build_config(source).is_err(), "{source}");
+        }
     }
 }
