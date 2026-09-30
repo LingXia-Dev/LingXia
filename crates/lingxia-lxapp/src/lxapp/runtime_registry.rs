@@ -150,3 +150,26 @@ pub fn await_page_webview(
     page.on_webview_ready(done);
     PageWebView::Pending
 }
+
+/// Like [`await_page_webview`] for callers that want one uniform callback:
+/// `done` is called exactly once, at once when the WebView is ready already,
+/// otherwise later from the runtime.
+pub fn await_page_webview_then(
+    appid: &str,
+    session_id: u64,
+    webtag: Option<&str>,
+    done: impl FnOnce(crate::PageWebViewAwait) + Send + 'static,
+) {
+    let slot = Arc::new(Mutex::new(Some(done)));
+    let later = slot.clone();
+    let pending = await_page_webview(appid, session_id, webtag, move |outcome| {
+        if let Some(done) = later.lock().ok().and_then(|mut slot| slot.take()) {
+            done(outcome);
+        }
+    });
+    if let PageWebView::Ready(page) = pending
+        && let Some(done) = slot.lock().ok().and_then(|mut slot| slot.take())
+    {
+        done(crate::PageWebViewAwait::Ready(page));
+    }
+}
