@@ -411,7 +411,8 @@ internal object UpdateManager {
             contentDescription = activity.getString(R.string.lx_common_close)
             isClickable = true
             isFocusable = true
-            isFocusableInTouchMode = true
+            // Touch must click immediately; D-pad focus remains available.
+            isFocusableInTouchMode = false
             setOnClickListener { dialog.dismiss() }
         }
         header.addView(closeButton)
@@ -453,7 +454,7 @@ internal object UpdateManager {
             setTypeface(null, android.graphics.Typeface.BOLD)
             isAllCaps = false
             isFocusable = true
-            isFocusableInTouchMode = true
+            isFocusableInTouchMode = false
             background = confirmButtonBackground(activity, metrics)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -471,7 +472,9 @@ internal object UpdateManager {
 
         container.addView(confirmButton)
         dialog.setContentView(container)
-        dialog.setOnShowListener { confirmButton.requestFocus() }
+        // Signage devices may report touch mode after mouse/air-mouse input.
+        // Exit it before selecting the initial action, without clicking it.
+        dialog.setOnShowListener { confirmButton.requestFocusFromTouch() }
         return dialog
     }
 
