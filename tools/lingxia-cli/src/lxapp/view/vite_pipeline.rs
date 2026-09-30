@@ -479,7 +479,22 @@ fn finalize_component_pages(
         return Err(anyhow!("Missing Vite dist output: {}", dist_dir.display()));
     }
 
-    copy_shared_vite_assets(project, dist_dir)?;
+    if super::vite_html::view_plugins_configured(&project.root)? {
+        // Plugins may emit resources under pages/ or at the output root.
+        super::vite_assets::copy_dir_recursive(dist_dir, &project.output_dir)?;
+        for page in pages {
+            // These intermediate entries are replaced by the public page routes.
+            fs::remove_file(
+                project
+                    .output_dir
+                    .join("pages")
+                    .join(&page.page_id)
+                    .join("index.html"),
+            )?;
+        }
+    } else {
+        copy_shared_vite_assets(project, dist_dir)?;
+    }
 
     for page in pages {
         finalize_component_page(project, dist_dir, page)?;
@@ -537,10 +552,9 @@ fn finalize_component_page(
     let mut html = fs::read_to_string(&html_path)
         .with_context(|| format!("Failed to read {}", html_path.display()))?;
     html = super::vite_html::rewrite_entry_script_path(html, &page.page_id);
-    // Plugin polyfills run in the body. The bridge in the head still needs
-    // its own API shims when the app opts into an ES5 View.
-    let include_polyfills = super::vite_html::html_view_target(project)?
-        .is_some_and(|target| target.eq_ignore_ascii_case("es5"));
+    // Plugin polyfills can run after the bridge; supply its API shims first.
+    // Leave existing component builds unchanged when plugins are not configured.
+    let include_polyfills = super::vite_html::view_plugins_configured(&project.root)?;
     html = super::vite_html::inject_runtime_script(html, include_polyfills);
     html = super::vite_html::inject_bridge_metadata(html, &page.actions);
     let page_file = page_output_dir.join(format!("{base}{}", page.output_extension));
@@ -550,9 +564,17 @@ fn finalize_component_page(
 }
 
 fn copy_shared_vite_assets(project: &Project, dist_dir: &Path) -> Result<()> {
-    // Plugins may emit entries/polyfills anywhere, including under pages/.
-    // Preserve their URLs before writing the public page routes below.
-    super::vite_assets::copy_dir_recursive(dist_dir, &project.output_dir)
+    for entry in fs::read_dir(dist_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() || entry.file_name() == "pages" {
+            continue;
+        }
+        super::vite_assets::copy_dir_recursive(
+            &entry.path(),
+            &project.output_dir.join(entry.file_name()),
+        )?;
+    }
+    Ok(())
 }
 
 fn write_vite_config(
@@ -739,18 +761,28 @@ mod tests {
 
     #[test]
     fn component_finalize_preserves_canonical_vite_entry_for_lazy_chunks() {
-        let temp = tempdir().unwrap();
-        let root = temp.path().join("project");
-        let vite_dist = temp.path().join("vite-dist");
-        let page_id = "pages_home_index";
-        let vite_page = vite_dist.join("pages").join(page_id);
-        fs::create_dir_all(&vite_page).unwrap();
-        fs::write(
-            vite_page.join(format!("{page_id}.js")),
-            "export const shared = true;",
-        )
-        .unwrap();
-        fs::write(
+        for (framework, extension) in [
+            (ProjectFramework::React, ".tsx"),
+            (ProjectFramework::Vue, ".vue"),
+        ] {
+            let temp = tempdir().unwrap();
+            let root = temp.path().join("project");
+            let vite_dist = temp.path().join("vite-dist");
+            let page_id = "pages_home_index";
+            let vite_page = vite_dist.join("pages").join(page_id);
+            fs::create_dir_all(&vite_page).unwrap();
+            fs::create_dir_all(&root).unwrap();
+            fs::write(
+                root.join("lxapp.config.ts"),
+                "export default { view: { target: 'es5' } };",
+            )
+            .unwrap();
+            fs::write(
+                vite_page.join(format!("{page_id}.js")),
+                "export const shared = true;",
+            )
+            .unwrap();
+            fs::write(
             vite_page.join("index.html"),
             format!(
                 "<div id=\"root\"></div><script type=\"module\" src=\"/pages/{page_id}/{page_id}.js\"></script>"
@@ -758,43 +790,58 @@ mod tests {
         )
         .unwrap();
 
-        let project = Project {
-            root: root.clone(),
-            kind: ProjectKind::LxApp,
-            framework: ProjectFramework::React,
-            output_dir: root.join("dist"),
-            pages: vec!["pages/home/index.tsx".to_string()],
-            page_names: Vec::new(),
-            logic_entry: None,
-            plugin_id: None,
-            package_name: Some("test-app".to_string()),
-            version: "0.0.1".to_string(),
-        };
-        let page = ComponentPageBuild {
-            page_path: "pages/home/index.tsx".to_string(),
-            page_id: page_id.to_string(),
-            output_extension: ".tsx",
-            actions: Vec::new(),
-        };
+            let project = Project {
+                root: root.clone(),
+                kind: ProjectKind::LxApp,
+                framework,
+                output_dir: root.join("dist"),
+                pages: vec![format!("pages/home/index{extension}")],
+                page_names: Vec::new(),
+                logic_entry: None,
+                plugin_id: None,
+                package_name: Some("test-app".to_string()),
+                version: "0.0.1".to_string(),
+            };
+            let page = ComponentPageBuild {
+                page_path: format!("pages/home/index{extension}"),
+                page_id: page_id.to_string(),
+                output_extension: extension,
+                actions: Vec::new(),
+            };
 
-        finalize_component_page(&project, &vite_dist, &page).unwrap();
+            finalize_component_pages(&project, &vite_dist, &[page]).unwrap();
 
-        let built = fs::read_to_string(project.output_dir.join("pages/home/index.tsx")).unwrap();
-        assert!(
-            built.contains("data-lx-chrome=\"no-scrollbar\""),
-            "React/Vue finalize must stamp CSS scrollbar hiding: {built}"
-        );
-        assert!(built.contains("scrollbar-width:none!important"), "{built}");
+            let built = fs::read_to_string(
+                project
+                    .output_dir
+                    .join(format!("pages/home/index{extension}")),
+            )
+            .unwrap();
+            assert!(!built.contains("polyfills.es5.js"));
+            assert!(
+                !project
+                    .output_dir
+                    .join("pages")
+                    .join(page_id)
+                    .join("index.html")
+                    .exists()
+            );
+            assert!(
+                built.contains("data-lx-chrome=\"no-scrollbar\""),
+                "React/Vue finalize must stamp CSS scrollbar hiding: {built}"
+            );
+            assert!(built.contains("scrollbar-width:none!important"), "{built}");
 
-        assert!(project.output_dir.join("pages/home/view.js").is_file());
-        assert!(
-            project
-                .output_dir
-                .join("pages")
-                .join(page_id)
-                .join(format!("{page_id}.js"))
-                .is_file()
-        );
+            assert!(project.output_dir.join("pages/home/view.js").is_file());
+            assert!(
+                project
+                    .output_dir
+                    .join("pages")
+                    .join(page_id)
+                    .join(format!("{page_id}.js"))
+                    .is_file()
+            );
+        }
     }
 
     #[test]
@@ -808,7 +855,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         fs::write(
             root.join("lxapp.config.ts"),
-            "export default { view: { target: 'es5', plugins: [] } }",
+            "export default { view: { plugins: [] } }",
         )
         .unwrap();
         let files = [
@@ -869,5 +916,13 @@ mod tests {
         assert!(html.find("bridge-runtime.js").unwrap() < html.find("vite-legacy-entry").unwrap());
         assert!(html.contains("data-lingxia-bridge-runtime=\"v3-bootstrap\""));
         assert!(!project.output_dir.join("pages/home/view.js").exists());
+        assert!(
+            !project
+                .output_dir
+                .join("pages")
+                .join(page_id)
+                .join("index.html")
+                .exists()
+        );
     }
 }

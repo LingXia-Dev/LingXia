@@ -16,7 +16,8 @@ pub(crate) const INTEGRITY_MANIFEST: &str = "lxapp.integrity.json";
 
 pub(crate) fn harden_release_output(project: &Project) -> Result<()> {
     let preserve_view_js = crate::lxapp::view::view_target_from_dir(&project.root)?
-        .is_some_and(|target| target.eq_ignore_ascii_case("es5"));
+        .is_some_and(|target| target.eq_ignore_ascii_case("es5"))
+        || crate::lxapp::view::view_plugins_configured(&project.root)?;
     harden_text_artifacts(project, preserve_view_js)?;
     audit_release_output(project)?;
     write_integrity_manifest(project)?;
@@ -57,8 +58,8 @@ fn minify_javascript_with_source_type<'a>(
         );
     }
 
-    // Oxc can introduce modern syntax into ES5 output, including inline scripts.
-    // Preserve the View pipeline's output before integrity generation.
+    // Oxc can undo the target chosen by a View plugin, including in inline scripts.
+    // Preserve its output before integrity generation, as with the ES5 pipeline.
     if preserve_js {
         return Ok(source.to_string());
     }
@@ -564,15 +565,22 @@ mod tests {
     }
 
     #[test]
-    fn release_preserves_es5_in_views_and_inline_scripts_but_not_native_logic() {
+    fn release_preserves_view_targets_and_inline_scripts_but_not_native_logic() {
+        for config in [
+            "export default { view: { target: 'es5' } };",
+            "export default { view: { plugins: [] } };",
+            "export default { view: { target: 'es2020', plugins: [] } };",
+            "const view = { plugins: [] }; const config = { view }; export default { ...config };",
+        ] {
+            assert_release_view_target(config);
+        }
+    }
+
+    fn assert_release_view_target(config: &str) {
         let temp = tempdir().unwrap();
         let mut project = project(temp.path());
         project.logic_entry = Some("native/app.js".to_string());
-        fs::write(
-            project.root.join("lxapp.config.ts"),
-            "export default { view: { target: 'es5' } };",
-        )
-        .unwrap();
+        fs::write(project.root.join("lxapp.config.ts"), config).unwrap();
         let scripts = [
             "pages/home/view.js",
             "static/helper.js",

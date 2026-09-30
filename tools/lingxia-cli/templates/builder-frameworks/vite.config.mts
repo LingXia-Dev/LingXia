@@ -88,8 +88,9 @@ const viewConfig = projectConfig.view ?? {};
 const hasViewPlugins = Object.hasOwn(viewConfig, 'plugins');
 const expectedViewConfig = __VIEW_CONFIG_JSON__;
 // Rust selects the HTML pipeline before Vite evaluates this config.
-if ((viewConfig.target ?? null) !== expectedViewConfig.target || hasViewPlugins !== expectedViewConfig.plugins) {
-  throw new Error('lxapp.config.ts view.target and view.plugins must match their explicit declarations');
+if ((hasViewPlugins || expectedViewConfig.plugins) &&
+    ((viewConfig.target ?? null) !== expectedViewConfig.target || hasViewPlugins !== expectedViewConfig.plugins)) {
+  throw new Error('lxapp.config.ts view.target and view.plugins must be statically resolvable when using View plugins');
 }
 if (hasViewPlugins && !Array.isArray(viewConfig.plugins)) {
   throw new Error('lxapp.config.ts view.plugins must be an array of Vite plugins');

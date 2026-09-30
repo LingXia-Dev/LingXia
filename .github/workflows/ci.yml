@@ -767,6 +767,15 @@ jobs:
         shell: bash
         run: ./target/${{ matrix.target }}/release/lingxia${{ matrix.exe }} version
 
+      - uses: actions/setup-node@v4
+        if: matrix.platform == 'linux-x64'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Test View plugin builds and release compatibility
+        if: matrix.platform == 'linux-x64'
+        run: node tools/lingxia-cli/tests/view_legacy_build.mjs ./target/${{ matrix.target }}/release/lingxia
+
       - name: Upload CLI binary
         uses: actions/upload-artifact@v4
         with:

@@ -360,7 +360,7 @@ fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
     })
 }
 
-pub(super) fn extract_config_object_expression<'a>(
+fn extract_config_object_expression<'a>(
     expression: &'a Expression<'a>,
 ) -> Option<&'a oxc_ast::ast::ObjectExpression<'a>> {
     match unwrap_expression(expression) {

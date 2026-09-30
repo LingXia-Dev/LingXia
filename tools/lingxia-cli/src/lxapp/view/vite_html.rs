@@ -4,10 +4,11 @@ use super::vite_assets::copy_dir_recursive;
 use crate::lxapp::project::Project;
 use anyhow::{Context, Result, bail};
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Expression, ObjectPropertyKind, Statement};
+use oxc_ast::ast::{BindingPattern, Expression, ObjectPropertyKind, Statement};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -74,7 +75,7 @@ pub(crate) fn view_target_from_dir(bundle_dir: &Path) -> Result<Option<String>> 
     Ok(read_view_build_config(bundle_dir)?.target)
 }
 
-pub(super) fn view_plugins_configured(bundle_dir: &Path) -> Result<bool> {
+pub(crate) fn view_plugins_configured(bundle_dir: &Path) -> Result<bool> {
     Ok(read_view_build_config(bundle_dir)?.plugins)
 }
 
@@ -551,53 +552,93 @@ fn parse_view_build_config(source: &str) -> Result<ViewBuildConfig> {
     if !parsed.diagnostics.is_empty() {
         bail!("Failed to parse lxapp.config.ts: {:?}", parsed.diagnostics);
     }
-    let mut config = ViewBuildConfig::default();
+    let mut bindings = HashMap::new();
+    for statement in &parsed.program.body {
+        if let Statement::VariableDeclaration(declaration) = statement {
+            for declaration in &declaration.declarations {
+                if let BindingPattern::BindingIdentifier(identifier) = &declaration.id
+                    && let Some(init) = &declaration.init
+                {
+                    bindings.insert(identifier.name.as_str(), init);
+                }
+            }
+        }
+    }
     for statement in &parsed.program.body {
         let Statement::ExportDefaultDeclaration(export) = statement else {
             continue;
         };
-        let object = export
+        let Some(view) = export
             .declaration
             .as_expression()
-            .and_then(super::vite_assets::extract_config_object_expression)
-            .context("lxapp.config.ts must export an inline configuration object")?;
-        for property in &object.properties {
-            let ObjectPropertyKind::ObjectProperty(property) = property else {
-                bail!("lxapp.config.ts must declare view explicitly, without spreads");
-            };
-            if property.computed {
-                bail!("lxapp.config.ts must use explicit configuration keys");
-            }
-            if super::property_name(&property.key).as_deref() != Some("view") {
-                continue;
-            }
-            let Expression::ObjectExpression(view) = super::unwrap_expression(&property.value)
-            else {
-                bail!("view must be an inline object in lxapp.config.ts");
-            };
-            for property in &view.properties {
-                let ObjectPropertyKind::ObjectProperty(property) = property else {
-                    bail!("view must declare target and plugins directly, without spreads");
-                };
-                if property.computed {
-                    bail!("view must use explicit configuration keys");
-                }
-                let value = super::unwrap_expression(&property.value);
-                match super::property_name(&property.key).as_deref() {
-                    Some("target") => {
-                        let Expression::StringLiteral(target) = value else {
-                            bail!("view.target must be a string literal");
-                        };
-                        config.target = Some(target.value.to_string());
-                    }
-                    Some("plugins") => config.plugins = true,
-                    _ => {}
-                }
-            }
-        }
-        return Ok(config);
+            .and_then(|config| config_property(config, "view", &bindings, 0))
+        else {
+            continue;
+        };
+        let target = config_property(view, "target", &bindings, 0)
+            .and_then(|value| resolve_config_expression(value, &bindings, 0))
+            .and_then(|value| match value {
+                Expression::StringLiteral(target) => Some(target.value.to_string()),
+                _ => None,
+            });
+        return Ok(ViewBuildConfig {
+            target,
+            plugins: config_property(view, "plugins", &bindings, 0).is_some(),
+        });
     }
-    bail!("lxapp.config.ts must export an inline configuration object")
+    // Like the static-assets reader, leave unresolved JavaScript to Vite.
+    Ok(ViewBuildConfig::default())
+}
+
+type ConfigBindings<'a> = HashMap<&'a str, &'a Expression<'a>>;
+
+fn resolve_config_expression<'a>(
+    expression: &'a Expression<'a>,
+    bindings: &ConfigBindings<'a>,
+    depth: usize,
+) -> Option<&'a Expression<'a>> {
+    if depth >= 32 {
+        return None;
+    }
+    match super::unwrap_expression(expression) {
+        Expression::Identifier(identifier) => {
+            resolve_config_expression(bindings.get(identifier.name.as_str())?, bindings, depth + 1)
+        }
+        Expression::CallExpression(call) => resolve_config_expression(
+            call.arguments.first()?.as_expression()?,
+            bindings,
+            depth + 1,
+        ),
+        expression => Some(expression),
+    }
+}
+
+fn config_property<'a>(
+    expression: &'a Expression<'a>,
+    name: &str,
+    bindings: &ConfigBindings<'a>,
+    depth: usize,
+) -> Option<&'a Expression<'a>> {
+    let Expression::ObjectExpression(object) =
+        resolve_config_expression(expression, bindings, depth)?
+    else {
+        return None;
+    };
+    object
+        .properties
+        .iter()
+        .rev()
+        .find_map(|property| match property {
+            ObjectPropertyKind::ObjectProperty(property)
+                if super::property_name(&property.key).as_deref() == Some(name) =>
+            {
+                Some(&property.value)
+            }
+            ObjectPropertyKind::SpreadProperty(spread) => {
+                config_property(&spread.argument, name, bindings, depth + 1)
+            }
+            _ => None,
+        })
 }
 
 fn is_html_name_char(byte: u8) -> bool {
@@ -948,11 +989,29 @@ mod tests {
     }
 
     #[test]
-    fn view_config_rejects_unresolved_pipeline_settings() {
+    fn view_config_resolves_variables_and_spreads() {
         for source in [
-            "const config = { view: { target: 'es5' } }; export default config;",
-            "const config = { view: { target: 'es5' } }; export default { ...config };",
-            "const view = { target: 'es5' }; export default { view };",
+            "const config = { view: { target: 'es5', plugins: [] } }; export default config;",
+            "const config = { view: { target: 'es5', plugins: [] } }; export default { ...config };",
+            "const view = { target: 'es5', plugins: [] }; export default { view };",
+            "const settings = { target: 'es5', plugins: [] }; export default { view: { ...settings } };",
+            "const target = 'es5'; export default { view: { target, plugins: [] } };",
+            "export default { ['view']: { ['target']: 'es5', plugins: [] } };",
+        ] {
+            let config = parse_view_build_config(source).unwrap();
+            assert_eq!(config.target.as_deref(), Some("es5"), "{source}");
+            assert!(config.plugins, "{source}");
+        }
+        let config = parse_view_build_config("const defaults = { target: 'es5', plugins: [] }; export default { view: { ...defaults, target: 'es2020' } };").unwrap();
+        assert_eq!(config.target.as_deref(), Some("es2020"));
+        assert!(config.plugins);
+    }
+
+    #[test]
+    fn view_config_tolerates_unresolved_settings_without_plugins() {
+        for source in [
+            "const config = {}; export default config;",
+            "export default { ...settings };",
             "export default { view: { ...settings } };",
             "export default { view: { target: process.env.TARGET } };",
             "export default { ['vi' + 'ew']: { target: 'es5' } };",
@@ -960,8 +1019,13 @@ mod tests {
             "export default function config() { return { view: { target: 'es5' } }; }",
             "export default class Config {}",
             "export default defineConfig(...configs);",
+            "const view = { ...view }; export default { view };",
+            "const config = config; export default config;",
         ] {
-            assert!(parse_view_build_config(source).is_err(), "{source}");
+            assert!(
+                !parse_view_build_config(source).unwrap().plugins,
+                "{source}"
+            );
         }
     }
 }
