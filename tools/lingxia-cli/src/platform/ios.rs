@@ -221,6 +221,11 @@ impl IosPlatform {
             &app_bundle,
             app_config.display_name(),
         )?;
+        apple::settings_bundle::write_settings_bundle(
+            &app_bundle,
+            &app_config.product_version,
+            config.resolved_env.version,
+        )?;
         Ok(app_bundle)
     }
 
