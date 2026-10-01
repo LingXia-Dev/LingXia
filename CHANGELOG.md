@@ -19,6 +19,50 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.20.0 — 2026-10-01
+
+### Breaking
+
+- **Breaking** — identify pages by instance on every platform (b189b60f2)
+
+### Writing an lxapp
+
+- **lxapp**: always replace the session when restart loses its worker (11abe0a43)
+- **lxapp**: clean up retired sessions when restart fails (69b41c327)
+- **lxapp**: await worker release before restarting sessions (a51cc61cd)
+
+### Embedding a host app
+
+- **ios**: give back the pull-to-refresh inset whenever a refresh ends (8b0f7126f)
+- **harmony**: hold a pull-to-refresh like the other shells (f4f22d2ad)
+- **harmony**: give pull-to-refresh the resistance and trigger of the other shells (1fa245fd0)
+- **harmony**: cancel the pull-to-refresh safety timer with its refresh (0fac21645)
+- **android**: report a failed WebView creation to the runtime (208736722)
+- **android**: keep classes and members the runtime reaches through JNI (c2cc59fe4)
+- **android**: handle update dialog actions on first click (cce9ea5fd)
+- **harmony**: hold a page eval's answer until LingXiaProxy exists (54ed32996)
+- **harmony**: draw the navigation bar's home icon as an outline (4abc07ddf)
+- **harmony**: keep the screen on during automation runs (5b4a1f28c)
+- **harmony**: report a programmatic pull-down refresh once (bba7b9dcf)
+- **harmony**: report unschedulable notifications as E_NOT_SUPPORTED (1b736a74c)
+- **apple**: wait for the page's WebView instead of polling for it (eebeb24a8)
+- **windows**: wait for the page's WebView instead of polling for it (234d227c5)
+- **android**: present the page the runtime names, when its WebView is ready (88d53e583)
+- **sdk**: show modals raised before the first screen exists (b43bdca29)
+- **macos**: open the runner window where the last one closed (8a4ae12f2)
+- **macos**: keep the runner window where the user moved it (f25414bd6)
+
+### CLI and CI
+
+- **cli**: pick the HTTPS proxy before ALL_PROXY and speak SOCKS (f7becf8f4)
+- **cli**: ship the ES5 polyfills to hosts whose bundles use View plugins (212ba3db7)
+- **cli**: avoid View plugin build regressions (ab35c6df8)
+- **cli**: support custom Vite plugins for View builds (98208e0ec)
+
+### Other
+
+- **deps**: take rong_arkjs 0.6.2 so HarmonyOS launches (75d9658a4)
+
 ## 0.19.0 — 2026-09-28
 
 ### Breaking
