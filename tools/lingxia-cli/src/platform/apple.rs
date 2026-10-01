@@ -17,6 +17,7 @@ pub mod grandslam;
 pub mod keychain;
 pub mod notarize;
 pub mod provisioning;
+pub mod settings_bundle;
 pub mod signer;
 pub mod srp;
 
