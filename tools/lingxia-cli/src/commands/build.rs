@@ -761,16 +761,7 @@ fn stage_package_artifact(
     fs::create_dir_all(&dist_dir)?;
     let dest = dist_dir.join(file_name);
 
-    if let Some(extension) = source.extension() {
-        for entry in fs::read_dir(&dist_dir)? {
-            let stale = entry?.path();
-            if stale != dest && stale.is_file() && stale.extension() == Some(extension) {
-                fs::remove_file(&stale).with_context(|| {
-                    format!("Failed to remove stale artifact {}", stale.display())
-                })?;
-            }
-        }
-    }
+    platform::remove_stale_artifacts(&dest)?;
 
     if source != dest {
         fs::copy(source, &dest).map_err(|err| {
