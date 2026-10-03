@@ -50,4 +50,4 @@ Use this for native performance, background work, or platform capabilities not e
 
 ## How they combine
 
-A real product is usually a native host app that embeds one home lxapp and may open more bundled or runtime lxapps. Rust extensions back the parts that need native power. The View / Logic / Bridge split remains the same — see [Architecture](../architecture/) and [LxApp pages](../lxapp-pages/).
+A real product is usually a native host app that embeds one home lxapp and may open more bundled or runtime lxapps. Rust extensions back the parts that need native power. The View / Logic / Bridge split remains the same — see [Architecture](../architecture/) and [lxapp pages](../lxapp-pages/).

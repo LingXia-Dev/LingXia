@@ -50,4 +50,4 @@ fn my_host_api(/* … */) { /* 原生逻辑 */ }
 
 ## 如何组合
 
-真实产品通常是一个原生宿主应用，内嵌一个 home lxapp，并可继续打开其他 bundled 或 runtime lxapp；需要原生能力的部分由 Rust 扩展支撑。视图 / 逻辑 / 桥 的分离仍然成立——见[架构](../architecture/)与 [LxApp 页面](../lxapp-pages/)。
+真实产品通常是一个原生宿主应用，内嵌一个 home lxapp，并可继续打开其他 bundled 或 runtime lxapp；需要原生能力的部分由 Rust 扩展支撑。视图 / 逻辑 / 桥 的分离仍然成立——见[架构](../architecture/)与 [lxapp 页面](../lxapp-pages/)。

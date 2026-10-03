@@ -30,6 +30,11 @@ export default defineConfig({
     // pages (src/pages/index.astro, zh/index.astro) keep `/` and `/zh/`.
     starlight({
       title: 'LingXia',
+      logo: {
+        light: './src/assets/logo-light.svg',
+        dark: './src/assets/logo-dark.svg',
+        alt: 'LingXia',
+      },
       favicon: '/favicon.svg',
       customCss: ['./src/styles/starlight.css'],
       components: {

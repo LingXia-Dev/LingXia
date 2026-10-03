@@ -113,4 +113,4 @@ View 直接用 `@lingxia/react` / `@lingxia/vue` 的 `useLxHost().sizeClass` 读
 - `float` 必须带 `tray:`，并且每个目标平台最多一个 surface 可声明 tray。
 - 托盘图标必须是相对宿主根目录的方形 SVG 源文件。
 
-完整 schema 与托盘行为请安装 LingXia skill 并阅读 `app/project.md`；lxapp 响应式实现见 [LxApp 页面](../lxapp-pages/)。
+完整 schema 与托盘行为请安装 LingXia skill 并阅读 `app/project.md`；lxapp 响应式实现见 [lxapp 页面](../lxapp-pages/)。

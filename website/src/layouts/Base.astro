@@ -31,8 +31,25 @@ const altZh = new URL(withBase('/zh/'), Astro.site).href;
     <link rel="alternate" hreflang="x-default" href={altEn} />
 
     <link rel="icon" type="image/svg+xml" href={withBase('/favicon.svg')} />
-    <meta name="theme-color" content="#fafaf7" />
-    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#fafaf7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b0e12" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- Before paint, so there is no light flash; shares the docs' stored choice. -->
+    <script is:inline>
+      (() => {
+        const root = document.documentElement;
+        const media = matchMedia('(prefers-color-scheme: dark)');
+        const apply = () => {
+          let stored = '';
+          try { stored = localStorage.getItem('starlight-theme') || ''; } catch {}
+          const dark = stored === 'dark' || (stored !== 'light' && media.matches);
+          root.dataset.theme = dark ? 'dark' : 'light';
+        };
+        apply();
+        media.addEventListener('change', apply);
+        window.__lxApplyTheme = apply;
+      })();
+    </script>
 
     <!-- Open Graph / Twitter -->
     <meta property="og:type" content="website" />

@@ -40,6 +40,6 @@ Durable business state and portable `lx.*` platform calls live in JavaScript Log
 ## Next
 
 - [What you build](../what-you-build/) — choose a standalone lxapp or native host app, then extend the host where needed.
-- [LxApp pages](../lxapp-pages/) — implement the View / Logic boundary.
+- [lxapp pages](../lxapp-pages/) — implement the View / Logic boundary.
 - [Control app](../control-app/) — which session may call product-level APIs.
 - [Getting started](../getting-started/) — scaffold and run a project.

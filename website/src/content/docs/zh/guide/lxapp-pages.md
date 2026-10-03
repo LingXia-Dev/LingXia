@@ -1,5 +1,5 @@
 ---
-title: LxApp 页面
+title: lxapp 页面
 description: 用分离的 View 与 Logic 文件、类型化 actions、原生组件和自适应状态构建页面。
 sidebar:
   order: 5
