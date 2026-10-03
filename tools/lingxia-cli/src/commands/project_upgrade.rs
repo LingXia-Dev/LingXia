@@ -4,10 +4,10 @@
 //! without asking. Same-line patch drift is not a new version.
 //!
 //! Pins the project owns, rewritten string-level so formatting stays put:
-//! `@lingxia/*` npm ranges, scaffolded LingXia crate requirements in
-//! local Cargo manifests (including expanded dependency tables), the `lingxia-windows-sdk` +
-//! `lingxia-windows-build` crate reqs, and the gradle `lingxia.sdkVersion`
-//! fallback.
+//! `@lingxia/*` npm ranges, managed LingXia crate requirements in local
+//! Cargo manifests (inline or expanded dependency tables), the
+//! `lingxia-windows-sdk` + `lingxia-windows-build` crate reqs, and the gradle
+//! `lingxia.sdkVersion` fallback.
 //!
 //! SDK packages differ by platform and are fetched (or lock-refreshed) here
 //! rather than waiting for the next `lingxia build`:
@@ -411,20 +411,33 @@ fn plan(root: &Path) -> Result<Vec<Edit>> {
         }
     }
 
-    for native_cargo in find_cargo_manifests(root) {
-        if native_cargo == root.join("windows/Cargo.toml") {
-            continue;
-        }
-        let mut new_content = fs::read_to_string(&native_cargo)
-            .with_context(|| format!("read {}", native_cargo.display()))?;
+    let windows_cargo = root.join("windows").join("Cargo.toml");
+    let req = crate::versions::cargo_compat_req();
+    for manifest in find_cargo_manifests(root) {
+        let mut new_content = fs::read_to_string(&manifest)
+            .with_context(|| format!("read {}", manifest.display()))?;
         let mut changes = Vec::new();
         let mut cargo_update = Vec::new();
-        for crate_name in project_lingxia_crates() {
-            let (rewritten, crate_changes) = rewrite_cargo_dep_req(
-                &new_content,
-                crate_name,
-                &crate::versions::cargo_compat_req(),
-            );
+        if manifest == windows_cargo {
+            let (rewritten, sdk_changes) = rewrite_windows_sdk_dep(&new_content, &req);
+            if !sdk_changes.is_empty() {
+                cargo_update.push("lingxia-windows-sdk".to_string());
+                changes.extend(sdk_changes);
+            }
+            new_content = rewritten;
+        }
+        // The SDK pass above only knows inline entries; expanded tables land here.
+        let windows_crates: &[&str] = if manifest == windows_cargo {
+            &["lingxia-windows-sdk", "lingxia-windows-build"]
+        } else {
+            &[]
+        };
+        for crate_name in windows_crates
+            .iter()
+            .copied()
+            .chain(project_lingxia_crates())
+        {
+            let (rewritten, crate_changes) = rewrite_cargo_dep_req(&new_content, crate_name, &req);
             if !crate_changes.is_empty() {
                 cargo_update.push(crate_name.to_string());
                 changes.extend(crate_changes);
@@ -433,37 +446,7 @@ fn plan(root: &Path) -> Result<Vec<Edit>> {
         }
         if !changes.is_empty() {
             edits.push(Edit {
-                path: native_cargo,
-                new_content,
-                changes,
-                refresh_npm: false,
-                cargo_update,
-            });
-        }
-    }
-
-    let windows_cargo = root.join("windows").join("Cargo.toml");
-    if windows_cargo.is_file() {
-        let content = fs::read_to_string(&windows_cargo)
-            .with_context(|| format!("read {}", windows_cargo.display()))?;
-        let (content, mut changes) =
-            rewrite_windows_sdk_dep(&content, &crate::versions::cargo_compat_req());
-        let mut cargo_update = Vec::new();
-        if changes.iter().any(|c| c.starts_with("lingxia-windows-sdk")) {
-            cargo_update.push("lingxia-windows-sdk".to_string());
-        }
-        let (new_content, build_changes) = rewrite_cargo_dep_req(
-            &content,
-            "lingxia-windows-build",
-            &crate::versions::cargo_compat_req(),
-        );
-        if !build_changes.is_empty() {
-            cargo_update.push("lingxia-windows-build".to_string());
-        }
-        changes.extend(build_changes);
-        if !changes.is_empty() {
-            edits.push(Edit {
-                path: windows_cargo,
+                path: manifest,
                 new_content,
                 changes,
                 refresh_npm: false,
@@ -1471,6 +1454,27 @@ version = "metadata"
             vec!["lingxia-control-runtime", "lingxia-control-commands"]
         );
         write_edits(&prepared.edits).unwrap();
+        assert_eq!(project_compat_line(root), cli_compat_line());
+        assert!(plan(root).unwrap().is_empty());
+    }
+
+    #[test]
+    fn windows_manifest_managed_crates_are_planned_with_the_sdk() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("windows")).unwrap();
+        fs::write(
+            root.join("windows/Cargo.toml"),
+            "[dependencies]\nlingxia-windows-sdk = { version = \"~0.10.0\" }\nlingxia = \"~0.10.0\"\n\n[build-dependencies.lingxia-windows-build]\nversion = \"~0.10.0\"\n",
+        )
+        .unwrap();
+        let edits = plan(root).unwrap();
+        assert_eq!(edits.len(), 1);
+        assert_eq!(
+            edits[0].cargo_update,
+            vec!["lingxia-windows-sdk", "lingxia-windows-build", "lingxia"]
+        );
+        write_edits(&edits).unwrap();
         assert_eq!(project_compat_line(root), cli_compat_line());
         assert!(plan(root).unwrap().is_empty());
     }
