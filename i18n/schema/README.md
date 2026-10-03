@@ -3,7 +3,7 @@
 | File | Used by | Allows variant overrides? |
 |---|---|---|
 | `shared.schema.json` | `shared/`, `error/`, `permission/runtime/` | yes (`default / android / apple / ios / harmony / rust`) |
-| `permission.schema.json` | `permission/cli/` | n/a (flat `apple.info_plist.*` keys) |
+| `permission.schema.json` | `permission/cli/` | n/a (flat `apple.info_plist.*` / `apple.settings_bundle.*` keys) |
 | `native.schema.json` | `logic/`, `desktop/`, `android/`, `apple/`, `harmony/` | no — plain string leaves only |
 
 If you add a new scope under `i18n/` you must also wire it up in

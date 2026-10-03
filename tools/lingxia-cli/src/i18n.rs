@@ -18,7 +18,7 @@ pub fn supported_locales() -> &'static [&'static str] {
     SUPPORTED_LOCALES
 }
 
-pub fn permission_text(locale: &str, key: &str) -> Result<String> {
+pub fn build_text(locale: &str, key: &str) -> Result<String> {
     let source_locale = normalize_permission_locale(locale)?;
     let catalog = catalog()?;
     let locale_entries = catalog

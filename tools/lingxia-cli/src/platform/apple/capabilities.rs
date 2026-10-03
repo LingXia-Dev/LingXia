@@ -267,7 +267,7 @@ fn localized_requirement_value(
     requirement: &AppleInfoPlistRequirement,
     locale: &str,
 ) -> Result<String> {
-    i18n::permission_text(locale, requirement.permission_key).with_context(|| {
+    i18n::build_text(locale, requirement.permission_key).with_context(|| {
         format!(
             "Failed to load permission text for Info.plist key `{}`",
             requirement.key

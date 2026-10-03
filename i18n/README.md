@@ -14,7 +14,7 @@ Pick the directory that matches who actually reads the string at runtime.
 | `shared/` | Rust + TS + Android + iOS + Harmony | Default. Strings shared across every platform — 95% of new keys go here. |
 | `error/` | Same as `shared/` | `error.*` and `err_code_*` entries. Required to define at least one `err_code_*`. |
 | `permission/runtime/` | Same as `shared/` | Runtime permission dialog texts (e.g. `permission.media_reason`). |
-| `permission/cli/` | Apple `Info.plist` (CLI build step only) | `apple.info_plist.*` keys consumed during `lingxia build` for Apple targets. |
+| `permission/cli/` | Apple bundle files the CLI writes (build step only) | `apple.info_plist.*` permission texts and `apple.settings_bundle.*` iOS Settings titles, consumed during `lingxia build` for Apple targets. |
 | `logic/` *(optional)* | Rust + TS only | Strings the logic crate / JS bridge surfaces but no native SDK reads. |
 | `desktop/` *(optional)* | Rust + TS + Apple | Desktop-shell strings (sidebar, browser chrome, terminal) for the Windows SDK and the Apple SDK (`Localizable.strings`). Kept out of the Android and Harmony resource bundles. Do not move a desktop chrome key to `apple/` just because Swift reads it. |
 | `android/` *(optional)* | Android `strings.xml` only | Android-only SDK strings (e.g. `R.string.lx_update_install_*`). |
@@ -27,7 +27,7 @@ scopes is the normal way to change its audience.
 `schema/` holds JSON Schema files used to validate the YAML files:
 
 - `shared.schema.json` — cross-platform leaves (`shared/`, `error/`, `permission/runtime/`).
-- `permission.schema.json` — Apple `Info.plist` keys (`permission/cli/`).
+- `permission.schema.json` — Apple CLI build-time keys (`permission/cli/`).
 - `native.schema.json` — single-audience scopes (`logic/`, `desktop/`, `android/`, `apple/`, `harmony/`).
 
 ## Regenerating

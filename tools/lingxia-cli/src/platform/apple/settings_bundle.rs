@@ -8,11 +8,8 @@ use std::path::Path;
 
 use crate::config::AppEnv;
 
-const LOCALIZATIONS: &[(&str, &str, &str)] = &[
-    ("en", "Version", "Environment"),
-    ("zh-Hans", "版本", "环境"),
-    ("zh-Hant", "版本", "環境"),
-];
+/// Row titles, localized from `i18n/permission/cli` as `apple.settings_bundle.<title>`.
+const TITLES: &[&str] = &["Version", "Environment"];
 
 /// Write `Settings.bundle` into `app_bundle`. Only a `dev` build gets the
 /// Environment row: on `prod` it would just read `prod` to every end user.
@@ -26,15 +23,16 @@ pub fn write_settings_bundle(app_bundle: &Path, product_version: &str, env: AppE
         .to_file_xml(bundle.join("Root.plist"))
         .context("Failed to write Settings.bundle/Root.plist")?;
 
-    for (lang, version_title, env_title) in LOCALIZATIONS {
-        let dir = bundle.join(format!("{lang}.lproj"));
+    for locale in crate::i18n::supported_locales() {
+        let mut strings = String::new();
+        for title in TITLES {
+            let text = crate::i18n::build_text(locale, &format!("apple.settings_bundle.{title}"))?;
+            strings.push_str(&format!("\"{title}\" = \"{text}\";\n"));
+        }
+        let dir = bundle.join(format!("{locale}.lproj"));
         fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
         let path = dir.join("Root.strings");
-        fs::write(
-            &path,
-            format!("\"Version\" = \"{version_title}\";\n\"Environment\" = \"{env_title}\";\n"),
-        )
-        .with_context(|| format!("Failed to write {}", path.display()))?;
+        fs::write(&path, strings).with_context(|| format!("Failed to write {}", path.display()))?;
     }
     Ok(())
 }
