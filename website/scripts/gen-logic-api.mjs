@@ -193,13 +193,14 @@ if (ungrouped.length || missing.length) {
   throw new Error(lines.join('\n'));
 }
 
-function frontmatter(title, order, description) {
+function frontmatter(title, order, description, label) {
   return [
     '---',
     `title: ${title}`,
     `description: ${JSON.stringify(description)}`,
     'sidebar:',
     `  order: ${order}`,
+    ...(label ? [`  label: ${label}`] : []),
     '---',
     '',
   ].join('\n');
@@ -300,6 +301,7 @@ let index = frontmatter(
   'Logic JS API',
   0,
   `The lx.* surface published by @lingxia/types ${typesVersion}, grouped by capability.`,
+  'Overview',
 );
 index += `Everything an lxapp's Logic context can call on the global \`lx\`, grouped by capability. Generated from \`@lingxia/types\` **${typesVersion}** — the version a project on the current CLI installs.\n\n`;
 index += `| Capability | What it covers |\n| --- | --- |\n`;

@@ -63,7 +63,7 @@ const tools = [t.devtools.owner, t.devtools.driver];
       }
     </div>
 
-    <div class="reveal mt-5 rounded-2xl border border-black/8 bg-white/55 p-5 sm:p-7">
+    <div class="reveal mt-5 rounded-2xl border border-fg/8 bg-surface/55 p-5 sm:p-7">
       <p class="font-mono text-[0.68rem] font-medium uppercase tracking-[0.16em] text-fg-dim">
         {t.devtools.loopLabel}
       </p>
@@ -71,7 +71,7 @@ const tools = [t.devtools.owner, t.devtools.driver];
         {
           t.devtools.loop.map((step, index) => (
             <li class="group flex min-w-0 items-center gap-2 sm:gap-3">
-              <div class="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-black/7 bg-white px-3.5 py-3 shadow-sm">
+              <div class="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-fg/7 bg-surface px-3.5 py-3 shadow-sm">
                 <span class="font-mono text-[0.65rem] text-jade-600">{String(index + 1).padStart(2, '0')}</span>
                 <span class="text-xs font-medium leading-tight text-fg sm:text-sm">{step}</span>
               </div>
@@ -98,10 +98,10 @@ const tools = [t.devtools.owner, t.devtools.driver];
         </a>
       </div>
 
-      <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {
           t.devtools.families.map((family) => (
-            <div class="rounded-xl border border-black/8 bg-black/[0.025] px-4 py-3.5">
+            <div class="rounded-xl border border-fg/8 bg-fg/[0.025] px-4 py-3.5">
               <code class="font-mono text-sm font-semibold text-fg">lxdev {family.name}</code>
               <p class="mt-1.5 text-xs leading-relaxed text-fg-muted">{family.desc}</p>
             </div>
