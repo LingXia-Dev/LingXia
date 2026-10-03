@@ -1,5 +1,5 @@
 ---
-title: LxApp pages
+title: lxapp pages
 description: Build a page with separate View and Logic files, typed actions, native components, and adaptive state.
 sidebar:
   order: 5

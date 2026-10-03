@@ -12,7 +12,7 @@ export const ui = {
     meta: {
       title: 'LingXia — One runtime. Every platform.',
       description:
-        'LingXia is a Rust-powered cross-platform app runtime. Build page-based lxapps and native host apps for Android, iOS, macOS, Windows, and HarmonyOS — with a clean View / Logic / Bridge split and a first-class CLI.',
+        'LingXia is a Rust-powered cross-platform app runtime. Build page-based lxapps and native host apps for Android, iOS, macOS, Windows, and HarmonyOS — with a clean View / Logic / Bridge split and a CLI that scaffolds, runs, and ships them.',
     },
     nav: {
       architecture: 'Architecture',
@@ -24,6 +24,7 @@ export const ui = {
       github: 'GitHub',
       getStarted: 'Get started',
       menu: 'Menu',
+      theme: 'Toggle dark mode',
     },
     hero: {
       eyebrow: 'Cross-platform app runtime',
@@ -52,7 +53,7 @@ export const ui = {
           tag: 'View',
           runs: 'Runs in WebView',
           owns: 'Owns rendering',
-          desc: 'React, Vue, or plain HTML. Renders replicated data and dispatches typed actions.',
+          desc: 'React, Vue, or plain HTML. Renders the data Logic sends with setData and dispatches typed actions.',
         },
         {
           tag: 'Bridge',
@@ -114,18 +115,18 @@ export const ui = {
         {
           n: '01',
           tag: 'Standalone lxapp',
-          desc: 'A page-based mini-app that runs inside any LingXia host. Perfect for pure UI and page work.',
+          desc: 'A page-based mini-app that runs inside any LingXia host. Best for UI and page work without a native shell.',
           cmd: 'lingxia new my-lxapp -t lxapp -y',
         },
         {
           n: '02',
           tag: 'Native host app',
-          desc: 'An installable Android / iOS / macOS / Windows / Harmony app embedding one or more lxapps. Most products.',
+          desc: 'An installable Android / iOS / macOS / Windows / HarmonyOS app embedding one or more lxapps. The right shape for most products.',
           cmd: 'lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y',
         },
         {
           n: '03',
-          tag: 'Extend either with Rust',
+          tag: 'Extend the host with Rust',
           desc: 'Add host APIs, background services, native media, or Rust-owned logic inside a native host app.',
           cmd: '#[lingxia::native] + HostAddon',
         },
@@ -140,7 +141,7 @@ export const ui = {
         { id: 'native', label: 'Native host app' },
         { id: 'skill', label: 'AI skill' },
       ],
-      note: 'lingxia dev owns the live session; lxdev reloads, inspects, automates, and tests it.',
+      note: 'lingxia dev owns the live session; lxdev navigates, inspects, automates, and tests it.',
     },
     devtools: {
       eyebrow: 'Live development & automation',
@@ -163,16 +164,18 @@ export const ui = {
       },
       loopLabel: 'The closed loop',
       loop: ['Edit', 'Save or take over', 'Navigate & interact', 'Assert DOM or Logic', 'Check logs'],
-      familiesLabel: 'Eight focused command families',
+      familiesLabel: 'Ten focused command families',
       families: [
         { name: 'lxapp', desc: 'lifecycle · navigation · pages · eval' },
-        { name: 'app', desc: 'windows · native input · screenshots' },
-        { name: 'desktop', desc: 'windows · accessibility · pointer · keyboard · clipboard' },
+        { name: 'host', desc: 'windows · input · screenshots · app links' },
         { name: 'browser', desc: 'tabs · DOM · cookies · web automation' },
+        { name: 'desktop', desc: 'windows · accessibility · pointer · keyboard · clipboard' },
         { name: 'test', desc: 'API · page · end-to-end flows' },
         { name: 'logs', desc: 'native · View · Logic · browser' },
+        { name: 'mock', desc: 'mocks · real backend · scenarios' },
+        { name: 'network', desc: 'Logic fetch & SSE · recording' },
         { name: 'runner', desc: 'simulated device and frame for the desktop Runner' },
-        { name: 'session', desc: 'discover and select live targets' },
+        { name: 'session', desc: 'list live sessions (pick one with --session)' },
       ],
       cta: 'Explore the development workflow',
     },
@@ -180,22 +183,23 @@ export const ui = {
       eyebrow: 'AI-native by design',
       title: 'Ships with a skill your coding agent can read.',
       subtitle:
-        'LingXia distributes its full reference as a portable markdown skill: the decision tree, every CLI command, page recipes, the lx.* API map, native components, and the Rust surface — laid out so an agent routes to the right section instead of reading everything.',
+        'LingXia distributes its full reference as a portable Markdown skill: the decision tree, the lingxia and lxdev workflows, page recipes, the lx.* API map, native components, and the Rust surface — laid out so an agent routes to the right section instead of reading everything.',
       bullets: [
         'Decision tree for lxapp vs. host app vs. Rust logic',
-        'Complete CLI reference, page authoring, and lx.* API map',
+        'CLI workflows, page authoring, and the lx.* API map',
         'Native component docs and the Rust native development guide',
         'Agent control for shipped products: appUse, computerUse, browserUse',
       ],
       setupNote:
-        'lingxia new or lingxia skill install writes it to ~/.agents/skills/lingxia/; every later command rewrites it whenever the two differ.',
-      tools: 'Claude Code · OpenAI Codex CLI · Cursor · any markdown-reading agent',
-      codexLabel: 'For Codex-style tools (writes AGENTS.md)',
+        'lingxia new or lingxia skill install writes it to ~/.agents/skills/lingxia/; later lingxia commands replace it whenever it no longer matches the CLI’s own copy.',
+      tools: 'Claude Code · OpenAI Codex CLI · Cursor · any agent that reads Markdown',
+      codexLabel: 'lingxia new also adds an AGENTS.md pointer for tools that only read the project root',
     },
     packages: {
       eyebrow: 'The typed surface',
       title: 'Packages and generated imports for every layer.',
       subtitle: 'Use the framework binding for your View, global types for Logic, and the generated client for host routes.',
+      layers: ['View', 'Logic & host', 'Testing & internals'],
       items: [
         { name: '@lingxia/react', desc: 'React hooks + native component wrappers for Views' },
         { name: '@lingxia/vue', desc: 'Vue composables + native components, same surface' },
@@ -227,7 +231,7 @@ export const ui = {
         quickStart: 'Quick start',
         cliRef: 'CLI reference',
         skill: 'AI skill',
-        lxappGuide: 'LxApp guide',
+        lxappGuide: 'lxapp guide',
         github: 'GitHub',
         issues: 'Issues',
         license: 'MIT License',
@@ -240,7 +244,7 @@ export const ui = {
     meta: {
       title: 'LingXia 灵匣 — 一次编写，五端原生运行',
       description:
-        'LingXia（灵匣）是一个由 Rust 驱动的跨平台应用运行时。用一套代码构建页面式 lxapp 和原生宿主应用，覆盖 Android、iOS、macOS、Windows 与 HarmonyOS——视图渲染与业务逻辑彻底分离，配套一流的命令行工具。',
+        'LingXia（灵匣）是一个由 Rust 驱动的跨平台应用运行时。用一套代码构建页面式 lxapp 和原生宿主应用，覆盖 Android、iOS、macOS、Windows 与 HarmonyOS——视图渲染与业务逻辑彻底分离，并由命令行工具负责创建、运行与发布。',
     },
     nav: {
       architecture: '架构',
@@ -252,6 +256,7 @@ export const ui = {
       github: 'GitHub',
       getStarted: '开始使用',
       menu: '菜单',
+      theme: '切换深色模式',
     },
     hero: {
       eyebrow: '跨平台应用运行时',
@@ -280,7 +285,7 @@ export const ui = {
           tag: 'View 视图',
           runs: '运行于 WebView',
           owns: '负责渲染',
-          desc: 'React、Vue 或纯 HTML。渲染复制而来的数据，并派发类型化 action。',
+          desc: 'React、Vue 或纯 HTML。渲染 Logic 通过 setData 下发的数据，并派发类型化 action。',
         },
         {
           tag: 'Bridge 桥',
@@ -342,13 +347,13 @@ export const ui = {
         {
           n: '01',
           tag: '独立 lxapp',
-          desc: '可在任意 LingXia 宿主中运行的页面式小应用。最适合纯界面与页面开发。',
+          desc: '可在任意 LingXia 宿主中运行的页面式小应用。适合无需原生外壳的界面与页面开发。',
           cmd: 'lingxia new my-lxapp -t lxapp -y',
         },
         {
           n: '02',
           tag: '原生宿主应用',
-          desc: '可安装的 Android / iOS / macOS / Windows / Harmony 应用，内嵌一个或多个 lxapp。多数产品的选择。',
+          desc: '可安装的 Android / iOS / macOS / Windows / HarmonyOS 应用，内嵌一个或多个 lxapp，适合大多数产品。',
           cmd: 'lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y',
         },
         {
@@ -368,13 +373,13 @@ export const ui = {
         { id: 'native', label: '原生宿主应用' },
         { id: 'skill', label: 'AI 技能' },
       ],
-      note: 'lingxia dev 负责实时会话；lxdev 负责重载、检查、自动化与测试。',
+      note: 'lingxia dev 负责实时会话；lxdev 负责导航、检查、自动化与测试。',
     },
     devtools: {
       eyebrow: '实时开发与自动化',
       title: '构建、驱动、验证，形成闭环。',
       subtitle:
-        '一条命令拥有实时应用会话，另一条把它变成可编程的开发界面，供开发者、脚本与编码 Agent 共同使用。',
+        '一条命令负责实时应用会话，另一条把它变成可编程的开发界面，供开发者、脚本与编码 Agent 共同使用。',
       owner: {
         label: '会话拥有者',
         title: 'lingxia dev',
@@ -391,39 +396,42 @@ export const ui = {
       },
       loopLabel: '完整闭环',
       loop: ['编辑', '保存或接管', '导航并交互', '断言 DOM 或 Logic', '检查日志'],
-      familiesLabel: '八个聚焦的命令家族',
+      familiesLabel: '十个聚焦的命令家族',
       families: [
         { name: 'lxapp', desc: '生命周期 · 导航 · 页面 · eval' },
-        { name: 'app', desc: '窗口 · 原生输入 · 截图' },
-        { name: 'desktop', desc: '窗口 · 无障碍树 · 指针 · 键盘 · 剪贴板' },
+        { name: 'host', desc: '窗口 · 输入 · 截图 · App Link' },
         { name: 'browser', desc: '标签 · DOM · Cookie · Web 自动化' },
+        { name: 'desktop', desc: '窗口 · 无障碍树 · 指针 · 键盘 · 剪贴板' },
         { name: 'test', desc: 'API · 页面 · 端到端流程' },
         { name: 'logs', desc: '原生 · View · Logic · 浏览器' },
+        { name: 'mock', desc: '模拟 · 真实后端 · 场景' },
+        { name: 'network', desc: 'Logic 请求与 SSE · 录制' },
         { name: 'runner', desc: '桌面 Runner 的模拟设备与外框' },
-        { name: 'session', desc: '发现并选择实时目标' },
+        { name: 'session', desc: '列出实时会话（用 --session 选择）' },
       ],
       cta: '查看完整开发工作流',
     },
     ai: {
-      eyebrow: '原生面向 AI',
+      eyebrow: 'AI 原生设计',
       title: '内置一份你的编码助手能读懂的技能。',
       subtitle:
-        'LingXia 把完整参考资料做成一份可移植的 markdown 技能：决策树、每条 CLI 命令、页面写法、lx.* API 地图、原生组件、Rust 接口——经过编排，让 AI 助手直接路由到所需章节，而非通读全部。',
+        'LingXia 把完整参考资料做成一份可移植的 Markdown 技能：决策树、lingxia 与 lxdev 工作流、页面写法、lx.* API 地图、原生组件、Rust 接口——经过编排，让 AI 助手直接路由到所需章节，而非通读全部。',
       bullets: [
         'lxapp / 宿主应用 / Rust 逻辑 的决策树',
-        '完整 CLI 参考、页面编写与 lx.* API 地图',
+        'CLI 工作流、页面编写与 lx.* API 地图',
         '原生组件文档与 Rust 原生开发指南',
         '交付产品的 agent 控制面：appUse、computerUse、browserUse',
       ],
       setupNote:
-        'lingxia new 或 lingxia skill install 会把它写入 ~/.agents/skills/lingxia/；之后任意命令发现两者不一致就重写。',
-      tools: 'Claude Code · OpenAI Codex CLI · Cursor · 任意读 markdown 的助手',
-      codexLabel: '面向 Codex 类工具（会写入 AGENTS.md）',
+        'lingxia new 或 lingxia skill install 会把它写入 ~/.agents/skills/lingxia/；之后的 lingxia 命令发现它与 CLI 自带版本不一致时会自动替换。',
+      tools: 'Claude Code · OpenAI Codex CLI · Cursor · 任意能读取 Markdown 的编程助手',
+      codexLabel: 'lingxia new 还会在项目 AGENTS.md 中写入指向该技能的引用，供只读取项目根目录的工具使用',
     },
     packages: {
       eyebrow: '类型化接口',
       title: '每一层都有对应的包或生成入口。',
       subtitle: 'View 使用框架绑定，Logic 使用全局类型，宿主路由使用 CLI 生成的客户端。',
+      layers: ['视图层', '逻辑与宿主', '测试与底层'],
       items: [
         { name: '@lingxia/react', desc: 'React Hooks + 视图用原生组件封装' },
         { name: '@lingxia/vue', desc: 'Vue 组合式 API + 原生组件，接口一致' },
@@ -455,7 +463,7 @@ export const ui = {
         quickStart: '快速开始',
         cliRef: 'CLI 参考',
         skill: 'AI 技能',
-        lxappGuide: 'LxApp 指南',
+        lxappGuide: 'lxapp 指南',
         github: 'GitHub',
         issues: '问题反馈',
         license: 'MIT 许可证',

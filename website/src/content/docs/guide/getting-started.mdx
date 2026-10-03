@@ -5,16 +5,13 @@ sidebar:
   order: 2
 ---
 
-import { Image } from 'astro:assets';
-import runnerShot from '../../../assets/showcase/macos.png';
-
 The fastest path from zero to a running LingXia app.
 
 ## Prerequisites
 
 Always needed:
 
-- **Node.js** 18 or later
+- **Node.js** 20.19+ or 22.12+
 
 Install only the platform toolchains you target:
 
@@ -25,7 +22,7 @@ Install only the platform toolchains you target:
 | Harmony | Harmony command-line tools SDK |
 | Windows native host | Rust + MSVC Build Tools / Visual Studio on Windows |
 
-If you'll write Rust native code (custom host APIs, native-only host), also install a **Rust** toolchain via [rustup](https://rustup.rs).
+Native host apps also need a **Rust** toolchain ([rustup](https://rustup.rs)); standalone lxapps do not.
 
 ## 1. Install the CLI
 
@@ -69,11 +66,7 @@ cd my-lxapp
 lingxia dev
 ```
 
-`lingxia dev` builds the lxapp and launches LingXia Runner on macOS or Windows.
-
-<Image src={runnerShot} alt="The LingXia Runner on macOS simulating iPhone 15 Pro, running the showcase lxapp" densities={[1, 2]} style="max-width:320px;border-radius:14px;border:1px solid rgba(0,0,0,0.08);box-shadow:0 24px 60px -20px rgba(0,0,0,0.35)" />
-
-*`lingxia dev` builds the View + Logic and opens the LingXia Runner — here simulating iPhone 15 Pro on macOS. Switch the simulated device from the title-bar selector.*
+`lingxia dev` builds the lxapp and launches LingXia Runner on macOS or Windows. Switch the simulated device from the Runner's title-bar selector.
 
 ### Native host app
 
@@ -90,7 +83,7 @@ lingxia dev
 While `lingxia dev` owns the live session, **`lxdev`** drives and inspects it. Saving lxapp sources rebuilds and reloads in place; `lxdev` automates browser tabs and lxapp pages, controls host windows, runs tests, and inspects the combined log stream.
 
 ```bash
-lxdev --help          # lxapp, app, desktop, browser, test, logs, runner, session
+lxdev --help          # lxapp, host, browser, desktop, test, logs, mock, network, runner, session
 lxdev logs -f         # follow native + webview + logic logs
 lxdev lxapp nav to home
 ```

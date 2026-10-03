@@ -9,7 +9,7 @@ interface Props {
 }
 const { t } = Astro.props;
 
-const accents = ['text-jade-700', 'text-cyan-600', 'text-ink-600'];
+const accents = ['text-jade-700', 'text-cyan-600', 'text-fg'];
 
 // The vessel stroke of the brand mark, shared by all three variants.
 const VESSEL =
@@ -35,12 +35,12 @@ const HEX_POINTS = '50,29 60.8,35.25 60.8,47.75 50,54 39.2,47.75 39.2,35.25';
   <div class="mx-auto max-w-7xl px-5 sm:px-8">
     <SectionHeading eyebrow={t.shapes.eyebrow} title={t.shapes.title} subtitle={t.shapes.subtitle} />
 
-    <div class="mt-14 grid gap-5 lg:grid-cols-3">
+    <div class="mt-14 grid grid-cols-1 gap-5 lg:grid-cols-3">
       {
         t.shapes.items.map((s, i) => (
           <div class="reveal" data-delay={i * 90}>
             <div class="card card-hover relative flex h-full flex-col overflow-hidden p-7">
-              <span class="pointer-events-none absolute right-4 top-2 font-display text-7xl font-bold text-black/[0.05] select-none">
+              <span class="pointer-events-none absolute right-4 top-2 font-display text-7xl font-bold text-fg/[0.05] select-none">
                 {s.n}
               </span>
               <div class="relative flex-1">

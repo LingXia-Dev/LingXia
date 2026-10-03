@@ -5,9 +5,9 @@ sidebar:
   order: 0
 ---
 
-是的，这里的 **Logic JS API** 指 lxapp 的 Logic context 中可用的 JavaScript / TypeScript 接口，主要入口是全局对象 `lx`。生成的 Reference 还包含 `Page({})`、`App({})`、生命周期、错误、句柄、参数与返回值等完整类型。
+**Logic JS API** 指 lxapp 的 Logic context 中可用的 JavaScript / TypeScript 接口，主要入口是全局对象 `lx`。生成的 Reference 还包含 `Page({})`、`App({})`、生命周期、错误、句柄、参数与返回值等完整类型。
 
-自动生成的 [Logic JS API](../../reference/api/) 参考按能力分组——导航、界面外壳、文件、媒体、设备、网络与宿主应用——列出每个 `lx.*` 成员的已发布签名与参数结构；需要理解架构与实际写法时，先读 [LxApp 页面开发](../../guide/lxapp-pages/)。
+自动生成的 [Logic JS API](../../reference/api/) 参考按能力分组——导航、界面外壳、文件、媒体、设备、网络与宿主应用——列出每个 `lx.*` 成员的已发布签名与参数结构；需要理解架构与实际写法时，先读 [lxapp 页面开发](../../guide/lxapp-pages/)。
 
 ## 类型从哪里来
 
