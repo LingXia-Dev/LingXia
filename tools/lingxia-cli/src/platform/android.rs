@@ -603,7 +603,11 @@ impl Platform for AndroidPlatform {
             &res_overlay,
             sdk_maven_repo.as_deref(),
         )?;
-        let apk_path = project_named_artifact(&gradle_artifact, config.lingxia_config.as_ref())?;
+        let apk_path = project_named_artifact(
+            &gradle_artifact,
+            config.lingxia_config.as_ref(),
+            config.resolved_env.version,
+        )?;
 
         Ok(BuildArtifacts::Android { apk_path })
     }

@@ -582,7 +582,11 @@ impl Platform for MacosPlatform {
         };
 
         let dmg_path = if config.dmg {
-            Some(create_dmg(&app_path, &config.project_root)?)
+            Some(create_dmg(
+                &app_path,
+                &config.project_root,
+                super::artifact_stem(config.lingxia_config.as_ref(), config.resolved_env.version),
+            )?)
         } else {
             None
         };
@@ -873,7 +877,7 @@ fn copy_info_plist_localizations(source_root: &Path, resources_dir: &Path) -> Re
     Ok(())
 }
 
-fn create_dmg(app_path: &Path, project_root: &Path) -> Result<PathBuf> {
+fn create_dmg(app_path: &Path, project_root: &Path, stem: Option<String>) -> Result<PathBuf> {
     let app_name = app_path
         .file_stem()
         .and_then(|n| n.to_str())
@@ -889,7 +893,8 @@ fn create_dmg(app_path: &Path, project_root: &Path) -> Result<PathBuf> {
             dmg_output_dir.display()
         )
     })?;
-    let dmg_path = dmg_output_dir.join(format!("{app_name}.dmg"));
+    let dmg_path = dmg_output_dir.join(format!("{}.dmg", stem.as_deref().unwrap_or(app_name)));
+    super::remove_stale_artifacts(&dmg_path)?;
 
     if dmg_path.exists() {
         fs::remove_file(&dmg_path)

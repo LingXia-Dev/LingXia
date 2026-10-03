@@ -1,4 +1,4 @@
-use crate::config::LingXiaConfig;
+use crate::config::{AppEnv, LingXiaConfig};
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -312,25 +312,53 @@ pub enum BuildArtifacts {
     },
 }
 
+/// File stem for a distributable: `{projectName}-{productVersion}`, plus
+/// `-dev` for a dev build, so a file says which build it is before install.
+pub(crate) fn artifact_stem(config: Option<&LingXiaConfig>, env: AppEnv) -> Option<String> {
+    let app = config?.app.as_ref()?;
+    let project_name = app.project_name.trim();
+    if project_name.is_empty() {
+        return None;
+    }
+    let mut stem = format!("{project_name}-{}", app.product_version.trim());
+    if env == AppEnv::Dev {
+        stem.push_str("-dev");
+    }
+    Some(stem)
+}
+
+/// Remove other `.ext` files next to `artifact`, so a directory of
+/// versioned artifacts holds only the latest build.
+pub(crate) fn remove_stale_artifacts(artifact: &Path) -> Result<()> {
+    let (Some(dir), Some(extension)) = (artifact.parent(), artifact.extension()) else {
+        return Ok(());
+    };
+    for entry in fs::read_dir(dir)? {
+        let stale = entry?.path();
+        if stale != artifact && stale.is_file() && stale.extension() == Some(extension) {
+            fs::remove_file(&stale)
+                .with_context(|| format!("Failed to remove stale artifact {}", stale.display()))?;
+        }
+    }
+    Ok(())
+}
+
 /// Copy a platform tool's fixed-name file to the project-facing artifact name.
 ///
 /// Gradle and Hvigor own their native output paths, so keep those files intact
-/// for incremental builds while returning a sibling named from `projectName`.
+/// for incremental builds while returning a sibling named by [`artifact_stem`].
 pub(crate) fn project_named_artifact(
     source: &Path,
     config: Option<&LingXiaConfig>,
+    env: AppEnv,
 ) -> Result<PathBuf> {
-    let Some(project_name) = config
-        .and_then(|config| config.app.as_ref())
-        .map(|app| app.project_name.trim())
-        .filter(|name| !name.is_empty())
-    else {
+    let Some(stem) = artifact_stem(config, env) else {
         return Ok(source.to_path_buf());
     };
     let Some(extension) = source.extension().and_then(|extension| extension.to_str()) else {
         return Ok(source.to_path_buf());
     };
-    let destination = source.with_file_name(format!("{project_name}.{extension}"));
+    let destination = source.with_file_name(format!("{stem}.{extension}"));
     if destination == source {
         return Ok(destination);
     }
@@ -486,18 +514,46 @@ mod tests {
         fs::write(&source, b"apk").unwrap();
         let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
         config.app.as_mut().unwrap().product_name = "Branded Display Name".to_string();
-        let artifact = project_named_artifact(&source, Some(&config)).unwrap();
+        config.app.as_mut().unwrap().product_version = "1.2.3".to_string();
+        let artifact = project_named_artifact(&source, Some(&config), AppEnv::Prod).unwrap();
 
-        assert_eq!(artifact, temp.path().join("demo.apk"));
+        assert_eq!(artifact, temp.path().join("demo-1.2.3.apk"));
         assert_eq!(fs::read(&artifact).unwrap(), b"apk");
         assert_eq!(fs::read(&source).unwrap(), b"apk");
+    }
+
+    #[test]
+    fn dev_artifact_stem_is_marked_dev() {
+        let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
+        config.app.as_mut().unwrap().product_version = "0.4.0".to_string();
+        assert_eq!(
+            artifact_stem(Some(&config), AppEnv::Dev).as_deref(),
+            Some("demo-0.4.0-dev")
+        );
+        assert_eq!(
+            artifact_stem(Some(&config), AppEnv::Prod).as_deref(),
+            Some("demo-0.4.0")
+        );
+    }
+
+    #[test]
+    fn remove_stale_artifacts_keeps_other_extensions() {
+        let temp = TempDir::new().unwrap();
+        let current = temp.path().join("demo-1.1.0.ipa");
+        for name in ["demo-1.0.0.ipa", "demo-1.1.0.ipa", "demo-1.0.0-macos.zip"] {
+            fs::write(temp.path().join(name), b"x").unwrap();
+        }
+        remove_stale_artifacts(&current).unwrap();
+        assert!(current.exists());
+        assert!(!temp.path().join("demo-1.0.0.ipa").exists());
+        assert!(temp.path().join("demo-1.0.0-macos.zip").exists());
     }
 
     #[test]
     fn project_named_artifact_without_host_config_keeps_source_path() {
         let source = Path::new("dist/app-release.apk");
         assert_eq!(
-            project_named_artifact(source, None).unwrap(),
+            project_named_artifact(source, None, AppEnv::Prod).unwrap(),
             source.to_path_buf()
         );
     }

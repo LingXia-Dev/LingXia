@@ -1,9 +1,9 @@
 use super::{HarmonyPlatform, OHOS_TARGET, deploy::ensure_command};
 use crate::commands::rust::run_cargo_rustc_for_target;
 use crate::platform::{
-    BuildArtifacts, BuildConfig, lingxia_workspace_root, native_client_out_for_host_project,
-    project_named_artifact, resolve_cargo_target_dir, resolve_lingxia_target_dir,
-    set_native_client_codegen_env,
+    BuildArtifacts, BuildConfig, artifact_stem, lingxia_workspace_root,
+    native_client_out_for_host_project, project_named_artifact, resolve_cargo_target_dir,
+    resolve_lingxia_target_dir, set_native_client_codegen_env,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use colored::Colorize;
@@ -119,16 +119,15 @@ impl HarmonyPlatform {
 
         self.ohpm_install(&staging)?;
         let hvigor_artifact = self.build_hap(&staging, config)?;
-        let hap_path = project_named_artifact(&hvigor_artifact, config.lingxia_config.as_ref())?;
+        let hap_path = project_named_artifact(
+            &hvigor_artifact,
+            config.lingxia_config.as_ref(),
+            config.resolved_env.version,
+        )?;
         let app_path = if config.package {
-            let project_name = config
-                .lingxia_config
-                .as_ref()
-                .and_then(|cfg| cfg.app.as_ref())
-                .map(|app| app.project_name.trim())
-                .filter(|name| !name.is_empty())
-                .unwrap_or("app");
-            Some(pack_harmony_app(&staging, project_name)?)
+            let stem = artifact_stem(config.lingxia_config.as_ref(), config.resolved_env.version)
+                .unwrap_or_else(|| "app".to_string());
+            Some(pack_harmony_app(&staging, &stem)?)
         } else {
             None
         };
@@ -1043,7 +1042,7 @@ fn parse_crate_and_lib_name(manifest_path: &Path) -> Result<(String, String)> {
     Ok((package_name, lib_name))
 }
 
-fn pack_harmony_app(staging: &Path, project_name: &str) -> Result<PathBuf> {
+fn pack_harmony_app(staging: &Path, stem: &str) -> Result<PathBuf> {
     println!("{}", "Packing AppGallery .app...".cyan());
     let hvigorw = ensure_command("hvigorw")?;
     let status = Command::new(&hvigorw)
@@ -1061,7 +1060,7 @@ fn pack_harmony_app(staging: &Path, project_name: &str) -> Result<PathBuf> {
             staging.display()
         )
     })?;
-    let dest = found.with_file_name(format!("{project_name}.app"));
+    let dest = found.with_file_name(format!("{stem}.app"));
     if dest != found {
         std::fs::copy(&found, &dest)
             .with_context(|| format!("Failed to copy {} -> {}", found.display(), dest.display()))?;

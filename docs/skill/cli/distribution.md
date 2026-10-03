@@ -3,6 +3,10 @@
 Getting a built app out: publish to the LingXia server, platform signing, OS
 app stores, and developer accounts. Flags: `lingxia <cmd> --help`.
 
+Packages land in `dist/<platform>/` as `<projectName>-<productVersion>`, with
+`-dev` for a `--env dev` build (`my-app-1.2.0-dev.apk`); a rebuild replaces
+the previous one.
+
 ## `lingxia publish`
 
 Uploads a package to the LingXia server (OS stores are `lingxia store`).

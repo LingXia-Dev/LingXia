@@ -455,7 +455,11 @@ impl Platform for IosPlatform {
                     ipa_output_dir.display()
                 )
             })?;
-            let ipa_path = ipa_output_dir.join(format!("{app_name}.ipa"));
+            let stem =
+                super::artifact_stem(config.lingxia_config.as_ref(), config.resolved_env.version)
+                    .unwrap_or_else(|| app_name.to_string());
+            let ipa_path = ipa_output_dir.join(format!("{stem}.ipa"));
+            super::remove_stale_artifacts(&ipa_path)?;
             let ipa_path = apple::signer::create_ipa(&app_path, &ipa_path)?;
             println!("{} IPA → {}", "✓".green(), ipa_path.display());
             Some(ipa_path)
