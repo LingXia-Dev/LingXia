@@ -62,7 +62,11 @@ opens release lxapps. Explicit `channel` selectors still take precedence.
 Installs and storage are keyed by channel, home lxapp included, so each
 service env keeps its own lxapp data; switching back restores the other set.
 
-Package id, signing, the installed icon, self-update server, and signed App
+Draft lxapps/plugins from the dev service may be unsigned, including on a
+prod build switched to dev. Release packages and packages from the prod
+service retain the build environment's signature requirements.
+
+Package id, host signing, the installed icon, self-update server, and signed App
 Link entitlement stay on the build env. A `dev` build gets the icon D mark.
 A `prod` build using the `dev` service shows a touch-through `DEV` mark above
 its own content: a narrow vertical tab centered on the left screen edge on
