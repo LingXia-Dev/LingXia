@@ -8,7 +8,7 @@ use crate::error::UpdateError;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
-use lingxia_app_context::{AppEnv, env};
+use lingxia_app_context::{AppEnv, env, service_env};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -142,9 +142,7 @@ pub fn env_requires_signature(env: AppEnv) -> bool {
     env == AppEnv::Prod
 }
 
-/// Whether *this build* accepts an unsigned update, whatever channel is asked
-/// for. Callers cannot pass a channel: that is the whole point — see
-/// [`verify_checked_update`].
+/// Whether host app updates require a signature, independent of service env.
 pub fn host_requires_signature() -> bool {
     env_requires_signature(env())
 }
@@ -153,6 +151,29 @@ pub fn host_requires_signature() -> bool {
 /// version signal is handled separately and may be unsigned.
 pub fn check_update_enabled(trusted_public_keys: &[String]) -> bool {
     !host_requires_signature() || !trusted_public_keys.is_empty()
+}
+
+fn package_requires_signature(
+    build_env: AppEnv,
+    running_service_env: AppEnv,
+    kind: &str,
+    channel: &str,
+) -> bool {
+    env_requires_signature(build_env)
+        && !(running_service_env == AppEnv::Dev
+            && matches!(kind, "lxapp" | "lxplugin")
+            && channel == "draft")
+}
+
+/// Dev-service draft lxapps/plugins can be checked without embedded keys.
+/// Host app checks continue to use the immutable build environment.
+pub fn check_package_update_enabled(
+    kind: &str,
+    channel: &str,
+    trusted_public_keys: &[String],
+) -> bool {
+    !package_requires_signature(env(), service_env(), kind, channel)
+        || !trusted_public_keys.is_empty()
 }
 
 pub fn sign_package_from_key_file(
@@ -174,20 +195,28 @@ pub fn sign_package_from_key_file(
 }
 
 pub fn verify_checked_update(
-    mut package: UpdatePackageInfo,
+    package: UpdatePackageInfo,
     target: &UpdateVerifyTarget,
     trusted_public_keys: &[String],
 ) -> Result<UpdatePackageInfo, UpdateError> {
-    // Whether a signature may be waived is a property of *this build*, never of
-    // the request. An App Link query or `lx.navigateToApp({channel})` picks
-    // the channel an lxapp is fetched on, so keying the waiver on
-    // `target.channel` let anyone who can hand a prod device a link ask for
-    // the draft channel and be served an unsigned package.
-    //
-    // `target.channel` still binds the manifest below: a prod host may open
-    // a draft-channel lxapp, but only one a trusted key signed for that
-    // channel.
-    let signature_required = host_requires_signature();
+    verify_checked_update_in_env(package, target, trusted_public_keys, env(), service_env())
+}
+
+fn verify_checked_update_in_env(
+    mut package: UpdatePackageInfo,
+    target: &UpdateVerifyTarget,
+    trusted_public_keys: &[String],
+    build_env: AppEnv,
+    running_service_env: AppEnv,
+) -> Result<UpdatePackageInfo, UpdateError> {
+    // Channel alone cannot waive verification: the trusted control app must
+    // have switched the running service env to dev. Host updates stay signed.
+    let signature_required = package_requires_signature(
+        build_env,
+        running_service_env,
+        &target.kind,
+        &target.channel,
+    );
     if trusted_public_keys.is_empty() && !signature_required {
         return Ok(package);
     }
@@ -196,8 +225,7 @@ pub fn verify_checked_update(
         if signature_required {
             return Err(UpdateError::invalid_parameter(format!(
                 "{} builds require signed updates ({} channel package is unsigned)",
-                env(),
-                target.channel
+                build_env, target.channel
             )));
         }
         return Ok(package);
@@ -507,6 +535,81 @@ mod tests {
         // Nor with keys embedded: an unsigned package is still refused.
         let keys = [public_key_base64url(&SEED)];
         assert!(verify_checked_update(package(None, &sha256, size), &dev, &keys).is_err());
+    }
+
+    #[test]
+    fn dev_service_draft_policy_preserves_prod_host_and_release_verification() {
+        let sha256 = archive_sha256_hex(ARCHIVE);
+        let keys = [public_key_base64url(&SEED)];
+        for build_env in [AppEnv::Dev, AppEnv::Prod] {
+            for running_service_env in [AppEnv::Dev, AppEnv::Prod] {
+                for kind in ["app", "lxapp", "lxplugin"] {
+                    for channel in ["draft", "release", ""] {
+                        let mut t = target();
+                        t.kind = kind.into();
+                        t.channel = channel.into();
+                        let required = build_env == AppEnv::Prod
+                            && !(running_service_env == AppEnv::Dev
+                                && kind != "app"
+                                && channel == "draft");
+                        assert_eq!(
+                            package_requires_signature(
+                                build_env,
+                                running_service_env,
+                                kind,
+                                channel
+                            ),
+                            required,
+                        );
+                        for trusted_keys in [&[][..], &keys[..]] {
+                            let result = verify_checked_update_in_env(
+                                package(None, &sha256, ARCHIVE.len() as u64),
+                                &t,
+                                trusted_keys,
+                                build_env,
+                                running_service_env,
+                            );
+                            assert_eq!(
+                                result.is_err(),
+                                required,
+                                "{build_env:?}/{running_service_env:?}/{kind}/{channel}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn dev_service_draft_still_verifies_supplied_signatures_when_keys_exist() {
+        let sha256 = archive_sha256_hex(ARCHIVE);
+        let mut draft = target();
+        draft.channel = "draft".into();
+        let mut req = request(&sha256);
+        req.channel = "draft";
+        let auth = sign_package(&SEED, &req).unwrap();
+        let keys = [public_key_base64url(&SEED)];
+        verify_checked_update_in_env(
+            package(Some(auth.clone()), &sha256, ARCHIVE.len() as u64),
+            &draft,
+            &keys,
+            AppEnv::Prod,
+            AppEnv::Dev,
+        )
+        .unwrap();
+        let mut corrupt = auth;
+        corrupt.signatures[0] = encode_base64url(&[0u8; 64]);
+        assert!(
+            verify_checked_update_in_env(
+                package(Some(corrupt), &sha256, ARCHIVE.len() as u64),
+                &draft,
+                &keys,
+                AppEnv::Prod,
+                AppEnv::Dev,
+            )
+            .is_err()
+        );
     }
 
     #[test]

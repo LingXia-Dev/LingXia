@@ -23,8 +23,10 @@ Uploads a package to the LingXia server (OS stores are `lingxia store`).
 
 `prod` publishes need `--update-signing-key-file` (or
 `LINGXIA_UPDATE_SIGNING_KEY_FILE`), draft channel included; `dev` may be
-unsigned. A prod host verifies every package, even a draft lxapp. The CLI
-signs; never hand-build `signed` / `signatures`.
+unsigned. A prod host switched to the dev service accepts unsigned draft
+lxapps/plugins; prod-service packages, release packages, and host updates
+still require signatures. The CLI signs; never hand-build `signed` /
+`signatures`.
 
 The key file is one line: base64url (no `=`) of a 32-byte Ed25519 seed, mode
 `0600` or `0400`. Put 1 or 2 matching public keys under

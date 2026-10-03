@@ -408,7 +408,7 @@ async fn download_and_install_internal(
     let provider = crate::get_provider();
     let channel = lingxia_update::default_channel();
     let keys = lingxia_update::embedded_update_public_keys();
-    if !lingxia_update::check_update_enabled(&keys) {
+    if !lingxia_update::check_package_update_enabled("lxplugin", channel.as_str(), &keys) {
         return Err(LxAppError::InvalidParameter(format!(
             "{} plugin updates require update.trustedPublicKeys",
             channel.as_str()

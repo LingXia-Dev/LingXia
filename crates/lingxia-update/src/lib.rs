@@ -23,10 +23,10 @@ pub use lxapp::{
 };
 pub use signing::{
     SignRequest, UpdateAuthentication, UpdateVerifyTarget, archive_sha256_hex,
-    check_update_enabled, compact_manifest, decode_base64url, embedded_update_public_keys,
-    encode_base64url, env_requires_signature, host_requires_signature, host_update_platform,
-    load_signing_seed_file, public_key_base64url, sign_package, sign_package_from_key_file,
-    verify_archive_bytes, verify_checked_update,
+    check_package_update_enabled, check_update_enabled, compact_manifest, decode_base64url,
+    embedded_update_public_keys, encode_base64url, env_requires_signature, host_requires_signature,
+    host_update_platform, load_signing_seed_file, public_key_base64url, sign_package,
+    sign_package_from_key_file, verify_archive_bytes, verify_checked_update,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
