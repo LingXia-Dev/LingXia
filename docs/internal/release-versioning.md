@@ -102,7 +102,8 @@ The project half compares major.minor only. Applying a newer line rewrites:
 - `@lingxia/*` npm ranges, then `npm install` refreshes the lockfile;
 - each `lxapp.json` `minRuntime` to the new `M.m.0` (never lowered; added when
   missing);
-- scaffolded LingXia crate requirements in `native/Cargo.toml`, then targeted
+- managed LingXia crate requirements in local Cargo manifests (including host
+  support crates), in inline or expanded dependency tables, then targeted
   `cargo update -p ...`;
 - Android: gradle `lingxia.sdkVersion`, then the Maven zip into
   `~/.lingxia/sdk/android-maven/<ver>/` (the repo `lingxia build` injects);
