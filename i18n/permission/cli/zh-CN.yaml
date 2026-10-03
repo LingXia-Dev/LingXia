@@ -3,3 +3,5 @@
 "apple.info_plist.NSLocationWhenInUseUsageDescription": "用于读取 Wi-Fi 网络信息。"
 "apple.info_plist.NSPhotoLibraryUsageDescription": "用于访问相册中的图片和视频。"
 "apple.info_plist.NSPhotoLibraryAddUsageDescription": "用于保存图片和视频。"
+"apple.settings_bundle.Version": "版本"
+"apple.settings_bundle.Environment": "环境"

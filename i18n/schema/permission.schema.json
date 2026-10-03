@@ -5,7 +5,7 @@
   "type": "object",
   "minProperties": 1,
   "patternProperties": {
-    "^apple\\.info_plist\\.[A-Za-z0-9_]+$": {
+    "^apple\\.(info_plist|settings_bundle)\\.[A-Za-z0-9_]+$": {
       "type": "string",
       "minLength": 1
     }
