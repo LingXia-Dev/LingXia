@@ -223,13 +223,10 @@ fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
                 &["title", "style"],
                 &format!("{} navigationBar", relative.display()),
             )?;
-            if let Some(title) = navigation_bar.get("title")
-                && !title.is_string()
-            {
-                return Err(anyhow!(
-                    "{} navigationBar.title: expected a string",
-                    relative.display()
-                ));
+            if let Some(title) = navigation_bar.get("title") {
+                validate_localized_text(title).map_err(|reason| {
+                    anyhow!("{} navigationBar.title: {reason}", relative.display())
+                })?;
             }
             if let Some(style) = navigation_bar.get("style") {
                 validate_style_object(
@@ -360,15 +357,48 @@ fn validate_page_chrome_manifest(manifest: &Value) -> Result<()> {
                 "tabBar.items[{index}].page: '{page}' is not a registered page name{hint}"
             ));
         }
-        for field in ["text", "iconPath"] {
-            if let Some(value) = item.get(field)
-                && !value.is_string()
-            {
-                return Err(anyhow!("tabBar.items[{index}].{field}: expected a string"));
-            }
+        if let Some(text) = item.get("text") {
+            validate_localized_text(text)
+                .map_err(|reason| anyhow!("tabBar.items[{index}].text: {reason}"))?;
+        }
+        if let Some(value) = item.get("iconPath")
+            && !value.is_string()
+        {
+            return Err(anyhow!("tabBar.items[{index}].iconPath: expected a string"));
         }
     }
     Ok(())
+}
+
+/// Text the runtime resolves per display language: a string, or an object
+/// mapping language tags to strings (`{ "en-US": "Profiles", "zh-CN": "节点" }`).
+/// Mirrors `LocalizedText` in `lingxia-lxapp`, so a manifest the runtime would
+/// reject fails here, at build time.
+pub(crate) fn validate_localized_text(value: &Value) -> std::result::Result<(), String> {
+    match value {
+        Value::String(_) => Ok(()),
+        Value::Object(entries) => {
+            if entries.is_empty() {
+                return Err("expected at least one language".to_string());
+            }
+            let mut seen: Vec<String> = Vec::new();
+            for (tag, text) in entries {
+                let tag = tag.trim();
+                if tag.is_empty() {
+                    return Err("language tag must not be empty".to_string());
+                }
+                if seen.iter().any(|seen| seen.eq_ignore_ascii_case(tag)) {
+                    return Err(format!("duplicate language tag '{tag}'"));
+                }
+                if !text.is_string() {
+                    return Err(format!("'{tag}': expected a string"));
+                }
+                seen.push(tag.to_string());
+            }
+            Ok(())
+        }
+        _ => Err("expected a string or an object of language tag to string".to_string()),
+    }
 }
 
 fn reject_unknown_fields(
@@ -597,6 +627,20 @@ fn non_empty_str(value: Option<&Value>, field: &str) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn localized_text_accepts_a_string_or_a_language_map() {
+        use super::validate_localized_text;
+        assert!(validate_localized_text(&serde_json::json!("Home")).is_ok());
+        assert!(
+            validate_localized_text(&serde_json::json!({ "en-US": "Profiles", "zh-CN": "节点" }))
+                .is_ok()
+        );
+        assert!(validate_localized_text(&serde_json::json!({})).is_err());
+        assert!(validate_localized_text(&serde_json::json!({ "en": 1 })).is_err());
+        assert!(validate_localized_text(&serde_json::json!({ "en": "a", "EN": "b" })).is_err());
+        assert!(validate_localized_text(&serde_json::json!(["Home"])).is_err());
+    }
+
     use super::*;
     use std::fs;
     use tempfile::tempdir;

@@ -1,4 +1,5 @@
 use super::host_class::{HostClass, host_class, is_pad};
+use super::localized_text::LocalizedText;
 use super::page_chrome::{
     PageChromeColor, PatchField, TabBarPresentation, TabBarVisibilityPreference, ValuePatchField,
 };
@@ -91,7 +92,14 @@ pub struct TabBarItem {
     /// treats an empty path as no page.
     #[serde(skip, default)]
     pub page_path: String,
-    #[serde(default)]
+    /// The label as declared: a string, or one per language. Readers use
+    /// [`Self::text`], which is this resolved for the current language.
+    #[serde(rename = "text", default, skip_serializing_if = "Option::is_none")]
+    pub declared_text: Option<LocalizedText>,
+    /// The label to draw: a runtime override (`lx.tabBar.update`) if one is
+    /// set, otherwise [`Self::declared_text`] for the effective display
+    /// language. Kept as a plain string so every host reads it unchanged.
+    #[serde(skip)]
     pub text: Option<String>,
     /// One icon per item, drawn as a template: the host tints it for both
     /// states and marks the active tab with its own indicator, so an item
@@ -105,7 +113,7 @@ pub struct TabBarItem {
     pub show_on: Option<Vec<HostClass>>,
 
     #[serde(skip)]
-    manifest_text: Option<String>,
+    text_override: Option<String>,
     #[serde(skip)]
     manifest_icon_path: Option<String>,
     #[serde(skip)]
@@ -117,7 +125,8 @@ pub struct TabBarItem {
 impl TabBarItem {
     fn initialize_runtime(&mut self, base_path: &Path) {
         self.icon_path = Some(resolve_asset_path(base_path, self.icon_path.as_deref()));
-        self.manifest_text = self.text.clone();
+        self.text_override = None;
+        self.localize();
         self.manifest_icon_path = self.icon_path.clone();
         self.badge = None;
         self.has_red_dot = false;
@@ -137,7 +146,19 @@ impl TabBarItem {
     }
 
     fn set_text_override(&mut self, value: Option<String>) {
-        self.text = value.or_else(|| self.manifest_text.clone());
+        self.text_override = value;
+        self.localize();
+    }
+
+    /// Re-resolve [`Self::text`] for the effective display language. An
+    /// override wins; clearing it falls back to the declaration.
+    fn localize(&mut self) {
+        let language = super::display_language();
+        self.text = self.text_override.clone().or_else(|| {
+            self.declared_text
+                .as_ref()
+                .map(|text| text.resolve(&language).to_string())
+        });
     }
 
     fn set_icon_override(&mut self, value: Option<String>) {
@@ -607,10 +628,19 @@ impl TabBar {
         Ok(changed)
     }
 
+    /// Re-resolve every label for the effective display language, after it
+    /// changed. Runtime overrides are kept.
+    pub(crate) fn localize(&mut self) {
+        for item in &mut self.items {
+            item.localize();
+        }
+    }
+
     pub(crate) fn restore_patchable_from(&mut self, original: &Self) {
         self.visibility = original.visibility;
         for (item, original_item) in self.items.iter_mut().zip(&original.items) {
             item.text.clone_from(&original_item.text);
+            item.text_override.clone_from(&original_item.text_override);
             item.icon_path.clone_from(&original_item.icon_path);
             item.badge.clone_from(&original_item.badge);
             item.has_red_dot = original_item.has_red_dot;
@@ -962,6 +992,31 @@ mod tests {
         assert!(!tabbar.is_tabbar_page(""));
         assert!(!tabbar.is_tabbar_page("pages/home/index"));
         assert!(tabbar.find_index_by_path("").is_none());
+    }
+
+    #[test]
+    fn a_localized_label_resolves_and_yields_to_an_override() {
+        let mut item: TabBarItem = serde_json::from_value(serde_json::json!({
+            "page": "profiles",
+            "text": { "en-US": "Profiles", "zh-CN": "节点" }
+        }))
+        .unwrap();
+        item.initialize_runtime(Path::new("/app"));
+        let declared = item.declared_text.clone().unwrap();
+        let expected = declared
+            .resolve(&super::super::display_language())
+            .to_string();
+        assert_eq!(item.text.as_deref(), Some(expected.as_str()));
+
+        item.set_text_override(Some("Inbox".into()));
+        assert_eq!(item.text.as_deref(), Some("Inbox"));
+        item.set_text_override(None);
+        assert_eq!(item.text.as_deref(), Some(expected.as_str()));
+        // The declaration round-trips as written.
+        assert_eq!(
+            serde_json::to_value(&item).unwrap()["text"],
+            serde_json::json!({ "en-US": "Profiles", "zh-CN": "节点" })
+        );
     }
 
     #[test]

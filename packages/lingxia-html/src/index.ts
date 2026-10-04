@@ -1,5 +1,11 @@
 export { pageReady, getPage, subscribePage } from "./page.js";
-export { getHost, subscribeHost, type LxHost } from "@lingxia/bridge";
+export {
+  getHost,
+  subscribeHost,
+  setLeaveGuard,
+  subscribeBackRequest,
+  type LxHost,
+} from "@lingxia/bridge";
 export type { ActionMap, DeepReadonly, Snapshot } from "@lingxia/page-runtime";
 export {
   registerInlineNativeComponents,

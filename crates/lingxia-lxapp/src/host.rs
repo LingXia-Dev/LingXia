@@ -703,6 +703,9 @@ impl AuthenticatedCaller {
 pub struct HostInvocationContext {
     caller: AuthenticatedCaller,
     lxapp: Arc<LxApp>,
+    /// The page whose View issued the call. `None` for Logic-originated calls,
+    /// which act for the app rather than for one document.
+    page: Option<crate::page::PageInstance>,
 }
 
 impl HostInvocationContext {
@@ -717,10 +720,15 @@ impl HostInvocationContext {
         Ok(Self {
             caller: AuthenticatedCaller::for_lxapp(&lxapp),
             lxapp,
+            page: None,
         })
     }
 
-    pub(crate) fn for_dispatch(lxapp: Arc<LxApp>, caller: &AuthenticatedCaller) -> Option<Self> {
+    pub(crate) fn for_dispatch(
+        lxapp: Arc<LxApp>,
+        caller: &AuthenticatedCaller,
+        page: Option<crate::page::PageInstance>,
+    ) -> Option<Self> {
         if let AuthenticatedCallerSource::LxAppSession { scope, .. } = &caller.source
             && !scope.belongs_to(&lxapp)
         {
@@ -729,6 +737,7 @@ impl HostInvocationContext {
         Some(Self {
             caller: caller.clone(),
             lxapp,
+            page,
         })
     }
 
@@ -742,6 +751,11 @@ impl HostInvocationContext {
 
     pub fn lxapp(&self) -> Arc<LxApp> {
         Arc::clone(&self.lxapp)
+    }
+
+    /// The page whose View made this call, when it came from a page.
+    pub fn page(&self) -> Option<&crate::page::PageInstance> {
+        self.page.as_ref()
     }
 }
 
@@ -1838,7 +1852,8 @@ mod tests {
         let control_caller = AuthenticatedCaller::for_lxapp(&control);
 
         assert!(
-            HostInvocationContext::for_dispatch(Arc::clone(&control), &standard_caller).is_none()
+            HostInvocationContext::for_dispatch(Arc::clone(&control), &standard_caller, None)
+                .is_none()
         );
 
         let host_observed = Arc::new(Mutex::new(Vec::new()));
@@ -1858,7 +1873,7 @@ mod tests {
             (Arc::clone(&control), &control_caller),
         ] {
             let invocation =
-                HostInvocationContext::for_dispatch(app, caller).expect("matching scope");
+                HostInvocationContext::for_dispatch(app, caller, None).expect("matching scope");
             let (_cancel_tx, cancel) = oneshot::channel();
             host_handler
                 .call(invocation, None, cancel)
@@ -1878,7 +1893,7 @@ mod tests {
         .enumerate()
         {
             let invocation =
-                HostInvocationContext::for_dispatch(app, caller).expect("matching scope");
+                HostInvocationContext::for_dispatch(app, caller, None).expect("matching scope");
             let (channel, _sender, _outbound) = new_channel_context(format!("scope-{index}"));
             channel_handler.on_open(invocation, channel, None);
         }

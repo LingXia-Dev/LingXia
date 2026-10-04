@@ -124,10 +124,15 @@ pub(crate) fn page_title(project: &Project, page_path: &str) -> Result<String> {
     if config_path.exists() {
         let content = fs::read_to_string(&config_path)?;
         let value: Value = serde_json::from_str(&content)?;
+        // A per-language title bakes one entry (the first by tag) into the
+        // document's `<title>`; the native bar resolves the live language.
         if let Some(title) = value
             .get("navigationBar")
             .and_then(|navigation_bar| navigation_bar.get("title"))
-            .and_then(Value::as_str)
+            .and_then(|title| match title {
+                Value::Object(entries) => entries.values().next().and_then(Value::as_str),
+                other => other.as_str(),
+            })
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {

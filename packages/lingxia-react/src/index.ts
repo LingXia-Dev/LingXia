@@ -1,6 +1,7 @@
 export {
   useLxPage,
   useLxHost,
+  useLxLeaveGuard,
   useLxStream,
   useLxChannel,
   type LxStreamOptions,

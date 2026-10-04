@@ -561,7 +561,7 @@ impl LxApp {
                 if let Some(path) = self.peek_current_page_path()
                     && let Some(page) = self.get_page(path.as_str())
                 {
-                    let _ = page.navigate_back(1);
+                    Self::leave_page(&page);
                     return true;
                 }
                 false
@@ -595,10 +595,23 @@ impl LxApp {
         if let Some(path) = self.peek_current_page_path()
             && let Some(page) = self.get_page(path.as_str())
         {
-            let _ = page.navigate_back(1);
+            Self::leave_page(&page);
             return true;
         }
         false
+    }
+
+    /// One user back on the top page: pop it, or — while its View guards
+    /// leaving — hand the request to the View and stay. Every user back path
+    /// lands here (navigation bar back, Android/Harmony system back, the
+    /// iOS/Harmony edge swipe), so the guard holds on all of them. The View
+    /// answers with `navigation.navigateBack`, which pops without asking.
+    fn leave_page(page: &crate::page::PageInstance) {
+        if page.is_leave_guarded() {
+            page.request_leave();
+        } else {
+            let _ = page.navigate_back(1);
+        }
     }
 
     /// The user pulled the page instance `webtag` names.

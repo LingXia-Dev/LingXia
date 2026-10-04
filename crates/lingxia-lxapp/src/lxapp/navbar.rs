@@ -1,3 +1,4 @@
+use super::localized_text::LocalizedText;
 use super::page_chrome::{PageChromeColor, PatchField, ValuePatchField, VisibilityPreference};
 use lingxia_app_context::ThemeStyle;
 use serde::{Deserialize, Serialize};
@@ -42,8 +43,9 @@ impl NavigationBarStyle {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NavigationBarConfig {
+    /// A string, or one per language; see [`LocalizedText`].
     #[serde(default)]
-    pub title: String,
+    pub title: LocalizedText,
     #[serde(default)]
     pub style: NavigationBarStyle,
 }
@@ -222,10 +224,19 @@ impl NavigationBarState {
         matches!(self.navigation_style, NavigationStyle::Custom)
     }
 
-    pub fn title(&self) -> &str {
-        self.runtime_title
-            .as_deref()
-            .unwrap_or(&self.manifest.title)
+    /// The title to draw: a runtime title (`lx.navigationBar.update`) if one
+    /// is set, otherwise the declared title for the effective display
+    /// language. Resolved on every read, so a language switch shows on the
+    /// next chrome refresh.
+    pub fn title(&self) -> String {
+        match &self.runtime_title {
+            Some(title) => title.clone(),
+            None => self
+                .manifest
+                .title
+                .resolve(&super::display_language())
+                .to_string(),
+        }
     }
 
     pub fn home_button_visible(&self) -> bool {

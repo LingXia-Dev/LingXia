@@ -749,7 +749,7 @@ fn publish_effective(update: &DisplayLanguageEffectiveUpdate) {
                 }),
             ),
         );
-        refresh_host_tabbar(&appid, &app);
+        refresh_host_chrome(&appid, &app);
     }
 }
 
@@ -776,20 +776,22 @@ pub(crate) fn view_display_language_snapshot_script() -> String {
     view_display_language_script(update.revision, &update.effective)
 }
 
-/// Host-owned tab chrome (overflow "More") is painted from display language.
-/// Startup seed may run before native chrome exists; a failed rebuild is ignored.
+/// Host-owned chrome follows the display language: the tab bar's overflow
+/// "More", and labels and titles declared per language (`LocalizedText`).
+/// Those are resolved in rust, so the stored tab labels are re-resolved here,
+/// then the navigation bar and tab bar repaint together.
+/// Startup seed may run before native chrome exists; a failed repaint is ignored.
 ///
-/// The rebuild is spawned, never awaited here. Preference writes can run on a
-/// JS worker, while the synchronous `update_tabbar_ui` hops to the platform
-/// main queue and blocks there — the wait a JS worker must never take.
-fn refresh_host_tabbar(appid: &str, app: &LxApp) {
-    if app.get_tabbar().is_none() {
-        return;
-    }
+/// The repaint is spawned, never awaited here. Preference writes can run on a
+/// JS worker, while the synchronous native updates hop to the platform main
+/// queue and block there — the wait a JS worker must never take.
+fn refresh_host_chrome(appid: &str, app: &LxApp) {
+    let _ = app.with_tabbar_mut(|tabbar| tabbar.localize());
+    let revision = app.next_page_chrome_revision();
     let runtime = app.runtime.clone();
     let appid = appid.to_string();
     std::mem::drop(crate::executor::spawn(async move {
-        let _ = runtime.update_tabbar_ui_async(appid).await;
+        let _ = runtime.apply_page_chrome_revision(appid, revision).await;
     }));
 }
 

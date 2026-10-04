@@ -359,6 +359,22 @@ mod tests {
         )
         .unwrap();
         assert_eq!(config.navigation_style, NavigationStyle::Custom);
-        assert_eq!(config.navigation_bar.title, "Home");
+        assert_eq!(
+            config.navigation_bar.title,
+            crate::lxapp::localized_text::LocalizedText::from("Home")
+        );
+    }
+
+    #[test]
+    fn accepts_a_title_per_language() {
+        let config = PageConfig::from_value(
+            "pages/profiles/index.json",
+            serde_json::json!({
+                "navigationBar": {"title": {"en-US": "Profiles", "zh-CN": "节点"}}
+            }),
+        )
+        .unwrap();
+        assert_eq!(config.navigation_bar.title.resolve("zh-CN"), "节点");
+        assert_eq!(config.navigation_bar.title.resolve("en-GB"), "Profiles");
     }
 }

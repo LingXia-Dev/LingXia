@@ -4,7 +4,13 @@ import type {
   LxBridgeError,
   LxStream,
 } from "@lingxia/bridge";
-import { getHost, subscribeHost, type LxHost } from "@lingxia/bridge";
+import {
+  getHost,
+  setLeaveGuard,
+  subscribeBackRequest,
+  subscribeHost,
+  type LxHost,
+} from "@lingxia/bridge";
 import {
   getMethodKey,
   invokeMethod,
@@ -57,6 +63,27 @@ export function useLxPage<
  */
 export function useLxHost(): LxHost {
   return React.useSyncExternalStore(subscribeHost, getHost, getHost);
+}
+
+/**
+ * Hold the page against user back while `dirty` — unsaved changes. A back
+ * from the navigation bar, the system, or an edge swipe then leaves the page
+ * where it is and calls `onRequest`; confirm there, and leave with
+ * `navigation.navigateBack` (which does not ask again). Released when `dirty`
+ * turns false or the component unmounts.
+ */
+export function useLxLeaveGuard(dirty: boolean, onRequest: () => void): void {
+  const latest = React.useRef(onRequest);
+  React.useEffect(() => {
+    latest.current = onRequest;
+  });
+  React.useEffect(() => subscribeBackRequest(() => latest.current()), []);
+  React.useEffect(() => {
+    void setLeaveGuard(dirty).catch(() => undefined);
+    return () => {
+      if (dirty) void setLeaveGuard(false).catch(() => undefined);
+    };
+  }, [dirty]);
 }
 
 type StreamMethod = (...args: any[]) => LxStream<any, any>;
