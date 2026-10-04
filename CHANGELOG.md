@@ -19,6 +19,19 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.20.1 — 2026-10-04
+
+### Writing an lxapp
+
+- **update**: allow unsigned drafts on the dev service (be9814ba1)
+
+### CLI and CI
+
+- **cli**: upgrade managed crates in the Windows manifest (7d98ef088)
+- **cli**: upgrade expanded and local Cargo dependencies (349b730bf)
+- **cli**: name packages with version and dev env (a051992f0)
+- **cli**: show version and dev env on the iOS Settings page (be08ae563)
+
 ## 0.20.0 — 2026-10-01
 
 ### Breaking
