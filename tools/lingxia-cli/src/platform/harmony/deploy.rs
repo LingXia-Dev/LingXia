@@ -266,10 +266,18 @@ impl HarmonyPlatform {
         let bundle_name = signing_bundle_name(input_hap, project_root, resolved_env)?;
         let signing = load_signing_config(&bundle_name, build_profile, target_udids)?;
         let signer = HarmonySigner::new_native();
-        let aligned_hap = align_unsigned_hap_for_mmap(input_hap)?;
+        let is_app = input_hap
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("app"));
+        let aligned_hap = if is_app {
+            None
+        } else {
+            align_unsigned_hap_for_mmap(input_hap)?
+        };
         let signing_input = aligned_hap.as_deref().unwrap_or(input_hap);
         println!(
-            "  {} Signing HAP `{}` (Rust native signer)...",
+            "  {} Signing Harmony package `{}` (Rust native signer)...",
             "→".dimmed(),
             bundle_name
         );
@@ -281,7 +289,7 @@ impl HarmonyPlatform {
             .context("Signed HAP verification failed")?;
 
         println!(
-            "  {} Signed HAP created: {}",
+            "  {} Signed package created: {}",
             "✓".green(),
             output_path.display()
         );
@@ -781,7 +789,11 @@ fn signed_output_path(input_hap: &Path) -> PathBuf {
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
-    input_hap.with_file_name(format!("{stem}-signed.hap"))
+    let extension = input_hap
+        .extension()
+        .unwrap_or(std::ffi::OsStr::new("hap"))
+        .to_string_lossy();
+    input_hap.with_file_name(format!("{stem}-signed.{extension}"))
 }
 
 fn install_signed_output_path(input_hap: &Path) -> PathBuf {

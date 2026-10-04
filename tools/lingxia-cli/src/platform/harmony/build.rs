@@ -1,7 +1,7 @@
 use super::{HarmonyPlatform, OHOS_TARGET, deploy::ensure_command};
 use crate::commands::rust::run_cargo_rustc_for_target;
 use crate::platform::{
-    BuildArtifacts, BuildConfig, artifact_stem, lingxia_workspace_root,
+    BuildArtifacts, BuildConfig, BuildProfile, artifact_stem, lingxia_workspace_root,
     native_client_out_for_host_project, project_named_artifact, resolve_cargo_target_dir,
     resolve_lingxia_target_dir, set_native_client_codegen_env,
 };
@@ -127,7 +127,18 @@ impl HarmonyPlatform {
         let app_path = if config.package {
             let stem = artifact_stem(config.lingxia_config.as_ref(), config.resolved_env.version)
                 .unwrap_or_else(|| "app".to_string());
-            Some(pack_harmony_app(&staging, &stem)?)
+            let unsigned_app = pack_harmony_app(&staging, &stem, &hap_path, config.profile)?;
+            let signed_app = self.sign_hap_with_project_config(
+                &unsigned_app,
+                &config.project_root,
+                config.profile,
+                Some(&config.resolved_env),
+            )?;
+            Some(project_named_artifact(
+                &signed_app,
+                config.lingxia_config.as_ref(),
+                config.resolved_env.version,
+            )?)
         } else {
             None
         };
@@ -266,6 +277,8 @@ impl HarmonyPlatform {
 
         let status = Command::new(&hvigorw)
             .arg("assembleHap")
+            .arg("-p")
+            .arg(format!("buildMode={}", config.profile.as_str()))
             .arg("--no-daemon")
             .current_dir(harmony_dir)
             .status()
@@ -1042,11 +1055,18 @@ fn parse_crate_and_lib_name(manifest_path: &Path) -> Result<(String, String)> {
     Ok((package_name, lib_name))
 }
 
-fn pack_harmony_app(staging: &Path, stem: &str) -> Result<PathBuf> {
+fn pack_harmony_app(
+    staging: &Path,
+    stem: &str,
+    signed_hap: &Path,
+    profile: BuildProfile,
+) -> Result<PathBuf> {
     println!("{}", "Packing AppGallery .app...".cyan());
     let hvigorw = ensure_command("hvigorw")?;
     let status = Command::new(&hvigorw)
         .arg("assembleApp")
+        .arg("-p")
+        .arg(format!("buildMode={}", profile.as_str()))
         .arg("--no-daemon")
         .current_dir(staging)
         .status()
@@ -1061,12 +1081,47 @@ fn pack_harmony_app(staging: &Path, stem: &str) -> Result<PathBuf> {
         )
     })?;
     let dest = found.with_file_name(format!("{stem}.app"));
-    if dest != found {
-        std::fs::copy(&found, &dest)
-            .with_context(|| format!("Failed to copy {} -> {}", found.display(), dest.display()))?;
-    }
+    // Hvigor has no signingConfig: signing happens in build_hap instead. Keep
+    // its app metadata, but embed the signed HAP without rewriting its contents.
+    embed_signed_hap(&found, &dest, signed_hap)?;
     println!("  {} AppGallery .app {}", "✓".green(), dest.display());
     Ok(dest)
+}
+
+fn embed_signed_hap(app: &Path, dest: &Path, signed_hap: &Path) -> Result<()> {
+    let mut archive = zip::ZipArchive::new(std::fs::File::open(app)?)?;
+    let hap_names: Vec<_> = archive
+        .file_names()
+        .filter(|name| name.ends_with(".hap"))
+        .map(str::to_owned)
+        .collect();
+    if hap_names.len() != 1 {
+        bail!(
+            "Expected one HAP in {}, found {}",
+            app.display(),
+            hap_names.len()
+        );
+    }
+    let mut output =
+        tempfile::NamedTempFile::new_in(dest.parent().context("Missing app output directory")?)?;
+    {
+        let mut writer = zip::ZipWriter::new(output.as_file_mut());
+        for index in 0..archive.len() {
+            let entry = archive.by_index(index)?;
+            if entry.name() == hap_names[0] {
+                let options = zip::write::SimpleFileOptions::default()
+                    .compression_method(entry.compression());
+                writer.start_file(entry.name(), options)?;
+                std::io::copy(&mut std::fs::File::open(signed_hap)?, &mut writer)?;
+            } else {
+                writer.raw_copy_file(entry)?;
+            }
+        }
+        writer.finish()?;
+    }
+    drop(archive);
+    output.persist(dest).map_err(|error| error.error)?;
+    Ok(())
 }
 
 fn find_assembled_app(staging: &Path) -> Option<PathBuf> {
@@ -1104,6 +1159,52 @@ mod tests {
     };
     use std::{fs, path::Path};
     use tempfile::TempDir;
+
+    #[test]
+    fn app_embeds_signed_hap_without_changing_its_bytes_or_metadata() {
+        use std::io::{Read, Write};
+        let root = TempDir::new().unwrap();
+        let app = root.path().join("unsigned.app");
+        let hap = root.path().join("product-1.0.0.hap");
+        let signed = b"signed HAP with a signature block before the central directory";
+        fs::write(&hap, signed).unwrap();
+        let mut writer = zip::ZipWriter::new(fs::File::create(&app).unwrap());
+        for (name, data) in [
+            ("entry-default.hap", b"unsigned".as_slice()),
+            ("pack.info", b"metadata"),
+            ("pac.json", b"other metadata"),
+        ] {
+            writer
+                .start_file(
+                    name,
+                    zip::write::SimpleFileOptions::default()
+                        .compression_method(zip::CompressionMethod::Deflated),
+                )
+                .unwrap();
+            writer.write_all(data).unwrap();
+        }
+        writer.finish().unwrap();
+        // Also cover output replacing its input, without truncating the archive.
+        super::embed_signed_hap(&app, &app, &hap).unwrap();
+        let mut archive = zip::ZipArchive::new(fs::File::open(&app).unwrap()).unwrap();
+        assert_eq!(
+            archive.by_name("entry-default.hap").unwrap().compression(),
+            zip::CompressionMethod::Deflated
+        );
+        for (name, expected) in [
+            ("entry-default.hap", signed.as_slice()),
+            ("pack.info", b"metadata"),
+            ("pac.json", b"other metadata"),
+        ] {
+            let mut bytes = Vec::new();
+            archive
+                .by_name(name)
+                .unwrap()
+                .read_to_end(&mut bytes)
+                .unwrap();
+            assert_eq!(bytes, expected);
+        }
+    }
 
     #[test]
     fn skip_native_keeps_built_library_instead_of_stale_source_copy() {

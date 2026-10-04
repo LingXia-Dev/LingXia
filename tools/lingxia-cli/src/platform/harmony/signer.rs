@@ -11,12 +11,17 @@
 pub mod zip;
 
 use anyhow::{Context, Result, anyhow};
+use foreign_types::ForeignType;
+use openssl::asn1::Asn1String;
+use openssl::error::ErrorStack;
 use openssl::hash::{Hasher, MessageDigest, hash};
+use openssl::nid::Nid;
 use openssl::pkcs7::{Pkcs7, Pkcs7Flags};
 use openssl::pkcs12::Pkcs12;
 use openssl::pkey::{PKey, Private};
 use openssl::stack::Stack;
 use openssl::x509::X509;
+use openssl::x509::store::X509StoreBuilder;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -167,6 +172,17 @@ impl HarmonySigner {
             format!("Failed to read profile: {}", config.profile_path.display())
         })?;
 
+        // AppGallery signs the outer APP too, but its ZIP container has no
+        // executable code-sign segment (the nested HAPs carry those).
+        let is_app = input_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("app"));
+        let owner_id = if is_app {
+            None
+        } else {
+            Some(code_sign_owner_id(&profile_data)?)
+        };
         let existing = read_existing_signing_block(input_path, &zip_info)?;
         let signing_block_offset = existing
             .as_ref()
@@ -191,19 +207,22 @@ impl HarmonySigner {
 
         let (pkey, signer_cert, cert_chain) = load_private_key_and_signer_cert(config)
             .context("Failed to load signing key/certificate for native signing")?;
-        let property_header_count = optional_blocks.len() + 2;
-        let code_sign_block_offset =
-            signing_block_offset + (property_header_count * 12) as u64 + 12;
-        let property_block = generate_code_sign_property_block(
-            input_path,
-            &zip_info,
-            signing_block_offset,
-            code_sign_block_offset,
-            &pkey,
-            &signer_cert,
-            &cert_chain,
-        )?;
-        optional_blocks.insert(0, (HAP_PROPERTY_BLOCK_ID, property_block));
+        if let Some(owner_id) = owner_id {
+            let property_header_count = optional_blocks.len() + 2;
+            let code_sign_block_offset =
+                signing_block_offset + (property_header_count * 12) as u64 + 12;
+            let property_block = generate_code_sign_property_block(
+                input_path,
+                &zip_info,
+                signing_block_offset,
+                code_sign_block_offset,
+                &pkey,
+                &signer_cert,
+                &cert_chain,
+                &owner_id,
+            )?;
+            optional_blocks.insert(0, (HAP_PROPERTY_BLOCK_ID, property_block));
+        }
 
         let md = message_digest_for(config.sign_algorithm);
         let algo_id = signature_algorithm_id(config.sign_algorithm);
@@ -223,6 +242,7 @@ impl HarmonySigner {
             &signer_cert,
             &cert_chain,
             false,
+            None,
         )?;
 
         let hap_signing_block = construct_hap_signing_block(
@@ -247,6 +267,7 @@ fn pkcs7_sign_der(
     signer_cert: &X509,
     cert_chain: &[X509],
     detached: bool,
+    owner_id: Option<&str>,
 ) -> Result<Vec<u8>> {
     let mut certs: Stack<X509> = Stack::new()?;
     for cert in cert_chain {
@@ -256,9 +277,112 @@ fn pkcs7_sign_der(
     if detached {
         flags |= Pkcs7Flags::DETACHED;
     }
+    if owner_id.is_some() {
+        flags |= Pkcs7Flags::PARTIAL;
+    }
     let pkcs7 = Pkcs7::sign(signer_cert, pkey, &certs, data, flags)
         .context("Failed to generate PKCS7 signed data")?;
+    if let Some(owner_id) = owner_id {
+        finalize_code_sign_pkcs7(&pkcs7, data, owner_id)?;
+    }
     pkcs7.to_der().context("Failed to encode PKCS7")
+}
+
+fn code_sign_owner_id(profile: &[u8]) -> Result<String> {
+    let mut content = Vec::new();
+    let certs = Stack::new()?;
+    Pkcs7::from_der(profile)?
+        .verify(
+            &certs,
+            &X509StoreBuilder::new()?.build(),
+            None,
+            Some(&mut content),
+            Pkcs7Flags::NOVERIFY | Pkcs7Flags::BINARY,
+        )
+        .context("Failed to verify provisioning profile signature")?;
+    let profile: serde_json::Value = serde_json::from_slice(&content)?;
+    match profile.get("type").and_then(serde_json::Value::as_str) {
+        Some("debug") => Ok("DEBUG_LIB_ID".into()),
+        Some("release") => profile
+            .pointer("/bundle-info/app-identifier")
+            .and_then(serde_json::Value::as_str)
+            .filter(|id| !id.is_empty())
+            .map(str::to_owned)
+            .context("Release profile is missing bundle-info.app-identifier"),
+        _ => Err(anyhow!("Unsupported provisioning profile type")),
+    }
+}
+
+fn owner_id_nid() -> Result<Nid> {
+    static NID: std::sync::OnceLock<std::result::Result<Nid, ErrorStack>> =
+        std::sync::OnceLock::new();
+    NID.get_or_init(|| Nid::create("1.3.6.1.4.1.2011.2.376.1.4.1", "hapOwnerId", "HAP owner ID"))
+        .as_ref()
+        .copied()
+        .map_err(|error| anyhow!("Failed to register owner ID OID: {error}"))
+}
+
+fn finalize_code_sign_pkcs7(pkcs7: &Pkcs7, data: &[u8], owner_id: &str) -> Result<()> {
+    // OpenHarmony BcSignedDataGenerator's owner ID is a signed UTF8 attribute.
+    // The safe OpenSSL wrapper does not expose signer attributes or finalization.
+    let nid = owner_id_nid()?;
+    let owner_len = i32::try_from(owner_id.len())?;
+    unsafe {
+        let signers = openssl_sys::PKCS7_get_signer_info(pkcs7.as_ptr());
+        if signers.is_null() {
+            return Err(ErrorStack::get().into());
+        }
+        let signer: *mut openssl_sys::PKCS7_SIGNER_INFO =
+            openssl_sys::OPENSSL_sk_value(signers.cast(), 0).cast();
+        if signer.is_null() {
+            return Err(anyhow!("PKCS7 is missing its signer"));
+        }
+        let value = openssl_sys::ASN1_STRING_type_new(openssl_sys::V_ASN1_UTF8STRING);
+        if value.is_null() {
+            return Err(ErrorStack::get().into());
+        }
+        let value = Asn1String::from_ptr(value);
+        if openssl_sys::ASN1_STRING_set(value.as_ptr(), owner_id.as_ptr().cast(), owner_len) != 1 {
+            return Err(ErrorStack::get().into());
+        }
+        // PKCS7_add_signed_attribute takes ownership of the ASN1 string.
+        let value_ptr = value.as_ptr();
+        std::mem::forget(value);
+        if openssl_sys::PKCS7_add_signed_attribute(
+            signer,
+            nid.as_raw(),
+            openssl_sys::V_ASN1_UTF8STRING,
+            value_ptr.cast(),
+        ) != 1
+        {
+            return Err(ErrorStack::get().into());
+        }
+        let bio = openssl_sys::PKCS7_dataInit(pkcs7.as_ptr(), std::ptr::null_mut());
+        if bio.is_null() {
+            return Err(ErrorStack::get().into());
+        }
+        // The digest BIO must stay alive until dataFinal signs the attributes.
+        let result = (|| -> Result<()> {
+            let mut remaining = data;
+            while !remaining.is_empty() {
+                let count = openssl_sys::BIO_write(
+                    bio,
+                    remaining.as_ptr().cast(),
+                    i32::try_from(remaining.len())?,
+                );
+                if count <= 0 {
+                    return Err(ErrorStack::get().into());
+                }
+                remaining = &remaining[count as usize..];
+            }
+            if openssl_sys::PKCS7_dataFinal(pkcs7.as_ptr(), bio) != 1 {
+                return Err(ErrorStack::get().into());
+            }
+            Ok(())
+        })();
+        openssl_sys::BIO_free_all(bio);
+        result
+    }
 }
 
 fn load_private_key_and_signer_cert(
@@ -581,6 +705,7 @@ struct ZipLocalEntry {
     method: u16,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn generate_code_sign_property_block(
     input_path: &Path,
     zip_info: &crate::platform::harmony::signer::zip::ZipInfo,
@@ -589,6 +714,7 @@ fn generate_code_sign_property_block(
     pkey: &PKey<Private>,
     signer_cert: &X509,
     cert_chain: &[X509],
+    owner_id: &str,
 ) -> Result<Vec<u8>> {
     let entries = parse_local_zip_entries(input_path, zip_info.cd_offset)?;
     let hap_data_size = compute_hap_code_sign_data_size(&entries)?;
@@ -602,7 +728,14 @@ fn generate_code_sign_property_block(
     let merkle_tree_offset = compute_code_sign_merkle_tree_offset(code_sign_block_offset);
     let hap_bytes = read_file_prefix(input_path, hap_data_size)?;
     let hap_fsverity = fsverity_for_bytes(&hap_bytes, true, merkle_tree_offset);
-    let hap_signature = pkcs7_sign_der(&hap_fsverity.digest, pkey, signer_cert, cert_chain, true)?;
+    let hap_signature = pkcs7_sign_der(
+        &hap_fsverity.digest,
+        pkey,
+        signer_cert,
+        cert_chain,
+        true,
+        Some(owner_id),
+    )?;
     let hap_sign_info = encode_sign_info(
         hap_data_size,
         true,
@@ -621,7 +754,14 @@ fn generate_code_sign_property_block(
         }
         let bytes = read_zip_entry_bytes(input_path, entry)?;
         let fsverity = fsverity_for_bytes(&bytes, false, 0);
-        let signature = pkcs7_sign_der(&fsverity.digest, pkey, signer_cert, cert_chain, true)?;
+        let signature = pkcs7_sign_der(
+            &fsverity.digest,
+            pkey,
+            signer_cert,
+            cert_chain,
+            true,
+            Some(owner_id),
+        )?;
         let sign_info = encode_sign_info(entry.uncompressed_size, false, &signature, None);
         native_entries.push((entry.name.clone(), sign_info));
     }
@@ -1123,6 +1263,173 @@ mod tests {
             uncompressed_size: 0,
             method,
         }
+    }
+
+    fn signing_material() -> (
+        openssl::pkey::PKey<openssl::pkey::Private>,
+        openssl::x509::X509,
+    ) {
+        use openssl::{
+            asn1::Asn1Time,
+            ec::{EcGroup, EcKey},
+            nid::Nid,
+            pkey::PKey,
+            x509::{X509, X509NameBuilder},
+        };
+        let key = PKey::from_ec_key(
+            EcKey::generate(&EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap()).unwrap(),
+        )
+        .unwrap();
+        let mut name = X509NameBuilder::new().unwrap();
+        name.append_entry_by_text("CN", "HAP signer test").unwrap();
+        let name = name.build();
+        let mut cert = X509::builder().unwrap();
+        cert.set_version(2).unwrap();
+        cert.set_subject_name(&name).unwrap();
+        cert.set_issuer_name(&name).unwrap();
+        cert.set_pubkey(&key).unwrap();
+        cert.set_not_before(&Asn1Time::days_from_now(0).unwrap())
+            .unwrap();
+        cert.set_not_after(&Asn1Time::days_from_now(1).unwrap())
+            .unwrap();
+        cert.sign(&key, openssl::hash::MessageDigest::sha256())
+            .unwrap();
+        (key, cert.build())
+    }
+
+    #[test]
+    fn code_sign_owner_comes_from_verified_profile() {
+        let (key, cert) = signing_material();
+        for (profile, expected) in [
+            (r#"{"type":"debug"}"#, Some("DEBUG_LIB_ID")),
+            (
+                r#"{"type":"release","bundle-info":{"app-identifier":"release-owner"}}"#,
+                Some("release-owner"),
+            ),
+            (r#"{"type":"release","bundle-info":{}}"#, None),
+            (r#"{"type":"unknown"}"#, None),
+        ] {
+            let signed =
+                super::pkcs7_sign_der(profile.as_bytes(), &key, &cert, &[], false, None).unwrap();
+            let owner = super::code_sign_owner_id(&signed);
+            assert_eq!(owner.as_ref().ok().map(String::as_str), expected);
+        }
+        assert!(super::code_sign_owner_id(b"not a signed profile").is_err());
+    }
+
+    #[test]
+    fn owner_attribute_is_signed_and_detached_content_verifies() {
+        use openssl::{
+            pkcs7::{Pkcs7, Pkcs7Flags},
+            stack::Stack,
+            x509::store::X509StoreBuilder,
+        };
+        let (key, cert) = signing_material();
+        let data = b"fsverity digest";
+        for owner in ["release-owner", "DEBUG_LIB_ID"] {
+            let signed = super::pkcs7_sign_der(data, &key, &cert, &[], true, Some(owner)).unwrap();
+            let pkcs7 = Pkcs7::from_der(&signed).unwrap();
+            let certs = Stack::new().unwrap();
+            let store = X509StoreBuilder::new().unwrap().build();
+            pkcs7
+                .verify(
+                    &certs,
+                    &store,
+                    Some(data),
+                    None,
+                    Pkcs7Flags::NOVERIFY | Pkcs7Flags::BINARY,
+                )
+                .unwrap();
+            assert!(
+                pkcs7
+                    .verify(
+                        &certs,
+                        &store,
+                        Some(b"tampered digest"),
+                        None,
+                        Pkcs7Flags::NOVERIFY | Pkcs7Flags::BINARY
+                    )
+                    .is_err()
+            );
+            // Check the actual signed attribute, rather than searching arbitrary DER bytes.
+            use foreign_types::ForeignType;
+            let nid = super::owner_id_nid().unwrap();
+            unsafe {
+                let signers = openssl_sys::PKCS7_get_signer_info(pkcs7.as_ptr());
+                let signer: *mut openssl_sys::PKCS7_SIGNER_INFO =
+                    openssl_sys::OPENSSL_sk_value(signers.cast(), 0).cast();
+                let attr = openssl_sys::PKCS7_get_signed_attribute(signer, nid.as_raw());
+                assert!(!attr.is_null());
+                assert_eq!((*attr).type_, openssl_sys::V_ASN1_UTF8STRING);
+                let value = (*attr).value.asn1_string;
+                let bytes = std::slice::from_raw_parts(
+                    openssl_sys::ASN1_STRING_get0_data(value),
+                    openssl_sys::ASN1_STRING_length(value) as usize,
+                );
+                assert_eq!(bytes, owner.as_bytes());
+            }
+        }
+    }
+
+    #[test]
+    fn outer_app_signature_preserves_haps_and_omits_executable_code_segment() {
+        use std::io::{Read, Write};
+        let root = tempfile::TempDir::new().unwrap();
+        let (key, cert) = signing_material();
+        let config = super::SigningConfig {
+            keystore_path: root.path().join("key.pem"),
+            keystore_password: String::new(),
+            key_password: None,
+            cert_path: root.path().join("cert.pem"),
+            profile_path: root.path().join("profile.p7b"),
+            sign_algorithm: super::SignAlgorithm::SHA256withECDSA,
+        };
+        std::fs::write(
+            &config.keystore_path,
+            key.private_key_to_pem_pkcs8().unwrap(),
+        )
+        .unwrap();
+        std::fs::write(&config.cert_path, cert.to_pem().unwrap()).unwrap();
+        let profile = super::pkcs7_sign_der(
+            br#"{"type":"release","bundle-info":{"app-identifier":"release-owner"}}"#,
+            &key,
+            &cert,
+            &[],
+            false,
+            None,
+        )
+        .unwrap();
+        std::fs::write(&config.profile_path, &profile).unwrap();
+        let input = root.path().join("unsigned.app");
+        let output = root.path().join("signed.app");
+        let mut writer = zip::ZipWriter::new(std::fs::File::create(&input).unwrap());
+        writer
+            .start_file(
+                "entry-default.hap",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        writer.write_all(b"nested signed HAP").unwrap();
+        writer.finish().unwrap();
+        super::HarmonySigner::new_native()
+            .sign_hap(&config, &input, &output)
+            .unwrap();
+        let info = super::parse_zip(&output).unwrap();
+        let block = super::read_existing_signing_block(&output, &info)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            block.optional_blocks,
+            vec![(super::HAP_PROFILE_BLOCK_ID, profile)]
+        );
+        let mut archive = zip::ZipArchive::new(std::fs::File::open(&output).unwrap()).unwrap();
+        let mut bytes = Vec::new();
+        archive
+            .by_name("entry-default.hap")
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        assert_eq!(bytes, b"nested signed HAP");
     }
 
     #[test]

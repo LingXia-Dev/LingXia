@@ -19,7 +19,7 @@ pub struct ProcessingOptions {
     /// Emit one JSON result to stdout; progress goes to stderr (Apple and Harmony).
     #[arg(
         long,
-        long_help = "Emit one JSON result to stdout; progress goes to stderr (Apple and Harmony).\n\nSchema version 1 includes: action, platform, ok, uploaded, artifact, results, and error. Each result includes app_id, submission_id, version, build_number, state, and raw_state.\n\n`ok` describes command success; without --wait it does not imply processing is complete. Results use uploaded/pending/processing/complete/failed/unknown. With --wait, only complete succeeds. Failures and timeouts exit nonzero and include error.code; the last known submission identity remains available for another status query."
+        long_help = "Emit one JSON result to stdout; progress goes to stderr (Apple and Harmony).\n\nSchema version 1 includes: action, platform, ok, uploaded, artifact, results, and error. Each result includes app_id, submission_id, version, build_number, state, raw_state, and optional store_error_code.\n\n`ok` describes command success; without --wait it does not imply processing is complete. Results use uploaded/pending/processing/complete/failed/unknown. With --wait, only complete succeeds. Failures and timeouts exit nonzero and include error.code; the last known submission identity remains available for another status query."
     )]
     pub json: bool,
 }
@@ -53,6 +53,8 @@ pub struct Record {
     pub build_number: Option<String>,
     pub state: State,
     pub raw_state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub store_error_code: Option<String>,
 }
 
 impl Record {
@@ -64,6 +66,7 @@ impl Record {
             build_number: None,
             state,
             raw_state: None,
+            store_error_code: None,
         }
     }
 }
@@ -187,8 +190,13 @@ fn poll(
                 return Err(failure(
                     "STORE_PROCESSING_FAILED",
                     format!(
-                        "Store rejected processing ({})",
-                        record.raw_state.as_deref().unwrap_or("unknown")
+                        "Store rejected processing ({}){}",
+                        record.raw_state.as_deref().unwrap_or("unknown"),
+                        record
+                            .store_error_code
+                            .as_ref()
+                            .map(|code| format!("; store error code: {code}"))
+                            .unwrap_or_default()
                     ),
                 ));
             }

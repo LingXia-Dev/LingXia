@@ -233,6 +233,11 @@ fn parse_package_status(body: &Value, app_id: &str, package_id: &str) -> Result<
     if let Some(pkg) = matches.first() {
         let state = pkg.get("successStatus").and_then(Value::as_i64);
         record.raw_state = pkg.get("successStatus").map(Value::to_string);
+        record.store_error_code = pkg
+            .get("errorCode")
+            .and_then(Value::as_str)
+            .filter(|code| !code.is_empty() && *code != "0")
+            .map(str::to_owned);
         // Huawei PackageStates: 0 = usable, 1 = parsing, 2 = unusable.
         record.state = match state {
             Some(0) => State::Complete,
@@ -388,6 +393,20 @@ mod tests {
         assert_eq!(
             parse_package_status(&body, "app", "new").unwrap().state,
             State::Pending
+        );
+    }
+
+    #[test]
+    fn rejected_package_preserves_agc_error_code() {
+        let body = json!({"ret": {"code": 0}, "pkgStateList": [
+            {"pkgId": "new", "successStatus": 2, "errorCode": "991"}]});
+        let record = parse_package_status(&body, "app", "new").unwrap();
+        assert_eq!(record.state, State::Failed);
+        assert_eq!(record.raw_state.as_deref(), Some("2"));
+        assert_eq!(record.store_error_code.as_deref(), Some("991"));
+        assert_eq!(
+            serde_json::to_value(&record).unwrap()["store_error_code"],
+            "991"
         );
     }
 
