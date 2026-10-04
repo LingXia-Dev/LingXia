@@ -117,6 +117,13 @@ pub fn resolve_app_id(creds: &AscMaterial, bundle_id: &str) -> Result<String> {
         .get("data")
         .and_then(Value::as_array)
         .context("ASC response missing data")?;
+    if apps.is_empty() {
+        bail!(
+            "No App Store Connect app record found for {bundle_id}. Create it once at \
+             https://appstoreconnect.apple.com/apps — registering a Bundle ID alone does not \
+             create the store app record, and Apple's API cannot create it."
+        );
+    }
     if apps.len() != 1 {
         bail!(
             "Expected one App Store Connect app for {bundle_id}, found {}",
