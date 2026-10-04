@@ -1,149 +1,103 @@
 # Release versioning & npm tiers
 
-LingXia ships several artifact families. The rust workspace version is the
-**base-library version** (think WeChat mini-program base lib): the native
-runtime, SDK, CLI, and the JS runtime assets embedded in the app all share it.
+The Rust workspace version is the base-library version shared by the native
+runtime, SDKs, and embedded JS runtime assets. The CLI has an explicit package
+version so it can ship hotfixes against an unchanged base.
 
 ## Components
 
 | Family | Where | Version |
 |---|---|---|
-| rust crates | crates.io | workspace version |
-| SDK (apple/android/harmony) | GitHub Release | workspace version |
-| CLI (`lingxia`) | GitHub Release | **own version line** (major.minor mirrors the workspace; patch independent) |
-| npm packages | npm registry | **tiered — see below** |
+| Rust crates and `lxdev` | crates.io / GitHub Release | workspace version |
+| SDK (Apple/Android/Harmony) | GitHub Release | workspace version |
+| CLI and Runner | GitHub Release | CLI package version |
+| npm packages | npm registry | two compatibility tiers below |
 
-## npm tiers
+## npm compatibility
 
-Not all npm packages may drift from the workspace. They split into three tiers:
+### Tier 1 — base runtime
 
-### Tier 1 — base runtime (locked to the workspace version)
-`@lingxia/bridge`, `@lingxia/polyfills`, `@lingxia/types`
+`@lingxia/bridge`, `@lingxia/polyfills`, and `@lingxia/types` release at the
+workspace version with the Rust crates and SDKs.
 
-- `bridge` and `polyfills` are **embedded into the CLI as app runtime assets**
-  (`tools/lingxia-cli/build.rs` `include_bytes!`s their `dist/` output and
-  **panics if the package.json version ≠ the CLI's pinned
-  `package.metadata.lingxia.{bridge,polyfills}-version`**).
-- `@lingxia/types` is on the same line but is **not** embedded. `lingxia new`
-  writes the minor-floor tilde (`~M.m.0`) so `npm install` takes the latest
-  published patch after a release, without a per-package pin in the CLI.
-- `@lingxia/bridge` (JS) 必须与 native `lingxia-lxapp` 使用同一 wire contract：普通 app
-  document 使用 `LegacyV2`，BrowserControlDocument 使用不可降级的 `RequiredV3`。它是 runtime
-  的 JS 半边，因此两种 mode 的 codec/bootstrap 都必须随 base runtime 同步发布。
-- **Release only via `--component all`**, at the workspace version, together with
-  the rust crates / SDK / CLI. `scripts/release/version.sh` rejects
-  `--component npm:bridge|polyfills|types`.
+- The CLI embeds bridge/polyfills `dist/` output. Its build rejects package
+  versions that differ from `package.metadata.lingxia.{bridge,polyfills}-version`.
+- Types are not embedded. `lingxia new` uses `~M.m.0` to resolve the latest
+  published patch on the base runtime's line.
+- Bridge and native `lingxia-lxapp` must share the [wire contract](bridge-protocol.md):
+  ordinary app documents use `LegacyV2`; BrowserControlDocument uses
+  non-downgradable `RequiredV3`. Both modes release with the base runtime.
 
-### Tier 2 — framework libraries (major.minor tracks the workspace)
+### Tier 2 — framework libraries
+
 `@lingxia/page-runtime`, `@lingxia/elements`, `@lingxia/react`, `@lingxia/vue`,
-`@lingxia/html`
+and `@lingxia/html` are bundled into the lxapp. Their major.minor must match
+its base runtime; patches may differ.
 
-- Imported by an lxapp and bundled into the lxapp's own dist. They speak the
-  bridge protocol (via `@lingxia/bridge`), so their **major.minor must match the
-  base runtime**; patch may drift.
-- Internal `@lingxia/*` deps are tilde ranges pinned at the patch being published
-  (`~0.x.y`, written by `version.sh`): a later patch on the same minor still
-  satisfies them, an older one must not. Patch-release a single package with
-  `--component npm:<package>`; move major.minor with `--component all`.
-- `--component all` versions and republishes **every** npm package at the
-  workspace version; `npm.sh` skips only what the registry already has at that
-  exact version. A framework package may still run *ahead* of the base from a
-  standalone `--component npm:<package>` patch.
-- Scaffolds written by `lingxia new` use a **minor-floor tilde** (`~M.m.0`,
-  `versions::minor_tilde_range`) instead of the CLI's baked patch: a fresh
-  `npm install` resolves the newest patch on the line either way, and the lower
-  floor keeps scaffolding working when a package lags the base.
+Published internal `@lingxia/*` dependencies use `~M.m.P`, floored at the
+published patch. Scaffolds use `~M.m.0`, allowing packages ahead of or behind
+the base patch to resolve on the same minor line. The release scripts currently
+version all npm packages together; there is no `npm:<package>` component.
 
-### The agent skill (no tier — it is not a package)
-The skill describes what the CLI can do, so it is compiled into the CLI and
-written out by the CLI itself — there is no install command. It has no version
-of its own and no release train: an installed copy always came from the binary
-that wrote it, and every run rewrites it when its content digest differs from
-the embedded one, so a development build's edits land as soon as it runs.
+## Release commands
 
-Giving it a version of its own would reintroduce the only failure it can have:
-a skill describing calls the runtime it is paired with does not provide.
+[version.sh](../../scripts/release/version.sh) and the
+[prepare-release workflow](../../.github/workflows/prepare-release.yml)
+accept `all` or `cli`:
 
-## CLI version line
+- `--component all X` sets the workspace, CLI/Runner, npm packages, and embedded
+  component metadata to **X**. It does not automatically increment the CLI patch.
+  npm publishing skips versions already present in the registry.
+- `--component cli Y` sets only the CLI/Runner version and refreshes `Cargo.lock`.
+  The workspace, SDKs, npm packages, and embedded component metadata stay unchanged.
+  Use this for CLI hotfixes on the base runtime's major.minor line.
 
-The CLI embeds the base runtime (bridge/polyfills) as assets, so a base release
-must re-release the CLI. But the CLI also ships its own fixes, which must not
-require a base bump and must never be regressed by one. So the CLI keeps its
-**own version line**:
+For example, a CLI hotfix `0.20.1` can still embed base assets `0.20.0`.
+When publishing its CLI release, pass `0.20.1` from
+`tools/lingxia-cli/Cargo.toml`, rather than the workspace version.
 
-- **major.minor mirrors the workspace** — CLI `0.9.x` means "the CLI for base
-  runtime 0.9". Metadata only names what the binary embeds or downloads by
-  exact asset name (`bridge`, `polyfills`, `rong`, `rust-crate`, `sdk`). It
-  does **not** pin `@lingxia/react|vue|html|types`, browser-shell-webui, or
-  terminal-settings. Those resolve to `~M.m.0` at `lingxia new` or first fetch,
-  so a published patch is picked up without rebuilding the CLI. Scaffolded
-  crate deps float the same way but floor at the base patch (`~M.m.P`): the
-  crate workspace publishes in lockstep, and the crates must never resolve
-  older than the SDK zip the same metadata names. A new **minor** still needs a
-  new CLI — `lingxia new` warns when GitHub has a newer one.
-- **patch is independent.** `--component all X` advances the CLI to
-  `X.major.X.minor.(currentCliPatch+1)` on the same minor, or `X.major.X.minor.0`
-  on a new minor — it reads the current CLI version and rolls forward, never
-  back. `--component cli Y` sets the CLI explicitly for a standalone hotfix: it
-  touches the CLI package version, the Runner that tracks it, and `Cargo.lock`,
-  and nothing else. `lxdev` stays on the workspace line, because it reports
-  version skew against npm packages that move with the workspace.
-- When publishing a base release, pass the CLI's **own** version (from
-  `tools/lingxia-cli/Cargo.toml`) to `component=cli`, not the workspace version.
+CLI metadata pins embedded or downloaded assets (`bridge`, `polyfills`,
+`rust-crate`, `sdk`). App npm packages, browser-shell-webui, and terminal-settings
+resolve via `~M.m.0`; Cargo dependencies use `~M.m.P`, floored at the base patch
+so they cannot resolve older than the paired SDK. A new minor requires a new CLI;
+`lingxia new` warns when GitHub has a newer release.
 
-Example: workspace `0.9.0`, CLI already `0.9.1` from a hotfix. `--component all
-0.9.0` → workspace/base npm stay `0.9.0`, CLI rolls to `0.9.2`, CLI metadata →
-`0.9.0`. No collision, no regression.
+## Agent skill
+
+The skill is embedded in the CLI and has no independent version or release.
+`lingxia new`, `lingxia upgrade`, and `lingxia skill install` write it to
+`~/.agents/skills/lingxia`, with a link under `~/.claude/skills` for Claude Code.
+Other runs reconcile the copy when its content digest differs, provided a copy
+or skills root exists. `--skip-skill` disables synchronization.
 
 ## `lingxia upgrade` mechanics
 
-The project half compares major.minor only. Applying a newer line rewrites:
+The project half compares major.minor only. Applying a newer line updates:
 
-- `@lingxia/*` npm ranges, then `npm install` refreshes the lockfile;
-- each `lxapp.json` `minRuntime` to the new `M.m.0` (never lowered; added when
-  missing);
-- managed LingXia crate requirements in local Cargo manifests (including host
-  support crates and shared `[workspace.dependencies]`), in inline or expanded
-  dependency tables, then targeted `cargo update -p ...`;
-- Android: gradle `lingxia.sdkVersion`, then the Maven zip into
-  `~/.lingxia/sdk/android-maven/<ver>/` (the repo `lingxia build` injects);
-- Apple: the SDK source zip into `~/.lingxia/sdk/apple/<ver>/`, with
-  `Package.swift` pointed there via `.package(path:)` because the SDK uses
-  `unsafeFlags` and cannot be a remote SwiftPM URL. A hand-wired
-  `Package.swift` is left alone;
-- Harmony: the HAR into `~/.lingxia/sdk/harmony/<ver>/`.
+- `@lingxia/*` npm ranges, then runs `npm install`;
+- each `lxapp.json` `minRuntime` to `M.m.0`, adding it when missing and never lowering it;
+- managed LingXia requirements in local Cargo manifests, including support crates
+  and `[workspace.dependencies]`, then runs targeted `cargo update -p ...`.
+  Inline and expanded dependency tables are supported;
+- Android's Gradle `lingxia.sdkVersion` and cached Maven SDK under
+  `~/.lingxia/sdk/android-maven/<ver>/`;
+- Apple's cached source SDK under `~/.lingxia/sdk/apple/<ver>/` and generated
+  `Package.swift` path references. The SDK's `unsafeFlags` require a local package;
+  custom manifests are left alone;
+- Harmony's cached HAR under `~/.lingxia/sdk/harmony/<ver>/`.
 
-In-workspace checkouts depend on source paths and are not re-fetched. A
-skipped non-interactive project half exits non-zero. On Windows a CLI
-self-replace is deferred until exit, so the project half is deferred too and
-the command exits 10 even with `--yes`. Upgrading hands the skill to the new
-binary, which writes its own copy.
-
-Apple host builds likewise point `Package.swift` at the cached SDK only while
-SwiftPM runs and restore it afterwards, success or failure.
+Framework workspace checkouts use source paths and are not re-fetched.
+Skipping the project half non-interactively exits non-zero. On Windows,
+CLI self-replacement and the project half are deferred until exit; the command
+returns 10 even with `--yes`. The new binary synchronizes its own skill copy.
 
 ## CLI and Runner release assets
 
-The `lingxia-cli-v*` GitHub Release carries both user-installed CLI binaries
-and the developer Runner used by `lingxia dev` for standalone lxapps.
+The `lingxia-cli-v*` release carries CLI binaries and the development Runner
+used by `lingxia dev` for standalone lxapps.
 
-- CLI assets (`lingxia-*`, `lxdev-*`) are installed by `install.sh` /
-  `install.ps1`.
-- Runner assets are fetched lazily by the CLI into
-  `~/.lingxia/runner/<version>`. They are not user-facing app distributions.
-- The Windows Runner zip intentionally contains only `lingxia-runner.exe` and
-  `VERSION`. `lingxia dev` generates temporary host assets from the installed
-  CLI and the current lxapp, then launches the runner with `--asset-dir`.
-- A normal Windows host app uses one runnable payload (`.exe` + `assets/` +
-  dependencies), packaged as NSIS Setup, a portable self-extracting EXE, MSIX,
-  or ZIP. A bare host executable remains a build artifact, not a distribution.
-  See [Windows distribution](../skill/cli/distribution.md#windows).
-
-## Suggested CI release grouping
-
-1. **Base runtime** (one version = workspace version): rust crates + SDK + CLI +
-   Tier-1 npm (`bridge`, `polyfills`, `types`) — published together.
-2. **Framework npm train**: Tier-2 packages, major.minor pinned to the base
-   runtime, patch may ship on its own via `--component npm:<package>`.
-The prepare-release workflow exposes `component=all | cli | npm:<framework>`
-accordingly; base-runtime npm has no standalone option on purpose.
+- `install.sh` / `install.ps1` install `lingxia-*` and `lxdev-*`.
+- Runner assets are fetched into `~/.lingxia/runner/<version>` as needed.
+- The Windows Runner zip contains `lingxia-runner.exe` and `VERSION`.
+  `lingxia dev` generates temporary host assets and passes them via `--asset-dir`.
+  Product app distributions are described in [distribution](../skill/cli/distribution.md#windows).
