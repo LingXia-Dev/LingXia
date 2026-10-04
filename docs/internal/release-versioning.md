@@ -111,7 +111,8 @@ The project half compares major.minor only. Applying a newer line rewrites:
   `Package.swift` pointed there via `.package(path:)` because the SDK uses
   `unsafeFlags` and cannot be a remote SwiftPM URL. A hand-wired
   `Package.swift` is left alone;
-- Windows: `lingxia-windows-sdk` / `lingxia-windows-build` requirements plus
+- Windows: `lingxia-windows-sdk` / `lingxia-windows-build` requirements,
+  including shared `[workspace.dependencies]` pins in the project root, plus
   `cargo update -p`;
 - Harmony: the HAR into `~/.lingxia/sdk/harmony/<ver>/`.
 

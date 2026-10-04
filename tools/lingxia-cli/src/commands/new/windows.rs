@@ -57,7 +57,7 @@ mod tests {
             !template.contains("LingXia-Dev/LingXia.git"),
             "generated Windows hosts must take lingxia-windows-sdk from crates.io"
         );
-        assert!(template.contains("version = \"{{LINGXIA_VERSION}}\""));
+        assert!(template.contains("workspace = true"));
     }
 
     #[test]

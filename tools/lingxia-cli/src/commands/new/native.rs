@@ -12,6 +12,8 @@ use anyhow::{Result, anyhow};
 use colored::Colorize;
 use std::collections::HashMap;
 use std::fs;
+#[cfg(test)]
+use std::path::Path;
 
 pub(super) fn create_project(config: &ProjectConfig, versions: &LingXiaVersions) -> Result<()> {
     if config.target_dir.exists() {
@@ -144,8 +146,8 @@ pub(super) fn create_rust_library(
     let project_root = &config.target_dir;
     // Directory and Cargo package name are both `native`: named by layer, not
     // the project, and symmetric with the lxapp side (folder == appId). A
-    // scaffolded project is its own crate, never a shared cargo workspace, so a
-    // bare name does not collide. The built artifact is always `liblingxia`
+    // host project owns a workspace, so a bare name does not collide with
+    // the framework workspace. The built artifact is always `liblingxia`
     // (see native/Cargo.toml `[lib] name`), independent of the package name.
     let lib_dir_name = RUST_LIB_DIR_NAME;
     let package_name = lib_dir_name.to_string();
@@ -273,8 +275,35 @@ pub(super) fn create_rust_library(
     // Process all template files into the native/ directory
     process_template_dir(&template_dir, &lib_dir, &vars)?;
 
+    create_cargo_workspace(config)?;
+
     println!("  Created Rust library: {lib_dir_name}/ (package {package_name})");
 
+    Ok(())
+}
+
+fn create_cargo_workspace(config: &ProjectConfig) -> Result<()> {
+    let windows = config.platforms.contains(&Platform::Windows);
+    let members = if windows {
+        r#"["native", "windows"]"#
+    } else {
+        r#"["native"]"#
+    };
+    let windows_dependencies = if windows {
+        r#"lingxia-windows-sdk = { version = "{{LINGXIA_VERSION}}", default-features = false }
+lingxia-windows-build = { version = "{{LINGXIA_VERSION}}" }
+host = { package = "native", path = "native", default-features = false }
+# 1.13.0 does not compile (Lokathor/tinyvec#225).
+tinyvec = "=1.12.0"
+"#
+    } else {
+        ""
+    };
+    let manifest = include_str!("../../../templates/Cargo.toml.template")
+        .replace("{{WORKSPACE_MEMBERS}}", members)
+        .replace("{{WINDOWS_DEPENDENCIES}}", windows_dependencies)
+        .replace("{{LINGXIA_VERSION}}", &crate::versions::cargo_compat_req());
+    fs::write(config.target_dir.join("Cargo.toml"), manifest)?;
     Ok(())
 }
 
@@ -283,6 +312,139 @@ mod tests {
     use super::*;
     use crate::commands::new::ProjectType;
     use tempfile::TempDir;
+
+    #[test]
+    fn host_workspace_shares_windows_resolution_and_profiles() {
+        for windows in [false, true] {
+            let tmp = TempDir::new().unwrap();
+            let root = tmp.path().join("app");
+            fs::create_dir_all(root.join("native/src")).unwrap();
+            let config = ProjectConfig {
+                name: "demo".into(),
+                product_name: "Demo".into(),
+                project_type: ProjectType::NativeApp,
+                platforms: if windows {
+                    vec![Platform::Windows]
+                } else {
+                    vec![Platform::Macos]
+                },
+                package_id: "com.example.demo".into(),
+                app_link_hosts: Vec::new(),
+                target_dir: root.clone(),
+            };
+            create_cargo_workspace(&config).unwrap();
+            // Minimal offline dependencies let Cargo itself check inheritance
+            // and workspace membership without requiring registry access.
+            fs::write(
+                root.join("native/Cargo.toml"),
+                r#"[package]
+name = "native"
+version = "0.1.0"
+edition = "2024"
+[features]
+standard = []
+browser-shell = []
+terminal-runtime = []
+process = []
+control = []
+computer-use = []
+browser-use = []
+devtools = []
+webview-input = []
+cloud = []
+"#,
+            )
+            .unwrap();
+            fs::write(root.join("native/src/lib.rs"), "").unwrap();
+            let mut manifest: toml::Value =
+                toml::from_str(&fs::read_to_string(root.join("Cargo.toml")).unwrap()).unwrap();
+            assert_eq!(manifest["profile"]["release"]["lto"].as_bool(), Some(true));
+            assert_eq!(
+                manifest["profile"]["dev"]["strip"].as_str(),
+                Some("debuginfo")
+            );
+            if windows {
+                fs::create_dir_all(root.join("windows/src")).unwrap();
+                fs::write(root.join("windows/src/main.rs"), "fn main() {}").unwrap();
+                let windows_manifest =
+                    include_str!("../../../templates/windows/Cargo.toml.template")
+                        .replace("{{WINDOWS_CRATE_NAME}}", "demo-windows")
+                        .replace("{{WINDOWS_EXECUTABLE_NAME}}", "demo");
+                fs::write(root.join("windows/Cargo.toml"), windows_manifest).unwrap();
+                for name in ["lingxia-windows-sdk", "lingxia-windows-build", "tinyvec"] {
+                    let stub = tmp.path().join(name);
+                    fs::create_dir_all(stub.join("src")).unwrap();
+                    let version = if name == "tinyvec" {
+                        "1.12.0".into()
+                    } else {
+                        crate::versions::current_versions().lingxia_crate
+                    };
+                    fs::write(stub.join("Cargo.toml"), format!(
+                        "[package]\nname = \"{name}\"\nversion = \"{version}\"\nedition = \"2024\"\n[features]\nstandard = []\nbrowser-shell = []\nterminal-runtime = []\nwebview-input = []\n")).unwrap();
+                    fs::write(stub.join("src/lib.rs"), "").unwrap();
+                    let mut dep = toml::Table::new();
+                    dep.insert(
+                        "path".into(),
+                        toml::Value::String(stub.to_str().unwrap().into()),
+                    );
+                    dep.insert("default-features".into(), toml::Value::Boolean(false));
+                    manifest["workspace"]["dependencies"][name] = toml::Value::Table(dep);
+                }
+                fs::write(root.join("Cargo.toml"), toml::to_string(&manifest).unwrap()).unwrap();
+            }
+            let output = std::process::Command::new("cargo")
+                .args([
+                    "metadata",
+                    "--offline",
+                    "--no-deps",
+                    "--format-version",
+                    "1",
+                ])
+                .current_dir(&root)
+                .env_remove("CARGO_TARGET_DIR")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let metadata: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(
+                metadata["workspace_members"].as_array().unwrap().len(),
+                if windows { 2 } else { 1 }
+            );
+            assert_eq!(
+                Path::new(metadata["workspace_root"].as_str().unwrap()),
+                root.canonicalize().unwrap()
+            );
+            assert_eq!(
+                Path::new(metadata["target_directory"].as_str().unwrap()),
+                root.canonicalize().unwrap().join("target")
+            );
+            if windows {
+                let package = metadata["packages"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|package| package["name"] == "demo-windows")
+                    .unwrap();
+                let sdk = package["dependencies"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|dep| dep["name"] == "lingxia-windows-sdk")
+                    .unwrap();
+                assert_eq!(sdk["uses_default_features"], false);
+                assert!(
+                    sdk["path"]
+                        .as_str()
+                        .unwrap()
+                        .ends_with("lingxia-windows-sdk")
+                );
+            }
+        }
+    }
 
     /// The root ignore file and the per-platform template have to cover the same
     /// staged paths — Apple output once slipped through at both levels because

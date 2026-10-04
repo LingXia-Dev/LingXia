@@ -426,17 +426,7 @@ fn plan(root: &Path) -> Result<Vec<Edit>> {
             }
             new_content = rewritten;
         }
-        // The SDK pass above only knows inline entries; expanded tables land here.
-        let windows_crates: &[&str] = if manifest == windows_cargo {
-            &["lingxia-windows-sdk", "lingxia-windows-build"]
-        } else {
-            &[]
-        };
-        for crate_name in windows_crates
-            .iter()
-            .copied()
-            .chain(project_lingxia_crates())
-        {
+        for crate_name in project_lingxia_crates() {
             let (rewritten, crate_changes) = rewrite_cargo_dep_req(&new_content, crate_name, &req);
             if !crate_changes.is_empty() {
                 cargo_update.push(crate_name.to_string());
@@ -771,9 +761,9 @@ fn find_cargo_manifests(root: &Path) -> Vec<PathBuf> {
 }
 
 fn project_lingxia_crates() -> impl Iterator<Item = &'static str> {
-    NATIVE_LINGXIA_CRATES
-        .iter()
-        .copied()
+    ["lingxia-windows-sdk", "lingxia-windows-build"]
+        .into_iter()
+        .chain(NATIVE_LINGXIA_CRATES.iter().copied())
         .chain(["lingxia-control-commands"])
 }
 
@@ -1480,8 +1470,34 @@ version = "metadata"
     }
 
     #[test]
+    fn windows_workspace_dependencies_upgrade_at_the_project_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("windows")).unwrap();
+        let member = "[dependencies]\nlingxia-windows-sdk = { workspace = true }\n\n[build-dependencies]\nlingxia-windows-build = { workspace = true }\n";
+        fs::write(root.join("windows/Cargo.toml"), member).unwrap();
+        fs::write(root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"windows\"]\n\n[workspace.dependencies]\nlingxia-windows-sdk = { version = \"~0.10.0\", default-features = false }\n\n[workspace.dependencies.lingxia-windows-build]\nversion = \"~0.10.0\"\n").unwrap();
+        let prepared = build_plan(root).unwrap();
+        assert_eq!(prepared.project_line, Some((0, 10)));
+        assert_eq!(prepared.edits.len(), 1);
+        assert_eq!(prepared.edits[0].path, root.join("Cargo.toml"));
+        assert_eq!(
+            prepared.edits[0].cargo_update,
+            vec!["lingxia-windows-sdk", "lingxia-windows-build"]
+        );
+        write_edits(&prepared.edits).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("windows/Cargo.toml")).unwrap(),
+            member
+        );
+        assert_eq!(project_compat_line(root), cli_compat_line());
+        assert!(plan(root).unwrap().is_empty());
+    }
+
+    #[test]
     fn native_upgrade_allow_list_matches_the_scaffold_template() {
-        let template = include_str!("../../templates/native/Cargo.toml.template");
+        let template = include_str!("../../templates/Cargo.toml.template");
         let scaffolded = template
             .lines()
             .filter(|line| line.contains("version = \"{{LINGXIA_VERSION}}\""))

@@ -1,0 +1,27 @@
+[workspace]
+members = {{WORKSPACE_MEMBERS}}
+default-members = ["native"]
+resolver = "3"
+
+[workspace.dependencies]
+lingxia = { version = "{{LINGXIA_VERSION}}", default-features = false }
+lingxia-control-runtime = { version = "{{LINGXIA_VERSION}}", default-features = false }
+lingxia-device-io = { version = "{{LINGXIA_VERSION}}", default-features = false }
+lingxia-native-codegen = { version = "{{LINGXIA_VERSION}}" }
+{{WINDOWS_DEPENDENCIES}}
+# Put local dependency overrides here; every platform shares this workspace.
+[patch.crates-io]
+
+# `lingxia dev` installs debug builds over adb/hdc on every run. Full DWARF
+# puts a debug Android library in the hundreds of MB, and AGP usually cannot
+# strip it ("Unable to strip ... packaging them as they are"), so the APK ships
+# it whole. Symbols stay, so Rust backtraces still name functions.
+[profile.dev]
+strip = "debuginfo"
+
+# Release profile: optimize for size
+[profile.release]
+opt-level = 'z'
+lto = true
+codegen-units = 1
+strip = true

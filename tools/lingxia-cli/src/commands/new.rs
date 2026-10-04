@@ -405,8 +405,10 @@ mod native_main_scaffold_tests {
         assert!(!windows_manifest.contains("{{WINDOWS_RS_REV}}"));
         assert!(!windows_manifest.contains("microsoft/windows-rs.git"));
         assert!(!windows_manifest.contains("LingXia-Dev/LingXia.git"));
-        assert!(windows_manifest.contains("lingxia-windows-sdk = { version ="));
+        assert!(windows_manifest.contains("lingxia-windows-sdk = { workspace = true }"));
         create_rust_library(&config, &versions, AppServiceMode::Disabled).unwrap();
+        let workspace = std::fs::read_to_string(config.target_dir.join("Cargo.toml")).unwrap();
+        assert!(workspace.contains("lingxia-windows-sdk = { version ="));
         generate_config_file(
             &config,
             Option::<&LxAppInfo>::None,
