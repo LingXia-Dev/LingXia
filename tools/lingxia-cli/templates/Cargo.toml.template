@@ -12,10 +12,8 @@ lingxia-native-codegen = { version = "{{LINGXIA_VERSION}}" }
 # Put local dependency overrides here; every platform shares this workspace.
 [patch.crates-io]
 
-# `lingxia dev` installs debug builds over adb/hdc on every run. Full DWARF
-# puts a debug Android library in the hundreds of MB, and AGP usually cannot
-# strip it ("Unable to strip ... packaging them as they are"), so the APK ships
-# it whole. Symbols stay, so Rust backtraces still name functions.
+# Strip debug information to reduce build artifact size on every platform.
+# Keep symbols so Rust backtraces still name functions.
 [profile.dev]
 strip = "debuginfo"
 
