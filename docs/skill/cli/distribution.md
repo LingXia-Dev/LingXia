@@ -179,6 +179,26 @@ submits for review.
   of `lingxia.yaml`.
 - Processing completion is not review approval.
 
+Apple uploads also appear in TestFlight after processing; configure export
+compliance and tester groups in App Store Connect. External testing may need
+beta review. The CLI uploads the build, without inviting testers:
+
+```bash
+lingxia store submit --platform ios --wait --json
+```
+
+Harmony AppTest uploads to the test area, waits for package parsing, then
+creates and binds an invitation-test draft. `--release-notes` supplies its
+description (1–50 characters); `--test-version-id <id>` reuses an existing
+draft. Configure testers and submit test review in AppGallery Connect:
+
+```bash
+lingxia store submit --platform harmony --track apptest --wait --json
+```
+
+JSON includes the package `submission_id` and optional `test_version_id`.
+Without `--track apptest`, Harmony uploads to the production draft.
+
 ## `lingxia ds`
 
 Read-only developer-service queries: `lingxia ds apple` (teams, certificates,

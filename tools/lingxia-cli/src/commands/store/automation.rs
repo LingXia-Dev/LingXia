@@ -113,6 +113,16 @@ fn execute(
 ) -> Result<()> {
     let targeted = submit.is_some() || id.is_some() || build.version.is_some();
     let platform = StorePlatform::parse(&report.platform)?;
+    if let Some(opts) = &submit {
+        if platform == StorePlatform::Harmony {
+            appgallery::validate_submit_options(opts, options.wait)?;
+        } else if opts.test_version_id.is_some() {
+            bail!("--test-version-id is supported only for Harmony AppTest");
+        }
+        if matches!(platform, StorePlatform::Ios | StorePlatform::Macos) {
+            appstore::validate_submit_options(opts)?;
+        }
+    }
     if !matches!(
         platform,
         StorePlatform::Ios | StorePlatform::Macos | StorePlatform::Harmony
@@ -215,8 +225,8 @@ fn execute(
                 .and_then(|h| h.store.as_ref())
                 .context("missing `harmony.store` (appId) in lingxia.yaml")?;
             let creds = crate::resolver::resolve_harmony_agc(!options.json)?.credentials;
-            let id = if let (Some(opts), Some(artifact)) = (submit, artifact) {
-                let record = appgallery::submit(&creds, cfg, &artifact, &opts)?;
+            let id = if let (Some(opts), Some(artifact)) = (&submit, &artifact) {
+                let record = appgallery::submit(&creds, cfg, artifact, opts)?;
                 report.uploaded = true;
                 let id = record.submission_id.clone();
                 report.results.push(record);
@@ -237,6 +247,14 @@ fn execute(
                 processing::wait(&mut report.results[0], options, |budget| {
                     query.query(budget)
                 })?;
+                if let (Some(opts), Some(artifact)) = (&submit, &artifact)
+                    && opts.track.as_deref() == Some("apptest")
+                {
+                    let version_id =
+                        appgallery::prepare_apptest_version(&creds, cfg, opts, artifact)?;
+                    report.results[0].test_version_id = Some(version_id.clone());
+                    appgallery::bind_apptest_version(&creds, cfg, &version_id, &id)?;
+                }
             } else if !report.uploaded {
                 if let Some(id) = id {
                     report.results.push(

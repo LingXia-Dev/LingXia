@@ -96,13 +96,61 @@ impl Session {
         ensure_http_success(resp.status().as_u16())?;
         resp.body_mut().read_json().context("parse response")
     }
+
+    fn post(&self, url: &str, body: &Value) -> Result<Value> {
+        let mut resp = http()
+            .post(url)
+            .header("Authorization", &format!("Bearer {}", self.token))
+            .header("client_id", &self.client_id)
+            .send_json(body)
+            .context("AppGallery test request failed")?;
+        ensure_http_success(resp.status().as_u16())?;
+        resp.body_mut()
+            .read_json()
+            .context("parse AppGallery test response")
+    }
+}
+
+pub fn validate_submit_options(opts: &SubmitOptions, wait: bool) -> Result<()> {
+    match opts.track.as_deref() {
+        None | Some("production") => {
+            if opts.test_version_id.is_some() {
+                bail!("--test-version-id requires --track apptest");
+            }
+        }
+        Some("apptest") => {
+            if !wait {
+                bail!(
+                    "--track apptest requires --wait so the processed package can be bound to a test draft"
+                );
+            }
+            if opts
+                .test_version_id
+                .as_deref()
+                .is_some_and(|id| id.trim().is_empty())
+            {
+                bail!("AppTest version id must not be empty");
+            }
+            if opts
+                .release_notes
+                .as_deref()
+                .is_some_and(|notes| notes.trim().is_empty() || notes.chars().count() > 50)
+            {
+                bail!(
+                    "AppTest --release-notes must contain 1–50 characters (test version description)"
+                );
+            }
+        }
+        Some(track) => bail!("Unsupported Harmony track {track:?}; use production or apptest"),
+    }
+    Ok(())
 }
 
 pub fn submit(
     creds: &AgcApiCredentials,
     cfg: &AppGalleryConfig,
     artifact: &Path,
-    _opts: &SubmitOptions,
+    opts: &SubmitOptions,
 ) -> Result<Record> {
     let app_id = &cfg.app_id;
     let session = Session::login(creds)?;
@@ -148,22 +196,108 @@ pub fn submit(
     upload_to_obs(upload_url, headers, artifact)?;
     eprintln!("  {} uploaded {file_name}", "✓".green());
 
-    let bind = session.put(
-        &format!("{API}/publish/v3/app-package-info?appId={app_id}"),
-        &json!({ "fileName": file_name, "objectId": object_id }),
-    )?;
+    let apptest = opts.track.as_deref() == Some("apptest");
+    let bind = if apptest {
+        session.post(
+            &format!("{API}/publish/v2/test/version/pkg?appId={app_id}"),
+            &apptest_package_body(file_name, &object_id),
+        )?
+    } else {
+        session.put(
+            &format!("{API}/publish/v3/app-package-info?appId={app_id}"),
+            &json!({ "fileName": file_name, "objectId": object_id }),
+        )?
+    };
     require_agc_ok(&bind, "bind package")?;
     let mut record = Record::new(app_id, State::Uploaded);
-    record.submission_id = bind
-        .get("packageId")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned);
+    record.submission_id = if apptest {
+        Some(apptest_package_id(&bind)?)
+    } else {
+        bind.get("packageId")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+    };
     eprintln!(
         "  bound file to app {app_id} (packageId {:?})",
         record.submission_id
     );
     Ok(record)
+}
+
+fn apptest_package_body(file_name: &str, object_id: &str) -> Value {
+    json!({ "distributeMode": 1, "file": { "fileName": file_name, "objectId": object_id } })
+}
+
+fn apptest_package_id(body: &Value) -> Result<String> {
+    let ids = body
+        .get("pkgVersion")
+        .and_then(Value::as_array)
+        .context("AppTest response missing pkgVersion")?;
+    if ids.len() != 1 {
+        bail!("AppTest expected exactly one package id, got {}", ids.len());
+    }
+    Ok(ids[0]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .context("AppTest package id missing")?
+        .to_owned())
+}
+
+/// Prepare an invitation-test draft; review and tester notification remain explicit console actions.
+pub fn prepare_apptest_version(
+    creds: &AgcApiCredentials,
+    cfg: &AppGalleryConfig,
+    opts: &SubmitOptions,
+    artifact: &Path,
+) -> Result<String> {
+    if let Some(id) = &opts.test_version_id {
+        return Ok(id.clone());
+    }
+    let default_desc = artifact
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("LingXia AppTest")
+        .chars()
+        .take(50)
+        .collect::<String>();
+    let desc = opts.release_notes.as_deref().unwrap_or(&default_desc);
+    let session = Session::login(creds)?;
+    let response = session.post(
+        &format!(
+            "{API}/publish/v2/test/app/version?appId={}",
+            urlencode(&cfg.app_id)
+        ),
+        &json!({ "releaseType": 6, "testType": 3, "testDesc": desc, "onshelfSelfDetect": 0 }),
+    )?;
+    require_agc_ok(&response, "create AppTest draft")?;
+    Ok(response
+        .get("versionId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .context("AppTest response missing versionId")?
+        .to_owned())
+}
+
+pub fn bind_apptest_version(
+    creds: &AgcApiCredentials,
+    cfg: &AppGalleryConfig,
+    version_id: &str,
+    package_id: &str,
+) -> Result<()> {
+    let response = Session::login(creds)?.put(
+        &format!(
+            "{API}/publish/v2/test/app/version?appId={}",
+            urlencode(&cfg.app_id)
+        ),
+        &json!({ "versionId": version_id, "pkgId": package_id }),
+    )?;
+    require_agc_ok(&response, "bind processed package to AppTest draft")?;
+    eprintln!(
+        "  {} package bound to AppTest draft {version_id}; configure testers and submit review in AppGallery Connect",
+        "✓".green()
+    );
+    Ok(())
 }
 
 pub struct PackageQuery<'a> {
@@ -343,6 +477,51 @@ fn urlencode(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apptest_upload_uses_test_area_and_exact_package_id() {
+        assert_eq!(
+            apptest_package_body("demo.app", "CN/demo.app"),
+            json!({
+                "distributeMode": 1, "file": {"fileName": "demo.app", "objectId": "CN/demo.app"}
+            })
+        );
+        assert_eq!(
+            apptest_package_id(&json!({"pkgVersion":["new"]})).unwrap(),
+            "new"
+        );
+        for response in [
+            json!({}),
+            json!({"pkgVersion":[]}),
+            json!({"pkgVersion":["old","new"]}),
+            json!({"pkgVersion":[""]}),
+        ] {
+            assert!(apptest_package_id(&response).is_err());
+        }
+    }
+
+    #[test]
+    fn apptest_options_are_checked_before_upload() {
+        let mut opts = SubmitOptions {
+            track: Some("apptest".into()),
+            ..Default::default()
+        };
+        assert!(validate_submit_options(&opts, true).is_ok());
+        assert!(validate_submit_options(&opts, false).is_err());
+        opts.release_notes = Some("汉".repeat(50));
+        assert!(validate_submit_options(&opts, true).is_ok());
+        opts.release_notes = Some("汉".repeat(51));
+        assert!(validate_submit_options(&opts, true).is_err());
+        opts.release_notes = None;
+        opts.test_version_id = Some(" ".into());
+        assert!(validate_submit_options(&opts, true).is_err());
+        opts.test_version_id = Some("draft".into());
+        opts.track = None;
+        assert!(validate_submit_options(&opts, true).is_err());
+        opts.test_version_id = None;
+        opts.track = Some("typo".into());
+        assert!(validate_submit_options(&opts, true).is_err());
+    }
 
     #[test]
     fn http_failure_cannot_be_misread_as_successful_processing() {

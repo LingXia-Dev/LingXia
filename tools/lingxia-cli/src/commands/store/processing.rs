@@ -19,7 +19,7 @@ pub struct ProcessingOptions {
     /// Emit one JSON result to stdout; progress goes to stderr (Apple and Harmony).
     #[arg(
         long,
-        long_help = "Emit one JSON result to stdout; progress goes to stderr (Apple and Harmony).\n\nSchema version 1 includes: action, platform, ok, uploaded, artifact, results, and error. Each result includes app_id, submission_id, version, build_number, state, raw_state, and optional store_error_code.\n\n`ok` describes command success; without --wait it does not imply processing is complete. Results use uploaded/pending/processing/complete/failed/unknown. With --wait, only complete succeeds. Failures and timeouts exit nonzero and include error.code; the last known submission identity remains available for another status query."
+        long_help = "Emit one JSON result to stdout; progress goes to stderr (Apple and Harmony).\n\nSchema version 1 includes: action, platform, ok, uploaded, artifact, results, and error. Each result includes app_id, submission_id, version, build_number, state, raw_state, and optional store_error_code and test_version_id.\n\n`ok` describes command success; without --wait it does not imply processing is complete. Results use uploaded/pending/processing/complete/failed/unknown. With --wait, only complete succeeds. Failures and timeouts exit nonzero and include error.code; the last known submission identity remains available for another status query."
     )]
     pub json: bool,
 }
@@ -55,6 +55,8 @@ pub struct Record {
     pub raw_state: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub store_error_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub test_version_id: Option<String>,
 }
 
 impl Record {
@@ -67,6 +69,7 @@ impl Record {
             state,
             raw_state: None,
             store_error_code: None,
+            test_version_id: None,
         }
     }
 }
