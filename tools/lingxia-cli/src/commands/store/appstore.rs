@@ -4,7 +4,7 @@
 //! Xcode, macOS only). Status is read from the App Store Connect API using an
 //! ES256 JWT minted locally from the `.p8` key.
 //!
-//! NOT E2E-verified — needs a real App Store Connect account + Xcode.
+//! Uploads feed both App Store versions and TestFlight testing.
 
 use super::processing::{BuildSelection, Record, State};
 use anyhow::{Context, Result, bail};
@@ -13,13 +13,20 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64URL;
 use colored::Colorize;
 use serde_json::{Value, json};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::time::Duration;
 
 use super::backend::{StorePlatform, SubmitOptions, http};
 use crate::resolver::AscMaterial;
 
 const ASC_BASE: &str = "https://api.appstoreconnect.apple.com";
+
+pub fn validate_submit_options(opts: &SubmitOptions) -> Result<()> {
+    if opts.track.is_some() {
+        bail!("Apple uploads share one build for App Store and TestFlight; omit --track");
+    }
+    Ok(())
+}
 
 /// Mint a short-lived (≤20 min) ES256 JWT for the App Store Connect API.
 pub fn asc_jwt(creds: &AscMaterial) -> Result<String> {
@@ -55,6 +62,7 @@ pub fn submit(
     if !cfg!(target_os = "macos") {
         bail!("App Store upload uses `xcrun altool`, which requires Xcode on macOS.");
     }
+    validate_submit_options(opts)?;
     // altool resolves the API key from a private_keys search dir.
     stage_private_key(creds)?;
 
@@ -65,16 +73,14 @@ pub fn submit(
     };
 
     eprintln!("  uploading {} via altool…", artifact.display());
-    let status = Command::new("xcrun")
+    let output = Command::new("xcrun")
         .args(["altool", "--upload-app", "--type", type_arg, "--file"])
         .arg(artifact)
         .args(["--apiKey", &creds.key_id, "--apiIssuer", &creds.issuer_id])
-        .stdout(Stdio::from(std::io::stderr()))
-        .status()
+        .args(["--output-format", "json"])
+        .output()
         .context("run xcrun altool")?;
-    if !status.success() {
-        bail!("altool upload failed (exit {:?})", status.code());
-    }
+    check_upload_result(output.status.success(), &output.stdout)?;
     eprintln!("  {} uploaded to App Store Connect", "✓".green());
     eprintln!(
         "  {} processing takes a few minutes; then attach the build to a version \
@@ -85,6 +91,46 @@ pub fn submit(
             .map(|_| " — release notes are set per-version in App Store Connect")
             .unwrap_or("")
     );
+    Ok(())
+}
+
+/// New altool versions can report validation errors with exit status zero.
+/// Require a structured success response before polling for the uploaded build.
+fn check_upload_result(exit_success: bool, stdout: &[u8]) -> Result<()> {
+    // xcrun may print a launcher banner before altool's JSON response.
+    let start = stdout
+        .iter()
+        .position(|byte| *byte == b'{')
+        .context("altool returned no JSON upload result; upload was not confirmed")?;
+    let response: Value =
+        serde_json::from_slice(&stdout[start..]).context("parse altool JSON upload result")?;
+    if let Some(errors) = response.get("product-errors").and_then(Value::as_array)
+        && !errors.is_empty()
+    {
+        let messages = errors
+            .iter()
+            .map(|error| {
+                error
+                    .pointer("/user-info/NSLocalizedFailureReason")
+                    .or_else(|| error.get("message"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown validation error")
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        bail!("altool upload failed: {messages}");
+    }
+    if !exit_success {
+        bail!("altool upload failed with a nonzero exit status");
+    }
+    if response
+        .get("success-message")
+        .and_then(Value::as_str)
+        .filter(|message| !message.trim().is_empty())
+        .is_none()
+    {
+        bail!("altool did not confirm upload success");
+    }
     Ok(())
 }
 
@@ -311,6 +357,24 @@ fn stage_private_key(creds: &AscMaterial) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn upload_validation_failure_is_rejected_even_with_exit_zero() {
+        let response = br#"{"product-errors":[{"code":409,"message":"Validation failed","user-info":{"NSLocalizedFailureReason":"Missing DTPlatformName"}}]}"#;
+        let error = super::check_upload_result(true, response)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("Missing DTPlatformName"));
+    }
+
+    #[test]
+    fn upload_requires_explicit_success() {
+        let response =
+            b"Running altool...\n{\"success-message\":\"No errors uploading archive\"}\n";
+        assert!(super::check_upload_result(true, response).is_ok());
+        assert!(super::check_upload_result(false, response).is_err());
+        assert!(super::check_upload_result(true, b"{\"tool-version\":\"26.10\"}").is_err());
+        assert!(super::check_upload_result(true, b"UPLOAD FAILED").is_err());
+    }
     use super::*;
 
     #[test]

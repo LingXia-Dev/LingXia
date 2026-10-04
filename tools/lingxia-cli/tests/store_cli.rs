@@ -19,6 +19,15 @@ fn store_cli_json_errors_are_one_document_with_nonzero_exit() {
         vec!["store", "status", "-p", "ios", "--wait", "--json"],
         vec!["store", "status", "-p", "windows", "--json"],
         vec!["store", "submit", "-p", "invalid", "--json"],
+        vec![
+            "store",
+            "submit",
+            "-p",
+            "ios",
+            "--track",
+            "testflight",
+            "--json",
+        ],
     ] {
         let output = run(&args);
         assert!(!output.status.success());
@@ -34,6 +43,15 @@ fn store_cli_json_errors_are_one_document_with_nonzero_exit() {
         assert_eq!(body["uploaded"], false);
         assert!(body["error"]["code"].is_string());
         assert!(body["results"].is_array());
+        if args.contains(&"testflight") {
+            assert!(
+                body["error"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("omit --track")
+            );
+            assert!(body["artifact"].is_null());
+        }
     }
 }
 
@@ -73,5 +91,48 @@ fn store_cli_wait_arguments_validate_without_network() {
         let help = String::from_utf8(output.stdout).unwrap();
         assert!(help.contains("--wait"));
         assert!(help.contains("--json"));
+    }
+}
+
+#[test]
+fn apptest_rejects_invalid_intent_before_project_or_credentials_are_loaded() {
+    for (args, message) in [
+        (
+            vec![
+                "store", "submit", "-p", "harmony", "--track", "apptest", "--json",
+            ],
+            "requires --wait",
+        ),
+        (
+            vec![
+                "store", "submit", "-p", "harmony", "--track", "unknown", "--json",
+            ],
+            "Unsupported Harmony track",
+        ),
+        (
+            vec![
+                "store",
+                "submit",
+                "-p",
+                "googleplay",
+                "--track",
+                "internal",
+                "--test-version-id",
+                "draft",
+                "--json",
+            ],
+            "only for Harmony AppTest",
+        ),
+    ] {
+        let output = run(&args);
+        assert!(!output.status.success());
+        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["uploaded"], false);
+        assert!(
+            report["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains(message)
+        );
     }
 }

@@ -38,9 +38,12 @@ pub enum StoreAction {
         /// Release notes / "what's new" text
         #[arg(long)]
         release_notes: Option<String>,
-        /// Release track/channel (store-specific)
+        /// Store-specific release track (e.g. Google Play: internal; Harmony: production/apptest)
         #[arg(long)]
         track: Option<String>,
+        /// Existing Harmony AppTest draft to receive the package (requires --track apptest --wait)
+        #[arg(long, requires = "track")]
+        test_version_id: Option<String>,
         #[command(flatten)]
         processing: processing::ProcessingOptions,
         #[command(flatten)]
@@ -66,14 +69,18 @@ pub fn run(action: StoreAction) -> Result<()> {
             platform,
             release_notes,
             track,
+            test_version_id,
             processing,
             build,
         } => {
             let opts = SubmitOptions {
                 release_notes,
                 track,
+                test_version_id,
             };
-            if automation::handles(&platform, &processing, &build, None) {
+            if opts.test_version_id.is_some()
+                || automation::handles(&platform, &processing, &build, None)
+            {
                 automation::run(&platform, Some(opts), None, processing, build)
             } else {
                 submit(StorePlatform::parse(&platform)?, opts)

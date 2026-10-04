@@ -71,6 +71,7 @@ impl AppBundler {
         // 3. Create .app bundle structure
         let app_bundle =
             Self::create_bundle_structure(package_dir, project_root, &build_dir, config)?;
+        write_sdk_metadata(&app_bundle)?;
 
         // 4. Clean up temporary package
         let _ = fs::remove_dir_all(&tmp_package_dir);
@@ -423,6 +424,65 @@ let package = Package(
     }
 }
 
+/// Store validation needs the actual device SDK and Xcode that built the app.
+fn write_sdk_metadata(app_bundle: &Path) -> Result<()> {
+    let sdk_version = toolchain_value("xcrun", &["--sdk", "iphoneos", "--show-sdk-version"])?;
+    let sdk_build = toolchain_value("xcrun", &["--sdk", "iphoneos", "--show-sdk-build-version"])?;
+    let xcode = toolchain_value("xcodebuild", &["-version"])?;
+    let path = app_bundle.join("Info.plist");
+    let mut info: plist::Dictionary = plist::from_file(&path)?;
+    insert_sdk_metadata(&mut info, &sdk_version, &sdk_build, &xcode)?;
+    plist::to_file_xml(path, &info).context("write iOS SDK metadata")
+}
+
+fn toolchain_value(program: &str, args: &[&str]) -> Result<String> {
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .with_context(|| format!("run {program} for iOS SDK metadata"))?;
+    let value = String::from_utf8(output.stdout)?.trim().to_owned();
+    if !output.status.success() || value.is_empty() {
+        return Err(anyhow!("{program} failed to report iOS SDK metadata"));
+    }
+    Ok(value)
+}
+
+fn insert_sdk_metadata(
+    info: &mut plist::Dictionary,
+    sdk_version: &str,
+    sdk_build: &str,
+    xcode: &str,
+) -> Result<()> {
+    let version = xcode
+        .lines()
+        .find_map(|line| line.strip_prefix("Xcode "))
+        .context("xcodebuild output missing Xcode version")?;
+    let build = xcode
+        .lines()
+        .find_map(|line| line.strip_prefix("Build version "))
+        .context("xcodebuild output missing build version")?;
+    let mut parts = version.split('.');
+    let major: u32 = parts
+        .next()
+        .context("missing Xcode major version")?
+        .parse()?;
+    let minor: u32 = parts.next().unwrap_or("0").parse()?;
+    let patch: u32 = parts.next().unwrap_or("0").parse()?;
+    let xcode_number = format!("{:04}", major * 100 + minor * 10 + patch);
+    for (key, value) in [
+        ("DTPlatformName", "iphoneos".to_owned()),
+        ("DTPlatformVersion", sdk_version.to_owned()),
+        ("DTPlatformBuild", sdk_build.to_owned()),
+        ("DTSDKName", format!("iphoneos{sdk_version}")),
+        ("DTSDKBuild", sdk_build.to_owned()),
+        ("DTXcode", xcode_number),
+        ("DTXcodeBuild", build.to_owned()),
+    ] {
+        info.insert(key.into(), value.into());
+    }
+    Ok(())
+}
+
 /// Get the iOS SDK path using xcrun
 fn get_ios_sdk_path() -> Result<String> {
     let output = Command::new("xcrun")
@@ -466,6 +526,31 @@ mod tests {
     use super::{AppBundleConfig, AppBundler};
     use plist::{Dictionary, Value};
     use std::fs;
+
+    #[test]
+    fn device_sdk_metadata_replaces_stale_source_values() {
+        let mut info = Dictionary::new();
+        info.insert("DTPlatformName".into(), "iphonesimulator".into());
+        super::insert_sdk_metadata(
+            &mut info,
+            "26.2",
+            "23C57",
+            "Xcode 26.3\nBuild version 17C529",
+        )
+        .unwrap();
+        for (key, expected) in [
+            ("DTPlatformName", "iphoneos"),
+            ("DTSDKName", "iphoneos26.2"),
+            ("DTSDKBuild", "23C57"),
+            ("DTPlatformBuild", "23C57"),
+            ("DTPlatformVersion", "26.2"),
+            ("DTXcode", "2630"),
+            ("DTXcodeBuild", "17C529"),
+        ] {
+            assert_eq!(info.get(key).and_then(Value::as_string), Some(expected));
+        }
+        assert!(super::insert_sdk_metadata(&mut info, "26.2", "23C57", "unexpected").is_err());
+    }
 
     #[test]
     fn custom_info_plist_cannot_override_the_resolved_bundle_identifier() {

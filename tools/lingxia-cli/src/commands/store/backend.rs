@@ -80,6 +80,7 @@ pub struct SubmitOptions {
     pub release_notes: Option<String>,
     /// Per-store release track/channel (e.g. Google Play `internal`/`production`).
     pub track: Option<String>,
+    pub test_version_id: Option<String>,
 }
 
 /// Find the built artifact in `dist/<platform>/`. `submit` never builds — fail
