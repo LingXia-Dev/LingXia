@@ -23,6 +23,9 @@ The scaffold is the authoritative layout and field list; read it. A host owns:
 - `lingxia.yaml` — the source of truth for metadata and UI. `lingxia build`
   generates `app.json` and `ui.json` from it; never edit those.
 - `native/` — the Rust host library (`app.rustLibDir`).
+- Root `Cargo.toml` owns the Cargo workspace, shared dependency versions, profiles,
+  patches, and `Cargo.lock`. `native/` and `windows/` are member crates; Windows
+  inherits its dependencies with `workspace = true`.
 - one directory per platform: `macos/`, `windows/`, `android/`, `ios/`, `harmony/`.
 - optionally an embedded control lxapp (scaffold default `lxapp/`).
 
