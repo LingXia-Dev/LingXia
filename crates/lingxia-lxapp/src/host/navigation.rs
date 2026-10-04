@@ -186,10 +186,47 @@ host_api_async!(
     }
 );
 
+#[derive(Deserialize)]
+struct SetLeaveGuardOptions {
+    enabled: bool,
+}
+
+/// `navigation.setLeaveGuard({ enabled })`: the calling page asks to confirm
+/// before the user leaves it (unsaved changes).
+///
+/// Scoped to the page whose View called, which is why this is written out
+/// rather than through `host_api!`: the macros only expose the app. Logic has
+/// no page of its own here, so a Logic-originated call is refused.
+struct SetLeaveGuard;
+
+impl super::HostHandler for SetLeaveGuard {
+    fn call<'a>(
+        &'a self,
+        invocation: super::HostInvocationContext,
+        input: Option<String>,
+        _cancel: HostCancel,
+    ) -> super::HostFuture<'a> {
+        Box::pin(async move {
+            let options: SetLeaveGuardOptions = super::parse_input(input.as_deref())?;
+            let result: Result<(), LxAppError> = match invocation.page() {
+                Some(page) => {
+                    page.set_leave_guard(options.enabled);
+                    Ok(())
+                }
+                None => Err(LxAppError::InvalidParameter(
+                    "navigation.setLeaveGuard must be called from a page View".to_string(),
+                )),
+            };
+            super::serialize_result(result)
+        })
+    }
+}
+
 pub(crate) fn register_all() {
     register_host_module!("navigation", crate::host::RouteAudience::AppSessionOnly, {
         "navigateTo" => Arc::new(NavigateTo),
         "navigateBack" => Arc::new(NavigateBack),
+        "setLeaveGuard" => Arc::new(SetLeaveGuard),
         "redirectTo" => Arc::new(RedirectTo),
         "switchTab" => Arc::new(SwitchTab),
         "reLaunch" => Arc::new(ReLaunch)

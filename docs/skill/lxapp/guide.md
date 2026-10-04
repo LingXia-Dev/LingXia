@@ -180,6 +180,7 @@ a panel naming itself.
 |---|---|---|
 | `useLxPage<PageData, PageActions>()` | `{ data, actions }` — this page's Logic state and public methods | on every `setData` |
 | `useLxHost()` | [host facts](#host-facts) | only when a field changes |
+| `useLxLeaveGuard(dirty, onRequest)` | nothing — [guards leaving](#leaving-a-page-with-unsaved-changes) while `dirty` | — |
 
 Any component may call either. Geometry is CSS, not a hook:
 [page chrome CSS](#page-chrome-css).
@@ -433,6 +434,8 @@ host `surfaces`.
   Desktop lists all in the sidebar.
 - `"showOn": ["mobile"]` or `["desktop"]` limits an item to one form factor.
   Indices stay as declared, and each host needs at least two items.
+- `text` is a string, or one per language — see
+  [localized labels and titles](#localized-labels-and-titles).
 
 ### Icons
 
@@ -480,6 +483,48 @@ Each page's `index.json`:
 
 All keys are optional. `navigationStyle: "custom"` draws no native bar; on
 mobile the capsule stays over the page's header.
+
+### Localized labels and titles
+
+`tabBar.items[].text` and `navigationBar.title` take a string, or an object
+mapping language tags to strings. The host resolves it against the effective
+display language and repaints when the language changes — no Logic needed:
+
+```json
+{ "page": "profiles", "text": { "en-US": "Profiles", "zh-CN": "节点" } }
+```
+
+```json
+{ "navigationBar": { "title": { "en-US": "Profiles", "zh-CN": "节点" } } }
+```
+
+Resolution: the exact tag, else the declared tag sharing the most leading
+subtags with the same language (`zh-CN` reads `zh`), else the first entry.
+A runtime value from `lx.tabBar.update` / `lx.navigationBar.update` wins until
+reset with `null`. The map form needs a runtime that has it: raise
+`minRuntime` when you adopt it.
+
+### Leaving a page with unsaved changes
+
+A page can hold itself against user back while it has unsaved changes. Every
+user back path — the navigation bar back button, Android/Harmony system back,
+the edge swipe — then leaves the page where it is and asks the View instead.
+Confirm there and leave with `navigation.navigateBack` (Logic:
+`lx.navigateBack`), which does not ask again. Works without Logic.
+
+```tsx
+import { useLxLeaveGuard } from '@lingxia/react'; // also @lingxia/vue
+
+useLxLeaveGuard(dirty, async () => {
+  if (await confirmDiscard()) await window.LingXiaBridge?.invoke('navigation.navigateBack', {});
+});
+```
+
+Without a framework: `setLeaveGuard(true | false)` and
+`subscribeBackRequest(listener)` from `@lingxia/bridge` / `@lingxia/html`
+(also `window.LingXiaBridge.leaveGuard`), or the `lxbackrequest` window event.
+The guard belongs to the current document: a reload, or leaving the stack,
+clears it. Tab switches are not guarded.
 
 ### Runtime updates
 

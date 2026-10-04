@@ -41,6 +41,7 @@ use config::{LxAppConfig, LxAppLogicEntry, LxAppPageEntry};
 mod content;
 mod display_language;
 pub mod host_appearance;
+pub mod localized_text;
 pub(crate) mod metadata;
 pub mod navbar;
 pub mod page_chrome;

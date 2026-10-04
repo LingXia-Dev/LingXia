@@ -229,6 +229,9 @@ pub struct PageState {
     config_load_error: Option<String>,
     // Pull-to-refresh enabled flag
     pub(crate) enable_pull_down_refresh: bool,
+    /// The View asked to confirm leaving (unsaved changes). Belongs to the
+    /// current document: a new document, or leaving the stack, clears it.
+    leave_guard: bool,
     // PageInstance orientation overrides
     pub(crate) orientation_override: OrientationOverride,
     // Query parameters
@@ -443,6 +446,7 @@ impl PageInstance {
             navbar_state: page_config.create_navbar_state(),
             config_load_error,
             enable_pull_down_refresh: page_config.is_pull_down_refresh_enabled(),
+            leave_guard: false,
             orientation_override: page_config.get_orientation_override(),
             query: serde_json::json!({}),
         }
@@ -960,6 +964,7 @@ impl PageInstance {
         state.bridge_ready = false;
         state.ready_dispatched = false;
         state.render_status = PageRenderStatus::Unstarted;
+        state.leave_guard = false;
     }
 
     fn invalidate_renderer_state(state: &mut PageState) {
@@ -1116,6 +1121,7 @@ impl PageInstance {
         state.entry = EntryPhase::Idle;
         state.bridge_ready = false;
         state.ready_dispatched = false;
+        state.leave_guard = false;
     }
 
     fn collect_ready_lifecycle_events(
@@ -1761,6 +1767,36 @@ impl PageInstance {
             .unwrap_or(false)
     }
 
+    /// Whether leaving this page needs the View's confirmation.
+    ///
+    /// Set by the View through `navigation.setLeaveGuard` while it holds
+    /// unsaved changes. User back (navigation bar, system back, edge swipe)
+    /// then asks the View instead of popping; see [`Self::request_leave`].
+    /// Programmatic `navigateBack` is the View's answer and is not guarded.
+    pub fn is_leave_guarded(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .ok()
+            .map(|state| state.leave_guard)
+            .unwrap_or(false)
+    }
+
+    pub(crate) fn set_leave_guard(&self, enabled: bool) {
+        if let Ok(mut state) = self.inner.state.lock() {
+            state.leave_guard = enabled;
+        }
+    }
+
+    /// Hand a user back request to the View of a guarded page. The page stays
+    /// put; the View confirms and, if the user agrees, calls
+    /// `navigation.navigateBack`.
+    pub(crate) fn request_leave(&self) {
+        self.push_view_script(
+            "var f = globalThis.__lingxiaDispatchBackRequest; if (typeof f === 'function') f();",
+        );
+    }
+
     /// Check if this page is a TabBar page
     pub fn is_tabbar_page(&self) -> bool {
         let lxapp = self.owning_lxapp();
@@ -2008,6 +2044,7 @@ impl PageInstance {
 
         for _ in 0..pages_to_pop {
             if let Some(page) = lxapp.pop_from_page_stack() {
+                page.set_leave_guard(false);
                 page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
                 // `onUnload` means the instance ended. The WebView is retained
                 // for a warm re-entry, so reset the service and the document
@@ -2388,9 +2425,25 @@ mod tests {
             navbar_state: NavigationBarState::default(),
             config_load_error: None,
             enable_pull_down_refresh: false,
+            leave_guard: false,
             orientation_override: OrientationOverride::default(),
             query: serde_json::json!({}),
         }
+    }
+
+    #[test]
+    fn a_new_document_starts_without_a_leave_guard() {
+        // The guard is the old document's unsaved state; a reloaded or reset
+        // document has none, and must not trap the user on the page.
+        let mut state = test_page_state();
+        state.leave_guard = true;
+        PageInstance::invalidate_document_state(&mut state);
+        assert!(!state.leave_guard);
+
+        let mut state = test_page_state();
+        state.leave_guard = true;
+        PageInstance::reset_webview_lifecycle_state(&mut state);
+        assert!(!state.leave_guard);
     }
 
     #[test]

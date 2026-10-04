@@ -20,6 +20,7 @@ await fs.writeFile(
   [
     `export { renderPageFault } from ${JSON.stringify(path.join(bridgeModules, "error.js"))};`,
     `export { getHost, subscribeHost } from ${JSON.stringify(path.join(bridgeModules, "host.js"))};`,
+    `export { setLeaveGuard, subscribeBackRequest } from ${JSON.stringify(path.join(bridgeModules, "leave-guard.js"))};`,
     "",
   ].join("\n"),
 );

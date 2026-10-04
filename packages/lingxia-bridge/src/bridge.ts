@@ -30,6 +30,7 @@ import {
   type V3DocumentToNativeKind,
 } from "./protocol-v3";
 import { getHost, subscribeHost } from "./host";
+import { setLeaveGuard, subscribeBackRequest } from "./leave-guard";
 import {
   BRIDGE_CONFIG,
   getCommunicationMethod,
@@ -2220,6 +2221,12 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
   host: {
     get: getHost,
     subscribe: subscribeHost,
+  },
+
+  // The leave guard, for the same plain-HTML documents.
+  leaveGuard: {
+    set: setLeaveGuard,
+    onBackRequest: subscribeBackRequest,
   },
 
   platform: {
