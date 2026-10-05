@@ -178,7 +178,17 @@ declare global {
     /** Host push: the user tried to leave a page that holds the leave guard. */
     __lingxiaDispatchBackRequest?: () => void;
     /** Shared by every copy of the bridge module in this document. */
-    __lxBackRequest?: { listeners: Set<() => void> };
+    __lxBackRequest?: {
+      listeners: Set<() => void>;
+      /** `setLeaveGuard`'s own hold. */
+      manual: boolean;
+      /** Live `holdLeaveGuard` holds. */
+      holds: number;
+      /** What the host was last told. */
+      sent: boolean;
+      /** Serializes host calls. */
+      tail: Promise<void>;
+    };
     /** Shared by every copy of the bridge module in this document. */
     __lxDisplayLanguage?: { value: string; revision?: number; listeners: Set<() => void> };
     /** Host push for the page's adaptive context; see `surface-context.ts`. */

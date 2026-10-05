@@ -634,8 +634,9 @@ impl TabBar {
     /// Re-resolve every label for the effective display language, after it
     /// changed. Runtime overrides are kept.
     pub(crate) fn localize(&mut self) {
+        let language = super::display_language();
         for item in &mut self.items {
-            item.localize();
+            item.localize_for(&language);
         }
     }
 

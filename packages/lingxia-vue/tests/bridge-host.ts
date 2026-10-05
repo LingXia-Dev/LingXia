@@ -4,4 +4,9 @@
 export { getHost, subscribeHost, type LxHost } from '../../lingxia-bridge/src/host';
 export type { LxBridgeError, LxChannel, LxStream } from '../../lingxia-bridge/src/index';
 export { renderPageFault } from '../../lingxia-bridge/src/error';
-export { leavePage, setLeaveGuard, subscribeBackRequest } from '../../lingxia-bridge/src/leave-guard';
+export {
+  holdLeaveGuard,
+  leavePage,
+  setLeaveGuard,
+  subscribeBackRequest,
+} from '../../lingxia-bridge/src/leave-guard';

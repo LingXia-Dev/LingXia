@@ -7,10 +7,8 @@
 //! { "text": { "en-US": "Profiles", "zh-CN": "节点" } }
 //! ```
 //!
-//! The host resolves the declaration against the effective display language
-//! whenever it renders, so the native chrome follows a language switch the
-//! way page content does. Without this, an lxapp with no Logic had no way to
-//! localize its tab bar or titles: the runtime update APIs are Logic-only.
+//! The host resolves it against the effective display language on render,
+//! so native chrome follows a language switch without Logic.
 
 use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeMap;
@@ -45,14 +43,9 @@ impl From<String> for LocalizedText {
 impl LocalizedText {
     /// The text to show for `language` (a BCP-47 tag).
     ///
-    /// The exact tag wins. Otherwise only entries of the same language are
-    /// candidates, scored field by field rather than by shared prefix: a
-    /// matching script counts most, then a matching region. A script is
-    /// implied where a region settles it (`zh-TW` is Traditional, `zh-CN`
-    /// Simplified), so the `zh-Hant-TW` Apple reports reads a `zh-TW` entry,
-    /// and an entry in the other script ranks below a bare `zh`. With no
-    /// candidate, the first declared entry. Ties keep declaration order. Tags
-    /// compare case-insensitively and treat `_` as `-`.
+    /// The exact tag wins, then same-language entries ranked by script,
+    /// then region (a region implies a script: `zh-TW` serves `zh-Hant-TW`),
+    /// then the first declared entry. Case-insensitive; `_` reads as `-`.
     pub fn resolve(&self, language: &str) -> &str {
         let entries = match self {
             Self::Plain(text) => return text,

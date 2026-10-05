@@ -503,7 +503,7 @@ pub fn get_navigation_bar_state(appid: String, path: String) -> Option<Navigatio
             navigation_bar_foreground_color: style.foreground_color.argb(),
             navigation_bar_divider_color: style.divider_color.argb(),
             navigation_bar_text_style: text_style.to_string(),
-            navigation_bar_title_text: rust_state.title().to_string(),
+            navigation_bar_title_text: rust_state.title(),
             show_navbar: rust_state.show_navbar,
             show_back_button: rust_state.show_back_button,
             show_home_button: rust_state.home_button_visible(),

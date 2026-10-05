@@ -46,7 +46,7 @@ export {
 } from './bridge';
 export { isNativeError } from './invocation';
 export { getHost, subscribeHost, type LxHost } from './host';
-export { leavePage, setLeaveGuard, subscribeBackRequest } from './leave-guard';
+export { holdLeaveGuard, leavePage, setLeaveGuard, subscribeBackRequest } from './leave-guard';
 export { renderErrorUI, renderPageFault, hasError, getErrorInfo } from './error';
 export { boot, bootWhenReady } from './boot';
 

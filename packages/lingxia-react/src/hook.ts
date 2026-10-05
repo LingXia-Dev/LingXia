@@ -6,7 +6,7 @@ import type {
 } from "@lingxia/bridge";
 import {
   getHost,
-  setLeaveGuard,
+  holdLeaveGuard,
   subscribeBackRequest,
   subscribeHost,
   type LxHost,
@@ -78,29 +78,8 @@ export function useLxLeaveGuard(dirty: boolean, onRequest: () => void): void {
     latest.current = onRequest;
   });
   React.useEffect(() => subscribeBackRequest(() => latest.current()), []);
-  // Only a change reaches the host: a clean form mounts without a round trip,
-  // and true → false is one call.
-  const held = React.useRef(false);
-  React.useEffect(() => {
-    if (dirty === held.current) return;
-    held.current = dirty;
-    void setLeaveGuard(dirty).catch(warnLeaveGuard);
-  }, [dirty]);
-  React.useEffect(
-    () => () => {
-      if (held.current) {
-        held.current = false;
-        void setLeaveGuard(false).catch(warnLeaveGuard);
-      }
-    },
-    [],
-  );
-}
-
-// A refused guard (bridge not ready, a runtime without the route) leaves the
-// page unguarded; say so rather than fail silently.
-function warnLeaveGuard(error: unknown): void {
-  console.warn("[lingxia] setLeaveGuard failed; the page is not guarded", error);
+  // Released by the cleanup: when `dirty` turns false, and on unmount.
+  React.useEffect(() => (dirty ? holdLeaveGuard() : undefined), [dirty]);
 }
 
 type StreamMethod = (...args: any[]) => LxStream<any, any>;

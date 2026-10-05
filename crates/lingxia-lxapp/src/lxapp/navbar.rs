@@ -224,10 +224,8 @@ impl NavigationBarState {
         matches!(self.navigation_style, NavigationStyle::Custom)
     }
 
-    /// The title to draw: a runtime title (`lx.navigationBar.update`) if one
-    /// is set, otherwise the declared title for the effective display
-    /// language. Resolved on every read, so a language switch shows on the
-    /// next chrome refresh.
+    /// The runtime title if set, else the declared one for the effective
+    /// display language, resolved per read so a language switch shows.
     pub fn title(&self) -> String {
         match &self.runtime_title {
             Some(title) => title.clone(),

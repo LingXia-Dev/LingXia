@@ -191,12 +191,8 @@ struct SetLeaveGuardOptions {
     enabled: bool,
 }
 
-/// `navigation.setLeaveGuard({ enabled })`: the calling page asks to confirm
-/// before the user leaves it (unsaved changes).
-///
-/// Scoped to the page whose View called, which is why this is written out
-/// rather than through `host_api!`: the macros only expose the app. Logic has
-/// no page of its own here, so a Logic-originated call is refused.
+/// `navigation.setLeaveGuard({ enabled })`, scoped to the calling View's
+/// page. Written out because `host_api!` only exposes the app.
 struct SetLeaveGuard;
 
 impl super::HostHandler for SetLeaveGuard {

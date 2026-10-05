@@ -1556,7 +1556,7 @@ impl LxApp {
         let navigation_bar = self.peek_current_page_path().map(|path| {
             let state = self.get_navbar_state(&path);
             LxAppRuntimeNavigationBarInfo {
-                title: state.title().to_string(),
+                title: state.title(),
                 home_button: state.home_button,
                 home_button_visible: state.home_button_visible(),
                 runtime_style: LxAppRuntimeNavigationBarStyleInfo {
