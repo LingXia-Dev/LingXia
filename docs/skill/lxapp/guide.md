@@ -498,11 +498,19 @@ display language and repaints when the language changes — no Logic needed:
 { "navigationBar": { "title": { "en-US": "Profiles", "zh-CN": "节点" } } }
 ```
 
-Resolution: the exact tag, else the declared tag sharing the most leading
-subtags with the same language (`zh-CN` reads `zh`), else the first entry.
-A runtime value from `lx.tabBar.update` / `lx.navigationBar.update` wins until
-reset with `null`. The map form needs a runtime that has it: raise
+Resolution: the exact tag; else an entry of the same language, matching
+script first, then region (a Chinese region implies its script, so
+`zh-Hant-TW` reads a `zh-TW` entry and never a `zh-CN` one); else the first
+entry. A runtime value from `lx.tabBar.update` / `lx.navigationBar.update`
+wins until reset with `null`, so do not also translate the declared text
+through those calls. The map form needs a runtime that has it: raise
 `minRuntime` when you adopt it.
+
+The language is the host's display language. A host app that keeps its own
+language setting must forward it with
+`lingxia::app::set_display_language_preference` (or
+`lx.host.control.displayLanguage.setPreference` from Logic); otherwise the
+page content follows the app's setting and the declared chrome text does not.
 
 ### Leaving a page with unsaved changes
 
