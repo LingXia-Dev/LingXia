@@ -1,14 +1,13 @@
 /**
  * Guarding a page against being left with unsaved changes.
  *
- * Every user back path ends in one host decision: the navigation bar back
- * button, Android/Harmony system back, and the iOS/Harmony edge swipe. While a
- * page holds the guard, that decision does not pop the page; it delivers a
- * back request here instead, and the page answers — typically by asking, then
- * calling `navigation.navigateBack`, which pops without asking again.
+ * While a page holds the guard, a user back or home (navigation bar buttons,
+ * Android/Harmony system back, the iOS/Harmony edge swipe) does not leave it.
+ * The host asks here instead, each holder answers, and when all agree the
+ * host carries out what the user asked for.
  *
  * Works without Logic: a View-only (`logic: false`) page owns its drafts, so
- * the guard is set from the View.
+ * the guard is held from the View.
  *
  * Its only import-time effect is installing the host hook (idempotent, shared
  * across bundle copies). It reaches the host through the already-booted
@@ -16,102 +15,125 @@
  * the plain-HTML global build can include it without booting a second bridge.
  */
 
-type BackRequestStore = NonNullable<Window['__lxBackRequest']>;
+/** What the user did: `back` (bar, system, or swipe) or the bar's `home`. */
+export type LxLeaveReason = 'back' | 'home';
 
-function newStore(): BackRequestStore {
-  return { listeners: new Set(), manual: false, holds: 0, sent: false, tail: Promise.resolve() };
+export interface LxLeaveRequest {
+  reason: LxLeaveReason;
+}
+
+/**
+ * Answers a leave request: `true` lets the user leave, `false` keeps the
+ * page. May be async — show a dialog and resolve with the choice.
+ */
+export type LxLeaveHandler = (request: LxLeaveRequest) => boolean | Promise<boolean>;
+
+type GuardStore = {
+  holders: LxLeaveHandler[];
+  /** What the host was last told. */
+  sent: boolean;
+  /** Serializes host calls. */
+  tail: Promise<void>;
+  /** A request is being answered; further ones are dropped. */
+  asking: boolean;
+};
+
+type GuardWindow = Window & { __lxLeaveGuard?: GuardStore };
+
+function newStore(): GuardStore {
+  return { holders: [], sent: false, tail: Promise.resolve(), asking: false };
 }
 
 const fallbackStore = newStore();
 
-function store(): BackRequestStore {
+function store(): GuardStore {
   if (typeof window === 'undefined') return fallbackStore;
   // Shared by every copy of the bridge module in this document.
-  if (!window.__lxBackRequest) window.__lxBackRequest = newStore();
-  return window.__lxBackRequest;
+  const host = window as GuardWindow;
+  if (!host.__lxLeaveGuard) host.__lxLeaveGuard = newStore();
+  return host.__lxLeaveGuard;
 }
 
-// The host keeps one flag per page. Send it the union of every holder, one
-// call at a time so a quick true → false cannot land reversed.
-function syncGuard(): Promise<void> {
+// The host keeps one flag per page. Tell it whether anyone holds, one call at
+// a time so a quick hold → release cannot land reversed.
+function syncGuard(): void {
   const s = store();
-  const run = (): Promise<void> => {
-    const want = s.manual || s.holds > 0;
-    if (want === s.sent) return Promise.resolve();
+  s.tail = s.tail.then(() => {
+    const want = s.holders.length > 0;
+    if (want === s.sent) return undefined;
     s.sent = want;
-    return callHost<{ enabled: boolean }>('navigation.setLeaveGuard', { enabled: want }).catch(
-      (error) => {
-        s.sent = !want;
-        throw error;
-      },
-    );
-  };
-  const next = s.tail.then(run);
-  s.tail = next.catch(() => undefined);
-  return next;
+    return callHost('navigation.setLeaveGuard', { enabled: want }).catch((error) => {
+      s.sent = !want;
+      // A refused guard (bridge not ready, a runtime without the route)
+      // leaves the page unguarded; say so rather than fail silently.
+      console.warn('[lingxia] leave guard not applied; the page is not guarded', error);
+    });
+  });
 }
 
 /** Host entry point: the user tried to leave a guarded page. */
-function dispatchBackRequest(): void {
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('lxbackrequest'));
-  }
-  for (const listener of [...store().listeners]) listener();
+function dispatchLeaveRequest(reason: LxLeaveReason): void {
+  const s = store();
+  // One question at a time: a second back while a dialog is open is dropped.
+  if (s.asking) return;
+  s.asking = true;
+  const request: LxLeaveRequest = { reason };
+  // Newest holder first; the first refusal keeps the page.
+  const holders = s.holders.slice().reverse();
+  let agreed: Promise<boolean> = Promise.resolve(true);
+  holders.forEach((handler) => {
+    agreed = agreed.then((leave) => (leave ? handler(request) : false));
+  });
+  agreed
+    .then(
+      (leave) => leave === true,
+      (error) => {
+        console.error('[lingxia] leave guard handler failed; staying on the page', error);
+        return false;
+      },
+    )
+    .then((leave) => {
+      s.asking = false;
+      if (!leave) return undefined;
+      return callHost('navigation.leave', { reason }).catch((error) => {
+        console.warn('[lingxia] leaving the page failed', error);
+      });
+    });
 }
 
-if (typeof window !== 'undefined' && !window.__lingxiaDispatchBackRequest) {
-  Object.defineProperty(window, '__lingxiaDispatchBackRequest', {
+if (typeof window !== 'undefined' && !window.__lingxiaDispatchLeaveRequest) {
+  Object.defineProperty(window, '__lingxiaDispatchLeaveRequest', {
     configurable: false,
     enumerable: false,
-    value: dispatchBackRequest,
+    value: dispatchLeaveRequest,
   });
 }
 
 /**
- * Hold (`true`) or release (`false`) this page against user back. Set it
- * while the page has unsaved changes and clear it once they are saved or
- * discarded. A reloaded document, or a page that has left the stack, starts
- * unguarded.
+ * Hold this page against user back and home until the returned function is
+ * called. Hold while there are unsaved changes; `onRequest` is asked when the
+ * user tries to leave and returns whether they may.
+ *
+ * Holds are independent: each part of a page holds for itself, the page stays
+ * guarded while any hold is live, and every holder must agree to leave. A
+ * reloaded document, or a page that has left the stack, starts unguarded.
  */
-export function setLeaveGuard(enabled: boolean): Promise<void> {
-  store().manual = enabled;
-  return syncGuard();
-}
-
-/**
- * Hold the page until the returned release is called. Holds count, so
- * independent parts of a page (two forms) guard it without clearing each
- * other; `setLeaveGuard` is one more holder beside them.
- */
-export function holdLeaveGuard(): () => void {
+export function holdLeaveGuard(onRequest: LxLeaveHandler): () => void {
   const s = store();
-  s.holds += 1;
-  void syncGuard().catch(warnLeaveGuard);
-  let released = false;
+  // A wrapper, so the same function held twice is two holds.
+  const handler: LxLeaveHandler = (request) => onRequest(request);
+  s.holders.push(handler);
+  syncGuard();
   return () => {
-    if (released) return;
-    released = true;
-    s.holds -= 1;
-    void syncGuard().catch(warnLeaveGuard);
+    const index = s.holders.indexOf(handler);
+    if (index < 0) return;
+    s.holders.splice(index, 1);
+    syncGuard();
   };
 }
 
-// A refused guard (bridge not ready, a runtime without the route) leaves the
-// page unguarded; say so rather than fail silently.
-function warnLeaveGuard(error: unknown): void {
-  console.warn('[lingxia] setLeaveGuard failed; the page is not guarded', error);
-}
-
-/**
- * Leave the page now — the answer to a back request the user confirmed. Pops
- * this page without asking again, guarded or not.
- */
-export function leavePage(): Promise<void> {
-  return callHost<{ delta: number }>('navigation.navigateBack', { delta: 1 });
-}
-
-// Plain functions rather than `async` ones: this module also builds for ES5.
-// A missing bridge still surfaces as a rejection, never a synchronous throw.
+// A plain function rather than an `async` one: this module also builds for
+// ES5. A missing bridge surfaces as a rejection, never a synchronous throw.
 function callHost<TInput>(route: string, input: TInput): Promise<void> {
   const bridge = typeof window !== 'undefined' ? window.LingXiaBridge : undefined;
   if (!bridge) return Promise.reject(new Error('LingXiaBridge is not available'));
@@ -120,18 +142,4 @@ function callHost<TInput>(route: string, input: TInput): Promise<void> {
   } catch (error) {
     return Promise.reject(error);
   }
-}
-
-/**
- * Called when the user tries to leave the page while it holds the guard. The
- * page stays where it is; confirm, then leave with `navigation.navigateBack`.
- * Returns an unsubscribe. The same moment is also a `lxbackrequest` event on
- * `window`.
- */
-export function subscribeBackRequest(listener: () => void): () => void {
-  const listeners = store().listeners;
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
 }

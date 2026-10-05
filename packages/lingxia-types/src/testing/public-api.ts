@@ -298,6 +298,7 @@ const NAV_DRIVER_API = [
   'back',
   'current',
   'info',
+  'press',
   'redirect',
   'relaunch',
   'stack',

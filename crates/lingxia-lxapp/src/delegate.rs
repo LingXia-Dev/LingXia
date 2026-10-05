@@ -1,7 +1,7 @@
 use crate::PageLifecycleEvent;
 use crate::lifecycle::AppServiceEvent;
 use crate::lxapp::LxAppSessionStatus;
-use crate::page::NavigationType;
+use crate::page::{LeaveReason, NavigationType};
 use crate::update::UpdateManager;
 use crate::{LxApp, debug, error, info, lxapp, warn};
 use lingxia_platform::traits::app_runtime::AppRuntime;
@@ -521,41 +521,30 @@ impl LxApp {
         false
     }
 
+    /// The navigation bar home button: ask a guarded page first.
+    fn navigate_to_initial_route(self: &Arc<Self>) -> bool {
+        self.user_leave(LeaveReason::Home).is_ok()
+    }
+
     /// Reset to the entry page in-session: SwitchTab when the initial route is
     /// a tab page, reLaunch otherwise. Clears the page stack either way.
-    fn navigate_to_initial_route(self: &Arc<Self>) -> bool {
+    fn go_home(self: &Arc<Self>) -> Result<(), crate::LxAppError> {
         let home_route = self.config().get_initial_route();
-        if self
-            .peek_current_page_path()
-            .is_some_and(|path| path == home_route)
-        {
-            return true;
-        }
-
-        // Going home drops the page as surely as back does.
-        if let Some(page) = self.guarded_top_page() {
-            page.request_leave();
-            return true;
-        }
-
-        let navigate_type = if let Some(tabbar) = self.get_tabbar() {
-            if tabbar.is_tabbar_page(&home_route) {
-                NavigationType::SwitchTab
-            } else {
-                NavigationType::Launch
-            }
-        } else {
-            NavigationType::Launch
+        let Some(path) = self.peek_current_page_path() else {
+            return Ok(());
         };
-
-        if let Some(path) = self.peek_current_page_path() {
-            let page = self
-                .get_page(&path)
-                .unwrap_or_else(|| self.get_or_create_page(&path));
-            let target_page = self.get_or_create_page(&home_route);
-            let _ = page.navigate_to(target_page, navigate_type);
+        if path == home_route {
+            return Ok(());
         }
-        true
+        let navigate_type = match self.get_tabbar() {
+            Some(tabbar) if tabbar.is_tabbar_page(&home_route) => NavigationType::SwitchTab,
+            _ => NavigationType::Launch,
+        };
+        let page = self
+            .get_page(&path)
+            .unwrap_or_else(|| self.get_or_create_page(&path));
+        let target_page = self.get_or_create_page(&home_route);
+        page.navigate_to(target_page, navigate_type).map(drop)
     }
 
     /// Handle navigation bar button click
@@ -563,14 +552,7 @@ impl LxApp {
         info!("Navigation button '{}' clicked", data).with_appid(self.appid.clone());
 
         match data.as_str() {
-            "back" => {
-                if let Some(path) = self.peek_current_page_path()
-                    && let Some(page) = self.get_page(path.as_str())
-                {
-                    return self.leave_page(&page).is_ok();
-                }
-                false
-            }
+            "back" => self.user_leave(LeaveReason::Back).is_ok(),
             "home" => self.navigate_to_initial_route(),
             _ => {
                 error!("Unknown navigation action: {}", data).with_appid(self.appid.clone());
@@ -597,44 +579,45 @@ impl LxApp {
             return true;
         }
 
-        if let Some(path) = self.peek_current_page_path()
-            && let Some(page) = self.get_page(path.as_str())
-        {
-            return self.leave_page(&page).is_ok();
-        }
-        false
+        self.user_leave(LeaveReason::Back).is_ok()
     }
 
-    /// Go back the way the user does (navigation bar back, leave guard
-    /// included) rather than popping programmatically. For automation.
-    pub fn user_back(self: &Arc<Self>) -> Result<(), crate::LxAppError> {
+    /// Leave the top page the way the user does: a pushed page whose View
+    /// guards leaving is asked and stays; otherwise the action happens.
+    /// Every user back and home path lands here.
+    pub fn user_leave(self: &Arc<Self>, reason: LeaveReason) -> Result<(), crate::LxAppError> {
         let page = self.current_page()?;
-        self.leave_page(&page)
-    }
-
-    /// One user back on the top page: pop it, or hand the request to a View
-    /// that guards leaving and stay. Every user back path lands here.
-    fn leave_page(
-        self: &Arc<Self>,
-        page: &crate::page::PageInstance,
-    ) -> Result<(), crate::LxAppError> {
         // Only a pushed page can hold the user; the root has nothing to pop.
         if self.get_page_stack_size() > 1 && page.is_leave_guarded() {
-            page.request_leave();
-            Ok(())
-        } else {
-            page.navigate_back(1)
+            page.request_leave(reason);
+            return Ok(());
         }
+        self.leave(&page, reason)
     }
 
-    /// The top page, when it is pushed and its View guards leaving.
-    fn guarded_top_page(self: &Arc<Self>) -> Option<crate::page::PageInstance> {
-        if self.get_page_stack_size() <= 1 {
-            return None;
+    /// The guarded View's "yes" to [`Self::user_leave`]: do what the user
+    /// asked, without asking again. A late answer from a page no longer on
+    /// top is dropped.
+    pub(crate) fn confirm_leave(
+        self: &Arc<Self>,
+        page: &crate::page::PageInstance,
+        reason: LeaveReason,
+    ) -> Result<(), crate::LxAppError> {
+        if self.current_page()?.instance_id() != page.instance_id() {
+            return Ok(());
         }
-        let path = self.peek_current_page_path()?;
-        self.get_page(path.as_str())
-            .filter(|page| page.is_leave_guarded())
+        self.leave(page, reason)
+    }
+
+    fn leave(
+        self: &Arc<Self>,
+        page: &crate::page::PageInstance,
+        reason: LeaveReason,
+    ) -> Result<(), crate::LxAppError> {
+        match reason {
+            LeaveReason::Back => page.navigate_back(1),
+            LeaveReason::Home => self.go_home(),
+        }
     }
 
     /// The user pulled the page instance `webtag` names.

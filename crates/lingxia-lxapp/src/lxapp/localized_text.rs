@@ -1,10 +1,10 @@
 //! Manifest text that may be declared once per display language.
 //!
-//! `tabBar.items[].text` and a page's `navigationBar.title` accept either a
-//! plain string — as before — or a map keyed by BCP-47 tag:
+//! `tabBar.items[].text` and a page's `navigationBar.title` accept a plain
+//! string, or a map with a `default` and any number of BCP-47 tags:
 //!
 //! ```json
-//! { "text": { "en-US": "Profiles", "zh-CN": "节点" } }
+//! { "text": { "default": "Profiles", "zh-CN": "节点" } }
 //! ```
 //!
 //! The host resolves it against the effective display language on render,
@@ -15,11 +15,17 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
-/// A plain string, or the same text per language in declaration order.
+/// The map key of the text shown when no language entry matches.
+pub const DEFAULT_KEY: &str = "default";
+
+/// A plain string, or a default with the same text in other languages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LocalizedText {
     Plain(String),
-    PerLanguage(Vec<(String, String)>),
+    PerLanguage {
+        default: String,
+        entries: Vec<(String, String)>,
+    },
 }
 
 impl Default for LocalizedText {
@@ -45,11 +51,11 @@ impl LocalizedText {
     ///
     /// The exact tag wins, then same-language entries ranked by script,
     /// then region (a region implies a script: `zh-TW` serves `zh-Hant-TW`),
-    /// then the first declared entry. Case-insensitive; `_` reads as `-`.
+    /// then the default. Case-insensitive; `_` reads as `-`.
     pub fn resolve(&self, language: &str) -> &str {
-        let entries = match self {
+        let (default, entries) = match self {
             Self::Plain(text) => return text,
-            Self::PerLanguage(entries) => entries,
+            Self::PerLanguage { default, entries } => (default, entries),
         };
         let wanted = Tag::parse(language);
         let mut best: Option<(i32, &str)> = None;
@@ -65,16 +71,16 @@ impl LocalizedText {
                 best = Some((score, text));
             }
         }
-        best.map(|(_, text)| text)
-            .or_else(|| entries.first().map(|(_, text)| text.as_str()))
-            .unwrap_or("")
+        best.map_or(default, |(_, text)| text)
     }
 
     /// Whether the declaration carries no text in any language.
     pub fn is_empty(&self) -> bool {
         match self {
             Self::Plain(text) => text.is_empty(),
-            Self::PerLanguage(entries) => entries.iter().all(|(_, text)| text.is_empty()),
+            Self::PerLanguage { default, entries } => {
+                default.is_empty() && entries.iter().all(|(_, text)| text.is_empty())
+            }
         }
     }
 }
@@ -150,8 +156,9 @@ impl Serialize for LocalizedText {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             Self::Plain(text) => serializer.serialize_str(text),
-            Self::PerLanguage(entries) => {
-                let mut map = serializer.serialize_map(Some(entries.len()))?;
+            Self::PerLanguage { default, entries } => {
+                let mut map = serializer.serialize_map(Some(entries.len() + 1))?;
+                map.serialize_entry(DEFAULT_KEY, default)?;
                 for (tag, text) in entries {
                     map.serialize_entry(tag, text)?;
                 }
@@ -169,7 +176,9 @@ impl<'de> Deserialize<'de> for LocalizedText {
             type Value = LocalizedText;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a string, or an object mapping language tags to strings")
+                formatter.write_str(
+                    "a string, or an object with a `default` and language tags mapping to strings",
+                )
             }
 
             fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
@@ -180,17 +189,18 @@ impl<'de> Deserialize<'de> for LocalizedText {
                 Ok(LocalizedText::Plain(value))
             }
 
-            // Entries are collected in the order the deserializer yields them.
-            // From a `serde_json::Value` that is source order because this
-            // crate enables `preserve_order`; without it a JSON object is a
-            // `BTreeMap` and "first entry" would be alphabetical.
             fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                let mut default: Option<String> = None;
                 let mut entries: Vec<(String, String)> = Vec::new();
-                while let Some((tag, text)) = map.next_entry::<String, String>()? {
-                    let tag = tag.trim().to_string();
-                    if tag.is_empty() {
-                        return Err(de::Error::custom("language tag must not be empty"));
+                while let Some((key, text)) = map.next_entry::<String, String>()? {
+                    if key == DEFAULT_KEY {
+                        default = Some(text);
+                        continue;
                     }
+                    let tag = key
+                        .parse::<language_tags::LanguageTag>()
+                        .map_err(|_| de::Error::custom(format!("'{key}' is not a language tag")))?
+                        .to_string();
                     if entries
                         .iter()
                         .any(|(seen, _)| seen.eq_ignore_ascii_case(&tag))
@@ -199,10 +209,11 @@ impl<'de> Deserialize<'de> for LocalizedText {
                     }
                     entries.push((tag, text));
                 }
-                if entries.is_empty() {
-                    return Err(de::Error::custom("expected at least one language"));
-                }
-                Ok(LocalizedText::PerLanguage(entries))
+                let default = default
+                    .ok_or_else(|| de::Error::custom("a language map needs a `default` entry"))?;
+                // Key order carries no meaning; keep serialization stable.
+                entries.sort();
+                Ok(LocalizedText::PerLanguage { default, entries })
             }
         }
 
@@ -229,53 +240,58 @@ mod tests {
     }
 
     #[test]
-    fn resolves_exact_then_closest_then_first() {
+    fn resolves_exact_then_closest_then_default() {
         let text = map(serde_json::json!({
-            "en-US": "Profiles",
+            "default": "Profiles",
+            "en-GB": "Profiles (UK)",
             "zh-Hans": "节点",
             "zh-Hant-TW": "節點"
         }));
-        assert_eq!(text.resolve("en-US"), "Profiles");
-        assert_eq!(text.resolve("EN_us"), "Profiles");
+        assert_eq!(text.resolve("en-GB"), "Profiles (UK)");
+        assert_eq!(text.resolve("EN_gb"), "Profiles (UK)");
+        assert_eq!(text.resolve("en-US"), "Profiles (UK)");
         assert_eq!(text.resolve("zh-Hans-CN"), "节点");
         assert_eq!(text.resolve("zh-Hant-TW"), "節點");
-        assert_eq!(text.resolve("en-GB"), "Profiles");
-        // No entry in the language: the first declared one.
         assert_eq!(text.resolve("fr-FR"), "Profiles");
     }
 
     #[test]
     fn a_region_implies_the_chinese_script() {
         // Apple reports the script; authors usually write the region.
-        let simplified_first = map(serde_json::json!({ "zh-CN": "节点", "zh-TW": "節點" }));
-        assert_eq!(simplified_first.resolve("zh-Hant-TW"), "節點");
-        assert_eq!(simplified_first.resolve("zh-Hant-HK"), "節點");
-        assert_eq!(simplified_first.resolve("zh-Hans-CN"), "节点");
-
-        let traditional_first = map(serde_json::json!({ "zh-TW": "節點", "zh-CN": "节点" }));
-        assert_eq!(traditional_first.resolve("zh-Hans-CN"), "节点");
-        assert_eq!(traditional_first.resolve("zh-SG"), "节点");
+        let text = map(serde_json::json!({ "default": "Nodes", "zh-CN": "节点", "zh-TW": "節點" }));
+        assert_eq!(text.resolve("zh-Hant-TW"), "節點");
+        assert_eq!(text.resolve("zh-Hant-HK"), "節點");
+        assert_eq!(text.resolve("zh-Hans-CN"), "节点");
+        assert_eq!(text.resolve("zh-SG"), "节点");
 
         // The other script ranks below a bare language entry.
-        let generic = map(serde_json::json!({ "zh-TW": "節點", "zh": "节点" }));
+        let generic = map(serde_json::json!({ "default": "Nodes", "zh-TW": "節點", "zh": "节点" }));
         assert_eq!(generic.resolve("zh-Hans-CN"), "节点");
     }
 
     #[test]
-    fn keeps_declaration_order_when_serialized() {
-        let text = map(serde_json::json!({ "zh-CN": "节点", "en-US": "Profiles" }));
-        assert_eq!(text.resolve("de"), "节点");
+    fn the_default_does_not_depend_on_key_order() {
+        let first: LocalizedText =
+            serde_json::from_str(r#"{"zh-CN":"节点","default":"Profiles","en-GB":"UK"}"#).unwrap();
+        let second: LocalizedText =
+            serde_json::from_str(r#"{"en-GB":"UK","default":"Profiles","zh-CN":"节点"}"#).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first.resolve("de"), "Profiles");
         assert_eq!(
-            serde_json::to_string(&text).unwrap(),
-            r#"{"zh-CN":"节点","en-US":"Profiles"}"#
+            serde_json::to_string(&first).unwrap(),
+            r#"{"default":"Profiles","en-GB":"UK","zh-CN":"节点"}"#
         );
     }
 
     #[test]
-    fn rejects_empty_and_duplicate_maps() {
-        assert!(serde_json::from_value::<LocalizedText>(serde_json::json!({})).is_err());
-        assert!(serde_json::from_str::<LocalizedText>(r#"{"en":"a","EN":"b"}"#).is_err());
-        assert!(serde_json::from_value::<LocalizedText>(serde_json::json!({ "en": 1 })).is_err());
-        assert!(serde_json::from_value::<LocalizedText>(serde_json::json!(3)).is_err());
+    fn rejects_malformed_maps() {
+        let reject = |json: &str| assert!(serde_json::from_str::<LocalizedText>(json).is_err());
+        reject(r#"{}"#);
+        reject(r#"{"en":"a"}"#);
+        reject(r#"{"default":"a","en":"b","EN":"c"}"#);
+        reject(r#"{"default":"a","en":1}"#);
+        reject(r#"{"default":"a","zh_cn ":"b"}"#);
+        reject(r#"{"default":"a","chinese!":"b"}"#);
+        reject("3");
     }
 }

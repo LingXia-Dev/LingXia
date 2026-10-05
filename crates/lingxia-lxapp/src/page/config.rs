@@ -370,7 +370,7 @@ mod tests {
         let config = PageConfig::from_value(
             "pages/profiles/index.json",
             serde_json::json!({
-                "navigationBar": {"title": {"en-US": "Profiles", "zh-CN": "节点"}}
+                "navigationBar": {"title": {"default": "Profiles", "zh-CN": "节点"}}
             }),
         )
         .unwrap();

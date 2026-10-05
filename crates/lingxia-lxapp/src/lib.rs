@@ -141,8 +141,8 @@ pub use native_authority::NativeControlPlaneAuthority;
 pub use native_component::{NativeComponentHost, register_native_component_host};
 pub use page::config::{OrientationConfig, PageOrientation};
 pub use page::{
-    NavigationType, PageAutomationState, PageInstance, PageInstanceId, PageWebViewAwait,
-    ViewCallOptions, register_page_resolver, resolve_page_path,
+    LeaveReason, NavigationType, PageAutomationState, PageInstance, PageInstanceId,
+    PageWebViewAwait, ViewCallOptions, register_page_resolver, resolve_page_path,
 };
 pub use plugin::{build_plugin_page_path, parse_plugin_page_path, parse_plugin_url};
 pub use provider::{

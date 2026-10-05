@@ -297,6 +297,25 @@ impl NavigationType {
     }
 }
 
+/// What the user did to leave a page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LeaveReason {
+    /// Navigation bar back, system back, or the edge swipe.
+    Back,
+    /// The navigation bar home button.
+    Home,
+}
+
+impl LeaveReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Back => "back",
+            Self::Home => "home",
+        }
+    }
+}
+
 /// Represents a single page in a mini app
 #[derive(Clone)]
 pub struct PageInstance {
@@ -1787,13 +1806,13 @@ impl PageInstance {
         }
     }
 
-    /// Hand a user back request to the View of a guarded page. The page stays
-    /// put; the View confirms and, if the user agrees, calls
-    /// `navigation.navigateBack`.
-    pub(crate) fn request_leave(&self) {
-        self.push_view_script(
-            "var f = globalThis.__lingxiaDispatchBackRequest; if (typeof f === 'function') f();",
-        );
+    /// Ask the View of a guarded page whether the user may leave. The page
+    /// stays put; the View answers through `navigation.leave`.
+    pub(crate) fn request_leave(&self, reason: LeaveReason) {
+        self.push_view_script(&format!(
+            "var f = globalThis.__lingxiaDispatchLeaveRequest; if (typeof f === 'function') f('{}');",
+            reason.as_str()
+        ));
     }
 
     /// Check if this page is a TabBar page

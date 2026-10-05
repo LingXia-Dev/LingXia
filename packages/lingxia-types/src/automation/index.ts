@@ -515,6 +515,9 @@ export interface NavWaitOptions {
   timeoutMs?: number;
 }
 
+/** A navigation bar button `nav.press` can press. */
+export type NavButton = 'back' | 'home';
+
 interface NavTargetFields {
   /** Configured page name (from lxapp.json). */
   page: string;
@@ -525,12 +528,6 @@ interface NavTargetFields {
 interface NavBackFields {
   /** Number of pages to pop (default 1). */
   delta?: number;
-  /**
-   * Go back as the user does (the navigation bar back button) instead of
-   * popping: a page holding the leave guard stays and receives a back
-   * request. One page only; do not combine with `delta`.
-   */
-  user?: boolean;
 }
 
 export interface LogicNavOptions extends NavTargetFields, LogicNavWaitOptions {}
@@ -573,7 +570,13 @@ export interface LogicNavDriver {
   switchTab(options: LogicNavOptions): Promise<PageInfo>;
   /** Unload every page (cached tab pages included) and open a fresh instance of a page. */
   relaunch(options: LogicNavOptions): Promise<PageInfo>;
+  /** Pop pages programmatically; a leave guard is not asked. */
   back(options?: LogicNavBackOptions): Promise<PageInfo>;
+  /**
+   * Press a navigation bar button as the user does. A page holding the leave
+   * guard stays and is asked, so this resolves to the same page.
+   */
+  press(button: NavButton, options?: LogicNavWaitOptions): Promise<PageInfo>;
   current(): Promise<PageInfo>;
   /** Status of a configured page by name; omit `page` for the current page. */
   info(options?: PageTarget): Promise<PageInfo>;
@@ -591,6 +594,7 @@ export interface NavDriver extends LogicNavDriver {
   switchTab(options: NavOptions): Promise<PageInfo>;
   relaunch(options: NavOptions): Promise<PageInfo>;
   back(options?: NavBackOptions): Promise<PageInfo>;
+  press(button: NavButton, options?: NavWaitOptions): Promise<PageInfo>;
 }
 
 // ============================ lxapp driver ============================

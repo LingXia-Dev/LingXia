@@ -7,9 +7,9 @@ import type {
 import {
   getHost,
   holdLeaveGuard,
-  subscribeBackRequest,
   subscribeHost,
   type LxHost,
+  type LxLeaveHandler,
 } from "@lingxia/bridge";
 import {
   getMethodKey,
@@ -66,20 +66,20 @@ export function useLxHost(): LxHost {
 }
 
 /**
- * Hold the page against user back while `dirty` — unsaved changes. A back
- * from the navigation bar, the system, or an edge swipe then leaves the page
- * where it is and calls `onRequest`; confirm there, and leave with
- * `leavePage()` (which does not ask again). Released when `dirty` turns false
- * or the component unmounts.
+ * Hold the page against user back and home while `dirty` — unsaved changes.
+ * When the user tries to leave, `onRequest` is asked: return `true` to let
+ * them go, `false` to stay (or a promise of either, after a dialog).
+ * Released when `dirty` turns false or the component unmounts.
  */
-export function useLxLeaveGuard(dirty: boolean, onRequest: () => void): void {
+export function useLxLeaveGuard(dirty: boolean, onRequest: LxLeaveHandler): void {
   const latest = React.useRef(onRequest);
   React.useEffect(() => {
     latest.current = onRequest;
   });
-  React.useEffect(() => subscribeBackRequest(() => latest.current()), []);
-  // Released by the cleanup: when `dirty` turns false, and on unmount.
-  React.useEffect(() => (dirty ? holdLeaveGuard() : undefined), [dirty]);
+  React.useEffect(
+    () => (dirty ? holdLeaveGuard((request) => latest.current(request)) : undefined),
+    [dirty],
+  );
 }
 
 type StreamMethod = (...args: any[]) => LxStream<any, any>;

@@ -5,9 +5,9 @@ import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
 
 // The leave guard (#540): a page with unsaved changes holds itself against
-// *user* back. `nav.back({ user: true })` takes the navigation bar back
-// button's path, guard included; a plain `nav.back()` is the programmatic pop
-// the page itself answers with, and is never held.
+// the *user* leaving. `nav.press('back' | 'home')` presses the navigation bar
+// button, guard included; a plain `nav.back()` is a programmatic pop and is
+// never held.
 
 async function openLeaveGuard(app: TestApp): Promise<TestView> {
   await app.nav.relaunch({ page: 'api' });
@@ -31,7 +31,7 @@ spec('a guarded page asks on user back, and leaves only once the user discards',
 
   await t.step('a clean page leaves on user back', async () => {
     await openLeaveGuard(app);
-    const landed = await app.nav.back({ user: true });
+    const landed = await app.nav.press('back');
     expect(landed.name).toBe('api');
   });
 
@@ -42,7 +42,7 @@ spec('a guarded page asks on user back, and leaves only once the user discards',
   });
 
   await t.step('user back stays and asks', async () => {
-    const landed = await app.nav.back({ user: true });
+    const landed = await app.nav.press('back');
     expect(landed.name).toBe('leaveGuard');
     await view.testId('leave-confirm').waitFor({ state: 'visible', timeout: 10_000 });
     await waitForElementText(t, view, '[data-testid="leave-requests"]', (text) => text.endsWith(': 1'));
@@ -56,13 +56,36 @@ spec('a guarded page asks on user back, and leaves only once the user discards',
   });
 
   await t.step('asking again, then discarding, leaves the page', async () => {
-    await app.nav.back({ user: true });
+    await app.nav.press('back');
     await view.testId('leave-confirm').waitFor({ state: 'visible', timeout: 10_000 });
     await waitForElementText(t, view, '[data-testid="leave-requests"]', (text) => text.endsWith(': 2'));
     await view.testId('leave-discard').click();
     const back = await waitForCurrentPage(app, 'api', 30_000);
     expect(back.name).toBe('api');
   });
+});
+
+spec('home asks too, and a confirmed home goes home', {
+  id: 'UI-LEAVE-GUARD-004',
+  app: SHOWCASE_APP_ID,
+  timeout: 90_000,
+}, async (t) => {
+  const { app } = bindFixture(t, 'UI-LEAVE-GUARD-004');
+  const view = await openLeaveGuard(app);
+  await makeDirty(t, view);
+
+  const held = await app.nav.press('home');
+  expect(held.name).toBe('leaveGuard');
+  await view.testId('leave-confirm').waitFor({ state: 'visible', timeout: 10_000 });
+
+  await t.step('a second press while asking does not ask twice', async () => {
+    await app.nav.press('back');
+    await waitForElementText(t, view, '[data-testid="leave-requests"]', (text) => text.endsWith(': 1'));
+  });
+
+  await view.testId('leave-discard').click();
+  const home = await waitForCurrentPage(app, 'home', 30_000);
+  expect(home.name).toBe('home');
 });
 
 spec('saving releases the guard', {
@@ -76,7 +99,7 @@ spec('saving releases the guard', {
   await view.testId('leave-save').click();
   await waitForElementText(t, view, '[data-testid="leave-status"]', (text) => text === 'Saved');
 
-  const landed = await app.nav.back({ user: true });
+  const landed = await app.nav.press('back');
   expect(landed.name).toBe('api');
 });
 

@@ -204,18 +204,47 @@ impl super::HostHandler for SetLeaveGuard {
     ) -> super::HostFuture<'a> {
         Box::pin(async move {
             let options: SetLeaveGuardOptions = super::parse_input(input.as_deref())?;
-            let result: Result<(), LxAppError> = match invocation.page() {
-                Some(page) => {
-                    page.set_leave_guard(options.enabled);
-                    Ok(())
-                }
-                None => Err(LxAppError::InvalidParameter(
-                    "navigation.setLeaveGuard must be called from a page View".to_string(),
-                )),
-            };
+            let result = calling_page(&invocation, "setLeaveGuard").map(|page| {
+                page.set_leave_guard(options.enabled);
+            });
             super::serialize_result(result)
         })
     }
+}
+
+#[derive(Deserialize)]
+struct LeaveOptions {
+    reason: crate::page::LeaveReason,
+}
+
+/// `navigation.leave({ reason })`: a guarded page's View lets the user go.
+struct Leave;
+
+impl super::HostHandler for Leave {
+    fn call<'a>(
+        &'a self,
+        invocation: super::HostInvocationContext,
+        input: Option<String>,
+        _cancel: HostCancel,
+    ) -> super::HostFuture<'a> {
+        Box::pin(async move {
+            let options: LeaveOptions = super::parse_input(input.as_deref())?;
+            let result = calling_page(&invocation, "leave")
+                .and_then(|page| invocation.lxapp().confirm_leave(&page, options.reason));
+            super::serialize_result(result)
+        })
+    }
+}
+
+fn calling_page(
+    invocation: &super::HostInvocationContext,
+    route: &str,
+) -> Result<crate::page::PageInstance, LxAppError> {
+    invocation.page().ok_or_else(|| {
+        LxAppError::InvalidParameter(format!(
+            "navigation.{route} must be called from a page View"
+        ))
+    })
 }
 
 pub(crate) fn register_all() {
@@ -223,6 +252,7 @@ pub(crate) fn register_all() {
         "navigateTo" => Arc::new(NavigateTo),
         "navigateBack" => Arc::new(NavigateBack),
         "setLeaveGuard" => Arc::new(SetLeaveGuard),
+        "leave" => Arc::new(Leave),
         "redirectTo" => Arc::new(RedirectTo),
         "switchTab" => Arc::new(SwitchTab),
         "reLaunch" => Arc::new(ReLaunch)

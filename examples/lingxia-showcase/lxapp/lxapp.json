@@ -114,7 +114,7 @@
     "items": [
       {
         "text": {
-          "en-US": "Home",
+          "default": "Home",
           "zh-CN": "首页"
         },
         "page": "home",
@@ -122,7 +122,7 @@
       },
       {
         "text": {
-          "en-US": "API",
+          "default": "API",
           "zh-CN": "接口"
         },
         "page": "api",
@@ -130,7 +130,7 @@
       },
       {
         "text": {
-          "en-US": "Components",
+          "default": "Components",
           "zh-CN": "组件"
         },
         "page": "components",
@@ -138,7 +138,7 @@
       },
       {
         "text": {
-          "en-US": "ToDo",
+          "default": "ToDo",
           "zh-CN": "待办"
         },
         "page": "todo",
@@ -146,7 +146,7 @@
       },
       {
         "text": {
-          "en-US": "Media",
+          "default": "Media",
           "zh-CN": "媒体"
         },
         "page": "media",
@@ -154,7 +154,7 @@
       },
       {
         "text": {
-          "en-US": "Device",
+          "default": "Device",
           "zh-CN": "设备"
         },
         "page": "device",
@@ -165,7 +165,7 @@
       },
       {
         "text": {
-          "en-US": "Surface",
+          "default": "Surface",
           "zh-CN": "窗口"
         },
         "page": "surface",

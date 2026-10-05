@@ -348,15 +348,16 @@ pub async fn navigate(
     Ok((target_page, name))
 }
 
-/// Go back one page as the user would (see [`LxApp::user_back`]): a page
-/// holding the leave guard stays and receives a back request instead of
-/// popping. Returns the page the app is on afterwards. See [`navigate`] for
-/// the `wait_ready` contract.
-pub async fn user_back(
+/// Press a navigation bar button as the user would (see
+/// [`LxApp::user_leave`]): a page holding the leave guard stays and is asked.
+/// Returns the page the app is on afterwards. See [`navigate`] for the
+/// `wait_ready` contract.
+pub async fn user_leave(
     app: &Arc<LxApp>,
+    reason: crate::page::LeaveReason,
     wait_ready: bool,
 ) -> Result<(PageInstance, Option<String>), String> {
-    app.user_back().map_err(|err| err.to_string())?;
+    app.user_leave(reason).map_err(|err| err.to_string())?;
     let (page, name) = resolve_page(app, None)?;
     if wait_ready {
         page.wait_webview_ready()

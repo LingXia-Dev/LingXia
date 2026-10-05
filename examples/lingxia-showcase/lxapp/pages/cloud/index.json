@@ -2,7 +2,7 @@
   "navigationStyle": "default",
   "navigationBar": {
     "title": {
-      "en-US": "Cloud",
+      "default": "Cloud",
       "zh-CN": "云服务"
     }
   }

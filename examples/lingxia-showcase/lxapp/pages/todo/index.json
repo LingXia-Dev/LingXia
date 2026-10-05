@@ -2,7 +2,7 @@
   "navigationStyle": "custom",
   "navigationBar": {
     "title": {
-      "en-US": "ToDo",
+      "default": "ToDo",
       "zh-CN": "待办"
     }
   }

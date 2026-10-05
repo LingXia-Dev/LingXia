@@ -5,7 +5,7 @@
         <div class="px-4 py-4 border-b border-line-100">
           <div class="text-base text-gray-900 font-medium">Leave guard</div>
           <div class="text-xs text-gray-500 mt-1">
-            Edit the draft, then go back: the page stays and asks. Save, and back leaves at once.
+            Edit the draft, then go back or home: the page stays and asks. Save, and it leaves at once.
           </div>
         </div>
         <div class="px-4 py-3 space-y-3">
@@ -17,7 +17,7 @@
           />
           <div class="flex items-center justify-between text-xs text-gray-500">
             <span data-testid="leave-status">{{ dirty ? 'Unsaved changes' : 'Saved' }}</span>
-            <span data-testid="leave-requests">back requests: {{ requests }}</span>
+            <span data-testid="leave-requests">leave requests: {{ requests }}</span>
           </div>
           <button
             data-testid="leave-save"
@@ -36,14 +36,14 @@
           <button
             data-testid="leave-keep"
             class="flex-1 rounded border border-line-200 py-2 text-sm text-gray-700"
-            @click="asking = false"
+            @click="decide(false)"
           >
             Keep editing
           </button>
           <button
             data-testid="leave-discard"
             class="flex-1 rounded bg-red-500 py-2 text-sm text-white"
-            @click="discard"
+            @click="decide(true)"
           >
             Discard
           </button>
@@ -55,7 +55,6 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { leavePage } from '@lingxia/bridge';
 import { useLxLeaveGuard } from '@lingxia/vue';
 import '../../tailwind.css';
 
@@ -65,15 +64,20 @@ const asking = ref(false);
 const requests = ref(0);
 const dirty = computed(() => draft.value !== saved.value);
 
-// While the draft differs from what was saved, back (navigation bar, system
-// back, edge swipe) stays here and asks instead of discarding.
-useLxLeaveGuard(() => dirty.value, () => {
+let answer: ((leave: boolean) => void) | undefined;
+
+// While the draft differs from what was saved, back and home stay here and
+// ask; the promise resolves with the user's choice.
+useLxLeaveGuard(dirty, () => {
   requests.value += 1;
   asking.value = true;
+  return new Promise<boolean>((resolve) => {
+    answer = resolve;
+  });
 });
 
-function discard(): void {
+function decide(leave: boolean): void {
   asking.value = false;
-  void leavePage();
+  answer?.(leave);
 }
 </script>

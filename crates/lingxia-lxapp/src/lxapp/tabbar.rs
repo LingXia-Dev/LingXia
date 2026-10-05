@@ -1002,7 +1002,7 @@ mod tests {
     fn a_localized_label_resolves_and_yields_to_an_override() {
         let mut item: TabBarItem = serde_json::from_value(serde_json::json!({
             "page": "profiles",
-            "text": { "en-US": "Profiles", "zh-CN": "节点" }
+            "text": { "default": "Profiles", "zh-CN": "节点" }
         }))
         .unwrap();
         item.initialize_runtime(Path::new("/app"));
@@ -1019,10 +1019,10 @@ mod tests {
         item.set_text_override(None);
         item.localize_for("zh-CN");
         assert_eq!(item.text.as_deref(), Some("节点"));
-        // The declaration round-trips as written, in declaration order.
+        // The declaration round-trips.
         assert_eq!(
             serde_json::to_string(&item.declared_text).unwrap(),
-            r#"{"en-US":"Profiles","zh-CN":"节点"}"#
+            r#"{"default":"Profiles","zh-CN":"节点"}"#
         );
     }
 
