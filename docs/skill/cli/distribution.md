@@ -128,9 +128,11 @@ names. All four → release-signed; otherwise debug-signed.
 ### Windows
 
 - Formats: `nsis` (default Setup EXE), `portable`, `zip` (portable ZIP), `msix`.
-  Build formats together, e.g. `--format nsis,msix`. Direct formats also produce
-  `*-windows.zip` with update metadata and, for NSIS, the installer. Publish
-  that archive unchanged for direct updates. MSIX uses the Store/App Installer.
+  Use `lingxia package --format nsis,msix` to build release formats together.
+  Direct formats also produce `*-windows.zip` with update metadata and the
+  installers built in that run, so build every direct format you ship
+  together. Publish that archive unchanged for direct updates. MSIX uses the
+  Store/App Installer.
 - The icon is the committed `windows/AppIcon.ico`; after changing the app icon
   run `lingxia icon <AppIcon.png> --platform windows`.
 - Authenticode: a certificate in the current user's store and
@@ -185,7 +187,7 @@ testers. Processing completion is not review approval.
 - Windows has no `--wait` / `--json` support yet.
 
 ```bash
-lingxia build --platform windows --env prod --release --format msix
+lingxia package --platform windows --env prod --format msix
 lingxia store submit --platform windows
 ```
 
