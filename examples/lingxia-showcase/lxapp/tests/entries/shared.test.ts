@@ -38,6 +38,7 @@ import '../pages/todo.test.js';
 import '../pages/ui.test.js';
 import '../pages/chrome.test.js';
 import '../pages/clipboard.test.js';
+import '../pages/leave-guard.test.js';
 import '../pages/render.test.js';
 import '../pending/backlog-pending.test.js';
 

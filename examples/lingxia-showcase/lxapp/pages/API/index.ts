@@ -161,6 +161,10 @@ Page({
     });
   },
 
+  navigateToLeaveGuardPage: async function() {
+    await lx.navigateTo({ page: "leaveGuard" });
+  },
+
   exitApp: async function() {
     const result = await lx.showModal({
       title: "Exit App",

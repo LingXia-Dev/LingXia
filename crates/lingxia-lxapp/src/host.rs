@@ -705,6 +705,10 @@ pub struct HostInvocationContext {
     lxapp: Arc<LxApp>,
     /// The page whose View issued the call. `None` for Logic-originated calls,
     /// which act for the app rather than for one document.
+    ///
+    /// This is a strong handle: a context kept beyond the call (a channel
+    /// handler storing it for the channel's life) keeps the page instance
+    /// alive with it. Read what you need from [`Self::page`] and drop it.
     page: Option<crate::page::PageInstance>,
 }
 

@@ -525,6 +525,12 @@ interface NavTargetFields {
 interface NavBackFields {
   /** Number of pages to pop (default 1). */
   delta?: number;
+  /**
+   * Go back as the user does (the navigation bar back button) instead of
+   * popping: a page holding the leave guard stays and receives a back
+   * request. One page only; do not combine with `delta`.
+   */
+  user?: boolean;
 }
 
 export interface LogicNavOptions extends NavTargetFields, LogicNavWaitOptions {}

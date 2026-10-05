@@ -153,11 +153,14 @@ impl TabBarItem {
     /// Re-resolve [`Self::text`] for the effective display language. An
     /// override wins; clearing it falls back to the declaration.
     fn localize(&mut self) {
-        let language = super::display_language();
+        self.localize_for(&super::display_language());
+    }
+
+    fn localize_for(&mut self, language: &str) {
         self.text = self.text_override.clone().or_else(|| {
             self.declared_text
                 .as_ref()
-                .map(|text| text.resolve(&language).to_string())
+                .map(|text| text.resolve(language).to_string())
         });
     }
 
@@ -1002,20 +1005,23 @@ mod tests {
         }))
         .unwrap();
         item.initialize_runtime(Path::new("/app"));
-        let declared = item.declared_text.clone().unwrap();
-        let expected = declared
-            .resolve(&super::super::display_language())
-            .to_string();
-        assert_eq!(item.text.as_deref(), Some(expected.as_str()));
+        item.localize_for("zh-Hans-CN");
+        assert_eq!(item.text.as_deref(), Some("节点"));
+        item.localize_for("en-GB");
+        assert_eq!(item.text.as_deref(), Some("Profiles"));
 
         item.set_text_override(Some("Inbox".into()));
         assert_eq!(item.text.as_deref(), Some("Inbox"));
+        // An override survives a language change until it is cleared.
+        item.localize_for("zh-CN");
+        assert_eq!(item.text.as_deref(), Some("Inbox"));
         item.set_text_override(None);
-        assert_eq!(item.text.as_deref(), Some(expected.as_str()));
-        // The declaration round-trips as written.
+        item.localize_for("zh-CN");
+        assert_eq!(item.text.as_deref(), Some("节点"));
+        // The declaration round-trips as written, in declaration order.
         assert_eq!(
-            serde_json::to_value(&item).unwrap()["text"],
-            serde_json::json!({ "en-US": "Profiles", "zh-CN": "节点" })
+            serde_json::to_string(&item.declared_text).unwrap(),
+            r#"{"en-US":"Profiles","zh-CN":"节点"}"#
         );
     }
 

@@ -10,9 +10,10 @@
  * Works without Logic: a View-only (`logic: false`) page owns its drafts, so
  * the guard is set from the View.
  *
- * Side-effect-safe apart from installing the host hook: it reaches the host
- * through the already-booted `window.LingXiaBridge` at call time, so the
- * plain-HTML global build can include it without booting a second bridge.
+ * Its only import-time effect is installing the host hook (idempotent, shared
+ * across bundle copies). It reaches the host through the already-booted
+ * `window.LingXiaBridge` at call time and never imports the bridge module, so
+ * the plain-HTML global build can include it without booting a second bridge.
  */
 
 type BackRequestStore = { listeners: Set<() => void> };
@@ -49,9 +50,27 @@ if (typeof window !== 'undefined' && !window.__lingxiaDispatchBackRequest) {
  * unguarded.
  */
 export function setLeaveGuard(enabled: boolean): Promise<void> {
+  return callHost<{ enabled: boolean }>('navigation.setLeaveGuard', { enabled });
+}
+
+/**
+ * Leave the page now — the answer to a back request the user confirmed. Pops
+ * this page without asking again, guarded or not.
+ */
+export function leavePage(): Promise<void> {
+  return callHost<{ delta: number }>('navigation.navigateBack', { delta: 1 });
+}
+
+// Plain functions rather than `async` ones: this module also builds for ES5.
+// A missing bridge still surfaces as a rejection, never a synchronous throw.
+function callHost<TInput>(route: string, input: TInput): Promise<void> {
   const bridge = typeof window !== 'undefined' ? window.LingXiaBridge : undefined;
   if (!bridge) return Promise.reject(new Error('LingXiaBridge is not available'));
-  return bridge.invoke<void, { enabled: boolean }>('navigation.setLeaveGuard', { enabled });
+  try {
+    return bridge.invoke<void, TInput>(route, input);
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 /**

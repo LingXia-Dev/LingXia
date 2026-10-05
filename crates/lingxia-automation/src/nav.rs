@@ -36,6 +36,9 @@ impl JSNavDriver {
 #[derive(FromJSObject)]
 struct JSBackOptions {
     delta: Option<u32>,
+    /// Go back as the user does (navigation bar back), honouring a page's
+    /// leave guard, instead of popping programmatically.
+    user: Option<bool>,
     #[js_name = "waitUntil"]
     wait_until: Option<String>,
     #[js_name = "timeoutMs"]
@@ -219,10 +222,20 @@ impl JSNavDriver {
             options.as_ref().and_then(|o| o.wait_until.as_deref()),
             options.as_ref().and_then(|o| o.timeout_ms),
         )?;
+        let user = options.as_ref().and_then(|o| o.user).unwrap_or(false);
         let delta = options.and_then(|o| o.delta).unwrap_or(1);
-        let (page, name) = auto::navigate_back(&app, delta, false)
-            .await
-            .map_err(auto_err)?;
+        let (page, name) = if user {
+            if delta != 1 {
+                return Err(auto_err(
+                    "nav.back({ user: true }) goes back one page; omit delta",
+                ));
+            }
+            auto::user_back(&app, false).await.map_err(auto_err)?
+        } else {
+            auto::navigate_back(&app, delta, false)
+                .await
+                .map_err(auto_err)?
+        };
         landed(&app, page, name, wait).await
     }
 

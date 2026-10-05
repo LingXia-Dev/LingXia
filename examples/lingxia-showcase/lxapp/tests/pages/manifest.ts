@@ -23,6 +23,7 @@ export const SHOWCASE_PAGE_EXPECTATIONS = [
   { page: 'channel', text: 'Recent Ticks' },
   { page: 'swiper', text: 'Media Swiper' },
   { page: 'bridge-repro', text: 'Restart the lxapp to repeat.' },
+  { page: 'leaveGuard', text: 'Edit the draft, then go back' },
 ] as const;
 
 export const SHOWCASE_PAGES = SHOWCASE_PAGE_EXPECTATIONS.map(({ page }) => page);
@@ -54,4 +55,6 @@ export const SHOWCASE_PAGE_TITLES: Record<ShowcasePage, string> = {
   channel: 'Channel',
   swiper: 'LxMediaSwiper',
   'bridge-repro': 'Bridge Repro',
+  // Declared per language; the document <title> bakes the first entry.
+  leaveGuard: 'Leave guard',
 };

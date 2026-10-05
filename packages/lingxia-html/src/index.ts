@@ -4,6 +4,7 @@ export {
   subscribeHost,
   setLeaveGuard,
   subscribeBackRequest,
+  leavePage,
   type LxHost,
 } from "@lingxia/bridge";
 export type { ActionMap, DeepReadonly, Snapshot } from "@lingxia/page-runtime";

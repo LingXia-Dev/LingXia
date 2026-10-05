@@ -69,8 +69,8 @@ export function useLxHost(): LxHost {
  * Hold the page against user back while `dirty` — unsaved changes. A back
  * from the navigation bar, the system, or an edge swipe then leaves the page
  * where it is and calls `onRequest`; confirm there, and leave with
- * `navigation.navigateBack` (which does not ask again). Released when `dirty`
- * turns false or the component unmounts.
+ * `leavePage()` (which does not ask again). Released when `dirty` turns false
+ * or the component unmounts.
  */
 export function useLxLeaveGuard(dirty: boolean, onRequest: () => void): void {
   const latest = React.useRef(onRequest);
@@ -78,12 +78,29 @@ export function useLxLeaveGuard(dirty: boolean, onRequest: () => void): void {
     latest.current = onRequest;
   });
   React.useEffect(() => subscribeBackRequest(() => latest.current()), []);
+  // Only a change reaches the host: a clean form mounts without a round trip,
+  // and true → false is one call.
+  const held = React.useRef(false);
   React.useEffect(() => {
-    void setLeaveGuard(dirty).catch(() => undefined);
-    return () => {
-      if (dirty) void setLeaveGuard(false).catch(() => undefined);
-    };
+    if (dirty === held.current) return;
+    held.current = dirty;
+    void setLeaveGuard(dirty).catch(warnLeaveGuard);
   }, [dirty]);
+  React.useEffect(
+    () => () => {
+      if (held.current) {
+        held.current = false;
+        void setLeaveGuard(false).catch(warnLeaveGuard);
+      }
+    },
+    [],
+  );
+}
+
+// A refused guard (bridge not ready, a runtime without the route) leaves the
+// page unguarded; say so rather than fail silently.
+function warnLeaveGuard(error: unknown): void {
+  console.warn("[lingxia] setLeaveGuard failed; the page is not guarded", error);
 }
 
 type StreamMethod = (...args: any[]) => LxStream<any, any>;
