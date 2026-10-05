@@ -1,18 +1,17 @@
 # Distribution
 
-Getting a built app out: publish to the LingXia server, platform signing, OS
-app stores, and developer accounts. Flags: `lingxia <cmd> --help`.
+Publishing, signing, OS stores, and developer credentials.
+Flags: `lingxia <cmd> --help`.
 
-Packages land in `dist/<platform>/` as `<projectName>-<productVersion>`, with
-`-dev` for a `--env dev` build (`my-app-1.2.0-dev.apk`); a rebuild replaces
-the previous one.
+Packages land in `dist/<platform>/`; names include the project, version, and
+`-dev` for dev builds, plus platform-specific format/architecture suffixes.
+Rebuilding replaces matching artifacts.
 
 ## `lingxia publish`
 
 Uploads a package to the LingXia server (OS stores are `lingxia store`).
 
-- Detects the project from `lxapp.json` (lxapp; packaged first) or
-  `lingxia.yaml` (host app) and reads id and version from it.
+- Reads id/version from `lxapp.json` (package the lxapp first) or `lingxia.yaml`.
 - `--env dev|prod` picks server and token (default `dev`). `--channel
   release|draft` picks the lxapp line (`dev` → `draft`, `prod` → `release`).
 - A host publish takes a prebuilt package path and no `--channel`.
@@ -69,10 +68,9 @@ prod = "https://prod.example.com"
 
 ## App signing
 
-Configured credentials sign; without them the build still succeeds with a safe
-default (ad-hoc on Apple, the debug keystore on Android) that is not
-distributable. `lingxia auth` stores credentials under `~/.lingxia/`;
-environment variables override them.
+`lingxia auth` stores credentials under `~/.lingxia/`; environment variables
+override them. Development signing (Apple ad-hoc, Android debug keystore)
+does not satisfy store distribution requirements.
 
 | Platform | Model | What you provide |
 |---|---|---|
@@ -84,7 +82,7 @@ environment variables override them.
 
 ### macOS
 
-Two credentials from the same team:
+Direct distribution needs two credentials from the same team:
 
 | Credential | Used for | Stored by |
 |---|---|---|
@@ -129,10 +127,10 @@ names. All four → release-signed; otherwise debug-signed.
 
 ### Windows
 
-- Formats: NSIS Setup (default), `--format portable`, `--format msix`. Build
-  every direct format you ship together (`--format nsis,portable,zip`) and
-  publish `*-windows.zip` for direct updates. MSIX updates through the Store or
-  App Installer.
+- Formats: `nsis` (default Setup EXE), `portable`, `zip` (portable ZIP), `msix`.
+  Build formats together, e.g. `--format nsis,msix`. Direct formats also produce
+  `*-windows.zip` with update metadata and, for NSIS, the installer. Publish
+  that archive unchanged for direct updates. MSIX uses the Store/App Installer.
 - The icon is the committed `windows/AppIcon.ico`; after changing the app icon
   run `lingxia icon <AppIcon.png> --platform windows`.
 - Authenticode: a certificate in the current user's store and
@@ -140,8 +138,8 @@ names. All four → release-signed; otherwise debug-signed.
   makes missing credentials fatal; `LINGXIA_SIGNTOOL` and
   `LINGXIA_WINDOWS_TIMESTAMP_URL` are optional. MSIX `windows.publisher` must
   match the certificate subject.
-- Unsigned MSIX cannot be installed normally; use `--msix --self-signed` for
-  local tests.
+- For local MSIX installation, use `--format msix --self-signed`. Store uploads
+  can be unsigned; Microsoft signs distribution packages.
 - The first install downloads WebView2 when it is missing.
 
 ### Harmony
@@ -151,12 +149,12 @@ profile.
 
 ## `lingxia auth`
 
-The credential wallet behind signing and developer services:
+Signing, publishing, and store credentials:
 
-- `lingxia auth login apple|harmony` — add or refresh (Apple modes `key`,
-  `password`, `developer-id`)
+- `lingxia auth login|logout apple|harmony|googleplay|xiaomi|oppo|honor|msstore`
+  — add, refresh, or remove credentials (Apple modes `key`, `password`,
+  `developer-id`)
 - `lingxia auth login|logout lingxia` — a LingXia server publish token
-- `lingxia auth logout apple|harmony`
 - `lingxia auth status [--json]` — per-project diagnosis and the wallet
 - `lingxia auth forget --platform <channel>` — re-resolve this checkout's
   credential selection
@@ -165,45 +163,45 @@ The credential wallet behind signing and developer services:
 
 ## `lingxia store`
 
-Uploads a built installable to an OS app store; it never builds and never
-submits for review.
+`submit` uploads; `status` queries. Build/package first: artifacts come from
+`dist/<platform>/` (Harmony `.app`, iOS App Store–signed `.ipa`). Store records
+and default tracks live in the platform blocks of `lingxia.yaml`; credentials
+come from `lingxia auth` or complete provider-specific env groups.
 
-For Microsoft Store, first create the app and complete an initial submission
-(including age ratings) in Partner Center. Associate an Entra application with
-the account and grant it the Manager role. `lingxia auth login msstore` prompts
-for Tenant ID, Client ID, and Client Secret; it saves credentials locally and
-does not verify API access during login. CI can use `LINGXIA_MSSTORE_TENANT`,
-`LINGXIA_MSSTORE_CLIENT_ID`, and `LINGXIA_MSSTORE_CLIENT_SECRET` together.
+Readable artifact identities are checked against `lingxia.yaml` before login;
+unsupported formats print a note. The CLI never submits for review or invites
+testers. Processing completion is not review approval.
 
-Set `windows.store.appId` to the Store product ID and `windows.publisher` to
-the Package/Identity/Publisher from Partner Center. `windows.appId` inherits
-`app.packageId`; override it only to match a different Package/Identity/Name.
-Build with `--platform windows --env prod --release --format msix`, then run
-`lingxia store submit --platform windows`. The CLI wraps the package in an
-upload ZIP and preserves existing pending submissions by stopping with an
-error. Finish or remove an existing submission before another upload. Windows
-does not yet support `--wait` or `--json`; start review in Partner Center.
+### Microsoft Store
 
-- Run `lingxia package` first; `submit` reads `dist/<platform>/` (Harmony
-  `.app`, iOS App Store–signed `.ipa`).
-- The artifact's identity is checked against `lingxia.yaml` first, so a
-  dev-suffixed or wrong artifact fails immediately.
-- Credentials: `lingxia auth login googleplay|xiaomi|oppo|honor|msstore`;
-  Apple and Harmony reuse theirs. `LINGXIA_<PROVIDER>_*` env groups override
-  (complete groups only).
-- Store records (numeric app ids, default track) live in the platform blocks
-  of `lingxia.yaml`.
-- Processing completion is not review approval.
+- Partner Center: create the app and complete an initial submission with age
+  ratings. Associate an Entra application and grant it the Manager role.
+- `lingxia auth login msstore`: Tenant ID, Client ID, Client Secret. Login saves
+  credentials; submit/status verify access. CI uses `LINGXIA_MSSTORE_TENANT`,
+  `LINGXIA_MSSTORE_CLIENT_ID`, and `LINGXIA_MSSTORE_CLIENT_SECRET` together.
+- Set the [Windows identities](../app/project.md#macos-and-windows) from
+  Partner Center. The CLI uploads a ZIP containing the package. Existing pending
+  submissions block uploads; finish or remove them in Partner Center.
+- Windows has no `--wait` / `--json` support yet.
 
-Apple uploads also appear in TestFlight after processing; configure export
-compliance and tester groups in App Store Connect. External testing may need
-beta review. The CLI uploads the build, without inviting testers:
+```bash
+lingxia build --platform windows --env prod --release --format msix
+lingxia store submit --platform windows
+```
+
+### Apple
+
+The same upload appears in App Store and TestFlight after processing;
+omit `--track`. Configure export compliance and tester groups in App Store
+Connect. External testing may need beta review.
 
 ```bash
 lingxia store submit --platform ios --wait --json
 ```
 
-Harmony AppTest uploads to the test area, waits for package parsing, then
+### Harmony
+
+AppTest uploads to the test area, waits for package parsing, then
 creates and binds an invitation-test draft. `--release-notes` supplies its
 description (1–50 characters); `--test-version-id <id>` reuses an existing
 draft. Configure testers and submit test review in AppGallery Connect:
@@ -212,8 +210,8 @@ draft. Configure testers and submit test review in AppGallery Connect:
 lingxia store submit --platform harmony --track apptest --wait --json
 ```
 
-JSON includes the package `submission_id` and optional `test_version_id`.
-Without `--track apptest`, Harmony uploads to the production draft.
+JSON includes `submission_id` and optional `test_version_id`. Omit `--track`
+(or use `production`) to upload to the production draft.
 
 ## `lingxia ds`
 
