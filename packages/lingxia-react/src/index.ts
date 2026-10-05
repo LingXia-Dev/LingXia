@@ -10,7 +10,7 @@ export {
   type LxChannelOptions,
   type LxChannelState,
 } from "./hook.js";
-export type { LxHost } from "@lingxia/bridge";
+export type { LxHost, LxLeaveHandler, LxLeaveReason, LxLeaveRequest } from "@lingxia/bridge";
 export type { DeepReadonly } from "@lingxia/page-runtime";
 export { LxVideo, type LxVideoProps } from "./LxVideo.js";
 export { LxNativeRoot, type LxNativeRootProps, type LxNativeRootHandle } from "./native/LxNativeRoot.js";

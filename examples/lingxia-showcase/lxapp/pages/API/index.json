@@ -2,7 +2,7 @@
   "navigationStyle": "default",
   "navigationBar": {
     "title": {
-      "en-US": "API",
+      "default": "API",
       "zh-CN": "接口"
     },
     "style": {

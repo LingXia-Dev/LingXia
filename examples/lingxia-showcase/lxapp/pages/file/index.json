@@ -2,7 +2,7 @@
   "navigationStyle": "default",
   "navigationBar": {
     "title": {
-      "en-US": "File",
+      "default": "File",
       "zh-CN": "文件"
     },
     "style": {

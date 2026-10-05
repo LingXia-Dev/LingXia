@@ -1,7 +1,7 @@
 {
   "navigationBar": {
     "title": {
-      "en-US": "Media APIs",
+      "default": "Media APIs",
       "zh-CN": "媒体接口"
     }
   }

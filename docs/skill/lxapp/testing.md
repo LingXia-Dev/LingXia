@@ -48,7 +48,7 @@ lxdev test tests/pages/notes.test.ts
 | Task | API |
 |---|---|
 | Start on a known page | `spec(title, { start: { page, query? } }, body)`; mid-spec `t.app.nav.relaunch({ page })` |
-| Navigate | `t.app.nav.to` / `.redirect` / `.switchTab` / `.back` |
+| Navigate | `t.app.nav.to` / `.redirect` / `.switchTab` / `.back`; `.press('back' \| 'home')` presses the navigation bar button (leave guard included) |
 | Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })` |
 | Another page (below the current one, on a surface) | `(await t.app.page({ name })).view`; [Pages](#pages) |
 | Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)` |

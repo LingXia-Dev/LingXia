@@ -28,6 +28,7 @@ export type {
   LogicScope,
   Matchers,
   NavBackOptions,
+  NavButton,
   NavOptions,
   NavWaitOptions,
   NeedsMatcher,

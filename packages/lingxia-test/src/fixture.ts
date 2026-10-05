@@ -55,6 +55,7 @@ import type {
   TestLogic,
   TestNav,
   NavBackOptions,
+  NavButton,
   NavOptions,
   NavWaitOptions,
   TestView,
@@ -1052,6 +1053,9 @@ export class LiveFixture implements Fixture {
       relaunch: land("relaunch"),
       back: (options?: NavBackOptions) =>
         this.act("nav.back", summarise(options), () => nav().back(this.navOptions(options ?? {}, "t.app.nav.back"))),
+      press: (button: NavButton, options?: NavWaitOptions) =>
+        this.act("nav.press", summarise({ button, ...options }), () =>
+          nav().press(button, this.navOptions(options ?? {}, "t.app.nav.press"))),
       current: () => read("current", () => nav().current()),
       info: (options?: PageTarget) => read("info", () => nav().info(options), options),
       stack: () => read("stack", () => nav().stack()),

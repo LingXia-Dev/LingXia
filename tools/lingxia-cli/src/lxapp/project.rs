@@ -371,33 +371,40 @@ fn validate_page_chrome_manifest(manifest: &Value) -> Result<()> {
 }
 
 /// Text the runtime resolves per display language: a string, or an object
-/// mapping language tags to strings (`{ "en-US": "Profiles", "zh-CN": "节点" }`).
+/// with a `default` and language tags (`{ "default": "Profiles", "zh-CN": "节点" }`).
 /// Mirrors `LocalizedText` in `lingxia-lxapp`, so a manifest the runtime would
 /// reject fails here, at build time.
 pub(crate) fn validate_localized_text(value: &Value) -> std::result::Result<(), String> {
     match value {
         Value::String(_) => Ok(()),
         Value::Object(entries) => {
-            if entries.is_empty() {
-                return Err("expected at least one language".to_string());
+            if !entries.contains_key("default") {
+                return Err(
+                    "a language map needs a \"default\" entry, shown when no language matches"
+                        .to_string(),
+                );
             }
             let mut seen: Vec<String> = Vec::new();
-            for (tag, text) in entries {
-                let tag = tag.trim();
-                if tag.is_empty() {
-                    return Err("language tag must not be empty".to_string());
-                }
-                if seen.iter().any(|seen| seen.eq_ignore_ascii_case(tag)) {
-                    return Err(format!("duplicate language tag '{tag}'"));
-                }
+            for (key, text) in entries {
                 if !text.is_string() {
-                    return Err(format!("'{tag}': expected a string"));
+                    return Err(format!("'{key}': expected a string"));
                 }
-                seen.push(tag.to_string());
+                if key == "default" {
+                    continue;
+                }
+                if key.parse::<language_tags::LanguageTag>().is_err() {
+                    return Err(format!(
+                        "'{key}' is not a language tag (write it like \"zh-CN\")"
+                    ));
+                }
+                if seen.iter().any(|seen| seen.eq_ignore_ascii_case(key)) {
+                    return Err(format!("duplicate language tag '{key}'"));
+                }
+                seen.push(key.to_string());
             }
             Ok(())
         }
-        _ => Err("expected a string or an object of language tag to string".to_string()),
+        _ => Err("expected a string, or an object with \"default\" and language tags".to_string()),
     }
 }
 
@@ -631,13 +638,12 @@ mod tests {
     fn localized_text_accepts_a_string_or_a_language_map() {
         use super::validate_localized_text;
         assert!(validate_localized_text(&serde_json::json!("Home")).is_ok());
-        assert!(
-            validate_localized_text(&serde_json::json!({ "en-US": "Profiles", "zh-CN": "节点" }))
-                .is_ok()
-        );
-        assert!(validate_localized_text(&serde_json::json!({})).is_err());
-        assert!(validate_localized_text(&serde_json::json!({ "en": 1 })).is_err());
-        assert!(validate_localized_text(&serde_json::json!({ "en": "a", "EN": "b" })).is_err());
+        let map = |value| validate_localized_text(&value);
+        assert!(map(serde_json::json!({ "default": "Profiles", "zh-CN": "节点" })).is_ok());
+        assert!(map(serde_json::json!({})).is_err());
+        assert!(map(serde_json::json!({ "en-US": "Profiles", "zh-CN": "节点" })).is_err());
+        assert!(map(serde_json::json!({ "default": "a", "en": 1 })).is_err());
+        assert!(map(serde_json::json!({ "default": "a", "zh_cn ": "b" })).is_err());
         assert!(validate_localized_text(&serde_json::json!(["Home"])).is_err());
     }
 

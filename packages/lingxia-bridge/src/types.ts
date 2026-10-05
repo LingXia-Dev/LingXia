@@ -1,3 +1,5 @@
+import type { LxLeaveHandler } from './leave-guard';
+
 export interface BridgeConfig {
   os?: 'Harmony' | 'iOS' | 'Android' | 'macOS' | 'Windows';
   /**
@@ -166,29 +168,12 @@ export interface NativeChannel<TIn = unknown, TOut = unknown> {
 }
 
 declare global {
-  interface WindowEventMap {
-    /** The user tried to leave a page that holds the leave guard. */
-    lxbackrequest: CustomEvent<void>;
-  }
-
   interface Window {
     __LX_BRIDGE_CFG?: BridgeConfig;
     /** Host push for a display language changed while the page is open. */
     __lingxiaApplyDisplayLanguage?: (language: string, revision?: number) => void;
     /** Host push: the user tried to leave a page that holds the leave guard. */
-    __lingxiaDispatchBackRequest?: () => void;
-    /** Shared by every copy of the bridge module in this document. */
-    __lxBackRequest?: {
-      listeners: Set<() => void>;
-      /** `setLeaveGuard`'s own hold. */
-      manual: boolean;
-      /** Live `holdLeaveGuard` holds. */
-      holds: number;
-      /** What the host was last told. */
-      sent: boolean;
-      /** Serializes host calls. */
-      tail: Promise<void>;
-    };
+    __lingxiaDispatchLeaveRequest?: (reason: 'back' | 'home') => void;
     /** Shared by every copy of the bridge module in this document. */
     __lxDisplayLanguage?: { value: string; revision?: number; listeners: Set<() => void> };
     /** Host push for the page's adaptive context; see `surface-context.ts`. */
@@ -251,11 +236,8 @@ export interface LingXiaBridgeInterface {
   };
   /** Guard this page against being left with unsaved changes; see `leave-guard.ts`. */
   leaveGuard: {
-    set(enabled: boolean): Promise<void>;
-    /** The user tried to leave while guarded. Returns an unsubscribe. */
-    onBackRequest(listener: () => void): () => void;
-    /** Leave the page now, without asking again. */
-    leave(): Promise<void>;
+    /** Hold until the returned function is called; `onRequest` answers a leave. */
+    hold(onRequest: LxLeaveHandler): () => void;
   };
   platform: {
     isHarmony(): boolean;

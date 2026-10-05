@@ -487,21 +487,22 @@ mobile the capsule stays over the page's header.
 ### Localized labels and titles
 
 `tabBar.items[].text` and `navigationBar.title` take a string, or an object
-mapping language tags to strings. The host resolves it against the effective
-display language and repaints when the language changes — no Logic needed:
+with a required `default` plus BCP-47 language tags. The host resolves it
+against the effective display language and repaints when the language
+changes — no Logic needed. Other manifest strings are not localizable.
 
 ```json
-{ "page": "profiles", "text": { "en-US": "Profiles", "zh-CN": "节点" } }
+{ "page": "profiles", "text": { "default": "Profiles", "zh-CN": "节点" } }
 ```
 
 ```json
-{ "navigationBar": { "title": { "en-US": "Profiles", "zh-CN": "节点" } } }
+{ "navigationBar": { "title": { "default": "Profiles", "zh-CN": "节点" } } }
 ```
 
 Resolution: the exact tag; else an entry of the same language, matching
 script first, then region (a Chinese region implies its script, so
-`zh-Hant-TW` reads a `zh-TW` entry and never a `zh-CN` one); else the first
-entry. A runtime value from `lx.tabBar.update` / `lx.navigationBar.update`
+`zh-Hant-TW` reads a `zh-TW` entry and never a `zh-CN` one); else `default`.
+Key order does not matter. A runtime value from `lx.tabBar.update` / `lx.navigationBar.update`
 wins until reset with `null`, so do not also translate the declared text
 through those calls. The map form needs a runtime that has it: raise
 `minRuntime` when you adopt it.
@@ -514,34 +515,35 @@ page content follows the app's setting and the declared chrome text does not.
 
 ### Leaving a page with unsaved changes
 
-A pushed page can hold itself against user back while it has unsaved
-changes. Every user back path — the navigation bar back and home buttons,
-Android/Harmony system back, the edge swipe — then leaves the page where it is
-and asks the View instead. Confirm there and leave with `leavePage()` (or
-`navigation.navigateBack` / Logic `lx.navigateBack`), which does not ask
-again. Works without Logic.
+A pushed page can hold itself while it has unsaved changes. When the user
+then tries to leave — navigation bar back or home, Android/Harmony system
+back, the edge swipe — the page stays and your handler is asked. Return
+`true` to let the user go (the host then does what they asked), `false` to
+stay. Works without Logic.
 
 ```tsx
 import { useLxLeaveGuard } from '@lingxia/react'; // also @lingxia/vue
-import { leavePage } from '@lingxia/bridge';
 
-useLxLeaveGuard(dirty, async () => {
-  if (await confirmDiscard()) await leavePage();
-});
+useLxLeaveGuard(dirty, () => confirmDiscard()); // boolean | Promise<boolean>
 ```
 
-Without a framework: `setLeaveGuard(true | false)`, `subscribeBackRequest`
-and `leavePage` from `@lingxia/bridge` / `@lingxia/html` (also
-`window.LingXiaBridge.leaveGuard`), or the `lxbackrequest` window event.
+Without a framework, hold while dirty and release when clean:
 
+```ts
+import { holdLeaveGuard } from '@lingxia/bridge'; // or @lingxia/html,
+                                                  // window.LingXiaBridge.leaveGuard.hold
+const release = holdLeaveGuard(({ reason }) => confirmDiscard()); // reason: 'back' | 'home'
+release();
+```
+
+- Several guards on one page are independent: the page is held while any is
+  live, and all must return `true` to leave.
+- While a request is being answered, further back/home presses are ignored.
+- Not guarded: programmatic navigation (`lx.navigateBack`, `redirectTo`,
+  `reLaunch`, `<lx-navigator>`), tab switches, closing the lxapp from the
+  capsule, and the root page (nothing to pop).
 - The guard belongs to the current document: a reload, or leaving the stack,
-  clears it. Tab switches are not guarded.
-- Several `useLxLeaveGuard` callers on one page combine: the page is held
-  while any of them is dirty.
-- The root page cannot hold the user: there is nothing to pop, and system back
-  there hides the app as before.
-- A runtime without the guard refuses `setLeaveGuard` (the hooks log a
-  warning); raise `minRuntime` when you rely on it.
+  clears it.
 
 ### Runtime updates
 

@@ -530,16 +530,13 @@ export interface NavOptions extends NavWaitOptions {
   query?: Record<string, unknown>;
 }
 
+/** A navigation bar button `t.app.nav.press` can press. */
+export type NavButton = "back" | "home";
+
 /** `t.app.nav.back` options. */
 export interface NavBackOptions extends NavWaitOptions {
   /** Number of pages to pop (default 1). */
   delta?: number;
-  /**
-   * Go back as the user does (the navigation bar back button) instead of
-   * popping: a page holding the leave guard stays and receives a back
-   * request. One page only; do not combine with `delta`.
-   */
-  user?: boolean;
 }
 
 /** `t.app.nav`: the page stack. Actions resolve to the landed page. */
@@ -552,7 +549,13 @@ export interface TestNav {
   switchTab(options: NavOptions): Promise<PageInfo>;
   /** Unload every page (cached tab pages included) and open a fresh instance of a page. */
   relaunch(options: NavOptions): Promise<PageInfo>;
+  /** Pop pages programmatically; a leave guard is not asked. */
   back(options?: NavBackOptions): Promise<PageInfo>;
+  /**
+   * Press a navigation bar button as the user does. A page holding the leave
+   * guard stays and is asked, so this resolves to the same page.
+   */
+  press(button: NavButton, options?: NavWaitOptions): Promise<PageInfo>;
   current(): Promise<PageInfo>;
   /** Status of a configured page by name; omit `page` for the current page. */
   info(options?: PageTarget): Promise<PageInfo>;

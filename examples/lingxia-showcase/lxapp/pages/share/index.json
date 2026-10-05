@@ -1,7 +1,7 @@
 {
   "navigationBar": {
     "title": {
-      "en-US": "Share",
+      "default": "Share",
       "zh-CN": "分享"
     }
   }

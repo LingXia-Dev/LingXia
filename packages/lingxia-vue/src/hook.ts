@@ -3,8 +3,10 @@ import {
   reactive,
   readonly,
   ref,
+  toValue,
   unref,
   watch,
+  type MaybeRefOrGetter,
   type Ref,
 } from "vue";
 import type {
@@ -15,9 +17,9 @@ import type {
 import {
   getHost,
   holdLeaveGuard,
-  subscribeBackRequest,
   subscribeHost,
   type LxHost,
+  type LxLeaveHandler,
 } from "@lingxia/bridge";
 import {
   getMethodKey,
@@ -113,22 +115,22 @@ export function useLxHost(): Readonly<LxHost> {
 }
 
 /**
- * Hold the page against user back while `dirty` — unsaved changes. A back
- * from the navigation bar, the system, or an edge swipe then leaves the page
- * where it is and calls `onRequest`; confirm there, and leave with
- * `leavePage()` (which does not ask again). Released when `dirty` turns false
- * or the component unmounts. Call from `setup`.
+ * Hold the page against user back and home while `dirty` — unsaved changes.
+ * When the user tries to leave, `onRequest` is asked: return `true` to let
+ * them go, `false` to stay (or a promise of either, after a dialog).
+ * Released when `dirty` turns false or the component unmounts. Call from
+ * `setup`.
  */
 export function useLxLeaveGuard(
-  dirty: Ref<boolean> | (() => boolean),
-  onRequest: () => void,
+  dirty: MaybeRefOrGetter<boolean>,
+  onRequest: LxLeaveHandler,
 ): void {
   let release: (() => void) | undefined;
   const stop = watch(
-    () => (typeof dirty === "function" ? dirty() : unref(dirty)),
+    () => toValue(dirty),
     (value) => {
       if (value) {
-        if (!release) release = holdLeaveGuard();
+        if (!release) release = holdLeaveGuard(onRequest);
       } else if (release) {
         release();
         release = undefined;
@@ -136,10 +138,8 @@ export function useLxLeaveGuard(
     },
     { immediate: true },
   );
-  const unsubscribe = subscribeBackRequest(onRequest);
   onUnmounted(() => {
     stop();
-    unsubscribe();
     if (release) release();
   });
 }
