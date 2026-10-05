@@ -1,8 +1,8 @@
 # Host project
 
-A LingXia host app is a native app configured by `lingxia.yaml`. It embeds a
-control lxapp, or on macOS/Windows it can be a native terminal/browser product
-with no bundled lxapp. Its UI is a flat, adaptive [`surfaces:`](#surfaces) list.
+`lingxia.yaml` configures a native host with an embedded control lxapp, or a
+macOS/Windows terminal/browser with native control. UI is a flat, adaptive
+[`surfaces:`](#surfaces) list.
 
 ## Create
 
@@ -12,20 +12,19 @@ lingxia new my-terminal -t native-app --main terminal --control native -y
 lingxia new my-browser -t native-app -p windows --main browser --control native -y
 ```
 
-The first form embeds an lxapp that is both the main experience and the
-control app. A native main (`--main terminal|browser`) defaults to native
-control: no `lxapp/`, `app.homeAppId`, or `resources`, the matching capability
-on, and `features.appService: false`. Pass `--control lxapp` only when a hidden
-embedded lxapp must run host control logic.
+The first form uses one lxapp for the main UI and host control.
+`--main terminal|browser` defaults to native control: no `lxapp/`, `homeAppId`,
+or `resources`; the matching capability is enabled and `appService: false`.
+Use `--control lxapp` for host control logic in a hidden embedded lxapp.
 
-The scaffold is the authoritative layout and field list; read it. A host owns:
+The scaffold defines the layout:
 
 - `lingxia.yaml` — the source of truth for metadata and UI. `lingxia build`
   generates `app.json` and `ui.json` from it; never edit those.
 - `native/` — the Rust host library (`app.rustLibDir`).
-- Root `Cargo.toml` owns the Cargo workspace, shared dependency versions, profiles,
-  patches, and `Cargo.lock`. `native/` and `windows/` are member crates; Windows
-  inherits its dependencies with `workspace = true`.
+- Root `Cargo.toml` owns the workspace, shared dependencies, profiles, patches,
+  and lockfile. `native/` and `windows/` are members; Windows dependencies use
+  `workspace = true`.
 - one directory per platform: `macos/`, `windows/`, `android/`, `ios/`, `harmony/`.
 - optionally an embedded control lxapp (scaffold default `lxapp/`).
 
@@ -102,18 +101,16 @@ surfaces:
 - `lingxiaServer`, `lingxiaId` — see [Environment](#environment).
 - `homeAppVersion` is not configured; the CLI derives it from the bundle.
 
-**Id alignment.** With a control lxapp, `app.homeAppId` = a
+With a control lxapp, `app.homeAppId` = a
 `resources.bundles[].appId` = that bundle's `lxapp.json.appId`. A launch `main`
-that is an lxapp names that same id. The build enforces it; a mismatch launches
-the wrong app.
+lxapp uses the same id; the build rejects mismatches.
 
 `homeAppId` may be omitted only by a macOS/Windows native-main host with
 `features.appService: false`.
 
 ## `settingsDestination`
 
-Where the product's Settings entry leads. Unset, the desktop shells show no
-Settings entry. Pick one `kind`:
+Desktop Settings target; omitted means no Settings entry. Pick one `kind`:
 
 - `controlAppPage` — `appId` and `page` of the control lxapp.
 - `browserControlPage` — `route` of the browser control UI.
@@ -129,8 +126,7 @@ settingsDestination:
 
 ## `theme`
 
-Semantic colors for host-owned native UI and the starting scheme. Every key is
-optional.
+Host-owned native UI colors and initial appearance; all keys are optional.
 
 ```yaml
 theme:
@@ -191,10 +187,10 @@ update:
 
 ## Environment
 
-A host build is `dev` or `prod` (`lingxia {build,dev,package} --env`; default
-`dev` for `build`/`dev`, `prod` for `package`). It is not the lxapp channel
-(`release` | `draft`) and not the `--release` compiler profile. There is no
-`preview` env; testers use the `draft` channel or a `dev` build.
+`--env dev|prod` selects the host build environment: `build`/`dev` default to
+`dev`, `package` to `prod`. Lxapp channels (`release|draft`) and the `--release`
+compiler profile are independent. There is no `preview` env; use `draft` or
+a dev build for testing.
 
 | Env | Package id suffix | Launcher icon |
 |---|---|---|
@@ -223,11 +219,9 @@ stay with the build env. Read the build env with `lx.host.env` (JS) or
 
 ## `features`
 
-- `appService` (default `true`) — the JS Logic runtime. **Flip it together
-  with the control lxapp's `logic`:** `appService: false` requires
-  `"logic": false` in that `lxapp.json` (Shape C); a logic-enabled lxapp under
-  `appService: false` is rejected at startup. A native-control desktop host
-  also sets it `false`. `-t lxapp` projects need it `true`.
+- `appService` (default `true`) — JS Logic runtime. Set it to `false` for
+  native control; any control lxapp must also set `"logic": false` or startup
+  rejects it. JS-Logic lxapps need it `true`.
 - `devtools` (default `false`) — devtools hooks; `lingxia dev` enables it
   transiently.
 
@@ -235,8 +229,8 @@ Browser, terminal, and proxy runtime features come from `capabilities`.
 
 ## `capabilities`
 
-Integrations predeclared at build (all default off). Ordinary APIs such as the
-camera are not listed here; they ask permission when called.
+Build-time integrations (all default off). APIs such as camera request
+permission when called and need no entry here.
 
 - `notifications` — [`lx.host.notification`](../lxapp/lx-api.md#local-notifications)
   and, on iOS/Harmony, push tokens. Declaring never prompts.
@@ -255,10 +249,10 @@ camera are not listed here; they ask permission when called.
 
 ## `browser`
 
-Used only with `capabilities.browser: true`. `bookmarks` (default `true`) shows
-bookmark chrome. `webui` replaces the browser UI with exactly one source: a
-project-relative `path:` (built by the CLI) or a `package:` npm name with a
-prebuilt `lxapp.json` + `dist/` (optional `version:`). Most apps omit it.
+Requires `capabilities.browser: true`. `bookmarks` (default `true`) shows
+bookmark chrome. Optional `webui` replaces the browser UI with one source:
+project-relative `path:` (CLI-built) or npm `package:` with prebuilt
+`lxapp.json` + `dist/` (optional `version:`).
 `platforms` limits the browser runtime to the listed targets; omit it or use an
 empty list for all targets. A mobile-only browser uses `[ios, android, harmony]`.
 
@@ -285,8 +279,8 @@ resources:
 ```
 
 - `appId` must equal the bundle's `lxapp.json.appId` and be unique.
-- Source is exactly one of `path:` or `package:` (optional `version:`). An entry
-  with only `type` and `appId` declares the id; the update provider supplies it.
+- Use `path:` or `package:` (optional `version:`), never both. With neither,
+  `type` and `appId` declare an id supplied by the update provider.
 - Bundles do not decide what opens; `homeAppId` and `surfaces` do.
 
 ## `storage`
@@ -313,9 +307,8 @@ A campaign screen after launch: [Launch screen](../native/splash.md).
 
 ## `assets`
 
-`assets: <dir>` ships a directory through each platform's asset pipeline; Rust
-reads it with `lingxia::assets::read("relative/path")`. Use it for fonts, data,
-or extra covers instead of embedding bytes. Lxapps go in `resources`.
+`assets: <dir>` bundles host files, read in Rust with
+`lingxia::assets::read("relative/path")`. Lxapps go in `resources`.
 
 ## `macos` and `windows`
 
@@ -323,18 +316,20 @@ or extra covers instead of embedding bytes. Lxapps go in `resources`.
   `bundleId`, optional `store:` (App Store Connect identity).
 - `windows` — `executableName`, `publisher` (MSIX, default `CN=<productName>`),
   optional `appId`, optional `store:` (Partner Center id).
-  `appId` inherits `app.packageId`; override only when the Store-assigned
-  Package/Identity/Name differs. `store.appId` is the separate Store product ID.
-  `publisher` is the MSIX distinguished name from Partner Center, not a
-  cross-platform publisher display name.
   `extraFiles: [path, ...]` copies files beside the executable.
   `portableData: true` keeps data under `<launcher-dir>/data/<appId>`.
 
+For Microsoft Store, use Partner Center's Package/Identity/Name as the package
+id (inherit `app.packageId` or override `windows.appId`) and
+Package/Identity/Publisher as `windows.publisher` (a distinguished name,
+also matching the signing certificate when signed). `windows.store.appId` is
+the separate Store product ID. Auth/upload: [Distribution](../cli/distribution.md#microsoft-store).
+
 ## Surfaces
 
-Each entry declares what a surface is; the host picks the platform form
-(window, panel, sidebar, tab, tray) by screen size. There are no per-platform
-UI blocks and no `sidebar:` field.
+The host maps surfaces to windows/panels/sidebars/tabs/trays by screen size.
+Use this list for all platforms; there are no per-platform UI blocks or
+`sidebar:` field.
 
 ### Fields
 
@@ -394,11 +389,9 @@ surfaces:
 
 ### Sidebar actions
 
-The control lxapp declares sidebar entries at runtime, on every Logic launch.
-Its Logic runs (`App.onLaunch` once) even when the visible main is a URL or
-native surface, with no hidden WebView.
-`icon` uses the same path model as a tab-bar
-[`iconPath`](../lxapp/guide.md#icons); download remote art first.
+Declare sidebar entries on every control lxapp Logic launch. `App.onLaunch`
+runs once even with a URL/native main, without a hidden WebView. Icons follow
+tab-bar [`iconPath`](../lxapp/guide.md#icons); download remote art first.
 
 ```ts
 const { uri } = await lx.downloadFile({ url: activeBrand.logoUrl }).result;
@@ -450,28 +443,12 @@ opens an empty tab in the managed browser; use a `url:` main for a fixed target.
 
 ## Icon paths
 
-`tray.icon` is an SVG source path relative to the host project root. The build
-converts it into platform resources.
-
-| Check | Rule |
-|---|---|
-| Format | SVG only |
-| Path | Relative; absolute paths and `..` rejected |
-| File size | ≤ 512 KB |
-| Viewport | 16×16 to 512×512 px, square |
-
-Never point at generated lxapp runtime assets.
+`tray.icon`: project-relative SVG source, no absolute paths or `..`, ≤ 512 KB,
+square viewport from 16×16 to 512×512 px. The build converts it into platform
+resources; use source files, not generated lxapp runtime assets.
 
 ## Pitfalls
 
-- Editing generated `app.json` / `ui.json`, or platform version fields — edit
-  `lingxia.yaml`.
-- `homeAppId` not matching a `resources.bundles[].appId`.
-- Omitting `homeAppId` on mobile or with AppService on — native-only hosts are
-  desktop terminal/browser products.
-- `role: float` without `tray:`, `edge` on a `main`, or a terminal `edge` other
-  than `top`/`bottom`.
-- Reusing one lxapp `appId` across surfaces.
 - Adding Settings or Downloads as surfaces — they are built-in browser pages.
 - Expecting hidden surfaces to destroy WebViews — hiding keeps state.
 - `lingxia build --skip-native` links an existing Rust library, so capability
