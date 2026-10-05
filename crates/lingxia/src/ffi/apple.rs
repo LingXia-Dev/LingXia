@@ -2299,7 +2299,7 @@ pub fn get_navigation_bar_state(appid: &str, path: &str) -> self::bridge::Naviga
             foreground_color: style.foreground_color.argb(),
             divider_color: style.divider_color.argb(),
             text_style: text_style.to_string(),
-            title_text: nav_state.title().to_string(),
+            title_text: nav_state.title(),
             show_navbar: nav_state.show_navbar,
             show_back_button: nav_state.show_back_button,
             show_home_button: nav_state.home_button_visible(),

@@ -515,7 +515,7 @@ page content follows the app's setting and the declared chrome text does not.
 ### Leaving a page with unsaved changes
 
 A pushed page can hold itself against user back while it has unsaved
-changes. Every user back path — the navigation bar back button,
+changes. Every user back path — the navigation bar back and home buttons,
 Android/Harmony system back, the edge swipe — then leaves the page where it is
 and asks the View instead. Confirm there and leave with `leavePage()` (or
 `navigation.navigateBack` / Logic `lx.navigateBack`), which does not ask
@@ -536,6 +536,8 @@ and `leavePage` from `@lingxia/bridge` / `@lingxia/html` (also
 
 - The guard belongs to the current document: a reload, or leaving the stack,
   clears it. Tab switches are not guarded.
+- Several `useLxLeaveGuard` callers on one page combine: the page is held
+  while any of them is dirty.
 - The root page cannot hold the user: there is nothing to pop, and system back
   there hides the app as before.
 - A runtime without the guard refuses `setLeaveGuard` (the hooks log a

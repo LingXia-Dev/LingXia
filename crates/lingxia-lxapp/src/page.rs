@@ -1557,6 +1557,9 @@ impl PageInstance {
     /// Notify that the page's WebView started loading (mirrors WebViewDelegate::on_page_started).
     /// Used by external delegates to forward events to a shared page.
     pub fn notify_page_started(&self) {
+        // A document the WebView loaded itself (reload, in-place navigation)
+        // has no back-request listener yet; a stale guard would trap the user.
+        self.set_leave_guard(false);
         if !self.inner.document_start_scripts.is_empty()
             && let Some(webview) = self.webview()
         {
@@ -1767,12 +1770,8 @@ impl PageInstance {
             .unwrap_or(false)
     }
 
-    /// Whether leaving this page needs the View's confirmation.
-    ///
-    /// Set by the View through `navigation.setLeaveGuard` while it holds
-    /// unsaved changes. User back (navigation bar, system back, edge swipe)
-    /// then asks the View instead of popping; see [`Self::request_leave`].
-    /// Programmatic `navigateBack` is the View's answer and is not guarded.
+    /// Whether a user back asks the View (see [`Self::request_leave`])
+    /// instead of popping. Programmatic `navigateBack` is not guarded.
     pub fn is_leave_guarded(&self) -> bool {
         self.inner
             .state

@@ -43,7 +43,8 @@ include_dir = "0.7"
 language-tags = { workspace = true }
 
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# view.rs reads the first declared per-language title.
+serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_yaml_ng = "0.10"
 toml = "1.1.6"
 semver = "1.0"

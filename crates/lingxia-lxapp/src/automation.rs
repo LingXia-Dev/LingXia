@@ -356,7 +356,7 @@ pub async fn user_back(
     app: &Arc<LxApp>,
     wait_ready: bool,
 ) -> Result<(PageInstance, Option<String>), String> {
-    app.user_back();
+    app.user_back().map_err(|err| err.to_string())?;
     let (page, name) = resolve_page(app, None)?;
     if wait_ready {
         page.wait_webview_ready()

@@ -16,15 +16,39 @@
  * the plain-HTML global build can include it without booting a second bridge.
  */
 
-type BackRequestStore = { listeners: Set<() => void> };
+type BackRequestStore = NonNullable<Window['__lxBackRequest']>;
 
-const fallbackStore: BackRequestStore = { listeners: new Set() };
+function newStore(): BackRequestStore {
+  return { listeners: new Set(), manual: false, holds: 0, sent: false, tail: Promise.resolve() };
+}
+
+const fallbackStore = newStore();
 
 function store(): BackRequestStore {
   if (typeof window === 'undefined') return fallbackStore;
   // Shared by every copy of the bridge module in this document.
-  if (!window.__lxBackRequest) window.__lxBackRequest = { listeners: new Set() };
+  if (!window.__lxBackRequest) window.__lxBackRequest = newStore();
   return window.__lxBackRequest;
+}
+
+// The host keeps one flag per page. Send it the union of every holder, one
+// call at a time so a quick true → false cannot land reversed.
+function syncGuard(): Promise<void> {
+  const s = store();
+  const run = (): Promise<void> => {
+    const want = s.manual || s.holds > 0;
+    if (want === s.sent) return Promise.resolve();
+    s.sent = want;
+    return callHost<{ enabled: boolean }>('navigation.setLeaveGuard', { enabled: want }).catch(
+      (error) => {
+        s.sent = !want;
+        throw error;
+      },
+    );
+  };
+  const next = s.tail.then(run);
+  s.tail = next.catch(() => undefined);
+  return next;
 }
 
 /** Host entry point: the user tried to leave a guarded page. */
@@ -50,7 +74,32 @@ if (typeof window !== 'undefined' && !window.__lingxiaDispatchBackRequest) {
  * unguarded.
  */
 export function setLeaveGuard(enabled: boolean): Promise<void> {
-  return callHost<{ enabled: boolean }>('navigation.setLeaveGuard', { enabled });
+  store().manual = enabled;
+  return syncGuard();
+}
+
+/**
+ * Hold the page until the returned release is called. Holds count, so
+ * independent parts of a page (two forms) guard it without clearing each
+ * other; `setLeaveGuard` is one more holder beside them.
+ */
+export function holdLeaveGuard(): () => void {
+  const s = store();
+  s.holds += 1;
+  void syncGuard().catch(warnLeaveGuard);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    s.holds -= 1;
+    void syncGuard().catch(warnLeaveGuard);
+  };
+}
+
+// A refused guard (bridge not ready, a runtime without the route) leaves the
+// page unguarded; say so rather than fail silently.
+function warnLeaveGuard(error: unknown): void {
+  console.warn('[lingxia] setLeaveGuard failed; the page is not guarded', error);
 }
 
 /**

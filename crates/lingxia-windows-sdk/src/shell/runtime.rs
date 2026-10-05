@@ -2293,7 +2293,7 @@ fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsShellNavigatio
     let text_color = style.foreground_color.rgba() >> 8;
     WindowsShellNavigationBarLayout {
         visible: navbar.show_navbar,
-        title: navbar.title().to_string(),
+        title: navbar.title(),
         background_color,
         text_color,
         show_back_button: navbar.show_back_button,

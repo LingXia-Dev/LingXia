@@ -2410,16 +2410,14 @@ impl PageBridge {
                     }
                     return Ok(());
                 }
-                let invocation = host::HostInvocationContext::for_dispatch(
-                    self.lxapp(),
-                    caller,
-                    Some(page.clone()),
-                )
-                .ok_or_else(|| {
-                    LxAppError::Bridge(
-                        "authenticated caller does not match the native lxapp session".to_string(),
-                    )
-                })?;
+                let invocation =
+                    host::HostInvocationContext::for_dispatch(self.lxapp(), caller, Some(page))
+                        .ok_or_else(|| {
+                            LxAppError::Bridge(
+                                "authenticated caller does not match the native lxapp session"
+                                    .to_string(),
+                            )
+                        })?;
                 HOST_EFFECT_WORK.sync_scope(work.clone(), || {
                     handler.on_open(invocation, ctx, params_json)
                 });
@@ -2465,16 +2463,14 @@ impl PageBridge {
                     return Ok(());
                 };
 
-                let invocation = host::HostInvocationContext::for_dispatch(
-                    self.lxapp(),
-                    caller,
-                    Some(page.clone()),
-                )
-                .ok_or_else(|| {
-                    LxAppError::Bridge(
-                        "authenticated caller does not match the native lxapp session".to_string(),
-                    )
-                })?;
+                let invocation =
+                    host::HostInvocationContext::for_dispatch(self.lxapp(), caller, Some(page))
+                        .ok_or_else(|| {
+                            LxAppError::Bridge(
+                                "authenticated caller does not match the native lxapp session"
+                                    .to_string(),
+                            )
+                        })?;
                 let page = page.clone();
                 let task_page = page.clone();
                 let bridge = self.clone();
@@ -2654,16 +2650,14 @@ impl PageBridge {
                     return Ok(());
                 };
 
-                let invocation = host::HostInvocationContext::for_dispatch(
-                    self.lxapp(),
-                    caller,
-                    Some(page.clone()),
-                )
-                .ok_or_else(|| {
-                    LxAppError::Bridge(
-                        "authenticated caller does not match the native lxapp session".to_string(),
-                    )
-                })?;
+                let invocation =
+                    host::HostInvocationContext::for_dispatch(self.lxapp(), caller, Some(page))
+                        .ok_or_else(|| {
+                            LxAppError::Bridge(
+                                "authenticated caller does not match the native lxapp session"
+                                    .to_string(),
+                            )
+                        })?;
                 let appid = page.appid();
                 let path = page.path();
                 let task_host_method = host_method.clone();

@@ -703,13 +703,9 @@ impl AuthenticatedCaller {
 pub struct HostInvocationContext {
     caller: AuthenticatedCaller,
     lxapp: Arc<LxApp>,
-    /// The page whose View issued the call. `None` for Logic-originated calls,
-    /// which act for the app rather than for one document.
-    ///
-    /// This is a strong handle: a context kept beyond the call (a channel
-    /// handler storing it for the channel's life) keeps the page instance
-    /// alive with it. Read what you need from [`Self::page`] and drop it.
-    page: Option<crate::page::PageInstance>,
+    /// The page whose View issued the call; `None` for Logic-originated
+    /// calls. An id, so a stored context does not keep the page alive.
+    page: Option<crate::page::PageInstanceId>,
 }
 
 impl HostInvocationContext {
@@ -731,7 +727,7 @@ impl HostInvocationContext {
     pub(crate) fn for_dispatch(
         lxapp: Arc<LxApp>,
         caller: &AuthenticatedCaller,
-        page: Option<crate::page::PageInstance>,
+        page: Option<&crate::page::PageInstance>,
     ) -> Option<Self> {
         if let AuthenticatedCallerSource::LxAppSession { scope, .. } = &caller.source
             && !scope.belongs_to(&lxapp)
@@ -741,7 +737,7 @@ impl HostInvocationContext {
         Some(Self {
             caller: caller.clone(),
             lxapp,
-            page,
+            page: page.map(|page| page.instance_id()),
         })
     }
 
@@ -757,9 +753,9 @@ impl HostInvocationContext {
         Arc::clone(&self.lxapp)
     }
 
-    /// The page whose View made this call, when it came from a page.
-    pub fn page(&self) -> Option<&crate::page::PageInstance> {
-        self.page.as_ref()
+    /// The page whose View made this call, while it is still alive.
+    pub(crate) fn page(&self) -> Option<crate::page::PageInstance> {
+        self.lxapp.get_page_by_instance_id(self.page.as_ref()?)
     }
 }
 
