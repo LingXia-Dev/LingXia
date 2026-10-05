@@ -16,12 +16,7 @@ use std::fs;
 use std::path::Path;
 
 pub(super) fn create_project(config: &ProjectConfig, versions: &LingXiaVersions) -> Result<()> {
-    if config.target_dir.exists() {
-        return Err(anyhow!(
-            "Directory '{}' already exists",
-            config.target_dir.display()
-        ));
-    }
+    super::target::ensure_available(&config.target_dir)?;
 
     println!();
     println!("{}", "Creating project structure...".bold());
@@ -134,8 +129,7 @@ fn create_root_gitignore(config: &ProjectConfig) -> Result<()> {
 
     let mut content = lines.join("\n");
     content.push('\n');
-    fs::write(config.target_dir.join(".gitignore"), content)?;
-    Ok(())
+    super::target::write_gitignore(&config.target_dir, &content)
 }
 
 pub(super) fn create_rust_library(

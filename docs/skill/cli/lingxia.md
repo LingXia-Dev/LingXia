@@ -26,7 +26,11 @@ lingxia new my-lxapp -t lxapp -y                                   # standalone 
 lingxia new my-app -t native-app -p macos,windows --package-id com.example.myapp -y
 lingxia new my-terminal -t native-app --main terminal --control native -y
 lingxia new my-browser -t native-app -p windows --main browser --control lxapp -y
+lingxia new . -t lxapp -y                                          # in the current directory
 ```
+
+- `lingxia new .` scaffolds into the current directory, which must be empty
+  or a fresh repository.
 
 - `--main lxapp|terminal|browser` picks a host's main experience (default
   `lxapp`); `--control lxapp|native` picks where host control lives. Terminal
