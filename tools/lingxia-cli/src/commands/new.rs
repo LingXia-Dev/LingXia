@@ -9,6 +9,7 @@ mod lxapp_scaffold;
 mod macos;
 mod native;
 mod prompts;
+mod target;
 mod template;
 mod template_assets;
 mod types;
@@ -17,7 +18,7 @@ mod windows;
 
 use crate::runtime;
 use crate::versions::current_versions;
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, anyhow, bail};
 use colored::Colorize;
 use dialoguer::{Confirm, Select, theme::ColorfulTheme};
 use std::path::PathBuf;
@@ -31,7 +32,7 @@ use self::native::{create_project, create_rust_library};
 use self::prompts::{
     gather_control_mode, gather_lxapp_dir_name, gather_lxapp_framework, gather_lxapp_id,
     gather_main_surface, gather_native_app_service_mode, gather_native_project_info,
-    gather_product_name, gather_project_name, gather_project_type, validate_native_main_platforms,
+    gather_product_name, gather_project_type, validate_native_main_platforms,
 };
 use self::types::{AppServiceMode, ControlMode, ProjectType};
 use crate::commands::template_provider::{self, InstalledTemplate};
@@ -118,7 +119,9 @@ pub fn execute(
     if let Some(path) = user_template.as_deref() {
         ensure_custom_template_target_parent(path, &std::env::current_dir()?)?;
     }
-    let name = gather_project_name(name)?;
+    let current_dir = std::env::current_dir()?;
+    let target = target::resolve(name, &current_dir)?;
+    let name = target.name.clone();
 
     if matches!(project_type, ProjectType::LxApp) {
         // A lightweight lxapp keeps a single name: the project name doubles as
@@ -139,11 +142,7 @@ pub fn execute(
         } else {
             gather_lxapp_framework(yes)?
         };
-        let current_dir = std::env::current_dir()?;
-        let target_dir = current_dir.join(&name);
-        if target_dir.exists() {
-            bail!("Directory '{}' already exists", target_dir.display());
-        }
+        let target_dir = target.dir.clone();
         if let Some(provider) = provider.as_ref() {
             println!(
                 "  {} LxApp template: {} ({})",
@@ -172,19 +171,19 @@ pub fn execute(
             template_provider::write_project_lock(provider, &staged_dir)?;
         }
         setup_ai_tooling(&staged_dir);
-        std::fs::rename(&staged_dir, &target_dir).with_context(|| {
-            format!(
-                "Failed to activate generated project at {}",
-                target_dir.display()
-            )
-        })?;
+        let kept = target::adopt(&staged_dir, &target_dir)?;
+        if !kept.is_empty() {
+            println!("  {} Kept your existing {}", "✓".green(), kept.join(", "));
+        }
         setup_git_repository(&target_dir, no_git);
 
         println!();
         println!("{}", "Project created successfully!".green().bold());
         println!();
         println!("{}", "Next steps:".bold());
-        println!("  cd {}", name);
+        if !target.in_place {
+            println!("  cd {}", name);
+        }
         println!("  lingxia dev");
         println!();
         return Ok(());
@@ -197,8 +196,9 @@ pub fn execute(
     } else {
         platforms
     };
-    let config =
+    let mut config =
         gather_native_project_info(name, product_name, project_type, platforms, package_id, yes)?;
+    config.target_dir = target.dir.clone();
     validate_native_main_platforms(main, &config.platforms)?;
     let control = gather_control_mode(control, main, yes)?;
     let theme = ColorfulTheme::default();
@@ -286,7 +286,9 @@ pub fn execute(
     );
     println!();
     println!("{}", "Next steps:".bold());
-    println!("  cd {}", config.name);
+    if !target.in_place {
+        println!("  cd {}", config.name);
+    }
     println!("  lingxia dev");
     println!();
     Ok(())
@@ -307,7 +309,7 @@ fn setup_git_repository(project_dir: &std::path::Path, no_git: bool) {
         ),
         Ok(GitSetup::SkippedExistingRepository) => println!(
             "{}",
-            "  Git: skipped because the template already initialized a repository".yellow()
+            "  Git: skipped because the project directory is already a repository".yellow()
         ),
         Err(error) => eprintln!(
             "{}",

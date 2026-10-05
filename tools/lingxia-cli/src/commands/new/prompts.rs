@@ -4,29 +4,9 @@ use super::types::{
     AppServiceMode, ControlMode, DEFAULT_PACKAGE_PREFIX, MainSurface, Platform, ProjectConfig,
     ProjectType,
 };
-use super::validation::{
-    validate_lxapp_id, validate_package_id, validate_product_name, validate_project_name,
-};
+use super::validation::{validate_lxapp_id, validate_package_id, validate_product_name};
 use anyhow::{Result, anyhow};
 use dialoguer::{Input, MultiSelect, Select, theme::ColorfulTheme};
-
-pub(super) fn gather_project_name(name: Option<String>) -> Result<String> {
-    match name {
-        Some(n) => {
-            validate_project_name(&n)?;
-            Ok(n)
-        }
-        None => {
-            let input: String = Input::with_theme(&ColorfulTheme::default())
-                .with_prompt("Project name")
-                .validate_with(|input: &String| -> Result<(), String> {
-                    validate_project_name(input).map_err(|e| e.to_string())
-                })
-                .interact_text()?;
-            Ok(input)
-        }
-    }
-}
 
 pub(super) fn gather_product_name(project_name: &str, yes: bool) -> Result<String> {
     if yes {

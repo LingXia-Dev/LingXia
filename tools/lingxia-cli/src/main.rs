@@ -239,7 +239,7 @@ enum TemplateAction {
 enum Commands {
     /// Create a new LingXia project
     New {
-        /// Project name
+        /// Project name; `.` creates the project in the current directory
         name: Option<String>,
 
         /// Project type: native-app, lxapp
