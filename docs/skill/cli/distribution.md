@@ -168,6 +168,22 @@ The credential wallet behind signing and developer services:
 Uploads a built installable to an OS app store; it never builds and never
 submits for review.
 
+For Microsoft Store, first create the app and complete an initial submission
+(including age ratings) in Partner Center. Associate an Entra application with
+the account and grant it the Manager role. `lingxia auth login msstore` prompts
+for Tenant ID, Client ID, and Client Secret; it saves credentials locally and
+does not verify API access during login. CI can use `LINGXIA_MSSTORE_TENANT`,
+`LINGXIA_MSSTORE_CLIENT_ID`, and `LINGXIA_MSSTORE_CLIENT_SECRET` together.
+
+Set `windows.store.appId` to the Store product ID and `windows.publisher` to
+the Package/Identity/Publisher from Partner Center. `windows.appId` inherits
+`app.packageId`; override it only to match a different Package/Identity/Name.
+Build with `--platform windows --env prod --release --format msix`, then run
+`lingxia store submit --platform windows`. The CLI wraps the package in an
+upload ZIP and preserves existing pending submissions by stopping with an
+error. Finish or remove an existing submission before another upload. Windows
+does not yet support `--wait` or `--json`; start review in Partner Center.
+
 - Run `lingxia package` first; `submit` reads `dist/<platform>/` (Harmony
   `.app`, iOS App Store–signed `.ipa`).
 - The artifact's identity is checked against `lingxia.yaml` first, so a

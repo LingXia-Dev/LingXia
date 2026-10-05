@@ -323,6 +323,10 @@ or extra covers instead of embedding bytes. Lxapps go in `resources`.
   `bundleId`, optional `store:` (App Store Connect identity).
 - `windows` — `executableName`, `publisher` (MSIX, default `CN=<productName>`),
   optional `appId`, optional `store:` (Partner Center id).
+  `appId` inherits `app.packageId`; override only when the Store-assigned
+  Package/Identity/Name differs. `store.appId` is the separate Store product ID.
+  `publisher` is the MSIX distinguished name from Partner Center, not a
+  cross-platform publisher display name.
   `extraFiles: [path, ...]` copies files beside the executable.
   `portableData: true` keeps data under `<launcher-dir>/data/<appId>`.
 
