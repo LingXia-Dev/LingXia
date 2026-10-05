@@ -1,6 +1,9 @@
 {
   "navigationStyle": "default",
   "navigationBar": {
-    "title": "Components"
+    "title": {
+      "en-US": "Components",
+      "zh-CN": "组件"
+    }
   }
 }

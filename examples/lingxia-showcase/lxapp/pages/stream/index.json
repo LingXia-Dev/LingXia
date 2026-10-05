@@ -1,5 +1,8 @@
 {
   "navigationBar": {
-    "title": "Stream"
+    "title": {
+      "en-US": "Stream",
+      "zh-CN": "流"
+    }
   }
 }

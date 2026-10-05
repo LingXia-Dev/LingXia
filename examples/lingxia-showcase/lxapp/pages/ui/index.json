@@ -1,5 +1,8 @@
 {
   "navigationBar": {
-    "title": "User Interface"
+    "title": {
+      "en-US": "User Interface",
+      "zh-CN": "界面"
+    }
   }
 }

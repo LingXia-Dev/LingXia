@@ -113,17 +113,26 @@
     },
     "items": [
       {
-        "text": "Home",
+        "text": {
+          "en-US": "Home",
+          "zh-CN": "首页"
+        },
         "page": "home",
         "iconPath": "public/home.png"
       },
       {
-        "text": "API",
+        "text": {
+          "en-US": "API",
+          "zh-CN": "接口"
+        },
         "page": "api",
         "iconPath": "public/api.png"
       },
       {
-        "text": "Components",
+        "text": {
+          "en-US": "Components",
+          "zh-CN": "组件"
+        },
         "page": "components",
         "iconPath": "public/component.png"
       },
@@ -136,12 +145,18 @@
         "iconPath": "public/todo.png"
       },
       {
-        "text": "Media",
+        "text": {
+          "en-US": "Media",
+          "zh-CN": "媒体"
+        },
         "page": "media",
         "iconPath": "public/component.png"
       },
       {
-        "text": "Device",
+        "text": {
+          "en-US": "Device",
+          "zh-CN": "设备"
+        },
         "page": "device",
         "iconPath": "public/api.png",
         "showOn": [
@@ -149,7 +164,10 @@
         ]
       },
       {
-        "text": "Surface",
+        "text": {
+          "en-US": "Surface",
+          "zh-CN": "窗口"
+        },
         "page": "surface",
         "iconPath": "public/home.png",
         "showOn": [

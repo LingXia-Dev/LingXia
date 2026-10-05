@@ -127,7 +127,8 @@ spec("apply navigationBar title, colors, home button, and reset", {
     await ui.view.testId('navbar-reset').click();
     await waitForNavBar(
       app,
-      (state) => state.title === 'User Interface'
+      // The manifest title is declared per language; either is the reset.
+      (state) => (state.title === 'User Interface' || state.title === '界面')
         && state.runtimeStyle.backgroundColor === null
         && state.runtimeStyle.foregroundColor === null
         && state.runtimeStyle.dividerColor === null

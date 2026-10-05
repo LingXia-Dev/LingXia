@@ -1,3 +1,8 @@
 {
-  "navigationBar": { "title": { "en-US": "Leave guard", "zh-CN": "离开确认" } }
+  "navigationBar": {
+    "title": {
+      "en-US": "Leave guard",
+      "zh-CN": "离开确认"
+    }
+  }
 }

@@ -1,3 +1,8 @@
 {
-  "navigationBar": { "title": "Media APIs" }
+  "navigationBar": {
+    "title": {
+      "en-US": "Media APIs",
+      "zh-CN": "媒体接口"
+    }
+  }
 }

@@ -1,21 +1,13 @@
-import {
-  resolveDisplayLanguage,
-  type DisplayLanguage,
-} from "../shared/display-language";
+import type { DisplayLanguage } from "../shared/display-language";
 
-/* Copy the App hands to native chrome — modals, more-actions, tab bar labels.
+/* Copy the App hands to native chrome — modals, more-actions, sidebar actions.
+ * Tab labels and page titles are not here: lxapp.json declares them per
+ * language and the host follows the display language on its own.
  * It lives beside App Logic because no View ever renders it, and nothing
  * re-renders it when the language changes. Page copy stays in that page's
  * `messages.ts`. */
 
 const enUS = {
-  tabHome: "Home",
-  tabApi: "API",
-  tabComponents: "Components",
-  tabTodo: "ToDo",
-  tabMedia: "Media",
-  tabDevice: "Device",
-  tabSurface: "Surface",
   moreFeedback: "Feedback",
   sidebarDownloads: "Downloads",
   sidebarChat: "Chat",
@@ -32,13 +24,6 @@ const enUS = {
 const catalogs = {
   "en-US": enUS,
   "zh-CN": {
-    tabHome: "首页",
-    tabApi: "接口",
-    tabComponents: "组件",
-    tabTodo: "待办",
-    tabMedia: "媒体",
-    tabDevice: "设备",
-    tabSurface: "窗口",
     moreFeedback: "反馈",
     sidebarDownloads: "下载",
     sidebarChat: "聊天",
@@ -62,21 +47,4 @@ export function getAppMessages(displayLanguage: DisplayLanguage) {
       return catalog[key];
     },
   };
-}
-
-export async function applyShowcaseTabBar(
-  tag = lx.host.displayLanguage.get(),
-): Promise<void> {
-  const { t } = getAppMessages(resolveDisplayLanguage(tag));
-  await lx.tabBar.update({
-    items: [
-      { index: 0, text: t("tabHome") },
-      { index: 1, text: t("tabApi") },
-      { index: 2, text: t("tabComponents") },
-      { index: 3, text: t("tabTodo") },
-      { index: 4, text: t("tabMedia") },
-      { index: 5, text: t("tabDevice") },
-      { index: 6, text: t("tabSurface") },
-    ],
-  });
 }

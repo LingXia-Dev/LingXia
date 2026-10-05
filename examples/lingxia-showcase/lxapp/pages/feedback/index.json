@@ -1,5 +1,8 @@
 {
   "navigationBar": {
-    "title": "Feedback"
+    "title": {
+      "en-US": "Feedback",
+      "zh-CN": "反馈"
+    }
   }
 }

@@ -1,5 +1,8 @@
 {
   "navigationBar": {
-    "title": "System"
+    "title": {
+      "en-US": "System",
+      "zh-CN": "系统"
+    }
   }
 }

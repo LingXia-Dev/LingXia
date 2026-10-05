@@ -1,7 +1,13 @@
 {
   "navigationStyle": "default",
   "navigationBar": {
-    "title": "File",
-    "style": { "backgroundColor": "#3b82f6", "foregroundColor": "#000000" }
+    "title": {
+      "en-US": "File",
+      "zh-CN": "文件"
+    },
+    "style": {
+      "backgroundColor": "#3b82f6",
+      "foregroundColor": "#000000"
+    }
   }
 }

@@ -1,6 +1,12 @@
 {
   "navigationBar": {
-    "title": "Surface",
-    "style": { "backgroundColor": "#0f172a", "foregroundColor": "#FFFFFF" }
+    "title": {
+      "en-US": "Surface",
+      "zh-CN": "窗口"
+    },
+    "style": {
+      "backgroundColor": "#0f172a",
+      "foregroundColor": "#FFFFFF"
+    }
   }
 }

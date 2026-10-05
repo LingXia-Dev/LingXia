@@ -1,5 +1,8 @@
 {
   "navigationBar": {
-    "title": "Device"
+    "title": {
+      "en-US": "Device",
+      "zh-CN": "设备"
+    }
   }
 }
