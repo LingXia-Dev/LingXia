@@ -101,8 +101,9 @@ spec('tab labels and titles declared per language follow the display language', 
   timeout: 60_000,
 }, async (t) => {
   const { app } = bindFixture(t, 'UI-LOCALIZED-CHROME-001');
-  // lxapp.json: the ToDo tab's text and leaveGuard's navigationBar.title are
-  // language maps ({ "en-US": …, "zh-CN": … }).
+  // lxapp.json declares every tab's text and every page's navigationBar.title
+  // as a language map ({ "en-US": …, "zh-CN": … }); no Logic rewrites them,
+  // so what the host shows here is the declaration resolved for the language.
   const todoLabel = async () => (await app.info()).tabBar?.items.find((item) => item.index === 3)?.text ?? null;
   const title = async () => (await app.info()).navigationBar?.title ?? null;
 

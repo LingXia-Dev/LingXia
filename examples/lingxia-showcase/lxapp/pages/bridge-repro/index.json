@@ -1,5 +1,8 @@
 {
   "navigationBar": {
-    "title": "Bridge Repro"
+    "title": {
+      "en-US": "Bridge Repro",
+      "zh-CN": "桥接复现"
+    }
   }
 }

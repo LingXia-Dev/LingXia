@@ -1,6 +1,6 @@
 import type { AppLaunchOptions, ConfiguredPageName } from "@lingxia/types";
 import type { ShowcaseAppInstance } from "./shared/lib/app";
-import { applyShowcaseTabBar, getAppMessages } from "./logic/app-messages";
+import { getAppMessages } from "./logic/app-messages";
 import { resolveDisplayLanguage } from "./shared/display-language";
 
 
@@ -121,7 +121,6 @@ async function applyHostChrome(os: string, tag: string) {
       },
     },
   ]);
-  return applyShowcaseTabBar(tag);
 }
 
 App({
@@ -134,7 +133,7 @@ App({
       );
     };
     // Preference clicks always move this event. Effective-tag `watch` can
-    // miss a Harmony dispatch, which left tab labels on the previous language
+    // miss a Harmony dispatch, which left sidebar labels on the previous language
     // while page copy and host "More" followed.
     lx.host.displayLanguage.watch((tag) => {
       applyChrome(tag);
@@ -187,9 +186,6 @@ App({
   onShow(options?: AppLaunchOptions) {
     routeFromAppLink(options);
     console.log("App.onShow");
-    void applyShowcaseTabBar().catch((error) =>
-      console.warn("tab bar language update failed", error),
-    );
   },
 
   onUserCaptureScreen() {

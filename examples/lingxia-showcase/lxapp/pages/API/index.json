@@ -1,7 +1,13 @@
 {
   "navigationStyle": "default",
   "navigationBar": {
-    "title": "API",
-    "style": { "backgroundColor": "#3b82f6", "foregroundColor": "#000000" }
+    "title": {
+      "en-US": "API",
+      "zh-CN": "接口"
+    },
+    "style": {
+      "backgroundColor": "#3b82f6",
+      "foregroundColor": "#000000"
+    }
   }
 }

@@ -1,5 +1,8 @@
 {
   "navigationBar": {
-    "title": "Channel"
+    "title": {
+      "en-US": "Channel",
+      "zh-CN": "通道"
+    }
   }
 }

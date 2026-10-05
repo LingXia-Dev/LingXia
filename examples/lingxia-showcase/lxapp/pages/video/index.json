@@ -1,4 +1,8 @@
 {
-  "navigationBar": { "title": "Native Component Video" }
+  "navigationBar": {
+    "title": {
+      "en-US": "Native Component Video",
+      "zh-CN": "原生视频组件"
+    }
+  }
 }
-

@@ -1,6 +1,9 @@
 {
   "navigationStyle": "custom",
   "navigationBar": {
-    "title": "Home"
+    "title": {
+      "en-US": "Home",
+      "zh-CN": "首页"
+    }
   }
 }

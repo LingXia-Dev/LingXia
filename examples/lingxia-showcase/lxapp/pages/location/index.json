@@ -1,5 +1,8 @@
 {
   "navigationBar": {
-    "title": "Location"
+    "title": {
+      "en-US": "Location",
+      "zh-CN": "位置"
+    }
   }
 }

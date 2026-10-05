@@ -1,3 +1,8 @@
 {
-  "navigationBar": { "title": "Navigator" }
+  "navigationBar": {
+    "title": {
+      "en-US": "Navigator",
+      "zh-CN": "导航"
+    }
+  }
 }

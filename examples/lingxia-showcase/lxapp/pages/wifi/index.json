@@ -1,6 +1,9 @@
 {
   "navigationBar": {
-    "title": "WiFi"
+    "title": {
+      "en-US": "WiFi",
+      "zh-CN": "WiFi"
+    }
   },
   "pageOrientation": "landscape"
 }

@@ -1,6 +1,9 @@
 {
   "navigationStyle": "custom",
   "navigationBar": {
-    "title": "ToDo"
+    "title": {
+      "en-US": "ToDo",
+      "zh-CN": "待办"
+    }
   }
 }
