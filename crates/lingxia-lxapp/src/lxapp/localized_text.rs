@@ -45,28 +45,31 @@ impl From<String> for LocalizedText {
 impl LocalizedText {
     /// The text to show for `language` (a BCP-47 tag).
     ///
-    /// Exact tag first; otherwise the declared tag sharing the most leading
-    /// subtags with it, as long as the language subtag matches (`zh-CN` reads
-    /// `zh`, `zh-Hans-CN` reads `zh-Hans`); otherwise the first declared
-    /// entry. Ties keep declaration order. Tags compare case-insensitively and
-    /// treat `_` as `-`.
+    /// The exact tag wins. Otherwise only entries of the same language are
+    /// candidates, scored field by field rather than by shared prefix: a
+    /// matching script counts most, then a matching region. A script is
+    /// implied where a region settles it (`zh-TW` is Traditional, `zh-CN`
+    /// Simplified), so the `zh-Hant-TW` Apple reports reads a `zh-TW` entry,
+    /// and an entry in the other script ranks below a bare `zh`. With no
+    /// candidate, the first declared entry. Ties keep declaration order. Tags
+    /// compare case-insensitively and treat `_` as `-`.
     pub fn resolve(&self, language: &str) -> &str {
         let entries = match self {
             Self::Plain(text) => return text,
             Self::PerLanguage(entries) => entries,
         };
-        let wanted = subtags(language);
-        let mut best: Option<(usize, &str)> = None;
+        let wanted = Tag::parse(language);
+        let mut best: Option<(i32, &str)> = None;
         for (tag, text) in entries {
-            let shared = shared_prefix(&wanted, &subtags(tag));
-            if shared == 0 {
-                continue;
-            }
-            if shared == wanted.len() && shared == subtags(tag).len() {
+            let candidate = Tag::parse(tag);
+            if candidate == wanted {
                 return text;
             }
-            if best.is_none_or(|(score, _)| shared > score) {
-                best = Some((shared, text));
+            let Some(score) = wanted.affinity(&candidate) else {
+                continue;
+            };
+            if best.is_none_or(|(top, _)| score > top) {
+                best = Some((score, text));
             }
         }
         best.map(|(_, text)| text)
@@ -83,15 +86,71 @@ impl LocalizedText {
     }
 }
 
-fn subtags(tag: &str) -> Vec<String> {
-    tag.split(['-', '_'])
-        .filter(|part| !part.is_empty())
-        .map(str::to_ascii_lowercase)
-        .collect()
+/// The parts of a tag that decide which text a reader can read.
+#[derive(Debug, PartialEq, Eq)]
+struct Tag {
+    language: String,
+    script: Option<String>,
+    region: Option<String>,
 }
 
-fn shared_prefix(a: &[String], b: &[String]) -> usize {
-    a.iter().zip(b).take_while(|(x, y)| x == y).count()
+impl Tag {
+    fn parse(tag: &str) -> Self {
+        let mut parts = tag
+            .split(['-', '_'])
+            .filter(|part| !part.is_empty())
+            .map(str::to_ascii_lowercase);
+        let language = parts.next().unwrap_or_default();
+        let mut script = None;
+        let mut region = None;
+        for part in parts {
+            let alpha = part.chars().all(|c| c.is_ascii_alphabetic());
+            if script.is_none() && region.is_none() && part.len() == 4 && alpha {
+                script = Some(part);
+            } else if region.is_none()
+                && ((part.len() == 2 && alpha)
+                    || (part.len() == 3 && part.chars().all(|c| c.is_ascii_digit())))
+            {
+                region = Some(part);
+            }
+        }
+        Self {
+            language,
+            script,
+            region,
+        }
+    }
+
+    /// The written script: declared, or implied by the region.
+    fn effective_script(&self) -> Option<&str> {
+        if let Some(script) = &self.script {
+            return Some(script);
+        }
+        match (self.language.as_str(), self.region.as_deref()?) {
+            ("zh", "tw" | "hk" | "mo") => Some("hant"),
+            ("zh", "cn" | "sg" | "my") => Some("hans"),
+            _ => None,
+        }
+    }
+
+    /// How well `candidate` serves a reader of `self`; `None` for another
+    /// language. A script both sides name decides first: the same one is
+    /// best, the other one is worse than none at all.
+    fn affinity(&self, candidate: &Tag) -> Option<i32> {
+        if self.language != candidate.language {
+            return None;
+        }
+        let mut score = 1;
+        match (self.effective_script(), candidate.effective_script()) {
+            (Some(a), Some(b)) if a == b => score += 4,
+            (Some(_), Some(_)) => score -= 4,
+            _ => {}
+        }
+        if self.region.is_some() && self.region == candidate.region {
+            score += 2;
+        }
+        Some(score)
+    }
 }
 
 impl Serialize for LocalizedText {
@@ -128,8 +187,10 @@ impl<'de> Deserialize<'de> for LocalizedText {
                 Ok(LocalizedText::Plain(value))
             }
 
-            // A map keeps its source order, so "first entry" is the one the
-            // author wrote first, not an alphabetical accident.
+            // Entries are collected in the order the deserializer yields them.
+            // From a `serde_json::Value` that is source order because this
+            // crate enables `preserve_order`; without it a JSON object is a
+            // `BTreeMap` and "first entry" would be alphabetical.
             fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
                 let mut entries: Vec<(String, String)> = Vec::new();
                 while let Some((tag, text)) = map.next_entry::<String, String>()? {
@@ -183,12 +244,28 @@ mod tests {
         }));
         assert_eq!(text.resolve("en-US"), "Profiles");
         assert_eq!(text.resolve("EN_us"), "Profiles");
-        // Same language, closest region/script.
         assert_eq!(text.resolve("zh-Hans-CN"), "节点");
         assert_eq!(text.resolve("zh-Hant-TW"), "節點");
         assert_eq!(text.resolve("en-GB"), "Profiles");
-        // No shared language: the first declared entry.
+        // No entry in the language: the first declared one.
         assert_eq!(text.resolve("fr-FR"), "Profiles");
+    }
+
+    #[test]
+    fn a_region_implies_the_chinese_script() {
+        // Apple reports the script; authors usually write the region.
+        let simplified_first = map(serde_json::json!({ "zh-CN": "节点", "zh-TW": "節點" }));
+        assert_eq!(simplified_first.resolve("zh-Hant-TW"), "節點");
+        assert_eq!(simplified_first.resolve("zh-Hant-HK"), "節點");
+        assert_eq!(simplified_first.resolve("zh-Hans-CN"), "节点");
+
+        let traditional_first = map(serde_json::json!({ "zh-TW": "節點", "zh-CN": "节点" }));
+        assert_eq!(traditional_first.resolve("zh-Hans-CN"), "节点");
+        assert_eq!(traditional_first.resolve("zh-SG"), "节点");
+
+        // The other script ranks below a bare language entry.
+        let generic = map(serde_json::json!({ "zh-TW": "節點", "zh": "节点" }));
+        assert_eq!(generic.resolve("zh-Hans-CN"), "节点");
     }
 
     #[test]

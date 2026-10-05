@@ -779,19 +779,35 @@ pub(crate) fn view_display_language_snapshot_script() -> String {
 /// Host-owned chrome follows the display language: the tab bar's overflow
 /// "More", and labels and titles declared per language (`LocalizedText`).
 /// Those are resolved in rust, so the stored tab labels are re-resolved here,
-/// then the navigation bar and tab bar repaint together.
-/// Startup seed may run before native chrome exists; a failed repaint is ignored.
+/// then the navigation bar and tab bar repaint.
+///
+/// Deliberately not a Page Chrome revision. A language change alters text,
+/// never chrome geometry, so the View has nothing new to learn — and bumping
+/// the revision would supersede a concurrent `lx.tabBar.update` commit, whose
+/// own View publish is then dropped as stale. The two repaints are
+/// independent: a navigation bar that cannot repaint (no page, no activity
+/// hosting the app) must not cost the tab bar its repaint, and an app with no
+/// tab bar or no page skips that half. Startup seed may run before native
+/// chrome exists; a failed repaint is ignored.
 ///
 /// The repaint is spawned, never awaited here. Preference writes can run on a
 /// JS worker, while the synchronous native updates hop to the platform main
 /// queue and block there — the wait a JS worker must never take.
 fn refresh_host_chrome(appid: &str, app: &LxApp) {
-    let _ = app.with_tabbar_mut(|tabbar| tabbar.localize());
-    let revision = app.next_page_chrome_revision();
+    let has_tabbar = app.with_tabbar_mut(|tabbar| tabbar.localize()).is_some();
+    let has_page = app.current_page().is_ok();
+    if !has_tabbar && !has_page {
+        return;
+    }
     let runtime = app.runtime.clone();
     let appid = appid.to_string();
     std::mem::drop(crate::executor::spawn(async move {
-        let _ = runtime.apply_page_chrome_revision(appid, revision).await;
+        if has_page {
+            let _ = runtime.update_navbar_ui(appid.clone());
+        }
+        if has_tabbar {
+            let _ = runtime.update_tabbar_ui_async(appid).await;
+        }
     }));
 }
 

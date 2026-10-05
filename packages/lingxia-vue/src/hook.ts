@@ -103,32 +103,6 @@ let hostSubscribed = false;
  * Read `host.sizeClass`; destructuring takes a snapshot. Geometry is CSS:
  * `--lx-page-chrome-*` and container queries. Callable anywhere.
  */
-/**
- * Hold the page against user back while `dirty` — unsaved changes. A back
- * from the navigation bar, the system, or an edge swipe then leaves the page
- * where it is and calls `onRequest`; confirm there, and leave with
- * `navigation.navigateBack` (which does not ask again). Released when `dirty`
- * turns false or the component unmounts. Call from `setup`.
- */
-export function useLxLeaveGuard(
-  dirty: Ref<boolean> | (() => boolean),
-  onRequest: () => void,
-): void {
-  const stop = watch(
-    () => (typeof dirty === "function" ? dirty() : unref(dirty)),
-    (value) => {
-      void setLeaveGuard(value).catch(() => undefined);
-    },
-    { immediate: true },
-  );
-  const unsubscribe = subscribeBackRequest(onRequest);
-  onUnmounted(() => {
-    stop();
-    unsubscribe();
-    void setLeaveGuard(false).catch(() => undefined);
-  });
-}
-
 export function useLxHost(): Readonly<LxHost> {
   if (!hostSubscribed) {
     hostSubscribed = true;
@@ -136,6 +110,45 @@ export function useLxHost(): Readonly<LxHost> {
     subscribeHost(() => Object.assign(hostState, getHost()));
   }
   return readonly(hostState) as Readonly<LxHost>;
+}
+
+/**
+ * Hold the page against user back while `dirty` — unsaved changes. A back
+ * from the navigation bar, the system, or an edge swipe then leaves the page
+ * where it is and calls `onRequest`; confirm there, and leave with
+ * `leavePage()` (which does not ask again). Released when `dirty` turns false
+ * or the component unmounts. Call from `setup`.
+ */
+export function useLxLeaveGuard(
+  dirty: Ref<boolean> | (() => boolean),
+  onRequest: () => void,
+): void {
+  // Only a change reaches the host: a clean form mounts without a round trip.
+  let held = false;
+  const stop = watch(
+    () => (typeof dirty === "function" ? dirty() : unref(dirty)),
+    (value) => {
+      if (value === held) return;
+      held = value;
+      void setLeaveGuard(value).catch(warnLeaveGuard);
+    },
+    { immediate: true },
+  );
+  const unsubscribe = subscribeBackRequest(onRequest);
+  onUnmounted(() => {
+    stop();
+    unsubscribe();
+    if (held) {
+      held = false;
+      void setLeaveGuard(false).catch(warnLeaveGuard);
+    }
+  });
+}
+
+// A refused guard (bridge not ready, a runtime without the route) leaves the
+// page unguarded; say so rather than fail silently.
+function warnLeaveGuard(error: unknown): void {
+  console.warn("[lingxia] setLeaveGuard failed; the page is not guarded", error);
 }
 
 type StreamMethod = (...args: any[]) => LxStream<any, any>;

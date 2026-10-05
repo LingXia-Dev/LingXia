@@ -99,6 +99,10 @@
     {
       "name": "bridge-repro",
       "path": "pages/bridge-repro/index"
+    },
+    {
+      "name": "leaveGuard",
+      "path": "pages/leaveguard/index"
     }
   ],
   "tabBar": {
@@ -124,7 +128,10 @@
         "iconPath": "public/component.png"
       },
       {
-        "text": "ToDo",
+        "text": {
+          "en-US": "ToDo",
+          "zh-CN": "待办"
+        },
         "page": "todo",
         "iconPath": "public/todo.png"
       },

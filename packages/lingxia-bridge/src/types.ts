@@ -244,6 +244,8 @@ export interface LingXiaBridgeInterface {
     set(enabled: boolean): Promise<void>;
     /** The user tried to leave while guarded. Returns an unsubscribe. */
     onBackRequest(listener: () => void): () => void;
+    /** Leave the page now, without asking again. */
+    leave(): Promise<void>;
   };
   platform: {
     isHarmony(): boolean;

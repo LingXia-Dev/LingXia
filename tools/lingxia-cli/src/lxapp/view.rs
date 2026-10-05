@@ -124,8 +124,9 @@ pub(crate) fn page_title(project: &Project, page_path: &str) -> Result<String> {
     if config_path.exists() {
         let content = fs::read_to_string(&config_path)?;
         let value: Value = serde_json::from_str(&content)?;
-        // A per-language title bakes one entry (the first by tag) into the
-        // document's `<title>`; the native bar resolves the live language.
+        // A per-language title bakes its first declared entry into the
+        // document's `<title>` (the CLI's serde_json keeps source order, as
+        // the runtime's does); the native bar resolves the live language.
         if let Some(title) = value
             .get("navigationBar")
             .and_then(|navigation_bar| navigation_bar.get("title"))

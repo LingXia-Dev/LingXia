@@ -2,4 +2,10 @@
 // the module. The host already booted the bridge, so the build aliases
 // `@lingxia/bridge` to its side-effect-free parts.
 export { pageReady, getPage, subscribePage } from "./page.js";
-export { getHost, subscribeHost, setLeaveGuard, subscribeBackRequest } from "@lingxia/bridge";
+export {
+  getHost,
+  subscribeHost,
+  setLeaveGuard,
+  subscribeBackRequest,
+  leavePage,
+} from "@lingxia/bridge";

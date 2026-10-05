@@ -561,7 +561,7 @@ impl LxApp {
                 if let Some(path) = self.peek_current_page_path()
                     && let Some(page) = self.get_page(path.as_str())
                 {
-                    Self::leave_page(&page);
+                    self.leave_page(&page);
                     return true;
                 }
                 false
@@ -595,10 +595,18 @@ impl LxApp {
         if let Some(path) = self.peek_current_page_path()
             && let Some(page) = self.get_page(path.as_str())
         {
-            Self::leave_page(&page);
+            self.leave_page(&page);
             return true;
         }
         false
+    }
+
+    /// Go back the way the user does — the navigation bar back button's path,
+    /// leave guard included — rather than popping programmatically. For
+    /// automation that must observe what a user would; returns whether the
+    /// request was handled.
+    pub fn user_back(self: &Arc<Self>) -> bool {
+        self.handle_navigation_click("back".to_string())
     }
 
     /// One user back on the top page: pop it, or — while its View guards
@@ -606,8 +614,13 @@ impl LxApp {
     /// lands here (navigation bar back, Android/Harmony system back, the
     /// iOS/Harmony edge swipe), so the guard holds on all of them. The View
     /// answers with `navigation.navigateBack`, which pops without asking.
-    fn leave_page(page: &crate::page::PageInstance) {
-        if page.is_leave_guarded() {
+    ///
+    /// Only a pushed page can hold the user. On the root page there is
+    /// nothing to pop: system back hides the app before reaching here, and a
+    /// navigation bar back stays the no-op it always was rather than asking a
+    /// question no path would act on.
+    fn leave_page(self: &Arc<Self>, page: &crate::page::PageInstance) {
+        if self.get_page_stack_size() > 1 && page.is_leave_guarded() {
             page.request_leave();
         } else {
             let _ = page.navigate_back(1);

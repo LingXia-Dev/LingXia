@@ -506,25 +506,32 @@ reset with `null`. The map form needs a runtime that has it: raise
 
 ### Leaving a page with unsaved changes
 
-A page can hold itself against user back while it has unsaved changes. Every
-user back path — the navigation bar back button, Android/Harmony system back,
-the edge swipe — then leaves the page where it is and asks the View instead.
-Confirm there and leave with `navigation.navigateBack` (Logic:
-`lx.navigateBack`), which does not ask again. Works without Logic.
+A pushed page can hold itself against user back while it has unsaved
+changes. Every user back path — the navigation bar back button,
+Android/Harmony system back, the edge swipe — then leaves the page where it is
+and asks the View instead. Confirm there and leave with `leavePage()` (or
+`navigation.navigateBack` / Logic `lx.navigateBack`), which does not ask
+again. Works without Logic.
 
 ```tsx
 import { useLxLeaveGuard } from '@lingxia/react'; // also @lingxia/vue
+import { leavePage } from '@lingxia/bridge';
 
 useLxLeaveGuard(dirty, async () => {
-  if (await confirmDiscard()) await window.LingXiaBridge?.invoke('navigation.navigateBack', {});
+  if (await confirmDiscard()) await leavePage();
 });
 ```
 
-Without a framework: `setLeaveGuard(true | false)` and
-`subscribeBackRequest(listener)` from `@lingxia/bridge` / `@lingxia/html`
-(also `window.LingXiaBridge.leaveGuard`), or the `lxbackrequest` window event.
-The guard belongs to the current document: a reload, or leaving the stack,
-clears it. Tab switches are not guarded.
+Without a framework: `setLeaveGuard(true | false)`, `subscribeBackRequest`
+and `leavePage` from `@lingxia/bridge` / `@lingxia/html` (also
+`window.LingXiaBridge.leaveGuard`), or the `lxbackrequest` window event.
+
+- The guard belongs to the current document: a reload, or leaving the stack,
+  clears it. Tab switches are not guarded.
+- The root page cannot hold the user: there is nothing to pop, and system back
+  there hides the app as before.
+- A runtime without the guard refuses `setLeaveGuard` (the hooks log a
+  warning); raise `minRuntime` when you rely on it.
 
 ### Runtime updates
 
