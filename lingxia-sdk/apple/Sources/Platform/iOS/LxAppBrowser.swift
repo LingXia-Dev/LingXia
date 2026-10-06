@@ -566,7 +566,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         scrim.addSubview(card)
 
         let rows = UIStackView(arrangedSubviews: [
-            overflowMenuRow(title: "Downloads", iconName: "icon_browser_download", action: #selector(downloadsTapped)),
+            overflowMenuRow(title: L10n.string("lx_browser_downloads"), iconName: "icon_browser_download", action: #selector(downloadsTapped)),
             overflowMenuRow(title: L10n.string("lx_browser_settings"), iconName: "icon_browser_settings", action: #selector(settingsTapped)),
         ])
         rows.translatesAutoresizingMaskIntoConstraints = false

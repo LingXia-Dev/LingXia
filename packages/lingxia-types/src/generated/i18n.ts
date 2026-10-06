@@ -18,6 +18,7 @@ export const I18N_KEYS = [
   "browser_close_other_tabs",
   "browser_close_tabs_below",
   "browser_copy_link",
+  "browser_downloads",
   "browser_history",
   "browser_label",
   "browser_link_copied",
