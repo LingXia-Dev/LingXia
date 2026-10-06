@@ -310,27 +310,48 @@ async fn cache_state(app: Arc<lingxia::LxApp>) -> lingxia::Result<String> {
 }
 ```
 
-The display language ([product settings](../lxapp/lx-api.md#product-settings)):
+Values the host follows at run time — foreground, display language, light/dark
+and both preferences — share one shape: a getter, `watch_*` and `*_changes()`.
+
+| Value | Read | Follow |
+|---|---|---|
+| foreground (process, not an lxapp) | `is_foreground()` | `watch_foreground` / `foreground_changes` |
+| [display language](../lxapp/lx-api.md#product-settings) | `display_language()` | `watch_display_language` / `display_language_changes` |
+| its preference | `display_language_preference()` | `watch_display_language_preference` / `…_changes` |
+| [light/dark](../lxapp/guide.md#appearance) | `appearance()` | `watch_appearance` / `appearance_changes` |
+| its preference | `appearance_preference()` | `watch_appearance_preference` / `…_changes` |
 
 ```rust
-let tag = lingxia::app::display_language();
-lingxia::app::watch_display_language(|tag| redraw_chrome_in(&tag));
+// Called with the current value, then once per change. Keep the Subscription
+// (dropping it unsubscribes) or `.detach()` it for the life of the process.
+let subscription = lingxia::app::watch_foreground({
+    let engine = engine.clone();
+    move |foreground| engine.set_power_saving(!foreground)
+});
 
-let preference = "zh-CN"
-    .parse::<lingxia::app::DisplayLanguagePreference>()
-    .expect("valid BCP-47 tag");
-lingxia::app::set_display_language_preference(preference)?;
-```
-
-Light/dark ([appearance](../lxapp/guide.md#appearance)). Native chrome and
-every lxapp that has not pinned a scheme follow this setting:
-
-```rust
-if lingxia::app::appearance() == lingxia::app::ResolvedAppearance::Dark {
-    use_dark_tray_icon();
+// Async: the current value, then the latest after each change. Never ends.
+let mut changes = lingxia::app::appearance_changes();
+loop {
+    let appearance = changes.next().await;
+    tray.set_dark(appearance == lingxia::app::ResolvedAppearance::Dark);
 }
+
+let zh = "zh-CN".parse().expect("valid BCP-47 tag");
+lingxia::app::set_display_language_preference(zh)?;
 lingxia::app::set_appearance_preference(lingxia::app::AppearancePreference::Dark)?;
 ```
+
+Callbacks (`FnMut`) run one at a time, in order, on a LingXia thread per area
+(foreground, language, appearance) — never on the main thread and with no
+LingXia lock held, so they may call any `lingxia` API. Keep them short; a slow
+one delays the rest of its area. Dropping a `Subscription` never waits for a
+running call. On iOS and HarmonyOS the `false`
+foreground callbacks run inside an OS background grace period that LingXia holds
+until they return, so flush there; `*_changes()` streams get no grace. A
+transient inactive state (system alert, permission prompt) is still foreground,
+desktop hosts are always foreground, an Android process started without an
+activity (push, `JobService`) reads foreground until one starts, and switching
+lxapps fires their `onShow`/`onHide`, not this.
 
 `lingxia::app::banner::show` is the Rust form of the
 [desktop banner](../lxapp/lx-api.md#desktop-banner). It blocks until the card

@@ -81,6 +81,8 @@ object Lingxia {
     private var lastResumedActivity: Activity? = null
     @Volatile
     private var lifecycleCallbacksRegistered: Boolean = false
+    // Main-thread only, like every ActivityLifecycleCallbacks method.
+    private var startedActivities: Int = 0
 
     /**
      * Product-app entry point. Initializes the runtime and opens the home LxApp.
@@ -197,6 +199,20 @@ object Lingxia {
 
             if (!lifecycleCallbacksRegistered) {
                 lifecycleCallbacksRegistered = registerActivityLifecycleCallbacks(ctx)
+                // Registration runs from an already-started activity (the
+                // bootstrap one); count it, or its stop would read as the
+                // process leaving the foreground. initializeRuntime is called
+                // from that activity's onCreate, on the main thread, like the
+                // lifecycle callbacks that own this counter.
+                if (android.os.Looper.getMainLooper() != android.os.Looper.myLooper()) {
+                    Log.w(TAG, "initializeRuntime off the main thread; foreground count may drift")
+                }
+                val owner = context as? androidx.lifecycle.LifecycleOwner
+                if (lifecycleCallbacksRegistered &&
+                    owner?.lifecycle?.currentState?.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED) == true
+                ) {
+                    startedActivities += 1
+                }
             }
 
             com.lingxia.webview.LingXiaWebView.setApplicationContext(ctx)
@@ -553,9 +569,23 @@ object Lingxia {
                 if (lastResumedActivity === activity) lastResumedActivity = null
                 if (activity is LxAppActivity) LxApp.clearCurrentActivity(activity)
             }
-            override fun onActivityStarted(activity: Activity) {}
+            // Process-level foreground for lingxia::app::is_foreground. A
+            // configuration change stops and restarts the activity; that is
+            // not a background. Rust drops repeated values. Activities are the
+            // only source: a process started without one (push, JobService)
+            // stays at Rust's initial `true` until an activity starts and stops.
+            override fun onActivityStarted(activity: Activity) {
+                startedActivities += 1
+                if (startedActivities == 1) NativeApi.onHostForegroundChanged(true)
+            }
             override fun onActivityPaused(activity: Activity) {}
-            override fun onActivityStopped(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {
+                // Clamped: an uncounted activity started before registration.
+                startedActivities = maxOf(0, startedActivities - 1)
+                if (startedActivities == 0 && !activity.isChangingConfigurations) {
+                    NativeApi.onHostForegroundChanged(false)
+                }
+            }
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
         }) ?: run {
             Log.w(TAG, "Failed to register ActivityLifecycleCallbacks: Application not found")

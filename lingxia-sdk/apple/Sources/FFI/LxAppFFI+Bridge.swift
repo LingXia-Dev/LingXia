@@ -48,6 +48,18 @@ extension LxApp {
         }
     }
 
+    /// Every Rust `watch_foreground` callback for the background transition
+    /// that took this token has returned. macOS never takes one.
+    nonisolated static func endBackgroundGrace(token: UInt64) {
+        #if os(iOS)
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                HostBackgroundGrace.end(token)
+            }
+        }
+        #endif
+    }
+
     nonisolated static func lxappRegistryChanged() {
         DispatchQueue.main.async {
             NotificationCenter.default.post(

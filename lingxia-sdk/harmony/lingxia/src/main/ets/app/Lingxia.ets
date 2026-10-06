@@ -1,7 +1,15 @@
 import { window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { i18n } from '@kit.LocalizationKit';
-import { Want, Configuration, ConfigurationConstant, EnvironmentCallback } from '@kit.AbilityKit';
+import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
+import { BusinessError } from '@kit.BasicServicesKit';
+import {
+  Want,
+  Configuration,
+  ConfigurationConstant,
+  EnvironmentCallback,
+  ApplicationStateChangeCallback
+} from '@kit.AbilityKit';
 import common from '@ohos.app.ability.common';
 import deviceInfo from '@ohos.deviceInfo';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -20,6 +28,7 @@ import {
   getDisplayLanguage as getRuntimeDisplayLanguage,
   shouldEnableWebViewDebugging,
   onHostAppearanceChanged,
+  onHostForegroundChanged,
   onHostLocaleChanged,
   onApplinkReceived,
   onNotificationActivated,
@@ -67,9 +76,13 @@ export class Lingxia {
   // (file/share/scan/media/push) — lxapp code reads these, never owns them.
   public static context: common.UIAbilityContext | null = null;
   public static windowStage: window.WindowStage | null = null;
-  /** True while the host UIAbility is in the foreground. */
+  /** True while the application is in the foreground (any ability). */
   public static inForeground: boolean = true;
   private static environmentCallback: EnvironmentCallback | null = null;
+  private static applicationStateCallback: ApplicationStateChangeCallback | null = null;
+  /** Suspend delays held for Rust's background callbacks: token -> requestId. */
+  private static backgroundGrace: Map<number, number> = new Map<number, number>();
+  private static lastGraceToken: number = 0;
   private static pendingNotificationWant: Want | null = null;
 
   /**
@@ -177,6 +190,7 @@ export class Lingxia {
         webview.WebviewController.setWebDebuggingAccess(true);
       }
       Lingxia.observeHostAppearance(appContext);
+      Lingxia.observeHostForeground(appContext);
       Lingxia.flushPendingNotificationWant();
     } else {
       LxLog.e(TAG, 'Failed to get home app details from native init.');
@@ -233,6 +247,64 @@ export class Lingxia {
     };
     Lingxia.environmentCallback = callback;
     appContext.on('environment', callback);
+  }
+
+  /**
+   * Process-level foreground for `lingxia::app::is_foreground`: the
+   * application state, not one ability's onForeground/onBackground.
+   */
+  private static observeHostForeground(appContext: common.ApplicationContext): void {
+    if (Lingxia.applicationStateCallback !== null) {
+      return;
+    }
+    const callback: ApplicationStateChangeCallback = {
+      onApplicationForeground: (): void => {
+        Lingxia.inForeground = true;
+        onHostForegroundChanged(true, 0);
+      },
+      onApplicationBackground: (): void => {
+        Lingxia.inForeground = false;
+        onHostForegroundChanged(false, Lingxia.beginBackgroundGrace());
+      }
+    };
+    Lingxia.applicationStateCallback = callback;
+    appContext.on('applicationStateChange', callback);
+  }
+
+  /**
+   * A transient task so Rust's `watch_foreground` callbacks run before the
+   * process is suspended. Rust hands the token back through
+   * `endBackgroundGrace` once they have all returned. 0 means none was granted.
+   */
+  private static beginBackgroundGrace(): number {
+    Lingxia.lastGraceToken += 1;
+    const token = Lingxia.lastGraceToken;
+    try {
+      const info = backgroundTaskManager.requestSuspendDelay('LingXia foreground callbacks', (): void => {
+        Lingxia.endBackgroundGrace(token);
+      });
+      Lingxia.backgroundGrace.set(token, info.requestId);
+      return token;
+    } catch (error) {
+      const e = error as BusinessError;
+      LxLog.w(TAG, `requestSuspendDelay failed: code=${e.code} msg=${e.message}`);
+      return 0;
+    }
+  }
+
+  /** Ends the delay once, whether Rust or the expiry callback gets here first. */
+  public static endBackgroundGrace(token: number): void {
+    const requestId = Lingxia.backgroundGrace.get(token);
+    if (requestId === undefined) {
+      return;
+    }
+    Lingxia.backgroundGrace.delete(token);
+    try {
+      backgroundTaskManager.cancelSuspendDelay(requestId);
+    } catch (error) {
+      const e = error as BusinessError;
+      LxLog.w(TAG, `cancelSuspendDelay failed: code=${e.code} msg=${e.message}`);
+    }
   }
 
   private static getSystemLocale(): string {

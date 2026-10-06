@@ -75,6 +75,7 @@ lingxia-webview = { workspace = true }
 lingxia-windows-contract = { workspace = true }
 lingxia-messaging = { workspace = true }
 lingxia-native-macros = { workspace = true }
+futures-core = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

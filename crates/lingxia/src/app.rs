@@ -8,14 +8,69 @@
 //!
 //! - read product metadata such as `product_version` and `lingxia_id`;
 //! - resolve host-owned state paths such as `state_dir` and `state_file`;
-//! - read or set the host display language (`display_language`,
-//!   `set_display_language_preference`);
-//! - read or set the host light/dark setting (`appearance`,
-//!   `set_appearance_preference`);
+//! - read, follow or set the display language and the light/dark appearance;
+//! - follow whether the app is in the foreground;
 //! - request host app termination with `exit`.
+//!
+//! # Observable values
+//!
+//! Every value that changes at run time has the same three forms:
+//!
+//! | Value | Read | Callback | Async |
+//! |---|---|---|---|
+//! | foreground | [`is_foreground`] | [`watch_foreground`] | [`foreground_changes`] |
+//! | display language | [`display_language`] | [`watch_display_language`] | [`display_language_changes`] |
+//! | its preference | [`display_language_preference`] | [`watch_display_language_preference`] | [`display_language_preference_changes`] |
+//! | light/dark | [`appearance`] | [`watch_appearance`] | [`appearance_changes`] |
+//! | its preference | [`appearance_preference`] | [`watch_appearance_preference`] | [`appearance_preference_changes`] |
+//!
+//! A `watch_*` callback is called first with the current value, then once per
+//! actual change. The first call and every change travel the same ordered
+//! path, so nothing falls between registering and the first call. It returns
+//! a [`Subscription`]: dropping it unsubscribes, [`Subscription::detach`]
+//! keeps the callback for the process.
+//!
+//! Callbacks run one at a time, in order, on a LingXia delivery thread: never
+//! inside `watch_*` itself, never on the platform main thread, and with no
+//! LingXia lock held, so a callback may call any `lingxia` API. Each area has
+//! its own thread (foreground; display language and its preference;
+//! appearance and its preference), so ordering is per value and a slow
+//! foreground callback does not hold up a language change; within an area a
+//! slow callback delays the ones after it. Since calls never overlap, a
+//! callback is an `FnMut` and may keep its own state. The argument is the value
+//! at that change; the getter may already be newer. A panicking callback is
+//! logged and the others still run.
+//!
+//! Dropping a [`Subscription`] never waits: no new call starts after it, and a
+//! call already running finishes on the delivery thread. A callback may drop
+//! its own `Subscription`.
+//!
+//! A `*_changes()` [`Changes`] stream yields the current value, then each
+//! change. A consumer that falls behind gets the latest value, not a backlog.
+//! It never ends, so `changes.next().await` returns the value itself.
+//!
+//! ```no_run
+//! let subscription = lingxia::app::watch_foreground(|foreground| {
+//!     println!("foreground: {foreground}");
+//! });
+//! subscription.detach();
+//! ```
+//!
+//! ## Background grace
+//!
+//! On iOS and HarmonyOS, the callbacks for a move to the background run inside
+//! an OS-granted grace period that LingXia holds until every one of them has
+//! returned, so a callback can flush state or close connections before the
+//! process is suspended. The OS bounds that time (a few seconds), and
+//! [`Changes`] streams are not covered: work that must finish belongs in a
+//! callback. Android does not suspend a started process this way.
+//!
+//! Android reports foreground only through activity start and stop, so a
+//! process started without one (a push, a `JobService`) reads `true` until an
+//! activity starts and stops.
 
 use std::path::{Component, Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Once, OnceLock};
 
 use lingxia_platform::traits::app_runtime::AppRuntime;
 
@@ -24,6 +79,10 @@ pub use lxapp::page_chrome::{AppearancePreference, ResolvedAppearance};
 pub use lxapp::{
     DisplayLanguageEffectiveSource, DisplayLanguagePreference, DisplayLanguageState, LanguageTag,
 };
+
+mod observe;
+pub use observe::{Changes, Subscription};
+use observe::{Delivery, Observable};
 
 static APP_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -117,17 +176,37 @@ pub fn notifications_enabled() -> bool {
     lingxia_app_context::notifications_enabled()
 }
 
-/// Returns the effective host display language.
+// One delivery thread per area, started on first use: a foreground callback
+// holding the background grace must not stall language or appearance ones.
+static FOREGROUND_DELIVERY: Delivery = Delivery::new("lingxia-app-foreground");
+static LANGUAGE_DELIVERY: Delivery = Delivery::new("lingxia-app-language");
+static APPEARANCE_DELIVERY: Delivery = Delivery::new("lingxia-app-appearance");
+static FOREGROUND: Observable<bool> = Observable::new(&FOREGROUND_DELIVERY, Some(true));
+static DISPLAY_LANGUAGE: Observable<LanguageTag> = Observable::new(&LANGUAGE_DELIVERY, None);
+static DISPLAY_LANGUAGE_PREFERENCE: Observable<DisplayLanguagePreference> =
+    Observable::new(&LANGUAGE_DELIVERY, None);
+static APPEARANCE: Observable<ResolvedAppearance> = Observable::new(&APPEARANCE_DELIVERY, None);
+static APPEARANCE_PREFERENCE: Observable<AppearancePreference> =
+    Observable::new(&APPEARANCE_DELIVERY, None);
+
+/// The effective host display language.
 ///
 /// A pinned [`DisplayLanguagePreference::LanguageTag`] takes precedence over
 /// the native host locale. [`DisplayLanguagePreference::Auto`] follows it.
-pub fn display_language() -> String {
-    lxapp::display_language()
+pub fn display_language() -> LanguageTag {
+    lxapp::display_language_state().effective
 }
 
-/// Follow the effective language. Runs only when the tag actually changes.
-pub fn watch_display_language(listener: impl Fn(LanguageTag) + Send + Sync + 'static) {
-    lxapp::add_display_language_effective_listener(Box::new(listener));
+/// Follow [`display_language`]; see [the module docs](self#observable-values).
+pub fn watch_display_language(listener: impl FnMut(LanguageTag) + Send + 'static) -> Subscription {
+    display_language_source();
+    DISPLAY_LANGUAGE.watch(listener)
+}
+
+/// [`display_language`], then each change.
+pub fn display_language_changes() -> Changes<LanguageTag> {
+    display_language_source();
+    DISPLAY_LANGUAGE.changes()
 }
 
 /// What the user chose: `Auto`, or a pinned tag.
@@ -141,26 +220,57 @@ pub fn set_display_language_preference(preference: DisplayLanguagePreference) ->
 }
 
 /// Follow the choice, not what it resolves to: a system locale change under
-/// `Auto` moves the effective tag without moving the preference.
+/// `Auto` moves the effective tag without moving the preference. See
+/// [the module docs](self#observable-values).
 pub fn watch_display_language_preference(
-    listener: impl Fn(DisplayLanguagePreference) + Send + Sync + 'static,
-) {
-    let last = std::sync::Mutex::new(None::<DisplayLanguagePreference>);
-    lxapp::add_display_language_state_listener(Box::new(move |state: DisplayLanguageState| {
-        let mut last = last.lock().unwrap_or_else(|error| error.into_inner());
-        if last.as_ref() == Some(&state.preference) {
-            return;
-        }
-        *last = Some(state.preference.clone());
-        drop(last);
-        listener(state.preference);
-    }));
+    listener: impl FnMut(DisplayLanguagePreference) + Send + 'static,
+) -> Subscription {
+    display_language_source();
+    DISPLAY_LANGUAGE_PREFERENCE.watch(listener)
+}
+
+/// [`display_language_preference`], then each change.
+pub fn display_language_preference_changes() -> Changes<DisplayLanguagePreference> {
+    display_language_source();
+    DISPLAY_LANGUAGE_PREFERENCE.changes()
+}
+
+/// Feed both display-language values from the service, once. Registration and
+/// its starting state are taken under one lock.
+fn display_language_source() {
+    static INSTALLED: Once = Once::new();
+    INSTALLED.call_once(|| {
+        let start = lxapp::observe_display_language_state(Box::new(publish_display_language));
+        publish_display_language(start);
+    });
+}
+
+fn publish_display_language(update: lxapp::DisplayLanguageStateUpdate) {
+    DISPLAY_LANGUAGE.offer(update.revision, update.state.effective);
+    DISPLAY_LANGUAGE_PREFERENCE.offer(update.revision, update.state.preference);
 }
 
 /// What the host's light/dark setting resolves to now. Under
 /// [`AppearancePreference::Auto`] this follows the system.
 pub fn appearance() -> ResolvedAppearance {
     lxapp::host_appearance_state().resolved
+}
+
+/// Follow [`appearance`]; see [the module docs](self#observable-values).
+///
+/// The first appearance watcher in the process (this, [`appearance_changes`]
+/// or the preference forms) reads the starting state like [`appearance`]
+/// does, which under `Auto` on Apple is a synchronous hop to the main thread;
+/// later ones reuse the cached value. Other platforms read it in place.
+pub fn watch_appearance(listener: impl FnMut(ResolvedAppearance) + Send + 'static) -> Subscription {
+    appearance_source();
+    APPEARANCE.watch(listener)
+}
+
+/// [`appearance`], then each change.
+pub fn appearance_changes() -> Changes<ResolvedAppearance> {
+    appearance_source();
+    APPEARANCE.changes()
 }
 
 /// What the user chose: `Auto`, `Light` or `Dark`.
@@ -175,6 +285,93 @@ pub fn set_appearance_preference(preference: AppearancePreference) -> crate::Res
     lxapp::set_host_appearance_preference(preference)
         .map(|_| ())
         .map_err(Into::into)
+}
+
+/// Follow [`appearance_preference`]; see [the module docs](self#observable-values).
+pub fn watch_appearance_preference(
+    listener: impl FnMut(AppearancePreference) + Send + 'static,
+) -> Subscription {
+    appearance_source();
+    APPEARANCE_PREFERENCE.watch(listener)
+}
+
+/// [`appearance_preference`], then each change.
+pub fn appearance_preference_changes() -> Changes<AppearancePreference> {
+    appearance_source();
+    APPEARANCE_PREFERENCE.changes()
+}
+
+/// Feed both appearance values. The observer is registered once, before the
+/// starting state is read. Once seeded the observer keeps them current, so only
+/// the first callers read the state, outside the `Once`: resolving `auto` may
+/// wait on the main thread, which may be the next caller.
+fn appearance_source() {
+    static INSTALLED: Once = Once::new();
+    INSTALLED.call_once(|| lxapp::observe_host_appearance(Box::new(publish_appearance)));
+    if APPEARANCE.get().is_none() || APPEARANCE_PREFERENCE.get().is_none() {
+        publish_appearance(lxapp::host_appearance_update());
+    }
+}
+
+fn publish_appearance(update: lxapp::HostAppearanceUpdate) {
+    APPEARANCE.offer(update.revision, update.state.resolved);
+    APPEARANCE_PREFERENCE.offer(update.revision, update.state.preference);
+}
+
+/// Whether the host app is in the foreground, for the whole process rather
+/// than one LxApp.
+///
+/// Mobile hosts report the OS lifecycle: iOS counts any connected scene that
+/// is foreground (active or inactive, so a system alert or permission prompt
+/// is not a background), Android counts started activities, HarmonyOS uses
+/// the application state. Desktop hosts are always foreground. The value
+/// starts `true` and moves when the platform first reports otherwise, so an
+/// Android process started without an activity (a push, a `JobService`) reads
+/// `true` until one starts and stops.
+///
+/// This is the process, not an lxapp: switching between lxapps fires their
+/// `onShow`/`onHide` but never changes this value.
+pub fn is_foreground() -> bool {
+    FOREGROUND.get().unwrap_or(true)
+}
+
+/// Follow [`is_foreground`]; see [the module docs](self#observable-values).
+/// On iOS and HarmonyOS, the `false` call runs inside the
+/// [background grace](self#background-grace).
+pub fn watch_foreground(listener: impl FnMut(bool) + Send + 'static) -> Subscription {
+    FOREGROUND.watch(listener)
+}
+
+/// [`is_foreground`], then each change. Not covered by the
+/// [background grace](self#background-grace).
+pub fn foreground_changes() -> Changes<bool> {
+    FOREGROUND.changes()
+}
+
+/// The entry point the platform bridges feed. Repeats are dropped here.
+#[cfg_attr(
+    not(any(
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "android",
+        target_env = "ohos"
+    )),
+    allow(dead_code)
+)]
+pub(crate) fn set_foreground(foreground: bool) {
+    FOREGROUND.set(foreground);
+}
+
+/// [`set_foreground`] holding an OS grace period: `release` runs once every
+/// callback for this transition (and any queued before it) has returned. If
+/// the delivery thread could not start, `release` waits queued for the next
+/// transition to retry it; the platform's expiry handler ends the grace first.
+#[cfg_attr(
+    not(any(target_os = "ios", target_os = "macos", target_env = "ohos")),
+    allow(dead_code)
+)]
+pub(crate) fn set_foreground_with_grace(foreground: bool, release: impl FnOnce() + Send + 'static) {
+    FOREGROUND.set_then(foreground, release);
 }
 
 pub(crate) fn data_dir() -> crate::Result<PathBuf> {
@@ -415,4 +612,40 @@ fn validate_state_file_name(name: &str) -> crate::Result<()> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, mpsc};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn display_language_watchers_follow_the_service() {
+        let (sender, events) = mpsc::channel();
+        let sender = Mutex::new(sender);
+        let subscription = watch_display_language(move |tag| {
+            let _ = sender.lock().unwrap().send(tag);
+        });
+        let mut changes = display_language_changes();
+        events.recv_timeout(Duration::from_secs(2)).unwrap();
+        // The stream starts from the current value too, with no waiting.
+        assert!(matches!(
+            futures_core::Stream::poll_next(
+                std::pin::Pin::new(&mut changes),
+                &mut std::task::Context::from_waker(std::task::Waker::noop())
+            ),
+            std::task::Poll::Ready(Some(_))
+        ));
+
+        let wanted = LanguageTag::parse("fr-FR").unwrap();
+        let owner = lxapp::install_display_language_session_override(
+            DisplayLanguagePreference::LanguageTag(wanted.clone()),
+        );
+        // Other tests move the shared service too; every change still arrives.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while events.recv_timeout(deadline - Instant::now()).unwrap() != wanted {}
+        lxapp::clear_display_language_session_override(owner);
+        drop(subscription);
+    }
 }

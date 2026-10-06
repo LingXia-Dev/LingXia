@@ -56,6 +56,7 @@ repository = "https://github.com/LingXia-Dev/LingXia"
 # Common dependencies that can be shared across workspace members
 tokio = { version = "1.0", features = ["rt", "time", "macros", "sync"] }
 futures = "0.3.34"
+futures-core = "0.3.34"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["raw_value"] }
 http = "1.5.0"

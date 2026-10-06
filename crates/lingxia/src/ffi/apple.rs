@@ -672,6 +672,9 @@ mod bridge {
         #[swift_bridge(swift_name = "onAppHide")]
         fn on_app_hide(lxappid: &str);
 
+        #[swift_bridge(swift_name = "onHostForegroundChanged")]
+        fn on_host_foreground_changed(foreground: bool, grace_token: u64);
+
         #[swift_bridge(swift_name = "onUserCaptureScreen")]
         fn on_user_capture_screen(lxappid: &str);
 
@@ -829,6 +832,11 @@ mod bridge {
         // (`ready`), or never will (failed, or no longer there).
         #[swift_bridge(swift_name = "LxApp.pageWebViewReady")]
         fn page_webview_ready(callback_id: u64, ready: bool);
+
+        // Every `watch_foreground` callback for the transition that took this
+        // background task has returned; Swift ends it.
+        #[swift_bridge(swift_name = "LxApp.endBackgroundGrace")]
+        fn end_background_grace(token: u64);
     }
 }
 
@@ -933,7 +941,7 @@ pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::Li
 
 /// Return the effective display language selected by the runtime.
 pub fn get_display_language() -> String {
-    crate::app::display_language()
+    crate::app::display_language().to_string()
 }
 
 /// Refresh the system input after Foundation reports a locale change.
@@ -2524,6 +2532,20 @@ pub fn on_app_hide(lxappid: &str) {
         .to_json_string();
         let _ = lxapp.appservice_notify(lxapp::AppServiceEvent::OnHide, Some(args));
     }
+}
+
+/// Process-level foreground state, independent of which lxapp is current.
+/// iOS reports it from its scene states; macOS never calls it. A nonzero
+/// `grace_token` names a background task Swift began for this transition; it
+/// is handed back once every `watch_foreground` callback for it has returned.
+pub fn on_host_foreground_changed(foreground: bool, grace_token: u64) {
+    if grace_token == 0 {
+        crate::app::set_foreground(foreground);
+        return;
+    }
+    crate::app::set_foreground_with_grace(foreground, move || {
+        bridge::end_background_grace(grace_token);
+    });
 }
 
 /// Notify that user captured a screenshot

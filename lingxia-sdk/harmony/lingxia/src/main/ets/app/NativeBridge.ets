@@ -407,6 +407,12 @@ class NativeBridge {
       return true;
     });
 
+    // Rust's background callbacks for this transition have all returned.
+    this.register('endBackgroundGrace', (token: string): boolean => {
+      Lingxia.endBackgroundGrace(Number.parseInt(token, 10));
+      return true;
+    });
+
     // Update TabBar APIs
     this.register('updateTabBarUI', (appId: string): boolean => {
       try {

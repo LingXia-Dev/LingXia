@@ -191,6 +191,10 @@ internal object NativeApi {
     @JvmStatic
     external fun onHostAppearanceChanged()
 
+    /** Process-level foreground: whether any activity is started. */
+    @JvmStatic
+    external fun onHostForegroundChanged(foreground: Boolean)
+
     @JvmStatic
     external fun onHostLocaleChanged(locale: String)
 

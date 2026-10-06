@@ -14,8 +14,7 @@ use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::ui::Appearance;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock, RwLock};
-use tokio::sync::mpsc;
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 /// What the host currently follows, and how it resolves right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,8 +27,8 @@ pub struct HostAppearanceState {
     pub resolved: ResolvedAppearance,
 }
 
-/// A revisioned update, so a subscriber that arrives mid-transition can drop
-/// what its initial snapshot already covered.
+/// A revisioned update, so an observer that arrives mid-transition can drop
+/// what its starting snapshot already covered.
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HostAppearanceUpdate {
@@ -54,10 +53,11 @@ fn last_published() -> &'static Mutex<Option<HostAppearanceState>> {
     LAST.get_or_init(|| Mutex::new(None))
 }
 
-fn subscribers() -> &'static Mutex<Vec<mpsc::UnboundedSender<HostAppearanceUpdate>>> {
-    static SUBSCRIBERS: OnceLock<Mutex<Vec<mpsc::UnboundedSender<HostAppearanceUpdate>>>> =
-        OnceLock::new();
-    SUBSCRIBERS.get_or_init(|| Mutex::new(Vec::new()))
+type Observer = Arc<dyn Fn(HostAppearanceUpdate) + Send + Sync>;
+
+fn observers() -> &'static Mutex<Vec<Observer>> {
+    static OBSERVERS: OnceLock<Mutex<Vec<Observer>>> = OnceLock::new();
+    OBSERVERS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
 fn preference() -> AppearancePreference {
@@ -91,41 +91,26 @@ pub fn host_appearance_state() -> HostAppearanceState {
     }
 }
 
-fn host_appearance_update() -> HostAppearanceUpdate {
+/// The state and the revision it is at. Resolving `auto` may synchronously
+/// query the native main thread, so call it with no lock held.
+#[doc(hidden)]
+pub fn host_appearance_update() -> HostAppearanceUpdate {
     HostAppearanceUpdate {
         revision: revision_counter().load(Ordering::Acquire),
         state: host_appearance_state(),
     }
 }
 
-/// Register before reading the snapshot so no update is lost. Consumers
-/// discard queued updates already covered by the snapshot's revision.
+/// Call `observer` with every published update, on the publishing thread.
+/// Publishers race, so updates can arrive out of order: keep the highest
+/// revision. Register before taking [`host_appearance_update`] as the
+/// starting point, so no update falls between the two.
 #[doc(hidden)]
-pub fn subscribe_host_appearance() -> (
-    HostAppearanceUpdate,
-    mpsc::UnboundedReceiver<HostAppearanceUpdate>,
-) {
-    subscribe_with_snapshot(subscribers(), host_appearance_update)
-}
-
-fn subscribe_with_snapshot(
-    subscribers: &Mutex<Vec<mpsc::UnboundedSender<HostAppearanceUpdate>>>,
-    snapshot: impl FnOnce() -> HostAppearanceUpdate,
-) -> (
-    HostAppearanceUpdate,
-    mpsc::UnboundedReceiver<HostAppearanceUpdate>,
-) {
-    let (sender, receiver) = mpsc::unbounded_channel();
-    {
-        let mut registered = subscribers
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        registered.retain(|subscriber| !subscriber.is_closed());
-        registered.push(sender);
-    }
-    // Resolving auto may synchronously query the native main thread. That
-    // thread also publishes appearance changes and needs the subscriber lock.
-    (snapshot(), receiver)
+pub fn observe_host_appearance(observer: Box<dyn Fn(HostAppearanceUpdate) + Send + Sync>) {
+    observers()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .push(Arc::from(observer));
 }
 
 /// The choice this launch starts from: the user's, once they made one, and
@@ -213,11 +198,12 @@ fn notify() {
     *last_published()
         .lock()
         .unwrap_or_else(|error| error.into_inner()) = Some(update.state);
-    {
-        let mut registered = subscribers()
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        registered.retain(|subscriber| subscriber.send(update).is_ok());
+    let observers = observers()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone();
+    for observer in observers {
+        observer(update);
     }
     publish_to_logic(&update);
 }
@@ -263,44 +249,6 @@ fn publish_host_color_mode(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn snapshot_allows_native_publication_without_losing_updates() {
-        let subscribers = Mutex::new(Vec::new());
-        let update = HostAppearanceUpdate {
-            revision: 2,
-            state: HostAppearanceState {
-                preference: AppearancePreference::Auto,
-                resolved: ResolvedAppearance::Dark,
-            },
-        };
-        let (initial, mut receiver) = subscribe_with_snapshot(&subscribers, || {
-            // Model the main thread publishing while a background subscriber
-            // waits for its native appearance query. This must not need a lock
-            // retained by that waiting subscriber.
-            let registered = subscribers
-                .try_lock()
-                .expect("snapshot holds subscriber lock");
-            assert_eq!(registered.len(), 1);
-            registered[0].send(update).unwrap();
-            update
-        });
-        assert_eq!(initial.revision, update.revision);
-        assert_eq!(initial.state, update.state);
-        assert_eq!(receiver.try_recv().unwrap().revision, initial.revision);
-
-        let later = HostAppearanceUpdate {
-            revision: 3,
-            state: HostAppearanceState {
-                resolved: ResolvedAppearance::Light,
-                ..update.state
-            },
-        };
-        subscribers.lock().unwrap()[0].send(later).unwrap();
-        let received = receiver.try_recv().unwrap();
-        assert!(received.revision > initial.revision);
-        assert_eq!(received.state, later.state);
-    }
 
     #[test]
     fn a_pinned_preference_resolves_without_the_platform() {

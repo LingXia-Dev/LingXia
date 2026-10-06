@@ -158,6 +158,26 @@ pub fn on_host_appearance_changed(dark: bool) {
     lxapp::refresh_auto_appearances();
 }
 
+/// Process-level foreground state, from the application state callback.
+/// A nonzero `grace_token` names a suspend delay ArkTS took for this
+/// transition; it is handed back through `endBackgroundGrace` once every
+/// `watch_foreground` callback for it has returned.
+#[napi]
+pub fn on_host_foreground_changed(foreground: bool, grace_token: u32) {
+    if grace_token == 0 {
+        crate::app::set_foreground(foreground);
+        return;
+    }
+    crate::app::set_foreground_with_grace(foreground, move || {
+        let token = grace_token.to_string();
+        if let Err(error) =
+            lingxia_webview::platform::harmony::tsfn::call_arkts("endBackgroundGrace", &[&token])
+        {
+            log::warn!("failed to end background grace {token}: {error:?}");
+        }
+    });
+}
+
 #[napi]
 pub fn on_host_locale_changed(locale: String) {
     if let Err(error) = lxapp::refresh_display_language_system(&locale) {
@@ -175,7 +195,7 @@ pub fn set_pad(pad: bool) {
 /// Return the effective display language selected by the runtime.
 #[napi]
 pub fn get_display_language() -> String {
-    crate::app::display_language()
+    crate::app::display_language().to_string()
 }
 
 /// The launch face is on screen, in this appearance — the one the start

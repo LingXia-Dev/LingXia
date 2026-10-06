@@ -79,6 +79,8 @@ class iOSLxApp {
         }
         lifecycleObservers.append(backgroundObserver)
 
+        observeHostForeground()
+
         // User took screenshot
         let screenshotObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.userDidTakeScreenshotNotification,
@@ -98,6 +100,84 @@ class iOSLxApp {
             self?.handleDeviceOrientationChange()
         }
         lifecycleObservers.append(orientationObserver)
+    }
+
+    /// Process-level foreground for `lingxia::app::is_foreground`, separate
+    /// from the per-lxapp show/hide above. Foreground while any connected
+    /// scene is foregroundActive or foregroundInactive, so a transient
+    /// inactive state (system alert, VPN prompt, Control Center) is not a
+    /// background. Non-scene hosts fall back to the UIApplication events.
+    /// Rust drops repeats, so overlapping notifications are harmless.
+    private func observeHostForeground() {
+        let names: [Notification.Name] = [
+            UIScene.willEnterForegroundNotification,
+            UIScene.didActivateNotification,
+            UIScene.didEnterBackgroundNotification,
+            UIScene.didDisconnectNotification,
+            UIApplication.willEnterForegroundNotification,
+            UIApplication.didEnterBackgroundNotification,
+        ]
+        for name in names {
+            let observer = NotificationCenter.default.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] note in
+                // Only Sendable values cross into the main actor.
+                let name = note.name
+                let scene = (note.object as AnyObject?).map(ObjectIdentifier.init)
+                // queue: .main delivers on the main thread.
+                MainActor.assumeIsolated {
+                    self?.reportHostForeground(name, scene: scene)
+                }
+            }
+            lifecycleObservers.append(observer)
+        }
+        // A background launch (push, VPN on demand) starts in the background.
+        Self.reportHostForeground(
+            context.applicationState != .background || Self.anySceneForeground(excluding: nil)
+        )
+    }
+
+    private func reportHostForeground(_ name: Notification.Name, scene: ObjectIdentifier?) {
+        let foreground: Bool
+        switch name {
+        case UIScene.willEnterForegroundNotification,
+             UIScene.didActivateNotification,
+             UIApplication.willEnterForegroundNotification:
+            foreground = true
+        case UIApplication.didEnterBackgroundNotification:
+            foreground = false
+        default:
+            foreground = Self.anySceneForeground(excluding: scene)
+        }
+        Self.reportHostForeground(foreground)
+    }
+
+    /// The value last sent to Rust, so one transition takes one task even
+    /// though the scene and the application both report it.
+    private static var reportedForeground: Bool?
+
+    /// A move to the background takes a background task first, so Rust's
+    /// `watch_foreground` callbacks run before iOS suspends the process.
+    /// Rust hands the token back through `LxApp.endBackgroundGrace` once they
+    /// have all returned.
+    private static func reportHostForeground(_ foreground: Bool) {
+        let entersBackground = !foreground && reportedForeground != false
+        reportedForeground = foreground
+        lingxia.onHostForegroundChanged(foreground, entersBackground ? HostBackgroundGrace.begin() : 0)
+    }
+
+    /// Whether a scene other than `excluded` is in the foreground. Without
+    /// scenes this is the application state.
+    private static func anySceneForeground(excluding excluded: ObjectIdentifier?) -> Bool {
+        let scenes = UIApplication.shared.connectedScenes.filter { ObjectIdentifier($0) != excluded }
+        if UIApplication.shared.connectedScenes.isEmpty {
+            return UIApplication.shared.applicationState != .background
+        }
+        return scenes.contains {
+            $0.activationState == .foregroundActive || $0.activationState == .foregroundInactive
+        }
     }
 
     /// Handle app entering foreground
@@ -439,6 +519,32 @@ extension LxApp {
             os_log("stopPullDownRefresh called for %@ %@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appidStr, webtagStr)
         }
         return true
+    }
+}
+
+/// Background tasks held for Rust's background callbacks, by token. 0 is
+/// "no task"; iOS ends a task itself at expiry if Rust has not.
+@MainActor
+enum HostBackgroundGrace {
+    private static var tasks: [UInt64: UIBackgroundTaskIdentifier] = [:]
+    private static var lastToken: UInt64 = 0
+
+    static func begin() -> UInt64 {
+        lastToken += 1
+        let token = lastToken
+        let task = UIApplication.shared.beginBackgroundTask(withName: "LingXia foreground callbacks") {
+            // The expiration handler runs on the main thread.
+            MainActor.assumeIsolated { end(token) }
+        }
+        guard task != .invalid else { return 0 }
+        tasks[token] = task
+        return token
+    }
+
+    /// Ends the task once, whether Rust or the expiration handler gets here first.
+    static func end(_ token: UInt64) {
+        guard let task = tasks.removeValue(forKey: token) else { return }
+        UIApplication.shared.endBackgroundTask(task)
     }
 }
 
