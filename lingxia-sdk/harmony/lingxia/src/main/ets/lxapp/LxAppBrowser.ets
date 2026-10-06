@@ -3,6 +3,7 @@ import { LxLog } from '../app/LxLog';
 import { webview } from '@kit.ArkWeb';
 import { display, window } from '@kit.ArkUI';
 import { Lingxia } from '../app/Lingxia';
+import { localizedString } from '../app/DisplayLanguageResources';
 import { requestWebFileChooser } from './WebFileChooserBridge';
 import {
   handleWebViewLoadError,
@@ -1297,7 +1298,7 @@ export struct LxAppBrowser {
               .width(18)
               .height(18)
               .margin({ right: 10 })
-            Text('Downloads')
+            Text(localizedString(getContext(this).resourceManager, 'lx_browser_downloads'))
               .fontSize(15)
               .fontColor('#333333')
           }
@@ -1317,7 +1318,7 @@ export struct LxAppBrowser {
               .width(18)
               .height(18)
               .margin({ right: 10 })
-            Text('Settings')
+            Text(localizedString(getContext(this).resourceManager, 'lx_browser_settings'))
               .fontSize(15)
               .fontColor('#333333')
           }

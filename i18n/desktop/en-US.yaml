@@ -23,7 +23,6 @@ browser:
   unpin: "Unpin"
   manage_pinned_sites: "Manage Pinned Sites…"
   manage_bookmarks: "Manage Bookmarks…"
-  settings: "Settings"
 
 # Terminal panel (native Windows shell terminal)
 terminal:

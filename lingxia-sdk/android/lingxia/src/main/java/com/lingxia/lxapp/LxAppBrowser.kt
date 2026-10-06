@@ -21,6 +21,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.lingxia.app.Lingxia
 import com.lingxia.app.NativeApi
 import java.net.URI
 
@@ -734,13 +735,21 @@ internal object LxAppBrowser {
         }
 
         panel.addView(
-            createOverflowMenuRow(activity, R.drawable.icon_browser_download, "Downloads") {
+            createOverflowMenuRow(
+                activity,
+                R.drawable.icon_browser_download,
+                Lingxia.localizedString(activity, R.string.lx_browser_downloads)
+            ) {
                 closeOverflowMenu()
                 navigateActiveTab(activity, "lingxia://downloads")
             }
         )
         panel.addView(
-            createOverflowMenuRow(activity, R.drawable.icon_browser_settings, "Settings") {
+            createOverflowMenuRow(
+                activity,
+                R.drawable.icon_browser_settings,
+                Lingxia.localizedString(activity, R.string.lx_browser_settings)
+            ) {
                 closeOverflowMenu()
                 navigateActiveTab(activity, "lingxia://settings")
             }

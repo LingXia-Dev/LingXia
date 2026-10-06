@@ -127,3 +127,8 @@ update:
   open_store: "Open store"
   store_message: "A new version is available. Update it from the store?"
   store_title: "Update available"
+
+# Browser menu shared by desktop and mobile native chrome
+browser:
+  downloads: "Downloads"
+  settings: "Settings"

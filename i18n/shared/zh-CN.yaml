@@ -127,3 +127,8 @@ update:
   open_store: "打开商店"
   store_message: "有新版本可用，请前往商店更新。"
   store_title: "发现新版本"
+
+# Browser menu shared by desktop and mobile native chrome
+browser:
+  downloads: "下载"
+  settings: "设置"
