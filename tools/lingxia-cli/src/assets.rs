@@ -206,7 +206,10 @@ pub(crate) fn prepare_configured_host_assets(
         dev,
         &mut cache,
     )?);
-    if config.browser_enabled() {
+    if platforms
+        .iter()
+        .any(|platform| config.browser_enabled_for(platform.as_str()))
+    {
         common_bundles.push(prepare_browser_shell_webui_bundle(
             project_root,
             config,

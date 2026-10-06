@@ -1796,7 +1796,9 @@ impl LingXiaConfig {
             .as_ref()
             .map(|capabilities| capabilities.proxy)
             .unwrap_or(false);
-        proxy_requested && self.browser_enabled() && matches!(platform, "macos" | "windows")
+        proxy_requested
+            && self.browser_enabled_for(platform)
+            && matches!(platform, "macos" | "windows")
     }
 
     /// The local control socket, derived from whatever the product actually
@@ -1849,6 +1851,15 @@ impl LingXiaConfig {
             .unwrap_or(false)
     }
 
+    /// `browser_enabled` narrowed by `browser.platforms`; an empty list keeps
+    /// every target.
+    pub fn browser_enabled_for(&self, platform: &str) -> bool {
+        self.browser_enabled()
+            && self.browser.as_ref().is_none_or(|browser| {
+                browser.platforms.is_empty() || browser.platforms.iter().any(|p| p == platform)
+            })
+    }
+
     pub fn native_features_for_platform(&self, platform: &str) -> Vec<String> {
         let mut features = Vec::new();
         if self.app_service_enabled() {
@@ -1859,11 +1870,7 @@ impl LingXiaConfig {
         }
         // The browser capability brings its runtime and webui pages (newtab /
         // settings / downloads) on every platform it is enabled for.
-        if self.browser_enabled()
-            && self.browser.as_ref().is_none_or(|browser| {
-                browser.platforms.is_empty() || browser.platforms.iter().any(|p| p == platform)
-            })
-        {
+        if self.browser_enabled_for(platform) {
             features.push("browser-shell".to_string());
         }
         if self.terminal_enabled(platform) {
@@ -2025,11 +2032,11 @@ impl LingXiaConfig {
             .as_ref()
             .map(|capabilities| capabilities.terminal)
             .unwrap_or(false);
-        let browser_enabled = self.browser_enabled();
         let home_app_id = app.home_app_id.as_deref().unwrap_or_default().trim();
         let first_platform = app_platforms
             .first()
             .ok_or_else(|| anyhow!("app.platforms must not be empty"))?;
+        let browser_enabled = self.browser_enabled_for(first_platform);
         self.generated_ui = Some(surfaces_to_ui_for_target(
             surfaces,
             terminal_enabled,
@@ -2051,7 +2058,7 @@ impl LingXiaConfig {
         surfaces_to_ui_for_target(
             surfaces,
             self.terminal_enabled(platform),
-            self.browser_enabled(),
+            self.browser_enabled_for(platform),
             platform,
             app.home_app_id.as_deref().unwrap_or_default().trim(),
         )
@@ -2156,7 +2163,7 @@ impl LingXiaConfig {
                     validate_macos_ui_config(
                         &ui,
                         self.terminal_enabled("macos"),
-                        self.browser_enabled(),
+                        self.browser_enabled_for("macos"),
                     )?;
                 }
             }
@@ -3406,12 +3413,13 @@ android:
                     .contains(&"browser-shell".to_string())
             );
         }
+        // The proxy feature implies browser-shell, so it must follow the list.
+        config.capabilities.as_mut().unwrap().proxy = true;
         for platform in ["macos", "windows", "harmony"] {
-            assert!(
-                !config
-                    .native_features_for_platform(platform)
-                    .contains(&"browser-shell".to_string())
-            );
+            let features = config.native_features_for_platform(platform);
+            assert!(!features.contains(&"browser-shell".to_string()));
+            assert!(!features.contains(&"proxy".to_string()));
+            assert!(!config.browser_enabled_for(platform));
         }
         config
             .browser

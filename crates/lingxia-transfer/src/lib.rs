@@ -22,7 +22,8 @@ pub type Result<T> = std::result::Result<T, DownloadsError>;
 /// Integration hooks used by other LingXia runtime crates such as browser.
 pub mod runtime {
     pub use crate::download::manager::{
-        DownloadBehavior, DownloadTask, browser_download_root, run_browser_download_task,
+        DownloadBehavior, DownloadTask, browser_download_failed_event, browser_download_root,
+        run_browser_download_task,
     };
     pub use crate::download::{
         get_record, get_request_context, has_active_download, record_bridge_event,

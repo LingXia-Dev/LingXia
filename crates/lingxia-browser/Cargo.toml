@@ -16,7 +16,7 @@ url = "2"
 lingxia-service = { workspace = true }
 lxapp = { workspace = true, default-features = false }
 lingxia-log = { workspace = true }
-lingxia-transfer = { workspace = true }
+lingxia-transfer = { workspace = true, features = ["http-proxy"] }
 lingxia-settings = { workspace = true }
 lingxia-platform = { workspace = true }
 lingxia-webview = { workspace = true }
