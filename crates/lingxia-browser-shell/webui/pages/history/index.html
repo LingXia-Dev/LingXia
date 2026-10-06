@@ -7,7 +7,6 @@
   <style>
     * { box-sizing: border-box; }
     :root {
-      color-scheme: light;
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
       color: #101828;
       background: #f6f7f9;
@@ -135,6 +134,35 @@
       .time { display: none; }
       .remove { opacity: 1; }
     }
+    /* Dark: the host stamps data-theme on <html> with the product appearance. */
+    :root[data-theme="dark"] { color-scheme: dark; color: #f2f4f7; background: #202124; }
+    [data-theme="dark"] .header { background: rgba(32,33,36,0.88); border-bottom-color: rgba(255,255,255,0.08); }
+    [data-theme="dark"] .subtitle,
+    [data-theme="dark"] .search-wrap svg,
+    [data-theme="dark"] .row-url,
+    [data-theme="dark"] .time,
+    [data-theme="dark"] .empty { color: #8b9099; }
+    [data-theme="dark"] .search { border-color: rgba(255,255,255,0.14); background: rgba(45,46,50,0.9); color: #f2f4f7; }
+    [data-theme="dark"] .search:focus { border-color: #8ab4f8; box-shadow: 0 0 0 3px rgba(138,180,248,0.18); }
+    [data-theme="dark"] .clear-button { color: #ff8a8f; background: #2d2e32; border-color: rgba(255,255,255,0.12); }
+    [data-theme="dark"] .clear-button:hover { background: rgba(255,138,143,0.12); border-color: rgba(255,138,143,0.35); }
+    [data-theme="dark"] .day-title,
+    [data-theme="dark"] .dialog-copy { color: #a7abb4; }
+    [data-theme="dark"] .day-card { border-color: rgba(255,255,255,0.1); background: #2d2e32; box-shadow: none; }
+    [data-theme="dark"] .row { border-top-color: rgba(255,255,255,0.06); }
+    [data-theme="dark"] .row:hover { background: #333438; }
+    [data-theme="dark"] .favicon { background: #36373b; color: #8ab4f8; }
+    [data-theme="dark"] .row-title { color: #f2f4f7; }
+    [data-theme="dark"] .row-title:hover { color: #8ab4f8; }
+    [data-theme="dark"] .remove { color: #7d828c; }
+    [data-theme="dark"] .remove:hover { color: #ff8a8f; background: rgba(255,138,143,0.14); }
+    [data-theme="dark"] .empty-icon { color: #a7abb4; background: linear-gradient(180deg,#36373b,#2d2e32); box-shadow: none; }
+    [data-theme="dark"] .empty-title { color: #e4e7ec; }
+    [data-theme="dark"] .overlay { background: rgba(0,0,0,0.5); }
+    [data-theme="dark"] .dialog { border-color: rgba(255,255,255,0.1); background: #2d2e32; box-shadow: 0 24px 64px rgba(0,0,0,0.5); }
+    [data-theme="dark"] .dialog-button { background: #36373b; color: #e4e7ec; }
+    [data-theme="dark"] .dialog-button.danger { background: #d92d20; color: #fff; }
+    [data-theme="dark"] .toast { background: rgba(60,61,65,0.95); }
   </style>
 </head>
 <body>

@@ -135,6 +135,7 @@ jobs:
             npm:
               - 'packages/**'
               - 'crates/lingxia-lxapp/src/appservice/scripts/**'
+              - 'crates/lingxia-browser-shell/webui/**'
             # Source of truth for the generated @lingxia/types Logic API.
             typegen_src:
               - 'crates/lingxia-logic/**'
@@ -1534,6 +1535,12 @@ jobs:
       - name: Test inline native protocol (@lingxia/elements)
         working-directory: packages
         run: npm run test:inline-native --workspace @lingxia/elements
+
+      # The browser's built-in pages ship as a prebuilt bundle; their theme
+      # contract needs no build to check.
+      - name: Test browser webui theme contract
+        working-directory: crates/lingxia-browser-shell/webui
+        run: node --test tests/theme.test.mjs
 
   # Native islands run in the showcase host (NATIVE-ISLAND-001), not Chrome.
 

@@ -455,6 +455,7 @@ class NativeBridge {
     });
 
     this.register('applyLxAppAppearance', (appId: string, dark: string): boolean => {
+      LxAppBrowserManager.applyAppearance(appId, dark === 'true');
       return LxAppContainer.applyAppearance(appId, dark === 'true');
     });
 

@@ -3,10 +3,12 @@ import { LxLog } from '../app/LxLog';
 import { webview } from '@kit.ArkWeb';
 import { display, window } from '@kit.ArkUI';
 import { util } from '@kit.ArkTS';
+import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
 import { Lingxia } from '../app/Lingxia';
 import { localizedString } from '../app/DisplayLanguageResources';
 import { requestWebFileChooser } from './WebFileChooserBridge';
+import { StatusBarArbiter } from './StatusBarArbiter';
 import {
   handleWebViewLoadError,
   WebViewManager,
@@ -48,6 +50,64 @@ interface BrowserUrlDisplay {
   iconColor: string;
   iconVisible: boolean;
 }
+
+/** Chrome colors; the light set is the original design. */
+interface BrowserChromeColors {
+  canvas: string;
+  bar: string;
+  divider: string;
+  pill: string;
+  icon: string;
+  secondaryIcon: string;
+  disabledIcon: string;
+  text: string;
+  placeholder: string;
+  warning: string;
+  surface: string;
+  hairline: string;
+  stroke: string;
+  title: string;
+  inactiveTitle: string;
+  scrim: string;
+}
+
+const LIGHT_CHROME: BrowserChromeColors = {
+  canvas: '#FFFFFF',
+  bar: '#F5F5F7',
+  divider: '#E0E0E0',
+  pill: '#F0F0F0',
+  icon: '#333333',
+  secondaryIcon: '#666666',
+  disabledIcon: '#CCCCCC',
+  text: '#333333',
+  placeholder: '#999999',
+  warning: '#A15C00',
+  surface: '#FFFFFF',
+  hairline: '#11000000',
+  stroke: '#14000000',
+  title: '#1A1A1A',
+  inactiveTitle: '#4D4D4D',
+  scrim: '#66000000',
+};
+
+const DARK_CHROME: BrowserChromeColors = {
+  canvas: '#1C1C1E',
+  bar: '#242426',
+  divider: '#3A3A3C',
+  pill: '#3A3A3C',
+  icon: '#E5E5E7',
+  secondaryIcon: '#A1A1AA',
+  disabledIcon: '#5A5A5E',
+  text: '#F2F2F7',
+  placeholder: '#8E8E93',
+  warning: '#FF9F43',
+  surface: '#2C2C2E',
+  hairline: '#1FFFFFFF',
+  stroke: '#1FFFFFFF',
+  title: '#F2F2F7',
+  inactiveTitle: '#C7C7CC',
+  scrim: '#A6000000',
+};
 
 interface DisplayMetrics {
   heightVp: number;
@@ -175,6 +235,27 @@ export class LxAppBrowserManager {
   private static activeTabId: string = '';
   private static initialUrls: Map<string, string> = new Map();
   private static listeners: Set<() => void> = new Set();
+  // The built-in browser app's resolved scheme (the product's); null until
+  // the runtime first applies it.
+  private static appearanceDark: boolean | null = null;
+
+  /** An lxapp's scheme was applied; the browser follows its own built-in app. */
+  public static applyAppearance(appId: string, dark: boolean): void {
+    let browserAppId = '';
+    try {
+      browserAppId = String(getBuiltinBrowserAppId() ?? '').trim();
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, `applyAppearance: getBuiltinBrowserAppId threw: ${error}`);
+    }
+    if (appId === browserAppId && LxAppBrowserManager.appearanceDark !== dark) {
+      LxAppBrowserManager.appearanceDark = dark;
+      LxAppBrowserManager.notifyListeners();
+    }
+  }
+
+  public static resolvedAppearanceDark(hostDark: boolean): boolean {
+    return LxAppBrowserManager.appearanceDark ?? hostDark;
+  }
 
   /**
    * Show the browser displaying `tabId`. Registers + activates the tab, then
@@ -474,6 +555,7 @@ export struct LxAppBrowser {
 	  @State private showOverflowMenu: boolean = false;
 	  @State private tabRows: Array<BrowserTabRow> = [];
   @State private keyboardOffsetVp: number = 0;
+  @State private appearanceDark: boolean = false;
 
 	  private listener: (() => void) | null = null;
 	  private attachRetryTimerId: number | null = null;
@@ -490,6 +572,7 @@ export struct LxAppBrowser {
       const visible = LxAppBrowserManager.isShowing();
       this.isVisible = visible;
       this.tabCount = LxAppBrowserManager.getTabCount();
+      this.syncAppearance();
       if (!visible) {
         this.clearAttachRetryTimer();
         this.resetLocalState();
@@ -530,11 +613,55 @@ export struct LxAppBrowser {
 	  }
 
 	  aboutToDisappear() {
+	    StatusBarArbiter.suspend(false);
 	    this.clearAttachRetryTimer();
     this.stopKeyboardMonitor();
 	    if (this.listener) {
 	      LxAppBrowserManager.unregisterListener(this.listener!);
 	      this.listener = null;
+    }
+  }
+
+  // SRC_IN tint for the stroke-only menu icons: fillColor would paint their
+  // circles solid. Light keeps the art's own #666666.
+  private menuIconFilter(): ColorFilter {
+    const hex = (this.appearanceDark ? DARK_CHROME.text : LIGHT_CHROME.secondaryIcon).replace('#', '');
+    const r: number = parseInt(hex.substring(0, 2), 16) / 255;
+    const g: number = parseInt(hex.substring(2, 4), 16) / 255;
+    const b: number = parseInt(hex.substring(4, 6), 16) / 255;
+    return new ColorFilter([
+      0, 0, 0, r, 0,
+      0, 0, 0, g, 0,
+      0, 0, 0, b, 0,
+      0, 0, 0, 1, 0
+    ]);
+  }
+
+  private colors(): BrowserChromeColors {
+    return this.appearanceDark ? DARK_CHROME : LIGHT_CHROME;
+  }
+
+  private syncAppearance(): void {
+    const context = getContext(this) as common.UIAbilityContext;
+    const hostDark = context?.config?.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+    const dark = LxAppBrowserManager.resolvedAppearanceDark(hostDark);
+    if (dark !== this.appearanceDark) {
+      this.appearanceDark = dark;
+    }
+    if (this.isVisible) {
+      StatusBarArbiter.suspend(true);
+      void this.setStatusBarColor(this.appearanceDark ? '#FFFFFF' : '#000000');
+    } else {
+      StatusBarArbiter.suspend(false);
+    }
+  }
+
+  private async setStatusBarColor(color: string): Promise<void> {
+    try {
+      const target = await window.getLastWindow(getContext(this));
+      await target.setWindowSystemBarProperties({ statusBarContentColor: color });
+    } catch (error) {
+      LxLog.e(TAG, `Failed to set browser status bar color: ${error}`);
     }
   }
 
@@ -844,7 +971,7 @@ export struct LxAppBrowser {
       .width('100%')
       .height('100%')
       .padding({ top: px2vp(this.topSafeAreaHeight) })
-      .backgroundColor(Color.White)
+      .backgroundColor(this.colors().canvas)
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     }
   }
@@ -854,6 +981,11 @@ export struct LxAppBrowser {
     Web({ src: '', controller: entry.controller })
       .width('100%')
       .height('100%')
+      // prefers-color-scheme follows the product; sites without a dark
+      // style stay as authored rather than being force-inverted.
+      .darkMode(this.appearanceDark ? WebDarkMode.On : WebDarkMode.Off)
+      .forceDarkAccess(false)
+      .backgroundColor(this.colors().canvas)
       .visibility(entry.tabId === (this.visibleTabId || this.activeTabId) ? Visibility.Visible : Visibility.Hidden)
       // Observe-only: the first touch marks the tab as user-interacted for
       // the back/forward history gate; the event passes through to the page.
@@ -1058,7 +1190,7 @@ export struct LxAppBrowser {
     // exposing a strip of page content. A hairline top border separates it from
     // the page above.
     Column() {
-      Divider().color('#E0E0E0').strokeWidth(0.5).width('100%')
+      Divider().color(this.colors().divider).strokeWidth(0.5).width('100%')
 
       Column() {
         // Compact aside chrome has no address row; desktop's read-only address
@@ -1068,15 +1200,15 @@ export struct LxAppBrowser {
             Image(this.addressIconPath)
               .width(16)
               .height(16)
-              .fillColor(this.addressIconColor)
+              .fillColor(this.addressIconColor === '#A15C00' ? this.colors().warning : this.colors().secondaryIcon)
               .visibility((this.addressEditing || !this.addressIconVisible) ? Visibility.Hidden : Visibility.Visible)
               .margin({ left: 12, right: 6 })
 
             TextInput({ text: this.addressText, placeholder: 'Enter address' })
               .layoutWeight(1)
               .fontSize(13)
-              .fontColor('#333333')
-              .placeholderColor('#999999')
+              .fontColor(this.colors().text)
+              .placeholderColor(this.colors().placeholder)
               .backgroundColor(Color.Transparent)
               .borderRadius(0)
               .padding({ left: 0, right: 4 })
@@ -1099,7 +1231,7 @@ export struct LxAppBrowser {
             Image($rawfile('icons/icon_browser_refresh.svg'))
               .width(16)
               .height(16)
-              .fillColor('#666666')
+              .fillColor(this.colors().secondaryIcon)
               .padding(8)
               .width(32)
               .height(32)
@@ -1118,7 +1250,7 @@ export struct LxAppBrowser {
           }
           .width('100%')
           .height(34)
-          .backgroundColor('#F0F0F0')
+          .backgroundColor(this.colors().pill)
           .borderRadius(18)
           .alignItems(VerticalAlign.Center)
         }
@@ -1128,7 +1260,7 @@ export struct LxAppBrowser {
           Image($rawfile('icons/icon_back.svg'))
             .width(20)
             .height(20)
-            .fillColor(this.canGoBack ? '#333333' : '#CCCCCC')
+            .fillColor(this.canGoBack ? this.colors().icon : this.colors().disabledIcon)
             .padding(8)
             .width(40)
             .height(36)
@@ -1148,7 +1280,7 @@ export struct LxAppBrowser {
           Image($rawfile('icons/icon_forward.svg'))
             .width(20)
             .height(20)
-            .fillColor(this.canGoForward ? '#333333' : '#CCCCCC')
+            .fillColor(this.canGoForward ? this.colors().icon : this.colors().disabledIcon)
             .padding(8)
             .width(40)
             .height(36)
@@ -1169,7 +1301,7 @@ export struct LxAppBrowser {
             Image($rawfile('icons/icon_browser_refresh.svg'))
               .width(18)
               .height(18)
-              .fillColor('#333333')
+              .fillColor(this.colors().icon)
               .padding(8)
               .width(40)
               .height(36)
@@ -1191,7 +1323,7 @@ export struct LxAppBrowser {
           // New-tab affordance (asides are API-opened; user tabs are self mode).
           if (!this.isAsideActive) {
             Stack({ alignContent: Alignment.Center }) {
-              this.ToolbarPlusIcon('#333333')
+              this.ToolbarPlusIcon(this.colors().icon)
             }
             .width(40)
             .height(36)
@@ -1209,7 +1341,7 @@ export struct LxAppBrowser {
               Text('')
                 .width(14)
                 .height(14)
-                .border({ width: 1.8, color: '#333333' })
+                .border({ width: 1.8, color: this.colors().icon })
                 .borderRadius(3)
                 .translate({ x: 4.5, y: -4.5 })
               Text(this.tabCountLabel())
@@ -1217,11 +1349,11 @@ export struct LxAppBrowser {
                 .height(16)
                 .fontSize(10)
                 .fontWeight(FontWeight.Medium)
-                .fontColor('#333333')
+                .fontColor(this.colors().icon)
                 .textAlign(TextAlign.Center)
-                .border({ width: 1.8, color: '#333333' })
+                .border({ width: 1.8, color: this.colors().icon })
                 .borderRadius(3)
-                .backgroundColor('#F5F5F7')
+                .backgroundColor(this.colors().bar)
                 .translate({ x: -1.5, y: 1.5 })
             }
             .width(24)
@@ -1236,7 +1368,7 @@ export struct LxAppBrowser {
           // Overflow menu (downloads / settings) — self tabs only.
           if (!this.isAsideActive) {
             Stack({ alignContent: Alignment.Center }) {
-              this.ToolbarMenuIcon('#333333')
+              this.ToolbarMenuIcon(this.colors().icon)
             }
             .width(40)
             .height(36)
@@ -1248,7 +1380,7 @@ export struct LxAppBrowser {
           Image($rawfile('icons/icon_close_x.svg'))
             .width(20)
             .height(20)
-            .fillColor('#333333')
+            .fillColor(this.colors().icon)
             .padding(8)
             .width(40)
             .height(36)
@@ -1270,7 +1402,7 @@ export struct LxAppBrowser {
       })
     }
     .width('100%')
-    .backgroundColor('#F5F5F7')
+    .backgroundColor(this.colors().bar)
 	  }
 
   /** Total bottom-bar height for content and overlay placement. */
@@ -1306,12 +1438,13 @@ export struct LxAppBrowser {
         Column() {
           Row() {
             Image($rawfile('icons/icon_browser_download.svg'))
+              .colorFilter(this.menuIconFilter())
               .width(18)
               .height(18)
               .margin({ right: 10 })
             Text(localizedString(getContext(this).resourceManager, 'lx_browser_downloads'))
               .fontSize(15)
-              .fontColor('#333333')
+              .fontColor(this.colors().text)
           }
           .width('100%')
           .height(48)
@@ -1322,16 +1455,17 @@ export struct LxAppBrowser {
             LxAppBrowserManager.navigateActiveTab(DOWNLOADS_URL);
           })
 
-          Divider().color('#11000000')
+          Divider().color(this.colors().hairline)
 
           Row() {
             Image($rawfile('icons/icon_browser_settings.svg'))
+              .colorFilter(this.menuIconFilter())
               .width(18)
               .height(18)
               .margin({ right: 10 })
             Text(localizedString(getContext(this).resourceManager, 'lx_browser_settings'))
               .fontSize(15)
-              .fontColor('#333333')
+              .fontColor(this.colors().text)
           }
           .width('100%')
           .height(48)
@@ -1343,9 +1477,9 @@ export struct LxAppBrowser {
           })
         }
         .width('60%')
-        .backgroundColor(Color.White)
+        .backgroundColor(this.colors().surface)
         .borderRadius(12)
-        .border({ width: 0.5, color: '#14000000' })
+        .border({ width: 0.5, color: this.colors().stroke })
         .shadow({ radius: 18, color: '#22000000', offsetX: 0, offsetY: 4 })
       }
       .width('100%')
@@ -1371,12 +1505,12 @@ export struct LxAppBrowser {
           Text('Tabs')
             .fontSize(17)
             .fontWeight(FontWeight.Medium)
-            .fontColor('#1A1A1A')
+            .fontColor(this.colors().title)
             .layoutWeight(1)
           // New tabs are self mode; no affordance while an aside is active.
           if (!this.isAsideActive) {
             Stack({ alignContent: Alignment.Center }) {
-              this.ToolbarPlusIcon('#333333')
+              this.ToolbarPlusIcon(this.colors().icon)
             }
               .width(40)
               .height(36)
@@ -1391,7 +1525,7 @@ export struct LxAppBrowser {
         .padding({ left: 20, right: 12 })
         .alignItems(VerticalAlign.Center)
 
-        Divider().color('#11000000')
+        Divider().color(this.colors().hairline)
 
         List() {
           ForEach(this.tabRows, (row: BrowserTabRow) => {
@@ -1401,13 +1535,13 @@ export struct LxAppBrowser {
                   .layoutWeight(1)
                   .fontSize(15)
                   .fontWeight(row.isActive ? FontWeight.Medium : FontWeight.Normal)
-                  .fontColor(row.isActive ? '#1A1A1A' : '#4D4D4D')
+                  .fontColor(row.isActive ? this.colors().title : this.colors().inactiveTitle)
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                 Image($rawfile('icons/icon_close_x.svg'))
                   .width(16)
                   .height(16)
-                  .fillColor('#666666')
+                  .fillColor(this.colors().secondaryIcon)
                   .padding(10)
                   .width(36)
                   .height(36)
@@ -1431,13 +1565,13 @@ export struct LxAppBrowser {
         .width('100%')
       }
       .width('100%')
-      .backgroundColor(Color.White)
+      .backgroundColor(this.colors().surface)
       .borderRadius({ topLeft: 16, topRight: 16 })
       .padding({ bottom: px2vp(this.bottomSafeAreaHeight) })
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#66000000')
+    .backgroundColor(this.colors().scrim)
   }
 
   private beginAddressEditing(): void {

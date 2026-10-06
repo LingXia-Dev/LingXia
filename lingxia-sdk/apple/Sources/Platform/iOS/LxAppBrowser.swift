@@ -218,6 +218,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     // In-view overlays shown/hidden instantly — no system sheet/menu animation.
     private var tabSwitcherOverlay: LxAppBrowserTabSwitcherView?
     private var menuOverlay: UIView?
+    private var appearanceObserver: NSObjectProtocol?
 
     init() {
         super.init(nibName: nil, bundle: nil)
@@ -231,7 +232,11 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .white
+        view.backgroundColor = .systemBackground
+        applyBrowserAppearance()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _: UITraitCollection) in
+            self.setNeedsStatusBarAppearanceUpdate()
+        }
         setupUI()
         setupBackGestureRecognizer()
         observeKeyboard()
@@ -244,6 +249,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         navigationController?.setNavigationBarHidden(true, animated: false)
         navigationController?.interactivePopGestureRecognizer?.isEnabled = true
         navigationController?.interactivePopGestureRecognizer?.delegate = nil
+        observeBrowserAppearance()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -254,13 +260,46 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
 
+        if let appearanceObserver {
+            NotificationCenter.default.removeObserver(appearanceObserver)
+            self.appearanceObserver = nil
+        }
         if isMovingFromParent || isBeingDismissed {
             suspendManagedWebView()
         }
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
-        .darkContent
+        traitCollection.userInterfaceStyle == .dark ? .lightContent : .darkContent
+    }
+
+    /// Chrome follows the built-in browser app's resolved scheme — the
+    /// product's, since that app never pins one — not the window's, which a
+    /// pin applied before the window existed never reached. Its tab webviews
+    /// follow the same value through the appearance registry. The controller
+    /// outlives each presentation, so it listens only while on screen.
+    private func observeBrowserAppearance() {
+        applyBrowserAppearance()
+        guard appearanceObserver == nil else { return }
+        let browserAppId = getBuiltinBrowserAppId().toString()
+        appearanceObserver = NotificationCenter.default.addObserver(
+            forName: .navBarStateChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard notification.object as? String == browserAppId else { return }
+            MainActor.assumeIsolated {
+                self?.applyBrowserAppearance()
+            }
+        }
+    }
+
+    private func applyBrowserAppearance() {
+        let dark = LxAppAppearanceRegistry.resolvedDark(appId: getBuiltinBrowserAppId().toString())
+            ?? LxAppAppearanceRegistry.hostIsDark()
+        let style: UIUserInterfaceStyle = dark ? .dark : .light
+        guard overrideUserInterfaceStyle != style else { return }
+        overrideUserInterfaceStyle = style
     }
 
     deinit {
@@ -268,6 +307,9 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
             invalidateObservations()
             attachRetryWorkItem?.cancel()
             NotificationCenter.default.removeObserver(self)
+            if let appearanceObserver {
+                NotificationCenter.default.removeObserver(appearanceObserver)
+            }
         }
     }
 
@@ -318,7 +360,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         // content stays below the status bar: websites can't inset for the notch
         // the way our own lxapp pages can, so the system status area must stay clear.
         contentContainer.translatesAutoresizingMaskIntoConstraints = false
-        contentContainer.backgroundColor = .white
+        contentContainer.backgroundColor = .systemBackground
         contentContainer.clipsToBounds = true
         view.addSubview(contentContainer)
 
@@ -339,26 +381,26 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
 
         let borderLine = UIView()
         borderLine.translatesAutoresizingMaskIntoConstraints = false
-        borderLine.backgroundColor = UIColor(red: 0.88, green: 0.88, blue: 0.88, alpha: 1.0)
+        borderLine.backgroundColor = BrowserPalette.border
         bottomBarBackground.contentView.addSubview(borderLine)
 
         let barContent = bottomBarBackground.contentView
 
         // Address row: the editable URL pill.
         addressPill.translatesAutoresizingMaskIntoConstraints = false
-        addressPill.backgroundColor = UIColor(red: 0.94, green: 0.94, blue: 0.94, alpha: 1.0)
+        addressPill.backgroundColor = BrowserPalette.pill
         addressPill.layer.cornerRadius = 18
         addressPill.clipsToBounds = true
         barContent.addSubview(addressPill)
 
         addressIcon.translatesAutoresizingMaskIntoConstraints = false
         addressIcon.contentMode = .scaleAspectFit
-        addressIcon.tintColor = UIColor(white: 0.4, alpha: 1.0)
+        addressIcon.tintColor = BrowserPalette.secondaryIcon
         addressPill.addSubview(addressIcon)
 
         addressField.translatesAutoresizingMaskIntoConstraints = false
         addressField.font = UIFont.systemFont(ofSize: 13)
-        addressField.textColor = UIColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)
+        addressField.textColor = BrowserPalette.text
         addressField.borderStyle = .none
         addressField.delegate = self
         addressField.keyboardType = .URL
@@ -373,7 +415,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
             refreshButton,
             iconName: "icon_browser_refresh",
             iconSize: 16,
-            tintColor: UIColor(white: 0.4, alpha: 1.0),
+            tintColor: BrowserPalette.secondaryIcon,
             action: #selector(refreshTapped),
             buttonSize: CGSize(width: 32, height: 32)
         )
@@ -387,15 +429,15 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         actionRow.spacing = 8
         barContent.addSubview(actionRow)
 
-        configureIconButton(backButton, iconName: "icon_back", iconSize: 20, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(backTapped))
+        configureIconButton(backButton, iconName: "icon_back", iconSize: 20, tintColor: BrowserPalette.icon, action: #selector(backTapped))
         NavButtonState.apply(backButton, enabled: false)
         actionRow.addArrangedSubview(backButton)
 
-        configureIconButton(forwardButton, iconName: "icon_forward", iconSize: 20, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(forwardTapped))
+        configureIconButton(forwardButton, iconName: "icon_forward", iconSize: 20, tintColor: BrowserPalette.icon, action: #selector(forwardTapped))
         NavButtonState.apply(forwardButton, enabled: false)
         actionRow.addArrangedSubview(forwardButton)
 
-        configureIconButton(asideRefreshButton, iconName: "icon_browser_refresh", iconSize: 18, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(refreshTapped))
+        configureIconButton(asideRefreshButton, iconName: "icon_browser_refresh", iconSize: 18, tintColor: BrowserPalette.icon, action: #selector(refreshTapped))
         asideRefreshButton.isHidden = true
         actionRow.addArrangedSubview(asideRefreshButton)
 
@@ -406,7 +448,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
 
         // New-tab button — its own affordance, not buried in the tab switcher.
         newTabButton.translatesAutoresizingMaskIntoConstraints = false
-        newTabButton.tintColor = UIColor(white: 0.2, alpha: 1.0)
+        newTabButton.tintColor = BrowserPalette.icon
         newTabButton.setImage(iconImage(named: "icon_plus", size: 20)?.withRenderingMode(.alwaysTemplate), for: .normal)
         newTabButton.addTarget(self, action: #selector(newTabTapped), for: .touchUpInside)
         NSLayoutConstraint.activate([
@@ -422,7 +464,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         // Menu (hamburger) with downloads + settings — a custom instant popup,
         // not UIMenu (its highlight flash + presentation animation).
         menuButton.translatesAutoresizingMaskIntoConstraints = false
-        menuButton.tintColor = UIColor(white: 0.2, alpha: 1.0)
+        menuButton.tintColor = BrowserPalette.icon
         menuButton.setImage(iconImage(named: "icon_menu", size: 20)?.withRenderingMode(.alwaysTemplate), for: .normal)
         menuButton.addTarget(self, action: #selector(menuTapped), for: .touchUpInside)
         NSLayoutConstraint.activate([
@@ -431,7 +473,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         ])
         actionRow.addArrangedSubview(menuButton)
 
-        configureIconButton(closeButton, iconName: "icon_close_x", iconSize: 20, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(closeTapped))
+        configureIconButton(closeButton, iconName: "icon_close_x", iconSize: 20, tintColor: BrowserPalette.icon, action: #selector(closeTapped))
         actionRow.addArrangedSubview(closeButton)
 
         // Anchor to the true bottom; the controls keep only a small home-indicator
@@ -524,7 +566,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
 
     private func setupTabsButton() {
         tabsButton.translatesAutoresizingMaskIntoConstraints = false
-        tabsButton.tintColor = UIColor(white: 0.2, alpha: 1.0)
+        tabsButton.tintColor = BrowserPalette.icon
         tabsButton.setImage(iconImage(named: "icon_tabs", size: 20)?.withRenderingMode(.alwaysTemplate), for: .normal)
         tabsButton.addTarget(self, action: #selector(tabsTapped), for: .touchUpInside)
         NSLayoutConstraint.activate([
@@ -534,7 +576,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
 
         tabsBadge.translatesAutoresizingMaskIntoConstraints = false
         tabsBadge.font = UIFont.systemFont(ofSize: 10, weight: .semibold)
-        tabsBadge.textColor = UIColor(white: 0.2, alpha: 1.0)
+        tabsBadge.textColor = BrowserPalette.icon
         tabsBadge.textAlignment = .center
         tabsButton.addSubview(tabsBadge)
         NSLayoutConstraint.activate([
@@ -561,7 +603,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
 
         let card = UIView()
         card.translatesAutoresizingMaskIntoConstraints = false
-        card.backgroundColor = .white
+        card.backgroundColor = BrowserPalette.surface
         card.layer.cornerRadius = 12
         card.layer.shadowColor = UIColor.black.cgColor
         card.layer.shadowOpacity = 0.18
@@ -601,7 +643,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         config.title = title
         config.image = iconImage(named: iconName, size: 18)?.withRenderingMode(.alwaysTemplate)
         config.imagePadding = 12
-        config.baseForegroundColor = UIColor(white: 0.2, alpha: 1.0)
+        config.baseForegroundColor = BrowserPalette.icon
         config.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16)
         let button = UIButton(configuration: config)
         button.contentHorizontalAlignment = .leading
@@ -813,7 +855,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
 
     private func browserUrlDisplay(url: URL?) -> BrowserUrlDisplay {
         guard let url else {
-            return BrowserUrlDisplay(text: "", iconName: nil, tintColor: UIColor(white: 0.4, alpha: 1.0))
+            return BrowserUrlDisplay(text: "", iconName: nil, tintColor: BrowserPalette.secondaryIcon)
         }
         switch url.scheme?.lowercased() {
         case "lingxia":
@@ -822,25 +864,25 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
             return BrowserUrlDisplay(
                 text: url.absoluteString,
                 iconName: nil,
-                tintColor: UIColor(white: 0.4, alpha: 1.0)
+                tintColor: BrowserPalette.secondaryIcon
             )
         case "https":
             return BrowserUrlDisplay(
                 text: url.host?.isEmpty == false ? url.host! : "Web page",
                 iconName: nil,
-                tintColor: UIColor(white: 0.4, alpha: 1.0)
+                tintColor: BrowserPalette.secondaryIcon
             )
         case "http":
             return BrowserUrlDisplay(
                 text: url.host?.isEmpty == false ? url.host! : "Web page",
                 iconName: "icon_warning",
-                tintColor: UIColor(red: 0.63, green: 0.36, blue: 0.0, alpha: 1.0)
+                tintColor: BrowserPalette.warning
             )
         default:
             return BrowserUrlDisplay(
                 text: "Web page",
                 iconName: "icon_warning",
-                tintColor: UIColor(red: 0.63, green: 0.36, blue: 0.0, alpha: 1.0)
+                tintColor: BrowserPalette.warning
             )
         }
     }
@@ -1076,13 +1118,13 @@ private final class LxAppBrowserTabSwitcherView: UIView, UITableViewDataSource, 
 
         let scrim = UIControl()
         scrim.translatesAutoresizingMaskIntoConstraints = false
-        scrim.backgroundColor = UIColor(white: 0, alpha: 0.4)
+        scrim.backgroundColor = BrowserPalette.scrim
         scrim.addTarget(self, action: #selector(scrimTapped), for: .touchUpInside)
         addSubview(scrim)
 
         let panel = UIView()
         panel.translatesAutoresizingMaskIntoConstraints = false
-        panel.backgroundColor = .white
+        panel.backgroundColor = BrowserPalette.surface
         panel.layer.cornerRadius = 16
         panel.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         panel.clipsToBounds = true
@@ -1096,7 +1138,7 @@ private final class LxAppBrowserTabSwitcherView: UIView, UITableViewDataSource, 
 
         let addButton = UIButton(type: .system)
         addButton.translatesAutoresizingMaskIntoConstraints = false
-        addButton.tintColor = UIColor(white: 0.2, alpha: 1.0)
+        addButton.tintColor = BrowserPalette.icon
         addButton.setImage(lxAppBrowserIconImage(named: "icon_plus", size: 20)?.withRenderingMode(.alwaysTemplate), for: .normal)
         addButton.addTarget(self, action: #selector(newTabTapped), for: .touchUpInside)
         // New tabs are self mode; hide the affordance while an aside is active.
@@ -1105,7 +1147,7 @@ private final class LxAppBrowserTabSwitcherView: UIView, UITableViewDataSource, 
 
         let divider = UIView()
         divider.translatesAutoresizingMaskIntoConstraints = false
-        divider.backgroundColor = UIColor(white: 0, alpha: 0.07)
+        divider.backgroundColor = BrowserPalette.divider
         panel.addSubview(divider)
 
         tableView.translatesAutoresizingMaskIntoConstraints = false
@@ -1114,6 +1156,7 @@ private final class LxAppBrowserTabSwitcherView: UIView, UITableViewDataSource, 
         tableView.register(LxAppBrowserTabCell.self, forCellReuseIdentifier: Self.cellReuseId)
         tableView.rowHeight = Self.rowHeight
         tableView.separatorStyle = .none
+        tableView.backgroundColor = .clear
         panel.addSubview(tableView)
 
         let tableHeight = tableView.heightAnchor.constraint(equalToConstant: Self.rowHeight)
@@ -1214,6 +1257,7 @@ private final class LxAppBrowserTabCell: UITableViewCell {
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
+        backgroundColor = .clear
 
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = UIFont.systemFont(ofSize: 15)
@@ -1222,7 +1266,7 @@ private final class LxAppBrowserTabCell: UITableViewCell {
 
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.setImage(lxAppBrowserIconImage(named: "icon_close_x", size: 16)?.withRenderingMode(.alwaysTemplate), for: .normal)
-        closeButton.tintColor = UIColor(white: 0.4, alpha: 1.0)
+        closeButton.tintColor = BrowserPalette.secondaryIcon
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         contentView.addSubview(closeButton)
 
@@ -1245,12 +1289,36 @@ private final class LxAppBrowserTabCell: UITableViewCell {
     func configure(title: String, isActive: Bool, onClose: @escaping () -> Void) {
         titleLabel.text = title
         titleLabel.font = UIFont.systemFont(ofSize: 15, weight: isActive ? .semibold : .regular)
-        titleLabel.textColor = isActive ? UIColor(white: 0.1, alpha: 1.0) : UIColor(white: 0.3, alpha: 1.0)
+        titleLabel.textColor = isActive ? BrowserPalette.activeTitle : BrowserPalette.inactiveTitle
         self.onClose = onClose
     }
 
     @objc private func closeTapped() {
         onClose?()
+    }
+}
+
+/// Browser chrome colors: the light values are the original design, the dark
+/// ones match the host overlays (`LxAppAppearanceRegistry.overlayColors`).
+@MainActor
+private enum BrowserPalette {
+    static let icon = dynamic(light: UIColor(white: 0.2, alpha: 1), dark: UIColor(white: 0.9, alpha: 1))
+    static let secondaryIcon = dynamic(light: UIColor(white: 0.4, alpha: 1), dark: UIColor(white: 0.63, alpha: 1))
+    static let text = dynamic(light: UIColor(white: 0.2, alpha: 1), dark: UIColor(white: 0.92, alpha: 1))
+    static let activeTitle = dynamic(light: UIColor(white: 0.1, alpha: 1), dark: .white)
+    static let inactiveTitle = dynamic(light: UIColor(white: 0.3, alpha: 1), dark: UIColor(white: 0.7, alpha: 1))
+    static let pill = dynamic(light: UIColor(white: 0.94, alpha: 1), dark: UIColor(white: 1, alpha: 0.12))
+    static let border = dynamic(light: UIColor(white: 0.88, alpha: 1), dark: UIColor(white: 1, alpha: 0.12))
+    static let divider = dynamic(light: UIColor(white: 0, alpha: 0.07), dark: UIColor(white: 1, alpha: 0.12))
+    static let surface = dynamic(light: .white, dark: UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1))
+    static let scrim = dynamic(light: UIColor(white: 0, alpha: 0.4), dark: UIColor(white: 0, alpha: 0.55))
+    static let warning = dynamic(
+        light: UIColor(red: 0.63, green: 0.36, blue: 0.0, alpha: 1),
+        dark: UIColor(red: 1.0, green: 0.62, blue: 0.25, alpha: 1)
+    )
+
+    private static func dynamic(light: UIColor, dark: UIColor) -> UIColor {
+        UIColor { $0.userInterfaceStyle == .dark ? dark : light }
     }
 }
 

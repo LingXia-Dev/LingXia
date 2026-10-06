@@ -30,6 +30,7 @@ import { AnimationType } from './LxAppNavigation';
 import { LxNativeVideoPlayer } from './APIs/media/player/LxNativeVideoPlayer';
 import { LxFullscreenVideoOverlay } from './APIs/media/player/LxFullscreenVideoOverlay';
 import { RefreshHeader } from './RefreshHeader';
+import { StatusBarArbiter } from './StatusBarArbiter';
 import { CapsuleMenuManager, CapsuleMenuBottomSheetComponent } from './CapsuleMenuBottomSheet';
 
 // Container-specific constants
@@ -117,6 +118,9 @@ export struct LxAppContainer {
   // read the foreground scheme from here.
   private static currentAppearanceDark: boolean = false
   private static appearanceByApp: Map<string, boolean> = new Map()
+  // The container that last styled the status bar; it re-derives the color
+  // when the in-app browser releases the bar.
+  private static statusBarOwner: LxAppContainer | null = null
 
   // Static registry for animation type information
   private static animationTypes: Map<string, AnimationType> = new Map()
@@ -268,6 +272,7 @@ export struct LxAppContainer {
 
     // Register this container for TabBar updates
     LxAppContainer.activeContainers.set(this.appId, this);
+    StatusBarArbiter.setReleaseHandler(() => LxAppContainer.reapplyOwnerStatusBar());
     setCapsuleGeometryListener(() => {
       try {
         syncLxappHostUI(this.appId);
@@ -324,6 +329,9 @@ export struct LxAppContainer {
   aboutToDisappear() {
     // Unregister this container
     LxAppContainer.activeContainers.delete(this.appId);
+    if (LxAppContainer.statusBarOwner === this) {
+      LxAppContainer.statusBarOwner = null;
+    }
 
     // Remove WebView UI callback when container is destroyed
     removeWebViewUiCallback(this.webViewUiCallback);
@@ -545,6 +553,13 @@ export struct LxAppContainer {
       return true;
     }
     return false;
+  }
+
+  private static reapplyOwnerStatusBar(): void {
+    const owner = LxAppContainer.statusBarOwner;
+    if (owner && LxAppContainer.activeContainers.get(owner.appId) === owner) {
+      owner.applyStatusBarContentColor();
+    }
   }
 
   /** Scheme of the lxapp currently on screen, for overlays without an appId. */
@@ -1358,6 +1373,10 @@ export struct LxAppContainer {
 
   /** Keep status bar glyphs legible against native chrome or custom content. */
   private applyStatusBarContentColor(): void {
+    LxAppContainer.statusBarOwner = this;
+    if (StatusBarArbiter.isSuspended()) {
+      return;
+    }
     const config = this.pageConfig;
     let lightGlyphs: boolean;
     if (config && config.showNavbar) {
