@@ -84,9 +84,14 @@ pub(crate) fn open_for_app(
 }
 
 /// Opens one host-selected internal browser route for an existing app-owned
-/// tab. The native authority is supplied here rather than crossing the Apple
+/// tab. The native authority is supplied here rather than crossing the platform
 /// FFI, so ordinary app navigation cannot opt into trusted control pages.
-#[cfg(any(target_os = "ios", target_os = "macos"))]
+#[cfg(any(
+    target_os = "ios",
+    target_os = "macos",
+    target_os = "android",
+    target_env = "ohos"
+))]
 pub(crate) fn open_trusted_for_app(
     appid: &str,
     session_id: u64,

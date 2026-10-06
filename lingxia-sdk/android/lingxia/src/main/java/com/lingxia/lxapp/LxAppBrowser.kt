@@ -445,7 +445,7 @@ internal object LxAppBrowser {
         }
         closeOverflowMenu()
         closeTabSwitcher()
-        val appId = NativeApi.getBuiltinBrowserAppId()?.takeIf { it.isNotBlank() }
+        val appId = LxApp.homeAppId?.takeIf { it.isNotBlank() }
         if (appId == null) {
             Log.w(TAG, "openNewTab failed: empty browser appId")
             return
@@ -455,7 +455,7 @@ internal object LxAppBrowser {
             Log.w(TAG, "openNewTab failed: invalid session for appId=$appId")
             return
         }
-        val tabId = NativeApi.openBrowserTab(appId, sessionId, HIDDEN_NEW_TAB_URL)
+        val tabId = NativeApi.openTrustedBrowserTabWithId(appId, sessionId, HIDDEN_NEW_TAB_URL, "tab-" + java.util.UUID.randomUUID().toString())
         if (tabId.isNullOrBlank()) {
             Log.w(TAG, "openNewTab failed: native openBrowserTab returned empty tab")
             return
@@ -920,7 +920,14 @@ internal object LxAppBrowser {
     private fun navigateActiveTab(activity: Activity, targetUrl: String): Boolean {
         val tabId = activeTabId ?: return false
         updateAddressBar(targetUrl)
-        if (!NativeApi.browserTabNavigate(tabId, targetUrl)) {
+        val navigated = if (targetUrl == "lingxia://downloads" || targetUrl == "lingxia://settings") {
+            val appId = LxApp.homeAppId ?: return false
+            val sessionId = NativeApi.getLxAppSessionId(appId)
+            sessionId > 0L && NativeApi.openTrustedBrowserTabWithId(appId, sessionId, targetUrl, tabId) != null
+        } else {
+            NativeApi.browserTabNavigate(tabId, targetUrl)
+        }
+        if (!navigated) {
             Log.w(TAG, "navigate failed: tabId=$tabId url=$targetUrl")
             scheduleChromeRefreshSoon()
             return false

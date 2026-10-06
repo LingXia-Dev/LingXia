@@ -282,6 +282,7 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
         } else {
             navigationItem.leftBarButtonItem = UIBarButtonItem(title: "×", style: .plain, target: self, action: #selector(onCancel))
         }
+        navigationItem.leftBarButtonItem?.accessibilityLabel = L10n.string("lx_common_cancel")
         navigationController?.navigationBar.tintColor = techBlue
     }
 
@@ -382,7 +383,7 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
         userAlbums.enumerateObjects { c, _, _ in
             let count = PHAsset.fetchAssets(in: c, options: options).count
             if count > 0 {
-                self.albums.append((title: c.localizedTitle ?? "相册", collection: c, count: count))
+                self.albums.append((title: c.localizedTitle ?? L10n.string("lx_album_label"), collection: c, count: count))
             }
         }
 
@@ -500,7 +501,7 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
             bottomBar.heightAnchor.constraint(equalToConstant: 56)
         ])
 
-        originalOption = RadioOptionView(title: "原图", color: techBlue)
+        originalOption = RadioOptionView(title: L10n.string("lx_album_original_image"), color: techBlue)
         originalOption.isOn = isOriginal
         originalOption.addTarget(self, action: #selector(originalChanged), for: .valueChanged)
         bottomBar.addSubview(originalOption)
@@ -513,7 +514,7 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
         countLabel.translatesAutoresizingMaskIntoConstraints = false
 
         doneButton = UIButton(type: .system)
-        doneButton.setTitle("完成", for: .normal)
+        doneButton.setTitle(L10n.string("lx_common_done"), for: .normal)
         doneButton.setTitleColor(.white, for: .normal)
         doneButton.backgroundColor = techBlue
         doneButton.layer.cornerRadius = 18
@@ -611,7 +612,7 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
 
     private func updateDoneLabel() {
         let count = selected.count
-        countLabel.text = "已选 \(count)/\(maxCount)"
+        countLabel.text = "\(L10n.string("lx_album_selected")) \(count)/\(maxCount)"
         doneButton.isEnabled = count > 0
         doneButton.alpha = count > 0 ? 1.0 : 0.6
     }

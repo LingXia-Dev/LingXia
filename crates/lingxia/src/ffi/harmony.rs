@@ -351,6 +351,19 @@ pub fn open_browser_tab(appid: String, session_id: i64, url: String) -> Option<S
 }
 
 #[napi]
+pub fn open_trusted_browser_tab_with_id(
+    appid: String,
+    session_id: i64,
+    url: String,
+    tab_id: String,
+) -> Option<String> {
+    if session_id <= 0 {
+        return None;
+    }
+    crate::browser::open_trusted_for_app(&appid, session_id as u64, &url, Some(&tab_id)).ok()
+}
+
+#[napi]
 pub fn open_standalone_browser_tab(
     appid: String,
     session_id: i64,

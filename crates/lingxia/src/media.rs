@@ -6,7 +6,7 @@
 //! structs. Processing APIs operate on already-resolved filesystem paths;
 //! callers that start from an `lx://` URI must resolve it first.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use lingxia_platform::traits::media_runtime::{
     CompressImageRequest as PlatformCompressImageRequest,
@@ -36,6 +36,67 @@ pub async fn choose(request: ChooseMediaRequest) -> crate::Result<String> {
     let runtime = crate::runtime::platform()?;
     lingxia_service::media::choose_media(&*runtime, request)
         .await
+        .map_err(Into::into)
+}
+
+/// Selection returned by the native media picker, without a JS runtime.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickedMedia {
+    pub uri: String,
+    pub file_type: String,
+    #[serde(default)]
+    pub is_original: bool,
+}
+
+#[derive(Debug)]
+pub enum MediaSelection {
+    Canceled,
+    Selected(Vec<PickedMedia>),
+}
+
+/// Presents chooseMedia and distinguishes user cancellation from a failure.
+pub async fn choose_with_status(request: ChooseMediaRequest) -> crate::Result<MediaSelection> {
+    let runtime = crate::runtime::platform()?;
+    decode_media_selection(lingxia_service::media::choose_media(&*runtime, request).await)
+}
+
+fn decode_media_selection(
+    result: Result<String, lingxia_platform::PlatformError>,
+) -> crate::Result<MediaSelection> {
+    let json = match result {
+        Err(lingxia_platform::PlatformError::BusinessError(2000)) => {
+            return Ok(MediaSelection::Canceled);
+        }
+        Err(error) => return Err(error.into()),
+        Ok(json) => json,
+    };
+    let entries: Vec<PickedMedia> = serde_json::from_str(&json)
+        .map_err(|error| crate::Error::internal(format!("invalid media selection: {error}")))?;
+    if entries.is_empty()
+        || entries.iter().any(|entry| {
+            entry.uri.trim().is_empty() || !matches!(entry.file_type.as_str(), "image" | "video")
+        })
+    {
+        return Err(crate::Error::internal("invalid media selection entries"));
+    }
+    Ok(MediaSelection::Selected(entries))
+}
+
+/// Copies an opaque system-picker reference into a host-owned local file.
+/// This accepts the URI returned by chooseMedia; callers do not decode it.
+pub fn copy_picked_media_to_file(media: &PickedMedia, destination: &Path) -> crate::Result<()> {
+    let kind = match media.file_type.as_str() {
+        "image" => MediaKind::Image,
+        "video" => MediaKind::Video,
+        _ => {
+            return Err(crate::Error::invalid_request(
+                "unsupported picked media type",
+            ));
+        }
+    };
+    crate::runtime::platform()?
+        .copy_album_media_to_file(&media.uri, destination, kind)
         .map_err(Into::into)
 }
 
@@ -355,4 +416,30 @@ pub fn compress_video(input: CompressVideo) -> crate::Result<CompressedVideo> {
         size: parsed.size.unwrap_or(0),
         mime_type: parsed.mime_type.filter(|m| !m.is_empty()),
     })
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+
+    #[test]
+    fn cancellation_is_distinct_from_permissions_and_invalid_payloads() {
+        use lingxia_platform::PlatformError;
+        assert!(matches!(
+            decode_media_selection(Err(PlatformError::BusinessError(2000))).unwrap(),
+            MediaSelection::Canceled
+        ));
+        assert!(decode_media_selection(Err(PlatformError::BusinessError(3001))).is_err());
+        for json in ["null", "[]", "{}", r#"[{"uri":"","fileType":"image"}]"#] {
+            assert!(decode_media_selection(Ok(json.to_string())).is_err());
+        }
+        let result = decode_media_selection(Ok(
+            r#"[{"uri":"phasset:example","fileType":"image","isOriginal":true}]"#.to_string(),
+        ))
+        .unwrap();
+        let MediaSelection::Selected(entries) = result else {
+            panic!("selection expected")
+        };
+        assert_eq!(entries[0].uri, "phasset:example");
+    }
 }

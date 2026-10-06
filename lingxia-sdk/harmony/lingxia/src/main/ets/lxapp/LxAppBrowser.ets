@@ -2,6 +2,8 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../app/LxLog';
 import { webview } from '@kit.ArkWeb';
 import { display, window } from '@kit.ArkUI';
+import { util } from '@kit.ArkTS';
+import { LxApp } from './LxApp';
 import { Lingxia } from '../app/Lingxia';
 import { localizedString } from '../app/DisplayLanguageResources';
 import { requestWebFileChooser } from './WebFileChooserBridge';
@@ -23,6 +25,7 @@ import {
 	  browserTabPathForId,
   browserUrlIsHidden as nativeBrowserUrlIsHidden,
 	  getBuiltinBrowserAppId,
+	  openTrustedBrowserTabWithId,
 	  getLxappSessionId,
 	  notifyWebViewState,
 	  openAsideBrowserTab,
@@ -214,25 +217,25 @@ export class LxAppBrowserManager {
     }
     let appId = '';
     try {
-      appId = String(getBuiltinBrowserAppId() ?? '').trim();
+      appId = String(LxApp.getInstance().getHomeAppId() ?? '').trim();
     } catch (error) {
-      LxLog.e(TAG, `openNewTab failed: getBuiltinBrowserAppId threw: ${error}`);
+      LxLog.e(TAG, `openNewTab failed: getHomeAppId threw: ${error}`);
       return false;
     }
     if (!appId) {
-      LxLog.e(TAG, 'openNewTab failed: no builtin browser app id');
+      LxLog.e(TAG, 'openNewTab failed: no home app id');
       return false;
     }
 
     const sessionId = Number(getLxappSessionId(appId));
     if (!Number.isFinite(sessionId) || sessionId <= 0) {
-      LxLog.e(TAG, 'openNewTab failed: no session for builtin browser');
+      LxLog.e(TAG, 'openNewTab failed: no session for host app');
       return false;
     }
 
     let newTabId: string | null = null;
     try {
-      newTabId = openBrowserTab(appId, Math.trunc(sessionId), NEW_TAB_URL);
+      newTabId = openTrustedBrowserTabWithId(appId, Math.trunc(sessionId), NEW_TAB_URL, 'tab-' + util.generateRandomUUID(true));
     } catch (error) {
       LxLog.e(TAG, `openNewTab failed: openBrowserTab threw: ${error}`);
       return false;
@@ -307,6 +310,14 @@ export class LxAppBrowserManager {
       return false;
     }
     try {
+      if (target === DOWNLOADS_URL || target === SETTINGS_URL) {
+        const appId = LxApp.getInstance().getHomeAppId();
+        if (!appId) return false;
+        const sessionId = Number(getLxappSessionId(appId));
+        if (!Number.isFinite(sessionId) || sessionId <= 0) return false;
+        const opened: string | null = openTrustedBrowserTabWithId(appId, Math.trunc(sessionId), target, tabId);
+        return opened !== null && LxAppBrowserManager.show(opened, target);
+      }
       return Boolean(browserTabNavigate(tabId, target));
     } catch (error) {
       LxLog.e(TAG, `browserTabNavigate failed for tabId=${tabId}: ${error}`);

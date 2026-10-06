@@ -1421,6 +1421,50 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_openBrowserTab<'a>(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_openTrustedBrowserTabWithId<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+    session_id: jlong,
+    url: JString<'a>,
+    tab_id: JString<'a>,
+) -> JString<'a> {
+    env.with_env(|env| -> Result<JString, jni::errors::Error> {
+        let appid: String = match appid.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(_) => return Ok(JString::null()),
+        };
+        let url: String = match url.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(_) => return Ok(JString::null()),
+        };
+        let tab_id: String = match tab_id.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(_) => return Ok(JString::null()),
+        };
+        if session_id <= 0 {
+            return Ok(JString::null());
+        }
+
+        let tab_id = match crate::browser::open_trusted_for_app(
+            &appid,
+            session_id as u64,
+            &url,
+            Some(&tab_id),
+        ) {
+            Ok(tab_id) => tab_id,
+            Err(e) => {
+                error!("[Android] openTrustedBrowserTabWithId failed: {}", e);
+                return Ok(JString::null());
+            }
+        };
+
+        env.new_string(tab_id).or_else(|_| Ok(JString::null()))
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_openStandaloneBrowserTab<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,

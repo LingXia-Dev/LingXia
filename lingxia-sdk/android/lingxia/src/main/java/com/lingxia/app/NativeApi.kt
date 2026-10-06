@@ -269,6 +269,7 @@ internal object NativeApi {
      */
     @JvmStatic
     external fun openBrowserTab(appId: String, sessionId: Long, url: String): String?
+    external fun openTrustedBrowserTabWithId(appId: String, sessionId: Long, url: String, tabId: String): String?
 
     /**
      * Open a managed browser target without registering it in product browser
