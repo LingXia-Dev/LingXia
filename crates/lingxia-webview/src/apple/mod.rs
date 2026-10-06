@@ -13,7 +13,7 @@ use crate::{UserAgentOverride, WebViewController, WebViewError};
 #[cfg(target_os = "macos")]
 pub use session::screen_locked;
 pub(crate) use webview::WebViewInner;
-pub(crate) use webview::apply_http_proxy;
+pub(crate) use webview::{apply_http_proxy, run_on_main_blocking};
 
 pub const BRIDGE_DOWNSTREAM_CSP_SOURCE: &str = bridge_transport::APPLE_BRIDGE_DOWNSTREAM_CSP_SOURCE;
 pub const BRIDGE_DOWNSTREAM_URL: &str = bridge_transport::APPLE_BRIDGE_DOWNSTREAM_URL;
