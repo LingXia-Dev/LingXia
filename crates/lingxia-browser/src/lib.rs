@@ -99,6 +99,16 @@ pub fn open(url: &str, tab_id: Option<&str>) -> Result<String, LxAppError> {
     tabs::open_internal_browser_tab(url, tab_id)
 }
 
+/// Block downloads while a required browser proxy is disconnected.
+pub fn require_proxy_for_downloads() {
+    downloads::require_proxy();
+}
+
+/// Apply the host browser network policy to downloads; None is explicit direct.
+pub fn configure_download_proxy(proxy: Option<String>) {
+    downloads::configure_proxy(proxy);
+}
+
 #[doc(hidden)]
 pub fn open_trusted(
     native_authority: &lxapp::NativeControlPlaneAuthority,

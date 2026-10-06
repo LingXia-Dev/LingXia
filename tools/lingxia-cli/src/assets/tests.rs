@@ -130,6 +130,7 @@ fn browser_bookmarks_survives_yaml_to_runtime_config() {
     let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
     for bookmarks in [true, false] {
         config.browser = Some(crate::config::BrowserConfig {
+            platforms: Vec::new(),
             bookmarks,
             webui: None,
         });

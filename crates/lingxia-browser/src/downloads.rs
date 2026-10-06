@@ -15,6 +15,73 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum DownloadNetwork {
+    Runtime,
+    Blocked,
+    Explicit(Option<String>),
+}
+fn download_network() -> &'static std::sync::Mutex<DownloadNetwork> {
+    static NETWORK: std::sync::OnceLock<std::sync::Mutex<DownloadNetwork>> =
+        std::sync::OnceLock::new();
+    NETWORK.get_or_init(|| std::sync::Mutex::new(DownloadNetwork::Runtime))
+}
+fn active_browser_downloads() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static ACTIVE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+        std::sync::OnceLock::new();
+    ACTIVE.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+}
+fn unregister_browser_download(id: &str) {
+    active_browser_downloads()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(id);
+    transfer::runtime::unregister_active_download(id);
+}
+fn set_download_network(next: DownloadNetwork) {
+    let mut current = download_network().lock().unwrap_or_else(|e| e.into_inner());
+    if *current == next {
+        return;
+    }
+    // Include jobs that have registered but have not emitted their first
+    // persisted record yet. Policy capture and registration share this lock.
+    if let Ok(owner) = ensure_browser_lxapp() {
+        for id in active_browser_downloads()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+        {
+            let _ = transfer::pause(&owner.runtime.app_data_dir(), id);
+        }
+    }
+    *current = next;
+}
+pub(crate) fn require_proxy() {
+    set_download_network(DownloadNetwork::Blocked);
+}
+pub(crate) fn configure_proxy(proxy: Option<String>) {
+    set_download_network(DownloadNetwork::Explicit(proxy));
+}
+fn task_network(
+    task: transfer::runtime::DownloadTask,
+    id: &str,
+) -> transfer::Result<transfer::runtime::DownloadTask> {
+    let network = download_network().lock().unwrap_or_else(|e| e.into_inner());
+    if !matches!(*network, DownloadNetwork::Blocked) {
+        active_browser_downloads()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id.into());
+    }
+    match network.clone() {
+        DownloadNetwork::Runtime => Ok(task),
+        DownloadNetwork::Explicit(proxy) => Ok(task.with_http_proxy(proxy)),
+        DownloadNetwork::Blocked => Err(transfer::DownloadsError::UnsupportedOperation(
+            "browser proxy is disconnected; reconnect before downloading".into(),
+        )),
+    }
+}
+
 fn publish_browser_download_event(event_name: &str, payload: serde_json::Value) {
     let payload_str = Some(payload.to_string());
     let _ = publish_app_event(BUILTIN_BROWSER_APPID, event_name, payload_str);
@@ -33,6 +100,17 @@ pub(crate) async fn browser_download_resource(
         Some(rong::get_user_agent()),
     )
     .with_browser_persistence(owner.runtime.app_data_dir(), task_id.clone());
+    let task = match task_network(task, &task_id) {
+        Ok(task) => task,
+        Err(error) => {
+            unregister_browser_download(&task_id);
+            publish_browser_download_event(
+                "browser.downloadBlocked",
+                serde_json::json!({"reason": error.to_string()}),
+            );
+            return;
+        }
+    };
     let tab_id_for_event = tab_id.clone();
 
     let result = transfer::runtime::run_browser_download_task(
@@ -57,7 +135,7 @@ pub(crate) async fn browser_download_resource(
         },
     )
     .await;
-    transfer::runtime::unregister_active_download(&task_id);
+    unregister_browser_download(&task_id);
     if let Err(err) = result {
         if err.error == "Download paused" {
             return;
@@ -202,6 +280,13 @@ pub(crate) fn retry_browser_owned_download(task_id: &str) -> transfer::Result<()
     .with_target_path(PathBuf::from(&record.target_path))
     .with_browser_persistence(app_data_dir.clone(), task_id.to_string())
     .with_behavior(request_context.behavior);
+    let task = match task_network(task, task_id) {
+        Ok(task) => task,
+        Err(error) => {
+            unregister_browser_download(task_id);
+            return Err(error);
+        }
+    };
     let owner_clone = owner.clone();
     let task_id_owned = task_id.to_string();
     let tab_id = record.tab_id.clone();
@@ -229,7 +314,7 @@ pub(crate) fn retry_browser_owned_download(task_id: &str) -> transfer::Result<()
             },
         )
         .await;
-        transfer::runtime::unregister_active_download(&task_id_owned);
+        unregister_browser_download(&task_id_owned);
         if let Err(err) = result {
             if err.error == "Download paused" {
                 return;

@@ -322,6 +322,8 @@ pub mod harmony;
 pub mod windows;
 
 pub(crate) mod browser;
+#[cfg(feature = "browser-runtime")]
+pub mod embedded_browser;
 pub(crate) mod push;
 pub(crate) use bootstrap::init_with_platform;
 

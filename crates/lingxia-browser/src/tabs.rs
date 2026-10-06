@@ -872,6 +872,15 @@ fn browser_clear_pending_url(tab_id: &str) {
 // Open / close
 // ---------------------------------------------------------------------------
 
+fn open_target_url(raw: &str) -> String {
+    // An explicit new-tab request must load its startup document even when
+    // reusing a website tab. Empty input still means focus-only reuse.
+    match is_lingxia_startup_url(raw.trim()) {
+        Some(true) => "lingxia://newtab".to_string(),
+        _ => normalize_browser_target_url(raw),
+    }
+}
+
 fn open_internal_browser_tab_with_scope(
     url: &str,
     requested_tab_key: Option<&str>,
@@ -884,17 +893,7 @@ fn open_internal_browser_tab_with_scope(
     let browser = ensure_browser_lxapp()?;
     let browser_session_id = browser.session_id();
 
-    let raw_url = url.trim();
-
-    // `lingxia://newtab` (and bare `lingxia://`) → startup page (no URL).
-    // Other `lingxia://` pages stay as-is and are served by the lingxia:// scheme handler.
-    let effective_url: String = match is_lingxia_startup_url(raw_url) {
-        Some(true) => String::new(),
-        _ => raw_url.to_string(),
-    };
-    let target_url = effective_url.as_str();
-
-    let normalized_target_url = normalize_browser_target_url(target_url);
+    let normalized_target_url = open_target_url(url);
     let has_target_url = !normalized_target_url.is_empty();
     let (owner_appid, owner_session_id) = match scope {
         BrowserTabScope::Global => (None, None),
@@ -1513,6 +1512,17 @@ pub fn reopen_closed(id: Option<&str>) -> Result<String, LxAppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_newtab_navigates_instead_of_only_focusing_a_website() {
+        assert_eq!(open_target_url("lingxia://newtab"), "lingxia://newtab");
+        assert_eq!(open_target_url(" lingxia:// "), "lingxia://newtab");
+        assert_eq!(open_target_url(""), "");
+        assert_eq!(
+            open_target_url("https://example.com"),
+            "https://example.com"
+        );
+    }
 
     #[test]
     fn a_control_page_gets_one_identity_whoever_opens_it() {

@@ -8,6 +8,8 @@ readme = "README.md"
 repository.workspace = true
 
 [dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+futures-util = "0.3"
 lingxia-settings = { workspace = true }
 lingxia-webview = { workspace = true }
 tokio = { workspace = true }
