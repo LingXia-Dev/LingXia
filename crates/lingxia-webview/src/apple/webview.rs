@@ -771,6 +771,22 @@ fn apply_proxy_to_data_store(
     Ok(())
 }
 
+#[cfg(target_os = "ios")]
+fn is_iphone_idiom() -> bool {
+    const UI_USER_INTERFACE_IDIOM_PHONE: isize = 0;
+    let Some(device_class) = objc2::runtime::AnyClass::get(c"UIDevice") else {
+        return false;
+    };
+    unsafe {
+        let device: *mut AnyObject = msg_send![device_class, currentDevice];
+        if device.is_null() {
+            return false;
+        }
+        let idiom: isize = msg_send![device, userInterfaceIdiom];
+        idiom == UI_USER_INTERFACE_IDIOM_PHONE
+    }
+}
+
 thread_local! {
     // Weak references preserve private-store lifetimes while allowing a host
     // to update their proxy alongside the persistent browser store.
@@ -2402,11 +2418,12 @@ impl WebViewInner {
             config.setUpgradeKnownHostsToHTTPS(false);
 
             #[cfg(target_os = "ios")]
-            if effective_options.profile == SecurityProfile::BrowserRelaxed {
+            if effective_options.profile == SecurityProfile::BrowserRelaxed && is_iphone_idiom() {
                 // The bare WKWebView UA identifies an embedded app. Websites
                 // may redirect it to an external browser instead of serving
                 // their web UI. Use the native engine's browser tokens, while
-                // preserving explicit user-agent overrides below.
+                // preserving explicit user-agent overrides below. iPhone only:
+                // iPad's desktop content mode must not carry a Mobile token.
                 let version =
                     objc2_foundation::NSProcessInfo::processInfo().operatingSystemVersion();
                 let name = NSString::from_str(&format!(
