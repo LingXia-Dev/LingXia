@@ -237,7 +237,7 @@ export class LxAppBrowserManager {
     try {
       newTabId = openTrustedBrowserTabWithId(appId, Math.trunc(sessionId), NEW_TAB_URL, 'tab-' + util.generateRandomUUID(true));
     } catch (error) {
-      LxLog.e(TAG, `openNewTab failed: openBrowserTab threw: ${error}`);
+      LxLog.e(TAG, `openNewTab failed: openTrustedBrowserTabWithId threw: ${error}`);
       return false;
     }
     if (!newTabId || newTabId.trim().length === 0) {
@@ -320,7 +320,7 @@ export class LxAppBrowserManager {
       }
       return Boolean(browserTabNavigate(tabId, target));
     } catch (error) {
-      LxLog.e(TAG, `browserTabNavigate failed for tabId=${tabId}: ${error}`);
+      LxLog.e(TAG, `navigateActiveTab failed for tabId=${tabId}: ${error}`);
       return false;
     }
   }

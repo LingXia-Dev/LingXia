@@ -269,6 +269,11 @@ internal object NativeApi {
      */
     @JvmStatic
     external fun openBrowserTab(appId: String, sessionId: Long, url: String): String?
+
+    /**
+     * Open or navigate a host-selected internal browser page in the given tab.
+     */
+    @JvmStatic
     external fun openTrustedBrowserTabWithId(appId: String, sessionId: Long, url: String, tabId: String): String?
 
     /**
