@@ -192,7 +192,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getDisplayLanguage<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
 ) -> JString<'a> {
-    env.with_env(|env| env.new_string(crate::app::display_language()))
+    env.with_env(|env| env.new_string(crate::app::display_language().as_str()))
         .resolve::<LogErrorAndDefault>()
 }
 
@@ -443,6 +443,16 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_notifyPageInstanceMounted(
     page_instance_id: JString,
 ) -> jboolean {
     notify_page_instance_event(&mut env, page_instance_id, PageInstanceEvent::Mounted)
+}
+
+/// Process-level foreground state: whether any activity is started.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_onHostForegroundChanged(
+    _env: EnvUnowned,
+    _class: JClass,
+    foreground: jboolean,
+) {
+    crate::app::set_foreground(foreground);
 }
 
 #[unsafe(no_mangle)]

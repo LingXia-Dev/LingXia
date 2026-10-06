@@ -465,7 +465,7 @@ mod tests {
 
         seed_display_language(dir.path(), "en-US");
 
-        assert_eq!(crate::app::display_language(), "zh-CN");
+        assert_eq!(crate::app::display_language().as_str(), "zh-CN");
         assert_eq!(
             lxapp::display_language_state().effective_source,
             lxapp::DisplayLanguageEffectiveSource::Preference

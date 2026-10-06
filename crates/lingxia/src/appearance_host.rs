@@ -37,26 +37,13 @@ fn set_appearance_preference(input: SetPreferenceInput) -> HostResult<Appearance
 async fn watch_appearance_preference(
     mut stream: StreamContext<AppearancePreference>,
 ) -> HostResult<()> {
-    let (initial, mut receiver) = lxapp::subscribe_host_appearance();
-    let mut revision = initial.revision;
-    // The state also moves when the system flips under `auto`; the preference
-    // does not, and this stream is about the choice.
-    let mut preference = initial.state.preference;
-    stream.send(preference)?;
+    // The choice, not what it resolves to: a system flip under `auto` does
+    // not wake this stream.
+    let mut changes = crate::app::appearance_preference_changes();
     loop {
         tokio::select! {
             _ = stream.canceled() => return Ok(()),
-            received = receiver.recv() => match received {
-                Some(update) if update.revision > revision => {
-                    revision = update.revision;
-                    if update.state.preference != preference {
-                        preference = update.state.preference;
-                        stream.send(preference)?;
-                    }
-                }
-                Some(_) => {}
-                None => return stream.end(()),
-            }
+            preference = changes.next() => stream.send(preference)?,
         }
     }
 }

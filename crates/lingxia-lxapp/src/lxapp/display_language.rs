@@ -207,7 +207,7 @@ struct SessionOverride {
     preference: DisplayLanguagePreference,
 }
 
-type StateListener = Arc<dyn Fn(DisplayLanguageState) + Send + Sync>;
+type StateListener = Arc<dyn Fn(DisplayLanguageStateUpdate) + Send + Sync>;
 type EffectiveListener = Arc<dyn Fn(LanguageTag) + Send + Sync>;
 
 /// A revisioned state update used to make stream subscription atomic.
@@ -465,12 +465,15 @@ impl DisplayLanguageService {
         self.update(|inner| inner.system = system)
     }
 
-    fn add_state_listener(&self, listener: StateListener) {
-        self.inner
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .state_listeners
-            .push(listener);
+    /// Registers and snapshots under one lock: the listener sees exactly the
+    /// transitions after the returned revision.
+    fn add_state_listener(&self, listener: StateListener) -> DisplayLanguageStateUpdate {
+        let mut inner = self.inner.lock().unwrap_or_else(|error| error.into_inner());
+        inner.state_listeners.push(listener);
+        DisplayLanguageStateUpdate {
+            revision: inner.revision,
+            state: inner.state.clone(),
+        }
     }
 
     fn add_effective_listener(&self, listener: EffectiveListener) {
@@ -539,7 +542,7 @@ fn publish_transition(transition: Transition) {
     service().send_state_update(&state_update);
     publish_state(&state_update);
     for listener in transition.state_listeners {
-        listener(transition.state.clone());
+        listener(state_update.clone());
     }
     if transition.effective_changed {
         let effective_update = DisplayLanguageEffectiveUpdate {
@@ -703,11 +706,13 @@ pub fn refresh_display_language_system(system: &str) -> Result<(), LxAppError> {
     Ok(())
 }
 
-/// Register a listener for every actual state change.
-pub fn add_display_language_state_listener(
-    listener: Box<dyn Fn(DisplayLanguageState) + Send + Sync>,
-) {
-    service().add_state_listener(Arc::from(listener));
+/// Register a listener for every actual state change, in revision order, on
+/// the thread that made it. Returns the state the listener starts after.
+#[doc(hidden)]
+pub fn observe_display_language_state(
+    listener: Box<dyn Fn(DisplayLanguageStateUpdate) + Send + Sync>,
+) -> DisplayLanguageStateUpdate {
+    service().add_state_listener(Arc::from(listener))
 }
 
 /// Register a listener only for actual effective-tag changes.
@@ -843,12 +848,29 @@ mod tests {
                 });
             }
             for listener in transition.state_listeners {
-                listener(transition.state.clone());
+                listener(DisplayLanguageStateUpdate {
+                    revision: transition.revision,
+                    state: transition.state.clone(),
+                });
             }
             for listener in transition.effective_listeners {
                 listener(transition.state.effective.clone());
             }
         });
+    }
+
+    #[test]
+    fn a_state_listener_starts_after_the_revision_it_registered_at() {
+        let service = service_with("auto", "en-US");
+        deliver(&service, service.refresh_system(tag("de-DE")));
+        let seen = Arc::new(TestMutex::new(Vec::new()));
+        let sink = seen.clone();
+        let start = service.add_state_listener(Arc::new(move |update| {
+            sink.lock().unwrap().push(update.revision);
+        }));
+        assert_eq!(start.state.effective, tag("de-DE"));
+        deliver(&service, service.refresh_system(tag("fr-FR")));
+        assert_eq!(*seen.lock().unwrap(), vec![start.revision + 1]);
     }
 
     #[test]

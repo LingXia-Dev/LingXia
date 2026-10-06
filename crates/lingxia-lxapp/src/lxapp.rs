@@ -78,18 +78,18 @@ pub(crate) use display_language::view_display_language_snapshot_script;
 pub use display_language::{
     DisplayLanguageEffectiveSource, DisplayLanguageEffectiveUpdate, DisplayLanguagePreference,
     DisplayLanguageSessionOwner, DisplayLanguageState, DisplayLanguageStateUpdate, LanguageTag,
-    add_display_language_effective_listener, add_display_language_state_listener,
-    clear_active_display_language_session_override, clear_display_language_session_override,
-    display_language, display_language_state, display_language_state_update,
-    initialize_display_language, install_display_language_session_override,
+    add_display_language_effective_listener, clear_active_display_language_session_override,
+    clear_display_language_session_override, display_language, display_language_state,
+    display_language_state_update, initialize_display_language,
+    install_display_language_session_override, observe_display_language_state,
     refresh_display_language_system, set_display_language_preference,
     set_display_language_preference_in, subscribe_display_language_effective,
     subscribe_display_language_state,
 };
 pub use host_appearance::{
     HostAppearanceState, HostAppearanceUpdate, host_appearance_dark, host_appearance_state,
-    initialize_host_appearance, refresh_host_appearance_system, set_host_appearance_preference,
-    subscribe_host_appearance,
+    host_appearance_update, initialize_host_appearance, observe_host_appearance,
+    refresh_host_appearance_system, set_host_appearance_preference,
 };
 pub use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 pub use lingxia_surface::Role as SurfaceRole;

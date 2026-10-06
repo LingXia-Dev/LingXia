@@ -140,6 +140,9 @@ declare module 'liblingxia.so' {
 
   export function onHostAppearanceChanged(dark: boolean): void;
 
+  /** `graceToken` names a suspend delay to end via `endBackgroundGrace`; 0 for none. */
+  export function onHostForegroundChanged(foreground: boolean, graceToken: number): void;
+
   export function onHostLocaleChanged(locale: string): void;
 
   /**

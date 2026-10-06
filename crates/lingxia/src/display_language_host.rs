@@ -39,26 +39,13 @@ fn set_display_language_preference(
 async fn watch_display_language_preference(
     mut stream: StreamContext<DisplayLanguagePreference>,
 ) -> HostResult<()> {
-    let (initial, mut receiver) = lxapp::subscribe_display_language_state();
-    let mut revision = initial.revision;
-    // The state moves whenever the effective language does; the preference does
-    // not. A system flip under `auto` must not wake this stream.
-    let mut preference = initial.state.preference;
-    stream.send(preference.clone())?;
+    // The choice, not what it resolves to: a system flip under `auto` does
+    // not wake this stream.
+    let mut changes = crate::app::display_language_preference_changes();
     loop {
         tokio::select! {
             _ = stream.canceled() => return Ok(()),
-            received = receiver.recv() => match received {
-                Some(update) if update.revision > revision => {
-                    revision = update.revision;
-                    if update.state.preference != preference {
-                        preference = update.state.preference;
-                        stream.send(preference.clone())?;
-                    }
-                }
-                Some(_) => {}
-                None => return stream.end(()),
-            }
+            preference = changes.next() => stream.send(preference)?,
         }
     }
 }
