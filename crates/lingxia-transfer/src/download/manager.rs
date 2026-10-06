@@ -49,6 +49,9 @@ pub struct DownloadTask {
     behavior: DownloadBehavior,
     reuse_existing_target: bool,
     overwrite_existing_target: bool,
+    // None uses the ordinary runtime; Some(None) explicitly disables HTTP
+    // proxy overrides and Some(Some(url)) mandates this proxy, without fallback.
+    http_proxy: Option<Option<String>>,
 }
 
 /// Tuning knobs for how a single `DownloadTask` behaves under weak-network
@@ -389,7 +392,13 @@ impl DownloadTask {
             behavior: DownloadBehavior::default(),
             reuse_existing_target: true,
             overwrite_existing_target: true,
+            http_proxy: None,
         }
+    }
+
+    pub fn with_http_proxy(mut self, proxy: Option<String>) -> Self {
+        self.http_proxy = Some(proxy);
+        self
     }
 
     pub fn with_target_path(mut self, target_path: PathBuf) -> Self {
@@ -1226,13 +1235,35 @@ async fn run_download_attempt(
         }
     };
 
-    let response = match host_http::send_with_small_body_limit(
-        request_obj,
-        DOWNLOAD_SMALL_BODY_LIMIT,
-        download_request_options(task.behavior),
-    )
-    .await
-    {
+    let pending_response = send_download_request(task, request_obj);
+    tokio::pin!(pending_response);
+    let response_result = if let Some(cancel) = cancel_rx.as_mut() {
+        loop {
+            match *cancel.borrow() {
+                crate::download::ActiveDownloadCommand::Pause => {
+                    break Err(host_http::HttpError::from(
+                        DOWNLOAD_PAUSED_ERROR.to_string(),
+                    ));
+                }
+                crate::download::ActiveDownloadCommand::Cancel => {
+                    break Err(host_http::HttpError::from(
+                        DOWNLOAD_CANCELED_ERROR.to_string(),
+                    ));
+                }
+                crate::download::ActiveDownloadCommand::None => {}
+            }
+            tokio::select! {
+                biased;
+                changed = cancel.changed() => {
+                    if changed.is_err() { break Err(host_http::HttpError::from(DOWNLOAD_CANCELED_ERROR.to_string())); }
+                },
+                response = &mut pending_response => break response,
+            }
+        }
+    } else {
+        pending_response.await
+    };
+    let response = match response_result {
         Ok(response) => response,
         Err(e) => {
             let error = e.to_string();
@@ -2342,6 +2373,189 @@ mod tests {
         assert_eq!(
             retry_delay_for_attempt(Duration::from_millis(750), 6),
             Duration::from_millis(5000)
+        );
+    }
+}
+
+// Keep browser transport choices local to a task. A global HTTP override could
+// proxy app control requests (or the proxy engine itself) recursively.
+async fn send_download_request(
+    task: &DownloadTask,
+    request: HttpRequest<http_body_util::combinators::BoxBody<Bytes, IoError>>,
+) -> Result<host_http::HttpResponse, host_http::HttpError> {
+    let Some(proxy) = &task.http_proxy else {
+        return host_http::send_with_small_body_limit(
+            request,
+            DOWNLOAD_SMALL_BODY_LIMIT,
+            download_request_options(task.behavior),
+        )
+        .await;
+    };
+    use futures_util::StreamExt;
+    let mut builder = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(task.behavior.request_timeout);
+    if let Some(timeout) = task.behavior.connect_timeout {
+        builder = builder.connect_timeout(timeout);
+    }
+    if let Some(url) = proxy {
+        builder = builder.proxy(
+            reqwest::Proxy::all(url).map_err(|e| host_http::HttpError::from(e.to_string()))?,
+        );
+    }
+    let client = builder
+        .build()
+        .map_err(|e| host_http::HttpError::from(e.to_string()))?;
+    let response = client
+        .get(request.uri().to_string())
+        .headers(request.headers().clone())
+        .send()
+        .await
+        .map_err(|e| host_http::HttpError::from(e.to_string()))?;
+    let status = response.status();
+    let headers = response.headers().clone();
+    let (tx, rx) = tokio::sync::mpsc::channel(2);
+    tokio::spawn(async move {
+        let mut body = response.bytes_stream();
+        loop {
+            let chunk = tokio::select! {
+                _ = tx.closed() => break,
+                chunk = body.next() => chunk,
+            };
+            let Some(chunk) = chunk else {
+                break;
+            };
+            let failed = chunk.is_err();
+            if tx.send(chunk.map_err(|e| e.to_string())).await.is_err() || failed {
+                break;
+            }
+        }
+    });
+    Ok(host_http::HttpResponse {
+        status,
+        headers,
+        body: HttpBody::Stream(rx),
+    })
+}
+
+#[cfg(test)]
+mod browser_proxy_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    fn task(url: String, proxy: String) -> DownloadTask {
+        DownloadTask::for_browser(
+            DownloadRequest {
+                url,
+                user_agent: None,
+                content_disposition: None,
+                mime_type: None,
+                content_length: None,
+                suggested_filename: None,
+                source_page_url: None,
+                cookie: Some("session=kept".into()),
+            },
+            std::env::temp_dir(),
+            None,
+        )
+        .with_http_proxy(Some(proxy))
+    }
+    fn request(url: &str) -> HttpRequest<http_body_util::combinators::BoxBody<Bytes, IoError>> {
+        HttpRequest::builder()
+            .uri(url)
+            .header("Cookie", "session=kept")
+            .body(
+                Full::new(Bytes::new())
+                    .map_err(|_| IoError::other("body"))
+                    .boxed(),
+            )
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn browser_download_uses_its_proxy_and_preserves_request_headers() {
+        let proxy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_url = format!("http://{}", proxy.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = proxy.accept().await.unwrap();
+            let mut bytes = vec![0; 8192];
+            let n = socket.read(&mut bytes).await.unwrap();
+            let text = String::from_utf8_lossy(&bytes[..n]).to_ascii_lowercase();
+            assert!(text.starts_with("get http://download.invalid/file "));
+            assert!(text.contains("cookie: session=kept"));
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+                .await
+                .unwrap();
+        });
+        let task = task("http://download.invalid/file".into(), proxy_url);
+        let response = send_download_request(&task, request(&task.request.url))
+            .await
+            .unwrap();
+        assert_eq!(response.status.as_u16(), 200);
+        let HttpBody::Stream(mut body) = response.body else {
+            panic!("stream expected")
+        };
+        assert_eq!(
+            body.recv().await.unwrap().unwrap(),
+            Bytes::from_static(b"ok")
+        );
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn pause_cancels_a_download_waiting_for_response_headers() {
+        let proxy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let task = task(
+            "http://download.invalid/waiting".into(),
+            format!("http://{}", proxy.local_addr().unwrap()),
+        );
+        let (tx, rx) = watch::channel(crate::download::ActiveDownloadCommand::None);
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = proxy.accept().await.unwrap();
+            let mut bytes = [0; 4096];
+            assert!(socket.read(&mut bytes).await.unwrap() > 0);
+            // No headers arrive. A policy change must interrupt the request.
+            tx.send(crate::download::ActiveDownloadCommand::Pause)
+                .unwrap();
+            assert_eq!(
+                tokio::time::timeout(Duration::from_secs(2), socket.read(&mut bytes))
+                    .await
+                    .unwrap()
+                    .unwrap(),
+                0
+            );
+        });
+        let failure = tokio::time::timeout(
+            Duration::from_secs(2),
+            run_browser_download_task(task, "waiting-for-headers", "test-tab", rx, |_, _| {}),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+        assert_eq!(failure.error, DOWNLOAD_PAUSED_ERROR);
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn unavailable_required_proxy_never_falls_back_to_the_destination() {
+        let destination = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let closed_proxy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_url = format!("http://{}", closed_proxy.local_addr().unwrap());
+        drop(closed_proxy);
+        let task = task(
+            format!("http://{}/file", destination.local_addr().unwrap()),
+            proxy_url,
+        );
+        assert!(
+            send_download_request(&task, request(&task.request.url))
+                .await
+                .is_err()
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_millis(200), destination.accept())
+                .await
+                .is_err()
         );
     }
 }

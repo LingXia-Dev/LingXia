@@ -259,9 +259,12 @@ Used only with `capabilities.browser: true`. `bookmarks` (default `true`) shows
 bookmark chrome. `webui` replaces the browser UI with exactly one source: a
 project-relative `path:` (built by the CLI) or a `package:` npm name with a
 prebuilt `lxapp.json` + `dist/` (optional `version:`). Most apps omit it.
+`platforms` limits the browser runtime to the listed targets; omit it or use an
+empty list for all targets. A mobile-only browser uses `[ios, android, harmony]`.
 
 ```yaml
 browser:
+  platforms: [ios, android, harmony]
   webui:
     path: vendor/browser-shell-webui
 ```

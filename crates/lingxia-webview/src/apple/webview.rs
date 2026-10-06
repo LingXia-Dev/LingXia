@@ -27,6 +27,7 @@ use async_trait::async_trait;
 use block2::{Block, RcBlock, StackBlock};
 use dispatch2::DispatchQueue;
 use http::{Method, Response, StatusCode};
+use objc2::rc::Weak;
 use objc2::runtime::{AnyObject, NSObject, ProtocolObject};
 use objc2::{
     DefinedClass, MainThreadMarker, MainThreadOnly, class, define_class, msg_send, rc::Retained,
@@ -105,6 +106,7 @@ unsafe extern "C" {
         proxy_tls_options: *mut c_void,
     ) -> *mut AnyObject;
     fn nw_proxy_config_add_excluded_domain(config: *mut AnyObject, domain: *const c_char);
+    fn nw_proxy_config_set_failover_allowed(config: *mut AnyObject, allowed: bool);
     fn nw_release(object: *mut AnyObject);
 }
 
@@ -740,6 +742,7 @@ fn apply_proxy_to_data_store(
                     ),
                     "HTTP CONNECT proxy configuration",
                 )?;
+                nw_proxy_config_set_failover_allowed(proxy_config.as_mut_ptr(), false);
 
                 for rule in &proxy.bypass {
                     let trimmed = rule.trim();
@@ -768,6 +771,29 @@ fn apply_proxy_to_data_store(
     Ok(())
 }
 
+thread_local! {
+    // Weak references preserve private-store lifetimes while allowing a host
+    // to update their proxy alongside the persistent browser store.
+    static PRIVATE_BROWSER_STORES: RefCell<Vec<(Weak<WKWebsiteDataStore>, Option<ProxyConfig>)>> = const { RefCell::new(Vec::new()) };
+}
+
+fn apply_proxy_to_default_store(
+    store: &WKWebsiteDataStore,
+    config: Option<&ProxyConfig>,
+) -> Result<(), WebViewError> {
+    // WebKit interrupts networking when this property changes. Opening
+    // another tab or reusing an endpoint must not reset all existing tabs.
+    static APPLIED: Mutex<Option<Option<ProxyConfig>>> = Mutex::new(None);
+    let mut applied = APPLIED.lock().unwrap_or_else(|error| error.into_inner());
+    let requested = config.cloned();
+    if applied.as_ref() == Some(&requested) {
+        return Ok(());
+    }
+    apply_proxy_to_data_store(store, config)?;
+    *applied = Some(requested);
+    Ok(())
+}
+
 fn apply_http_proxy_on_main(
     config: Option<&ProxyConfig>,
     mtm: MainThreadMarker,
@@ -779,11 +805,24 @@ fn apply_http_proxy_on_main(
         ));
     }
 
-    apply_proxy_to_data_store(&store, config)?;
+    apply_proxy_to_default_store(&store, config)?;
+    PRIVATE_BROWSER_STORES.with(|stores| {
+        let mut stores = stores.borrow_mut();
+        stores.retain(|(store, _)| store.load().is_some());
+        for (store, applied) in stores.iter_mut() {
+            if applied.as_ref() != config
+                && let Some(store) = store.load()
+            {
+                apply_proxy_to_data_store(&store, config)?;
+                *applied = config.cloned();
+            }
+        }
+        Ok::<(), WebViewError>(())
+    })?;
     let report = if config.is_some() {
-        ProxyApplyReport::applied(ProxyActivation::NewWebViewsOnly)
+        ProxyApplyReport::applied(ProxyActivation::EffectiveNow)
     } else {
-        ProxyApplyReport::cleared(ProxyActivation::NewWebViewsOnly)
+        ProxyApplyReport::cleared(ProxyActivation::EffectiveNow)
     };
     Ok(report)
 }
@@ -2362,21 +2401,43 @@ impl WebViewInner {
             // Disable HTTPS upgrade for local development
             config.setUpgradeKnownHostsToHTTPS(false);
 
+            #[cfg(target_os = "ios")]
+            if effective_options.profile == SecurityProfile::BrowserRelaxed {
+                // The bare WKWebView UA identifies an embedded app. Websites
+                // may redirect it to an external browser instead of serving
+                // their web UI. Use the native engine's browser tokens, while
+                // preserving explicit user-agent overrides below.
+                let version =
+                    objc2_foundation::NSProcessInfo::processInfo().operatingSystemVersion();
+                let name = NSString::from_str(&format!(
+                    "Version/{}.{} Mobile/15E148 Safari/604.1",
+                    version.majorVersion, version.minorVersion
+                ));
+                config.setApplicationNameForUserAgent(Some(&name));
+            }
+
             // Profile policy on Apple data store:
             // - StrictDefault: non-persistent (ephemeral DOM storage, cleared on destroy)
             // - BrowserRelaxed: default (persistent localStorage / database)
             if uses_ephemeral_data {
                 let non_persistent_store = WKWebsiteDataStore::nonPersistentDataStore(mtm);
+                if effective_options.profile == SecurityProfile::BrowserRelaxed {
+                    let proxy = configured_proxy_for_new_webviews();
+                    if let Some(proxy) = &proxy {
+                        apply_proxy_to_data_store(&non_persistent_store, Some(proxy))?;
+                    }
+                    PRIVATE_BROWSER_STORES.with(|stores| {
+                        stores
+                            .borrow_mut()
+                            .push((Weak::new(&non_persistent_store), proxy))
+                    });
+                }
                 config.setWebsiteDataStore(&non_persistent_store);
             } else if let Some(proxy) = configured_proxy_for_new_webviews() {
                 let default_store = WKWebsiteDataStore::defaultDataStore(mtm);
-                if let Err(e) = apply_proxy_to_data_store(&default_store, Some(&proxy)) {
-                    log::warn!(
-                        "Failed to apply configured proxy to default data store webtag={}: {}",
-                        WebTag::new(appid, path, session_id),
-                        e
-                    );
-                }
+                // A requested proxy is a network policy, not a best-effort hint.
+                // Refuse creation rather than loading this browser directly.
+                apply_proxy_to_default_store(&default_store, Some(&proxy))?;
             }
 
             // Register the framework-owned Apple bridge scheme plus app custom schemes.

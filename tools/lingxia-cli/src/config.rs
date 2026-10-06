@@ -172,6 +172,10 @@ pub(crate) const BROWSER_CONTROL_PROTOCOL_VERSION: u32 = 3;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserConfig {
+    /// Empty enables every target; a phone-only browser must not pull its
+    /// native runtime into desktop builds.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub platforms: Vec<String>,
     #[serde(default = "default_true")]
     pub bookmarks: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1855,7 +1859,11 @@ impl LingXiaConfig {
         }
         // The browser capability brings its runtime and webui pages (newtab /
         // settings / downloads) on every platform it is enabled for.
-        if self.browser_enabled() {
+        if self.browser_enabled()
+            && self.browser.as_ref().is_none_or(|browser| {
+                browser.platforms.is_empty() || browser.platforms.iter().any(|p| p == platform)
+            })
+        {
             features.push("browser-shell".to_string());
         }
         if self.terminal_enabled(platform) {
@@ -2051,6 +2059,16 @@ impl LingXiaConfig {
     }
 
     fn validate(&self) -> Result<()> {
+        if let Some(browser) = &self.browser {
+            for platform in &browser.platforms {
+                if !matches!(
+                    platform.as_str(),
+                    "ios" | "android" | "macos" | "windows" | "harmony"
+                ) {
+                    return Err(anyhow!("unsupported browser.platforms entry: {platform}"));
+                }
+            }
+        }
         if let Some(update) = self.update.as_ref() {
             update.validate()?;
         }
@@ -3374,6 +3392,34 @@ android:
                 "browser runtime missing on {platform}"
             );
         }
+    }
+
+    #[test]
+    fn phone_browser_does_not_enable_desktop_runtime() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config.capabilities.as_mut().unwrap().browser = true;
+        config.browser = Some(serde_yaml_ng::from_str("platforms: [ios, android]").unwrap());
+        for platform in ["ios", "android"] {
+            assert!(
+                config
+                    .native_features_for_platform(platform)
+                    .contains(&"browser-shell".to_string())
+            );
+        }
+        for platform in ["macos", "windows", "harmony"] {
+            assert!(
+                !config
+                    .native_features_for_platform(platform)
+                    .contains(&"browser-shell".to_string())
+            );
+        }
+        config
+            .browser
+            .as_mut()
+            .unwrap()
+            .platforms
+            .push("typo".to_string());
+        assert!(config.validate().is_err());
     }
 
     #[test]
