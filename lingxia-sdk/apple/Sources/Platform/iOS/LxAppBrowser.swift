@@ -60,13 +60,17 @@ final class LxAppBrowser: NSObject {
         if activeTabId.map({ browserTabIsAside($0) }) ?? false {
             return false
         }
-        let appId = getBuiltinBrowserAppId().toString()
+        // Browser control documents have no ordinary lxapp session. The live
+        // host app owns the request; Rust supplies the sealed native authority.
+        guard let appId = LxAppCore.getHomeLxAppId() else { return false }
         let sessionId = getLxAppSessionId(appId)
         guard sessionId > 0 else {
-            LXLog.error("openNewTab failed: no session for builtin browser", category: "Browser")
+            LXLog.error("openNewTab failed: no session for host app", category: "Browser")
             return false
         }
-        guard let newId = openBrowserTab(appId, sessionId, "lingxia://newtab")?.toString(),
+        guard let newId = openTrustedBrowserTabWithId(
+            appId, sessionId, "lingxia://newtab", "tab-" + UUID().uuidString.lowercased()
+        )?.toString(),
               !normalizeTabId(newId).isEmpty else {
             LXLog.error("openNewTab failed: runtime returned no tab id", category: "Browser")
             return false
@@ -627,7 +631,14 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     /// Open one of the browser's own `lingxia://` pages in the active tab.
     private func navigateToInternalPage(_ url: String) {
         guard let tabId = LxAppBrowser.activeTabId else { return }
-        _ = browserTabNavigate(tabId, url)
+        guard let appId = LxAppCore.getHomeLxAppId() else { return }
+        let sessionId = getLxAppSessionId(appId)
+        guard sessionId > 0,
+              openTrustedBrowserTabWithId(appId, sessionId, url, tabId) != nil else {
+            LXLog.error("Internal browser navigation failed", category: "Browser")
+            return
+        }
+        displayActiveTab()
     }
 
     private func setupBackGestureRecognizer() {
