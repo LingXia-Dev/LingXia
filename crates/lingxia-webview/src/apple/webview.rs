@@ -793,25 +793,36 @@ thread_local! {
     static PRIVATE_BROWSER_STORES: RefCell<Vec<(Weak<WKWebsiteDataStore>, Option<ProxyConfig>)>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Whether a store's proxy must be written. WebKit interrupts networking when
+/// `proxyConfigurations` is written, so opening another tab or reusing an
+/// endpoint must not reset existing tabs; `force` is the explicit reset.
+/// `applied` is `None` until the store has been written once.
+fn proxy_write_needed(
+    applied: Option<&Option<ProxyConfig>>,
+    requested: Option<&ProxyConfig>,
+    force: bool,
+) -> bool {
+    force || applied.map(Option::as_ref) != Some(requested)
+}
+
 fn apply_proxy_to_default_store(
     store: &WKWebsiteDataStore,
     config: Option<&ProxyConfig>,
+    force: bool,
 ) -> Result<(), WebViewError> {
-    // WebKit interrupts networking when this property changes. Opening
-    // another tab or reusing an endpoint must not reset all existing tabs.
     static APPLIED: Mutex<Option<Option<ProxyConfig>>> = Mutex::new(None);
     let mut applied = APPLIED.lock().unwrap_or_else(|error| error.into_inner());
-    let requested = config.cloned();
-    if applied.as_ref() == Some(&requested) {
+    if !proxy_write_needed(applied.as_ref(), config, force) {
         return Ok(());
     }
     apply_proxy_to_data_store(store, config)?;
-    *applied = Some(requested);
+    *applied = Some(config.cloned());
     Ok(())
 }
 
 fn apply_http_proxy_on_main(
     config: Option<&ProxyConfig>,
+    force: bool,
     mtm: MainThreadMarker,
 ) -> Result<ProxyApplyReport, WebViewError> {
     let store = unsafe { WKWebsiteDataStore::defaultDataStore(mtm) };
@@ -821,12 +832,12 @@ fn apply_http_proxy_on_main(
         ));
     }
 
-    apply_proxy_to_default_store(&store, config)?;
+    apply_proxy_to_default_store(&store, config, force)?;
     PRIVATE_BROWSER_STORES.with(|stores| {
         let mut stores = stores.borrow_mut();
         stores.retain(|(store, _)| store.load().is_some());
         for (store, applied) in stores.iter_mut() {
-            if applied.as_ref() != config
+            if proxy_write_needed(Some(&*applied), config, force)
                 && let Some(store) = store.load()
             {
                 apply_proxy_to_data_store(&store, config)?;
@@ -843,18 +854,36 @@ fn apply_http_proxy_on_main(
     Ok(report)
 }
 
+/// Run `f` on the main thread and wait for its result. Proxy applies run their
+/// whole locked section here, so no thread holds the proxy lock while it waits
+/// for the main thread.
+pub(crate) fn run_on_main_blocking<R: Send + 'static>(
+    f: impl FnOnce() -> R + Send + 'static,
+) -> Result<R, WebViewError> {
+    if MainThreadMarker::new().is_some() {
+        return Ok(f());
+    }
+    let (tx, rx) = sync_channel(1);
+    DispatchQueue::main().exec_async(move || {
+        let _ = tx.send(f());
+    });
+    rx.recv()
+        .map_err(|_| WebViewError::WebView("Main thread dropped the Apple proxy apply".to_string()))
+}
+
 pub(crate) fn apply_http_proxy(
     config: Option<&ProxyConfig>,
+    force: bool,
 ) -> Result<ProxyApplyReport, WebViewError> {
     if let Some(mtm) = MainThreadMarker::new() {
-        return apply_http_proxy_on_main(config, mtm);
+        return apply_http_proxy_on_main(config, force, mtm);
     }
 
     let config_owned = config.cloned();
     let (tx, rx) = sync_channel(1);
     DispatchQueue::main().exec_async(move || {
         let result = match MainThreadMarker::new() {
-            Some(mtm) => apply_http_proxy_on_main(config_owned.as_ref(), mtm),
+            Some(mtm) => apply_http_proxy_on_main(config_owned.as_ref(), force, mtm),
             None => Err(WebViewError::WebView(
                 "No MainThreadMarker available on main thread".to_string(),
             )),
@@ -2454,7 +2483,7 @@ impl WebViewInner {
                 let default_store = WKWebsiteDataStore::defaultDataStore(mtm);
                 // A requested proxy is a network policy, not a best-effort hint.
                 // Refuse creation rather than loading this browser directly.
-                apply_proxy_to_default_store(&default_store, Some(&proxy))?;
+                apply_proxy_to_default_store(&default_store, Some(&proxy), false)?;
             }
 
             // Register the framework-owned Apple bridge scheme plus app custom schemes.
@@ -4850,6 +4879,25 @@ impl LingXiaMessageHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn proxy_write_needed_skips_unchanged_config_unless_forced() {
+        let a = ProxyConfig::new("127.0.0.1", 7890).unwrap();
+        let b = ProxyConfig::new("127.0.0.1", 7891).unwrap();
+
+        // Never written: always write, including an explicit clear.
+        assert!(proxy_write_needed(None, Some(&a), false));
+        assert!(proxy_write_needed(None, None, false));
+        // Unchanged: skip, so new tabs do not interrupt existing ones.
+        assert!(!proxy_write_needed(Some(&Some(a.clone())), Some(&a), false));
+        assert!(!proxy_write_needed(Some(&None), None, false));
+        // Changed endpoint or proxy <-> direct: write.
+        assert!(proxy_write_needed(Some(&Some(a.clone())), Some(&b), false));
+        assert!(proxy_write_needed(Some(&Some(a.clone())), None, false));
+        assert!(proxy_write_needed(Some(&None), Some(&a), false));
+        // Forced re-apply rewrites the same endpoint.
+        assert!(proxy_write_needed(Some(&Some(a.clone())), Some(&a), true));
+    }
 
     #[test]
     fn apple_raw_string_cap_counts_utf8_bytes_before_copying() {

@@ -2806,22 +2806,60 @@ static WEBVIEW_CREATE_LOCKS: OnceLock<Mutex<HashMap<String, std::sync::Weak<Mute
     OnceLock::new();
 static DESIRED_PROXY_FOR_NEW_WEBVIEWS: OnceLock<RwLock<Option<ProxyConfig>>> = OnceLock::new();
 static PROXY_APPLY_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+/// Bumped under `PROXY_APPLY_LOCK` by every successful runtime apply, so
+/// callers can order follow-up work (e.g. download routing) by it.
+static PROXY_APPLY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+/// Whether this platform can apply a WebView proxy at all.
+const PROXY_PLATFORM_SUPPORTED: bool = cfg!(any(
+    target_os = "android",
+    target_os = "ios",
+    target_os = "macos",
+    all(target_os = "linux", target_env = "ohos")
+));
+
+/// Run `f` holding `PROXY_APPLY_LOCK`, never while waiting for another thread.
+/// Apple applies on the main thread, so the whole locked section runs there;
+/// a background caller that held the lock while waiting for the main thread
+/// deadlocked against a main-thread caller waiting for the lock.
+fn with_proxy_apply_lock<R: Send + 'static>(
+    f: impl FnOnce() -> R + Send + 'static,
+) -> Result<R, WebViewError> {
+    let locked = move || {
+        let apply_lock = PROXY_APPLY_LOCK.get_or_init(|| Mutex::new(()));
+        let _guard = lock_or_recover(apply_lock, "webview_proxy_apply_lock");
+        f()
+    };
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    {
+        crate::apple::run_on_main_blocking(locked)
+    }
+    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+    {
+        Ok(locked())
+    }
+}
+
+/// `force` rewrites configuration a platform would otherwise skip as
+/// unchanged. Android and Harmony do not deduplicate, so it only affects Apple.
 fn apply_http_proxy_platform(
     config: Option<&ProxyConfig>,
+    force: bool,
 ) -> Result<ProxyApplyReport, WebViewError> {
     #[cfg(target_os = "android")]
     {
+        let _ = force;
         crate::android::apply_http_proxy(config)
     }
 
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     {
-        crate::apple::apply_http_proxy(config)
+        crate::apple::apply_http_proxy(config, force)
     }
 
     #[cfg(all(target_os = "linux", target_env = "ohos"))]
     {
+        let _ = force;
         crate::harmony::apply_http_proxy(config)
     }
 
@@ -2832,7 +2870,7 @@ fn apply_http_proxy_platform(
         all(target_os = "linux", target_env = "ohos")
     )))]
     {
-        let _ = config;
+        let _ = (config, force);
         Ok(ProxyApplyReport::unsupported(
             "proxy is not supported on this platform",
         ))
@@ -2872,20 +2910,28 @@ pub fn configure_proxy_for_new_webviews(config: Option<ProxyConfig>) -> Result<(
 pub fn apply_proxy_to_current_runtime(
     config: Option<ProxyConfig>,
 ) -> Result<ProxyApplyReport, WebViewError> {
-    let apply_lock = PROXY_APPLY_LOCK.get_or_init(|| Mutex::new(()));
-    let _guard = lock_or_recover(apply_lock, "webview_proxy_apply_lock");
+    apply_proxy_to_current_runtime_sequenced(config).map(|(report, _)| report)
+}
 
+/// [`apply_proxy_to_current_runtime`], also returning the apply's sequence
+/// number: nonzero when the desired proxy was updated, and larger for every
+/// later apply. Compare with [`proxy_apply_sequence`] to drop stale follow-ups.
+pub fn apply_proxy_to_current_runtime_sequenced(
+    config: Option<ProxyConfig>,
+) -> Result<(ProxyApplyReport, u64), WebViewError> {
     let normalized_config = match config {
         Some(cfg) => Some(cfg.validate()?),
         None => None,
     };
 
-    let report = apply_http_proxy_platform(normalized_config.as_ref())?;
-
-    if matches!(
-        report.status,
-        ProxyApplyStatus::Applied | ProxyApplyStatus::Cleared
-    ) {
+    with_proxy_apply_lock(move || {
+        let report = apply_http_proxy_platform(normalized_config.as_ref(), false)?;
+        if !matches!(
+            report.status,
+            ProxyApplyStatus::Applied | ProxyApplyStatus::Cleared
+        ) {
+            return Ok((report, 0));
+        }
         let state = DESIRED_PROXY_FOR_NEW_WEBVIEWS.get_or_init(|| RwLock::new(None));
         match state.write() {
             Ok(mut guard) => {
@@ -2896,9 +2942,37 @@ pub fn apply_proxy_to_current_runtime(
                 *poisoned.into_inner() = normalized_config;
             }
         }
-    }
+        let sequence = PROXY_APPLY_SEQUENCE.fetch_add(1, Ordering::AcqRel) + 1;
+        Ok((report, sequence))
+    })?
+}
 
-    Ok(report)
+/// Sequence number of the latest apply that updated the desired proxy.
+pub fn proxy_apply_sequence() -> u64 {
+    PROXY_APPLY_SEQUENCE.load(Ordering::Acquire)
+}
+
+/// Re-apply the current proxy configuration even when it is unchanged.
+///
+/// Platforms that skip unchanged configuration (Apple) write it anyway, as a
+/// single replacement rather than clear-then-set. Whether an identical value
+/// makes the network stack reconnect is up to the platform. `Unsupported` on
+/// platforms without a WebView proxy; `Cleared` with nothing written when no
+/// proxy is configured.
+pub fn reapply_proxy_to_current_runtime() -> Result<ProxyApplyReport, WebViewError> {
+    if !PROXY_PLATFORM_SUPPORTED {
+        return Ok(ProxyApplyReport::unsupported(
+            "proxy is not supported on this platform",
+        ));
+    }
+    // Nothing to rewrite: answer without a main-thread round trip.
+    if configured_proxy_for_new_webviews().is_none() {
+        return Ok(ProxyApplyReport::cleared(ProxyActivation::NotApplied));
+    }
+    with_proxy_apply_lock(|| match configured_proxy_for_new_webviews() {
+        Some(config) => apply_http_proxy_platform(Some(&config), true),
+        None => Ok(ProxyApplyReport::cleared(ProxyActivation::NotApplied)),
+    })?
 }
 
 /// Get the configured proxy that will be used for newly created WebViews.
@@ -3444,6 +3518,20 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex, mpsc};
     use std::thread;
+
+    #[test]
+    fn reapply_without_a_configured_proxy_writes_nothing() {
+        // No test in this binary configures a proxy, and this path must not
+        // need a main-thread round trip.
+        assert!(super::configured_proxy_for_new_webviews().is_none());
+        let report = super::reapply_proxy_to_current_runtime().unwrap();
+        if super::PROXY_PLATFORM_SUPPORTED {
+            assert_eq!(report.status, crate::ProxyApplyStatus::Cleared);
+            assert_eq!(report.activation, crate::ProxyActivation::NotApplied);
+        } else {
+            assert_eq!(report.status, crate::ProxyApplyStatus::Unsupported);
+        }
+    }
 
     #[test]
     fn page_instance_id_is_the_segment_between_route_and_session() {

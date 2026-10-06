@@ -240,6 +240,20 @@ pub mod runtime {
         webview::apply_proxy_to_current_runtime(config)
     }
 
+    pub fn apply_proxy_to_current_runtime_sequenced(
+        config: Option<ProxyConfig>,
+    ) -> Result<(ProxyApplyReport, u64), WebViewError> {
+        webview::apply_proxy_to_current_runtime_sequenced(config)
+    }
+
+    pub fn proxy_apply_sequence() -> u64 {
+        webview::proxy_apply_sequence()
+    }
+
+    pub fn reapply_proxy_to_current_runtime() -> Result<ProxyApplyReport, WebViewError> {
+        webview::reapply_proxy_to_current_runtime()
+    }
+
     pub fn configured_proxy_for_new_webviews() -> Option<ProxyConfig> {
         webview::configured_proxy_for_new_webviews()
     }
