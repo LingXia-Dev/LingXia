@@ -322,6 +322,16 @@ let preference = "zh-CN"
 lingxia::app::set_display_language_preference(preference)?;
 ```
 
+Light/dark ([appearance](../lxapp/guide.md#appearance)). Native chrome and
+every lxapp that has not pinned a scheme follow this setting:
+
+```rust
+if lingxia::app::appearance() == lingxia::app::ResolvedAppearance::Dark {
+    use_dark_tray_icon();
+}
+lingxia::app::set_appearance_preference(lingxia::app::AppearancePreference::Dark)?;
+```
+
 `lingxia::app::banner::show` is the Rust form of the
 [desktop banner](../lxapp/lx-api.md#desktop-banner). It blocks until the card
 resolves: call it from a blocking worker, and never show a no-timeout prompt on

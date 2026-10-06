@@ -10,6 +10,8 @@
 //! - resolve host-owned state paths such as `state_dir` and `state_file`;
 //! - read or set the host display language (`display_language`,
 //!   `set_display_language_preference`);
+//! - read or set the host light/dark setting (`appearance`,
+//!   `set_appearance_preference`);
 //! - request host app termination with `exit`.
 
 use std::path::{Component, Path, PathBuf};
@@ -18,6 +20,7 @@ use std::sync::OnceLock;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 
 pub use lingxia_app_context::{AppEnv, ServiceEnvSnapshot as ServiceEnvState};
+pub use lxapp::page_chrome::{AppearancePreference, ResolvedAppearance};
 pub use lxapp::{
     DisplayLanguageEffectiveSource, DisplayLanguagePreference, DisplayLanguageState, LanguageTag,
 };
@@ -152,6 +155,26 @@ pub fn watch_display_language_preference(
         drop(last);
         listener(state.preference);
     }));
+}
+
+/// What the host's light/dark setting resolves to now. Under
+/// [`AppearancePreference::Auto`] this follows the system.
+pub fn appearance() -> ResolvedAppearance {
+    lxapp::host_appearance_state().resolved
+}
+
+/// What the user chose: `Auto`, `Light` or `Dark`.
+pub fn appearance_preference() -> AppearancePreference {
+    lxapp::host_appearance_state().preference
+}
+
+/// Persist the product's light/dark setting and apply it. Native chrome (tab
+/// bar, navigation bar, status bar) and every lxapp that has not pinned its
+/// own scheme in its manifest follow it.
+pub fn set_appearance_preference(preference: AppearancePreference) -> crate::Result<()> {
+    lxapp::set_host_appearance_preference(preference)
+        .map(|_| ())
+        .map_err(Into::into)
 }
 
 pub(crate) fn data_dir() -> crate::Result<PathBuf> {
