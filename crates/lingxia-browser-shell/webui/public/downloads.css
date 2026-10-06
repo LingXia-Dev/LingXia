@@ -75,3 +75,45 @@ button { font: inherit; cursor: pointer; background: none; border: none; }
   0% { transform: translateX(-120%); }
   100% { transform: translateX(320%); }
 }
+
+/* Dark: the host stamps data-theme on <html> with the product appearance. */
+:root[data-theme="dark"] { color-scheme: dark; }
+[data-theme="dark"] body { background: #202124; color: #f2f4f7; }
+[data-theme="dark"] .header { background: rgba(32,33,36,0.85); border-bottom-color: rgba(255,255,255,0.12); }
+[data-theme="dark"] .header-left .status,
+[data-theme="dark"] .empty p,
+[data-theme="dark"] .date-label { color: #a7abb4; }
+[data-theme="dark"] .error-banner { border-color: rgba(255,138,143,0.35); background: rgba(255,138,143,0.12); color: #ff8a8f; }
+[data-theme="dark"] .pill { color: #8ab4f8; background: rgba(138,180,248,0.14); }
+[data-theme="dark"] .row-action { background: #8ab4f8; color: #202124; }
+[data-theme="dark"] .row-action.secondary { background: #36373b; color: #e4e7ec; }
+[data-theme="dark"] .empty,
+[data-theme="dark"] .empty span:last-child,
+[data-theme="dark"] .item-detail { color: #8b9099; }
+[data-theme="dark"] .item { background: #2d2e32; }
+[data-theme="dark"] .item:hover { background: #333438; }
+[data-theme="dark"] .file-icon { background: #36373b; }
+[data-theme="dark"] .file-icon.is-active { background: rgba(138,180,248,0.16); }
+[data-theme="dark"] .file-icon.is-failed { background: rgba(255,138,143,0.14); }
+[data-theme="dark"] .file-name { color: #f2f4f7; }
+[data-theme="dark"] .file-name-link { color: #8ab4f8; }
+[data-theme="dark"] .file-name-link:hover,
+[data-theme="dark"] .file-name-link:focus-visible { color: #aecbfa; }
+[data-theme="dark"] .ctrl-btn { color: #a7abb4; }
+[data-theme="dark"] .ctrl-btn:hover,
+[data-theme="dark"] .ctrl-btn:focus-visible { background: #36373b; color: #f2f4f7; }
+[data-theme="dark"] .ctrl-btn.danger:hover,
+[data-theme="dark"] .ctrl-btn.danger:focus-visible { background: rgba(255,138,143,0.14); color: #ff8a8f; }
+[data-theme="dark"] .item-detail .sep { color: #5f6368; }
+[data-theme="dark"] .error-text { color: #ff8a8f; }
+[data-theme="dark"] .progress-track { background: #3c3d41; }
+[data-theme="dark"] .progress-bar { background: #8ab4f8; }
+[data-theme="dark"] .progress-info { color: #8ab4f8; }
+[data-theme="dark"] .progress-bar.paused { background: #8b9099; }
+[data-theme="dark"] .progress-info.paused { color: #8b9099; }
+[data-theme="dark"] .act-btn { color: #8ab4f8; background: rgba(138,180,248,0.14); }
+[data-theme="dark"] .act-btn:hover,
+[data-theme="dark"] .act-btn:focus-visible { background: rgba(138,180,248,0.24); }
+[data-theme="dark"] .act-btn.warn { color: #ff8a8f; background: rgba(255,138,143,0.14); }
+[data-theme="dark"] .act-btn.warn:hover,
+[data-theme="dark"] .act-btn.warn:focus-visible { background: rgba(255,138,143,0.24); }

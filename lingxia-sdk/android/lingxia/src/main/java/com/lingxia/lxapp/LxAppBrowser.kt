@@ -2,6 +2,7 @@ package com.lingxia.lxapp
 
 import android.app.Activity
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.text.InputType
@@ -20,6 +21,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import com.lingxia.app.Lingxia
 import com.lingxia.app.NativeApi
@@ -62,6 +64,60 @@ internal object LxAppBrowser {
     // redirects) must not light back/forward.
     private val interactedTabIds = mutableSetOf<String>()
 
+    /** Chrome colors; the light set is the original design. */
+    private data class Palette(
+        val dark: Boolean,
+        val canvas: Int,
+        val bar: Int,
+        val stroke: Int,
+        val pill: Int,
+        val icon: Int,
+        val secondaryIcon: Int,
+        val text: Int,
+        val hint: Int,
+        val warning: Int,
+        val surface: Int,
+        val activeRow: Int,
+        val title: Int,
+        val scrim: Int
+    )
+
+    private val lightPalette = Palette(
+        dark = false,
+        canvas = Color.WHITE,
+        bar = Color.parseColor("#FAFFFFFF"),
+        stroke = Color.parseColor("#14000000"),
+        pill = Color.parseColor("#F0F0F0"),
+        icon = Color.parseColor("#333333"),
+        secondaryIcon = Color.parseColor("#666666"),
+        text = Color.parseColor("#333333"),
+        hint = Color.parseColor("#888888"),
+        warning = Color.parseColor("#C44A21"),
+        surface = Color.WHITE,
+        activeRow = Color.parseColor("#F2F4F7"),
+        title = Color.parseColor("#222222"),
+        scrim = Color.parseColor("#66000000")
+    )
+
+    private val darkPalette = Palette(
+        dark = true,
+        canvas = Color.parseColor("#1C1C1E"),
+        bar = Color.parseColor("#FA242426"),
+        stroke = Color.parseColor("#1FFFFFFF"),
+        pill = Color.parseColor("#3A3A3C"),
+        icon = Color.parseColor("#E5E5E7"),
+        secondaryIcon = Color.parseColor("#A1A1AA"),
+        text = Color.parseColor("#F2F2F7"),
+        hint = Color.parseColor("#8E8E93"),
+        warning = Color.parseColor("#FF9F43"),
+        surface = Color.parseColor("#2C2C2E"),
+        activeRow = Color.parseColor("#3A3A3C"),
+        title = Color.parseColor("#F2F2F7"),
+        scrim = Color.parseColor("#A6000000")
+    )
+
+    private var palette = lightPalette
+
     private val chromeRefreshRunnable = object : Runnable {
         override fun run() {
             refreshChromeFromActiveWebView()
@@ -85,6 +141,7 @@ internal object LxAppBrowser {
         if (!ensureChrome(activity)) {
             return false
         }
+        applyAppearance(activity)
         if (tabChanged) {
             onActiveTabSwitched(activity, normalizedTabId)
         } else {
@@ -103,6 +160,7 @@ internal object LxAppBrowser {
         stopChromeRefreshLoop()
         closeOverflowMenu()
         closeTabSwitcher()
+        currentActivity?.let(::releaseBarGlyphs)
 
         activeWebView?.pause()
         activeWebView?.let { view ->
@@ -131,6 +189,98 @@ internal object LxAppBrowser {
     }
 
     fun isShowing(): Boolean = overlayContainer != null
+
+    /**
+     * An lxapp's scheme was applied. The browser follows its own built-in
+     * app — the product's scheme — and the host lxapp's apply may have just
+     * restyled the system bars underneath it, so re-assert either way.
+     */
+    fun onAppearanceChanged() {
+        val container = overlayContainer ?: return
+        container.post {
+            val activity = currentActivity ?: return@post
+            if (overlayContainer === container) applyAppearance(activity)
+        }
+    }
+
+    private fun resolveDark(): Boolean {
+        val browserAppId = runCatching { NativeApi.getBuiltinBrowserAppId() }.getOrNull()
+        return browserAppId?.let(LxApp::appearanceDarkFor) ?: LxApp.hostAppearanceDark()
+    }
+
+    private fun applyAppearance(activity: Activity) {
+        val next = if (resolveDark()) darkPalette else lightPalette
+        if (next != palette) {
+            palette = next
+            restyleChrome(activity)
+            applyTabsAppearance()
+        }
+        assertBarGlyphs(activity)
+    }
+
+    /**
+     * Tab WebViews take prefers-color-scheme from their creation context, and
+     * nothing re-dispatches a configuration to them while they live, so hand
+     * every open tab one carrying the current night bit.
+     */
+    private fun applyTabsAppearance() {
+        val night = if (palette.dark) {
+            Configuration.UI_MODE_NIGHT_YES
+        } else {
+            Configuration.UI_MODE_NIGHT_NO
+        }
+        for (tabId in openTabIds) {
+            val webView = findManagedWebView(tabId) ?: continue
+            val config = Configuration(webView.resources.configuration)
+            config.uiMode = (config.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or night
+            webView.dispatchConfigurationChanged(config)
+        }
+    }
+
+    /** Rebuild the bar in the new palette; transient overlays just close. */
+    private fun restyleChrome(activity: Activity) {
+        val container = overlayContainer ?: return
+        closeOverflowMenu()
+        closeTabSwitcher()
+        container.setBackgroundColor(palette.canvas)
+        val oldBar = bottomBar ?: return
+        val typing = addressField?.takeIf { it.hasFocus() }?.text?.toString()
+        val bar = buildBottomBar(activity, activity.resources.displayMetrics.density)
+        val index = container.indexOfChild(oldBar)
+        container.removeView(oldBar)
+        container.addView(bar, index)
+        bottomBar = bar
+        applyActiveModeChrome(activity)
+        if (typing != null) {
+            addressField?.setText(typing)
+        } else {
+            refreshChromeFromActiveWebView()
+        }
+    }
+
+    private fun assertBarGlyphs(activity: Activity) {
+        val light = !palette.dark
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+            isAppearanceLightStatusBars = light
+            isAppearanceLightNavigationBars = light
+        }
+    }
+
+    /**
+     * Hand the bars back by recomputing them from the lxapp underneath, so
+     * anything it changed while covered is reflected.
+     */
+    private fun releaseBarGlyphs(activity: Activity) {
+        val lxActivity = activity as? LxAppActivity ?: return
+        val dark = (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        // Navigation-bar glyphs follow the activity's scheme
+        // (LxAppActivity.configureTransparentSystemBars); the status bar is
+        // the current page's to decide.
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+            .isAppearanceLightNavigationBars = !dark
+        LxAppActivity.updateNavBarUI(lxActivity.getAppId())
+    }
 
     fun handleBack(): Boolean {
         if (!isShowing()) {
@@ -164,13 +314,14 @@ internal object LxAppBrowser {
 
         val rootView = activity.window.decorView as? ViewGroup ?: return false
         val density = activity.resources.displayMetrics.density
+        palette = if (resolveDark()) darkPalette else lightPalette
 
         val container = FrameLayout(activity).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(palette.canvas)
             fitsSystemWindows = false
             clipChildren = false
             clipToPadding = false
@@ -194,6 +345,7 @@ internal object LxAppBrowser {
         currentActivity = activity
 
         ViewCompat.setOnApplyWindowInsetsListener(container) { _, insets ->
+            val bar = bottomBar ?: return@setOnApplyWindowInsetsListener insets
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
             val keyboardVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
@@ -216,6 +368,8 @@ internal object LxAppBrowser {
             insets
         }
         ViewCompat.requestApplyInsets(container)
+        // Tabs outlive the chrome; the scheme may have moved while it was gone.
+        applyTabsAppearance()
         return true
     }
 
@@ -231,9 +385,9 @@ internal object LxAppBrowser {
                 bottomMargin = 0
             }
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#FAFFFFFF"))
+                setColor(palette.bar)
                 cornerRadius = 0f
-                setStroke(maxOf(1, (0.5f * density).toInt()), Color.parseColor("#14000000"))
+                setStroke(maxOf(1, (0.5f * density).toInt()), palette.stroke)
             }
             elevation = 0f
             setPadding(dp(activity, 12), dp(activity, 6), dp(activity, 12), dp(activity, 6))
@@ -257,7 +411,7 @@ internal object LxAppBrowser {
                 1f
             )
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#F0F0F0"))
+                setColor(palette.pill)
                 cornerRadius = dp(activity, 18).toFloat()
             }
             setPadding(dp(activity, 12), 0, dp(activity, 4), 0)
@@ -269,15 +423,15 @@ internal object LxAppBrowser {
             }
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setImageResource(R.drawable.icon_lock)
-            setColorFilter(Color.parseColor("#666666"))
+            setColorFilter(palette.secondaryIcon)
             isFocusable = false
             isClickable = false
         }
         val addrField = EditText(activity).apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            setTextColor(Color.parseColor("#333333"))
-            setHintTextColor(Color.parseColor("#888888"))
+            setTextColor(palette.text)
+            setHintTextColor(palette.hint)
             hint = "Enter address"
             setSingleLine(true)
             maxLines = 1
@@ -303,7 +457,7 @@ internal object LxAppBrowser {
                 }
             }
         }
-        val refreshBtn = createIconButton(activity, R.drawable.icon_browser_refresh, 32, "#666666") {
+        val refreshBtn = createIconButton(activity, R.drawable.icon_browser_refresh, 32, palette.secondaryIcon) {
             activeWebView?.reload()
             scheduleChromeRefreshSoon()
         }
@@ -323,26 +477,26 @@ internal object LxAppBrowser {
                 1f
             )
         }
-        val backBtn = createIconButton(activity, R.drawable.icon_back, 32, "#666666") {
+        val backBtn = createIconButton(activity, R.drawable.icon_back, 32, palette.secondaryIcon) {
             navigateBack()
         }
-        val fwdBtn = createIconButton(activity, R.drawable.icon_forward, 32, "#666666") {
+        val fwdBtn = createIconButton(activity, R.drawable.icon_forward, 32, palette.secondaryIcon) {
             navigateForward()
         }
-        val plusBtn = createIconButton(activity, R.drawable.icon_plus, 34, "#333333") {
+        val plusBtn = createIconButton(activity, R.drawable.icon_plus, 34, palette.icon) {
             openNewTab(activity)
         }
         val tabsBtn = createTabsButton(activity) {
             showTabSwitcher(activity)
         }
-        val menuBtn = createIconButton(activity, R.drawable.icon_menu, 34, "#333333") { anchor ->
+        val menuBtn = createIconButton(activity, R.drawable.icon_menu, 34, palette.icon) { anchor ->
             showOverflowMenu(activity, anchor)
         }
-        val closeBtn = createIconButton(activity, R.drawable.icon_close_x, 34, "#333333") {
+        val closeBtn = createIconButton(activity, R.drawable.icon_close_x, 34, palette.icon) {
             dismiss()
         }
 
-        val asideRefreshBtn = createIconButton(activity, R.drawable.icon_browser_refresh, 32, "#333333") {
+        val asideRefreshBtn = createIconButton(activity, R.drawable.icon_browser_refresh, 32, palette.icon) {
             activeWebView?.reload()
             scheduleChromeRefreshSoon()
         }
@@ -544,7 +698,7 @@ internal object LxAppBrowser {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setBackgroundColor(Color.parseColor("#66000000"))
+            setBackgroundColor(palette.scrim)
             isClickable = true
             setOnClickListener { closeTabSwitcher() }
         }
@@ -561,7 +715,7 @@ internal object LxAppBrowser {
                 gravity = Gravity.BOTTOM
             }
             background = GradientDrawable().apply {
-                setColor(Color.WHITE)
+                setColor(palette.surface)
                 cornerRadii = floatArrayOf(
                     dp(activity, 16).toFloat(), dp(activity, 16).toFloat(),
                     dp(activity, 16).toFloat(), dp(activity, 16).toFloat(),
@@ -584,14 +738,14 @@ internal object LxAppBrowser {
         }
         header.addView(TextView(activity).apply {
             text = "Tabs"
-            setTextColor(Color.parseColor("#222222"))
+            setTextColor(palette.title)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         // New tabs are self mode; hide the affordance while an aside is active.
         if (!isAsideActive) {
-            header.addView(createIconButton(activity, R.drawable.icon_plus, 34, "#333333") {
+            header.addView(createIconButton(activity, R.drawable.icon_plus, 34, palette.icon) {
                 closeTabSwitcher()
                 openNewTab(activity)
             })
@@ -636,7 +790,7 @@ internal object LxAppBrowser {
                 dp(activity, 52)
             )
             background = GradientDrawable().apply {
-                setColor(if (isActive) Color.parseColor("#F2F4F7") else Color.TRANSPARENT)
+                setColor(if (isActive) palette.activeRow else Color.TRANSPARENT)
                 cornerRadius = dp(activity, 8).toFloat()
             }
             setPadding(dp(activity, 10), 0, dp(activity, 4), 0)
@@ -645,13 +799,13 @@ internal object LxAppBrowser {
 
             addView(TextView(activity).apply {
                 text = tabTitle(tabId)
-                setTextColor(Color.parseColor("#222222"))
+                setTextColor(palette.title)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
                 setSingleLine(true)
                 ellipsize = TextUtils.TruncateAt.END
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
-            addView(createIconButton(activity, R.drawable.icon_close_x, 32, "#666666") {
+            addView(createIconButton(activity, R.drawable.icon_close_x, 32, palette.secondaryIcon) {
                 closeTab(tabId)
                 if (isShowing()) {
                     showTabSwitcher(activity)
@@ -725,9 +879,9 @@ internal object LxAppBrowser {
                 this.bottomMargin = bottomMargin
             }
             background = GradientDrawable().apply {
-                setColor(Color.WHITE)
+                setColor(palette.surface)
                 cornerRadius = dp(activity, 12).toFloat()
-                setStroke(dp(activity, 1), Color.parseColor("#14000000"))
+                setStroke(dp(activity, 1), palette.stroke)
             }
             elevation = dp(activity, 14).toFloat()
             setPadding(dp(activity, 6), dp(activity, 6), dp(activity, 6), dp(activity, 6))
@@ -794,11 +948,11 @@ internal object LxAppBrowser {
                 }
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
                 setImageResource(resId)
-                setColorFilter(Color.parseColor("#333333"))
+                setColorFilter(palette.icon)
             })
             addView(TextView(activity).apply {
                 text = title
-                setTextColor(Color.parseColor("#222222"))
+                setTextColor(palette.title)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
                 includeFontPadding = false
                 layoutParams = LinearLayout.LayoutParams(
@@ -831,7 +985,7 @@ internal object LxAppBrowser {
         } else {
             icon.visibility = View.VISIBLE
             icon.setImageResource(R.drawable.icon_warning)
-            icon.setColorFilter(Color.parseColor("#C44A21"))
+            icon.setColorFilter(palette.warning)
         }
     }
 
@@ -1038,7 +1192,7 @@ internal object LxAppBrowser {
             layoutParams = FrameLayout.LayoutParams(dp(activity, 24), dp(activity, 24), Gravity.CENTER)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setImageResource(R.drawable.icon_tabs)
-            setColorFilter(Color.parseColor("#333333"))
+            setColorFilter(palette.icon)
         })
         val badge = TextView(activity).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -1049,7 +1203,7 @@ internal object LxAppBrowser {
             background = null
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 0)
-            setTextColor(Color.parseColor("#333333"))
+            setTextColor(palette.icon)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             includeFontPadding = false
@@ -1066,7 +1220,7 @@ internal object LxAppBrowser {
         activity: Activity,
         resId: Int,
         sizeDp: Int = 34,
-        tint: String = "#333333",
+        tint: Int = palette.icon,
         onClick: (View) -> Unit
     ): ImageView {
         return ImageView(activity).apply {
@@ -1077,7 +1231,7 @@ internal object LxAppBrowser {
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setPadding(dp(activity, 6), dp(activity, 6), dp(activity, 6), dp(activity, 6))
             setImageResource(resId)
-            setColorFilter(Color.parseColor(tint))
+            setColorFilter(tint)
             val outValue = TypedValue()
             activity.theme.resolveAttribute(
                 android.R.attr.selectableItemBackgroundBorderless, outValue, true

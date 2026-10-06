@@ -157,7 +157,8 @@ theme:
   chrome paints it where it borders the page.
 - `defaultAppearance` applies until the user picks a scheme
   ([product settings](../lxapp/lx-api.md#product-settings)); an lxapp's own
-  `appearance` overrides both.
+  `appearance` overrides both. The embedded browser's chrome and built-in
+  pages follow the product scheme too.
 - Lxapp pages do not inherit these colors; they follow `prefers-color-scheme`.
 
 ## `update`

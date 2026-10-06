@@ -17,8 +17,22 @@
       --danger: #c4323a;
       --shadow: 0 10px 32px rgba(16, 24, 40, 0.14);
     }
+    /* The host stamps data-theme with the product appearance; it wins over
+       whatever the WebView reports. Unstamped documents follow the media query. */
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --page: #202124;
+      --surface: rgba(45, 46, 50, 0.97);
+      --surface-muted: #36373b;
+      --border: rgba(255, 255, 255, 0.12);
+      --text: #f2f4f7;
+      --muted: #a7abb4;
+      --accent: #8ab4f8;
+      --danger: #ff8a8f;
+      --shadow: 0 12px 38px rgba(0, 0, 0, 0.34);
+    }
     @media (prefers-color-scheme: dark) {
-      :root {
+      :root:not([data-theme]) {
         --page: #202124;
         --surface: rgba(45, 46, 50, 0.97);
         --surface-muted: #36373b;

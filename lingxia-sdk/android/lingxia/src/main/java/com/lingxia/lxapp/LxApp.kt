@@ -119,7 +119,14 @@ object LxApp {
     @JvmStatic
     fun applyAppearance(appId: String, dark: Boolean): Boolean {
         appearanceByApp[appId] = dark
-        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId } ?: return true
+        getCurrentActivity()?.takeIf { it.getAppId() == appId }?.let { restyle(it, appId, dark) }
+        // Queued after the host restyle: the browser overlay sits over every
+        // activity, follows its own built-in app, and must win the bars.
+        LxAppBrowser.onAppearanceChanged()
+        return true
+    }
+
+    private fun restyle(activity: LxAppActivity, appId: String, dark: Boolean) {
         activity.runOnUiThread {
             if (!activity.canPresentLxApp) return@runOnUiThread
             activity.delegate.localNightMode = if (dark) {
@@ -137,7 +144,6 @@ object LxApp {
             LxAppActivity.updateNavBarUI(appId)
             LxAppActivity.updateTabBarUI(appId)
         }
-        return true
     }
 
     /** Open [appId] at a route; blank means its initial route. */
