@@ -55,6 +55,9 @@ pub enum MediaSelection {
     Selected(Vec<PickedMedia>),
 }
 
+/// The business code every platform picker reports for a user dismissal.
+const USER_DISMISSED: u32 = 2000;
+
 /// Presents chooseMedia and distinguishes user cancellation from a failure.
 pub async fn choose_with_status(request: ChooseMediaRequest) -> crate::Result<MediaSelection> {
     let runtime = crate::runtime::platform()?;
@@ -65,7 +68,7 @@ fn decode_media_selection(
     result: Result<String, lingxia_platform::PlatformError>,
 ) -> crate::Result<MediaSelection> {
     let json = match result {
-        Err(lingxia_platform::PlatformError::BusinessError(2000)) => {
+        Err(lingxia_platform::PlatformError::BusinessError(USER_DISMISSED)) => {
             return Ok(MediaSelection::Canceled);
         }
         Err(error) => return Err(error.into()),
@@ -73,11 +76,13 @@ fn decode_media_selection(
     };
     let entries: Vec<PickedMedia> = serde_json::from_str(&json)
         .map_err(|error| crate::Error::internal(format!("invalid media selection: {error}")))?;
-    if entries.is_empty()
-        || entries.iter().any(|entry| {
-            entry.uri.trim().is_empty() || !matches!(entry.file_type.as_str(), "image" | "video")
-        })
-    {
+    // Some hosts report a dismissal as an empty selection.
+    if entries.is_empty() {
+        return Ok(MediaSelection::Canceled);
+    }
+    if entries.iter().any(|entry| {
+        entry.uri.trim().is_empty() || !matches!(entry.file_type.as_str(), "image" | "video")
+    }) {
         return Err(crate::Error::internal("invalid media selection entries"));
     }
     Ok(MediaSelection::Selected(entries))
@@ -426,11 +431,15 @@ mod selection_tests {
     fn cancellation_is_distinct_from_permissions_and_invalid_payloads() {
         use lingxia_platform::PlatformError;
         assert!(matches!(
-            decode_media_selection(Err(PlatformError::BusinessError(2000))).unwrap(),
+            decode_media_selection(Err(PlatformError::BusinessError(USER_DISMISSED))).unwrap(),
+            MediaSelection::Canceled
+        ));
+        assert!(matches!(
+            decode_media_selection(Ok("[]".to_string())).unwrap(),
             MediaSelection::Canceled
         ));
         assert!(decode_media_selection(Err(PlatformError::BusinessError(3001))).is_err());
-        for json in ["null", "[]", "{}", r#"[{"uri":"","fileType":"image"}]"#] {
+        for json in ["null", "{}", r#"[{"uri":"","fileType":"image"}]"#] {
             assert!(decode_media_selection(Ok(json.to_string())).is_err());
         }
         let result = decode_media_selection(Ok(

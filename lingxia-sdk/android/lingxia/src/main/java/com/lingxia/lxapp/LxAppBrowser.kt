@@ -447,7 +447,7 @@ internal object LxAppBrowser {
         closeTabSwitcher()
         val appId = LxApp.homeAppId?.takeIf { it.isNotBlank() }
         if (appId == null) {
-            Log.w(TAG, "openNewTab failed: empty browser appId")
+            Log.w(TAG, "openNewTab failed: no home appId")
             return
         }
         val sessionId = NativeApi.getLxAppSessionId(appId)
@@ -457,7 +457,7 @@ internal object LxAppBrowser {
         }
         val tabId = NativeApi.openTrustedBrowserTabWithId(appId, sessionId, HIDDEN_NEW_TAB_URL, "tab-" + java.util.UUID.randomUUID().toString())
         if (tabId.isNullOrBlank()) {
-            Log.w(TAG, "openNewTab failed: native openBrowserTab returned empty tab")
+            Log.w(TAG, "openNewTab failed: native open returned empty tab")
             return
         }
         show(activity, tabId, HIDDEN_NEW_TAB_URL)
