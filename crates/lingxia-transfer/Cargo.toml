@@ -7,9 +7,13 @@ license = "MIT"
 readme = "README.md"
 repository.workspace = true
 
+[features]
+# Per-task HTTP proxy for browser downloads; only browser hosts link reqwest.
+http-proxy = ["dep:reqwest", "dep:futures-util"]
+
 [dependencies]
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
-futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"], optional = true }
+futures-util = { version = "0.3", optional = true }
 lingxia-settings = { workspace = true }
 lingxia-webview = { workspace = true }
 tokio = { workspace = true }

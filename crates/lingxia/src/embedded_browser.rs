@@ -6,7 +6,9 @@ use lingxia_webview::{ProxyApplyStatus, ProxyConfig, runtime};
 /// Configure a loopback HTTP CONNECT proxy before presenting browser content.
 /// Unsupported platforms return an error; callers must not open the page.
 /// The proxy remains installed if the local listener stops, so disconnection
-/// does not turn into direct access. Strict product pages use separate stores.
+/// does not turn into direct access. On Apple, strict product pages use
+/// separate stores; on Android and Harmony the override is app-wide, so every
+/// WebView in the app routes through it.
 pub fn require_local_proxy(port: u16) -> crate::Result<()> {
     let config = ProxyConfig::new("127.0.0.1", port)
         .map_err(|e| crate::Error::invalid_request(e.to_string()))?;

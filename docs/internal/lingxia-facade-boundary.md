@@ -150,6 +150,8 @@ fetch a file should use `lingxia::file::download`.
 A host embedding its own browser controls uses `lingxia::embedded_browser`
 (the `browser-runtime` feature). Configure `require_local_proxy` before opening
 with `open_and_present`; it also applies the transport to browser downloads.
+On Apple the proxy is scoped to browser data stores; on Android and Harmony it
+is app-wide, so lxapp pages route through it too.
 `block_downloads` preserves the required WebView proxy during disconnection;
 `use_system_network` explicitly clears it. Changing transport pauses active
 browser downloads. `downloads` and `download_action` expose browser-owned task

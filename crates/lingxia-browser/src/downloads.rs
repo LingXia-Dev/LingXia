@@ -93,6 +93,7 @@ pub(crate) async fn browser_download_resource(
     request: DownloadRequest,
 ) {
     let task_id = Uuid::new_v4().to_string();
+    let url = request.url.clone();
     let cancel_rx = transfer::runtime::register_active_download(&task_id);
     let task = transfer::runtime::DownloadTask::for_browser(
         request,
@@ -104,10 +105,14 @@ pub(crate) async fn browser_download_resource(
         Ok(task) => task,
         Err(error) => {
             unregister_browser_download(&task_id);
-            publish_browser_download_event(
-                "browser.downloadBlocked",
-                serde_json::json!({"reason": error.to_string()}),
+            // Report it as any other failed download so the UI surfaces it.
+            let (event_name, payload) = transfer::runtime::browser_download_failed_event(
+                &task_id,
+                &tab_id,
+                &url,
+                &error.to_string(),
             );
+            publish_browser_download_event(event_name, payload);
             return;
         }
     };

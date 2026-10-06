@@ -23,6 +23,8 @@ const DOWNLOAD_RESUME_METADATA_INTERVAL_BYTES: u64 = 256 * 1024;
 const DOWNLOAD_SMALL_BODY_LIMIT: usize = 128 * 1024;
 const DOWNLOAD_DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
 const DOWNLOAD_DEFAULT_MAX_RETRIES: u32 = 3;
+#[cfg(feature = "http-proxy")]
+const DOWNLOAD_PROXY_READ_TIMEOUT: Duration = Duration::from_secs(120);
 const DOWNLOAD_DEFAULT_RETRY_DELAY: Duration = Duration::from_millis(750);
 const DOWNLOAD_MAX_RETRY_DELAY: Duration = Duration::from_secs(5);
 pub(crate) const DOWNLOAD_CANCELED_ERROR: &str = "Download canceled";
@@ -51,6 +53,7 @@ pub struct DownloadTask {
     overwrite_existing_target: bool,
     // None uses the ordinary runtime; Some(None) explicitly disables HTTP
     // proxy overrides and Some(Some(url)) mandates this proxy, without fallback.
+    #[cfg(feature = "http-proxy")]
     http_proxy: Option<Option<String>>,
 }
 
@@ -392,10 +395,12 @@ impl DownloadTask {
             behavior: DownloadBehavior::default(),
             reuse_existing_target: true,
             overwrite_existing_target: true,
+            #[cfg(feature = "http-proxy")]
             http_proxy: None,
         }
     }
 
+    #[cfg(feature = "http-proxy")]
     pub fn with_http_proxy(mut self, proxy: Option<String>) -> Self {
         self.http_proxy = Some(proxy);
         self
@@ -2199,6 +2204,101 @@ pub async fn download_to_path_with_behavior(
     })
 }
 
+// Keep browser transport choices local to a task. A global HTTP override could
+// proxy app control requests (or the proxy engine itself) recursively.
+async fn send_download_request(
+    task: &DownloadTask,
+    request: HttpRequest<http_body_util::combinators::BoxBody<Bytes, IoError>>,
+) -> Result<host_http::HttpResponse, host_http::HttpError> {
+    #[cfg(feature = "http-proxy")]
+    if let Some(proxy) = &task.http_proxy {
+        return send_with_explicit_proxy(task, proxy.as_deref(), request).await;
+    }
+    host_http::send_with_small_body_limit(
+        request,
+        DOWNLOAD_SMALL_BODY_LIMIT,
+        download_request_options(task.behavior),
+    )
+    .await
+}
+
+#[cfg(feature = "http-proxy")]
+async fn send_with_explicit_proxy(
+    task: &DownloadTask,
+    proxy: Option<&str>,
+    request: HttpRequest<http_body_util::combinators::BoxBody<Bytes, IoError>>,
+) -> Result<host_http::HttpResponse, host_http::HttpError> {
+    use futures_util::StreamExt;
+    // No whole-request deadline: `request_timeout` bounds the wait for
+    // response headers, as on the runtime transport; the body may run long.
+    let mut builder = reqwest::Client::builder()
+        .no_proxy()
+        .read_timeout(DOWNLOAD_PROXY_READ_TIMEOUT);
+    if let Some(timeout) = task.behavior.connect_timeout {
+        builder = builder.connect_timeout(timeout);
+    }
+    if let Some(url) = proxy {
+        builder = builder.proxy(
+            reqwest::Proxy::all(url).map_err(|e| host_http::HttpError::from(e.to_string()))?,
+        );
+    }
+    let client = builder
+        .build()
+        .map_err(|e| host_http::HttpError::from(e.to_string()))?;
+    let pending = client
+        .get(request.uri().to_string())
+        .headers(request.headers().clone())
+        .send();
+    let response = tokio::time::timeout(task.behavior.request_timeout, pending)
+        .await
+        .map_err(|_| host_http::HttpError::from("request timeout".to_string()))?
+        .map_err(|e| host_http::HttpError::from(e.to_string()))?;
+    let status = response.status();
+    let headers = response.headers().clone();
+    let (tx, rx) = tokio::sync::mpsc::channel(2);
+    tokio::spawn(async move {
+        let mut body = response.bytes_stream();
+        loop {
+            let chunk = tokio::select! {
+                _ = tx.closed() => break,
+                chunk = body.next() => chunk,
+            };
+            let Some(chunk) = chunk else {
+                break;
+            };
+            let failed = chunk.is_err();
+            if tx.send(chunk.map_err(|e| e.to_string())).await.is_err() || failed {
+                break;
+            }
+        }
+    });
+    Ok(host_http::HttpResponse {
+        status,
+        headers,
+        body: HttpBody::Stream(rx),
+    })
+}
+
+/// The failed event for a browser download rejected before its task ran.
+pub fn browser_download_failed_event(
+    task_id: &str,
+    tab_id: &str,
+    url: &str,
+    error: &str,
+) -> (&'static str, serde_json::Value) {
+    (
+        BROWSER_DOWNLOAD_EVENT_FAILED,
+        json!({
+            "taskId": task_id,
+            "tabId": tab_id,
+            "url": url,
+            "error": error,
+            "downloadedBytes": 0,
+            "totalBytes": null,
+        }),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2377,68 +2477,7 @@ mod tests {
     }
 }
 
-// Keep browser transport choices local to a task. A global HTTP override could
-// proxy app control requests (or the proxy engine itself) recursively.
-async fn send_download_request(
-    task: &DownloadTask,
-    request: HttpRequest<http_body_util::combinators::BoxBody<Bytes, IoError>>,
-) -> Result<host_http::HttpResponse, host_http::HttpError> {
-    let Some(proxy) = &task.http_proxy else {
-        return host_http::send_with_small_body_limit(
-            request,
-            DOWNLOAD_SMALL_BODY_LIMIT,
-            download_request_options(task.behavior),
-        )
-        .await;
-    };
-    use futures_util::StreamExt;
-    let mut builder = reqwest::Client::builder()
-        .no_proxy()
-        .timeout(task.behavior.request_timeout);
-    if let Some(timeout) = task.behavior.connect_timeout {
-        builder = builder.connect_timeout(timeout);
-    }
-    if let Some(url) = proxy {
-        builder = builder.proxy(
-            reqwest::Proxy::all(url).map_err(|e| host_http::HttpError::from(e.to_string()))?,
-        );
-    }
-    let client = builder
-        .build()
-        .map_err(|e| host_http::HttpError::from(e.to_string()))?;
-    let response = client
-        .get(request.uri().to_string())
-        .headers(request.headers().clone())
-        .send()
-        .await
-        .map_err(|e| host_http::HttpError::from(e.to_string()))?;
-    let status = response.status();
-    let headers = response.headers().clone();
-    let (tx, rx) = tokio::sync::mpsc::channel(2);
-    tokio::spawn(async move {
-        let mut body = response.bytes_stream();
-        loop {
-            let chunk = tokio::select! {
-                _ = tx.closed() => break,
-                chunk = body.next() => chunk,
-            };
-            let Some(chunk) = chunk else {
-                break;
-            };
-            let failed = chunk.is_err();
-            if tx.send(chunk.map_err(|e| e.to_string())).await.is_err() || failed {
-                break;
-            }
-        }
-    });
-    Ok(host_http::HttpResponse {
-        status,
-        headers,
-        body: HttpBody::Stream(rx),
-    })
-}
-
-#[cfg(test)]
+#[cfg(all(test, feature = "http-proxy"))]
 mod browser_proxy_tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -2493,6 +2532,40 @@ mod browser_proxy_tests {
             .await
             .unwrap();
         assert_eq!(response.status.as_u16(), 200);
+        let HttpBody::Stream(mut body) = response.body else {
+            panic!("stream expected")
+        };
+        assert_eq!(
+            body.recv().await.unwrap().unwrap(),
+            Bytes::from_static(b"ok")
+        );
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn request_timeout_bounds_headers_not_the_body() {
+        let proxy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_url = format!("http://{}", proxy.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = proxy.accept().await.unwrap();
+            let mut bytes = vec![0; 8192];
+            assert!(socket.read(&mut bytes).await.unwrap() > 0);
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n")
+                .await
+                .unwrap();
+            tokio::time::sleep(Duration::from_millis(600)).await;
+            socket.write_all(b"ok").await.unwrap();
+        });
+        let task = task("http://download.invalid/slow".into(), proxy_url).with_behavior(
+            DownloadBehavior {
+                request_timeout: Duration::from_millis(200),
+                ..DownloadBehavior::default()
+            },
+        );
+        let response = send_download_request(&task, request(&task.request.url))
+            .await
+            .unwrap();
         let HttpBody::Stream(mut body) = response.body else {
             panic!("stream expected")
         };
