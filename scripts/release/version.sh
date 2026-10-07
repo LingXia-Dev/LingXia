@@ -36,6 +36,7 @@ With --component all (default), this updates:
   - LingXia Runner crate versions + macOS Info.plist (tracks the CLI version)
   - example native host LingXia crate dependency versions
   - example native host Cargo.lock LingXia package versions
+  - example lxapp.json minRuntime (raised to the new major.minor line)
   - package versions under packages/*
   - @lingxia/browser-shell-webui (crates/lingxia-browser-shell/webui)
   - internal @lingxia/* package dependency versions in published package.json files
@@ -306,6 +307,46 @@ else:
 PY
 }
 
+# The example lxapps resolve @lingxia/* from the workspace, and the CLI refuses
+# to build an lxapp whose minRuntime is behind the installed packages, so every
+# minor bump has to move the examples' minRuntime with it (same rule as
+# `lingxia upgrade`: M.m.0, never lowered).
+update_example_min_runtime() {
+  python3 - "$ROOT_DIR" "$VERSION" "$DRY_RUN" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+root = Path(sys.argv[1])
+major, minor = sys.argv[2].split(".")[:2]
+line = f"{major}.{minor}.0"
+dry_run = sys.argv[3] == "1"
+
+
+def key(version):
+    parts = version.split(".")
+    return (int(parts[0]), int(parts[1]))
+
+
+manifests = sorted(root.glob("examples/*/lxapp.json")) + sorted(root.glob("examples/*/lxapp/lxapp.json"))
+pattern = re.compile(r'("minRuntime"\s*:\s*")([^"]+)(")')
+for manifest in manifests:
+    text = manifest.read_text()
+    match = pattern.search(text)
+    current = match.group(2) if match else None
+    if current is None or key(current) >= key(line):
+        continue
+    if dry_run:
+        print(f"would update {manifest}")
+    else:
+        # Edit the value in place: the manifests are hand-formatted, and a
+        # json dump would rewrite every line.
+        manifest.write_text(text[: match.start(2)] + line + text[match.end(2) :])
+        print(f"updated {manifest}")
+    print(f"  minRuntime {current} -> {line}")
+PY
+}
+
 update_example_host_lock() {
   [[ -f "$EXAMPLE_HOST_CARGO_TOML" ]] || return 0
   [[ -f "$(dirname "$EXAMPLE_HOST_CARGO_TOML")/Cargo.lock" ]] || return 0
@@ -464,6 +505,7 @@ else
   update_runner_version "$VERSION"
   update_example_host_cargo
   update_example_host_lock
+  update_example_min_runtime
 
   while IFS= read -r package_json; do
     update_package_json "$package_json"
