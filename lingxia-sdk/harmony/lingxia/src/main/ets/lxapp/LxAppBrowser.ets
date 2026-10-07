@@ -625,7 +625,12 @@ export struct LxAppBrowser {
   // SRC_IN tint for the stroke-only menu icons: fillColor would paint their
   // circles solid. Light keeps the art's own #666666.
   private menuIconFilter(): ColorFilter {
-    const hex = (this.appearanceDark ? DARK_CHROME.text : LIGHT_CHROME.secondaryIcon).replace('#', '');
+    return this.tintFilter(this.appearanceDark ? DARK_CHROME.text : LIGHT_CHROME.secondaryIcon);
+  }
+
+  // fillColor leaves stroke-only art untinted; a SRC_IN matrix recolors it.
+  private tintFilter(color: string): ColorFilter {
+    const hex = color.replace('#', '');
     const r: number = parseInt(hex.substring(0, 2), 16) / 255;
     const g: number = parseInt(hex.substring(2, 4), 16) / 255;
     const b: number = parseInt(hex.substring(4, 6), 16) / 255;
@@ -1140,18 +1145,19 @@ export struct LxAppBrowser {
       })
   }
 
+  // Reads state directly: a by-value @Builder param is not re-rendered on change.
   @Builder
-  ToolbarPlusIcon(color: string) {
+  ToolbarPlusIcon() {
     Stack({ alignContent: Alignment.Center }) {
       Row()
         .width(14)
         .height(2)
-        .backgroundColor(color)
+        .backgroundColor(this.colors().icon)
         .borderRadius(1)
       Row()
         .width(2)
         .height(14)
-        .backgroundColor(color)
+        .backgroundColor(this.colors().icon)
         .borderRadius(1)
     }
     .width(20)
@@ -1159,22 +1165,22 @@ export struct LxAppBrowser {
   }
 
   @Builder
-  ToolbarMenuIcon(color: string) {
+  ToolbarMenuIcon() {
     Column({ space: 3 }) {
       Row()
         .width(16)
         .height(2)
-        .backgroundColor(color)
+        .backgroundColor(this.colors().icon)
         .borderRadius(1)
       Row()
         .width(16)
         .height(2)
-        .backgroundColor(color)
+        .backgroundColor(this.colors().icon)
         .borderRadius(1)
       Row()
         .width(16)
         .height(2)
-        .backgroundColor(color)
+        .backgroundColor(this.colors().icon)
         .borderRadius(1)
     }
     .width(20)
@@ -1323,7 +1329,7 @@ export struct LxAppBrowser {
           // New-tab affordance (asides are API-opened; user tabs are self mode).
           if (!this.isAsideActive) {
             Stack({ alignContent: Alignment.Center }) {
-              this.ToolbarPlusIcon(this.colors().icon)
+              this.ToolbarPlusIcon()
             }
             .width(40)
             .height(36)
@@ -1368,7 +1374,7 @@ export struct LxAppBrowser {
           // Overflow menu (downloads / settings) — self tabs only.
           if (!this.isAsideActive) {
             Stack({ alignContent: Alignment.Center }) {
-              this.ToolbarMenuIcon(this.colors().icon)
+              this.ToolbarMenuIcon()
             }
             .width(40)
             .height(36)
@@ -1380,7 +1386,7 @@ export struct LxAppBrowser {
           Image($rawfile('icons/icon_close_x.svg'))
             .width(20)
             .height(20)
-            .fillColor(this.colors().icon)
+            .colorFilter(this.tintFilter(this.colors().icon))
             .padding(8)
             .width(40)
             .height(36)
@@ -1510,7 +1516,7 @@ export struct LxAppBrowser {
           // New tabs are self mode; no affordance while an aside is active.
           if (!this.isAsideActive) {
             Stack({ alignContent: Alignment.Center }) {
-              this.ToolbarPlusIcon(this.colors().icon)
+              this.ToolbarPlusIcon()
             }
               .width(40)
               .height(36)
@@ -1541,7 +1547,7 @@ export struct LxAppBrowser {
                 Image($rawfile('icons/icon_close_x.svg'))
                   .width(16)
                   .height(16)
-                  .fillColor(this.colors().secondaryIcon)
+                  .colorFilter(this.tintFilter(this.colors().secondaryIcon))
                   .padding(10)
                   .width(36)
                   .height(36)
