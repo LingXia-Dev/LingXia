@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/vue",
-  "version": "0.20.1",
+  "version": "0.21.0",
   "private": false,
   "description": "LingXia Vue runtime and components for lxapp pages",
   "type": "module",
@@ -25,9 +25,9 @@
     "test:hooks": "rolldown -c tests/rolldown.hooks.config.mjs && node tests/page-hooks.mjs"
   },
   "dependencies": {
-    "@lingxia/bridge": "~0.20.1",
-    "@lingxia/elements": "~0.20.1",
-    "@lingxia/page-runtime": "~0.20.1"
+    "@lingxia/bridge": "~0.21.0",
+    "@lingxia/elements": "~0.21.0",
+    "@lingxia/page-runtime": "~0.21.0"
   },
   "peerDependencies": {
     "vue": ">=3.5.0"

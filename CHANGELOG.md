@@ -19,6 +19,43 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.21.0 — 2026-10-07
+
+### Breaking
+
+- **Breaking** — **app**: one observable-state API for Rust hosts (c0f0d4598)
+
+### Writing an lxapp
+
+- **lxapp**: answer leave requests from one guard primitive (785389429)
+- **lxapp**: harden the leave guard and tidy localized chrome (5de9522ab)
+- **lxapp**: address review on leave guard and localized text; showcase and specs (b9d42375f)
+- **lxapp**: guard leaving a page and localize tab/nav text without Logic (ad470667d)
+
+### Embedding a host app
+
+- **harmony**: tint the browser toolbar icons in dark (f45587496)
+- **browser**: follow the product light/dark setting (12e7ede52)
+- **browser**: document the embedded proxy contract and allow a forced re-apply (3246b5dc8)
+- **ios**: limit the Safari-style browser user agent to iPhone (8d5109dec)
+- **browser**: bound proxied download headers only and gate browser by platform (d6de5d40c)
+- **browser**: support host-managed proxy sessions and downloads (5a58cbeb6)
+- **media**: treat an empty native selection as a cancellation (529cad99f)
+- **browser**: restore mobile browser controls and native media selection (b80eea63e)
+- **app**: set the host light/dark setting from Rust (639987a1f)
+- **browser**: localize mobile overflow menus (4b9961d7c)
+
+### CLI and CI
+
+- **cli**: wrap Microsoft Store packages and preserve pending drafts (ce1e955d0)
+- **cli**: create a project in the current directory with `lingxia new .` (6ef65d375)
+- **cli**: validate Apple uploads and support Harmony AppTest (0ba794bf3)
+- **cli**: sign Harmony AppGallery release packages (ac8ce194f)
+
+### Docs and examples
+
+- **showcase**: declare tab labels and page titles per language (60f6f32e6)
+
 ## 0.20.1 — 2026-10-04
 
 ### Writing an lxapp
