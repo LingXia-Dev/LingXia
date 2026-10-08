@@ -662,10 +662,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: rust-windows-${{ matrix.suite }}
-          # PRs can restore main's cache, but must not fail after successful
-          # checks while compressing a multi-gigabyte target directory.
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          # One cache for all three suites: lint builds the workspace with
+          # --all-targets, a superset of what runtime and distribution compile,
+          # so only lint saves (on main) and the other suites restore it. Three
+          # per-suite caches of several GB each would evict every other OS's
+          # cache under the 10 GB repository budget. PRs never save: they must
+          # not fail after successful checks while compressing the target dir.
+          shared-key: rust-windows
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.suite == 'lint' }}
 
       - uses: taiki-e/install-action@cargo-hack
         if: matrix.suite == 'lint'
@@ -775,7 +779,7 @@ jobs:
       # lingxia runtime facade) and the advanced_host example, which the macOS
       # host can't compile (C deps like zstd/quickjs need the Windows SDK).
       - name: Check Windows SDK feature tiers
-        if: matrix.suite == 'distribution'
+        if: matrix.suite == 'runtime'
         shell: bash
         run: |
           cargo check -p lingxia-windows-sdk --no-default-features --features host-api
