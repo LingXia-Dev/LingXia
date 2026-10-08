@@ -330,29 +330,7 @@ pub struct SignatureInfo {
 
 /// Extract entitlements from a provisioning profile
 pub fn extract_entitlements_from_profile(profile_data: &[u8]) -> Result<Vec<u8>> {
-    // Provisioning profiles are CMS signed data
-    // We need to extract the plist content and get the Entitlements key
-
-    // Use security cms to decode
-    let mut profile_file = NamedTempFile::new().context("Failed to create profile temp file")?;
-    use std::io::Write;
-    profile_file
-        .write_all(profile_data)
-        .context("Failed to write profile temp file")?;
-
-    let output = Command::new("security")
-        .args(["cms", "-D", "-i"])
-        .arg(profile_file.path())
-        .output()
-        .context("Failed to decode provisioning profile")?;
-
-    if !output.status.success() {
-        return Err(anyhow!("Failed to decode provisioning profile"));
-    }
-
-    // Parse the plist
-    let plist: plist::Value =
-        plist::from_bytes(&output.stdout).context("Failed to parse provisioning profile plist")?;
+    let plist = super::mobileprovision::decode_plist(profile_data)?;
 
     let dict = plist
         .as_dictionary()
@@ -372,24 +350,7 @@ pub fn extract_entitlements_from_profile(profile_data: &[u8]) -> Result<Vec<u8>>
 /// Extract the team ID from a provisioning profile
 #[allow(dead_code)]
 pub fn extract_team_id_from_profile(profile_data: &[u8]) -> Result<String> {
-    let mut profile_file = NamedTempFile::new().context("Failed to create profile temp file")?;
-    use std::io::Write;
-    profile_file
-        .write_all(profile_data)
-        .context("Failed to write profile temp file")?;
-
-    let output = Command::new("security")
-        .args(["cms", "-D", "-i"])
-        .arg(profile_file.path())
-        .output()
-        .context("Failed to decode provisioning profile")?;
-
-    if !output.status.success() {
-        return Err(anyhow!("Failed to decode provisioning profile"));
-    }
-
-    let plist: plist::Value =
-        plist::from_bytes(&output.stdout).context("Failed to parse provisioning profile plist")?;
+    let plist = super::mobileprovision::decode_plist(profile_data)?;
 
     let dict = plist
         .as_dictionary()
