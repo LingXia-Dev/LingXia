@@ -131,10 +131,10 @@ impl HostPermissions {
 }
 
 /// Resolves a snapshot a test deliberately left pending.
-#[cfg(test)]
+#[cfg(all(test, not(windows)))]
 pub(crate) struct DeferredGrant(watch::Sender<Option<Arc<HostGrant>>>);
 
-#[cfg(test)]
+#[cfg(all(test, not(windows)))]
 impl DeferredGrant {
     /// Land the decision, as the registry lookup would.
     pub(crate) fn resolve(&self, permissions: Option<LxAppPermissions>) {
@@ -142,7 +142,7 @@ impl DeferredGrant {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(windows)))]
 impl HostPermissions {
     /// A snapshot that has not landed, plus the handle that lands it.
     pub(crate) fn deferred() -> (Self, DeferredGrant) {
