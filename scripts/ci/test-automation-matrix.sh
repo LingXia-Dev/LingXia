@@ -39,7 +39,6 @@ assert_case() {
 
 windows_react='{"platform":"windows","os":"windows-latest","exe":".exe","framework":"react","profile":"react"}'
 windows_vue='{"platform":"windows","os":"windows-latest","exe":".exe","framework":"vue","profile":"vue"}'
-windows_both='{"platform":"windows","os":"windows-latest","exe":".exe","framework":"all","profile":"all"}'
 macos_react='{"platform":"macos","os":"macos-latest","exe":"","framework":"react","profile":"react"}'
 
 assert_case none false \
@@ -53,14 +52,14 @@ assert_case macos-all true \
 assert_case windows-contract-change true \
   "{\"include\":[$windows_react]}" WINDOWS=true
 assert_case windows-all true \
-  "{\"include\":[$windows_both]}" WINDOWS_ALL=true
+  "{\"include\":[$windows_react,$windows_vue]}" WINDOWS_ALL=true
 assert_case shared-frontend true \
-  "{\"include\":[$windows_both,$macos_react]}" FRONTEND_SHARED=true
+  "{\"include\":[$windows_react,$windows_vue,$macos_react]}" FRONTEND_SHARED=true
 assert_case vue true \
   "{\"include\":[$windows_vue]}" VUE=true
 assert_case react true \
   "{\"include\":[$windows_react,$macos_react]}" REACT=true
 assert_case full true \
-  "{\"include\":[$windows_both,$macos_react]}" FULL=true
+  "{\"include\":[$windows_react,$windows_vue,$macos_react]}" FULL=true
 
 echo "automation matrix cases passed"

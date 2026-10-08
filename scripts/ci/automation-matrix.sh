@@ -51,12 +51,10 @@ append_framework() {
   entries+=("{\"platform\":\"$platform\",\"os\":\"$os\",\"exe\":\"$exe\",\"framework\":\"$framework\",\"profile\":\"$framework\"}")
 }
 
-if is_true "$windows_react" && is_true "$windows_vue"; then
-  append_framework windows windows-latest .exe all true
-else
-  append_framework windows windows-latest .exe react "$windows_react"
-  append_framework windows windows-latest .exe vue "$windows_vue"
-fi
+# react and vue run as separate jobs: each is ~19 minutes on Windows, and a
+# combined "all" run serialised them into ~30.
+append_framework windows windows-latest .exe react "$windows_react"
+append_framework windows windows-latest .exe vue "$windows_vue"
 
 append_framework macos macos-latest '' react "$macos_react"
 
