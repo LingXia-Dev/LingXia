@@ -19,6 +19,40 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.22.0 — 2026-10-08
+
+### Breaking
+
+- **Breaking** — **harmony**: require HarmonyOS 6.1.0 (API 23) (78b6c1661)
+
+### Writing an lxapp
+
+- **lxapp**: gate the deferred-grant test helpers off Windows with their test (1f7b16380)
+- **lxapp**: theme the native pull-to-refresh spinner (7129c39ca)
+- **lxapp**: recover failed updates on 32-bit Android (68469fbdb)
+
+### Embedding a host app
+
+- **android**: keep pull-to-refresh off when the page config cannot be read (a04161d7d)
+- **macos**: honour a pull-down refresh restarted while the indicator lingers (523c3bc98)
+- **app**: expose autostart controls to native Rust hosts (ac6e76755)
+- **ios**: target the current lxapp from capsule buttons (b5fff0051)
+- **android**: keep lxapp windows out of force dark (e05dba010)
+- **windows**: keep en-US the MSIX default and make makepri optional (c172d8770)
+- **windows**: keep MSIX name translations in the main PRI (357521518)
+- **desktop**: localize product launcher names and infer executables (084ebdd25)
+- **harmony**: sign and provision HAPs from the Windows CLI (f78e70260)
+
+### CLI and CI
+
+- **cli**: prefer the package's declared executable product on macOS (9741716a8)
+- **cli**: decode provisioning profiles without the default keychain (8ea8899c7)
+
+### Other
+
+- **wallet**: expose harmony_signing_dir on Windows (a2c397806)
+- **deps**: update dependencies flagged by Dependabot (9533cb2be)
+
 ## 0.21.0 — 2026-10-07
 
 ### Breaking
