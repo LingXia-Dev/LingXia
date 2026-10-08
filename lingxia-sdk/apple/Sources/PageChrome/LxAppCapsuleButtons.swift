@@ -20,14 +20,17 @@ class LxAppCapsuleButtons {
     private static weak var capsuleButtonView: UIView?
     private static var capsuleTopConstraint: NSLayoutConstraint?
 
-    static func addCapsuleButton(to viewController: UIViewController, appId: String) {
+    static func addCapsuleButton(to viewController: UIViewController) {
         guard viewController.view.viewWithTag(CAPSULE_BUTTON_TAG) == nil else { return }
 
         let capsuleButtons = LxAppUnifiedCapsuleView(
             onMoreTapped: {
+                // The capsule is shared across apps; resolve its target at tap time.
+                guard let appId = LxAppCore.currentAppId else { return }
                 LxAppCapsuleMenu.show(appId: appId)
             },
             onCloseTapped: {
+                guard let appId = LxAppCore.currentAppId else { return }
                 let _ = onLxappEvent(appId, LxAppEvent.capsuleClick, LxAppEvent.capsuleActionClose)
             }
         )
