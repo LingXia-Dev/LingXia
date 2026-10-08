@@ -533,6 +533,11 @@ fn is_windows_manifest(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// `productNames` locale tags → Windows language ids for the EXE's
+/// VERSIONINFO blocks, serialized as JSON for the build script. Resolving a
+/// tag needs `LocaleNameToLCID`, so this is only meaningful on a Windows host;
+/// elsewhere it yields an empty map, which is fine because Windows hosts are
+/// only ever built on Windows.
 fn windows_name_translations(names: &std::collections::BTreeMap<String, String>) -> Result<String> {
     #[allow(unused_mut)]
     let mut translations: std::collections::BTreeMap<u16, &str> = std::collections::BTreeMap::new();

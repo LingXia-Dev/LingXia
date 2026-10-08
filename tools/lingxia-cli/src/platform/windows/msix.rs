@@ -60,8 +60,22 @@ pub fn package(
 
     generate_logos(&staging.join("Images"), &dist_dir.join("assets"))?;
 
-    let localized = !app.product_names.is_empty();
-    let languages = write_name_resources(&staging, &app.product_name, &app.product_names)?;
+    // Localized names need a compiled PRI, i.e. makepri.exe from the Windows
+    // SDK. Without it the package still builds, with productName as its one
+    // display name, so a bare makeappx setup keeps working.
+    let makepri = find_makepri(&makeappx);
+    if !app.product_names.is_empty() && makepri.is_none() {
+        println!(
+            "  {} makepri.exe not found beside makeappx (or LINGXIA_MAKEPRI); MSIX uses productName for every language",
+            "note:".yellow()
+        );
+    }
+    let localized = !app.product_names.is_empty() && makepri.is_some();
+    let languages = if localized {
+        write_name_resources(&staging, &app.product_name, &app.product_names)?
+    } else {
+        vec!["en-US".to_string()]
+    };
     let display_name = if localized {
         "ms-resource:Resources/ProductName"
     } else {
@@ -78,8 +92,8 @@ pub fn package(
     );
     std::fs::write(staging.join("AppxManifest.xml"), manifest)
         .context("Failed to write AppxManifest.xml")?;
-    if localized {
-        compile_name_resources(&staging, &makeappx, temp.path())?;
+    if let Some(makepri) = makepri.filter(|_| localized) {
+        compile_name_resources(&staging, &makepri, temp.path())?;
     }
 
     let status = Command::new(&makeappx)
@@ -300,6 +314,16 @@ fn write_name_resources(
     if translations.is_empty() {
         return Ok(vec!["en-US".to_string()]);
     }
+    // The manifest's first <Resource Language> is the package default; keep
+    // en-US there (it carries the unqualified fallback name) ahead of the
+    // alphabetically ordered rest, so a `de-DE` entry cannot become default.
+    let english = candidates
+        .keys()
+        .find(|tag| tag.eq_ignore_ascii_case("en-US"))
+        .cloned()
+        .expect("en-US candidate is always present");
+    let mut languages = vec![english.clone()];
+    languages.extend(candidates.keys().filter(|tag| **tag != english).cloned());
     let strings = staging.join("Strings");
     for (locale, name) in std::iter::once(("", default)).chain(
         candidates
@@ -316,31 +340,33 @@ fn write_name_resources(
             ),
         )?;
     }
-    Ok(candidates.into_keys().collect())
+    Ok(languages)
 }
 
-fn compile_name_resources(staging: &Path, makeappx: &Path, scratch: &Path) -> Result<()> {
-    let makepri = std::env::var_os("LINGXIA_MAKEPRI")
+/// `makepri.exe` ships in the same Windows SDK bin directory as `makeappx.exe`;
+/// `LINGXIA_MAKEPRI` overrides. `None` when neither exists.
+fn find_makepri(makeappx: &Path) -> Option<PathBuf> {
+    std::env::var_os("LINGXIA_MAKEPRI")
         .map(PathBuf::from)
-        .unwrap_or_else(|| makeappx.with_file_name("makepri.exe"));
+        .into_iter()
+        .chain(std::iter::once(makeappx.with_file_name("makepri.exe")))
+        .find(|path| path.is_file())
+}
+
+fn compile_name_resources(staging: &Path, makepri: &Path, scratch: &Path) -> Result<()> {
     let config = scratch.join("priconfig.xml");
-    let status = Command::new(&makepri)
+    let status = Command::new(makepri)
         .args(["createconfig", "/cf"])
         .arg(&config)
         .args(["/dq", "en-US", "/o"])
         .status()
-        .with_context(|| {
-            format!(
-                "Failed to run {}; install the Windows SDK or set LINGXIA_MAKEPRI",
-                makepri.display()
-            )
-        })?;
+        .with_context(|| format!("Failed to run {}", makepri.display()))?;
     if !status.success() {
         bail!("makepri createconfig failed");
     }
     let generated = std::fs::read_to_string(&config)?;
     std::fs::write(&config, single_package_pri_config(&generated)?)?;
-    let status = Command::new(&makepri)
+    let status = Command::new(makepri)
         .args(["new", "/pr"])
         .arg(staging)
         .arg("/cf")
@@ -415,10 +441,12 @@ mod name_tests {
         let dir = tempfile::tempdir().unwrap();
         let names = BTreeMap::from([
             ("zh-CN".into(), "应用 & 演示".into()),
+            ("de-DE".into(), "Deutsche App".into()),
             ("en-US".into(), "English App".into()),
         ]);
         let languages = write_name_resources(dir.path(), "Fallback", &names).unwrap();
-        assert_eq!(languages, vec!["en-US", "zh-CN"]);
+        // en-US stays the package default even though de-DE sorts before it.
+        assert_eq!(languages, vec!["en-US", "de-DE", "zh-CN"]);
         let fallback = std::fs::read_to_string(dir.path().join("Strings/Resources.resw")).unwrap();
         let chinese =
             std::fs::read_to_string(dir.path().join("Strings/zh-CN/Resources.resw")).unwrap();
