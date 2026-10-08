@@ -28,6 +28,10 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Full debuginfo is dead weight in CI: it inflates every target directory
+  # (and so every rust-cache archive) and slows linking; line tables keep
+  # file:line in backtraces.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
   NODE_VERSION: "22"
   OHOS_SDK_VERSION: "6.1-Release"
   OHOS_SDK_URL: "https://repo.huaweicloud.com/openharmony/os/6.1-Release/ohos-sdk-windows_linux-public.tar.gz"
@@ -77,7 +81,9 @@ jobs:
               # Only what lingxia-cli embeds (see scripts/ci/cli-fingerprint.sh).
               - 'design/icons/svg/**'
               - 'design/app-icon/**'
-              - 'docs/skill/**'
+              # docs/skill is embedded too, but the fingerprint already rebuilds
+              # the CLI for it and `Check skill docs` runs on every PR; it does
+              # not need the rust-wide fan-out.
               - 'i18n/permission/cli/**'
             web_runtime:
               - 'packages/package.json'
@@ -527,7 +533,13 @@ jobs:
       # (clippy is a superset of check), so this job runs only the i18n
       # generation gate and the crates it needs.
       - name: Check i18n-related crates explicitly
-        run: cargo check -p lingxia-logic -p lingxia-cli
+        run: cargo check -p lingxia-logic
+
+      # The i18n gate runs the CLI binary; resolve it from the fingerprint
+      # cache instead of compiling lingxia-cli here as well.
+      - uses: ./.github/actions/resolve-cli
+        with:
+          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
 
       # The showcase native crate is its own workspace with its own lockfile.
       # A manifest bump that leaves the lock behind makes every example build
@@ -540,7 +552,7 @@ jobs:
       # run `gen i18n`". The native resource bundles are gitignored, so
       # `--check` only validates that they generate, not that they're tracked.
       - name: Verify committed i18n outputs are in sync
-        run: cargo run -p lingxia-cli -- gen i18n --check
+        run: ./target/debug/lingxia gen i18n --check
 
   # Fast, portable security contracts run on every affected PR instead of
   # waiting for the advisory full-workspace test on a main push. The matrix
@@ -591,7 +603,7 @@ jobs:
   # job needs only the NDK clang.
   rust-android-target:
     needs: changes
-    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.i18n == 'true' }}
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     name: Android Target
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -644,7 +656,7 @@ jobs:
   # job this gives clippy coverage of every host's code paths.
   rust-windows-target:
     needs: changes
-    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.i18n == 'true' }}
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     name: Windows Target / ${{ matrix.suite }}
     runs-on: windows-latest
     # lingxia-cli vendors OpenSSL on Windows (~11 min per profile); the suites
@@ -670,14 +682,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          # One cache for all three suites: lint builds the workspace with
-          # --all-targets, a superset of what runtime and distribution compile,
-          # so only lint saves (on main) and the other suites restore it. Three
+          # One cache for all three suites, saved (on main) by runtime only:
+          # its `cargo test` runs leave compiled .rlib dependencies that the
+          # other suites link against, whereas clippy emits only .rmeta. Three
           # per-suite caches of several GB each would evict every other OS's
           # cache under the 10 GB repository budget. PRs never save: they must
           # not fail after successful checks while compressing the target dir.
           shared-key: rust-windows
-          save-if: ${{ github.ref == 'refs/heads/main' && matrix.suite == 'lint' }}
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.suite == 'runtime' }}
 
       - uses: taiki-e/install-action@cargo-hack
         if: matrix.suite == 'lint'
@@ -777,7 +789,7 @@ jobs:
       # features, so `--workspace` above never compiles them and their unit
       # tests — glyph-to-column mapping, sidebar geometry — run nowhere else.
       - name: Test Windows shell chrome and terminal renderer
-        if: matrix.suite == 'runtime'
+        if: matrix.suite == 'distribution'
         shell: bash
         run: bash scripts/ci/cargo-test-required.sh -p lingxia-windows-sdk --features shell-chrome,terminal-runtime --lib
 
@@ -1130,11 +1142,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: showcase-automation-${{ matrix.platform }}-${{ matrix.profile }}
+          # The frameworks differ only in the lxapp frontend, so the Windows
+          # react and vue jobs share one target cache that react alone saves.
+          shared-key: showcase-automation-${{ matrix.platform }}
           cache-on-failure: true
           # Cancelled PR automation must release the concurrency group instead
           # of spending minutes archiving a target directory in its post step.
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.profile == 'react' }}
 
       - uses: ./.github/actions/build-web-packages
 
@@ -1410,9 +1424,13 @@ jobs:
           key: gradle-sdk-${{ hashFiles('lingxia-sdk/android/**/*.gradle*', 'lingxia-sdk/android/**/gradle-wrapper.properties') }}
           restore-keys: gradle-sdk-
 
-      - uses: ./.github/actions/build-web-runtime
+      - uses: ./.github/actions/resolve-cli
+        with:
+          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
 
       - name: Build Android SDK release artifact
+        env:
+          LINGXIA_CLI: ${{ github.workspace }}/target/debug/lingxia
         run: bash scripts/release/sdk.sh --platform android --out dist/sdk-ci --no-shasums
 
       - name: Verify API 21 core and complete Android module packaging
@@ -1444,7 +1462,13 @@ jobs:
 
       - uses: ./.github/actions/build-web-runtime
 
+      - uses: ./.github/actions/resolve-cli
+        with:
+          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
+
       - name: Build Apple SDK release artifact
+        env:
+          LINGXIA_CLI: ${{ github.workspace }}/target/debug/lingxia
         run: bash scripts/release/sdk.sh --platform apple --out dist/sdk-ci --no-shasums
 
       - name: Test linkable Apple admission and Settings contracts

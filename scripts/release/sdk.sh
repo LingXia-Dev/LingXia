@@ -242,7 +242,12 @@ generate_resources() {
   [[ -d "$I18N_DIR" ]] || die "Missing i18n dir: $I18N_DIR"
   [[ -d "$ICONS_SVG_DIR" ]] || die "Missing icons svg dir: $ICONS_SVG_DIR"
 
+  # CI resolves a prebuilt CLI; a release build from a tag compiles it here.
   local gen_cmd=(cargo run -p lingxia-cli -- gen)
+  if [[ -n "${LINGXIA_CLI:-}" ]]; then
+    [[ -x "$LINGXIA_CLI" ]] || die "LINGXIA_CLI is not executable: $LINGXIA_CLI"
+    gen_cmd=("$LINGXIA_CLI" gen)
+  fi
   local i18n_args=(i18n --input "$I18N_DIR" --no-rust --no-ts)
   local icons_args=(icons --input "$ICONS_SVG_DIR")
 
