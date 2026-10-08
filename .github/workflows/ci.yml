@@ -74,7 +74,9 @@ jobs:
               - 'clippy.toml'
             cli:
               - 'tools/**'
-              - 'design/**'
+              # Only what lingxia-cli embeds (see scripts/ci/cli-fingerprint.sh).
+              - 'design/icons/svg/**'
+              - 'design/app-icon/**'
               - 'docs/skill/**'
               - 'i18n/permission/cli/**'
             web_runtime:
@@ -464,9 +466,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # install-action has no actionlint entry and its cargo-binstall fallback
-      # cannot find it (not a crate); use upstream's pinned installer.
+      # cannot find it (not a crate); fetch the release binary and verify it.
       - name: Install actionlint
-        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+        env:
+          VERSION: 1.7.12
+          SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          curl -sSfL -o actionlint.tar.gz "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/actionlint_${VERSION}_linux_amd64.tar.gz"
+          echo "${SHA256}  actionlint.tar.gz" | sha256sum -c -
+          tar xzf actionlint.tar.gz actionlint
       - run: ./actionlint -color
 
   fmt:
