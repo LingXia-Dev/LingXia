@@ -141,6 +141,8 @@ export const I18N_KEYS = [
   "permission_media_reason",
   "permission_network_reason",
   "permission_wifi_reason",
+  "pull_refresh_refreshed",
+  "pull_refresh_refreshing",
   "shell_pin_limit_message",
   "shell_pin_limit_title",
   "sidebar_collapse",

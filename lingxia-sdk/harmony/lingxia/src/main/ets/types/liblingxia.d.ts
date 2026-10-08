@@ -164,6 +164,12 @@ declare module 'liblingxia.so' {
   export function pageBackgroundColor(dark: boolean): string;
 
   /**
+   * The pull-to-refresh spinner colour for one appearance, as `#RRGGBB`
+   * (`accentColor`, else `mutedForegroundColor`), or empty when neither is declared.
+   */
+  export function refreshIndicatorColor(dark: boolean): string;
+
+  /**
    * Get LxApp information for a specific app
    * @param appid - LxApp ID
    * @returns LxApp information or null if not found

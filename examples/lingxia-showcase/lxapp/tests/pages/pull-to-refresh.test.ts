@@ -57,6 +57,27 @@ spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
   await waitForRefreshState(app, (state) => !state.refreshing && state.count === refreshing.count);
   expect(await waitForStatus(t, pull, 'Idle')).toContain('Idle');
 
+  await t.step('a restart while the stopped indicator still lingers refreshes again', async () => {
+    const idle = await refreshState(app);
+    // Start, stop and start again in one Logic turn: the native indicator
+    // stays up for a minimum time after a stop, and a start that lands in
+    // that window must still reach onPullDownRefresh.
+    await app.logic.eval(({ lx }) => {
+      lx.startPullDownRefresh();
+      lx.stopPullDownRefresh();
+      lx.startPullDownRefresh();
+    });
+    const restarted = await waitForRefreshState(
+      app,
+      (state) => state.refreshing && state.count >= idle.count + 2,
+    );
+    expect(restarted.count).toBe(idle.count + 2);
+
+    await pull.testId('pull-refresh-stop').click();
+    await waitForRefreshState(app, (state) => !state.refreshing && state.count === restarted.count);
+    expect(await waitForStatus(t, pull, 'Idle')).toContain('Idle');
+  });
+
   await t.step('start rejects when the current page has not enabled pull-down refresh', async () => {
     await app.nav.relaunch({ page: 'home' });
     // The relaunch waited for home to be ready, so it is the current page.

@@ -163,6 +163,11 @@ impl ThemeStyle {
     pub fn is_empty(&self) -> bool {
         *self == Self::default()
     }
+
+    /// The pull-to-refresh spinner: the accent, else the muted foreground.
+    pub fn refresh_indicator_color(&self) -> Option<ThemeColor> {
+        self.accent_color.or(self.muted_foreground_color)
+    }
 }
 
 /// Light/dark as a choice: `auto` follows the system, `light` and `dark` pin
@@ -944,6 +949,17 @@ pub fn page_background_color(dark: bool) -> Option<String> {
         .map(|color| color.to_string())
 }
 
+/// The pull-to-refresh spinner colour for one appearance, as `#RRGGBB`.
+///
+/// `None` means the host declared neither `accentColor` nor
+/// `mutedForegroundColor`, and the platform keeps its own spinner colour.
+pub fn refresh_indicator_color(dark: bool) -> Option<String> {
+    theme()?
+        .style(dark)?
+        .refresh_indicator_color()
+        .map(|color| color.to_string())
+}
+
 pub fn product_name() -> Option<&'static str> {
     let config = APP_CONFIG.get()?;
     let locale = PRODUCT_NAME_LOCALE
@@ -1367,7 +1383,7 @@ mod browser_chrome_tests {
 mod tests {
     use super::{
         AppConfig, AppContextError, CampaignHandoff, SettingsDestination, ThemeColor, ThemeConfig,
-        set_app_config,
+        ThemeStyle, set_app_config,
     };
     use std::collections::BTreeMap;
 
@@ -1537,6 +1553,26 @@ mod tests {
 
         let json = serde_json::to_string(&config).expect("serialize app config");
         assert!(json.contains("#A1B2C3"));
+    }
+
+    #[test]
+    fn refresh_indicator_colors_follow_theme_roles() {
+        let style = |json: &str| -> ThemeStyle { serde_json::from_str(json).expect("theme style") };
+
+        let both = style(r##"{ "accentColor": "#2865FF", "mutedForegroundColor": "#667085" }"##);
+        assert_eq!(
+            both.refresh_indicator_color().map(ThemeColor::rgb),
+            Some(0x2865FF)
+        );
+
+        let muted_only = style(r##"{ "mutedForegroundColor": "#667085" }"##);
+        assert_eq!(
+            muted_only.refresh_indicator_color().map(ThemeColor::rgb),
+            Some(0x667085)
+        );
+
+        let unrelated = style(r##"{ "pageBackgroundColor": "#E9EAEE" }"##);
+        assert_eq!(unrelated.refresh_indicator_color(), None);
     }
 
     #[test]

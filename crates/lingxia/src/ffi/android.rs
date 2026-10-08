@@ -239,6 +239,20 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_pageBackgroundColor<'a>(
     .resolve::<LogErrorAndDefault>()
 }
 
+/// The pull-to-refresh spinner colour for one appearance, as `#RRGGBB`:
+/// `accentColor`, else `mutedForegroundColor`. Empty keeps the platform's own.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_refreshIndicatorColor<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    dark: jboolean,
+) -> JString<'a> {
+    env.with_env(|env| {
+        env.new_string(lingxia_app_context::refresh_indicator_color(dark).unwrap_or_default())
+    })
+    .resolve::<LogErrorAndDefault>()
+}
+
 /// The configured minimum hold, in milliseconds.
 ///
 /// Read at dismissal rather than at attach: this resolves from `app.json`,

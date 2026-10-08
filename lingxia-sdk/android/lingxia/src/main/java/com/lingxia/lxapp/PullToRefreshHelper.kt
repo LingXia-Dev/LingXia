@@ -5,14 +5,21 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
+import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
+import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
+import com.lingxia.app.Lingxia
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 
@@ -20,15 +27,19 @@ import kotlin.math.min
  * LxApp-style pull-to-refresh.
  *
  * Architecture:
- * - Indicator is added to webViewContainer at index 0 (BEHIND WebView in z-order)
- * - When user pulls, only the WebView moves down via translationY
- * - This reveals the indicator area behind the WebView
- * - Indicator is positioned to stay centered in the revealed area
- * - NO bounce animation - smooth return only
+ * - Indicator is added to webViewContainer at index 0 (BEHIND the page in z-order)
+ * - When user pulls, the page's wrapper moves down via translationY
+ * - This reveals the indicator strip behind it; the strip itself is
+ *   transparent, so the canvas colour behind the container shows through
+ * - The spinner stays centred in the revealed area
+ * - While refreshing the page holds part-way down, then springs back
  */
 internal class PullToRefreshHelper(
     private val context: Context,
     private val webViewContainer: FrameLayout,
+    /** Height at the top the spinner must stay clear of: the status bar on a page without a navigation bar. */
+    private val topInset: () -> Int,
+    private val spinnerColor: () -> Int,
     private val onRefresh: () -> Unit
 ) {
     companion object {
@@ -36,17 +47,25 @@ internal class PullToRefreshHelper(
         private const val TRIGGER_DISTANCE_DP = 80f
         private const val MAX_PULL_DISTANCE_DP = 150f
         private const val RUBBER_BAND_COEFFICIENT = 0.55f
+        // A refresh that ends at once would only flash the spinner.
+        private const val MIN_VISIBLE_MS = 400L
     }
 
     private var isEnabled = true
-    private var refreshIndicator: RefreshIndicator? = null
+    private var refreshIndicator: RefreshSpinnerView? = null
     private var isRefreshing = false
     private var isPulling = false
     private var startX = 0f
     private var startY = 0f
     private var currentPullDistance = 0f
     private var webView: View? = null
+    // The wrapper last moved down, so a reset puts back the one it moved even
+    // after a page swap made another wrapper current.
+    private var movedWrapper: View? = null
     private var returnAnimator: ValueAnimator? = null
+    private var shownAt = 0L
+    // Set while the indicator lingers after a stop to honour MIN_VISIBLE_MS.
+    private var pendingDismiss: Runnable? = null
 
     private val density = context.resources.displayMetrics.density
     private val triggerDistancePx = TRIGGER_DISTANCE_DP * density
@@ -64,20 +83,18 @@ internal class PullToRefreshHelper(
     }
 
     private fun setupRefreshIndicator() {
-        // Indicator is a fixed-height strip at the top
-        val indicatorHeightPx = (MAX_PULL_DISTANCE_DP * density).toInt()
-
-        refreshIndicator = RefreshIndicator(context).apply {
+        // A fixed-height, transparent strip at the top, as tall as the pull can go.
+        refreshIndicator = RefreshSpinnerView(context).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                indicatorHeightPx
+                maxPullDistancePx.toInt()
             ).apply {
-                gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
+                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             }
-            visibility = View.GONE  // Use GONE instead of INVISIBLE to not affect layout
+            visibility = View.GONE
             alpha = 0f
-            // Explicitly set transparent background
             setBackgroundColor(Color.TRANSPARENT)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         ensureIndicatorAttached()
     }
@@ -90,17 +107,15 @@ internal class PullToRefreshHelper(
         val indicator = refreshIndicator ?: return
         if (indicator.parent === webViewContainer) return
         (indicator.parent as? ViewGroup)?.removeView(indicator)
-        // Index 0 keeps it behind the WebView, which slides down to reveal it.
+        // Index 0 keeps it behind the page, which slides down to reveal it.
         webViewContainer.addView(indicator, 0)
     }
 
     fun attachToWebView(webView: View) {
         // One indicator serves every page of the activity, so a refresh ends
         // with the page that started it.
-        if (isRefreshing && this.webView !== webView) {
-            isRefreshing = false
-            returnAnimator?.cancel()
-            resetState()
+        if (isBusy() && this.webView !== webView) {
+            abort()
         }
         this.webView = webView
         ensureIndicatorAttached()
@@ -116,26 +131,28 @@ internal class PullToRefreshHelper(
         isEnabled = enabled
         Log.d(TAG, "Pull-to-refresh enabled=$isEnabled")
         if (!isEnabled) {
-            isRefreshing = false
-            resetState()
+            abort()
         }
     }
 
     fun isEnabled(): Boolean = isEnabled
 
+    /** The indicator is busy: refreshing, or lingering after a stop. */
+    private fun isBusy(): Boolean = isRefreshing || pendingDismiss != null
+
     private fun handleTouch(view: View, event: MotionEvent): Boolean {
         if (!isEnabled) return false
         if (event.pointerCount > 1) {
-            resetState()
+            if (!isBusy()) resetState()
             return false
         }
 
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                // Cancel any running animation and force reset state
-                if (returnAnimator?.isRunning == true) {
+                // A released pull still springing back gives way to a new one;
+                // a refresh in progress keeps its position.
+                if (!isBusy() && returnAnimator?.isRunning == true) {
                     returnAnimator?.cancel()
-                    // Manually reset state since onAnimationEnd won't be called on cancel
                     resetState()
                 }
                 startX = event.rawX
@@ -145,7 +162,7 @@ internal class PullToRefreshHelper(
             }
 
             MotionEvent.ACTION_MOVE -> {
-                if (isRefreshing) return false
+                if (isBusy()) return false
 
                 val isAtTop = !view.canScrollVertically(-1)
                 val deltaX = event.rawX - startX
@@ -175,7 +192,7 @@ internal class PullToRefreshHelper(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (isPulling && !isRefreshing) {
+                if (isPulling && !isBusy()) {
                     if (currentPullDistance >= triggerDistancePx) {
                         startRefreshing()
                     } else {
@@ -199,72 +216,109 @@ internal class PullToRefreshHelper(
     }
 
     /**
-     * Update visual state: move the WebView's container down, position indicator in revealed area.
+     * Update visual state: move the page's wrapper down by
+     * [currentPullDistance] and centre the spinner in the revealed strip.
      */
     private fun updatePullState() {
-        // Find the WebView's wrapper container (the direct child of webViewContainer)
-        // This is usually the FrameLayout tagged "current_webview_container"
-        val webViewWrapper = currentWrapper()
+        val wrapper = currentWrapper()
+        if (wrapper !== movedWrapper) {
+            movedWrapper?.translationY = 0f
+            movedWrapper = wrapper
+        }
+        wrapper?.translationY = currentPullDistance
 
-        // Move the wrapper down - this reveals the indicator behind it
-        webViewWrapper?.translationY = currentPullDistance
-
-        refreshIndicator?.let { indicator ->
-            if (currentPullDistance > 1f) {
-                if (indicator.visibility != View.VISIBLE) {
-                    indicator.visibility = View.VISIBLE
-                }
-
-                val progress = min(1f, currentPullDistance / triggerDistancePx)
-
-                // Fade in
-                indicator.alpha = min(1f, progress * 1.5f)
-
-                // Indicator stays at top (translationY = 0), no need to move it
-                // The webview wrapper moving down will reveal it
-                indicator.translationY = 0f
-
-                indicator.setPullProgress(progress, currentPullDistance)
-            } else {
-                indicator.visibility = View.GONE  // Use GONE to not affect layout
-                indicator.alpha = 0f
-                indicator.translationY = 0f
-                indicator.setPullProgress(0f)
-                webViewWrapper?.translationY = 0f
+        val indicator = refreshIndicator ?: return
+        if (currentPullDistance > 1f) {
+            if (indicator.visibility != View.VISIBLE) {
+                indicator.setSpinnerColor(spinnerColor())
+                indicator.visibility = View.VISIBLE
             }
+            val progress = min(1f, currentPullDistance / triggerDistancePx)
+            indicator.alpha = if (isBusy()) 1f else min(1f, progress * 1.5f)
+            indicator.setPullProgress(progress, currentPullDistance, topInset().toFloat())
+        } else {
+            indicator.visibility = View.GONE
+            indicator.alpha = 0f
+            indicator.setPullProgress(0f, 0f, 0f)
+            wrapper?.translationY = 0f
         }
     }
 
     fun startRefreshing() {
         if (isRefreshing || !isEnabled) return
 
-        // Check if WebView is attached
-        if (currentWrapper() == null) {
+        if (pendingDismiss != null) {
+            // Restarted while lingering: the spinner is still up, keep it.
+            cancelPendingDismiss()
+            isRefreshing = true
+            announce(R.string.lx_pull_refresh_refreshing)
+            onRefresh()
+            return
+        }
+
+        val indicator = refreshIndicator
+        if (indicator == null || currentWrapper() == null) {
             onRefresh()
             return
         }
 
         isRefreshing = true
-
-        // Show indicator and start animation
-        refreshIndicator?.let { indicator ->
-            indicator.visibility = View.VISIBLE
-            indicator.alpha = 1f
-            indicator.startLoading()
-        } ?: return
+        shownAt = SystemClock.uptimeMillis()
+        indicator.setSpinnerColor(spinnerColor())
+        indicator.visibility = View.VISIBLE
+        indicator.alpha = 1f
+        indicator.startLoading(reduceMotion())
+        announce(R.string.lx_pull_refresh_refreshing)
 
         // Hold at a comfortable position
-        val refreshPosition = triggerDistancePx * 0.8f
-        animateToPosition(refreshPosition)
+        // Hold below the status bar on a page without a navigation bar, so
+        // the spinner has the same room there as under a navigation bar.
+        animateToPosition(topInset() + triggerDistancePx * 0.8f)
         onRefresh()
     }
 
+    /**
+     * Ends the refresh. Returns at once; the indicator itself lingers until
+     * it has been up for [MIN_VISIBLE_MS].
+     */
     fun endRefreshing() {
         if (!isRefreshing) return
-
         isRefreshing = false
+
+        val remaining = MIN_VISIBLE_MS - (SystemClock.uptimeMillis() - shownAt)
+        if (remaining <= 0) {
+            dismiss()
+            return
+        }
+        val dismissal = Runnable {
+            pendingDismiss = null
+            dismiss()
+        }
+        pendingDismiss = dismissal
+        webViewContainer.postDelayed(dismissal, remaining)
+    }
+
+    private fun dismiss() {
         refreshIndicator?.stopLoading()
+        announce(R.string.lx_pull_refresh_refreshed)
         animateToPosition(0f)
+    }
+
+    private fun cancelPendingDismiss() {
+        pendingDismiss?.let { webViewContainer.removeCallbacks(it) }
+        pendingDismiss = null
+    }
+
+    /** Drop any refresh and put the page back now, without lingering. */
+    private fun abort() {
+        cancelPendingDismiss()
+        isRefreshing = false
+        returnAnimator?.apply {
+            removeAllListeners()
+            removeAllUpdateListeners()
+            cancel()
+        }
+        resetState()
     }
 
     /**
@@ -274,22 +328,41 @@ internal class PullToRefreshHelper(
         currentPullDistance = 0f
         isPulling = false
 
+        movedWrapper?.translationY = 0f
+        movedWrapper = null
         currentWrapper()?.translationY = 0f
 
         refreshIndicator?.apply {
             visibility = View.GONE
             alpha = 0f
-            translationY = 0f
-            setPullProgress(0f, 0f)
-            stopLoading()  // stopLoading() handles isLoading check internally
+            setPullProgress(0f, 0f, 0f)
+            stopLoading()
         }
     }
+
+    private fun announce(resId: Int) {
+        webViewContainer.announceForAccessibility(Lingxia.localizedString(context, resId))
+    }
+
+    /** "Remove animations": the spinner holds still instead of turning. */
+    private fun reduceMotion(): Boolean =
+        Settings.Global.getFloat(
+            context.contentResolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f
+        ) == 0f
 
     /**
      * Smooth animation to target position - NO bounce.
      */
     private fun animateToPosition(targetPosition: Float) {
-        returnAnimator?.cancel()
+        // Replaced, not ended: a return to 0 cut short by a new refresh must
+        // not reset the indicator the new refresh has just started.
+        returnAnimator?.apply {
+            removeAllListeners()
+            removeAllUpdateListeners()
+            cancel()
+        }
 
         returnAnimator = ValueAnimator.ofFloat(currentPullDistance, targetPosition).apply {
             duration = 250
@@ -321,104 +394,101 @@ internal class PullToRefreshHelper(
 }
 
 /**
- * Minimal 3-dots indicator.
+ * The transparent strip behind the page with a circular spinner centred in
+ * its revealed part: an arc that grows with the pull, then turns while
+ * loading. Drawn straight on the strip, like the system indicator on iOS.
  */
-private class RefreshIndicator(context: Context) : View(context) {
+private class RefreshSpinnerView(context: Context) : View(context) {
     private val density = context.resources.displayMetrics.density
-    private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#888888")  // Neutral gray
-        style = Paint.Style.FILL
+    private val radius = 10f * density
+    private val arcPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2.5f * density
+        strokeCap = Paint.Cap.ROUND
     }
+    private val arcBounds = RectF()
 
     private var progress = 0f
+    private var revealed = 0f
+    private var inset = 0f
     private var isLoading = false
-    private var startTime = 0L
+    private var isStatic = false
+    private var phase = 0f
+    private var spinAnimator: ValueAnimator? = null
 
     init {
-        // Ensure no background
-        setBackgroundColor(Color.TRANSPARENT)
         setWillNotDraw(false)
     }
 
-    private val updateRunnable = object : Runnable {
-        override fun run() {
-            if (isLoading) {
-                invalidate()
-                postDelayed(this, 16L)
-            }
-        }
-    }
-
-    fun setPullProgress(p: Float, pullDistance: Float = 0f) {
-        progress = p
-        // Store the current pull distance to position dots correctly
-        currentPullDistance = pullDistance
+    fun setSpinnerColor(color: Int) {
+        arcPaint.color = color
         invalidate()
     }
 
-    private var currentPullDistance = 0f
+    /**
+     * [p] is the pull progress to the trigger; [pullDistance] the revealed
+     * height; [topInset] the part of it the status bar covers.
+     */
+    fun setPullProgress(p: Float, pullDistance: Float, topInset: Float) {
+        progress = p.coerceIn(0f, 1f)
+        revealed = pullDistance
+        inset = topInset
+        invalidate()
+    }
 
-    fun startLoading() {
+    fun startLoading(reduceMotion: Boolean) {
         if (isLoading) return
         isLoading = true
-        startTime = System.currentTimeMillis()
-        post(updateRunnable)
+        isStatic = reduceMotion
+        phase = 0f
+        if (!reduceMotion) {
+            spinAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 1332L
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                addUpdateListener {
+                    phase = it.animatedValue as Float
+                    invalidate()
+                }
+                start()
+            }
+        }
+        invalidate()
     }
 
     fun stopLoading() {
+        spinAnimator?.cancel()
+        spinAnimator = null
         isLoading = false
-        removeCallbacks(updateRunnable)
+        isStatic = false
         invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
-        // Don't call super.onDraw to avoid default background drawing
-
         val cx = width / 2f
-        // Position dots in the center of the currently revealed area
-        val cy = if (currentPullDistance > 0f) {
-            currentPullDistance / 2f
-        } else {
-            40f * density  // Default when loading programmatically
+        // Centred in the strip the page has uncovered, below the status bar
+        // once the strip is taller than it.
+        val cy = when {
+            revealed <= 0f -> 32f * density
+            revealed > inset -> inset + (revealed - inset) / 2f
+            else -> revealed / 2f
         }
-        val dotRadius = 3.5f * density  // Slightly larger for visibility
-        val spacing = 12f * density
+        arcBounds.set(cx - radius, cy - radius, cx + radius, cy + radius)
 
-        if (isLoading) {
-            // Marquee animation: 3 dots lighting up sequentially
-            val time = System.currentTimeMillis() - startTime
-            val cycle = 600  // Full cycle duration in ms
-            val phase = (time % cycle).toFloat() / cycle  // 0.0 to 1.0
-
-            for (i in -1..1) {
-                // Each dot has its turn in the cycle (3 dots = 1/3 cycle each)
-                val dotIndex = i + 1  // 0, 1, 2
-                val dotPhase = (phase * 3f - dotIndex).rem(3f)  // Stagger by 1/3 cycle
-                
-                // Fade in/out effect: bright when it's this dot's turn
-                val brightness = if (dotPhase < 1f) {
-                    // This dot's turn: fade in then stay bright
-                    min(1f, dotPhase * 3f)
-                } else {
-                    // Not this dot's turn: dim
-                    0.3f
-                }
-                
-                dotPaint.alpha = (brightness * 255).toInt().coerceIn(75, 255)
-                canvas.drawCircle(cx + i * spacing, cy, dotRadius, dotPaint)
-            }
+        if (isLoading && !isStatic) {
+            // One turn per cycle while the arc breathes between 20 and 270 degrees.
+            val sweep = 20f + 250f * (0.5f - 0.5f * cos(phase * 2f * Math.PI).toFloat())
+            val start = phase * 720f - 90f
+            arcPaint.alpha = 255
+            canvas.drawArc(arcBounds, start, sweep, false, arcPaint)
+        } else if (isLoading) {
+            arcPaint.alpha = 255
+            canvas.drawArc(arcBounds, -90f, 270f, false, arcPaint)
         } else {
-            // Pull progress: 3 dots with scale animation
-            val scale = progress.coerceIn(0f, 1f)
-            // Make dots more visible - start at 50% alpha even at 0 progress
-            dotPaint.alpha = ((100 + 155 * scale).toInt()).coerceIn(100, 255)
-
-            for (i in -1..1) {
-                // All 3 dots scale together, no stagger for simplicity
-                // Slight bounce effect as you pull
-                val dotScale = 0.5f + 0.5f * scale  // Scale from 0.5 to 1.0
-                canvas.drawCircle(cx + i * spacing, cy, dotRadius * dotScale, dotPaint)
-            }
+            // Pulling: the arc grows to 270 degrees and turns slightly; it is
+            // fully opaque once the pull would trigger.
+            arcPaint.alpha = if (progress >= 1f) 255 else (90 + 120 * progress).toInt()
+            canvas.drawArc(arcBounds, -90f + 90f * progress, 270f * progress, false, arcPaint)
         }
     }
 

@@ -155,6 +155,7 @@ theme:
   scheme; light and dark never fall back to each other.
 - Set `pageBackgroundColor` to your page's CSS floor in both schemes; native
   chrome paints it where it borders the page.
+- The native refresh indicator uses `accentColor` (else `mutedForegroundColor`).
 - `defaultAppearance` applies until the user picks a scheme
   ([product settings](../lxapp/lx-api.md#product-settings)); an lxapp's own
   `appearance` overrides both. The embedded browser's chrome and built-in

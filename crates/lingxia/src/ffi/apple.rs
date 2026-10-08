@@ -222,6 +222,9 @@ mod bridge {
         #[swift_bridge(swift_name = "pageBackgroundColor")]
         fn page_background_color(dark: bool) -> String;
 
+        #[swift_bridge(swift_name = "refreshIndicatorColor")]
+        fn refresh_indicator_color(dark: bool) -> String;
+
         #[swift_bridge(swift_name = "forwardHostLog")]
         fn forward_host_log(
             level: i32,
@@ -1003,6 +1006,12 @@ pub fn splash_mark_launch_face(dark: bool) {
 /// screen.
 pub fn page_background_color(dark: bool) -> String {
     lingxia_app_context::page_background_color(dark).unwrap_or_default()
+}
+
+/// The pull-to-refresh spinner colour for one appearance, as `#RRGGBB`:
+/// `accentColor`, else `mutedForegroundColor`. Empty keeps the platform's own.
+pub fn refresh_indicator_color(dark: bool) -> String {
+    lingxia_app_context::refresh_indicator_color(dark).unwrap_or_default()
 }
 
 pub fn forward_host_log(

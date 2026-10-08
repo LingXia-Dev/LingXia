@@ -132,3 +132,8 @@ update:
 browser:
   downloads: "下载"
   settings: "设置"
+
+# 下拉刷新的读屏播报（移动端原生壳）
+pull_refresh:
+  refreshing: "正在刷新"
+  refreshed: "刷新完成"
