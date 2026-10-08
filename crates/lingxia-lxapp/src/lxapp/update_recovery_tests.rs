@@ -1,0 +1,161 @@
+use super::*;
+
+struct Fixture {
+    root: tempfile::TempDir,
+    manager: LxApps,
+    appid: String,
+    channel: Channel,
+}
+
+impl Fixture {
+    fn new() -> Self {
+        // Metadata is process-wide; keep its backing file alive across fixtures.
+        static METADATA: OnceLock<tempfile::TempDir> = OnceLock::new();
+        METADATA.get_or_init(|| {
+            let root = tempfile::tempdir().unwrap();
+            metadata::init(root.path().join("metadata.redb")).unwrap();
+            root
+        });
+        let root = tempfile::tempdir().unwrap();
+        let runtime = Platform::new(
+            root.path().join("data").display().to_string(),
+            root.path().join("cache").display().to_string(),
+            "en-US".to_string(),
+        )
+        .unwrap();
+        Self {
+            root,
+            manager: LxApps::new(runtime, LxAppWorkers::init(1), 1),
+            appid: format!("app.lingxia.update-recovery.{}", Uuid::new_v4()),
+            channel: crate::default_channel(),
+        }
+    }
+
+    fn install_previous(&self) -> PathBuf {
+        let path = self.root.path().join("installed");
+        fs::create_dir_all(&path).unwrap();
+        fs::write(
+            path.join("lxapp.json"),
+            serde_json::json!({
+                "appId": self.appid,
+                "version": "1.0.0",
+                "logic": false,
+                "pages": [{"name": "home", "path": "pages/home/index"}]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        metadata::upsert(&metadata::LxAppRecord::new(
+            &self.appid,
+            self.channel,
+            lingxia_update::SemanticVersion::from_version(&Version::parse("1.0.0").unwrap()),
+            lxapp_fingermark(&self.appid, self.channel),
+            path.display().to_string(),
+            0,
+        ))
+        .unwrap();
+        path
+    }
+
+    fn stage_update(&self, manifest: Option<serde_json::Value>) {
+        let archive = self.root.path().join("update.lxapp");
+        if let Some(manifest) = manifest {
+            let source = self.root.path().join("candidate");
+            fs::create_dir_all(&source).unwrap();
+            fs::write(source.join("lxapp.json"), manifest.to_string()).unwrap();
+            let encoder =
+                zstd::stream::write::Encoder::new(fs::File::create(&archive).unwrap(), 0).unwrap();
+            let mut builder = tar::Builder::new(encoder);
+            builder.append_dir_all(".", source).unwrap();
+            builder.into_inner().unwrap().finish().unwrap();
+        } else {
+            fs::write(&archive, b"invalid zstd download").unwrap();
+        }
+        metadata::downloaded_upsert(&self.appid, self.channel, "1.1.0", &archive, None).unwrap();
+    }
+
+    fn assert_download_discarded(&self) {
+        assert!(
+            metadata::downloaded_get(&self.appid, self.channel)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!self.root.path().join("update.lxapp").exists());
+    }
+}
+
+#[tokio::test]
+async fn failed_pending_update_recreates_previous_install_after_teardown() {
+    #[cfg(target_vendor = "apple")]
+    let _host = crate::apple_host_stubs::headless_lifecycle();
+    for home in [false, true] {
+        for invalid_manifest in [false, true] {
+            let f = Fixture::new();
+            let installed = f.install_previous();
+            let manifest_before = fs::read(installed.join("lxapp.json")).unwrap();
+            let old = if home {
+                f.manager.initialize_home_lxapp(f.appid.clone())
+            } else {
+                f.manager.ensure_lxapp(f.appid.clone(), f.channel)
+            }
+            .unwrap();
+            old.set_status(LxAppSessionStatus::Opened);
+            f.stage_update(invalid_manifest.then(|| {
+                serde_json::json!({
+                    "appId": "another.app",
+                    "version": "1.1.0"
+                })
+            }));
+
+            // A Later/open while live must leave both the session and download alone.
+            let recalled = f.manager.ensure_lxapp(f.appid.clone(), f.channel).unwrap();
+            assert!(Arc::ptr_eq(&old, &recalled));
+            assert!(
+                metadata::downloaded_get(&f.appid, f.channel)
+                    .unwrap()
+                    .is_some()
+            );
+
+            let replacement = f
+                .manager
+                .recreate_lxapp(f.appid.clone(), f.channel, old.session_id())
+                .await
+                .expect("failed update must reopen the previous install");
+            assert!(old.session.is_retired());
+            assert_ne!(replacement.session_id(), old.session_id());
+            assert!(!replacement.session.is_cancelled());
+            assert_eq!(replacement.app_session_class(), old.app_session_class());
+            assert!(replacement.resource_grants_sealed_for_test());
+            assert_eq!(replacement.lxapp_dir, installed);
+            assert_eq!(replacement.config().version, "1.0.0");
+            assert_eq!(replacement.current_version(), "1.0.0");
+            assert_eq!(
+                fs::read(installed.join("lxapp.json")).unwrap(),
+                manifest_before
+            );
+            f.assert_download_discarded();
+            f.manager.retire_lxapp(&f.appid).unwrap();
+        }
+    }
+}
+
+#[test]
+fn failed_pending_update_on_cold_open_uses_previous_install() {
+    let f = Fixture::new();
+    let installed = f.install_previous();
+    f.stage_update(None);
+    let app = f.manager.ensure_lxapp(f.appid.clone(), f.channel).unwrap();
+    assert_eq!(app.lxapp_dir, installed);
+    assert_eq!(app.current_version(), "1.0.0");
+    f.assert_download_discarded();
+}
+
+#[test]
+fn failed_first_install_does_not_publish_a_session() {
+    let f = Fixture::new();
+    f.stage_update(None);
+    assert!(f.manager.ensure_lxapp(f.appid.clone(), f.channel).is_err());
+    assert!(!f.manager.lxapps.contains_key(&f.appid));
+    assert!(metadata::get(&f.appid, f.channel).unwrap().is_none());
+    f.assert_download_discarded();
+}

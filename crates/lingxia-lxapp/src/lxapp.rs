@@ -63,6 +63,8 @@ pub(crate) mod security;
 mod surface;
 pub use security::{LxAppSecurityPrivilege, is_public_network_address};
 pub mod tabbar;
+#[cfg(test)]
+mod update_recovery_tests;
 pub mod uri;
 pub(crate) mod version;
 use crate::lifecycle::AppServiceEvent;
@@ -590,11 +592,14 @@ impl LxApps {
                 UpdateManager::apply_downloaded_update(self.runtime.clone(), &appid, release_type)
             {
                 error!(
-                    "Failed to apply downloaded update before opening app: {}",
+                    "Failed to apply downloaded update; trying the existing bundle: {}",
                     e
                 )
                 .with_appid(appid.clone());
-                return Err(e);
+                // Installation commits metadata last, so the previous bundle is
+                // still available. Rebuild through the normal constructor: restart
+                // has already retired the old session, and first installs with no
+                // usable bundle must still fail setup.
             }
         } else if let Some(app_arc) = self.lxapps.get(&appid) {
             return Ok(app_arc.clone());

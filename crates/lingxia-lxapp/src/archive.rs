@@ -50,7 +50,13 @@ pub fn extract_tar_zst(archive_path: &Path, destination: &Path) -> Result<(), Lx
         ))
     })?;
     // Published packages may use a larger window than the decoder default.
-    zstd_decoder.window_log_max(31).map_err(|e| {
+    // zstd rejects 31 on 32-bit targets before it even reads the frame.
+    let window_log_max = if cfg!(target_pointer_width = "32") {
+        30
+    } else {
+        31
+    };
+    zstd_decoder.window_log_max(window_log_max).map_err(|e| {
         LxAppError::IoError(format!(
             "Failed to configure zstd decoder for {}: {}",
             archive_path.display(),
