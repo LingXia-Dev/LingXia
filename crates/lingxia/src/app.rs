@@ -80,6 +80,7 @@ pub use lxapp::{
     DisplayLanguageEffectiveSource, DisplayLanguagePreference, DisplayLanguageState, LanguageTag,
 };
 
+pub mod autostart;
 mod observe;
 pub use observe::{Changes, Subscription};
 use observe::{Delivery, Observable};
