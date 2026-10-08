@@ -66,9 +66,47 @@ fn embed_resources(manifest_path: &Path, icon_path: Option<&Path>) {
             .expect("Windows manifest path is not valid UTF-8"),
     );
     set_product_version_info(&mut res);
+    println!("cargo:rerun-if-env-changed=LINGXIA_PRODUCT_NAME_TRANSLATIONS");
+    if let Ok(json) = std::env::var("LINGXIA_PRODUCT_NAME_TRANSLATIONS") {
+        let names: std::collections::BTreeMap<u16, String> =
+            serde_json::from_str(&json).expect("invalid LingXia product-name translations");
+        if !names.is_empty() {
+            let rc_path = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR"))
+                .join("lingxia-localized.rc");
+            write_localized_resources(&res, &names, &rc_path)
+                .expect("write localized Windows resources");
+            res.set_resource_file(rc_path.to_str().expect("resource path must be UTF-8"));
+        }
+    }
     res.compile()
         .expect("failed to compile Windows .exe resources (icon/manifest/version)");
     println!("cargo:rerun-if-changed={}", manifest_path.display());
+}
+
+fn write_localized_resources(
+    base: &winresource::WindowsResource,
+    names: &std::collections::BTreeMap<u16, String>,
+    rc_path: &Path,
+) -> std::io::Result<()> {
+    let scratch = rc_path.with_file_name("lingxia-version.rc");
+    base.write_resource_file(&scratch)?;
+    let mut content = format!("LANGUAGE 0, 0\n{}", fs::read_to_string(&scratch)?);
+    for (id, name) in names {
+        let mut localized = winresource::WindowsResource::new();
+        set_product_version_info(&mut localized);
+        localized
+            .set_language(*id)
+            .set("ProductName", name)
+            .set("FileDescription", name);
+        localized.write_resource_file(&scratch)?;
+        content.push_str(&format!(
+            "\nLANGUAGE {}, {}\n{}",
+            id & 0x3ff,
+            id >> 10,
+            fs::read_to_string(&scratch)?
+        ));
+    }
+    fs::write(rc_path, content)
 }
 
 /// Explorer, Task Manager and taskbar pins read the exe's version resource;
@@ -170,5 +208,45 @@ mod tests {
         assert_eq!(pack_version("0.1.3"), Some(0x0000_0001_0003_0000));
         assert_eq!(pack_version("1.2.3-beta.1"), Some(0x0001_0002_0003_0000));
         assert_eq!(pack_version("70000.0.0"), None);
+    }
+}
+
+#[cfg(test)]
+mod localized_resource_tests {
+    use super::*;
+
+    #[test]
+    fn preserves_neutral_manifest_and_emits_localized_version_resources() {
+        // winresource expects build-script HOST/TARGET variables. Supply them
+        // in a child process so the parallel test runner's environment is untouched.
+        if std::env::var_os("HOST").is_none() || std::env::var_os("TARGET").is_none() {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "localized_resource_tests::preserves_neutral_manifest_and_emits_localized_version_resources", "--nocapture"])
+                .env("HOST", "x86_64-pc-windows-msvc").env("TARGET", "x86_64-pc-windows-msvc")
+                .status().unwrap();
+            assert!(status.success());
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let mut base = winresource::WindowsResource::new();
+        base.set_manifest("<assembly></assembly>")
+            .set("ProductName", "Fallback")
+            .set("FileDescription", "Fallback");
+        let names = std::collections::BTreeMap::from([
+            (0x0804, "应用 \"演示\"".into()),
+            (0x0409, "English App".into()),
+        ]);
+        let path = dir.path().join("localized.rc");
+        write_localized_resources(&base, &names, &path).unwrap();
+        let rc = fs::read_to_string(path).unwrap();
+        assert_eq!(rc.matches("1 VERSIONINFO").count(), 3);
+        assert_eq!(rc.matches("<assembly>").count(), 1);
+        assert!(rc.contains("LANGUAGE 0, 0"));
+        assert!(rc.contains("LANGUAGE 4, 2"));
+        assert!(rc.contains("BLOCK \"080404b0\""));
+        assert!(rc.contains("应用 \"\"演示\"\""));
+        assert!(rc.contains("VALUE \"Translation\", 0x804, 0x04b0"));
+        assert!(rc.contains("English App"));
+        assert!(rc.contains("Fallback"));
     }
 }

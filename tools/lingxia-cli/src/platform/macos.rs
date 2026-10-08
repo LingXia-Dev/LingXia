@@ -230,6 +230,7 @@ impl MacosPlatform {
         &self,
         bin_dir: &Path,
         preferred_names: &[String],
+        explicit_name: Option<&str>,
     ) -> Result<PathBuf> {
         if !bin_dir.exists() {
             return Err(anyhow!("SwiftPM bin dir not found: {}", bin_dir.display()));
@@ -273,7 +274,20 @@ impl MacosPlatform {
             return Err(anyhow!("No executable found in {}", bin_dir.display()));
         }
 
-        // Prefer explicitly configured names (and a few derived ones).
+        if let Some(name) = explicit_name {
+            return executables
+                .iter()
+                .find(|path| path.file_name().and_then(|n| n.to_str()) == Some(name))
+                .cloned()
+                .ok_or_else(|| {
+                    anyhow!(
+                        "macos.executableName '{name}' was not built in {}",
+                        bin_dir.display()
+                    )
+                });
+        }
+
+        // Prefer names derived from the project before requiring an override.
         for want in preferred_names {
             if want.trim().is_empty() {
                 continue;
@@ -291,7 +305,14 @@ impl MacosPlatform {
         }
 
         executables.sort();
-        Ok(executables.remove(0))
+        Err(anyhow!(
+            "Multiple macOS executables found: {}. Set macos.executableName to select one.",
+            executables
+                .iter()
+                .map(|p| p.file_name().unwrap().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
     }
 }
 
@@ -404,7 +425,13 @@ impl Platform for MacosPlatform {
                     &deployment_target,
                     &config.native_features,
                 )?;
-                let mut executable_path = self.find_executable_in_bin_dir(&bin_dir, &preferred)?;
+                let mut executable_path = self.find_executable_in_bin_dir(
+                    &bin_dir,
+                    &preferred,
+                    macos_config
+                        .as_ref()
+                        .and_then(|c| c.executable_name.as_deref()),
+                )?;
                 if config.build_native
                     && executable_needs_native_relink(&executable_path, &native_lib_path)
                 {
@@ -421,7 +448,13 @@ impl Platform for MacosPlatform {
                         &deployment_target,
                         &config.native_features,
                     )?;
-                    executable_path = self.find_executable_in_bin_dir(&bin_dir, &preferred)?;
+                    executable_path = self.find_executable_in_bin_dir(
+                        &bin_dir,
+                        &preferred,
+                        macos_config
+                            .as_ref()
+                            .and_then(|c| c.executable_name.as_deref()),
+                    )?;
                 }
                 Ok((bin_dir, executable_path))
             })?;
@@ -481,11 +514,10 @@ impl Platform for MacosPlatform {
             .unwrap_or(false);
 
         let app_path = create_macos_app_bundle(
-            &config.project_root,
+            &resolve_lingxia_target_dir(&config.project_root).join("macos"),
             &macos_dir,
             &bin_dir,
             &executable_path,
-            app_project_name.unwrap_or(&product_name),
             &product_name,
             &product_version,
             &bundle_id,
@@ -698,11 +730,10 @@ LingXia will not inject these entitlements until approval is confirmed.",
 
 #[allow(clippy::too_many_arguments)]
 fn create_macos_app_bundle(
-    project_root: &Path,
+    output_dir: &Path,
     macos_dir: &Path,
     bin_dir: &Path,
     executable_path: &Path,
-    project_name: &str,
     product_name: &str,
     product_version: &str,
     bundle_id: &str,
@@ -710,10 +741,15 @@ fn create_macos_app_bundle(
     info_plist_path: Option<&PathBuf>,
     hide_dock_icon: bool,
 ) -> Result<PathBuf> {
-    let app_name = format!("{}.app", project_name);
-    let output_dir = resolve_lingxia_target_dir(project_root).join("macos");
-    fs::create_dir_all(&output_dir)?;
-    remove_stale_macos_app_bundles(&output_dir, &app_name)?;
+    // Finder only applies InfoPlist.strings names when the bundle filename
+    // matches the default product name. Keep technical target names inside.
+    let bundle_name: String = product_name
+        .chars()
+        .map(|ch| if matches!(ch, '/' | ':') { '-' } else { ch })
+        .collect();
+    let app_name = format!("{bundle_name}.app");
+    fs::create_dir_all(output_dir)?;
+    remove_stale_macos_app_bundles(output_dir, &app_name)?;
 
     let app_bundle = output_dir.join(&app_name);
     let contents_dir = app_bundle.join("Contents");
@@ -1411,5 +1447,96 @@ fn apply_rounded_corner_mask(img: &mut image::RgbaImage, radius: f32) {
             let current_alpha = px.0[3];
             px.0[3] = ((current_alpha as u16 * edge_alpha as u16) / 255) as u8;
         }
+    }
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::*;
+
+    fn executable(dir: &Path, name: &str) -> PathBuf {
+        let path = dir.join(name);
+        fs::write(&path, "stub").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        path
+    }
+
+    #[test]
+    fn executable_selection_rejects_ambiguity_and_invalid_overrides() {
+        let dir = tempfile::tempdir().unwrap();
+        let platform = MacosPlatform::new();
+        let app = executable(dir.path(), "Technical");
+        assert_eq!(
+            platform
+                .find_executable_in_bin_dir(dir.path(), &[], None)
+                .unwrap(),
+            app
+        );
+        assert!(
+            platform
+                .find_executable_in_bin_dir(dir.path(), &[], Some("missing"))
+                .is_err()
+        );
+        executable(dir.path(), "Helper");
+        assert!(
+            platform
+                .find_executable_in_bin_dir(dir.path(), &[], None)
+                .unwrap_err()
+                .to_string()
+                .contains("macos.executableName")
+        );
+        assert_eq!(
+            platform
+                .find_executable_in_bin_dir(dir.path(), &[], Some("Technical"))
+                .unwrap(),
+            app
+        );
+    }
+
+    #[test]
+    fn bundle_and_localizations_use_product_name_but_keep_executable() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bin");
+        fs::create_dir(&bin).unwrap();
+        let exe = executable(&bin, "Technical");
+        let bundle = create_macos_app_bundle(
+            &dir.path().join("output"),
+            dir.path(),
+            &bin,
+            &exe,
+            "Product Display",
+            "1.2.3",
+            "com.example.product",
+            "12.0",
+            None,
+            false,
+        )
+        .unwrap();
+        assert_eq!(bundle.file_name().unwrap(), "Product Display.app");
+        let info: plist::Dictionary = plist::from_file(bundle.join("Contents/Info.plist")).unwrap();
+        assert_eq!(info["CFBundleName"].as_string(), Some("Product Display"));
+        assert_eq!(
+            info["CFBundleDisplayName"].as_string(),
+            Some("Product Display")
+        );
+        assert_eq!(info["CFBundleExecutable"].as_string(), Some("Technical"));
+        let names = std::collections::BTreeMap::from([("zh-CN".into(), "产品名称".into())]);
+        crate::product_i18n::write_apple_product_name_strings(
+            &bundle.join("Contents/Resources"),
+            crate::host_identity::ProductName {
+                default: "Product Display",
+                translations: &names,
+            },
+        )
+        .unwrap();
+        let localized =
+            fs::read_to_string(bundle.join("Contents/Resources/zh-Hans.lproj/InfoPlist.strings"))
+                .unwrap();
+        assert!(localized.contains("产品名称"));
+        assert!(bundle.join("Contents/MacOS/Technical").is_file());
     }
 }

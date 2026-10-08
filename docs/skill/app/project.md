@@ -56,7 +56,6 @@ app:
 macos:
   deploymentTarget: "12.0"
   targetName: MyApp
-  executableName: MyApp
 
 surfaces:
   - lxapp: my-home       # main screen: your lxapp, by appId
@@ -313,12 +312,16 @@ A campaign screen after launch: [Launch screen](../native/splash.md).
 
 ## `macos` and `windows`
 
-- `macos` — `deploymentTarget`, `targetName`, `executableName`, optional
+- `macos` — `deploymentTarget`, `targetName`, optional `executableName`, optional
   `bundleId`, optional `store:` (App Store Connect identity).
-- `windows` — `executableName`, `publisher` (MSIX, default `CN=<productName>`),
+- `windows` — optional `executableName`, `publisher` (MSIX, default `CN=<productName>`),
   optional `appId`, optional `store:` (Partner Center id).
   `extraFiles: [path, ...]` copies files beside the executable.
   `portableData: true` keeps data under `<launcher-dir>/data/<appId>`.
+
+`executableName` selects a build target, never a display name. Omit it for a
+single executable; Windows also respects Cargo `default-run`. Ambiguous builds
+require an explicit selection. Product launcher names follow the system language.
 
 For Microsoft Store, use Partner Center's Package/Identity/Name as the package
 id (inherit `app.packageId` or override `windows.appId`) and

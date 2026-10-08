@@ -1562,8 +1562,8 @@ pub struct MacosConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deployment_target: Option<String>,
 
-    /// Executable product name (SwiftPM). If omitted, CLI will try a few
-    /// reasonable defaults and fall back to "the only executable in bin dir".
+    /// SwiftPM executable product override; inferred for a single executable.
+    /// Never used as the product display name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub executable_name: Option<String>,
 
@@ -1619,7 +1619,8 @@ pub struct WindowsConfig {
     /// way as package/bundle identifiers on other platforms.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_id: Option<String>,
-    /// Cargo binary name produced by windows/Cargo.toml.
+    /// Cargo binary override; inferred from default-run or a single binary.
+    /// Never used as the product display name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub executable_name: Option<String>,
     /// MSIX package Identity `Publisher` (a distinguished name such as

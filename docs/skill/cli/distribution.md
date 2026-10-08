@@ -140,6 +140,8 @@ names. All four → release-signed; otherwise debug-signed.
   makes missing credentials fatal; `LINGXIA_SIGNTOOL` and
   `LINGXIA_WINDOWS_TIMESTAMP_URL` are optional. MSIX `windows.publisher` must
   match the certificate subject.
+- Localized MSIX names compile `productNames` with Windows SDK `makepri.exe`
+  (beside `makeappx.exe`, or `LINGXIA_MAKEPRI`); names follow the system language.
 - For local MSIX installation, use `--format msix --self-signed`. Store uploads
   can be unsigned; Microsoft signs distribution packages.
 - The first install downloads WebView2 when it is missing.
