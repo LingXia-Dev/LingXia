@@ -405,6 +405,16 @@ impl Platform for MacosPlatform {
         if let Some(dir_name) = macos_dir.file_name().and_then(|n| n.to_str()) {
             preferred.push(dir_name.to_string());
         }
+        // A package that also builds a build-tool plugin leaves that tool's
+        // executables next to the app; only the declared executable products
+        // can be the app, so prefer those before reporting ambiguity.
+        match spm::declared_executable_products(&macos_dir) {
+            Ok(products) => preferred.extend(products),
+            Err(err) => println!(
+                "  {} Could not read the package's executable products: {err:#}",
+                "⚠".yellow()
+            ),
+        }
 
         let (bin_dir, executable_path) =
             apple::with_temporary_package_manifest(&macos_dir, || {
