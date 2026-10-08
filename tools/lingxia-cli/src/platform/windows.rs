@@ -78,6 +78,10 @@ impl Platform for WindowsPlatform {
         if let Some(app) = config.lingxia_config.as_ref().and_then(|c| c.app.as_ref()) {
             command
                 .env("LINGXIA_PRODUCT_NAME", &app.product_name)
+                .env(
+                    "LINGXIA_PRODUCT_NAME_TRANSLATIONS",
+                    windows_name_translations(&app.product_names)?,
+                )
                 .env("LINGXIA_PRODUCT_VERSION", &app.product_version);
         }
 
@@ -330,16 +334,62 @@ fn resolve_windows_executable_name_from_config(
         return Ok(name.to_string());
     }
 
-    if let Some(name) = config
-        .and_then(|cfg| cfg.app.as_ref())
-        .map(|app| app.project_name.as_str())
-        .filter(|value| !value.trim().is_empty())
-    {
-        return Ok(name.to_string());
+    let output = Command::new("cargo")
+        .current_dir(windows_dir)
+        .args(["metadata", "--no-deps", "--format-version", "1"])
+        .output()
+        .context("Failed to inspect Windows Cargo targets")?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "Unable to inspect Windows Cargo targets: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
     }
+    let metadata: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    select_windows_executable(&metadata)
+}
 
-    read_package_name(&windows_dir.join("Cargo.toml"))
-        .ok_or_else(|| anyhow!("Unable to infer Windows executable name from Cargo.toml"))
+fn select_windows_executable(metadata: &serde_json::Value) -> Result<String> {
+    let root_id = metadata["workspace_default_members"]
+        .as_array()
+        .filter(|members| members.len() == 1)
+        .and_then(|members| members.first());
+    let packages = metadata["packages"]
+        .as_array()
+        .context("Cargo metadata has no packages")?;
+    let package = packages
+        .iter()
+        .find(|package| Some(&package["id"]) == root_id)
+        .or_else(|| (packages.len() == 1).then(|| &packages[0]))
+        .context(
+            "Set windows.executableName when the Windows workspace has multiple default packages",
+        )?;
+    let targets = package["targets"]
+        .as_array()
+        .context("Cargo package has no targets")?;
+    let names: Vec<&str> = targets
+        .iter()
+        .filter(|target| {
+            target["kind"]
+                .as_array()
+                .is_some_and(|kind| kind.iter().any(|k| k == "bin"))
+        })
+        .filter_map(|target| target["name"].as_str())
+        .collect();
+    if let Some(default) = package["default_run"]
+        .as_str()
+        .filter(|name| names.contains(name))
+    {
+        return Ok(default.to_string());
+    }
+    match names.as_slice() {
+        [name] => Ok((*name).to_string()),
+        [] => Err(anyhow!("Windows Cargo package has no binary target")),
+        _ => Err(anyhow!(
+            "Multiple Windows binaries found: {}. Set windows.executableName or Cargo default-run to select one.",
+            names.join(", ")
+        )),
+    }
 }
 
 fn executable_file_name(name: &str) -> String {
@@ -483,12 +533,73 @@ fn is_windows_manifest(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn read_package_name(path: &Path) -> Option<String> {
-    let content = fs::read_to_string(path).ok()?;
-    let manifest: toml::Value = toml::from_str(&content).ok()?;
-    manifest
-        .get("package")
-        .and_then(|package| package.get("name"))
-        .and_then(toml::Value::as_str)
-        .map(ToOwned::to_owned)
+/// `productNames` locale tags → Windows language ids for the EXE's
+/// VERSIONINFO blocks, serialized as JSON for the build script. Resolving a
+/// tag needs `LocaleNameToLCID`, so this is only meaningful on a Windows host;
+/// elsewhere it yields an empty map, which is fine because Windows hosts are
+/// only ever built on Windows.
+fn windows_name_translations(names: &std::collections::BTreeMap<String, String>) -> Result<String> {
+    #[allow(unused_mut)]
+    let mut translations: std::collections::BTreeMap<u16, &str> = std::collections::BTreeMap::new();
+    for (locale, name) in names {
+        #[cfg(target_os = "windows")]
+        {
+            use windows::Win32::Globalization::{LOCALE_ALLOW_NEUTRAL_NAMES, LocaleNameToLCID};
+            use windows::core::PCWSTR;
+            let wide: Vec<u16> = locale.encode_utf16().chain(std::iter::once(0)).collect();
+            let id = unsafe { LocaleNameToLCID(PCWSTR(wide.as_ptr()), LOCALE_ALLOW_NEUTRAL_NAMES) }
+                as u16;
+            if id == 0 || id == 0x1000 {
+                eprintln!(
+                    "Warning: Windows EXE version resources cannot represent '{locale}'; using productName as its fallback."
+                );
+                continue;
+            }
+            if translations.insert(id, name).is_some() {
+                eprintln!(
+                    "Warning: productNames locale '{locale}' overrides another entry for Windows EXE language {id:#06x}."
+                );
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (locale, name);
+        }
+    }
+    Ok(serde_json::to_string(&translations)?)
+}
+
+#[cfg(test)]
+mod executable_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn metadata(names: &[&str], default_run: Option<&str>) -> serde_json::Value {
+        json!({"workspace_default_members": ["host"], "packages": [{
+            "id": "host", "name": "technical-package", "default_run": default_run,
+            "targets": names.iter().map(|name| json!({"kind": ["bin"], "name": name})).collect::<Vec<_>>()
+        }]})
+    }
+
+    #[test]
+    fn uses_binary_target_not_package_or_product_name() {
+        assert_eq!(
+            select_windows_executable(&metadata(&["LingXiaDemo"], None)).unwrap(),
+            "LingXiaDemo"
+        );
+    }
+
+    #[test]
+    fn multiple_binaries_require_default_run_or_override() {
+        assert!(
+            select_windows_executable(&metadata(&["app", "helper"], None))
+                .unwrap_err()
+                .to_string()
+                .contains("windows.executableName")
+        );
+        assert_eq!(
+            select_windows_executable(&metadata(&["app", "helper"], Some("app"))).unwrap(),
+            "app"
+        );
+    }
 }

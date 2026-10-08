@@ -60,16 +60,41 @@ pub fn package(
 
     generate_logos(&staging.join("Images"), &dist_dir.join("assets"))?;
 
+    // Localized names need a compiled PRI, i.e. makepri.exe from the Windows
+    // SDK. Without it the package still builds, with productName as its one
+    // display name, so a bare makeappx setup keeps working.
+    let makepri = find_makepri(&makeappx);
+    if !app.product_names.is_empty() && makepri.is_none() {
+        println!(
+            "  {} makepri.exe not found beside makeappx (or LINGXIA_MAKEPRI); MSIX uses productName for every language",
+            "note:".yellow()
+        );
+    }
+    let localized = !app.product_names.is_empty() && makepri.is_some();
+    let languages = if localized {
+        write_name_resources(&staging, &app.product_name, &app.product_names)?
+    } else {
+        vec!["en-US".to_string()]
+    };
+    let display_name = if localized {
+        "ms-resource:Resources/ProductName"
+    } else {
+        product_name
+    };
     let manifest = render_manifest(
         &identity,
         &publisher,
         &version,
-        product_name,
+        display_name,
         &exe_name.to_string_lossy(),
         architecture,
+        &languages,
     );
     std::fs::write(staging.join("AppxManifest.xml"), manifest)
         .context("Failed to write AppxManifest.xml")?;
+    if let Some(makepri) = makepri.filter(|_| localized) {
+        compile_name_resources(&staging, &makepri, temp.path())?;
+    }
 
     let status = Command::new(&makeappx)
         .args(["pack", "/d"])
@@ -224,8 +249,14 @@ fn render_manifest(
     display_name: &str,
     executable: &str,
     architecture: &str,
+    languages: &[String],
 ) -> String {
     let display = xml_escape(display_name);
+    let resources = languages
+        .iter()
+        .map(|language| format!("    <Resource Language=\"{}\" />", xml_escape(language)))
+        .collect::<Vec<_>>()
+        .join("\n");
     format!(
         r#"<?xml version="1.0" encoding="utf-8"?>
 <Package
@@ -242,7 +273,7 @@ fn render_manifest(
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
   </Dependencies>
   <Resources>
-    <Resource Language="en-us" />
+{resources}
   </Resources>
   <Applications>
     <Application Id="App" Executable="{executable}" EntryPoint="Windows.FullTrustApplication">
@@ -264,4 +295,177 @@ fn render_manifest(
         version = version,
         executable = xml_escape(executable),
     )
+}
+
+fn write_name_resources(
+    staging: &Path,
+    default: &str,
+    translations: &std::collections::BTreeMap<String, String>,
+) -> Result<Vec<String>> {
+    // The existing manifest's fallback is en-US. A configured en-US name
+    // replaces that candidate; the unqualified resource retains productName.
+    let mut candidates = translations.clone();
+    let has_english = candidates
+        .keys()
+        .any(|tag| tag.eq_ignore_ascii_case("en-US"));
+    if !has_english {
+        candidates.insert("en-US".to_string(), default.to_string());
+    }
+    if translations.is_empty() {
+        return Ok(vec!["en-US".to_string()]);
+    }
+    // The manifest's first <Resource Language> is the package default; keep
+    // en-US there (it carries the unqualified fallback name) ahead of the
+    // alphabetically ordered rest, so a `de-DE` entry cannot become default.
+    let english = candidates
+        .keys()
+        .find(|tag| tag.eq_ignore_ascii_case("en-US"))
+        .cloned()
+        .expect("en-US candidate is always present");
+    let mut languages = vec![english.clone()];
+    languages.extend(candidates.keys().filter(|tag| **tag != english).cloned());
+    let strings = staging.join("Strings");
+    for (locale, name) in std::iter::once(("", default)).chain(
+        candidates
+            .iter()
+            .map(|(tag, name)| (tag.as_str(), name.as_str())),
+    ) {
+        let dir = strings.join(locale);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(
+            dir.join("Resources.resw"),
+            format!(
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?><root><data name=\"ProductName\" xml:space=\"preserve\"><value>{}</value></data></root>",
+                xml_escape(name)
+            ),
+        )?;
+    }
+    Ok(languages)
+}
+
+/// `makepri.exe` ships in the same Windows SDK bin directory as `makeappx.exe`;
+/// `LINGXIA_MAKEPRI` overrides. `None` when neither exists.
+fn find_makepri(makeappx: &Path) -> Option<PathBuf> {
+    std::env::var_os("LINGXIA_MAKEPRI")
+        .map(PathBuf::from)
+        .into_iter()
+        .chain(std::iter::once(makeappx.with_file_name("makepri.exe")))
+        .find(|path| path.is_file())
+}
+
+fn compile_name_resources(staging: &Path, makepri: &Path, scratch: &Path) -> Result<()> {
+    let config = scratch.join("priconfig.xml");
+    let status = Command::new(makepri)
+        .args(["createconfig", "/cf"])
+        .arg(&config)
+        .args(["/dq", "en-US", "/o"])
+        .status()
+        .with_context(|| format!("Failed to run {}", makepri.display()))?;
+    if !status.success() {
+        bail!("makepri createconfig failed");
+    }
+    let generated = std::fs::read_to_string(&config)?;
+    std::fs::write(&config, single_package_pri_config(&generated)?)?;
+    let status = Command::new(makepri)
+        .args(["new", "/pr"])
+        .arg(staging)
+        .arg("/cf")
+        .arg(&config)
+        .arg("/of")
+        .arg(staging.join("resources.pri"))
+        .args(["/mf", "AppX", "/o"])
+        .status()?;
+    if !status.success() {
+        bail!("makepri new failed");
+    }
+    Ok(())
+}
+
+fn single_package_pri_config(generated: &str) -> Result<String> {
+    let document =
+        roxmltree::Document::parse(generated).context("Failed to parse makepri configuration")?;
+    let mut config = generated.to_string();
+    // The default config splits translations into satellite resource packages.
+    // This pipeline ships one MSIX, so every language must stay in its main PRI.
+    if let Some(packaging) = document
+        .root_element()
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "packaging")
+    {
+        config.replace_range(packaging.range(), "");
+    }
+    Ok(config)
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn single_package_index_keeps_languages_together_and_preserves_sdk_settings() {
+        let generated = r#"<?xml version="1.0" encoding="UTF-8"?>
+<resources targetOsVersion="10.0.0" majorVersion="1">
+  <!-- preserve this SDK comment: <packaging/> -->
+  <packaging>
+    <autoResourcePackage qualifier="Language"/>
+    <autoResourcePackage qualifier="Scale"/>
+    <autoResourcePackage qualifier="DXFeatureLevel"/>
+  </packaging>
+  <index root="." startIndexAt=".">
+    <default><qualifier name="Language" value="en-US"/></default>
+    <indexer-config type="resw" convertDotsToSlashes="true" initialPath=""/>
+  </index>
+</resources>"#;
+        let config = single_package_pri_config(generated).unwrap();
+        let document = roxmltree::Document::parse(&config).unwrap();
+        assert!(
+            !document
+                .descendants()
+                .any(|node| node.has_tag_name("packaging"))
+        );
+        let original = roxmltree::Document::parse(generated).unwrap();
+        let index = |doc: &roxmltree::Document<'_>| {
+            doc.descendants()
+                .find(|node| node.has_tag_name("index"))
+                .unwrap()
+                .range()
+        };
+        assert_eq!(&config[index(&document)], &generated[index(&original)]);
+        assert!(config.contains("<!-- preserve this SDK comment: <packaging/> -->"));
+        assert_eq!(single_package_pri_config(&config).unwrap(), config);
+    }
+
+    #[test]
+    fn localized_manifest_references_packaged_names_and_languages() {
+        let dir = tempfile::tempdir().unwrap();
+        let names = BTreeMap::from([
+            ("zh-CN".into(), "应用 & 演示".into()),
+            ("de-DE".into(), "Deutsche App".into()),
+            ("en-US".into(), "English App".into()),
+        ]);
+        let languages = write_name_resources(dir.path(), "Fallback", &names).unwrap();
+        // en-US stays the package default even though de-DE sorts before it.
+        assert_eq!(languages, vec!["en-US", "de-DE", "zh-CN"]);
+        let fallback = std::fs::read_to_string(dir.path().join("Strings/Resources.resw")).unwrap();
+        let chinese =
+            std::fs::read_to_string(dir.path().join("Strings/zh-CN/Resources.resw")).unwrap();
+        let english =
+            std::fs::read_to_string(dir.path().join("Strings/en-US/Resources.resw")).unwrap();
+        assert!(fallback.contains("Fallback"));
+        assert!(chinese.contains("应用 &amp; 演示"));
+        assert!(english.contains("English App"));
+        let manifest = render_manifest(
+            "com.example.demo",
+            "CN=Example",
+            "1.0.0.0",
+            "ms-resource:Resources/ProductName",
+            "Technical.exe",
+            "x64",
+            &languages,
+        );
+        assert!(manifest.contains("DisplayName=\"ms-resource:Resources/ProductName\""));
+        assert!(manifest.contains("Language=\"zh-CN\""));
+        assert!(manifest.contains("Executable=\"Technical.exe\""));
+    }
 }

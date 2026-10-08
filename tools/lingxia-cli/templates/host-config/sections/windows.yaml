@@ -1,3 +1,2 @@
 
-windows:
-  executableName: {{PROJECT_NAME}}
+windows: {} # executableName is optional for a single Cargo binary

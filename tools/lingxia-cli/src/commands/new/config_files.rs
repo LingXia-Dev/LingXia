@@ -308,6 +308,8 @@ mod tests {
             None
         );
         assert_eq!(all.windows.as_ref().and_then(|c| c.app_id.as_deref()), None);
+        assert_eq!(all.windows.as_ref().unwrap().executable_name, None);
+        assert_eq!(all.macos.as_ref().unwrap().executable_name, None);
         assert_eq!(
             lingxia.app_links.as_ref().unwrap().hosts,
             crate::config::AppLinkHosts::Single(vec!["demo.example.com".to_string()])

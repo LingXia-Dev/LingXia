@@ -3982,6 +3982,8 @@ dependencies = [
 name = "lingxia-windows-build"
 version = "0.21.0"
 dependencies = [
+ "serde_json",
+ "tempfile",
  "winresource",
 ]
 

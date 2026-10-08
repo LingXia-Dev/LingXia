@@ -34,13 +34,11 @@ ios:
 macos:
   deploymentTarget: "12.0"
   targetName: LingXiaDemo
-  executableName: LingXiaDemo
 
 harmony:
   bundleName: app.lingxia.lxapp.example
 
 windows:
-  executableName: LingXiaDemo
 
 features:
   appService: true
