@@ -14,7 +14,6 @@ use colored::Colorize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tempfile::NamedTempFile;
 
 use crate::permission_cache::{PermissionCache, PermissionPlatform};
 
@@ -1486,23 +1485,7 @@ fn profile_plist_matches_bundle_id(profile: &plist::Value, bundle_id: &str) -> b
 }
 
 fn decode_mobileprovision_plist(profile_data: &[u8]) -> Result<plist::Value> {
-    let mut profile_file = NamedTempFile::new().context("Failed to create profile temp file")?;
-    use std::io::Write;
-    profile_file
-        .write_all(profile_data)
-        .context("Failed to write profile temp file")?;
-
-    let output = Command::new("security")
-        .args(["cms", "-D", "-i"])
-        .arg(profile_file.path())
-        .output()
-        .context("Failed to decode provisioning profile")?;
-
-    if !output.status.success() {
-        return Err(anyhow!("Failed to decode provisioning profile"));
-    }
-
-    plist::from_bytes(&output.stdout).context("Failed to parse provisioning profile plist")
+    super::mobileprovision::decode_plist(profile_data)
 }
 
 /// True when the error chain indicates Apple's Program License Agreement has not
