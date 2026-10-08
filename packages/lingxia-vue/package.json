@@ -37,7 +37,7 @@
     "@lingxia/elements": "file:../lingxia-elements",
     "@lingxia/page-runtime": "file:../lingxia-page-runtime",
     "typescript": "^5.7.2",
-    "vue": "^3.5.41"
+    "vue": "^3.5.42"
   },
   "files": [
     "dist"
