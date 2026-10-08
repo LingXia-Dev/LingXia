@@ -2267,7 +2267,7 @@ impl LxApp {
 
     /// Leave the grant pending, as a cold registry lookup does, and hand back
     /// the handle that lands it.
-    #[cfg(test)]
+    #[cfg(all(test, not(windows)))]
     pub(crate) fn defer_permissions_for_test(&mut self) -> permissions::DeferredGrant {
         let (pending, resolver) = permissions::HostPermissions::deferred();
         self.host_permissions = pending;
