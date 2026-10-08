@@ -126,6 +126,42 @@ pub fn read_package_info_defaults(info_plist_path: &Path) -> Result<AppleSwiftPa
     })
 }
 
+/// Names of the products `Package.swift` declares as executables, in
+/// manifest order. Build-tool plugin executables (and any other executable
+/// target that is not a product) are left out, so a host package that ships
+/// a plugin still names exactly one app executable here.
+pub fn declared_executable_products(package_dir: &Path) -> Result<Vec<String>> {
+    let output = std::process::Command::new("swift")
+        .current_dir(package_dir)
+        .args(["package", "dump-package"])
+        .output()
+        .context("Failed to execute swift package dump-package")?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "swift package dump-package failed in {}:\n{}",
+            package_dir.display(),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let manifest: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .context("Failed to parse swift package dump-package output")?;
+    Ok(executable_product_names(&manifest))
+}
+
+fn executable_product_names(manifest: &serde_json::Value) -> Vec<String> {
+    manifest["products"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|product| {
+            product["type"]
+                .as_object()
+                .is_some_and(|kind| kind.contains_key("executable"))
+        })
+        .filter_map(|product| product["name"].as_str().map(ToOwned::to_owned))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,5 +194,23 @@ mod tests {
 
         let resolved = resolve_apple_swift_package_dir(temp.path(), "ios", None, "iOS").unwrap();
         assert_eq!(resolved, ios_dir);
+    }
+
+    #[test]
+    fn executable_products_skip_libraries_and_plugin_tools() {
+        let manifest = serde_json::json!({
+            "products": [
+                {"name": "LingXiaRunner", "type": {"executable": null}},
+                {"name": "lingxia", "type": {"library": ["automatic"]}}
+            ],
+            "targets": [
+                {"name": "RunnerBuildTool", "type": "executable"}
+            ]
+        });
+        assert_eq!(
+            executable_product_names(&manifest),
+            vec!["LingXiaRunner".to_string()]
+        );
+        assert!(executable_product_names(&serde_json::json!({})).is_empty());
     }
 }
