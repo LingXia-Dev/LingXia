@@ -22,7 +22,9 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded PR pushes are cancelled; main runs always finish so their
+  # rust-cache gets saved (PRs restore it) — a cancelled main run saves none.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -614,7 +616,9 @@ jobs:
     runs-on: windows-latest
     # Feature checks are linear (`--each-feature`). A cold main build also
     # publishes the large target cache after the checks have completed.
-    timeout-minutes: 55
+    # lingxia-cli now vendors OpenSSL on Windows (~11 min per profile it is
+    # built for); with a cold cache the job sits near 55 minutes.
+    timeout-minutes: 90
     env:
       # Vendored OpenSSL (lingxia-cli) configures itself with Perl. Under
       # `shell: bash` the MSYS perl from Git wins the PATH and lacks the
