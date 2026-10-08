@@ -338,6 +338,8 @@ fn compile_name_resources(staging: &Path, makeappx: &Path, scratch: &Path) -> Re
     if !status.success() {
         bail!("makepri createconfig failed");
     }
+    let generated = std::fs::read_to_string(&config)?;
+    std::fs::write(&config, single_package_pri_config(&generated)?)?;
     let status = Command::new(&makepri)
         .args(["new", "/pr"])
         .arg(staging)
@@ -353,10 +355,60 @@ fn compile_name_resources(staging: &Path, makeappx: &Path, scratch: &Path) -> Re
     Ok(())
 }
 
+fn single_package_pri_config(generated: &str) -> Result<String> {
+    let document =
+        roxmltree::Document::parse(generated).context("Failed to parse makepri configuration")?;
+    let mut config = generated.to_string();
+    // The default config splits translations into satellite resource packages.
+    // This pipeline ships one MSIX, so every language must stay in its main PRI.
+    if let Some(packaging) = document
+        .root_element()
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "packaging")
+    {
+        config.replace_range(packaging.range(), "");
+    }
+    Ok(config)
+}
+
 #[cfg(test)]
 mod name_tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn single_package_index_keeps_languages_together_and_preserves_sdk_settings() {
+        let generated = r#"<?xml version="1.0" encoding="UTF-8"?>
+<resources targetOsVersion="10.0.0" majorVersion="1">
+  <!-- preserve this SDK comment: <packaging/> -->
+  <packaging>
+    <autoResourcePackage qualifier="Language"/>
+    <autoResourcePackage qualifier="Scale"/>
+    <autoResourcePackage qualifier="DXFeatureLevel"/>
+  </packaging>
+  <index root="." startIndexAt=".">
+    <default><qualifier name="Language" value="en-US"/></default>
+    <indexer-config type="resw" convertDotsToSlashes="true" initialPath=""/>
+  </index>
+</resources>"#;
+        let config = single_package_pri_config(generated).unwrap();
+        let document = roxmltree::Document::parse(&config).unwrap();
+        assert!(
+            !document
+                .descendants()
+                .any(|node| node.has_tag_name("packaging"))
+        );
+        let original = roxmltree::Document::parse(generated).unwrap();
+        let index = |doc: &roxmltree::Document<'_>| {
+            doc.descendants()
+                .find(|node| node.has_tag_name("index"))
+                .unwrap()
+                .range()
+        };
+        assert_eq!(&config[index(&document)], &generated[index(&original)]);
+        assert!(config.contains("<!-- preserve this SDK comment: <packaging/> -->"));
+        assert_eq!(single_package_pri_config(&config).unwrap(), config);
+    }
 
     #[test]
     fn localized_manifest_references_packaged_names_and_languages() {
