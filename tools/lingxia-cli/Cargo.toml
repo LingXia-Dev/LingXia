@@ -116,7 +116,9 @@ oxc_sourcemap = "9.0.0"
 sysinfo = "0.39"
 notify = "8.2"
 
-[target.'cfg(not(target_os = "windows"))'.dependencies]
+# Harmony provisioning/signing (PKCS#12, PKCS#7) and Apple .p12 import on
+# every host, including Windows; vendored so release builds need no system
+# OpenSSL (the Windows GitHub runners ship Perl/NASM for the vendored build).
 openssl = { version = "0.10", features = ["vendored"] }
 openssl-sys = "0.9"
 foreign-types = "0.3"

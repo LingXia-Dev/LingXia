@@ -11,15 +11,7 @@ mod project;
 
 mod agc;
 pub mod keygen;
-#[cfg(not(target_os = "windows"))]
 pub mod provisioning;
-#[cfg(target_os = "windows")]
-#[path = "harmony/provisioning_stub.rs"]
-pub mod provisioning;
-#[cfg(not(target_os = "windows"))]
-pub mod signer;
-#[cfg(target_os = "windows")]
-#[path = "harmony/signer_stub.rs"]
 pub mod signer;
 
 pub use agc::{AgcApiCredentials, AgcConnectClient, AgcToken};
