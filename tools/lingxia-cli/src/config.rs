@@ -1584,11 +1584,11 @@ pub struct HarmonyConfig {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bundle_name: Option<String>,
-    /// Minimum supported SDK version (e.g., "5.0.0(12)")
+    /// Minimum supported SDK version (e.g., "6.1.0(23)", the lowest LingXia supports)
     /// Equivalent to iOS deploymentTarget / Android minSdk
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compatible_sdk_version: Option<String>,
-    /// Target SDK version (e.g., "6.0.1(21)")
+    /// Target SDK version (e.g., "6.1.0(23)")
     /// Equivalent to Android targetSdk
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_sdk_version: Option<String>,
