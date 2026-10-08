@@ -15,6 +15,9 @@ cd "$repo_root"
 paths=$(bash "$script_dir/cli-fingerprint.sh" --paths)
 echo "$paths" | grep -qx 'tools/lingxia-cli' || fail "paths must include tools/lingxia-cli"
 echo "$paths" | grep -qx 'Cargo.lock' || fail "paths must include Cargo.lock"
+for input in Cargo.toml design/icons/svg design/app-icon i18n/permission/cli tools/lingxia-runner/devices.json crates/lingxia-windows-sdk/Cargo.toml; do
+  echo "$paths" | grep -Fxq "$input" || fail "missing embedded CLI input: $input"
+done
 if echo "$paths" | grep -qx 'examples/lingxia-showcase'; then
   fail "showcase must not be in the CLI fingerprint"
 fi

@@ -2,8 +2,8 @@
 # Fingerprint of inputs baked into the `lingxia` / `lxdev` binaries.
 #
 # The CLI orchestrates a cargo build of the *current* workspace host; it does
-# not embed windows-sdk / showcase / react. Those paths must not be in this
-# list or every platform PR would rebuild the CLI.
+# not link windows-sdk / showcase / react implementations. Only the SDK
+# manifest used by scaffolding belongs here, not the whole platform tree.
 
 set -euo pipefail
 
@@ -17,6 +17,11 @@ repo_root=$(cd "$script_dir/../.." && pwd)
 CLI_FINGERPRINT_PATHS=(
   tools/lingxia-cli
   tools/lingxia-devtools-cli
+  tools/lingxia-runner/devices.json
+  crates/lingxia-windows-sdk/Cargo.toml
+  design/icons/svg
+  design/app-icon
+  i18n/permission/cli
   crates/lingxia-app-context
   docs/skill
   crates/lingxia-control-commands
@@ -29,6 +34,9 @@ CLI_FINGERPRINT_PATHS=(
   packages/lingxia-bridge
   packages/lingxia-polyfills
   Cargo.lock
+  Cargo.toml
+  rust-toolchain.toml
+  rust-toolchain
   packages/package.json
   packages/package-lock.json
 )

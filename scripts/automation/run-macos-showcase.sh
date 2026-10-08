@@ -40,8 +40,12 @@ if [[ -z "$fixture_base" ]]; then
   echo 'HTTP fixture did not start; transfer specs will register as pending.' >&2
 fi
 
-echo 'Building automation CLIs from the current checkout...'
-(cd "$repo_root" && cargo build -p lingxia-cli -p lingxia-devtools-cli)
+if [[ "${LINGXIA_CI_RESOLVED_CLI:-}" == 1 ]]; then
+  (cd "$repo_root" && bash scripts/ci/resolve-cli.sh --dest "$cargo_target_dir/debug")
+else
+  echo 'Building automation CLIs from the current checkout...'
+  (cd "$repo_root" && cargo build -p lingxia-cli -p lingxia-devtools-cli)
+fi
 (cd "$showcase_root" && "$lingxia" doctor --platform macos)
 
 for framework_index in "${!frameworks[@]}"; do

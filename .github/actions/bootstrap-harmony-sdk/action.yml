@@ -6,18 +6,33 @@ description: >
   hvigor. Mirrors the harmony half of scripts/release/sdk.sh
   (generate_resources). Assumes Rust is set up.
 
+inputs:
+  cli:
+    description: Resolved CLI binary; empty builds from this checkout
+    required: false
+    default: ''
+
 runs:
   using: composite
   steps:
     - name: Generate harmony SDK resources
       shell: bash
+      env:
+        LINGXIA_CLI: ${{ inputs.cli }}
       run: |
         set -euo pipefail
+        if [[ -n "$LINGXIA_CLI" ]]; then
+          cli=("$LINGXIA_CLI")
+        else
+          cargo build -p lingxia-cli
+          source scripts/lib/cargo-target-dir.sh
+          cli=("$(resolve_cargo_target_dir "$GITHUB_WORKSPACE")/debug/lingxia")
+        fi
         # Icon SVGs into the SDK rawfile dir.
-        cargo run -p lingxia-cli -- gen icons \
+        "${cli[@]}" gen icons \
           --input design/icons/svg \
           --harmony-out lingxia-sdk/harmony/lingxia/src/main/resources/rawfile/icons
         # Localized strings into the SDK resources dir (harmony only).
-        cargo run -p lingxia-cli -- gen i18n \
+        "${cli[@]}" gen i18n \
           --input i18n --no-rust --no-ts --no-ios --no-android \
           --harmony-out lingxia-sdk/harmony/lingxia/src/main/resources

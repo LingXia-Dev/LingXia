@@ -74,7 +74,12 @@ jobs:
               - 'clippy.toml'
             cli:
               - 'tools/**'
+              - 'design/**'
+              - 'docs/skill/**'
+              - 'i18n/permission/cli/**'
             web_runtime:
+              - 'packages/package.json'
+              - 'packages/package-lock.json'
               - 'packages/lingxia-bridge/**'
               - 'packages/lingxia-polyfills/**'
             web_frontend:
@@ -93,6 +98,8 @@ jobs:
               - 'crates/lingxia/**'
               - 'crates/lingxia-webview/**'
             control_security:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
               - 'crates/lingxia/**'
               - 'crates/lingxia-app-context/**'
               - 'crates/lingxia-browser/**'
@@ -242,6 +249,7 @@ jobs:
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
               - 'scripts/ci/**'
+              - 'scripts/lib/**'
             release_tooling:
               - 'scripts/release/**'
               - 'scripts/ci/check-release-notes.mjs'
@@ -257,8 +265,10 @@ jobs:
           bash scripts/ci/test-automation-matrix.sh
           bash scripts/ci/test-cli-matrix.sh
           bash scripts/ci/test-cli-fingerprint.sh
+          bash scripts/ci/test-resolve-cli.sh
           bash scripts/ci/test-control-security-gates.sh
           bash scripts/ci/test-swift-bridge.sh
+          bash scripts/ci/test-cargo-test-required.sh
       - name: Check skill docs
         # `lingxia skill install` copies docs/skill alone; a link or path
         # outside it is dead once installed.
@@ -334,13 +344,13 @@ jobs:
           sdk_base=$(any "$WEB_RT" "$I18N" "$CORE_RUST")
           # SDK platform checks stay scoped unless shared runtime/release inputs changed.
           sdk_apple=$(any "$rel" "$CI_F" "$sdk_base" "$APPLE" "$SDK_RELEASE")
-          sdk_android=$(any "$rel" "$sdk_base" "$ANDROID" "$SDK_RELEASE")
+          sdk_android=$(any "$rel" "$CI_F" "$sdk_base" "$ANDROID" "$SDK_RELEASE")
           # Harmony: harmony SDK tree + harmony webview backend + harmony example inputs.
           harmony=$(any "$rel" "$sdk_base" "$HARMONY_SDK" "$WEBVIEW_HARMONY" "$SDK_RELEASE" "$ex_base" "$EX_HARMONY")
-          # NPM packages (advisory): any packages/* change, a release PR, or a
+          # NPM packages: any packages/* change, a release PR, or a
           # crates/lingxia-logic change (it is the generation source for
           # @lingxia/types, so Rust-only PRs must still run the drift gate).
-          npm=$(any "$rel" "$NPM" "$TYPEGEN_SRC")
+          npm=$(any "$rel" "$CI_F" "$NPM" "$TYPEGEN_SRC")
           i18n="$I18N"
 
           automation_full=$(any "$rel" "$IS_MAIN_PUSH" "$AUTOMATION_SHOWCASE" "$AUTOMATION_CI")
@@ -447,6 +457,18 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   # ---- Gating jobs (required via ci-success) ----
+  workflow-lint:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      # install-action has no actionlint entry and its cargo-binstall fallback
+      # cannot find it (not a crate); use upstream's pinned installer.
+      - name: Install actionlint
+        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+      - run: ./actionlint -color
+
   fmt:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' }}
@@ -486,6 +508,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           prefix-key: rust-check-linux
 
       # lingxia-cli build.rs (run by the i18n gate) embeds the bridge/polyfills
@@ -535,6 +558,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         if: matrix.suite == 'portable-rust'
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           prefix-key: control-security-rust
 
       - uses: ./.github/actions/build-web-runtime
@@ -573,6 +597,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           prefix-key: rust-android
 
       # The runtime has no Linux host backend, but its published crate must
@@ -612,13 +637,16 @@ jobs:
   rust-windows-target:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.i18n == 'true' }}
-    name: Windows Target
+    name: Windows Target / ${{ matrix.suite }}
     runs-on: windows-latest
-    # Feature checks are linear (`--each-feature`). A cold main build also
-    # publishes the large target cache after the checks have completed.
-    # lingxia-cli now vendors OpenSSL on Windows (~11 min per profile it is
-    # built for); with a cold cache the job sits near 55 minutes.
-    timeout-minutes: 90
+    # lingxia-cli vendors OpenSSL on Windows (~11 min per profile); the suites
+    # below split the former single ~55-minute job so each cold suite stays
+    # near 30 minutes.
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [lint, runtime, distribution]
     env:
       # Vendored OpenSSL (lingxia-cli) configures itself with Perl. Under
       # `shell: bash` the MSYS perl from Git wins the PATH and lacks the
@@ -634,32 +662,37 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: rust-windows
+          prefix-key: rust-windows-${{ matrix.suite }}
           # PRs can restore main's cache, but must not fail after successful
           # checks while compressing a multi-gigabyte target directory.
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - uses: taiki-e/install-action@cargo-hack
+        if: matrix.suite == 'lint'
 
       # Some embedded-runtime build scripts expect the bundled bridge/polyfills JS.
       - uses: ./.github/actions/build-web-runtime
 
       - name: Clippy Windows host stack
+        if: matrix.suite == 'lint'
         shell: bash
-        run: cargo clippy --workspace -- -D warnings -A clippy::let_underscore_future
+        run: cargo clippy --workspace --all-targets -- -D warnings -A clippy::let_underscore_future
 
       - name: Test Windows control documents and sessions
+        if: matrix.suite == 'runtime'
         shell: bash
         run: |
-          cargo test -p lingxia-webview --lib windows::document::tests
-          cargo test -p lingxia-webview --lib windows::controller::tests::document_messages_enqueue_without_reply_wait_and_preserve_fifo
-          cargo test -p lingxia-browser --lib document_session::tests
+          bash scripts/ci/cargo-test-required.sh -p lingxia-webview --lib windows_document::tests
+          bash scripts/ci/cargo-test-required.sh -p lingxia-webview --lib windows::controller::tests::document_messages_enqueue_without_reply_wait_and_preserve_fifo
+          bash scripts/ci/cargo-test-required.sh -p lingxia-browser --lib document_session::tests
 
       - name: Clippy Windows browser shell feature
+        if: matrix.suite == 'lint'
         shell: bash
         run: cargo clippy -p lingxia-windows-sdk --no-default-features --features browser-shell -- -D warnings -A clippy::let_underscore_future
 
       - name: Install NSIS for Windows packaging tests
+        if: matrix.suite == 'distribution'
         shell: pwsh
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}/NSIS/makensis.exe")) {
@@ -668,33 +701,38 @@ jobs:
           }
 
       - name: Test Windows distribution and updates
+        if: matrix.suite == 'distribution'
         shell: pwsh
         run: |
-          cargo test -p lingxia-platform --lib registrations_never_use_extracted_portable_path
+          bash scripts/ci/cargo-test-required.sh -p lingxia-platform --lib registrations_never_use_extracted_portable_path
           if ($LASTEXITCODE -ne 0) { throw 'Windows launch path tests failed' }
-          cargo test -p lingxia-platform --lib windows::update
+          bash scripts/ci/cargo-test-required.sh -p lingxia-platform --lib windows::update
           if ($LASTEXITCODE -ne 0) { throw 'Windows update helper tests failed' }
           ./scripts/ci/windows-package-smoke.ps1
 
       - name: Test Windows media metadata mappings
+        if: matrix.suite == 'runtime'
         shell: bash
-        run: cargo test -p lingxia-platform codec_subtypes_use_stable_mime_names
+        run: bash scripts/ci/cargo-test-required.sh -p lingxia-platform codec_subtypes_use_stable_mime_names
 
       - name: Test Windows device-io state and backend
+        if: matrix.suite == 'runtime'
         shell: bash
-        run: cargo test -p lingxia-device-io --features full --lib
+        run: bash scripts/ci/cargo-test-required.sh -p lingxia-device-io --features full --lib
 
       - name: Test capture pipeline and desktop geometry
+        if: matrix.suite == 'runtime'
         shell: bash
         run: |
-          cargo test -p lingxia-media --no-default-features --features capture --lib
-          cargo test -p lingxia-device-io --no-default-features --features realtime-capture-provider --lib geometry
-          cargo test -p lingxia-device-io --features supervision --lib supervision
+          bash scripts/ci/cargo-test-required.sh -p lingxia-media --no-default-features --features capture --lib
+          bash scripts/ci/cargo-test-required.sh -p lingxia-device-io --no-default-features --features realtime-capture-provider --lib geometry
+          bash scripts/ci/cargo-test-required.sh -p lingxia-device-io --features supervision --lib supervision
 
       # Linear in the number of features, not 2^N. The cargo-tree script below
       # already asserts the capability graph; this only type-checks each public
       # feature plus `full` on the real Windows backend.
       - name: Check Windows device-io features
+        if: matrix.suite == 'lint'
         shell: bash
         run: cargo hack check -p lingxia-device-io --each-feature --no-dev-deps
 
@@ -704,6 +742,7 @@ jobs:
       # realtime provider. Skip until the feature exists so this gate can
       # merge ahead of the capture pipeline.
       - name: Check Windows device-io product union
+        if: matrix.suite == 'lint'
         shell: bash
         run: |
           if grep -q '^realtime-capture-provider' crates/lingxia-device-io/Cargo.toml; then
@@ -713,19 +752,22 @@ jobs:
           fi
 
       - name: Verify device-io feature boundaries
+        if: matrix.suite == 'lint'
         shell: bash
         run: bash scripts/ci/check-device-io-features.sh
 
       - name: Test Windows local-control named pipe
+        if: matrix.suite == 'runtime'
         shell: bash
-        run: cargo test -p lingxia-control-runtime --no-default-features --features local-control --lib named_pipe_restarts_while_an_old_client_is_open
+        run: bash scripts/ci/cargo-test-required.sh -p lingxia-control-runtime --no-default-features --features local-control --lib named_pipe_restarts_while_an_old_client_is_open
 
       # The shell chrome and the terminal renderer are behind non-default
       # features, so `--workspace` above never compiles them and their unit
       # tests — glyph-to-column mapping, sidebar geometry — run nowhere else.
       - name: Test Windows shell chrome and terminal renderer
+        if: matrix.suite == 'runtime'
         shell: bash
-        run: cargo test -p lingxia-windows-sdk --features shell-chrome,terminal-runtime --lib
+        run: bash scripts/ci/cargo-test-required.sh -p lingxia-windows-sdk --features shell-chrome,terminal-runtime --lib
 
       # `--workspace` above only builds each crate's default features, i.e.
       # windows-sdk's `standard`. Exercise the other tiers standalone too — in
@@ -733,6 +775,7 @@ jobs:
       # lingxia runtime facade) and the advanced_host example, which the macOS
       # host can't compile (C deps like zstd/quickjs need the Windows SDK).
       - name: Check Windows SDK feature tiers
+        if: matrix.suite == 'distribution'
         shell: bash
         run: |
           cargo check -p lingxia-windows-sdk --no-default-features --features host-api
@@ -760,6 +803,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           prefix-key: cli-${{ matrix.platform }}
 
       # lingxia-cli build.rs embeds the bridge/polyfills JS runtime.
@@ -811,6 +855,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: macos-rust
 
       # lingxia-cli build.rs embeds the bridge/polyfills JS runtime.
@@ -824,13 +869,13 @@ jobs:
       # cfg'd out, leaving helpers dead), so they are linted by the Windows
       # clippy job instead — exclude them here.
       - name: Clippy (all workspace crates)
-        run: cargo clippy --workspace --exclude lingxia-windows-sdk --exclude lingxia-windows-contract --exclude lingxia-windows-build --exclude lingxia-runner-windows -- -D warnings -A clippy::let_underscore_future
+        run: cargo clippy --workspace --all-targets --exclude lingxia-windows-sdk --exclude lingxia-windows-contract --exclude lingxia-windows-build --exclude lingxia-runner-windows -- -D warnings -A clippy::let_underscore_future
 
       # `--workspace` builds each crate's default features only, so the
       # `lingxia` facade's `automation`-gated bootstrap wiring never compiles.
       # The Runner enables it by default; lint that path too.
       - name: Clippy (lingxia automation feature)
-        run: cargo clippy -p lingxia --features automation -- -D warnings -A clippy::let_underscore_future
+        run: cargo clippy -p lingxia --all-targets --features automation -- -D warnings -A clippy::let_underscore_future
 
       - name: Test macOS activity viewer against WindowServer
         run: cargo run -p lingxia-device-io --features supervision --example pip_viewer
@@ -856,12 +901,18 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           prefix-key: runner-arm64
 
       - uses: ./.github/actions/build-web-runtime
 
       # Generate the gitignored apple SDK assets (resources + swift bindings).
+      - uses: ./.github/actions/resolve-cli
+        with:
+          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
       - uses: ./.github/actions/bootstrap-apple-sdk
+        with:
+          cli: ./target/debug/lingxia
 
       # Restore the Apple credential wallet so `lingxia build` signs + notarizes
       # directly from it — same code path as a local signed build, no env
@@ -906,6 +957,7 @@ jobs:
         # signed (un-stapled) app. Release builds omit this and go through
         # release-cli.yml. PRs stay ad-hoc (no credential store above).
         env:
+          LINGXIA_CI_RESOLVED_CLI: '1'
           LINGXIA_NOTARIZE_BEST_EFFORT: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && '1' || '' }}
           LINGXIA_NOTARIZE_WAIT_TIMEOUT: "10m"
         run: bash scripts/release/runner.sh --macos-arch arm64 --out dist/runner-release
@@ -935,9 +987,15 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           prefix-key: example-macos
       - uses: ./.github/actions/build-web-packages
+      - uses: ./.github/actions/resolve-cli
+        with:
+          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
       - uses: ./.github/actions/bootstrap-apple-sdk
+        with:
+          cli: ./target/debug/lingxia
       - name: Test Apple bridge transport
         run: cargo test -p lingxia-webview apple::bridge_transport --lib
       # Inject the private GitHub cloud client when its secrets are present
@@ -947,9 +1005,6 @@ jobs:
           github-token: ${{ secrets.LINGXIA_CLOUD_CLIENT_TOKEN }}
           repository: ${{ secrets.LINGXIA_CLOUD_CLIENT_REPOSITORY }}
           ref: ${{ secrets.LINGXIA_CLOUD_CLIENT_REF }}
-      - uses: ./.github/actions/resolve-cli
-        with:
-          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
       - name: Build macOS example app
         working-directory: examples/lingxia-showcase
         run: ../../target/debug/lingxia build --platform macos --framework react
@@ -1071,7 +1126,12 @@ jobs:
 
       - uses: ./.github/actions/build-web-packages
 
+      - uses: ./.github/actions/resolve-cli
+        with:
+          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
       - uses: ./.github/actions/bootstrap-apple-sdk
+        with:
+          cli: ./target/debug/lingxia
         if: runner.os == 'macOS'
 
       - name: Install showcase test dependencies
@@ -1092,9 +1152,12 @@ jobs:
 
       - name: Test Windows UI Automation worker initialization
         if: runner.os == 'Windows'
-        run: cargo test -p lingxia-device-io --features ax --lib automation_initializes_each_worker_thread
+        shell: bash
+        run: bash scripts/ci/cargo-test-required.sh -p lingxia-device-io --features ax --lib automation_initializes_each_worker_thread
 
       - name: Run showcase automation
+        env:
+          LINGXIA_CI_RESOLVED_CLI: '1'
         if: runner.os == 'Windows'
         working-directory: examples/lingxia-showcase
         shell: pwsh
@@ -1105,6 +1168,8 @@ jobs:
           -BuildJobs 4
 
       - name: Run showcase automation
+        env:
+          LINGXIA_CI_RESOLVED_CLI: '1'
         if: runner.os == 'macOS'
         shell: bash
         run: |
@@ -1149,11 +1214,17 @@ jobs:
       # unified-log trail so a missing report is itself diagnosable.
       - name: Collect macOS crash reports
         if: always() && runner.os == 'macOS'
+        env:
+          WAIT_FOR_CRASH_REPORT: ${{ job.status != 'success' }}
         working-directory: examples/lingxia-showcase
         shell: bash
         run: |
           mkdir -p .lingxia/crash-reports
-          sleep 45
+          # Successful retries still collect the first attempt's crash reports,
+          # but only a failed/cancelled run needs to wait for a fresh report.
+          if [[ "$WAIT_FOR_CRASH_REPORT" == true ]]; then
+            sleep 45
+          fi
           find "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports \
             -name '*.ips' -mmin -90 \
             -exec cp {} .lingxia/crash-reports/ \; 2>/dev/null || true
@@ -1201,12 +1272,15 @@ jobs:
           targets: aarch64-apple-ios
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           prefix-key: example-ios
       - uses: ./.github/actions/build-web-packages
-      - uses: ./.github/actions/bootstrap-apple-sdk
       - uses: ./.github/actions/resolve-cli
         with:
           fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
+      - uses: ./.github/actions/bootstrap-apple-sdk
+        with:
+          cli: ./target/debug/lingxia
       - name: Build iOS example app
         working-directory: examples/lingxia-showcase
         run: ../../target/debug/lingxia build --platform ios --framework react
@@ -1235,18 +1309,21 @@ jobs:
           targets: aarch64-linux-android
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           prefix-key: example-android
       - uses: ./.github/actions/build-web-packages
       # Generate the gitignored android SDK drawables/strings the Kotlin
       # references (R.drawable.* / R.string.*).
+      - uses: ./.github/actions/resolve-cli
+        with:
+          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
       - uses: ./.github/actions/bootstrap-android-sdk
+        with:
+          cli: ./target/debug/lingxia
       - name: Test Android document admission without an emulator
         run: bash scripts/ci/control-security-gates.sh android
       - name: Expose Android NDK to lingxia build
         run: echo "ANDROID_NDK_HOME=${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_ROOT}" >> "$GITHUB_ENV"
-      - uses: ./.github/actions/resolve-cli
-        with:
-          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
       - name: Build Android example app
         working-directory: examples/lingxia-showcase
         # Release build so CI exercises the release signing config (it falls back
@@ -1280,6 +1357,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: macos-rust
 
       - uses: ./.github/actions/build-web-runtime
@@ -1287,9 +1365,7 @@ jobs:
       - name: Test all workspace crates
         run: cargo test --workspace
 
-  # SDK packaging jobs remain independently scoped. Apple is a required gate
-  # because it also runs the linkable Swift security contracts; Android's
-  # document contracts run in the already-required example job.
+  # SDK packaging and compatibility contracts are required, independently scoped gates.
   sdk-android:
     needs: changes
     if: ${{ needs.changes.outputs.sdk_android == 'true' }}
@@ -1310,6 +1386,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           prefix-key: sdk-android
 
       - name: Cache Gradle
@@ -1350,6 +1427,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           prefix-key: sdk-apple
 
       - uses: ./.github/actions/build-web-runtime
@@ -1376,6 +1454,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           prefix-key: example-harmony
 
       # lxapp web bundle + native client codegen the native build links against.
@@ -1428,11 +1507,12 @@ jobs:
           key: ohos-ndk-${{ env.OHOS_SDK_VERSION }}
 
       # Generate the gitignored Harmony SDK resources a clean checkout lacks.
-      - uses: ./.github/actions/bootstrap-harmony-sdk
-
       - uses: ./.github/actions/resolve-cli
         with:
           fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
+      - uses: ./.github/actions/bootstrap-harmony-sdk
+        with:
+          cli: ./target/debug/lingxia
 
       - name: Build Harmony example (native only)
         working-directory: examples/lingxia-showcase
@@ -1467,6 +1547,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           prefix-key: control-security-harmony-har
 
       - uses: ./.github/actions/build-web-runtime
@@ -1486,13 +1567,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-
-      - name: Cache npm
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-packages-${{ hashFiles('packages/*/package.json') }}
-          restore-keys: npm-packages-
+          cache: npm
+          cache-dependency-path: packages/package-lock.json
 
       # packages/ is an npm workspace: a single install links every @lingxia/*
       # member and hoists their dev tooling, and `npm run build --workspaces`
@@ -1502,7 +1578,7 @@ jobs:
       - name: Install & build workspace
         working-directory: packages
         run: |
-          npm install
+          npm ci
           npm run check:logic --workspace @lingxia/types
           npm run check:quality --workspace @lingxia/types
           npm run test:types --workspace @lingxia/types
@@ -1591,6 +1667,7 @@ jobs:
     name: CI Success
     needs:
       - changes
+      - workflow-lint
       - fmt
       - rust-check
       - control-security
@@ -1603,6 +1680,8 @@ jobs:
       - ios
       - android
       - sdk-apple
+      - sdk-android
+      - npm-packages
       - harmony-native
       - harmony-har
       - showcase-automation-types

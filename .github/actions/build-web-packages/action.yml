@@ -13,7 +13,9 @@ runs:
   steps:
     - uses: actions/setup-node@v4
       with:
-        node-version: "20"
+        node-version: ${{ env.NODE_VERSION || '22' }}
+        cache: npm
+        cache-dependency-path: packages/package-lock.json
 
     - name: Install + build @lingxia web packages
       shell: bash
@@ -23,12 +25,7 @@ runs:
         npm_config_script_shell: bash
       run: |
         set -euo pipefail
-        for pkg in lingxia-types lingxia-bridge lingxia-polyfills lingxia-elements \
-                   lingxia-page-runtime lingxia-react lingxia-vue lingxia-test; do
-          echo "::group::npm install ($pkg)"
-          (cd "packages/$pkg" && npm install)
-          echo "::endgroup::"
-        done
+        npm ci --prefix packages
         # react/vue cascade to elements + page-runtime + bridge:types.
         # lingxia-test builds against lingxia-types' declarations, so it follows it.
         for pkg in lingxia-types lingxia-bridge lingxia-polyfills lingxia-react lingxia-vue lingxia-test; do
