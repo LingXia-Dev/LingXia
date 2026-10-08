@@ -1424,6 +1424,8 @@ jobs:
           key: gradle-sdk-${{ hashFiles('lingxia-sdk/android/**/*.gradle*', 'lingxia-sdk/android/**/gradle-wrapper.properties') }}
           restore-keys: gradle-sdk-
 
+      - uses: ./.github/actions/build-web-runtime
+
       - uses: ./.github/actions/resolve-cli
         with:
           fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
