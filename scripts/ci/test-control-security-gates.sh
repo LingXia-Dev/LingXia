@@ -56,6 +56,11 @@ job_has_text rust-windows-target 'windows::controller::tests::document_messages_
   exit 1
 }
 
+job_has_text rust-windows-target 'cargo-test-required.sh -p lingxia-webview --lib windows_document::tests' || {
+  echo "Windows document gate must require a nonempty suite at its current module path" >&2
+  exit 1
+}
+
 for profile in android apple harmony-rust harmony-har; do
   grep -Fq "bash scripts/ci/control-security-gates.sh $profile" "$WORKFLOW" || {
     echo "CI workflow does not invoke control-security profile: $profile" >&2
@@ -63,7 +68,7 @@ for profile in android apple harmony-rust harmony-har; do
   }
 done
 
-for required_job in control-security sdk-apple harmony-native harmony-har; do
+for required_job in control-security sdk-apple sdk-android npm-packages rust-windows-target harmony-native harmony-har; do
   grep -Fq "      - $required_job" "$WORKFLOW" || {
     echo "CI Success does not gate job: $required_job" >&2
     exit 1

@@ -6,16 +6,31 @@ description: >
   build that `lingxia build --platform android` runs. Mirrors the android half
   of scripts/release/sdk.sh's generate_resources. Assumes Rust is set up.
 
+inputs:
+  cli:
+    description: Resolved CLI binary; empty builds from this checkout
+    required: false
+    default: ''
+
 runs:
   using: composite
   steps:
     - name: Generate android SDK resources (icons + i18n)
       shell: bash
+      env:
+        LINGXIA_CLI: ${{ inputs.cli }}
       run: |
         set -euo pipefail
-        cargo run -p lingxia-cli -- gen icons \
+        if [[ -n "$LINGXIA_CLI" ]]; then
+          cli=("$LINGXIA_CLI")
+        else
+          cargo build -p lingxia-cli
+          source scripts/lib/cargo-target-dir.sh
+          cli=("$(resolve_cargo_target_dir "$GITHUB_WORKSPACE")/debug/lingxia")
+        fi
+        "${cli[@]}" gen icons \
           --input design/icons/svg \
           --android-out lingxia-sdk/android/lingxia/src/main/res/drawable
-        cargo run -p lingxia-cli -- gen i18n \
+        "${cli[@]}" gen i18n \
           --input i18n --no-rust --no-ts --no-ios --no-harmony \
           --android-out lingxia-sdk/android/lingxia/src/main/res

@@ -63,8 +63,17 @@ function Stop-IdleAutomationBrokers {
 }
 
 function Install-AutomationTools {
-  Write-Host 'Building automation CLIs from the current checkout...'
-  Invoke-Checked 'cargo' @('build', '-p', 'lingxia-cli', '-p', 'lingxia-devtools-cli')
+  if ($env:LINGXIA_CI_RESOLVED_CLI -eq '1') {
+    Push-Location $repoRoot
+    try {
+      Invoke-Checked 'bash' @('scripts/ci/resolve-cli.sh', '--dest', 'target/debug')
+    } finally {
+      Pop-Location
+    }
+  } else {
+    Write-Host 'Building automation CLIs from the current checkout...'
+    Invoke-Checked 'cargo' @('build', '-p', 'lingxia-cli', '-p', 'lingxia-devtools-cli')
+  }
   New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
 
   $builtLingXia = Join-Path $repoRoot 'target\debug\lingxia.exe'

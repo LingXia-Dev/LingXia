@@ -1,5 +1,26 @@
 # Workflows
 
+## CI quality and caching
+
+Require only `CI Success` in branch protection. It aggregates the scoped jobs,
+including npm tests, Android SDK compatibility, Apple contracts, and all three
+Windows suites (`lint`, `runtime`, `distribution`). The full macOS workspace
+test remains advisory because of its existing environment-sensitive tests.
+Workspace Clippy covers all targets on both desktop platforms. Filtered Windows
+Rust tests use `scripts/ci/cargo-test-required.sh` so zero executed tests fail.
+
+CI Rust dependency caches are written on `main` only; PRs restore them without
+uploading multi-GB branch copies. CLI binary caches remain fingerprinted by
+source inputs, runner OS/architecture and toolchain. Resolve the CLI before SDK
+resource generation, and pass its path to the bootstrap action. A cache miss
+builds from the checkout. Apple bootstrap generates bindings with `cargo check`;
+the consuming host build still compiles and links its actual target/profile.
+
+Web actions install once with the workspace lockfile and use the caller's Node
+version (22 by default). When comparing CI performance, separate queue time,
+build/test time and cache upload time; the first run of a new Windows suite has
+a cold cache. Keep every suite in `CI Success` when changing the matrix.
+
 ## How to release — the only two buttons you press
 
 ```text

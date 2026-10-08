@@ -132,7 +132,7 @@ jobs:
       - name: Use Strawberry Perl for the vendored OpenSSL build
         if: ${{ matrix.os == 'windows' }}
         shell: bash
-        run: echo 'OPENSSL_SRC_PERL=C:\Strawberry\perl\bin\perl.exe' >> "$GITHUB_ENV"
+        run: printf '%s\n' 'OPENSSL_SRC_PERL=C:\Strawberry\perl\bin\perl.exe' >> "$GITHUB_ENV"
 
       - name: Verify tag matches CLI package version
         # Windows runners default to PowerShell; force Git Bash for awk + [ ].

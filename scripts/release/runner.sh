@@ -309,8 +309,12 @@ else
 fi
 
 if [[ "$BUILD_MACOS" -eq 1 && "$SKIP_BUILD" -ne 1 ]]; then
-  require_command cargo
-  ( cd "$ROOT_DIR" && cargo build --manifest-path "$ROOT_DIR/tools/lingxia-cli/Cargo.toml" -p lingxia-cli )
+  if [[ "${LINGXIA_CI_RESOLVED_CLI:-}" == 1 ]]; then
+    ( cd "$ROOT_DIR" && bash scripts/ci/resolve-cli.sh )
+  else
+    require_command cargo
+    ( cd "$ROOT_DIR" && cargo build --manifest-path "$ROOT_DIR/tools/lingxia-cli/Cargo.toml" -p lingxia-cli )
+  fi
 fi
 
 if [[ "$BUILD_MACOS" -eq 1 ]]; then

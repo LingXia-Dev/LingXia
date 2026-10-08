@@ -7,6 +7,12 @@ description: >
   macOS runner or the macOS/iOS example apps.
   Assumes Rust + Node (build-web-runtime) are already set up by the caller.
 
+inputs:
+  cli:
+    description: Resolved CLI binary; empty builds from this checkout
+    required: false
+    default: ''
+
 runs:
   using: composite
   steps:
@@ -14,22 +20,29 @@ runs:
     # runs when packaging the apple SDK.
     - name: Generate apple SDK resources (i18n + icons)
       shell: bash
+      env:
+        LINGXIA_CLI: ${{ inputs.cli }}
       run: |
         set -euo pipefail
-        cargo run -p lingxia-cli -- gen i18n \
+        if [[ -n "$LINGXIA_CLI" ]]; then
+          cli=("$LINGXIA_CLI")
+        else
+          cargo build -p lingxia-cli
+          source scripts/lib/cargo-target-dir.sh
+          cli=("$(resolve_cargo_target_dir "$GITHUB_WORKSPACE")/debug/lingxia")
+        fi
+        "${cli[@]}" gen i18n \
           --input i18n --no-rust --no-ts --no-android --no-harmony \
           --ios-out lingxia-sdk/apple/Sources/Resources
-        cargo run -p lingxia-cli -- gen icons \
+        "${cli[@]}" gen icons \
           --input design/icons/svg \
           --ios-out lingxia-sdk/apple/Sources/Resources/icons
 
-    # Swift bridge bindings are a build.rs side-effect; cargo caches build
-    # scripts, so touch their rerun-if-changed inputs to force regeneration even
-    # on a cache hit (otherwise the generated dir is missing in a fresh checkout
-    # and the Swift build fails). This release build is reused downstream.
+    # Only generate sources here. The consuming host build still compiles and
+    # links its actual target/profile; an unrelated release build cannot help iOS.
     - name: Generate apple SDK swift bindings
       shell: bash
       run: |
         set -euo pipefail
-        touch crates/lingxia-platform/src/apple/ffi.rs crates/lingxia/src/ffi/apple.rs
-        LINGXIA_GENERATE_BRIDGE=1 cargo build -p lingxia --release --target aarch64-apple-darwin
+        source scripts/lib/swift-bridge.sh
+        ensure_swift_bridge "$GITHUB_WORKSPACE"

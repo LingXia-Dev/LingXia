@@ -20,7 +20,7 @@ runs:
           target/debug/lingxia.exe
           target/debug/lxdev.exe
           target/debug/.lingxia-cli-fingerprint
-        key: cli-bins-${{ runner.os }}-${{ inputs.fingerprint }}
+        key: cli-bins-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.RUST_TOOLCHAIN }}-${{ inputs.fingerprint }}
 
     - name: Resolve lingxia and lxdev
       shell: bash
