@@ -615,7 +615,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
         if shouldShow {
             // Create capsule button if it doesn't exist
             if globalCapsuleButton == nil {
-                LxAppCapsuleButtons.addCapsuleButton(to: self, appId: appId)
+                LxAppCapsuleButtons.addCapsuleButton(to: self)
                 globalCapsuleButton = view.viewWithTag(9999) // CAPSULE_BUTTON_TAG
             }
             globalCapsuleButton?.isHidden = false
