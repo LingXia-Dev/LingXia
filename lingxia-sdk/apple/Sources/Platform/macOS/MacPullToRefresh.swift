@@ -58,6 +58,8 @@ final class MacPullToRefreshController {
     private var isPulling = false
     private var isRefreshing = false
     private var refreshShownAt: Date?
+    // Set while the indicator lingers after a stop to honour minVisibleDuration.
+    private var pendingFinish: DispatchWorkItem?
     private var lastWheelAt: Date?
 
     // MARK: - Attachment
@@ -122,6 +124,7 @@ final class MacPullToRefreshController {
         // was put away.
         isRefreshing = false
         refreshShownAt = nil
+        cancelPendingFinish()
         indicator.stopLoading()
         indicator.alphaValue = 0
         indicator.isHidden = true
@@ -152,6 +155,7 @@ final class MacPullToRefreshController {
     func unmount() {
         isRefreshing = false
         refreshShownAt = nil
+        cancelPendingFinish()
         indicator.stopLoading()
         indicator.removeFromSuperview()
         pageTop = nil
@@ -197,6 +201,7 @@ final class MacPullToRefreshController {
         // refresh holding the offset open.
         isRefreshing = false
         refreshShownAt = nil
+        cancelPendingFinish()
         reset(animated: false)
     }
 
@@ -401,7 +406,14 @@ final class MacPullToRefreshController {
     /// Also the entry point for `lx.startPullDownRefresh()`, so a programmatic
     /// refresh and a pulled one look the same.
     func startRefreshing() {
-        guard enabled, isMounted, !isRefreshing else { return }
+        guard enabled, isMounted else { return }
+        if pendingFinish != nil {
+            // Restarted while lingering: the indicator is still up, keep it.
+            cancelPendingFinish()
+            reportRefresh()
+            return
+        }
+        guard !isRefreshing else { return }
         isRefreshing = true
         isPulling = false
         pull = Self.restingDistance
@@ -411,7 +423,11 @@ final class MacPullToRefreshController {
         paintIndicator()
         indicator.startLoading()
         setPageOffset(Self.restingDistance, animated: true)
+        reportRefresh()
+    }
 
+    /// Fire `onPullDownRefresh` for this page, or end a refresh it cannot get.
+    private func reportRefresh() {
         guard let webView, let appId = webView.appId, let webtag = webView.pageWebTag else {
             finishRefreshing()
             return
@@ -421,16 +437,26 @@ final class MacPullToRefreshController {
     }
 
     func endRefreshing() {
-        guard isRefreshing else { return }
+        guard isRefreshing, pendingFinish == nil else { return }
         let elapsed = refreshShownAt.map { Date().timeIntervalSince($0) } ?? Self.minVisibleDuration
         let remaining = Self.minVisibleDuration - elapsed
         guard remaining <= 0 else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + remaining) { [weak self] in
-                self?.finishRefreshing()
+            let work = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.pendingFinish = nil
+                    self?.finishRefreshing()
+                }
             }
+            pendingFinish = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + remaining, execute: work)
             return
         }
         finishRefreshing()
+    }
+
+    private func cancelPendingFinish() {
+        pendingFinish?.cancel()
+        pendingFinish = nil
     }
 
     private func finishRefreshing() {
