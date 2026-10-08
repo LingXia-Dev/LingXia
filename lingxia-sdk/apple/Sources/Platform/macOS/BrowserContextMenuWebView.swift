@@ -51,6 +51,34 @@ final class BrowserContextMenuWebView: WKWebView {
         super.scrollWheel(with: event)
     }
 
+    /// ⌘R refreshes an lxapp page that declared `enablePullDownRefresh`, the
+    /// same as its context-menu Refresh; elsewhere the key is left alone.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if Self.isRefreshShortcut(event),
+           !isBrowserSurface,
+           ownsWindowKeyFocus,
+           let controller = lxPullToRefreshController,
+           controller.canRefresh {
+            controller.startRefreshing()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    private static func isRefreshShortcut(_ event: NSEvent) -> Bool {
+        event.type == .keyDown
+            && event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
+            && event.charactersIgnoringModifiers?.lowercased() == "r"
+    }
+
+    /// Key equivalents walk every view in the key window, so only the page the
+    /// user is in answers: the focused one, or any page when nothing has focus.
+    private var ownsWindowKeyFocus: Bool {
+        guard let window, window.isKeyWindow, !isHiddenOrHasHiddenAncestor else { return false }
+        guard let focused = window.firstResponder as? NSView else { return true }
+        return focused === self || focused.isDescendant(of: self)
+    }
+
     override func rightMouseDown(with event: NSEvent) {
         guard let currentPath, currentPath.hasPrefix("/tabs/") else {
             super.rightMouseDown(with: event)
@@ -490,8 +518,9 @@ final class BrowserContextMenuWebView: WKWebView {
             let item = NSMenuItem(
                 title: title,
                 action: #selector(handleLxAppPullDownRefresh(_:)),
-                keyEquivalent: ""
+                keyEquivalent: "r"
             )
+            item.keyEquivalentModifierMask = [.command]
             item.target = self
             menu.insertItem(item, at: 0)
             if menu.items.count > 1 {

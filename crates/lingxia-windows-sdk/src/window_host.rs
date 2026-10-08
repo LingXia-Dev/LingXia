@@ -45,10 +45,10 @@ use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POI
 use windows::Win32::Graphics::Gdi::{AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION};
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection,
-    CreatePen, CreateSolidBrush, DIB_RGB_COLORS, DeleteDC, DeleteObject, Ellipse, EndPaint,
-    ExcludeClipRect, GetDC, GetMonitorInfoW, HDC, HGDIOBJ, IntersectClipRect,
-    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, PAINTSTRUCT, PS_SOLID, ReleaseDC,
-    RestoreDC, SRCCOPY, SaveDC, ScreenToClient, SelectObject,
+    CreatePen, CreateSolidBrush, DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, ExcludeClipRect,
+    GetDC, GetMonitorInfoW, HDC, HGDIOBJ, IntersectClipRect, MONITOR_DEFAULTTONEAREST, MONITORINFO,
+    MonitorFromWindow, PAINTSTRUCT, PS_SOLID, ReleaseDC, RestoreDC, SRCCOPY, SaveDC,
+    ScreenToClient, SelectObject,
 };
 use windows::Win32::Graphics::Gdi::{
     HMONITOR, MONITOR_DEFAULTTOPRIMARY, MonitorFromPoint, MonitorFromRect,
@@ -108,8 +108,6 @@ static PENDING_RESTORE_MAXIMIZE: AtomicIsize = AtomicIsize::new(0);
 static CHROME_BACK_BUFFERS: OnceLock<Mutex<HashMap<isize, ChromeBackBuffer>>> = OnceLock::new();
 static ATTACHED_PANEL_RESIZE_DRAG: OnceLock<Mutex<Option<AttachedPanelResizeDrag>>> =
     OnceLock::new();
-static PULL_REFRESH_WEBTAGS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-static PULL_REFRESH_TICKS: OnceLock<Mutex<HashMap<isize, u32>>> = OnceLock::new();
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PresentedGroupMain {
@@ -129,20 +127,9 @@ static TERMINAL_SELECTION_DRAGS: OnceLock<Mutex<HashMap<isize, TerminalSelection
 #[cfg(feature = "components")]
 static NAV_SNAPSHOT_SLIDES: OnceLock<Mutex<HashMap<isize, NavSnapshotSlide>>> = OnceLock::new();
 const WM_LINGXIA_RUN_CALLBACK: u32 = WindowsAndMessaging::WM_APP + 0x158;
-const PULL_REFRESH_TIMER_ID: usize = 0x5A17;
 /// Navigation slide duration, matching the iOS/Android 300ms page transition.
 #[cfg(feature = "components")]
 const NAV_SLIDE_DURATION_MS: f64 = 300.0;
-const PULL_REFRESH_TIMER_MS: u32 = 120;
-fn pull_refresh_slot_height() -> i32 {
-    crate::dpi::px(42)
-}
-fn pull_refresh_indicator_width() -> i32 {
-    crate::dpi::px(64)
-}
-fn pull_refresh_indicator_height() -> i32 {
-    crate::dpi::px(32)
-}
 fn overlay_margin() -> i32 {
     crate::dpi::px(24)
 }
@@ -420,7 +407,13 @@ struct HostChromeSnapshot {
 struct PlatformNativeViewHost;
 
 impl WindowsWebViewNativeViewHost for PlatformNativeViewHost {
-    fn handle_accelerator(&self, _webtag: &WebTag, virtual_key: u32) -> bool {
+    fn handle_accelerator(&self, webtag: &WebTag, virtual_key: u32) -> bool {
+        #[cfg(feature = "components")]
+        if crate::pull_to_refresh::handle_refresh_key(webtag, virtual_key) {
+            return true;
+        }
+        #[cfg(not(feature = "components"))]
+        let _ = webtag;
         #[cfg(feature = "browser-runtime")]
         return crate::browser_reopen_key(virtual_key);
         #[cfg(not(feature = "browser-runtime"))]
@@ -2798,10 +2791,6 @@ pub fn active_content_screen_rect() -> Option<WindowsContentRect> {
 }
 
 fn content_rect_for_window(hwnd: HWND, webtag_key: &str) -> RECT {
-    refresh_adjusted_content_rect(webtag_key, base_content_rect_for_window(hwnd, webtag_key))
-}
-
-fn base_content_rect_for_window(hwnd: HWND, webtag_key: &str) -> RECT {
     let mut client = RECT::default();
     unsafe {
         if WindowsAndMessaging::GetClientRect(hwnd, &mut client).is_err() {
@@ -2837,15 +2826,6 @@ fn base_content_rect_for_window(hwnd: HWND, webtag_key: &str) -> RECT {
         }
     }
     normalize_rect(renderer.content_rect(client, &current_window_layout(webtag_key)))
-}
-
-fn refresh_adjusted_content_rect(webtag_key: &str, mut rect: RECT) -> RECT {
-    if is_pull_refreshing(webtag_key)
-        && rect.bottom - rect.top > pull_refresh_slot_height() + crate::dpi::px(80)
-    {
-        rect.top = (rect.top + pull_refresh_slot_height()).min(rect.bottom);
-    }
-    normalize_rect(rect)
 }
 
 /// Per-corner composition rounding for a surface — clip radii plus the
@@ -3077,6 +3057,8 @@ fn sync_window_layout(hwnd: HWND) {
     let _ = native_panel_takes_focus;
     #[cfg(feature = "shell-chrome")]
     sync_chrome_overlays(hwnd, Some(&webtag_key));
+    // Raised pages and panels restack above the refresh bars; put them back.
+    crate::refresh_bar::raise(hwnd);
 }
 
 #[cfg(feature = "shell-chrome")]
@@ -4803,6 +4785,7 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
     {
         log::debug!("Failed to set Windows WebView parent for {webtag_key}: {err}");
     }
+    place_refresh_bar(hwnd, webtag_key, rect, corner_radii);
     let controller_bounds = rect;
     let bounds_changed = webtag_content_bounds_changed(webtag_key, host_bounds);
     if bounds_changed {
@@ -5225,7 +5208,6 @@ fn paint_chrome_into(
         renderer.paint_region(hdc, state, invalid);
         let _ = RestoreDC(hdc, saved);
     }
-    paint_pull_refresh_indicator(hdc, hwnd, webtag_key);
 }
 
 /// Clips every visible webview surface hosted by `hwnd` (main content and
@@ -5272,57 +5254,7 @@ fn exclude_clip_rect_if_non_empty(hdc: HDC, rect: RECT) {
     }
 }
 
-fn paint_pull_refresh_indicator(hdc: HDC, hwnd: HWND, webtag_key: &str) {
-    if !is_pull_refreshing(webtag_key) {
-        return;
-    }
-    let rect = pull_refresh_indicator_rect(hwnd, webtag_key);
-    if rect.right <= rect.left || rect.bottom <= rect.top {
-        return;
-    }
-    let tick = pull_refresh_tick(hwnd);
-    let active = (tick / 2) % 3;
-    let center_y = rect.top + (rect.bottom - rect.top) / 2;
-    let center_x = rect.left + (rect.right - rect.left) / 2;
-    let spacing = 14;
-    for index in 0..3 {
-        let radius = if index == active { 4 } else { 3 };
-        let color = if index == active { 0x667085 } else { 0xA8AFBA };
-        let x = center_x + (index as i32 - 1) * spacing;
-        draw_refresh_dot(hdc, x, center_y, radius, color);
-    }
-}
-
-fn pull_refresh_indicator_rect(hwnd: HWND, webtag_key: &str) -> RECT {
-    let content = base_content_rect_for_window(hwnd, webtag_key);
-    let slot_top = content.top;
-    let slot_bottom = (slot_top + pull_refresh_slot_height()).min(content.bottom);
-    let center_x = content.left + (content.right - content.left) / 2;
-    normalize_rect(RECT {
-        left: center_x - pull_refresh_indicator_width() / 2,
-        top: slot_top + ((slot_bottom - slot_top) - pull_refresh_indicator_height()) / 2,
-        right: center_x + pull_refresh_indicator_width() / 2,
-        bottom: slot_top
-            + ((slot_bottom - slot_top) - pull_refresh_indicator_height()) / 2
-            + pull_refresh_indicator_height(),
-    })
-}
-
-fn draw_refresh_dot(hdc: HDC, x: i32, y: i32, radius: i32, rgb: u32) {
-    let color = rgb_to_colorref(rgb);
-    unsafe {
-        let brush = CreateSolidBrush(color);
-        let pen = CreatePen(PS_SOLID, 1, color);
-        let old_brush = SelectObject(hdc, HGDIOBJ(brush.0));
-        let old_pen = SelectObject(hdc, HGDIOBJ(pen.0));
-        let _ = Ellipse(hdc, x - radius, y - radius, x + radius + 1, y + radius + 1);
-        let _ = SelectObject(hdc, old_pen);
-        let _ = SelectObject(hdc, old_brush);
-        let _ = DeleteObject(HGDIOBJ(pen.0));
-        let _ = DeleteObject(HGDIOBJ(brush.0));
-    }
-}
-
+#[cfg(feature = "shell-chrome")]
 fn rgb_to_colorref(rgb: u32) -> COLORREF {
     COLORREF(((rgb & 0xff) << 16) | (rgb & 0x00ff00) | ((rgb >> 16) & 0xff))
 }
@@ -8042,6 +7974,14 @@ pub fn set_webview_pull_down_refreshing(webtag: &WebTag, refreshing: bool) -> bo
     let Some(hwnd) = window_handle_for_key(webtag.key()) else {
         return false;
     };
+    if unsafe { WindowsAndMessaging::GetWindowThreadProcessId(hwnd, None) }
+        == unsafe { GetCurrentThreadId() }
+    {
+        // Already on the window thread (a refresh key, the context menu):
+        // start now, so a repeat that follows sees the refresh running.
+        set_webtag_pull_down_refreshing_on_window(webtag.key(), refreshing);
+        return true;
+    }
     let webtag_key = webtag.key().to_string();
     post_to_window_thread(
         hwnd_handle(hwnd),
@@ -8050,29 +7990,77 @@ pub fn set_webview_pull_down_refreshing(webtag: &WebTag, refreshing: bool) -> bo
 }
 
 fn set_webtag_pull_down_refreshing_on_window(webtag_key: &str, refreshing: bool) {
+    if !refreshing {
+        crate::refresh_bar::stop(webtag_key);
+        return;
+    }
     let Some(hwnd) = window_handle_for_key(webtag_key) else {
         return;
     };
-    let slot = PULL_REFRESH_WEBTAGS.get_or_init(|| Mutex::new(HashSet::new()));
-    let changed = match slot.lock() {
-        Ok(mut refreshing_webtags) => {
-            if refreshing {
-                refreshing_webtags.insert(webtag_key.to_string())
-            } else {
-                refreshing_webtags.remove(webtag_key)
-            }
-        }
-        Err(_) => false,
-    };
-    if refreshing {
-        ensure_pull_refresh_timer(hwnd);
-    } else {
-        stop_pull_refresh_timer_if_idle(hwnd);
+    // The page never moves for a refresh: the bar is laid over its top edge.
+    if crate::refresh_bar::start(
+        hwnd,
+        webtag_key,
+        page_on_screen(hwnd, webtag_key),
+        refresh_bar_color(),
+    ) {
+        let rect = content_rect_for_window(hwnd, webtag_key);
+        let (radii, _) = surface_clip_style(hwnd, webtag_key, rect);
+        place_refresh_bar(hwnd, webtag_key, rect, radii);
     }
-    if changed {
-        sync_window_layout(hwnd);
-        invalidate_window(hwnd);
+}
+
+/// A refresh is running on the page (started, not yet stopped).
+#[cfg(feature = "components")]
+pub(crate) fn is_pull_down_refreshing(webtag: &WebTag) -> bool {
+    crate::refresh_bar::is_refreshing(webtag.key())
+}
+
+fn place_refresh_bar(hwnd: HWND, webtag_key: &str, rect: RECT, radii: [i32; 4]) {
+    if !crate::refresh_bar::has_bar(webtag_key) {
+        return;
     }
+    // The bar is a child of `hwnd`, so only its thread may create or move it.
+    if unsafe { WindowsAndMessaging::GetWindowThreadProcessId(hwnd, None) }
+        != unsafe { GetCurrentThreadId() }
+    {
+        let handle = hwnd_handle(hwnd);
+        let webtag_key = webtag_key.to_string();
+        let _ = post_to_window_thread(
+            handle,
+            Box::new(move || place_refresh_bar(hwnd_from_handle(handle), &webtag_key, rect, radii)),
+        );
+        return;
+    }
+    crate::refresh_bar::place(
+        hwnd,
+        webtag_key,
+        rect,
+        window_css_scale(hwnd),
+        [radii[0], radii[1]],
+    );
+}
+
+fn page_on_screen(hwnd: HWND, webtag_key: &str) -> bool {
+    webtag_is_visible(webtag_key)
+        && is_window_visible(hwnd)
+        && !is_minimized(hwnd)
+        && window_handle_for_key(webtag_key) == Some(hwnd)
+}
+
+/// The host theme's refresh colour (`accentColor`, else
+/// `mutedForegroundColor`) for the current appearance, as `0xRRGGBB`.
+#[cfg(feature = "runtime")]
+fn refresh_bar_color() -> Option<u32> {
+    lingxia_app_context::theme()?
+        .style(lxapp::host_appearance_dark())?
+        .refresh_indicator_color()
+        .map(lingxia_app_context::ThemeColor::rgb)
+}
+
+#[cfg(not(feature = "runtime"))]
+fn refresh_bar_color() -> Option<u32> {
+    None
 }
 
 pub fn show_webview_window(webtag: &WebTag, title: &str, activate: bool) -> StdResult<()> {
@@ -9547,9 +9535,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
-            WindowsAndMessaging::WM_TIMER if wparam.0 == PULL_REFRESH_TIMER_ID => {
-                advance_pull_refresh_tick(hwnd);
-                invalidate_window(hwnd);
+            WindowsAndMessaging::WM_TIMER if wparam.0 == crate::refresh_bar::TIMER_ID => {
+                crate::refresh_bar::tick(hwnd, &|webtag_key| page_on_screen(hwnd, webtag_key));
                 LRESULT(0)
             }
             WindowsAndMessaging::WM_NCHITTEST => {
@@ -10652,7 +10639,7 @@ fn cleanup_window_state(webtag_key: &str, destroyed_window: HWND) {
     }
     notify_webtag_visibility(webtag_key, false);
     clear_surface_interaction(webtag_key);
-    clear_pull_refreshing(webtag_key);
+    crate::refresh_bar::abort(webtag_key);
     let removed_panel = cleanup_webview_panel(webtag_key);
     if let Some(hwnd) = window_handle_for_key(webtag_key) {
         clear_chrome_interaction(hwnd);
@@ -10741,78 +10728,6 @@ fn dispatch_webtag_lifecycle_visibility(webtag_key: &str, visible: bool) {
             .name(format!("lingxia-windows-visible-{webtag_key}"))
             .spawn(move || handler(&webtag, visible));
     }
-}
-
-fn is_pull_refreshing(webtag_key: &str) -> bool {
-    PULL_REFRESH_WEBTAGS
-        .get()
-        .and_then(|slot| slot.lock().ok())
-        .is_some_and(|refreshing| refreshing.contains(webtag_key))
-}
-
-fn clear_pull_refreshing(webtag_key: &str) {
-    let hwnd = window_handle_for_key(webtag_key);
-    if let Some(slot) = PULL_REFRESH_WEBTAGS.get()
-        && let Ok(mut refreshing) = slot.lock()
-    {
-        refreshing.remove(webtag_key);
-    }
-    if let Some(hwnd) = hwnd {
-        stop_pull_refresh_timer_if_idle(hwnd);
-    }
-}
-
-fn ensure_pull_refresh_timer(hwnd: HWND) {
-    unsafe {
-        let _ = WindowsAndMessaging::SetTimer(
-            Some(hwnd),
-            PULL_REFRESH_TIMER_ID,
-            PULL_REFRESH_TIMER_MS,
-            None,
-        );
-    }
-}
-
-fn stop_pull_refresh_timer_if_idle(hwnd: HWND) {
-    if window_has_pull_refreshing_webtag(hwnd) {
-        return;
-    }
-    unsafe {
-        let _ = WindowsAndMessaging::KillTimer(Some(hwnd), PULL_REFRESH_TIMER_ID);
-    }
-    if let Some(ticks) = PULL_REFRESH_TICKS.get()
-        && let Ok(mut ticks) = ticks.lock()
-    {
-        ticks.remove(&hwnd_handle(hwnd));
-    }
-}
-
-fn window_has_pull_refreshing_webtag(hwnd: HWND) -> bool {
-    let Some(refreshing) = PULL_REFRESH_WEBTAGS.get().and_then(|slot| slot.lock().ok()) else {
-        return false;
-    };
-    refreshing.iter().any(|webtag_key| {
-        window_handle_for_key(webtag_key).is_some_and(|candidate| candidate == hwnd)
-    })
-}
-
-fn advance_pull_refresh_tick(hwnd: HWND) {
-    let ticks = PULL_REFRESH_TICKS.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(mut ticks) = ticks.lock() {
-        let tick = ticks.entry(hwnd_handle(hwnd)).or_insert(0);
-        *tick = tick.wrapping_add(1);
-    }
-    if !window_has_pull_refreshing_webtag(hwnd) {
-        stop_pull_refresh_timer_if_idle(hwnd);
-    }
-}
-
-fn pull_refresh_tick(hwnd: HWND) -> u32 {
-    PULL_REFRESH_TICKS
-        .get()
-        .and_then(|ticks| ticks.lock().ok())
-        .and_then(|ticks| ticks.get(&hwnd_handle(hwnd)).copied())
-        .unwrap_or(0)
 }
 
 fn set_host_active_webtag(hwnd: HWND, webtag_key: &str) {

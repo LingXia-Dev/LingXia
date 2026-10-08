@@ -1238,11 +1238,43 @@ class LxAppActivity : AppCompatActivity() {
         ensurePullToRefreshHelper()
     }
 
+    /**
+     * The part of the revealed strip the status bar covers: its height when no
+     * navigation bar sits above the page (`navigationStyle: custom`), nothing
+     * otherwise.
+     */
+    private fun pullToRefreshTopInset(): Int {
+        if (isMediaFullscreen || isPageFullscreen) return 0
+        if (navigationBar?.visibility == View.VISIBLE) return 0
+        return getStatusBarHeight(this)
+    }
+
     private fun ensurePullToRefreshHelper(): PullToRefreshHelper {
         if (pullToRefreshHelper == null) {
-            pullToRefreshHelper = PullToRefreshHelper(this, webViewContainer) { handlePullToRefresh() }
+            pullToRefreshHelper = PullToRefreshHelper(
+                this,
+                webViewContainer,
+                topInset = ::pullToRefreshTopInset,
+                spinnerColor = ::resolveRefreshSpinnerColor,
+            ) { handlePullToRefresh() }
         }
         return pullToRefreshHelper!!
+    }
+
+    /**
+     * The host theme's refresh spinner colour for the current scheme:
+     * `accentColor`, else `mutedForegroundColor`. Undeclared, it falls back
+     * to LingXia's own chrome palette, not the activity theme: a host that
+     * never chose an accent would otherwise get the AppCompat default.
+     */
+    private fun resolveRefreshSpinnerColor(): Int {
+        val dark = (resources.configuration.uiMode and
+            Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        return runCatching { NativeApi.refreshIndicatorColor(dark) }
+            .getOrNull()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { hex -> runCatching { Color.parseColor(hex) }.getOrNull() }
+            ?: com.lingxia.lxapp.chrome.OverlayPalette.of(this).body
     }
 
     private fun normalizePath(rawPath: String?): String {

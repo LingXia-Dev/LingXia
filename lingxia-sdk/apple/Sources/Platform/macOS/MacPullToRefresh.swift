@@ -11,12 +11,18 @@ import WebKit
 /// that mounts the page — the shell's view controller and the Runner's
 /// simulator alike.
 ///
-/// The shape matches `PullToRefreshHelper` on iOS and Android — a 150pt
-/// ceiling, the same rubber band, resting at 64pt, visible for at least 0.8s so
-/// an instant refresh still reads as one — and, like Android, the 80pt trigger
-/// is measured after the band. That is roughly 70pt of trackpad travel here;
-/// iOS reaches its 80 through a scroll view that has already damped the finger,
-/// so the same constant asks for a longer drag there.
+/// A trackpad or wheel pull follows the fingers like `PullToRefreshHelper` on
+/// iOS and Android — a 150pt ceiling and the same rubber band — and, like
+/// Android, the 80pt trigger is measured after the band. That is roughly 70pt
+/// of trackpad travel here; iOS reaches its 80 through a scroll view that has
+/// already damped the finger, so the same constant asks for a longer drag there.
+///
+/// Most desktop refreshes have no pull behind them (the context menu, ⌘R,
+/// `lx.startPullDownRefresh()`), so a running refresh always shows the same
+/// way: the page stays where it is and a full-width bar flows along its top
+/// edge, for at least 0.6s before it completes so an instant refresh still
+/// reads as one. A pull released past the trigger springs the page back and
+/// hands over to the bar.
 @MainActor
 final class MacPullToRefreshController {
     /// Pull needed to arm a refresh, measured after the rubber band so the
@@ -24,9 +30,7 @@ final class MacPullToRefreshController {
     private static let triggerDistance: CGFloat = 80
     /// Ceiling the rubber band approaches; the pull never exceeds it.
     private static let maxPullDistance: CGFloat = 150
-    /// Where the page rests while it refreshes.
-    private static let restingDistance: CGFloat = 80 * 0.8
-    private static let minVisibleDuration: TimeInterval = 0.8
+    private static let minVisibleDuration: TimeInterval = 0.6
     /// A classic mouse wheel reports no phases, so there is no release to wait
     /// for: the gesture is over once the notches stop arriving.
     private static let wheelIdleTimeout: TimeInterval = 0.2
@@ -35,15 +39,18 @@ final class MacPullToRefreshController {
 
     private weak var webView: WKWebView?
     private weak var container: NSView?
-    private let indicator = MacRefreshIndicatorView()
+    /// Grows in the strip a pull reveals behind the page.
+    private let indicator = MacRefreshSpinnerView()
+    /// Runs along the top of the page while it refreshes.
+    private let bar = MacRefreshBarView()
     /// The page's own vertical constraints. Offsetting both by the same amount
     /// slides the page without resizing it — a resize would be a full WebKit
     /// relayout and a new viewport for the lxapp — and unlike a layer transform
     /// it keeps AppKit's hit-testing on the pixels the user sees.
     private var pageTop: NSLayoutConstraint?
     private var pageBottom: NSLayoutConstraint?
-    /// The strip is exactly as tall as the page has been pulled, so the dots
-    /// centre in what the user can actually see rather than in a fixed band
+    /// The strip is exactly as tall as the page has been pulled, so the spinner
+    /// centres in what the user can actually see rather than in a fixed band
     /// whose middle the page still covers.
     private var indicatorHeight: NSLayoutConstraint?
 
@@ -58,7 +65,7 @@ final class MacPullToRefreshController {
     private var isPulling = false
     private var isRefreshing = false
     private var refreshShownAt: Date?
-    // Set while the indicator lingers after a stop to honour minVisibleDuration.
+    // Set while the bar keeps running after a stop to honour minVisibleDuration.
     private var pendingFinish: DispatchWorkItem?
     private var lastWheelAt: Date?
 
@@ -101,7 +108,7 @@ final class MacPullToRefreshController {
         indicator.isHidden = true
         indicator.alphaValue = 0
         // Directly behind this page — not at the back of the container, where
-        // a leftover sibling web view would cover the dots when the page slides.
+        // a leftover sibling web view would cover the spinner when the page slides.
         if let webView, webView.superview === container {
             container.addSubview(indicator, positioned: .below, relativeTo: webView)
         } else {
@@ -125,7 +132,7 @@ final class MacPullToRefreshController {
         isRefreshing = false
         refreshShownAt = nil
         cancelPendingFinish()
-        indicator.stopLoading()
+        bar.detach()
         indicator.alphaValue = 0
         indicator.isHidden = true
         pull = 0
@@ -156,7 +163,7 @@ final class MacPullToRefreshController {
         isRefreshing = false
         refreshShownAt = nil
         cancelPendingFinish()
-        indicator.stopLoading()
+        bar.detach()
         indicator.removeFromSuperview()
         pageTop = nil
         pageBottom = nil
@@ -197,11 +204,12 @@ final class MacPullToRefreshController {
         // `setup()` runs on every path change and from every web-view lookup,
         // so an idle page must cost nothing here.
         guard !enabled, isRefreshing || pull != 0 else { return }
-        // A page that cannot be pulled must not inherit the previous page's
-        // refresh holding the offset open.
+        // A page that cannot refresh must not inherit the previous page's
+        // refresh or a pull holding the offset open.
         isRefreshing = false
         refreshShownAt = nil
         cancelPendingFinish()
+        bar.hide()
         reset(animated: false)
     }
 
@@ -211,6 +219,12 @@ final class MacPullToRefreshController {
     /// must not keep writing to them.
     private var isMounted: Bool {
         webView?.superview === container && pageTop?.isActive == true
+    }
+
+    /// The page declared `enablePullDownRefresh` and is on screen, so a
+    /// refresh command (⌘R) applies to it.
+    var canRefresh: Bool {
+        enabled && isMounted
     }
 
     /// Mirrored from the page by the native bridge's scroll tracker.
@@ -343,6 +357,7 @@ final class MacPullToRefreshController {
         let travel = Self.rubberBand(pull)
         indicator.isHidden = false
         indicator.alphaValue = min(1, (travel / Self.triggerDistance) * 1.5)
+        indicator.setProgress(travel / Self.triggerDistance)
         paintIndicator()
         setPageOffset(travel, animated: false)
     }
@@ -381,17 +396,21 @@ final class MacPullToRefreshController {
         }
     }
 
-    /// Keep the revealed strip on the page's own colour, and the dots readable
-    /// against it. `underPageBackgroundColor` is WebKit's overscroll colour and
-    /// tracks the document background.
+    /// Keep the revealed strip on the page's own colour, and the spinner in
+    /// the host theme's refresh colour, else readable against the strip.
+    /// `underPageBackgroundColor` is WebKit's overscroll colour and tracks the
+    /// document background.
     private func paintIndicator() {
         let background = webView?.underPageBackgroundColor ?? .windowBackgroundColor
         indicator.wantsLayer = true
         indicator.layer?.backgroundColor = background.cgColor
-        indicator.setDotColor(Self.contrastingDotColor(for: background))
+        let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.appId)
+        indicator.setColor(
+            WebViewManager.declaredRefreshIndicatorColor(dark: dark)
+                ?? Self.contrastingColor(for: background))
     }
 
-    private static func contrastingDotColor(for background: NSColor) -> NSColor {
+    private static func contrastingColor(for background: NSColor) -> NSColor {
         guard let rgb = background.usingColorSpace(.sRGB) ?? background.usingColorSpace(.deviceRGB)
         else { return NSColor.black.withAlphaComponent(0.55) }
         let luminance = 0.299 * rgb.redComponent + 0.587 * rgb.greenComponent
@@ -403,12 +422,15 @@ final class MacPullToRefreshController {
 
     // MARK: - Refresh state
 
-    /// Also the entry point for `lx.startPullDownRefresh()`, so a programmatic
-    /// refresh and a pulled one look the same.
+    /// Also the entry point for `lx.startPullDownRefresh()`, the context menu
+    /// and ⌘R, so every refresh looks the same: the page at rest and the bar
+    /// running along its top. A pull that got here springs back first. A start
+    /// while the bar finishes the previous refresh takes it straight back to
+    /// running.
     func startRefreshing() {
         guard enabled, isMounted else { return }
         if pendingFinish != nil {
-            // Restarted while lingering: the indicator is still up, keep it.
+            // Restarted before the bar began to complete: it is still running.
             cancelPendingFinish()
             reportRefresh()
             return
@@ -416,13 +438,16 @@ final class MacPullToRefreshController {
         guard !isRefreshing else { return }
         isRefreshing = true
         isPulling = false
-        pull = Self.restingDistance
         refreshShownAt = Date()
-        indicator.isHidden = false
-        indicator.alphaValue = 1
-        paintIndicator()
-        indicator.startLoading()
-        setPageOffset(Self.restingDistance, animated: true)
+        if pull != 0 {
+            reset(animated: true)
+        }
+        if let container {
+            let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.appId)
+            bar.start(
+                in: container, color: WebViewManager.declaredRefreshIndicatorColor(dark: dark))
+        }
+        announce("lx_pull_refresh_refreshing")
         reportRefresh()
     }
 
@@ -463,14 +488,32 @@ final class MacPullToRefreshController {
         guard isRefreshing else { return }
         isRefreshing = false
         refreshShownAt = nil
-        reset(animated: true)
+        bar.complete()
+        announce("lx_pull_refresh_refreshed")
+    }
+
+    /// Tell VoiceOver; the bar itself is silent. Never called for a refresh
+    /// dropped by leaving the page.
+    private func announce(_ key: String) {
+        let element: Any
+        if let window = webView?.window {
+            element = window
+        } else {
+            element = NSApplication.shared
+        }
+        NSAccessibility.post(
+            element: element,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: L10n.string(key),
+                .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+            ])
     }
 
     private func reset(animated: Bool) {
         pull = 0
         isPulling = false
         setPageOffset(0, animated: animated)
-        indicator.stopLoading()
         guard animated else {
             indicator.alphaValue = 0
             indicator.isHidden = true
@@ -481,7 +524,8 @@ final class MacPullToRefreshController {
             indicator.animator().alphaValue = 0
         } completionHandler: { [weak self] in
             MainActor.assumeIsolated {
-                guard let self, !self.isRefreshing else { return }
+                // A new pull may have started while this one unwound.
+                guard let self, self.pull == 0 else { return }
                 self.indicator.isHidden = true
             }
         }
@@ -495,15 +539,16 @@ final class MacPullToRefreshController {
     }
 
     deinit {
-        // The indicator lives in the container, not in the web view, so it
-        // outlives this controller unless it is taken down here. A deinit runs
-        // wherever the last reference was dropped, which for a web view is not
-        // necessarily the main thread.
+        // The strip and the bar live in the container, not in the web view,
+        // so they outlive this controller unless they are taken down here. A
+        // deinit runs wherever the last reference was dropped, which for a web
+        // view is not necessarily the main thread.
         let view = indicator
+        let bar = bar
         let cleanup = { @Sendable in
             MainActor.assumeIsolated {
-                view.stopLoading()
                 view.removeFromSuperview()
+                bar.detach()
             }
         }
         if Thread.isMainThread {

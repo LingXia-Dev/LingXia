@@ -325,7 +325,7 @@ final class WebViewManager {
         #if os(macOS)
         // A leftover sibling (previous page, or its pull-to-refresh strip) sits
         // behind the current web view. Sliding this page down to reveal the
-        // refresh indicator would then show that sibling instead of the dots.
+        // refresh indicator would then show that sibling instead of the spinner.
         for subview in container.subviews {
             if let existing = subview as? WKWebView, existing !== webView {
                 detachLxAppWebView(existing)
@@ -515,8 +515,17 @@ final class WebViewManager {
     /// Returns `nil` when the host declares nothing, leaving the caller to pick
     /// a platform default rather than guessing on its behalf.
     static func declaredPageColor(dark: Bool) -> PlatformColor? {
-        var value = pageBackgroundColor(dark).toString()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        platformColor(hex: pageBackgroundColor(dark).toString())
+    }
+
+    /// The host theme's pull-to-refresh spinner colour (`accentColor`, else
+    /// `mutedForegroundColor`), or `nil` to keep the platform's own.
+    static func declaredRefreshIndicatorColor(dark: Bool) -> PlatformColor? {
+        platformColor(hex: refreshIndicatorColor(dark).toString())
+    }
+
+    private static func platformColor(hex: String) -> PlatformColor? {
+        var value = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.hasPrefix("#") { value.removeFirst() }
         guard value.count == 6, let rgb = UInt32(value, radix: 16) else { return nil }
         let red = CGFloat((rgb >> 16) & 0xFF) / 255

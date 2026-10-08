@@ -219,6 +219,13 @@ pub fn page_background_color(dark: bool) -> String {
     lingxia_app_context::page_background_color(dark).unwrap_or_default()
 }
 
+/// The pull-to-refresh spinner colour for one appearance, as `#RRGGBB`:
+/// `accentColor`, else `mutedForegroundColor`. Empty keeps the platform's own.
+#[napi]
+pub fn refresh_indicator_color(dark: bool) -> String {
+    lingxia_app_context::refresh_indicator_color(dark).unwrap_or_default()
+}
+
 #[napi]
 pub fn forward_host_log(
     level: i32,

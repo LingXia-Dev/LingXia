@@ -132,6 +132,13 @@ internal object NativeApi {
     external fun pageBackgroundColor(dark: Boolean): String
 
     /**
+     * The pull-to-refresh spinner colour for one appearance, as `#RRGGBB`
+     * (`accentColor`, else `mutedForegroundColor`), or empty when neither is declared.
+     */
+    @JvmStatic
+    external fun refreshIndicatorColor(dark: Boolean): String
+
+    /**
      * Notify native layer that an LxApp has been opened
      * @param appId The ID of the opened app
      * @param path The initial path/route of the app

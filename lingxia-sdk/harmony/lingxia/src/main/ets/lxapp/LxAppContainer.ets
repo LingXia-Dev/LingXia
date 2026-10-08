@@ -23,13 +23,15 @@ import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } f
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar, tabBarExtraBottomHeight } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, syncLxappHostUI } from 'liblingxia.so';
+import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
 import { notePageOrigin, setCapsuleGeometryListener } from './capsuleGeometry';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from '../app/NativeBridge';
 import { AnimationType } from './LxAppNavigation';
 import { LxNativeVideoPlayer } from './APIs/media/player/LxNativeVideoPlayer';
 import { LxFullscreenVideoOverlay } from './APIs/media/player/LxFullscreenVideoOverlay';
 import { RefreshHeader } from './RefreshHeader';
+import { localizedString } from '../app/DisplayLanguageResources';
+import { accessibility } from '@kit.AccessibilityKit';
 import { StatusBarArbiter } from './StatusBarArbiter';
 import { CapsuleMenuManager, CapsuleMenuBottomSheetComponent } from './CapsuleMenuBottomSheet';
 
@@ -73,6 +75,36 @@ function resolveCanvasColor(dark: boolean): ResourceColor {
   }
 }
 
+let refreshColorLight: string | undefined = undefined;
+let refreshColorDark: string | undefined = undefined;
+
+/**
+ * The host theme's pull-to-refresh spinner colour (`accentColor`, else
+ * `mutedForegroundColor`), or empty to keep the system colour. A declared
+ * colour is memoized per appearance for the same reason as
+ * resolveCanvasColor; an empty answer is not, since it may only mean the
+ * runtime has not loaded the theme yet.
+ */
+function resolveRefreshIndicatorColor(dark: boolean): string {
+  const cached: string | undefined = dark ? refreshColorDark : refreshColorLight;
+  if (cached !== undefined) {
+    return cached;
+  }
+  try {
+    const declared: string = refreshIndicatorColor(dark);
+    if (declared) {
+      if (dark) {
+        refreshColorDark = declared;
+      } else {
+        refreshColorLight = declared;
+      }
+    }
+    return declared;
+  } catch (_error) {
+    return '';
+  }
+}
+
 const POPUP_MASK_COLOR = 'rgba(0,0,0,0.45)';
 const OVERLAY_MASK_FADE_DURATION = 180;
 
@@ -84,6 +116,8 @@ const PULL_TRIGGER_VP = 80;
 const PULL_MAX_VP = 150;
 // Where the content rests while refreshing: the height of RefreshHeader.
 const PULL_HOLD_VP = 64;
+// A refresh that ends at once would only flash the spinner.
+const REFRESH_MIN_VISIBLE_MS = 400;
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Container';
@@ -171,6 +205,9 @@ export struct LxAppContainer {
   private programmaticRefreshPending: boolean = false
   @State private enablePullDownRefresh: boolean = false
   @State private refreshingWebTag: string = ''
+  private refreshShownAt: number = 0
+  // Set while the indicator lingers after a stop to honour REFRESH_MIN_VISIBLE_MS.
+  private refreshDismissTimer: number = -1
   // How far the content is pulled down right now (vp).
   @State private pullOffsetVp: number = 0
   @State private keyboardOffsetVp: number = 0
@@ -336,6 +373,7 @@ export struct LxAppContainer {
     // Remove WebView UI callback when container is destroyed
     removeWebViewUiCallback(this.webViewUiCallback);
     this.stopKeyboardMonitor();
+    this.cancelRefreshDismiss();
     hilog.info(DOMAIN, TAG, `Container destroyed for ${this.appId}:${this.path}`);
   }
 
@@ -1140,7 +1178,11 @@ export struct LxAppContainer {
     // Refresh hangs the header off the top of the web stack, which sits under
     // the page's navbar; shift it by that inset so it shows in the strip the
     // pull opens. A margin would only grow the header upward, out of sight.
-    RefreshHeader({ isRefreshing: this.isRefreshing })
+    RefreshHeader({
+      isRefreshing: this.isRefreshing,
+      pullProgress: Math.min(1, this.pullOffsetVp / PULL_TRIGGER_VP),
+      spinnerColor: resolveRefreshIndicatorColor(this.appearanceDark)
+    })
       .offset({ y: this.getCurrentNavTop() })
       // At rest the shifted header sits behind the navbar, which may be translucent.
       .visibility(this.pullOffsetVp > 0 || this.isRefreshing ? Visibility.Visible : Visibility.Hidden)
@@ -1163,6 +1205,7 @@ export struct LxAppContainer {
       }
       if (this.enablePullDownRefresh) {
         this.refreshingWebTag = this.currentWebTag;
+        this.noteRefreshShown();
         this.handlePullToRefresh(this.currentWebTag)
       } else {
         this.isRefreshing = false
@@ -1215,11 +1258,50 @@ export struct LxAppContainer {
     let _: boolean = onLxappEvent(this.appId, UiEventType.PullDownRefresh, webTag);
   }
 
-  /** End the refresh in progress; its indicator, identity and echo guard go together. */
-  private endRefresh(): void {
+  /**
+   * End the refresh in progress; its indicator, identity and echo guard go
+   * together. `finished` is a stop the page asked for; a refresh dropped by
+   * leaving the page announces nothing.
+   */
+  private endRefresh(finished: boolean = false): void {
+    const wasRefreshing: boolean = this.isRefreshing
+    this.cancelRefreshDismiss()
     this.isRefreshing = false
     this.programmaticRefreshPending = false
     this.refreshingWebTag = ''
+    if (wasRefreshing && finished) {
+      this.announceRefresh('lx_pull_refresh_refreshed')
+    }
+  }
+
+  /** The indicator came up, or stays up because a refresh restarted while it lingered. */
+  private noteRefreshShown(): void {
+    if (this.refreshDismissTimer !== -1) {
+      this.cancelRefreshDismiss()
+    } else {
+      this.refreshShownAt = Date.now()
+    }
+    this.announceRefresh('lx_pull_refresh_refreshing')
+  }
+
+  private cancelRefreshDismiss(): void {
+    if (this.refreshDismissTimer !== -1) {
+      clearTimeout(this.refreshDismissTimer)
+      this.refreshDismissTimer = -1
+    }
+  }
+
+  /** Tell a screen reader the refresh started or finished. */
+  private announceRefresh(resourceName: string): void {
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const text: string = localizedString(context.resourceManager, resourceName);
+      const event = new accessibility.EventInfo('announceForAccessibility', context.abilityInfo.bundleName, 'common');
+      event.textAnnouncedForAccessibility = text;
+      accessibility.sendAccessibilityEvent(event).catch((_error: Error) => {});
+    } catch (_error) {
+      // No accessibility service: nothing to announce to.
+    }
   }
 
   /**
@@ -1231,7 +1313,23 @@ export struct LxAppContainer {
       hilog.warn(DOMAIN, TAG, `Ignoring stop for ${webTag}, current refreshing is ${this.refreshingWebTag}`);
       return;
     }
-    this.endRefresh();
+    if (this.refreshDismissTimer !== -1) {
+      return;
+    }
+    // Returns at once; the indicator lingers until it has been up long enough.
+    const remaining: number = REFRESH_MIN_VISIBLE_MS - (Date.now() - this.refreshShownAt);
+    if (this.isRefreshing && remaining > 0) {
+      this.refreshDismissTimer = setTimeout(() => {
+        this.refreshDismissTimer = -1
+        this.finishStop()
+      }, remaining)
+      return;
+    }
+    this.finishStop();
+  }
+
+  private finishStop(): void {
+    this.endRefresh(true);
     // Restore the correct state for the current page
     this.loadPullDownRefreshState(this.path);
   }
@@ -1259,8 +1357,13 @@ export struct LxAppContainer {
         this.enablePullDownRefresh = true;
       }
 
-      this.programmaticRefreshPending = !this.isRefreshing
+      // Restarting a refresh that is still up flips nothing, so expects no echo;
+      // an echo still owed to an earlier start stays expected.
+      if (!this.isRefreshing) {
+        this.programmaticRefreshPending = true
+      }
       this.refreshingWebTag = targetWebTag;
+      this.noteRefreshShown();
       this.isRefreshing = true
       this.handlePullToRefresh(targetWebTag)
     } else {

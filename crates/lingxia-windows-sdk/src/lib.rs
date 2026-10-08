@@ -71,6 +71,8 @@ mod media_preview;
 mod native_components;
 #[cfg(all(target_os = "windows", feature = "components"))]
 mod pull_to_refresh;
+#[cfg(all(target_os = "windows", feature = "host-api"))]
+mod refresh_bar;
 #[cfg(all(target_os = "windows", feature = "shell-chrome"))]
 mod shell;
 #[cfg(feature = "shell-chrome")]

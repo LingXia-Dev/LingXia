@@ -3,7 +3,7 @@ import UIKit
 import WebKit
 import os.log
 
-/// 3-dots pull-to-refresh indicator matching Android implementation using Core Animation
+/// Pull-to-refresh with a system activity indicator in the host theme's colour.
 @MainActor
 class PullToRefreshHelper: NSObject {
     private static let log = OSLog(subsystem: "LingXia", category: "PullToRefresh")
@@ -15,9 +15,14 @@ class PullToRefreshHelper: NSObject {
     private var onRefresh: (() -> Void)?
     // What startRefreshing added to contentInset.top and has not yet taken back.
     private var appliedInsetTop: CGFloat = 0
-    
+    private var shownAt: CFTimeInterval = 0
+    // Set while the indicator lingers after a stop to honour minVisibleDuration.
+    private var pendingDismiss: DispatchWorkItem?
+
     private let triggerDistance: CGFloat = 80.0
     private let maxPullDistance: CGFloat = 150.0
+    // A refresh that ends at once would only flash the spinner.
+    private let minVisibleDuration: CFTimeInterval = 0.4
     
     init(webView: WKWebView, onRefresh: @escaping () -> Void) {
         self.webView = webView
@@ -56,14 +61,23 @@ class PullToRefreshHelper: NSObject {
         if enabled {
             webView?.scrollView.alwaysBounceVertical = true
         } else {
-            endRefreshing()
-            resetState()
+            // Put the indicator away now, lingering or not.
+            let showing = isRefreshing || pendingDismiss != nil
+            isRefreshing = false
+            cancelPendingDismiss()
+            if showing {
+                // Dropped, not finished: nothing to announce.
+                dismiss(announce: false)
+            } else {
+                resetState()
+            }
         }
     }
     
     override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
         DispatchQueue.main.async { [weak self] in
-            guard let self = self, keyPath == "contentOffset", let webView = self.webView, self.isEnabled, !self.isRefreshing else { return }
+            guard let self = self, keyPath == "contentOffset", let webView = self.webView, self.isEnabled,
+                  !self.isRefreshing, self.pendingDismiss == nil else { return }
             
             let offset = webView.scrollView.contentOffset.y + webView.scrollView.adjustedContentInset.top
             let pullDistance = max(0, -offset)
@@ -86,7 +100,11 @@ class PullToRefreshHelper: NSObject {
         let clampedDistance = rubberBandClamp(distance: pullDistance, maxDistance: maxPullDistance)
         let progress = min(1.0, clampedDistance / triggerDistance)
         
-        indicator.isHidden = false
+        if indicator.isHidden {
+            indicator.applyTint(spinnerColor())
+            indicator.topInset = safeTop()
+            indicator.isHidden = false
+        }
         indicator.alpha = min(1.0, progress * 1.5)
         indicator.setProgress(progress)
     }
@@ -102,14 +120,29 @@ class PullToRefreshHelper: NSObject {
     @MainActor
     func startRefreshing() {
         guard !isRefreshing, isEnabled, let webView = webView, let indicator = refreshIndicator else { return }
-        
-        isRefreshing = true
 
+        if pendingDismiss != nil {
+            // Restarted while lingering: the spinner is still up, keep it.
+            cancelPendingDismiss()
+            isRefreshing = true
+            UIAccessibility.post(notification: .announcement, argument: L10n.string("lx_pull_refresh_refreshing"))
+            onRefresh?()
+            return
+        }
+
+        isRefreshing = true
+        shownAt = CACurrentMediaTime()
+
+        indicator.applyTint(spinnerColor())
+        indicator.topInset = safeTop()
         indicator.isHidden = false
         indicator.alpha = 1.0
-        indicator.startLoading()
+        indicator.startLoading(reduceMotion: UIAccessibility.isReduceMotionEnabled)
+        UIAccessibility.post(notification: .announcement, argument: L10n.string("lx_pull_refresh_refreshing"))
 
-        let holdInset = triggerDistance * 0.8
+        // Hold below the status bar and notch on a page without a navigation
+        // bar, so the spinner has the same room there as under one.
+        let holdInset = safeTop() + triggerDistance * 0.8
         appliedInsetTop = holdInset
         let restingInset = webView.scrollView.contentInset.top + holdInset
         UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseOut]) {
@@ -121,12 +154,38 @@ class PullToRefreshHelper: NSObject {
         os_log("Pull-to-refresh started", log: Self.log, type: .info)
     }
 
+    /// Ends the refresh. Returns at once; the indicator itself lingers until
+    /// it has been up for `minVisibleDuration`.
     @MainActor
     func endRefreshing() {
         guard isRefreshing else { return }
-
         isRefreshing = false
+
+        let remaining = minVisibleDuration - (CACurrentMediaTime() - shownAt)
+        guard remaining > 0 else {
+            dismiss()
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                self?.pendingDismiss = nil
+                self?.dismiss()
+            }
+        }
+        pendingDismiss = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + remaining, execute: work)
+    }
+
+    private func cancelPendingDismiss() {
+        pendingDismiss?.cancel()
+        pendingDismiss = nil
+    }
+
+    private func dismiss(announce: Bool = true) {
         refreshIndicator?.stopLoading()
+        if announce {
+            UIAccessibility.post(notification: .announcement, argument: L10n.string("lx_pull_refresh_refreshed"))
+        }
 
         let inset = takeAppliedInset()
         if let webView = webView {
@@ -137,6 +196,18 @@ class PullToRefreshHelper: NSObject {
             }
         }
         os_log("Pull-to-refresh ended", log: Self.log, type: .info)
+    }
+
+    /// The part of the web view the status bar and notch cover. Under a
+    /// navigation bar it is zero, because UIKit computes the web view's
+    /// safe area that way; nothing here checks for one.
+    private func safeTop() -> CGFloat {
+        webView?.safeAreaInsets.top ?? 0
+    }
+
+    private func spinnerColor() -> UIColor? {
+        let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.appId)
+        return WebViewManager.declaredRefreshIndicatorColor(dark: dark)
     }
 
     /// The inset still owed back to the scroll view; zero after this, so it is paid once.
@@ -172,66 +243,49 @@ class PullToRefreshHelper: NSObject {
 }
 
 private class RefreshIndicatorView: UIView {
-    private let dots: [CALayer] = (0..<3).map { _ in CALayer() }
-    private let dotRadius: CGFloat = 3.5
-    private let dotSpacing: CGFloat = 12.0
-    private let dotColor = UIColor(white: 0.53, alpha: 1.0).cgColor
-    
+    private let spinner = UIActivityIndicatorView(style: .medium)
+    // Where the spinner sits in the strip the pull opens, below [topInset].
+    private let spinnerCenterY: CGFloat = 40.0
+    var topInset: CGFloat = 0 {
+        didSet { if topInset != oldValue { setNeedsLayout() } }
+    }
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
-        dots.forEach {
-            $0.backgroundColor = dotColor
-            $0.cornerRadius = dotRadius
-            $0.frame = CGRect(x: 0, y: 0, width: dotRadius * 2, height: dotRadius * 2)
-            layer.addSublayer($0)
-        }
+        spinner.hidesWhenStopped = false
+        addSubview(spinner)
     }
-    
+
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    
+
     override func layoutSubviews() {
         super.layoutSubviews()
-        let cx = bounds.width / 2.0
-        let cy: CGFloat = 40.0
-        for (i, dot) in dots.enumerated() {
-            dot.position = CGPoint(x: cx + CGFloat(i - 1) * dotSpacing, y: cy)
-        }
+        spinner.center = CGPoint(x: bounds.width / 2.0, y: topInset + spinnerCenterY)
     }
-    
+
+    /// `nil` keeps the system colour.
+    func applyTint(_ color: UIColor?) {
+        spinner.color = color ?? .secondaryLabel
+    }
+
+    /// Pulling: the spinner holds still and grows into place.
     func setProgress(_ progress: CGFloat) {
-        let scale = max(0, min(1.0, progress))
-        let alpha = 0.4 + 0.6 * scale
-        let dotScale = 0.5 + 0.5 * scale
-        
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        dots.forEach {
-            $0.opacity = Float(alpha)
-            $0.transform = CATransform3DMakeScale(dotScale, dotScale, 1.0)
-            $0.removeAllAnimations()
-        }
-        CATransaction.commit()
+        guard !spinner.isAnimating else { return }
+        let scale = 0.6 + 0.4 * max(0, min(1.0, progress))
+        spinner.transform = CGAffineTransform(scaleX: scale, y: scale)
     }
-    
-    func startLoading() {
-        dots.enumerated().forEach { (i, dot) in
-            dot.transform = CATransform3DIdentity
-            dot.opacity = 0.3
-            dot.removeAllAnimations()
-            
-            let anim = CAKeyframeAnimation(keyPath: "opacity")
-            anim.values = [0.3, 1.0, 0.3]
-            anim.keyTimes = [0, 0.2, 1]
-            anim.duration = 0.6
-            anim.repeatCount = .infinity
-            anim.beginTime = CACurrentMediaTime() + (Double(i) * 0.2)
-            dot.add(anim, forKey: "loading")
+
+    /// Reduce Motion keeps the spinner still.
+    func startLoading(reduceMotion: Bool) {
+        spinner.transform = .identity
+        if !reduceMotion {
+            spinner.startAnimating()
         }
     }
-    
+
     func stopLoading() {
-        dots.forEach { $0.removeAllAnimations() }
+        spinner.stopAnimating()
     }
 }
 #endif

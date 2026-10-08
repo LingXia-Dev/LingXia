@@ -132,3 +132,8 @@ update:
 browser:
   downloads: "Downloads"
   settings: "Settings"
+
+# Pull-to-refresh screen-reader announcements (native shells)
+pull_refresh:
+  refreshing: "Refreshing"
+  refreshed: "Refreshed"
