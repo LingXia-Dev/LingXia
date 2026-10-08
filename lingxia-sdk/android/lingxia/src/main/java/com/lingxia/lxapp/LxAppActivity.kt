@@ -418,6 +418,15 @@ class LxAppActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // The runtime paints every surface in the lxapp's resolved scheme, so
+        // the window must never be force-darkened. Several OEM builds apply
+        // force dark to light windows whenever the *system* is dark; with an
+        // lxapp pinned to light that inverts the native canvas and, through
+        // it, makes the WebView darken the page algorithmically.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.decorView.isForceDarkAllowed = false
+        }
+
         if (LxApp.homeAppId == null) {
             // Android restores the task's top activity after process death, bypassing
             // the host entry point. Its addon and fresh sessions must be created there.
