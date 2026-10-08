@@ -1285,9 +1285,10 @@ class LxAppActivity : AppCompatActivity() {
     private fun updatePullToRefreshEnabledForPath(path: String?) {
         val helper = pullToRefreshHelper ?: return
 
+        // A page whose config cannot be read has not opted in.
         val normalized = normalizePath(path)
         if (normalized.isEmpty()) {
-            helper.setEnabled(true)
+            helper.setEnabled(false)
             return
         }
 
@@ -1295,7 +1296,7 @@ class LxAppActivity : AppCompatActivity() {
             NativeApi.isPullDownRefreshEnabled(appId, normalized)
         } catch (e: Exception) {
             LxLog.e(TAG, "Failed to read pull-to-refresh config for $path: ${e.message}")
-            true // fall back to enabled if config lookup fails
+            false
         }
         helper.setEnabled(enabled)
     }
