@@ -166,6 +166,9 @@ failure directly; package visibility makes availability preflight unreliable.
   when no live instance exists: initial process startup, after a real close,
   or on restart. Reopening a still-running session must preserve its bundle
   and WebView. `updateManager.applyUpdate()` restarts the lxapp.
+- If applying a pending update fails, the same open/restart must rebuild from
+  the previous installed or bundled package. Do not leave a retired session
+  without a replacement. With no usable package, the open still fails.
 - Permit one background check per app id and channel at a time. Drop duplicate
   requests instead of queuing them, and ignore checks whose channel differs
   from the running instance.
