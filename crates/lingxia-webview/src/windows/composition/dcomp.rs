@@ -676,21 +676,6 @@ fn glyph_5x7(ch: char) -> Option<[u8; 7]> {
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::rasterize_island_pixels;
-
-    #[test]
-    fn rasterizes_inline_native_label_as_opaque_glyphs() {
-        let pixels = rasterize_island_pixels(96, 16, 0, Some("Inline native"));
-        let painted = pixels.iter().filter(|pixel| **pixel == 0xffff_ffff).count();
-        assert!(
-            painted > 20,
-            "expected white glyph pixels for 'Inline native', got {painted}"
-        );
-    }
-}
-
 /// Premultiplied BGRA wedge bitmap: alpha = 1 − arc coverage (4×4
 /// supersampled, matching the GDI+ card arcs), colored `0xAARGB` shaded by
 /// the same translucent shadow rings `draw_content_card` paints around the
@@ -820,4 +805,19 @@ fn create_d3d_device() -> StdResult<(ID3D11Device, ID3D11DeviceContext)> {
 
 fn dcomp_error(what: &str, err: windows::core::Error) -> WebViewError {
     WebViewError::WebView(format!("{what} failed: {err}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rasterize_island_pixels;
+
+    #[test]
+    fn rasterizes_inline_native_label_as_opaque_glyphs() {
+        let pixels = rasterize_island_pixels(96, 16, 0, Some("Inline native"));
+        let painted = pixels.iter().filter(|pixel| **pixel == 0xffff_ffff).count();
+        assert!(
+            painted > 20,
+            "expected white glyph pixels for 'Inline native', got {painted}"
+        );
+    }
 }
