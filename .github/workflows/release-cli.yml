@@ -126,6 +126,14 @@ jobs:
       # lingxia-cli build.rs embeds the bridge/polyfills JS runtime.
       - uses: ./.github/actions/build-web-runtime
 
+      # Vendored OpenSSL (lingxia-cli) configures itself with Perl. Under
+      # `shell: bash` the MSYS perl from Git wins the PATH and lacks the
+      # modules OpenSSL's Configure needs; use the runner's Strawberry Perl.
+      - name: Use Strawberry Perl for the vendored OpenSSL build
+        if: ${{ matrix.os == 'windows' }}
+        shell: bash
+        run: echo 'OPENSSL_SRC_PERL=C:\Strawberry\perl\bin\perl.exe' >> "$GITHUB_ENV"
+
       - name: Verify tag matches CLI package version
         # Windows runners default to PowerShell; force Git Bash for awk + [ ].
         shell: bash
@@ -256,6 +264,8 @@ jobs:
     name: Windows runner / x64
     needs: guard
     runs-on: windows-latest
+    env:
+      OPENSSL_SRC_PERL: C:\Strawberry\perl\bin\perl.exe
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4

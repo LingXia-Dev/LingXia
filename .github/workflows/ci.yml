@@ -615,6 +615,11 @@ jobs:
     # Feature checks are linear (`--each-feature`). A cold main build also
     # publishes the large target cache after the checks have completed.
     timeout-minutes: 55
+    env:
+      # Vendored OpenSSL (lingxia-cli) configures itself with Perl. Under
+      # `shell: bash` the MSYS perl from Git wins the PATH and lacks the
+      # modules OpenSSL's Configure needs; use the runner's Strawberry Perl.
+      OPENSSL_SRC_PERL: C:\Strawberry\perl\bin\perl.exe
     steps:
       - uses: actions/checkout@v4
 
