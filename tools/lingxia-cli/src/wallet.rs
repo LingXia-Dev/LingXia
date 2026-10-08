@@ -328,7 +328,6 @@ impl Wallet {
 
     /// Signing material (keys, certs, profiles, keystores) lives next to the
     /// identity that minted it, so organizations never share certificates.
-    #[cfg(not(target_os = "windows"))]
     pub fn harmony_signing_dir(&self, client_id: &str) -> Result<PathBuf> {
         Ok(self.harmony_identity_dir(client_id)?.join("signing"))
     }
