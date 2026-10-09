@@ -95,10 +95,16 @@ pub fn parse_channel(tag: &str) -> Result<Channel, String> {
 }
 
 pub fn parse_optional_channel(env_version: Option<&str>) -> Result<Channel, String> {
-    match env_version.map(str::trim).filter(|value| !value.is_empty()) {
-        Some(value) => parse_channel(value),
-        None => Ok(default_channel()),
-    }
+    Ok(parse_requested_channel(env_version)?.unwrap_or_else(default_channel))
+}
+
+/// An explicit channel selector, `None` when omitted or blank.
+pub fn parse_requested_channel(env_version: Option<&str>) -> Result<Option<Channel>, String> {
+    env_version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(parse_channel)
+        .transpose()
 }
 
 pub fn append_page_query(path: String, query: &Value) -> Result<String, String> {

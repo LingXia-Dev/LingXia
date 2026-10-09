@@ -1,4 +1,4 @@
-use lingxia_update::{Channel, default_channel};
+use lingxia_update::Channel;
 use std::sync::OnceLock;
 
 const LXAPP_PREFIX: &str = "/lxapp/";
@@ -16,7 +16,8 @@ pub struct AppLinkTarget {
     pub path: String,
     /// Page query. Routing params are stripped only for `/lxapp/open`.
     pub query: String,
-    pub release_type: Channel,
+    /// The explicit `channel` selector; `None` keeps the live session's channel.
+    pub release_type: Option<Channel>,
     /// The URL is in the `/lxapp/*` namespace, so `appid` / `path` / `query`
     /// were parsed rather than passed through.
     pub lxapp_route: bool,
@@ -107,7 +108,7 @@ fn parse_with_scan_server(
             appid: String::new(),
             path: String::new(),
             query: raw_query.unwrap_or_default().to_string(),
-            release_type: default_channel(),
+            release_type: None,
             lxapp_route: false,
         }));
     };
@@ -265,7 +266,7 @@ fn host_allowed_for(host: &str, hosts: &[String], is_runner: bool) -> bool {
 }
 
 struct QueryParts {
-    release_type: Channel,
+    release_type: Option<Channel>,
     appid: Option<String>,
     path: Option<String>,
     page_query: String,
@@ -274,13 +275,13 @@ struct QueryParts {
 fn parse_query(raw_query: Option<&str>, include_routing: bool) -> Result<QueryParts, String> {
     let Some(raw_query) = raw_query else {
         return Ok(QueryParts {
-            release_type: default_channel(),
+            release_type: None,
             appid: None,
             path: None,
             page_query: String::new(),
         });
     };
-    let mut release_type = default_channel();
+    let mut release_type = None;
     let mut appid = None;
     let mut path = None;
     let mut page_params = Vec::new();
@@ -291,7 +292,7 @@ fn parse_query(raw_query: Option<&str>, include_routing: bool) -> Result<QueryPa
         };
         let key = decode_component(raw_key)?;
         if key == "channel" {
-            release_type = parse_channel(&decode_component(raw_value)?)?;
+            release_type = Some(parse_channel(&decode_component(raw_value)?)?);
             continue;
         }
         if include_routing && (key == "appId" || key == "appid") {
@@ -365,7 +366,7 @@ mod tests {
         assert_eq!(target.appid, "com.example.shop");
         assert_eq!(target.path, "");
         assert_eq!(target.query, "");
-        assert_eq!(target.release_type, Channel::Release);
+        assert_eq!(target.release_type, None);
         assert!(target.lxapp_route);
     }
 
@@ -389,7 +390,7 @@ mod tests {
         assert_eq!(target.appid, "com.example.shop");
         assert_eq!(target.path, "pages/detail/index.html");
         assert_eq!(target.query, "id=42");
-        assert_eq!(target.release_type, Channel::Draft);
+        assert_eq!(target.release_type, Some(Channel::Draft));
     }
 
     #[test]
@@ -402,7 +403,7 @@ mod tests {
         assert_eq!(target.appid, "shop");
         assert_eq!(target.path, "pages/detail/index.html");
         assert_eq!(target.query, "id=42");
-        assert_eq!(target.release_type, Channel::Draft);
+        assert_eq!(target.release_type, Some(Channel::Draft));
     }
 
     #[test]
@@ -413,7 +414,7 @@ mod tests {
         assert_eq!(target.appid, "shop");
         assert_eq!(target.path, "pages/detail");
         assert_eq!(target.query, "id=42");
-        assert_eq!(target.release_type, Channel::Draft);
+        assert_eq!(target.release_type, Some(Channel::Draft));
     }
 
     #[test]
@@ -435,7 +436,7 @@ mod tests {
         )
         .unwrap()
         .unwrap();
-        assert_eq!(target.release_type, Channel::Draft);
+        assert_eq!(target.release_type, Some(Channel::Draft));
         assert_eq!(target.query, "releaseType=developer");
     }
 
@@ -471,7 +472,7 @@ mod tests {
                 .unwrap()
                 .unwrap();
         assert_eq!(target.path, "");
-        assert_eq!(target.release_type, default_channel());
+        assert_eq!(target.release_type, None);
         assert_eq!(target.query, "path=/home&envVersion=trial&code=100%");
     }
 
@@ -583,7 +584,7 @@ mod tests {
         .unwrap()
         .unwrap();
         assert_eq!(target.appid, "shop/demo");
-        assert_eq!(target.release_type, Channel::Draft);
+        assert_eq!(target.release_type, Some(Channel::Draft));
         assert_eq!(target.query, "id=42");
         assert!(target.lxapp_route);
     }

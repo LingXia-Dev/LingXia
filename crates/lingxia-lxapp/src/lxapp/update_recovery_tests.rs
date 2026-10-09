@@ -142,6 +142,36 @@ fn explicit_channel_switch_replaces_live_and_closed_sessions() {
 }
 
 #[test]
+fn omitted_channel_keeps_the_live_draft_session() {
+    #[cfg(target_vendor = "apple")]
+    let _host = crate::apple_host_stubs::headless_lifecycle();
+    let f = Fixture::new();
+    f.install_channel(Channel::Release);
+    f.install_channel(Channel::Draft);
+    assert_eq!(
+        f.manager.resolve_open_channel(&f.appid, None),
+        Channel::Release
+    );
+    let draft = f
+        .manager
+        .ensure_lxapp(f.appid.clone(), Channel::Draft)
+        .unwrap();
+    draft.set_status(LxAppSessionStatus::Opened);
+    // A pin click, notification tap or navigateToApp without `channel`.
+    let resolved = f.manager.resolve_open_channel(&f.appid, None);
+    assert_eq!(resolved, Channel::Draft);
+    let again = f.manager.ensure_lxapp(f.appid.clone(), resolved).unwrap();
+    assert!(Arc::ptr_eq(&draft, &again));
+    assert!(!draft.session.is_retired());
+    assert_eq!(
+        f.manager
+            .resolve_open_channel(&f.appid, Some(Channel::Release)),
+        Channel::Release
+    );
+    f.manager.retire_lxapp(&f.appid).unwrap();
+}
+
+#[test]
 fn explicit_channel_switch_applies_the_pending_target_package() {
     #[cfg(target_vendor = "apple")]
     let _host = crate::apple_host_stubs::headless_lifecycle();

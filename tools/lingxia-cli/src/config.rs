@@ -1368,11 +1368,6 @@ impl AppEnv {
         }
     }
 
-    /// Default lxapp channel, independent of the host environment.
-    pub fn default_channel(self) -> &'static str {
-        "release"
-    }
-
     /// Built-in package-id suffix: `dev` → `.dev`, `prod` → none.
     pub fn default_package_id_suffix(self) -> Option<&'static str> {
         match self {

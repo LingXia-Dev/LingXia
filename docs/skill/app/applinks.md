@@ -66,7 +66,7 @@ https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&c
 |---|---:|---|
 | `appId` | No | Target lxapp. Omitted → home. |
 | `path` | No | Target page path. Omitted → current/initial page. |
-| `channel` | No | `release` or `draft`, as in `navigateToApp`. Omitted → `release` in every service env. |
+| `channel` | No | `release` or `draft`, as in `navigateToApp`. Omitted → the channel the lxapp is already running on, else `release`. |
 
 URL-encode keys and values. Routing parameters are consumed; other parameters
 go to the page as its query. Only in this namespace is a malformed URL rejected.

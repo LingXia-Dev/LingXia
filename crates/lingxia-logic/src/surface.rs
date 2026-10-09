@@ -1096,13 +1096,11 @@ async fn open_app_spec(
         "aside" => lxapp::LxAppOpenRegion::Aside,
         _ => unreachable!("validated above"),
     };
-    let requested_channel = lxapp::parse_optional_channel(target.channel.as_deref())
-        .map_err(|error| surface_error(SurfaceErrorCode::InvalidArg, error))?;
-    let requested_channel = if lxapp::is_dev_bundle_appid(&app_id) {
-        lxapp::Channel::Draft
-    } else {
-        requested_channel
-    };
+    let requested_channel = lxapp::resolve_open_channel(
+        &app_id,
+        lxapp::parse_requested_channel(target.channel.as_deref())
+            .map_err(|error| surface_error(SurfaceErrorCode::InvalidArg, error))?,
+    );
     if let Some(current_region) = lxapp::open_region(&app_id) {
         if current_region != requested_region {
             return Err(surface_error(
@@ -1280,7 +1278,7 @@ async fn open_declared_surface_spec(
         ));
     }
     if let Some(app_id) = declared_app_id {
-        lxapp::prepare_lxapp_open(&app_id, lxapp::default_channel())
+        lxapp::prepare_lxapp_open(&app_id, lxapp::resolve_open_channel(&app_id, None))
             .await
             .map_err(|err| {
                 if lxapp::registry_unavailable_status(&err).is_some() {
