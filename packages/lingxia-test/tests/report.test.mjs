@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 import { spec, expect } from "../dist/index.js";
@@ -957,7 +958,7 @@ test("a failed toMatchSchema points at its own line, and a unit spec names no pa
   const world = createWorld();
   world.app.network = { async calls() { return []; }, async captureResponses() { return true; } };
   installFakeHost(world, { control: { openapi: JSON.stringify([{ name: "slots.yaml", doc: API }]) } });
-  const here = new URL(import.meta.url).pathname;
+  const here = fileURLToPath(import.meta.url).replaceAll("\\", "/");
   let assertionLine;
 
   spec("unit schema", { tags: ["unit"] }, async () => {
