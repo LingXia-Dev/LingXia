@@ -80,30 +80,55 @@ function Initialize-AndroidTestPermissions {
   }
 }
 
-function Start-AndroidHttpFixture {
+function Start-AndroidFixture {
+  param([string]$ScriptName, [string[]]$Arguments = @())
+
   $node = (Get-Command node -ErrorAction Stop).Source
   $resultRoot = Join-Path $lxappRoot 'test-results\automation'
   New-Item -ItemType Directory -Force -Path $resultRoot | Out-Null
-  $logPrefix = Join-Path $resultRoot ("http-fixture-" + [guid]::NewGuid().ToString('N'))
-  $fixtureScript = Join-Path $lxappRoot 'tests\harness\http-fixture.mjs'
+  $logPrefix = Join-Path $resultRoot ("$ScriptName-" + [guid]::NewGuid().ToString('N'))
+  $fixtureScript = Join-Path $lxappRoot "tests\harness\$ScriptName.mjs"
+  $quotedArguments = @($fixtureScript) + $Arguments | ForEach-Object { '"' + $_ + '"' }
   $process = Start-Process -FilePath $node -WindowStyle Hidden -PassThru `
-    -ArgumentList @(('"' + $fixtureScript + '"'), '--port', '0', '--print-base') `
+    -ArgumentList $quotedArguments `
     -RedirectStandardOutput "$logPrefix.stdout.log" -RedirectStandardError "$logPrefix.stderr.log"
   try {
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     do {
-      if ($process.HasExited) { throw "HTTP fixture exited; see $logPrefix.stderr.log" }
+      if ($process.HasExited) { throw "Android fixture exited; see $logPrefix.stderr.log" }
       $base = Get-Content -LiteralPath "$logPrefix.stdout.log" -ErrorAction SilentlyContinue |
-        Where-Object { $_ -match '^http://127\.0\.0\.1:\d+$' } | Select-Object -First 1
+        Where-Object { $_ -match '^http://127\.0\.0\.1:\d+(/[a-f0-9]+)?$' } | Select-Object -First 1
       if ($base) {
         return @{ Process = $process; Base = $base; Port = ([uri]$base).Port }
       }
       Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $deadline)
-    throw "HTTP fixture did not become ready; see $logPrefix.stderr.log"
+    throw "Android fixture did not become ready; see $logPrefix.stderr.log"
   } catch {
     if (-not $process.HasExited) { $process.Kill() }
     throw
+  }
+}
+
+function Stop-AndroidFixture {
+  param($Fixture)
+
+  if ($null -eq $Fixture) { return }
+  $savedErrorAction = $ErrorActionPreference
+  try {
+    # Build failure can precede reverse setup; a disconnected device must not
+    # prevent either fixture process from being reaped or hide the run error.
+    $ErrorActionPreference = 'Continue'
+    & $adb @adbTarget reverse --remove "tcp:$($Fixture.Port)" 2>$null | Out-Null
+  } catch {
+    Write-Verbose "Could not remove Android fixture forwarding: $_"
+  } finally {
+    $ErrorActionPreference = $savedErrorAction
+    try {
+      if (-not $Fixture.Process.HasExited) { $Fixture.Process.Kill() }
+    } catch {
+      Write-Warning "Could not stop Android fixture process: $_"
+    }
   }
 }
 
@@ -329,6 +354,7 @@ Invoke-Checked $adb ($adbTarget + @('shell', 'wm', 'dismiss-keyguard'))
 Invoke-Checked $adb ($adbTarget + @('shell', 'svc', 'wifi', 'enable'))
 
 $httpFixture = $null
+$deviceFixture = $null
 Push-Location $showcaseRoot
 try {
   # A captured native-process pipeline waits for descendant handles on Windows.
@@ -346,7 +372,10 @@ try {
   }
 
   $frameworks = if ($Framework -eq 'all') { @('react', 'vue') } else { @($Framework) }
-  $httpFixture = Start-AndroidHttpFixture
+  $httpFixture = Start-AndroidFixture 'http-fixture' @('--port', '0', '--print-base')
+  $fixtureSerial = (& $adb @adbTarget get-serialno | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or -not $fixtureSerial) { throw 'Could not identify the Android fixture device.' }
+  $deviceFixture = Start-AndroidFixture 'android-device-fixture' @('--adb', $adb, '--device', $fixtureSerial)
   $nativeVideoProbeRan = $false
   foreach ($currentFramework in $frameworks) {
     $started = $false
@@ -367,6 +396,8 @@ try {
       Initialize-AndroidTestPermissions $PackageId
       $fixturePort = "tcp:$($httpFixture.Port)"
       Invoke-Checked $adb ($adbTarget + @('reverse', $fixturePort, $fixturePort))
+      $devicePort = "tcp:$($deviceFixture.Port)"
+      Invoke-Checked $adb ($adbTarget + @('reverse', $devicePort, $devicePort))
 
       Push-Location $lxappRoot
       try {
@@ -377,6 +408,7 @@ try {
           --timeout-secs $($TimeoutSeconds.ToString()) `
           --arg "framework=$currentFramework" `
           --arg "httpBase=$($httpFixture.Base)" `
+          --secret-arg "androidDevice=$($deviceFixture.Base)" `
           --output-dir $resultDirectory
         $testExitCode = $LASTEXITCODE
 
@@ -410,10 +442,8 @@ try {
     }
   }
 } finally {
-  if ($null -ne $httpFixture) {
-    & $adb @adbTarget reverse --remove "tcp:$($httpFixture.Port)" | Out-Null
-    if (-not $httpFixture.Process.HasExited) { $httpFixture.Process.Kill() }
-  }
+  Stop-AndroidFixture $deviceFixture
+  Stop-AndroidFixture $httpFixture
   Pop-Location
 }
 

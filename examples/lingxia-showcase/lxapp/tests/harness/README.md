@@ -42,3 +42,13 @@ deterministic fixture instead of the public internet.
 - The Android runner starts this fixture and reverses its port through adb;
   transfer, media, and browser cases run without a separately managed server.
   The Windows runner still requires a supplied fixture.
+
+## Android system input
+
+`run-android-showcase.ps1` also starts `android-device-fixture.mjs` for the selected
+ADB serial and forwards its ephemeral loopback port. Its random capability URL
+is passed as `--secret-arg androidDevice=...`. Specs without it skip physical
+gestures and OS dialogs. The fixture only accepts validated taps, swipes,
+Back/Enter/Tab/Escape keys, display size, and fresh UIAutomator hierarchies;
+it does not accept shell commands. The runner closes its process and reverse
+mapping when finished.
