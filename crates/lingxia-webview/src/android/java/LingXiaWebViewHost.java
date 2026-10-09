@@ -16,8 +16,8 @@ public interface LingXiaWebViewHost {
     boolean canGoForward();
     boolean usesStrictSecurityProfile();
     boolean retainsSurfaceWhenHidden();
-    /** Called after attachment/resume, before the host reveals a new page. */
-    default void prepareForPresentation(Runnable ready) { ready.run(); }
+    /** Wait after attachment/resume; returns a cancellation action for this presentation. */
+    default Runnable prepareForPresentation(Runnable ready) { ready.run(); return () -> {}; }
     /** Document scroll offset in device pixels, for native overlays. */
     int getContentScrollX();
     int getContentScrollY();

@@ -338,6 +338,7 @@ class LxAppActivity : AppCompatActivity() {
     private var currentWebView: LingXiaWebViewHost? = null
     private var presentationGeneration = 0L
     private var pendingPresentationContainer: FrameLayout? = null
+    private var cancelPendingPresentation: Runnable? = null
     private var systemBottomInset: Int = 0
     private var imeContentBottomInset: Int = 0
     /** A visible bottom navigation strip; only opaque TabBars reserve it in root padding. */
@@ -826,7 +827,13 @@ class LxAppActivity : AppCompatActivity() {
         rootContainer.addView(webViewContainer)
     }
 
-    private fun setupTabBar(config: TabBarState?) {
+    private fun setupTabBar(config: TabBarState?, forPresentation: Boolean = false) {
+        if (!forPresentation && currentWebView != null) {
+            val target = NativeApi.getCurrentLxApp()
+            if (pendingPresentationContainer != null ||
+                (target != null && normalizePath(target.path) != normalizePath(currentWebView?.currentPath))
+            ) return
+        }
         if (config == null) {
             tabBar?.let { bar ->
                 (bar.parent as? ViewGroup)?.removeView(bar)
@@ -1136,6 +1143,9 @@ class LxAppActivity : AppCompatActivity() {
      */
     private fun present(webtag: String?, request: Presentation, resolvesLeft: Int = FIRST_SCREEN_RESOLVE_LIMIT) {
         val ticket = ++presentTicket
+        presentationGeneration++
+        cancelPendingPresentation?.run()
+        cancelPendingPresentation = null
         val ready = NativeApi.awaitPageWebView(appId, currentSessionId, webtag) { webView, status ->
             runOnUiThread { onPresentResult(ticket, webtag, request, webView, status, resolvesLeft) }
         }
@@ -1569,6 +1579,8 @@ class LxAppActivity : AppCompatActivity() {
     override fun onDestroy() {
         isDestroyed = true
         presentationGeneration++
+        cancelPendingPresentation?.run()
+        cancelPendingPresentation = null
         pendingPresentationContainer?.let { cleanupOldContainer(it) }
         pendingPresentationContainer = null
         pendingFileChooserCallback?.onReceiveValue(null)
@@ -1597,7 +1609,6 @@ class LxAppActivity : AppCompatActivity() {
         if (!::appId.isInitialized) return false
 
         try {
-            syncTabBarFromRuntime()
             // Launch/Replace/SwitchTab arrive as NONE and swap without animation.
             present(
                 webtag,
@@ -1614,9 +1625,10 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
-    private fun syncTabBarFromRuntime() {
+    private fun syncTabBarForPresentation() {
         // Reflect visibility from Rust TabBarState only
         val tabBarConfig = NativeApi.getTabBarState(appId)
+        setupTabBar(tabBarConfig, forPresentation = true)
         val visible = tabBarConfig?.visible ?: false
         showTabBar(visible)
         tabBarConfig?.let {
@@ -1831,6 +1843,7 @@ class LxAppActivity : AppCompatActivity() {
      * Extracted from navigateToPage for reuse in coordinated navigation
      */
     private fun performWebViewTransition(oldWebView: LingXiaWebViewHost?, newContainer: FrameLayout, isBackNavigation: Boolean, shouldAnimate: Boolean = true, navbarState: NavigationBarState? = null) {
+        syncTabBarForPresentation()
         val oldContainer = (oldWebView?.hostView?.parent as? ViewGroup)
             ?.takeIf { it.parent === webViewContainer && it !== newContainer }
             ?: webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
@@ -2082,6 +2095,8 @@ class LxAppActivity : AppCompatActivity() {
 
             val presentationTicket = presentTicket
             val generation = ++presentationGeneration
+            cancelPendingPresentation?.run()
+            cancelPendingPresentation = null
             val presentationAppId = appId
             val presentationSessionId = currentSessionId
             pendingPresentationContainer?.takeIf { it !== newContainer }?.let {
@@ -2095,7 +2110,7 @@ class LxAppActivity : AppCompatActivity() {
                 if (newContainer.parent == null) webViewContainer.addView(newContainer)
                 newContainer.dispatchConfigurationChanged(resources.configuration)
             }
-            newWebView.prepareForPresentation {
+            cancelPendingPresentation = newWebView.prepareForPresentation {
                 if (isDestroyed || generation != presentationGeneration) return@prepareForPresentation
                 val current = NativeApi.getCurrentLxApp()
                 if (current == null || current.appId != presentationAppId ||
@@ -2104,6 +2119,7 @@ class LxAppActivity : AppCompatActivity() {
                     presentTicket != presentationTicket
                 ) return@prepareForPresentation
                 pendingPresentationContainer = null
+                cancelPendingPresentation = null
                 if (oldWebView != newWebView) {
                     oldWebView?.let { NativeBridge.notifyPageInactive(it) }
                     NativeBridge.notifyPageActive(newWebView)
