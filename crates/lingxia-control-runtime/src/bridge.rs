@@ -269,6 +269,26 @@ fn log_connect_failure(attempt: u32, err: &WsError) {
     }
 }
 
+fn collect_log_batch(
+    receiver: &mut tokio::sync::broadcast::Receiver<LogMessage>,
+) -> Result<(Vec<LogMessage>, u64), String> {
+    let mut batch = Vec::new();
+    let mut skipped = 0;
+    for _ in 0..64 {
+        match receiver.try_recv() {
+            Ok(message) => batch.push(message),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break,
+            Err(tokio::sync::broadcast::error::TryRecvError::Lagged(count)) => {
+                skipped += count;
+            }
+            Err(tokio::sync::broadcast::error::TryRecvError::Closed) => {
+                return Err("log stream closed".to_string());
+            }
+        }
+    }
+    Ok((batch, skipped))
+}
+
 fn bridge_loop(
     websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
     attached: AttachedLogStream,
@@ -282,19 +302,11 @@ fn bridge_loop(
     }
 
     loop {
-        let mut batch = Vec::new();
-        while batch.len() < 64 {
-            match receiver.try_recv() {
-                Ok(message) => batch.push(message),
-                Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break,
-                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(skipped)) => {
-                    log::warn!("Devtool log stream lagged and skipped {} messages", skipped);
-                    break;
-                }
-                Err(tokio::sync::broadcast::error::TryRecvError::Closed) => {
-                    return Err("log stream closed".to_string());
-                }
-            }
+        let (batch, skipped) = collect_log_batch(&mut receiver)?;
+        if skipped > 0 {
+            // Drain first: this warning enters the same stream and would
+            // otherwise evict another unread message on every iteration.
+            log::warn!("Devtool log stream lagged and skipped {} messages", skipped);
         }
 
         if !batch.is_empty() {
@@ -449,7 +461,35 @@ fn configure_read_timeout(websocket: &mut WebSocket<MaybeTlsStream<std::net::Tcp
 
 #[cfg(test)]
 mod tests {
-    use super::is_retryable_read_error;
+    use super::{collect_log_batch, is_retryable_read_error};
+    use lingxia_log::{LogMessage, LogTag};
+
+    #[test]
+    fn a_lagged_log_stream_drains_before_reporting_its_own_warning() {
+        let (sender, mut receiver) = tokio::sync::broadcast::channel(2);
+        for message in ["old-1", "old-2", "new-1", "new-2"] {
+            sender
+                .send(LogMessage::new(LogTag::Native, message))
+                .unwrap();
+        }
+        let (batch, skipped) = collect_log_batch(&mut receiver).unwrap();
+        assert_eq!(skipped, 2);
+        assert_eq!(
+            batch
+                .iter()
+                .map(|log| log.message.as_str())
+                .collect::<Vec<_>>(),
+            ["new-1", "new-2"]
+        );
+        sender
+            .send(LogMessage::new(LogTag::Native, "lag warning"))
+            .unwrap();
+        let (batch, skipped) = collect_log_batch(&mut receiver).unwrap();
+        assert_eq!(skipped, 0);
+        assert_eq!(batch.len(), 1);
+        assert_eq!(batch[0].message, "lag warning");
+        assert!(collect_log_batch(&mut receiver).unwrap().0.is_empty());
+    }
 
     #[test]
     fn retries_nonblocking_socket_reads() {
