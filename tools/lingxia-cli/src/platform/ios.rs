@@ -511,6 +511,8 @@ impl Platform for IosPlatform {
             apple::devicectl::DeviceCtl::wait_for_device(30)?.identifier
         };
 
+        prepare_resource_bundle_lookup_for_install(&app_path)?;
+
         // Sign the app before installing
         apple::provisioning::sign_app(&app_path, Some(&device_identifier), &app_link_hosts)?;
 
@@ -737,6 +739,72 @@ pub fn generate_icons(
     crate::appicon::generate_ios_icons(source_icon, &resources_dir)
 }
 
+/// Keep already-built runtimes' CFBundleName fallback working after re-signing.
+fn prepare_resource_bundle_lookup_for_install(app_path: &Path) -> Result<()> {
+    let mut stems = Vec::new();
+    for entry in fs::read_dir(app_path)? {
+        let path = entry?.path();
+        if path
+            .extension()
+            .is_none_or(|extension| extension != "bundle")
+        {
+            continue;
+        }
+        let Some(name) = path.file_stem().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Some(stem) = name.match_indices('_').find_map(|(index, _)| {
+            let (stem, target) = name.split_at(index);
+            (!stem.is_empty() && stem == &target[1..]).then_some(stem)
+        }) else {
+            continue;
+        };
+        if [
+            "app.json",
+            "Resources/app.json",
+            "Contents/Resources/app.json",
+        ]
+        .iter()
+        .any(|relative| path.join(relative).is_file())
+        {
+            stems.push(stem.to_string());
+        }
+    }
+    let [stem] = stems.as_slice() else {
+        if stems.is_empty() {
+            return Ok(());
+        }
+        return Err(anyhow!(
+            "Multiple host resource bundles contain app.json; cannot preserve re-signing resource lookup"
+        ));
+    };
+    let info_path = app_path.join("Info.plist");
+    let mut value = plist::Value::from_file(&info_path).context("Failed to read app Info.plist")?;
+    let info = value
+        .as_dictionary_mut()
+        .ok_or_else(|| anyhow!("App Info.plist is not a dictionary"))?;
+    if ["CFBundleName", "CFBundleExecutable"]
+        .iter()
+        .any(|key| info.get(*key).and_then(plist::Value::as_string) == Some(stem.as_str()))
+    {
+        return Ok(());
+    }
+    // CFBundleName is also the display fallback. Preserve that label before
+    // using the stable SwiftPM name for legacy runtime resource discovery.
+    if !info.contains_key("CFBundleDisplayName")
+        && let Some(label) = info
+            .get("CFBundleName")
+            .or_else(|| info.get("CFBundleExecutable"))
+            .cloned()
+    {
+        info.insert("CFBundleDisplayName".into(), label);
+    }
+    info.insert("CFBundleName".into(), stem.as_str().into());
+    value
+        .to_file_xml(&info_path)
+        .context("Failed to preserve app resource lookup")
+}
+
 /// Hosts to re-sign into an already-built app. Prefer the list baked into
 /// the bundle's `app.json` so a release artifact is not signed with
 /// developer domains (Apple disables associated domains if any requested
@@ -793,6 +861,119 @@ pub fn get_resources_dir(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn resource_host() -> tempfile::TempDir {
+        let host = tempfile::tempdir().unwrap();
+        fs::create_dir(host.path().join("demo_app_demo_app.bundle")).unwrap();
+        fs::write(host.path().join("demo_app_demo_app.bundle/app.json"), "{}").unwrap();
+        fs::create_dir(host.path().join("lingxia_lingxia.bundle")).unwrap();
+        let mut info = plist::Dictionary::new();
+        info.insert("CFBundleIdentifier".into(), "com.example.demo.dev".into());
+        info.insert("CFBundleName".into(), "DemoApp".into());
+        info.insert("CFBundleExecutable".into(), "DemoAppDev".into());
+        plist::Value::Dictionary(info)
+            .to_file_xml(host.path().join("Info.plist"))
+            .unwrap();
+        host
+    }
+
+    #[test]
+    fn resigning_preserves_legacy_resource_lookup_and_display_name() {
+        let host = resource_host();
+        for team in ["TEAM000001", "TEAM000002"] {
+            let id = format!("com.{team}.demo-dev");
+            let mut value = plist::Value::from_file(host.path().join("Info.plist")).unwrap();
+            value
+                .as_dictionary_mut()
+                .unwrap()
+                .insert("CFBundleIdentifier".into(), id.as_str().into());
+            value.to_file_xml(host.path().join("Info.plist")).unwrap();
+            prepare_resource_bundle_lookup_for_install(host.path()).unwrap();
+            let info = plist::Value::from_file(host.path().join("Info.plist")).unwrap();
+            let info = info.as_dictionary().unwrap();
+            assert_eq!(info["CFBundleIdentifier"].as_string(), Some(id.as_str()));
+            assert_eq!(info["CFBundleName"].as_string(), Some("demo_app"));
+            assert_eq!(info["CFBundleDisplayName"].as_string(), Some("DemoApp"));
+            assert_eq!(info["CFBundleExecutable"].as_string(), Some("DemoAppDev"));
+            assert!(
+                host.path()
+                    .join("demo_app_demo_app.bundle/app.json")
+                    .is_file()
+            );
+        }
+    }
+
+    #[test]
+    fn resigning_preserves_existing_display_name() {
+        let host = resource_host();
+        let mut info = plist::Value::from_file(host.path().join("Info.plist")).unwrap();
+        info.as_dictionary_mut()
+            .unwrap()
+            .insert("CFBundleDisplayName".into(), "示例应用".into());
+        info.to_file_xml(host.path().join("Info.plist")).unwrap();
+        prepare_resource_bundle_lookup_for_install(host.path()).unwrap();
+        let info = plist::Value::from_file(host.path().join("Info.plist")).unwrap();
+        assert_eq!(
+            info.as_dictionary().unwrap()["CFBundleDisplayName"].as_string(),
+            Some("示例应用")
+        );
+    }
+
+    #[test]
+    fn resigning_keeps_names_when_existing_resource_lookup_works() {
+        let host = resource_host();
+        let mut info = plist::Value::from_file(host.path().join("Info.plist")).unwrap();
+        info.as_dictionary_mut()
+            .unwrap()
+            .insert("CFBundleExecutable".into(), "demo_app".into());
+        info.to_file_xml(host.path().join("Info.plist")).unwrap();
+        prepare_resource_bundle_lookup_for_install(host.path()).unwrap();
+        let info = plist::Value::from_file(host.path().join("Info.plist")).unwrap();
+        assert_eq!(
+            info.as_dictionary().unwrap()["CFBundleName"].as_string(),
+            Some("DemoApp")
+        );
+    }
+
+    #[test]
+    fn ambiguous_resources_do_not_rewrite_the_signing_identity() {
+        let host = resource_host();
+        fs::create_dir(host.path().join("other_other.bundle")).unwrap();
+        fs::write(host.path().join("other_other.bundle/app.json"), "{}").unwrap();
+        assert!(prepare_resource_bundle_lookup_for_install(host.path()).is_err());
+        let info = plist::Value::from_file(host.path().join("Info.plist")).unwrap();
+        assert_eq!(
+            info.as_dictionary().unwrap()["CFBundleIdentifier"].as_string(),
+            Some("com.example.demo.dev")
+        );
+    }
+
+    #[test]
+    fn resource_lookup_handles_underscored_packages_and_nested_resources() {
+        let host = resource_host();
+        fs::remove_dir_all(host.path().join("demo_app_demo_app.bundle")).unwrap();
+        let resources = host
+            .path()
+            .join("sample_module_sample_module.bundle/Resources");
+        fs::create_dir_all(&resources).unwrap();
+        fs::write(resources.join("app.json"), "{}").unwrap();
+        prepare_resource_bundle_lookup_for_install(host.path()).unwrap();
+        let info = plist::Value::from_file(host.path().join("Info.plist")).unwrap();
+        assert_eq!(
+            info.as_dictionary().unwrap()["CFBundleName"].as_string(),
+            Some("sample_module")
+        );
+    }
+
+    #[test]
+    fn native_apps_without_host_resources_keep_their_metadata() {
+        let host = resource_host();
+        fs::remove_dir_all(host.path().join("demo_app_demo_app.bundle")).unwrap();
+        let path = host.path().join("Info.plist");
+        let before = fs::read(&path).unwrap();
+        prepare_resource_bundle_lookup_for_install(host.path()).unwrap();
+        assert_eq!(fs::read(path).unwrap(), before);
+    }
 
     #[test]
     fn install_hosts_come_from_the_bundle_app_json() {
