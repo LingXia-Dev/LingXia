@@ -27,6 +27,7 @@ import '../pages/surface-port.test.js';
 import '../pages/video-playback.test.js';
 import '../pages/media-info.test.js';
 import '../pages/channel.test.js';
+import '../pages/cloud.test.js';
 import '../pages/components.test.js';
 import '../pages/navigator.test.js';
 import '../pages/native-components.test.js';

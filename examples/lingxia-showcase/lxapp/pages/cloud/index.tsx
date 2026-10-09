@@ -136,6 +136,7 @@ function CloudAuthView({
                 it silently refreshes, so hide it in favor of Add Identity. */}
             {!tenant ? (
               <button
+                data-testid="cloud-login"
                 onClick={loginInteractive}
                 className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-linear-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-600 text-white"
               >
@@ -143,12 +144,14 @@ function CloudAuthView({
               </button>
             ) : null}
             <button
+              data-testid="cloud-add-identity"
               onClick={addTenant}
               className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-linear-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white"
             >
               Add Identity
             </button>
             <button
+              data-testid="cloud-logout"
               onClick={logoutCurrentTenant}
               className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-linear-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white"
             >
@@ -176,7 +179,7 @@ function CloudAuthView({
             </div>
             <div className="flex justify-between items-center py-3 border-b border-line-200 gap-4">
               <span className="text-sm text-gray-600">Status</span>
-              <span className={`text-sm font-semibold px-3 py-1 rounded-lg text-right ${authStatusColor(status)}`}>{status}</span>
+              <span data-testid="cloud-auth-status" className={`text-sm font-semibold px-3 py-1 rounded-lg text-right ${authStatusColor(status)}`}>{status}</span>
             </div>
             <div className="flex justify-between items-center py-3 border-b border-line-200 gap-4">
               <span className="text-sm text-gray-600">Active Tenant</span>
@@ -357,9 +360,10 @@ function CloudMqttView({
                 {mqttSubscribed ? 'active' : 'inactive'}
               </span>
             </div>
-            <div className="mt-3 text-sm font-semibold text-gray-800">{mqttStatus}</div>
+            <div data-testid="cloud-mqtt-status" className="mt-3 text-sm font-semibold text-gray-800">{mqttStatus}</div>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <button
+                data-testid="cloud-subscribe"
                 onClick={startMqttDemo}
                 disabled={mqttSubscribed}
                 className={`py-3 text-sm font-medium rounded-xl transition-all duration-200 shadow-sm active:scale-[0.98] ${
@@ -371,6 +375,7 @@ function CloudMqttView({
                 Subscribe
               </button>
               <button
+                data-testid="cloud-unsubscribe"
                 onClick={stopMqttDemo}
                 disabled={!mqttSubscribed}
                 className={`py-3 text-sm font-medium rounded-xl transition-all duration-200 shadow-sm active:scale-[0.98] ${
@@ -460,12 +465,13 @@ function CloudFunctionsView({
         <div className="p-5 space-y-4">
           <div className="rounded-xl border border-line-200 bg-indigo-50/60 p-4">
             <div className="text-xs uppercase tracking-wide text-indigo-700 dark:text-indigo-400">Status</div>
-            <div className="mt-2 text-sm font-semibold text-gray-800">{functionsStatus}</div>
+            <div data-testid="cloud-functions-status" className="mt-2 text-sm font-semibold text-gray-800">{functionsStatus}</div>
             {functionsAvailable.length === 0 ? null : (
               <div className="mt-4 flex flex-wrap gap-2">
                 {functionsAvailable.map((name) => (
                   <button
                     key={name}
+                    data-testid="cloud-function" data-function={name}
                     onClick={() => callNamedFunction({ name })}
                     className="px-4 py-2 rounded-xl text-sm font-medium bg-linear-to-r from-sky-600 to-sky-500 text-white"
                   >
@@ -550,7 +556,7 @@ export default function CloudPage() {
   } = data;
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-surface-50 to-surface-100">
+    <div data-testid="cloud-page" data-mode={type} className="min-h-screen bg-linear-to-br from-surface-50 to-surface-100">
       <div className="px-4 py-6">
         {type === 'mqtt' ? (
           <CloudMqttView

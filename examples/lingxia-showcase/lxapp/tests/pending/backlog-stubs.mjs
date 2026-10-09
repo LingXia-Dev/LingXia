@@ -268,11 +268,4 @@ export default [
     covers: ["lx.startPullDownRefresh"],
     reason: "page JSON vs app.info() is not asserted",
   },
-  {
-    id: "PEND-CLOUD-TESTID-001",
-    title: "cloud page testids on both frameworks",
-    mode: "planned",
-    covers: ["lx.navigateTo"],
-    reason: "pages/cloud still has no data-testid on either view",
-  },
 ];
