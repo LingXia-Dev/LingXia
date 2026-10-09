@@ -10,12 +10,19 @@ export interface AndroidNode {
 export function androidDevice(t: Fixture) {
   const base = t.arg('androidDevice');
   if (!base) throw new Error('Android device fixture is required');
-  const request = async <T>(path: string, body?: object): Promise<T> => {
+  const send = async <T>(path: string, body?: object): Promise<T> => {
     const response = await fetch(`${base}/${path}`, body === undefined ? {} : {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
     });
     if (!response.ok) throw new Error(`Android ${path}: ${response.status} ${await response.text()}`);
     return response.json() as Promise<T>;
+  };
+  // A timed-out assertion can leave a UI dump in flight while cleanup begins.
+  let pending: Promise<unknown> = Promise.resolve();
+  const request = <T>(path: string, body?: object): Promise<T> => {
+    const result = pending.then(() => send<T>(path, body));
+    pending = result.catch(() => undefined);
+    return result;
   };
   const nodes = async (): Promise<AndroidNode[]> => {
     const { xml } = await request<{ xml: string }>('hierarchy');

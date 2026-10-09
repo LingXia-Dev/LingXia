@@ -7,3 +7,4 @@ import '../platform/android/browser.test.js';
 import '../platform/android/native-interaction.test.js';
 
 import '../platform/android/native-overlay.test.js';
+import '../platform/android/native-picker.test.js';

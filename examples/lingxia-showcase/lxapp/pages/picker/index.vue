@@ -58,7 +58,7 @@
             @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'multiTime', value })"
             @column-change="(value: string | string[]) => onPickerScroll?.({ field: 'multiTime', value })"
           >
-            <div class="p-3 bg-linear-to-r from-purple-500 to-pink-500 text-white rounded-lg text-center">
+            <div data-testid="picker-time-trigger" class="p-3 bg-linear-to-r from-purple-500 to-pink-500 text-white rounded-lg text-center">
               {{ multiTimeLabel }}
             </div>
           </LxPicker>
