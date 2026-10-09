@@ -173,10 +173,11 @@ export default [
   },
   {
     id: "PEND-APP-LIFE-001",
+    implementedOn: ["android"],
     title: "App onLaunch, onShow, and onHide if declared",
     mode: "planned",
-    covers: ["lx.host.getBaseInfo"],
-    reason: "App lifecycle hooks are not first-class covers yet",
+    covers: ["App.onLaunch", "App.onShow", "App.onHide"],
+    reason: "NAV-APP-001 checks one launch and exact hide/show deltas across a real Android app hop; desktop return navigation remains pending",
   },
   {
     id: "PEND-PICKER-001",
