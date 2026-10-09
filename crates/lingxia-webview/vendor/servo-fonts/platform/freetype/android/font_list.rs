@@ -15,8 +15,8 @@ use style::values::computed::{
 
 use super::xml::{Attribute, Node};
 use crate::{
-    FallbackFontSelectionOptions, FontIdentifier, FontTemplate, FontTemplateDescriptor,
-    LocalFontIdentifier, LowercaseFontFamilyName,
+    EmojiPresentationPreference, FallbackFontSelectionOptions, FontIdentifier, FontTemplate,
+    FontTemplateDescriptor, LocalFontIdentifier, LowercaseFontFamilyName,
 };
 
 static FONT_LIST: LazyLock<FontList> = LazyLock::new(FontList::new);
@@ -166,7 +166,11 @@ impl FontList {
     // Creates a new FontList from a path to the font mapping xml file.
     fn from_path(path: &str) -> Option<FontList> {
         let bytes = std::fs::read(path).ok()?;
-        let nodes = super::xml::parse(&bytes).ok()?;
+        Self::from_bytes(&bytes)
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Option<FontList> {
+        let nodes = super::xml::parse(bytes).ok()?;
 
         // find familyset root node
         let familyset = nodes.iter().find_map(|e| match e {
@@ -299,10 +303,19 @@ impl FontList {
         }
 
         for name in names {
-            out.push(FontFamily {
-                name,
-                fonts: fonts.clone(),
-            });
+            // Android splits emoji and flags into separate und-Zsye families.
+            // Keep every face so glyph matching can reach the later fonts.
+            if let Some(family) = out
+                .iter_mut()
+                .find(|family| family.name.eq_ignore_ascii_case(&name))
+            {
+                family.fonts.extend(fonts.iter().cloned());
+            } else {
+                out.push(FontFamily {
+                    name,
+                    fonts: fonts.clone(),
+                });
+            }
         }
     }
 
@@ -504,8 +517,23 @@ where
 pub fn fallback_font_families(options: FallbackFontSelectionOptions) -> Vec<&'static str> {
     let mut families = vec![];
 
+    if options.presentation_preference == EmojiPresentationPreference::Emoji {
+        families.push("lang:und-Zsye");
+        families.push("Noto Color Emoji");
+    }
+
     if let Some(block) = options.character.block() {
         match block {
+            UnicodeBlock::HangulJamo
+            | UnicodeBlock::HangulCompatibilityJamo
+            | UnicodeBlock::HangulJamoExtendedA
+            | UnicodeBlock::HangulSyllables
+            | UnicodeBlock::HangulJamoExtendedB => {
+                // is_cjk() excludes Hangul syllables and most Jamo blocks.
+                families.push("lang:ko");
+                families.push("Noto Sans CJK KR");
+            },
+
             UnicodeBlock::Armenian => {
                 families.push("Droid Sans Armenian");
             },
@@ -604,6 +632,7 @@ pub fn fallback_font_families(options: FallbackFontSelectionOptions) -> Vec<&'st
         }
     }
 
+    families.push("lang:und-Zsym");
     families.push("Droid Sans Fallback");
     families
 }
@@ -620,4 +649,81 @@ pub(crate) fn default_system_generic_font_family(
         GenericFontFamily::SystemUi => "Droid Sans",
     }
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use icu_locale_core::subtags::Language;
+
+    #[test]
+    fn emoji_and_flags_with_the_same_language_keep_both_fonts() {
+        let list = FontList::from_bytes(br#"<familyset>
+            <family lang="und-Zsye"><font weight="400" style="normal">NotoColorEmoji.ttf</font></family>
+            <family lang="und-Zsye"><font weight="400" style="normal">NotoColorEmojiFlags.ttf</font></family>
+        </familyset>"#).unwrap();
+        let family = list.find_family("lang:und-Zsye").unwrap();
+        assert_eq!(list.families.len(), 1);
+        assert_eq!(
+            family
+                .fonts
+                .iter()
+                .map(|font| font.filename.as_str())
+                .collect::<Vec<_>>(),
+            ["NotoColorEmoji.ttf", "NotoColorEmojiFlags.ttf"]
+        );
+    }
+
+    #[test]
+    fn emoji_presentation_uses_android_emoji_fallback() {
+        for (character, next) in [
+            ('😀', None),
+            ('👍', None),
+            ('🇨', None),
+            ('❤', Some('\u{fe0f}')),
+        ] {
+            let options = FallbackFontSelectionOptions::new(character, next, Language::UNKNOWN);
+            assert_eq!(fallback_font_families(options)[0], "lang:und-Zsye");
+        }
+        for (character, next) in [('A', None), ('1', None), ('❤', Some('\u{fe0e}'))] {
+            let options = FallbackFontSelectionOptions::new(character, next, Language::UNKNOWN);
+            assert!(!fallback_font_families(options).contains(&"lang:und-Zsye"));
+        }
+    }
+
+    #[test]
+    fn merging_language_families_preserves_collection_faces() {
+        let list = FontList::from_bytes(
+            br#"<familyset>
+            <family lang="zh-Hans,ja"><font index="2">NotoSansCJK.ttc</font></family>
+            <family lang="zh-Hans"><font index="1">NotoSerifCJK.ttc</font></family>
+        </familyset>"#,
+        )
+        .unwrap();
+        let chinese = list.find_family("lang:zh-Hans").unwrap();
+        assert_eq!(
+            chinese
+                .fonts
+                .iter()
+                .map(|font| font.index)
+                .collect::<Vec<_>>(),
+            [Some(2), Some(1)]
+        );
+        assert_eq!(list.find_family("lang:ja").unwrap().fonts.len(), 1);
+    }
+
+    #[test]
+    fn hangul_and_text_symbols_reach_modern_android_families() {
+        for character in ['한', '\u{1100}', '\u{3131}', '\u{a960}', '\u{d7b0}'] {
+            let options = FallbackFontSelectionOptions::new(character, None, Language::UNKNOWN);
+            assert_eq!(fallback_font_families(options)[0], "lang:ko");
+        }
+        for character in ['❤', '☀'] {
+            let options =
+                FallbackFontSelectionOptions::new(character, Some('\u{fe0e}'), Language::UNKNOWN);
+            let families = fallback_font_families(options);
+            assert!(families.contains(&"lang:und-Zsym"));
+            assert!(!families.contains(&"lang:und-Zsye"));
+        }
+    }
 }
