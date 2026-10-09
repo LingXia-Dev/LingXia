@@ -19,6 +19,23 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.23.0 — 2026-10-09
+
+### Writing an lxapp
+
+- **lxapp**: only an explicit channel selector retires a live session (8782e7bb2)
+- **lxapp**: default to release and support draft scan links (3698992c2)
+
+### Embedding a host app
+
+- **android**: cover every View push and keep legacy diagnostics (42f762705)
+- **android**: restore startup on legacy WebViews (458c1d9b9)
+- **ios**: preserve resource lookup when re-signing installs (93ad6c8e9)
+
+### CLI and CI
+
+- **cli**: keep iOS resource lookup working for localized hosts (dd265835c)
+
 ## 0.22.0 — 2026-10-08
 
 ### Breaking
