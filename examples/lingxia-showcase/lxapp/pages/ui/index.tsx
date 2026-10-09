@@ -69,6 +69,7 @@ export default function UIPage() {
     moduleCounter = 0,
     events = [],
     modalResult = null,
+    actionSheetResult = null,
     toastIcon = 'success',
     toastIconLabel = 'Success',
     toastIconOptions = [],
@@ -544,6 +545,7 @@ export default function UIPage() {
             >
               Show Action Sheet
             </div>
+            {actionSheetResult && <pre data-testid="actionsheet-result" className="p-4 text-xs whitespace-pre-wrap">{JSON.stringify(actionSheetResult, null, 2)}</pre>}
           </div>
         )}
 

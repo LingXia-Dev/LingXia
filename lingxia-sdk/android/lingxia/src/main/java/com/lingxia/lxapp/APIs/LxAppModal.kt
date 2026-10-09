@@ -2,6 +2,8 @@ package com.lingxia.lxapp.APIs
 
 import com.lingxia.lxapp.LxAppDismissal
 
+import android.os.Handler
+import android.os.Looper
 import android.app.Activity
 import android.content.Context
 import android.graphics.Color
@@ -11,7 +13,8 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
-import android.util.Log
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.core.view.setPadding
 import com.lingxia.app.LxLog
 import com.lingxia.app.NativeApi
@@ -48,6 +51,8 @@ internal object LxAppModal {
 
     private var currentModalView: View? = null
     private var currentMaskView: View? = null
+    private var currentCallbackId: Long? = null
+    private var backCallback: OnBackPressedCallback? = null
 
     @JvmStatic
     fun showModal(
@@ -114,18 +119,33 @@ internal object LxAppModal {
         // Hide any existing modal first
         hideModalInternal()
 
+        currentCallbackId = callbackId
         val palette = OverlayPalette.of(activity)
 
         // Create mask
-        currentMaskView = createMaskView(activity, config.showCancel, palette)
+        currentMaskView = createMaskView(activity, palette)
         rootView.addView(currentMaskView)
 
         // Create modal view
         currentModalView = createModalView(activity, config, callbackId, palette)
         rootView.addView(currentModalView)
+        currentModalView?.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: View) = Unit
+            override fun onViewDetachedFromWindow(view: View) {
+                // Let the parent finish its detach traversal before removing children.
+                Handler(Looper.getMainLooper()).post { completeModal(callbackId, false) }
+            }
+        })
+        (activity as? ComponentActivity)?.let { owner ->
+            backCallback = object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (config.showCancel) completeModal(callbackId, false)
+                }
+            }.also { owner.onBackPressedDispatcher.addCallback(owner, it) }
+        }
     }
 
-    private fun createMaskView(context: Context, allowCancel: Boolean, palette: OverlayPalette): View {
+    private fun createMaskView(context: Context, palette: OverlayPalette): View {
         return View(context).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -133,16 +153,6 @@ internal object LxAppModal {
             )
             setBackgroundColor(palette.scrim)
             isClickable = true
-
-            if (allowCancel) {
-                setOnClickListener {
-                    if (allowCancel) {
-                        Log.i(TAG, "Modal cancelled by mask click")
-                        // TODO: Add callback for mask click cancel
-                        hideModalInternal()
-                    }
-                }
-            }
         }
     }
 
@@ -160,10 +170,12 @@ internal object LxAppModal {
             // Prevent clicks from passing through to views behind the modal
             isClickable = true
             isFocusable = true
+            if (config.showCancel) setOnClickListener { completeModal(callbackId, false) }
         }
 
         val modalContent = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
+            isClickable = true
             val paddingPx = (24 * context.resources.displayMetrics.density).toInt()
             setPadding(paddingPx)
 
@@ -246,9 +258,7 @@ internal object LxAppModal {
                     text = config.cancelText ?: "",
                     isPrimary = false,
                     onClick = {
-                        // Call callback with cancel result (user cancelled = error 2000)
-                        NativeApi.onCallback(callbackId, false, LxAppDismissal.USER_DISMISSED)
-                        hideModalInternal()
+                        completeModal(callbackId, false)
                     }
                 )
                 addView(cancelButton)
@@ -267,13 +277,7 @@ internal object LxAppModal {
                     isPrimary = true,
                     color = config.confirmColor,
                     onClick = {
-                        // Call callback with confirm result
-                        val result = JSONObject().apply {
-                            put("confirm", true)
-                            put("cancel", false)
-                        }
-                        NativeApi.onCallback(callbackId, true, result.toString())
-                        hideModalInternal()
+                        completeModal(callbackId, true)
                     }
                 )
                 addView(confirmButton)
@@ -286,13 +290,7 @@ internal object LxAppModal {
                     isPrimary = true,
                     color = config.confirmColor,
                     onClick = {
-                        // Call callback with confirm result
-                        val result = JSONObject().apply {
-                            put("confirm", true)
-                            put("cancel", false)
-                        }
-                        NativeApi.onCallback(callbackId, true, result.toString())
-                        hideModalInternal()
+                        completeModal(callbackId, true)
                     }
                 )
                 confirmButton.layoutParams = LinearLayout.LayoutParams(
@@ -351,7 +349,23 @@ internal object LxAppModal {
         }
     }
 
+    private fun completeModal(callbackId: Long, confirmed: Boolean) {
+        if (currentCallbackId != callbackId) return
+        currentCallbackId = null
+        hideModalInternal()
+        val result = if (confirmed) JSONObject().apply {
+            put("confirm", true)
+            put("cancel", false)
+        }.toString() else LxAppDismissal.USER_DISMISSED
+        NativeApi.onCallback(callbackId, confirmed, result)
+    }
+
     private fun hideModalInternal() {
+        // Replacement and activity teardown must settle the old request exactly once.
+        val pending = currentCallbackId
+        currentCallbackId = null
+        backCallback?.remove()
+        backCallback = null
         currentModalView?.let { modalView ->
             removeModalFromParent(modalView)
             currentModalView = null
@@ -361,6 +375,7 @@ internal object LxAppModal {
             removeModalFromParent(maskView)
             currentMaskView = null
         }
+        if (pending != null) NativeApi.onCallback(pending, false, LxAppDismissal.USER_DISMISSED)
     }
 
     private fun removeModalFromParent(view: View) {

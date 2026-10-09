@@ -127,10 +127,11 @@ export default [
   },
   {
     id: "PEND-NATIVE-OVERLAY-001",
+    implementedOn: ["android"],
     title: "native modal and action sheet on a phone host",
     mode: "external-ui",
     covers: ["lx.showModal", "lx.showActionSheet"],
-    reason: "a phone draws these natively, outside the page: the page cannot read them and only a system tap answers them; dismissing one with the system Back leaves the promise pending, so a spec that opened one would leak it",
+    reason: "Android native-overlay tests cover OS input, dismissal, and replacement; other phone hosts still need a system-input fixture",
   },
   {
     id: "PEND-NAVAPP-DESKTOP-001",

@@ -41,8 +41,11 @@ entry.
 
 From the repository root, `scripts/automation/run-android-showcase.ps1 -Device
 <serial> -NativeFeature servo` builds and checks both Android frameworks. It
-starts the local HTTP fixture and reverses its port through adb, so transfer,
-media, and browser cases run too. Omit `-NativeFeature servo` for system WebView.
+starts the HTTP and Android system-input fixtures and reverses their ports through
+adb, so transfer, media, browser, physical gestures, and native dialog cases run
+too. Direct `lxdev test` runs need the fixture's `--secret-arg androidDevice=...`
+to include OS-input cases; see [harness setup](harness/README.md#android-system-input).
+Omit `-NativeFeature servo` for system WebView.
 Keep other installed development variants stopped: they can reconnect to the
 same forwarded dev port and replace the intended runtime connection.
 
