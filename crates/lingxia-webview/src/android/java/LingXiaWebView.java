@@ -75,9 +75,12 @@ public class LingXiaWebView extends WebView {
     private final AndroidDocumentBridgeState documentBridgeState =
             new AndroidDocumentBridgeState();
 
-    private String appId;
-    private String currentPath;
-    private long sessionId;
+    // Read from the JavaBridge thread by the legacy JavascriptInterface path.
+    private volatile String appId;
+    private volatile String currentPath;
+    private volatile long sessionId;
+    // Last top-level URL, recorded on the UI thread for off-thread diagnostics.
+    private volatile String lastNavigationUrl = "";
     // Assigned by Rust for this concrete native WebView. It is not a page
     // credential and is used only to reject callbacks from a stale instance.
     private final NativeViewIdBinding nativeViewIdBinding = new NativeViewIdBinding();
@@ -833,6 +836,7 @@ public class LingXiaWebView extends WebView {
     }
 
     AndroidDocumentBridgeState.Navigation beginTopLevelNavigation(String url) {
+        lastNavigationUrl = url != null ? url : "";
         // Chromium can run page JS (and therefore getPort()) before
         // onPageStarted, so a request pending here may belong to the document
         // that is still loading. A strict page keeps it: when the committed
@@ -1010,9 +1014,10 @@ public class LingXiaWebView extends WebView {
     }
 
     String getDiagnosticUrl() {
-        // JavascriptInterface runs off the UI thread; this optional URL is diagnostic only.
+        // WebView.getUrl() is UI-thread only; JavascriptInterface callbacks arrive
+        // on the JavaBridge thread, so they report the last navigation instead.
         if (Looper.myLooper() != Looper.getMainLooper()) {
-            return "";
+            return lastNavigationUrl;
         }
         String url = getUrl();
         return url != null ? url : "";

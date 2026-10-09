@@ -316,6 +316,15 @@ impl LeaveReason {
     }
 }
 
+/// View push asking a guarded page whether the user may leave (ES5: it may
+/// run before the page polyfills load).
+pub(crate) fn leave_request_script(reason: LeaveReason) -> String {
+    format!(
+        "var f = window.__lingxiaDispatchLeaveRequest; if (typeof f === 'function') f('{}');",
+        reason.as_str()
+    )
+}
+
 /// Represents a single page in a mini app
 #[derive(Clone)]
 pub struct PageInstance {
@@ -1809,10 +1818,7 @@ impl PageInstance {
     /// Ask the View of a guarded page whether the user may leave. The page
     /// stays put; the View answers through `navigation.leave`.
     pub(crate) fn request_leave(&self, reason: LeaveReason) {
-        self.push_view_script(&format!(
-            "var f = window.__lingxiaDispatchLeaveRequest; if (typeof f === 'function') f('{}');",
-            reason.as_str()
-        ));
+        self.push_view_script(&leave_request_script(reason));
     }
 
     /// Check if this page is a TabBar page

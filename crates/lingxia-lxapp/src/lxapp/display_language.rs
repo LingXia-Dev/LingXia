@@ -768,7 +768,7 @@ fn publish_effective(update: &DisplayLanguageEffectiveUpdate) {
 /// document is also sent the current value when its bridge reports ready
 /// ([`view_display_language_snapshot_script`]); the revision lets the page
 /// keep the newest of the two whichever lands last.
-fn view_display_language_script(revision: u64, effective: &LanguageTag) -> String {
+pub(crate) fn view_display_language_script(revision: u64, effective: &LanguageTag) -> String {
     let quoted = serde_json::to_string(effective.as_str())
         .unwrap_or_else(|_| format!("\"{FALLBACK_LANGUAGE}\""));
     format!("var f = window.__lingxiaApplyDisplayLanguage; if (f) f({quoted}, {revision});")

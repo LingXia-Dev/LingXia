@@ -242,6 +242,9 @@ pub(crate) fn bootstrap_script(
       root.style.setProperty('--lx-page-chrome-top-inset', layout.topInset + 'px');
       root.style.setProperty('--lx-page-chrome-bottom-inset', layout.bottomInset + 'px');
       root.style.setProperty('--lx-page-chrome-capsule-inline-end-inset', layout.capsuleInlineEndInset + 'px');
+      ['top', 'right', 'bottom', 'left', 'width', 'height'].forEach(function (edge) {{
+        root.style.setProperty('--lx-page-chrome-capsule-' + edge, (rect ? rect[edge] : 0) + 'px');
+      }});
       root.style.colorScheme = scheme;
       root.setAttribute('data-theme', scheme);
     }}
@@ -672,6 +675,8 @@ mod tests {
         check_view_scripts("runtime");
     }
 
+    /// Every script the runtime pushes into a page WebView. A legacy WebView
+    /// (Chromium 67, no polyfills yet) must parse and run all of them.
     fn check_view_scripts(mode: &str) {
         use std::io::Write;
         use std::process::{Command, Stdio};
@@ -698,8 +703,19 @@ mod tests {
             "bootstrap": bootstrap_script(&initial, ResolvedAppearance::Dark),
             "publication": publication_script(&updated, ResolvedAppearance::Light),
             "stale": publication_script(&initial, ResolvedAppearance::Dark),
+            "pushes": {
+                "displayLanguage": super::super::display_language::view_display_language_script(
+                    7,
+                    &super::super::display_language::LanguageTag::parse("zh-CN").unwrap(),
+                ),
+                "surfaceContext": super::super::surface::view_surface_context_script_for(
+                    r#"{"sizeClass":"regular"}"#,
+                    3,
+                ),
+                "leaveRequest": crate::page::leave_request_script(crate::page::LeaveReason::Back),
+            },
         });
-        let mut child = Command::new("node")
+        let spawned = Command::new("node")
             .arg(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/tests/page-chrome-compat.cjs"
@@ -708,14 +724,25 @@ mod tests {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .spawn()
-            .expect("View compatibility tests require Node.js and npm ci in packages/");
-        child
+            .spawn();
+        let mut child = match spawned {
+            Ok(child) => child,
+            // CI always has Node; a bare local checkout may not.
+            Err(error)
+                if error.kind() == std::io::ErrorKind::NotFound
+                    && std::env::var_os("CI").is_none() =>
+            {
+                eprintln!("skipping View {mode} check: node is not on PATH");
+                return;
+            }
+            Err(error) => panic!("View compatibility tests require Node.js: {error}"),
+        };
+        // A write error means node exited early; its stderr below says why.
+        let _ = child
             .stdin
             .take()
             .unwrap()
-            .write_all(input.to_string().as_bytes())
-            .unwrap();
+            .write_all(input.to_string().as_bytes());
         let output = child.wait_with_output().unwrap();
         assert!(
             output.status.success(),
