@@ -682,14 +682,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          # One cache for all three suites, saved (on main) by runtime only:
-          # its `cargo test` runs leave compiled .rlib dependencies that the
-          # other suites link against, whereas clippy emits only .rmeta. Three
-          # per-suite caches of several GB each would evict every other OS's
-          # cache under the 10 GB repository budget. PRs never save: they must
-          # not fail after successful checks while compressing the target dir.
-          shared-key: rust-windows
-          save-if: ${{ github.ref == 'refs/heads/main' && matrix.suite == 'runtime' }}
+          # Restore-only: automation-windows-react saves the one Windows cache
+          # on main; a second multi-GB copy evicted other OSes from the 10 GB budget.
+          shared-key: windows
+          save-if: false
 
       - uses: taiki-e/install-action@cargo-hack
         if: matrix.suite == 'lint'
@@ -1127,7 +1123,7 @@ jobs:
     name: automation-${{ matrix.platform }}-${{ matrix.profile }}
     if: ${{ needs.changes.outputs.automation == 'true' }}
     runs-on: ${{ matrix.os }}
-    # Windows PRs miss rust-cache (saved on main only) and need a longer cold CLI compile.
+    # A cold Windows rust-cache (new toolchain or runner image) means a full CLI + host compile.
     timeout-minutes: ${{ matrix.os == 'windows-latest' && 120 || 75 }}
     strategy:
       fail-fast: false
@@ -1146,9 +1142,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          # The frameworks differ only in the lxapp frontend, so the Windows
-          # react and vue jobs share one target cache that react alone saves.
-          shared-key: showcase-automation-${{ matrix.platform }}
+          # Windows shares one cache with rust-windows-target; react alone saves
+          # it on main (it builds the CLI with vendored OpenSSL plus the host).
+          shared-key: ${{ matrix.platform == 'windows' && 'windows' || format('showcase-automation-{0}', matrix.platform) }}
           cache-on-failure: true
           # Cancelled PR automation must release the concurrency group instead
           # of spending minutes archiving a target directory in its post step.
