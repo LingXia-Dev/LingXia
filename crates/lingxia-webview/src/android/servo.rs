@@ -1104,7 +1104,7 @@ impl EngineState {
             Command::Touch(kind, id, x, y) => {
                 if let Some(view) = &self.view {
                     if matches!(&kind, TouchEventType::Down) {
-                        view.focus();
+                        view.set_focused(true);
                     }
                     view.notify_input_event(InputEvent::Touch(TouchEvent::new(
                         kind,
@@ -1596,10 +1596,9 @@ impl EngineState {
     }
 }
 
-/// Pause/resume: stop Servo painting and throttle the view's timers and
-/// animations while the host view is hidden.
+/// Servo 0.7 derives pipeline throttling from visibility.
 fn apply_throttle(view: &WebView, throttled: bool) {
-    view.set_throttled(throttled);
+    view.set_focused(!throttled);
     if throttled {
         view.hide();
     } else {
@@ -2432,7 +2431,7 @@ fn update_network_request(
     entry.request_body = request
         .body
         .as_ref()
-        .map(|body| String::from_utf8_lossy(&body.0).to_string());
+        .map(|body| String::from_utf8_lossy(body).to_string());
     entry.wall_time = Some(wall_time);
     entry.started = wall_time;
 }
@@ -2453,7 +2452,7 @@ fn network_body(body: Option<&servo_net::ObservedNetworkBody>, mime: Option<&str
     let Some(body) = body else {
         return NetworkBody::None;
     };
-    if body.0.len() > CAPTURE_BODY_LIMIT {
+    if body.len() > CAPTURE_BODY_LIMIT {
         return NetworkBody::Skipped {
             reason: format!(
                 "response body exceeds {} byte capture limit",
@@ -2462,12 +2461,12 @@ fn network_body(body: Option<&servo_net::ObservedNetworkBody>, mime: Option<&str
         };
     }
     if is_textual_mime(mime)
-        && let Ok(text) = String::from_utf8(body.0.clone())
+        && let Ok(text) = String::from_utf8(body.to_vec())
     {
         return NetworkBody::Text { text };
     }
     NetworkBody::Base64 {
-        base64: base64::engine::general_purpose::STANDARD.encode(&body.0),
+        base64: base64::engine::general_purpose::STANDARD.encode(body),
     }
 }
 

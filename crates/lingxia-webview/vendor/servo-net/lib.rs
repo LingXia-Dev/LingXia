@@ -10,6 +10,7 @@ pub mod cookie;
 pub mod cookie_storage;
 mod decoder;
 mod devtools;
+mod disk_cache;
 pub mod embedder;
 pub mod filemanager_thread;
 mod hosts;
@@ -32,7 +33,8 @@ pub use navigation_observer::{NavigationObserver, set_navigation_observer};
 pub use devtools_traits::{
     HttpRequest as ObservedNetworkRequest, HttpResponse as ObservedNetworkResponse,
 };
-pub use net_traits::{DebugVec as ObservedNetworkBody, NetworkError as ObservedNetworkError};
+pub use bytes::Bytes as ObservedNetworkBody;
+pub use net_traits::NetworkError as ObservedNetworkError;
 pub use servo_base::id::BrowsingContextId as ObservedBrowsingContextId;
 
 /// An implementation of the [Fetch specification](https://fetch.spec.whatwg.org/)
