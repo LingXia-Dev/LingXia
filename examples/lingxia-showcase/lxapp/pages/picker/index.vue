@@ -24,7 +24,7 @@
         <div class="text-sm font-medium text-gray-900">Single Column Selector</div>
         <LxPicker
           :columns="[coffees]"
-          :value="coffee"
+          :model-value="coffee"
           @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'coffee', value })"
           @column-change="(value: string | string[]) => onPickerScroll?.({ field: 'coffee', value })"
           placeholder="Select coffee"
@@ -36,7 +36,7 @@
           <div class="text-sm font-medium text-gray-900">Cascading (Custom Colors)</div>
           <LxPicker
             :columns="[continents, cities]"
-            :value="location"
+            :model-value="location"
             @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'location', value })"
             @column-change="(value: string | string[]) => onPickerScroll?.({ field: 'location', value })"
             placeholder="Select location"
@@ -51,16 +51,19 @@
 
         <div class="bg-surface rounded-xl p-4 space-y-3">
           <div class="text-sm font-medium text-gray-900">Multi Column + Custom UI Trigger</div>
-          <div class="text-xs text-gray-500 mb-2">Use children prop to customize trigger appearance</div>
+          <div class="text-xs text-gray-500 mb-2">Use the default slot to customize the trigger</div>
           <LxPicker
             :columns="[hours, minutes]"
-            :value="multiTime"
+            :model-value="multiTime"
             @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'multiTime', value })"
             @column-change="(value: string | string[]) => onPickerScroll?.({ field: 'multiTime', value })"
           >
-            <div data-testid="picker-time-trigger" class="p-3 bg-linear-to-r from-purple-500 to-pink-500 text-white rounded-lg text-center">
-              {{ multiTimeLabel }}
-            </div>
+            <template #default="{ open, disabled }">
+              <button type="button" :disabled="disabled" @click="open" data-testid="picker-time-trigger"
+                class="w-full p-3 bg-linear-to-r from-purple-500 to-pink-500 text-white rounded-lg text-center">
+                {{ multiTimeLabel }}
+              </button>
+            </template>
           </LxPicker>
         </div>
       </template>
@@ -69,7 +72,7 @@
         <div class="text-sm font-medium text-gray-900">Time Picker (mode=time)</div>
         <LxPicker
           mode="time"
-          :value="time"
+          :model-value="time"
           start="09:00"
           end="18:00"
           @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'time', value })"
@@ -84,7 +87,7 @@
           <LxPicker
             mode="date"
             fields="year"
-            :value="year"
+            :model-value="year"
             start="2010"
             end="2030"
             @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'year', value })"
@@ -98,7 +101,7 @@
           <LxPicker
             mode="date"
             fields="month"
-            :value="month"
+            :model-value="month"
             start="2023-01"
             end="2025-12"
             @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'month', value })"
@@ -112,7 +115,7 @@
           <LxPicker
             mode="date"
             fields="day"
-            :value="date"
+            :model-value="date"
             start="2024-01-01"
             end="2027-12-31"
             @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'date', value })"
@@ -126,7 +129,7 @@
           <LxPicker
             mode="date"
             fields="range"
-            :value="dateRange"
+            :model-value="dateRange"
             @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'dateRange', value })"
             @column-change="(value: string | string[]) => onPickerScroll?.({ field: 'dateRange', value })"
             placeholder="Select date range"
