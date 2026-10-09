@@ -5,7 +5,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/repo/scripts/ci" "$work/repo/scripts/lib" "$work/bin"
-cp "$script_dir/resolve-cli.sh" "$script_dir/cli-fingerprint.sh" "$work/repo/scripts/ci/"
+cp "$script_dir/resolve-cli.sh" "$script_dir/cli-fingerprint.sh" "$script_dir/npm-lock-closure.mjs" "$work/repo/scripts/ci/"
 cp "$script_dir/../lib/cargo-target-dir.sh" "$work/repo/scripts/lib/"
 
 cat > "$work/bin/cargo" <<'CARGO'
