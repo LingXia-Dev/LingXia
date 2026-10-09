@@ -48,7 +48,11 @@ test("report timeline preserves step, assertion and attachment order", async () 
   assert.match(html, /Timeline &middot; 3 recorded events/);
 });
 
-test("passing attempt reports bounded network provenance and links timeline attachments", async () => {
+test("passing attempt reports bounded network provenance and links timeline attachments", async (context) => {
+  let now = Date.now();
+  let advanceClock = true;
+  // Cross a clock tick during step setup, then finish within the body's tick.
+  context.mock.method(Date, "now", () => advanceClock ? now++ : now);
   let networkStart;
   const { attachments } = installFakeHost(createWorld(), {
     networkLog: () => [{ time: networkStart, kind: "fetch", method: "POST", url: "https://api.example/orders",
@@ -56,6 +60,7 @@ test("passing attempt reports bounded network provenance and links timeline atta
   });
   spec("creates an order", { id: "TRACE-NETWORK", forensics: false }, async (t) => {
     await t.step("create", async () => {
+      advanceClock = false;
       networkStart = Date.now();
       await t.attach("order.json", { id: 42 });
     });
