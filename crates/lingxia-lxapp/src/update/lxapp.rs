@@ -180,7 +180,9 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
     }
 
     fn is_bundled_available(&self) -> bool {
-        bundled_lxapp_available(&self.context_lxapp, &self.target_appid)
+        // Host assets belong to release; an explicit draft must come from its feed.
+        self.release_type == Channel::Release
+            && bundled_lxapp_available(&self.context_lxapp, &self.target_appid)
     }
 
     fn register_builtin_bundle(&self) -> Result<(), UpdateError> {
@@ -407,7 +409,9 @@ impl UpdateManager {
         }
 
         let _ = metadata::downloaded_remove(lxappid, release_type);
-        lxapp_runtime::forget_builtin_bundle_source(lxappid);
+        if release_type == Channel::Release {
+            lxapp_runtime::forget_builtin_bundle_source(lxappid);
+        }
         Ok(())
     }
 }
@@ -478,6 +482,7 @@ pub async fn prepare_lxapp_open(
         // (say, a development bundle caught mid-rebuild) is how it recovers;
         // it ships with the host and has nothing to install.
         if target_appid == home_appid {
+            lxapp_runtime::ensure_lxapp_ready(target_appid, release_type).await?;
             return Ok(());
         }
         return Err(LxAppError::ResourceNotFound(format!(
@@ -489,6 +494,7 @@ pub async fn prepare_lxapp_open(
     // runs before the installer would otherwise fetch it to disk.
     lxapp_runtime::registry::ensure_open_allowed(target_appid).await?;
     ensure_first_install(&home_lxapp, target_appid, release_type).await?;
+    lxapp_runtime::ensure_lxapp_ready(target_appid, release_type).await?;
     Ok(())
 }
 

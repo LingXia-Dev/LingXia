@@ -1096,6 +1096,13 @@ async fn open_app_spec(
         "aside" => lxapp::LxAppOpenRegion::Aside,
         _ => unreachable!("validated above"),
     };
+    let requested_channel = lxapp::parse_optional_channel(target.channel.as_deref())
+        .map_err(|error| surface_error(SurfaceErrorCode::InvalidArg, error))?;
+    let requested_channel = if lxapp::is_dev_bundle_appid(&app_id) {
+        lxapp::Channel::Draft
+    } else {
+        requested_channel
+    };
     if let Some(current_region) = lxapp::open_region(&app_id) {
         if current_region != requested_region {
             return Err(surface_error(
@@ -1107,8 +1114,10 @@ async fn open_app_spec(
                 ),
             ));
         }
-        show_lxapp_region(&lxapp, &app_id, &app_id, current_region, edge.as_deref()).await?;
-        return lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id, current_region);
+        if lxapp::try_get(&app_id).is_some_and(|app| app.release_type() == requested_channel) {
+            show_lxapp_region(&lxapp, &app_id, &app_id, current_region, edge.as_deref()).await?;
+            return lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id, current_region);
+        }
     }
     let (startup_options, release_type) =
         crate::navigator::prepare_app_open(&lxapp, &target, Some(invocation)).await?;

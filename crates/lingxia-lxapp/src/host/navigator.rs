@@ -134,7 +134,11 @@ async fn do_navigate_to_app(
         .await?;
     }
 
-    let target_app = crate::ensure_lxapp(&target_appid, release_type)?;
+    let target_app = await_or_cancel(
+        cancel,
+        crate::ensure_lxapp_ready(&target_appid, release_type),
+    )
+    .await?;
     let (startup_options, _) = build_startup_options(&target_app, &options)?;
     let release_type = startup_options.release_type;
 

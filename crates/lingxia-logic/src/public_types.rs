@@ -981,8 +981,7 @@ rong::js_api! {
         /// the next launch. The mutable service environment is
         /// {@link HostAppApi.toggleServiceEnv}. It is **not** the
         /// lxapp publish channel (`LxAppEnvVersion` / `LxAppReleaseType`:
-        /// `'release' | 'draft'`). Default channel is derived
-        /// from env (`dev` → `draft`, `prod` → `release`) and can be
+        /// `'release' | 'draft'`). Default channel is `release` and can be
         /// overridden when opening an lxapp.
         ///
         type HostAppEnv = r###"'dev' | 'prod'"###;
@@ -1110,8 +1109,7 @@ rong::js_api! {
     page?: ExternalPageName;
     query?: PageQuery;
     /**
-     * Lxapp publish channel. Defaults from the running service env
-     * (`dev` → `draft`, `prod` → `release`).
+     * Lxapp publish channel. Defaults to `release` in every service environment.
      */
     channel?: LxAppEnvVersion;
     targetVersion?: string;
@@ -1788,8 +1786,7 @@ true
     page?: ExternalPageName;
     query?: PageQuery;
     /**
-     * Lxapp publish channel. Defaults from the running service env
-     * (`dev` → `draft`, `prod` → `release`).
+     * Lxapp publish channel. Defaults to `release` in every service environment.
      */
     channel?: LxAppEnvVersion;
     targetVersion?: string;

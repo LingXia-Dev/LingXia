@@ -89,6 +89,75 @@ fn tracked(manager: &LxApps, app: &LxApp) -> bool {
 }
 
 #[tokio::test]
+async fn channel_switch_waits_for_the_only_logic_worker_and_blocks_early_opens() {
+    #[cfg(target_vendor = "apple")]
+    let _host = crate::apple_host_stubs::headless_lifecycle();
+    let f = Fixture::new();
+    let switch = f
+        .manager
+        .prepare_channel_switch(&f.old.appid, Channel::Draft);
+    tokio::pin!(switch);
+    assert!(futures::poll!(switch.as_mut()).is_pending());
+    let ack = f.take_ack();
+    assert!(f.old.session.is_retired());
+    assert_eq!(*f.manager.admission.active.borrow(), 0);
+    assert!(
+        !f.manager
+            .session_transition_locks
+            .contains_key(&f.old.appid)
+    );
+    assert!(matches!(
+        f.manager.ensure_lxapp(f.old.appid.clone(), Channel::Draft),
+        Err(LxAppError::ResourceExhausted(_))
+    ));
+    ack.send(()).unwrap();
+    time::timeout(Duration::from_secs(1), switch)
+        .await
+        .unwrap()
+        .unwrap();
+    let replacement = f
+        .manager
+        .ensure_lxapp(f.old.appid.clone(), Channel::Draft)
+        .unwrap();
+    replacement.config().logic = Some(LxAppLogicEntry::Enabled(true));
+    f.workers.create_app_svc(replacement.clone()).unwrap();
+    assert!(matches!(
+        f.messages.try_recv().unwrap(),
+        ServiceMessage::CreateAppSvc { .. }
+    ));
+    assert_eq!(replacement.release_type(), Channel::Draft);
+    assert_ne!(replacement.session_id(), f.old.session_id());
+    assert!(f.manager.channel_switches.is_empty());
+}
+
+#[tokio::test]
+async fn failed_channel_worker_ack_does_not_poison_later_opens() {
+    #[cfg(target_vendor = "apple")]
+    let _host = crate::apple_host_stubs::headless_lifecycle();
+    let f = Fixture::new();
+    let switch = f
+        .manager
+        .prepare_channel_switch(&f.old.appid, Channel::Draft);
+    tokio::pin!(switch);
+    assert!(futures::poll!(switch.as_mut()).is_pending());
+    drop(f.take_ack());
+    time::timeout(Duration::from_secs(1), switch)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(f.manager.channel_switches.is_empty());
+    f.manager
+        .prepare_channel_switch(&f.old.appid, Channel::Draft)
+        .await
+        .unwrap();
+    let replacement = f
+        .manager
+        .ensure_lxapp(f.old.appid.clone(), Channel::Draft)
+        .unwrap();
+    assert_eq!(replacement.release_type(), Channel::Draft);
+}
+
+#[tokio::test]
 async fn recreate_waits_for_worker_release_and_joins_pending_termination() {
     let f = Fixture::new();
     let restart =

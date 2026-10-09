@@ -160,10 +160,121 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
 
     if status == 200 {
         println!("{} Published successfully.", "✓".green().bold());
+        if meta.target == "lxapp" && meta.channel.as_deref() == Some("draft") {
+            match draft_open_url(&lingxia_server, &meta.target_id) {
+                Ok(url) => {
+                    println!("   Open draft: {url}");
+                    if let Err(err) = print_draft_qr(&url) {
+                        eprintln!("Could not display QR code: {err}");
+                    }
+                }
+                Err(err) => eprintln!("Could not generate draft link: {err}"),
+            }
+        }
         Ok(())
     } else {
         bail!("Upload failed (HTTP {status}): {body_str}");
     }
+}
+
+fn draft_open_url(server: &str, appid: &str) -> Result<String> {
+    let mut url = url::Url::parse(server).context("invalid publish server URL")?;
+    if url.scheme() != "https" || url.host_str().is_none() {
+        bail!("draft scan links require an HTTPS publish server");
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        bail!("draft scan links cannot include server credentials");
+    }
+    url.set_path("/lxapp/open");
+    url.set_query(None);
+    url.set_fragment(None);
+    url.set_query(Some(&format!(
+        "appId={}&channel=draft",
+        urlencoding::encode(appid)
+    )));
+    Ok(url.into())
+}
+
+fn draft_qr_png(code: &qrcode::QrCode) -> Result<Vec<u8>> {
+    let width = ((code.width() + 8) * 6) as u32;
+    let image = image::GrayImage::from_fn(width, width, |x, y| {
+        let x = (x / 6) as usize;
+        let y = (y / 6) as usize;
+        let dark = x >= 4
+            && y >= 4
+            && x < code.width() + 4
+            && y < code.width() + 4
+            && code[(x - 4, y - 4)] == qrcode::Color::Dark;
+        image::Luma([if dark { 0 } else { 255 }])
+    });
+    let mut png = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageLuma8(image).write_to(&mut png, image::ImageFormat::Png)?;
+    Ok(png.into_inner())
+}
+
+fn print_draft_qr(url: &str) -> Result<()> {
+    use base64::Engine;
+    use std::io::{IsTerminal, Write};
+
+    let mut stdout = std::io::stdout().lock();
+    if !stdout.is_terminal() {
+        return Ok(());
+    }
+    let code = qrcode::QrCode::new(url.as_bytes())?;
+    let term_program = env::var("TERM_PROGRAM").unwrap_or_default();
+    let kitty = env::var("TERM").is_ok_and(|term| term == "xterm-kitty")
+        || env::var_os("KITTY_WINDOW_ID").is_some()
+        || matches!(term_program.as_str(), "ghostty" | "WezTerm");
+    let iterm = term_program == "iTerm.app";
+    // Multiplexers may suppress graphics escapes; text remains scannable.
+    if (kitty || iterm) && env::var_os("TMUX").is_none() && env::var_os("STY").is_none() {
+        let data = base64::engine::general_purpose::STANDARD.encode(draft_qr_png(&code)?);
+        if iterm {
+            writeln!(
+                stdout,
+                "\x1b]1337;File=inline=1;preserveAspectRatio=1:{data}\x07"
+            )?;
+        } else {
+            let chunks: Vec<_> = data.as_bytes().chunks(4096).collect();
+            for (index, chunk) in chunks.iter().enumerate() {
+                let more = usize::from(index + 1 < chunks.len());
+                let header = if index == 0 { "a=T,f=100,t=d,q=2," } else { "" };
+                write!(
+                    stdout,
+                    "\x1b_G{header}m={more};{}\x1b\\",
+                    std::str::from_utf8(chunk)?
+                )?;
+            }
+            writeln!(stdout)?;
+        }
+    } else {
+        let width = code.width() + 8;
+        if width >= usize::from(console::Term::stdout().size().1) {
+            return Ok(());
+        }
+        let dark = |x: usize, y: usize| {
+            x >= 4
+                && y >= 4
+                && x < code.width() + 4
+                && y < code.width() + 4
+                && code[(x - 4, y - 4)] == qrcode::Color::Dark
+        };
+        for y in (0..width).step_by(2) {
+            write!(stdout, "\x1b[30;47m")?;
+            for x in 0..width {
+                let cell = match (dark(x, y), dark(x, y + 1)) {
+                    (false, false) => ' ',
+                    (true, false) => '▀',
+                    (false, true) => '▄',
+                    (true, true) => '█',
+                };
+                write!(stdout, "{cell}")?;
+            }
+            writeln!(stdout, "\x1b[0m")?;
+        }
+    }
+    stdout.flush()?;
+    Ok(())
 }
 
 /// `lingxia auth login lingxia`: store the token in the wallet, keyed by the
@@ -1036,6 +1147,7 @@ mod tests {
         normalize_platform, package_matches, publish_build_args, publish_upload,
         read_app_package_metadata, resolve_meta, resolve_publish_platform, signed_multipart_fields,
     };
+    use super::{draft_open_url, draft_qr_png};
     use crate::config::AppEnv;
     use std::fs;
     use std::io::Write;
@@ -1370,7 +1482,7 @@ app:
     }
 
     #[test]
-    fn lxapp_publish_defaults_channel_from_env() {
+    fn lxapp_publish_defaults_to_release_in_every_env() {
         let temp = TempDir::new().unwrap();
         fs::write(
             temp.path().join("lxapp.json"),
@@ -1382,11 +1494,48 @@ app:
 
         assert_eq!(meta.target, "lxapp");
         assert_eq!(meta.env, AppEnv::Dev);
-        assert_eq!(meta.channel.as_deref(), Some("draft"));
+        assert_eq!(meta.channel.as_deref(), Some("release"));
 
         let prod = resolve_meta(temp.path(), Some("prod"), None).unwrap();
         assert_eq!(prod.env, AppEnv::Prod);
         assert_eq!(prod.channel.as_deref(), Some("release"));
+    }
+
+    #[test]
+    fn draft_link_uses_publish_origin_and_encodes_appid() {
+        let url = draft_open_url(
+            "https://api.example.com:8443/service?old=1#fragment",
+            "shop/home &x=1",
+        )
+        .unwrap();
+        let url = url::Url::parse(&url).unwrap();
+        assert_eq!(
+            url.origin().ascii_serialization(),
+            "https://api.example.com:8443"
+        );
+        assert_eq!(url.path(), "/lxapp/open");
+        assert_eq!(url.fragment(), None);
+        assert_eq!(
+            url.query_pairs().collect::<Vec<_>>(),
+            vec![
+                ("appId".into(), "shop/home &x=1".into()),
+                ("channel".into(), "draft".into()),
+            ]
+        );
+        assert!(draft_open_url("http://localhost:8080", "shop").is_err());
+        assert!(draft_open_url("https://user:secret@api.example.com", "shop").is_err());
+    }
+
+    #[test]
+    fn draft_qr_decodes_to_the_publish_link() {
+        let url = draft_open_url("https://api.example.com:8443", "shop/home &x=1").unwrap();
+        let code = qrcode::QrCode::new(url.as_bytes()).unwrap();
+        let png = draft_qr_png(&code).unwrap();
+        let image = image::load_from_memory(&png).unwrap().to_luma8();
+        let (width, height) = image.dimensions();
+        let decoded =
+            rxing::helpers::detect_in_luma(image.into_raw(), width, height, None).unwrap();
+        assert_eq!(decoded.getText(), url);
     }
 
     #[test]

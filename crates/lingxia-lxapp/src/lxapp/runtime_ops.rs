@@ -8,6 +8,14 @@ pub fn ensure_lxapp(appid: &str, release_type: Channel) -> Result<Arc<LxApp>, Lx
     manager.ensure_lxapp(appid.to_string(), release_type)
 }
 
+/// Prepare a channel replacement, including release of the old Logic worker.
+pub async fn ensure_lxapp_ready(appid: &str, channel: Channel) -> Result<Arc<LxApp>, LxAppError> {
+    let manager = super::runtime_registry::get_lxapps_manager()
+        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".into()))?;
+    manager.prepare_channel_switch(appid, channel).await?;
+    manager.ensure_lxapp(appid.to_string(), channel)
+}
+
 /// Native-host bootstrap for the sealed home ControlApp. Any other app id is
 /// refused, so a payload id can never select this class.
 #[doc(hidden)]

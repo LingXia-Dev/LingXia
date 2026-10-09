@@ -1,7 +1,7 @@
 # App links
 
 Verified HTTPS URLs that open the host app. The host declares which domains it
-accepts; that is the only gate. Only `https://` is accepted, and every path on a
+accepts. Only `https://` is accepted, and every path on a
 configured host reaches the home lxapp's Logic as `scene: 8003` with the
 original URL. Logic decides what it means.
 
@@ -9,7 +9,10 @@ Links arrive from OS App Links / Universal Links, browser handoff, push links,
 and local notifications posted with
 `lx.host.notification.show({ target: { kind: 'appLink', url } })`. QR scans are
 the exception: `scanCode` auto-opens only the `/lxapp/` namespace; any other URL
-is just returned as the scan result.
+is just returned as the scan result. Scans also accept `/lxapp/open` on the
+current HTTPS `lingxiaServer` origin (same scheme, host, and effective port).
+This is an in-app trigger; it neither switches servers nor requires OS
+association files or a live webpage at that path.
 
 ## Product URLs
 
@@ -63,11 +66,13 @@ https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&c
 |---|---:|---|
 | `appId` | No | Target lxapp. Omitted → home. |
 | `path` | No | Target page path. Omitted → current/initial page. |
-| `channel` | No | `release` or `draft`, as in `navigateToApp`. Omitted → the running service env's default (`dev` → `draft`, `prod` → `release`). |
+| `channel` | No | `release` or `draft`, as in `navigateToApp`. Omitted → `release` in every service env. |
 
 URL-encode keys and values. Routing parameters are consumed; other parameters
 go to the page as its query. Only in this namespace is a malformed URL rejected.
-Do not mint product links under `/lxapp/`.
+Do not mint product links under `/lxapp/`. Selecting a different channel
+replaces the existing session and uses that channel's data; reopening the same
+channel preserves its running session.
 
 ## `appLinks.hosts`
 

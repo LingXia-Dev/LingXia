@@ -46,7 +46,8 @@ pub fn deliver(url: &str) -> i32 {
     dispatch(url, false)
 }
 
-/// Deliver only `/lxapp/*` URLs. Used by `scanCode`: a scan is something the
+/// Deliver only `/lxapp/*` URLs, also accepting `/lxapp/open` on the current
+/// HTTPS service origin. Used by `scanCode`: a scan is something the
 /// user aimed at a code inside an lxapp, so an arbitrary product URL that
 /// happens to be on a configured host must not take over the home lxapp.
 pub fn deliver_lxapp_only(url: &str) -> i32 {
@@ -54,7 +55,10 @@ pub fn deliver_lxapp_only(url: &str) -> i32 {
 }
 
 fn dispatch(url: &str, lxapp_only: bool) -> i32 {
-    match parse(url) {
+    let server = lxapp_only
+        .then(lingxia_app_context::service_lingxia_server)
+        .flatten();
+    match parse_with_scan_server(url, server.as_deref()) {
         Ok(Some(target)) => {
             if lxapp_only && !target.lxapp_route {
                 return 0;
@@ -71,6 +75,13 @@ fn dispatch(url: &str, lxapp_only: bool) -> i32 {
 
 /// Parse an inbound AppLink without opening it.
 pub fn parse(url: &str) -> Result<Option<AppLinkTarget>, String> {
+    parse_with_scan_server(url, None)
+}
+
+fn parse_with_scan_server(
+    url: &str,
+    scan_server: Option<&str>,
+) -> Result<Option<AppLinkTarget>, String> {
     let url = url.trim();
     let Some(rest) = url.strip_prefix("https://") else {
         return Ok(None);
@@ -80,7 +91,7 @@ pub fn parse(url: &str) -> Result<Option<AppLinkTarget>, String> {
     if host.is_empty() {
         return Err("missing host".to_string());
     }
-    if !host_allowed(host) {
+    if !host_allowed(host) && !scan_server.is_some_and(|server| scan_server_matches(url, server)) {
         return Ok(None);
     }
 
@@ -121,6 +132,42 @@ pub fn parse(url: &str) -> Result<Option<AppLinkTarget>, String> {
         release_type: query_parts.release_type,
         lxapp_route: true,
     }))
+}
+
+// A publish URL is a scan trigger, not an OS association or a service switch.
+// Compare origins, including ports, and admit only the reserved lxapp action.
+fn scan_server_matches(url: &str, server: &str) -> bool {
+    let (Ok(link), Ok(server)) = (url.parse::<http::Uri>(), server.parse::<http::Uri>()) else {
+        return false;
+    };
+    link.scheme_str() == Some("https")
+        && server.scheme_str() == Some("https")
+        && link.path() == "/lxapp/open"
+        && link.host().is_some_and(|host| {
+            server
+                .host()
+                .is_some_and(|other| host.eq_ignore_ascii_case(other))
+        })
+        && https_port(&link).is_some_and(|port| Some(port) == https_port(&server))
+        && link.authority().is_some_and(|a| !a.as_str().contains('@'))
+        && server
+            .authority()
+            .is_some_and(|a| !a.as_str().contains('@'))
+}
+
+fn https_port(uri: &http::Uri) -> Option<u16> {
+    let authority = uri.authority()?.as_str();
+    let host = uri.host()?;
+    match authority.strip_prefix(host)? {
+        "" => Some(443),
+        suffix => {
+            let port = suffix.strip_prefix(':')?;
+            if port.is_empty() || !port.bytes().all(|byte| byte.is_ascii_digit()) {
+                return None;
+            }
+            port.parse().ok()
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -486,5 +533,58 @@ mod tests {
         assert!(host_allowed_for("APP.EXAMPLE.COM", &hosts, true));
         assert!(!host_allowed_for("evil.example", &hosts, false));
         assert!(!host_allowed_for("evil.example", &hosts, true));
+    }
+
+    #[test]
+    fn scan_server_requires_the_current_https_origin_and_open_action() {
+        let server = "https://api.example.com:8443/service";
+        assert!(scan_server_matches(
+            "https://API.example.com:8443/lxapp/open?appId=shop&channel=draft",
+            server
+        ));
+        for url in [
+            "https://api.example.com/lxapp/open?appId=shop",
+            "https://other.example.com:8443/lxapp/open?appId=shop",
+            "http://api.example.com:8443/lxapp/open?appId=shop",
+            "https://api.example.com:8443/app/auth",
+            "https://api.example.com:8443/lxapp/open/extra",
+            "https://user@api.example.com:8443/lxapp/open",
+            "https://api.example.com:bogus/lxapp/open",
+            "https://api.example.com:99999/lxapp/open",
+        ] {
+            assert!(!scan_server_matches(url, server), "{url}");
+        }
+        assert!(scan_server_matches(
+            "https://api.example.com:443/lxapp/open",
+            "https://api.example.com"
+        ));
+        assert!(!scan_server_matches(
+            "https://api.example.com/lxapp/open",
+            "http://api.example.com"
+        ));
+        for port in ["", "bogus", "99999", "+443"] {
+            assert!(!scan_server_matches(
+                &format!("https://api.example.com:{port}/lxapp/open"),
+                "https://api.example.com"
+            ));
+            assert!(!scan_server_matches(
+                "https://api.example.com/lxapp/open",
+                &format!("https://api.example.com:{port}")
+            ));
+        }
+    }
+
+    #[test]
+    fn scanned_publish_link_parses_channel_and_page_query() {
+        let target = parse_with_scan_server(
+            "https://api.example.com:8443/lxapp/open?appId=shop%2Fdemo&channel=draft&id=42",
+            Some("https://api.example.com:8443"),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(target.appid, "shop/demo");
+        assert_eq!(target.release_type, Channel::Draft);
+        assert_eq!(target.query, "id=42");
+        assert!(target.lxapp_route);
     }
 }

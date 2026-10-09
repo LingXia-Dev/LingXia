@@ -612,7 +612,7 @@ struct PublishArgs {
     env: Option<String>,
 
     /// Lxapp publish channel: `release` | `draft`.
-    /// Defaults from `--env` (`dev` → `draft`, `prod` → `release`).
+    /// Defaults to `release`, independent of `--env`.
     #[arg(long = "channel", value_parser = ["release", "draft"])]
     channel: Option<String>,
 

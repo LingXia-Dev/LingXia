@@ -104,12 +104,12 @@ pub use runtime_bootstrap::{keep_responsive_for_development, register_runner_hos
 pub use runtime_ops::{
     close_lxapp, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
     ensure_builtin_lxapp, ensure_control_lxapp, ensure_control_surface_lxapp,
-    ensure_host_surface_owner, ensure_lxapp, get_current_lxapp, installed_lxapp_path,
-    is_lxapp_open, is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active,
-    notify_lxapp_host_visibility, notify_page_host_visibility, notify_page_instance,
-    notify_page_instance_by_id, on_low_memory, open_control_lxapp_page, open_lxapp,
-    refresh_auto_appearances, restart_lxapp, terminate_lxapp, touch_page_instance_by_id,
-    uninstall_lxapp,
+    ensure_host_surface_owner, ensure_lxapp, ensure_lxapp_ready, get_current_lxapp,
+    installed_lxapp_path, is_lxapp_open, is_pull_down_refresh_enabled, list_lxapps,
+    mark_lxapp_active, notify_lxapp_host_visibility, notify_page_host_visibility,
+    notify_page_instance, notify_page_instance_by_id, on_low_memory, open_control_lxapp_page,
+    open_lxapp, refresh_auto_appearances, restart_lxapp, terminate_lxapp,
+    touch_page_instance_by_id, uninstall_lxapp,
 };
 pub(crate) use runtime_registry::get_lxapps_manager;
 pub use runtime_registry::{
@@ -321,6 +321,7 @@ pub struct LxApps {
     /// Serializes replacement of one app's session so its native-assigned class
     /// cannot be lost between removal and reinsertion.
     session_transition_locks: DashMap<String, Arc<Mutex<()>>>,
+    channel_switches: DashMap<String, WorkerTermination>,
 }
 
 struct PendingDestroy {
@@ -376,6 +377,7 @@ impl LxApps {
             pending_destroy: Mutex::new(HashMap::new()),
             next_destroy_generation: AtomicU64::new(1),
             session_transition_locks: DashMap::new(),
+            channel_switches: DashMap::new(),
         }
     }
 
@@ -421,6 +423,56 @@ impl LxApps {
         })
     }
 
+    async fn prepare_channel_switch(
+        &self,
+        appid: &str,
+        channel: Channel,
+    ) -> Result<(), LxAppError> {
+        let admission = self.admission.enter(appid)?;
+        let completion = self.with_session_transition(appid, || {
+            self.channel_switches
+                .remove_if(appid, |_, pending| pending.is_complete());
+            if let Some(pending) = self.channel_switches.get(appid) {
+                return Ok(Some(pending.value().clone()));
+            }
+            let previous = self.lxapps.get(appid).map(|app| app.value().clone());
+            let Some(app) = previous else { return Ok(None) };
+            let channel = if is_dev_bundle_appid(appid) {
+                Channel::Draft
+            } else {
+                channel
+            };
+            if app.release_type() == channel {
+                return Ok(None);
+            }
+            if app.app_session_class() == AppSessionClass::ControlSurface {
+                return Err(LxAppError::InvalidParameter(
+                    "host control surfaces cannot select a downloaded draft".into(),
+                ));
+            }
+            let completion = self.retire_locked_with_completion(&app)?;
+            self.channel_switches
+                .insert(appid.to_string(), completion.clone());
+            Ok(Some(completion))
+        })?;
+        // Worker ACK is asynchronous. Neither ingress admission nor the per-app
+        // transition lock may be held while waiting for the old Logic to exit.
+        drop(admission);
+        if let Some(completion) = completion {
+            let result = completion.clone().wait().await;
+            self.with_session_transition(appid, || {
+                self.channel_switches
+                    .remove_if(appid, |_, pending| pending.same_completion(&completion));
+            });
+            if let Err(error) = result {
+                // A failed ACK quarantines that worker; another available
+                // worker may still start the requested channel, as on restart.
+                warn!("Switching channel without the previous worker: {}", error).with_appid(appid);
+            }
+        }
+        Ok(())
+    }
+
     /// The class a session for `appid` must be created with.
     ///
     /// ControlApp follows the native-sealed home identity rather than whatever
@@ -459,11 +511,15 @@ impl LxApps {
                 )));
             }
             if let Some(app) = self.lxapps.get(&appid) {
-                if app.is_control_app() {
+                if app.is_control_app()
+                    && (app.release_type() == release_type || is_dev_bundle_appid(&appid))
+                {
                     return Ok(app.clone());
                 }
-                drop(app);
-                self.destroy_lxapp_with_options(&appid, true);
+                if !app.is_control_app() {
+                    drop(app);
+                    self.destroy_lxapp_with_options(&appid, true);
+                }
             }
             self.ensure_lxapp_with_session_class(appid, release_type, AppSessionClass::ControlApp)
         })
@@ -491,11 +547,15 @@ impl LxApps {
                 )));
             }
             if let Some(app) = self.lxapps.get(&appid) {
-                if app.app_session_class() == AppSessionClass::ControlSurface {
+                if app.app_session_class() == AppSessionClass::ControlSurface
+                    && (app.release_type() == release_type || is_dev_bundle_appid(&appid))
+                {
                     return Ok(app.clone());
                 }
-                drop(app);
-                self.destroy_lxapp_with_options(&appid, true);
+                if app.app_session_class() != AppSessionClass::ControlSurface {
+                    drop(app);
+                    self.destroy_lxapp_with_options(&appid, true);
+                }
             }
             self.ensure_lxapp_with_session_class(
                 appid,
@@ -549,6 +609,7 @@ impl LxApps {
                 appid.clone(),
                 self.runtime.clone(),
                 self.executor.clone(),
+                crate::default_channel(),
             )?);
             self.track_instance(&app);
             app.bind_and_seal_resource_grants();
@@ -563,6 +624,28 @@ impl LxApps {
         release_type: Channel,
         session_class: AppSessionClass,
     ) -> Result<Arc<LxApp>, LxAppError> {
+        let release_type = if is_dev_bundle_appid(&appid) {
+            Channel::Draft
+        } else {
+            release_type
+        };
+        if session_class == AppSessionClass::ControlSurface
+            && release_type == Channel::Draft
+            && !is_dev_bundle_appid(&appid)
+        {
+            return Err(LxAppError::InvalidParameter(
+                "host control surfaces cannot select a downloaded draft".into(),
+            ));
+        }
+        if let Some(pending) = self.channel_switches.get(&appid)
+            && !pending.is_complete()
+        {
+            return Err(LxAppError::ResourceExhausted(
+                "channel switch is waiting for the previous Logic worker".into(),
+            ));
+        }
+        self.channel_switches
+            .remove_if(&appid, |_, pending| pending.is_complete());
         // A session retired by restart stays published while its worker is handed
         // back; an open in that window gets a fresh session, never the dead one.
         if self
@@ -571,6 +654,20 @@ impl LxApps {
             .is_some()
         {
             self.remove_from_stack(&appid);
+        }
+
+        // A channel selects a different bundle and storage scope. Retire the
+        // previous session even when closed; same-channel updates still defer.
+        let previous = self.lxapps.get(&appid).map(|app| app.value().clone());
+        if let Some(app) = previous
+            && app.release_type() != release_type
+        {
+            if app.logic_enabled() {
+                return Err(LxAppError::ResourceExhausted(
+                    "a live Logic channel switch requires ensure_lxapp_ready".into(),
+                ));
+            }
+            self.retire_locked(&app)?;
         }
 
         let has_pending_update = metadata::downloaded_get(&appid, release_type)
@@ -613,15 +710,26 @@ impl LxApps {
                 self.executor.clone(),
                 release_type,
             )?,
-            AppSessionClass::ControlApp => {
-                LxApp::new_as_home(appid.clone(), self.runtime.clone(), self.executor.clone())?
-            }
-            AppSessionClass::ControlSurface => LxApp::new_control_surface(
+            AppSessionClass::ControlApp => LxApp::new_as_home(
                 appid.clone(),
                 self.runtime.clone(),
                 self.executor.clone(),
                 release_type,
             )?,
+            AppSessionClass::ControlSurface => {
+                if !control_surface_bundle_source_allowed(lxapp_bundle_source_for(&appid).as_ref())
+                {
+                    return Err(LxAppError::InvalidParameter(
+                        "control surface replacement must remain host-bundled".into(),
+                    ));
+                }
+                LxApp::new_control_surface(
+                    appid.clone(),
+                    self.runtime.clone(),
+                    self.executor.clone(),
+                    release_type,
+                )?
+            }
         });
         self.track_instance(&new_lxapp);
         new_lxapp.bind_and_seal_resource_grants();
@@ -681,6 +789,13 @@ impl LxApps {
     }
 
     fn retire_locked(&self, app: &Arc<LxApp>) -> Result<(), LxAppError> {
+        self.retire_locked_with_completion(app).map(|_| ())
+    }
+
+    fn retire_locked_with_completion(
+        &self,
+        app: &Arc<LxApp>,
+    ) -> Result<WorkerTermination, LxAppError> {
         let _open = app
             .presentation_open_lock
             .lock()
@@ -699,12 +814,12 @@ impl LxApps {
             self.remove_from_stack(&app.appid);
             self.cancel_delayed_destroy(&app.appid);
         }
-        app.shutdown()?;
+        let completion = app.shutdown_with_completion(false)?;
         app.complete_programmatic_close(app.session_id());
         if is_current {
             self.lxapps.remove(&app.appid);
         }
-        Ok(())
+        Ok(completion)
     }
 
     /// Completely destroy an LxApp (shutdown + removal from manager and stack).
@@ -2127,7 +2242,12 @@ impl LxApp {
         app_session_class: AppSessionClass,
     ) -> Self {
         let session = LxAppSession::new();
-        let bundle_source = lxapp_bundle_source_for(&appid).unwrap_or(LxAppBundleSource::Installed);
+        let bundle_source = match lxapp_bundle_source_for(&appid) {
+            Some(LxAppBundleSource::BuiltinAssets) if release_type == Channel::Draft => {
+                LxAppBundleSource::Installed
+            }
+            source => source.unwrap_or(LxAppBundleSource::Installed),
+        };
         // A dev-sourced bundle is a draft: served live from a local `dist`
         // and never installed or OTA-updated. Derive the channel from the
         // source so update gating and scope keys stay consistent.
@@ -2200,12 +2320,13 @@ impl LxApp {
         appid: String,
         runtime: Arc<Platform>,
         executor: Arc<LxAppWorkers>,
+        release_type: Channel,
     ) -> Result<Self, LxAppError> {
         let mut app = Self::_new(
             appid,
             runtime,
             executor,
-            crate::default_channel(),
+            release_type,
             AppSessionClass::ControlApp,
         );
 
@@ -2250,7 +2371,9 @@ impl LxApp {
     ) -> Result<Self, LxAppError> {
         match class {
             AppSessionClass::StandardApp => Self::new(appid, runtime, executor, Channel::Release),
-            AppSessionClass::ControlApp => Self::new_as_home(appid, runtime, executor),
+            AppSessionClass::ControlApp => {
+                Self::new_as_home(appid, runtime, executor, crate::default_channel())
+            }
             AppSessionClass::ControlSurface => {
                 Self::new_control_surface(appid, runtime, executor, Channel::Release)
             }
@@ -4292,7 +4415,19 @@ mod delayed_destroy_tests {
     #[tokio::test]
     async fn control_surface_is_not_home_and_keeps_its_class_on_ordinary_ensure() {
         let appid = format!("app.lingxia.surface-test.{}", Uuid::new_v4());
-        register_synthetic_lxapp(appid.clone());
+        let bundle = tempfile::tempdir().unwrap();
+        std::fs::write(
+            bundle.path().join("lxapp.json"),
+            serde_json::json!({
+                "appId": appid,
+                "version": "1.0.0",
+                "logic": false,
+                "pages": [{"name": "home", "path": "pages/home/index"}]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        register_dev_bundle_source(appid.clone(), bundle.path());
 
         let runtime = class_test_runtime();
         let workers = LxAppWorkers::init(1);
