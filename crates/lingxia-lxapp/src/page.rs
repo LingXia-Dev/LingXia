@@ -700,12 +700,12 @@ impl PageInstance {
                 let page_weak_for_lx = page_weak_for_lx.clone();
                 async move {
                     let Some(inner) = page_weak_for_lx.upgrade() else {
-                        return None.into();
+                        return lingxia_webview::SchemeOutcome::Cancelled;
                     };
                     let page = PageInstance::from_inner(inner);
                     let lxapp = page.owning_lxapp();
                     if lxapp.status() == LxAppSessionStatus::Closed {
-                        return None.into();
+                        return lingxia_webview::SchemeOutcome::Cancelled;
                     }
                     lxapp.handle_lingxia_request(&page, req).into()
                 }

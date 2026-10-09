@@ -1075,6 +1075,18 @@ class LxAppActivity : AppCompatActivity() {
                 )
                 tag = "current_webview_container"
 
+                // The Activity owns cached page wrappers; a destroyed WebView
+                // removes only itself, since other hosts reuse its parent.
+                setOnHierarchyChangeListener(object : ViewGroup.OnHierarchyChangeListener {
+                    override fun onChildViewAdded(parent: View?, child: View?) = Unit
+                    override fun onChildViewRemoved(parent: View?, child: View?) {
+                        val wrapper = parent as? ViewGroup ?: return
+                        if (wrapper.childCount == 0 && wrapper.parent === webViewContainer) {
+                            webViewContainer.removeView(wrapper)
+                        }
+                    }
+                })
+
                 if (hostView.parent != null && hostView.parent != this) {
                     (hostView.parent as? ViewGroup)?.removeView(hostView)
                 }
@@ -1448,7 +1460,8 @@ class LxAppActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         webViewContainer.visibility = View.VISIBLE
-        attachWebViewToUI(currentWebView)
+        // The initial WebView can still be creating when a restored Activity resumes.
+        currentWebView?.let(::attachWebViewToUI)
         val currentPath = currentWebView?.getCurrentPath()
         if (!currentPath.isNullOrEmpty()) {
             applyPageOrientation(currentPath)

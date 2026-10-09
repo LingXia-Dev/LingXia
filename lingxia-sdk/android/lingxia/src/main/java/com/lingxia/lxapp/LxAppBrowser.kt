@@ -636,7 +636,7 @@ internal object LxAppBrowser {
 
     private fun closeTab(tabId: String) {
         val normalizedTabId = normalizeTabId(tabId)
-        val closingAside = tabIsAside(normalizedTabId)
+        val closingAside = if (activeTabId == normalizedTabId) isAsideActive else tabIsAside(normalizedTabId)
         val groupIndex = tabIdsForMode(closingAside).indexOf(normalizedTabId)
         val index = openTabIds.indexOf(normalizedTabId)
         if (index < 0) {
@@ -974,7 +974,8 @@ internal object LxAppBrowser {
         val hidden = cleanUrl.isEmpty() || cleanUrl.equals(HIDDEN_NEW_TAB_URL, ignoreCase = true)
         val field = addressField
         if (field != null && !field.hasFocus()) {
-            field.setText(if (hidden) "" else displayUrl(cleanUrl))
+            val text = if (hidden) "" else displayUrl(cleanUrl)
+            if (field.text.toString() != text) field.setText(text)
         }
 
         val icon = addressIcon ?: return
@@ -1006,10 +1007,17 @@ internal object LxAppBrowser {
 
     private fun updateTabsBadge() {
         val count = tabIdsForMode().size.coerceAtLeast(1)
-        tabsBadge?.text = if (count > 99) "99+" else count.toString()
+        val text = if (count > 99) "99+" else count.toString()
+        tabsBadge?.let { if (it.text.toString() != text) it.text = text }
     }
 
     private fun refreshChromeFromActiveWebView() {
+        // Tabs can also close through automation or page script. Release the
+        // overlay when its last tab closes, even without a chrome button click.
+        for (tabId in openTabIds.toList()) {
+            if (!NativeApi.browserTabExists(tabId)) closeTab(tabId)
+        }
+        if (overlayContainer == null) return
         // During attach retry the displayed webview still belongs to the
         // previous tab; address and back/forward are per-tab, keep them reset.
         if (activeWebViewTabId != activeTabId) {

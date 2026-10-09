@@ -313,6 +313,9 @@ internal object NativeApi {
     @JvmStatic
     external fun browserTabIsAside(tabId: String): Boolean
 
+    @JvmStatic
+    external fun browserTabExists(tabId: String): Boolean
+
     /**
      * Close a managed internal browser tab.
      */

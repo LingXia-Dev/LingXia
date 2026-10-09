@@ -39,6 +39,13 @@ CI runs both frameworks on Windows and React on macOS. Android uses its matching
 thin platform entry locally. Shared cases must never be copied into a platform
 entry.
 
+From the repository root, `scripts/automation/run-android-showcase.ps1 -Device
+<serial> -NativeFeature servo` builds and checks both Android frameworks. It
+starts the local HTTP fixture and reverses its port through adb, so transfer,
+media, and browser cases run too. Omit `-NativeFeature servo` for system WebView.
+Keep other installed development variants stopped: they can reconnect to the
+same forwarded dev port and replace the intended runtime connection.
+
 ## What every public capability needs
 
 Use these coverage levels in order:
@@ -166,3 +173,12 @@ screenshots. It cannot operate permission dialogs, the photo picker, share
 sheet, or other Android system UI. Add those actions to an external
 UIAutomator/Appium device-lab suite, then return to `lxdev` for the app-state
 assertion.
+
+## Interpreting skips
+
+Android's entry also imports the shared pending backlog. A skip is not
+automatically a non-Android case: `planned` means the assertion is not implemented,
+`external-ui` needs an OS UI driver, and `external-fixture` needs its stated
+service or device setup. Some backlog entries explicitly target desktop or iOS.
+Read each report's `reason`; skips do not count as verified coverage. Promote a
+pending entry only after replacing it with an executable assertion.

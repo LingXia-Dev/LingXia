@@ -342,6 +342,8 @@ pub enum SchemeOutcome {
     Handled(WebResourceResponse),
     /// Handler intentionally declined the request.
     PassThrough,
+    /// The owning document or app closed while the request was in flight.
+    Cancelled,
 }
 
 /// Async scheme handler signature.

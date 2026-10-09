@@ -6,6 +6,10 @@ Cross-platform WebView bindings
 
 ### Android
 - JNI bindings for Android WebView
+- Optional Servo backend: `lingxia dev --native-feature servo`.
+  Servo dev builds default to optimization level 1 without debug symbols because
+  the engine itself is compiled into the app. Set `CARGO_PROFILE_DEV_OPT_LEVEL`
+  or `CARGO_PROFILE_DEV_DEBUG` explicitly to override those defaults.
 
 ### iOS/macOS
 - Objective-C WebKit bindings

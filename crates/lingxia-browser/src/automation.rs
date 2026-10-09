@@ -641,14 +641,20 @@ pub async fn browser_wait(
     let timeout_ms = duration_ms_u64(timeout);
 
     loop {
-        let check = check_wait_condition(tab_id, &condition).await?;
-        if check.matched {
-            return Ok(BrowserWaitResult {
-                elapsed_ms: duration_ms_u64(started.elapsed()),
-                current_url: check.current_url,
-                element: check.element,
-                value: check.value,
-            });
+        match check_wait_condition(tab_id, &condition).await {
+            Ok(check) if check.matched => {
+                return Ok(BrowserWaitResult {
+                    elapsed_ms: duration_ms_u64(started.elapsed()),
+                    current_url: check.current_url,
+                    element: check.element,
+                    value: check.value,
+                });
+            }
+            Ok(_) => {}
+            // A registered tab can still be creating its native view or replacing
+            // its document. Retry the probe, never an input that caused navigation.
+            Err(error) if is_transient_wait_error(&error) => {}
+            Err(error) => return Err(error),
         }
 
         if started.elapsed() >= timeout {
@@ -660,6 +666,16 @@ pub async fn browser_wait(
 
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
+}
+
+fn is_transient_wait_error(error: &BrowserAutomationError) -> bool {
+    matches!(
+        error,
+        BrowserAutomationError::WebViewNotFound(_)
+            | BrowserAutomationError::Script(
+                lingxia_webview::WebViewScriptError::NavigationChanged
+            )
+    )
 }
 
 pub async fn browser_wait_for_url(
@@ -768,6 +784,26 @@ pub async fn browser_scroll_to(tab_id: &str, selector: &str) -> Result<(), Brows
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn waits_retry_document_creation_but_not_closed_tabs_or_script_failures() {
+        use lingxia_webview::WebViewScriptError;
+        assert!(is_transient_wait_error(
+            &BrowserAutomationError::WebViewNotFound("new".into())
+        ));
+        assert!(is_transient_wait_error(&BrowserAutomationError::Script(
+            WebViewScriptError::NavigationChanged
+        )));
+        assert!(!is_transient_wait_error(
+            &BrowserAutomationError::TabNotFound("closed".into())
+        ));
+        assert!(!is_transient_wait_error(&BrowserAutomationError::Script(
+            WebViewScriptError::Js("invalid selector".into())
+        )));
+        assert!(!is_transient_wait_error(&BrowserAutomationError::Script(
+            WebViewScriptError::Timeout
+        )));
+    }
 
     #[test]
     fn query_text_is_whitespace_normalised() {
