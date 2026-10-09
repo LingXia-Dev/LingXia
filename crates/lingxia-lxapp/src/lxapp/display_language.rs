@@ -771,7 +771,7 @@ fn publish_effective(update: &DisplayLanguageEffectiveUpdate) {
 fn view_display_language_script(revision: u64, effective: &LanguageTag) -> String {
     let quoted = serde_json::to_string(effective.as_str())
         .unwrap_or_else(|_| format!("\"{FALLBACK_LANGUAGE}\""));
-    format!("var f = globalThis.__lingxiaApplyDisplayLanguage; if (f) f({quoted}, {revision});")
+    format!("var f = window.__lingxiaApplyDisplayLanguage; if (f) f({quoted}, {revision});")
 }
 
 /// The current effective language as a View push, for a document whose
@@ -915,7 +915,7 @@ mod tests {
     fn a_view_push_carries_the_revision_the_language_took_effect_at() {
         assert_eq!(
             view_display_language_script(7, &tag("zh-CN")),
-            "var f = globalThis.__lingxiaApplyDisplayLanguage; if (f) f(\"zh-CN\", 7);"
+            "var f = window.__lingxiaApplyDisplayLanguage; if (f) f(\"zh-CN\", 7);"
         );
         // The snapshot a booting document gets moves with each change, so a
         // page keeps whichever of a change and a snapshot is newer.

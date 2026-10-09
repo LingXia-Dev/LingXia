@@ -216,7 +216,7 @@ impl Default for LxAppAppearanceState {
     }
 }
 
-/// Install the page-side snapshot contract and apply its initial value.
+/// Install the page-side snapshot contract before page polyfills are available (ES5).
 pub(crate) fn bootstrap_script(
     layout: &EffectivePageChromeLayout,
     appearance: ResolvedAppearance,
@@ -224,38 +224,45 @@ pub(crate) fn bootstrap_script(
     let layout = serde_json::to_string(layout).unwrap_or_else(|_| "{}".to_string());
     let appearance = serde_json::to_string(&appearance).unwrap_or_else(|_| "\"light\"".to_string());
     format!(
-        r#"(() => {{
-  const publish = (raw, scheme) => {{
-    const current = globalThis.__lingxiaPageChromeLayout;
+        r#"(function () {{
+  function copy(value) {{
+    var result = {{}};
+    Object.keys(value).forEach(function (key) {{ result[key] = value[key]; }});
+    return result;
+  }}
+  var publish = function (raw, scheme) {{
+    var current = window.__lingxiaPageChromeLayout;
     if (current && raw.revision < current.revision) return;
-    const rect = raw.capsuleRect == null ? null : Object.freeze({{ ...raw.capsuleRect }});
-    const layout = Object.freeze({{ ...raw, capsuleRect: rect }});
-    const root = document.documentElement;
+    var rect = raw.capsuleRect == null ? null : Object.freeze(copy(raw.capsuleRect));
+    var layout = copy(raw);
+    layout.capsuleRect = rect;
+    Object.freeze(layout);
+    var root = document.documentElement;
     if (root) {{
-      root.style.setProperty('--lx-page-chrome-top-inset', `${{layout.topInset}}px`);
-      root.style.setProperty('--lx-page-chrome-bottom-inset', `${{layout.bottomInset}}px`);
-      root.style.setProperty('--lx-page-chrome-capsule-inline-end-inset', `${{layout.capsuleInlineEndInset}}px`);
+      root.style.setProperty('--lx-page-chrome-top-inset', layout.topInset + 'px');
+      root.style.setProperty('--lx-page-chrome-bottom-inset', layout.bottomInset + 'px');
+      root.style.setProperty('--lx-page-chrome-capsule-inline-end-inset', layout.capsuleInlineEndInset + 'px');
       root.style.colorScheme = scheme;
       root.setAttribute('data-theme', scheme);
     }}
-    globalThis.__lingxiaPageChromeLayout = layout;
-    globalThis.dispatchEvent(new CustomEvent('lxpagechromechange', {{ detail: layout }}));
+    window.__lingxiaPageChromeLayout = layout;
+    window.dispatchEvent(new CustomEvent('lxpagechromechange', {{ detail: layout }}));
   }};
-  if (!globalThis.__lingxiaApplyPageChrome) {{
-    Object.defineProperty(globalThis, 'lxPageChrome', {{
+  if (!window.__lingxiaApplyPageChrome) {{
+    Object.defineProperty(window, 'lxPageChrome', {{
       configurable: false,
       enumerable: true,
       value: Object.freeze({{
-        get layout() {{ return globalThis.__lingxiaPageChromeLayout; }}
+        get layout() {{ return window.__lingxiaPageChromeLayout; }}
       }})
     }});
-    Object.defineProperty(globalThis, '__lingxiaApplyPageChrome', {{
+    Object.defineProperty(window, '__lingxiaApplyPageChrome', {{
       configurable: false,
       enumerable: false,
       value: publish
     }});
   }}
-  globalThis.__lingxiaApplyPageChrome({layout}, {appearance});
+  window.__lingxiaApplyPageChrome({layout}, {appearance});
 }})();"#
     )
 }
@@ -266,7 +273,7 @@ fn publication_script(
 ) -> String {
     let layout = serde_json::to_string(layout).unwrap_or_else(|_| "{}".to_string());
     format!(
-        "var f = globalThis.__lingxiaApplyPageChrome; if (f) f({layout}, {});",
+        "var f = window.__lingxiaApplyPageChrome; if (f) f({layout}, {});",
         serde_json::to_string(&appearance).unwrap_or_else(|_| "\"light\"".to_string())
     )
 }
@@ -656,25 +663,66 @@ mod tests {
     }
 
     #[test]
-    fn scripts_reject_stale_revisions_without_optional_chaining() {
-        let bootstrap = bootstrap_script(
-            &EffectivePageChromeLayout {
-                revision: 4,
-                ..Default::default()
-            },
-            ResolvedAppearance::Dark,
-        );
-        assert!(bootstrap.contains("raw.revision < current.revision"));
+    fn scripts_parse_as_es5() {
+        check_view_scripts("syntax");
+    }
 
-        let publication = publication_script(
-            &EffectivePageChromeLayout {
-                revision: 5,
+    #[test]
+    fn scripts_run_without_global_this() {
+        check_view_scripts("runtime");
+    }
+
+    fn check_view_scripts(mode: &str) {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        let initial = EffectivePageChromeLayout {
+            revision: 4,
+            top_inset: 12.0,
+            bottom_inset: 64.0,
+            capsule_rect: Some(PageChromeRect {
+                width: 80.0,
                 ..Default::default()
-            },
-            ResolvedAppearance::Light,
+            }),
+            capsule_inline_end_inset: 92.0,
+        };
+        let updated = EffectivePageChromeLayout {
+            revision: 5,
+            top_inset: 24.0,
+            capsule_rect: None,
+            ..initial.clone()
+        };
+        let input = serde_json::json!({
+            "initial": initial,
+            "updated": updated,
+            "bootstrap": bootstrap_script(&initial, ResolvedAppearance::Dark),
+            "publication": publication_script(&updated, ResolvedAppearance::Light),
+            "stale": publication_script(&initial, ResolvedAppearance::Dark),
+        });
+        let mut child = Command::new("node")
+            .arg(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/page-chrome-compat.cjs"
+            ))
+            .arg(mode)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("View compatibility tests require Node.js and npm ci in packages/");
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.to_string().as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(
+            output.status.success(),
+            "View {mode} check failed:\n{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
         );
-        assert!(publication.contains("var f = globalThis.__lingxiaApplyPageChrome"));
-        assert!(!publication.contains("?."));
     }
 
     #[test]

@@ -1010,6 +1010,10 @@ public class LingXiaWebView extends WebView {
     }
 
     String getDiagnosticUrl() {
+        // JavascriptInterface runs off the UI thread; this optional URL is diagnostic only.
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            return "";
+        }
         String url = getUrl();
         return url != null ? url : "";
     }
