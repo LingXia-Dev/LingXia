@@ -719,10 +719,14 @@ jobs:
         if: matrix.suite == 'distribution'
         shell: pwsh
         run: |
-          if (-not (Test-Path "${env:ProgramFiles(x86)}/NSIS/makensis.exe")) {
+          $makensis = "${env:ProgramFiles(x86)}/NSIS/makensis.exe"
+          # choco exits 0 when the feed times out ("installed 0/0"); verify the binary.
+          foreach ($attempt in 1..3) {
+            if (Test-Path $makensis) { break }
             choco install nsis --yes --no-progress
-            if ($LASTEXITCODE -ne 0) { throw 'NSIS installation failed' }
+            if (-not (Test-Path $makensis)) { Start-Sleep -Seconds (15 * $attempt) }
           }
+          if (-not (Test-Path $makensis)) { throw 'NSIS installation failed' }
 
       - name: Test Windows distribution and updates
         if: matrix.suite == 'distribution'
