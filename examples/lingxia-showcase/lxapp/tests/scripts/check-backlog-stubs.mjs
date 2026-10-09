@@ -16,6 +16,9 @@ for (const stub of stubs) {
   }
   if (ids.has(stub.id)) errors.push(`duplicate stub id ${stub.id}`);
   ids.add(stub.id);
+  if (stub.implementedOn?.some((platform) => !["android", "ios", "harmony", "macos", "windows"].includes(platform))) {
+    errors.push(`${stub.id} has an unknown implementedOn platform`);
+  }
   if (!allowedModes.has(stub.mode)) {
     errors.push(`${stub.id} mode ${stub.mode} must stay off automated`);
   }

@@ -165,7 +165,8 @@ export default [
     title: "onPullDownRefresh fires from the native gesture",
     mode: "planned",
     covers: ["lx.startPullDownRefresh"],
-    reason: "PULL-001 only clicks start/stop buttons",
+    reason: "ANDROID-PULL-GESTURE-001 covers Android; other hosts still only click start/stop buttons",
+    implementedOn: ["android"],
   },
   {
     id: "PEND-APP-LIFE-001",
