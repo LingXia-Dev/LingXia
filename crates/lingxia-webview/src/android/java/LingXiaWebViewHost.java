@@ -7,6 +7,7 @@ import android.webkit.ValueCallback;
 public interface LingXiaWebViewHost {
     View getHostView();
     long getNativeViewId();
+    String getWebTag();
     String getAppId();
     String getCurrentPath();
     long getSessionId();

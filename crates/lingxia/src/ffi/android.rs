@@ -386,7 +386,7 @@ fn deliver_page_webview(
         env.call_method(
             callback,
             jni_str!("onResult"),
-            jni_sig!("(Lcom/lingxia/lxapp/WebView;I)V"),
+            jni_sig!("(Lcom/lingxia/webview/LingXiaWebViewHost;I)V"),
             &[(&webview).into(), status.into()],
         )?;
         Ok(())

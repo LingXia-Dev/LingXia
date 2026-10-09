@@ -653,7 +653,7 @@ pub(super) fn register(webtag: &WebTag, native_view_id: NativeWebViewId, policy:
     let _ = runtime_sender().send(RuntimeCommand::Register { view, policy });
 }
 
-pub(super) fn unregister(webtag: &WebTag, native_view_id: NativeWebViewId) {
+pub(crate) fn unregister(webtag: &WebTag, native_view_id: NativeWebViewId) {
     let removed = {
         let mut runtimes = runtimes().lock().unwrap_or_else(|e| e.into_inner());
         let current = runtimes

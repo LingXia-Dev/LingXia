@@ -174,6 +174,11 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         return nativeViewId;
     }
 
+    @Override
+    public String getWebTag() {
+        return servoWebTag;
+    }
+
     private boolean bound() {
         return servoWebTag != null && nativeViewId > 0;
     }

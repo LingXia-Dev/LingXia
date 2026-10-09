@@ -233,9 +233,9 @@ internal object LxAppBrowser {
         }
         for (tabId in openTabIds) {
             val webView = findManagedWebView(tabId) ?: continue
-            val config = Configuration(webView.resources.configuration)
+            val config = Configuration(webView.hostView.resources.configuration)
             config.uiMode = (config.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or night
-            webView.dispatchConfigurationChanged(config)
+            webView.hostView.dispatchConfigurationChanged(config)
         }
     }
 

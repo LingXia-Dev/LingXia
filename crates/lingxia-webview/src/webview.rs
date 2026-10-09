@@ -2757,6 +2757,9 @@ impl WebViewCreateSender {
     }
 
     pub(crate) fn fail(self, stage: WebViewCreateStage, error: WebViewError) {
+        // Servo reserves its runtime before Java creates the host View.
+        #[cfg(all(target_os = "android", feature = "servo"))]
+        crate::android::unregister_servo(&self.webtag, self.native_view_id);
         if remove_session_signals_if_matches(&self.webtag, &self.signals) {
             crate::events::normalizer::destroy(&self.webtag);
         }
