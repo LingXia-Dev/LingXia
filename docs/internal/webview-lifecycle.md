@@ -753,6 +753,17 @@ suppressed in strict, allowed in browser.
 The `servo` feature swaps the renderer for `LingXiaServoView`, driven by one
 process-wide Servo engine thread (`android/servo.rs`):
 
+- The texture and Servo clear color are transparent; the host supplies the
+  launch/theme background (white for browser-profile views). Presentation starts
+  after Servo's first frame-ready notification, without delaying load callbacks.
+- Android's resolved night mode reaches Servo before surface creation and on
+  configuration changes, so initial CSS media queries use the correct scheme.
+- Page transitions keep the outgoing container visible while the attached,
+  resumed incoming Servo view reaches first-contentful-paint. Empty/error pages
+  fall back after five seconds. This gate must not wait for `onReady`, which
+  requires `onShow` from the completed transition; newer navigation cancels the
+  pending presentation. Alpha-hidden Servo containers must not receive touch
+  input even though their surfaces stay attached.
 - Rust passes the native view identity into Java at creation. Every Java
   callback and every Servo delegate callback carries `(WebTag,
   NativeWebViewId)`, and the engine drops commands for any other instance, so

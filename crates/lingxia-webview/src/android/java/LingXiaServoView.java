@@ -3,6 +3,7 @@ package com.lingxia.webview;
 import android.app.Activity;
 import android.content.Context;
 import android.content.ContextWrapper;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Rect;
@@ -10,6 +11,7 @@ import android.graphics.SurfaceTexture;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.Selection;
@@ -88,6 +90,7 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     private long sessionId;
     private long nativeViewId;
     private boolean strictSecurityProfile = true;
+    private boolean darkTheme;
     /** Servo renders into a window made from {@link #retainedTexture}. */
     private boolean attached;
     /**
@@ -114,11 +117,15 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
 
     public LingXiaServoView(Context context) {
         super(context);
+        darkTheme = isDarkTheme(context.getResources().getConfiguration());
         setBackgroundColor(Color.TRANSPARENT);
         setFocusable(true);
         setFocusableInTouchMode(true);
         inputConnection = new ServoInputConnection();
         servoSurface = new TextureView(context);
+        // Let the activity's current page/launch background show through, even
+        // when this retained view was created under a different appearance.
+        servoSurface.setOpaque(false);
         servoSurface.setSurfaceTextureListener(this);
         servoSurface.setFocusable(true);
         servoSurface.setFocusableInTouchMode(true);
@@ -141,6 +148,7 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         this.sessionId = sessionId;
         this.nativeViewId = nativeViewId;
         this.strictSecurityProfile = strictSecurityProfile;
+        if (!strictSecurityProfile) setBackgroundColor(Color.WHITE);
         servoWebTag = appId + ":" + path + (sessionId > 0 ? "#" + sessionId : "");
         sViews.put(servoWebTag, new WeakReference<>(this));
         SurfaceTexture texture = servoSurface.getSurfaceTexture();
@@ -228,8 +236,21 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         return metrics != null ? metrics.density : 1.0f;
     }
 
+    private static boolean isDarkTheme(Configuration configuration) {
+        return (configuration.uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                == Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    @Override
+    protected void onConfigurationChanged(Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        darkTheme = isDarkTheme(configuration);
+        if (bound() && attached) nativeSetTheme(servoWebTag, nativeViewId, darkTheme);
+    }
+
     private void createNativeSurface(Surface surface, int width, int height) {
         if (!bound() || attached) return;
+        nativeSetTheme(servoWebTag, nativeViewId, darkTheme);
         nativeSurfaceCreated(servoWebTag, nativeViewId, surface, width, height, density());
         attached = true;
         scheduleFrame();
@@ -338,6 +359,38 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         return true;
     }
 
+    @Override
+    public void prepareForPresentation(Runnable ready) {
+        // A frame-ready notification also covers the empty canvas. FCP proves
+        // content was presented; keep the outgoing page until that happens.
+        final Handler handler = new Handler(Looper.getMainLooper());
+        final long deadline = SystemClock.uptimeMillis() + 5000;
+        final boolean[] completed = {false};
+        final Runnable finish = () -> {
+            if (completed[0] || destroyed) return;
+            completed[0] = true;
+            ready.run();
+        };
+        // Empty documents and failed loads may never produce a contentful paint.
+        handler.postDelayed(finish, 5000);
+        Runnable poll = new Runnable() {
+            @Override public void run() {
+                if (completed[0] || destroyed) return;
+                evaluateJavascript("location.href !== 'about:blank' && "
+                        + "performance.getEntriesByName('first-contentful-paint').length > 0", value -> {
+                    if (completed[0] || destroyed) return;
+                    if ("true".equals(value)) {
+                        handler.removeCallbacks(finish);
+                        servoSurface.postOnAnimation(finish);
+                    } else if (SystemClock.uptimeMillis() < deadline) {
+                        handler.postDelayed(this, 32);
+                    }
+                });
+            }
+        };
+        poll.run();
+    }
+
     /** Document scroll lives inside Servo; overlays follow the reported offset. */
     @Override
     public int getContentScrollX() {
@@ -421,6 +474,12 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
+        // Alpha keeps a preparing/cached surface alive, but does not disable
+        // Android hit testing. Never send a gesture to an invisible document.
+        for (View view = this; view != null;
+                view = view.getParent() instanceof View ? (View) view.getParent() : null) {
+            if (view.getAlpha() == 0f) return false;
+        }
         return onTouchEvent(event);
     }
 
@@ -877,6 +936,7 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     private native boolean nativeCompleteEmbedderControl(
             String webTag, long nativeViewId, long requestId, String action, String value);
     private native void nativeFrame(String webTag, long nativeViewId);
+    private native void nativeSetTheme(String webTag, long nativeViewId, boolean dark);
     private native void nativeSetThrottled(String webTag, long nativeViewId, boolean throttled);
     private native void nativeSetSurfaceShown(String webTag, long nativeViewId, boolean shown);
     private native void nativeTouch(

@@ -336,6 +336,8 @@ class LxAppActivity : AppCompatActivity() {
 
     // Tracks the currently visible WebView instance
     private var currentWebView: LingXiaWebViewHost? = null
+    private var presentationGeneration = 0L
+    private var pendingPresentationContainer: FrameLayout? = null
     private var systemBottomInset: Int = 0
     private var imeContentBottomInset: Int = 0
     /** A visible bottom navigation strip; only opaque TabBars reserve it in root padding. */
@@ -1144,7 +1146,7 @@ class LxAppActivity : AppCompatActivity() {
         ticket: Int,
         webtag: String?,
         request: Presentation,
-        webView: com.lingxia.lxapp.WebView?,
+        webView: LingXiaWebViewHost?,
         status: Int,
         resolvesLeft: Int
     ) {
@@ -1169,7 +1171,7 @@ class LxAppActivity : AppCompatActivity() {
         if (currentWebView == null) finishWithSessionClose("initial_webview_missing")
     }
 
-    private fun showPresentation(webView: com.lingxia.lxapp.WebView, request: Presentation) {
+    private fun showPresentation(webView: LingXiaWebViewHost, request: Presentation) {
         if (request.firstScreen) {
             setupWebViewContentWithExisting(webView)
             // Resumed while it had no page: the resume-time notification found
@@ -1566,6 +1568,9 @@ class LxAppActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         isDestroyed = true
+        presentationGeneration++
+        pendingPresentationContainer?.let { cleanupOldContainer(it) }
+        pendingPresentationContainer = null
         pendingFileChooserCallback?.onReceiveValue(null)
         pendingFileChooserCallback = null
         pendingHostFileDialogCallback?.invoke(HostFileDialogResult.Failed)
@@ -2019,7 +2024,7 @@ class LxAppActivity : AppCompatActivity() {
      * @param isBackNavigation Whether this is a back navigation
      */
     private fun navigateToPage(
-        newWebView: com.lingxia.lxapp.WebView,
+        newWebView: LingXiaWebViewHost,
         isReplace: Boolean = false,
         isBackNavigation: Boolean = false
     ) {
@@ -2027,10 +2032,6 @@ class LxAppActivity : AppCompatActivity() {
             val targetPath = normalizePath(newWebView.getCurrentPath())
             // Get current WebView before changes
             val oldWebView = currentWebView
-
-            if (oldWebView != null && oldWebView != newWebView) {
-                NativeBridge.notifyPageInactive(oldWebView)
-            }
 
             val navbarState = getNavBarState(appId, targetPath)
 
@@ -2079,20 +2080,40 @@ class LxAppActivity : AppCompatActivity() {
             NativeBridge.attachIfNeeded(newWebView)
             ServoEmbedderControls.attachIfNeeded(newWebView, this)
 
-            ensurePullToRefreshHelper().attachToWebView(newHostView)
-            updatePullToRefreshEnabledForPath(targetPath)
-
-            if (oldWebView != newWebView) {
-                NativeBridge.notifyPageActive(newWebView)
+            val presentationTicket = presentTicket
+            val generation = ++presentationGeneration
+            val presentationAppId = appId
+            val presentationSessionId = currentSessionId
+            pendingPresentationContainer?.takeIf { it !== newContainer }?.let {
+                cleanupOldContainer(it)
             }
-
-            // Use coordinated WebView transition (handles all animation and onPageShow)
-            // Only animate for forward/backward navigation, not for replace operations (tab switch, launch, replace)
-            val shouldAnimate = !isReplace
-            performWebViewTransition(oldWebView, newContainer, isBackNavigation, shouldAnimate, navbarState)
-
-            // Update the current WebView reference
-            currentWebView = newWebView
+            pendingPresentationContainer = newContainer
+            if (oldWebView !== newWebView) {
+                // Servo needs an attached, resumed surface to paint. Alpha keeps
+                // the outgoing page visible while the incoming document renders.
+                newContainer.alpha = 0f
+                if (newContainer.parent == null) webViewContainer.addView(newContainer)
+                newContainer.dispatchConfigurationChanged(resources.configuration)
+            }
+            newWebView.prepareForPresentation {
+                if (isDestroyed || generation != presentationGeneration) return@prepareForPresentation
+                val current = NativeApi.getCurrentLxApp()
+                if (current == null || current.appId != presentationAppId ||
+                    current.sessionId != presentationSessionId ||
+                    normalizePath(current.path) != normalizePath(targetPath) ||
+                    presentTicket != presentationTicket
+                ) return@prepareForPresentation
+                pendingPresentationContainer = null
+                if (oldWebView != newWebView) {
+                    oldWebView?.let { NativeBridge.notifyPageInactive(it) }
+                    NativeBridge.notifyPageActive(newWebView)
+                }
+                ensurePullToRefreshHelper().attachToWebView(newHostView)
+                updatePullToRefreshEnabledForPath(targetPath)
+                val readyNavbarState = getNavBarState(presentationAppId, targetPath) ?: navbarState
+                performWebViewTransition(oldWebView, newContainer, isBackNavigation, !isReplace, readyNavbarState)
+                currentWebView = newWebView
+            }
 
         } catch (e: Exception) {
             LxLog.e(TAG, "Error in coordinated navigation: ${e.message}", e)
