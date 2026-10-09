@@ -155,8 +155,8 @@ export class LiveFixture implements Fixture {
   /** When this spec's budget started; the runtime arms its timer right after construction. */
   private readonly startedAt: number;
 
-  private traceMeta(): { sequence: number; at_ms: number } {
-    return { sequence: ++this.eventSequence, at_ms: Math.max(0, Date.now() - this.startedAt) };
+  private traceMeta(now = Date.now()): { sequence: number; at_ms: number } {
+    return { sequence: ++this.eventSequence, at_ms: Math.max(0, now - this.startedAt) };
   }
   private readonly networkScope = new NetworkScope();
   /** The scenario this spec installed; removed when it ends. */
@@ -356,9 +356,11 @@ export class LiveFixture implements Fixture {
         this.stepConflict ??= conflict;
         throw conflict;
       }
+      // The trace offset and duration must describe the same time window.
+      const started = Date.now();
       const record: StepRecord = {
         name,
-        ...this.traceMeta(),
+        ...this.traceMeta(started),
         path: parent ? `${parent.path} > ${name}` : name,
         status: "passed",
         duration_ms: 0,
@@ -368,7 +370,6 @@ export class LiveFixture implements Fixture {
       };
       (parent ? parent.steps : this.steps).push(record);
       this.stepStack.push(record);
-      const started = Date.now();
       this.stepStarted.set(record, started);
       await this.emitTrace({
         type: "step_started",
