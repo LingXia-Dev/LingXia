@@ -245,9 +245,10 @@ export default [
   },
   {
     id: "PEND-PAGE-JSON-001",
+    implementedOn: ["android"],
     title: "page JSON enablePullDownRefresh and navigationStyle",
     mode: "planned",
     covers: ["lx.startPullDownRefresh"],
-    reason: "page JSON vs app.info() is not asserted",
+    reason: "ANDROID-PAGE-CONFIG-001 checks JSON titles, native default/custom chrome, and refresh eligibility; other host presenters remain pending",
   },
 ];
