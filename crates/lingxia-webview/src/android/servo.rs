@@ -336,6 +336,23 @@ fn confirm_window_released(release_token: u64) {
     }
 }
 
+fn notify_java_servo(view: &ViewKey, event: jint) {
+    if let Err(error) = super::jni_env::with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+        let class =
+            super::jni_env::get_lingxia_webview_class().ok_or("LingXiaWebView class not cached")?;
+        let tag = env.new_string(view.webtag.as_str())?;
+        env.call_static_method(
+            class,
+            jni_str!("servoEvent"),
+            jni_sig!("(Ljava/lang/String;JI)V"),
+            &[(&tag).into(), view.java_id().into(), event.into()],
+        )?;
+        Ok(())
+    }) {
+        log::warn!("Failed to notify Servo host: {error}");
+    }
+}
+
 fn dispatch_java_view_message(view: &ViewKey, kind: ViewMessage, message: &str) {
     if let Err(error) = super::jni_env::with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
         let class =
@@ -522,6 +539,10 @@ enum Command {
     SurfaceDestroyed(u64),
     Resize(u32, u32),
     Paint,
+    DocumentPresentation {
+        url: String,
+        contentful: bool,
+    },
     SetTheme(Theme),
     SetThrottled(bool),
     /// The window's texture left or rejoined the screen; nothing consumes
@@ -712,7 +733,40 @@ fn run(tx: mpsc::Sender<RuntimeCommand>, rx: mpsc::Receiver<RuntimeCommand>) {
         .build();
     let mut states = HashMap::<String, EngineState>::new();
 
-    while let Ok(runtime_command) = rx.recv() {
+    loop {
+        // A stalled navigation still needs its deadline serviced when no page
+        // is animating. Idle renderers otherwise sleep until Servo wakes us.
+        let deadline = states
+            .values()
+            .filter_map(|state| {
+                state
+                    .loads
+                    .pending_navigation
+                    .borrow()
+                    .as_ref()
+                    .map(|(_, since)| *since + NAVIGATION_SETTLE_TIMEOUT)
+            })
+            .min();
+        let runtime_command = if let Some(deadline) = deadline {
+            match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+                Ok(command) => command,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    for state in states.values() {
+                        if let Some(view) = &state.view {
+                            state.loads.flush_stale_navigation(view);
+                        }
+                    }
+                    servo.spin_event_loop();
+                    continue;
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        } else {
+            let Ok(command) = rx.recv() else {
+                break;
+            };
+            command
+        };
         match runtime_command {
             RuntimeCommand::Register { view, policy } => {
                 log::info!("Registering Servo WebView state for {}", view.webtag);
@@ -1104,6 +1158,18 @@ impl EngineState {
                 }
             }
             Command::Paint => self.paint(),
+            Command::DocumentPresentation { url, contentful } => {
+                if !self.loads.navigation_pending()
+                    && self.pending_load.is_none()
+                    && self
+                        .view
+                        .as_ref()
+                        .and_then(WebView::url)
+                        .is_some_and(|current| current.as_str() == url)
+                {
+                    notify_java_servo(&self.view_key, if contentful { 3 } else { 2 });
+                }
+            }
             Command::SetTheme(theme) => {
                 self.theme = theme;
                 if let Some(view) = &self.view {
@@ -1393,6 +1459,10 @@ impl EngineState {
             view.resize(self.size);
             self.native_window = Some(native_window);
             self.apply_visibility();
+            // A same-size replacement window does not invalidate Servo's
+            // scene, but its new buffers still need the retained scene drawn.
+            self.frame_ready.set(true);
+            notify_java_servo(&self.view_key, 0);
             return;
         }
 
@@ -1473,6 +1543,7 @@ impl EngineState {
             );
             return;
         };
+        notify_java_servo(&self.view_key, 1);
         if let Some(view) = &self.view
             && !self.loads.bootstrapping.get()
         {
@@ -1500,10 +1571,11 @@ impl EngineState {
             return;
         };
         self.loads.flush_stale_navigation(view);
-        if !self.surface_shown || !self.frame_ready.get() {
+        if !self.surface_shown || self.throttled || !self.frame_ready.get() {
             return;
         }
         if context.make_current().is_ok() {
+            self.frame_ready.set(false);
             view.paint();
             context.present();
         }
@@ -1951,20 +2023,27 @@ impl WebViewDelegate for Delegate {
                 .document_appeared(&webview, webview.url().as_ref());
         }
         match status {
-            LoadStatus::Started => self.loads.document_created(&self.view, webview.id(), url),
+            LoadStatus::Started => {
+                notify_java_servo(&self.view, 1);
+                self.loads.document_created(&self.view, webview.id(), url);
+            }
             // The first document of a view and a reload never report
             // `Started`; their body is the first evidence of the document.
             LoadStatus::HeadParsed => {
                 if self.loads.phase.get() == LoadPhase::Idle {
+                    notify_java_servo(&self.view, 1);
                     self.loads.document_created(&self.view, webview.id(), url);
                 }
             }
-            LoadStatus::Complete => self.loads.document_complete(&self.view, webview.id(), url),
+            LoadStatus::Complete => {
+                self.loads.document_complete(&self.view, webview.id(), url);
+            }
         }
     }
 
     fn notify_new_frame_ready(&self, _webview: WebView) {
         self.frame_ready.set(true);
+        notify_java_servo(&self.view, 0);
     }
 
     fn notify_crashed(&self, _webview: WebView, reason: String, _backtrace: Option<String>) {
@@ -1972,6 +2051,7 @@ impl WebViewDelegate for Delegate {
         // The Servo view survives its crashed pipeline, like a WebView2
         // renderer failure: the document is gone, the native view is not.
         self.loads.abandon(&self.view);
+        notify_java_servo(&self.view, 2);
         self.view.submit(NativeSignal::DocumentInvalidated);
         if let Some(delegate) = self
             .view
@@ -2655,6 +2735,17 @@ fn bridge_response(request: &Request, url: servo::ServoUrl, view: Option<ViewKey
     let query: HashMap<String, String> = url.as_url().query_pairs().into_owned().collect();
     let kind = url.path().trim_matches('/');
     match (kind, view) {
+        ("presentation", Some(view)) => {
+            if let Some(url) = query.get("url") {
+                let _ = send(
+                    &view,
+                    Command::DocumentPresentation {
+                        url: url.clone(),
+                        contentful: query.get("state").is_some_and(|state| state == "painted"),
+                    },
+                );
+            }
+        }
         ("post", Some(view)) => {
             if let (Some(message), Some(webview)) = (query.get("message"), view.webview()) {
                 if message.len() > MAX_WEB_MESSAGE_BYTES {
@@ -2715,6 +2806,19 @@ fn bridge_script(policy: ServoPolicy) -> String {
       globalThis.NativeComponentBridge = {
         postMessage: message => send('component', { message: String(message) })
       };
+      const paintObserver = new PerformanceObserver(list => {
+        if (list.getEntries().some(entry => entry.name === 'first-contentful-paint')) {
+          paintObserver.disconnect();
+          send('presentation', { url: location.href, state: 'painted' });
+        }
+      });
+      paintObserver.observe({ type: 'paint', buffered: true });
+      addEventListener('load', () => {
+        // An inert parked document must never release a future page entry.
+        if (!document.documentElement.hasAttribute('data-lingxia-parked')) {
+          send('presentation', { url: location.href, state: 'loaded' });
+        }
+      }, { once: true });
       let scrollFrame = 0;
       const reportScroll = () => {
         scrollFrame = 0;

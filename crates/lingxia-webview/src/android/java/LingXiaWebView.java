@@ -155,6 +155,10 @@ public class LingXiaWebView extends WebView implements LingXiaWebViewHost {
         LingXiaServoView.onWindowReleased(releaseToken);
     }
 
+    public static void servoEvent(String webTag, long nativeViewId, int event) {
+        LingXiaServoView.onServoEvent(webTag, nativeViewId, event);
+    }
+
     public static void dispatchServoScroll(String webTag, long nativeViewId, String message) {
         LingXiaServoView.dispatchScroll(webTag, nativeViewId, message);
     }

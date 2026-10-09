@@ -691,6 +691,8 @@ impl LxApp {
     pub fn create_page_for_entry(&self, url: &str) -> PageInstance {
         let resolved = self.resolve_entry_route(url);
         let path = resolved.internal_path();
+        #[cfg(target_os = "android")]
+        self.trim_parked_pages(Some(&path), 1);
         let query = resolved.query.unwrap_or_default();
 
         // Path-pinned singletons (tab pages, headless services) always
@@ -742,6 +744,66 @@ impl LxApp {
         };
 
         page_count > max_allowed
+    }
+
+    /// Android renderers retain substantial GPU resources even for a blank
+    /// parked document. Keep one recent detail page, plus the requested route.
+    #[cfg(target_os = "android")]
+    pub(crate) fn trim_parked_pages(&self, entering_path: Option<&str>, keep: usize) {
+        let mut candidates: Vec<_> = self
+            .live_page_instances()
+            .into_iter()
+            .filter(|page| {
+                !page.is_isolated()
+                    && page.is_parked()
+                    && entering_path != Some(page.path().as_str())
+            })
+            .collect();
+        candidates.sort_by_key(|page| page.get_last_active_time());
+        let excess = candidates.len().saturating_sub(keep);
+        for page in candidates.into_iter().take(excess) {
+            let _transition = page.reset_transition_guard();
+            if !page.is_parked() {
+                continue;
+            }
+            let id = page.instance_id_string();
+            let removed = {
+                let state = self.state.lock().unwrap();
+                if state.page_stack.lock().unwrap().contains(&id)
+                    || state
+                        .path_pins
+                        .lock()
+                        .unwrap()
+                        .values()
+                        .any(|pinned| pinned == &id)
+                {
+                    continue;
+                }
+                let removed = state.pages_by_id.lock().unwrap().remove(&id);
+                if removed.is_some() {
+                    state.page_instance_runtime.lock().unwrap().remove(&id);
+                    if let Some(cancel) = state
+                        .page_instance_dispose_timers
+                        .lock()
+                        .unwrap()
+                        .remove(&id)
+                    {
+                        let _ = cancel.send(());
+                    }
+                }
+                removed
+            };
+            if let Some(page) = removed {
+                page.cancel_bridge_work();
+                let webview = page.webview();
+                page.detach_webview();
+                if let Some(webview) = webview {
+                    destroy_webview_if_matches(&page.webtag(), &webview);
+                }
+                debug!("Reclaimed parked page renderer: {}", page.path())
+                    .with_appid(self.appid.clone());
+            }
+        }
     }
 
     /// Evict least recently used pages when memory is full

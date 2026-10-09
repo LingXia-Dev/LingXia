@@ -11,7 +11,6 @@ import android.graphics.SurfaceTexture;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.Selection;
@@ -103,6 +102,11 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     private boolean destroyed;
     private boolean frameScheduled;
     private boolean paused;
+    private final Handler presentationHandler = new Handler(Looper.getMainLooper());
+    private boolean contentReady;
+    private long documentGeneration;
+    private Runnable pendingPresentation;
+    private final Runnable settleEmptyDocument = this::markContentReady;
     private boolean composing;
     private boolean touchIntercepted;
     private int contentScrollX;
@@ -306,7 +310,6 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     public void doFrame(long frameTimeNanos) {
         frameScheduled = false;
         if (bound() && attached && textureShown) nativeFrame(servoWebTag, nativeViewId);
-        scheduleFrame();
     }
 
     @Override
@@ -360,35 +363,46 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     }
 
     @Override
-    public void prepareForPresentation(Runnable ready) {
-        // A frame-ready notification also covers the empty canvas. FCP proves
-        // content was presented; keep the outgoing page until that happens.
-        final Handler handler = new Handler(Looper.getMainLooper());
-        final long deadline = SystemClock.uptimeMillis() + 5000;
-        final boolean[] completed = {false};
-        final Runnable finish = () -> {
-            if (completed[0] || destroyed) return;
-            completed[0] = true;
-            ready.run();
+    public Runnable prepareForPresentation(Runnable ready) {
+        pendingPresentation = ready;
+        if (contentReady) markContentReady();
+        return () -> {
+            if (pendingPresentation == ready) pendingPresentation = null;
         };
-        // Empty documents and failed loads may never produce a contentful paint.
-        handler.postDelayed(finish, 5000);
-        Runnable poll = new Runnable() {
-            @Override public void run() {
-                if (completed[0] || destroyed) return;
-                evaluateJavascript("location.href !== 'about:blank' && "
-                        + "performance.getEntriesByName('first-contentful-paint').length > 0", value -> {
-                    if (completed[0] || destroyed) return;
-                    if ("true".equals(value)) {
-                        handler.removeCallbacks(finish);
-                        servoSurface.postOnAnimation(finish);
-                    } else if (SystemClock.uptimeMillis() < deadline) {
-                        handler.postDelayed(this, 32);
-                    }
+    }
+
+    private void markContentReady() {
+        presentationHandler.removeCallbacks(settleEmptyDocument);
+        if (destroyed) return;
+        contentReady = true;
+        Runnable ready = pendingPresentation;
+        pendingPresentation = null;
+        if (ready != null) ready.run();
+    }
+
+    static void onServoEvent(String webTag, long nativeViewId, int event) {
+        runOnMainThread(() -> {
+            LingXiaServoView view = findView(webTag, nativeViewId);
+            if (view == null || view.destroyed) return;
+            if (event == 0) {
+                view.scheduleFrame();
+            } else if (event == 1) {
+                view.documentGeneration++;
+                view.contentReady = false;
+                view.presentationHandler.removeCallbacks(view.settleEmptyDocument);
+            } else if (event == 2 && !view.contentReady) {
+                // Blank documents and pages rendered by onShow have no FCP.
+                // Give post-load framework work a short chance to paint first.
+                view.presentationHandler.removeCallbacks(view.settleEmptyDocument);
+                view.presentationHandler.postDelayed(view.settleEmptyDocument, 350);
+            } else if (event == 3) {
+                final long generation = view.documentGeneration;
+                // Give the frame-ready vsync time to submit Servo's pixels.
+                view.servoSurface.postOnAnimation(() -> {
+                    if (generation == view.documentGeneration) view.markContentReady();
                 });
             }
-        };
-        poll.run();
+        });
     }
 
     /** Document scroll lives inside Servo; overlays follow the reported offset. */
@@ -600,6 +614,8 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
 
     private void destroyOnMainThread() {
         destroyed = true;
+        pendingPresentation = null;
+        presentationHandler.removeCallbacks(settleEmptyDocument);
         if (frameScheduled) Choreographer.getInstance().removeFrameCallback(this);
         releaseNativeSurface(true);
         if (servoWebTag != null) {

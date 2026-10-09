@@ -756,11 +756,19 @@ process-wide Servo engine thread (`android/servo.rs`):
 - The texture and Servo clear color are transparent; the host supplies the
   launch/theme background (white for browser-profile views). Presentation starts
   after Servo's first frame-ready notification, without delaying load callbacks.
+- Frame-ready notifications schedule a single Android vsync; paint consumes the
+  dirty flag. Static pages do not run a perpetual Choreographer loop. Navigation
+  settle deadlines must still be serviced while the renderer is idle.
 - Android's resolved night mode reaches Servo before surface creation and on
   configuration changes, so initial CSS media queries use the correct scheme.
 - Page transitions keep the outgoing container visible while the attached,
-  resumed incoming Servo view reaches first-contentful-paint. Empty/error pages
-  fall back after five seconds. This gate must not wait for `onReady`, which
+  resumed incoming Servo view reports first-contentful-paint through its
+  document-start observer. Completed empty/error documents fall back after a
+  350 ms framework-render grace period. Superseded waits are cancelled. TabBar
+  visibility changes with presentation, so the outgoing page keeps its layout.
+  The inert parking document carries `data-lingxia-parked`; its load cannot
+  release presentation of a later entry. Signals must match the current stamped URL.
+  This gate must not wait for `onReady`, which
   requires `onShow` from the completed transition; newer navigation cancels the
   pending presentation. Alpha-hidden Servo containers must not receive touch
   input even though their surfaces stay attached.
@@ -841,6 +849,12 @@ still on screen):
    open popup survives, and no page code runs while nobody is on the page; a
    parked page's navigation events are swallowed before the render pipeline.
 3. `TerminatePage` for the outgoing `PageSvc` (scoped to the instance id).
+
+Android bounds these parked renderers at the next navigation: preserve the
+requested route and one other recent parked page; reclaim older instances and
+their native views. Recheck parking, stack membership, and path pins under the
+reset transition guard before removal. Stack pages, pinned tabs, and isolated
+surfaces are excluded. Re-entering a reclaimed route creates a fresh instance.
 
 **Rebuild** (`LxApp::rebuild_page_on_entry`, only from the entry path):
 

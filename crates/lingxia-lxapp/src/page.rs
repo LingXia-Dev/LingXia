@@ -612,6 +612,11 @@ impl PageInstance {
         self.webview().is_some() && !self.is_discarded()
     }
 
+    #[cfg(target_os = "android")]
+    pub(crate) fn is_parked(&self) -> bool {
+        self.inner.state.lock().is_ok_and(|state| state.parked)
+    }
+
     /// Destroy the native WebView without unloading the page. Logic, `data`,
     /// query, and the instance stay; the next show recreates the document.
     pub(crate) fn discard_webview(&self) -> Result<(), LxAppError> {
@@ -928,7 +933,7 @@ impl PageInstance {
             state.parked = true;
         }
         // Transparent so the host-owned page background shows through.
-        const PARKED_DOCUMENT: &str = "<!DOCTYPE html><html><head><meta charset=\"utf-8\">\
+        const PARKED_DOCUMENT: &str = "<!DOCTYPE html><html data-lingxia-parked><head><meta charset=\"utf-8\">\
              <style>html,body{background:transparent}</style></head><body></body></html>";
         if let Some(controller) = self.webview_controller()
             && let Err(err) =

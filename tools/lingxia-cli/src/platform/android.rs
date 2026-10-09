@@ -73,6 +73,15 @@ gradle.allprojects { proj ->
         // variants lock. afterEvaluate is too late on AGP 8.9 ("It is too
         // late to set versionName").
         proj.androidComponents.finalizeDsl { ext ->
+            def ndkRoot = System.getenv("ANDROID_NDK_ROOT")
+            if (ndkRoot != null && !ndkRoot.isEmpty()) {
+                ext.ndkPath = ndkRoot
+                def ndkProperties = new Properties()
+                new File(ndkRoot, "source.properties").withInputStream {
+                    ndkProperties.load(it)
+                }
+                ext.ndkVersion = ndkProperties.getProperty("Pkg.Revision")
+            }
             def name = proj.findProperty("lingxia.versionName")
             def code = proj.findProperty("lingxia.versionCode")
             if (name != null && !name.toString().isEmpty()) {
@@ -542,6 +551,15 @@ gradle.settingsEvaluated {{ settings ->
         let init_script_arg_value = init_script_path.to_string_lossy().to_string();
 
         let mut command = Command::new(&gradlew);
+        if !config.android_aab {
+            // Replacing a large stored .so in an incremental APK can leave its
+            // old bytes as a ZIP hole. Rebuild only packaging outputs so AGP
+            // aligns and signs a compact archive; compilation stays incremental.
+            command.arg(match config.profile {
+                super::BuildProfile::Debug => ":app:cleanPackageDebug",
+                super::BuildProfile::Release => ":app:cleanPackageRelease",
+            });
+        }
         command
             .arg(task)
             .arg(app_id_arg)
