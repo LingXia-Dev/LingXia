@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { fileURLToPath } from 'node:url';
 
 const scenario = process.env.LX_BRIDGE_TEST_SCENARIO;
 if (!scenario) {
   for (const name of ['trusted', 'ordinary', 'blocked', 'webkit']) {
     const result = spawnSync(
       process.execPath,
-      [new URL(import.meta.url).pathname],
+      [fileURLToPath(import.meta.url)],
       {
         encoding: 'utf8',
         env: { ...process.env, LX_BRIDGE_TEST_SCENARIO: name },

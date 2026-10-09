@@ -195,13 +195,6 @@ export default [
     reason: "add path is OS picker; index events have no contract",
   },
   {
-    id: "PEND-CHANNEL-ERR-001",
-    title: "channel close, send-while-disconnected, and BRIDGE_NOT_READY",
-    mode: "planned",
-    covers: ["lx.navigateTo"],
-    reason: "channel.test.ts covers happy reconnect only",
-  },
-  {
     id: "PEND-ERR-CATALOG-001",
     title: "map SurfaceErrorCode, LxErrorCode, and BRIDGE_* to owners",
     mode: "planned",
