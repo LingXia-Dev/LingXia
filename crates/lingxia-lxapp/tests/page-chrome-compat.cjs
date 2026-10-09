@@ -94,7 +94,8 @@ if (mode === 'syntax') {
   for (const [name, script] of Object.entries(input.pushes)) {
     vm.runInContext(script, context, { filename: name + '.js', timeout: 1000 });
   }
-  // serde_json emits object keys sorted; the vm context has its own Array.
+  // Key order depends on serde_json's preserve_order feature; the vm context has its own Array.
+  calls.sort((a, b) => a[0].localeCompare(b[0]));
   assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
     ['displayLanguage', 'zh-CN', 7],
     ['leaveRequest', 'back'],
