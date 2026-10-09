@@ -3,6 +3,7 @@ param(
   [ValidateSet('react', 'vue', 'all')]
   [string]$Framework = 'all',
   [string]$Device,
+  [string]$PackageId = 'com.lingxia.example.lxapp.dev',
   [int]$TimeoutSeconds = 600
 )
 
@@ -46,6 +47,22 @@ function Get-AndroidUiHierarchy {
   }
   Set-Content -LiteralPath $Destination -Value $xmlText -Encoding utf8
   return [xml]$xmlText
+}
+
+function Initialize-AndroidTestPermissions {
+  param([string]$InstalledPackage)
+
+  # The JS suite cannot answer system dialogs. Android 12 requires coarse
+  # permission alongside fine location; Wi-Fi details need both on a fresh APK.
+  foreach ($permission in @('ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION')) {
+    Invoke-Checked $adb ($adbTarget + @(
+      'shell', 'pm', 'grant', $InstalledPackage, "android.permission.$permission"
+    ))
+  }
+  $locationEnabled = (& $adb @adbTarget shell cmd location is-location-enabled | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or $locationEnabled -ne 'true') {
+    throw 'Android Wi-Fi tests require Location services enabled. Enable Location on the test device, then rerun.'
+  }
 }
 
 function Invoke-NativeVideoLifecycleProbe {
@@ -109,7 +126,6 @@ function Invoke-SameRouteRelaunchStress {
 function Invoke-ProcessRestoreProbe {
   param([string]$ResultDirectory)
 
-  $packageId = 'com.lingxia.example.lxapp.dev'
   Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'home', '--json')
   Invoke-Checked $lxdev @(
     'lxapp', 'page', 'wait', '--page', 'home',
@@ -290,6 +306,7 @@ try {
       # Returns once the session is ready, or fails having stopped it.
       Invoke-Checked $lingxia $devArguments
       $started = $true
+      Initialize-AndroidTestPermissions $PackageId
 
       Push-Location $lxappRoot
       try {
