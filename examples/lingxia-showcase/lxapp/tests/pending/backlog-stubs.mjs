@@ -175,13 +175,6 @@ export default [
     reason: "App lifecycle hooks are not first-class covers yet",
   },
   {
-    id: "PEND-STREAM-CANCEL-001",
-    title: "stream cancel mid-flight runs generator finally",
-    mode: "planned",
-    covers: ["lx.navigateTo"],
-    reason: "current stream.test.ts is happy-path only",
-  },
-  {
     id: "PEND-PICKER-001",
     title: "LxPicker value change, cancel, and columns",
     mode: "planned",
