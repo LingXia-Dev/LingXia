@@ -39,6 +39,14 @@ CI runs both frameworks on Windows and React on macOS. Android uses its matching
 thin platform entry locally. Shared cases must never be copied into a platform
 entry.
 
+From the repository root, `scripts/automation/run-android-showcase.ps1 -Device
+<serial>` builds and checks both Android frameworks. It starts the HTTP and
+Android system-input fixtures and reverses their ports through adb. Direct
+`lxdev test` runs need `--secret-arg androidDevice=...` to include OS-input
+cases; see [harness setup](harness/README.md#android-system-input).
+Keep other installed development variants stopped so they cannot replace the
+intended runtime connection on the forwarded dev port.
+
 ## What every public capability needs
 
 Use these coverage levels in order:
