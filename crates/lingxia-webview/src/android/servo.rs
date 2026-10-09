@@ -31,10 +31,10 @@ use servo::{
     CreateNewWebViewRequest, EmbedderControl, EmbedderControlId, EventLoopWaker, ImeEvent,
     InputEvent, InputMethodControl, InputMethodType, Key, KeyState, KeyboardEvent, LoadStatus,
     Location, Modifiers, NamedKey, PixelFormat, PrefValue, Preferences, RenderingContext, RgbColor,
-    SelectElementOptionOrOptgroup, Servo, ServoBuilder, SimpleDialog, StorageType, TouchEvent,
-    TouchEventType, TouchId, TouchPointerType, UserContentManager, UserScript, WebResourceLoad,
-    WebView, WebViewBuilder, WebViewDelegate, WebViewId, WheelDelta, WheelEvent, WheelMode,
-    WindowRenderingContext,
+    SelectElementOptionOrOptgroup, Servo, ServoBuilder, SimpleDialog, StorageType, Theme,
+    TouchEvent, TouchEventType, TouchId, TouchPointerType, UserContentManager, UserScript,
+    WebResourceLoad, WebView, WebViewBuilder, WebViewDelegate, WebViewId, WheelDelta, WheelEvent,
+    WheelMode, WindowRenderingContext,
 };
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
@@ -522,6 +522,7 @@ enum Command {
     SurfaceDestroyed(u64),
     Resize(u32, u32),
     Paint,
+    SetTheme(Theme),
     SetThrottled(bool),
     /// The window's texture left or rejoined the screen; nothing consumes
     /// frames while it is away.
@@ -700,7 +701,12 @@ fn run(tx: mpsc::Sender<RuntimeCommand>, rx: mpsc::Receiver<RuntimeCommand>) {
     };
     let servo = ServoBuilder::default()
         .opts(opts)
-        .preferences(Preferences::default())
+        .preferences(Preferences {
+            // Each Android host supplies its own launch/theme background beneath
+            // the texture, including while about:blank is being bootstrapped.
+            shell_background_color_rgba: [0.0; 4],
+            ..Preferences::default()
+        })
         .protocol_registry(protocols)
         .event_loop_waker(Box::new(SenderWaker(tx)))
         .build();
@@ -1011,6 +1017,8 @@ struct EngineState {
     size: PhysicalSize<u32>,
     throttled: bool,
     surface_shown: bool,
+    frame_ready: Rc<Cell<bool>>,
+    theme: Theme,
     pending_load: Option<String>,
     loads: Rc<LoadTracker>,
     probes: Rc<RefCell<Vec<WebView>>>,
@@ -1029,6 +1037,8 @@ impl EngineState {
             size: PhysicalSize::new(1, 1),
             throttled: false,
             surface_shown: true,
+            frame_ready: Rc::new(Cell::new(false)),
+            theme: Theme::Light,
             pending_load: None,
             loads: Rc::new(LoadTracker::default()),
             probes: Rc::new(RefCell::new(Vec::new())),
@@ -1070,6 +1080,7 @@ impl EngineState {
         }
         // Any load in flight dies with the Servo view.
         self.loads.abandon(&self.view_key);
+        self.frame_ready.set(false);
         self.context = None;
         self.native_window = None;
     }
@@ -1093,6 +1104,12 @@ impl EngineState {
                 }
             }
             Command::Paint => self.paint(),
+            Command::SetTheme(theme) => {
+                self.theme = theme;
+                if let Some(view) = &self.view {
+                    view.notify_theme_change(theme);
+                }
+            }
             Command::SetThrottled(throttled) => {
                 self.throttled = throttled;
                 self.apply_visibility();
@@ -1412,6 +1429,7 @@ impl EngineState {
             view: self.view_key.clone(),
             policy: self.policy,
             context: context.clone(),
+            frame_ready: self.frame_ready.clone(),
             loads: self.loads.clone(),
             probes: self.probes.clone(),
             next_embedder_control_token: self.next_embedder_control_token.clone(),
@@ -1427,6 +1445,8 @@ impl EngineState {
             .hidpi_scale_factor(Scale::new(self.density))
             .url(initial_url.unwrap_or_else(|| Url::parse("about:blank").unwrap()))
             .build();
+        // Match Android before the document's first style calculation.
+        view.notify_theme_change(self.theme);
         if self.throttled {
             apply_throttle(&view, true);
         }
@@ -1480,7 +1500,7 @@ impl EngineState {
             return;
         };
         self.loads.flush_stale_navigation(view);
-        if !self.surface_shown {
+        if !self.surface_shown || !self.frame_ready.get() {
             return;
         }
         if context.make_current().is_ok() {
@@ -1851,6 +1871,7 @@ struct Delegate {
     view: ViewKey,
     policy: ServoPolicy,
     context: Rc<WindowRenderingContext>,
+    frame_ready: Rc<Cell<bool>>,
     loads: Rc<LoadTracker>,
     probes: Rc<RefCell<Vec<WebView>>>,
     next_embedder_control_token: Rc<Cell<u64>>,
@@ -1942,7 +1963,9 @@ impl WebViewDelegate for Delegate {
         }
     }
 
-    fn notify_new_frame_ready(&self, _webview: WebView) {}
+    fn notify_new_frame_ready(&self, _webview: WebView) {
+        self.frame_ready.set(true);
+    }
 
     fn notify_crashed(&self, _webview: WebView, reason: String, _backtrace: Option<String>) {
         log::error!("Servo content crashed for {}: {reason}", self.view.webtag);
@@ -3149,6 +3172,24 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeSurfaceCr
             if !window.is_null() {
                 unsafe { ANativeWindow_release(window) };
             }
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeSetTheme(
+    mut env: EnvUnowned,
+    _this: JObject,
+    tag: JString,
+    native_view_id: jlong,
+    dark: jboolean,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        if let Some(view) = java_view(env, tag, native_view_id)? {
+            let theme = if dark { Theme::Dark } else { Theme::Light };
+            let _ = send(&view, Command::SetTheme(theme));
         }
         Ok(())
     })
