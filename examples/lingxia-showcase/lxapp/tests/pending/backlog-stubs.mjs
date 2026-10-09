@@ -234,13 +234,6 @@ export default [
     reason: "used as helpers in workspace tests, not first-class specs",
   },
   {
-    id: "PEND-VUE-TESTID-001",
-    title: "Vue views carry every data-testid the React views expose",
-    mode: "planned",
-    covers: ["lx.navigateTo"],
-    reason: "this Windows run is react-only; Vue testid parity is not gated",
-  },
-  {
     id: "PEND-VUE-MATRIX-001",
     title: "desktop contracts marked for Vue or macos-react-only",
     mode: "planned",
