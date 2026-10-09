@@ -1810,7 +1810,7 @@ impl PageInstance {
     /// stays put; the View answers through `navigation.leave`.
     pub(crate) fn request_leave(&self, reason: LeaveReason) {
         self.push_view_script(&format!(
-            "var f = globalThis.__lingxiaDispatchLeaveRequest; if (typeof f === 'function') f('{}');",
+            "var f = window.__lingxiaDispatchLeaveRequest; if (typeof f === 'function') f('{}');",
             reason.as_str()
         ));
     }

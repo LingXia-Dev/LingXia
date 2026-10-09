@@ -1121,7 +1121,7 @@ pub(crate) fn view_surface_context_script(appid: &str) -> Option<String> {
 
 /// The same script for context JSON already built under `revision`.
 pub(crate) fn view_surface_context_script_for(payload: &str, revision: u64) -> String {
-    format!("var f = globalThis.__lingxiaApplySurfaceContext; if (f) f({payload}, {revision});")
+    format!("var f = window.__lingxiaApplySurfaceContext; if (f) f({payload}, {revision});")
 }
 
 /// A bridge-config script seeding a new document with the context, so the
@@ -3141,7 +3141,9 @@ mod tests {
 
         let script = view_surface_context_script("known").expect("a known lxapp has a context");
         assert!(
-            script.starts_with(r#"var f = globalThis.__lingxiaApplySurfaceContext; if (f) f({"sizeClass":"regular""#),
+            script.starts_with(
+                r#"var f = window.__lingxiaApplySurfaceContext; if (f) f({"sizeClass":"regular""#
+            ),
             "{script}"
         );
         // The revision is taken before the value is read: a change landing in
