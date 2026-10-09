@@ -182,13 +182,6 @@ export default [
     reason: "COMPONENTS-001 only opens the page",
   },
   {
-    id: "PEND-NAVIGATOR-001",
-    title: "LxNavigator open and back",
-    mode: "planned",
-    covers: ["lx.navigateTo"],
-    reason: "COMPONENTS-001 only opens the page",
-  },
-  {
     id: "PEND-SWIPER-001",
     title: "LxMediaSwiper index change and add from chooseMedia",
     mode: "planned",
