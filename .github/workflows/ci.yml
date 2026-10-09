@@ -879,8 +879,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          shared-key: macos-rust
+          # Every host-debug macOS job restores one cache; rust-test saves it.
+          shared-key: macos
+          save-if: false
 
       # lingxia-cli build.rs embeds the bridge/polyfills JS runtime.
       - uses: ./.github/actions/build-web-runtime
@@ -925,8 +926,8 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          prefix-key: runner-arm64
+          shared-key: macos
+          save-if: false
 
       - uses: ./.github/actions/build-web-runtime
 
@@ -1011,8 +1012,8 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@v2
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          prefix-key: example-macos
+          shared-key: macos
+          save-if: false
       - uses: ./.github/actions/build-web-packages
       - uses: ./.github/actions/resolve-cli
         with:
@@ -1142,13 +1143,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          # Windows shares one cache with rust-windows-target; react alone saves
-          # it on main (it builds the CLI with vendored OpenSSL plus the host).
-          shared-key: ${{ matrix.platform == 'windows' && 'windows' || format('showcase-automation-{0}', matrix.platform) }}
+          # Each OS has one cache for its host-debug jobs. Windows react alone
+          # saves it on main (it builds the CLI with vendored OpenSSL plus the
+          # host); on macOS rust-test saves, so automation only restores.
+          shared-key: ${{ matrix.platform }}
           cache-on-failure: true
           # Cancelled PR automation must release the concurrency group instead
           # of spending minutes archiving a target directory in its post step.
-          save-if: ${{ github.ref == 'refs/heads/main' && matrix.profile == 'react' }}
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.platform == 'windows' && matrix.profile == 'react' }}
 
       - uses: ./.github/actions/build-web-packages
 
@@ -1298,8 +1300,10 @@ jobs:
           targets: aarch64-apple-ios
       - uses: Swatinem/rust-cache@v2
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          prefix-key: example-ios
+          # Host deps come from the shared cache; the aarch64-apple-ios
+          # artifacts are rebuilt each run.
+          shared-key: macos
+          save-if: false
       - uses: ./.github/actions/build-web-packages
       - uses: ./.github/actions/resolve-cli
         with:
@@ -1383,8 +1387,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          # The one macOS saver: `cargo test --workspace` leaves the fullest set
+          # of debug artifacts. Save even on a failed (advisory) test run.
+          shared-key: macos
+          cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
-          shared-key: macos-rust
 
       - uses: ./.github/actions/build-web-runtime
 
@@ -1459,8 +1466,8 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          prefix-key: sdk-apple
+          shared-key: macos
+          save-if: false
 
       - uses: ./.github/actions/build-web-runtime
 
