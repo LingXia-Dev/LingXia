@@ -5,3 +5,4 @@ import '../platform/android/device-capabilities.test.js';
 import '../platform/android/native-interaction.test.js';
 
 import '../platform/android/native-overlay.test.js';
+import '../platform/android/native-picker.test.js';

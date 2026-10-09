@@ -130,6 +130,12 @@ internal class PickerComponent(
             return
         }
 
+        val initialIndices = when (val index = props["defaultIndex"]) {
+            is Number -> listOf(index.toInt())
+            is List<*> -> index.map { (it as? Number)?.toInt() ?: 0 }
+            else -> emptyList()
+        }
+
         // Regular picker
         val columnsJSON: String = when (val columns = props["columns"]) {
             is String -> columns
@@ -166,7 +172,8 @@ internal class PickerComponent(
                         confirmText = props["confirmText"] as? String ?: "",
                         confirmButtonColor = props["confirmButtonColor"] as? String ?: "#007AFF",
                         confirmTextColor = props["confirmTextColor"] as? String ?: "#FFFFFF",
-                        callbackId = currentCallbackId
+                        callbackId = currentCallbackId,
+                        initialIndices = initialIndices
                     )
                 }
 
@@ -189,7 +196,8 @@ internal class PickerComponent(
                         confirmText = props["confirmText"] as? String ?: "",
                         confirmButtonColor = props["confirmButtonColor"] as? String ?: "#007AFF",
                         confirmTextColor = props["confirmTextColor"] as? String ?: "#FFFFFF",
-                        callbackId = currentCallbackId
+                        callbackId = currentCallbackId,
+                        initialIndices = initialIndices
                     )
                 }
 
@@ -206,7 +214,8 @@ internal class PickerComponent(
                         confirmText = props["confirmText"] as? String ?: "",
                         confirmButtonColor = props["confirmButtonColor"] as? String ?: "#007AFF",
                         confirmTextColor = props["confirmTextColor"] as? String ?: "#FFFFFF",
-                        callbackId = currentCallbackId
+                        callbackId = currentCallbackId,
+                        initialIndex = initialIndices.firstOrNull() ?: 0
                     )
                 }
             }
