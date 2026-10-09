@@ -194,13 +194,6 @@ export default [
     reason: "add path is OS picker; index events have no contract",
   },
   {
-    id: "PEND-PAGE-GLOBALS-001",
-    title: "Page and App globals as first-class covers",
-    mode: "planned",
-    covers: ["lx.host.getBaseInfo"],
-    reason: "setData / getApp / this.route / this.surface are not owned yet",
-  },
-  {
     id: "PEND-CHANNEL-ERR-001",
     title: "channel close, send-while-disconnected, and BRIDGE_NOT_READY",
     mode: "planned",
