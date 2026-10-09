@@ -34,6 +34,7 @@ import '../pages/native-components.test.js';
 import '../pages/device.test.js';
 import '../pages/home.test.js';
 import '../pages/lifecycle.test.js';
+import '../pages/page-globals.test.js';
 import '../pages/pull-to-refresh.test.js';
 import '../pages/system.test.js';
 import '../pages/todo.test.js';
