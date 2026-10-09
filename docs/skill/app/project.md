@@ -198,11 +198,10 @@ a dev build for testing.
 | `dev` | `.dev` | red `D` badge |
 | `prod` | none | unmodified |
 
-Envs install side by side. The default lxapp channel follows the running
-service env (`dev` → `draft`, `prod` → `release`); prod builds switched to
-the dev service open `draft` by default. An explicit `channel` works on any
-host. Lxapp data is kept per channel, so switching service env shows a
-separate set of lxapp data.
+Envs install side by side. The default lxapp channel is always `release`,
+independent of the running service env. An explicit `channel: 'draft'` works
+on any host. Lxapp data is kept per channel; switching service env alone does
+not select another channel's data.
 
 ```yaml
 app:

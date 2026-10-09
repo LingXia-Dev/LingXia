@@ -41,7 +41,7 @@ Missing `env` is `prod`. It also emits `lingxiaServers` when the YAML
 configured one or both URLs, so a prod build can switch the **service** env
 at runtime. `lingxiaServer` stays the build-selected default. Opening an
 lxapp and App Links take `channel=` (not `envVersion=`). Omit it to use the
-running service env's default (`dev` → `draft`, `prod` → `release`). The
+default channel (`release` in every service env). The
 client does **not** forbid opening `draft` on a prod host.
 
 ## Runtime service environment
@@ -56,11 +56,10 @@ unchanged and does not request exit. If exit fails, `nextLaunchEnv` still
 reports the saved target so the user can restart manually. Only the control
 app may call this API.
 
-The default lxapp channel follows the running service env. A prod build
-switched to the dev service opens draft lxapps by default; switching back
-opens release lxapps. Explicit `channel` selectors still take precedence.
-Installs and storage are keyed by channel, home lxapp included, so each
-service env keeps its own lxapp data; switching back restores the other set.
+The default lxapp channel is always `release`, independent of the running
+service env. Draft opens and publishes require an explicit `channel` selector.
+Installs and storage remain keyed by channel, home lxapp included. Switching
+service env does not select a different lxapp data profile by itself.
 
 Draft lxapps/plugins from the dev service may be unsigned, including on a
 prod build switched to dev. Release packages and packages from the prod

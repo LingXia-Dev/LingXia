@@ -13,10 +13,17 @@ Uploads a package to the LingXia server (OS stores are `lingxia store`).
 
 - Reads id/version from `lxapp.json` (package the lxapp first) or `lingxia.yaml`.
 - `--env dev|prod` picks server and token (default `dev`). `--channel
-  release|draft` picks the lxapp line (`dev` → `draft`, `prod` → `release`).
+  release|draft` picks the lxapp line (default `release` in every env).
 - A host publish takes a prebuilt package path and no `--channel`.
 - Token: `--token`, `LINGXIA_PUBLISH_TOKEN`, or the wallet
   (`lingxia auth login lingxia --env prod --token …`, keyed by server + env).
+
+Draft lxapp publishes (`--channel draft`) print an HTTPS `/lxapp/open` URL
+on the publish server origin. Scan it with `lx.scanCode()` in a host using that
+server. Interactive terminals show a QR code (PNG on supported image terminals,
+text otherwise); redirected output keeps only the URL. HTTP servers cannot
+produce this HTTPS scan trigger. The link selects the draft channel, not a
+fixed package revision; opening preserves the normal update lifecycle.
 
 ### Update signing keys
 

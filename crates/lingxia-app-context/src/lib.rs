@@ -62,14 +62,9 @@ impl AppEnv {
         }
     }
 
-    /// Default lxapp channel for this env: `dev` → `draft`,
-    /// `prod` → `release`. An open can pass an explicit channel to override;
-    /// the client does not forbid `draft` on a prod host.
+    /// Default lxapp channel, independent of the host environment.
     pub fn default_channel(self) -> &'static str {
-        match self {
-            Self::Dev => "draft",
-            Self::Prod => "release",
-        }
+        "release"
     }
 }
 

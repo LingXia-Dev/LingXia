@@ -49,7 +49,7 @@ fn prod_host_restored_to_dev_opens_unsigned_drafts_without_update_keys() {
     lingxia_app_context::service_env::install(&data_dir, &config).unwrap();
     assert_eq!(lingxia_app_context::env(), AppEnv::Prod);
     assert_eq!(service_env(), AppEnv::Dev);
-    assert_eq!(default_channel(), Channel::Draft);
+    assert_eq!(default_channel(), Channel::Release);
     for kind in ["lxapp", "lxplugin"] {
         target.kind = kind.into();
         assert!(check_package_update_enabled(kind, "draft", &[]));

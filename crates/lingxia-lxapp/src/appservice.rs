@@ -22,6 +22,13 @@ pub(crate) struct WorkerTermination {
 }
 
 impl WorkerTermination {
+    pub(crate) fn is_complete(&self) -> bool {
+        self.result.borrow().is_some()
+    }
+
+    pub(crate) fn same_completion(&self, other: &Self) -> bool {
+        self.result.same_channel(&other.result)
+    }
     #[cfg(feature = "js-appservice")]
     fn pending() -> (
         tokio::sync::watch::Sender<Option<Result<(), crate::LxAppError>>>,

@@ -1152,8 +1152,7 @@ export type HostAppApi = globalThis.HostAppApi;
  * the next launch. The mutable service environment is
  * {@link HostAppApi.toggleServiceEnv}. It is **not** the
  * lxapp publish channel (`LxAppEnvVersion` / `LxAppReleaseType`:
- * `'release' | 'draft'`). Default channel is derived
- * from env (`dev` → `draft`, `prod` → `release`) and can be
+ * `'release' | 'draft'`). Default channel is `release` and can be
  * overridden when opening an lxapp.
  */
 export type HostAppEnv = 'dev' | 'prod';
@@ -1346,8 +1345,7 @@ export type NavigateToAppOptions = {
     page?: ExternalPageName;
     query?: PageQuery;
     /**
-     * Lxapp publish channel. Defaults from the running service env
-     * (`dev` → `draft`, `prod` → `release`).
+     * Lxapp publish channel. Defaults to `release` in every service environment.
      */
     channel?: LxAppEnvVersion;
     targetVersion?: string;
@@ -1903,8 +1901,7 @@ export type ShellOpenAppOptions = {
     page?: ExternalPageName;
     query?: PageQuery;
     /**
-     * Lxapp publish channel. Defaults from the running service env
-     * (`dev` → `draft`, `prod` → `release`).
+     * Lxapp publish channel. Defaults to `release` in every service environment.
      */
     channel?: LxAppEnvVersion;
     targetVersion?: string;

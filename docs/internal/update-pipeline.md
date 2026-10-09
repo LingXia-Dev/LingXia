@@ -162,6 +162,14 @@ failure directly; package visibility makes availability preflight unreliable.
 - **First install blocks opening; updates do not.** First install has a
   15-second ceiling. Bundled apps register without network access; missing both
   bundle and provider fails the open.
+- Explicit channel changes retire the old session and create one with the target
+  channel and its storage scope, including the home lxapp. Wait for the old
+  Logic worker ACK outside admission and transition locks before opening.
+  Failed ACKs quarantine the worker without poisoning later opens. Same-channel opens
+  preserve live sessions. Host-bundled assets satisfy release first installs;
+  draft packages come from the draft feed. DevPath sessions remain local drafts.
+  Host control surfaces cannot switch to downloaded drafts or inherit their
+  authority onto an installed replacement.
 - Check and download updates in the background. Apply a downloaded update only
   when no live instance exists: initial process startup, after a real close,
   or on restart. Reopening a still-running session must preserve its bundle
