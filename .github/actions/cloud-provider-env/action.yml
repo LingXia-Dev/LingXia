@@ -60,7 +60,7 @@ runs:
 
     # Omit `ref` so actions/checkout uses the cloud client's default branch HEAD.
     - if: steps.gate.outputs.enabled == 'true' && steps.resolve.outputs.pin != 'true'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: ${{ steps.resolve.outputs.repository }}
         token: ${{ inputs.github-token }}
@@ -69,7 +69,7 @@ runs:
         persist-credentials: false
 
     - if: steps.gate.outputs.enabled == 'true' && steps.resolve.outputs.pin == 'true'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: ${{ steps.resolve.outputs.repository }}
         ref: ${{ steps.resolve.outputs.ref }}

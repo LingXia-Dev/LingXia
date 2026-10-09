@@ -110,7 +110,7 @@ jobs:
             target: aarch64-pc-windows-msvc
             cli_target: windows-arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ env.CHECKOUT_REF }}
 
@@ -154,7 +154,7 @@ jobs:
         shell: bash
         run: bash scripts/release/cli.sh --target ${{ matrix.cli_target }} --out dist/cli-release
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: cli-${{ matrix.os }}-${{ matrix.arch }}
           path: dist/cli-release/*
@@ -176,7 +176,7 @@ jobs:
             label: macOS x64
             target: x86_64-apple-darwin
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ env.CHECKOUT_REF }}
 
@@ -251,7 +251,7 @@ jobs:
         run: bash scripts/release/runner.sh --out dist/runner-release --macos-arch ${{ matrix.arch }}
 
       - name: Upload Runner zip
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lingxia-runner-macos-${{ matrix.arch }}
           path: dist/runner-release/*.zip
@@ -268,7 +268,7 @@ jobs:
       OPENSSL_SRC_PERL: C:\Strawberry\perl\bin\perl.exe
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ env.CHECKOUT_REF }}
 
@@ -312,7 +312,7 @@ jobs:
         run: bash scripts/release/runner.sh --platform windows --out dist/runner-release
 
       - name: Upload Runner zip
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lingxia-runner-windows-x64
           path: dist/runner-release/*.zip
@@ -324,7 +324,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ env.CHECKOUT_REF }}
 
@@ -339,7 +339,7 @@ jobs:
           [ -n "$cli_version" ] || { echo "Failed to read lingxia-cli version" >&2; exit 1; }
           [ "$expected" = "$cli_version" ] || { echo "Tag ($expected) != lingxia-cli ($cli_version)" >&2; exit 1; }
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: artifacts
 
@@ -384,7 +384,7 @@ jobs:
 
       - name: Upload assets to GitHub Release
         if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           files: release-assets/*
