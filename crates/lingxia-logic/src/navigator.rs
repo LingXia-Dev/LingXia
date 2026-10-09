@@ -131,8 +131,11 @@ pub(crate) async fn prepare_app_open(
     let host_terminal_settings =
         register_host_terminal_settings_bundle(lxapp, &target_appid, control_invocation)?;
     validate_page_selector(options).map_err(|e| js_error_from_lxapp_error(&e))?;
-    let release_type =
-        parse_channel(options.channel.as_deref()).map_err(|e| js_error_from_lxapp_error(&e))?;
+    let release_type = lxapp::resolve_open_channel(
+        &target_appid,
+        lxapp::parse_requested_channel(options.channel.as_deref())
+            .map_err(|e| js_error_from_lxapp_error(&LxAppError::InvalidParameter(e)))?,
+    );
     let target_version = options
         .target_version
         .as_deref()

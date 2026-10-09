@@ -130,7 +130,7 @@ pub use lxapp::{
         set_open_blocked_listener as set_lxapp_open_blocked_listener,
         set_registry_change_listener as set_lxapp_registry_change_listener,
     },
-    restart_lxapp, resume_lxapp_admission, set_display_language_preference,
+    resolve_open_channel, restart_lxapp, resume_lxapp_admission, set_display_language_preference,
     set_display_language_preference_in, set_host_appearance_preference, shutdown_lxapps_except,
     subscribe_display_language_effective, subscribe_display_language_state, tabbar,
     terminate_lxapp, touch_page_instance_by_id, try_get, uninstall_lxapp,
@@ -153,6 +153,7 @@ pub use provider::{
 };
 pub use startup::{
     LxAppStartupOptions, Scene, append_page_query, parse_channel, parse_optional_channel,
+    parse_requested_channel,
 };
 pub use update::{
     DownloadedUpdateInfo, OtaUpdateTarget, UpdateManager, ensure_first_install,

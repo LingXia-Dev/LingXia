@@ -1659,7 +1659,7 @@ pub fn shell_open_lxapp_main(app_id: &str) -> bool {
             return false;
         }
         std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
-            let channel = lxapp::default_channel();
+            let channel = lxapp::resolve_open_channel(&app_id, None);
             if let Err(err) = lxapp::prepare_lxapp_open(&app_id, channel).await {
                 lxapp::notify_lxapp_open_blocked(&err);
                 return;

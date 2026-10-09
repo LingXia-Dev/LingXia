@@ -5255,7 +5255,7 @@ fn present_main_surface_inner(
             let owner_id = owner.appid.clone();
             let surface_id = surface_id.to_string();
             std::mem::drop(lingxia::task::spawn(async move {
-                let channel = lxapp::default_channel();
+                let channel = lxapp::resolve_open_channel(&app_id, None);
                 if let Err(err) = lxapp::prepare_lxapp_open(&app_id, channel).await {
                     lxapp::notify_lxapp_open_blocked(&err);
                     return;
@@ -5468,7 +5468,7 @@ fn focus_or_open_lxapp(_owner_appid: &str, target_appid: &str) {
 fn open_pinned_lxapp_main(target_appid: &str) {
     let appid = target_appid.to_string();
     std::mem::drop(lingxia::task::spawn(async move {
-        let channel = lxapp::default_channel();
+        let channel = lxapp::resolve_open_channel(&appid, None);
         if let Err(err) = lxapp::prepare_lxapp_open(&appid, channel).await {
             lxapp::notify_lxapp_open_blocked(&err);
             return;
@@ -7607,7 +7607,7 @@ async fn open_panel_lxapp(
     page: Option<&str>,
     query: Option<&serde_json::Value>,
 ) -> Result<(), lxapp::LxAppError> {
-    let channel = lxapp::default_channel();
+    let channel = lxapp::resolve_open_channel(appid, None);
     lxapp::prepare_lxapp_open(appid, channel).await?;
     let options = panel_startup_options(appid, path, page, query)?;
     let _ = lxapp::open_lxapp(

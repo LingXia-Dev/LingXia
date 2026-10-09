@@ -111,7 +111,7 @@ async fn open_lxapp_page(
     page: Option<&str>,
     query: &serde_json::Value,
 ) -> Result<(), String> {
-    let release_type = lxapp::Channel::default();
+    let release_type = lxapp::resolve_open_channel(appid, None);
     lxapp::prepare_lxapp_open(appid, release_type)
         .await
         .inspect_err(lxapp::notify_lxapp_open_blocked)
@@ -124,7 +124,7 @@ async fn open_lxapp_page(
 }
 
 fn validate_lxapp_page(appid: &str, page: Option<&str>) -> Result<(), NavigationError> {
-    let release_type = lxapp::Channel::default();
+    let release_type = lxapp::resolve_open_channel(appid, None);
     let target = lxapp::ensure_lxapp(appid, release_type).map_err(|error| {
         NavigationError::invalid(format!("lxapp {appid} is not available: {error}"))
     })?;

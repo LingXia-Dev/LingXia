@@ -26,7 +26,7 @@ fn configured_server_is_accepted_only_by_the_scan_entrypoint() {
     assert_eq!(applink::deliver_lxapp_only(link), 1);
     let delivered = DELIVERED.lock().unwrap().pop().unwrap();
     assert_eq!(delivered.appid, "shop");
-    assert_eq!(delivered.release_type, Channel::Draft);
+    assert_eq!(delivered.release_type, Some(Channel::Draft));
     for url in [
         "https://api.example.com/app/auth",
         "https://api.example.com:bogus/lxapp/open?appId=shop",

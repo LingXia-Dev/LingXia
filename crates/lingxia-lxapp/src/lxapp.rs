@@ -267,6 +267,30 @@ pub fn is_dev_bundle_appid(appid: &str) -> bool {
     )
 }
 
+/// The channel an open of `appid` runs on. A dev bundle is always a local
+/// draft; an omitted channel keeps the live session's channel so that only an
+/// explicit selector can retire it.
+pub fn resolve_open_channel(appid: &str, requested: Option<Channel>) -> Channel {
+    if is_dev_bundle_appid(appid) {
+        return Channel::Draft;
+    }
+    requested
+        .or_else(|| try_get(appid).map(|app| app.release_type()))
+        .unwrap_or_else(crate::default_channel)
+}
+
+impl LxApps {
+    #[cfg(test)]
+    pub(crate) fn resolve_open_channel(&self, appid: &str, requested: Option<Channel>) -> Channel {
+        if is_dev_bundle_appid(appid) {
+            return Channel::Draft;
+        }
+        requested
+            .or_else(|| self.lxapps.get(appid).map(|app| app.release_type()))
+            .unwrap_or_else(crate::default_channel)
+    }
+}
+
 /// Whether `appid`'s bundle is managed by the update system. Answers for an
 /// appid with no live instance too — first install runs before one exists.
 pub(crate) fn is_ota_managed_appid(appid: &str) -> bool {
@@ -428,37 +452,43 @@ impl LxApps {
         appid: &str,
         channel: Channel,
     ) -> Result<(), LxAppError> {
-        let admission = self.admission.enter(appid)?;
-        let completion = self.with_session_transition(appid, || {
-            self.channel_switches
-                .remove_if(appid, |_, pending| pending.is_complete());
-            if let Some(pending) = self.channel_switches.get(appid) {
-                return Ok(Some(pending.value().clone()));
-            }
-            let previous = self.lxapps.get(appid).map(|app| app.value().clone());
-            let Some(app) = previous else { return Ok(None) };
-            let channel = if is_dev_bundle_appid(appid) {
-                Channel::Draft
-            } else {
-                channel
+        let channel = resolve_open_channel(appid, Some(channel));
+        // A concurrent switch may land on yet another channel; re-check until
+        // the live session matches or nothing is pending.
+        for _ in 0..4 {
+            let admission = self.admission.enter(appid)?;
+            let completion = self.with_session_transition(appid, || {
+                self.channel_switches
+                    .remove_if(appid, |_, pending| pending.is_complete());
+                if let Some(pending) = self.channel_switches.get(appid) {
+                    return Ok(Some(pending.value().clone()));
+                }
+                // A session retired by restart is already on its way out.
+                let previous = self
+                    .lxapps
+                    .get(appid)
+                    .filter(|app| !app.session.is_retired())
+                    .map(|app| app.value().clone());
+                let Some(app) = previous else { return Ok(None) };
+                if app.release_type() == channel {
+                    return Ok(None);
+                }
+                if app.app_session_class() == AppSessionClass::ControlSurface {
+                    return Err(LxAppError::InvalidParameter(
+                        "host control surfaces cannot select a downloaded draft".into(),
+                    ));
+                }
+                let completion = self.retire_locked_with_completion(&app)?;
+                self.channel_switches
+                    .insert(appid.to_string(), completion.clone());
+                Ok(Some(completion))
+            })?;
+            // Worker ACK is asynchronous. Neither ingress admission nor the per-app
+            // transition lock may be held while waiting for the old Logic to exit.
+            drop(admission);
+            let Some(completion) = completion else {
+                return Ok(());
             };
-            if app.release_type() == channel {
-                return Ok(None);
-            }
-            if app.app_session_class() == AppSessionClass::ControlSurface {
-                return Err(LxAppError::InvalidParameter(
-                    "host control surfaces cannot select a downloaded draft".into(),
-                ));
-            }
-            let completion = self.retire_locked_with_completion(&app)?;
-            self.channel_switches
-                .insert(appid.to_string(), completion.clone());
-            Ok(Some(completion))
-        })?;
-        // Worker ACK is asynchronous. Neither ingress admission nor the per-app
-        // transition lock may be held while waiting for the old Logic to exit.
-        drop(admission);
-        if let Some(completion) = completion {
             let result = completion.clone().wait().await;
             self.with_session_transition(appid, || {
                 self.channel_switches
@@ -470,7 +500,9 @@ impl LxApps {
                 warn!("Switching channel without the previous worker: {}", error).with_appid(appid);
             }
         }
-        Ok(())
+        Err(LxAppError::ResourceExhausted(
+            "channel switch keeps being pre-empted by other switches".into(),
+        ))
     }
 
     /// The class a session for `appid` must be created with.
@@ -510,10 +542,10 @@ impl LxApps {
                     "control app identity mismatch: {appid} is not the native-sealed home app"
                 )));
             }
+            // Native entry points carry no channel choice of their own: a live
+            // ControlApp keeps whatever channel an explicit open selected.
             if let Some(app) = self.lxapps.get(&appid) {
-                if app.is_control_app()
-                    && (app.release_type() == release_type || is_dev_bundle_appid(&appid))
-                {
+                if app.is_control_app() {
                     return Ok(app.clone());
                 }
                 if !app.is_control_app() {
@@ -546,9 +578,10 @@ impl LxApps {
                     "control surface must be a host-bundled lxapp: {appid}"
                 )));
             }
+            let release_type = resolve_open_channel(&appid, Some(release_type));
             if let Some(app) = self.lxapps.get(&appid) {
                 if app.app_session_class() == AppSessionClass::ControlSurface
-                    && (app.release_type() == release_type || is_dev_bundle_appid(&appid))
+                    && app.release_type() == release_type
                 {
                     return Ok(app.clone());
                 }
@@ -624,11 +657,7 @@ impl LxApps {
         release_type: Channel,
         session_class: AppSessionClass,
     ) -> Result<Arc<LxApp>, LxAppError> {
-        let release_type = if is_dev_bundle_appid(&appid) {
-            Channel::Draft
-        } else {
-            release_type
-        };
+        let release_type = resolve_open_channel(&appid, Some(release_type));
         if session_class == AppSessionClass::ControlSurface
             && release_type == Channel::Draft
             && !is_dev_bundle_appid(&appid)

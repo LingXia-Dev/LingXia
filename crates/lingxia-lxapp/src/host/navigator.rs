@@ -106,7 +106,11 @@ async fn do_navigate_to_app(
 ) -> Result<(), LxAppError> {
     validate_page_selector(&options)?;
     let target_appid = options.appid.clone();
-    let release_type = parse_channel(options.channel.as_deref())?;
+    let release_type = crate::resolve_open_channel(
+        &target_appid,
+        crate::parse_requested_channel(options.channel.as_deref())
+            .map_err(LxAppError::InvalidParameter)?,
+    );
     let target_version = options
         .target_version
         .as_deref()

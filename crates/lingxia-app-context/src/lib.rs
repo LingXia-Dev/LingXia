@@ -61,11 +61,6 @@ impl AppEnv {
             _ => None,
         }
     }
-
-    /// Default lxapp channel, independent of the host environment.
-    pub fn default_channel(self) -> &'static str {
-        "release"
-    }
 }
 
 impl std::fmt::Display for AppEnv {

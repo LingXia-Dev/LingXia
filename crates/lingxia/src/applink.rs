@@ -20,19 +20,19 @@ fn open_target(target: AppLinkTarget) -> i32 {
         log::warn!("AppLink missing appId and the host has no homeAppId");
         return -1;
     };
+    let release_type = lxapp::resolve_open_channel(&appid, target.release_type);
     log::info!(
         "AppLink accepted: appid={}, path={}, releaseType={}",
         appid,
         target.path,
-        target.release_type
+        release_type
     );
 
     let options = LxAppStartupOptions::new(&target.path)
         .set_query(target.query)
-        .set_release_type(target.release_type)
+        .set_release_type(release_type)
         .set_scene(Scene::AppLink)
         .set_link_url(target.url);
-    let release_type = target.release_type;
 
     std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
         if let Err(err) = lxapp::prepare_lxapp_open(&appid, release_type).await {

@@ -224,8 +224,9 @@ fn print_draft_qr(url: &str) -> Result<()> {
     let term_program = env::var("TERM_PROGRAM").unwrap_or_default();
     let kitty = env::var("TERM").is_ok_and(|term| term == "xterm-kitty")
         || env::var_os("KITTY_WINDOW_ID").is_some()
-        || matches!(term_program.as_str(), "ghostty" | "WezTerm");
-    let iterm = term_program == "iTerm.app";
+        || term_program == "ghostty";
+    // WezTerm ships with Kitty graphics disabled but speaks the iTerm2 protocol.
+    let iterm = matches!(term_program.as_str(), "iTerm.app" | "WezTerm");
     // Multiplexers may suppress graphics escapes; text remains scannable.
     if (kitty || iterm) && env::var_os("TMUX").is_none() && env::var_os("STY").is_none() {
         let data = base64::engine::general_purpose::STANDARD.encode(draft_qr_png(&code)?);
@@ -475,7 +476,7 @@ fn resolve_meta(
             let (id, version, min_runtime) = read_lxapp_json(cwd)?;
             let channel = match channel_arg {
                 Some(value) => normalize_channel(value)?,
-                None => env.default_channel().to_string(),
+                None => lingxia_update::default_channel().as_str().to_string(),
             };
             Ok(PackageMeta {
                 target,
@@ -490,7 +491,7 @@ fn resolve_meta(
             let (id, version) = read_lxplugin_json(cwd)?;
             let channel = match channel_arg {
                 Some(value) => normalize_channel(value)?,
-                None => env.default_channel().to_string(),
+                None => lingxia_update::default_channel().as_str().to_string(),
             };
             Ok(PackageMeta {
                 target,
