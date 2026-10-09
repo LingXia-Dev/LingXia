@@ -1,4 +1,4 @@
-This is `servo-net` 0.5.0 with two narrow embedder hooks. Servo's public
+This is `servo-net` 0.7.0 with two narrow embedder hooks. Servo's public
 embedding API exposes request interception, while response, failure, and
 download data remain internal to the network/devtools pipeline.
 
@@ -10,3 +10,6 @@ download data remain internal to the network/devtools pipeline.
 
 Keep these patches narrow so they can be replaced by upstream APIs when Servo
 exposes them.
+
+The manifest also aligns `rusqlite` with LingXia's 0.40 line so the process
+links one SQLite library, matching the `servo-storage` compatibility patch.

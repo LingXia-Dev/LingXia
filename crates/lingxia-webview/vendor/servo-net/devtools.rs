@@ -5,6 +5,7 @@
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use bytes::Bytes;
 use crossbeam_channel::Sender;
 use devtools_traits::{
     ChromeToDevtoolsControlMsg, DevtoolsControlMsg, HttpRequest as DevtoolsHttpRequest,
@@ -16,7 +17,7 @@ use log::error;
 use net_traits::http_status::HttpStatus;
 use net_traits::request::{Destination, Request};
 use net_traits::response::{CacheState, Response};
-use net_traits::{DebugVec, FetchMetadata, NetworkError};
+use net_traits::{FetchMetadata, NetworkError};
 use servo_base::id::{BrowsingContextId, PipelineId};
 use servo_url::ServoUrl;
 
@@ -93,7 +94,7 @@ pub(crate) fn notify_failure(request: &Request, error: &NetworkError) {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub(crate) fn prepare_devtools_request(
     request_id: String,
     url: ServoUrl,
@@ -112,7 +113,7 @@ pub(crate) fn prepare_devtools_request(
         url,
         method,
         headers,
-        body: body.map(DebugVec::from),
+        body: body.map(Bytes::from),
         pipeline_id,
         started_date_time,
         time_stamp: started_date_time
@@ -171,7 +172,6 @@ pub(crate) fn send_response_to_devtools(
     );
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn send_response_values_to_devtools(
     headers: Option<HeaderMap>,
     status: HttpStatus,
@@ -188,7 +188,7 @@ pub(crate) fn send_response_values_to_devtools(
         let devtoolsresponse = DevtoolsHttpResponse {
             headers,
             status,
-            body: body.map(DebugVec::from),
+            body: body.map(Bytes::from),
             from_cache,
             pipeline_id,
             browsing_context_id,
