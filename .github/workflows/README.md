@@ -25,6 +25,10 @@ version (22 by default). When comparing CI performance, separate queue time,
 build/test time and cache upload time; the first run of a new Windows suite has
 a cold cache. Keep every suite in `CI Success` when changing the matrix.
 
+JavaScript actions use the Node 24 Actions runtime. Self-hosted runners must be
+version 2.327.1 or newer; the `setup-node` input still selects the Node version
+used by project build and test commands.
+
 ## How to release — the only two buttons you press
 
 ```text

@@ -65,8 +65,8 @@ jobs:
       control_security: ${{ steps.compute.outputs.control_security }}
       release_tooling: ${{ steps.filter.outputs.release_tooling }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -470,7 +470,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # install-action has no actionlint entry and its cargo-binstall fallback
       # cannot find it (not a crate); fetch the release binary and verify it.
       - name: Install actionlint
@@ -490,7 +490,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Pin the action, not @master — that ref can change between two runs of
       # the same commit. This SHA is what @master resolved to on 2026-08-16, so
@@ -514,7 +514,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
@@ -568,7 +568,7 @@ jobs:
       matrix:
         suite: [portable-rust, bridge]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         if: matrix.suite == 'portable-rust'
@@ -584,7 +584,7 @@ jobs:
       - uses: ./.github/actions/build-web-runtime
         if: matrix.suite == 'portable-rust'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: matrix.suite == 'bridge'
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -608,7 +608,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
@@ -673,7 +673,7 @@ jobs:
       # modules OpenSSL's Configure needs; use the runner's Strawberry Perl.
       OPENSSL_SRC_PERL: C:\Strawberry\perl\bin\perl.exe
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
@@ -818,7 +818,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.changes.outputs.cli_matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
@@ -845,7 +845,7 @@ jobs:
         shell: bash
         run: ./target/${{ matrix.target }}/release/lingxia${{ matrix.exe }} version
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: matrix.platform == 'linux-x64'
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -855,7 +855,7 @@ jobs:
         run: node tools/lingxia-cli/tests/view_legacy_build.mjs ./target/${{ matrix.target }}/release/lingxia
 
       - name: Upload CLI binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lingxia-${{ matrix.platform }}
           path: target/${{ matrix.target }}/release/lingxia${{ matrix.exe }}
@@ -870,7 +870,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
@@ -912,7 +912,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Pin Xcode 26.0 (Swift 6.2) to match the dev toolchain; latest-stable
       # drifts (currently 26.5) and tightens concurrency checks unpredictably.
@@ -988,7 +988,7 @@ jobs:
         run: bash scripts/release/runner.sh --macos-arch arm64 --out dist/runner-release
 
       - name: Upload Runner zip
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lingxia-runner-macos-arm64
           path: dist/runner-release/*.zip
@@ -1001,7 +1001,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Pin Xcode 26.0 (Swift 6.2): the media SDK needs 6.2 concurrency inference
       # the default Xcode 16 lacks, but latest-stable (26.5) is too strict.
       - uses: maxim-lobanov/setup-xcode@v1
@@ -1034,7 +1034,7 @@ jobs:
         working-directory: examples/lingxia-showcase
         run: ../../target/debug/lingxia build --platform macos --framework react
       - name: Upload macOS app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: example-macos-app
           path: examples/lingxia-showcase/macos/.lingxia/*.app
@@ -1047,7 +1047,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: ./.github/actions/build-web-packages
 
@@ -1130,7 +1130,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.changes.outputs.automation_matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
@@ -1267,7 +1267,7 @@ jobs:
 
       - name: Upload automation diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: showcase-automation-${{ matrix.platform }}-${{ matrix.profile }}
           path: |
@@ -1285,7 +1285,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Pin Xcode 26.0 (Swift 6.2): the iOS media SDK needs 6.2 inference the
       # default Xcode 16 lacks, but latest-stable drifted to 26.5 whose stricter
       # sending-checks reject it. 26.0 is below the 26.3 dev toolchain (builds clean).
@@ -1315,7 +1315,7 @@ jobs:
         working-directory: examples/lingxia-showcase
         run: ../../target/debug/lingxia build --platform ios --framework react
       - name: Upload iOS app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: example-ios-app
           path: examples/lingxia-showcase/ios/.lingxia/*.app
@@ -1328,8 +1328,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -1362,7 +1362,7 @@ jobs:
         # with a keystore for a Play-ready artifact.
         run: ../../target/debug/lingxia build --platform android --framework react --release
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: example-android-apk
           path: examples/lingxia-showcase/android/app/build/outputs/**/*.apk
@@ -1379,7 +1379,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
@@ -1406,9 +1406,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: "temurin"
           java-version: "17"
@@ -1423,7 +1423,7 @@ jobs:
           prefix-key: sdk-android
 
       - name: Cache Gradle
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches
@@ -1453,7 +1453,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -1490,7 +1490,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
@@ -1508,7 +1508,7 @@ jobs:
       # Native NDK from the public OpenHarmony SDK tarball.
       - name: Restore OpenHarmony native NDK cache
         id: ndk-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/ohos-ndk
           key: ohos-ndk-${{ env.OHOS_SDK_VERSION }}
@@ -1546,7 +1546,7 @@ jobs:
 
       - name: Save OpenHarmony native NDK cache
         if: steps.ndk-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ~/ohos-ndk
           key: ohos-ndk-${{ env.OHOS_SDK_VERSION }}
@@ -1565,7 +1565,7 @@ jobs:
 
       - name: Upload native library
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: example-harmony-libs
           path: examples/lingxia-showcase/harmony/.lingxia/**/libs/**/*.so
@@ -1584,7 +1584,7 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
@@ -1607,9 +1607,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -1684,9 +1684,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
 
