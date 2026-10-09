@@ -155,6 +155,12 @@ the host, and waits for the runtime websocket before `lxdev test` starts. The
 default `all` mode runs React and Vue in separate sessions and retains test
 artifacts plus session logs for both.
 
+After installation the script grants coarse/fine location to the test host
+(`-PackageId`, default `com.lingxia.example.lxapp.dev`) and requires Location
+services on. Wi-Fi scanning needs these; otherwise `startWifi` waits for a
+system permission dialog the JS runner cannot answer and the eval times out.
+When invoking `lxdev test` directly, prepare these permissions first.
+
 The Android JavaScript suite can drive Logic and page DOM and can take page/app
 screenshots. It cannot operate permission dialogs, the photo picker, share
 sheet, or other Android system UI. Add those actions to an external
