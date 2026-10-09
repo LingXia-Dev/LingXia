@@ -195,13 +195,6 @@ export default [
     reason: "add path is OS picker; index events have no contract",
   },
   {
-    id: "PEND-ERR-CATALOG-001",
-    title: "map SurfaceErrorCode, LxErrorCode, and BRIDGE_* to owners",
-    mode: "planned",
-    covers: ["lx.supports"],
-    reason: "error catalog still has codes with zero test mentions",
-  },
-  {
     id: "PEND-DEVICE-DRV-001",
     title: "DeviceDriver get, list, and set",
     mode: "planned",
