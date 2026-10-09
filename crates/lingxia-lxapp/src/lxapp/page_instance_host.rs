@@ -342,51 +342,48 @@ impl LxApp {
         let appid = self.appid.clone();
         let lxapp_arc = self.clone_arc();
         let waits_for_page_service = isolated_page_waits_for_page_service(self.logic_enabled());
-        let page = PageInstance::new_with_isolation(
-            appid.clone(),
-            path.to_string(),
-            self,
-            true,
-            move |page| {
-                let lxapp_arc = lxapp_arc.clone();
-                let page_clone = page.clone();
-                async move {
-                    if waits_for_page_service {
-                        // The opener creates PageSvc on the JS worker (the same
-                        // worker that is awaiting this page). Posting CreatePage
-                        // from here would sit behind that wait forever.
-                        page_clone.wait_page_svc_ready().await?;
-                    }
-
-                    page_clone
-                        .load_html()
-                        .map_err(|e| format!("Failed to load HTML for page: {}", e))?;
-                    lxapp_arc
-                        .notify_page_instance(&page_clone.instance_id(), PageInstanceEvent::Mounted)
-                        .map_err(|e| format!("Failed to mount page instance: {}", e))?;
-                    // Isolated pages are never `current_page()`, so sync_host_ui
-                    // would leave chrome:full's drag-strip inset at 0.
-                    let revision = lxapp_arc.next_page_chrome_revision();
-                    let appearance = lxapp_arc.appearance_state().resolved;
-                    if let Err(err) = lxapp_arc
-                        .publish_realized_page_chrome(&page_clone, revision, appearance)
-                        .await
-                    {
-                        warn!("Failed to publish isolated page chrome: {}", err)
-                            .with_appid(lxapp_arc.appid.clone())
-                            .with_path(page_clone.path());
-                    }
-                    Ok(())
+        let page = PageInstance::new_with_isolation(appid, path.to_string(), self, true);
+        {
+            let state = self.state.lock().unwrap();
+            state
+                .pages_by_id
+                .lock()
+                .unwrap()
+                .insert(page.instance_id_string(), page.clone());
+        }
+        page.spawn_strict_webview(move |page| {
+            let lxapp_arc = lxapp_arc.clone();
+            let page_clone = page.clone();
+            async move {
+                if waits_for_page_service {
+                    // The opener creates PageSvc on the JS worker (the same
+                    // worker that is awaiting this page). Posting CreatePage
+                    // from here would sit behind that wait forever.
+                    page_clone.wait_page_svc_ready().await?;
                 }
-            },
-        );
 
-        let state = self.state.lock().unwrap();
-        state
-            .pages_by_id
-            .lock()
-            .unwrap()
-            .insert(page.instance_id_string(), page.clone());
+                page_clone
+                    .load_html()
+                    .map_err(|e| format!("Failed to load HTML for page: {}", e))?;
+                lxapp_arc
+                    .notify_page_instance(&page_clone.instance_id(), PageInstanceEvent::Mounted)
+                    .map_err(|e| format!("Failed to mount page instance: {}", e))?;
+                // Isolated pages are never `current_page()`, so sync_host_ui
+                // would leave chrome:full's drag-strip inset at 0.
+                let revision = lxapp_arc.next_page_chrome_revision();
+                let appearance = lxapp_arc.appearance_state().resolved;
+                if let Err(err) = lxapp_arc
+                    .publish_realized_page_chrome(&page_clone, revision, appearance)
+                    .await
+                {
+                    warn!("Failed to publish isolated page chrome: {}", err)
+                        .with_appid(lxapp_arc.appid.clone())
+                        .with_path(page_clone.path());
+                }
+                Ok(())
+            }
+        });
+
         page
     }
 
@@ -589,12 +586,11 @@ impl LxApp {
         })
     }
 
-    /// Build a fresh, unregistered PageInstance for the path. PageSvc creation
-    /// + HTML load are handled inside PageInstance::new once WebView is ready.
-    fn mint_page_instance(&self, path: &str) -> PageInstance {
-        let appid = self.appid.clone();
+    /// Start only after publication: a fast WebView can reach the worker
+    /// before the caller returns, and an unknown instance is treated as disposed.
+    fn start_page_instance(&self, page: &PageInstance) {
         let lxapp_arc = self.clone_arc();
-        PageInstance::new(appid, path.to_string(), self, move |page| {
+        page.spawn_strict_webview(move |page| {
             let lxapp_arc = lxapp_arc.clone();
             let page_clone = page.clone();
             async move {
@@ -659,11 +655,11 @@ impl LxApp {
             return page;
         }
 
-        let candidate = self.mint_page_instance(&path);
+        let candidate = PageInstance::new(self.appid.clone(), path.clone(), self);
 
         // Double-checked under the state lock: a concurrent navigation may
         // have created this route's instance while the candidate was built.
-        let page = {
+        let (page, created) = {
             let state = self.state.lock().unwrap();
             let mut pages_by_id = state.pages_by_id.lock().unwrap();
             let existing = pages_by_id
@@ -671,16 +667,19 @@ impl LxApp {
                 .find(|page| !page.is_isolated() && page.path() == path)
                 .cloned();
             if let Some(page) = existing {
-                page
+                (page, false)
             } else {
                 pages_by_id.insert(candidate.instance_id_string(), candidate.clone());
-                candidate
+                (candidate, true)
             }
         };
 
         self.pin_if_tabbar_page(&page, &path);
-        self.evict_inactive_pages_if_needed();
         page.set_query(query);
+        if created {
+            self.start_page_instance(&page);
+        }
+        self.evict_inactive_pages_if_needed();
         page
     }
 
@@ -709,7 +708,7 @@ impl LxApp {
             return page;
         }
 
-        let page = self.mint_page_instance(&path);
+        let page = PageInstance::new(self.appid.clone(), path.clone(), self);
         {
             let state = self.state.lock().unwrap();
             state
@@ -719,8 +718,9 @@ impl LxApp {
                 .insert(page.instance_id_string(), page.clone());
         }
         self.pin_if_tabbar_page(&page, &path);
-        self.evict_inactive_pages_if_needed();
         page.set_query(query);
+        self.start_page_instance(&page);
+        self.evict_inactive_pages_if_needed();
         page
     }
 

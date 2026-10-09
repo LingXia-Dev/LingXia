@@ -873,6 +873,16 @@ surfaces are excluded. Re-entering a reclaimed route creates a fresh instance.
 per-page transition lock keep the timer and a racing entry from interleaving
 their terminate/create sends.
 
+Publish a new `PageInstance` in `pages_by_id` before starting its WebView.
+The worker treats an unknown instance as disposed; a fast creation callback
+must not race publication. A losing singleton candidate starts no WebView.
+
+`PageSvc` clones share the JS object holder so retirement releases it for
+every clone. While a native clone owns that holder, QuickJS must count it as
+an external root: tracing it as only the JS object's self-reference can
+collect a page still held by the service registry or a navigation task.
+Once only the JS-owned service remains, trace that edge to collect the cycle.
+
 In-Logic navigation (`lx.navigateTo` and friends) needs the target's `PageSvc`
 in the `page_svc_map` *before* the stack moves, so
 `get_or_create_page_in_ctx()` performs the same flush early and awaits the
