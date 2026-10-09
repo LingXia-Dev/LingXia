@@ -30,6 +30,17 @@ again=$(bash "$script_dir/cli-fingerprint.sh" HEAD)
 unchanged=$(bash "$script_dir/cli-inputs-changed.sh" HEAD HEAD)
 [[ "$unchanged" == "false" ]] || fail "HEAD vs HEAD must be unchanged"
 
+# Only lock entries the embedded bridge/polyfills build resolves to count.
+closure() { node "$script_dir/npm-lock-closure.mjs" lingxia-bridge lingxia-polyfills; }
+edit_lock() { node -e "$1" < packages/package-lock.json | closure; }
+read_lock='const l = JSON.parse(require("fs").readFileSync(0, "utf8")); const p = l.packages;'
+lock_closure=$(closure < packages/package-lock.json)
+grep -q $'^node_modules/terser\t' <<<"$lock_closure" || fail "closure must follow bridge devDependencies"
+unrelated=$(edit_lock "$read_lock"' p[""].devDependencies = { "left-pad": "1.0.0" }; p["lingxia-react"] = { ...p["lingxia-react"], version: "9.9.9" }; console.log(JSON.stringify(l));')
+[[ "$unrelated" == "$lock_closure" ]] || fail "root or unrelated workspace lock edits must not change the closure"
+transitive=$(edit_lock "$read_lock"' p["node_modules/acorn"] = { ...p["node_modules/acorn"], version: "0.0.0" }; console.log(JSON.stringify(l));')
+[[ "$transitive" != "$lock_closure" ]] || fail "a transitive bridge dependency bump must change the closure"
+
 # A workspace crate that links into either binary but is not fingerprinted would
 # let a change to it reuse a stale CLI. cargo answers this with features and
 # target gates applied; without cargo the case is skipped (a fingerprint has to
