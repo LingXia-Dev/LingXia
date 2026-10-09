@@ -116,6 +116,7 @@ export class LxVideoElement extends HTMLElement {
   private rawHandlers: Record<string, EventListenerOrEventListenerObject> = {};
   private aspectRatioFallback = false;
   private aspectRatioObserver?: ResizeObserver;
+  private aspectRatioFrame: number | undefined;
 
   set src(value: string | null | undefined) {
     if (value == null) {
@@ -202,6 +203,8 @@ export class LxVideoElement extends HTMLElement {
     this.unregister = undefined;
     this.aspectRatioObserver?.disconnect();
     this.aspectRatioObserver = undefined;
+    if (this.aspectRatioFrame !== undefined) cancelAnimationFrame(this.aspectRatioFrame);
+    this.aspectRatioFrame = undefined;
     clearAspectRatioFallback(this, this.aspectRatioFallback);
     this.aspectRatioFallback = false;
     for (const [name, handler] of Object.entries(this.handlers)) {
@@ -349,7 +352,14 @@ export class LxVideoElement extends HTMLElement {
     };
     apply();
     if (typeof ResizeObserver === "undefined" || this.aspectRatioObserver) return;
-    this.aspectRatioObserver = new ResizeObserver(apply);
+    this.aspectRatioObserver = new ResizeObserver(() => {
+      if (this.aspectRatioFrame !== undefined) return;
+      // Changing height during ResizeObserver delivery causes a resize loop.
+      this.aspectRatioFrame = requestAnimationFrame(() => {
+        this.aspectRatioFrame = undefined;
+        apply();
+      });
+    });
     this.aspectRatioObserver.observe(this);
   }
 

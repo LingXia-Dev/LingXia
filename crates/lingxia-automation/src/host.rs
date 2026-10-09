@@ -530,6 +530,7 @@ impl JSBrowserDriver {
         require_host_context(&ctx)?;
         let tab = lingxia_browser::open(&options.url, options.tab.as_deref())
             .map_err(|err| auto_err(err.to_string()))?;
+        lingxia_browser::present(&tab).map_err(|err| auto_err(err.to_string()))?;
         Ok(JSTabResult { tab })
     }
 
@@ -549,8 +550,13 @@ impl JSBrowserDriver {
     async fn activate(&self, ctx: JSContext, options: Optional<TabOpt>) -> JSResult<JSValue> {
         require_host_context(&ctx)?;
         let options = options.0.unwrap_or_default();
-        let info = lingxia_browser::activate(&resolve_tab_id(&options.tab)?)
-            .map_err(|err| auto_err(err.to_string()))?;
+        let tab = resolve_tab_id(&options.tab)?;
+        let info = if lingxia_browser::tab_is_standalone(&tab) {
+            lingxia_browser::activate(&tab)
+        } else {
+            lingxia_browser::present(&tab)
+        }
+        .map_err(|err| auto_err(err.to_string()))?;
         to_js(&ctx, &info)
     }
 

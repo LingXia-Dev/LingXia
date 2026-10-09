@@ -1205,8 +1205,10 @@ impl EngineState {
                     );
                     view.notify_input_event(InputEvent::Wheel(WheelEvent::new(
                         WheelDelta {
-                            x: dx,
-                            y: dy,
+                            // LingXia positive deltas move the viewport down/right;
+                            // Servo's wheel deltas move it up/left.
+                            x: -dx,
+                            y: -dy,
                             z: 0.0,
                             mode: WheelMode::DeltaPixel,
                         },
@@ -1300,20 +1302,17 @@ impl EngineState {
                 let Some(view) = &self.view else {
                     // No document exists before the view has a surface; like
                     // a document mid-replacement, the caller should retry.
-                    super::webview::fail_pending_eval_requests_after_navigation(
-                        &self.view_key.webtag,
-                    );
+                    super::webview::fail_pending_eval_request_after_navigation(request_id, &token);
                     return;
                 };
                 for script in scripts {
                     let token = token.clone();
-                    let webtag = self.view_key.webtag.clone();
                     view.evaluate_javascript(script, move |result| {
                         use servo::JavaScriptEvaluationError as Error;
                         match result {
                             Err(Error::DocumentNotFound | Error::WebViewNotReady) => {
-                                super::webview::fail_pending_eval_requests_after_navigation(
-                                    &webtag,
+                                super::webview::fail_pending_eval_request_after_navigation(
+                                    request_id, &token,
                                 );
                             }
                             Err(Error::CompilationFailure) => complete_pending_eval_request(
@@ -2637,27 +2636,47 @@ impl ProtocolHandler for SchemeProtocolHandler {
         let response = view
             .as_ref()
             .and_then(|view| {
-                page_document(view, url.as_str()).or_else(|| {
-                    let webview = view.webview()?;
-                    let mut builder = http::Request::builder()
-                        .method(request.method.clone())
-                        .uri(url.as_str());
-                    if let Some(headers) = builder.headers_mut() {
-                        *headers = request.headers.clone();
-                    }
-                    let http_request = builder.body(Vec::new()).ok()?;
-                    webview.handle_contextual_scheme_request(
-                        self.scheme,
-                        ContextualSchemeRequest::new(
-                            http_request,
-                            view.native_view_id,
-                            scheme_request_frame(request),
-                        ),
-                    )
-                })
+                page_document(view, url.as_str())
+                    .map(crate::SchemeOutcome::Handled)
+                    .or_else(|| {
+                        let webview = view.webview()?;
+                        let mut builder = http::Request::builder()
+                            .method(request.method.clone())
+                            .uri(url.as_str());
+                        if let Some(headers) = builder.headers_mut() {
+                            *headers = request.headers.clone();
+                        }
+                        let http_request = builder.body(Vec::new()).ok()?;
+                        Some(webview.dispatch_contextual_scheme_request(
+                            self.scheme,
+                            ContextualSchemeRequest::new(
+                                http_request,
+                                view.native_view_id,
+                                scheme_request_frame(request),
+                            ),
+                        ))
+                    })
             })
-            .map(|response| lingxia_response(url.clone(), timing, response))
+            .and_then(|outcome| match outcome {
+                crate::SchemeOutcome::Handled(response) => {
+                    Some(lingxia_response(url.clone(), timing, response))
+                }
+                crate::SchemeOutcome::Cancelled => {
+                    Some(Response::network_error(NetworkError::LoadCancelled))
+                }
+                crate::SchemeOutcome::PassThrough => None,
+            })
             .unwrap_or_else(|| {
+                // Fetch callbacks can outlive a closed native view. There is no
+                // handler to invoke after teardown, but this is cancellation,
+                // not a missing asset in a live document.
+                if request.target_webview_id.is_some()
+                    && view
+                        .as_ref()
+                        .is_none_or(|view| !is_registered(view) || view.webview().is_none())
+                {
+                    return Response::network_error(NetworkError::LoadCancelled);
+                }
                 Response::network_error(NetworkError::ResourceLoadError(format!(
                     "No LingXia {}:// handler for {url}",
                     self.scheme
@@ -2835,31 +2854,7 @@ fn bridge_script(policy: ServoPolicy) -> String {
     } else {
         ""
     };
-    format!(
-        r#"(() => {{
-      const beacons = new Set();
-      let sequence = 0;
-      const send = (kind, params) => {{
-        const query = new URLSearchParams({{
-          ...params,
-          sequence: sequence++
-        }}).toString();
-        const beacon = new Image();
-        const done = () => beacons.delete(beacon);
-        beacon.onload = done;
-        beacon.onerror = done;
-        beacons.add(beacon);
-        beacon.src = `lx://bridge/${{kind}}?${{query}}`;
-      }};
-      globalThis.LingXiaProxy = {{
-        supportsMessagePort: () => false,
-        getPort: () => '',
-        postMessage: message => send('post', {{ message: String(message) }}),
-        resolveEval: (id, token, result) => send('eval', {{ id, token, result }})
-      }};
-      {strict_profile_script}
-    }})();"#
-    )
+    include_str!("servo_bridge.js").replace("// __LINGXIA_PROFILE_SCRIPT__", strict_profile_script)
 }
 
 pub(super) fn load_url(view: &WebTag, id: NativeWebViewId, url: &str) -> Result<(), WebViewError> {

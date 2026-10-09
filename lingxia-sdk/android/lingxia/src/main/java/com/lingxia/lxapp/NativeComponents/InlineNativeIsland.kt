@@ -580,6 +580,9 @@ internal class InlineNativeIsland(
         node.view.accessibilityDelegate = object : View.AccessibilityDelegate() {
             override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
                 super.onInitializeAccessibilityNodeInfo(host, info)
+                // Publish identity for OS automation without making screen readers
+                // announce internal component ids as the accessible name.
+                info.viewIdResourceName = node.automationId ?: node.authorId
                 info.className = when (node.kind) {
                     "tappable" -> "android.widget.Button"
                     "text" -> "android.widget.TextView"

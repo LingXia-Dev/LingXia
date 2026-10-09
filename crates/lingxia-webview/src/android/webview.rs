@@ -141,6 +141,20 @@ pub(crate) fn fail_pending_eval_requests_after_navigation(webtag: &WebTag) {
     }
 }
 
+/// A late evaluation callback belongs to one request, not every request now
+/// queued on the view (some may already target the replacement document).
+#[cfg(feature = "servo")]
+pub(crate) fn fail_pending_eval_request_after_navigation(request_id: u64, token: &str) {
+    if let Ok(mut pending) = pending_eval_requests().lock()
+        && pending
+            .get(&request_id)
+            .is_some_and(|entry| entry.token == token)
+        && let Some(entry) = pending.remove(&request_id)
+    {
+        let _ = entry.sender.send(PendingEvalResponse::NavigationChanged);
+    }
+}
+
 fn pending_screenshot_requests() -> &'static PendingScreenshotRequests {
     PENDING_SCREENSHOT_REQUESTS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
 }
@@ -684,6 +698,14 @@ impl WebViewInner {
             .map_err(|err| {
                 crate::WebViewInputError::Platform(format!("scrollByPixels failed: {:?}", err))
             })?;
+            #[cfg(feature = "servo")]
+            // Wheel dispatch is asynchronous; measure after rendering instead
+            // of mistaking an unchanged pre-scroll position for a boundary.
+            self.eval_js(
+                "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))",
+            )
+            .await
+            .map_err(crate::WebViewInputError::Script)?;
         }
         Ok(())
     }

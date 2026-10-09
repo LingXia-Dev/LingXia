@@ -26,7 +26,11 @@ export function ensureAspectRatioFallback(el: HTMLElement, active: boolean): boo
 
   const ratio = parseAspectRatio(el.style.aspectRatio || getComputedStyle(el).aspectRatio);
   if (ratio === undefined || rect.width <= 0) return active;
-  el.style.minHeight = `${rect.width / ratio}px`;
+  const height = rect.width / ratio;
+  const previousHeight = parseFloat(el.style.minHeight);
+  if (!Number.isFinite(previousHeight) || Math.abs(previousHeight - height) > 0.01) {
+    el.style.minHeight = `${height}px`;
+  }
   return true;
 }
 

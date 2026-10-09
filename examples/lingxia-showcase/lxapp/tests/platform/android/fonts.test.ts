@@ -1,5 +1,19 @@
 import { expect, spec } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
+import type { ProbeDocument, ProbeElement } from '../../helpers/view.js';
+
+interface GlyphCanvas extends ProbeElement {
+  width: number;
+  height: number;
+  getContext(kind: '2d'): {
+    font: string;
+    fillStyle: string;
+    clearRect(x: number, y: number, width: number, height: number): void;
+    fillText(text: string, x: number, y: number): void;
+    getImageData(x: number, y: number, width: number, height: number): { data: Uint8ClampedArray };
+    measureText(text: string): { width: number };
+  } | null;
+}
 
 const args = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const androidSpec = args.platform === 'android' ? spec : spec.skip;
@@ -11,7 +25,8 @@ androidSpec('render emoji, text symbols, and CJK without missing glyphs', {
 }, async (t) => {
   // Inspect rasterized glyphs: DOM text and nonzero text width also pass for tofu.
   const samples = await t.app.view.eval(({ document }) => {
-    const canvas = document.createElement('canvas');
+    const doc = document as unknown as ProbeDocument;
+    const canvas = doc.createElement('canvas') as GlyphCanvas;
     canvas.width = 320;
     canvas.height = 100;
     const ctx = canvas.getContext('2d');
@@ -35,10 +50,10 @@ androidSpec('render emoji, text symbols, and CJK without missing glyphs', {
         if (Math.max(pixels[i], pixels[i + 1], pixels[i + 2])
             - Math.min(pixels[i], pixels[i + 1], pixels[i + 2]) > 30) colored++;
       }
-      const span = document.createElement('span');
+      const span = doc.createElement('span') as ProbeElement & { textContent: string };
       span.textContent = text;
       span.style.cssText = 'position:fixed;font:64px sans-serif;white-space:pre';
-      document.body.append(span);
+      doc.body.appendChild(span);
       const width = span.getBoundingClientRect().width;
       span.remove();
       return { text, colored, ink, width, rasterHash, canvasWidth: ctx.measureText(text).width };

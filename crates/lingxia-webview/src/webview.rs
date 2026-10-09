@@ -1694,18 +1694,29 @@ impl WebView {
         scheme: &str,
         request: ContextualSchemeRequest,
     ) -> Option<WebResourceResponse> {
+        match self.dispatch_contextual_scheme_request(scheme, request) {
+            SchemeOutcome::Handled(response) => Some(response),
+            SchemeOutcome::PassThrough | SchemeOutcome::Cancelled => None,
+        }
+    }
+
+    pub(crate) fn dispatch_contextual_scheme_request(
+        &self,
+        scheme: &str,
+        request: ContextualSchemeRequest,
+    ) -> SchemeOutcome {
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         if let Some(response) = self.inner.handle_internal_bridge_request(request.request()) {
-            return Some(response);
+            return SchemeOutcome::Handled(response);
         }
 
-        let guard = self.scheme_handlers.read().ok()?;
-        let handler = guard.get(scheme)?;
-        let outcome = block_on_scheme_future(handler(request));
-        match outcome {
-            SchemeOutcome::Handled(response) => Some(response),
-            SchemeOutcome::PassThrough => None,
-        }
+        let Ok(guard) = self.scheme_handlers.read() else {
+            return SchemeOutcome::PassThrough;
+        };
+        let Some(handler) = guard.get(scheme) else {
+            return SchemeOutcome::PassThrough;
+        };
+        block_on_scheme_future(handler(request))
     }
 
     /// Call the navigation handler. Returns `Allow` if no handler is registered.

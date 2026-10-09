@@ -224,13 +224,6 @@ export default [
     reason: "error catalog still has codes with zero test mentions",
   },
   {
-    id: "PEND-BROWSER-DRV-001",
-    title: "BrowserDriver tabs, eval, wait, and cookies",
-    mode: "planned",
-    covers: ["lx.shell.openBuiltin"],
-    reason: "DESKTOP-BROWSER-001 does not cover cookies or wait",
-  },
-  {
     id: "PEND-DEVICE-DRV-001",
     title: "DeviceDriver get, list, and set",
     mode: "planned",
@@ -264,13 +257,6 @@ export default [
     mode: "planned",
     covers: ["lx.surface.openDeclared"],
     reason: "desktop files never run under Vue in CI",
-  },
-  {
-    id: "PEND-ANDROID-001",
-    title: "wave-1 chrome cases on the Android shared entry",
-    mode: "planned",
-    covers: ["lx.navigationBar.update"],
-    reason: "Android entry is shared-only; chrome cases are not required there yet",
   },
   {
     id: "PEND-ANDROID-DEV-001",

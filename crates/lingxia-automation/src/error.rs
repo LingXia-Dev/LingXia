@@ -19,6 +19,8 @@ pub(crate) const E_AUTOMATION_PRIVILEGE: &str = "E_AUTOMATION_PRIVILEGE";
 pub(crate) const E_PAGE_NOT_ACTIVE: &str = "E_PAGE_NOT_ACTIVE";
 /// The page exists but has no WebView/current page to act on yet.
 pub(crate) const E_PAGE_NOT_READY: &str = "E_PAGE_NOT_READY";
+/// The document changed during evaluation; input may already have reached it.
+pub(crate) const E_DOCUMENT_CHANGED: &str = "E_DOCUMENT_CHANGED";
 /// No element matched the selector at dispatch.
 pub(crate) const E_ELEMENT_NOT_FOUND: &str = "E_ELEMENT_NOT_FOUND";
 /// The element matched but cannot take the input (disabled, not editable, ...).
@@ -83,6 +85,8 @@ pub(crate) fn code_for(message: &str) -> &'static str {
         || message.to_ascii_lowercase().contains("no current page")
     {
         E_PAGE_NOT_READY
+    } else if message.eq_ignore_ascii_case("Navigation changed during JavaScript evaluation") {
+        E_DOCUMENT_CHANGED
     } else if message.starts_with("Element not found:") {
         E_ELEMENT_NOT_FOUND
     } else if message.starts_with("Element not interactable:") {
@@ -281,6 +285,10 @@ mod tests {
             ("page WebView is not ready", E_PAGE_NOT_READY),
             ("WebView error: No current page", E_PAGE_NOT_READY),
             ("no current page", E_PAGE_NOT_READY),
+            (
+                "Navigation changed during JavaScript evaluation",
+                E_DOCUMENT_CHANGED,
+            ),
             ("Element not found: #save", E_ELEMENT_NOT_FOUND),
             (
                 "Element not interactable: not enabled",

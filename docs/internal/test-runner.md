@@ -170,7 +170,10 @@ received artifacts. Keep the following invariants when changing these layers:
   which can come from a script that already ran) and element refusals
   (`isElementRefusal`: `E_ELEMENT_NOT_FOUND`/`E_ELEMENT_NOT_INTERACTABLE`, or
   the `Element not found|not interactable:` messages). Keep the lists in step
-  with the Rust helpers. An action that times out on such a rejection carries
+  with the Rust helpers. Document replacement (`E_DOCUMENT_CHANGED`, or the
+  older "Navigation changed during JavaScript evaluation" message) is retried
+  only during reads/actionability checks, never after input dispatch.
+  An action that times out on such a rejection carries
   its `code`/`data` on the `AssertionError`, so `spec.fail({ expected: { code
   } })` can pin it.
 - Failure diagnostics: `LiveFixture` remembers the last failed recorded action

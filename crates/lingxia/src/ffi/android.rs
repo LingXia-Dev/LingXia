@@ -179,6 +179,15 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
             }
         };
 
+        #[cfg(feature = "browser-shell")]
+        lingxia_browser::set_tab_present_handler(std::sync::Arc::new(|tab_id| {
+            if !lingxia_browser::tab_is_standalone(tab_id)
+                && let Err(error) = present_browser_tab(tab_id)
+            {
+                warn!("Failed to present Android browser tab {tab_id}: {error}");
+            }
+        }));
+
         // Return the home appid
         match home_app_id.into_lxapp_id() {
             Some(appid) => {
@@ -1591,6 +1600,27 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_browserTabIsAside(
             Err(_) => return Ok(false),
         };
         Ok(crate::browser::tab_is_aside(&tab_id))
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_browserTabExists(
+    mut env: EnvUnowned,
+    _class: JClass,
+    tab_id: JString,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let tab_id = tab_id.try_to_string(env)?;
+        #[cfg(feature = "browser-runtime")]
+        return Ok(lingxia_browser::tabs()
+            .iter()
+            .any(|tab| tab.tab_id == tab_id));
+        #[cfg(not(feature = "browser-runtime"))]
+        {
+            let _ = tab_id;
+            Ok(false)
+        }
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

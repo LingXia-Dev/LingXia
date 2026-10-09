@@ -39,6 +39,13 @@ CI runs both frameworks on Windows and React on macOS. Android uses its matching
 thin platform entry locally. Shared cases must never be copied into a platform
 entry.
 
+Use `scripts/automation/run-android-showcase.ps1 -Device <serial>
+-NativeFeature servo` to exercise Servo on both Android frameworks. Omit
+`-NativeFeature servo` for system WebView. For fixture-dependent cases, start
+the HTTP fixture, reverse its port with adb, and set `LXDEV_ARG_httpBase` to
+its device-reachable URL. Keep other development variants stopped so they
+cannot replace the runtime connection on the forwarded dev port.
+
 ## What every public capability needs
 
 Use these coverage levels in order:

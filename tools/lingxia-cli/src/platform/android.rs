@@ -406,6 +406,11 @@ gradle.settingsEvaluated {{ settings ->
                     if env::var_os("CARGO_PROFILE_DEV_DEBUG").is_none() {
                         cmd.env("CARGO_PROFILE_DEV_DEBUG", "0");
                     }
+                    // Unlike the system WebView, Servo's engine is part of our
+                    // dev build. Unoptimized layout/script code masks UI latency.
+                    if env::var_os("CARGO_PROFILE_DEV_OPT_LEVEL").is_none() {
+                        cmd.env("CARGO_PROFILE_DEV_OPT_LEVEL", "1");
+                    }
 
                     // Parse the NDK's libc++ with the NDK's own libclang: an
                     // older host libclang (Xcode 15) rejects those headers.

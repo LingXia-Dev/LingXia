@@ -152,7 +152,7 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         this.sessionId = sessionId;
         this.nativeViewId = nativeViewId;
         this.strictSecurityProfile = strictSecurityProfile;
-        if (!strictSecurityProfile) setBackgroundColor(Color.WHITE);
+        if (!strictSecurityProfile) setBackgroundColor(darkTheme ? 0xff121212 : Color.WHITE);
         servoWebTag = appId + ":" + path + (sessionId > 0 ? "#" + sessionId : "");
         sViews.put(servoWebTag, new WeakReference<>(this));
         SurfaceTexture texture = servoSurface.getSurfaceTexture();
@@ -254,6 +254,7 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     protected void onConfigurationChanged(Configuration configuration) {
         super.onConfigurationChanged(configuration);
         darkTheme = isDarkTheme(configuration);
+        if (!strictSecurityProfile) setBackgroundColor(darkTheme ? 0xff121212 : Color.WHITE);
         if (bound() && attached) nativeSetTheme(servoWebTag, nativeViewId, darkTheme);
     }
 
@@ -468,9 +469,10 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
             if (!touchIntercepted) {
                 // Servo already saw this gesture begin; end it there.
                 touchIntercepted = true;
-                int index = event.getActionIndex();
-                nativeTouch(servoWebTag, nativeViewId, MotionEvent.ACTION_CANCEL,
-                        event.getPointerId(index), event.getX(index), event.getY(index));
+                for (int i = 0; i < event.getPointerCount(); i++) {
+                    nativeTouch(servoWebTag, nativeViewId, MotionEvent.ACTION_CANCEL,
+                            event.getPointerId(i), event.getX(i), event.getY(i));
+                }
             }
             return true;
         }
@@ -480,6 +482,15 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
             }
             return true;
         }
+        if (action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_CANCEL) {
+            for (int i = 0; i < event.getPointerCount(); i++) {
+                nativeTouch(servoWebTag, nativeViewId, action,
+                        event.getPointerId(i), event.getX(i), event.getY(i));
+            }
+            return true;
+        }
+        if (action == MotionEvent.ACTION_POINTER_DOWN) action = MotionEvent.ACTION_DOWN;
+        if (action == MotionEvent.ACTION_POINTER_UP) action = MotionEvent.ACTION_UP;
         int index = event.getActionIndex();
         nativeTouch(
                 servoWebTag,
@@ -499,7 +510,9 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
                 view = view.getParent() instanceof View ? (View) view.getParent() : null) {
             if (view.getAlpha() == 0f) return false;
         }
-        return onTouchEvent(event);
+        // Preserve View's OnTouchListener dispatch (browser interaction tracking)
+        // and native child controls before falling back to Servo's onTouchEvent.
+        return super.dispatchTouchEvent(event);
     }
 
     @Override
@@ -638,10 +651,8 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         if (controlHandler != null) controlHandler.onDestroyed();
         ViewGroup parent = getParent() instanceof ViewGroup ? (ViewGroup) getParent() : null;
         if (parent != null) {
+            // The host owns this container and may reuse it for another tab.
             parent.removeView(this);
-            if (parent.getChildCount() == 0 && parent.getParent() instanceof ViewGroup) {
-                ((ViewGroup) parent.getParent()).removeView(parent);
-            }
         }
     }
 
