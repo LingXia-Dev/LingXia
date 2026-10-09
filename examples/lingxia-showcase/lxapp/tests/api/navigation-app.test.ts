@@ -1,4 +1,5 @@
 import { expect, spec } from '@lingxia/test';
+import type { ShowcaseAppInstance } from '../../shared/lib/app.js';
 import type { LxAppRuntimeInfo } from '@lingxia/types/automation';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPageVisible } from '../helpers/page.js';
@@ -24,7 +25,7 @@ const hopSpec = platform === 'android' ? spec : spec.skip;
 
 hopSpec('hop to the bundled chat lxapp and back', {
   id: 'NAV-APP-001',
-  covers: ['lx.navigateToApp', 'lx.navigateBackApp', 'LxAppManager.list', 'LxAppManager.current'],
+  covers: ['App.onLaunch', 'App.onShow', 'App.onHide', 'lx.navigateToApp', 'lx.navigateBackApp', 'LxAppManager.list', 'LxAppManager.current'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
   reason: 'navigateBackApp does not return to the caller on Windows, and the hop disturbs the chat lxapp the desktop workspace cases reuse',
@@ -32,6 +33,12 @@ hopSpec('hop to the bundled chat lxapp and back', {
   const { app, namespace, defer } = bindFixture(t, 'NAV-APP-001');
   const manager = t.automation.lxapps;
   const rows = (): Promise<LxAppRuntimeInfo[]> => manager.list();
+  const lifecycle = () => app.logic.eval(({ getApp }) => {
+    const instance = getApp() as unknown as ShowcaseAppInstance | null;
+    if (!instance) throw new Error('App instance missing');
+    return instance.globalData.lifecycle;
+  });
+
   const currentApp = async (): Promise<string> => (await manager.current()).appId;
 
   // A navigation another case scheduled but did not wait for can land here and
@@ -62,6 +69,15 @@ hopSpec('hop to the bundled chat lxapp and back', {
     await manager.close({ app: CHAT_APP_ID });
     await eventually(rows, (list) => !isOpen(list, CHAT_APP_ID), { describe: 'parked chat to close first' });
   }
+  const baseline = await lifecycle();
+  expect(baseline.launches).toBe(1);
+  // Dev hot reload recreates Logic without reopening the retained host view.
+  // Compare visibility deltas; the real hop below must deliver hide then show.
+  // Recreating pages must not relaunch or hide/show the App instance.
+  await app.nav.relaunch({ page: 'home' });
+  expect(await lifecycle()).toEqual(baseline);
+  await app.nav.to({ page: 'ui' });
+
   const stateKey = `__lingxiaNavApp_${namespace.replace(/-/g, '_')}`;
   defer(async () => {
     await app.logic.eval((_scope, key) => {
@@ -102,6 +118,7 @@ hopSpec('hop to the bundled chat lxapp and back', {
     expect(isOpen(list, CHAT_APP_ID)).toBe(true);
     // The caller is parked, not torn down.
     expect(isOpen(list, SHOWCASE_APP_ID)).toBe(true);
+    await expect.poll(lifecycle).toEqual({ ...baseline, hides: baseline.hides + 1, last: 'hide' });
   });
 
   await t.step('guest cache APIs are absent', async () => {
@@ -133,8 +150,11 @@ hopSpec('hop to the bundled chat lxapp and back', {
       describe: 'chat to close after navigateBackApp',
       timeoutMs: 10_000,
     });
-    await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
+    await waitForCurrentPageVisible(app, 'ui', '[data-testid="ui-page"]');
   });
+
+  const returned = { ...baseline, hides: baseline.hides + 1, shows: baseline.shows + 1, last: 'show' };
+  await expect.poll(lifecycle).toEqual(returned);
 
   await t.step('navigateToApp rejects an unknown page name without leaving the caller', async () => {
     const rejected = await app.logic.eval(async ({ lx }, appId) => {
@@ -148,5 +168,6 @@ hopSpec('hop to the bundled chat lxapp and back', {
     expect(rejected.ok).toBe(false);
     expect(rejected.code).toBe('E_NOT_FOUND');
     expect(await currentApp()).toBe(SHOWCASE_APP_ID);
+    expect(await lifecycle()).toEqual(returned);
   });
 });

@@ -2569,8 +2569,13 @@ class LxAppActivity : AppCompatActivity() {
         // Get next LxApp from Rust stack and open it
         val currentLxApp = NativeApi.getCurrentLxApp()
         if (currentLxApp != null && currentLxApp.isValid()) {
-            openLxApp(currentLxApp.appId, currentLxApp.sessionId)
-        } else {
+            // Switching within this Activity never calls onStart. Re-enter the
+            // retained route through the session-checked open lifecycle so the
+            // caller receives App.onShow without another App.onLaunch.
+            val path = NativeApi.onLxAppOpened(
+                currentLxApp.appId, currentLxApp.path, currentLxApp.sessionId
+            )
+            if (path.isNotBlank()) openLxApp(currentLxApp.appId, currentLxApp.sessionId)
         }
     }
 
