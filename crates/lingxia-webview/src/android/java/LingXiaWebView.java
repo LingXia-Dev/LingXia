@@ -435,7 +435,7 @@ public class LingXiaWebView extends WebView implements LingXiaWebViewHost {
                             "strict_default".equals(options.profile));
                     notifyWebViewReady(appId, path, sessionId, requestId, servoView);
                 } catch (Throwable e) {
-                    Log.e(TAG, "Failed to create Servo WebView: " + e.getMessage(), e);
+                    failWebViewRequest(requestId, e);
                 }
             }
         });

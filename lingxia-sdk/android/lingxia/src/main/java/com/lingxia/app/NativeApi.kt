@@ -509,7 +509,7 @@ internal object NativeApi {
 /** How waiting for a page's WebView ended. */
 internal fun interface PageWebViewCallback {
     /** [status]: 0 ready ([webView] set), 1 failed, 2 the page is gone. */
-    fun onResult(webView: com.lingxia.lxapp.WebView?, status: Int)
+    fun onResult(webView: com.lingxia.webview.LingXiaWebViewHost?, status: Int)
 
     companion object {
         const val READY = 0

@@ -4,9 +4,10 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use crate::input_helper::{build_async_eval_body, new_eval_token, parse_wrapped_eval_result};
 #[cfg(not(feature = "servo"))]
 use crate::webview::ProxyActivation;
+#[cfg(feature = "servo")]
+use crate::webview::WebViewCreateStage;
 use crate::webview::{
     EffectiveWebViewCreateOptions, ProxyApplyReport, ProxyConfig, WebTag, WebViewCreateSender,
-    WebViewCreateStage,
 };
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, DocumentGeneration, DocumentOutboundGate,

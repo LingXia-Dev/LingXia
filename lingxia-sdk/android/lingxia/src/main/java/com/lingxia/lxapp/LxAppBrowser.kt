@@ -233,15 +233,15 @@ internal object LxAppBrowser {
         }
         for (tabId in openTabIds) {
             val webView = findManagedWebView(tabId) ?: continue
-            val config = Configuration(webView.resources.configuration)
+            val config = Configuration(webView.hostView.resources.configuration)
             config.uiMode = (config.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or night
             // Chromium reads isLightTheme from the WebView's isolated creation
             // context. Dispatching uiMode alone leaves that theme unchanged.
-            (webView.context as? android.view.ContextThemeWrapper)?.setTheme(
+            (webView.hostView.context as? android.view.ContextThemeWrapper)?.setTheme(
                 if (palette.dark) androidx.appcompat.R.style.Theme_AppCompat
                 else androidx.appcompat.R.style.Theme_AppCompat_Light
             )
-            webView.dispatchConfigurationChanged(config)
+            webView.hostView.dispatchConfigurationChanged(config)
         }
     }
 
