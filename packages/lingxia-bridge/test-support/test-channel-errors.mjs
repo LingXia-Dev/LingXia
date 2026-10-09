@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { BRIDGE_ERROR } from '../dist/es2020/types.js';
 
 // Run the shipped View bridge against a controlled transport. Device tests
 // own real Logic channels; this owns deterministic handshake/error races.
@@ -85,4 +86,17 @@ for (const initiator of ['client', 'host']) {
 }
 
 await assert.rejects(bridge.raw.channel.open(''), (error) => error.code === 'BRIDGE_MALFORMED_MESSAGE');
+// Error-envelope ownership for the whole catalog. This verifies preservation,
+// not that the client/host can physically produce every failure condition.
+for (const code of Object.values(BRIDGE_ERROR)) {
+  const opening = bridge.raw.channel.open('tickerSession');
+  const { id } = frames('ch.open').at(-1);
+  receive({ kind: 'ch.ack', id, ok: false, error: { code, message: `failure ${code}`, data: { detail: code } } });
+  await assert.rejects(opening, (error) => {
+    assert.equal(error.code, code);
+    assert.equal(error.message, `failure ${code}`);
+    assert.equal(error.data.detail, code);
+    return true;
+  });
+}
 console.log('channel errors: readiness, rejected open, close races, disconnected sends passed');

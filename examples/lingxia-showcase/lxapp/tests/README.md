@@ -174,3 +174,34 @@ screenshots. It cannot operate permission dialogs, the photo picker, share
 sheet, or other Android system UI. Add those actions to an external
 UIAutomator/Appium device-lab suite, then return to `lxdev` for the app-state
 assertion.
+
+## Interpreting skips
+
+Android's entry also imports the shared pending backlog. A skip is not
+automatically a non-Android case: `planned` means the assertion is not implemented,
+`external-ui` needs an OS UI driver, and `external-fixture` needs its stated
+service or device setup. Some backlog entries explicitly target desktop or iOS.
+Read each report's `reason`; skips do not count as verified coverage. Promote a
+pending entry only after replacing it with an executable assertion.
+
+## Error-code ownership
+
+`error-catalog.mjs` assigns all 41 `LxErrorCode`, 8 `SurfaceErrorCode`, and
+14 `BRIDGE_*` values to executable tests. `npm run test:harness` checks this
+inventory against the source declarations and rejects missing or stale owners.
+Run the owners from the repository root:
+
+```sh
+npm run test:runtime --prefix packages/lingxia-types
+npm test --prefix packages/lingxia-bridge
+```
+
+The types owner verifies normalization, precedence, unknown-code rejection,
+and surface-code extraction. The bridge owner verifies error-envelope
+preservation, readiness, and close races using a controlled transport.
+These layers do not prove every native failure can be induced on a phone.
+The catalog separately lists stronger real-device owners and states the
+remaining origin-coverage limits for each family. `CHANNEL-ERROR-001` covers
+real disconnected sends and missing topics; `PULL-001` covers invalid refresh
+state. App lifecycle and native page-JSON chrome are covered on Android by
+`NAV-APP-001` and `ANDROID-PAGE-CONFIG-001` respectively.
