@@ -740,6 +740,11 @@ pub fn generate_icons(
 }
 
 /// Keep already-built runtimes' CFBundleName fallback working after re-signing.
+///
+/// Free-team signing hyphenates the bundle id tail, which breaks the runtime's
+/// identifier-based resource lookup. Point CFBundleName at the SwiftPM stem
+/// instead, and strip localized CFBundleName overrides because the runtime
+/// reads the localized value.
 fn prepare_resource_bundle_lookup_for_install(app_path: &Path) -> Result<()> {
     let mut stems = Vec::new();
     for entry in fs::read_dir(app_path)? {
@@ -771,21 +776,35 @@ fn prepare_resource_bundle_lookup_for_install(app_path: &Path) -> Result<()> {
         }
     }
     let [stem] = stems.as_slice() else {
-        if stems.is_empty() {
-            return Ok(());
+        if !stems.is_empty() {
+            eprintln!(
+                "{} several host resource bundles contain app.json ({}); leaving Info.plist unchanged",
+                "Warning:".yellow(),
+                stems.join(", ")
+            );
         }
-        return Err(anyhow!(
-            "Multiple host resource bundles contain app.json; cannot preserve re-signing resource lookup"
-        ));
+        return Ok(());
     };
     let info_path = app_path.join("Info.plist");
     let mut value = plist::Value::from_file(&info_path).context("Failed to read app Info.plist")?;
     let info = value
         .as_dictionary_mut()
         .ok_or_else(|| anyhow!("App Info.plist is not a dictionary"))?;
-    if ["CFBundleName", "CFBundleExecutable"]
+    let string = |key: &str| info.get(key).and_then(plist::Value::as_string);
+    // Signing may replace the bundle id with the free-team form; only rewrite
+    // when neither shape resolves the stem.
+    let identifier_resolves = string("CFBundleIdentifier").is_some_and(|id| {
+        [
+            id.to_string(),
+            apple::signer::generate_new_bundle_id(id, "TEAM"),
+        ]
         .iter()
-        .any(|key| info.get(*key).and_then(plist::Value::as_string) == Some(stem.as_str()))
+        .all(|id| identifier_spm_stem(id) == Some(stem.as_str()))
+    });
+    if identifier_resolves
+        || ["CFBundleName", "CFBundleExecutable"]
+            .iter()
+            .any(|key| string(key) == Some(stem.as_str()))
     {
         return Ok(());
     }
@@ -802,7 +821,43 @@ fn prepare_resource_bundle_lookup_for_install(app_path: &Path) -> Result<()> {
     info.insert("CFBundleName".into(), stem.as_str().into());
     value
         .to_file_xml(&info_path)
-        .context("Failed to preserve app resource lookup")
+        .context("Failed to preserve app resource lookup")?;
+    for entry in fs::read_dir(app_path)? {
+        let path = entry?.path().join("InfoPlist.strings");
+        if path.parent().and_then(Path::extension) != Some("lproj".as_ref()) || !path.is_file() {
+            continue;
+        }
+        let content = fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read {}", path.display()))?;
+        let Some(label) = crate::product_i18n::strings_assignment_token(&content, "CFBundleName")
+        else {
+            continue;
+        };
+        let mut updated = content.clone();
+        if crate::product_i18n::strings_assignment_token(&content, "CFBundleDisplayName").is_none()
+        {
+            updated = crate::product_i18n::merge_strings_assignment(
+                &updated,
+                "CFBundleDisplayName",
+                &format!("\"CFBundleDisplayName\" = {label};\n"),
+            );
+        }
+        if let Some(stripped) =
+            crate::product_i18n::remove_strings_assignment(&updated, "CFBundleName")
+        {
+            updated = stripped;
+        }
+        fs::write(&path, updated).with_context(|| format!("Failed to write {}", path.display()))?;
+    }
+    Ok(())
+}
+
+/// Mirrors the runtime rule: the last identifier segment that is not an env suffix.
+fn identifier_spm_stem(identifier: &str) -> Option<&str> {
+    identifier
+        .split('.')
+        .rev()
+        .find(|part| !part.is_empty() && !matches!(*part, "dev" | "debug"))
 }
 
 /// Hosts to re-sign into an already-built app. Prefer the list baked into
@@ -936,15 +991,69 @@ mod tests {
     }
 
     #[test]
-    fn ambiguous_resources_do_not_rewrite_the_signing_identity() {
+    fn ambiguous_resources_leave_the_plist_alone() {
         let host = resource_host();
         fs::create_dir(host.path().join("other_other.bundle")).unwrap();
         fs::write(host.path().join("other_other.bundle/app.json"), "{}").unwrap();
-        assert!(prepare_resource_bundle_lookup_for_install(host.path()).is_err());
-        let info = plist::Value::from_file(host.path().join("Info.plist")).unwrap();
+        let path = host.path().join("Info.plist");
+        let before = fs::read(&path).unwrap();
+        prepare_resource_bundle_lookup_for_install(host.path()).unwrap();
+        assert_eq!(fs::read(path).unwrap(), before);
+    }
+
+    #[test]
+    fn resolving_bundle_ids_keep_names_across_free_team_signing() {
+        let host = resource_host();
+        let path = host.path().join("Info.plist");
+        let mut info = plist::Value::from_file(&path).unwrap();
+        info.as_dictionary_mut()
+            .unwrap()
+            .insert("CFBundleIdentifier".into(), "app.lingxia.demo_app".into());
+        info.to_file_xml(&path).unwrap();
+        let before = fs::read(&path).unwrap();
+        prepare_resource_bundle_lookup_for_install(host.path()).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), before);
+
+        // A `.dev` tail is hyphenated by free-team signing, so this one must rewrite.
+        let mut info = plist::Value::from_file(&path).unwrap();
+        info.as_dictionary_mut().unwrap().insert(
+            "CFBundleIdentifier".into(),
+            "app.lingxia.demo_app.dev".into(),
+        );
+        info.to_file_xml(&path).unwrap();
+        prepare_resource_bundle_lookup_for_install(host.path()).unwrap();
+        let info = plist::Value::from_file(&path).unwrap();
         assert_eq!(
-            info.as_dictionary().unwrap()["CFBundleIdentifier"].as_string(),
-            Some("com.example.demo.dev")
+            info.as_dictionary().unwrap()["CFBundleName"].as_string(),
+            Some("demo_app")
+        );
+    }
+
+    #[test]
+    fn localized_bundle_names_move_to_display_name() {
+        let host = resource_host();
+        let zh = host.path().join("zh-Hans.lproj");
+        fs::create_dir(&zh).unwrap();
+        fs::write(
+            zh.join("InfoPlist.strings"),
+            "\"CFBundleName\" = \"示例 \\\"应用\\\"\";\n",
+        )
+        .unwrap();
+        let en = host.path().join("en.lproj");
+        fs::create_dir(&en).unwrap();
+        fs::write(
+            en.join("InfoPlist.strings"),
+            "\"CFBundleDisplayName\" = \"Demo\";\n\"CFBundleName\" = \"Demo\";\n",
+        )
+        .unwrap();
+        prepare_resource_bundle_lookup_for_install(host.path()).unwrap();
+        assert_eq!(
+            fs::read_to_string(zh.join("InfoPlist.strings")).unwrap(),
+            "\"CFBundleDisplayName\" = \"示例 \\\"应用\\\"\";\n"
+        );
+        assert_eq!(
+            fs::read_to_string(en.join("InfoPlist.strings")).unwrap(),
+            "\"CFBundleDisplayName\" = \"Demo\";\n"
         );
     }
 
