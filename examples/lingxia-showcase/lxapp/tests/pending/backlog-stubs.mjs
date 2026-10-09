@@ -57,10 +57,11 @@ export default [
   },
   {
     id: "PEND-ORIENT-001",
+    implementedOn: ["android"],
     title: "observe the host physically rotate after setDeviceOrientation",
     mode: "external-ui",
     covers: ["lx.setDeviceOrientation"],
-    reason: "the return and argument contract is DEVICE-ORIENTATION-001; seeing the frame rotate is device-lab",
+    reason: "ANDROID-ORIENTATION-001 observes the real Android viewport rotate; other hosts still need a rotation contract",
   },
   {
     id: "PEND-EXTERNAL-001",
@@ -106,10 +107,11 @@ export default [
   },
   {
     id: "PEND-ORIENT-EVT-001",
+    implementedOn: ["android"],
     title: "onDeviceOrientationChange fires after a host rotate",
     mode: "external-fixture",
     covers: ["lx.onDeviceOrientationChange"],
-    reason: "LOGIC-002 only subscribe/unsubscribe; fire needs a rotate fixture",
+    reason: "ANDROID-ORIENTATION-001 verifies rotation events and unsubscribe on Android; other hosts still need event delivery coverage",
   },
   {
     id: "PEND-WIFI-001",
