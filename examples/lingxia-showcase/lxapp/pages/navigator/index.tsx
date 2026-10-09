@@ -54,7 +54,7 @@ export default function NavigatorPage() {
                   page="device"
                   query={{ type: 'device' }}
                   openType="navigate"
-                  onSuccess={() => addLog('✓ Navigate to home')}
+                  onSuccess={() => addLog('✓ Navigate to device')}
                 >
                   <div className="flex flex-col items-center justify-center py-4 px-2 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 text-blue-700 dark:text-blue-400 rounded-xl transition-colors h-full">
                     <span className="text-lg mb-1">➡️</span>
@@ -65,10 +65,11 @@ export default function NavigatorPage() {
 
                 {/* Redirect */}
                 <LxNavigator
-                  page="device"
-                  query={{ type: 'device' }}
+                  page="ui"
+                  query={{ type: 'toast' }}
                   openType="redirect"
-                  onSuccess={() => addLog('✓ Redirect to home')}
+                  onSuccess={() => addLog('✓ Redirect to toast demo')}
+                  onFail={onFailWithMessage('Failed to redirect')}
                 >
                   <div className="flex flex-col items-center justify-center py-4 px-2 bg-purple-50 hover:bg-purple-100 active:bg-purple-200 text-purple-700 dark:text-purple-400 rounded-xl transition-colors h-full">
                     <span className="text-lg mb-1">🔀</span>
@@ -95,7 +96,7 @@ export default function NavigatorPage() {
                   page="device"
                   query={{ type: 'screen' }}
                   openType="reLaunch"
-                  onSuccess={() => addLog('✓ ReLaunch to home')}
+                  onSuccess={() => addLog('✓ ReLaunch to device')}
                 >
                   <div className="flex flex-col items-center justify-center py-4 px-2 bg-orange-50 hover:bg-orange-100 active:bg-orange-200 text-orange-700 dark:text-orange-400 rounded-xl transition-colors h-full">
                     <span className="text-lg mb-1">🚀</span>
