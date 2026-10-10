@@ -88,7 +88,7 @@ fn clean_host_project(project_root: &Path) -> Result<()> {
     }
 
     remove_path(&project_root.join("dist"), &mut removed)?;
-    remove_path(&project_root.join(".lingxia"), &mut removed)?;
+    clean_lingxia_state(project_root, &mut removed)?;
     clean_cargo_target(project_root, &mut removed)?;
 
     clean_resource_bundles(project_root, &config, &mut removed)?;
@@ -115,7 +115,7 @@ fn clean_lxapp_project(project_root: &Path) -> Result<()> {
     }
 
     remove_path(&project_root.join("node_modules"), &mut removed)?;
-    remove_path(&project_root.join(".lingxia"), &mut removed)?;
+    clean_lingxia_state(project_root, &mut removed)?;
     clean_legacy_lxapp_view_dirs(project_root, &mut removed)?;
 
     print_done(removed.len());
@@ -128,7 +128,7 @@ fn clean_standalone_swift_package(project_root: &Path) -> Result<()> {
 
     let mut removed = Vec::new();
     remove_path(&project_root.join(".build"), &mut removed)?;
-    remove_path(&project_root.join(".lingxia"), &mut removed)?;
+    clean_lingxia_state(project_root, &mut removed)?;
 
     print_done(removed.len());
     Ok(())
@@ -356,6 +356,23 @@ fn print_done(removed_count: usize) {
     }
 }
 
+fn clean_lingxia_state(project_root: &Path, removed: &mut Vec<PathBuf>) -> Result<()> {
+    let directory = project_root.join(".lingxia");
+    if !directory.is_dir() {
+        return remove_path(&directory, removed);
+    }
+    for entry in fs::read_dir(&directory)? {
+        let entry = entry?;
+        if entry.file_name() != crate::commands::template_provider::PROJECT_LOCK_FILE {
+            remove_path(&entry.path(), removed)?;
+        }
+    }
+    if fs::read_dir(&directory)?.next().is_none() {
+        remove_path(&directory, removed)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -443,6 +460,21 @@ mod tests {
         assert!(!temp.path().join("node_modules").exists());
         assert!(!temp.path().join(".lingxia").exists());
         assert!(!temp.path().join(".lingxia-view-old").exists());
+    }
+
+    #[test]
+    fn clean_preserves_template_configuration_but_removes_cache() {
+        let temp = TempDir::new().unwrap();
+        let lock = temp
+            .path()
+            .join(".lingxia")
+            .join(crate::commands::template_provider::PROJECT_LOCK_FILE);
+        write(&lock, "persistent");
+        write(&temp.path().join(".lingxia/cache/deep/file"), "cache");
+        let mut removed = Vec::new();
+        clean_lingxia_state(temp.path(), &mut removed).unwrap();
+        assert_eq!(fs::read_to_string(&lock).unwrap(), "persistent");
+        assert!(!temp.path().join(".lingxia/cache").exists());
     }
 
     #[test]

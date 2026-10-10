@@ -3,7 +3,8 @@ node_modules/
 
 # Build outputs
 dist/
-.lingxia/
+.lingxia/*
+!.lingxia/template.json
 *.tar.zst
 
 # IDE

@@ -1,8 +1,8 @@
 # The dev companion protocol
 
-`lingxia dev` may start one **companion** per session, from
-`.lingxia/dev-companion.json` (see
-`tools/lingxia-cli/src/commands/dev/companion.rs`): a process that serves
+`lingxia dev` may start one **companion** per session: the `companion`
+lifecycle of the template the session root's `.lingxia/template.json` names
+(see `tools/lingxia-cli/src/commands/dev/companion.rs`), a process that serves
 the app's Worker Functions during development. LingXia knows nothing about
 Workers — it never parses Function Definitions, a Worker project's files, or
 its mock configuration. It reaches the companion only through the messages
@@ -265,8 +265,10 @@ owner: from then until it is dropped, `dev` stands aside.
 
 ## Lifetime
 
-- The companion keeps overlays and selections in memory and never edits the
-  project's files.
+- The template's finite `prepare` runs once before the companion starts.
+  The companion then keeps generated inputs current, the only project files
+  it writes; dev rebuilds never run `prepare`.
+- The companion keeps overlays and selections in memory.
 - It hot-reloads its own mock handlers when their files change.
 - When the session ends the companion process ends with it.
 

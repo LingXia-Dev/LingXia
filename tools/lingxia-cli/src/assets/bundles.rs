@@ -355,6 +355,11 @@ fn prepare_lxapp_plan(
     kind: &str,
     cache: &mut HostAssetsCache,
 ) -> Result<PreparedResourceBundle> {
+    let _preparation = crate::build_prepare::Scope::enter();
+    // A dev session prepared once at start; its companion keeps outputs live.
+    if plan.build && !plan.dev {
+        crate::build_prepare::prepare(&plan.bundle_dir)?;
+    }
     let cache_key = format!(
         "{}|{}|{}|framework={}|dev={}",
         path_key(&plan.bundle_dir),
@@ -540,6 +545,15 @@ fn hash_resource_bundle_inputs(plan: &ResourceBundlePlan) -> Result<String> {
         &plan.bundle_dir,
         &["dist", "node_modules", ".git", ".lingxia"],
     )?);
+    // The template lock selects which prepare lifecycle produced the inputs.
+    let lock = plan
+        .bundle_dir
+        .join(".lingxia")
+        .join(crate::commands::template_provider::PROJECT_LOCK_FILE);
+    if lock.is_file() {
+        hasher.update(b"template-lock");
+        hasher.update(fs::read(lock)?);
+    }
     // A linked `@lingxia/*` package changes without touching the lockfile.
     for package in lingxia_packages(&plan.bundle_dir) {
         hasher.update(path_key(&package).as_bytes());
@@ -759,6 +773,171 @@ mod tests {
         assert!(error.contains(BROWSER_SHELL_WEBUI_APP_ID), "{error}");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn source_cache_hit_still_prepares_and_failure_stops_cached_build() {
+        let temp = tempfile::tempdir().unwrap();
+        let marker = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let _home = crate::commands::template_provider::test_support::use_home(home.path());
+        let root = temp.path();
+        fs::create_dir(root.join("dist")).unwrap();
+        fs::write(root.join("dist/asset.txt"), "cached").unwrap();
+        // Keep the marker outside the input tree so this really is a cache hit.
+        let install = |body: &str| {
+            crate::commands::template_provider::test_support::install(
+                home.path(),
+                root,
+                &[("prepare", body)],
+            )
+        };
+        install(&format!("printf x >> '{}/count'", marker.path().display()));
+        let plan = || ResourceBundlePlan {
+            bundle_dir: root.to_path_buf(),
+            asset_name: "app".into(),
+            output_dir: root.join("dist"),
+            version: "1.0.0".into(),
+            framework_override: None,
+            dev: false,
+            build: true,
+        };
+        let mut cache = HostAssetsCache::default();
+        let key = format!("{}|debug|test|framework=auto|dev=false", path_key(root));
+        cache.lxapp_builds.insert(
+            key.clone(),
+            LxAppBuildStamp {
+                inputs_hash: hash_resource_bundle_inputs(&plan()).unwrap(),
+                dist_hash: hash_tree(&root.join("dist"), &[]).unwrap(),
+                asset_name: "app".into(),
+            },
+        );
+        // No manifest/tooling exists, so an attempted lower build would fail.
+        for _ in 0..2 {
+            prepare_lxapp_plan(plan(), BuildProfile::Debug, None, "test", &mut cache).unwrap();
+        }
+        {
+            let _multi_platform_build = crate::build_prepare::Scope::enter();
+            for _ in 0..2 {
+                prepare_lxapp_plan(plan(), BuildProfile::Debug, None, "test", &mut cache).unwrap();
+            }
+        }
+        assert_eq!(fs::read(marker.path().join("count")).unwrap(), b"xxx");
+        install("exit 7");
+        cache.lxapp_builds.get_mut(&key).unwrap().inputs_hash =
+            hash_resource_bundle_inputs(&plan()).unwrap();
+        let error = prepare_lxapp_plan(plan(), BuildProfile::Debug, None, "test", &mut cache)
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("build stopped"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preparation_changes_inputs_before_cache_lookup() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let _home = crate::commands::template_provider::test_support::use_home(home.path());
+        let root = temp.path();
+        fs::create_dir(root.join("dist")).unwrap();
+        fs::write(root.join("dist/asset.txt"), "old build").unwrap();
+        fs::write(root.join("source.ts"), "old input").unwrap();
+        crate::commands::template_provider::test_support::install(
+            home.path(),
+            root,
+            &[("prepare", "printf 'new input' > source.ts")],
+        );
+        let plan = ResourceBundlePlan {
+            bundle_dir: root.to_path_buf(),
+            asset_name: "app".into(),
+            output_dir: root.join("dist"),
+            version: "1.0.0".into(),
+            framework_override: None,
+            dev: false,
+            build: true,
+        };
+        let mut cache = HostAssetsCache::default();
+        cache.lxapp_builds.insert(
+            format!("{}|debug|test|framework=auto|dev=false", path_key(root)),
+            LxAppBuildStamp {
+                inputs_hash: hash_resource_bundle_inputs(&plan).unwrap(),
+                dist_hash: hash_tree(&root.join("dist"), &[]).unwrap(),
+                asset_name: "app".into(),
+            },
+        );
+        // The missing manifest makes reaching the lower builder observable,
+        // without pulling a JS toolchain into this cache-ordering test.
+        let error = prepare_lxapp_plan(plan, BuildProfile::Debug, None, "test", &mut cache)
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("No lxapp.json"), "{error:#}");
+        assert_eq!(
+            fs::read_to_string(root.join("source.ts")).unwrap(),
+            "new input"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_dev_plan_never_prepares() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let _home = crate::commands::template_provider::test_support::use_home(home.path());
+        let root = temp.path();
+        fs::create_dir(root.join("dist")).unwrap();
+        fs::write(root.join("dist/asset.txt"), "dev build").unwrap();
+        crate::commands::template_provider::test_support::install(
+            home.path(),
+            root,
+            &[("prepare", "exit 7")],
+        );
+        let plan = ResourceBundlePlan {
+            bundle_dir: root.to_path_buf(),
+            asset_name: "app".into(),
+            output_dir: root.join("dist"),
+            version: "1.0.0".into(),
+            framework_override: None,
+            dev: true,
+            build: true,
+        };
+        let mut cache = HostAssetsCache::default();
+        cache.lxapp_builds.insert(
+            format!("{}|debug|test|framework=auto|dev=true", path_key(root)),
+            LxAppBuildStamp {
+                inputs_hash: hash_resource_bundle_inputs(&plan).unwrap(),
+                dist_hash: hash_tree(&root.join("dist"), &[]).unwrap(),
+                asset_name: "app".into(),
+            },
+        );
+        // The session prepared at start; a failing prepare here would surface.
+        prepare_lxapp_plan(plan, BuildProfile::Debug, None, "test", &mut cache).unwrap();
+    }
+
+    #[test]
+    fn lifecycle_configuration_is_hashed_but_state_cache_is_not() {
+        let temp = tempfile::tempdir().unwrap();
+        let plan = ResourceBundlePlan {
+            bundle_dir: temp.path().to_path_buf(),
+            asset_name: "app".into(),
+            output_dir: temp.path().join("dist"),
+            version: "1.0.0".into(),
+            framework_override: None,
+            dev: false,
+            build: true,
+        };
+        let initial = hash_resource_bundle_inputs(&plan).unwrap();
+        fs::create_dir_all(temp.path().join(".lingxia/cache")).unwrap();
+        fs::write(temp.path().join(".lingxia/cache/file"), "cache").unwrap();
+        assert_eq!(initial, hash_resource_bundle_inputs(&plan).unwrap());
+        fs::write(
+            temp.path()
+                .join(".lingxia")
+                .join(crate::commands::template_provider::PROJECT_LOCK_FILE),
+            "configuration",
+        )
+        .unwrap();
+        assert_ne!(initial, hash_resource_bundle_inputs(&plan).unwrap());
+    }
+
     #[test]
     fn prebuilt_package_bundle_does_not_require_lxapp_build_config() {
         let temp = tempfile::tempdir().unwrap();
@@ -771,6 +950,15 @@ mod tests {
         .unwrap();
         fs::write(bundle_dir.join("dist").join("asset.txt"), "ok").unwrap();
 
+        // A prebuilt bundle never prepares, even when it names a template.
+        fs::create_dir_all(bundle_dir.join(".lingxia")).unwrap();
+        fs::write(
+            bundle_dir
+                .join(".lingxia")
+                .join(crate::commands::template_provider::PROJECT_LOCK_FILE),
+            r#"{"name":"missing-template","commit":"0"}"#,
+        )
+        .unwrap();
         let mut cache = HostAssetsCache::default();
         let prepared = prepare_lxapp_bundle_dir(
             bundle_dir,

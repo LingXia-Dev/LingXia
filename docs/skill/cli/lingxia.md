@@ -49,6 +49,26 @@ lingxia new my-lxapp --template acme-starter --yes -- --preset dashboard
 template providers: repositories with a `lingxia-template.json` manifest that
 may ship project files, CLI commands, and skills.
 
+### Template lifecycles
+
+A project created from a template keeps one LingXia file,
+`.lingxia/template.json` (`name`, `source`, `commit`). Commit it; `lingxia clean`
+keeps it. Everything else is read from the installed template, so generated
+inputs are never committed.
+
+`prepare` and `companion` use the same shape as `create`:
+`{ "command": "<path in the template>", "args": [...] }`, run from the lxapp
+directory with `LINGXIA_TEMPLATE_ROOT` set (`.js`/`.mjs`/`.cjs` through `node`).
+
+- `prepare` generates build inputs and must exit; failure stops the build.
+  `lingxia build` runs it before dependency installation and the bundle cache
+  lookup. `lingxia dev` runs it once at start, then starts `companion`, which
+  keeps those inputs current; dev rebuilds never run `prepare`. Prebuilt bundles
+  never run it.
+- If the template is not installed, `lingxia build` and `lingxia dev` fail and
+  name `lingxia template add <source>`. Templates are never installed
+  automatically.
+
 ## `lingxia dev`
 
 Starts a dev session. In a host project it builds, installs, launches, and

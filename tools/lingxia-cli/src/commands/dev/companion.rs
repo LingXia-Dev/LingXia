@@ -7,13 +7,11 @@ use lingxia_control_protocol::{
     },
     methods,
 };
-use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsString;
-use std::fs;
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::path::Path;
+use std::process::{Child, ChildStdin, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
@@ -21,19 +19,13 @@ use std::time::{Duration, Instant};
 use sysinfo::{ProcessesToUpdate, System};
 
 use super::server::SessionLogWriter;
+use crate::commands::template_provider;
 
-const CONFIG_FILE: &str = "dev-companion.json";
 const PREPARE_REQUEST_ID: &str = "session-prepare";
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(60);
 const STOP_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_FRAME_BYTES: usize = 1024 * 1024;
 const MAX_EVENT_BATCH: usize = 512;
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct CompanionConfig {
-    run: Vec<String>,
-}
 
 type PendingReplies = Arc<Mutex<HashMap<String, mpsc::Sender<ControlResponse>>>>;
 
@@ -133,29 +125,27 @@ pub(super) struct DevCompanion {
 }
 
 impl DevCompanion {
+    /// Starts the `companion` lifecycle of the template the project names, if any.
     pub(super) fn start(
         project_root: &Path,
         stop_requested: Arc<AtomicBool>,
         writer: Arc<SessionLogWriter>,
     ) -> Result<Option<Self>> {
-        let config_path = config_path(project_root);
-        if !config_path.exists() {
+        let Some(template) = template_provider::resolve_project(project_root)? else {
             return Ok(None);
-        }
-        let config = load_config(&config_path)?;
-        validate_run(&config.run, &config_path)?;
-
-        let mut command = Command::new(&config.run[0]);
+        };
+        let Some(lifecycle) = template.manifest.companion.as_ref() else {
+            return Ok(None);
+        };
+        let mut command = template_provider::lifecycle_command(&template, lifecycle, project_root)?;
         command
-            .args(&config.run[1..])
-            .current_dir(project_root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
         let mut child = command.spawn().with_context(|| {
             format!(
-                "Failed to start the development companion configured in {}",
-                config_path.display()
+                "Failed to start the development companion of template {}",
+                template.manifest.name
             )
         })?;
         let mut stdin = child
@@ -479,34 +469,6 @@ fn set_failure(failure: &Mutex<Option<String>>, message: String) {
     }
 }
 
-fn config_path(project_root: &Path) -> PathBuf {
-    project_root.join(".lingxia").join(CONFIG_FILE)
-}
-
-fn load_config(path: &Path) -> Result<CompanionConfig> {
-    let bytes = fs::read(path).with_context(|| {
-        format!(
-            "Failed to read development companion config {}",
-            path.display()
-        )
-    })?;
-    serde_json::from_slice(&bytes)
-        .with_context(|| format!("Invalid development companion config {}", path.display()))
-}
-
-fn validate_run(run: &[String], path: &Path) -> Result<()> {
-    if run.is_empty() || run.iter().any(|part| part.is_empty()) {
-        bail!(
-            "{}: `run` must be a non-empty argv array without empty values",
-            path.display()
-        );
-    }
-    if run.iter().any(|part| part.contains('\0')) {
-        bail!("{}: `run` cannot contain NUL bytes", path.display());
-    }
-    Ok(())
-}
-
 fn validate_runtime_env(values: &BTreeMap<String, String>) -> Result<()> {
     for (name, value) in values {
         let mut chars = name.chars();
@@ -629,21 +591,7 @@ fn stop_child_tree(child: &mut Child) {
 mod tests {
     use super::*;
     use lingxia_control_protocol::dev_session::{DevSessionLog, DevSessionLogLevel};
-
-    #[test]
-    fn config_is_a_single_argv() {
-        let config: CompanionConfig =
-            serde_json::from_str(r#"{"run":["example","companion"]}"#).unwrap();
-        assert_eq!(config.run, ["example", "companion"]);
-    }
-
-    #[test]
-    fn config_rejects_extra_surface() {
-        assert!(
-            serde_json::from_str::<CompanionConfig>(r#"{"run":["example"],"id":"integration"}"#)
-                .is_err()
-        );
-    }
+    use std::fs;
 
     #[test]
     fn prepare_result_has_only_generic_runtime_environment() {
@@ -687,21 +635,12 @@ mod tests {
         assert!(validate_events(&[event]).is_err());
     }
 
-    #[test]
-    fn config_is_project_local() {
-        let root = Path::new("/tmp/example");
-        assert_eq!(
-            config_path(root),
-            root.join(".lingxia").join("dev-companion.json")
-        );
-    }
-
     #[cfg(unix)]
     #[test]
     fn supervised_protocol_appends_events_to_the_session() {
         let root = tempfile::tempdir().unwrap();
-        let config_dir = root.path().join(".lingxia");
-        fs::create_dir_all(&config_dir).unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let _home = template_provider::test_support::use_home(home.path());
         let script = concat!(
             "printf '%s\\n' '{\"type\":\"hello\",\"version\":2,\"role\":\"companion\",",
             "\"capabilities\":[\"requests\",\"events.log\"]}'; ",
@@ -713,11 +652,11 @@ mod tests {
             "\"data\":{\"level\":\"info\",\"message\":\"hello\"}}]}'; ",
             "while IFS= read -r line; do :; done"
         );
-        fs::write(
-            config_dir.join(CONFIG_FILE),
-            serde_json::to_vec(&serde_json::json!({"run": ["sh", "-c", script]})).unwrap(),
-        )
-        .unwrap();
+        template_provider::test_support::install(
+            home.path(),
+            root.path(),
+            &[("companion", script)],
+        );
 
         let session = super::super::log_store::create_session(root.path()).unwrap();
         let writer = Arc::new(SessionLogWriter::new(&session).unwrap());

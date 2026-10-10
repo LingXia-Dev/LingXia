@@ -954,6 +954,11 @@ fn start_server_on_with_roots(
         .local_addr()
         .context("Failed to resolve dev websocket address")?;
     let writer = Arc::new(SessionLogWriter::new(&session)?);
+    // The one prepare a dev session runs: before the first build, then the
+    // companion keeps generated inputs live and watcher rebuilds skip it.
+    for root in super::lxapp_watch::discover_watch_roots(content_root)? {
+        crate::build_prepare::prepare(&root.path)?;
+    }
     let companion =
         super::companion::DevCompanion::start(session_root, stop_flag.clone(), writer.clone())?;
     let state = Arc::new(DevServerState::new(
@@ -989,6 +994,8 @@ pub fn start_server_fixed_with_stop(
     stop_flag: Arc<AtomicBool>,
     auth_token: Option<String>,
 ) -> Result<DevServerHandle> {
+    // The port fallback retries the whole start; prepare only once.
+    let _preparation = crate::build_prepare::Scope::enter();
     let port = dev_port(&project_root.to_string_lossy(), platform);
     match start_server_on_with_stop(
         project_root,
@@ -1022,6 +1029,8 @@ pub fn start_server_fixed_with_roots(
     stop_flag: Arc<AtomicBool>,
     auth_token: Option<String>,
 ) -> Result<DevServerHandle> {
+    // The port fallback retries the whole start; prepare only once.
+    let _preparation = crate::build_prepare::Scope::enter();
     let port = dev_port(&session_root.to_string_lossy(), platform);
     match start_server_on_with_roots(
         session_root,

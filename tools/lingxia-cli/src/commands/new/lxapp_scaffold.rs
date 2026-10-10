@@ -839,7 +839,13 @@ mod tests {
             include_str!("../../../templates/lxapp-create/gitignore"),
             include_str!("../../../templates/lxapp-create/html/gitignore"),
         ] {
-            for rule in [".env.test", "*.lxstate", "test-results/"] {
+            for rule in [
+                ".env.test",
+                "*.lxstate",
+                "test-results/",
+                ".lingxia/*",
+                "!.lingxia/template.json",
+            ] {
                 assert!(template.lines().any(|line| line == rule), "{rule}");
             }
         }

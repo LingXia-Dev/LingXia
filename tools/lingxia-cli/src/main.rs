@@ -23,6 +23,7 @@ fn parse_display_language(value: &str) -> std::result::Result<String, String> {
 
 mod appicon;
 mod binding;
+mod build_prepare;
 mod cli_config;
 mod commands;
 mod compat;

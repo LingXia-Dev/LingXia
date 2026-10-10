@@ -18,7 +18,7 @@ use std::time::Duration;
 const COMPANION_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(super) const NO_COMPANION: &str = "this dev session has no companion \
-     (.lingxia/dev-companion.json), so nothing answers function rules";
+     (its project's template declares none), so nothing answers function rules";
 pub(super) const NOT_DECLARED: &str = "the dev session's companion does not answer function rules \
      yet (it did not declare the `scenario.function` capability)";
 pub(super) const NO_MOCK_COMPANION: &str = "this dev session has no companion";
@@ -310,8 +310,6 @@ mod tests {
     /// `session.prepare` and every later request with `answer` (a JSON
     /// response body without the id), echoing the request id.
     fn companion(root: &std::path::Path, capabilities: &str, answer: &str) -> DevCompanion {
-        let config_dir = root.join(".lingxia");
-        std::fs::create_dir_all(&config_dir).unwrap();
         let script = format!(
             "printf '%s\\n' '{{\"type\":\"hello\",\"version\":2,\"role\":\"companion\",\"capabilities\":{capabilities}}}'; \
              IFS= read -r request; \
@@ -322,11 +320,15 @@ mod tests {
                printf '{{\"type\":\"response\",\"id\":\"%s\",%s}}\\n' \"$id\" '{answer}'; \
              done"
         );
-        std::fs::write(
-            config_dir.join("dev-companion.json"),
-            serde_json::to_vec(&serde_json::json!({ "run": ["sh", "-c", script] })).unwrap(),
-        )
-        .unwrap();
+        // Each test's companion lives under its own home; the guard only
+        // needs to outlive resolution, which happens inside `start`.
+        let home = root.join(".test-home");
+        let _home = crate::commands::template_provider::test_support::use_home(&home);
+        crate::commands::template_provider::test_support::install(
+            &home,
+            root,
+            &[("companion", &script)],
+        );
         let session = crate::commands::dev::log_store::create_session(root).unwrap();
         let writer = Arc::new(SessionLogWriter::new(&session).unwrap());
         DevCompanion::start(root, Arc::new(AtomicBool::new(false)), writer)
