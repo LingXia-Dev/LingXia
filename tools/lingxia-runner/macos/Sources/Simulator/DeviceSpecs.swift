@@ -192,13 +192,8 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
     }
 
     private static let manifest: RunnerDevicesManifest = {
-        let url = Bundle.runnerResources.url(forResource: "devices", withExtension: "json")
-            ?? Bundle.runnerResources.url(
-                forResource: "devices",
-                withExtension: "json",
-                subdirectory: "Resources"
-            )
-        guard let url else {
+        // `lingxia build` merges the Runner's resources into the main bundle.
+        guard let url = Bundle.main.url(forResource: "devices", withExtension: "json") else {
             fatalError("Missing runner devices.json resource")
         }
         do {

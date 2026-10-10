@@ -785,7 +785,7 @@ fn create_macos_app_bundle(
     let exe_dst = macos_exec_dir.join(executable_name);
     fs::copy(executable_path, &exe_dst)?;
 
-    apple::install_resource_bundles(bin_dir, host_target, &resources_dir)?;
+    apple::install_resource_bundles(macos_dir, bin_dir, host_target, &resources_dir)?;
 
     // Copy frameworks and dylibs into Contents/Frameworks
     for entry in fs::read_dir(bin_dir)? {
