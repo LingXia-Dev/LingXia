@@ -2,7 +2,7 @@ import { expect, spec } from '@lingxia/test';
 import type { ModalResult, ActionSheetResult } from '@lingxia/types';
 import type { PageContract } from '@lingxia/types/page';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
-import { androidDevice } from '../../helpers/android-device.js';
+import { androidDevice, androidCancelLabels } from '../../helpers/android-device.js';
 import { bindFixture } from '../../helpers/poll.js';
 
 const args = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
@@ -18,7 +18,7 @@ for (const kind of ['modal', 'actionsheet'] as const) {
     const { app, namespace, defer } = bindFixture(t, id);
     const device = androidDevice(t);
     defer(async () => {
-      const cancel = (await device.nodes()).find((node) => node.text === 'Cancel' || node.text === 'CANCEL');
+      const cancel = (await device.nodes()).find((node) => androidCancelLabels.includes(node.text));
       if (cancel) await device.tap(cancel);
       await app.logic.eval((_, key) => { delete (globalThis as Record<string, unknown>)[key]; }, namespace);
     });
@@ -125,7 +125,7 @@ for (const action of ['select', 'cancel', 'back', 'outside'] as const) {
     const { app, defer } = bindFixture(t, id);
     const device = androidDevice(t);
     defer(async () => {
-      const cancel = (await device.nodes()).find((node) => node.text === 'Cancel');
+      const cancel = (await device.nodes()).find((node) => androidCancelLabels.includes(node.text));
       if (cancel) await device.tap(cancel);
       await app.nav.relaunch({ page: 'home' });
     });
@@ -134,16 +134,16 @@ for (const action of ['select', 'cancel', 'back', 'outside'] as const) {
     const current = await app.nav.current();
     const page = await app.page<PageContract<{ actionSheetResult: ActionSheetResult | null }>>();
     await page.view.testId('actionsheet-show').click();
-    await t.waitFor(() => device.nodes(), { until: (nodes) => nodes.some((node) => node.text === 'Cancel') });
+    await t.waitFor(() => device.nodes(), { until: (nodes) => nodes.some((node) => androidCancelLabels.includes(node.text)) });
     if (action === 'back') await device.key('back');
     else if (action === 'outside') {
       const { width, height } = await device.size();
       await device.tap({ text: '', description: '', resource: '', bounds: [0, Math.round(height * .2), width, Math.round(height * .3)] });
-    } else await device.tapText(action === 'select' ? 'Send Email' : 'Cancel');
+    } else await device.tapText(action === 'select' ? 'Send Email' : androidCancelLabels);
     const result = action === 'select' ? { status: 'ok', id: '2' } : { status: 'canceled' };
     await expect.poll(async () => (await page.data()).actionSheetResult).toEqual(result);
     await expect(page.view.testId('actionsheet-result')).toContainText(`"status": "${result.status}"`);
     expect((await app.nav.current()).instanceId).toBe(current.instanceId);
-    expect((await device.nodes()).some((node) => node.text === 'Cancel')).toBe(false);
+    expect((await device.nodes()).some((node) => androidCancelLabels.includes(node.text))).toBe(false);
   });
 }
