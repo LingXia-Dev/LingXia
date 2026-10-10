@@ -1,7 +1,7 @@
 import { expect, spec, type Fixture } from '@lingxia/test';
 import type { PageContract } from '@lingxia/types/page';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
-import { androidDevice } from '../../helpers/android-device.js';
+import { androidDevice, androidCancelLabels, androidConfirmLabels } from '../../helpers/android-device.js';
 import { bindFixture } from '../../helpers/poll.js';
 import type { ProbeDocument } from '../../helpers/view.js';
 
@@ -27,22 +27,22 @@ androidSpec('normalize cascading native picker indices before resolving the chil
     });
     doc.body.appendChild(picker);
   });
-  const nodes = await t.waitFor(() => device.nodes(), { until: (items) => items.some((node) => node.text === 'OK'), timeout: 15000 });
+  const nodes = await t.waitFor(() => device.nodes(), { until: (items) => items.some((node) => androidConfirmLabels.includes(node.text)), timeout: 15000 });
   expect(nodes.some((node) => node.text === 'SouthCity')).toBe(true);
   expect(nodes.some((node) => node.text === 'NorthCity')).toBe(false);
-  await device.tapText('OK');
+  await device.tapText(androidConfirmLabels);
   await expect.poll(() => page.view.eval(({ document }) => {
     const result = document.getElementById('picker-bounds-probe')?.getAttribute('data-result');
     return result ? JSON.parse(result) : null;
   })).toEqual({ index: [1, 0], confirmed: true });
-  expect((await device.nodes()).some((node) => node.text === 'OK')).toBe(false);
+  expect((await device.nodes()).some((node) => androidConfirmLabels.includes(node.text))).toBe(false);
 });
 
 async function openPicker(t: Fixture, id: string) {
   const { app, defer } = bindFixture(t, id);
   const device = androidDevice(t);
   defer(async () => {
-    const cancel = (await device.nodes()).find((node) => node.text === 'Cancel' || node.text === '\u53d6\u6d88');
+    const cancel = (await device.nodes()).find((node) => androidCancelLabels.includes(node.text));
     if (cancel) await device.tap(cancel);
     await app.nav.relaunch({ page: 'home' });
   });
@@ -69,14 +69,14 @@ androidSpec('choose a native picker value and render the confirmed selection', {
   await trigger.click();
   await advanceColumn('Espresso', 'Americano');
   await expect.poll(async () => (await page.data()).coffee).toBe('Americano');
-  await device.tapText('OK');
+  await device.tapText(androidConfirmLabels);
   await expect.poll(async () => (await page.data()).coffee).toBe('Americano');
   await expect(trigger).toContainText('Americano');
-  expect((await device.nodes()).some((node) => node.text === 'OK')).toBe(false);
+  expect((await device.nodes()).some((node) => androidConfirmLabels.includes(node.text))).toBe(false);
   await trigger.click();
-  await device.tapText('OK');
+  await device.tapText(androidConfirmLabels);
   await expect.poll(async () => (await page.data()).coffee).toBe('Americano');
-  expect((await device.nodes()).some((node) => node.text === 'OK')).toBe(false);
+  expect((await device.nodes()).some((node) => androidConfirmLabels.includes(node.text))).toBe(false);
 });
 
 androidSpec('cancel a native picker and reopen it with the original value', {
@@ -88,15 +88,15 @@ androidSpec('cancel a native picker and reopen it with the original value', {
   const trigger = page.view.css('[role="button"]');
   const before = (await page.data()).coffee;
   await trigger.click();
-  await device.tapText('Cancel');
-  expect((await device.nodes()).some((node) => node.text === 'OK')).toBe(false);
+  await device.tapText(androidCancelLabels);
+  expect((await device.nodes()).some((node) => androidConfirmLabels.includes(node.text))).toBe(false);
   expect((await page.data()).coffee).toBe(before);
   await expect(trigger).toContainText('Select coffee');
   await trigger.click();
-  await device.tapText('OK');
+  await device.tapText(androidConfirmLabels);
   await expect.poll(async () => (await page.data()).coffee).toBe('Espresso');
   await expect(trigger).toContainText('Espresso');
-  expect((await device.nodes()).some((node) => node.text === 'OK')).toBe(false);
+  expect((await device.nodes()).some((node) => androidConfirmLabels.includes(node.text))).toBe(false);
 });
 
 androidSpec('cascade the native picker city column and preserve the selection on reopen', {
@@ -138,8 +138,8 @@ androidSpec('change both native picker columns and render the selected time', {
   await expect.poll(async () => (await page.data()).multiTime).toEqual(['10', '30']);
   await advanceColumn('30', '31');
   await expect.poll(async () => (await page.data()).multiTime).toEqual(['10', '31']);
-  await device.tapText('OK');
+  await device.tapText(androidConfirmLabels);
   await expect.poll(async () => (await page.data()).multiTime).toEqual(['10', '31']);
   await expect(trigger).toContainText('10:31');
-  expect((await device.nodes()).some((node) => node.text === 'OK')).toBe(false);
+  expect((await device.nodes()).some((node) => androidConfirmLabels.includes(node.text))).toBe(false);
 });

@@ -7,6 +7,10 @@ export interface AndroidNode {
   bounds: [number, number, number, number];
 }
 
+// Default native chrome uses the SDK's English and Chinese catalogs.
+export const androidCancelLabels: readonly string[] = ['Cancel', 'CANCEL', '取消'];
+export const androidConfirmLabels: readonly string[] = ['OK', '确定'];
+
 export function androidDevice(t: Fixture) {
   const base = t.arg('androidDevice');
   if (!base) throw new Error('Android device fixture is required');
@@ -44,10 +48,11 @@ export function androidDevice(t: Fixture) {
     key: (key: 'back' | 'enter' | 'tab' | 'escape') => request('key', { key }),
     size: () => request<{ width: number; height: number }>('size'),
     swipe: (input: { x1: number; y1: number; x2: number; y2: number; duration: number }) => request('swipe', input),
-    async tapText(text: string) {
-      const found = await t.waitFor(nodes, { until: (items) => items.some((item) => item.text === text), timeout: 15000 });
-      const matches = found.filter((item) => item.text === text);
-      if (matches.length !== 1) throw new Error(`Expected one Android control '${text}', found ${matches.length}`);
+    async tapText(text: string | readonly string[]) {
+      const labels = typeof text === 'string' ? [text] : text;
+      const found = await t.waitFor(nodes, { until: (items) => items.some((item) => labels.includes(item.text)), timeout: 15000 });
+      const matches = found.filter((item) => labels.includes(item.text));
+      if (matches.length !== 1) throw new Error(`Expected one Android control ${JSON.stringify(labels)}, found ${matches.length}`);
       await tap(matches[0]);
     },
   };
