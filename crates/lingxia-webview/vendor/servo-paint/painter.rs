@@ -943,6 +943,7 @@ impl Painter {
         if fully_exited {
             let mut transaction = Transaction::new();
             transaction.remove_pipeline(pipeline_id.into());
+            self.update_transaction_with_all_scroll_offsets(&mut transaction);
             self.send_transaction(transaction);
         }
     }
@@ -964,6 +965,8 @@ impl Painter {
         let mut txn = Transaction::new();
         txn.set_display_list(starting_epoch.into(), (pipeline_id, Default::default()));
 
+        // Scene rebuilds reset async offsets even in unrelated pipelines.
+        self.update_transaction_with_all_scroll_offsets(&mut txn);
         self.generate_frame(&mut txn, RenderReasons::SCENE);
         self.send_transaction(txn);
     }
@@ -1363,6 +1366,7 @@ impl Painter {
         for pipeline_id in webview_renderer.pipelines.keys() {
             transaction.remove_pipeline(pipeline_id.into());
         }
+        self.update_transaction_with_all_scroll_offsets(&mut transaction);
         self.send_transaction(transaction);
 
         self.send_root_pipeline_display_list();
