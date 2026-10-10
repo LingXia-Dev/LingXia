@@ -657,6 +657,8 @@ pub(crate) struct Document {
     pending_scroll_events: DomRefCell<Vec<PendingScrollEvent>>,
     /// Other reasons that a rendering update might be required for this [`Document`].
     rendering_update_reasons: Cell<RenderingUpdateReason>,
+    /// A layout query can clear the scene before the next rendering update.
+    pending_query_display_list_frame: Cell<bool>,
     /// Whether or not this [`Document`] is waiting on canvas image updates. If it is
     /// waiting it will not do any new layout until the canvas images are up-to-date in
     /// the renderer.
@@ -3211,6 +3213,7 @@ impl Document {
         }
         if !self.window().layout_blocked() &&
             (!self.restyle_reason(no_gc).is_empty() ||
+                self.pending_query_display_list_frame.get() ||
                 self.window().layout().needs_new_display_list() ||
                 self.window().layout().needs_accessibility_update())
         {
@@ -3309,7 +3312,10 @@ impl Document {
         }
 
         let (reflow_phases, statistics) = self.window().reflow(cx, ReflowGoal::UpdateTheRendering);
-        let phases = phases.union(reflow_phases);
+        let mut phases = phases.union(reflow_phases);
+        if self.pending_query_display_list_frame.replace(false) {
+            phases.insert(ReflowPhasesRun::BuiltDisplayList);
+        }
 
         self.window().paint_api().update_epoch(
             self.webview_id(),
@@ -4160,6 +4166,7 @@ impl Document {
             adopted_stylesheets_frozen_types: CachedFrozenArray::new(),
             pending_scroll_events: Default::default(),
             rendering_update_reasons: Default::default(),
+            pending_query_display_list_frame: Cell::new(false),
             waiting_on_canvas_image_updates: Cell::new(false),
             root_removal_noted: Cell::new(true),
             current_rendering_epoch: Default::default(),
@@ -4247,6 +4254,10 @@ impl Document {
     pub(crate) fn add_rendering_update_reason(&self, reason: RenderingUpdateReason) {
         self.rendering_update_reasons
             .set(self.rendering_update_reasons.get().union(reason));
+    }
+
+    pub(crate) fn note_query_display_list(&self) {
+        self.pending_query_display_list_frame.set(true);
     }
 
     /// Clear all [`RenderingUpdateReason`]s from this [`Document`].
