@@ -1,5 +1,5 @@
 import type { Fixture, LogicPage, TestApp, TestView } from '@lingxia/test';
-import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
+import { currentPageOrNull, waitForCurrentPage, waitForElementText } from '../helpers/page.js';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
@@ -96,11 +96,15 @@ spec('relaunching the same route keeps the replacement page shown', {
 
   for (let entry = 0; entry < 3; entry += 1) {
     const previous = await app.nav.current();
-    await app.nav.relaunch({ page: 'surface' });
-    const current = await waitForCurrentPage(app, 'surface');
-    if (!current.instanceId || !previous.instanceId) throw new Error('Missing lifecycle page instance ID');
+    if (!previous.instanceId) throw new Error('Missing outgoing lifecycle page instance ID');
     const previousId = previous.instanceId;
-    expect(current.instanceId).not.toBe(previous.instanceId);
+    await app.nav.relaunch({ page: 'surface' });
+    const current = await eventually(() => currentPageOrNull(app), (candidate) =>
+      candidate !== null && candidate.name === 'surface' && candidate.ready && Boolean(candidate.instanceId)
+        && candidate.instanceId !== previousId, {
+      describe: 'new surface instance to become ready',
+    });
+    if (!current?.instanceId) throw new Error('Missing replacement lifecycle page instance ID');
     const page = await app.page<{ data: SurfaceLifecycleState; actions: unknown }>({ instanceId: current.instanceId });
     await expect.poll(() => app.logic.eval(({ getPage }, instanceId) => {
       try { return getPage(instanceId) === undefined; }
