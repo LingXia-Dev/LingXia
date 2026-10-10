@@ -2726,6 +2726,7 @@ impl Window {
             accessibility_damage = Some(accessibility_data.drain_pending_accessibility_damage());
         }
 
+        let is_layout_query = matches!(reflow_goal, ReflowGoal::LayoutQuery(_));
         // Send new document and relevant styles to layout.
         let reflow = ReflowRequest {
             document: document.upcast::<Node>().to_trusted_node_address(),
@@ -2752,6 +2753,15 @@ impl Window {
         let Some(reflow_result) = self.layout.borrow_mut().reflow(reflow) else {
             return Default::default();
         };
+
+        if is_layout_query &&
+            reflow_result
+                .reflow_phases_run
+                .contains(ReflowPhasesRun::BuiltDisplayList)
+        {
+            // Present query-generated empty scenes at the normal rendering boundary.
+            document.note_query_display_list();
+        }
 
         self.handle_accessibility_actions(reflow_result.pending_accessibility_actions, cx);
 
