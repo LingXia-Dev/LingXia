@@ -11,10 +11,16 @@ Rebuilding replaces matching artifacts.
 
 Uploads a package to the LingXia server (OS stores are `lingxia store`).
 
-- Reads id/version from `lxapp.json` (package the lxapp first) or `lingxia.yaml`.
-- `--env dev|prod` picks server and token (default `dev`). `--channel
-  release|draft` picks the lxapp line (default `release` in every env).
-- A host publish takes a prebuilt package path and no `--channel`.
+- An lxapp or lxplugin publish builds the current project, then reads id and
+  version from `lxapp.json` or `lxplugin.json`.
+- A host publish does not build. It uploads the package `lingxia package`
+  already wrote: Android `.apk`, macOS `*-macos.zip`, Windows `*-windows.zip`.
+  `lingxiaId`, `productVersion`, and `env` come from that package's `app.json`.
+  `lingxia.yaml` finds the project and the artifact; it does not set the
+  published version, and an invalid `productVersion` there does not block
+  publish. No `--channel`.
+- `--env dev|prod` picks server and token for an lxapp or lxplugin (default
+  `dev`). `--channel release|draft` picks the lxapp line (default `release`).
 - Token: `--token`, `LINGXIA_PUBLISH_TOKEN`, or the wallet
   (`lingxia auth login lingxia --env prod --token …`, keyed by server + env).
 
@@ -27,37 +33,33 @@ fixed package revision; opening preserves the normal update lifecycle.
 
 ### Update signing keys
 
-`prod` publishes need `--update-signing-key-file` (or
-`LINGXIA_UPDATE_SIGNING_KEY_FILE`), draft channel included; `dev` may be
+`prod` publishes need `--update-signing-key` (or
+`LINGXIA_UPDATE_SIGNING_KEY`), draft channel included; `dev` may be
 unsigned. A prod host switched to the dev service does not fetch
 lxapps/plugins from that service; prod-service packages and host
 updates still require signatures. The CLI signs; never hand-build `signed` /
 `signatures`.
 
-The key file is one line: base64url (no `=`) of a 32-byte Ed25519 seed, mode
-`0600` or `0400`. Put 1 or 2 matching public keys under
+The value is one base64url (no `=`) 32-byte Ed25519 seed. Prefer the
+environment variable so the seed stays out of shell history. Put 1 or 2
+matching public keys under
 [`update.trustedPublicKeys`](../app/project.md#update); store updates need none.
 
 ```bash
-umask 077
 node --input-type=module -e '
 import { generateKeyPairSync } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 const { privateKey } = generateKeyPairSync("ed25519");
 const { d: seed, x: pub } = privateKey.export({ format: "jwk" });
-const path = join(homedir(), ".lingxia", "update.key");
-mkdirSync(join(homedir(), ".lingxia"), { recursive: true });
-writeFileSync(path, seed + "\n", { mode: 0o600 });
+console.log("seed:", seed);
 console.log("public:", pub);
 '
 ```
 
-Paste the printed `public:` value into `update.trustedPublicKeys`, then:
+Paste `public:` into `update.trustedPublicKeys`. Pass `seed:` as
+`LINGXIA_UPDATE_SIGNING_KEY`.
 
 ```bash
-lingxia publish --env prod --update-signing-key-file ~/.lingxia/update.key
+LINGXIA_UPDATE_SIGNING_KEY=<seed> lingxia publish --env prod
 ```
 
 ### Server default

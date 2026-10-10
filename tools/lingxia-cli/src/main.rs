@@ -378,8 +378,10 @@ session per project and target: starting another takes over the old one.
 
     /// Publish a package to the LingXia server
     ///
-    /// Tokens come from the wallet (`lingxia auth login lingxia`), keyed by
-    /// the server URL + env.
+    /// Lxapps and lxplugins are built first. Host apps upload an existing
+    /// Android APK or macOS/Windows update zip; id, version, and env come
+    /// from that package. Tokens come from the wallet
+    /// (`lingxia auth login lingxia`), keyed by the server URL + env.
     Publish {
         #[command(flatten)]
         args: PublishArgs,
@@ -599,7 +601,7 @@ struct PublishArgs {
     #[arg(long)]
     lingxia_server: Option<String>,
 
-    /// Path to the package archive (app only)
+    /// Prebuilt host package: Android `.apk`, `*-macos.zip`, or `*-windows.zip`
     #[arg(long = "package-path")]
     package_path: Option<String>,
 
@@ -627,10 +629,10 @@ struct PublishArgs {
     #[arg(long, value_parser = ["task", "plain"])]
     progress: Option<String>,
 
-    /// Seed file required for prod update signatures (POSIX 0600 or 0400).
-    /// Also reads `LINGXIA_UPDATE_SIGNING_KEY_FILE`.
-    #[arg(long, env = "LINGXIA_UPDATE_SIGNING_KEY_FILE")]
-    update_signing_key_file: Option<String>,
+    /// Ed25519 seed for prod update signatures (base64url, no padding).
+    /// Also reads `LINGXIA_UPDATE_SIGNING_KEY`. Prefer the environment variable.
+    #[arg(long, env = "LINGXIA_UPDATE_SIGNING_KEY", hide_env_values = true)]
+    update_signing_key: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -1317,7 +1319,7 @@ fn main() -> Result<()> {
                 channel: args.channel,
                 framework: args.framework,
                 progress: args.progress,
-                update_signing_key_file: args.update_signing_key_file,
+                update_signing_key: args.update_signing_key,
             })?;
         }
     }
@@ -1328,6 +1330,7 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod cli_tests {
     use super::*;
+    use clap::CommandFactory;
 
     #[test]
     fn display_language_accepts_and_canonicalizes_arbitrary_bcp47_tags() {
@@ -1369,21 +1372,45 @@ mod cli_tests {
     }
 
     #[test]
-    fn publish_accepts_update_signing_key_file() {
+    fn publish_accepts_update_signing_key() {
         let cli = Cli::try_parse_from([
             "lingxia",
             "publish",
-            "--update-signing-key-file",
-            "/tmp/update.key",
+            "--update-signing-key",
+            "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
         ])
         .unwrap();
         let Commands::Publish { args } = cli.command else {
             panic!("expected publish");
         };
         assert_eq!(
-            args.update_signing_key_file.as_deref(),
-            Some("/tmp/update.key")
+            args.update_signing_key.as_deref(),
+            Some("BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc")
         );
+        assert!(
+            Cli::try_parse_from([
+                "lingxia",
+                "publish",
+                "--update-signing-key-file",
+                "/tmp/update.key",
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn publish_help_does_not_print_the_signing_key() {
+        let mut cmd = Cli::command();
+        let publish = cmd.find_subcommand_mut("publish").unwrap();
+        let key = publish
+            .get_arguments()
+            .find(|arg| arg.get_id() == "update_signing_key")
+            .unwrap();
+        assert_eq!(
+            key.get_env().and_then(|env| env.to_str()),
+            Some("LINGXIA_UPDATE_SIGNING_KEY")
+        );
+        assert!(key.is_hide_env_values_set());
     }
 
     #[test]

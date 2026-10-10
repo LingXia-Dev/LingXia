@@ -1926,12 +1926,46 @@ impl LingXiaConfig {
         let content = fs::read_to_string(&config_path)
             .with_context(|| format!("Failed to read {}", config_path.display()))?;
 
-        let mut config: LingXiaConfig = yaml::from_str(&content)
+        let config = Self::read_project_file(&config_path, &content)?;
+        config.validate()?;
+
+        Ok(config)
+    }
+
+    /// Host publish reads version from the package. A stale or invalid
+    /// `productVersion` in the project file must not block that.
+    pub fn load_for_publish(project_root: &Path) -> Result<Self> {
+        let config_path = project_root.join(HOST_CONFIG_FILE);
+        if !config_path.exists() {
+            anyhow::bail!(
+                "{} not found in {}. Run 'lingxia new' to create a new project.",
+                HOST_CONFIG_FILE,
+                project_root.display()
+            );
+        }
+        let content = fs::read_to_string(&config_path)
+            .with_context(|| format!("Failed to read {}", config_path.display()))?;
+        let mut config = Self::read_project_file(&config_path, &content)?;
+        let original = config.app.as_ref().map(|app| app.product_version.clone());
+        if let Some(app) = config.app.as_mut()
+            && Version::parse(app.product_version.trim()).is_err()
+        {
+            // `validate` requires a semver. The real string is restored so
+            // publish can report it; it is not the version that ships.
+            app.product_version = "0.0.0".to_string();
+        }
+        config.validate()?;
+        if let (Some(app), Some(original)) = (config.app.as_mut(), original) {
+            app.product_version = original;
+        }
+        Ok(config)
+    }
+
+    fn read_project_file(config_path: &Path, content: &str) -> Result<Self> {
+        let mut config: LingXiaConfig = yaml::from_str(content)
             .with_context(|| format!("Failed to parse {}", config_path.display()))?;
         config.theme = config.theme.take().and_then(ThemeConfig::normalized);
         config.apply_surfaces()?;
-        config.validate()?;
-
         Ok(config)
     }
 

@@ -20,7 +20,7 @@ pub struct PublishOptions {
     pub channel: Option<String>,
     pub framework: Option<String>,
     pub progress: Option<String>,
-    pub update_signing_key_file: Option<String>,
+    pub update_signing_key: Option<String>,
 }
 
 #[derive(Debug)]
@@ -67,11 +67,10 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
                 package_path.display()
             )
         })?;
-        meta.env = metadata.env;
-        // Match the lingxiaId baked into the package; host updates are
-        // env-scoped and do not carry a channel.
-        meta.target_id = metadata.lingxia_id;
-        meta.channel = None;
+        apply_host_package_identity(&mut meta, metadata);
+        if let Some(note) = project_version_drift(&cwd, &meta.version) {
+            eprintln!("{} {note}", "ℹ".blue());
+        }
     }
     // Resolve server and token after env is known. The token is keyed by
     // (canonical server URL, env) in the wallet.
@@ -114,11 +113,10 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
             .context("host app publish requires --platform")?,
         _ => "any".to_string(),
     };
-    let update_signing_key_file =
-        clean_arg(opts.update_signing_key_file, "--update-signing-key-file")?;
+    let update_signing_key = clean_arg(opts.update_signing_key, "--update-signing-key")?;
     let extra = signed_multipart_fields(
         meta.env,
-        update_signing_key_file.as_deref().map(Path::new),
+        update_signing_key.as_deref(),
         &lingxia_update::SignRequest {
             kind: &meta.target,
             target_id: &meta.target_id,
@@ -509,11 +507,13 @@ fn resolve_meta(
                      host updates are env-scoped and do not carry a channel"
                 );
             }
-            let (id, version) = read_app_config(cwd)?;
+            // The project file selects the platform and the server. The
+            // published id, version, and env come from the package.
+            LingXiaConfig::load_for_publish(cwd)?;
             Ok(PackageMeta {
                 target,
-                target_id: id,
-                version,
+                target_id: String::new(),
+                version: String::new(),
                 env,
                 channel: None,
                 min_runtime: String::new(),
@@ -557,6 +557,28 @@ struct AppPackageMetadata {
     env: AppEnv,
     /// The runtime resolves updates against this exact packaged id.
     lingxia_id: String,
+    /// `productVersion` baked into the package. Clients compare this string.
+    version: String,
+}
+
+fn apply_host_package_identity(meta: &mut PackageMeta, metadata: AppPackageMetadata) {
+    meta.env = metadata.env;
+    meta.target_id = metadata.lingxia_id;
+    meta.version = metadata.version;
+    meta.channel = None;
+}
+
+/// Host yaml can drift from a package built earlier. The feed must follow the
+/// package, and the mismatch is otherwise silent.
+fn project_version_drift(cwd: &Path, packaged_version: &str) -> Option<String> {
+    let cfg = LingXiaConfig::load_for_publish(cwd).ok()?;
+    let project_version = cfg.app.as_ref()?.product_version.trim();
+    if project_version.is_empty() || project_version == packaged_version {
+        return None;
+    }
+    Some(format!(
+        "lingxia.yaml productVersion is {project_version}; publishing {packaged_version} from the package."
+    ))
 }
 
 fn read_app_package_metadata(path: &Path) -> Result<AppPackageMetadata> {
@@ -598,7 +620,22 @@ fn read_app_package_metadata(path: &Path) -> Result<AppPackageMetadata> {
         .filter(|s| !s.is_empty())
         .context("lingxiaId is missing from packaged app.json")?
         .to_string();
-    Ok(AppPackageMetadata { env, lingxia_id })
+    let version = value
+        .get("productVersion")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .context("productVersion is missing from packaged app.json")?;
+    lingxia_update::Version::parse(version).map_err(|_| {
+        anyhow::anyhow!(
+            "productVersion in packaged app.json must be a semantic version (major.minor.patch)"
+        )
+    })?;
+    Ok(AppPackageMetadata {
+        env,
+        lingxia_id,
+        version: version.to_string(),
+    })
 }
 
 fn read_zip_entry(path: &Path, names: &[&str]) -> Result<Vec<u8>> {
@@ -700,24 +737,6 @@ fn read_lxplugin_json(cwd: &Path) -> Result<(String, String)> {
     Ok((id, version))
 }
 
-fn read_app_config(cwd: &Path) -> Result<(String, String)> {
-    let cfg = LingXiaConfig::load(cwd)?;
-    let app = cfg.app.context("app section missing in lingxia.yaml")?;
-
-    let target_id = app
-        .lingxia_id
-        .clone()
-        .filter(|value| !value.trim().is_empty())
-        .context("app.lingxiaId is required in lingxia.yaml when publishing target=app")?;
-
-    let version = app.product_version;
-    if version.trim().is_empty() {
-        bail!("productVersion is empty in lingxia.yaml");
-    }
-
-    Ok((target_id, version))
-}
-
 fn non_empty_str(val: &serde_json::Value, label: &str) -> Result<String> {
     let s = val.as_str().unwrap_or("").trim().to_string();
     if s.is_empty() {
@@ -810,7 +829,7 @@ fn resolve_lingxia_server(
     // host config exists and configures one.
     let config_path = cwd.join(HOST_CONFIG_FILE);
     if config_path.exists()
-        && let Ok(cfg) = LingXiaConfig::load(cwd)
+        && let Ok(cfg) = LingXiaConfig::load_for_publish(cwd)
         && let Ok(resolved) = cfg.resolve_env(env)
         && !resolved.lingxia_server.is_empty()
     {
@@ -906,7 +925,7 @@ fn resolve_publish_platform(
         return normalize_platform(platform).map(Some);
     }
 
-    let Ok(config) = LingXiaConfig::load(cwd) else {
+    let Ok(config) = LingXiaConfig::load_for_publish(cwd) else {
         return Ok(None);
     };
     let Some(app) = config.app.as_ref() else {
@@ -1087,14 +1106,14 @@ fn upload_transport_error(url: &str, package_bytes: usize, err: ureq::Error) -> 
 
 fn signed_multipart_fields(
     env: AppEnv,
-    key_file: Option<&Path>,
+    key: Option<&str>,
     req: &lingxia_update::SignRequest<'_>,
 ) -> Result<Vec<(String, String)>> {
     let env = match env {
         AppEnv::Dev => lingxia_app_context::AppEnv::Dev,
         AppEnv::Prod => lingxia_app_context::AppEnv::Prod,
     };
-    match lingxia_update::sign_package_from_key_file(env, key_file, req)
+    match lingxia_update::sign_package_from_key(env, key, req)
         .map_err(|e| anyhow::anyhow!("{e}"))?
     {
         None => Ok(Vec::new()),
@@ -1144,9 +1163,10 @@ fn build_multipart(
 #[cfg(test)]
 mod tests {
     use super::{
-        PackageMeta, build_multipart, find_or_resolve_package, normalize_channel,
-        normalize_platform, package_matches, publish_build_args, publish_upload,
-        read_app_package_metadata, resolve_meta, resolve_publish_platform, signed_multipart_fields,
+        AppPackageMetadata, PackageMeta, apply_host_package_identity, build_multipart,
+        find_or_resolve_package, normalize_channel, normalize_platform, package_matches,
+        project_version_drift, publish_build_args, publish_upload, read_app_package_metadata,
+        resolve_meta, resolve_publish_platform, signed_multipart_fields,
     };
     use super::{draft_open_url, draft_qr_png};
     use crate::config::AppEnv;
@@ -1156,6 +1176,32 @@ mod tests {
     use zip::write::SimpleFileOptions;
 
     use super::{clean_arg, mask_token, validate_publish_server};
+
+    const HOST_YAML_AT_9: &str = r#"
+app:
+  projectName: demo
+  packageId: app.example.demo
+  productName: Demo
+  productVersion: 9.9.9
+  lingxiaId: demo
+  lingxiaServer: https://api.example.com
+  platforms:
+    - android
+  homeAppId: demo.home
+"#;
+
+    const HOST_YAML_BAD_VERSION: &str = r#"
+app:
+  projectName: demo
+  packageId: app.example.demo
+  productName: Demo
+  productVersion: nope
+  lingxiaId: demo
+  lingxiaServer: https://api.example.com
+  platforms:
+    - android
+  homeAppId: demo.home
+"#;
 
     #[test]
     fn validate_publish_server_requires_http_scheme() {
@@ -1405,10 +1451,7 @@ app:
     fn signed_multipart_fields_requires_key_for_prod() {
         let sha256 = lingxia_update::archive_sha256_hex(b"pkg");
         let err = signed_multipart_fields(AppEnv::Prod, None, &sign_request(&sha256)).unwrap_err();
-        assert!(
-            err.to_string().contains("--update-signing-key-file"),
-            "{err}"
-        );
+        assert!(err.to_string().contains("--update-signing-key"), "{err}");
     }
 
     #[test]
@@ -1435,17 +1478,9 @@ app:
     fn signed_multipart_fields_are_uploaded_verbatim() {
         let package = b"pkg";
         let sha256 = lingxia_update::archive_sha256_hex(package);
-        let temp = TempDir::new().unwrap();
-        let key_path = temp.path().join("update.key");
-        fs::write(&key_path, "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600)).unwrap();
-        }
         let extra = signed_multipart_fields(
             AppEnv::Prod,
-            Some(key_path.as_path()),
+            Some("BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc"),
             &sign_request(&sha256),
         )
         .unwrap();
@@ -1607,6 +1642,7 @@ android:
 
         assert_eq!(metadata.env, AppEnv::Dev);
         assert_eq!(metadata.lingxia_id, "demo.dev");
+        assert_eq!(metadata.version, "1.0.0");
     }
 
     #[test]
@@ -1624,6 +1660,7 @@ android:
         let metadata = read_app_package_metadata(&zip).unwrap();
 
         assert_eq!(metadata.env, AppEnv::Prod);
+        assert_eq!(metadata.version, "1.0.0");
     }
 
     #[test]
@@ -1668,6 +1705,95 @@ android:
 
         let error = read_app_package_metadata(&apk).unwrap_err().to_string();
         assert!(error.contains("lingxiaId is missing"), "{error}");
+    }
+
+    #[test]
+    fn publish_rejects_app_package_without_product_version() {
+        let temp = TempDir::new().unwrap();
+        let apk = temp.path().join("app.apk");
+        write_zip(
+            &apk,
+            &[("assets/app.json", br#"{"lingxiaId":"demo","env":"prod"}"#)],
+        );
+
+        let error = read_app_package_metadata(&apk).unwrap_err().to_string();
+        assert!(error.contains("productVersion is missing"), "{error}");
+    }
+
+    #[test]
+    fn publish_rejects_non_semver_product_version() {
+        let temp = TempDir::new().unwrap();
+        let apk = temp.path().join("app.apk");
+        write_zip(
+            &apk,
+            &[(
+                "assets/app.json",
+                br#"{"lingxiaId":"demo","productVersion":"1.0","env":"prod"}"#,
+            )],
+        );
+
+        let error = read_app_package_metadata(&apk).unwrap_err().to_string();
+        assert!(error.contains("semantic version"), "{error}");
+    }
+
+    #[test]
+    fn host_publish_version_comes_from_the_package() {
+        let mut meta = PackageMeta {
+            target: "app".into(),
+            target_id: "from-yaml".into(),
+            version: "9.9.9".into(),
+            env: AppEnv::Prod,
+            channel: None,
+            min_runtime: String::new(),
+        };
+        apply_host_package_identity(
+            &mut meta,
+            AppPackageMetadata {
+                env: AppEnv::Dev,
+                lingxia_id: "demo.dev".into(),
+                version: "1.2.3".into(),
+            },
+        );
+        assert_eq!(meta.version, "1.2.3");
+        assert_eq!(meta.target_id, "demo.dev");
+        assert_eq!(meta.env, AppEnv::Dev);
+        assert!(meta.channel.is_none());
+    }
+
+    #[test]
+    fn app_publish_does_not_take_version_from_yaml() {
+        let temp = TempDir::new().unwrap();
+        fs::write(temp.path().join("lingxia.yaml"), HOST_YAML_AT_9).unwrap();
+
+        let meta = resolve_meta(temp.path(), None, None).unwrap();
+
+        assert_eq!(meta.target, "app");
+        assert!(meta.version.is_empty(), "{}", meta.version);
+        assert_eq!(
+            project_version_drift(temp.path(), "1.2.3").as_deref(),
+            Some("lingxia.yaml productVersion is 9.9.9; publishing 1.2.3 from the package.")
+        );
+        assert!(project_version_drift(temp.path(), "9.9.9").is_none());
+    }
+
+    #[test]
+    fn app_publish_accepts_an_invalid_yaml_product_version() {
+        let temp = TempDir::new().unwrap();
+        fs::write(temp.path().join("lingxia.yaml"), HOST_YAML_BAD_VERSION).unwrap();
+
+        let meta = resolve_meta(temp.path(), None, None).unwrap();
+
+        assert!(meta.version.is_empty(), "{}", meta.version);
+        assert_eq!(
+            resolve_publish_platform(temp.path(), "app", None)
+                .unwrap()
+                .as_deref(),
+            Some("android")
+        );
+        assert_eq!(
+            project_version_drift(temp.path(), "1.2.3").as_deref(),
+            Some("lingxia.yaml productVersion is nope; publishing 1.2.3 from the package.")
+        );
     }
 
     fn write_zip(path: &std::path::Path, entries: &[(&str, &[u8])]) {
