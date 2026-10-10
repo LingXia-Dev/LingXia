@@ -591,6 +591,7 @@ fn stop_child_tree(child: &mut Child) {
 mod tests {
     use super::*;
     use lingxia_control_protocol::dev_session::{DevSessionLog, DevSessionLogLevel};
+    #[cfg(unix)]
     use std::fs;
 
     #[test]
