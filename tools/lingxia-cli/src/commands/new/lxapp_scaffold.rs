@@ -497,7 +497,6 @@ mod tests {
             "export default { staticDirs: ['public'] };",
         )
         .unwrap();
-        fs::write(lxapp_html.join("gitignore"), "node_modules/\ndist/").unwrap();
         fs::write(
             html_pages_home.join("index.html"),
             "<!doctype html><body><script type=\"module\" src=\"./entry.ts\"></script></body>",
@@ -835,10 +834,8 @@ mod tests {
 
     #[test]
     fn scaffolded_gitignores_keep_test_secrets_out_of_git() {
-        for template in [
-            include_str!("../../../templates/lxapp-create/gitignore"),
-            include_str!("../../../templates/lxapp-create/html/gitignore"),
-        ] {
+        // The html overlay inherits this file from the base scaffold.
+        for template in [include_str!("../../../templates/lxapp-create/gitignore")] {
             for rule in [
                 ".env.test",
                 "*.lxstate",
@@ -853,16 +850,19 @@ mod tests {
 
     #[test]
     fn scaffold_renames_gitignore() {
-        let (_tmpl, out) = scaffold("react");
-        let app = out.path().join("myapp");
-        assert!(
-            app.join(".gitignore").exists(),
-            ".gitignore must be created"
-        );
-        assert!(
-            !app.join("gitignore").exists(),
-            "bare gitignore must not exist"
-        );
+        for framework in ["react", "html"] {
+            let (_tmpl, out) = scaffold(framework);
+            let app = out.path().join("myapp");
+            assert_eq!(
+                fs::read_to_string(app.join(".gitignore")).unwrap(),
+                "node_modules/",
+                "{framework} inherits the base .gitignore"
+            );
+            assert!(
+                !app.join("gitignore").exists(),
+                "bare gitignore must not exist"
+            );
+        }
     }
 
     #[test]
