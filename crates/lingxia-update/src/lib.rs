@@ -266,42 +266,40 @@ pub struct UpdatePackageInfo {
 }
 
 impl UpdatePackageInfo {
-    pub fn should_replace_version(
-        candidate_version: &str,
-        installed_version: Option<&str>,
-    ) -> bool {
-        installed_version != Some(candidate_version)
-    }
-
-    pub fn should_replace_installed_version(&self, installed_version: Option<&str>) -> bool {
-        Self::should_replace_version(&self.version, installed_version)
-    }
-
     /// Whether this package should replace what is already installed.
     ///
-    /// `release` compares versions only. `draft` also treats a
-    /// same-version package as an update when `checksum_sha256` differs, so a
-    /// republish does not need a version bump. A draft install with no
-    /// stored checksum is treated as different so the first OTA after a
-    /// bundled/sideload install still picks up a same-version republish.
+    /// Versions only move forward on both channels: a newer server version
+    /// installs and an older one never does. At the same version, `draft` also
+    /// installs when `checksum_sha256` differs, so a republish needs no version
+    /// bump; a draft install with no stored checksum counts as different.
     pub fn should_replace(
         &self,
         channel: Channel,
         installed_version: Option<&str>,
         installed_checksum: Option<&str>,
     ) -> bool {
-        if channel != Channel::Draft {
-            return Self::should_replace_version(&self.version, installed_version);
-        }
-        if Self::should_replace_version(&self.version, installed_version) {
+        let Some(installed) = installed_version else {
             return true;
-        }
-        let Some(server) = normalize_checksum(&self.checksum_sha256) else {
+        };
+        // An unreadable server version cannot be shown to be newer.
+        let Ok(candidate) = Version::parse(self.version.trim()) else {
             return false;
         };
-        match installed_checksum.and_then(normalize_checksum) {
-            Some(local) => !local.eq_ignore_ascii_case(server),
-            None => true,
+        let Ok(installed) = Version::parse(installed.trim()) else {
+            return true;
+        };
+        match candidate.cmp(&installed) {
+            Ordering::Greater => true,
+            Ordering::Less => false,
+            Ordering::Equal if channel == Channel::Draft => {
+                let Some(server) = normalize_checksum(&self.checksum_sha256) else {
+                    return false;
+                };
+                installed_checksum
+                    .and_then(normalize_checksum)
+                    .is_none_or(|local| !local.eq_ignore_ascii_case(server))
+            }
+            Ordering::Equal => false,
         }
     }
 
@@ -451,19 +449,41 @@ mod tests {
     }
 
     #[test]
-    fn release_ignores_checksum_when_version_matches() {
+    fn release_installs_only_a_newer_version() {
         let pkg = package("1.0.0", "aaa");
-        assert!(!pkg.should_replace(Channel::Release, Some("1.0.0"), Some("bbb")));
+        assert!(pkg.should_replace(Channel::Release, None, None));
         assert!(pkg.should_replace(Channel::Release, Some("0.9.0"), Some("aaa")));
+        assert!(!pkg.should_replace(Channel::Release, Some("1.0.0"), Some("bbb")));
+        assert!(!pkg.should_replace(Channel::Release, Some("1.0.1"), Some("aaa")));
+        // Numeric, not lexical: 1.10.0 is newer than 1.9.0.
+        assert!(package("1.10.0", "aaa").should_replace(Channel::Release, Some("1.9.0"), None));
     }
 
     #[test]
-    fn draft_replaces_same_version_when_checksum_differs() {
+    fn draft_installs_a_newer_version_or_a_same_version_republish() {
         let pkg = package("1.0.0", "bbb");
+        assert!(pkg.should_replace(Channel::Draft, Some("0.9.0"), Some("bbb")));
         assert!(pkg.should_replace(Channel::Draft, Some("1.0.0"), Some("aaa")));
         assert!(!pkg.should_replace(Channel::Draft, Some("1.0.0"), Some("BBB")));
         assert!(pkg.should_replace(Channel::Draft, Some("1.0.0"), None));
-        assert!(pkg.should_replace(Channel::Draft, Some("0.9.0"), Some("bbb")));
+        assert!(!package("1.0.0", "").should_replace(Channel::Draft, Some("1.0.0"), None));
+    }
+
+    #[test]
+    fn neither_channel_installs_an_older_version() {
+        let pkg = package("1.0.0", "bbb");
+        for channel in [Channel::Release, Channel::Draft] {
+            assert!(!pkg.should_replace(channel, Some("1.1.0"), Some("aaa")));
+            assert!(!pkg.should_replace(channel, Some("1.1.0"), None));
+        }
+    }
+
+    #[test]
+    fn unreadable_versions_never_downgrade() {
+        for channel in [Channel::Release, Channel::Draft] {
+            assert!(!package("latest", "bbb").should_replace(channel, Some("1.0.0"), Some("aaa")));
+            assert!(package("1.0.0", "bbb").should_replace(channel, Some("bundled"), Some("aaa")));
+        }
     }
 
     #[test]

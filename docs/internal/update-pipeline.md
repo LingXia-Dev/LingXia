@@ -182,11 +182,14 @@ failure directly; package visibility makes availability preflight unreliable.
   from the running instance.
 - Bundles served live from a local development path are not OTA-managed. Every
   update entry point must leave them alone.
+- Versions only move forward on both channels: a newer server version
+  installs and an older one never does, so a server-side rollback cannot
+  downgrade a device. An unparseable server version never installs over an
+  existing one. Exact-version opens are explicit and exempt.
 - Draft republishing may replace the same version with a different checksum.
   A missing stored checksum counts as different, including bundled and
   sideloaded installs. Exact-version draft opens therefore still query the
-  server. Release checks compare versions only; the registry enforces
-  monotonically increasing releases.
+  server.
 
 ## Source entry points and verification
 

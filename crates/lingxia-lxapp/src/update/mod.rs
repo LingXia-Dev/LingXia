@@ -108,8 +108,8 @@ impl UpdateManager {
 
     /// Decide whether we should download/apply the server package for this app variant.
     ///
-    /// `release` skips only when the version matches. `draft`
-    /// also updates when the version matches but the checksum differs.
+    /// Only a newer version installs; a `draft` at the same version also
+    /// installs when its checksum differs.
     pub fn should_update(
         &self,
         lxappid: &str,
