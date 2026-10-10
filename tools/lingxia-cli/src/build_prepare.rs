@@ -75,22 +75,21 @@ pub(crate) fn prepare(root: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 pub(crate) mod tests {
     use super::*;
     use crate::commands::template_provider::test_support;
     use std::fs;
+
+    const APPEND_X: &str =
+        "import { appendFileSync } from 'node:fs'; appendFileSync('count', 'x');";
 
     #[test]
     fn nested_builds_prepare_once_but_each_invocation_prepares_again() {
         let home = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
         let _home = test_support::use_home(home.path());
-        test_support::install(
-            home.path(),
-            project.path(),
-            &[("prepare", "printf x >> count")],
-        );
+        test_support::install_node(home.path(), project.path(), &[("prepare", APPEND_X)]);
         for _ in 0..2 {
             let _scope = Scope::enter();
             prepare(project.path()).unwrap();
@@ -100,19 +99,47 @@ pub(crate) mod tests {
         assert_eq!(fs::read(project.path().join("count")).unwrap(), b"xx");
     }
 
+    /// `prepare` canonicalizes the project, which on Windows means a `\\?\`
+    /// path; Node must still load the entry and see plain paths.
     #[test]
-    fn runs_in_the_project_with_the_template_root() {
+    fn the_entry_runs_in_the_project_with_plain_paths() {
         let home = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
         let _home = test_support::use_home(home.path());
-        test_support::install(
+        test_support::install_node(
             home.path(),
             project.path(),
-            &[("prepare", "printf '%s' \"$LINGXIA_TEMPLATE_ROOT\" > root")],
+            &[(
+                "prepare",
+                "import { writeFileSync } from 'node:fs';\n\
+                 writeFileSync('probe.json', JSON.stringify({\n\
+                   entry: process.argv[1],\n\
+                   cwd: process.cwd(),\n\
+                   root: process.env.LINGXIA_TEMPLATE_ROOT,\n\
+                 }));",
+            )],
         );
         prepare(project.path()).unwrap();
-        let root = fs::read_to_string(project.path().join("root")).unwrap();
-        assert!(root.ends_with("templates/example"), "{root}");
+        let probe: serde_json::Value =
+            serde_json::from_slice(&fs::read(project.path().join("probe.json")).unwrap()).unwrap();
+        for key in ["entry", "cwd", "root"] {
+            let value = probe[key].as_str().unwrap();
+            assert!(!value.starts_with(r"\\?\"), "{key}: {value}");
+        }
+        assert!(
+            probe["entry"].as_str().unwrap().ends_with("prepare.mjs"),
+            "{probe}"
+        );
+        assert_eq!(
+            Path::new(probe["cwd"].as_str().unwrap())
+                .canonicalize()
+                .unwrap(),
+            project.path().canonicalize().unwrap()
+        );
+        assert!(
+            Path::new(probe["root"].as_str().unwrap()).ends_with("templates/example"),
+            "{probe}"
+        );
     }
 
     #[test]
@@ -120,19 +147,16 @@ pub(crate) mod tests {
         let home = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
         let _home = test_support::use_home(home.path());
-        test_support::install(home.path(), project.path(), &[("prepare", "exit 7")]);
-        let _scope = Scope::enter();
-        assert!(
-            prepare(project.path())
-                .unwrap_err()
-                .to_string()
-                .contains("build stopped")
-        );
-        test_support::install(
+        test_support::install_node(
             home.path(),
             project.path(),
-            &[("prepare", "printf x >> count")],
+            &[("prepare", "process.exit(7);")],
         );
+        let _scope = Scope::enter();
+        let error = prepare(project.path()).unwrap_err().to_string();
+        assert!(error.contains("build stopped"), "{error}");
+        assert!(error.contains('7'), "{error}");
+        test_support::install_node(home.path(), project.path(), &[("prepare", APPEND_X)]);
         prepare(project.path()).unwrap();
         assert_eq!(fs::read(project.path().join("count")).unwrap(), b"x");
     }
@@ -143,7 +167,7 @@ pub(crate) mod tests {
         let project = tempfile::tempdir().unwrap();
         let _home = test_support::use_home(home.path());
         prepare(project.path()).unwrap();
-        test_support::install(home.path(), project.path(), &[("companion", "exit 0")]);
+        test_support::install_node(home.path(), project.path(), &[("companion", "")]);
         prepare(project.path()).unwrap();
     }
 
@@ -152,7 +176,7 @@ pub(crate) mod tests {
         let home = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
         let _home = test_support::use_home(home.path());
-        test_support::install(home.path(), project.path(), &[("prepare", "exit 0")]);
+        test_support::install_node(home.path(), project.path(), &[("prepare", "")]);
         fs::remove_dir_all(home.path().join(".lingxia/templates/example")).unwrap();
         let error = prepare(project.path()).unwrap_err().to_string();
         assert!(error.contains("lingxia template add"), "{error}");
