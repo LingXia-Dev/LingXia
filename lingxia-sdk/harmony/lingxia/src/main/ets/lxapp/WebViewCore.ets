@@ -5,6 +5,7 @@ import { image } from '@kit.ImageKit';
 import { util } from '@kit.ArkTS';
 import { BusinessError } from '@kit.BasicServicesKit';
 import {
+  browserTabWebtag,
   getLxappSessionId,
   getPageWebtag,
   onDownloadStart as hostOnDownloadStart,
@@ -457,6 +458,13 @@ export class WebViewManager {
    * @param path - Page path
    * @returns WebView controller or null if not found
    */
+  // Retiring and current browser controllers may share a route. Only the
+  // runtime's current creation identity may be attached, even while pending.
+  static findBrowserWebview(tabId: string): webview.WebviewController | null {
+    const webtag: string = browserTabWebtag(tabId);
+    return webtag ? WebViewManager.controllers.get(webtag) ?? null : null;
+  }
+
   static findWebview(appId: string, path: string): webview.WebviewController | null {
     const logicalTag = toWebTag(appId, path); // appId:path
 

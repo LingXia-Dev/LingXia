@@ -462,6 +462,11 @@ pub fn browser_tab_path_for_id(tab_id: String) -> String {
 }
 
 #[napi]
+pub fn browser_tab_webtag(tab_id: String) -> String {
+    crate::browser::tab_webtag(&tab_id)
+}
+
+#[napi]
 pub fn browser_url_is_hidden(raw: String) -> bool {
     crate::browser::should_hide_url(&raw)
 }
