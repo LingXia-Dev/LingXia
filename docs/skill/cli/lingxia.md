@@ -51,24 +51,24 @@ may ship project files, CLI commands, and skills.
 
 ### Projects from a template
 
-A templated project tracks one LingXia file, `.lingxia/template.json`: the
-template's `name` and the `source` to install it from. Commit it; never commit
-`generated/` or other `.lingxia/` content. The template version is the
-installed one; `lingxia template update` moves it. `lingxia build` and `lingxia dev` run the template's
-`prepare` themselves. If the template is not installed they fail and name
-`lingxia template add <source>`; nothing installs it automatically.
+A templated project tracks `.lingxia/template.json` (the template's `name` and
+`source`); commit it, but no other `.lingxia/` content. Building needs no
+template: only `lingxia dev` does, for the template's `companion`, and fails
+naming `lingxia template add <source>` when it is missing.
+
+### Build preparation
+
+A `lingxia:prepare` script in the lxapp's `package.json` generates build
+inputs. `lingxia build` runs it before dependency installation on every source
+build, and `lingxia dev` once at start; failure stops the build.
 
 ### Template lifecycles
 
-`create`, `prepare` and `companion` in `lingxia-template.json` are
+`create` and `companion` in `lingxia-template.json` are
 `{ "command": "<path in the template>", "args": [...] }`, run from the lxapp
 directory with `LINGXIA_TEMPLATE_ROOT` set (`.js`/`.mjs`/`.cjs` through `node`).
-
-- `prepare` generates build inputs and must exit; failure stops the build. It
-  runs before dependency installation on every `lingxia build`, and once when
-  `lingxia dev` starts.
-- `companion` then runs for the dev session and must keep those inputs current:
-  dev rebuilds never run `prepare`.
+`companion` runs for the dev session and must keep generated inputs current:
+dev rebuilds never rerun `lingxia:prepare`.
 
 ## `lingxia dev`
 
