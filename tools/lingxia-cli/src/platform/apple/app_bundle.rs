@@ -20,8 +20,6 @@ pub struct AppBundleConfig {
     pub app_name: String,
     /// Swift package product name from the root package
     pub swift_product_name: String,
-    /// Final executable filename in the app bundle
-    pub executable_name: String,
     /// Deployment target (e.g., "17.0")
     pub deployment_target: String,
     /// Path to custom Info.plist (merged with generated one)
@@ -222,7 +220,8 @@ let package = Package(
 
         // Copy executable
         let exe_src = build_dir.join(target_name);
-        let exe_dst = app_bundle.join(&config.executable_name);
+        // Host resources are flattened here; projectName may also be a home appId.
+        let exe_dst = app_bundle.join(APP_RUNNER_TARGET);
         if exe_src.exists() {
             fs::copy(&exe_src, &exe_dst)?;
         } else {
@@ -329,10 +328,7 @@ let package = Package(
         );
         info.insert("CFBundleIdentifier".into(), config.bundle_id.clone().into());
         info.insert("CFBundleName".into(), config.app_name.clone().into());
-        info.insert(
-            "CFBundleExecutable".into(),
-            config.executable_name.clone().into(),
-        );
+        info.insert("CFBundleExecutable".into(), APP_RUNNER_TARGET.into());
         info.insert("CFBundleDisplayName".into(), config.app_name.clone().into());
         info.insert("CFBundlePackageType".into(), "APPL".into());
 
@@ -393,10 +389,7 @@ let package = Package(
         // `app.productVersion` wins the same way the resolved bundle id does.
         let os_version = crate::platform::app_version::os_package_version(&config.product_version)?;
         info.insert("CFBundleIdentifier".into(), config.bundle_id.clone().into());
-        info.insert(
-            "CFBundleExecutable".into(),
-            config.executable_name.clone().into(),
-        );
+        info.insert("CFBundleExecutable".into(), APP_RUNNER_TARGET.into());
         info.insert(
             "CFBundleShortVersionString".into(),
             os_version.marketing.into(),
@@ -519,6 +512,37 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn home_app_id_can_match_the_host_project_name() {
+        let temp = tempfile::tempdir().unwrap();
+        let package = temp.path().join("package");
+        let build = temp.path().join("swift-build");
+        let payload = build.join("fusheng_fusheng.bundle/Resources/fusheng");
+        fs::create_dir_all(&package).unwrap();
+        fs::create_dir_all(&payload).unwrap();
+        fs::write(build.join(super::APP_RUNNER_TARGET), b"executable").unwrap();
+        fs::write(payload.join("lxapp.json"), b"{\"appId\":\"fusheng\"}").unwrap();
+        let config = AppBundleConfig {
+            bundle_id: "com.julibits.fusheng".into(),
+            bundle_name: "fusheng".into(),
+            app_name: "Flourish".into(),
+            swift_product_name: "fusheng".into(),
+            deployment_target: "17.0".into(),
+            info_plist_path: None,
+            splash_background: None,
+            product_version: "0.2.5".into(),
+        };
+        let app =
+            AppBundler::create_bundle_structure(&package, temp.path(), &build, &config).unwrap();
+        let info: Dictionary = plist::from_file(app.join("Info.plist")).unwrap();
+        let executable = info["CFBundleExecutable"].as_string().unwrap();
+        assert_eq!(fs::read(app.join(executable)).unwrap(), b"executable");
+        assert_eq!(
+            fs::read(app.join("fusheng/lxapp.json")).unwrap(),
+            b"{\"appId\":\"fusheng\"}"
+        );
+    }
+
+    #[test]
     fn device_sdk_metadata_replaces_stale_source_values() {
         let mut info = Dictionary::new();
         info.insert("DTPlatformName".into(), "iphonesimulator".into());
@@ -578,7 +602,6 @@ mod tests {
             bundle_name: "Demo".to_string(),
             app_name: "Demo".to_string(),
             swift_product_name: "Demo".to_string(),
-            executable_name: "DemoDev".to_string(),
             deployment_target: "17.0".to_string(),
             info_plist_path: Some(custom_path),
             splash_background: None,
@@ -598,7 +621,7 @@ mod tests {
             generated
                 .get("CFBundleExecutable")
                 .and_then(Value::as_string),
-            Some("DemoDev")
+            Some(super::APP_RUNNER_TARGET)
         );
         assert_eq!(
             generated
