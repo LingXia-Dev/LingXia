@@ -738,6 +738,10 @@ suppressed in strict, allowed in browser.
   normalizer can mint a `DocumentGeneration`. The token identifies a native
   navigation attempt; the generation identifies its committed document, so
   neither may be substituted for the other.
+- Android may finish native HTML before its visible commit. For trusted browser
+  loads, hold that finish until the matching visible commit; otherwise finish
+  retires the native load attestation before the document can bind. A new
+  navigation discards the held finish. Finish alone never grants browser trust.
 - API 23+ creates a fresh `MessagePort` pair only after a matching top-level
   commit. The pair is bound to that generation and is revoked on navigation,
   reload, renderer loss, or teardown. Only this pair can prove top-level

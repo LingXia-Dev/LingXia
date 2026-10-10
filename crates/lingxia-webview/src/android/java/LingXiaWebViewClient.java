@@ -24,6 +24,8 @@ import java.lang.ref.WeakReference;
 public class LingXiaWebViewClient extends WebViewClient {
     private static final String TAG = "LingXiaWebViewClient";
     private final WeakReference<LingXiaWebView> webViewRef;
+    private long deferredFinishToken;
+    private String deferredFinishUrl;
 
     public LingXiaWebViewClient(LingXiaWebView webView) {
         this.webViewRef = new WeakReference<>(webView);
@@ -31,6 +33,8 @@ public class LingXiaWebViewClient extends WebViewClient {
 
     @Override
     public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+        deferredFinishToken = 0L;
+        deferredFinishUrl = null;
         super.onPageStarted(view, url, favicon);
         Log.d(TAG, "Page started loading: " + url);
 
@@ -69,15 +73,27 @@ public class LingXiaWebViewClient extends WebViewClient {
             if (DocumentCommitCallbackPolicy.canBindDocument(Build.VERSION.SDK_INT)) {
                 webView.commitTopLevelDocumentOnFinish(url);
             }
-            webView.onPageFinished(
-                webView.getAppId() != null ? webView.getAppId() : "",
-                webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
-                webView.getSessionId(),
-                webView.getNativeViewId(),
-                webView.currentNavigationLoadToken(),
-                url != null ? url : ""
-            );
+            // A fast native HTML load can finish before Chromium reports its
+            // visible commit. Retiring the native load now would discard its
+            // attestation. Keep requiring the real visible-commit callback.
+            if (webView.awaitsTrustedVisibleCommit(url)) {
+                deferredFinishToken = webView.currentNavigationLoadToken();
+                deferredFinishUrl = url;
+                return;
+            }
+            notifyPageFinished(webView, url);
         }
+    }
+
+    private void notifyPageFinished(LingXiaWebView webView, String url) {
+        webView.onPageFinished(
+            webView.getAppId() != null ? webView.getAppId() : "",
+            webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
+            webView.getSessionId(),
+            webView.getNativeViewId(),
+            webView.currentNavigationLoadToken(),
+            url != null ? url : ""
+        );
     }
 
     @Override
@@ -87,6 +103,13 @@ public class LingXiaWebViewClient extends WebViewClient {
         LingXiaWebView webView = webViewRef.get();
         if (webView != null && DocumentCommitCallbackPolicy.canBindDocument(Build.VERSION.SDK_INT)) {
             webView.commitTopLevelDocument();
+            if (deferredFinishToken != 0L
+                    && deferredFinishToken == webView.currentNavigationLoadToken()) {
+                String finishedUrl = deferredFinishUrl;
+                deferredFinishToken = 0L;
+                deferredFinishUrl = null;
+                notifyPageFinished(webView, finishedUrl);
+            }
         }
     }
 
