@@ -62,7 +62,7 @@ Installs and storage remain keyed by channel, home lxapp included. Switching
 service env does not select a different lxapp data profile by itself.
 
 Lxapps/plugins from the dev service may be unsigned on every channel,
-including on a prod build switched to dev. Packages from the prod service
+including on a prod build switched to dev and including the home lxapp. Packages from the prod service
 and host self-updates retain the build environment's signature requirements.
 
 Package id, host signing, the installed icon, self-update server, and signed App

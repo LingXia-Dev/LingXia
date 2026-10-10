@@ -269,7 +269,7 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
         ));
     }
 
-    Version::parse(target_version).map_err(|_| {
+    let target = Version::parse(target_version).map_err(|_| {
         UpdateError::invalid_parameter(format!(
             "targetVersion must be semantic version: {}",
             target_version
@@ -283,10 +283,17 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
         None
     };
 
-    if current_version.as_deref() == Some(target_version)
-        && (host.channel() != Channel::Draft || !host.is_ota_managed())
-    {
-        return Ok(());
+    let republish = host.channel() == Channel::Draft;
+    if let Some(installed) = current_version.as_deref() {
+        // Versions never go down, an explicit target included.
+        if Version::parse(installed.trim()).is_ok_and(|installed| target < installed) {
+            return Err(UpdateError::invalid_parameter(format!(
+                "targetVersion {target_version} is older than installed {installed}; downgrades are not supported"
+            )));
+        }
+        if installed.trim() == target_version && (!republish || !host.is_ota_managed()) {
+            return Ok(());
+        }
     }
 
     let pkg = with_foreground_update_timeout(
@@ -309,13 +316,11 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
 
     ensure_runtime_version_compatible(host, &pkg)?;
 
-    if host.channel() == Channel::Draft {
+    // Reaching here at the installed version means a same-version republish
+    // may apply; skip only when this very package is already installed.
+    if republish {
         let installed_checksum = host.installed_checksum().await?;
-        if !pkg.should_replace(
-            host.channel(),
-            current_version.as_deref(),
-            installed_checksum.as_deref(),
-        ) {
+        if pkg.matches_installed(current_version.as_deref(), installed_checksum.as_deref()) {
             return Ok(());
         }
     }

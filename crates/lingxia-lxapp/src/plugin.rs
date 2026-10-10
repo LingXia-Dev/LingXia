@@ -409,10 +409,9 @@ async fn download_and_install_internal(
     let channel = lingxia_update::default_channel();
     let keys = lingxia_update::embedded_update_public_keys();
     if !lingxia_update::check_package_update_enabled("lxplugin", &keys) {
-        return Err(LxAppError::InvalidParameter(format!(
-            "{} plugin updates require update.trustedPublicKeys",
-            channel.as_str()
-        )));
+        return Err(LxAppError::InvalidParameter(
+            "plugin updates require update.trustedPublicKeys".to_string(),
+        ));
     }
     let target = UpdateTarget::Plugin {
         id: plugin_id.to_string(),

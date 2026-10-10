@@ -2708,11 +2708,17 @@ impl LxApp {
 
     /// Get the current installed version of this app variant from storage
     pub fn current_version(&self) -> String {
+        // A host-bundled lxapp runs from assets without an install record; its
+        // loaded lxapp.json is the version update checks must compare against.
         metadata::get(&self.appid, self.release_type)
             .ok()
             .flatten()
             .map(|record| record.version_string())
             .filter(|version| !version.is_empty())
+            .or_else(|| {
+                let version = self.config().version.trim().to_string();
+                (!version.is_empty()).then_some(version)
+            })
             .unwrap_or_else(|| DEFAULT_VERSION.to_string())
     }
 
