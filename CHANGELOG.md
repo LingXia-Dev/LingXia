@@ -19,6 +19,32 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.24.0 — 2026-10-10
+
+### Writing an lxapp
+
+- **update**: reject lxapp downgrades and read bundled versions (21ea1177a)
+- **test**: type the relaunch lifecycle regression (8763b14ce)
+- **update**: never install an older lxapp version (1f49f9f89)
+- **update**: accept unsigned dev-service packages on every channel (c59d40ed3)
+- **test**: use one start timestamp for step reports (14eb105ba)
+
+### Embedding a host app
+
+- **apple**: fail the build on a missed host bundle and load Runner devices from main (78064b94b)
+- **apple**: merge host resources into the main bundle at build time (b3e049184)
+- **ios**: drop install-time CFBundleName rewrite (2d86ce9f8)
+- **ios**: fail fast when the toolchain has no devicectl (d6c594339)
+
+### CLI and CI
+
+- **cli**: skip the forwarded-actions check when the entry binds no actions (24241e4d8)
+- **cli**: manage installed templates this CLI cannot load (f60679362)
+- **cli**: run template prepare and companion from the installed template (04b84e00d)
+- **cli**: cache embedded bridge JS by content hash (bb70a7763)
+- **runner**: preserve live hosts during lifecycle teardown (3c10be00f)
+- **runner**: preserve live pages and isolate Windows lifecycle events (53797c7f0)
+
 ## 0.23.0 — 2026-10-09
 
 ### Writing an lxapp
