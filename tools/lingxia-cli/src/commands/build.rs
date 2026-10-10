@@ -68,6 +68,7 @@ fn validate_platform_target_options(
 /// Builds the project using the detected platform's build system.
 /// Supports debug and release profiles and multi-target builds.
 pub fn execute(options: BuildExecuteOptions) -> Result<()> {
+    let _preparation = crate::build_prepare::Scope::enter();
     let BuildExecuteOptions {
         release,
         build_native,

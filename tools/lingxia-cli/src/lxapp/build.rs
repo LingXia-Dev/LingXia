@@ -20,6 +20,7 @@ pub fn run_for_dev(args: &[String], cwd: &Path) -> Result<()> {
 }
 
 fn run_with_context(args: &[String], cwd: &Path, dev_session: bool) -> Result<()> {
+    let _preparation = crate::build_prepare::Scope::enter();
     let build_started = Instant::now();
     let mut options = BuildOptions::parse(args)?;
     options.dev_session = dev_session;
@@ -27,6 +28,11 @@ fn run_with_context(args: &[String], cwd: &Path, dev_session: bool) -> Result<()
 
     if options.package && !options.release {
         return Err(anyhow!("--package requires --release"));
+    }
+
+    // A dev session prepared once at start; its companion keeps outputs live.
+    if !dev_session {
+        crate::build_prepare::prepare(&project.root)?;
     }
 
     println!();

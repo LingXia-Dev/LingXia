@@ -165,6 +165,7 @@ pub(crate) fn prepare_configured_host_assets(
     dev_ws_url: Option<&str>,
     resolved_env: &crate::config::ResolvedEnv,
 ) -> Result<()> {
+    let _preparation = crate::build_prepare::Scope::enter();
     let mut cache = HostAssetsCache::load(project_root);
     let app_project_name = config.app.as_ref().map(|a| a.project_name.as_str());
 

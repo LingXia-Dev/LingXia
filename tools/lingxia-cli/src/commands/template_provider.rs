@@ -10,6 +10,8 @@ use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const MANIFEST_FILE: &str = "lingxia-template.json";
+/// Under a project's `.lingxia/`; kept by `lingxia clean` and meant to be committed.
+pub const PROJECT_LOCK_FILE: &str = "template.json";
 const SKILL_OWNER_FILE: &str = ".lingxia-template-owner";
 /// How long a template may go unchecked when its source is a remote the check
 /// has to reach over the network.
@@ -43,7 +45,11 @@ pub struct TemplateManifest {
     #[serde(default)]
     pub skills: Vec<PathBuf>,
     pub create: Option<TemplateLifecycle>,
-    pub companion: Option<TemplateCompanion>,
+    /// Finite build-input generation, run before every source build and once
+    /// when a dev session starts.
+    pub prepare: Option<TemplateLifecycle>,
+    /// Long-running dev process speaking the companion protocol.
+    pub companion: Option<TemplateLifecycle>,
     #[serde(default)]
     pub defaults: TemplateDefaults,
 }
@@ -54,12 +60,6 @@ pub struct TemplateLifecycle {
     pub command: PathBuf,
     #[serde(default)]
     pub args: Vec<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub struct TemplateCompanion {
-    pub run: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -350,49 +350,89 @@ fn create_command(
     user_args: &[String],
     interactive: bool,
 ) -> Result<Command> {
-    let entry = resolve_owned_path(&template.root, &lifecycle.command, "create entry")?;
-    let mut command = command_for_entry(&entry);
-    command
-        .args(&lifecycle.args)
-        .args(user_args)
-        .current_dir(project_root)
-        .env("LINGXIA_TEMPLATE_ROOT", &template.root)
-        .env(
-            "LINGXIA_TEMPLATE_INTERACTIVE",
-            if interactive { "1" } else { "0" },
-        );
+    let mut command = lifecycle_command(template, lifecycle, project_root)?;
+    command.args(user_args).env(
+        "LINGXIA_TEMPLATE_INTERACTIVE",
+        if interactive { "1" } else { "0" },
+    );
     Ok(command)
 }
 
-pub fn write_project_lock(template: &InstalledTemplate, project_root: &Path) -> Result<()> {
-    #[derive(Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct ProjectTemplateLock<'a> {
-        name: &'a str,
-        commit: &'a str,
-    }
+/// A lifecycle entry runs from the installed template, never from argv the
+/// project carries; `.js`/`.mjs`/`.cjs` entries run through `node`.
+pub fn lifecycle_command(
+    template: &InstalledTemplate,
+    lifecycle: &TemplateLifecycle,
+    project_root: &Path,
+) -> Result<Command> {
+    let entry = resolve_owned_path(&template.root, &lifecycle.command, "lifecycle entry")?;
+    let mut command = command_for_entry(&entry);
+    command
+        .args(&lifecycle.args)
+        .current_dir(project_root)
+        .env("LINGXIA_TEMPLATE_ROOT", &template.root);
+    Ok(command)
+}
 
+#[derive(Deserialize, Serialize)]
+struct ProjectTemplateLock {
+    name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source: Option<String>,
+    commit: String,
+}
+
+/// The installed template a project was created from, read from its
+/// `.lingxia/template.json`; `None` when the project names no template.
+pub fn resolve_project(project_root: &Path) -> Result<Option<InstalledTemplate>> {
+    resolve_project_from(&require_home()?, project_root)
+}
+
+fn resolve_project_from(home: &Path, project_root: &Path) -> Result<Option<InstalledTemplate>> {
+    let path = project_root.join(".lingxia").join(PROJECT_LOCK_FILE);
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error).with_context(|| format!("Cannot read {}", path.display())),
+    };
+    let lock: ProjectTemplateLock = serde_json::from_slice(&bytes)
+        .with_context(|| format!("Invalid template lock {}", path.display()))?;
+    let slug = slug_for_name(&lock.name)?;
+    if !templates_root(home).join(&slug).is_dir() {
+        bail!(
+            "{} uses template `{}`, which is not installed; run `lingxia template add {}`",
+            project_root.display(),
+            lock.name,
+            lock.source.as_deref().unwrap_or("<git-url>")
+        );
+    }
+    load_from(home, &slug)
+        .with_context(|| format!("Run `lingxia template update {slug}` and retry"))
+        .map(Some)
+}
+
+/// The project's only LingXia file: lifecycles are read from the installed
+/// template at build and dev time, never copied into the project.
+pub fn write_project_lock(template: &InstalledTemplate, project_root: &Path) -> Result<()> {
     let directory = project_root.join(".lingxia");
     fs::create_dir_all(&directory)?;
     let bytes = serde_json::to_vec_pretty(&ProjectTemplateLock {
-        name: &template.slug,
-        commit: &template.commit,
+        name: template.slug.clone(),
+        source: Some(portable_source(&template.source)),
+        commit: template.commit.clone(),
     })?;
     fs::write(
-        directory.join("template.json"),
+        directory.join(PROJECT_LOCK_FILE),
         [bytes, b"\n".to_vec()].concat(),
     )?;
-    if let Some(companion) = &template.manifest.companion {
-        let bytes = serde_json::to_vec_pretty(companion)?;
-        fs::write(
-            directory.join("dev-companion.json"),
-            [bytes, b"\n".to_vec()].concat(),
-        )?;
-    }
     Ok(())
 }
 
 fn require_home() -> Result<PathBuf> {
+    #[cfg(test)]
+    if let Some(home) = test_support::home() {
+        return Ok(home);
+    }
     dirs::home_dir().ok_or_else(|| anyhow!("Unable to determine the user home directory"))
 }
 
@@ -662,18 +702,17 @@ fn validate_manifest(root: &Path, manifest: &TemplateManifest) -> Result<()> {
         validate_command_name(name)?;
         validate_entry(root, entry, "command")?;
     }
-    if let Some(lifecycle) = &manifest.create {
-        validate_entry(root, &lifecycle.command, "create entry")?;
+    for (label, lifecycle) in [
+        ("create", &manifest.create),
+        ("prepare", &manifest.prepare),
+        ("companion", &manifest.companion),
+    ] {
+        let Some(lifecycle) = lifecycle else {
+            continue;
+        };
+        validate_entry(root, &lifecycle.command, &format!("{label} entry"))?;
         if lifecycle.args.iter().any(|arg| arg.contains('\0')) {
-            bail!("Template create arguments must not contain NUL bytes");
-        }
-    }
-    if let Some(companion) = &manifest.companion {
-        if companion.run.is_empty() || companion.run.iter().any(|part| part.is_empty()) {
-            bail!("Template companion run must be a non-empty argv array without empty values");
-        }
-        if companion.run.iter().any(|part| part.contains('\0')) {
-            bail!("Template companion run must not contain NUL bytes");
+            bail!("Template {label} arguments must not contain NUL bytes");
         }
     }
     for skill in &manifest.skills {
@@ -1132,6 +1171,25 @@ fn clone_repository(source: &str, target: &Path) -> Result<()> {
     Ok(())
 }
 
+/// A template added from a local checkout is recorded by that checkout's
+/// `origin`, so a clone on another machine can still run `template add`.
+fn portable_source(source: &str) -> String {
+    if !Path::new(source).is_dir() {
+        return source.to_string();
+    }
+    Command::new("git")
+        .arg("-C")
+        .arg(source)
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty())
+        .unwrap_or_else(|| source.to_string())
+}
+
 fn git_commit(root: &Path) -> Result<String> {
     let output = Command::new("git")
         .args(["-C"])
@@ -1317,6 +1375,69 @@ fn short_commit(commit: &str) -> &str {
 }
 
 #[cfg(test)]
+pub(crate) mod test_support {
+    use super::*;
+    use std::cell::RefCell;
+
+    thread_local! {
+        static HOME: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+    }
+
+    pub(super) fn home() -> Option<PathBuf> {
+        HOME.with(|home| home.borrow().clone())
+    }
+
+    /// Resolves templates from `home` on this thread until dropped.
+    pub(crate) struct HomeGuard;
+
+    impl Drop for HomeGuard {
+        fn drop(&mut self) {
+            HOME.with(|home| *home.borrow_mut() = None);
+        }
+    }
+
+    pub(crate) fn use_home(home: &Path) -> HomeGuard {
+        HOME.with(|slot| *slot.borrow_mut() = Some(home.to_path_buf()));
+        HomeGuard
+    }
+
+    /// Installs template `example` under `home`, each lifecycle an executable
+    /// `sh` script with the given body, and locks `project` to it.
+    #[cfg(unix)]
+    pub(crate) fn install(home: &Path, project: &Path, lifecycles: &[(&str, &str)]) {
+        use std::os::unix::fs::PermissionsExt;
+        let root = templates_root(home).join("example");
+        fs::create_dir_all(root.join("template")).unwrap();
+        fs::create_dir_all(root.join("bin")).unwrap();
+        fs::write(root.join("template/package.json"), "{}").unwrap();
+        fs::write(root.join("template/lxapp.json"), "{}").unwrap();
+        let mut manifest = serde_json::json!({"name": "example", "template": "template"});
+        for (lifecycle, body) in lifecycles {
+            let script = root.join("bin").join(format!("{lifecycle}.sh"));
+            fs::write(&script, format!("#!/bin/sh\n{body}\n")).unwrap();
+            fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+            manifest[lifecycle] = serde_json::json!({"command": format!("bin/{lifecycle}.sh")});
+        }
+        fs::write(
+            root.join(MANIFEST_FILE),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        write_state(
+            home,
+            "example",
+            &TemplateState {
+                source: "https://example.test/template.git".into(),
+                commit: "0123456789abcdef".into(),
+                last_checked: now(),
+            },
+        )
+        .unwrap();
+        write_project_lock(&load_from(home, "example").unwrap(), project).unwrap();
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::tempdir;
@@ -1367,6 +1488,7 @@ mod tests {
             skills: Vec::new(),
             create: None,
             companion: None,
+            prepare: None,
             defaults: TemplateDefaults::default(),
         };
         assert!(validate_manifest(root.path(), &manifest).is_err());
@@ -1602,6 +1724,30 @@ mod tests {
     }
 
     #[test]
+    fn a_project_without_a_lock_has_no_template_and_a_missing_one_names_its_source() {
+        let home = tempdir().unwrap();
+        let project = tempdir().unwrap();
+        assert!(
+            resolve_project_from(home.path(), project.path())
+                .unwrap()
+                .is_none()
+        );
+        fs::create_dir_all(project.path().join(".lingxia")).unwrap();
+        fs::write(
+            project.path().join(".lingxia").join(PROJECT_LOCK_FILE),
+            r#"{"name":"example","source":"https://example.test/t.git","commit":"abc"}"#,
+        )
+        .unwrap();
+        let error = resolve_project_from(home.path(), project.path())
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("lingxia template add https://example.test/t.git"),
+            "{error}"
+        );
+    }
+
+    #[test]
     fn installs_updates_and_removes_git_provider() {
         let source = tempdir().unwrap();
         fs::create_dir_all(source.path().join("template")).unwrap();
@@ -1622,9 +1768,8 @@ mod tests {
   "template": "template",
   "commands": { "example": "bin/example.mjs" },
   "skills": ["skills/example"],
-  "companion": {
-    "run": ["example", "companion"]
-  }
+  "companion": {"command": "bin/example.mjs", "args": ["companion"]},
+  "prepare": {"command": "bin/example.mjs", "args": ["prepare"]}
 }"#,
         )
         .unwrap();
@@ -1646,14 +1791,53 @@ mod tests {
         );
         let project = tempdir().unwrap();
         write_project_lock(&first, project.path()).unwrap();
-        let companion: serde_json::Value = serde_json::from_slice(
-            &fs::read(project.path().join(".lingxia/dev-companion.json")).unwrap(),
+        let entries: Vec<_> = fs::read_dir(project.path().join(".lingxia"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(entries, [PROJECT_LOCK_FILE], "lifecycles are never copied");
+        let lock: serde_json::Value = serde_json::from_slice(
+            &fs::read(project.path().join(".lingxia").join(PROJECT_LOCK_FILE)).unwrap(),
         )
         .unwrap();
-        assert_eq!(
-            companion["run"],
-            serde_json::json!(["example", "companion"])
+        // The source checkout has no `origin`, so its path is all there is.
+        assert_eq!(lock["source"], first.source);
+        git(
+            source.path(),
+            &[
+                "remote",
+                "add",
+                "origin",
+                "https://example.test/template.git",
+            ],
         );
+        write_project_lock(&first, project.path()).unwrap();
+        let lock: serde_json::Value = serde_json::from_slice(
+            &fs::read(project.path().join(".lingxia").join(PROJECT_LOCK_FILE)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(lock["source"], "https://example.test/template.git");
+        let resolved = resolve_project_from(home.path(), project.path())
+            .unwrap()
+            .unwrap();
+        let command = lifecycle_command(
+            &resolved,
+            resolved.manifest.prepare.as_ref().unwrap(),
+            project.path(),
+        )
+        .unwrap();
+        assert_eq!(command.get_program(), "node");
+        assert_eq!(command.get_current_dir(), Some(project.path()));
+        let args: Vec<_> = command.get_args().collect();
+        assert_eq!(
+            args[0],
+            resolved
+                .root
+                .join("bin/example.mjs")
+                .canonicalize()
+                .unwrap()
+        );
+        assert_eq!(args[1], "prepare");
 
         fs::write(source.path().join("skills/example/SKILL.md"), "second\n").unwrap();
         git(source.path(), &["add", "."]);
