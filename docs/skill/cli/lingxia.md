@@ -51,9 +51,10 @@ may ship project files, CLI commands, and skills.
 
 ### Projects from a template
 
-A templated project tracks one LingXia file, `.lingxia/template.json`
-(`name`, `source`, `commit`). Commit it; never commit `generated/` or other
-`.lingxia/` content. `lingxia build` and `lingxia dev` run the template's
+A templated project tracks one LingXia file, `.lingxia/template.json`: the
+template's `name` and the `source` to install it from. Commit it; never commit
+`generated/` or other `.lingxia/` content. The template version is the
+installed one; `lingxia template update` moves it. `lingxia build` and `lingxia dev` run the template's
 `prepare` themselves. If the template is not installed they fail and name
 `lingxia template add <source>`; nothing installs it automatically.
 

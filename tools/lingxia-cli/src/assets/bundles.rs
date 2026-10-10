@@ -956,7 +956,7 @@ mod tests {
             bundle_dir
                 .join(".lingxia")
                 .join(crate::commands::template_provider::PROJECT_LOCK_FILE),
-            r#"{"name":"missing-template","commit":"0"}"#,
+            r#"{"name":"missing-template","source":"https://example.test/missing.git"}"#,
         )
         .unwrap();
         let mut cache = HostAssetsCache::default();

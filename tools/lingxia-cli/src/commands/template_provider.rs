@@ -377,12 +377,13 @@ pub fn lifecycle_command(
     Ok(command)
 }
 
+/// Which template a project uses and where to get it. The version is whatever
+/// is installed: `lingxia template update` moves it, the project never pins it.
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct ProjectTemplateLock {
     name: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    source: Option<String>,
-    commit: String,
+    source: String,
 }
 
 /// The installed template a project was created from, read from its
@@ -406,7 +407,7 @@ fn resolve_project_from(home: &Path, project_root: &Path) -> Result<Option<Insta
             "{} uses template `{}`, which is not installed; run `lingxia template add {}`",
             project_root.display(),
             lock.name,
-            lock.source.as_deref().unwrap_or("<git-url>")
+            lock.source
         );
     }
     load_from(home, &slug)
@@ -421,8 +422,7 @@ pub fn write_project_lock(template: &InstalledTemplate, project_root: &Path) -> 
     fs::create_dir_all(&directory)?;
     let bytes = serde_json::to_vec_pretty(&ProjectTemplateLock {
         name: template.slug.clone(),
-        source: Some(portable_source(&template.source)),
-        commit: template.commit.clone(),
+        source: portable_source(&template.source),
     })?;
     fs::write(
         directory.join(PROJECT_LOCK_FILE),
@@ -1794,7 +1794,7 @@ mod tests {
         fs::create_dir_all(project.path().join(".lingxia")).unwrap();
         fs::write(
             project.path().join(".lingxia").join(PROJECT_LOCK_FILE),
-            r#"{"name":"example","source":"https://example.test/t.git","commit":"abc"}"#,
+            r#"{"name":"example","source":"https://example.test/t.git"}"#,
         )
         .unwrap();
         let error = resolve_project_from(home.path(), project.path())
@@ -1914,7 +1914,11 @@ mod tests {
             &fs::read(project.path().join(".lingxia").join(PROJECT_LOCK_FILE)).unwrap(),
         )
         .unwrap();
-        assert_eq!(lock["source"], "https://example.test/template.git");
+        assert_eq!(
+            lock,
+            serde_json::json!({"name": "example", "source": "https://example.test/template.git"}),
+            "the lock never pins a version"
+        );
         let resolved = resolve_project_from(home.path(), project.path())
             .unwrap()
             .unwrap();
