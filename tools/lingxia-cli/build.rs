@@ -1,10 +1,11 @@
 use serde_json::Value as JsonValue;
+use sha2::{Digest, Sha256};
 use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 use toml::{Table as TomlTable, Value as TomlValue};
 
 const WINDOWS_DESIGN_ICON_PNG_SIZE: u32 = 64;
@@ -58,38 +59,34 @@ fn run() -> Result<(), String> {
         ));
     }
 
-    let es2020_src = bridge_dir.join("dist").join("bridge-runtime.es2020.js");
-    let es5_src = bridge_dir.join("dist").join("bridge-runtime.es5.js");
-    if should_rebuild_npm_package(&bridge_dir, &[&es2020_src, &es5_src])? {
-        ensure_npm_available()?;
-        ensure_npm_bin_installed(&bridge_dir, "rolldown")?;
-        ensure_npm_bin_installed(&bridge_dir, "tsc")?;
-        run_npm_build(&bridge_dir)?;
-    }
-    let polyfills_src = polyfills_dir.join("dist").join("polyfills.es5.js");
-    if should_rebuild_npm_package(&polyfills_dir, &[&polyfills_src])? {
-        ensure_npm_available()?;
-        ensure_npm_bin_installed(&polyfills_dir, "terser")?;
-        run_npm_build(&polyfills_dir)?;
-    }
-
-    for file in [&es2020_src, &es5_src, &polyfills_src] {
-        if !file.is_file() {
-            return Err(format!("missing runtime asset: {}", file.display()));
-        }
-    }
-
     let out_dir = PathBuf::from(env::var("OUT_DIR").map_err(|e| e.to_string())?);
+    let cache_root = embedded_js_cache_root(&out_dir).join("lingxia-embedded-js");
+    let workspace_lock = repo_root.join("packages").join("package-lock.json");
+    prepare_embedded_js(
+        &EmbeddedJsPackage {
+            name: "lingxia-bridge",
+            dir: &bridge_dir,
+            outputs: &["bridge-runtime.es2020.js", "bridge-runtime.es5.js"],
+            bins: &["rolldown", "tsc"],
+        },
+        &workspace_lock,
+        &cache_root,
+        &out_dir,
+    )?;
+    prepare_embedded_js(
+        &EmbeddedJsPackage {
+            name: "lingxia-polyfills",
+            dir: &polyfills_dir,
+            outputs: &["polyfills.es5.js"],
+            bins: &["terser"],
+        },
+        &workspace_lock,
+        &cache_root,
+        &out_dir,
+    )?;
     let es2020_out = out_dir.join("bridge-runtime.es2020.js");
     let es5_out = out_dir.join("bridge-runtime.es5.js");
     let polyfills_out = out_dir.join("polyfills.es5.js");
-
-    fs::copy(&es2020_src, &es2020_out)
-        .map_err(|e| format!("failed to copy {}: {e}", es2020_src.display()))?;
-    fs::copy(&es5_src, &es5_out)
-        .map_err(|e| format!("failed to copy {}: {e}", es5_src.display()))?;
-    fs::copy(&polyfills_src, &polyfills_out)
-        .map_err(|e| format!("failed to copy {}: {e}", polyfills_src.display()))?;
     generate_windows_design_icons(repo_root, &out_dir)?;
 
     println!(
@@ -487,31 +484,29 @@ fn emit_rerun_markers(
         repo_root.join("crates").display()
     );
 
-    for path in [
-        bridge_dir.join("package.json"),
-        bridge_dir.join("package-lock.json"),
-        bridge_dir.join("rolldown.config.js"),
-        bridge_dir.join("tsconfig.json"),
-        bridge_dir.join("tsconfig.modules.json"),
-        bridge_dir.join("tsconfig.modules.legacy.json"),
-    ] {
-        if path.exists() {
-            println!("cargo:rerun-if-changed={}", path.display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        repo_root
+            .join("packages")
+            .join("package-lock.json")
+            .display()
+    );
+    for package_dir in [bridge_dir, polyfills_dir] {
+        for name in NPM_PACKAGE_CONFIG_FILES {
+            let path = package_dir.join(name);
+            if path.exists() {
+                println!("cargo:rerun-if-changed={}", path.display());
+            }
+        }
+        // Watching the directories themselves catches files being added or removed.
+        for sub in ["src", "scripts"] {
+            let dir = package_dir.join(sub);
+            if dir.exists() {
+                println!("cargo:rerun-if-changed={}", dir.display());
+            }
+            emit_rerun_for_dir(&dir)?;
         }
     }
-    emit_rerun_for_dir(&bridge_dir.join("src"))?;
-    emit_rerun_for_dir(&bridge_dir.join("scripts"))?;
-
-    for path in [
-        polyfills_dir.join("package.json"),
-        polyfills_dir.join("package-lock.json"),
-    ] {
-        if path.exists() {
-            println!("cargo:rerun-if-changed={}", path.display());
-        }
-    }
-    emit_rerun_for_dir(&polyfills_dir.join("src"))?;
-    emit_rerun_for_dir(&polyfills_dir.join("scripts"))?;
     Ok(())
 }
 
@@ -531,72 +526,184 @@ fn emit_rerun_for_dir(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn should_rebuild_npm_package(package_dir: &Path, outputs: &[&Path]) -> Result<bool, String> {
-    if outputs.iter().any(|path| !path.is_file()) {
-        return Ok(true);
-    }
+/// Config files that, besides `src/` and `scripts/`, determine a package's build output.
+const NPM_PACKAGE_CONFIG_FILES: &[&str] = &[
+    "package.json",
+    "package-lock.json",
+    "rolldown.config.js",
+    "tsconfig.json",
+    "tsconfig.modules.json",
+    "tsconfig.modules.legacy.json",
+];
 
-    let latest_input = latest_modified(package_dir.join("src"))?
-        .max(latest_modified(package_dir.join("scripts"))?)
-        .max(file_mtime(&package_dir.join("package.json"))?)
-        .max(optional_file_mtime(&package_dir.join("package-lock.json"))?)
-        .max(optional_file_mtime(
-            &package_dir.join("rolldown.config.js"),
-        )?)
-        .max(optional_file_mtime(
-            &package_dir.join("tsconfig.modules.json"),
-        )?)
-        .max(optional_file_mtime(
-            &package_dir.join("tsconfig.modules.legacy.json"),
-        )?);
-
-    let oldest_output = outputs
-        .iter()
-        .map(|path| file_mtime(path))
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .min()
-        .ok_or_else(|| "no outputs found".to_string())?;
-
-    Ok(latest_input > oldest_output)
+struct EmbeddedJsPackage<'a> {
+    name: &'a str,
+    dir: &'a Path,
+    outputs: &'a [&'a str],
+    bins: &'a [&'a str],
 }
 
-fn latest_modified(path: PathBuf) -> Result<SystemTime, String> {
-    if !path.exists() {
-        return Ok(SystemTime::UNIX_EPOCH);
-    }
-    if path.is_file() {
-        return file_mtime(&path);
-    }
-
-    let mut latest = SystemTime::UNIX_EPOCH;
-    for entry in
-        fs::read_dir(&path).map_err(|e| format!("failed to read {}: {e}", path.display()))?
+/// Copies a package's dist outputs into OUT_DIR, from the content-addressed cache when it
+/// holds the current input hash, otherwise via `npm run build` (which then fills the cache).
+fn prepare_embedded_js(
+    package: &EmbeddedJsPackage,
+    workspace_lock: &Path,
+    cache_root: &Path,
+    out_dir: &Path,
+) -> Result<(), String> {
+    let hash = hash_npm_package_inputs(package.dir, workspace_lock)?;
+    let package_cache = cache_root.join(package.name);
+    let entry = package_cache.join(&hash);
+    let source_dir = if package
+        .outputs
+        .iter()
+        .all(|name| entry.join(name).is_file())
     {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let entry_path = entry.path();
-        let entry_time = if entry_path.is_dir() {
-            latest_modified(entry_path)?
-        } else {
-            file_mtime(&entry_path)?
+        entry
+    } else {
+        ensure_npm_available()?;
+        for bin in package.bins {
+            ensure_npm_bin_installed(package.dir, bin)?;
+        }
+        run_npm_build(package.dir)?;
+        let dist = package.dir.join("dist");
+        for name in package.outputs {
+            let file = dist.join(name);
+            if !file.is_file() {
+                return Err(format!("missing runtime asset: {}", file.display()));
+            }
+        }
+        // The cache is only an accelerator; a failed store must not fail the build.
+        if let Err(err) = store_in_cache(&dist, package.outputs, &package_cache, &hash) {
+            println!(
+                "cargo:warning=failed to cache {} build output: {err}",
+                package.name
+            );
+        }
+        dist
+    };
+    for name in package.outputs {
+        let src = source_dir.join(name);
+        fs::copy(&src, out_dir.join(name))
+            .map_err(|e| format!("failed to copy {}: {e}", src.display()))?;
+    }
+    Ok(())
+}
+
+fn store_in_cache(
+    dist: &Path,
+    outputs: &[&str],
+    package_cache: &Path,
+    hash: &str,
+) -> Result<(), String> {
+    let entry = package_cache.join(hash);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let temp = package_cache.join(format!(".tmp-{hash}-{}-{nanos}", std::process::id()));
+    let result = (|| {
+        fs::create_dir_all(&temp).map_err(|e| format!("create {}: {e}", temp.display()))?;
+        for name in outputs {
+            fs::copy(dist.join(name), temp.join(name))
+                .map_err(|e| format!("copy {name} into {}: {e}", temp.display()))?;
+        }
+        if entry.is_dir() {
+            let _ = fs::remove_dir_all(&entry);
+        }
+        match fs::rename(&temp, &entry) {
+            Ok(()) => Ok(()),
+            // A concurrent build stored the same hash first.
+            Err(_) if outputs.iter().all(|name| entry.join(name).is_file()) => Ok(()),
+            Err(e) => Err(format!("rename into {}: {e}", entry.display())),
+        }
+    })();
+    let _ = fs::remove_dir_all(&temp);
+    result
+}
+
+/// The cargo target root, shared by every worktree that builds into it.
+fn embedded_js_cache_root(out_dir: &Path) -> PathBuf {
+    if let Some(dir) = env::var_os("CARGO_TARGET_DIR").map(PathBuf::from)
+        && dir.is_absolute()
+    {
+        return dir;
+    }
+    // Cargo tags both `target/` and a cross build's `target/<triple>/`; prefer the outer one.
+    if let Some(tagged) = out_dir
+        .ancestors()
+        .find(|dir| dir.join("CACHEDIR.TAG").is_file())
+    {
+        return match tagged.parent() {
+            Some(parent) if parent.join("CACHEDIR.TAG").is_file() => parent.to_path_buf(),
+            _ => tagged.to_path_buf(),
         };
-        if entry_time > latest {
-            latest = entry_time;
+    }
+    // OUT_DIR is `<target>/<profile>/build/<pkg-hash>/out`.
+    out_dir.ancestors().nth(4).unwrap_or(out_dir).to_path_buf()
+}
+
+fn hash_npm_package_inputs(package_dir: &Path, workspace_lock: &Path) -> Result<String, String> {
+    let mut files = Vec::new();
+    for sub in ["src", "scripts"] {
+        collect_files(&package_dir.join(sub), &mut files)?;
+    }
+    for name in NPM_PACKAGE_CONFIG_FILES {
+        let path = package_dir.join(name);
+        if path.is_file() {
+            files.push(path);
         }
     }
-    Ok(latest)
-}
-
-fn file_mtime(path: &Path) -> Result<SystemTime, String> {
-    fs::metadata(path)
-        .and_then(|m| m.modified())
-        .map_err(|e| format!("failed to read mtime for {}: {e}", path.display()))
-}
-
-fn optional_file_mtime(path: &Path) -> Result<SystemTime, String> {
-    if path.exists() {
-        file_mtime(path)
-    } else {
-        Ok(SystemTime::UNIX_EPOCH)
+    let mut entries = files
+        .into_iter()
+        .map(|path| {
+            let rel = path
+                .strip_prefix(package_dir)
+                .map_err(|e| e.to_string())?
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
+            Ok((rel, path))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    entries.sort();
+    if workspace_lock.is_file() {
+        entries.push((
+            "<workspace>/package-lock.json".to_string(),
+            workspace_lock.to_path_buf(),
+        ));
     }
+
+    let mut hasher = Sha256::new();
+    hasher.update(b"lingxia-embedded-js-v1\0");
+    for (rel, path) in entries {
+        let bytes =
+            fs::read(&path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+        // Length-prefix both fields so distinct file sets can never hash alike.
+        hasher.update((rel.len() as u64).to_le_bytes());
+        hasher.update(rel.as_bytes());
+        hasher.update((bytes.len() as u64).to_le_bytes());
+        hasher.update(&bytes);
+    }
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
+fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(dir).map_err(|e| format!("failed to read {}: {e}", dir.display()))? {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        if path.is_dir() {
+            collect_files(&path, files)?;
+        } else {
+            files.push(path);
+        }
+    }
+    Ok(())
 }
