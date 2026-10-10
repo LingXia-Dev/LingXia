@@ -62,21 +62,15 @@ pub fn merge_info_plist_strings(existing: &str, name: &str) -> String {
     let mut content = existing.to_string();
     for key in ["CFBundleDisplayName", "CFBundleName"] {
         let assignment = format!("\"{key}\" = \"{}\";\n", escape_strings_value(name));
-        content = merge_strings_assignment(&content, key, &assignment);
+        if let Some(updated) = replace_strings_assignment(&content, key, &assignment) {
+            content = updated;
+        } else {
+            if !content.is_empty() && !content.ends_with('\n') {
+                content.push('\n');
+            }
+            content.push_str(&assignment);
+        }
     }
-    content
-}
-
-/// Replace `key`'s assignment, or append it when absent.
-pub fn merge_strings_assignment(content: &str, key: &str, assignment: &str) -> String {
-    if let Some(updated) = replace_strings_assignment(content, key, assignment) {
-        return updated;
-    }
-    let mut content = content.to_string();
-    if !content.is_empty() && !content.ends_with('\n') {
-        content.push('\n');
-    }
-    content.push_str(assignment);
     content
 }
 
@@ -188,40 +182,6 @@ fn upsert_harmony_string(path: &Path, name: &str, value: &str) -> Result<()> {
     fs::write(path, format!("{}\n", serde_json::to_string_pretty(&root)?))
         .with_context(|| format!("Failed to write {}", path.display()))?;
     Ok(())
-}
-
-/// The raw quoted value of `"key" = "value";`, including its quotes, so it
-/// can be re-emitted without an unescape/escape round trip.
-pub fn strings_assignment_token<'a>(content: &'a str, key: &str) -> Option<&'a str> {
-    let needle = format!("\"{key}\"");
-    let start = content.find(&needle)? + needle.len();
-    let rest = &content[start..];
-    let value_start = rest.find('=')? + 1;
-    let rest = rest[value_start..].trim_start();
-    if !rest.starts_with('"') {
-        return None;
-    }
-    let mut escaped = false;
-    for (index, ch) in rest.char_indices().skip(1) {
-        match ch {
-            '\\' if !escaped => escaped = true,
-            '"' if !escaped => return Some(&rest[..=index]),
-            _ => escaped = false,
-        }
-    }
-    None
-}
-
-pub fn remove_strings_assignment(content: &str, key: &str) -> Option<String> {
-    let needle = format!("\"{key}\"");
-    let start = content.find(&needle)?;
-    let end = content[start..].find(';')? + start + 1;
-    let end = if content[end..].starts_with('\n') {
-        end + 1
-    } else {
-        end
-    };
-    Some(format!("{}{}", &content[..start], &content[end..]))
 }
 
 fn replace_strings_assignment(content: &str, key: &str, assignment: &str) -> Option<String> {
