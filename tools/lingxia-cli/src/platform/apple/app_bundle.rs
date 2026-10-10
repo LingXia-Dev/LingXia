@@ -67,8 +67,9 @@ impl AppBundler {
             Self::build_executable(package_dir, &tmp_package_dir, project_root, release)?;
 
         // 3. Create .app bundle structure
+        let output_dir = resolve_lingxia_target_dir(project_root).join("ios");
         let app_bundle =
-            Self::create_bundle_structure(package_dir, project_root, &build_dir, config)?;
+            Self::create_bundle_structure(package_dir, &output_dir, &build_dir, config)?;
         write_sdk_metadata(&app_bundle)?;
 
         // 4. Clean up temporary package
@@ -199,18 +200,17 @@ let package = Package(
         Ok(scratch_path.join("arm64-apple-ios").join(build_config))
     }
 
-    /// Create the .app bundle structure
+    /// Create the .app bundle structure under `output_dir`
     fn create_bundle_structure(
         package_dir: &Path,
-        project_root: &Path,
+        output_dir: &Path,
         build_dir: &Path,
         config: &AppBundleConfig,
     ) -> Result<PathBuf> {
         let target_name = APP_RUNNER_TARGET;
         let app_name = format!("{}.app", config.bundle_name);
 
-        let output_dir = resolve_lingxia_target_dir(project_root).join("ios");
-        fs::create_dir_all(&output_dir)?;
+        fs::create_dir_all(output_dir)?;
 
         let app_bundle = output_dir.join(&app_name);
 
@@ -533,6 +533,7 @@ mod tests {
         };
         let app =
             AppBundler::create_bundle_structure(&package, temp.path(), &build, &config).unwrap();
+        assert_eq!(app, temp.path().join("fusheng.app"));
         let info: Dictionary = plist::from_file(app.join("Info.plist")).unwrap();
         let executable = info["CFBundleExecutable"].as_string().unwrap();
         assert_eq!(fs::read(app.join(executable)).unwrap(), b"executable");
