@@ -706,6 +706,15 @@ jobs:
           bash scripts/ci/cargo-test-required.sh -p lingxia-webview --lib windows::controller::tests::document_messages_enqueue_without_reply_wait_and_preserve_fifo
           bash scripts/ci/cargo-test-required.sh -p lingxia-browser --lib document_session::tests
 
+      # Template lifecycles run `.mjs` entries through Node from canonical
+      # (`\\?\`) paths; only a real Windows spawn proves Node can load them.
+      - name: Test template lifecycles on Windows
+        if: matrix.suite == 'runtime'
+        shell: bash
+        run: |
+          bash scripts/ci/cargo-test-required.sh -p lingxia-cli --bin lingxia build_prepare::tests
+          bash scripts/ci/cargo-test-required.sh -p lingxia-cli --bin lingxia template_provider::tests::local_git_sources_drop_verbatim
+
       - name: Clippy Windows browser shell feature
         if: matrix.suite == 'lint'
         shell: bash

@@ -372,8 +372,11 @@ pub fn lifecycle_command(
     let mut command = command_for_entry(&entry);
     command
         .args(&lifecycle.args)
-        .current_dir(project_root)
-        .env("LINGXIA_TEMPLATE_ROOT", &template.root);
+        .current_dir(child_path(project_root))
+        .env(
+            "LINGXIA_TEMPLATE_ROOT",
+            child_path(&template.root).as_os_str(),
+        );
     Ok(command)
 }
 
@@ -1059,9 +1062,10 @@ fn launcher_marker(slug: &str) -> String {
 }
 
 fn launcher_contents(slug: &str, entry: &Path) -> String {
+    let entry = child_path(entry);
     #[cfg(windows)]
     {
-        let invocation = if is_javascript_entry(entry) {
+        let invocation = if is_javascript_entry(&entry) {
             format!("node \"{}\" %*", entry.display())
         } else {
             format!("\"{}\" %*", entry.display())
@@ -1075,7 +1079,7 @@ fn launcher_contents(slug: &str, entry: &Path) -> String {
     #[cfg(not(windows))]
     {
         let executable = shell_quote(&entry.to_string_lossy());
-        let invocation = if is_javascript_entry(entry) {
+        let invocation = if is_javascript_entry(&entry) {
             format!("node {executable}")
         } else {
             executable
@@ -1198,13 +1202,34 @@ fn copy_directory(source: &Path, target: &Path) -> Result<()> {
     Ok(())
 }
 
+/// The form of `path` handed to a child process. `canonicalize` yields `\\?\`
+/// verbatim paths on Windows, and Node fails to load an entry script given one
+/// (`EISDIR: lstat 'C:'`); `dunce` drops the prefix only where that is lossless.
+fn child_path(path: &Path) -> std::borrow::Cow<'_, Path> {
+    let simplified = dunce::simplified(path);
+    #[cfg(windows)]
+    if let Some(rest) = simplified
+        .to_str()
+        .and_then(|path| path.strip_prefix(r"\\?\UNC\"))
+    {
+        // dunce keeps every UNC path verbatim; a drive path with the same
+        // components and length gets the same lossless-or-not verdict.
+        let probe = PathBuf::from(format!(r"\\?\X:\{rest}"));
+        if dunce::simplified(&probe) != probe {
+            return std::borrow::Cow::Owned(PathBuf::from(format!(r"\\{rest}")));
+        }
+    }
+    std::borrow::Cow::Borrowed(simplified)
+}
+
 fn command_for_entry(entry: &Path) -> Command {
-    if is_javascript_entry(entry) {
+    let entry = child_path(entry);
+    if is_javascript_entry(&entry) {
         let mut command = Command::new("node");
-        command.arg(entry);
+        command.arg(&*entry);
         command
     } else {
-        Command::new(entry)
+        Command::new(&*entry)
     }
 }
 
@@ -1329,17 +1354,7 @@ fn normalize_source(source: &str) -> Result<String> {
 }
 
 fn git_source_path(path: &Path) -> String {
-    let source = path.to_string_lossy();
-    #[cfg(windows)]
-    {
-        if let Some(path) = source.strip_prefix(r"\\?\UNC\") {
-            return format!(r"\\{path}");
-        }
-        if let Some(path) = source.strip_prefix(r"\\?\") {
-            return path.to_owned();
-        }
-    }
-    source.into_owned()
+    child_path(path).to_string_lossy().into_owned()
 }
 
 fn read_state(home: &Path, slug: &str) -> Result<TemplateState> {
@@ -1444,17 +1459,14 @@ pub(crate) mod test_support {
     }
 
     /// Resolves templates from `home` on this thread until dropped.
-    #[cfg(unix)]
     pub(crate) struct HomeGuard;
 
-    #[cfg(unix)]
     impl Drop for HomeGuard {
         fn drop(&mut self) {
             HOME.with(|home| *home.borrow_mut() = None);
         }
     }
 
-    #[cfg(unix)]
     pub(crate) fn use_home(home: &Path) -> HomeGuard {
         HOME.with(|slot| *slot.borrow_mut() = Some(home.to_path_buf()));
         HomeGuard
@@ -1465,6 +1477,29 @@ pub(crate) mod test_support {
     #[cfg(unix)]
     pub(crate) fn install(home: &Path, project: &Path, lifecycles: &[(&str, &str)]) {
         use std::os::unix::fs::PermissionsExt;
+        install_entries(home, project, lifecycles, |bin, lifecycle, body| {
+            let script = bin.join(format!("{lifecycle}.sh"));
+            fs::write(&script, format!("#!/bin/sh\n{body}\n")).unwrap();
+            fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+            format!("bin/{lifecycle}.sh")
+        });
+    }
+
+    /// [`install`] with each lifecycle an `.mjs` module run through `node`,
+    /// the shape real templates use and the only one Windows can run.
+    pub(crate) fn install_node(home: &Path, project: &Path, lifecycles: &[(&str, &str)]) {
+        install_entries(home, project, lifecycles, |bin, lifecycle, body| {
+            fs::write(bin.join(format!("{lifecycle}.mjs")), body).unwrap();
+            format!("bin/{lifecycle}.mjs")
+        });
+    }
+
+    fn install_entries(
+        home: &Path,
+        project: &Path,
+        lifecycles: &[(&str, &str)],
+        write_entry: impl Fn(&Path, &str, &str) -> String,
+    ) {
         let root = templates_root(home).join("example");
         fs::create_dir_all(root.join("template")).unwrap();
         fs::create_dir_all(root.join("bin")).unwrap();
@@ -1472,10 +1507,8 @@ pub(crate) mod test_support {
         fs::write(root.join("template/lxapp.json"), "{}").unwrap();
         let mut manifest = serde_json::json!({"name": "example", "template": "template"});
         for (lifecycle, body) in lifecycles {
-            let script = root.join("bin").join(format!("{lifecycle}.sh"));
-            fs::write(&script, format!("#!/bin/sh\n{body}\n")).unwrap();
-            fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
-            manifest[lifecycle] = serde_json::json!({"command": format!("bin/{lifecycle}.sh")});
+            let command = write_entry(&root.join("bin"), lifecycle, body);
+            manifest[lifecycle] = serde_json::json!({"command": command});
         }
         fs::write(
             root.join(MANIFEST_FILE),
@@ -1608,7 +1641,7 @@ mod tests {
         assert_eq!(
             args,
             vec![
-                fs::canonicalize(root.path().join("bin/create.mjs"))
+                dunce::canonicalize(root.path().join("bin/create.mjs"))
                     .unwrap()
                     .to_string_lossy()
                     .into_owned(),
@@ -1933,11 +1966,7 @@ mod tests {
         let args: Vec<_> = command.get_args().collect();
         assert_eq!(
             args[0],
-            resolved
-                .root
-                .join("bin/example.mjs")
-                .canonicalize()
-                .unwrap()
+            dunce::canonicalize(resolved.root.join("bin/example.mjs")).unwrap()
         );
         assert_eq!(args[1], "prepare");
 
