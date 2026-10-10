@@ -507,6 +507,13 @@ pub(crate) fn ensure_browser_lxapp() -> Result<Arc<LxApp>, LxAppError> {
     lxapp::ensure_builtin_lxapp(BUILTIN_BROWSER_APPID)
 }
 
+pub(crate) fn browser_create_token_for_path(path: &str, session_id: u64) -> Option<u64> {
+    let tab_id = path.strip_prefix(INTERNAL_TAB_PATH_PREFIX)?;
+    let state = lock_state();
+    let tab = state.tabs.get(tab_id)?;
+    (tab.session_id == session_id).then_some(tab.create_token)
+}
+
 pub(crate) fn browser_tab_path_for_runtime_id(tab_id: &str) -> String {
     format!("{INTERNAL_TAB_PATH_PREFIX}{tab_id}")
 }

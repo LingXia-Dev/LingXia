@@ -1,7 +1,6 @@
 //! Browser automation: element query, wait conditions, input (click/fill/type),
 //! cookies, screenshots, and the native input host hook.
 
-use crate::BUILTIN_BROWSER_APPID;
 use crate::policy::normalize_url_for_wait_compare;
 use crate::tabs::{
     browser_tab_path_for_runtime_id, browser_update_tab_info, lock_state, normalize_runtime_tab_id,
@@ -12,7 +11,7 @@ use crate::types::{
 };
 use lingxia_webview::runtime::find_webview as find_managed_webview;
 use lingxia_webview::{
-    NetworkCaptureSnapshot, UserAgentOverride, WebTag, WebView, WebViewController, WebViewCookie,
+    NetworkCaptureSnapshot, UserAgentOverride, WebView, WebViewController, WebViewCookie,
     WebViewCookieSetRequest,
 };
 use std::sync::{Arc, OnceLock};
@@ -55,16 +54,16 @@ async fn prepare_browser_tab_for_input(tab_id: &str) -> Result<(), BrowserAutoma
 fn browser_tab_webview(tab_id: &str) -> Result<Arc<WebView>, BrowserAutomationError> {
     let normalized_tab_id = normalize_runtime_tab_id(tab_id)
         .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
-    let session_id = {
+    let (session_id, create_token) = {
         let state = lock_state();
         state
             .tabs
             .get(&normalized_tab_id)
-            .map(|tab| tab.session_id)
+            .map(|tab| (tab.session_id, tab.create_token))
             .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?
     };
     let path = browser_tab_path_for_runtime_id(&normalized_tab_id);
-    let webtag = WebTag::new(BUILTIN_BROWSER_APPID, &path, Some(session_id));
+    let webtag = crate::webview::browser_webtag(&path, session_id, create_token);
     find_managed_webview(&webtag)
         .ok_or_else(|| BrowserAutomationError::WebViewNotFound(tab_id.to_string()))
 }
@@ -398,7 +397,7 @@ pub fn browser_set_user_agent_override(
         .iter()
         .filter_map(|(tab_id, tab)| {
             let path = browser_tab_path_for_runtime_id(tab_id);
-            let webtag = WebTag::new(BUILTIN_BROWSER_APPID, &path, Some(tab.session_id));
+            let webtag = crate::webview::browser_webtag(&path, tab.session_id, tab.create_token);
             find_managed_webview(&webtag).map(|webview| (tab_id.clone(), webview))
         })
         .collect::<Vec<_>>();

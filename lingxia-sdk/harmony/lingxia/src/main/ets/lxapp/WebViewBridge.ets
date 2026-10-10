@@ -97,6 +97,10 @@ export class WebViewManager {
     return CoreWebViewManager.destroyWebview(webtag, generation);
   }
 
+  static consumeDocumentLoad(webtag: string, controller: webview.WebviewController, url: string, isMainFrame: boolean): boolean {
+    return CoreWebViewManager.consumeDocumentLoad(webtag, controller, url, isMainFrame);
+  }
+
   static loadUrl(webtag: string, url: string): boolean {
     return CoreWebViewManager.loadUrl(webtag, url);
   }
@@ -247,6 +251,10 @@ export function notifyWebViewControllerAttached(webtag: string, nativeViewToken:
 
 export function getAllWebViewInfos(): WebViewInfo[] {
   return WebViewManager.getAllWebViewInfos();
+}
+
+export function loadData(webtag: string, generation: string, data: string, baseUrl: string, historyUrl: string): boolean {
+  return CoreWebViewManager.loadData(webtag, generation, data, baseUrl, historyUrl);
 }
 
 export function loadUrl(webtag: string, url: string): boolean {

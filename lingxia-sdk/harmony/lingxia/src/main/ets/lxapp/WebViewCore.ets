@@ -1,3 +1,4 @@
+import { NativeDocumentLoad } from './NativeDocumentLoad';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { image } from '@kit.ImageKit';
@@ -316,6 +317,9 @@ export class WebViewManager {
   // successor registered under the same tag.
   private static generations: Map<string, string> = new Map();
   private static documentEpochs: Map<string, number> = new Map();
+  private static documentLoads: Map<string, NativeDocumentLoad> = new Map();
+  private static documentBegins: Map<string, NativeDocumentLoad> = new Map();
+  private static documentEnds: Map<string, NativeDocumentLoad> = new Map();
 
   // Engine UA captured before the first override for each controller.
   private static defaultUserAgents: Map<string, string> = new Map();
@@ -376,6 +380,9 @@ export class WebViewManager {
         const staleInfo = WebViewManager.webViewInfos.get(logicalTag);
         WebViewManager.controllers.delete(logicalTag);
         WebViewManager.documentEpochs.delete(logicalTag);
+        WebViewManager.documentLoads.delete(logicalTag);
+        WebViewManager.documentBegins.delete(logicalTag);
+        WebViewManager.documentEnds.delete(logicalTag);
         WebViewManager.defaultUserAgents.delete(logicalTag);
         WebViewManager.webViewInfos.delete(logicalTag);
         if (staleInfo) {
@@ -517,6 +524,11 @@ export class WebViewManager {
     if (!nativeGeneration || !url) {
       return '';
     }
+    const nativeLoad = WebViewManager.documentBegins.get(webtag);
+    WebViewManager.documentBegins.delete(webtag);
+    WebViewManager.documentEnds.delete(webtag);
+    const documentUrl = nativeLoad?.beginUrl(url) ?? url;
+    if (nativeLoad && documentUrl !== url) WebViewManager.documentEnds.set(webtag, nativeLoad);
     const nextEpoch = (WebViewManager.documentEpochs.get(webtag) ?? 0) + 1;
     if (!Number.isSafeInteger(nextEpoch)) {
       WebViewManager.documentEpochs.delete(webtag);
@@ -525,7 +537,7 @@ export class WebViewManager {
     const pageEpoch = `${nextEpoch}`;
     WebViewManager.documentEpochs.set(webtag, nextEpoch);
     bindDefaultHostHooksIfNeeded();
-    return hostHooks.onPageBegin?.(webtag, nativeGeneration, pageEpoch, url) === true
+    return hostHooks.onPageBegin?.(webtag, nativeGeneration, pageEpoch, documentUrl) === true
       ? pageEpoch
       : '';
   }
@@ -555,7 +567,12 @@ export class WebViewManager {
       return false;
     }
     bindDefaultHostHooksIfNeeded();
-    return hostHooks.onPageEnd?.(webtag, nativeGeneration, pageEpoch, url) === true;
+    const nativeLoad = `${WebViewManager.documentEpochs.get(webtag)}` === pageEpoch
+      ? WebViewManager.documentEnds.get(webtag) : undefined;
+    WebViewManager.documentEnds.delete(webtag);
+    const documentUrl = nativeLoad?.endUrl(url) ?? url;
+    hilog.info(DOMAIN, TAG, `Native document end normalized=${documentUrl !== url} scheme=${url.split(':')[0]}`);
+    return hostHooks.onPageEnd?.(webtag, nativeGeneration, pageEpoch, documentUrl) === true;
   }
 
   static renderExited(webtag: string, controller: webview.WebviewController): boolean {
@@ -605,6 +622,9 @@ export class WebViewManager {
     WebViewManager.webViewInfos.delete(logicalTag);
     WebViewManager.generations.delete(logicalTag);
     WebViewManager.documentEpochs.delete(logicalTag);
+    WebViewManager.documentLoads.delete(logicalTag);
+    WebViewManager.documentBegins.delete(logicalTag);
+    WebViewManager.documentEnds.delete(logicalTag);
     WebViewManager.uiCallbacks.forEach(callback => {
       try {
         callback('destroy', webViewInfo);
@@ -616,6 +636,38 @@ export class WebViewManager {
     notifyControllerDestroyed(webtag, currentGeneration ?? '');
     hilog.info(DOMAIN, TAG, `WebViewManager.destroyWebview completed -> webtag=${webtag} (logical: ${logicalTag})`);
     return true;
+  }
+
+  static consumeDocumentLoad(webtag: string, controller: webview.WebviewController, url: string, isMainFrame: boolean): boolean {
+    if (!WebViewManager.getGenerationForController(webtag, controller) || !isMainFrame) return false;
+    const pending = WebViewManager.documentLoads.get(webtag);
+    WebViewManager.documentLoads.delete(webtag);
+    WebViewManager.documentBegins.delete(webtag);
+    if (!pending?.consume(url, true)) return false;
+    WebViewManager.documentBegins.set(webtag, pending);
+    return true;
+  }
+
+  static loadData(webtag: string, generation: string, data: string, baseUrl: string, historyUrl: string): boolean {
+    const logicalTag = WebViewManager.resolveLogicalTag(webtag);
+    const controller = WebViewManager.controllers.get(logicalTag);
+    if (!controller || WebViewManager.getGeneration(logicalTag) !== generation) {
+      hilog.warn(DOMAIN, TAG, 'Ignoring document load for stale WebView %{public}s generation %{public}s (current %{public}s)', webtag, generation, WebViewManager.getGeneration(logicalTag));
+      return false;
+    }
+    try {
+      const base64 = new util.Base64Helper().encodeToStringSync(new util.TextEncoder().encodeInto(data));
+      WebViewManager.documentBegins.delete(logicalTag);
+      WebViewManager.documentEnds.delete(logicalTag);
+      WebViewManager.documentLoads.set(logicalTag, new NativeDocumentLoad(data, base64, historyUrl));
+      controller.loadData(data, 'text/html', 'UTF-8', baseUrl, historyUrl);
+      hilog.info(DOMAIN, TAG, 'Loaded document in WebView %{public}s (%{public}d chars)', webtag, data.length);
+      return true;
+    } catch (error) {
+      WebViewManager.documentLoads.delete(logicalTag);
+      hilog.error(DOMAIN, TAG, 'Failed to load document in WebView %{public}s: %{public}s', webtag, String(error));
+      return false;
+    }
   }
 
   /**

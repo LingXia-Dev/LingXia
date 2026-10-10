@@ -21,9 +21,9 @@ use crate::policy::{
 };
 use crate::tabs::{
     TabCreateState, browser_clear_pending_if_token_matches,
-    browser_commit_navigation_if_token_matches, browser_internal_url_if_token_matches,
-    browser_remove_tab_if_token_matches, browser_tab_create_state, browser_tab_generation_matches,
-    ensure_browser_lxapp,
+    browser_commit_navigation_if_token_matches, browser_create_token_for_path,
+    browser_internal_url_if_token_matches, browser_remove_tab_if_token_matches,
+    browser_tab_create_state, browser_tab_generation_matches, ensure_browser_lxapp,
 };
 use crate::types::{BrowserNavigationPolicyDecision, BrowserNavigationPolicyRequest};
 use lingxia_log::{LogBuilder, LogLevel as LxLogLevel, LogTag};
@@ -652,8 +652,25 @@ impl WebViewDelegate for BrowserTabDelegate {
 // WebView helpers — thin wrappers around lingxia-webview cross-platform API
 // ---------------------------------------------------------------------------
 
-fn browser_webtag(path: &str, session_id: u64) -> WebTag {
-    WebTag::new(BUILTIN_BROWSER_APPID, path, Some(session_id))
+pub(crate) fn browser_webtag(path: &str, session_id: u64, create_token: u64) -> WebTag {
+    #[cfg(all(target_os = "linux", target_env = "ohos"))]
+    return browser_instance_webtag(path, session_id, create_token);
+    #[cfg(not(all(target_os = "linux", target_env = "ohos")))]
+    {
+        let _ = create_token;
+        WebTag::new(BUILTIN_BROWSER_APPID, path, Some(session_id))
+    }
+}
+
+#[cfg(any(test, all(target_os = "linux", target_env = "ohos")))]
+fn browser_instance_webtag(path: &str, session_id: u64, create_token: u64) -> WebTag {
+    // ArkWeb's native controller registry is keyed by tag. A recreated tab
+    // must not reuse the retiring controller's key, even in the same session.
+    WebTag::new(
+        BUILTIN_BROWSER_APPID,
+        &format!("{path}#browser-{create_token}"),
+        Some(session_id),
+    )
 }
 
 fn callback_blocks_file_navigation(url_callback: bool, url: &str) -> bool {
@@ -680,7 +697,7 @@ pub(crate) fn browser_create_webview(
     url_callback: Arc<AtomicBool>,
     standalone: bool,
 ) -> Result<(), LxAppError> {
-    let webtag = browser_webtag(path, session_id);
+    let webtag = browser_webtag(path, session_id, create_token);
     let browser_owner = ensure_browser_lxapp()?;
     let tab_path_owned = path.to_string();
     let tab_id_owned = tab_id.to_string();
@@ -1027,7 +1044,9 @@ pub(crate) fn browser_find_webview(
     path: &str,
     session_id: u64,
 ) -> Result<Arc<WebView>, LxAppError> {
-    let webtag = browser_webtag(path, session_id);
+    let create_token = browser_create_token_for_path(path, session_id)
+        .ok_or_else(|| LxAppError::ResourceNotFound(format!("browser tab not found: {path}")))?;
+    let webtag = browser_webtag(path, session_id, create_token);
     find_managed_webview(&webtag).ok_or_else(|| {
         LxAppError::ResourceNotFound(format!("browser webview not found: {}", webtag.as_str()))
     })
@@ -1083,7 +1102,7 @@ pub(crate) fn browser_destroy_webview_if_matches(
     session_id: u64,
     expected: &Arc<WebView>,
 ) -> bool {
-    let webtag = browser_webtag(path, session_id);
+    let webtag = expected.webtag();
     let documents = browser_document_sessions();
     if let Some(authority) = documents.destroy_native_view(expected.native_view_id())
         && let Ok(page) = browser_resolve_delegate_page(path, session_id)
@@ -1101,6 +1120,16 @@ mod tests {
     };
     use lingxia_webview::{NavigationEvent, NavigationId};
     use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[test]
+    fn recreated_tab_has_a_distinct_native_tag_with_the_same_route_and_session() {
+        let first = super::browser_instance_webtag("/tabs/newtab", 2, 10);
+        let next = super::browser_instance_webtag("/tabs/newtab", 2, 11);
+        assert_ne!(first.as_str(), next.as_str());
+        assert_eq!(first.extract_parts(), next.extract_parts());
+        assert_eq!(next.extract_parts().1, "/tabs/newtab");
+        assert_eq!(next.session_id(), Some(2));
+    }
 
     #[test]
     fn login_callback_tabs_open_new_windows_in_the_system_browser() {
