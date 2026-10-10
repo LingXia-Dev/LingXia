@@ -95,12 +95,21 @@ spec('relaunching the same route keeps the replacement page shown', {
   defer(async () => { await app.nav.relaunch({ page: 'home' }); });
 
   for (let entry = 0; entry < 3; entry += 1) {
+    const previous = await app.nav.current();
     await app.nav.relaunch({ page: 'surface' });
-    const page = await app.page<{ data: SurfaceLifecycleState; actions: unknown }>({ name: 'surface' });
+    const current = await waitForCurrentPage(app, 'surface');
+    if (!current.instanceId || !previous.instanceId) throw new Error('Missing lifecycle page instance ID');
+    const previousId = previous.instanceId;
+    expect(current.instanceId).not.toBe(previous.instanceId);
+    const page = await app.page<{ data: SurfaceLifecycleState; actions: unknown }>({ instanceId: current.instanceId });
+    await expect.poll(() => app.logic.eval(({ getPage }, instanceId) => {
+      try { return getPage(instanceId) === undefined; }
+      catch (error) {
+        if (String(error).includes(`Page instance disposed: ${instanceId}`)) return true;
+        throw error;
+      }
+    }, previousId)).toBe(true);
     await expect.poll(async () => (await page.data()).lastLifecycle).toBe('onShow (#1)');
-    // Give the outgoing WebView's asynchronous destruction/Hidden callback
-    // time to arrive; it must not hide the replacement at the same path.
-    await new Promise<void>((resolve) => setTimeout(resolve, 6000));
     const state = await page.data();
     expect(state.hideCount).toBe(0);
     expect(state.lastLifecycle).toBe('onShow (#1)');

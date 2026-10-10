@@ -1933,6 +1933,15 @@ mod worker_assignment_tests {
                         .eval(Source::from_bytes(format!("__lxGetPage({id:?}).ballast.length")))
                         .unwrap();
                     assert_eq!(ballast, 20000, "GC must not collect a live page service");
+                    let replaced = super::with_page_svc_map(&ctx, |pages| {
+                        Ok(pages.borrow().get(&id).unwrap().clone())
+                    }).unwrap();
+                    ctx.eval::<()>(Source::from_bytes(format!(
+                        "__LX_CREATE_PAGE__('pages/home/index', null, {id:?});"
+                    ))).unwrap();
+                    assert!(!replaced.holds_js(), "duplicate creation must release the old JS root");
+                    drop(replaced);
+                    runtime.run_gc();
                     app.logic_contexts.send_replace(1);
                     let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
                     let mut current = Some(ctx);

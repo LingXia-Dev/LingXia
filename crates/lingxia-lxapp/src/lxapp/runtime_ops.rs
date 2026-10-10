@@ -327,8 +327,28 @@ pub fn mark_lxapp_active(appid: &str) -> bool {
 }
 
 pub fn notify_lxapp_host_visibility(appid: &str, visible: bool) -> Result<(), LxAppError> {
+    notify_lxapp_host_visibility_for_session(appid, None, visible)
+}
+
+/// Ignore late host events from an earlier session of the same app.
+pub fn notify_lxapp_host_visibility_by_session(
+    appid: &str,
+    session: u64,
+    visible: bool,
+) -> Result<(), LxAppError> {
+    notify_lxapp_host_visibility_for_session(appid, Some(session), visible)
+}
+
+fn notify_lxapp_host_visibility_for_session(
+    appid: &str,
+    session: Option<u64>,
+    visible: bool,
+) -> Result<(), LxAppError> {
     let app = super::runtime_registry::try_get(appid)
         .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+    if session.is_some_and(|session| session != app.session_id()) {
+        return Ok(());
+    }
     // Destroying a WebView publishes its final host visibility asynchronously.
     // The close-specific onHide is queued before shutdown, so this late event
     // must not target an AppService that is already terminating.
@@ -362,16 +382,17 @@ pub fn notify_page_host_visibility(
     path: &str,
     visible: bool,
 ) -> Result<(), LxAppError> {
-    notify_selected_page_host_visibility(appid, visible, |app| app.require_page(path))
+    notify_selected_page_host_visibility(appid, visible, |app| app.require_page(path)).map(|_| ())
 }
 
 /// Deliver a native visibility event only to the instance and session named
 /// by the full WebView tag, including when another instance shares its route.
+/// Returns false when the app is already closing and the event was ignored.
 pub fn notify_page_host_visibility_by_webtag(
     appid: &str,
     webtag: &str,
     visible: bool,
-) -> Result<(), LxAppError> {
+) -> Result<bool, LxAppError> {
     notify_selected_page_host_visibility(appid, visible, |app| {
         app.get_page_by_webtag(webtag)
             .ok_or_else(|| LxAppError::ResourceNotFound(webtag.to_string()))
@@ -382,14 +403,14 @@ fn notify_selected_page_host_visibility(
     appid: &str,
     visible: bool,
     select: impl FnOnce(&LxApp) -> Result<PageInstance, LxAppError>,
-) -> Result<(), LxAppError> {
+) -> Result<bool, LxAppError> {
     let app = super::runtime_registry::try_get(appid)
         .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
     if matches!(
         app.status(),
         LxAppSessionStatus::Closing | LxAppSessionStatus::Closed
     ) {
-        return Ok(());
+        return Ok(false);
     }
     let page = select(&app)?;
     page.dispatch_lifecycle_event(if visible {
@@ -400,7 +421,7 @@ fn notify_selected_page_host_visibility(
     if visible {
         page.mark_active();
     }
-    Ok(())
+    Ok(true)
 }
 
 /// Check if pull-to-refresh is enabled for a specific page

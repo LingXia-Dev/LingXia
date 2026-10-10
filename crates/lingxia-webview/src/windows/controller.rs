@@ -4,6 +4,7 @@
 use super::*;
 use crate::events::normalizer;
 use async_trait::async_trait;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub(crate) const WM_LINGXIA_COMMAND: u32 = WM_APP + 0x154;
 
@@ -238,6 +239,11 @@ pub(crate) enum UiCommand {
         window: isize,
         resp: Sender<StdResult<()>>,
     },
+    ParkFromParent {
+        expected: isize,
+        window: isize,
+        resp: Sender<StdResult<bool>>,
+    },
     NotifyParentPositionChanged {
         resp: Sender<StdResult<()>>,
     },
@@ -259,6 +265,20 @@ pub(crate) enum UiCommand {
         resp: Sender<StdResult<()>>,
     },
     Shutdown,
+    ShutdownReady,
+}
+
+#[derive(Default)]
+pub(crate) struct PublishedParent {
+    current: isize,
+    pending: Option<isize>,
+}
+
+fn publish_parent_window(parent: &Mutex<PublishedParent>, current: isize) {
+    *parent.lock().unwrap_or_else(|err| err.into_inner()) = PublishedParent {
+        current,
+        pending: None,
+    };
 }
 
 pub(crate) struct UiState {
@@ -266,6 +286,7 @@ pub(crate) struct UiState {
     pub(crate) webview: ICoreWebView2,
     pub(crate) hosting: HostingMode,
     pub(crate) hwnd: HWND,
+    parent_window: Arc<Mutex<PublishedParent>>,
     pub(crate) native_view: WindowsWebViewNativeView,
     pub(crate) native_view_id: NativeWebViewId,
     pub(crate) webtag: WebTag,
@@ -303,6 +324,7 @@ pub struct WebViewInner {
     join_handle: Mutex<Option<JoinHandle<()>>>,
     pub(crate) webtag: WebTag,
     pub(crate) native_view: isize,
+    parent_window: Arc<Mutex<PublishedParent>>,
     pub(crate) composition_hosted: bool,
 }
 
@@ -316,6 +338,13 @@ impl std::fmt::Debug for WebViewInner {
 }
 
 impl WebViewInner {
+    pub(crate) fn has_parent_window(&self, window: isize) -> bool {
+        let parent = self
+            .parent_window
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        parent.current == window || parent.pending == Some(window)
+    }
     pub(crate) fn create(
         appid: &str,
         path: &str,
@@ -328,6 +357,8 @@ impl WebViewInner {
         let webtag_for_thread = webtag.clone();
         let effective_options_for_thread = effective_options.clone();
         let (startup_tx, startup_rx) = mpsc::channel();
+        let parent_window = Arc::new(Mutex::new(PublishedParent::default()));
+        let parent_for_thread = parent_window.clone();
 
         let join_handle = thread::Builder::new()
             .name(format!("lingxia-webview-{}", webtag.as_str()))
@@ -337,6 +368,7 @@ impl WebViewInner {
                     effective_options_for_thread,
                     native_view_id,
                     startup_tx,
+                    parent_for_thread,
                 ) {
                     log::error!("Windows WebView UI thread failed: {}", err);
                 }
@@ -365,6 +397,7 @@ impl WebViewInner {
                         join_handle: Mutex::new(Some(join_handle)),
                         webtag,
                         native_view,
+                        parent_window,
                         composition_hosted,
                     },
                     effective_options,
@@ -545,6 +578,25 @@ impl WebViewInner {
 
     pub(crate) fn set_parent_window(&self, window: isize) -> StdResult<()> {
         self.dispatch_command_same_thread_safe(|resp| UiCommand::SetParentWindow { window, resp })
+    }
+
+    pub(crate) fn park_from_parent(&self, expected: isize, window: isize) -> StdResult<bool> {
+        if unsafe { Threading::GetCurrentThreadId() } == self.thread_id {
+            return Err(WebViewError::WebView(
+                "Cannot synchronously park on the controller thread".to_string(),
+            ));
+        }
+        let (resp, reply) = mpsc::channel();
+        self.command_tx
+            .send(UiCommand::ParkFromParent {
+                expected,
+                window,
+                resp,
+            })
+            .map_err(|_| WebViewError::WebView("WebView UI thread is unavailable".to_string()))?;
+        self.wake_ui_thread();
+        recv_reply_pumping(&reply, Some(UI_COMMAND_TIMEOUT))
+            .map_err(|err| WebViewError::WebView(format!("Park WebView command: {err}")))?
     }
 
     pub(crate) fn sync_island_visuals(
@@ -982,6 +1034,7 @@ pub(crate) fn run_ui_thread(
     effective_options: EffectiveWebViewCreateOptions,
     native_view_id: NativeWebViewId,
     startup_tx: Sender<StdResult<WebViewStartup>>,
+    parent_window: Arc<Mutex<PublishedParent>>,
 ) -> StdResult<()> {
     // A relaunch can reuse a WebTag as soon as the retired instance leaves the
     // registry, while its WebView2 UI thread is still closing the controller.
@@ -997,7 +1050,13 @@ pub(crate) fn run_ui_thread(
             .map_err(|err| WebViewError::WebView(format!("OleInitialize failed: {err}")))?;
     }
 
-    let result = run_ui_thread_inner(webtag, effective_options, native_view_id, startup_tx);
+    let result = run_ui_thread_inner(
+        webtag,
+        effective_options,
+        native_view_id,
+        startup_tx,
+        parent_window,
+    );
 
     unsafe {
         windows::Win32::System::Ole::OleUninitialize();
@@ -1038,11 +1097,13 @@ pub(crate) fn run_ui_thread_inner(
     effective_options: EffectiveWebViewCreateOptions,
     native_view_id: NativeWebViewId,
     startup_tx: Sender<StdResult<WebViewStartup>>,
+    parent_window: Arc<Mutex<PublishedParent>>,
 ) -> StdResult<()> {
     ensure_message_queue();
 
     let native_view = create_webview_parent(&webtag)?;
     let hwnd = hwnd_from_handle(native_view.window);
+    publish_parent_window(&parent_window, native_view.window);
     let webtag_key = webtag.key().to_string();
 
     // After the window exists, every failure must report the real error to the
@@ -1171,6 +1232,7 @@ pub(crate) fn run_ui_thread_inner(
         webview,
         hosting,
         hwnd,
+        parent_window,
         native_view,
         native_view_id,
         webtag: webtag.clone(),
@@ -1219,7 +1281,7 @@ pub(crate) fn run_ui_thread_inner(
 
     if startup_tx
         .send(Ok((
-            command_tx,
+            command_tx.clone(),
             unsafe { Threading::GetCurrentThreadId() },
             native_view.window,
             matches!(state.hosting, HostingMode::Composition(_)),
@@ -1232,7 +1294,7 @@ pub(crate) fn run_ui_thread_inner(
         ));
     }
 
-    message_loop(&mut state, command_rx)
+    message_loop(&mut state, command_rx, command_tx)
 }
 
 /// Waits for a WebView2 callback before the regular message loop starts.
@@ -1336,11 +1398,26 @@ pub(crate) fn ensure_message_queue() {
     }
 }
 
-pub(crate) fn message_loop(state: &mut UiState, command_rx: Receiver<UiCommand>) -> StdResult<()> {
+pub(crate) fn message_loop(
+    state: &mut UiState,
+    command_rx: Receiver<UiCommand>,
+    command_tx: Sender<UiCommand>,
+) -> StdResult<()> {
     let mut msg = MSG::default();
+    let mut retiring = false;
+    let owner_alive = RetirementOwnerGuard(Arc::new(AtomicBool::new(true)));
 
     loop {
         while let Ok(command) = command_rx.try_recv() {
+            if matches!(command, UiCommand::Shutdown) {
+                begin_parent_retirement(
+                    state.native_view,
+                    &command_tx,
+                    &mut retiring,
+                    &owner_alive.0,
+                );
+                continue;
+            }
             if handle_command(state, command)? {
                 cleanup_state(state);
                 return Ok(());
@@ -1356,8 +1433,12 @@ pub(crate) fn message_loop(state: &mut UiState, command_rx: Receiver<UiCommand>)
                 ));
             }
             0 => {
-                cleanup_state(state);
-                return Ok(());
+                begin_parent_retirement(
+                    state.native_view,
+                    &command_tx,
+                    &mut retiring,
+                    &owner_alive.0,
+                );
             }
             _ => {
                 // Window messages still need normal dispatch; only the
@@ -1371,6 +1452,63 @@ pub(crate) fn message_loop(state: &mut UiState, command_rx: Receiver<UiCommand>)
             }
         }
     }
+}
+
+struct RetirementOwnerGuard(Arc<AtomicBool>);
+
+impl Drop for RetirementOwnerGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
+fn wait_for_parent_retirement(
+    owner_alive: &AtomicBool,
+    mut prepare: impl FnMut() -> StdResult<()>,
+) -> bool {
+    while owner_alive.load(Ordering::SeqCst) {
+        match prepare() {
+            Ok(()) => return true,
+            Err(err) => log::warn!(
+                "Deferring Windows parent retirement until controllers are parked: {err}"
+            ),
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    false
+}
+
+fn begin_parent_retirement(
+    view: WindowsWebViewNativeView,
+    commands: &Sender<UiCommand>,
+    retiring: &mut bool,
+    owner_alive: &Arc<AtomicBool>,
+) {
+    if std::mem::replace(retiring, true) {
+        return;
+    }
+    let commands = commands.clone();
+    let owner_alive = owner_alive.clone();
+    let thread_id = unsafe { Threading::GetCurrentThreadId() };
+    thread::Builder::new()
+        .name("lingxia-webview-retire".to_string())
+        .spawn(move || {
+            if !wait_for_parent_retirement(&owner_alive, || prepare_destroy_webview_parent(view)) {
+                return;
+            }
+            if commands.send(UiCommand::ShutdownReady).is_err() {
+                return;
+            }
+            unsafe {
+                let _ = WindowsAndMessaging::PostThreadMessageW(
+                    thread_id,
+                    WM_LINGXIA_COMMAND,
+                    WPARAM(0),
+                    LPARAM(0),
+                );
+            }
+        })
+        .expect("Windows parent retirement worker");
 }
 
 pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResult<bool> {
@@ -1664,6 +1802,20 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let _ = resp.send(result);
         }
         UiCommand::SetParentWindow { window, resp } => {
+            // Publish intent before admission. Retirement either sees this
+            // transfer and queues a later park, or admission rejects its host.
+            state
+                .parent_window
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .pending = Some(window);
+            if !can_present_in_parent(window) {
+                publish_parent_window(&state.parent_window, state.hwnd.0 as isize);
+                let _ = resp.send(Err(WebViewError::WebView(
+                    "Windows parent is retiring".to_string(),
+                )));
+                return Ok(false);
+            }
             let hwnd = hwnd_from_handle(window);
             // A windowed controller can skip a same-parent request. A
             // composition surface cannot: destroying its former host also
@@ -1672,6 +1824,7 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             // that dead surface even when the numeric parent is unchanged.
             let composition_hosted = matches!(&state.hosting, HostingMode::Composition(_));
             if !should_update_parent(composition_hosted, state.hwnd == hwnd) {
+                publish_parent_window(&state.parent_window, state.hwnd.0 as isize);
                 let _ = resp.send(Ok(()));
                 return Ok(false);
             }
@@ -1688,6 +1841,46 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             if result.is_ok() {
                 state.hwnd = hwnd;
             }
+            publish_parent_window(&state.parent_window, state.hwnd.0 as isize);
+            let _ = resp.send(result);
+        }
+        UiCommand::ParkFromParent {
+            expected,
+            window,
+            resp,
+        } => {
+            let result = if state.hwnd != hwnd_from_handle(expected) {
+                Ok(false)
+            } else {
+                state
+                    .parent_window
+                    .lock()
+                    .unwrap_or_else(|err| err.into_inner())
+                    .pending = Some(window);
+                let parent = hwnd_from_handle(window);
+                let transfer = if can_present_in_parent(window) {
+                    set_controller_visible(state, false).and_then(|()| match &mut state.hosting {
+                        HostingMode::Windowed => unsafe {
+                            state.controller.SetParentWindow(parent).map_err(|err| {
+                                WebViewError::WebView(format!("SetParentWindow failed: {err}"))
+                            })
+                        },
+                        HostingMode::Composition(surface) => {
+                            surface.set_parent(&state.controller, parent)
+                        }
+                    })
+                } else {
+                    Err(WebViewError::WebView(
+                        "Windows parking parent is retiring".to_string(),
+                    ))
+                };
+                let result = transfer.map(|()| {
+                    state.hwnd = parent;
+                    true
+                });
+                publish_parent_window(&state.parent_window, state.hwnd.0 as isize);
+                result
+            };
             let _ = resp.send(result);
         }
         UiCommand::NotifyParentPositionChanged { resp } => {
@@ -1726,7 +1919,8 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
                 });
             let _ = resp.send(result);
         }
-        UiCommand::Shutdown => return Ok(true),
+        UiCommand::ShutdownReady => return Ok(true),
+        UiCommand::Shutdown => {}
     }
 
     Ok(false)
@@ -1816,6 +2010,58 @@ fn set_content_geometry(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn retirement_tracks_both_parents_until_transfer_finishes() {
+        let (commands, _) = super::mpsc::channel();
+        let inner = super::WebViewInner {
+            command_tx: commands,
+            thread_id: 0,
+            join_handle: Default::default(),
+            webtag: super::WebTag::new("parent-transfer-test", "home", None),
+            native_view: 10,
+            composition_hosted: true,
+            parent_window: Default::default(),
+        };
+        super::publish_parent_window(&inner.parent_window, 10);
+        inner.parent_window.lock().unwrap().pending = Some(20);
+        assert!(
+            inner.has_parent_window(10),
+            "failed transfer must keep its source protected"
+        );
+        assert!(
+            inner.has_parent_window(20),
+            "retirement must see an admitted incoming transfer"
+        );
+        super::publish_parent_window(&inner.parent_window, 10);
+        assert!(inner.has_parent_window(10));
+        assert!(!inner.has_parent_window(20));
+        inner.parent_window.lock().unwrap().pending = Some(20);
+        super::publish_parent_window(&inner.parent_window, 20);
+        assert!(!inner.has_parent_window(10));
+        assert!(inner.has_parent_window(20));
+    }
+
+    #[test]
+    fn retirement_retries_failure_and_stops_when_owner_exits() {
+        let alive = super::AtomicBool::new(true);
+        let mut attempts = 0;
+        assert!(super::wait_for_parent_retirement(&alive, || {
+            attempts += 1;
+            if attempts == 1 {
+                Err(crate::WebViewError::WebView("temporary failure".into()))
+            } else {
+                Ok(())
+            }
+        }));
+        assert_eq!(attempts, 2);
+        attempts = 0;
+        assert!(!super::wait_for_parent_retirement(&alive, || {
+            attempts += 1;
+            alive.store(false, super::Ordering::SeqCst);
+            Err(crate::WebViewError::WebView("owner exited".into()))
+        }));
+        assert_eq!(attempts, 1);
+    }
     use super::{
         UiCommand, UiDispatchError, WebViewInner, enter_webview_ui_lifecycle,
         map_eval_dispatch_error, should_update_parent, webview_ui_lifecycle_gate,
@@ -1843,6 +2089,7 @@ mod tests {
             join_handle: Mutex::new(None),
             webtag: WebTag::new("lifecycle-test", "home", Some(1)),
             native_view: 0,
+            parent_window: Default::default(),
             composition_hosted: false,
         };
 
@@ -1860,6 +2107,7 @@ mod tests {
             join_handle: Mutex::new(None),
             webtag: WebTag::new("document-queue-test", "home", Some(1)),
             native_view: 0,
+            parent_window: Default::default(),
             composition_hosted: false,
         };
 
