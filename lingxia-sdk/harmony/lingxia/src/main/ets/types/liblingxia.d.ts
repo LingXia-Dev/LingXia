@@ -270,6 +270,7 @@ declare module 'liblingxia.so' {
   /**
    * Resolve managed browser tab path from tabId.
    */
+  export function browserTabWebtag(tabId: string): string;
   export function browserTabPathForId(tabId: string): string;
 
   /**

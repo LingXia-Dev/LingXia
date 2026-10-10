@@ -346,6 +346,17 @@ pub(crate) fn clear_active() {
     lingxia_browser::clear_active();
 }
 
+#[cfg(target_env = "ohos")]
+pub(crate) fn tab_webtag(tab_id: &str) -> String {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::tab_webtag(tab_id).unwrap_or_default();
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = tab_id;
+        String::new()
+    }
+}
+
 pub(crate) fn tab_path(tab_id: &str) -> String {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::tab_path(tab_id);

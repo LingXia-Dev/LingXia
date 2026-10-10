@@ -20,7 +20,7 @@ import { webview } from '@kit.ArkWeb';
 import { Lingxia } from '../../../app/Lingxia';
 import { LingXiaWebView } from '../../LingXiaWebView';
 import { addWebViewUiCallback, extractWebTag, removeWebViewUiCallback, WebViewInfo, WebViewManager } from '../../WebViewBridge';
-import { browserTabPathForId, getBuiltinBrowserAppId, notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
+import { notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
 import type { SurfaceLayoutConfig } from './SurfaceModel';
 import { isExternalWindowUrl, isFileUrl, isHttpUrl } from './SurfaceUrlPolicy';
 import { SurfaceCloseButton } from './SurfaceChrome';
@@ -255,10 +255,7 @@ struct LingXiaFloatSurfacePage {
     if (!layout || layout.content !== FLOAT_CONTENT_URL || !layout.browserTabId || this.pageWebTag.length > 0) {
       return;
     }
-    const appId = String(getBuiltinBrowserAppId() ?? '').trim();
-    const path = String(browserTabPathForId(layout.browserTabId) ?? '').trim();
-    if (!appId || !path) return;
-    const controller = WebViewManager.findWebview(appId, path);
+    const controller = WebViewManager.findBrowserWebview(layout.browserTabId);
     if (!controller) return;
     const infos = WebViewManager.getAllWebViewInfos();
     for (let i = 0; i < infos.length; i++) {

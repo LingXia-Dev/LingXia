@@ -49,6 +49,8 @@ pub(crate) use runtime::open_standalone_for_app;
     target_env = "ohos"
 ))]
 pub(crate) use runtime::open_trusted_for_app;
+#[cfg(target_env = "ohos")]
+pub(crate) use runtime::tab_webtag;
 pub(crate) use runtime::{
     APP_ID, close, mark_active, navigate_trusted_control_page, open_for_app, tab_path,
 };

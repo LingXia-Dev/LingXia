@@ -24,8 +24,7 @@ import {
 	  browserTabClose,
 	  browserTabIsAside,
 	  browserTabNavigate,
-	  browserTabPathForId,
-  browserUrlIsHidden as nativeBrowserUrlIsHidden,
+	  browserUrlIsHidden as nativeBrowserUrlIsHidden,
 	  getBuiltinBrowserAppId,
 	  openTrustedBrowserTabWithId,
 	  getLxappSessionId,
@@ -782,21 +781,7 @@ export struct LxAppBrowser {
       return null;
     }
 
-    let appId = '';
-    let path = '';
-    try {
-      appId = String(getBuiltinBrowserAppId() ?? '').trim();
-      path = String(browserTabPathForId(tabId) ?? '').trim();
-    } catch (error) {
-      LxLog.e(TAG, `Failed to resolve browser app/path for tabId=${tabId}: ${error}`);
-      return null;
-    }
-
-    if (!appId || !path) {
-      return null;
-    }
-
-    const managedController = WebViewManager.findWebview(appId, path);
+    const managedController = WebViewManager.findBrowserWebview(tabId);
     if (!managedController) {
       return null;
     }
@@ -1751,21 +1736,17 @@ export struct LxAppBrowser {
 
   private resolveTabLabel(tabId: string): string {
     try {
-      const appId = String(getBuiltinBrowserAppId() ?? '').trim();
-      const path = String(browserTabPathForId(tabId) ?? '').trim();
-      if (appId && path) {
-        const managedController = WebViewManager.findWebview(appId, path);
-        if (managedController) {
-          const title = String(managedController.getTitle() ?? '').trim();
-          if (title) {
-            return title;
-          }
-          const currentUrl = String(managedController.getUrl() ?? '').trim();
-          if (currentUrl && !browserUrlIsHidden(currentUrl)) {
-            const display = browserUrlDisplay(currentUrl);
-            if (display.text) {
-              return display.text;
-            }
+      const managedController = WebViewManager.findBrowserWebview(tabId);
+      if (managedController) {
+        const title = String(managedController.getTitle() ?? '').trim();
+        if (title) {
+          return title;
+        }
+        const currentUrl = String(managedController.getUrl() ?? '').trim();
+        if (currentUrl && !browserUrlIsHidden(currentUrl)) {
+          const display = browserUrlDisplay(currentUrl);
+          if (display.text) {
+            return display.text;
           }
         }
       }

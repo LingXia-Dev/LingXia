@@ -522,6 +522,23 @@ pub fn tab_path(tab_id: &str) -> String {
     tabs::browser_tab_path_for_id(tab_id)
 }
 
+/// Exact native identity of the current tab, including its creation generation.
+/// This is available before its controller is registered; shells must wait for
+/// that identity instead of falling back to a retiring controller at the path.
+pub fn tab_webtag(tab_id: &str) -> Option<String> {
+    let tab_id = tabs::normalize_runtime_tab_id(tab_id)?;
+    let state = tabs::lock_state();
+    let tab = state.tabs.get(&tab_id)?;
+    Some(
+        webview::browser_webtag(
+            &tabs::browser_tab_path_for_runtime_id(&tab_id),
+            tab.session_id,
+            tab.create_token,
+        )
+        .to_string(),
+    )
+}
+
 pub fn update_tab(tab_id: &str, current_url: Option<&str>, title: Option<&str>) -> bool {
     tabs::browser_update_tab_info(tab_id, current_url, title)
 }

@@ -53,6 +53,10 @@ export class WebViewManager {
     return CoreWebViewManager.createWebview(webtag, optionsToken, generation);
   }
 
+  static findBrowserWebview(tabId: string): webview.WebviewController | null {
+    return CoreWebViewManager.findBrowserWebview(tabId);
+  }
+
   static findWebview(appId: string, path: string): webview.WebviewController | null {
     return CoreWebViewManager.findWebview(appId, path);
   }
