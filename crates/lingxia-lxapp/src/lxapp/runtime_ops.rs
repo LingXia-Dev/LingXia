@@ -377,17 +377,19 @@ fn notify_lxapp_host_visibility_for_session(
     )
 }
 
+/// Deliver a native visibility event to the page at `path`. Returns false
+/// when the app is already closing and the event was ignored.
 pub fn notify_page_host_visibility(
     appid: &str,
     path: &str,
     visible: bool,
-) -> Result<(), LxAppError> {
-    notify_selected_page_host_visibility(appid, visible, |app| app.require_page(path)).map(|_| ())
+) -> Result<bool, LxAppError> {
+    notify_selected_page_host_visibility(appid, visible, |app| app.require_page(path))
 }
 
-/// Deliver a native visibility event only to the instance and session named
-/// by the full WebView tag, including when another instance shares its route.
-/// Returns false when the app is already closing and the event was ignored.
+/// Same as `notify_page_host_visibility`, but only for the instance and
+/// session named by the full WebView tag, so a late event from a departing
+/// instance cannot reach another instance of the same route.
 pub fn notify_page_host_visibility_by_webtag(
     appid: &str,
     webtag: &str,

@@ -5,6 +5,7 @@ use super::*;
 use crate::events::normalizer;
 use async_trait::async_trait;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 
 pub(crate) const WM_LINGXIA_COMMAND: u32 = WM_APP + 0x154;
 
@@ -239,10 +240,12 @@ pub(crate) enum UiCommand {
         window: isize,
         resp: Sender<StdResult<()>>,
     },
+    /// Move the controller out of `expected` into `window` if it is still
+    /// parented there; used while `expected` retires.
     ParkFromParent {
         expected: isize,
         window: isize,
-        resp: Sender<StdResult<bool>>,
+        resp: Sender<StdResult<ParkOutcome>>,
     },
     NotifyParentPositionChanged {
         resp: Sender<StdResult<()>>,
@@ -264,7 +267,11 @@ pub(crate) enum UiCommand {
         frame: super::composition::IslandVideoFrame,
         resp: Sender<StdResult<()>>,
     },
+    /// Phase one of teardown: the message loop starts retiring the parent
+    /// HWND off-thread and keeps pumping; it never reaches `handle_command`.
     Shutdown,
+    /// Phase two, sent by the retirement worker once foreign controllers
+    /// have left the parent: the loop exits and destroys the window.
     ShutdownReady,
 }
 
@@ -580,20 +587,30 @@ impl WebViewInner {
         self.dispatch_command_same_thread_safe(|resp| UiCommand::SetParentWindow { window, resp })
     }
 
-    pub(crate) fn park_from_parent(&self, expected: isize, window: isize) -> StdResult<bool> {
+    pub(crate) fn park_from_parent(
+        &self,
+        expected: isize,
+        window: isize,
+    ) -> StdResult<ParkOutcome> {
         if unsafe { Threading::GetCurrentThreadId() } == self.thread_id {
             return Err(WebViewError::WebView(
                 "Cannot synchronously park on the controller thread".to_string(),
             ));
         }
         let (resp, reply) = mpsc::channel();
-        self.command_tx
+        // A controller whose UI thread already exited has nothing left to
+        // protect, and retirement must not wait on it.
+        if self
+            .command_tx
             .send(UiCommand::ParkFromParent {
                 expected,
                 window,
                 resp,
             })
-            .map_err(|_| WebViewError::WebView("WebView UI thread is unavailable".to_string()))?;
+            .is_err()
+        {
+            return Ok(ParkOutcome::NotInParent);
+        }
         self.wake_ui_thread();
         recv_reply_pumping(&reply, Some(UI_COMMAND_TIMEOUT))
             .map_err(|err| WebViewError::WebView(format!("Park WebView command: {err}")))?
@@ -1462,18 +1479,35 @@ impl Drop for RetirementOwnerGuard {
     }
 }
 
+/// Upper bound on waiting for foreign controllers to leave a retiring parent.
+/// Past it the parent is destroyed anyway: a stuck surface beats a leaked
+/// UI thread that never exits.
+const PARENT_RETIREMENT_DEADLINE: Duration = Duration::from_secs(10);
+const PARENT_RETIREMENT_POLL: Duration = Duration::from_millis(100);
+
+/// Returns false only when the owner loop exited before retirement finished.
 fn wait_for_parent_retirement(
     owner_alive: &AtomicBool,
-    mut prepare: impl FnMut() -> StdResult<()>,
+    deadline: Instant,
+    mut prepare: impl FnMut() -> StdResult<ParentRetirement>,
 ) -> bool {
+    let mut deferred_logged = false;
     while owner_alive.load(Ordering::SeqCst) {
         match prepare() {
-            Ok(()) => return true,
-            Err(err) => log::warn!(
-                "Deferring Windows parent retirement until controllers are parked: {err}"
-            ),
+            Ok(ParentRetirement::Ready) => return true,
+            Ok(ParentRetirement::Deferred) => {
+                if !deferred_logged {
+                    deferred_logged = true;
+                    log::debug!("Windows parent retirement waits for controllers to park");
+                }
+            }
+            Err(err) => log::warn!("Windows parent retirement could not park controllers: {err}"),
         }
-        thread::sleep(Duration::from_millis(100));
+        if Instant::now() >= deadline {
+            log::warn!("Windows parent retirement timed out; destroying the parent anyway");
+            return true;
+        }
+        thread::sleep(PARENT_RETIREMENT_POLL);
     }
     false
 }
@@ -1493,7 +1527,10 @@ fn begin_parent_retirement(
     thread::Builder::new()
         .name("lingxia-webview-retire".to_string())
         .spawn(move || {
-            if !wait_for_parent_retirement(&owner_alive, || prepare_destroy_webview_parent(view)) {
+            let deadline = Instant::now() + PARENT_RETIREMENT_DEADLINE;
+            if !wait_for_parent_retirement(&owner_alive, deadline, || {
+                prepare_destroy_webview_parent(view)
+            }) {
                 return;
             }
             if commands.send(UiCommand::ShutdownReady).is_err() {
@@ -1850,7 +1887,9 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             resp,
         } => {
             let result = if state.hwnd != hwnd_from_handle(expected) {
-                Ok(false)
+                Ok(ParkOutcome::NotInParent)
+            } else if !can_present_in_parent(window) {
+                Ok(ParkOutcome::Deferred)
             } else {
                 state
                     .parent_window
@@ -1858,7 +1897,7 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
                     .unwrap_or_else(|err| err.into_inner())
                     .pending = Some(window);
                 let parent = hwnd_from_handle(window);
-                let transfer = if can_present_in_parent(window) {
+                let transfer =
                     set_controller_visible(state, false).and_then(|()| match &mut state.hosting {
                         HostingMode::Windowed => unsafe {
                             state.controller.SetParentWindow(parent).map_err(|err| {
@@ -1868,15 +1907,10 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
                         HostingMode::Composition(surface) => {
                             surface.set_parent(&state.controller, parent)
                         }
-                    })
-                } else {
-                    Err(WebViewError::WebView(
-                        "Windows parking parent is retiring".to_string(),
-                    ))
-                };
+                    });
                 let result = transfer.map(|()| {
                     state.hwnd = parent;
-                    true
+                    ParkOutcome::Parked
                 });
                 publish_parent_window(&state.parent_window, state.hwnd.0 as isize);
                 result
@@ -1920,6 +1954,7 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let _ = resp.send(result);
         }
         UiCommand::ShutdownReady => return Ok(true),
+        // Intercepted by `message_loop`; listed only for exhaustiveness.
         UiCommand::Shutdown => {}
     }
 
@@ -2042,25 +2077,48 @@ mod tests {
     }
 
     #[test]
-    fn retirement_retries_failure_and_stops_when_owner_exits() {
+    fn retirement_retries_deferral_and_failure_until_ready() {
+        use super::ParentRetirement::{Deferred, Ready};
         let alive = super::AtomicBool::new(true);
+        let far = super::Instant::now() + super::Duration::from_secs(60);
         let mut attempts = 0;
-        assert!(super::wait_for_parent_retirement(&alive, || {
+        assert!(super::wait_for_parent_retirement(&alive, far, || {
             attempts += 1;
-            if attempts == 1 {
-                Err(crate::WebViewError::WebView("temporary failure".into()))
-            } else {
-                Ok(())
+            match attempts {
+                1 => Ok(Deferred),
+                2 => Err(crate::WebViewError::WebView("temporary failure".into())),
+                _ => Ok(Ready),
             }
         }));
-        assert_eq!(attempts, 2);
-        attempts = 0;
-        assert!(!super::wait_for_parent_retirement(&alive, || {
+        assert_eq!(attempts, 3);
+    }
+
+    #[test]
+    fn retirement_stops_when_owner_exits() {
+        let alive = super::AtomicBool::new(true);
+        let far = super::Instant::now() + super::Duration::from_secs(60);
+        let mut attempts = 0;
+        assert!(!super::wait_for_parent_retirement(&alive, far, || {
             attempts += 1;
             alive.store(false, super::Ordering::SeqCst);
-            Err(crate::WebViewError::WebView("owner exited".into()))
+            Ok(super::ParentRetirement::Deferred)
         }));
         assert_eq!(attempts, 1);
+    }
+
+    #[test]
+    fn retirement_proceeds_once_the_deadline_passes() {
+        let alive = super::AtomicBool::new(true);
+        let mut attempts = 0;
+        assert!(super::wait_for_parent_retirement(
+            &alive,
+            super::Instant::now(),
+            || {
+                attempts += 1;
+                Ok(super::ParentRetirement::Deferred)
+            }
+        ));
+        assert_eq!(attempts, 1, "an expired deadline must not keep polling");
     }
     use super::{
         UiCommand, UiDispatchError, WebViewInner, enter_webview_ui_lifecycle,

@@ -11,14 +11,35 @@ pub struct WindowsWebViewNativeView {
     pub window: isize,
 }
 
+/// Whether a parent HWND may be destroyed yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ParentRetirement {
+    Ready,
+    /// Foreign controllers are still moving out; ask again shortly.
+    Deferred,
+}
+
+/// Result of asking a controller to leave a retiring parent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ParkOutcome {
+    Parked,
+    /// The controller was not in that parent, or its UI thread is already gone.
+    NotInParent,
+    /// Its own parking window is retiring too; it will leave on its own.
+    Deferred,
+}
+
 pub trait WindowsWebViewNativeViewHost: Send + Sync {
     fn create_webview_parent(&self, webtag: &WebTag) -> StdResult<WindowsWebViewNativeView>;
     fn destroy_webview_parent(&self, webtag_key: &str, view: WindowsWebViewNativeView);
 
     /// Runs off the owner UI thread while it continues pumping messages.
-    /// Return an error to defer teardown until foreign controllers are safe.
-    fn prepare_destroy_webview_parent(&self, _view: WindowsWebViewNativeView) -> StdResult<()> {
-        Ok(())
+    /// `Deferred` is polled again; an error means parking itself failed.
+    fn prepare_destroy_webview_parent(
+        &self,
+        _view: WindowsWebViewNativeView,
+    ) -> StdResult<ParentRetirement> {
+        Ok(ParentRetirement::Ready)
     }
 
     /// Checked on the controller thread before committing a parent transfer.
@@ -192,7 +213,7 @@ impl WindowsWebViewHandler {
     }
 
     /// Park only if the controller still belongs to the retiring parent.
-    pub fn park_from_parent(&self, expected: isize, window: isize) -> StdResult<bool> {
+    pub fn park_from_parent(&self, expected: isize, window: isize) -> StdResult<ParkOutcome> {
         self.webview.inner.park_from_parent(expected, window)
     }
 
@@ -261,10 +282,14 @@ pub(crate) fn destroy_webview_parent(webtag_key: &str, view: WindowsWebViewNativ
     }
 }
 
-pub(crate) fn prepare_destroy_webview_parent(view: WindowsWebViewNativeView) -> StdResult<()> {
+pub(crate) fn prepare_destroy_webview_parent(
+    view: WindowsWebViewNativeView,
+) -> StdResult<ParentRetirement> {
     NATIVE_VIEW_HOST
         .get()
-        .map_or(Ok(()), |host| host.prepare_destroy_webview_parent(view))
+        .map_or(Ok(ParentRetirement::Ready), |host| {
+            host.prepare_destroy_webview_parent(view)
+        })
 }
 
 pub(crate) fn can_present_in_parent(window: isize) -> bool {

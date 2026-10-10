@@ -20,8 +20,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
 use lingxia_webview::platform::windows::{
-    WindowsWebViewHandler, WindowsWebViewNativeView, WindowsWebViewNativeViewHost,
-    find_webview_handler, set_webview_native_view_host,
+    ParentRetirement, ParkOutcome, WindowsWebViewHandler, WindowsWebViewNativeView,
+    WindowsWebViewNativeViewHost, find_webview_handler, set_webview_native_view_host,
 };
 use lingxia_webview::runtime as webview_runtime;
 use lingxia_webview::{WebTag, WebViewError};
@@ -435,7 +435,10 @@ impl WindowsWebViewNativeViewHost for PlatformNativeViewHost {
         }
     }
 
-    fn prepare_destroy_webview_parent(&self, view: WindowsWebViewNativeView) -> StdResult<()> {
+    fn prepare_destroy_webview_parent(
+        &self,
+        view: WindowsWebViewNativeView,
+    ) -> StdResult<ParentRetirement> {
         RETIRING_HOST_WINDOWS
             .get_or_init(Default::default)
             .lock()
@@ -10760,10 +10763,11 @@ pub(crate) fn webtag_is_visible(webtag_key: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn park_foreign_webview_controllers(host: HWND) -> StdResult<()> {
+fn park_foreign_webview_controllers(host: HWND) -> StdResult<ParentRetirement> {
     // Snapshot before marshaling to controller threads. Never hold a registry
     // lock across those calls, and include panels as well as parked group mains.
     let children = webview_runtime::list_webviews();
+    let mut retirement = ParentRetirement::Ready;
     for tag in children {
         let Some(handler) = find_webview_handler(&tag) else {
             continue;
@@ -10774,17 +10778,23 @@ fn park_foreign_webview_controllers(host: HWND) -> StdResult<()> {
         }
         // The physical parent is checked on the controller's UI thread;
         // presentation may have moved it since this snapshot was captured.
-        if handler.park_from_parent(hwnd_handle(host), hwnd_handle(native))?
-            && let Some(windows) = WEBTAG_WINDOWS.get()
-            && let Ok(mut windows) = windows.lock()
-            && windows.get(tag.key()).copied() == Some(hwnd_handle(host))
-        {
-            windows.insert(tag.key().to_string(), hwnd_handle(native));
-            // Keep this transition ahead of a newer presentation mapping.
-            notify_webtag_visibility(tag.key(), false);
+        match handler.park_from_parent(hwnd_handle(host), hwnd_handle(native))? {
+            ParkOutcome::Parked => {
+                if let Some(windows) = WEBTAG_WINDOWS.get()
+                    && let Ok(mut windows) = windows.lock()
+                    && windows.get(tag.key()).copied() == Some(hwnd_handle(host))
+                {
+                    windows.insert(tag.key().to_string(), hwnd_handle(native));
+                    // Keep this transition ahead of a newer presentation mapping.
+                    notify_webtag_visibility(tag.key(), false);
+                }
+            }
+            ParkOutcome::NotInParent => {}
+            // Its parking window retires too, so it leaves with that owner.
+            ParkOutcome::Deferred => retirement = ParentRetirement::Deferred,
         }
     }
-    Ok(())
+    Ok(retirement)
 }
 
 type VisibilityEvent = (WebTag, bool);
