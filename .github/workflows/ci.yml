@@ -706,15 +706,6 @@ jobs:
           bash scripts/ci/cargo-test-required.sh -p lingxia-webview --lib windows::controller::tests::document_messages_enqueue_without_reply_wait_and_preserve_fifo
           bash scripts/ci/cargo-test-required.sh -p lingxia-browser --lib document_session::tests
 
-      # Template lifecycles run `.mjs` entries through Node from canonical
-      # (`\\?\`) paths; only a real Windows spawn proves Node can load them.
-      - name: Test template lifecycles on Windows
-        if: matrix.suite == 'runtime'
-        shell: bash
-        run: |
-          bash scripts/ci/cargo-test-required.sh -p lingxia-cli --bin lingxia build_prepare::tests
-          bash scripts/ci/cargo-test-required.sh -p lingxia-cli --bin lingxia template_provider::tests::local_git_sources_drop_verbatim
-
       - name: Clippy Windows browser shell feature
         if: matrix.suite == 'lint'
         shell: bash
@@ -732,6 +723,17 @@ jobs:
             if (-not (Test-Path $makensis)) { Start-Sleep -Seconds (15 * $attempt) }
           }
           if (-not (Test-Path $makensis)) { throw 'NSIS installation failed' }
+
+      # Template lifecycles run `.mjs` entries through Node from canonical
+      # (`\\?\`) paths; only a real Windows spawn proves Node can load them.
+      # Here because the package smoke below builds this same test binary.
+      - name: Test template lifecycles on Windows
+        if: matrix.suite == 'distribution'
+        shell: bash
+        # One run per filter, so each must match; the binary is built once.
+        run: |
+          bash scripts/ci/cargo-test-required.sh -p lingxia-cli --bin lingxia build_prepare::tests
+          bash scripts/ci/cargo-test-required.sh -p lingxia-cli --bin lingxia template_provider::tests::local_git_sources_drop_verbatim
 
       - name: Test Windows distribution and updates
         if: matrix.suite == 'distribution'
