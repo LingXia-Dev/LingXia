@@ -11,8 +11,6 @@ use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use lingxia_app_context::{AppEnv, env};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::fs;
-use std::path::Path;
 
 const MAX_SIGNED_BYTES: usize = 8 * 1024;
 const MAX_SIGNATURES: usize = 2;
@@ -102,28 +100,15 @@ pub fn public_key_base64url(seed: &[u8; 32]) -> String {
     encode_base64url(SigningKey::from_bytes(seed).verifying_key().as_bytes())
 }
 
-pub fn load_signing_seed_file(path: &Path) -> Result<[u8; 32], UpdateError> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = fs::metadata(path)
-            .map_err(|e| UpdateError::io(format!("read signing key {}: {e}", path.display())))?
-            .permissions()
-            .mode()
-            & 0o777;
-        if mode & 0o077 != 0 {
-            return Err(UpdateError::invalid_parameter(format!(
-                "signing key {} must not be group/other-accessible",
-                path.display()
-            )));
-        }
-    }
-    let text = fs::read_to_string(path)
-        .map_err(|e| UpdateError::io(format!("read signing key {}: {e}", path.display())))?;
-    let bytes = decode_base64url(text.trim())?;
-    bytes
-        .try_into()
-        .map_err(|_| UpdateError::invalid_parameter("signing key must be a 32-byte Ed25519 seed"))
+pub fn parse_signing_seed(value: &str) -> Result<[u8; 32], UpdateError> {
+    decode_base64url(value.trim())
+        .ok()
+        .and_then(|bytes| bytes.try_into().ok())
+        .ok_or_else(|| {
+            UpdateError::invalid_parameter(
+                "update signing key must be the base64url 32-byte Ed25519 seed itself, not a file path",
+            )
+        })
 }
 
 pub fn sign_package(
@@ -153,19 +138,19 @@ pub fn check_update_enabled(trusted_public_keys: &[String]) -> bool {
     !host_requires_signature() || !trusted_public_keys.is_empty()
 }
 
-pub fn sign_package_from_key_file(
+pub fn sign_package_from_key(
     env: AppEnv,
-    key_file: Option<&Path>,
+    key: Option<&str>,
     req: &SignRequest<'_>,
 ) -> Result<Option<UpdateAuthentication>, UpdateError> {
-    let key_file = key_file.filter(|path| !path.as_os_str().is_empty());
-    match (env_requires_signature(env), key_file) {
+    let key = key.map(str::trim).filter(|value| !value.is_empty());
+    match (env_requires_signature(env), key) {
         (true, None) => Err(UpdateError::invalid_parameter(format!(
-            "{env} publish requires --update-signing-key-file"
+            "{env} publish requires --update-signing-key"
         ))),
         (false, None) => Ok(None),
-        (_, Some(path)) => {
-            let seed = load_signing_seed_file(path)?;
+        (_, Some(value)) => {
+            let seed = parse_signing_seed(value)?;
             sign_package(&seed, req).map(Some)
         }
     }
@@ -605,26 +590,39 @@ mod tests {
     }
 
     #[test]
-    fn prod_publish_without_key_file_fails() {
+    fn prod_publish_without_key_fails() {
         let sha256 = archive_sha256_hex(ARCHIVE);
-        let err = sign_package_from_key_file(AppEnv::Prod, None, &request(&sha256)).unwrap_err();
-        assert!(err.to_string().contains("--update-signing-key-file"));
+        let err = sign_package_from_key(AppEnv::Prod, None, &request(&sha256)).unwrap_err();
+        assert!(err.to_string().contains("--update-signing-key"));
     }
 
     #[test]
-    fn prod_draft_publish_without_key_file_fails() {
+    fn prod_publish_signs_the_seed_parameter() {
+        let sha256 = archive_sha256_hex(ARCHIVE);
+        let req = request(&sha256);
+        let seed = encode_base64url(&SEED);
+        let auth = sign_package_from_key(AppEnv::Prod, Some(&seed), &req)
+            .unwrap()
+            .unwrap();
+        assert_eq!(auth, sign_package(&SEED, &req).unwrap());
+        let err = sign_package_from_key(AppEnv::Prod, Some("/tmp/update.key"), &req).unwrap_err();
+        assert!(err.to_string().contains("not a file path"), "{err}");
+    }
+
+    #[test]
+    fn prod_draft_publish_without_key_fails() {
         let sha256 = archive_sha256_hex(ARCHIVE);
         let mut req = request(&sha256);
         req.channel = "draft";
-        let err = sign_package_from_key_file(AppEnv::Prod, None, &req).unwrap_err();
+        let err = sign_package_from_key(AppEnv::Prod, None, &req).unwrap_err();
         assert!(err.to_string().contains("prod publish"));
     }
 
     #[test]
-    fn dev_publish_without_key_file_is_unsigned() {
+    fn dev_publish_without_key_is_unsigned() {
         let sha256 = archive_sha256_hex(ARCHIVE);
         assert!(
-            sign_package_from_key_file(AppEnv::Dev, None, &request(&sha256),)
+            sign_package_from_key(AppEnv::Dev, None, &request(&sha256),)
                 .unwrap()
                 .is_none()
         );
