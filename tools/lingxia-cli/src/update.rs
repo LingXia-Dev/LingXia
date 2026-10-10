@@ -47,13 +47,13 @@ pub fn newer_released_cli() -> Option<(String, String)> {
     ))
 }
 
-pub fn maybe_auto_update(skip_skill: bool) {
-    #[cfg(target_os = "windows")]
-    let _ = skip_skill;
+/// Returns whether this binary was replaced on disk, which also means the new
+/// binary has already reconciled the skill.
+pub fn maybe_auto_update() -> bool {
     notify_deferred_update_failure();
 
     let Ok(raw_exe_path) = current_exe_path() else {
-        return;
+        return false;
     };
     let Ok(exe_path) = raw_exe_path.canonicalize().with_context(|| {
         format!(
@@ -61,15 +61,15 @@ pub fn maybe_auto_update(skip_skill: bool) {
             raw_exe_path.display()
         )
     }) else {
-        return;
+        return false;
     };
 
     if !is_install_sh_install(&exe_path) {
-        return;
+        return false;
     }
 
     let Ok(status) = load_update_status(false) else {
-        return;
+        return false;
     };
 
     if status.update_available {
@@ -82,9 +82,8 @@ pub fn maybe_auto_update(skip_skill: bool) {
             // the one that should be installed -- and only it can write it.
             #[cfg(not(target_os = "windows"))]
             Ok(SelfReplace::Complete) => {
-                if !skip_skill {
-                    sync_skill_through(&exe_path);
-                }
+                sync_skill_through(&exe_path, false);
+                return true;
             }
             #[cfg(target_os = "windows")]
             Ok(SelfReplace::Deferred) => {}
@@ -94,6 +93,7 @@ pub fn maybe_auto_update(skip_skill: bool) {
             }
         }
     }
+    false
 }
 
 /// Bring the skill installed under the home directory in step with this binary.
@@ -133,8 +133,13 @@ pub fn sync_installed_skill(create: bool) {
 /// Windows stages the replacement until this process exits, so there is no new
 /// binary to run yet; the skill follows on that binary's next command.
 #[cfg(not(target_os = "windows"))]
-pub(crate) fn sync_skill_through(exe: &Path) {
-    match std::process::Command::new(exe).arg("__sync-skill").status() {
+pub(crate) fn sync_skill_through(exe: &Path, create: bool) {
+    let mut command = std::process::Command::new(exe);
+    command.arg("__sync-skill");
+    if create {
+        command.arg("--create");
+    }
+    match command.status() {
         Ok(status) if status.success() => {}
         Ok(status) => eprintln!("warning: the new CLI could not write its skill ({status})"),
         Err(err) => eprintln!("warning: could not run the new CLI to write its skill: {err}"),

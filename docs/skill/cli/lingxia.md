@@ -187,8 +187,8 @@ Writes the skill to `~/.agents/skills/lingxia/`; with Claude Code installed,
 `~/.claude/skills/lingxia/` links to it. It never edits the current project:
 a stale `AGENTS.md` pointer is reported with its replacement block (only
 `lingxia new` writes the pointer). `lingxia new` and `lingxia upgrade` do
-this themselves; afterwards every `lingxia` command keeps the copy in step
-(`--skip-skill` or `LINGXIA_SKIP_SKILL=1` turns that off, for CI).
+this themselves; afterwards every `lingxia` command keeps an existing copy in
+step. A machine without `~/.agents/skills` (CI) is never written to.
 
 ## `lingxia upgrade`
 

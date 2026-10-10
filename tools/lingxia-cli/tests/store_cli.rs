@@ -4,9 +4,9 @@ use std::process::Command;
 fn run(args: &[&str]) -> std::process::Output {
     let temp = tempfile::TempDir::new().unwrap();
     Command::new(env!("CARGO_BIN_EXE_lingxia"))
-        .arg("--skip-skill")
         .args(args)
         .current_dir(temp.path())
+        .env("HOME", temp.path())
         .env("LINGXIA_HOME", temp.path().join("state"))
         .output()
         .unwrap()

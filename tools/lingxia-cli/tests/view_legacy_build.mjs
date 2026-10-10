@@ -49,7 +49,7 @@ function fixture(name, tooling, config) {
 }
 
 function build(dir, expectedError) {
-  const result = spawnSync(cli, ['build', '--release', '--skip-skill', '--progress', 'plain'], { cwd: dir, env, encoding: 'utf8', timeout: 120_000 });
+  const result = spawnSync(cli, ['build', '--release', '--progress', 'plain'], { cwd: dir, env, encoding: 'utf8', timeout: 120_000 });
   const output = result.stdout + result.stderr;
   assert.ifError(result.error);
   if (expectedError) {

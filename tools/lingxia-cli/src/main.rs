@@ -61,9 +61,6 @@ mod wallet;
                   mocks) with `lxdev`."
 )]
 struct Cli {
-    /// Skip automatic skill synchronization, including during upgrade (for CI).
-    #[arg(long, global = true, env = "LINGXIA_SKIP_SKILL", value_parser = clap::builder::BoolishValueParser::new())]
-    skip_skill: bool,
     #[command(subcommand)]
     command: Commands,
 }
@@ -555,11 +552,15 @@ session per project and target: starting another takes over the old one.
         verbose: bool,
     },
 
-    /// Write this binary's agent skill over the installed copy. Run by
-    /// `upgrade` through the newly installed binary, which is the only process
-    /// that carries the new skill.
+    /// Write this binary's agent skill over the installed copy. Run through a
+    /// newly installed binary, the only process that carries the new skill.
     #[command(name = "__sync-skill", hide = true)]
-    SyncSkill,
+    SyncSkill {
+        /// Write a copy where none exists (`upgrade`); otherwise only an
+        /// existing copy or skills root is reconciled (auto-update).
+        #[arg(long)]
+        create: bool,
+    },
 
     /// Fetch the named templates. Started detached by any command that finds
     /// one due, so nobody waits for git. Name kept in step with
@@ -879,14 +880,12 @@ fn main() -> Result<()> {
     // the one job it was started for, and a detached worker must never replace
     // the binary out from under the command that spawned it. JSON commands
     // must not emit updater output before their machine-readable result.
-    if !raw_args.iter().any(|arg| {
+    let replaced = !raw_args.iter().any(|arg| {
         matches!(
             arg.as_str(),
             "upgrade" | "__sync-skill" | "__refresh-templates" | "--json"
         )
-    }) {
-        update::maybe_auto_update(cli.skip_skill);
-    }
+    }) && update::maybe_auto_update();
 
     // Every run reconciles the installed skill with the one this binary
     // carries, so the two cannot drift. `upgrade` and `__sync-skill` do it
@@ -894,12 +893,13 @@ fn main() -> Result<()> {
     // is that job.
     if !matches!(
         cli.command,
-        Commands::SyncSkill
+        Commands::SyncSkill { .. }
             | Commands::Skill { .. }
             | Commands::RefreshTemplates { .. }
             | Commands::Upgrade { .. }
     ) {
-        if !cli.skip_skill {
+        // The new binary already wrote its skill; this one would roll it back.
+        if !replaced {
             update::sync_installed_skill(false);
         }
         // Templates come from git, so this only reads state and hands any
@@ -1115,8 +1115,8 @@ fn main() -> Result<()> {
                 commands::doctor::execute(platform)?;
             }
         }
-        Commands::SyncSkill => {
-            update::sync_installed_skill(true);
+        Commands::SyncSkill { create } => {
+            update::sync_installed_skill(create);
         }
         Commands::RefreshTemplates { slugs } => {
             commands::template_provider::refresh_now(&slugs);
@@ -1127,7 +1127,7 @@ fn main() -> Result<()> {
             yes,
             cli_only,
         } => {
-            let code = commands::upgrade::execute(check, version, yes, cli_only, cli.skip_skill)?;
+            let code = commands::upgrade::execute(check, version, yes, cli_only)?;
             if code != 0 {
                 std::process::exit(code);
             }

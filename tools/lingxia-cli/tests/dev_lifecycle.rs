@@ -16,7 +16,6 @@ fn dev_stop_with_nothing_running_succeeds_every_time() {
             // A broker of its own, not the user's.
             .env("HOME", home.path())
             .env("LINGXIA_HOME", home.path().join("state"))
-            .env("LINGXIA_SKIP_SKILL", "1")
             .current_dir(project.path())
             .output()
             .unwrap()

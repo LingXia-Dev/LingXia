@@ -1,32 +1,33 @@
+// `dirs::home_dir` follows `HOME` only on Unix; elsewhere these tests would
+// touch the real home directory.
+#![cfg(unix)]
+
 use std::process::Command;
 
 #[test]
-fn skip_skill_is_global_and_supports_the_ci_environment() {
+fn commands_leave_a_home_without_agent_tooling_alone() {
     let temp = tempfile::TempDir::new().unwrap();
-    for args in [
-        vec!["--skip-skill", "version"],
-        vec!["version", "--skip-skill"],
-        vec!["version"],
-    ] {
+    let home = temp.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    for args in [&["version"][..], &["auth", "status", "--json"][..]] {
         let output = Command::new(env!("CARGO_BIN_EXE_lingxia"))
             .args(args)
-            .env("LINGXIA_SKIP_SKILL", "1")
+            .env("HOME", &home)
             .env("LINGXIA_HOME", temp.path().join("state"))
             .current_dir(temp.path())
             .output()
             .unwrap();
         assert!(
             output.status.success(),
-            "{}",
+            "{args:?}: {}",
             String::from_utf8_lossy(&output.stderr)
         );
         assert!(!String::from_utf8_lossy(&output.stderr).contains("agent skill"));
     }
+    assert!(!home.join(".agents").exists());
+    assert!(!home.join(".claude").exists());
 }
 
-// `dirs::home_dir` follows `HOME` only on Unix; elsewhere this would write to
-// the real home directory.
-#[cfg(unix)]
 #[test]
 fn skill_install_links_claude_to_the_shared_copy_and_leaves_the_project_alone() {
     const MARKER: &str = "<!-- lingxia skill: AGENTS.md pointer -->";
@@ -44,7 +45,6 @@ fn skill_install_links_claude_to_the_shared_copy_and_leaves_the_project_alone() 
             .args(args)
             .env("HOME", &home)
             .env("LINGXIA_HOME", temp.path().join("state"))
-            .env_remove("LINGXIA_SKIP_SKILL")
             .current_dir(&project)
             .output()
             .unwrap()
