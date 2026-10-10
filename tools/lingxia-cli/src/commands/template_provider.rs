@@ -1444,14 +1444,17 @@ pub(crate) mod test_support {
     }
 
     /// Resolves templates from `home` on this thread until dropped.
+    #[cfg(unix)]
     pub(crate) struct HomeGuard;
 
+    #[cfg(unix)]
     impl Drop for HomeGuard {
         fn drop(&mut self) {
             HOME.with(|home| *home.borrow_mut() = None);
         }
     }
 
+    #[cfg(unix)]
     pub(crate) fn use_home(home: &Path) -> HomeGuard {
         HOME.with(|slot| *slot.borrow_mut() = Some(home.to_path_buf()));
         HomeGuard
