@@ -45,9 +45,6 @@ pub struct TemplateManifest {
     #[serde(default)]
     pub skills: Vec<PathBuf>,
     pub create: Option<TemplateLifecycle>,
-    /// Finite build-input generation, run before every source build and once
-    /// when a dev session starts.
-    pub prepare: Option<TemplateLifecycle>,
     /// Long-running dev process speaking the companion protocol.
     pub companion: Option<TemplateLifecycle>,
     #[serde(default)]
@@ -763,7 +760,6 @@ fn validate_manifest(root: &Path, manifest: &TemplateManifest) -> Result<()> {
     }
     for (label, lifecycle) in [
         ("create", &manifest.create),
-        ("prepare", &manifest.prepare),
         ("companion", &manifest.companion),
     ] {
         let Some(lifecycle) = lifecycle else {
@@ -1459,14 +1455,17 @@ pub(crate) mod test_support {
     }
 
     /// Resolves templates from `home` on this thread until dropped.
+    #[cfg(unix)]
     pub(crate) struct HomeGuard;
 
+    #[cfg(unix)]
     impl Drop for HomeGuard {
         fn drop(&mut self) {
             HOME.with(|home| *home.borrow_mut() = None);
         }
     }
 
+    #[cfg(unix)]
     pub(crate) fn use_home(home: &Path) -> HomeGuard {
         HOME.with(|slot| *slot.borrow_mut() = Some(home.to_path_buf()));
         HomeGuard
@@ -1477,29 +1476,6 @@ pub(crate) mod test_support {
     #[cfg(unix)]
     pub(crate) fn install(home: &Path, project: &Path, lifecycles: &[(&str, &str)]) {
         use std::os::unix::fs::PermissionsExt;
-        install_entries(home, project, lifecycles, |bin, lifecycle, body| {
-            let script = bin.join(format!("{lifecycle}.sh"));
-            fs::write(&script, format!("#!/bin/sh\n{body}\n")).unwrap();
-            fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
-            format!("bin/{lifecycle}.sh")
-        });
-    }
-
-    /// [`install`] with each lifecycle an `.mjs` module run through `node`,
-    /// the shape real templates use and the only one Windows can run.
-    pub(crate) fn install_node(home: &Path, project: &Path, lifecycles: &[(&str, &str)]) {
-        install_entries(home, project, lifecycles, |bin, lifecycle, body| {
-            fs::write(bin.join(format!("{lifecycle}.mjs")), body).unwrap();
-            format!("bin/{lifecycle}.mjs")
-        });
-    }
-
-    fn install_entries(
-        home: &Path,
-        project: &Path,
-        lifecycles: &[(&str, &str)],
-        write_entry: impl Fn(&Path, &str, &str) -> String,
-    ) {
         let root = templates_root(home).join("example");
         fs::create_dir_all(root.join("template")).unwrap();
         fs::create_dir_all(root.join("bin")).unwrap();
@@ -1507,8 +1483,10 @@ pub(crate) mod test_support {
         fs::write(root.join("template/lxapp.json"), "{}").unwrap();
         let mut manifest = serde_json::json!({"name": "example", "template": "template"});
         for (lifecycle, body) in lifecycles {
-            let command = write_entry(&root.join("bin"), lifecycle, body);
-            manifest[lifecycle] = serde_json::json!({"command": command});
+            let script = root.join("bin").join(format!("{lifecycle}.sh"));
+            fs::write(&script, format!("#!/bin/sh\n{body}\n")).unwrap();
+            fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+            manifest[lifecycle] = serde_json::json!({"command": format!("bin/{lifecycle}.sh")});
         }
         fs::write(
             root.join(MANIFEST_FILE),
@@ -1580,7 +1558,6 @@ mod tests {
             skills: Vec::new(),
             create: None,
             companion: None,
-            prepare: None,
             defaults: TemplateDefaults::default(),
         };
         assert!(validate_manifest(root.path(), &manifest).is_err());
@@ -1899,8 +1876,7 @@ mod tests {
   "template": "template",
   "commands": { "example": "bin/example.mjs" },
   "skills": ["skills/example"],
-  "companion": {"command": "bin/example.mjs", "args": ["companion"]},
-  "prepare": {"command": "bin/example.mjs", "args": ["prepare"]}
+  "companion": {"command": "bin/example.mjs", "args": ["companion"]}
 }"#,
         )
         .unwrap();
@@ -1957,7 +1933,7 @@ mod tests {
             .unwrap();
         let command = lifecycle_command(
             &resolved,
-            resolved.manifest.prepare.as_ref().unwrap(),
+            resolved.manifest.companion.as_ref().unwrap(),
             project.path(),
         )
         .unwrap();
@@ -1968,7 +1944,7 @@ mod tests {
             args[0],
             dunce::canonicalize(resolved.root.join("bin/example.mjs")).unwrap()
         );
-        assert_eq!(args[1], "prepare");
+        assert_eq!(args[1], "companion");
 
         fs::write(source.path().join("skills/example/SKILL.md"), "second\n").unwrap();
         git(source.path(), &["add", "."]);

@@ -724,10 +724,11 @@ jobs:
           }
           if (-not (Test-Path $makensis)) { throw 'NSIS installation failed' }
 
-      # Template lifecycles run `.mjs` entries through Node from canonical
-      # (`\\?\`) paths; only a real Windows spawn proves Node can load them.
-      # Here because the package smoke below builds this same test binary.
-      - name: Test template lifecycles on Windows
+      # `lingxia:prepare` runs through npm.cmd and template lifecycles through
+      # Node from canonical (`\\?\`) paths; only a real Windows spawn proves
+      # both start. Here because the package smoke below builds this same test
+      # binary.
+      - name: Test build preparation and template lifecycles on Windows
         if: matrix.suite == 'distribution'
         shell: bash
         # One run per filter, so each must match; the binary is built once.

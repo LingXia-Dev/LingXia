@@ -265,9 +265,9 @@ owner: from then until it is dropped, `dev` stands aside.
 
 ## Lifetime
 
-- The template's finite `prepare` runs once before the companion starts.
-  The companion then keeps generated inputs current, the only project files
-  it writes; dev rebuilds never run `prepare`.
+- The project's `lingxia:prepare` script runs once before the companion
+  starts. The companion then keeps generated inputs current, the only project
+  files it writes; dev rebuilds never rerun the script.
 - The companion keeps overlays and selections in memory.
 - It hot-reloads its own mock handlers when their files change.
 - When the session ends the companion process ends with it.

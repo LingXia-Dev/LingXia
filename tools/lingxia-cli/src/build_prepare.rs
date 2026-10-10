@@ -1,13 +1,15 @@
-//! A template's `prepare` lifecycle generates build inputs, so it runs before
-//! dependency installation and host bundle cache lookup. `lingxia build` runs it
-//! for every source build; `lingxia dev` runs it once at session start and the
-//! companion keeps outputs live, so watcher rebuilds never run it.
-use crate::commands::template_provider;
+//! A project's `lingxia:prepare` npm script generates build inputs, so it runs
+//! before dependency installation and host bundle cache lookup. `lingxia build`
+//! runs it for every source build; `lingxia dev` runs it once at session start
+//! and the companion keeps outputs live, so watcher rebuilds never run it.
 use anyhow::{Context, Result, bail};
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::process::{Command, Stdio};
+
+pub(crate) const SCRIPT: &str = "lingxia:prepare";
 
 thread_local! {
     static INVOCATION: RefCell<(usize, HashSet<PathBuf>)> = RefCell::new((0, HashSet::new()));
@@ -36,33 +38,26 @@ impl Drop for Scope {
 }
 
 pub(crate) fn prepare(root: &Path) -> Result<()> {
-    let root = root
-        .canonicalize()
+    // `npm.cmd` runs under cmd.exe, which cannot start in a `\\?\` directory.
+    let root = dunce::canonicalize(root)
         .with_context(|| format!("Cannot resolve build project {}", root.display()))?;
     if INVOCATION.with(|invocation| invocation.borrow().1.contains(&root)) {
         return Ok(());
     }
-    let Some(template) = template_provider::resolve_project(&root)? else {
+    if !declares_prepare(&root)? {
         return Ok(());
-    };
-    let Some(lifecycle) = template.manifest.prepare.as_ref() else {
-        return Ok(());
-    };
-    let status = template_provider::lifecycle_command(&template, lifecycle, &root)?
+    }
+    let status = Command::new(crate::npm::command())
+        .args(["run", SCRIPT])
+        .current_dir(&root)
         .stdin(Stdio::null())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .status()
-        .with_context(|| {
-            format!(
-                "Failed to start the prepare lifecycle of template {}",
-                template.manifest.name
-            )
-        })?;
+        .with_context(|| format!("Failed to start npm for `{SCRIPT}`; install Node.js"))?;
     if !status.success() {
         bail!(
-            "Template {} prepare failed for {} ({status}); build stopped",
-            template.manifest.name,
+            "`{SCRIPT}` failed for {} ({status}); build stopped",
             root.display()
         );
     }
@@ -75,21 +70,51 @@ pub(crate) fn prepare(root: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
-    use super::*;
-    use crate::commands::template_provider::test_support;
-    use std::fs;
+fn declares_prepare(root: &Path) -> Result<bool> {
+    let path = root.join("package.json");
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error).with_context(|| format!("Cannot read {}", path.display())),
+    };
+    let package: serde_json::Value =
+        serde_json::from_slice(&bytes).with_context(|| format!("Invalid {}", path.display()))?;
+    Ok(package["scripts"][SCRIPT].is_string())
+}
 
-    const APPEND_X: &str =
-        "import { appendFileSync } from 'node:fs'; appendFileSync('count', 'x');";
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::path::Path;
+
+    /// Gives `root` a `package.json` whose `lingxia:prepare` is `script`.
+    pub(crate) fn declare(root: &Path, script: &str) {
+        let package = serde_json::json!({
+            "name": "prepare-test",
+            "private": true,
+            "scripts": { super::SCRIPT: script },
+        });
+        std::fs::write(root.join("package.json"), package.to_string()).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_support::declare;
+    use super::*;
+
+    /// A node one-liner, so the script runs the same under sh and cmd.exe.
+    fn node(source: &str) -> String {
+        format!("node -e \"{source}\"")
+    }
+
+    fn append_x() -> String {
+        node("require('fs').appendFileSync('count','x')")
+    }
 
     #[test]
     fn nested_builds_prepare_once_but_each_invocation_prepares_again() {
-        let home = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
-        let _home = test_support::use_home(home.path());
-        test_support::install_node(home.path(), project.path(), &[("prepare", APPEND_X)]);
+        declare(project.path(), &append_x());
         for _ in 0..2 {
             let _scope = Scope::enter();
             prepare(project.path()).unwrap();
@@ -99,86 +124,43 @@ pub(crate) mod tests {
         assert_eq!(fs::read(project.path().join("count")).unwrap(), b"xx");
     }
 
-    /// `prepare` canonicalizes the project, which on Windows means a `\\?\`
-    /// path; Node must still load the entry and see plain paths.
     #[test]
-    fn the_entry_runs_in_the_project_with_plain_paths() {
-        let home = tempfile::tempdir().unwrap();
+    fn the_script_runs_in_the_project() {
         let project = tempfile::tempdir().unwrap();
-        let _home = test_support::use_home(home.path());
-        test_support::install_node(
-            home.path(),
+        declare(
             project.path(),
-            &[(
-                "prepare",
-                "import { writeFileSync } from 'node:fs';\n\
-                 writeFileSync('probe.json', JSON.stringify({\n\
-                   entry: process.argv[1],\n\
-                   cwd: process.cwd(),\n\
-                   root: process.env.LINGXIA_TEMPLATE_ROOT,\n\
-                 }));",
-            )],
+            &node("require('fs').writeFileSync('cwd.txt', process.cwd())"),
         );
         prepare(project.path()).unwrap();
-        let probe: serde_json::Value =
-            serde_json::from_slice(&fs::read(project.path().join("probe.json")).unwrap()).unwrap();
-        for key in ["entry", "cwd", "root"] {
-            let value = probe[key].as_str().unwrap();
-            assert!(!value.starts_with(r"\\?\"), "{key}: {value}");
-        }
-        assert!(
-            probe["entry"].as_str().unwrap().ends_with("prepare.mjs"),
-            "{probe}"
-        );
+        let cwd = fs::read_to_string(project.path().join("cwd.txt")).unwrap();
+        assert!(!cwd.starts_with(r"\\?\"), "{cwd}");
         assert_eq!(
-            Path::new(probe["cwd"].as_str().unwrap())
-                .canonicalize()
-                .unwrap(),
-            project.path().canonicalize().unwrap()
-        );
-        assert!(
-            Path::new(probe["root"].as_str().unwrap()).ends_with("templates/example"),
-            "{probe}"
+            dunce::canonicalize(cwd).unwrap(),
+            dunce::canonicalize(project.path()).unwrap()
         );
     }
 
     #[test]
     fn failed_preparation_is_not_recorded_and_reports_failure() {
-        let home = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
-        let _home = test_support::use_home(home.path());
-        test_support::install_node(
-            home.path(),
-            project.path(),
-            &[("prepare", "process.exit(7);")],
-        );
+        declare(project.path(), &node("process.exit(7)"));
         let _scope = Scope::enter();
         let error = prepare(project.path()).unwrap_err().to_string();
         assert!(error.contains("build stopped"), "{error}");
-        assert!(error.contains('7'), "{error}");
-        test_support::install_node(home.path(), project.path(), &[("prepare", APPEND_X)]);
+        declare(project.path(), &append_x());
         prepare(project.path()).unwrap();
         assert_eq!(fs::read(project.path().join("count")).unwrap(), b"x");
     }
 
     #[test]
-    fn projects_without_a_template_or_a_prepare_lifecycle_are_untouched() {
-        let home = tempfile::tempdir().unwrap();
+    fn projects_without_the_script_are_untouched() {
         let project = tempfile::tempdir().unwrap();
-        let _home = test_support::use_home(home.path());
         prepare(project.path()).unwrap();
-        test_support::install_node(home.path(), project.path(), &[("companion", "")]);
+        fs::write(
+            project.path().join("package.json"),
+            r#"{"scripts":{"build":"exit 1"}}"#,
+        )
+        .unwrap();
         prepare(project.path()).unwrap();
-    }
-
-    #[test]
-    fn a_missing_template_names_the_command_that_installs_it() {
-        let home = tempfile::tempdir().unwrap();
-        let project = tempfile::tempdir().unwrap();
-        let _home = test_support::use_home(home.path());
-        test_support::install_node(home.path(), project.path(), &[("prepare", "")]);
-        fs::remove_dir_all(home.path().join(".lingxia/templates/example")).unwrap();
-        let error = prepare(project.path()).unwrap_err().to_string();
-        assert!(error.contains("lingxia template add"), "{error}");
     }
 }

@@ -545,15 +545,6 @@ fn hash_resource_bundle_inputs(plan: &ResourceBundlePlan) -> Result<String> {
         &plan.bundle_dir,
         &["dist", "node_modules", ".git", ".lingxia"],
     )?);
-    // The template lock selects which prepare lifecycle produced the inputs.
-    let lock = plan
-        .bundle_dir
-        .join(".lingxia")
-        .join(crate::commands::template_provider::PROJECT_LOCK_FILE);
-    if lock.is_file() {
-        hasher.update(b"template-lock");
-        hasher.update(fs::read(lock)?);
-    }
     // A linked `@lingxia/*` package changes without touching the lockfile.
     for package in lingxia_packages(&plan.bundle_dir) {
         hasher.update(path_key(&package).as_bytes());
@@ -778,19 +769,11 @@ mod tests {
     fn source_cache_hit_still_prepares_and_failure_stops_cached_build() {
         let temp = tempfile::tempdir().unwrap();
         let marker = tempfile::tempdir().unwrap();
-        let home = tempfile::tempdir().unwrap();
-        let _home = crate::commands::template_provider::test_support::use_home(home.path());
         let root = temp.path();
         fs::create_dir(root.join("dist")).unwrap();
         fs::write(root.join("dist/asset.txt"), "cached").unwrap();
         // Keep the marker outside the input tree so this really is a cache hit.
-        let install = |body: &str| {
-            crate::commands::template_provider::test_support::install(
-                home.path(),
-                root,
-                &[("prepare", body)],
-            )
-        };
+        let install = |body: &str| crate::build_prepare::test_support::declare(root, body);
         install(&format!("printf x >> '{}/count'", marker.path().display()));
         let plan = || ResourceBundlePlan {
             bundle_dir: root.to_path_buf(),
@@ -835,17 +818,11 @@ mod tests {
     #[test]
     fn preparation_changes_inputs_before_cache_lookup() {
         let temp = tempfile::tempdir().unwrap();
-        let home = tempfile::tempdir().unwrap();
-        let _home = crate::commands::template_provider::test_support::use_home(home.path());
         let root = temp.path();
         fs::create_dir(root.join("dist")).unwrap();
         fs::write(root.join("dist/asset.txt"), "old build").unwrap();
         fs::write(root.join("source.ts"), "old input").unwrap();
-        crate::commands::template_provider::test_support::install(
-            home.path(),
-            root,
-            &[("prepare", "printf 'new input' > source.ts")],
-        );
+        crate::build_prepare::test_support::declare(root, "printf 'new input' > source.ts");
         let plan = ResourceBundlePlan {
             bundle_dir: root.to_path_buf(),
             asset_name: "app".into(),
@@ -880,16 +857,10 @@ mod tests {
     #[test]
     fn a_dev_plan_never_prepares() {
         let temp = tempfile::tempdir().unwrap();
-        let home = tempfile::tempdir().unwrap();
-        let _home = crate::commands::template_provider::test_support::use_home(home.path());
         let root = temp.path();
         fs::create_dir(root.join("dist")).unwrap();
         fs::write(root.join("dist/asset.txt"), "dev build").unwrap();
-        crate::commands::template_provider::test_support::install(
-            home.path(),
-            root,
-            &[("prepare", "exit 7")],
-        );
+        crate::build_prepare::test_support::declare(root, "exit 7");
         let plan = ResourceBundlePlan {
             bundle_dir: root.to_path_buf(),
             asset_name: "app".into(),
@@ -913,7 +884,7 @@ mod tests {
     }
 
     #[test]
-    fn lifecycle_configuration_is_hashed_but_state_cache_is_not() {
+    fn state_cache_is_not_hashed() {
         let temp = tempfile::tempdir().unwrap();
         let plan = ResourceBundlePlan {
             bundle_dir: temp.path().to_path_buf(),
@@ -928,14 +899,6 @@ mod tests {
         fs::create_dir_all(temp.path().join(".lingxia/cache")).unwrap();
         fs::write(temp.path().join(".lingxia/cache/file"), "cache").unwrap();
         assert_eq!(initial, hash_resource_bundle_inputs(&plan).unwrap());
-        fs::write(
-            temp.path()
-                .join(".lingxia")
-                .join(crate::commands::template_provider::PROJECT_LOCK_FILE),
-            "configuration",
-        )
-        .unwrap();
-        assert_ne!(initial, hash_resource_bundle_inputs(&plan).unwrap());
     }
 
     #[test]
@@ -950,15 +913,8 @@ mod tests {
         .unwrap();
         fs::write(bundle_dir.join("dist").join("asset.txt"), "ok").unwrap();
 
-        // A prebuilt bundle never prepares, even when it names a template.
-        fs::create_dir_all(bundle_dir.join(".lingxia")).unwrap();
-        fs::write(
-            bundle_dir
-                .join(".lingxia")
-                .join(crate::commands::template_provider::PROJECT_LOCK_FILE),
-            r#"{"name":"missing-template","source":"https://example.test/missing.git"}"#,
-        )
-        .unwrap();
+        // A prebuilt bundle never prepares, even when it declares a script.
+        crate::build_prepare::test_support::declare(&bundle_dir, "exit 7");
         let mut cache = HostAssetsCache::default();
         let prepared = prepare_lxapp_bundle_dir(
             bundle_dir,
