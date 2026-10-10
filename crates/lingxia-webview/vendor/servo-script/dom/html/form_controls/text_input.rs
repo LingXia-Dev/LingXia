@@ -1,0 +1,841 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+//! Common handling of keyboard input and state management for text input controls
+
+use std::default::Default;
+use std::ops::Range;
+
+use app_units::Au;
+use embedder_traits::{
+    EditingAction, EditingDirection, EditingMotion, EmbedderMsg, ModifySelection, MouseButton,
+    ScriptToEmbedderChan,
+};
+use script_bindings::codegen::GenericBindings::UIEventBinding::UIEventMethods;
+use script_bindings::match_domstring_ascii;
+use script_bindings::root::Dom;
+use script_bindings::trace::CustomTraceable;
+use script_traits::MouseButtons;
+use servo_base::generic_channel::GenericCallback;
+use servo_base::id::WebViewId;
+use servo_base::text::{AssumeUnder4GB, RangeAny, Utf8CodeUnits, Utf16CodeUnits, Utf32CodeUnits};
+use servo_base::{Rope, RopeIndex, RopeMovement, RopeSlice};
+
+use crate::dom::bindings::inheritance::Castable;
+use crate::dom::bindings::str::DOMString;
+use crate::dom::compositionevent::CompositionEvent;
+use crate::dom::event::Event;
+use crate::dom::inputevent::HitTestResult;
+use crate::dom::mouseevent::MouseEvent;
+use crate::dom::text_control::TextControlElement;
+use crate::dom::types::{HTMLInputElement, HTMLTextAreaElement, UIEvent};
+use crate::dom::{Element, NodeTraits};
+use crate::drag::drag_gesture::{DragGesture, DragHandler};
+
+/// A trait which abstracts access to the embedder's clipboard in order to allow unit
+/// testing clipboard-dependent parts of `script`.
+pub trait ClipboardProvider {
+    /// Get the text content of the clipboard.
+    fn get_text(&mut self) -> Result<String, String>;
+    /// Set the text content of the clipboard.
+    fn set_text(&mut self, _: String);
+}
+
+#[derive(MallocSizeOf)]
+pub(crate) struct EmbedderClipboardProvider {
+    pub embedder_sender: ScriptToEmbedderChan,
+    pub webview_id: WebViewId,
+}
+
+impl ClipboardProvider for EmbedderClipboardProvider {
+    fn get_text(&mut self) -> Result<String, String> {
+        let (callback, rx) = GenericCallback::new_blocking().unwrap();
+        self.embedder_sender
+            .send(EmbedderMsg::GetClipboardText(self.webview_id, callback))
+            .unwrap();
+        rx.recv().unwrap()
+    }
+    fn set_text(&mut self, s: String) {
+        self.embedder_sender
+            .send(EmbedderMsg::SetClipboardText(self.webview_id, s))
+            .unwrap();
+    }
+}
+
+#[derive(Clone, Copy, Debug, JSTraceable, MallocSizeOf, PartialEq)]
+pub enum SelectionDirection {
+    Forward,
+    Backward,
+    None,
+}
+
+impl From<DOMString> for SelectionDirection {
+    fn from(direction: DOMString) -> SelectionDirection {
+        match_domstring_ascii!(direction,
+            "forward" => SelectionDirection::Forward,
+            "backward" => SelectionDirection::Backward,
+            _ => SelectionDirection::None,
+        )
+    }
+}
+
+impl From<SelectionDirection> for DOMString {
+    fn from(direction: SelectionDirection) -> DOMString {
+        match direction {
+            SelectionDirection::Forward => DOMString::from_static("forward"),
+            SelectionDirection::Backward => DOMString::from_static("backward"),
+            SelectionDirection::None => DOMString::from_static("none"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, JSTraceable, MallocSizeOf)]
+pub enum Lines {
+    Single,
+    Multiple,
+}
+
+impl Lines {
+    fn normalize(&self, contents: impl Into<String>) -> String {
+        let contents = contents.into().replace("\r\n", "\n");
+        match self {
+            Self::Multiple => {
+                // https://html.spec.whatwg.org/multipage/#textarea-line-break-normalisation-transformation
+                contents.replace("\r", "\n")
+            },
+            // https://infra.spec.whatwg.org/#strip-newlines
+            //
+            // Browsers generally seem to convert newlines to spaces, so we do the same.
+            Lines::Single => contents.replace(['\r', '\n'], " "),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) struct SelectionState {
+    start: RopeIndex,
+    end: RopeIndex,
+    direction: SelectionDirection,
+}
+
+/// Encapsulated state for handling keyboard input in a single or multiline text input control.
+#[derive(JSTraceable, MallocSizeOf)]
+pub struct TextInput<T: ClipboardProvider> {
+    #[no_trace]
+    rope: Rope,
+
+    /// The type of [`TextInput`] this is. When in multi-line mode, the [`TextInput`] will
+    /// automatically split all inserted text into lines and incorporate them into
+    /// the [`Self::rope`]. When in single line mode, the inserted text will be stripped of
+    /// newlines.
+    mode: Lines,
+
+    /// Current cursor input point
+    #[no_trace]
+    edit_point: RopeIndex,
+
+    /// The current selection goes from the selection_origin until the edit_point. Note that the
+    /// selection_origin may be after the edit_point, in the case of a backward selection.
+    #[no_trace]
+    selection_origin: Option<RopeIndex>,
+    selection_direction: SelectionDirection,
+
+    #[ignore_malloc_size_of = "Can't easily measure this generic type"]
+    clipboard_provider: T,
+
+    /// The maximum number of UTF-16 code units this text input is allowed to hold.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#attr-fe-maxlength>
+    max_length: Option<Utf16CodeUnits>,
+    min_length: Option<Utf16CodeUnits>,
+
+    /// Was last change made by set_content?
+    was_last_change_by_set_content: bool,
+
+    #[no_trace]
+    pub(crate) previous_selection_range: Range<RopeIndex>,
+    #[no_trace]
+    pub(crate) selection_for_layout: Option<RangeAny<Utf32CodeUnits>>,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum IsComposing {
+    Composing,
+    NotComposing,
+}
+
+impl From<IsComposing> for bool {
+    fn from(is_composing: IsComposing) -> Self {
+        match is_composing {
+            IsComposing::Composing => true,
+            IsComposing::NotComposing => false,
+        }
+    }
+}
+
+/// <https://www.w3.org/TR/input-events-2/#interface-InputEvent-Attributes>
+#[derive(Clone, Copy, PartialEq)]
+pub enum InputEventType {
+    InsertText,
+    InsertLineBreak,
+    InsertFromPaste,
+    InsertCompositionText,
+    DeleteByCut,
+    DeleteContentBackward,
+    DeleteContentForward,
+    Nothing,
+}
+
+impl InputEventType {
+    pub(crate) fn as_str(&self) -> &str {
+        match *self {
+            Self::InsertText => "insertText",
+            Self::InsertLineBreak => "insertLineBreak",
+            Self::InsertFromPaste => "insertFromPaste",
+            Self::InsertCompositionText => "insertCompositionText",
+            Self::DeleteByCut => "deleteByCut",
+            Self::DeleteContentBackward => "deleteContentBackward",
+            Self::DeleteContentForward => "deleteContentForward",
+            Self::Nothing => "",
+        }
+    }
+}
+
+/// Resulting action to be taken by the owner of a text input that is handling an event.
+#[derive(PartialEq)]
+pub enum KeyReaction {
+    TriggerDefaultAction,
+    DispatchInput(Option<String>, IsComposing, InputEventType),
+    RedrawSelection,
+    Nothing,
+}
+
+impl<T: ClipboardProvider> TextInput<T> {
+    /// Instantiate a new text input control
+    pub fn new(lines: Lines, initial: DOMString, clipboard_provider: T) -> TextInput<T> {
+        Self {
+            rope: Rope::new(initial),
+            mode: lines,
+            edit_point: Default::default(),
+            selection_origin: None,
+            clipboard_provider,
+            max_length: Default::default(),
+            min_length: Default::default(),
+            selection_direction: SelectionDirection::None,
+            was_last_change_by_set_content: true,
+            previous_selection_range: Default::default(),
+            selection_for_layout: None,
+        }
+    }
+
+    pub fn edit_point(&self) -> RopeIndex {
+        self.edit_point
+    }
+
+    pub fn selection_origin(&self) -> Option<RopeIndex> {
+        self.selection_origin
+    }
+
+    /// The selection origin, or the edit point if there is no selection. Note that the selection
+    /// origin may be after the edit point, in the case of a backward selection.
+    pub fn selection_origin_or_edit_point(&self) -> RopeIndex {
+        self.selection_origin.unwrap_or(self.edit_point)
+    }
+
+    pub fn selection_direction(&self) -> SelectionDirection {
+        self.selection_direction
+    }
+
+    pub fn set_max_length(&mut self, length: Option<Utf16CodeUnits>) {
+        self.max_length = length;
+    }
+
+    pub fn set_min_length(&mut self, length: Option<Utf16CodeUnits>) {
+        self.min_length = length;
+    }
+
+    /// Was last edit made by set_content?
+    pub(crate) fn was_last_change_by_set_content(&self) -> bool {
+        self.was_last_change_by_set_content
+    }
+
+    /// If there is an uncollapsed selection, delete it, otherwise do nothing. Returns
+    /// true if any text was deleted.
+    pub(crate) fn delete_selection(&mut self) -> bool {
+        if self.selection_start() == self.selection_end() {
+            return false;
+        }
+        self.replace_selection(&DOMString::new());
+        true
+    }
+
+    /// If there is an uncollapsed selection, delete it. Otherwise delete the given [`unit`]
+    /// worth of text in [`direction`] Remove a character at the current editing point
+    ///
+    /// Returns true if any text was deleted.
+    pub fn delete_unit_or_selection(
+        &mut self,
+        unit: RopeMovement,
+        direction: EditingDirection,
+    ) -> bool {
+        if !self.has_uncollapsed_selection() {
+            let amount = match direction {
+                EditingDirection::Forward => 1,
+                EditingDirection::Backward => -1,
+            };
+            self.modify_selection(amount, unit);
+        }
+        self.delete_selection()
+    }
+
+    /// Insert a string at the current editing point or replace the selection if
+    /// one exists.
+    pub fn insert<S: Into<String>>(&mut self, string: S) {
+        if self.selection_origin.is_none() {
+            self.selection_origin = Some(self.edit_point);
+        }
+        self.replace_selection(&DOMString::from(string.into()));
+    }
+
+    /// The start of the selection (or the edit point, if there is no selection). Always less than
+    /// or equal to selection_end(), regardless of the selection direction.
+    pub fn selection_start(&self) -> RopeIndex {
+        match self.selection_direction {
+            SelectionDirection::None | SelectionDirection::Forward => {
+                self.selection_origin_or_edit_point()
+            },
+            SelectionDirection::Backward => self.edit_point,
+        }
+    }
+
+    pub(crate) fn selection_start_utf16(&self) -> Utf16CodeUnits {
+        self.rope.index_to_utf16_offset(self.selection_start())
+    }
+
+    /// The byte offset of the selection_start()
+    fn selection_start_offset(&self) -> Utf8CodeUnits {
+        self.rope.index_to_utf8_offset(self.selection_start())
+    }
+
+    /// The end of the selection (or the edit point, if there is no selection). Always greater
+    /// than or equal to selection_start(), regardless of the selection direction.
+    pub fn selection_end(&self) -> RopeIndex {
+        match self.selection_direction {
+            SelectionDirection::None | SelectionDirection::Forward => self.edit_point,
+            SelectionDirection::Backward => self.selection_origin_or_edit_point(),
+        }
+    }
+
+    pub(crate) fn selection_end_utf16(&self) -> Utf16CodeUnits {
+        self.rope.index_to_utf16_offset(self.selection_end())
+    }
+
+    /// Whether or not there is an active uncollapsed selection. This means that the
+    /// selection origin is set and it differs from the edit point.
+    #[inline]
+    pub(crate) fn has_uncollapsed_selection(&self) -> bool {
+        self.selection_origin
+            .is_some_and(|selection_origin| selection_origin != self.edit_point)
+    }
+
+    /// Return the selection range as UTF-32 offsets from the start of the content.
+    ///
+    /// If there is no selection, returns an empty range at the edit point.
+    ///
+    /// If the start or/and end of the range is at the start/end of the text,
+    /// return a `RangeAny` unbounded on that side.
+    pub(crate) fn sorted_selection_character_offsets_range(&self) -> RangeAny<Utf32CodeUnits> {
+        let rope = &self.rope;
+        let start = self.selection_start();
+        let end = self.selection_end();
+        let start = (start != rope.first_index()).then(|| rope.index_to_character_offset(start));
+        // TODO: `TextInputWidgetShadowTree::update` has a hack with a "\u{200B}" to force
+        // the text to be non-empty, so `rope.last_index()` is untrustworthy.
+        // For now, use a bounded end unconditionally instead.
+        // let end = (end != rope.last_index()).then(|| rope.index_to_character_offset(end));
+        let end = Some(rope.index_to_character_offset(end));
+        RangeAny::new(start, end)
+    }
+
+    /// The state of the current selection. Can be used to compare whether selection state has changed.
+    pub(crate) fn selection_state(&self) -> SelectionState {
+        SelectionState {
+            start: self.selection_start(),
+            end: self.selection_end(),
+            direction: self.selection_direction,
+        }
+    }
+
+    // Check that the selection is valid.
+    fn assert_ok_selection(&self) {
+        debug!(
+            "edit_point: {:?}, selection_origin: {:?}, direction: {:?}",
+            self.edit_point, self.selection_origin, self.selection_direction
+        );
+
+        debug_assert_eq!(self.edit_point, self.rope.normalize_index(self.edit_point));
+        if let Some(selection_origin) = self.selection_origin {
+            debug_assert_eq!(
+                selection_origin,
+                self.rope.normalize_index(selection_origin)
+            );
+            match self.selection_direction {
+                SelectionDirection::None | SelectionDirection::Forward => {
+                    debug_assert!(selection_origin <= self.edit_point)
+                },
+                SelectionDirection::Backward => debug_assert!(self.edit_point <= selection_origin),
+            }
+        }
+    }
+
+    fn selection_slice(&self) -> RopeSlice<'_> {
+        self.rope
+            .slice(Some(self.selection_start()), Some(self.selection_end()))
+    }
+
+    pub(crate) fn selection_content(&self) -> Option<String> {
+        let text: String = self.selection_slice().into();
+        if text.is_empty() {
+            return None;
+        }
+        Some(text)
+    }
+
+    /// The length of the selected text in UTF-16 code units.
+    fn selection_utf16_len(&self) -> Utf16CodeUnits {
+        self.selection_slice().len_utf16()
+    }
+
+    /// Replace the current selection with the given [`DOMString`]. If the [`Rope`] is in
+    /// single line mode this *will* strip newlines, as opposed to [`Self::set_content`],
+    /// which does not.
+    pub fn replace_selection(&mut self, insert: &DOMString) {
+        let string_to_insert = if let Some(max_length) = self.max_length {
+            let utf16_length_without_selection =
+                self.len_utf16().saturating_sub(self.selection_utf16_len());
+            let utf16_length_that_can_be_inserted =
+                max_length.saturating_sub(utf16_length_without_selection);
+            // TODO: ensure that DOMString’s are under 4 GiB?
+            let last_char_index = usize::from(
+                utf16_length_that_can_be_inserted
+                    .to_utf8_code_units_in(AssumeUnder4GB, &insert.str()),
+            );
+            &insert.str()[..last_char_index]
+        } else {
+            &insert.str()
+        };
+        let string_to_insert = self.mode.normalize(string_to_insert);
+
+        let start = self.selection_start();
+        let end = self.selection_end();
+        let end_index_of_insertion = self.rope.replace_range(start..end, string_to_insert);
+
+        self.was_last_change_by_set_content = false;
+        self.clear_selection();
+        self.edit_point = end_index_of_insertion;
+    }
+
+    pub fn modify_edit_point(&mut self, amount: isize, movement: RopeMovement) {
+        if amount == 0 {
+            return;
+        }
+
+        // When moving by lines or if we do not have a selection, we do actually move
+        // the edit point from its position.
+        if matches!(movement, RopeMovement::Line) || !self.has_uncollapsed_selection() {
+            self.clear_selection();
+            self.edit_point = self.rope.move_by(self.edit_point, movement, amount);
+            return;
+        }
+
+        // If there's a selection and we are moving by words or characters, we just collapse
+        // the selection in the direction of the motion.
+        let new_edit_point = if amount > 0 {
+            self.selection_end()
+        } else {
+            self.selection_start()
+        };
+        self.clear_selection();
+        self.edit_point = new_edit_point;
+    }
+
+    pub fn modify_selection(&mut self, amount: isize, movement: RopeMovement) {
+        let old_edit_point = self.edit_point;
+        self.edit_point = self.rope.move_by(old_edit_point, movement, amount);
+
+        if self.selection_origin.is_none() {
+            self.selection_origin = Some(old_edit_point);
+        }
+        self.update_selection_direction();
+    }
+
+    pub fn modify_selection_or_edit_point(
+        &mut self,
+        amount: isize,
+        movement: RopeMovement,
+        update_selection: ModifySelection,
+    ) {
+        match update_selection {
+            ModifySelection::Yes => self.modify_selection(amount, movement),
+            ModifySelection::No => self.modify_edit_point(amount, movement),
+        }
+        self.assert_ok_selection();
+    }
+
+    /// Update the field selection_direction.
+    ///
+    /// When the edit_point (or focus) is before the selection_origin (or anchor)
+    /// you have a backward selection. Otherwise you have a forward selection.
+    fn update_selection_direction(&mut self) {
+        debug!(
+            "edit_point: {:?}, selection_origin: {:?}",
+            self.edit_point, self.selection_origin
+        );
+        self.selection_direction = if Some(self.edit_point) < self.selection_origin {
+            SelectionDirection::Backward
+        } else {
+            SelectionDirection::Forward
+        }
+    }
+
+    /// Deal with a newline input.
+    pub fn handle_return(&mut self) -> KeyReaction {
+        match self.mode {
+            Lines::Multiple => {
+                self.insert('\n');
+                KeyReaction::DispatchInput(
+                    None,
+                    IsComposing::NotComposing,
+                    InputEventType::InsertLineBreak,
+                )
+            },
+            Lines::Single => KeyReaction::TriggerDefaultAction,
+        }
+    }
+
+    /// Select all text in the input control.
+    pub fn select_all(&mut self) {
+        self.selection_origin = Some(RopeIndex::default());
+        self.edit_point = self.rope.last_index();
+        self.selection_direction = SelectionDirection::Forward;
+        self.assert_ok_selection();
+    }
+
+    /// Remove the current selection.
+    pub fn clear_selection(&mut self) {
+        self.selection_origin = None;
+        self.selection_direction = SelectionDirection::None;
+    }
+
+    /// Remove the current selection and set the edit point to the end of the content.
+    pub(crate) fn clear_selection_to_end(&mut self) {
+        self.clear_selection();
+        self.edit_point = self.rope.last_index();
+    }
+
+    pub(crate) fn clear_selection_to_start(&mut self) {
+        self.clear_selection();
+        self.edit_point = Default::default();
+    }
+
+    /// Process a given `EditingAction` and return an action for the caller to execute.
+    ///
+    /// This is public so that it can be used in external unit tests.
+    pub fn perform_editing_action(&mut self, action: EditingAction) -> KeyReaction {
+        match action {
+            EditingAction::MoveCursor(direction, motion, selection) => {
+                let movement = match motion {
+                    EditingMotion::Character => RopeMovement::Character,
+                    EditingMotion::Grapheme => RopeMovement::Grapheme,
+                    EditingMotion::Word => RopeMovement::Word,
+                    EditingMotion::Line => RopeMovement::Line,
+                    EditingMotion::LineStartOrEnd => RopeMovement::LineStartOrEnd,
+                    EditingMotion::Page => RopeMovement::Line,
+                    EditingMotion::DocumentStartOrEnd => RopeMovement::RopeStartOrEnd,
+                };
+                let amount = match (direction, motion) {
+                    // TODO: This should really be based on the size of the text area.
+                    (EditingDirection::Forward, EditingMotion::Page) => 28,
+                    (EditingDirection::Backward, EditingMotion::Page) => -28,
+                    (EditingDirection::Forward, _) => 1,
+                    (EditingDirection::Backward, _) => -1,
+                };
+                self.modify_selection_or_edit_point(amount, movement, selection);
+                KeyReaction::RedrawSelection
+            },
+            EditingAction::InsertNewline | EditingAction::InsertParagraph => self.handle_return(),
+            EditingAction::InsertText(text) => {
+                self.insert(&text);
+                KeyReaction::DispatchInput(
+                    Some(text),
+                    IsComposing::NotComposing,
+                    InputEventType::InsertText,
+                )
+            },
+            EditingAction::Delete => {
+                if self.delete_unit_or_selection(RopeMovement::Grapheme, EditingDirection::Forward)
+                {
+                    KeyReaction::DispatchInput(
+                        None,
+                        IsComposing::NotComposing,
+                        InputEventType::DeleteContentForward,
+                    )
+                } else {
+                    KeyReaction::Nothing
+                }
+            },
+            EditingAction::Backspace(motion) => {
+                let movement = match motion {
+                    EditingMotion::Character => RopeMovement::Character,
+                    EditingMotion::Grapheme => RopeMovement::Grapheme,
+                    EditingMotion::Word => RopeMovement::Word,
+                    EditingMotion::Line => RopeMovement::Line,
+                    EditingMotion::LineStartOrEnd => RopeMovement::LineStartOrEnd,
+                    EditingMotion::Page => return KeyReaction::Nothing,
+                    EditingMotion::DocumentStartOrEnd => RopeMovement::RopeStartOrEnd,
+                };
+                if self.delete_unit_or_selection(movement, EditingDirection::Backward) {
+                    KeyReaction::DispatchInput(
+                        None,
+                        IsComposing::NotComposing,
+                        InputEventType::DeleteContentBackward,
+                    )
+                } else {
+                    KeyReaction::Nothing
+                }
+            },
+            EditingAction::SelectAll | EditingAction::Clipboard(..) => KeyReaction::Nothing,
+        }
+    }
+
+    pub(crate) fn handle_compositionend(&mut self, event: &CompositionEvent) -> KeyReaction {
+        let insertion = event.data().str();
+        if insertion.is_empty() {
+            self.clear_selection();
+            return KeyReaction::RedrawSelection;
+        }
+
+        self.insert(insertion.to_string());
+        KeyReaction::DispatchInput(
+            Some(insertion.to_string()),
+            IsComposing::NotComposing,
+            InputEventType::InsertCompositionText,
+        )
+    }
+
+    pub(crate) fn handle_compositionupdate(&mut self, event: &CompositionEvent) -> KeyReaction {
+        let insertion = event.data().str();
+        if insertion.is_empty() {
+            return KeyReaction::Nothing;
+        }
+
+        let start = self.selection_start_offset();
+        let insertion = insertion.to_string();
+        self.insert(insertion.clone());
+        self.set_selection_range_utf8(
+            start,
+            start + event.data().len_utf8(),
+            SelectionDirection::Forward,
+        );
+        KeyReaction::DispatchInput(
+            Some(insertion),
+            IsComposing::Composing,
+            InputEventType::InsertCompositionText,
+        )
+    }
+
+    fn edit_point_for_hit_test_result(&self, hit_test_result: &HitTestResult) -> RopeIndex {
+        hit_test_result
+            .dom_position_for_selection
+            .as_ref()
+            .map(|(_, character_offset)| {
+                self.rope.move_by(
+                    Default::default(),
+                    RopeMovement::Character,
+                    character_offset.0 as isize,
+                )
+            })
+            .unwrap_or_else(|| self.rope.last_index())
+    }
+
+    fn drag_moved(&mut self, element: &impl TextControlElement, hit_test_result: &HitTestResult) {
+        let point_in_viewport = hit_test_result.point_in_frame.map(Au::from_f32_px);
+        let element = element.as_element();
+        self.edit_point = element
+            .owner_window()
+            .text_index_query_on_node_for_event(element.upcast(), point_in_viewport)
+            .map(|(_, character_offset)| {
+                self.rope.move_by(
+                    Default::default(),
+                    RopeMovement::Character,
+                    character_offset.0 as isize,
+                )
+            })
+            .unwrap_or_else(|| self.rope.last_index());
+
+        self.update_selection_direction();
+    }
+
+    /// Handle a "mousedown" event that happened on this [`TextInput`], belonging to the
+    /// given [`Node`].
+    ///
+    /// Returns `true` if the [`TextInput`] changed at all or `false` otherwise.
+    pub(crate) fn handle_mousedown_event(
+        &mut self,
+        element: &Element,
+        mouse_event: &MouseEvent,
+        hit_test_result: &HitTestResult,
+    ) -> bool {
+        assert_eq!(mouse_event.upcast::<Event>().type_(), atom!("mousedown"));
+
+        let button = mouse_event.button();
+        let selection_changed = match mouse_event.upcast::<UIEvent>().Detail() {
+            3 if button == MouseButton::Primary => {
+                let word_boundaries = self.rope.line_boundaries(self.edit_point);
+                self.edit_point = word_boundaries.end;
+                self.selection_origin = Some(word_boundaries.start);
+                self.update_selection_direction();
+                true
+            },
+            2 if button == MouseButton::Primary => {
+                let word_boundaries = self.rope.relevant_word_boundaries(self.edit_point);
+                self.edit_point = word_boundaries.end;
+                self.selection_origin = Some(word_boundaries.start);
+                self.update_selection_direction();
+                true
+            },
+            1 if matches!(button, MouseButton::Primary | MouseButton::Auxiliary) => {
+                self.clear_selection();
+                self.edit_point = self.edit_point_for_hit_test_result(hit_test_result);
+                self.selection_origin = Some(self.edit_point);
+                self.update_selection_direction();
+                true
+            },
+            _ => {
+                // We currently don't do anything for higher click counts, but some platforms do.
+                // We should re-examine this when implementing support for platform-specific editing
+                // behaviors.
+                false
+            },
+        };
+
+        if selection_changed && mouse_event.buttons().contains(MouseButtons::Primary) {
+            element
+                .owner_document()
+                .event_handler()
+                .install_drag_gesture(DragGesture::new(DragHandler::TextInputSelection(
+                    TextInputSelectionDragHandler(Dom::from_ref(element)),
+                )));
+        }
+
+        selection_changed
+    }
+
+    /// Whether the content is empty.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.rope.is_empty()
+    }
+
+    /// The total number of code units required to encode the content in utf16.
+    pub(crate) fn len_utf16(&self) -> Utf16CodeUnits {
+        self.rope.len_utf16()
+    }
+
+    /// Get the current contents of the text input. Multiple lines are joined by \n.
+    pub fn get_content(&self) -> DOMString {
+        self.rope.contents().into()
+    }
+
+    /// Set the current contents of the text input. If this is control supports multiple lines,
+    /// any \n encountered will be stripped and force a new logical line.
+    ///
+    /// Note that when the [`Rope`] is in single line mode, this will **not** strip newlines.
+    /// Newline stripping only happens for incremental updates to the [`Rope`] as `<input>`
+    /// elements currently need to store unsanitized values while being created.
+    pub fn set_content(&mut self, content: DOMString) {
+        self.rope = Rope::new(content.str().replace("\r\n", "\n").replace("\r", "\n"));
+        self.was_last_change_by_set_content = true;
+
+        self.edit_point = self.rope.normalize_index(self.edit_point());
+        self.selection_origin = self
+            .selection_origin
+            .map(|selection_origin| self.rope.normalize_index(selection_origin));
+    }
+
+    pub fn set_selection_range_utf16(
+        &mut self,
+        start: Utf16CodeUnits,
+        end: Utf16CodeUnits,
+        direction: SelectionDirection,
+    ) {
+        self.set_selection_range_utf8(
+            self.rope.utf16_offset_to_utf8_offset(start),
+            self.rope.utf16_offset_to_utf8_offset(end),
+            direction,
+        );
+    }
+
+    pub fn set_selection_range_utf8(
+        &mut self,
+        mut start: Utf8CodeUnits,
+        mut end: Utf8CodeUnits,
+        direction: SelectionDirection,
+    ) {
+        let text_end = self.get_content().len_utf8();
+        if end > text_end {
+            end = text_end;
+        }
+        if start > end {
+            start = end;
+        }
+
+        self.selection_direction = direction;
+
+        match direction {
+            SelectionDirection::None | SelectionDirection::Forward => {
+                self.selection_origin = Some(self.rope.utf8_offset_to_rope_index(start));
+                self.edit_point = self.rope.utf8_offset_to_rope_index(end);
+            },
+            SelectionDirection::Backward => {
+                self.selection_origin = Some(self.rope.utf8_offset_to_rope_index(end));
+                self.edit_point = self.rope.utf8_offset_to_rope_index(start);
+            },
+        }
+
+        self.assert_ok_selection();
+    }
+}
+
+#[derive(JSTraceable, MallocSizeOf)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
+pub(crate) struct TextInputSelectionDragHandler(Dom<Element>);
+
+impl TextInputSelectionDragHandler {
+    pub(crate) fn still_connected(&self) -> bool {
+        self.0.is_connected()
+    }
+
+    /// Process a mouse move event on this [`TextInputSelectionDragHandler`].
+    ///
+    /// Returns `true` if the drag should continue and `false` otherwise.
+    pub(crate) fn moved(&self, hit_test_result: &HitTestResult) -> bool {
+        if !self.0.is_connected() {
+            return false;
+        }
+
+        if let Some(input) = self.0.downcast::<HTMLInputElement>() {
+            input.text_input_mut().drag_moved(input, hit_test_result);
+            input.maybe_update_shared_selection();
+            true
+        } else if let Some(text_area) = self.0.downcast::<HTMLTextAreaElement>() {
+            text_area
+                .text_input_mut()
+                .drag_moved(text_area, hit_test_result);
+            text_area.maybe_update_shared_selection();
+            true
+        } else {
+            false
+        }
+    }
+}

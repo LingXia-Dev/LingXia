@@ -7,6 +7,7 @@ allocator override is needed.
 | Crate | Upstream version | Remaining patch |
 | --- | --- | --- |
 | `servo-fonts` | 0.7.0 | Register Android language-only fallback families and honor TTC face indices. |
+| `servo-script` | 0.7.0 | Avoid an IntersectionObserver panic when a containing iframe has no layout box. |
 | `servo-net` | 0.7.0 | Expose read-only network diagnostics and top-level failure/download hooks; align `rusqlite` with 0.40. |
 | `servo-storage` | 0.7.0 | Align `rusqlite` with 0.40 so LingXia links one SQLite library. |
 | `sea-query-rusqlite` | 0.8.0 | Align its `rusqlite` dependency with the same 0.40 line. |

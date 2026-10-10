@@ -83,3 +83,38 @@ browserSpec('observe content entering and leaving the browser viewport', {
   await browser.wait({ tab, js: '__intersectionStates.length >= 3 && __intersectionStates.at(-1) === false' });
   expect(await browser.eval({ tab, js: '__intersectionStates' })).toEqual([false, true, false]);
 });
+
+browserSpec('observe a target while its containing iframe is hidden and shown', {
+  id: 'ANDROID-BROWSER-004',
+  app: SHOWCASE_APP_ID,
+  covers: ['BrowserDriver.eval', 'BrowserDriver.wait', 'BrowserDriver.close'],
+  reason: 'requires Android and the local HTTP fixture',
+}, async (t) => {
+  const browser = t.automation.browser;
+  const { tab } = await browser.open({ url: `${args.httpBase}/interaction` });
+  t.defer(() => browser.close({ tab }));
+  await browser.wait({ tab, loaded: true });
+  await browser.eval({ tab, js: `(() => {
+    document.body.innerHTML = '';
+    document.body.style.margin = '0';
+    globalThis.__frameStates = [];
+    const frame = document.createElement('iframe');
+    frame.id = 'observed-frame';
+    frame.style.cssText = 'width:250px;height:200px';
+    frame.srcdoc = '<body style="margin:0"><div id="target" style="width:50px;height:50px">target</div></body>';
+    frame.onload = () => {
+      const child = frame.contentWindow;
+      globalThis.__frameObserver = new child.IntersectionObserver(entries => {
+        for (const entry of entries) __frameStates.push(entry.isIntersecting);
+      });
+      __frameObserver.observe(child.document.querySelector('#target'));
+    };
+    document.body.append(frame);
+  })()` });
+  await browser.wait({ tab, js: '__frameStates.length === 1 && __frameStates[0] === true' });
+  await browser.eval({ tab, js: "document.querySelector('#observed-frame').style.display = 'none'" });
+  await browser.wait({ tab, js: '__frameStates.length === 2 && __frameStates[1] === false' });
+  await browser.eval({ tab, js: "document.querySelector('#observed-frame').style.display = 'block'" });
+  await browser.wait({ tab, js: '__frameStates.length === 3 && __frameStates[2] === true' });
+  expect(await browser.eval({ tab, js: '__frameStates' })).toEqual([true, false, true]);
+});

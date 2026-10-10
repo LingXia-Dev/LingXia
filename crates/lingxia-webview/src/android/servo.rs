@@ -2095,8 +2095,14 @@ impl WebViewDelegate for Delegate {
         notify_java_servo(&self.view, 0);
     }
 
-    fn notify_crashed(&self, _webview: WebView, reason: String, _backtrace: Option<String>) {
+    fn notify_crashed(&self, _webview: WebView, reason: String, backtrace: Option<String>) {
         log::error!("Servo content crashed for {}: {reason}", self.view.webtag);
+        if let Some(backtrace) = backtrace {
+            log::error!(
+                "Servo content backtrace for {}:\n{backtrace}",
+                self.view.webtag
+            );
+        }
         // The Servo view survives its crashed pipeline, like a WebView2
         // renderer failure: the document is gone, the native view is not.
         self.loads.abandon(&self.view);

@@ -1,0 +1,299 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+#![cfg_attr(crown, allow(crown::jscontext_first_arg))]
+
+use dom_struct::dom_struct;
+use js::context::JSContext;
+use js::jsapi::{Heap, JSObject};
+use js::jsval::UndefinedValue;
+use js::rust::{CustomAutoRooterGuard, HandleValue, MutableHandleValue};
+use script_bindings::interfaces::HasOrigin;
+use servo_base::generic_channel;
+use servo_base::id::PipelineId;
+use servo_constellation_traits::{
+    RemoteFocusOperation, ScriptToConstellationMessage, StructuredSerializedData,
+};
+use servo_url::{ImmutableOrigin, MutableOrigin, ServoUrl};
+
+use crate::dom::bindings::codegen::Bindings::DissimilarOriginWindowBinding;
+use crate::dom::bindings::codegen::Bindings::DissimilarOriginWindowBinding::DissimilarOriginWindowMethods;
+use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowPostMessageOptions;
+use crate::dom::bindings::error::{Error, ErrorResult};
+use crate::dom::bindings::root::{Dom, DomRoot, MutNullableDom};
+use crate::dom::bindings::str::USVString;
+use crate::dom::bindings::structuredclone;
+use crate::dom::bindings::trace::RootedTraceableBox;
+use crate::dom::globalscope::GlobalScope;
+use crate::dom::location::Location;
+use crate::dom::windowproxy::WindowProxy;
+
+/// Represents a dissimilar-origin `Window` that exists in another script thread.
+///
+/// Since the `Window` is in a different script thread, we cannot access it
+/// directly, but some of its accessors (for example `window.parent`)
+/// still need to function.
+///
+/// In `windowproxy.rs`, we create a custom window proxy for these windows,
+/// that throws security exceptions for most accessors. This is not a replacement
+/// for XOWs, but provides belt-and-braces security.
+#[dom_struct]
+pub(crate) struct DissimilarOriginWindow {
+    /// The global for this window.
+    globalscope: GlobalScope,
+
+    /// The window proxy for this window.
+    window_proxy: Dom<WindowProxy>,
+
+    /// The location of this window, initialized lazily.
+    location: MutNullableDom<Location>,
+
+    #[no_trace]
+    pipeline_id: PipelineId,
+
+    #[no_trace]
+    origin: MutableOrigin,
+}
+
+impl DissimilarOriginWindow {
+    pub(crate) fn new(
+        cx: &mut js::context::JSContext,
+        global_to_clone_from: &GlobalScope,
+        window_proxy: &WindowProxy,
+    ) -> DomRoot<Self> {
+        // TODO: We do not know the origin of this new window at this point in the execution
+        // and we *really* don't want to use the origin of `global_to_clone_from`. The whole
+        // point is that this is a window with a *different* origin. Just use an opaque origin
+        // here which is guaranteed to never be equal to `global_to_clone_from`'s origin.
+        let opaque_origin = MutableOrigin::new(ImmutableOrigin::new_opaque());
+        let win = Box::new(Self {
+            globalscope: GlobalScope::new_inherited(
+                global_to_clone_from.devtools_chan().cloned(),
+                global_to_clone_from.mem_profiler_chan().clone(),
+                global_to_clone_from.time_profiler_chan().clone(),
+                global_to_clone_from.script_to_constellation_chan().sender,
+                global_to_clone_from.script_to_embedder_chan().clone(),
+                global_to_clone_from.resource_threads().clone(),
+                global_to_clone_from.storage_threads().clone(),
+                global_to_clone_from.creation_url(),
+                global_to_clone_from.top_level_creation_url(),
+                #[cfg(feature = "webgpu")]
+                global_to_clone_from.wgpu_id_hub(),
+                Some(global_to_clone_from.is_secure_context()),
+                false,
+            ),
+            window_proxy: Dom::from_ref(window_proxy),
+            location: Default::default(),
+            pipeline_id: PipelineId::new(),
+            origin: opaque_origin.clone(),
+        });
+        DissimilarOriginWindowBinding::Wrap::<crate::DomTypeHolder>(cx, &opaque_origin, win)
+    }
+
+    pub(crate) fn origin(&self) -> MutableOrigin {
+        self.origin.clone()
+    }
+
+    pub(crate) fn window_proxy(&self) -> DomRoot<WindowProxy> {
+        DomRoot::from_ref(&*self.window_proxy)
+    }
+
+    pub(crate) fn pipeline_id(&self) -> PipelineId {
+        self.pipeline_id
+    }
+}
+
+impl DissimilarOriginWindowMethods<crate::DomTypeHolder> for DissimilarOriginWindow {
+    /// <https://html.spec.whatwg.org/multipage/#dom-window>
+    fn Window(&self) -> DomRoot<WindowProxy> {
+        self.window_proxy()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-self>
+    fn Self_(&self) -> DomRoot<WindowProxy> {
+        self.window_proxy()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-frames>
+    fn Frames(&self) -> DomRoot<WindowProxy> {
+        self.window_proxy()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-parent>
+    fn GetParent(&self) -> Option<DomRoot<WindowProxy>> {
+        // Steps 1-3.
+        if self.window_proxy.is_browsing_context_discarded() {
+            return None;
+        }
+        // Step 4.
+        if let Some(parent) = self.window_proxy.parent() {
+            return Some(DomRoot::from_ref(parent));
+        }
+        // Step 5.
+        Some(DomRoot::from_ref(&*self.window_proxy))
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-top>
+    fn GetTop(&self) -> Option<DomRoot<WindowProxy>> {
+        // Steps 1-3.
+        if self.window_proxy.is_browsing_context_discarded() {
+            return None;
+        }
+        // Steps 4-5.
+        Some(DomRoot::from_ref(self.window_proxy.top()))
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-length>
+    fn Length(&self) -> u32 {
+        // First try to access the document directly if it is in the same event loop.
+        if let Some(document) = self.window_proxy.document() {
+            return document.iframes().active_iframe_count() as u32;
+        }
+
+        // Fall back to using messaging to get the count from another event loop.
+        let parent_browsing_context_id = self.window_proxy.browsing_context_id();
+        let (result_sender, result_receiver) = generic_channel::channel().unwrap();
+        let _ = self.globalscope.script_to_constellation_chan().send(
+            ScriptToConstellationMessage::GetChildBrowsingContextCount(
+                parent_browsing_context_id,
+                result_sender,
+            ),
+        );
+        result_receiver.recv().unwrap_or_default() as u32
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-window-close>
+    fn Close(&self) {
+        // TODO: Implement x-origin close
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-window-closed>
+    fn Closed(&self) -> bool {
+        // TODO: Implement x-origin close
+        false
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-window-postmessage>
+    fn PostMessage(
+        &self,
+        cx: &mut JSContext,
+        message: HandleValue,
+        target_origin: USVString,
+        transfer: CustomAutoRooterGuard<Vec<*mut JSObject>>,
+    ) -> ErrorResult {
+        self.post_message_impl(&target_origin, cx, message, transfer)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-window-postmessage-options>
+    fn PostMessage_(
+        &self,
+        cx: &mut JSContext,
+        message: HandleValue,
+        options: &WindowPostMessageOptions,
+    ) -> ErrorResult {
+        auto_root!(&in(cx) let transfer =
+            options
+                .parent
+                .transfer
+                .iter()
+                .map(|js: &RootedTraceableBox<Heap<*mut JSObject>>| js.get())
+                .collect::<Vec<_>>());
+
+        self.post_message_impl(&options.targetOrigin, cx, message, transfer)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-opener>
+    fn Opener(&self, _: &mut JSContext, mut retval: MutableHandleValue) {
+        // TODO: Implement x-origin opener
+        retval.set(UndefinedValue());
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-opener>
+    fn SetOpener(&self, _: &mut JSContext, _: HandleValue) {
+        // TODO: Implement x-origin opener
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-window-blur>
+    fn Blur(&self) {
+        // > User agents are encouraged to ignore calls to this `blur()` method
+        // > entirely.
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-window-focus>
+    fn Focus(&self) {
+        let browsing_context_id = self.window_proxy.browsing_context_id();
+        debug!("Initiating a focus operation for {browsing_context_id:?}");
+        let _ = self.globalscope.script_to_constellation_chan().send(
+            ScriptToConstellationMessage::FocusRemoteBrowsingContext(
+                browsing_context_id,
+                RemoteFocusOperation::Viewport,
+            ),
+        );
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-location>
+    fn Location(&self, cx: &mut js::context::JSContext) -> DomRoot<Location> {
+        self.location
+            .or_init(|| Location::new_dissimilar_origin(cx, self))
+    }
+}
+
+impl DissimilarOriginWindow {
+    /// <https://html.spec.whatwg.org/multipage/#window-post-message-steps>
+    fn post_message_impl(
+        &self,
+        target_origin: &USVString,
+        cx: &mut JSContext,
+        message: HandleValue,
+        transfer: CustomAutoRooterGuard<Vec<*mut JSObject>>,
+    ) -> ErrorResult {
+        // Step 6-7.
+        let data = structuredclone::write(cx, message, Some(transfer))?;
+
+        self.post_message(target_origin, data)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#window-post-message-steps>
+    pub(crate) fn post_message(
+        &self,
+        target_origin: &USVString,
+        data: StructuredSerializedData,
+    ) -> ErrorResult {
+        // Step 1.
+        let target = self.window_proxy.browsing_context_id();
+        // Step 2.
+        let incumbent = match GlobalScope::incumbent() {
+            None => panic!("postMessage called with no incumbent global"),
+            Some(incumbent) => incumbent,
+        };
+
+        let source_origin = incumbent.origin().immutable().clone();
+
+        // Step 3-5.
+        let target_origin = match target_origin.0[..].as_ref() {
+            "*" => None,
+            "/" => Some(source_origin.clone()),
+            url => match ServoUrl::parse(url) {
+                Ok(url) => Some(url.origin()),
+                Err(_) => return Err(Error::Syntax(None)),
+            },
+        };
+        let msg = ScriptToConstellationMessage::PostMessage {
+            target,
+            source: incumbent.pipeline_id(),
+            source_origin,
+            target_origin,
+            data,
+        };
+        // Step 8
+        let _ = incumbent.script_to_constellation_chan().send(msg);
+        Ok(())
+    }
+}
+
+impl HasOrigin for DissimilarOriginWindow {
+    fn origin(&self) -> MutableOrigin {
+        DissimilarOriginWindow::origin(self)
+    }
+}
