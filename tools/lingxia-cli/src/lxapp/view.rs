@@ -1201,6 +1201,47 @@ mod tests {
     }
 
     #[test]
+    fn children_reading_use_lx_page_themselves_need_no_forwarding() {
+        let temp = tempdir().unwrap();
+        let page_path = "pages/home/index.tsx";
+        let entry = temp.path().join(page_path);
+        fs::create_dir_all(entry.parent().unwrap().join("views")).unwrap();
+        // The entry only picks a View; it never takes `actions`.
+        fs::write(
+            &entry,
+            r#"
+            import ChildView from "./views/child-view";
+            export default function Page() {
+              return <ChildView />;
+            }
+            "#,
+        )
+        .unwrap();
+        fs::write(
+            entry.parent().unwrap().join("views/child-view.tsx"),
+            r#"
+            import { useLxPage } from "@lingxia/sdk";
+            export default function ChildView() {
+              const { actions } = useLxPage();
+              return <button onClick={() => actions.greet()}>go</button>;
+            }
+            "#,
+        )
+        .unwrap();
+
+        let project = create_project(temp.path(), ProjectFramework::React, page_path);
+        validate_component_view_bindings(
+            &project,
+            page_path,
+            &[PageAction {
+                name: "greet".to_string(),
+                mode: PageActionMode::Call,
+            }],
+        )
+        .unwrap();
+    }
+
+    #[test]
     fn entry_whitelist_covering_every_child_action_passes() {
         let temp = tempdir().unwrap();
         let page_path = "pages/account/index.tsx";

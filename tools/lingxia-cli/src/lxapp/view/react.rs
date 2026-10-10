@@ -43,10 +43,14 @@ pub(super) fn validate_react_bindings(
     // children can only reach what that literal names — and an omission there
     // is invisible to every other check.
     let (downstream, complete) = downstream_action_usage(project, &source_path);
+    // An entry that never takes `actions` from `useLxPage` hands its children
+    // nothing; they read `useLxPage` themselves, so there is no whitelist.
+    let entry_binds_actions =
+        !analyzer.action_object_aliases.is_empty() || !analyzer.local_action_aliases.is_empty();
     let mut unused_reportable = true;
     if analyzer.actions_escaped {
         unused_reportable = complete;
-    } else {
+    } else if entry_binds_actions {
         ensure_forwarded_actions_cover_downstream(page_path, &forwarded, &downstream, complete)?;
     }
     used_actions.extend(downstream);
