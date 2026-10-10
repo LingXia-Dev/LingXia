@@ -519,6 +519,7 @@ interface BrowserTabEntry {
   tabId: string;
   controller: webview.WebviewController;
   webTag: string;
+  nativeGeneration: string;
 }
 
 /**
@@ -575,7 +576,12 @@ export struct LxAppBrowser {
       this.syncAppearance();
       if (!visible) {
         this.clearAttachRetryTimer();
-        this.resetLocalState();
+        // Hiding the shell must retain each live Web component. Detaching it
+        // discards ArkWeb's document while Rust still owns the browser tab.
+        this.showTabSwitcher = false;
+        this.showOverflowMenu = false;
+        this.addressEditing = false;
+        if (this.tabCount === 0) this.resetLocalState();
         return;
       }
 
@@ -808,7 +814,10 @@ export struct LxAppBrowser {
       return null;
     }
 
-    return { tabId, controller: managedController, webTag: resolvedWebTag };
+    return {
+      tabId, controller: managedController, webTag: resolvedWebTag,
+      nativeGeneration: WebViewManager.getGenerationForController(resolvedWebTag, managedController)
+    };
   }
 
   /**
@@ -938,7 +947,7 @@ export struct LxAppBrowser {
   }
 
 	  build() {
-	    if (this.isVisible && this.tabEntries.length > 0) {
+	    if (this.tabEntries.length > 0) {
 	      Stack({ alignContent: Alignment.Bottom }) {
 	        // One `Web` per open tab, each bound to its own runtime-managed
 	        // controller. Only the active tab is visible; the rest stay mounted
@@ -948,7 +957,7 @@ export struct LxAppBrowser {
           Stack() {
             ForEach(this.tabEntries, (entry: BrowserTabEntry) => {
               this.TabWeb(entry)
-            }, (entry: BrowserTabEntry) => entry.tabId)
+            }, (entry: BrowserTabEntry) => `${entry.tabId}@${entry.nativeGeneration}`)
           }
           .width('100%')
           .layoutWeight(1)
@@ -973,8 +982,10 @@ export struct LxAppBrowser {
 	          this.OverflowMenu();
 	        }
       }
-      .width('100%')
-      .height('100%')
+      .width(this.isVisible ? '100%' : 0)
+      .height(this.isVisible ? '100%' : 0)
+      .visibility(this.isVisible ? Visibility.Visible : Visibility.None)
+      .hitTestBehavior(this.isVisible ? HitTestMode.Default : HitTestMode.None)
       .padding({ top: px2vp(this.topSafeAreaHeight) })
       .backgroundColor(this.colors().canvas)
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
@@ -991,7 +1002,8 @@ export struct LxAppBrowser {
       .darkMode(this.appearanceDark ? WebDarkMode.On : WebDarkMode.Off)
       .forceDarkAccess(false)
       .backgroundColor(this.colors().canvas)
-      .visibility(entry.tabId === (this.visibleTabId || this.activeTabId) ? Visibility.Visible : Visibility.Hidden)
+      .visibility(this.isVisible && entry.tabId === (this.visibleTabId || this.activeTabId) ? Visibility.Visible : Visibility.Hidden)
+      .hitTestBehavior(this.isVisible ? HitTestMode.Default : HitTestMode.None)
       // Observe-only: the first touch marks the tab as user-interacted for
       // the back/forward history gate; the event passes through to the page.
       .onTouch((event: TouchEvent) => {
@@ -1018,7 +1030,7 @@ export struct LxAppBrowser {
         }
         this.openTargetInNewTab(event.targetUrl);
       })
-      .onAppear(() => {
+      .onControllerAttached(() => {
         const nativeViewToken = WebViewManager.getGenerationForController(entry.webTag, entry.controller);
         const attachKey = `${entry.webTag}@${nativeViewToken}`;
         if (nativeViewToken && !this.ackedWebTags.has(attachKey)) {
@@ -1050,6 +1062,10 @@ export struct LxAppBrowser {
         try {
           isMainFrame = request.isMainFrame();
         } catch {}
+
+        if (WebViewManager.consumeDocumentLoad(entry.webTag, entry.controller, targetUrl, isMainFrame)) {
+          return false;
+        }
 
         const policy: BrowserNavigationPolicyResponse | null = resolveBrowserNavigationPolicy(
           targetUrl,

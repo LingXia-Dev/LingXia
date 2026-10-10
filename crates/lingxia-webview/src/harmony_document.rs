@@ -21,6 +21,21 @@ fn next_navigation_key() -> NativeKey {
 fn marked_url(url: &str, native_generation: &str, key: NativeKey) -> String {
     let marker = format!("{LOAD_MARKER}={native_generation}-{key}");
     let (head, fragment) = url.split_once('#').unwrap_or((url, ""));
+    // ArkWeb commits authority URLs with an explicit root path. Issue that
+    // spelling up front so begin/commit retain exact-match validation.
+    let (path, query) = head.split_once('?').unwrap_or((head, ""));
+    let root = path.split_once("://").and_then(|(_, authority)| {
+        if !authority.is_empty() && !authority.contains('/') {
+            Some(if head.contains('?') {
+                format!("{path}/?{query}")
+            } else {
+                format!("{path}/")
+            })
+        } else {
+            None
+        }
+    });
+    let head = root.as_deref().unwrap_or(head);
     let separator = if head.contains('?') { '&' } else { '?' };
     let mut marked = format!("{head}{separator}{marker}");
     if !fragment.is_empty() {
@@ -188,11 +203,10 @@ impl HarmonyDocumentAuthority {
             // begin attested cannot inherit that navigation's trust. Logged
             // because the whole bridge stays silent when it happens.
             log::warn!(
-                "Harmony document commit rejected: begin was epoch {} url {}, commit is epoch {} url {}",
+                "Harmony document commit rejected: begin epoch {}, commit epoch {}, URL matched: {}",
                 active.page_epoch,
-                active.platform_url,
                 page_epoch,
-                observed_url
+                active.platform_url == observed_url
             );
             state.active = None;
             state.trusted = None;
@@ -335,6 +349,22 @@ mod tests {
             DocumentCommit::Committed(committed) => committed,
             _ => panic!("expected a fresh document commit"),
         }
+    }
+
+    #[test]
+    fn issued_authority_urls_already_have_arkweb_root_path() {
+        assert_eq!(
+            marked_url("lingxia://newtab", "2", 3),
+            "lingxia://newtab/?__lingxia_native_load=2-3"
+        );
+        assert_eq!(
+            marked_url("lingxia://settings?tab=one#section", "2", 4),
+            "lingxia://settings/?tab=one&__lingxia_native_load=2-4#section"
+        );
+        assert_eq!(
+            marked_url("lingxia://settings/page", "2", 5),
+            "lingxia://settings/page?__lingxia_native_load=2-5"
+        );
     }
 
     #[test]

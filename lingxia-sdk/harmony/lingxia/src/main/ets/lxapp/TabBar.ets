@@ -203,7 +203,7 @@ export struct TabBar {
             Image(this.getIconUrl(item))
               .width(TAB_BAR_ITEM_ICON_SIZE)
               .height(TAB_BAR_ITEM_ICON_SIZE)
-              .fillColor(this.isDirectItemSelected(item) ? this.getSelectedColor() : this.getNormalColor())
+              .colorFilter(this.iconColorFilter(this.isDirectItemSelected(item)))
               .objectFit(ImageFit.Contain)
               .onError((error: ImageError): void => {
                 LxLog.e(TAG, `Tab ${index} icon load error: ${JSON.stringify(error)}, path: ${item.iconPath}`);
@@ -573,7 +573,7 @@ export struct TabBar {
           Image(this.getIconUrl(item))
             .width(TAB_BAR_ITEM_ICON_SIZE)
             .height(TAB_BAR_ITEM_ICON_SIZE)
-            .fillColor(item.index === this.tabbar.selectedIndex ? this.getSelectedColor() : this.getNormalColor())
+            .colorFilter(this.iconColorFilter(item.index === this.tabbar.selectedIndex))
             .objectFit(ImageFit.Contain)
         } else {
           Image(this.getIconUrl(item))
@@ -717,9 +717,24 @@ export struct TabBar {
     return fileUrl;
   }
 
-  /**
-   * Get normal text/icon color
-   */
+  // Tint rendered pixels, preserving stroke-only SVG geometry and alpha.
+  private iconColorFilter(selected: boolean): ColorFilter {
+    const color: number = selected
+      ? (this.tabbar.selectedColor ?? 0xFF1677FF)
+      : (this.tabbar.color ?? 0xFF666666);
+    const red: number = ((color >>> 16) & 0xFF) / 255;
+    const green: number = ((color >>> 8) & 0xFF) / 255;
+    const blue: number = (color & 0xFF) / 255;
+    const alpha: number = ((color >>> 24) & 0xFF) / 255;
+    return new ColorFilter([
+      0, 0, 0, red, 0,
+      0, 0, 0, green, 0,
+      0, 0, 0, blue, 0,
+      0, 0, 0, alpha, 0
+    ]);
+  }
+
+  /** Get normal text/icon color. */
   private getNormalColor(): ResourceColor {
     return this.toResourceColor(this.tabbar.color ?? 0xFF666666);
   }

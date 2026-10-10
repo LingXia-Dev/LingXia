@@ -30,7 +30,7 @@ pub fn init(callback_function: Function<'static>) -> Result<(), String> {
         .max_queue_size::<200>()
         .build_callback(|ctx: ThreadsafeCallContext<String>| {
             let data = ctx.value;
-            log::info!("ThreadSafe callback called with data: {}", data);
+            // Payloads can contain trusted document HTML and bridge credentials.
 
             // Return the data string to ArkTS
             Ok(data)

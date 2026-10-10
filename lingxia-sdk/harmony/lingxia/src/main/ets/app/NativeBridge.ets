@@ -25,6 +25,7 @@ import {
   createWebViewController,
   destroyWebViewController,
   loadUrl,
+  loadData,
   clearBrowsingData,
   setUserAgentOverride,
   captureScreenshot
@@ -163,6 +164,16 @@ class NativeBridge {
       return LxApp.navigate(appId, webtag, animType);
     });
 
+    this.register('activateBrowserTab', (tabId: string, callbackId: string) => {
+      try {
+        const shown: boolean = LxAppBrowserManager.show(tabId);
+        onCallback(callbackId, shown, shown ? '{}' : '1000');
+      } catch (_) {
+        onCallback(callbackId, false, '1000');
+      }
+      return true;
+    });
+
     // Launch URL (external or in-app browser)
     this.register('launchWithUrl', (
       url: string,
@@ -228,6 +239,10 @@ class NativeBridge {
 
     this.register('destroyWebViewController', (webtag: string, generation?: string) => {
       return destroyWebViewController(webtag, generation);
+    });
+
+    this.register('loadData', (webtag: string, generation: string, data: string, baseUrl: string, historyUrl: string) => {
+      return loadData(webtag, generation, data, baseUrl, historyUrl);
     });
 
     // WebView URL loading

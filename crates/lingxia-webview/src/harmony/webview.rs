@@ -1539,29 +1539,20 @@ impl WebViewInner {
         request: LoadDataRequest<'_>,
         history_url: &str,
     ) -> Result<(), WebViewError> {
-        unsafe {
-            let ark_webtag = self.ark_webtag_string();
-            let webtag_cstr = cstring_from_str("ark_webtag", &ark_webtag)?;
-            let data_cstr = cstring_from_str("load_data.data", request.data)?;
-            let base_url_cstr = cstring_from_str("load_data.base_url", request.base_url)?;
-            let history_url_cstr = cstring_from_str("load_data.history_url", history_url)?;
-            let result = OH_NativeArkWeb_LoadData(
-                webtag_cstr.as_ptr(),
-                data_cstr.as_ptr(),
-                b"text/html\0".as_ptr().cast::<c_char>(),
-                b"UTF-8\0".as_ptr().cast::<c_char>(),
-                base_url_cstr.as_ptr(),
-                history_url_cstr.as_ptr(),
-            );
-            if result == ArkWeb_ErrorCode_ARKWEB_SUCCESS {
-                Ok(())
-            } else {
-                Err(WebViewError::WebView(format!(
-                    "Failed to load data into WebView: error code {:?}",
-                    result
-                )))
-            }
-        }
+        // ArkWeb requires the UI thread even when its NDK call reports success.
+        // Use the same main-thread dispatch as load_url, retaining the native
+        // generation so queued work cannot load into a replacement WebView.
+        let ark_tag = self.ark_webtag_string();
+        call_arkts(
+            "loadData",
+            &[
+                &ark_tag,
+                &self.native_generation,
+                request.data,
+                request.base_url,
+                history_url,
+            ],
+        )
     }
 
     pub(crate) fn load_trusted_data(

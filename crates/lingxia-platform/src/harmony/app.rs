@@ -680,6 +680,23 @@ impl AppRuntime for Platform {
         })
     }
 
+    fn activate_browser_tab(&self, tab_id: String) -> crate::traits::PlatformFuture {
+        Box::pin(async move {
+            crate::rt::native_call(|callback_id| {
+                let callback_id = callback_id.to_string();
+                lingxia_webview::platform::harmony::tsfn::call_arkts(
+                    "activateBrowserTab",
+                    &[&tab_id, &callback_id],
+                )
+                .map_err(|e| {
+                    PlatformError::Platform(format!("Failed to activate browser tab: {e}"))
+                })
+            })
+            .await?;
+            Ok(())
+        })
+    }
+
     fn open_url(
         &self,
         req: crate::traits::app_runtime::OpenUrlRequest,
