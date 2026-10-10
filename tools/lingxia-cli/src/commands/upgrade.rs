@@ -42,13 +42,7 @@ enum CliStep {
     NotReplaceable,
 }
 
-pub fn execute(
-    check: bool,
-    version: Option<String>,
-    yes: bool,
-    cli_only: bool,
-    skip_skill: bool,
-) -> Result<i32> {
+pub fn execute(check: bool, version: Option<String>, yes: bool, cli_only: bool) -> Result<i32> {
     // CLI first, always. The new CLI's baked compatibility line is what the
     // project half compares against, so a successful self-replace re-execs on
     // Unix. Windows stages the swap until this process exits — project pins
@@ -59,20 +53,19 @@ pub fn execute(
     } else {
         crate::commands::project_upgrade::find_project_root()
     };
-    let skip_skill = skip_skill || cli_only;
-
     let cli = run_cli_step(check, version.as_deref(), project_root.is_some(), cli_only)?;
 
-    if !skip_skill && should_sync_skill(&cli, check) {
+    // CLI-only is the CI path: it leaves the home directory's skill alone.
+    if !cli_only && should_sync_skill(&cli, check) {
         crate::update::sync_installed_skill(true);
     }
     // A replaced binary carries a skill this process cannot produce, so the new
     // executable writes it before anything else runs.
     #[cfg(not(target_os = "windows"))]
     if let CliStep::Replaced { exe } = &cli
-        && !skip_skill
+        && !cli_only
     {
-        crate::update::sync_skill_through(exe);
+        crate::update::sync_skill_through(exe, true);
     }
 
     if let Some(root) = project_root.as_deref() {

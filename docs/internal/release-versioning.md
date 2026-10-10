@@ -68,7 +68,8 @@ The skill is embedded in the CLI and has no independent version or release.
 `lingxia new`, `lingxia upgrade`, and `lingxia skill install` write it to
 `~/.agents/skills/lingxia`, with a link under `~/.claude/skills` for Claude Code.
 Other runs reconcile the copy when its content digest differs, provided a copy
-or skills root exists. `--skip-skill` disables synchronization.
+or skills root exists, so a home without agent tooling is never written to;
+`upgrade --cli-only` leaves the skill alone.
 
 ## `lingxia upgrade` mechanics
 
