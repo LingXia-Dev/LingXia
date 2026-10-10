@@ -312,10 +312,14 @@ fn bridge_loop(
 
         match websocket.read() {
             Ok(message) => {
-                last_received = Instant::now();
                 if let Some(wire) = parse_wire_message(message)? {
                     handle_incoming_message(websocket, wire)?;
                 }
+                // Dispatch can synchronously reopen a test profile or load a
+                // large bundle. That local work is not transport inactivity;
+                // otherwise a healthy peer is dropped before its queued pong
+                // can be read, clearing the run's companion and mock state.
+                last_received = Instant::now();
             }
             Err(WsError::Io(err)) if is_retryable_read_error(&err) => {}
             Err(WsError::ConnectionClosed) | Err(WsError::AlreadyClosed) => {

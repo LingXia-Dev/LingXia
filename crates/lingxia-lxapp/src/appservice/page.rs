@@ -1312,9 +1312,11 @@ impl PageSvc {
         for func in self.functions.values() {
             mark_fn(func.as_js_value());
         }
-        if let Some(this) = self.this.0.borrow().as_ref() {
-            mark_fn(this.as_js_value());
-        }
+        // `this` is one shared native root, also owned by the service registry
+        // and lifecycle tasks. Marking it as an edge owned by this JS object
+        // makes QuickJS subtract its only reference as a self-cycle and free
+        // a page the registry still holds. Keep it external until release_js
+        // explicitly clears the shared root.
 
         if let Ok(state) = self.state.try_lock() {
             for func in state.callback.values() {
