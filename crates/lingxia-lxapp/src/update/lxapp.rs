@@ -225,9 +225,12 @@ impl UpdateManager {
         release_type: Channel,
         query: LxAppUpdateQuery,
     ) -> Result<Option<UpdatePackageInfo>, LxAppError> {
+        if lingxia_update::blocks_dev_service_packages() {
+            return Ok(None);
+        }
         let provider = crate::get_provider();
         let keys = lingxia_update::embedded_update_public_keys();
-        if !lingxia_update::check_package_update_enabled("lxapp", &keys) {
+        if !lingxia_update::check_update_enabled(&keys) {
             return Ok(None);
         }
         let exact_version = match &query {

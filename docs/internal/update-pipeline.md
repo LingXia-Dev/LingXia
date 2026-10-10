@@ -21,11 +21,11 @@ without platform services.
 
 ## Trust and installation
 
-- **The host build decides whether signatures are required, with one
-  dev-service exception.** A requested lxapp channel alone cannot waive
-  verification. A production host explicitly switched to the **dev service**
-  accepts unsigned **lxapps/plugins** on every channel, the home lxapp
-  included: home and guest lxapps share one update path. Prod-service
+- **The host build decides whether signatures are required.** A requested
+  lxapp channel alone cannot waive verification. A production host switched
+  to the **dev service** does not fetch lxapp/plugin packages from that
+  service, home lxapp included. Already-installed packages still open. A dev
+  build may take unsigned lxapps/plugins. Prod-service
   packages and host self-updates retain the build environment's signature
   requirements.
 - **Production direct updates require embedded trusted keys.** Store hosts

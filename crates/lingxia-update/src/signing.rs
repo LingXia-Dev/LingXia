@@ -8,7 +8,7 @@ use crate::error::UpdateError;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
-use lingxia_app_context::{AppEnv, env, service_env};
+use lingxia_app_context::{AppEnv, env};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -153,18 +153,6 @@ pub fn check_update_enabled(trusted_public_keys: &[String]) -> bool {
     !host_requires_signature() || !trusted_public_keys.is_empty()
 }
 
-/// The dev service does not require signed lxapps or plugins on any channel.
-/// Host app packages always follow the immutable build environment.
-fn package_requires_signature(build_env: AppEnv, running_service_env: AppEnv, kind: &str) -> bool {
-    env_requires_signature(build_env)
-        && !(running_service_env == AppEnv::Dev && matches!(kind, "lxapp" | "lxplugin"))
-}
-
-/// Dev-service lxapps/plugins can be checked without embedded keys.
-pub fn check_package_update_enabled(kind: &str, trusted_public_keys: &[String]) -> bool {
-    !package_requires_signature(env(), service_env(), kind) || !trusted_public_keys.is_empty()
-}
-
 pub fn sign_package_from_key_file(
     env: AppEnv,
     key_file: Option<&Path>,
@@ -188,7 +176,7 @@ pub fn verify_checked_update(
     target: &UpdateVerifyTarget,
     trusted_public_keys: &[String],
 ) -> Result<UpdatePackageInfo, UpdateError> {
-    verify_checked_update_in_env(package, target, trusted_public_keys, env(), service_env())
+    verify_checked_update_in_env(package, target, trusted_public_keys, env())
 }
 
 fn verify_checked_update_in_env(
@@ -196,12 +184,10 @@ fn verify_checked_update_in_env(
     target: &UpdateVerifyTarget,
     trusted_public_keys: &[String],
     build_env: AppEnv,
-    running_service_env: AppEnv,
 ) -> Result<UpdatePackageInfo, UpdateError> {
-    // Only the running service env waives verification, never the requested
-    // channel: switching to dev goes through the trusted control app.
-    let signature_required =
-        package_requires_signature(build_env, running_service_env, &target.kind);
+    // The build env alone decides: neither the requested channel nor a switch
+    // to the dev service waives verification.
+    let signature_required = env_requires_signature(build_env);
     if trusted_public_keys.is_empty() && !signature_required {
         return Ok(package);
     }
@@ -523,36 +509,27 @@ mod tests {
     }
 
     #[test]
-    fn dev_service_policy_preserves_prod_host_verification() {
+    fn only_a_prod_build_requires_signatures() {
         let sha256 = archive_sha256_hex(ARCHIVE);
         let keys = [public_key_base64url(&SEED)];
         for build_env in [AppEnv::Dev, AppEnv::Prod] {
-            for running_service_env in [AppEnv::Dev, AppEnv::Prod] {
-                for kind in ["app", "lxapp", "lxplugin"] {
-                    for channel in ["draft", "release", ""] {
-                        let mut t = target();
-                        t.kind = kind.into();
-                        t.channel = channel.into();
-                        let required = build_env == AppEnv::Prod
-                            && !(running_service_env == AppEnv::Dev && kind != "app");
-                        assert_eq!(
-                            package_requires_signature(build_env, running_service_env, kind),
-                            required,
+            for kind in ["app", "lxapp", "lxplugin"] {
+                for channel in ["draft", "release", ""] {
+                    let mut t = target();
+                    t.kind = kind.into();
+                    t.channel = channel.into();
+                    for trusted_keys in [&[][..], &keys[..]] {
+                        let result = verify_checked_update_in_env(
+                            package(None, &sha256, ARCHIVE.len() as u64),
+                            &t,
+                            trusted_keys,
+                            build_env,
                         );
-                        for trusted_keys in [&[][..], &keys[..]] {
-                            let result = verify_checked_update_in_env(
-                                package(None, &sha256, ARCHIVE.len() as u64),
-                                &t,
-                                trusted_keys,
-                                build_env,
-                                running_service_env,
-                            );
-                            assert_eq!(
-                                result.is_err(),
-                                required,
-                                "{build_env:?}/{running_service_env:?}/{kind}/{channel}"
-                            );
-                        }
+                        assert_eq!(
+                            result.is_err(),
+                            build_env == AppEnv::Prod,
+                            "{build_env:?}/{kind}/{channel}"
+                        );
                     }
                 }
             }
@@ -573,7 +550,6 @@ mod tests {
             &draft,
             &keys,
             AppEnv::Prod,
-            AppEnv::Dev,
         )
         .unwrap();
         let mut corrupt = auth;
@@ -584,7 +560,6 @@ mod tests {
                 &draft,
                 &keys,
                 AppEnv::Prod,
-                AppEnv::Dev,
             )
             .is_err()
         );

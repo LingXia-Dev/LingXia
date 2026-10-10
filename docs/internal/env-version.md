@@ -59,11 +59,14 @@ app may call this API.
 The default lxapp channel is always `release`, independent of the running
 service env. Draft opens and publishes require an explicit `channel` selector.
 Installs and storage remain keyed by channel, home lxapp included. Switching
-service env does not select a different lxapp data profile by itself.
+service env does not select a different lxapp data profile by itself. The
+same app id and channel is one package directory, one userdata tree, and one
+usercache quota.
 
-Lxapps/plugins from the dev service may be unsigned on every channel,
-including on a prod build switched to dev and including the home lxapp. Packages from the prod service
-and host self-updates retain the build environment's signature requirements.
+A prod build on the dev service opens the packages already installed. It does
+not fetch lxapp or plugin packages from the dev service, home lxapp included.
+Host self-updates stay on the build env. A dev build still follows the dev
+service, where lxapps and plugins may be unsigned.
 
 Package id, host signing, the installed icon, self-update server, and signed App
 Link entitlement stay on the build env. A `dev` build gets the icon D mark.

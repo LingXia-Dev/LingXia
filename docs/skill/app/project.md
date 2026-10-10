@@ -202,7 +202,8 @@ Envs install side by side. The default lxapp channel is always `release`,
 independent of the running service env; an omitted selector keeps the channel a
 running lxapp already has. An explicit `channel: 'draft'` works
 on any host. Lxapp data is kept per channel; switching service env alone does
-not select another channel's data.
+not select another channel's data. A prod build on the dev service does not
+fetch a replacement package from that service.
 
 ```yaml
 app:
