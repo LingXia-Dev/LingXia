@@ -179,7 +179,6 @@ impl IosPlatform {
             Some(app_config.project_name.as_str()),
             "ios",
         )?;
-        let executable_name = app_config.project_name.clone();
 
         let deployment_target = ios_config
             .and_then(|c| c.deployment_target.clone())
@@ -204,7 +203,6 @@ impl IosPlatform {
             bundle_name,
             app_name,
             swift_product_name,
-            executable_name,
             deployment_target,
             info_plist_path: info_plist,
             splash_background: splash.as_ref().map(|s| s.background().to_string()),
