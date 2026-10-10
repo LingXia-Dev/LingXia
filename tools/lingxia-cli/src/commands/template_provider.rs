@@ -99,20 +99,23 @@ pub fn execute_add(source: &str) -> Result<()> {
 
 pub fn execute_list() -> Result<()> {
     let home = require_home()?;
-    let templates = list_from(&home)?;
+    let templates = scan_installed(&home)?;
     if templates.is_empty() {
         println!("No external templates installed.");
         println!("Add one with: lingxia template add <git-url>");
         return Ok(());
     }
     println!("Installed templates:");
-    for template in templates {
-        println!(
-            "  {}  {}  {}",
-            template.slug.cyan(),
-            short_commit(&template.commit),
-            template.source
-        );
+    for (slug, loaded) in templates {
+        match loaded {
+            Ok(template) => println!(
+                "  {}  {}  {}",
+                template.slug.cyan(),
+                short_commit(&template.commit),
+                template.source
+            ),
+            Err(_) => println!("  {}  needs `lingxia template update {slug}`", slug.cyan()),
+        }
     }
     Ok(())
 }
@@ -121,9 +124,9 @@ pub fn execute_update(name: Option<&str>) -> Result<()> {
     let home = require_home()?;
     let names = match name {
         Some(name) => vec![name.to_string()],
-        None => list_from(&home)?
+        None => scan_installed(&home)?
             .into_iter()
-            .map(|template| template.slug)
+            .map(|(slug, _)| slug)
             .collect(),
     };
     if names.is_empty() {
@@ -131,7 +134,7 @@ pub fn execute_update(name: Option<&str>) -> Result<()> {
         return Ok(());
     }
     for name in names {
-        let before = load_from(&home, &name)?;
+        let before = read_state(&home, &slug_for_name(&name)?)?;
         let after = update_from(&home, &name)?;
         if before.commit == after.commit {
             println!("  {} {} is current", "✓".green(), name);
@@ -510,6 +513,21 @@ fn add_from(home: &Path, source: &str) -> Result<InstalledTemplate> {
 }
 
 fn list_from(home: &Path) -> Result<Vec<InstalledTemplate>> {
+    Ok(scan_installed(home)?
+        .into_iter()
+        .filter_map(|(slug, loaded)| match loaded {
+            Ok(template) => Some(template),
+            Err(error) => {
+                eprintln!("{}", unloadable_warning(&slug, &error).yellow());
+                None
+            }
+        })
+        .collect())
+}
+
+/// Every installed checkout, including ones this CLI cannot load (such as an
+/// older manifest format), so they can still be listed, updated and removed.
+fn scan_installed(home: &Path) -> Result<Vec<(String, Result<InstalledTemplate>)>> {
     let root = templates_root(home);
     if !root.exists() {
         return Ok(Vec::new());
@@ -521,10 +539,17 @@ fn list_from(home: &Path) -> Result<Vec<InstalledTemplate>> {
             continue;
         }
         let slug = entry.file_name().to_string_lossy().into_owned();
-        result.push(load_from(home, &slug)?);
+        let loaded = load_from(home, &slug);
+        result.push((slug, loaded));
     }
-    result.sort_by(|left, right| left.slug.cmp(&right.slug));
+    result.sort_by(|left, right| left.0.cmp(&right.0));
     Ok(result)
+}
+
+fn unloadable_warning(slug: &str, error: &anyhow::Error) -> String {
+    format!(
+        "warning: template {slug} cannot be loaded ({error:#}); run `lingxia template update {slug}`"
+    )
 }
 
 fn load_from(home: &Path, name: &str) -> Result<InstalledTemplate> {
@@ -548,20 +573,33 @@ fn load_from(home: &Path, name: &str) -> Result<InstalledTemplate> {
 /// so callers decide when that is worth doing -- `is_due` for the background
 /// path, unconditionally for a scaffold or an explicit `template update`.
 fn update_from(home: &Path, name: &str) -> Result<InstalledTemplate> {
-    let current = load_from(home, name)?;
-    let state = read_state(home, &current.slug)?;
-    let remote_commit = git_remote_commit(&state.source)?;
-    if remote_commit == current.commit {
-        sync_assets(home, &current, Some(&current))?;
+    let slug = slug_for_name(name)?;
+    let root = templates_root(home).join(&slug);
+    let state = read_state(home, &slug)?;
+    // A checkout this CLI cannot load is still replaced; only the diff of its
+    // previous assets is skipped.
+    let (current, unloadable) = match load_from(home, &slug) {
+        Ok(current) => (Some(current), None),
+        Err(error) if root.is_dir() => (None, Some(error)),
+        Err(error) => return Err(error),
+    };
+    let unchanged = |current: &InstalledTemplate| -> Result<InstalledTemplate> {
+        sync_assets(home, current, Some(current))?;
         write_state(
             home,
-            &current.slug,
+            &slug,
             &TemplateState {
                 last_checked: now(),
-                ..state
+                ..state.clone()
             },
         )?;
-        return Ok(current);
+        Ok(current.clone())
+    };
+    let remote_commit = git_remote_commit(&state.source)?;
+    if let Some(current) = &current
+        && remote_commit == current.commit
+    {
+        return unchanged(current);
     }
 
     let templates = templates_root(home);
@@ -571,46 +609,42 @@ fn update_from(home: &Path, name: &str) -> Result<InstalledTemplate> {
     let checkout = temporary.path().join("checkout");
     clone_repository(&state.source, &checkout)?;
     let manifest = load_manifest(&checkout)?;
-    let slug = slug_for_name(&manifest.name)?;
-    if slug != current.slug {
+    if slug_for_name(&manifest.name)? != slug {
         bail!(
-            "Template update changed its name from `{}` to `{slug}`",
-            current.slug
+            "Template update changed its name from `{slug}` to `{}`",
+            slug_for_name(&manifest.name)?
         );
     }
     let commit = git_commit(&checkout)?;
-    if commit == current.commit {
-        sync_assets(home, &current, Some(&current))?;
-        write_state(
-            home,
-            &slug,
-            &TemplateState {
-                last_checked: now(),
-                ..state
-            },
-        )?;
-        return Ok(current);
+    match (&current, unloadable) {
+        (Some(current), _) if commit == current.commit => return unchanged(current),
+        (None, Some(error)) if commit == state.commit => {
+            return Err(error).context(format!(
+                "Template `{slug}` is already at its source's latest commit, which this CLI cannot load"
+            ));
+        }
+        _ => {}
     }
 
-    let backup = templates.join(format!(".{}-previous", current.slug));
+    let backup = templates.join(format!(".{slug}-previous"));
     if backup.exists() {
         fs::remove_dir_all(&backup)?;
     }
-    fs::rename(&current.root, &backup)?;
-    if let Err(error) = fs::rename(&checkout, &current.root) {
-        let _ = fs::rename(&backup, &current.root);
+    fs::rename(&root, &backup)?;
+    if let Err(error) = fs::rename(&checkout, &root) {
+        let _ = fs::rename(&backup, &root);
         return Err(error).context("Failed to activate updated template");
     }
     let updated = InstalledTemplate {
-        slug: current.slug.clone(),
-        root: current.root.clone(),
+        slug: slug.clone(),
+        root: root.clone(),
         manifest,
         source: state.source.clone(),
         commit: commit.clone(),
     };
-    if let Err(error) = sync_assets(home, &updated, Some(&current)) {
+    if let Err(error) = sync_assets(home, &updated, current.as_ref()) {
         let _ = fs::remove_dir_all(&updated.root);
-        let _ = fs::rename(&backup, &current.root);
+        let _ = fs::rename(&backup, &root);
         return Err(error);
     }
     if let Err(error) = write_state(
@@ -623,8 +657,11 @@ fn update_from(home: &Path, name: &str) -> Result<InstalledTemplate> {
         },
     ) {
         let _ = fs::remove_dir_all(&updated.root);
-        let _ = fs::rename(&backup, &current.root);
-        let rollback = sync_assets(home, &current, Some(&updated));
+        let _ = fs::rename(&backup, &root);
+        let rollback = match &current {
+            Some(current) => sync_assets(home, current, Some(&updated)),
+            None => Ok(()),
+        };
         return match rollback {
             Ok(()) => Err(error),
             Err(rollback) => Err(error).context(format!(
@@ -646,7 +683,26 @@ fn update_from(home: &Path, name: &str) -> Result<InstalledTemplate> {
 }
 
 fn remove_from(home: &Path, name: &str) -> Result<()> {
-    let installed = load_from(home, name)?;
+    let slug = slug_for_name(name)?;
+    let root = templates_root(home).join(&slug);
+    let installed = match load_from(home, &slug) {
+        Ok(installed) => installed,
+        // Without a readable manifest its launchers and skills are unknown;
+        // removing the checkout still lets `template add` start over.
+        Err(error) if root.is_dir() => {
+            eprintln!(
+                "{}",
+                format!("warning: template {slug} cannot be loaded ({error:#}); its launchers and skills are left in place").yellow()
+            );
+            fs::remove_dir_all(&root)?;
+            let state = state_path(home, &slug);
+            if state.exists() {
+                fs::remove_file(state)?;
+            }
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
     validate_asset_ownership(home, &installed, Some(&installed))?;
     remove_launchers(home, &installed)?;
     for skill in &installed.manifest.skills {
@@ -1745,6 +1801,45 @@ mod tests {
             error.contains("lingxia template add https://example.test/t.git"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn an_installed_template_this_cli_cannot_load_is_listed_updated_and_removed() {
+        let source = tempdir().unwrap();
+        write_manifest(source.path());
+        git(source.path(), &["init", "-q", "-b", "main"]);
+        git(source.path(), &["config", "user.email", "test@example.com"]);
+        git(source.path(), &["config", "user.name", "Test"]);
+        git(source.path(), &["add", "."]);
+        git(source.path(), &["commit", "-q", "-m", "initial"]);
+        let home = tempdir().unwrap();
+        add_from(home.path(), source.path().to_str().unwrap()).unwrap();
+        // An older CLI installed it with a lifecycle shape this one rejects.
+        let installed = templates_root(home.path()).join("example-kit");
+        fs::write(
+            installed.join(MANIFEST_FILE),
+            r#"{"name":"Example Kit","template":"template","companion":{"run":["x"]}}"#,
+        )
+        .unwrap();
+        let scanned = scan_installed(home.path()).unwrap();
+        assert_eq!(scanned.len(), 1);
+        assert!(scanned[0].1.is_err());
+        assert!(list_from(home.path()).unwrap().is_empty());
+
+        // Same commit upstream: nothing newer to load, and it says so.
+        let error = format!("{:#}", update_from(home.path(), "example-kit").unwrap_err());
+        assert!(error.contains("cannot load"), "{error}");
+
+        fs::write(source.path().join("template/README.md"), "next\n").unwrap();
+        git(source.path(), &["add", "."]);
+        git(source.path(), &["commit", "-q", "-m", "next"]);
+        let updated = update_from(home.path(), "example-kit").unwrap();
+        assert!(load_from(home.path(), &updated.slug).is_ok());
+
+        fs::write(installed.join(MANIFEST_FILE), "{").unwrap();
+        remove_from(home.path(), "example-kit").unwrap();
+        assert!(!installed.exists());
+        assert!(!state_path(home.path(), "example-kit").exists());
     }
 
     #[test]
