@@ -24,9 +24,9 @@ without platform services.
 - **The host build decides whether signatures are required, with one
   dev-service exception.** A requested lxapp channel alone cannot waive
   verification. A production host explicitly switched to the **dev service**
-  accepts unsigned **draft lxapps/plugins**.
-  Release packages, prod-service packages, and host self-updates retain the
-  build environment's signature requirements.
+  accepts unsigned **lxapps/plugins** on every channel.
+  Prod-service packages and host self-updates retain the build environment's
+  signature requirements.
 - **Production direct updates require embedded trusted keys.** Store hosts
   use only the version and optional release notes; they do not verify or use
   package fields. Lxapp and plugin update verification is unchanged.

@@ -61,9 +61,9 @@ service env. Draft opens and publishes require an explicit `channel` selector.
 Installs and storage remain keyed by channel, home lxapp included. Switching
 service env does not select a different lxapp data profile by itself.
 
-Draft lxapps/plugins from the dev service may be unsigned, including on a
-prod build switched to dev. Release packages and packages from the prod
-service retain the build environment's signature requirements.
+Lxapps/plugins from the dev service may be unsigned on every channel,
+including on a prod build switched to dev. Packages from the prod service
+and host self-updates retain the build environment's signature requirements.
 
 Package id, host signing, the installed icon, self-update server, and signed App
 Link entitlement stay on the build env. A `dev` build gets the icon D mark.
