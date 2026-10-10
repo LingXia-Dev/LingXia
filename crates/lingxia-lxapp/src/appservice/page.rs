@@ -1181,12 +1181,23 @@ impl PageSvc {
         let page_svc = binding.borrow_mut::<PageSvc>().unwrap();
         page_svc.this.set(instance.clone());
         let page_instance_id = page_svc.page.instance_id_string();
-        super::with_page_svc_map(&ctx, |page_svc_map| {
-            page_svc_map
+        let previous = super::with_page_svc_map(&ctx, |page_svc_map| {
+            let previous = page_svc_map
                 .borrow_mut()
                 .insert(page_instance_id, page_svc.clone());
-            Ok(())
+            Ok(previous)
         })?;
+        drop(page_svc);
+        // The registry owns the JS root. Replacing a service must retire that
+        // root outside either borrow: cancellation can re-enter JavaScript.
+        if let Some(previous) = previous {
+            previous.mark_terminated();
+            if previous.lifecycle_pending() {
+                super::runtime_ctx::retire_page_svc(&ctx, previous);
+            } else {
+                previous.release_js();
+            }
+        }
 
         Ok(instance)
     }

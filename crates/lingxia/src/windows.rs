@@ -10,7 +10,8 @@ use lingxia_webview::{
     NavigationPolicy, NewWindowPolicy, WebTag, WebViewController, WebViewDataMode,
 };
 
-static WINDOWS_APP_VISIBLE_WEBTAGS: LazyLock<Mutex<HashMap<String, HashSet<String>>>> =
+type AppVisibilityKey = (String, Option<u64>);
+static WINDOWS_APP_VISIBLE_WEBTAGS: LazyLock<Mutex<HashMap<AppVisibilityKey, HashSet<String>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Starts the configured home lxapp's Logic worker without opening a page.
@@ -260,32 +261,36 @@ fn on_webview_visibility_changed(webtag: &WebTag, visible: bool) {
     let page_visibility = if has_page_instance {
         lxapp::notify_page_host_visibility_by_webtag(&appid, webtag.key(), visible)
     } else {
-        lxapp::notify_page_host_visibility(&appid, &path, visible)
+        lxapp::notify_page_host_visibility(&appid, &path, visible).map(|_| true)
     };
-    if let Err(err) = page_visibility {
+    if let Err(ref err) = page_visibility {
         log::debug!(
             "Windows page visibility event ignored for {} visible={}: {}",
             webtag,
             visible,
             err
         );
-        if visible && has_page_instance {
-            // A retired document must not bring the replacement app foreground.
-            return;
-        }
+    }
+    // Only an accepted instance event can add an app-visible key. Hidden
+    // always clears its own session's key, even after its page was removed.
+    if visible && has_page_instance && !matches!(page_visibility, Ok(true)) {
+        return;
     }
 
     let app_event = update_app_visible_webtags(&appid, webtag.key(), visible);
 
-    if let Some(visible) = app_event
-        && let Err(err) = lxapp::notify_lxapp_host_visibility(&appid, visible)
-    {
-        log::debug!(
-            "Windows app visibility event ignored for {} visible={}: {}",
-            appid,
-            visible,
-            err
-        );
+    if let Some(visible) = app_event {
+        let result = match webtag.session_id() {
+            Some(session) => {
+                lxapp::notify_lxapp_host_visibility_by_session(&appid, session, visible)
+            }
+            None => lxapp::notify_lxapp_host_visibility(&appid, visible),
+        };
+        if let Err(err) = result {
+            log::debug!(
+                "Windows app visibility event ignored for {appid} visible={visible}: {err}"
+            );
+        }
     }
 }
 
@@ -293,7 +298,8 @@ fn update_app_visible_webtags(appid: &str, webtag_key: &str, visible: bool) -> O
     let Ok(mut visible_webtags) = WINDOWS_APP_VISIBLE_WEBTAGS.lock() else {
         return None;
     };
-    let webtags = visible_webtags.entry(appid.to_string()).or_default();
+    let key = (appid.to_string(), WebTag::from(webtag_key).session_id());
+    let webtags = visible_webtags.entry(key.clone()).or_default();
     let was_visible = !webtags.is_empty();
     if visible {
         webtags.insert(webtag_key.to_string());
@@ -302,7 +308,7 @@ fn update_app_visible_webtags(appid: &str, webtag_key: &str, visible: bool) -> O
     }
     let is_visible = !webtags.is_empty();
     if !is_visible {
-        visible_webtags.remove(appid);
+        visible_webtags.remove(&key);
     }
     (was_visible != is_visible).then_some(is_visible)
 }
@@ -331,8 +337,6 @@ mod tests {
 
     #[test]
     fn app_visibility_is_aggregated_across_webtags() {
-        WINDOWS_APP_VISIBLE_WEBTAGS.lock().unwrap().clear();
-
         assert_eq!(
             update_app_visible_webtags("app", "app:main", true),
             Some(true)
@@ -341,6 +345,35 @@ mod tests {
         assert_eq!(update_app_visible_webtags("app", "app:panel", false), None);
         assert_eq!(
             update_app_visible_webtags("app", "app:main", false),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn app_visibility_is_scoped_to_the_originating_session() {
+        let app = "session-visibility-test";
+        assert_eq!(
+            update_app_visible_webtags(app, "session-visibility-test:main#1", true),
+            Some(true)
+        );
+        assert_eq!(
+            update_app_visible_webtags(app, "session-visibility-test:main#2", true),
+            Some(true)
+        );
+        assert_eq!(
+            update_app_visible_webtags(app, "session-visibility-test:main#1", false),
+            Some(false)
+        );
+        assert_eq!(
+            update_app_visible_webtags(app, "session-visibility-test:panel#2", true),
+            None
+        );
+        assert_eq!(
+            update_app_visible_webtags(app, "session-visibility-test:main#2", false),
+            None
+        );
+        assert_eq!(
+            update_app_visible_webtags(app, "session-visibility-test:panel#2", false),
             Some(false)
         );
     }

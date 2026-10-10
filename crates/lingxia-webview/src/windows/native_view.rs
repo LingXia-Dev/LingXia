@@ -15,6 +15,17 @@ pub trait WindowsWebViewNativeViewHost: Send + Sync {
     fn create_webview_parent(&self, webtag: &WebTag) -> StdResult<WindowsWebViewNativeView>;
     fn destroy_webview_parent(&self, webtag_key: &str, view: WindowsWebViewNativeView);
 
+    /// Runs off the owner UI thread while it continues pumping messages.
+    /// Return an error to defer teardown until foreign controllers are safe.
+    fn prepare_destroy_webview_parent(&self, _view: WindowsWebViewNativeView) -> StdResult<()> {
+        Ok(())
+    }
+
+    /// Checked on the controller thread before committing a parent transfer.
+    fn can_present_in_parent(&self, _window: isize) -> bool {
+        true
+    }
+
     /// Return true only after scheduling a consumed native keyboard shortcut.
     fn handle_accelerator(&self, _webtag: &WebTag, _virtual_key: u32) -> bool {
         false
@@ -53,6 +64,11 @@ impl WindowsWebViewHandler {
         WindowsWebViewNativeView {
             window: self.webview.inner.native_view,
         }
+    }
+
+    /// Whether this is the controller's current parent or pending destination.
+    pub fn has_parent_window(&self, window: isize) -> bool {
+        self.webview.inner.has_parent_window(window)
     }
 
     pub fn open_devtools(&self) -> StdResult<()> {
@@ -175,6 +191,11 @@ impl WindowsWebViewHandler {
         self.webview.inner.set_parent_window(window)
     }
 
+    /// Park only if the controller still belongs to the retiring parent.
+    pub fn park_from_parent(&self, expected: isize, window: isize) -> StdResult<bool> {
+        self.webview.inner.park_from_parent(expected, window)
+    }
+
     pub fn notify_parent_position_changed(&self) -> StdResult<()> {
         self.webview.inner.notify_parent_position_changed()
     }
@@ -238,6 +259,18 @@ pub(crate) fn destroy_webview_parent(webtag_key: &str, view: WindowsWebViewNativ
     if let Some(host) = NATIVE_VIEW_HOST.get() {
         host.destroy_webview_parent(webtag_key, view);
     }
+}
+
+pub(crate) fn prepare_destroy_webview_parent(view: WindowsWebViewNativeView) -> StdResult<()> {
+    NATIVE_VIEW_HOST
+        .get()
+        .map_or(Ok(()), |host| host.prepare_destroy_webview_parent(view))
+}
+
+pub(crate) fn can_present_in_parent(window: isize) -> bool {
+    NATIVE_VIEW_HOST
+        .get()
+        .is_none_or(|host| host.can_present_in_parent(window))
 }
 
 pub(crate) fn webview_parent_bounds(view: WindowsWebViewNativeView) -> StdResult<RECT> {

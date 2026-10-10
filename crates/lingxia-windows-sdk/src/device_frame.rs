@@ -253,11 +253,11 @@ pub(crate) fn hide_window_device_frame(window: isize) {
     native::hide_device_frame_for_handle(window);
 }
 
-/// Visible content HWND currently wrapped in a simulator device frame, if any.
+/// Content HWNDs currently wrapped in simulator device frames.
 /// Navigation uses this so relaunch/replace cannot escape the runner silhouette.
 #[cfg_attr(not(feature = "shell-chrome"), allow(dead_code))]
-pub(crate) fn first_framed_content_window() -> Option<isize> {
-    native::framed_content_windows().into_iter().next()
+pub(crate) fn framed_content_windows() -> Vec<isize> {
+    native::framed_content_windows()
 }
 
 /// Screen corner radius + corner style for a framed content window (`None`

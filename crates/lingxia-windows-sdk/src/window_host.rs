@@ -89,6 +89,8 @@ static WEBTAG_CONTENT_BOUNDS: OnceLock<Mutex<HashMap<String, ContentBounds>>> = 
 static HOST_ACTIVE_WEBTAG: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
 static PRESENTED_GROUP_MAIN: OnceLock<Mutex<HashMap<isize, PresentedGroupMain>>> = OnceLock::new();
 static PRIMARY_HOST_WINDOW: OnceLock<Mutex<Option<isize>>> = OnceLock::new();
+static NATIVE_MAIN_WINDOWS: OnceLock<Mutex<HashSet<isize>>> = OnceLock::new();
+static RETIRING_HOST_WINDOWS: OnceLock<Mutex<HashSet<isize>>> = OnceLock::new();
 static FOCUSED_HOST_PANEL: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 thread_local! {
     static HOST_LAYOUT_BATCH_DEPTH: Cell<u32> = const { Cell::new(0) };
@@ -433,6 +435,19 @@ impl WindowsWebViewNativeViewHost for PlatformNativeViewHost {
         }
     }
 
+    fn prepare_destroy_webview_parent(&self, view: WindowsWebViewNativeView) -> StdResult<()> {
+        RETIRING_HOST_WINDOWS
+            .get_or_init(Default::default)
+            .lock()
+            .map_err(|_| WebViewError::WebView("Windows retirement registry poisoned".to_string()))?
+            .insert(view.window);
+        park_foreign_webview_controllers(hwnd_from_handle(view.window))
+    }
+
+    fn can_present_in_parent(&self, window: isize) -> bool {
+        !host_window_is_retiring(hwnd_from_handle(window))
+    }
+
     fn webview_parent_bounds(&self, view: WindowsWebViewNativeView) -> StdResult<RECT> {
         let hwnd = hwnd_from_handle(view.window);
         let webtag_key = window_webtag_key(hwnd).ok_or_else(|| {
@@ -463,6 +478,11 @@ pub(crate) fn show_native_main_window(
     prepare_shell_window_for_presentation(hwnd).map_err(|error| error.to_string())?;
     set_webview_window_layout(webtag, WindowsWindowLayout::new(layout))
         .map_err(|error| error.to_string())?;
+    NATIVE_MAIN_WINDOWS
+        .get_or_init(|| Mutex::new(HashSet::new()))
+        .lock()
+        .map_err(|error| error.to_string())?
+        .insert(hwnd_handle(hwnd));
     set_host_active_webtag(hwnd, webtag.key());
     set_primary_host_window(hwnd);
     mark_active(webtag);
@@ -872,8 +892,7 @@ fn present_webview_in_active_group_with_policy(
     // A device frame decorates a page-owned HWND; it does not keep that HWND
     // alive after reLaunch retires its owning WebView. Reusing it here lets
     // the outgoing UI thread destroy the replacement page's parent.
-    let Some(host) = preferred_workspace_host().filter(|host| host_window_owner_is_live(*host))
-    else {
+    let Some(host) = preferred_workspace_host() else {
         let view = handler.native_view();
         let hwnd = hwnd_from_handle(view.window);
         prepare_shell_window_for_presentation(hwnd)?;
@@ -2971,6 +2990,9 @@ fn webtag_is_fullscreen_drill(webtag_key: &str) -> bool {
 }
 
 fn sync_window_layout(hwnd: HWND) {
+    if host_window_is_retiring(hwnd) {
+        return;
+    }
     // The layout pass creates windows (overlays, panels) and moves them in the
     // z-order. Both must happen on the window's own thread: a helper window
     // created on a non-pumping thread (e.g. a tokio worker) permanently wedges
@@ -4763,6 +4785,9 @@ fn sync_webtag_content_bounds(hwnd: HWND, webtag_key: &str) {
 }
 
 fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) {
+    if host_window_is_retiring(hwnd) {
+        return;
+    }
     let width = (rect.right - rect.left).max(0);
     let height = (rect.bottom - rect.top).max(0);
     let (corner_radii, corner_color) = surface_clip_style(hwnd, webtag_key, rect);
@@ -5297,7 +5322,11 @@ fn active_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
         // the shell host that a new main tab should replace. Resolve it back
         // to its owner before considering the overlay's own HWND.
         .and_then(|key| floating_overlay_owner(&key).or_else(|| window_handle_for_key(&key)))
-        .filter(|hwnd| Some(*hwnd) != excluded)
+        .filter(|hwnd| {
+            Some(*hwnd) != excluded
+                && is_valid_host_window(*hwnd)
+                && host_window_owner_is_live(*hwnd)
+        })
         .or_else(|| primary_host_window_except(excluded))
         .or_else(|| focused_registered_host_window_except(excluded))
         .or_else(|| first_visible_registered_host_window_except(excluded))
@@ -5319,7 +5348,7 @@ fn set_primary_host_window(hwnd: HWND) {
 
 fn primary_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
     let hwnd = stored_primary_host_window()?;
-    if Some(hwnd) == excluded || !is_valid_host_window(hwnd) {
+    if Some(hwnd) == excluded || !is_valid_host_window(hwnd) || !host_window_owner_is_live(hwnd) {
         return None;
     }
     Some(hwnd)
@@ -5381,10 +5410,28 @@ fn is_valid_host_window(hwnd: HWND) -> bool {
 }
 
 fn host_window_owner_is_live(hwnd: HWND) -> bool {
+    if host_window_is_retiring(hwnd) {
+        return false;
+    }
+    // Native mains own their HWND independently of any WebView controller.
+    if NATIVE_MAIN_WINDOWS
+        .get()
+        .and_then(|windows| windows.lock().ok())
+        .is_some_and(|windows| windows.contains(&hwnd_handle(hwnd)))
+    {
+        return true;
+    }
     window_webtag_key(hwnd)
         .and_then(|owner_key| webtag_for_key(&owner_key))
         .and_then(|owner| find_webview_handler(&owner))
         .is_some_and(|owner| hwnd_from_handle(owner.native_view().window) == hwnd)
+}
+
+fn host_window_is_retiring(hwnd: HWND) -> bool {
+    RETIRING_HOST_WINDOWS
+        .get()
+        .and_then(|windows| windows.lock().ok())
+        .is_some_and(|windows| windows.contains(&hwnd_handle(hwnd)))
 }
 
 /// True when `hwnd` claims a webtag whose content is now presented somewhere
@@ -5411,13 +5458,16 @@ fn focused_registered_host_window_except(excluded: Option<HWND>) -> Option<HWND>
     }
     registered_host_windows()
         .into_iter()
-        .find(|candidate| *candidate == focused)
+        .find(|candidate| *candidate == focused && host_window_owner_is_live(*candidate))
 }
 
 fn first_visible_registered_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
-    registered_host_windows()
-        .into_iter()
-        .find(|hwnd| Some(*hwnd) != excluded && is_window_visible(*hwnd) && !is_minimized(*hwnd))
+    registered_host_windows().into_iter().find(|hwnd| {
+        Some(*hwnd) != excluded
+            && is_window_visible(*hwnd)
+            && !is_minimized(*hwnd)
+            && host_window_owner_is_live(*hwnd)
+    })
 }
 
 /// The shell owns exactly ONE workspace window. Whenever a visible shell
@@ -5427,7 +5477,7 @@ fn first_visible_registered_host_window_except(excluded: Option<HWND>) -> Option
 /// window beside the workspace. With no visible host (startup presents
 /// into a still-hidden window) the candidate passes through untouched.
 fn prefer_visible_workspace(candidate: Option<HWND>) -> Option<HWND> {
-    match candidate {
+    match candidate.filter(|hwnd| is_valid_host_window(*hwnd) && host_window_owner_is_live(*hwnd)) {
         Some(hwnd) if is_window_visible(hwnd) => Some(hwnd),
         other => first_visible_registered_host_window_except(None)
             .filter(|hwnd| !is_separate_shell_window(*hwnd))
@@ -6209,9 +6259,11 @@ fn window_is_device_framed(hwnd: HWND) -> bool {
 fn device_framed_host_window() -> Option<HWND> {
     #[cfg(feature = "device-frame")]
     {
-        crate::device_frame::first_framed_content_window()
+        crate::device_frame::framed_content_windows()
+            .into_iter()
             .map(hwnd_from_handle)
-            .filter(|hwnd| is_valid_host_window(*hwnd))
+            .filter(|hwnd| is_valid_host_window(*hwnd) && host_window_owner_is_live(*hwnd))
+            .min_by_key(|hwnd| !is_window_visible(*hwnd))
     }
     #[cfg(not(feature = "device-frame"))]
     {
@@ -6225,9 +6277,8 @@ fn device_framed_host_window() -> Option<HWND> {
 /// phone while the page stays desktop-sized.
 fn preferred_workspace_host() -> Option<HWND> {
     let framed = device_framed_host_window();
-    // A framed simulator host wins even when it is momentarily hidden or its
-    // previous page WebView has already been torn down (reLaunch). Preferring
-    // a visible unframed workspace first is how relaunch escaped the bezel.
+    // Prefer every live framed host before considering unframed workspaces.
+    // A retired first candidate must not suppress a later reusable host.
     framed
         .filter(|hwnd| is_window_visible(*hwnd) && !is_minimized(*hwnd))
         .or(framed)
@@ -8155,16 +8206,11 @@ fn show_webview_window_replacing(
         device_framed_host_window()
             .or_else(|| stable_host_for_replacement(webtag, &hide_webtags))
             .or_else(|| {
-                window_handle_for_key(webtag.key()).filter(|hwnd| is_valid_host_window(*hwnd))
+                window_handle_for_key(webtag.key())
+                    .filter(|hwnd| is_valid_host_window(*hwnd) && host_window_owner_is_live(*hwnd))
             })
             .or_else(|| primary_host_window_except(None)),
     )
-    // reLaunch removes the outgoing WebView from the registry before its UI
-    // thread destroys the parent HWND. That still-visible window is already
-    // retiring: presenting the incoming controller into it races recursive
-    // DestroyWindow and produces an invalid-handle warning (or a dead DComp
-    // surface). Only reuse a host while its owning WebView is still live.
-    .filter(|candidate| host_window_owner_is_live(*candidate))
     .unwrap_or(native_parent);
     prepare_shell_window_for_presentation(target)?;
     #[cfg(feature = "shell-chrome")]
@@ -8982,7 +9028,7 @@ fn stable_host_for_replacement(webtag: &WebTag, candidates: &[WebTag]) -> Option
                 .filter(|snapshot| snapshot.visible)
                 .map(|snapshot| hwnd_from_handle(snapshot.window_id as isize))
         })
-        .next()
+        .find(|hwnd| host_window_owner_is_live(*hwnd))
 }
 
 pub fn hide_webview_window(webtag: &WebTag) -> StdResult<()> {
@@ -8990,8 +9036,10 @@ pub fn hide_webview_window(webtag: &WebTag) -> StdResult<()> {
     let current_host = window_handle_for_key(webtag.key());
     if let Some(panel_id) = panel_id_for_webtag(webtag.key()) {
         handler.set_content_visible(false)?;
+        let native_parent = hwnd_from_handle(handler.native_view().window);
+        handler.set_parent_window(hwnd_handle(native_parent))?;
         mark_panel_visible(&panel_id, false);
-        set_window_handle(webtag.key(), hwnd_from_handle(handler.native_view().window));
+        set_window_handle(webtag.key(), native_parent);
         notify_webtag_visibility(webtag.key(), false);
         sync_active_host_layout();
         return Ok(());
@@ -9409,7 +9457,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                         WPARAM(WindowsAndMessaging::WA_INACTIVE as usize),
                     );
                 }
-                if let Some(webtag_key) = active_webtag_key_for_visibility(hwnd) {
+                if let Some(webtag_key) = active_webtag_key_for_lifecycle_visibility(hwnd) {
                     // Activation is an app lifecycle signal, not controller or
                     // HWND visibility. Mutating WEBTAG_VISIBILITY here made a
                     // visible inactive WebView look hidden to reconciliation,
@@ -9708,6 +9756,16 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 LRESULT(0)
             }
             WindowsAndMessaging::WM_NCDESTROY => {
+                if let Some(windows) = RETIRING_HOST_WINDOWS.get()
+                    && let Ok(mut windows) = windows.lock()
+                {
+                    windows.remove(&hwnd_handle(hwnd));
+                }
+                if let Some(windows) = NATIVE_MAIN_WINDOWS.get()
+                    && let Ok(mut windows) = windows.lock()
+                {
+                    windows.remove(&hwnd_handle(hwnd));
+                }
                 let _ = end_window_resize_drag(hwnd, false);
                 #[cfg(feature = "runtime")]
                 crate::dev_service_mark::destroy(hwnd);
@@ -10702,39 +10760,73 @@ pub(crate) fn webtag_is_visible(webtag_key: &str) -> bool {
         .unwrap_or(false)
 }
 
-#[track_caller]
-fn notify_webtag_visibility(webtag_key: &str, visible: bool) {
-    let visibility = WEBTAG_VISIBILITY.get_or_init(|| Mutex::new(HashMap::new()));
-    let changed = match visibility.lock() {
-        Ok(mut visibility) => {
-            if visibility.get(webtag_key).copied() == Some(visible) {
-                false
-            } else {
-                visibility.insert(webtag_key.to_string(), visible);
-                true
-            }
+fn park_foreign_webview_controllers(host: HWND) -> StdResult<()> {
+    // Snapshot before marshaling to controller threads. Never hold a registry
+    // lock across those calls, and include panels as well as parked group mains.
+    let children = webview_runtime::list_webviews();
+    for tag in children {
+        let Some(handler) = find_webview_handler(&tag) else {
+            continue;
+        };
+        let native = hwnd_from_handle(handler.native_view().window);
+        if native == host || !handler.has_parent_window(hwnd_handle(host)) {
+            continue;
         }
-        Err(_) => false,
-    };
-    if !changed {
-        return;
+        // The physical parent is checked on the controller's UI thread;
+        // presentation may have moved it since this snapshot was captured.
+        if handler.park_from_parent(hwnd_handle(host), hwnd_handle(native))?
+            && let Some(windows) = WEBTAG_WINDOWS.get()
+            && let Ok(mut windows) = windows.lock()
+            && windows.get(tag.key()).copied() == Some(hwnd_handle(host))
+        {
+            windows.insert(tag.key().to_string(), hwnd_handle(native));
+            // Keep this transition ahead of a newer presentation mapping.
+            notify_webtag_visibility(tag.key(), false);
+        }
     }
-    dispatch_webtag_lifecycle_visibility(webtag_key, visible);
+    Ok(())
 }
 
-#[track_caller]
+type VisibilityEvent = (WebTag, bool);
+
+fn enqueue_webtag_lifecycle_visibility(webtag_key: &str, visible: bool) {
+    static EVENTS: OnceLock<std::sync::mpsc::Sender<VisibilityEvent>> = OnceLock::new();
+    let events = EVENTS.get_or_init(|| {
+        let (sender, receiver) = std::sync::mpsc::channel::<VisibilityEvent>();
+        std::thread::Builder::new()
+            .name("lingxia-windows-visibility".to_string())
+            .spawn(move || {
+                for (webtag, visible) in receiver {
+                    if let Some(handler) = webview_visibility_handler() {
+                        handler(&webtag, visible);
+                    }
+                }
+            })
+            .expect("Windows visibility worker");
+        sender
+    });
+    // Final Hidden can arrive after the WebView registry entry is removed.
+    let _ = events.send((WebTag::from(webtag_key), visible));
+}
+
+fn notify_webtag_visibility(webtag_key: &str, visible: bool) {
+    let visibility = WEBTAG_VISIBILITY.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut visibility) = visibility.lock()
+        && visibility.get(webtag_key).copied() != Some(visible)
+    {
+        visibility.insert(webtag_key.to_string(), visible);
+        // Enqueue while holding the state lock so concurrent OS callbacks
+        // cannot reverse the order in which transitions were accepted.
+        enqueue_webtag_lifecycle_visibility(webtag_key, visible);
+    }
+}
+
 fn dispatch_webtag_lifecycle_visibility(webtag_key: &str, visible: bool) {
-    log::debug!(
-        "Windows lifecycle visibility key={webtag_key} visible={visible} source={}",
-        std::panic::Location::caller()
-    );
-    let Some(webtag) = webtag_for_key(webtag_key) else {
-        return;
-    };
-    if let Some(handler) = webview_visibility_handler() {
-        let _ = std::thread::Builder::new()
-            .name(format!("lingxia-windows-visible-{webtag_key}"))
-            .spawn(move || handler(&webtag, visible));
+    let visibility = WEBTAG_VISIBILITY.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(visibility) = visibility.lock()
+        && visibility.get(webtag_key).copied() == Some(true)
+    {
+        enqueue_webtag_lifecycle_visibility(webtag_key, visible);
     }
 }
 
@@ -10782,6 +10874,10 @@ fn active_webtag_key_for_visibility(hwnd: HWND) -> Option<String> {
     // A controller can be presented in a shared host while its original
     // parent is parked. Hiding that parent must not hide the presented page.
     same_window_generation(presented_on, hwnd_handle(hwnd)).then_some(key)
+}
+
+fn active_webtag_key_for_lifecycle_visibility(hwnd: HWND) -> Option<String> {
+    active_webtag_key_for_visibility(hwnd).filter(|key| webtag_is_visible(key))
 }
 
 fn is_window_visible(hwnd: HWND) -> bool {
@@ -10851,9 +10947,36 @@ mod tests {
             super::active_webtag_key_for_visibility(presented).as_deref(),
             Some(key)
         );
+        let visibility = super::WEBTAG_VISIBILITY.get_or_init(Default::default);
+        visibility.lock().unwrap().insert(key.to_string(), false);
+        assert_eq!(
+            super::active_webtag_key_for_lifecycle_visibility(presented),
+            None
+        );
+        visibility.lock().unwrap().insert(key.to_string(), true);
+        assert_eq!(
+            super::active_webtag_key_for_lifecycle_visibility(parked),
+            None
+        );
+        assert_eq!(
+            super::active_webtag_key_for_lifecycle_visibility(presented).as_deref(),
+            Some(key)
+        );
+        visibility.lock().unwrap().remove(key);
 
         super::remove_window_handle(key);
         super::clear_host_active_webtag(key);
+    }
+
+    #[test]
+    fn native_main_owner_does_not_require_a_webview_handler() {
+        let host = super::hwnd_from_handle(901_003);
+        let windows = super::NATIVE_MAIN_WINDOWS.get_or_init(Default::default);
+        assert!(!super::host_window_owner_is_live(host));
+        windows.lock().unwrap().insert(super::hwnd_handle(host));
+        assert!(super::host_window_owner_is_live(host));
+        windows.lock().unwrap().remove(&super::hwnd_handle(host));
+        assert!(!super::host_window_owner_is_live(host));
     }
 
     #[cfg(feature = "shell-chrome")]
