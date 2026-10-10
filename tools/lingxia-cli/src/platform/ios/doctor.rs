@@ -21,18 +21,35 @@ pub fn doctor_checks() -> Vec<CheckResult> {
         check_codesign(),
         check_iphoneos_sdk(),
         check_actool(),
+        check_devicectl(),
     ]
 }
 
 fn check_xcode_select() -> CheckResult {
-    match command_output_line("xcode-select", &["-p"], false) {
-        Some(path) => {
-            CheckResult::pass("Xcode Command Line Tools", format!("Active path: {}", path))
+    match apple::active_developer_dir() {
+        Some(path) if apple::is_full_xcode(&path) => {
+            CheckResult::pass("Xcode", format!("Active path: {}", path))
         }
+        Some(path) => CheckResult::fail(
+            "Xcode",
+            format!("Active path {path} is not a full Xcode (no iOS SDK or devicectl)"),
+            Some(apple::select_xcode_hint()),
+        ),
         None => CheckResult::fail(
-            "Xcode Command Line Tools",
+            "Xcode",
             "xcode-select not configured".to_string(),
-            Some("Install Xcode and run: sudo xcode-select -s /Applications/Xcode.app"),
+            Some(apple::select_xcode_hint()),
+        ),
+    }
+}
+
+fn check_devicectl() -> CheckResult {
+    match command_output_line("xcrun", &["--find", "devicectl"], false) {
+        Some(path) => CheckResult::pass("devicectl", format!("Found: {}", path)),
+        None => CheckResult::fail(
+            "devicectl",
+            "Not found; `lingxia install` cannot reach iOS devices".to_string(),
+            Some(apple::select_xcode_hint()),
         ),
     }
 }

@@ -490,6 +490,7 @@ impl Platform for IosPlatform {
 
     fn install(&self, config: &InstallConfig) -> Result<()> {
         apple::ensure_macos()?;
+        apple::devicectl::DeviceCtl::ensure_available()?;
 
         let host_config = crate::config::LingXiaConfig::load(&config.project_root).ok();
         // Determine app path

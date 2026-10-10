@@ -25,14 +25,19 @@ pub fn doctor_checks() -> Vec<CheckResult> {
 }
 
 fn check_xcode_select() -> CheckResult {
-    match command_output_line("xcode-select", &["-p"], false) {
-        Some(path) => {
-            CheckResult::pass("Xcode Command Line Tools", format!("Active path: {}", path))
+    match apple::active_developer_dir() {
+        Some(path) if apple::is_full_xcode(&path) => {
+            CheckResult::pass("Xcode", format!("Active path: {}", path))
         }
+        Some(path) => CheckResult::warn(
+            "Xcode",
+            format!("Active path {path} is not a full Xcode; apps build without an icon"),
+            Some(apple::select_xcode_hint()),
+        ),
         None => CheckResult::fail(
-            "Xcode Command Line Tools",
+            "Xcode",
             "xcode-select not configured".to_string(),
-            Some("Install Xcode and run: sudo xcode-select -s /Applications/Xcode.app"),
+            Some(apple::select_xcode_hint()),
         ),
     }
 }
