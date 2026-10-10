@@ -726,6 +726,8 @@ fn run(tx: mpsc::Sender<RuntimeCommand>, rx: mpsc::Receiver<RuntimeCommand>) {
             // Each Android host supplies its own launch/theme background beneath
             // the texture, including while about:blank is being bootstrapped.
             shell_background_color_rgba: [0.0; 4],
+            // Modern sites use this for viewport animations and lazy content.
+            dom_intersection_observer_enabled: true,
             ..Preferences::default()
         })
         .protocol_registry(protocols)

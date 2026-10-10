@@ -58,3 +58,28 @@ browserSpec('round-trip browser cookies across a reload', {
   await browser.cookies.delete({ tab, name, domain: '127.0.0.1', path: '/' });
   expect(await browser.eval({ tab, js: `document.cookie.includes('${name}=')` })).toBe(false);
 });
+
+browserSpec('observe content entering and leaving the browser viewport', {
+  id: 'ANDROID-BROWSER-003',
+  app: SHOWCASE_APP_ID,
+  covers: ['BrowserDriver.eval', 'BrowserDriver.scroll', 'BrowserDriver.scrollTo', 'BrowserDriver.wait'],
+  reason: 'requires Android and the local HTTP fixture',
+}, async (t) => {
+  const browser = t.automation.browser;
+  const { tab } = await browser.open({ url: `${args.httpBase}/interaction` });
+  t.defer(() => browser.close({ tab }));
+  await browser.wait({ tab, loaded: true });
+  await browser.eval({ tab, js: `(() => {
+    globalThis.__intersectionStates = [];
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) __intersectionStates.push(entry.isIntersecting);
+    });
+    observer.observe(document.querySelector('#bottom'));
+  })()` });
+  await browser.wait({ tab, js: '__intersectionStates.length === 1 && __intersectionStates[0] === false' });
+  await browser.scrollTo({ tab, css: '#bottom' });
+  await browser.wait({ tab, js: '__intersectionStates.includes(true)' });
+  await browser.scroll({ tab, dy: -10000 });
+  await browser.wait({ tab, js: '__intersectionStates.length >= 3 && __intersectionStates.at(-1) === false' });
+  expect(await browser.eval({ tab, js: '__intersectionStates' })).toEqual([false, true, false]);
+});
