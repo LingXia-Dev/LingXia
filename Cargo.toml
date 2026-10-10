@@ -138,6 +138,7 @@ rong_timer = "0.6.1"
 rong_url = "0.6.1"
 
 [patch.crates-io]
+servo-paint = { path = "crates/lingxia-webview/vendor/servo-paint" }
 servo-script = { path = "crates/lingxia-webview/vendor/servo-script" }
 portable-pty = { git = "https://github.com/LingXia-Dev/wezterm.git", rev = "59d0fb89c54a77c12afe2561dc6969d8dc55fc4f", package = "portable-pty" }
 servo-fonts = { path = "crates/lingxia-webview/vendor/servo-fonts" }
