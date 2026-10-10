@@ -96,11 +96,11 @@ spec('relaunching the same route keeps the replacement page shown', {
 
   for (let entry = 0; entry < 3; entry += 1) {
     await app.nav.relaunch({ page: 'surface' });
-    const page = await app.page({ name: 'surface' });
+    const page = await app.page<{ data: SurfaceLifecycleState; actions: unknown }>({ name: 'surface' });
     await expect.poll(async () => (await page.data()).lastLifecycle).toBe('onShow (#1)');
     // Give the outgoing WebView's asynchronous destruction/Hidden callback
     // time to arrive; it must not hide the replacement at the same path.
-    await new Promise((resolve) => setTimeout(resolve, 6000));
+    await new Promise<void>((resolve) => setTimeout(resolve, 6000));
     const state = await page.data();
     expect(state.hideCount).toBe(0);
     expect(state.lastLifecycle).toBe('onShow (#1)');
