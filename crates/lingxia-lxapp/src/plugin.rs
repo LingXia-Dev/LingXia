@@ -354,6 +354,11 @@ pub async fn download_and_install(
     if install_dir.exists() {
         return Ok(install_dir);
     }
+    if lingxia_update::blocks_dev_service_packages() {
+        return Err(LxAppError::UnsupportedOperation(
+            lingxia_update::DEV_SERVICE_PACKAGE_REFUSAL.to_string(),
+        ));
+    }
 
     // Try to start the download; if someone else started it, wait for completion
     let maybe_rx = get_tracker().try_start_download(&key);
@@ -408,7 +413,7 @@ async fn download_and_install_internal(
     let provider = crate::get_provider();
     let channel = lingxia_update::default_channel();
     let keys = lingxia_update::embedded_update_public_keys();
-    if !lingxia_update::check_package_update_enabled("lxplugin", &keys) {
+    if !lingxia_update::check_update_enabled(&keys) {
         return Err(LxAppError::InvalidParameter(
             "plugin updates require update.trustedPublicKeys".to_string(),
         ));
