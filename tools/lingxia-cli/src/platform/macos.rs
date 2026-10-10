@@ -501,6 +501,12 @@ impl Platform for MacosPlatform {
             .map(|a| a.project_name.as_str())
             .or_else(|| executable_path.file_name().and_then(|n| n.to_str()));
         let resources_dir = get_resources_dir(&macos_dir, macos_config, app_project_name)?;
+        let host_target = apple::resolve_swiftpm_target_name(
+            &macos_dir,
+            macos_config.and_then(|c| c.target_name.as_deref()),
+            app_project_name,
+            "macos",
+        )?;
 
         let info_plist = if info_plist_path.exists() {
             Some(info_plist_path)
@@ -527,6 +533,7 @@ impl Platform for MacosPlatform {
             &resolve_lingxia_target_dir(&config.project_root).join("macos"),
             &macos_dir,
             &bin_dir,
+            &host_target,
             &executable_path,
             &product_name,
             &product_version,
@@ -596,7 +603,6 @@ impl Platform for MacosPlatform {
             let _ = fs::remove_file(app_path.join("Contents").join(stale));
         }
 
-        sync_primary_spm_resources_to_app_root(&bin_dir, &app_path)?;
         if let Err(err) = stage_host_chrome_into_app(&config.project_root, &app_path) {
             eprintln!(
                 "  {} Skipping host chrome icon: {}",
@@ -743,6 +749,7 @@ fn create_macos_app_bundle(
     output_dir: &Path,
     macos_dir: &Path,
     bin_dir: &Path,
+    host_target: &str,
     executable_path: &Path,
     product_name: &str,
     product_version: &str,
@@ -778,17 +785,7 @@ fn create_macos_app_bundle(
     let exe_dst = macos_exec_dir.join(executable_name);
     fs::copy(executable_path, &exe_dst)?;
 
-    // Copy all SwiftPM resource bundles into Contents/Resources so host
-    // runtime asset loading can resolve app.json and other package resources
-    // using standard macOS bundle semantics.
-    for entry in fs::read_dir(bin_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().map(|e| e == "bundle").unwrap_or(false) {
-            let dest = resources_dir.join(path.file_name().unwrap());
-            apple::copy_dir_recursive(&path, &dest)?;
-        }
-    }
+    apple::install_resource_bundles(bin_dir, host_target, &resources_dir)?;
 
     // Copy frameworks and dylibs into Contents/Frameworks
     for entry in fs::read_dir(bin_dir)? {
@@ -856,40 +853,6 @@ fn stage_host_chrome_into_app(project_root: &Path, app_bundle: &Path) -> Result<
         &source,
         &app_bundle.join("Contents").join("Resources"),
     )
-}
-
-fn sync_primary_spm_resources_to_app_root(bin_dir: &Path, app_bundle: &Path) -> Result<()> {
-    let contents_resources_dir = app_bundle.join("Contents").join("Resources");
-    if contents_resources_dir.join("app.json").exists() {
-        return Ok(());
-    }
-
-    let mut resource_roots = Vec::new();
-    for entry in fs::read_dir(bin_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().is_none_or(|e| e != "bundle") {
-            continue;
-        }
-        let resources_dir = path.join("Resources");
-        if resources_dir.join("app.json").exists() {
-            resource_roots.push(resources_dir);
-        }
-    }
-    resource_roots.sort();
-
-    let Some(resources_dir) = resource_roots.into_iter().next() else {
-        return Ok(());
-    };
-
-    apple::copy_dir_recursive(&resources_dir, &contents_resources_dir).with_context(|| {
-        format!(
-            "Failed to copy primary SwiftPM resources {} -> {}",
-            resources_dir.display(),
-            contents_resources_dir.display()
-        )
-    })?;
-    Ok(())
 }
 
 fn copy_info_plist_localizations(source_root: &Path, resources_dir: &Path) -> Result<()> {
@@ -1517,6 +1480,7 @@ mod name_tests {
             &dir.path().join("output"),
             dir.path(),
             &bin,
+            "Technical",
             &exe,
             "Product Display",
             "1.2.3",

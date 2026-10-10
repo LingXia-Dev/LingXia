@@ -19,126 +19,29 @@ unsafe fn nsdata_bytes_ptr_unchecked(ns_data: &Retained<NSData>) -> *const u8 {
     unsafe { func(obj, sel) }.cast()
 }
 
-/// Cached bundles for resource lookup (app bundle, SDK bundle, main bundle)
-/// Initialized once on first access to avoid repeated bundle detection
+/// Bundles searched for assets, in order: the main bundle, which carries the
+/// host's resources (the CLI merges them in at build time), then the SDK bundle.
 fn get_resource_bundles() -> &'static [Retained<NSBundle>] {
     static BUNDLES: OnceLock<Vec<Retained<NSBundle>>> = OnceLock::new();
-    BUNDLES.get_or_init(|| {
-        let mut bundles = Vec::with_capacity(3);
-        unsafe {
-            let main_bundle = NSBundle::mainBundle();
-            let bundle_type = NSString::from_str("bundle");
-
-            // 1. App bundle (for app.json, lxapp content) - based on bundle identifier
-            if let Some(app_bundle) = detect_app_bundle(&main_bundle, &bundle_type) {
-                bundles.push(app_bundle);
-            }
-
-            // 2. SDK bundle (for webview-bridge.js, 404.html, icons)
-            for bundle_name in ["lingxia_lingxia", "LingXia_LingXia"] {
-                let bundle_name_ns = NSString::from_str(bundle_name);
-                let bundle_path: Option<Retained<NSString>> =
-                    msg_send![&main_bundle, pathForResource: &*bundle_name_ns, ofType: &*bundle_type];
-
-                if let Some(path) = bundle_path {
-                    let resource_bundle: Option<Retained<NSBundle>> =
-                        msg_send![NSBundle::class(), bundleWithPath: &*path];
-                    if let Some(bundle) = resource_bundle {
-                        bundles.push(bundle);
-                        break;
-                    }
-                }
-            }
-
-            // 3. Main bundle is always the final fallback.
-            // Avoids duplicate if detect_app_bundle already resolved to main bundle.
-            let main_path: Option<Retained<NSString>> = msg_send![&main_bundle, bundlePath];
-            let already_added = main_path.as_deref().is_some_and(|mp| {
-                bundles.iter().any(|b| {
-                    let bp: Option<Retained<NSString>> = msg_send![b, bundlePath];
-                    bp.as_deref() == Some(mp)
-                })
-            });
-            if !already_added {
-                bundles.push(main_bundle);
+    BUNDLES.get_or_init(|| unsafe {
+        let main_bundle = NSBundle::mainBundle();
+        let mut bundles = vec![main_bundle.clone()];
+        let bundle_type = NSString::from_str("bundle");
+        for bundle_name in ["lingxia_lingxia", "LingXia_LingXia"] {
+            let bundle_name_ns = NSString::from_str(bundle_name);
+            let bundle_path: Option<Retained<NSString>> =
+                msg_send![&main_bundle, pathForResource: &*bundle_name_ns, ofType: &*bundle_type];
+            let bundle: Option<Retained<NSBundle>> = match bundle_path {
+                Some(path) => msg_send![NSBundle::class(), bundleWithPath: &*path],
+                None => None,
+            };
+            if let Some(bundle) = bundle {
+                bundles.push(bundle);
+                break;
             }
         }
         bundles
     })
-}
-
-/// Detect app bundle based on bundle identifier, name, or executable
-fn detect_app_bundle(main_bundle: &NSBundle, bundle_type: &NSString) -> Option<Retained<NSBundle>> {
-    unsafe {
-        // Try 1: Bundle identifier based (e.g., app.lingxia.example.lxapp → lxapp_lxapp).
-        // Dev builds append `.dev`, so the last component is the env suffix
-        // — skip those and keep looking.
-        let bundle_identifier: Option<Retained<NSString>> =
-            msg_send![main_bundle, bundleIdentifier];
-        if let Some(identifier) = bundle_identifier {
-            let identifier_str = identifier.to_string();
-            if let Some(stem) = identifier_spm_stem(&identifier_str)
-                && let Some(bundle) = try_find_spm_bundle(main_bundle, stem, bundle_type)
-            {
-                return Some(bundle);
-            }
-        }
-
-        // Try 2: CFBundleName based (e.g., LingXia → LingXia_LingXia)
-        let cf_bundle_name_key = NSString::from_str("CFBundleName");
-        let bundle_name: Option<Retained<NSString>> =
-            msg_send![main_bundle, objectForInfoDictionaryKey: &*cf_bundle_name_key];
-        if let Some(name) = bundle_name
-            && let Some(bundle) = try_find_spm_bundle(main_bundle, &name.to_string(), bundle_type)
-        {
-            return Some(bundle);
-        }
-
-        // Try 3: CFBundleExecutable based (e.g., LingXiaDemo → LingXiaDemo_LingXiaDemo)
-        // This handles macOS dev builds where executable name matches SPM target
-        let cf_executable_key = NSString::from_str("CFBundleExecutable");
-        let executable_name: Option<Retained<NSString>> =
-            msg_send![main_bundle, objectForInfoDictionaryKey: &*cf_executable_key];
-        if let Some(name) = executable_name
-            && let Some(bundle) = try_find_spm_bundle(main_bundle, &name.to_string(), bundle_type)
-        {
-            return Some(bundle);
-        }
-
-        None
-    }
-}
-
-/// SPM resource bundle stems derived from a bundle identifier.
-///
-/// `app.foo.lxapp.dev` must still resolve `lxapp_lxapp.bundle`, not
-/// `dev_dev.bundle`.
-fn identifier_spm_stem(identifier: &str) -> Option<&str> {
-    identifier
-        .split('.')
-        .rev()
-        .find(|part| !part.is_empty() && !matches!(*part, "dev" | "debug"))
-}
-
-/// Try to find SPM bundle with format Name_Name.bundle
-fn try_find_spm_bundle(
-    main_bundle: &NSBundle,
-    name: &str,
-    bundle_type: &NSString,
-) -> Option<Retained<NSBundle>> {
-    unsafe {
-        let spm_bundle_name = format!("{}_{}", name, name);
-        let bundle_name_ns = NSString::from_str(&spm_bundle_name);
-        let bundle_path: Option<Retained<NSString>> =
-            msg_send![main_bundle, pathForResource: &*bundle_name_ns, ofType: bundle_type];
-
-        if let Some(path) = bundle_path {
-            let resource_bundle: Option<Retained<NSBundle>> =
-                msg_send![NSBundle::class(), bundleWithPath: &*path];
-            return resource_bundle;
-        }
-        None
-    }
 }
 
 /// Read asset data from the bundle resources
@@ -262,27 +165,5 @@ pub fn list_asset_directory(dir_path: &str) -> Vec<String> {
         }
 
         Vec::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::identifier_spm_stem;
-
-    #[test]
-    fn identifier_stems_skip_dev_suffix() {
-        assert_eq!(
-            identifier_spm_stem("app.lingxia.example.lxapp.dev"),
-            Some("lxapp")
-        );
-        assert_eq!(
-            identifier_spm_stem("app.lingxia.example.lxapp"),
-            Some("lxapp")
-        );
-        assert_eq!(
-            identifier_spm_stem("app.lingxia.example.lxapp.preview"),
-            Some("preview")
-        );
-        assert_eq!(identifier_spm_stem("app.lingxia.runner"), Some("runner"));
     }
 }
