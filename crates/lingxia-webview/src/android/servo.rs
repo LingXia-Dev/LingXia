@@ -45,7 +45,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
@@ -608,7 +608,10 @@ struct BrowserState {
 }
 
 #[derive(Clone)]
-struct SenderWaker(mpsc::Sender<RuntimeCommand>);
+struct SenderWaker {
+    sender: mpsc::Sender<RuntimeCommand>,
+    pending: Arc<AtomicBool>,
+}
 
 impl EventLoopWaker for SenderWaker {
     fn clone_box(&self) -> Box<dyn EventLoopWaker> {
@@ -616,7 +619,13 @@ impl EventLoopWaker for SenderWaker {
     }
 
     fn wake(&self) {
-        let _ = self.0.send(RuntimeCommand::Wake);
+        // Resource and renderer threads often wake us for work the next spin
+        // will drain together. Do not queue those redundant wakes ahead of input.
+        if !self.pending.swap(true, Ordering::AcqRel)
+            && self.sender.send(RuntimeCommand::Wake).is_err()
+        {
+            self.pending.store(false, Ordering::Release);
+        }
     }
 }
 
@@ -720,6 +729,7 @@ fn run(tx: mpsc::Sender<RuntimeCommand>, rx: mpsc::Receiver<RuntimeCommand>) {
         config_dir: Some(data_dir),
         ..Default::default()
     };
+    let wake_pending = Arc::new(AtomicBool::new(false));
     let servo = ServoBuilder::default()
         .opts(opts)
         .preferences(Preferences {
@@ -731,7 +741,10 @@ fn run(tx: mpsc::Sender<RuntimeCommand>, rx: mpsc::Receiver<RuntimeCommand>) {
             ..Preferences::default()
         })
         .protocol_registry(protocols)
-        .event_loop_waker(Box::new(SenderWaker(tx)))
+        .event_loop_waker(Box::new(SenderWaker {
+            sender: tx,
+            pending: wake_pending.clone(),
+        }))
         .build();
     let mut states = HashMap::<String, EngineState>::new();
 
@@ -858,7 +871,11 @@ fn run(tx: mpsc::Sender<RuntimeCommand>, rx: mpsc::Receiver<RuntimeCommand>) {
                     }
                 });
             }
-            RuntimeCommand::Wake => {}
+            RuntimeCommand::Wake => {
+                // Re-arm before spinning: work arriving during the spin must
+                // still be able to request another pass.
+                wake_pending.swap(false, Ordering::AcqRel);
+            }
         }
         servo.spin_event_loop();
     }
