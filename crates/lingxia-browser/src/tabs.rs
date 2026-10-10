@@ -598,7 +598,9 @@ pub fn browser_activate_tab(tab_id: &str) -> Result<BrowserTabInfo, BrowserAutom
             .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
         (build_tab_info(&normalized_tab_id, tab), tab.standalone)
     };
-    *lock_automation_tab() = Some(normalized_tab_id.clone());
+    // Only standalone tabs need a selection outside product chrome. Pinning a
+    // product tab here would hide later tabs opened by native shell actions.
+    *lock_automation_tab() = standalone.then(|| normalized_tab_id.clone());
     // Automation may select a standalone tab, but that must not change product
     // browser chrome, LRU, or lifecycle ownership.
     if !standalone && set_active_browser_tab(&normalized_tab_id) {
@@ -2025,6 +2027,20 @@ mod tests {
             browser_automation_current_tab().map(|tab| tab.tab_id),
             Some(standalone_tab_id.clone())
         );
+
+        browser_activate_tab(&product_tab_id).unwrap();
+        assert!(lock_automation_tab().is_none());
+        let next_product_tab_id = generate_tab_id();
+        lock_state()
+            .tabs
+            .insert(next_product_tab_id.clone(), make_tab(false));
+        // Native shell opens select product tabs without an automation call.
+        assert!(set_active_browser_tab(&next_product_tab_id));
+        assert_eq!(
+            browser_automation_current_tab().map(|tab| tab.tab_id),
+            Some(next_product_tab_id.clone())
+        );
+        lock_state().tabs.remove(&next_product_tab_id);
         lock_state().tabs.remove(&standalone_tab_id);
         lock_state().tabs.remove(&product_tab_id);
         lock_active_tab().take();

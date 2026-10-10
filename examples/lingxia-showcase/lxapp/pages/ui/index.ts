@@ -2,6 +2,7 @@ import { showcaseApp } from "../../shared/lib/app";
 import { errorMessage } from "../../shared/lib/errors";
 import type {
   ModalResult,
+  ActionSheetResult,
   PageSurface,
   ShowToastOptions,
   SurfaceEdge,
@@ -103,6 +104,7 @@ Page({
     moduleCounter: 0,
     events: [] as string[],
     modalResult: null as ModalResult | null,
+    actionSheetResult: null as ActionSheetResult | null,
     toastIcon: "success" as NonNullable<ShowToastOptions["icon"]>,
     toastIconLabel: "Success",
     toastIconOptions: [
@@ -324,11 +326,13 @@ Page({
 
   // Demo action sheet with mixed language options
   showDemoActionSheet: async function () {
+    this.setData({ actionSheetResult: null });
     const items = ["View Details", "查看日志", "Send Email", "删除"];
     const result = await lx.showActionSheet({
       items: items.map((label, index) => ({ id: String(index), label })),
       itemColor: "#007AFF",
     });
+    this.setData({ actionSheetResult: result });
     if (result.status === 'canceled') {
       lx.showToast({ title: "Dismissed", icon: "none" });
       return;

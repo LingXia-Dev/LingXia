@@ -121,15 +121,19 @@ const PAGE_NOT_READY_CODES = new Set(["E_PAGE_NOT_ACTIVE", "E_PAGE_NOT_READY"]);
 /**
  * Errors the page drivers raise while a page is being replaced: the target is
  * not the active instance yet, or its WebView is not attached. They occur
- * before anything reaches the page, so retrying them is safe. Matched by code
- * (`E_PAGE_NOT_ACTIVE`, `E_PAGE_NOT_READY`), plus WebView2's
+ * during read-only probes, so retrying those probes is safe. Matched by code
+ * (`E_PAGE_NOT_ACTIVE`, `E_PAGE_NOT_READY`, `E_DOCUMENT_CHANGED`), plus WebView2's
  * `ERROR_INVALID_STATE` (`0x8007139F`) while a navigation replaces the
  * document, which carries no code of its own.
  */
 export function isTransientPageError(error: unknown): boolean {
   const code = errorCode(error);
   if (code !== undefined && PAGE_NOT_READY_CODES.has(code)) return true;
-  return isWebView2InvalidState(error);
+  return code === "E_DOCUMENT_CHANGED" || isWebView2InvalidState(error)
+    // Older hosts reported this backend signal as E_AUTOMATION.
+    || ((code === undefined || code === "E_AUTOMATION") && /^navigation changed during javascript evaluation$/i.test(
+      error instanceof Error ? error.message : typeof error === "string" ? error : "",
+    ));
 }
 
 function isWebView2InvalidState(error: unknown): boolean {

@@ -14,6 +14,7 @@ impl std::fmt::Debug for AndroidTrustedLoad {
 }
 
 impl AndroidTrustedLoad {
+    #[cfg_attr(feature = "servo", allow(dead_code))]
     pub(crate) fn arm(&self, key: u64, intent: TrustedLoadIntent) -> Option<TrustedLoadIntent> {
         self.pending
             .lock()

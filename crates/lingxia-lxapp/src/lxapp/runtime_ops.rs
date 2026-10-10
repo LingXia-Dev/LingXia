@@ -291,6 +291,10 @@ pub fn on_low_memory() {
     info!("on_low_memory: discarding hidden-main tab WebViews, then evicting an unused lxapp");
     super::page_discard::enforce_page_webview_budget_with_limit(0);
     if let Some(manager) = super::runtime_registry::get_lxapps_manager() {
+        #[cfg(target_os = "android")]
+        for app in manager.lxapps.iter() {
+            app.value().trim_parked_pages(None, 0);
+        }
         manager.evict_lru_lxapp();
     }
 }

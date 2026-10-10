@@ -124,6 +124,8 @@ internal class PullToRefreshHelper(
             webView.pullToRefreshCallback = { event ->
                 handleTouch(webView, event)
             }
+        } else if (webView is com.lingxia.webview.LingXiaServoView) {
+            webView.setTouchInterceptor { event -> handleTouch(webView, event) }
         }
     }
 

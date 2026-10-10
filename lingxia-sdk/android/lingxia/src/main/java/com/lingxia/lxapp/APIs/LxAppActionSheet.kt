@@ -2,6 +2,10 @@ package com.lingxia.lxapp.APIs
 
 import com.lingxia.lxapp.LxAppDismissal
 
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
+import android.os.Handler
+import android.os.Looper
 import android.app.Activity
 import android.content.Context
 import android.graphics.Color
@@ -25,6 +29,8 @@ internal object LxAppActionSheet {
 
     private var currentActionSheetView: View? = null
     private var currentMaskView: View? = null
+    private var currentCallbackId: Long? = null
+    private var backCallback: OnBackPressedCallback? = null
 
     @JvmStatic
     fun showActionSheet(options: Array<String>, cancelText: String, itemColor: String, callbackId: Long) {
@@ -63,13 +69,13 @@ internal object LxAppActionSheet {
         // Hide any existing action sheet first
         hideActionSheetInternal()
 
+        currentCallbackId = callbackId
         val palette = OverlayPalette.of(activity)
 
         // Create mask
         currentMaskView = createMaskView(activity, palette) {
             // Cancel on mask click
-            sendActionSheetCancel(callbackId)
-            hideActionSheetInternal()
+            completeActionSheet(callbackId)
         }
         rootView.addView(currentMaskView)
 
@@ -77,6 +83,20 @@ internal object LxAppActionSheet {
         currentActionSheetView =
             createActionSheetView(activity, options, cancelText, itemColor, callbackId, palette)
         rootView.addView(currentActionSheetView)
+        currentActionSheetView?.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: View) = Unit
+            override fun onViewDetachedFromWindow(view: View) {
+                // Let the parent finish its detach traversal before removing children.
+                Handler(Looper.getMainLooper()).post { completeActionSheet(callbackId) }
+            }
+        })
+        (activity as? ComponentActivity)?.let { owner ->
+            backCallback = object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    completeActionSheet(callbackId)
+                }
+            }.also { owner.onBackPressedDispatcher.addCallback(owner, it) }
+        }
     }
 
     private fun createMaskView(context: Context, palette: OverlayPalette, onCancel: () -> Unit): View {
@@ -122,8 +142,7 @@ internal object LxAppActionSheet {
         // Add option buttons
         options.forEachIndexed { index, option ->
             val optionButton = createOptionButton(context, option, itemColor) {
-                sendActionSheetResult(callbackId, index)
-                hideActionSheetInternal()
+                completeActionSheet(callbackId, index)
             }
             actionSheetContent.addView(optionButton)
 
@@ -146,8 +165,7 @@ internal object LxAppActionSheet {
 
         // Add cancel button
         val cancelButton = createCancelButton(context, cancelText, palette) {
-            sendActionSheetCancel(callbackId)
-            hideActionSheetInternal()
+            completeActionSheet(callbackId)
         }
         actionSheetContent.addView(cancelButton)
 
@@ -229,15 +247,14 @@ internal object LxAppActionSheet {
         }
     }
 
-    private fun sendActionSheetResult(callbackId: Long, tapIndex: Int) {
-        val result = JSONObject().apply {
+    private fun completeActionSheet(callbackId: Long, tapIndex: Int? = null) {
+        if (currentCallbackId != callbackId) return
+        currentCallbackId = null
+        hideActionSheetInternal()
+        val result = if (tapIndex != null) JSONObject().apply {
             put("tapIndex", tapIndex)
-        }
-        NativeApi.onCallback(callbackId, true, result.toString())
-    }
-
-    private fun sendActionSheetCancel(callbackId: Long) {
-        NativeApi.onCallback(callbackId, false, LxAppDismissal.USER_DISMISSED)
+        }.toString() else LxAppDismissal.USER_DISMISSED
+        NativeApi.onCallback(callbackId, tapIndex != null, result)
     }
 
     private fun sendActionSheetError(callbackId: Long, code: Int) {
@@ -245,6 +262,11 @@ internal object LxAppActionSheet {
     }
 
     private fun hideActionSheetInternal() {
+        // Replacement and activity teardown must settle the old request exactly once.
+        val pending = currentCallbackId
+        currentCallbackId = null
+        backCallback?.remove()
+        backCallback = null
         currentActionSheetView?.let { actionSheetView ->
             removeActionSheetFromParent(actionSheetView)
             currentActionSheetView = null
@@ -254,6 +276,7 @@ internal object LxAppActionSheet {
             removeActionSheetFromParent(maskView)
             currentMaskView = null
         }
+        if (pending != null) NativeApi.onCallback(pending, false, LxAppDismissal.USER_DISMISSED)
     }
 
     private fun removeActionSheetFromParent(view: View) {

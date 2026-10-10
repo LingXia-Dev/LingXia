@@ -35,7 +35,7 @@
                 page="device"
                 :query="{ type: 'device' }"
                 open-type="navigate"
-                @success="addLog('✓ Navigate to home')"
+                @success="addLog('✓ Navigate to device')"
               >
                 <div class="flex flex-col items-center justify-center py-4 px-2 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 text-blue-700 dark:text-blue-400 rounded-xl transition-colors h-full">
                   <span class="text-lg mb-1">➡️</span>
@@ -46,10 +46,11 @@
 
               <!-- Redirect -->
               <LxNavigator
-                page="device"
-                :query="{ type: 'device' }"
+                page="ui"
+                :query="{ type: 'toast' }"
                 open-type="redirect"
-                @success="addLog('✓ Redirect to home')"
+                @success="addLog('✓ Redirect to toast demo')"
+                @fail="onFailWithMessage('Failed to redirect', $event)"
               >
                 <div class="flex flex-col items-center justify-center py-4 px-2 bg-purple-50 hover:bg-purple-100 active:bg-purple-200 text-purple-700 dark:text-purple-400 rounded-xl transition-colors h-full">
                   <span class="text-lg mb-1">🔀</span>
@@ -76,7 +77,7 @@
                 page="device"
                 :query="{ type: 'screen' }"
                 open-type="reLaunch"
-                @success="addLog('✓ ReLaunch to home')"
+                @success="addLog('✓ ReLaunch to device')"
               >
                 <div class="flex flex-col items-center justify-center py-4 px-2 bg-orange-50 hover:bg-orange-100 active:bg-orange-200 text-orange-700 dark:text-orange-400 rounded-xl transition-colors h-full">
                   <span class="text-lg mb-1">🚀</span>

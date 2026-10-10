@@ -1694,18 +1694,29 @@ impl WebView {
         scheme: &str,
         request: ContextualSchemeRequest,
     ) -> Option<WebResourceResponse> {
+        match self.dispatch_contextual_scheme_request(scheme, request) {
+            SchemeOutcome::Handled(response) => Some(response),
+            SchemeOutcome::PassThrough | SchemeOutcome::Cancelled => None,
+        }
+    }
+
+    pub(crate) fn dispatch_contextual_scheme_request(
+        &self,
+        scheme: &str,
+        request: ContextualSchemeRequest,
+    ) -> SchemeOutcome {
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         if let Some(response) = self.inner.handle_internal_bridge_request(request.request()) {
-            return Some(response);
+            return SchemeOutcome::Handled(response);
         }
 
-        let guard = self.scheme_handlers.read().ok()?;
-        let handler = guard.get(scheme)?;
-        let outcome = block_on_scheme_future(handler(request));
-        match outcome {
-            SchemeOutcome::Handled(response) => Some(response),
-            SchemeOutcome::PassThrough => None,
-        }
+        let Ok(guard) = self.scheme_handlers.read() else {
+            return SchemeOutcome::PassThrough;
+        };
+        let Some(handler) = guard.get(scheme) else {
+            return SchemeOutcome::PassThrough;
+        };
+        block_on_scheme_future(handler(request))
     }
 
     /// Call the navigation handler. Returns `Allow` if no handler is registered.
@@ -1808,11 +1819,6 @@ impl WebView {
         self.inner.eval_js(js).await
     }
 
-    /// Synthetic-event click for platforms that don't expose a native touch
-    /// injection API (iOS WKWebView, ArkWeb on Harmony). Looks up the
-    /// selector, scrolls it into view, and dispatches a synthetic
-    /// `MouseEvent` (or sets `focus="true"` for `<lx-*>` custom elements
-    /// that proxy focus to a native overlay).
     /// Run a page-input action script and decode its `{ok, error, interactable}`
     /// result.
     #[cfg(any(
@@ -1847,9 +1853,9 @@ impl WebView {
 
     /// Click an element by synthesizing DOM events. The shared input mechanism
     /// for platforms/hosts where native event dispatch cannot reach the page:
-    /// iOS (no `UITouch` synthesis), OpenHarmony, and macOS when the WebView is
-    /// detached (AppUI renders pages off-surface). `lx-` custom elements proxy
-    /// focus to their native overlay instead of receiving mouse events.
+    /// iOS (no `UITouch` synthesis), OpenHarmony, and macOS. `lx-input` and
+    /// `lx-textarea` proxy focus to their native overlay; other custom elements
+    /// receive mouse events.
     ///
     /// `force` is every platform's forced click: the events go to the element
     /// itself, so it needs neither the viewport nor the hit test — only an
@@ -1889,7 +1895,7 @@ impl WebView {
               const hit = force ? el : document.elementFromPoint(rect.left + rect.width/2, rect.top + rect.height/2); \
               if (!hit || !(hit === el || el.contains(hit))) return {{ ok:false, error:'element is obscured', interactable:false }}; \
               const tag = (el.tagName || '').toLowerCase(); \
-              if (tag.indexOf('lx-') === 0) {{ \
+              if (tag === 'lx-input' || tag === 'lx-textarea') {{ \
                 el.setAttribute('focus', 'true'); \
                 if (typeof el.syncNativeProps === 'function') {{ try {{ el.syncNativeProps(); }} catch(_e) {{}} }} \
                 return {{ ok:true, count:els.length, native:true }}; \
@@ -2757,6 +2763,9 @@ impl WebViewCreateSender {
     }
 
     pub(crate) fn fail(self, stage: WebViewCreateStage, error: WebViewError) {
+        // Servo reserves its runtime before Java creates the host View.
+        #[cfg(all(target_os = "android", feature = "servo"))]
+        crate::android::unregister_servo(&self.webtag, self.native_view_id);
         if remove_session_signals_if_matches(&self.webtag, &self.signals) {
             crate::events::normalizer::destroy(&self.webtag);
         }

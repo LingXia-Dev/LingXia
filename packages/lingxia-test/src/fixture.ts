@@ -1419,9 +1419,9 @@ export class LiveFixture implements Fixture {
       const location = { source: frame.file, line: frame.line, column: frame.column };
       const deadline = new ActionDeadline(options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS, this.budgetRoom());
       const interval = options?.interval ?? DEFAULT_POLL_INTERVAL_MS;
-      const context = () => this.deadlineContext(inverted ? `not.${matcher}` : matcher, location);
       let lastResolved: LocatorResolve | undefined;
       let lastError: unknown;
+      const context = () => this.deadlineContext(inverted ? `not.${matcher}` : matcher, location, lastError);
       pushAssertionSilence();
       this.silenceActions();
       try {
@@ -1486,9 +1486,9 @@ export class LiveFixture implements Fixture {
       const location = { source: frame.file, line: frame.line, column: frame.column };
       const deadline = new ActionDeadline(options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS, this.budgetRoom());
       const interval = options?.interval ?? DEFAULT_POLL_INTERVAL_MS;
-      const context = () => this.deadlineContext(`${api} ${inverted ? "not." : ""}${matcher}`, location);
       let lastActual: unknown;
       let lastError: unknown;
+      const context = () => this.deadlineContext(`${api} ${inverted ? "not." : ""}${matcher}`, location, lastError);
       pushAssertionSilence();
       this.silenceActions();
       try {
@@ -1533,11 +1533,12 @@ export class LiveFixture implements Fixture {
     }), `${api}(${source}).${assertion}`);
   }
 
-  private deadlineContext(matcher: string, location: SourceLocation): string {
+  private deadlineContext(matcher: string, location: SourceLocation, lastError?: unknown): string {
     return [
       `while retrying ${matcher}`,
       `at ${displayLocation(location.source, location.line, location.column)}`,
       this.stepPathLine(),
+      lastError instanceof Error ? `Last observation: ${lastError.message}` : undefined,
     ].filter(Boolean).join("\n");
   }
 

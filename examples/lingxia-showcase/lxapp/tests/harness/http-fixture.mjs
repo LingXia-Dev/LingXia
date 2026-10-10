@@ -263,6 +263,17 @@ export function createFixtureServer() {
 
       // A titled HTML page, so a browser-tab contract has something to open
       // and a title to find it by.
+      if (route === '/interaction') {
+        const html = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
+          <title>Browser interaction fixture</title>
+          <style>body{margin:16px;background:white;color:black}main{height:2400px;background:linear-gradient(#eef,#fee)}</style>
+          <a id="next" href="/page/second">Second page</a>
+          <main>Scroll this page</main><button id="bottom">Bottom</button>`;
+        response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        response.end(html);
+        return;
+      }
+
       if (route.startsWith('/page/')) {
         const name = decodeURIComponent(route.slice('/page/'.length));
         const html = `<!doctype html><html><head><meta charset="utf-8"><title>fixture ${name}</title></head>`

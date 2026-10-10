@@ -125,6 +125,8 @@ async function applyHostChrome(os: string, tag: string) {
 
 App({
   onLaunch: async function (this: ShowcaseAppInstance, options?: AppLaunchOptions) {
+    this.globalData.lifecycle.launches++;
+    this.globalData.lifecycle.last = "launch";
     routeFromAppLink(options);
     const { os } = lx.host.getBaseInfo();
     const applyChrome = (tag = lx.host.displayLanguage.get()) => {
@@ -179,11 +181,15 @@ App({
     }
   },
 
-  onHide() {
+  onHide(this: ShowcaseAppInstance) {
+    this.globalData.lifecycle.hides++;
+    this.globalData.lifecycle.last = "hide";
     console.log("App.onHide");
   },
 
-  onShow(options?: AppLaunchOptions) {
+  onShow(this: ShowcaseAppInstance, options?: AppLaunchOptions) {
+    this.globalData.lifecycle.shows++;
+    this.globalData.lifecycle.last = "show";
     routeFromAppLink(options);
     console.log("App.onShow");
   },
@@ -193,6 +199,7 @@ App({
   },
 
   globalData: {
+    lifecycle: { launches: 0, shows: 0, hides: 0, last: "" },
     greeting: "This is from App's globalData.data",
     ipAddr: "loading",
   },

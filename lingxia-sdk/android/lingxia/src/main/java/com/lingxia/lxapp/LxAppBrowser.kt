@@ -25,6 +25,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import com.lingxia.app.Lingxia
 import com.lingxia.app.NativeApi
+import com.lingxia.webview.LingXiaWebViewHost
 import java.net.URI
 
 internal object LxAppBrowser {
@@ -43,7 +44,7 @@ internal object LxAppBrowser {
     private var bottomBar: View? = null
     private var tabSwitcher: View? = null
     private var overflowMenu: View? = null
-    private var activeWebView: WebView? = null
+    private var activeWebView: LingXiaWebViewHost? = null
     private var activeWebViewTabId: String? = null
     private var currentActivity: Activity? = null
 
@@ -164,7 +165,8 @@ internal object LxAppBrowser {
 
         activeWebView?.pause()
         activeWebView?.let { view ->
-            (view.parent as? ViewGroup)?.removeView(view)
+            val hostView = view.hostView
+            (hostView.parent as? ViewGroup)?.removeView(hostView)
         }
         activeWebView = null
         activeWebViewTabId = null
@@ -231,9 +233,9 @@ internal object LxAppBrowser {
         }
         for (tabId in openTabIds) {
             val webView = findManagedWebView(tabId) ?: continue
-            val config = Configuration(webView.resources.configuration)
+            val config = Configuration(webView.hostView.resources.configuration)
             config.uiMode = (config.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or night
-            webView.dispatchConfigurationChanged(config)
+            webView.hostView.dispatchConfigurationChanged(config)
         }
     }
 
@@ -562,25 +564,27 @@ internal object LxAppBrowser {
         attachWebView(managedWebView, tabId, initialUrl)
     }
 
-    private fun attachWebView(managedWebView: WebView, tabId: String, initialUrl: String) {
+    private fun attachWebView(managedWebView: LingXiaWebViewHost, tabId: String, initialUrl: String) {
         val host = contentHost ?: return
         if (activeWebView !== managedWebView) {
             activeWebView?.pause()
             activeWebView?.let { previous ->
-                (previous.parent as? ViewGroup)?.removeView(previous)
+                val previousView = previous.hostView
+                (previousView.parent as? ViewGroup)?.removeView(previousView)
             }
         }
-        (managedWebView.parent as? ViewGroup)?.removeView(managedWebView)
-        managedWebView.layoutParams = FrameLayout.LayoutParams(
+        val managedHostView = managedWebView.hostView
+        (managedHostView.parent as? ViewGroup)?.removeView(managedHostView)
+        managedHostView.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         )
-        managedWebView.visibility = View.VISIBLE
+        managedHostView.visibility = View.VISIBLE
         host.removeAllViews()
-        host.addView(managedWebView)
+        host.addView(managedHostView)
         managedWebView.resume()
 
-        managedWebView.setOnTouchListener { _, event ->
+        managedHostView.setOnTouchListener { _, event ->
             if (event.action == android.view.MotionEvent.ACTION_DOWN) {
                 markActiveTabInteracted()
             }
@@ -632,7 +636,7 @@ internal object LxAppBrowser {
 
     private fun closeTab(tabId: String) {
         val normalizedTabId = normalizeTabId(tabId)
-        val closingAside = tabIsAside(normalizedTabId)
+        val closingAside = if (activeTabId == normalizedTabId) isAsideActive else tabIsAside(normalizedTabId)
         val groupIndex = tabIdsForMode(closingAside).indexOf(normalizedTabId)
         val index = openTabIds.indexOf(normalizedTabId)
         if (index < 0) {
@@ -643,7 +647,8 @@ internal object LxAppBrowser {
         if (activeWebViewTabId == normalizedTabId) {
             activeWebView?.pause()
             activeWebView?.let { view ->
-                (view.parent as? ViewGroup)?.removeView(view)
+                val hostView = view.hostView
+                (hostView.parent as? ViewGroup)?.removeView(hostView)
             }
             activeWebView = null
             activeWebViewTabId = null
@@ -969,7 +974,8 @@ internal object LxAppBrowser {
         val hidden = cleanUrl.isEmpty() || cleanUrl.equals(HIDDEN_NEW_TAB_URL, ignoreCase = true)
         val field = addressField
         if (field != null && !field.hasFocus()) {
-            field.setText(if (hidden) "" else displayUrl(cleanUrl))
+            val text = if (hidden) "" else displayUrl(cleanUrl)
+            if (field.text.toString() != text) field.setText(text)
         }
 
         val icon = addressIcon ?: return
@@ -1001,10 +1007,17 @@ internal object LxAppBrowser {
 
     private fun updateTabsBadge() {
         val count = tabIdsForMode().size.coerceAtLeast(1)
-        tabsBadge?.text = if (count > 99) "99+" else count.toString()
+        val text = if (count > 99) "99+" else count.toString()
+        tabsBadge?.let { if (it.text.toString() != text) it.text = text }
     }
 
     private fun refreshChromeFromActiveWebView() {
+        // Tabs can also close through automation or page script. Release the
+        // overlay when its last tab closes, even without a chrome button click.
+        for (tabId in openTabIds.toList()) {
+            if (!NativeApi.browserTabExists(tabId)) closeTab(tabId)
+        }
+        if (overlayContainer == null) return
         // During attach retry the displayed webview still belongs to the
         // previous tab; address and back/forward are per-tab, keep them reset.
         if (activeWebViewTabId != activeTabId) {
@@ -1123,7 +1136,7 @@ internal object LxAppBrowser {
     private fun tabIdsForMode(aside: Boolean = isAsideActive): List<String> =
         openTabIds.filter { tabIsAside(it) == aside }
 
-    private fun findManagedWebView(tabId: String): WebView? =
+    private fun findManagedWebView(tabId: String): LingXiaWebViewHost? =
         NativeApi.findBrowserTabWebView(tabId)
 
     private fun closeBrowserTab(tabId: String) {

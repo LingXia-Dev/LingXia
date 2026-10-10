@@ -1,0 +1,34 @@
+package com.lingxia.webview;
+
+import android.view.View;
+import android.webkit.ValueCallback;
+
+/** Common host contract for Android system WebView and alternative renderers. */
+public interface LingXiaWebViewHost {
+    View getHostView();
+    long getNativeViewId();
+    String getWebTag();
+    String getAppId();
+    String getCurrentPath();
+    long getSessionId();
+    String getUrl();
+    String getTitle();
+    boolean canGoBack();
+    boolean canGoForward();
+    boolean usesStrictSecurityProfile();
+    boolean retainsSurfaceWhenHidden();
+    /** Wait after attachment/resume; returns a cancellation action for this presentation. */
+    default Runnable prepareForPresentation(Runnable ready) { ready.run(); return () -> {}; }
+    /** Document scroll offset in device pixels, for native overlays. */
+    int getContentScrollX();
+    int getContentScrollY();
+    void reload();
+    void goBack();
+    void goForward();
+    void evaluateJavascript(String script, ValueCallback<String> callback);
+    void dispatchClickAt(float x, float y);
+    void scrollByPixels(int dx, int dy);
+    void pause();
+    void resume();
+    void destroy();
+}

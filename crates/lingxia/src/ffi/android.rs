@@ -18,6 +18,8 @@ use std::sync::OnceLock;
 
 static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
 
+pub use lingxia_platform::present_browser_tab;
+
 fn initialize_jni(vm: JavaVM) {
     let _ = JAVA_VM.set(vm);
 }
@@ -145,6 +147,11 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
         let cache_dir_str: String = cache_dir.try_to_string(env)?;
         let locale_str: String = locale.try_to_string(env)?;
 
+        #[cfg(feature = "servo")]
+        lingxia_webview::platform::android::set_servo_data_dir(
+            std::path::PathBuf::from(&data_dir_str).join("servo"),
+        );
+
         log::info!(
             "Initializing Lingxia SDK with data_dir: {}, cache_dir: {}, locale: {}",
             data_dir_str,
@@ -171,6 +178,15 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
                 return Ok(JString::null());
             }
         };
+
+        #[cfg(feature = "browser-shell")]
+        lingxia_browser::set_tab_present_handler(std::sync::Arc::new(|tab_id| {
+            if !lingxia_browser::tab_is_standalone(tab_id)
+                && let Err(error) = present_browser_tab(tab_id)
+            {
+                warn!("Failed to present Android browser tab {tab_id}: {error}");
+            }
+        }));
 
         // Return the home appid
         match home_app_id.into_lxapp_id() {
@@ -379,7 +395,7 @@ fn deliver_page_webview(
         env.call_method(
             callback,
             jni_str!("onResult"),
-            jni_sig!("(Lcom/lingxia/lxapp/WebView;I)V"),
+            jni_sig!("(Lcom/lingxia/webview/LingXiaWebViewHost;I)V"),
             &[(&webview).into(), status.into()],
         )?;
         Ok(())
@@ -1584,6 +1600,27 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_browserTabIsAside(
             Err(_) => return Ok(false),
         };
         Ok(crate::browser::tab_is_aside(&tab_id))
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_browserTabExists(
+    mut env: EnvUnowned,
+    _class: JClass,
+    tab_id: JString,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let tab_id = tab_id.try_to_string(env)?;
+        #[cfg(feature = "browser-runtime")]
+        return Ok(lingxia_browser::tabs()
+            .iter()
+            .any(|tab| tab.tab_id == tab_id));
+        #[cfg(not(feature = "browser-runtime"))]
+        {
+            let _ = tab_id;
+            Ok(false)
+        }
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

@@ -480,28 +480,19 @@ impl PageInstance {
         }
     }
 
-    /// Create a new page in pending state (WebView creation in progress)
-    pub(crate) fn new<F, Fut>(appid: String, path: String, lxapp: &LxApp, setup_callback: F) -> Self
-    where
-        F: Fn(&PageInstance) -> Fut + Send + 'static,
-        Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
-    {
-        Self::new_with_isolation(appid, path, lxapp, false, setup_callback)
+    /// Allocate a page; register it before starting its WebView.
+    pub(crate) fn new(appid: String, path: String, lxapp: &LxApp) -> Self {
+        Self::new_with_isolation(appid, path, lxapp, false)
     }
 
     /// `isolated` marks surface-owned pages: they never resolve by bare path
     /// and their dispose lifecycle belongs to the owning surface.
-    pub(crate) fn new_with_isolation<F, Fut>(
+    pub(crate) fn new_with_isolation(
         appid: String,
         path: String,
         lxapp: &LxApp,
         isolated: bool,
-        setup_callback: F,
-    ) -> Self
-    where
-        F: Fn(&PageInstance) -> Fut + Send + 'static,
-        Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
-    {
+    ) -> Self {
         // Build page state from LxApp configuration
         let page_state = Self::build_page_state(lxapp, &path);
         let id = PageInstanceId::new();
@@ -542,9 +533,7 @@ impl PageInstance {
             webview_create_in_flight: AtomicBool::new(true),
         });
 
-        let page = Self { inner };
-        page.spawn_strict_webview(setup_callback);
-        page
+        Self { inner }
     }
 
     /// Create a headless page (nonce allocated, no WebView created).
@@ -610,6 +599,11 @@ impl PageInstance {
 
     pub(crate) fn has_live_webview(&self) -> bool {
         self.webview().is_some() && !self.is_discarded()
+    }
+
+    #[cfg(target_os = "android")]
+    pub(crate) fn is_parked(&self) -> bool {
+        self.inner.state.lock().is_ok_and(|state| state.parked)
     }
 
     /// Destroy the native WebView without unloading the page. Logic, `data`,
@@ -683,7 +677,7 @@ impl PageInstance {
         });
     }
 
-    fn spawn_strict_webview<F, Fut>(&self, setup_callback: F)
+    pub(crate) fn spawn_strict_webview<F, Fut>(&self, setup_callback: F)
     where
         F: Fn(&PageInstance) -> Fut + Send + 'static,
         Fut: Future<Output = Result<(), String>> + Send + 'static,
@@ -706,12 +700,12 @@ impl PageInstance {
                 let page_weak_for_lx = page_weak_for_lx.clone();
                 async move {
                     let Some(inner) = page_weak_for_lx.upgrade() else {
-                        return None.into();
+                        return lingxia_webview::SchemeOutcome::Cancelled;
                     };
                     let page = PageInstance::from_inner(inner);
                     let lxapp = page.owning_lxapp();
                     if lxapp.status() == LxAppSessionStatus::Closed {
-                        return None.into();
+                        return lingxia_webview::SchemeOutcome::Cancelled;
                     }
                     lxapp.handle_lingxia_request(&page, req).into()
                 }
@@ -928,7 +922,7 @@ impl PageInstance {
             state.parked = true;
         }
         // Transparent so the host-owned page background shows through.
-        const PARKED_DOCUMENT: &str = "<!DOCTYPE html><html><head><meta charset=\"utf-8\">\
+        const PARKED_DOCUMENT: &str = "<!DOCTYPE html><html data-lingxia-parked><head><meta charset=\"utf-8\">\
              <style>html,body{background:transparent}</style></head><body></body></html>";
         if let Some(controller) = self.webview_controller()
             && let Err(err) =

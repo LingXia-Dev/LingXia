@@ -313,6 +313,9 @@ internal object NativeApi {
     @JvmStatic
     external fun browserTabIsAside(tabId: String): Boolean
 
+    @JvmStatic
+    external fun browserTabExists(tabId: String): Boolean
+
     /**
      * Close a managed internal browser tab.
      */
@@ -339,7 +342,7 @@ internal object NativeApi {
 
     /** The WebView a managed browser tab shows, or null while it has none. */
     @JvmStatic
-    external fun findBrowserTabWebView(tabId: String): com.lingxia.lxapp.WebView?
+    external fun findBrowserTabWebView(tabId: String): com.lingxia.webview.LingXiaWebViewHost?
 
     /**
      * Get complete TabBar state with items array (unified API)
@@ -403,10 +406,10 @@ internal object NativeApi {
         sessionId: Long,
         webtag: String?,
         callback: PageWebViewCallback
-    ): com.lingxia.lxapp.WebView?
+    ): com.lingxia.webview.LingXiaWebViewHost?
 
     @JvmStatic
-    external fun findWebViewByPageInstanceId(pageInstanceId: String): com.lingxia.lxapp.WebView?
+    external fun findWebViewByPageInstanceId(pageInstanceId: String): com.lingxia.webview.LingXiaWebViewHost?
 
     @JvmStatic
     external fun notifyPageInstanceMounted(pageInstanceId: String): Boolean
@@ -509,7 +512,7 @@ internal object NativeApi {
 /** How waiting for a page's WebView ended. */
 internal fun interface PageWebViewCallback {
     /** [status]: 0 ready ([webView] set), 1 failed, 2 the page is gone. */
-    fun onResult(webView: com.lingxia.lxapp.WebView?, status: Int)
+    fun onResult(webView: com.lingxia.webview.LingXiaWebViewHost?, status: Int)
 
     companion object {
         const val READY = 0

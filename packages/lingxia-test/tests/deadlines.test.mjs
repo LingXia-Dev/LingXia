@@ -79,6 +79,30 @@ test("a locator read that never returns fails the locator assertion", async () =
   assert.match(result.error.message, /while retrying toBeVisible/);
 });
 
+for (const kind of ["locator", "poll"]) {
+  test(`${kind} keeps the last mismatch when the next read exhausts its budget`, async () => {
+    const world = createWorld();
+    world.add({ testId: "badge", text: "Inbox" });
+    const query = world.app.page.query;
+    let reads = 0;
+    world.app.page.query = (options) => ++reads === 1 ? query(options) : hang();
+    installFakeHost(world);
+
+    spec("last observation", { timeout: 5_000, forensics: false }, (t) => kind === "locator"
+      ? expect(t.app.view.testId("badge")).toHaveText("Outbox", { timeout: 120, interval: 1 })
+      : expect.poll(() => ++reads === 1 ? "Inbox" : hang(), { timeout: 120, interval: 1 }).toBe("Outbox"));
+
+    const result = await runOne();
+    assert.equal(result.status, "failed");
+    assert.equal(result.error.code, "E_TIMEOUT");
+    assert.equal(reads, 2, "an expired read is not retried");
+    assert.match(result.error.message, /read did not return/);
+    assert.match(result.error.message, /Last observation:/);
+    assert.match(result.error.message, /Inbox/);
+    assert.match(result.error.message, /Outbox/);
+  });
+}
+
 test("an assertion timeout longer than the spec's remaining budget is clamped, visibly", async () => {
   installFakeHost(createWorld());
 
@@ -217,6 +241,39 @@ test("a pre-dispatch page error is retried, a WebView2 dispatch error is not", a
   assert.equal((await runOne()).status, "failed");
   assert.equal(dispatched, 1, "an ambiguous dispatch failure must not resubmit the input");
 });
+
+for (const code of ["E_DOCUMENT_CHANGED", "E_AUTOMATION"]) {
+  test(`document replacement (${code}) retries reads but never repeats input`, async () => {
+    const world = createWorld();
+    world.add({ testId: "save" });
+    const query = world.app.page.query;
+    let queries = 0;
+    const changed = () => Object.assign(
+      new Error("Navigation changed during JavaScript evaluation"), { code },
+    );
+    world.app.page.query = async (options) => {
+      if (++queries <= 2) throw changed();
+      return query(options);
+    };
+    installFakeHost(world);
+    spec("wait for replacement", (t) =>
+      t.app.view.testId("save").waitFor({ timeout: 1_000, interval: 5 }));
+    assert.equal((await runOne()).status, "passed");
+    assert.equal(queries, 3);
+
+    reset();
+    let dispatched = 0;
+    world.app.page.click = async () => {
+      dispatched++;
+      throw changed();
+    };
+    installFakeHost(world);
+    spec("ambiguous replacement", { forensics: false }, (t) =>
+      t.app.view.testId("save").click({ timeout: 1_000, interval: 5 }));
+    assert.equal((await runOne()).status, "failed");
+    assert.equal(dispatched, 1);
+  });
+}
 
 test("waitFor retries a page that is not ready yet", async () => {
   const world = createWorld();

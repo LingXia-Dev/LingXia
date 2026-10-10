@@ -3,6 +3,8 @@ param(
   [ValidateSet('react', 'vue', 'all')]
   [string]$Framework = 'all',
   [string]$Device,
+  [string]$PackageId = 'com.lingxia.example.lxapp.dev',
+  [string[]]$NativeFeature = @(),
   [int]$TimeoutSeconds = 600
 )
 
@@ -38,14 +40,96 @@ function Invoke-Checked {
 function Get-AndroidUiHierarchy {
   param([string]$Destination)
 
-  & $adb @adbTarget shell uiautomator dump /sdcard/lingxia-automation-window.xml | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw 'Android UIAutomator could not dump the window hierarchy.' }
+  $dumped = $false
+  for ($attempt = 0; $attempt -lt 3; $attempt++) {
+    $savedErrorAction = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = 'Continue'
+      $dump = (& $adb @adbTarget shell uiautomator dump --compressed /sdcard/lingxia-automation-window.xml 2>&1 | Out-String)
+      $dumped = $LASTEXITCODE -eq 0 -and $dump -match 'UI hierchary dumped to:'
+    } finally {
+      $ErrorActionPreference = $savedErrorAction
+    }
+    if ($dumped) { break }
+    # UIAutomator can exit zero without writing a file during transitions.
+    # Never mistake the previous screen's retained XML for a fresh capture.
+    Start-Sleep -Milliseconds 200
+  }
+  if (-not $dumped) { throw "Android UIAutomator could not dump the window hierarchy: $dump" }
   $xmlText = (& $adb @adbTarget exec-out cat /sdcard/lingxia-automation-window.xml | Out-String).Trim()
   if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($xmlText)) {
     throw 'Android UIAutomator hierarchy was empty.'
   }
   Set-Content -LiteralPath $Destination -Value $xmlText -Encoding utf8
   return [xml]$xmlText
+}
+
+function Initialize-AndroidTestPermissions {
+  param([string]$InstalledPackage)
+
+  # The JS suite cannot answer system dialogs. Android 12 requires coarse
+  # permission alongside fine location; Wi-Fi details need both on a fresh APK.
+  foreach ($permission in @('ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION')) {
+    Invoke-Checked $adb ($adbTarget + @(
+      'shell', 'pm', 'grant', $InstalledPackage, "android.permission.$permission"
+    ))
+  }
+  $locationEnabled = (& $adb @adbTarget shell cmd location is-location-enabled | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or $locationEnabled -ne 'true') {
+    throw 'Android Wi-Fi tests require Location services enabled. Enable Location on the test device, then rerun.'
+  }
+}
+
+function Start-AndroidFixture {
+  param([string]$ScriptName, [string[]]$Arguments = @())
+
+  $node = (Get-Command node -ErrorAction Stop).Source
+  $resultRoot = Join-Path $lxappRoot 'test-results\automation'
+  New-Item -ItemType Directory -Force -Path $resultRoot | Out-Null
+  $logPrefix = Join-Path $resultRoot ("$ScriptName-" + [guid]::NewGuid().ToString('N'))
+  $fixtureScript = Join-Path $lxappRoot "tests\harness\$ScriptName.mjs"
+  $quotedArguments = @($fixtureScript) + $Arguments | ForEach-Object { '"' + $_ + '"' }
+  $process = Start-Process -FilePath $node -WindowStyle Hidden -PassThru `
+    -ArgumentList $quotedArguments `
+    -RedirectStandardOutput "$logPrefix.stdout.log" -RedirectStandardError "$logPrefix.stderr.log"
+  try {
+    $deadline = [DateTime]::UtcNow.AddSeconds(15)
+    do {
+      if ($process.HasExited) { throw "Android fixture exited; see $logPrefix.stderr.log" }
+      $base = Get-Content -LiteralPath "$logPrefix.stdout.log" -ErrorAction SilentlyContinue |
+        Where-Object { $_ -match '^http://127\.0\.0\.1:\d+(/[a-f0-9]+)?$' } | Select-Object -First 1
+      if ($base) {
+        return @{ Process = $process; Base = $base; Port = ([uri]$base).Port }
+      }
+      Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "Android fixture did not become ready; see $logPrefix.stderr.log"
+  } catch {
+    if (-not $process.HasExited) { $process.Kill() }
+    throw
+  }
+}
+
+function Stop-AndroidFixture {
+  param($Fixture)
+
+  if ($null -eq $Fixture) { return }
+  $savedErrorAction = $ErrorActionPreference
+  try {
+    # Build failure can precede reverse setup; a disconnected device must not
+    # prevent either fixture process from being reaped or hide the run error.
+    $ErrorActionPreference = 'Continue'
+    & $adb @adbTarget reverse --remove "tcp:$($Fixture.Port)" 2>$null | Out-Null
+  } catch {
+    Write-Verbose "Could not remove Android fixture forwarding: $_"
+  } finally {
+    $ErrorActionPreference = $savedErrorAction
+    try {
+      if (-not $Fixture.Process.HasExited) { $Fixture.Process.Kill() }
+    } catch {
+      Write-Warning "Could not stop Android fixture process: $_"
+    }
+  }
 }
 
 function Invoke-NativeVideoLifecycleProbe {
@@ -109,7 +193,6 @@ function Invoke-SameRouteRelaunchStress {
 function Invoke-ProcessRestoreProbe {
   param([string]$ResultDirectory)
 
-  $packageId = 'com.lingxia.example.lxapp.dev'
   Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'home', '--json')
   Invoke-Checked $lxdev @(
     'lxapp', 'page', 'wait', '--page', 'home',
@@ -140,9 +223,18 @@ function Invoke-ProcessRestoreProbe {
     do {
       # The dev transport must reconnect to the fresh process before the
       # regular Showcase drivers can verify its page and Logic runtime.
-      $probe = (& $lxdev lxapp page wait --page home '[data-testid="home-page"]' `
-        --state visible --timeout-ms 2000 2>&1 | Out-String)
-      if ($LASTEXITCODE -eq 0) { $restored = $true; break }
+      # Windows PowerShell promotes native stderr to a terminating error with
+      # Stop, even though a disconnected transport is expected during restart.
+      $savedErrorAction = $ErrorActionPreference
+      try {
+        $ErrorActionPreference = 'Continue'
+        $probe = (& $lxdev lxapp page wait --page home '[data-testid="home-page"]' `
+          --state visible --timeout-ms 2000 2>&1 | Out-String)
+        $probeExitCode = $LASTEXITCODE
+      } finally {
+        $ErrorActionPreference = $savedErrorAction
+      }
+      if ($probeExitCode -eq 0) { $restored = $true; break }
       Start-Sleep -Milliseconds 500
     } while ([DateTime]::UtcNow -lt $deadline)
     if (-not $restored) { throw "Showcase did not recover from process death: $probe" }
@@ -156,7 +248,7 @@ function Invoke-ProcessRestoreProbe {
     }
     Invoke-Checked $lxdev @(
       'lxapp', 'eval',
-      'if (lx.hello.sayHello("restore") !== "Hello, restore!") throw new Error("Host addon missing after restore"); return true;'
+      "if (lx.hello.sayHello('restore') !== 'Hello, restore!') throw new Error('Host addon missing after restore'); return true;"
     )
     # Exercise navigation through Logic and back, beyond merely seeing a cover
     # disappear or finding an Activity with the expected name.
@@ -181,6 +273,9 @@ function Invoke-ProcessRestoreProbe {
 
 function Test-BenignAndroidSessionError {
   param([string]$Message)
+  # Servo reports canceled module fetches at error level after their native
+  # view has closed. Live-view missing handlers/assets remain failures.
+  if ($Message -match '^Fetching (module|classic) script failed (LoadCancelled|Load cancelled)($| \(UrlWithBlobClaim)') { return $true }
   # The image contract deliberately probes a missing file and reports ENOENT
   # through the host log; the test asserts that rejection separately.
   if ($Message -match 'readInfo failed.*missing\.png.*ENOENT') { return $true }
@@ -211,7 +306,7 @@ function Get-UnexpectedAndroidSessionErrors {
 
   $unexpected = @(
     $entries | Where-Object {
-      $message = "{0} {1}" -f ([string]$_.data.message), ([string]$_.data.path)
+      $message = ("{0} {1}" -f ([string]$_.data.message), ([string]$_.data.path)).Trim()
       -not (Test-BenignAndroidSessionError $message)
     }
   )
@@ -255,8 +350,11 @@ if (-not ($abis -contains 'arm64-v8a') -and -not ($abis -contains 'armeabi-v7a')
 # radio up for the whole run.
 Invoke-Checked $adb ($adbTarget + @('shell', 'svc', 'power', 'stayon', 'true'))
 Invoke-Checked $adb ($adbTarget + @('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'))
+Invoke-Checked $adb ($adbTarget + @('shell', 'wm', 'dismiss-keyguard'))
 Invoke-Checked $adb ($adbTarget + @('shell', 'svc', 'wifi', 'enable'))
 
+$httpFixture = $null
+$deviceFixture = $null
 Push-Location $showcaseRoot
 try {
   # A captured native-process pipeline waits for descendant handles on Windows.
@@ -274,6 +372,10 @@ try {
   }
 
   $frameworks = if ($Framework -eq 'all') { @('react', 'vue') } else { @($Framework) }
+  $httpFixture = Start-AndroidFixture 'http-fixture' @('--port', '0', '--print-base')
+  $fixtureSerial = (& $adb @adbTarget get-serialno | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or -not $fixtureSerial) { throw 'Could not identify the Android fixture device.' }
+  $deviceFixture = Start-AndroidFixture 'android-device-fixture' @('--adb', $adb, '--device', $fixtureSerial)
   $nativeVideoProbeRan = $false
   foreach ($currentFramework in $frameworks) {
     $started = $false
@@ -287,9 +389,15 @@ try {
         $currentFramework
       )
       if (-not [string]::IsNullOrWhiteSpace($Device)) { $devArguments += @('--device', $Device) }
+      foreach ($feature in $NativeFeature) { $devArguments += @('--native-feature', $feature) }
       # Returns once the session is ready, or fails having stopped it.
       Invoke-Checked $lingxia $devArguments
       $started = $true
+      Initialize-AndroidTestPermissions $PackageId
+      $fixturePort = "tcp:$($httpFixture.Port)"
+      Invoke-Checked $adb ($adbTarget + @('reverse', $fixturePort, $fixturePort))
+      $devicePort = "tcp:$($deviceFixture.Port)"
+      Invoke-Checked $adb ($adbTarget + @('reverse', $devicePort, $devicePort))
 
       Push-Location $lxappRoot
       try {
@@ -299,6 +407,8 @@ try {
         & $lxdev test --preset android `
           --timeout-secs $($TimeoutSeconds.ToString()) `
           --arg "framework=$currentFramework" `
+          --arg "httpBase=$($httpFixture.Base)" `
+          --secret-arg "androidDevice=$($deviceFixture.Base)" `
           --output-dir $resultDirectory
         $testExitCode = $LASTEXITCODE
 
@@ -332,6 +442,8 @@ try {
     }
   }
 } finally {
+  Stop-AndroidFixture $deviceFixture
+  Stop-AndroidFixture $httpFixture
   Pop-Location
 }
 

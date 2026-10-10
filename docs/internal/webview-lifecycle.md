@@ -750,6 +750,47 @@ suppressed in strict, allowed in browser.
 - LxApp pages are attached by `LxAppActivity`; browser tabs by
   `LxAppBrowserOverlay`.
 
+The `servo` feature swaps the renderer for `LingXiaServoView`, driven by one
+process-wide Servo engine thread (`android/servo.rs`):
+
+- The texture and Servo clear color are transparent; the host supplies the
+  launch/theme background (white for browser-profile views). Presentation starts
+  after Servo's first frame-ready notification, without delaying load callbacks.
+- Frame-ready notifications schedule a single Android vsync; paint consumes the
+  dirty flag. Static pages do not run a perpetual Choreographer loop. Navigation
+  settle deadlines must still be serviced while the renderer is idle.
+- Android's resolved night mode reaches Servo before surface creation and on
+  configuration changes, so initial CSS media queries use the correct scheme.
+- Page transitions keep the outgoing container visible while the attached,
+  resumed incoming Servo view reports first-contentful-paint through its
+  document-start observer. Completed empty/error documents fall back after a
+  350 ms framework-render grace period. Superseded waits are cancelled. TabBar
+  visibility changes with presentation, so the outgoing page keeps its layout.
+  The inert parking document carries `data-lingxia-parked`; its load cannot
+  release presentation of a later entry. Signals must match the current stamped URL.
+  This gate must not wait for `onReady`, which
+  requires `onShow` from the completed transition; newer navigation cancels the
+  pending presentation. Alpha-hidden Servo containers must not receive touch
+  input even though their surfaces stay attached.
+- Rust passes the native view identity into Java at creation. Every Java
+  callback and every Servo delegate callback carries `(WebTag,
+  NativeWebViewId)`, and the engine drops commands for any other instance, so
+  a same-tag successor never receives a predecessor's surface or events.
+- Servo reports one top-level load at a time without an attempt id. The
+  adapter starts and commits a keyed load on `LoadStatus::Started` (on
+  `HeadParsed` for a view's first document and for reloads, which report no
+  `Started`) and finishes it on `Complete`, so generations mint exactly as for
+  a keyed backend. The `about:blank` a view is built with emits nothing.
+- A navigation that fails in the network layer is recorded by the vendored
+  `servo-net` navigation observer before Servo commits its error document;
+  that load terminates `Failed` and its error document never binds.
+- `load_data` stamps `__lxdoc=N` into the document URL: Servo ignores a load
+  of the current URL, and a parked page reloads under its old base URL.
+- A trusted load is attested when the first document at its stamped URL
+  appears, as Android matches its load token at page start; with no
+  document-bound transport, BrowserControl stays unavailable (see
+  bridge-protocol §5.6).
+
 ## Teardown Paths
 
 There are several teardown actions; they are **not** interchangeable. This table
@@ -809,6 +850,12 @@ still on screen):
    parked page's navigation events are swallowed before the render pipeline.
 3. `TerminatePage` for the outgoing `PageSvc` (scoped to the instance id).
 
+Android bounds these parked renderers at the next navigation: preserve the
+requested route and one other recent parked page; reclaim older instances and
+their native views. Recheck parking, stack membership, and path pins under the
+reset transition guard before removal. Stack pages, pinned tabs, and isolated
+surfaces are excluded. Re-entering a reclaimed route creates a fresh instance.
+
 **Rebuild** (`LxApp::rebuild_page_on_entry`, only from the entry path):
 
 1. Create a fresh `PageSvc` for the path, so Logic `data` returns to its
@@ -825,6 +872,16 @@ still on screen):
 (`AwaitingEntry` → `None`). The timer only ever tears down; the claims plus a
 per-page transition lock keep the timer and a racing entry from interleaving
 their terminate/create sends.
+
+Publish a new `PageInstance` in `pages_by_id` before starting its WebView.
+The worker treats an unknown instance as disposed; a fast creation callback
+must not race publication. A losing singleton candidate starts no WebView.
+
+`PageSvc` clones share the JS object holder so retirement releases it for
+every clone. While a native clone owns that holder, QuickJS must count it as
+an external root: tracing it as only the JS object's self-reference can
+collect a page still held by the service registry or a navigation task.
+Once only the JS-owned service remains, trace that edge to collect the cycle.
 
 In-Logic navigation (`lx.navigateTo` and friends) needs the target's `PageSvc`
 in the `page_svc_map` *before* the stack moves, so

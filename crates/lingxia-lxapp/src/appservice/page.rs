@@ -83,6 +83,17 @@ impl PageObject {
     fn take(&self) -> Option<JSObject> {
         self.0.borrow_mut().take()
     }
+
+    fn gc_mark_with(&self, mut mark_fn: impl FnMut(&JSValue)) {
+        // QuickJS subtracts traced edges from its reference counts. A shared
+        // native holder is an external root, not just the object's self-cycle.
+        if Rc::strong_count(&self.0) > 1 {
+            return;
+        }
+        if let Some(this) = self.0.borrow().as_ref() {
+            mark_fn(this.as_js_value());
+        }
+    }
 }
 
 #[js_class(clone)]
@@ -1312,9 +1323,7 @@ impl PageSvc {
         for func in self.functions.values() {
             mark_fn(func.as_js_value());
         }
-        if let Some(this) = self.this.0.borrow().as_ref() {
-            mark_fn(this.as_js_value());
-        }
+        self.this.gc_mark_with(&mut mark_fn);
 
         if let Ok(state) = self.state.try_lock() {
             for func in state.callback.values() {
@@ -2239,6 +2248,87 @@ pub(crate) fn capture_real_timers(ctx: &JSContext) -> JSResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(any(target_vendor = "apple", target_env = "ohos")))]
+    #[js_class]
+    struct PageObjectGcProbe {
+        object: PageObject,
+        finalized: Rc<Cell<bool>>,
+    }
+
+    #[cfg(not(any(target_vendor = "apple", target_env = "ohos")))]
+    #[js_class]
+    impl PageObjectGcProbe {
+        #[js_method(constructor)]
+        fn new(ctx: JSContext) -> Self {
+            Self {
+                object: PageObject::new(JSObject::new(&ctx)),
+                finalized: Rc::new(Cell::new(false)),
+            }
+        }
+
+        #[js_method(gc_mark)]
+        fn gc_mark_with<F: FnMut(&JSValue)>(&self, mark_fn: F) {
+            self.object.gc_mark_with(mark_fn);
+        }
+    }
+
+    #[cfg(not(any(target_vendor = "apple", target_env = "ohos")))]
+    impl Drop for PageObjectGcProbe {
+        fn drop(&mut self) {
+            self.finalized.set(true);
+        }
+    }
+
+    #[cfg(not(any(target_vendor = "apple", target_env = "ohos")))]
+    #[test]
+    fn shared_page_object_survives_gc_until_the_service_releases_it() -> JSResult<()> {
+        use rong::{JSEngine, RongJS};
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        ctx.register_class::<PageObjectGcProbe>()?;
+        let held = PageObject::new(JSObject::new(&ctx));
+        let finalized = Rc::new(Cell::new(false));
+        let instance = Class::lookup::<PageObjectGcProbe>(&ctx)?.instance(PageObjectGcProbe {
+            object: held.clone(),
+            finalized: finalized.clone(),
+        });
+        held.set(instance.clone());
+        drop(instance);
+
+        runtime.run_gc();
+        if finalized.get() {
+            // A regression leaves a dangling JS value: do not free it again.
+            std::mem::forget(held);
+            panic!("GC collected a page still held by a native service");
+        }
+        held.require()?.delete("opener")?;
+        drop(held.take());
+        runtime.run_gc();
+        assert!(finalized.get(), "released page must remain collectible");
+        Ok(())
+    }
+
+    #[cfg(not(any(target_vendor = "apple", target_env = "ohos")))]
+    #[test]
+    fn an_unshared_page_object_self_cycle_is_collectible() -> JSResult<()> {
+        use rong::{JSEngine, RongJS};
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        ctx.register_class::<PageObjectGcProbe>()?;
+        let held = PageObject::new(JSObject::new(&ctx));
+        let finalized = Rc::new(Cell::new(false));
+        let instance = Class::lookup::<PageObjectGcProbe>(&ctx)?.instance(PageObjectGcProbe {
+            object: held.clone(),
+            finalized: finalized.clone(),
+        });
+        held.set(instance.clone());
+        drop(instance);
+        drop(held);
+        runtime.run_gc();
+        assert!(finalized.get(), "an unrooted page cycle must be collected");
+        Ok(())
+    }
 
     /// `this.signal` is the page's lifetime: live until the runtime retires
     /// the page, aborted then, and not something a page config can replace.
