@@ -1819,11 +1819,6 @@ impl WebView {
         self.inner.eval_js(js).await
     }
 
-    /// Synthetic-event click for platforms that don't expose a native touch
-    /// injection API (iOS WKWebView, ArkWeb on Harmony). Looks up the
-    /// selector, scrolls it into view, and dispatches a synthetic
-    /// `MouseEvent` (or sets `focus="true"` for `<lx-*>` custom elements
-    /// that proxy focus to a native overlay).
     /// Run a page-input action script and decode its `{ok, error, interactable}`
     /// result.
     #[cfg(any(
@@ -1858,9 +1853,9 @@ impl WebView {
 
     /// Click an element by synthesizing DOM events. The shared input mechanism
     /// for platforms/hosts where native event dispatch cannot reach the page:
-    /// iOS (no `UITouch` synthesis), OpenHarmony, and macOS when the WebView is
-    /// detached (AppUI renders pages off-surface). `lx-` custom elements proxy
-    /// focus to their native overlay instead of receiving mouse events.
+    /// iOS (no `UITouch` synthesis), OpenHarmony, and macOS. `lx-input` and
+    /// `lx-textarea` proxy focus to their native overlay; other custom elements
+    /// receive mouse events.
     ///
     /// `force` is every platform's forced click: the events go to the element
     /// itself, so it needs neither the viewport nor the hit test — only an
@@ -1900,7 +1895,7 @@ impl WebView {
               const hit = force ? el : document.elementFromPoint(rect.left + rect.width/2, rect.top + rect.height/2); \
               if (!hit || !(hit === el || el.contains(hit))) return {{ ok:false, error:'element is obscured', interactable:false }}; \
               const tag = (el.tagName || '').toLowerCase(); \
-              if (tag.indexOf('lx-') === 0) {{ \
+              if (tag === 'lx-input' || tag === 'lx-textarea') {{ \
                 el.setAttribute('focus', 'true'); \
                 if (typeof el.syncNativeProps === 'function') {{ try {{ el.syncNativeProps(); }} catch(_e) {{}} }} \
                 return {{ ok:true, count:els.length, native:true }}; \
