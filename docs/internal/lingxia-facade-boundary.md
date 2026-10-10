@@ -156,9 +156,10 @@ The proxy is fail-closed. On Apple an unchanged port is a no-op and a changed
 one interrupts in-flight loads; nothing re-applies it on resume.
 `reapply_local_proxy` forces the write for a host that rebuilt its listener on
 the same port; whether WebKit then reconnects is device-verified behaviour, not
-an API guarantee. The calls work from any thread; on Apple they block until
-the main thread runs the apply, so the main thread must never wait on their
-caller. Download routing follows the latest apply.
+an API guarantee. The calls work from any thread except Android's main thread,
+where they fail at once (Chromium acknowledges the apply on the main looper);
+on Apple they block until the main thread runs the apply, so the main thread
+must never wait on their caller. Download routing follows the latest apply.
 `block_downloads` preserves the required WebView proxy during disconnection;
 `use_system_network` explicitly clears it. Changing transport pauses active
 browser downloads. `downloads` and `download_action` expose browser-owned task

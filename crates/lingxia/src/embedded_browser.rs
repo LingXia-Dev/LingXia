@@ -24,7 +24,9 @@ use lingxia_webview::{ProxyApplyStatus, ProxyConfig, runtime};
 ///   call.
 /// - Suspension: nothing re-applies the proxy when the app resumes. See
 ///   [`reapply_local_proxy`].
-/// - Concurrency: callable from any thread. On Apple the caller blocks until
+/// - Concurrency: callable from any thread except Android's main thread,
+///   where it fails at once: Chromium acknowledges the apply on the main
+///   looper, which the caller is waiting on. On Apple the caller blocks until
 ///   the main thread runs the apply, so never call it while the main thread
 ///   waits on the caller. Racing calls settle on the last apply for both
 ///   WebViews and downloads.
