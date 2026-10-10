@@ -56,7 +56,7 @@ pub fn read_asset_data(path: &str) -> Vec<u8> {
 
         let fallback_path = format!("Resources/{}", clean_path);
 
-        // Try cached bundles (app bundle first, then SDK bundle)
+        // Main bundle (host assets) first, then the SDK bundle
         for bundle in get_resource_bundles() {
             // Try the path as-is first, then fallback to Resources/ subdirectory
             for try_path in [clean_path, fallback_path.as_str()] {

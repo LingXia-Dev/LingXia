@@ -596,6 +596,7 @@ pub fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
 /// bundle: the runtime then finds host assets in the main bundle and never has to
 /// infer the bundle name from Info.plist keys that re-signing may rewrite.
 pub fn install_resource_bundles(
+    package_dir: &Path,
     build_dir: &Path,
     host_target: &str,
     resource_root: &Path,
@@ -624,6 +625,15 @@ pub fn install_resource_bundles(
     }
 
     let Some(host_bundle) = host_bundle else {
+        // A missed match would ship an app without its assets and white-screen at launch.
+        let declared = resolve_swiftpm_resources_dir(package_dir, Some(host_target), None, "")?;
+        if declared.is_dir() {
+            return Err(anyhow!(
+                "Target `{host_target}` declares resources at {} but SwiftPM built no `*_{host_target}.bundle` in {}",
+                declared.display(),
+                build_dir.display()
+            ));
+        }
         return Ok(());
     };
     // `.copy("Resources")` nests the payload one level down.
@@ -950,7 +960,7 @@ mod tests {
         let root = dir.path().join("App.app");
         fs::create_dir_all(&root).unwrap();
 
-        install_resource_bundles(&build, "lxapp", &root).unwrap();
+        install_resource_bundles(dir.path(), &build, "lxapp", &root).unwrap();
 
         assert!(root.join("app.json").is_file());
         assert!(root.join("lxapps/home/index.html").is_file());
@@ -959,12 +969,21 @@ mod tests {
     }
 
     #[test]
+    fn declared_host_resources_without_a_bundle_are_rejected() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join("Sources/lxapp/Resources")).unwrap();
+        let build = dir.path().join("build");
+        fs::create_dir_all(build.join("lingxia_lingxia.bundle")).unwrap();
+        assert!(install_resource_bundles(dir.path(), &build, "lxapp", dir.path()).is_err());
+    }
+
+    #[test]
     fn several_bundles_for_the_host_target_are_rejected() {
         let dir = TempDir::new().unwrap();
         let build = dir.path().join("build");
         fs::create_dir_all(build.join("a_lxapp.bundle")).unwrap();
         fs::create_dir_all(build.join("b_lxapp.bundle")).unwrap();
-        assert!(install_resource_bundles(&build, "lxapp", dir.path()).is_err());
+        assert!(install_resource_bundles(dir.path(), &build, "lxapp", dir.path()).is_err());
     }
 
     #[test]

@@ -229,7 +229,12 @@ let package = Package(
             return Err(anyhow!("Executable not found: {}", exe_src.display()));
         }
 
-        super::install_resource_bundles(build_dir, &config.swift_product_name, &app_bundle)?;
+        super::install_resource_bundles(
+            package_dir,
+            build_dir,
+            &config.swift_product_name,
+            &app_bundle,
+        )?;
 
         // Copy frameworks (if any)
         Self::copy_frameworks(build_dir, &app_bundle)?;
