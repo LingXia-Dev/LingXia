@@ -79,9 +79,9 @@ pub use composition::{
 };
 pub use environment::set_windows_context_menu_refresh_provider;
 pub use native_view::{
-    WindowsWebViewHandler, WindowsWebViewNativeView, WindowsWebViewNativeViewHost,
-    find_webview_handler, set_webview_devtools_enabled, set_webview_native_view_host,
-    set_webview_user_data_dir,
+    ParentRetirement, ParkOutcome, WindowsWebViewHandler, WindowsWebViewNativeView,
+    WindowsWebViewNativeViewHost, find_webview_handler, set_webview_devtools_enabled,
+    set_webview_native_view_host, set_webview_user_data_dir,
 };
 
 // Private glob re-imports so submodules can reach their siblings (and this

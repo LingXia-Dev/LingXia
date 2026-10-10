@@ -261,7 +261,7 @@ fn on_webview_visibility_changed(webtag: &WebTag, visible: bool) {
     let page_visibility = if has_page_instance {
         lxapp::notify_page_host_visibility_by_webtag(&appid, webtag.key(), visible)
     } else {
-        lxapp::notify_page_host_visibility(&appid, &path, visible).map(|_| true)
+        lxapp::notify_page_host_visibility(&appid, &path, visible)
     };
     if let Err(ref err) = page_visibility {
         log::debug!(
