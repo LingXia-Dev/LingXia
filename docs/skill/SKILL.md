@@ -21,7 +21,12 @@ package's own declarations) and every CLI's `--help` are the source of truth.
 ```bash
 test -f lingxia.yaml   && echo "host-app"
 test -f lxapp.json     && echo "lxapp"
+test -f .lingxia/template.json && echo "from a template"
 ```
+
+From a template: commit only `.lingxia/template.json`, never `generated/`;
+`lingxia build` and `lingxia dev` regenerate it, so don't run the generators
+yourself. See [projects from a template](./cli/lingxia.md#projects-from-a-template).
 
 Neither matches: an empty directory, or someone else's project. Scaffold only
 into an empty directory or one the user asked you to initialise; otherwise say

@@ -49,25 +49,25 @@ lingxia new my-lxapp --template acme-starter --yes -- --preset dashboard
 template providers: repositories with a `lingxia-template.json` manifest that
 may ship project files, CLI commands, and skills.
 
+### Projects from a template
+
+A templated project tracks one LingXia file, `.lingxia/template.json`
+(`name`, `source`, `commit`). Commit it; never commit `generated/` or other
+`.lingxia/` content. `lingxia build` and `lingxia dev` run the template's
+`prepare` themselves. If the template is not installed they fail and name
+`lingxia template add <source>`; nothing installs it automatically.
+
 ### Template lifecycles
 
-A project created from a template keeps one LingXia file,
-`.lingxia/template.json` (`name`, `source`, `commit`). Commit it; `lingxia clean`
-keeps it. Everything else is read from the installed template, so generated
-inputs are never committed.
-
-`prepare` and `companion` use the same shape as `create`:
+`create`, `prepare` and `companion` in `lingxia-template.json` are
 `{ "command": "<path in the template>", "args": [...] }`, run from the lxapp
 directory with `LINGXIA_TEMPLATE_ROOT` set (`.js`/`.mjs`/`.cjs` through `node`).
 
-- `prepare` generates build inputs and must exit; failure stops the build.
-  `lingxia build` runs it before dependency installation and the bundle cache
-  lookup. `lingxia dev` runs it once at start, then starts `companion`, which
-  keeps those inputs current; dev rebuilds never run `prepare`. Prebuilt bundles
-  never run it.
-- If the template is not installed, `lingxia build` and `lingxia dev` fail and
-  name `lingxia template add <source>`. Templates are never installed
-  automatically.
+- `prepare` generates build inputs and must exit; failure stops the build. It
+  runs before dependency installation on every `lingxia build`, and once when
+  `lingxia dev` starts.
+- `companion` then runs for the dev session and must keep those inputs current:
+  dev rebuilds never run `prepare`.
 
 ## `lingxia dev`
 
