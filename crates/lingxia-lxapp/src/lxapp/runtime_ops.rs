@@ -362,6 +362,27 @@ pub fn notify_page_host_visibility(
     path: &str,
     visible: bool,
 ) -> Result<(), LxAppError> {
+    notify_selected_page_host_visibility(appid, visible, |app| app.require_page(path))
+}
+
+/// Deliver a native visibility event only to the instance and session named
+/// by the full WebView tag, including when another instance shares its route.
+pub fn notify_page_host_visibility_by_webtag(
+    appid: &str,
+    webtag: &str,
+    visible: bool,
+) -> Result<(), LxAppError> {
+    notify_selected_page_host_visibility(appid, visible, |app| {
+        app.get_page_by_webtag(webtag)
+            .ok_or_else(|| LxAppError::ResourceNotFound(webtag.to_string()))
+    })
+}
+
+fn notify_selected_page_host_visibility(
+    appid: &str,
+    visible: bool,
+    select: impl FnOnce(&LxApp) -> Result<PageInstance, LxAppError>,
+) -> Result<(), LxAppError> {
     let app = super::runtime_registry::try_get(appid)
         .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
     if matches!(
@@ -370,7 +391,7 @@ pub fn notify_page_host_visibility(
     ) {
         return Ok(());
     }
-    let page = app.require_page(path)?;
+    let page = select(&app)?;
     page.dispatch_lifecycle_event(if visible {
         crate::lifecycle::PageLifecycleEvent::OnShow
     } else {

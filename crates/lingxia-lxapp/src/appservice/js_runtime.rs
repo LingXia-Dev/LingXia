@@ -1926,6 +1926,13 @@ mod worker_assignment_tests {
                          }})();"
                     );
                     ctx.eval::<()>(Source::from_bytes(script)).unwrap();
+                    // The registry's shared native root must survive a GC
+                    // even when JavaScript itself holds no page reference.
+                    runtime.run_gc();
+                    let ballast: usize = ctx
+                        .eval(Source::from_bytes(format!("__lxGetPage({id:?}).ballast.length")))
+                        .unwrap();
+                    assert_eq!(ballast, 20000, "GC must not collect a live page service");
                     app.logic_contexts.send_replace(1);
                     let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
                     let mut current = Some(ctx);

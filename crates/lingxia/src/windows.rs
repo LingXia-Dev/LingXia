@@ -253,13 +253,26 @@ fn on_webview_visibility_changed(webtag: &WebTag, visible: bool) {
         return;
     }
 
-    if let Err(err) = lxapp::notify_page_host_visibility(&appid, &path, visible) {
+    // A departing WebView can report Hidden after another instance of the
+    // same route is presented. Resolve the full tag (instance + session),
+    // otherwise that late event pauses the new page's Logic.
+    let has_page_instance = webtag.page_instance_id().is_some();
+    let page_visibility = if has_page_instance {
+        lxapp::notify_page_host_visibility_by_webtag(&appid, webtag.key(), visible)
+    } else {
+        lxapp::notify_page_host_visibility(&appid, &path, visible)
+    };
+    if let Err(err) = page_visibility {
         log::debug!(
             "Windows page visibility event ignored for {} visible={}: {}",
             webtag,
             visible,
             err
         );
+        if visible && has_page_instance {
+            // A retired document must not bring the replacement app foreground.
+            return;
+        }
     }
 
     let app_event = update_app_visible_webtags(&appid, webtag.key(), visible);

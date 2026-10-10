@@ -869,7 +869,11 @@ fn present_webview_in_active_group_with_policy(
     presentation: GroupMainPresentation,
 ) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
-    let Some(host) = preferred_workspace_host() else {
+    // A device frame decorates a page-owned HWND; it does not keep that HWND
+    // alive after reLaunch retires its owning WebView. Reusing it here lets
+    // the outgoing UI thread destroy the replacement page's parent.
+    let Some(host) = preferred_workspace_host().filter(|host| host_window_owner_is_live(*host))
+    else {
         let view = handler.native_view();
         let hwnd = hwnd_from_handle(view.window);
         prepare_shell_window_for_presentation(hwnd)?;
@@ -8160,9 +8164,7 @@ fn show_webview_window_replacing(
     // retiring: presenting the incoming controller into it races recursive
     // DestroyWindow and produces an invalid-handle warning (or a dead DComp
     // surface). Only reuse a host while its owning WebView is still live.
-    .filter(|candidate| {
-        window_is_device_framed(*candidate) || host_window_owner_is_live(*candidate)
-    })
+    .filter(|candidate| host_window_owner_is_live(*candidate))
     .unwrap_or(native_parent);
     prepare_shell_window_for_presentation(target)?;
     #[cfg(feature = "shell-chrome")]
@@ -9383,7 +9385,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 // overlay resurrects the covered main in the registry while
                 // its controller remains hidden.
                 if wparam.0 == 0
-                    && let Some(webtag_key) = active_webtag_key_for_window(hwnd)
+                    && let Some(webtag_key) = active_webtag_key_for_visibility(hwnd)
                 {
                     notify_webtag_visibility(&webtag_key, false);
                 }
@@ -9407,7 +9409,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                         WPARAM(WindowsAndMessaging::WA_INACTIVE as usize),
                     );
                 }
-                if let Some(webtag_key) = active_webtag_key_for_window(hwnd) {
+                if let Some(webtag_key) = active_webtag_key_for_visibility(hwnd) {
                     // Activation is an app lifecycle signal, not controller or
                     // HWND visibility. Mutating WEBTAG_VISIBILITY here made a
                     // visible inactive WebView look hidden to reconciliation,
@@ -9419,7 +9421,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             WindowsAndMessaging::WM_SIZE => {
                 if (wparam.0 as u32 == WindowsAndMessaging::SIZE_MINIMIZED
                     || !is_window_visible(hwnd))
-                    && let Some(webtag_key) = active_webtag_key_for_window(hwnd)
+                    && let Some(webtag_key) = active_webtag_key_for_visibility(hwnd)
                 {
                     notify_webtag_visibility(&webtag_key, false);
                 }
@@ -9445,7 +9447,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             }
             WindowsAndMessaging::WM_WINDOWPOSCHANGED => {
                 if (!is_window_visible(hwnd) || is_minimized(hwnd))
-                    && let Some(webtag_key) = active_webtag_key_for_window(hwnd)
+                    && let Some(webtag_key) = active_webtag_key_for_visibility(hwnd)
                 {
                     notify_webtag_visibility(&webtag_key, false);
                 }
@@ -10700,6 +10702,7 @@ pub(crate) fn webtag_is_visible(webtag_key: &str) -> bool {
         .unwrap_or(false)
 }
 
+#[track_caller]
 fn notify_webtag_visibility(webtag_key: &str, visible: bool) {
     let visibility = WEBTAG_VISIBILITY.get_or_init(|| Mutex::new(HashMap::new()));
     let changed = match visibility.lock() {
@@ -10719,7 +10722,12 @@ fn notify_webtag_visibility(webtag_key: &str, visible: bool) {
     dispatch_webtag_lifecycle_visibility(webtag_key, visible);
 }
 
+#[track_caller]
 fn dispatch_webtag_lifecycle_visibility(webtag_key: &str, visible: bool) {
+    log::debug!(
+        "Windows lifecycle visibility key={webtag_key} visible={visible} source={}",
+        std::panic::Location::caller()
+    );
     let Some(webtag) = webtag_for_key(webtag_key) else {
         return;
     };
@@ -10763,6 +10771,17 @@ fn active_webtag_key_for_window(hwnd: HWND) -> Option<String> {
         .and_then(|hosts| hosts.lock().ok())
         .and_then(|hosts| hosts.get(&hwnd_handle(hwnd)).cloned())
         .or_else(|| window_webtag_key(hwnd))
+}
+
+fn active_webtag_key_for_visibility(hwnd: HWND) -> Option<String> {
+    let key = active_webtag_key_for_window(hwnd)?;
+    let presented_on = WEBTAG_WINDOWS
+        .get()
+        .and_then(|handles| handles.lock().ok())
+        .and_then(|handles| handles.get(&key).copied());
+    // A controller can be presented in a shared host while its original
+    // parent is parked. Hiding that parent must not hide the presented page.
+    same_window_generation(presented_on, hwnd_handle(hwnd)).then_some(key)
 }
 
 fn is_window_visible(hwnd: HWND) -> bool {
@@ -10813,6 +10832,30 @@ fn to_wide(value: &str) -> Vec<u16> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn parked_parent_cannot_report_presented_page_visibility() {
+        let parked = super::hwnd_from_handle(901_001);
+        let presented = super::hwnd_from_handle(901_002);
+        let key = "visibility-owner-test";
+        let hosts = super::HOST_ACTIVE_WEBTAG
+            .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+        {
+            let mut hosts = hosts.lock().unwrap();
+            hosts.insert(super::hwnd_handle(parked), key.to_string());
+            hosts.insert(super::hwnd_handle(presented), key.to_string());
+        }
+        super::set_window_handle(key, presented);
+
+        assert_eq!(super::active_webtag_key_for_visibility(parked), None);
+        assert_eq!(
+            super::active_webtag_key_for_visibility(presented).as_deref(),
+            Some(key)
+        );
+
+        super::remove_window_handle(key);
+        super::clear_host_active_webtag(key);
+    }
+
     #[cfg(feature = "shell-chrome")]
     use super::apply_phone_switcher_alpha;
     use super::{

@@ -85,6 +85,28 @@ spec("fire onShow/onHide on the same page instance across navigation", { id: "PA
   expect(reshown.lastLifecycle).toBe('onShow (#2)');
 });
 
+spec('relaunching the same route keeps the replacement page shown', {
+  id: 'PAGE-LIFECYCLE-009',
+  covers: ['lx.reLaunch'],
+  app: SHOWCASE_APP_ID,
+  timeout: 60_000,
+}, async (t) => {
+  const { app, defer } = bindFixture(t, 'PAGE-LIFECYCLE-009');
+  defer(async () => { await app.nav.relaunch({ page: 'home' }); });
+
+  for (let entry = 0; entry < 3; entry += 1) {
+    await app.nav.relaunch({ page: 'surface' });
+    const page = await app.page({ name: 'surface' });
+    await expect.poll(async () => (await page.data()).lastLifecycle).toBe('onShow (#1)');
+    // Give the outgoing WebView's asynchronous destruction/Hidden callback
+    // time to arrive; it must not hide the replacement at the same path.
+    await new Promise((resolve) => setTimeout(resolve, 6000));
+    const state = await page.data();
+    expect(state.hideCount).toBe(0);
+    expect(state.lastLifecycle).toBe('onShow (#1)');
+  }
+});
+
 interface ResetDemoState {
   instanceTag: string;
   previousInstanceTag: string;
