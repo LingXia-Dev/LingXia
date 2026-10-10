@@ -535,6 +535,66 @@ pub fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Install the SwiftPM resource bundles from `build_dir` into the app's resource root.
+///
+/// The host target's bundle is merged into `resource_root` instead of shipped as a
+/// bundle: the runtime then finds host assets in the main bundle and never has to
+/// infer the bundle name from Info.plist keys that re-signing may rewrite.
+pub fn install_resource_bundles(
+    build_dir: &Path,
+    host_target: &str,
+    resource_root: &Path,
+) -> Result<()> {
+    let host_suffix = format!("_{host_target}.bundle");
+    let mut host_bundle: Option<PathBuf> = None;
+    for entry in fs::read_dir(build_dir)? {
+        let path = entry?.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !name.ends_with(".bundle") {
+            continue;
+        }
+        if name.ends_with(&host_suffix) {
+            if let Some(previous) = host_bundle.replace(path.clone()) {
+                return Err(anyhow!(
+                    "Several resource bundles belong to target `{host_target}`: {} and {}",
+                    previous.display(),
+                    path.display()
+                ));
+            }
+            continue;
+        }
+        copy_dir_recursive(&path, &resource_root.join(name))?;
+    }
+
+    let Some(host_bundle) = host_bundle else {
+        return Ok(());
+    };
+    // `.copy("Resources")` nests the payload one level down.
+    let payload = host_bundle.join("Resources");
+    let payload = if payload.is_dir() {
+        payload
+    } else {
+        host_bundle
+    };
+    for entry in fs::read_dir(&payload)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if name == "Info.plist" || is_apple_junk_entry(&name) {
+            continue;
+        }
+        let path = entry.path();
+        let target = resource_root.join(&name);
+        if path.is_dir() {
+            copy_dir_recursive(&path, &target)?;
+        } else {
+            fs::copy(&path, &target)?;
+        }
+    }
+    Ok(())
+}
+
 fn is_apple_junk_entry(name: &std::ffi::OsStr) -> bool {
     let Some(name) = name.to_str() else {
         return false;
@@ -820,6 +880,37 @@ pub fn ensure_sdk_package_dependency(project_root: &Path, package_dir: &Path) ->
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn host_resource_bundle_is_merged_into_resource_root() {
+        let dir = TempDir::new().unwrap();
+        let build = dir.path().join("build");
+        let host = build.join("lxapp_lxapp.bundle/Resources");
+        fs::create_dir_all(host.join("lxapps/home")).unwrap();
+        fs::write(host.join("app.json"), "{}").unwrap();
+        fs::write(host.join("lxapps/home/index.html"), "").unwrap();
+        let sdk = build.join("lingxia_lingxia.bundle");
+        fs::create_dir_all(&sdk).unwrap();
+        fs::write(sdk.join("404.html"), "").unwrap();
+        let root = dir.path().join("App.app");
+        fs::create_dir_all(&root).unwrap();
+
+        install_resource_bundles(&build, "lxapp", &root).unwrap();
+
+        assert!(root.join("app.json").is_file());
+        assert!(root.join("lxapps/home/index.html").is_file());
+        assert!(!root.join("lxapp_lxapp.bundle").exists());
+        assert!(root.join("lingxia_lingxia.bundle/404.html").is_file());
+    }
+
+    #[test]
+    fn several_bundles_for_the_host_target_are_rejected() {
+        let dir = TempDir::new().unwrap();
+        let build = dir.path().join("build");
+        fs::create_dir_all(build.join("a_lxapp.bundle")).unwrap();
+        fs::create_dir_all(build.join("b_lxapp.bundle")).unwrap();
+        assert!(install_resource_bundles(&build, "lxapp", dir.path()).is_err());
+    }
 
     #[test]
     fn test_is_macos() {

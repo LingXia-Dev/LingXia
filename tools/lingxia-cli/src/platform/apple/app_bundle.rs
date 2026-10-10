@@ -229,8 +229,7 @@ let package = Package(
             return Err(anyhow!("Executable not found: {}", exe_src.display()));
         }
 
-        // Copy resource bundles
-        Self::copy_resource_bundles(build_dir, &app_bundle)?;
+        super::install_resource_bundles(build_dir, &config.swift_product_name, &app_bundle)?;
 
         // Copy frameworks (if any)
         Self::copy_frameworks(build_dir, &app_bundle)?;
@@ -242,19 +241,6 @@ let package = Package(
         Self::generate_info_plist(package_dir, &app_bundle, config)?;
 
         Ok(app_bundle)
-    }
-
-    /// Copy resource bundles (*.bundle) from build directory
-    fn copy_resource_bundles(build_dir: &Path, app_bundle: &Path) -> Result<()> {
-        for entry in fs::read_dir(build_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.extension().map(|e| e == "bundle").unwrap_or(false) {
-                let dest = app_bundle.join(path.file_name().unwrap());
-                super::copy_dir_recursive(&path, &dest)?;
-            }
-        }
-        Ok(())
     }
 
     /// Copy frameworks from build directory

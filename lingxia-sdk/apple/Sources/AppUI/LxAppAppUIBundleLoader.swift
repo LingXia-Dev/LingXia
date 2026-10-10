@@ -38,20 +38,14 @@ enum LxAppAppUIBundleLoader {
         return nil
     }
 
+    /// The CLI merges the host's resources into the main bundle at build time.
     private static func findGeneratedConfigResourceDirectory() throws -> URL {
-        let fileManager = FileManager.default
-        for directoryURL in candidateResourceDirectories() {
-            let appURL = directoryURL.appendingPathComponent("app.json")
-            let hasAppConfig = fileManager.fileExists(atPath: appURL.path)
-            let hasUIConfig = ["macos-ui.json", "ui.json"].contains { name in
-                fileManager.fileExists(atPath: directoryURL.appendingPathComponent(name).path)
-            }
-            if hasAppConfig && hasUIConfig {
-                return directoryURL
-            }
+        guard let rootURL = Bundle.main.resourceURL,
+              FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("app.json").path)
+        else {
+            throw LxAppUIError.missingResource("app.json")
         }
-
-        throw LxAppUIError.missingResource("app.json plus macos-ui.json or ui.json")
+        return rootURL
     }
 
     private static func findPreferredResource(names: [String], in directoryURL: URL) throws -> URL {
@@ -62,27 +56,5 @@ enum LxAppAppUIBundleLoader {
             }
         }
         throw LxAppUIError.missingResource(names.joined(separator: " or "))
-    }
-
-    private static func candidateResourceDirectories() -> [URL] {
-        guard let rootURL = Bundle.main.resourceURL else { return [] }
-
-        var directories = [rootURL]
-        let childURLs = (try? FileManager.default.contentsOfDirectory(
-            at: rootURL,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-
-        for childURL in childURLs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            guard childURL.pathExtension == "bundle",
-                  let bundle = Bundle(url: childURL),
-                  let resourceURL = bundle.resourceURL else {
-                continue
-            }
-            directories.append(resourceURL)
-        }
-
-        return directories
     }
 }
