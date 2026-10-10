@@ -64,6 +64,10 @@ internal object ChromeIcon {
     private fun loadSvg(file: File, tint: Int): Drawable? {
         val svg = runCatching { file.inputStream().use(SVG::getFromInputStream) }.getOrNull()
             ?: return null
+        // SVG width/height are CSS pixels, not the density-scaled drawable bounds.
+        // Let the viewBox scale into the complete destination viewport.
+        svg.setDocumentWidth("100%")
+        svg.setDocumentHeight("100%")
         return SvgTemplateDrawable(svg, tint)
     }
 }

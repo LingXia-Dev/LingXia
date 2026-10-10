@@ -122,6 +122,13 @@ final class AndroidDocumentBridgeState {
         return new Navigation(activeLoadToken, activeTrustedHostLoad);
     }
 
+    synchronized boolean awaitsTrustedVisibleCommit(String finishedUrl) {
+        return activeTrustedHostLoad && activeLoadToken != 0L
+                && committedLoadToken != activeLoadToken
+                && mainFrameFailedLoadToken != activeLoadToken
+                && sameDocumentUrl(activeStartUrl, finishedUrl);
+    }
+
     synchronized void recordMainFrameFailure(long loadToken) {
         if (loadToken != 0L && loadToken == activeLoadToken) {
             mainFrameFailedLoadToken = loadToken;

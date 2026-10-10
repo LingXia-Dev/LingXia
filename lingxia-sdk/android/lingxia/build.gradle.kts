@@ -16,6 +16,7 @@ android {
 
     defaultConfig {
         minSdk = 21
+        targetSdk = targetSdkProp // Also sets the instrumentation APK target.
         lint.targetSdk = targetSdkProp
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

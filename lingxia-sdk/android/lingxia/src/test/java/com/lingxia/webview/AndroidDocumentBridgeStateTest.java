@@ -9,6 +9,34 @@ import org.junit.Test;
 
 public final class AndroidDocumentBridgeStateTest {
     @Test
+    public void trustedFinishWaitsForVisibleCommitWithoutGrantingAPort() {
+        AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
+        state.prepareHostLoad(11L, true);
+        state.onPageStarted(100L, "lingxia://newtab");
+        assertTrue(state.awaitsTrustedVisibleCommit("lingxia://newtab"));
+        assertFalse(state.hasCommittedDocument());
+        assertFalse(state.mayInstallPort(11L, 1L, true));
+        assertTrue(state.bindCommit(11L, 1L));
+        assertFalse(state.awaitsTrustedVisibleCommit("lingxia://newtab"));
+        assertTrue(state.mayInstallPort(11L, 1L, true));
+    }
+
+    @Test
+    public void unrelatedFailedAndUntrustedFinishesAreNotDeferred() {
+        AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
+        state.prepareHostLoad(11L, true);
+        state.onPageStarted(100L, "lingxia://newtab");
+        assertFalse(state.awaitsTrustedVisibleCommit("https://example.com"));
+        state.recordMainFrameFailure(11L);
+        assertFalse(state.awaitsTrustedVisibleCommit("lingxia://newtab"));
+        state.prepareHostLoad(12L, false);
+        state.onPageStarted(101L, "https://example.com");
+        assertFalse(state.awaitsTrustedVisibleCommit("https://example.com"));
+        state.revoke();
+        assertFalse(state.awaitsTrustedVisibleCommit("https://example.com"));
+    }
+
+    @Test
     public void firstStartHasNoCommittedDocumentUntilBind() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
         assertFalse(state.hasCommittedDocument());
