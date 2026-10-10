@@ -106,29 +106,6 @@ impl UpdateManager {
         }
     }
 
-    /// Decide whether we should download/apply the server package for this app variant.
-    ///
-    /// `release` skips only when the version matches. `draft`
-    /// also updates when the version matches but the checksum differs.
-    pub fn should_update(
-        &self,
-        lxappid: &str,
-        release_type: Channel,
-        package: &UpdatePackageInfo,
-    ) -> bool {
-        let installed = crate::lxapp::metadata::get(lxappid, release_type)
-            .ok()
-            .flatten();
-        let installed_version = installed.as_ref().map(|rec| rec.version_string());
-        package.should_replace(
-            release_type,
-            installed_version.as_deref(),
-            installed
-                .as_ref()
-                .and_then(|rec| rec.checksum_sha256.as_deref()),
-        )
-    }
-
     /// Return path to a downloaded package if present for (lxappid, release_type).
     pub fn has_downloaded_update(
         &self,

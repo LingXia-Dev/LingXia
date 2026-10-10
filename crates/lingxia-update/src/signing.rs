@@ -153,27 +153,16 @@ pub fn check_update_enabled(trusted_public_keys: &[String]) -> bool {
     !host_requires_signature() || !trusted_public_keys.is_empty()
 }
 
-fn package_requires_signature(
-    build_env: AppEnv,
-    running_service_env: AppEnv,
-    kind: &str,
-    channel: &str,
-) -> bool {
+/// The dev service does not require signed lxapps or plugins on any channel.
+/// Host app packages always follow the immutable build environment.
+fn package_requires_signature(build_env: AppEnv, running_service_env: AppEnv, kind: &str) -> bool {
     env_requires_signature(build_env)
-        && !(running_service_env == AppEnv::Dev
-            && matches!(kind, "lxapp" | "lxplugin")
-            && channel == "draft")
+        && !(running_service_env == AppEnv::Dev && matches!(kind, "lxapp" | "lxplugin"))
 }
 
-/// Dev-service draft lxapps/plugins can be checked without embedded keys.
-/// Host app checks continue to use the immutable build environment.
-pub fn check_package_update_enabled(
-    kind: &str,
-    channel: &str,
-    trusted_public_keys: &[String],
-) -> bool {
-    !package_requires_signature(env(), service_env(), kind, channel)
-        || !trusted_public_keys.is_empty()
+/// Dev-service lxapps/plugins can be checked without embedded keys.
+pub fn check_package_update_enabled(kind: &str, trusted_public_keys: &[String]) -> bool {
+    !package_requires_signature(env(), service_env(), kind) || !trusted_public_keys.is_empty()
 }
 
 pub fn sign_package_from_key_file(
@@ -209,14 +198,10 @@ fn verify_checked_update_in_env(
     build_env: AppEnv,
     running_service_env: AppEnv,
 ) -> Result<UpdatePackageInfo, UpdateError> {
-    // Channel alone cannot waive verification: the trusted control app must
-    // have switched the running service env to dev. Host updates stay signed.
-    let signature_required = package_requires_signature(
-        build_env,
-        running_service_env,
-        &target.kind,
-        &target.channel,
-    );
+    // Only the running service env waives verification, never the requested
+    // channel: switching to dev goes through the trusted control app.
+    let signature_required =
+        package_requires_signature(build_env, running_service_env, &target.kind);
     if trusted_public_keys.is_empty() && !signature_required {
         return Ok(package);
     }
@@ -538,7 +523,7 @@ mod tests {
     }
 
     #[test]
-    fn dev_service_draft_policy_preserves_prod_host_and_release_verification() {
+    fn dev_service_policy_preserves_prod_host_verification() {
         let sha256 = archive_sha256_hex(ARCHIVE);
         let keys = [public_key_base64url(&SEED)];
         for build_env in [AppEnv::Dev, AppEnv::Prod] {
@@ -549,16 +534,9 @@ mod tests {
                         t.kind = kind.into();
                         t.channel = channel.into();
                         let required = build_env == AppEnv::Prod
-                            && !(running_service_env == AppEnv::Dev
-                                && kind != "app"
-                                && channel == "draft");
+                            && !(running_service_env == AppEnv::Dev && kind != "app");
                         assert_eq!(
-                            package_requires_signature(
-                                build_env,
-                                running_service_env,
-                                kind,
-                                channel
-                            ),
+                            package_requires_signature(build_env, running_service_env, kind),
                             required,
                         );
                         for trusted_keys in [&[][..], &keys[..]] {

@@ -227,7 +227,7 @@ impl UpdateManager {
     ) -> Result<Option<UpdatePackageInfo>, LxAppError> {
         let provider = crate::get_provider();
         let keys = lingxia_update::embedded_update_public_keys();
-        if !lingxia_update::check_package_update_enabled("lxapp", release_type.as_str(), &keys) {
+        if !lingxia_update::check_package_update_enabled("lxapp", &keys) {
             return Ok(None);
         }
         let exact_version = match &query {
@@ -445,9 +445,10 @@ fn bundled_lxapp_available(current_lxapp: &Arc<lxapp_runtime::LxApp>, target_app
 /// Ensure a specific target version package is prepared before opening.
 ///
 /// Policy:
-/// - Already installed with the same version: no-op outside the draft channel.
-/// - Draft packages also compare the installed checksum.
-/// - Otherwise: resolve exact version metadata and ensure archive is downloaded.
+/// - Older than the installed version: rejected, downgrades are not supported.
+/// - Already installed with the same version: no-op unless a same-version
+///   draft republish has a different checksum.
+/// - Otherwise download that exact version.
 /// - Downloaded archive is applied when app instance is (re)opened.
 pub async fn ensure_target_version_ready(
     current_lxapp: &Arc<lxapp_runtime::LxApp>,

@@ -5,7 +5,7 @@ use lingxia_update::{
 };
 
 #[test]
-fn prod_host_restored_to_dev_opens_unsigned_drafts_without_update_keys() {
+fn prod_host_on_the_dev_service_opens_unsigned_packages_without_update_keys() {
     // This integration test has its own process: app config and service env
     // are immutable OnceLocks, so unit tests must not mutate their globals.
     let config: AppConfig = serde_json::from_value(serde_json::json!({
@@ -36,7 +36,7 @@ fn prod_host_restored_to_dev_opens_unsigned_drafts_without_update_keys() {
         platform: "any".into(),
         exact_version: None,
     };
-    assert!(!check_package_update_enabled("lxapp", "draft", &[]));
+    assert!(!check_package_update_enabled("lxapp", &[]));
     assert!(verify_checked_update(package.clone(), &target, &[]).is_err());
 
     let data_dir = std::env::temp_dir().join(format!("lingxia-dev-service-{}", std::process::id()));
@@ -52,12 +52,11 @@ fn prod_host_restored_to_dev_opens_unsigned_drafts_without_update_keys() {
     assert_eq!(default_channel(), Channel::Release);
     for kind in ["lxapp", "lxplugin"] {
         target.kind = kind.into();
-        assert!(check_package_update_enabled(kind, "draft", &[]));
-        verify_checked_update(package.clone(), &target, &[]).unwrap();
-        target.channel = "release".into();
-        assert!(!check_package_update_enabled(kind, "release", &[]));
-        assert!(verify_checked_update(package.clone(), &target, &[]).is_err());
-        target.channel = "draft".into();
+        assert!(check_package_update_enabled(kind, &[]));
+        for channel in ["draft", "release"] {
+            target.channel = channel.into();
+            verify_checked_update(package.clone(), &target, &[]).unwrap();
+        }
     }
     target.kind = "app".into();
     target.channel.clear();

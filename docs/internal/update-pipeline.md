@@ -11,7 +11,7 @@ cross-component rules those implementations must preserve.
 | | Host app | Lxapp and plugin |
 | --- | --- | --- |
 | Feed identity | `lingxiaId` + platform; no channel | `appId` + channel (`release` or `draft`); platform `any` |
-| Update candidate | Strictly higher semver | `release`: different version; `draft`: different version or sha256 |
+| Update candidate | Strictly higher semver | Strictly higher semver; `draft` also the same version with a different sha256 |
 | Applies through | Platform installer or store | Runtime, when no live instance remains |
 
 Both pipelines share signature verification. Host build environment and lxapp
@@ -24,9 +24,10 @@ without platform services.
 - **The host build decides whether signatures are required, with one
   dev-service exception.** A requested lxapp channel alone cannot waive
   verification. A production host explicitly switched to the **dev service**
-  accepts unsigned **draft lxapps/plugins**.
-  Release packages, prod-service packages, and host self-updates retain the
-  build environment's signature requirements.
+  accepts unsigned **lxapps/plugins** on every channel, the home lxapp
+  included: home and guest lxapps share one update path. Prod-service
+  packages and host self-updates retain the build environment's signature
+  requirements.
 - **Production direct updates require embedded trusted keys.** Store hosts
   use only the version and optional release notes; they do not verify or use
   package fields. Lxapp and plugin update verification is unchanged.
@@ -182,11 +183,17 @@ failure directly; package visibility makes availability preflight unreliable.
   from the running instance.
 - Bundles served live from a local development path are not OTA-managed. Every
   update entry point must leave them alone.
-- Draft republishing may replace the same version with a different checksum.
+- Versions only move forward on both channels: a newer server version
+  installs and an older one never does, so a server-side rollback cannot
+  downgrade a device. The client decides; the server only reports its latest
+  package. A host-bundled lxapp without an install record compares against its
+  own `lxapp.json` version. An unparseable server version never installs over
+  an existing one. An exact-version open older than the install is rejected.
+- Only on the draft channel may a republish replace the same version with a
+  different checksum, in every service env; `release` compares semver alone.
   A missing stored checksum counts as different, including bundled and
   sideloaded installs. Exact-version draft opens therefore still query the
-  server. Release checks compare versions only; the registry enforces
-  monotonically increasing releases.
+  server.
 
 ## Source entry points and verification
 

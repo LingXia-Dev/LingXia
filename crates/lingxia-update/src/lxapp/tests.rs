@@ -148,3 +148,19 @@ async fn exact_release_keeps_version_only_shortcut() {
     assert_eq!(host.exact_checks.load(Ordering::SeqCst), 0);
     assert_eq!(host.downloads.load(Ordering::SeqCst), 0);
 }
+
+#[tokio::test]
+async fn exact_version_older_than_the_install_is_rejected() {
+    for channel in [Channel::Release, Channel::Draft] {
+        let host = TestHost::new(channel);
+        let err = ensure_target_version_ready(&host, "0.9.0")
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("downgrades are not supported"),
+            "{err}"
+        );
+        assert_eq!(host.exact_checks.load(Ordering::SeqCst), 0);
+        assert_eq!(host.downloads.load(Ordering::SeqCst), 0);
+    }
+}
