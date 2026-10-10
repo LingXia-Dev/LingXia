@@ -332,6 +332,61 @@ pub fn ensure_macos() -> Result<()> {
     Ok(())
 }
 
+/// Active developer directory as `xcrun` resolves it (`DEVELOPER_DIR` wins over `xcode-select`).
+pub fn active_developer_dir() -> Option<String> {
+    let output = Command::new("xcode-select").arg("-p").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!dir.is_empty()).then_some(dir)
+}
+
+/// The Command Line Tools lack devicectl, the iOS SDK and actool; only an Xcode bundle has them.
+pub fn is_full_xcode(developer_dir: &str) -> bool {
+    developer_dir
+        .trim_end_matches('/')
+        .ends_with(".app/Contents/Developer")
+}
+
+/// How to point the toolchain at a full Xcode, naming installed copies Spotlight finds.
+pub fn select_xcode_hint() -> String {
+    if std::env::var_os("DEVELOPER_DIR").is_some() {
+        return "DEVELOPER_DIR overrides xcode-select; point it at Xcode.app/Contents/Developer or unset it"
+            .to_string();
+    }
+    let output = Command::new("mdfind")
+        .arg("kMDItemCFBundleIdentifier == \"com.apple.dt.Xcode\"")
+        .output();
+    let found: Vec<String> = output
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let quote = |p: &str| {
+        if p.contains(' ') {
+            format!("'{p}'")
+        } else {
+            p.to_string()
+        }
+    };
+    match found.as_slice() {
+        [] => "Install Xcode 15+ and run: sudo xcode-select -s /path/to/Xcode.app".to_string(),
+        [app] => format!("Found {app}; run: sudo xcode-select -s {}", quote(app)),
+        apps => format!(
+            "Found {}; pick one and run: sudo xcode-select -s <path>",
+            apps.join(", ")
+        ),
+    }
+}
+
 /// Check if a command is available in PATH
 pub fn command_exists(cmd: &str) -> bool {
     Command::new("which")

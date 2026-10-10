@@ -13,13 +13,22 @@ use std::process::Command;
 pub struct DeviceCtl;
 
 impl DeviceCtl {
-    /// Check if devicectl is available (requires Xcode 15+)
-    pub fn is_available() -> bool {
-        Command::new("xcrun")
-            .args(["devicectl", "--version"])
+    /// Fail fast with a fix when the active developer directory has no devicectl.
+    pub fn ensure_available() -> Result<()> {
+        let found = Command::new("xcrun")
+            .args(["--find", "devicectl"])
             .output()
             .map(|o| o.status.success())
-            .unwrap_or(false)
+            .unwrap_or(false);
+        if found {
+            return Ok(());
+        }
+        let dir = super::active_developer_dir().unwrap_or_else(|| "not set".to_string());
+        Err(anyhow!(
+            "devicectl not found: active developer directory is {dir}.\n\
+             Installing to iOS devices requires full Xcode 15+.\n{}",
+            super::select_xcode_hint()
+        ))
     }
 
     /// List all connected iOS devices
@@ -52,6 +61,7 @@ impl DeviceCtl {
 
     /// Wait for a device to be connected
     pub fn wait_for_device(timeout_seconds: u32) -> Result<ConnectedDevice> {
+        Self::ensure_available()?;
         let start = std::time::Instant::now();
         let timeout = std::time::Duration::from_secs(timeout_seconds as u64);
 
@@ -61,9 +71,8 @@ impl DeviceCtl {
         );
 
         loop {
-            if let Ok(devices) = Self::list_devices()
-                && let Some(device) = devices.into_iter().find(|d| d.is_available())
-            {
+            // Only an empty list is worth waiting on; a devicectl failure won't heal by polling.
+            if let Some(device) = Self::list_devices()?.into_iter().find(|d| d.is_available()) {
                 return Ok(device);
             }
 
@@ -290,11 +299,7 @@ struct InstalledApp {
 ///
 /// Requires Xcode 15+ (uses devicectl).
 pub fn install_app(app_path: &Path, device_id: Option<&str>) -> Result<()> {
-    if !DeviceCtl::is_available() {
-        return Err(anyhow!(
-            "devicectl not found. Please install Xcode 15 or later."
-        ));
-    }
+    DeviceCtl::ensure_available()?;
 
     let device_identifier = if let Some(id) = device_id {
         DeviceCtl::get_device(id)?.identifier
@@ -308,11 +313,7 @@ pub fn install_app(app_path: &Path, device_id: Option<&str>) -> Result<()> {
 ///
 /// Requires Xcode 15+ (uses devicectl).
 pub fn uninstall_app(bundle_id: &str, device_id: Option<&str>) -> Result<()> {
-    if !DeviceCtl::is_available() {
-        return Err(anyhow!(
-            "devicectl not found. Please install Xcode 15 or later."
-        ));
-    }
+    DeviceCtl::ensure_available()?;
 
     let device_identifier = if let Some(id) = device_id {
         DeviceCtl::get_device(id)?.identifier
@@ -350,11 +351,7 @@ pub fn uninstall_app(bundle_id: &str, device_id: Option<&str>) -> Result<()> {
 ///
 /// Requires Xcode 15+ (uses devicectl).
 pub fn launch_app(bundle_id: &str, device_id: Option<&str>, restart: bool) -> Result<()> {
-    if !DeviceCtl::is_available() {
-        return Err(anyhow!(
-            "devicectl not found. Please install Xcode 15 or later."
-        ));
-    }
+    DeviceCtl::ensure_available()?;
 
     let device_identifier = if let Some(id) = device_id {
         DeviceCtl::get_device(id)?.identifier
@@ -432,11 +429,7 @@ fn resolve_installed_bundle_id(base_id: &str, device_identifier: &str) -> Result
 /// Requires Xcode 15+ (uses devicectl).
 #[allow(dead_code)]
 pub fn list_devices() -> Result<Vec<crate::platform::Device>> {
-    if !DeviceCtl::is_available() {
-        return Err(anyhow!(
-            "devicectl not found. Please install Xcode 15 or later."
-        ));
-    }
+    DeviceCtl::ensure_available()?;
 
     let devices = DeviceCtl::list_devices()?;
     Ok(devices
