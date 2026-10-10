@@ -30,11 +30,11 @@ use servo::{
     Code, CompositionEvent, CompositionState, ConsoleLogLevel, CookieSource,
     CreateNewWebViewRequest, EmbedderControl, EmbedderControlId, EventLoopWaker, ImeEvent,
     InputEvent, InputMethodControl, InputMethodType, Key, KeyState, KeyboardEvent, LoadStatus,
-    Location, Modifiers, NamedKey, PixelFormat, PrefValue, Preferences, RenderingContext, RgbColor,
-    SelectElementOptionOrOptgroup, Servo, ServoBuilder, SimpleDialog, StorageType, Theme,
-    TouchEvent, TouchEventType, TouchId, TouchPointerType, UserContentManager, UserScript,
-    WebResourceLoad, WebView, WebViewBuilder, WebViewDelegate, WebViewId, WheelDelta, WheelEvent,
-    WheelMode, WindowRenderingContext,
+    Location, Modifiers, NamedKey, PixelFormat, PrefValue, Preferences, RefreshDriver,
+    RenderingContext, RgbColor, SelectElementOptionOrOptgroup, Servo, ServoBuilder, SimpleDialog,
+    StorageType, Theme, TouchEvent, TouchEventType, TouchId, TouchPointerType, UserContentManager,
+    UserScript, WebResourceLoad, WebView, WebViewBuilder, WebViewDelegate, WebViewId, WheelDelta,
+    WheelEvent, WheelMode, WindowRenderingContext,
 };
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
@@ -1078,6 +1078,19 @@ impl LoadTracker {
     }
 }
 
+struct AndroidRefreshDriver {
+    view: ViewKey,
+    callbacks: crate::servo_vsync::FrameCallbacks,
+}
+
+impl RefreshDriver for AndroidRefreshDriver {
+    fn observe_next_frame(&self, callback: Box<dyn Fn() + Send + 'static>) {
+        if self.callbacks.observe(callback) {
+            notify_java_servo(&self.view, 0);
+        }
+    }
+}
+
 struct EngineState {
     view_key: ViewKey,
     policy: ServoPolicy,
@@ -1091,6 +1104,7 @@ struct EngineState {
     throttled: bool,
     surface_shown: bool,
     frame_ready: Rc<Cell<bool>>,
+    refresh_driver: Rc<AndroidRefreshDriver>,
     theme: Theme,
     pending_load: Option<String>,
     loads: Rc<LoadTracker>,
@@ -1101,6 +1115,10 @@ struct EngineState {
 impl EngineState {
     fn new(view_key: ViewKey, policy: ServoPolicy) -> Self {
         Self {
+            refresh_driver: Rc::new(AndroidRefreshDriver {
+                view: view_key.clone(),
+                callbacks: Default::default(),
+            }),
             view_key,
             policy,
             view: None,
@@ -1176,7 +1194,15 @@ impl EngineState {
                     view.resize(self.size);
                 }
             }
-            Command::Paint => self.paint(),
+            Command::Paint => {
+                if self.surface_shown && !self.throttled && self.native_window.is_some() {
+                    self.refresh_driver.callbacks.notify();
+                    // Consume the refresh signal before painting, so fling and
+                    // animation work does not wait for another Android vsync.
+                    servo.spin_event_loop();
+                    self.paint();
+                }
+            }
             Command::DocumentPresentation { url, contentful } => {
                 if !self.loads.navigation_pending()
                     && self.pending_load.is_none()
@@ -1488,7 +1514,12 @@ impl EngineState {
             DisplayHandle::borrow_raw(RawDisplayHandle::Android(AndroidDisplayHandle::new()))
         };
         let created = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            WindowRenderingContext::new(display, window, self.size)
+            WindowRenderingContext::new_with_refresh_driver(
+                display,
+                window,
+                self.size,
+                self.refresh_driver.clone(),
+            )
         }));
         let context = match created {
             Ok(Ok(context)) => Rc::new(context),
