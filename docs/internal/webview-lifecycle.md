@@ -691,10 +691,11 @@ Two-phase creation (different from Apple/Android):
    - Sets scheme handlers.
 2. ArkTS stores the options token, creates a `WebviewController`, emits a UI
    callback.
-3. When the `Web` component appears, the `LingXiaWebView` component's
-   `Web.onAppear` calls `notifyWebViewControllerAttached(webTag)`, which routes
-   through to the NAPI `onWebviewControllerCreated(webtag)`. (The ack originates
-   in `LingXiaWebView`, not `LxAppContainer`.)
+3. The ack `notifyWebViewControllerAttached(webTag)` routes through to the NAPI
+   `onWebviewControllerCreated(webtag)`. A page `LingXiaWebView` sends it from
+   `Web.onAppear`; an embedded browser tab (`LxAppBrowser`) from
+   `Web.onControllerAttached`, once per tag and generation. (Neither comes from
+   `LxAppContainer`.)
 4. Rust `webview_controller_created()` syncs the tag, clears stale state,
    registers ArkWeb lifecycle callbacks and the JS proxy, and sends the creation
    oneshot `Ok(webview)`.
@@ -714,8 +715,8 @@ Rendering and visibility:
   for that tag's `create` event; a route never identifies a page.
 - `LxAppContainer.finishTransition()` triggers `onPageShow`, reporting the
   page as `route#instance#session` so two instances of one route stay distinct.
-- `Web.onAppear` does the controller-created ack only (avoids a duplicate
-  `onPageShow`).
+- The ack callback (`onAppear` / `onControllerAttached`) does the
+  controller-created ack only (avoids a duplicate `onPageShow`).
 
 Harmony `Web` settings (in `LingXiaWebView.ets`) are profile-aware:
 `.domStorageAccess(isBrowserRelaxed)`, `.fileAccess(false)`,
@@ -1006,7 +1007,8 @@ name is still in the binary. What that rules out, and what replaces it:
 - **Surface content cascade matters.** Disposing a page that is the *content* of
   a surface closes that surface (`close_surfaces_hosting`); otherwise the owner
   keeps a live handle to a dead page.
-- **Harmony creation is async-ack on UI `onAppear`.** Treating
+- **Harmony creation is async-ack from the UI** (`onAppear` for pages,
+  `onControllerAttached` for browser tabs). Treating
   `createWebViewController` as fully ready is incorrect; wait for
   `onWebviewControllerCreated`.
 - **`destroy_webview_if_matches()` without detaching page references can delay native drop**
