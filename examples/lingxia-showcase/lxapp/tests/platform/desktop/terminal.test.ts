@@ -222,7 +222,11 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
       const card = (Array.from(document.querySelectorAll('button[data-theme]')) as ProbeElement[]).find((el) =>
         el.getAttribute('aria-pressed') !== 'true'
         && el.style.backgroundColor !== current.style.backgroundColor);
-      return card?.dataset.theme ?? null;
+      return card?.dataset.theme && card.dataset.background && card.dataset.cursor ? {
+        name: card.dataset.theme,
+        background: card.dataset.background.toLowerCase(),
+        cursor: card.dataset.cursor.toLowerCase(),
+      } : null;
     }, initial.chrome.surface);
     if (!target) throw new Error('terminal settings did not publish a visually distinct color scheme');
     const slot = await settingsApp.logic.eval(async ({ lx }) => (await lx.terminal!.settings.get()).effective.appearance);
@@ -238,15 +242,19 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
         ok: true,
         saveDisabled: document.getElementById('save')?.disabled === true,
       };
-    }, `button[data-theme="${target}"]`);
+    }, `button[data-theme="${target.name}"]`);
     if (!clicked.ok) {
-      throw new Error(`color scheme ${target} was not in the settings document`);
+      throw new Error(`color scheme ${target.name} was not in the settings document`);
     }
     await waitForSave(settingsApp, true);
 
     const previewed = await waitFor(async () => {
       const snapshot = await terminal.snapshot({ surface: refs.terminal });
+      // Appearance changes also bump the generation; only the selected
+      // palette proves that this click's preview reached the native terminal.
       return snapshot.visualGeneration !== initial!.visualGeneration
+        && snapshot.chrome.surface === target.background
+        && snapshot.chrome.cursor === target.cursor
         ? snapshot
         : undefined;
     }, 'native terminal preview chrome');
@@ -263,7 +271,9 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
       const snapshot = await terminal.snapshot({ surface: refs.terminal });
       const theme = snapshot.config.theme as { light?: string; dark?: string } | undefined;
       return snapshot.configGeneration > initial!.configGeneration
-        && theme?.[slot] === target
+        && theme?.[slot] === target.name
+        && snapshot.chrome.surface === target.background
+        && snapshot.chrome.cursor === target.cursor
         ? snapshot
         : undefined;
     }, 'persisted terminal color scheme');
