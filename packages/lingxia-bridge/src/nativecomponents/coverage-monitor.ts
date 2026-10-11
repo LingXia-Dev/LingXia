@@ -90,6 +90,9 @@ export function installNativeComponentCoverageMonitor({ os, send }: InstallArgs)
   }
 
   function isElementCovered(el: Element): boolean {
+    // WebKit orders a same-layer island against HTML itself, and the Root's
+    // input anchor would otherwise read as covering its own video.
+    if (el.closest('lx-native-root[data-lx-native-presentation="same-layer"]')) return false;
     const rect = (el as HTMLElement).getBoundingClientRect?.();
     if (!rect) return false;
     if (rect.width < 2 || rect.height < 2) return false;
