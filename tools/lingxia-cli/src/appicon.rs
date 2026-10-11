@@ -18,6 +18,12 @@ use std::path::Path;
 /// Normalize and validate an Android color hex string.
 ///
 /// Accepts `#RGB`, `#ARGB`, `#RRGGBB`, `#AARRGGBB` (with or without the leading `#`).
+/// Body of a macOS app icon on its canvas: Apple's grid puts an 824 px plate
+/// on a 1024 px canvas, which is what neighbouring Dock icons use.
+pub const DOCK_PLATE_RATIO: f32 = 824.0 / 1024.0;
+/// Corner radius of that plate, as a fraction of its side.
+pub const DOCK_PLATE_CORNER_RATIO: f32 = 0.22;
+
 pub fn normalize_android_color(color: &str) -> Result<String> {
     let trimmed = color.trim();
     if trimmed.is_empty() {
@@ -485,8 +491,6 @@ pub fn generate_android_icons(
 /// * `source_icon` - Path to source icon (PNG, recommended 1024x1024)
 /// * `resources_dir` - Path to target resources directory
 pub fn generate_ios_icons(source_icon: &Path, resources_dir: &Path) -> Result<()> {
-    use std::collections::HashMap;
-
     if !source_icon.exists() {
         anyhow::bail!("Source icon not found: {:?}", source_icon);
     }
@@ -515,19 +519,19 @@ pub fn generate_ios_icons(source_icon: &Path, resources_dir: &Path) -> Result<()
         ("1024x1024", "1x", 1024, "ios-marketing", "Icon-1024.png"),
     ];
 
-    let mut images: Vec<HashMap<String, serde_json::Value>> = Vec::new();
+    let mut images = Vec::new();
 
     for (size_str, scale_str, pixel_size, idiom, filename) in icon_specs {
         let resized = img.resize_exact(*pixel_size, *pixel_size, FilterType::Lanczos3);
         resized.save_with_format(appiconset_dir.join(filename), ImageFormat::Png)?;
 
-        // Build Contents.json entry
-        let mut entry: HashMap<String, serde_json::Value> = HashMap::new();
-        entry.insert("filename".into(), filename.to_string().into());
-        entry.insert("idiom".into(), idiom.to_string().into());
-        entry.insert("size".into(), size_str.to_string().into());
-        entry.insert("scale".into(), scale_str.to_string().into());
-        images.push(entry);
+        // A stable key order, so regenerating icons leaves Contents.json alone.
+        images.push(serde_json::json!({
+            "filename": filename,
+            "idiom": idiom,
+            "scale": scale_str,
+            "size": size_str,
+        }));
     }
 
     // Generate Contents.json
@@ -562,8 +566,6 @@ pub fn generate_ios_icons(source_icon: &Path, resources_dir: &Path) -> Result<()
 /// * `source_icon` - Path to source icon (PNG, recommended 1024x1024)
 /// * `resources_dir` - Path to target resources directory
 pub fn generate_macos_icons(source_icon: &Path, resources_dir: &Path) -> Result<()> {
-    use std::collections::HashMap;
-
     if !source_icon.exists() {
         anyhow::bail!("Source icon not found: {:?}", source_icon);
     }
@@ -592,7 +594,7 @@ pub fn generate_macos_icons(source_icon: &Path, resources_dir: &Path) -> Result<
         (512, 2, "icon_512x512@2x.png"),
     ];
 
-    let mut images: Vec<HashMap<String, serde_json::Value>> = Vec::new();
+    let mut images = Vec::new();
 
     for (size_pt, scale, filename) in icon_specs {
         let pixel_size = size_pt * scale;
@@ -600,13 +602,13 @@ pub fn generate_macos_icons(source_icon: &Path, resources_dir: &Path) -> Result<
         let resized = img.resize_exact(pixel_size, pixel_size, FilterType::Lanczos3);
         resized.save_with_format(appiconset_dir.join(filename), ImageFormat::Png)?;
 
-        // Build Contents.json entry
-        let mut entry: HashMap<String, serde_json::Value> = HashMap::new();
-        entry.insert("filename".into(), filename.to_string().into());
-        entry.insert("idiom".into(), "mac".into());
-        entry.insert("size".into(), format!("{}x{}", size_pt, size_pt).into());
-        entry.insert("scale".into(), format!("{}x", scale).into());
-        images.push(entry);
+        // A stable key order, so regenerating icons leaves Contents.json alone.
+        images.push(serde_json::json!({
+            "filename": filename,
+            "idiom": "mac",
+            "scale": format!("{scale}x"),
+            "size": format!("{size_pt}x{size_pt}"),
+        }));
     }
 
     // Generate Contents.json
