@@ -56,7 +56,7 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
     if tabbar.auxiliary_items.is_empty() && !tabbar.show_auxiliary_add {
         return None;
     }
-    let viewport_top = rect.top + shell_top_bar_height();
+    let viewport_top = rect.top + sidebar_header_height();
     // A collapsed items group hides its rows; the auxiliary section moves up
     // directly under the group header.
     let pinned_height = sidebar_pinned_grid_height(rect, tabbar);
@@ -67,7 +67,7 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
             + tabbar.items.len() as i32 * sidebar_child_item_height()
             + (tabbar.items.len() as i32 - 1) * sidebar_child_item_gap()
     };
-    let top_level_start = rect.top + shell_top_bar_height() + pinned_height;
+    let top_level_start = rect.top + sidebar_header_height() + pinned_height;
     let row = |top: i32| -> RECT {
         normalize_rect(RECT {
             left: rect.left + sidebar_item_inset(),
@@ -88,7 +88,7 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
         // Pins are global shortcuts, not children of the current
         // lxapp group. They sit immediately below the caption controls and
         // above the lxapp header/navigation, matching macOS.
-        let grid_top = rect.top + shell_top_bar_height() - scroll_offset;
+        let grid_top = rect.top + sidebar_header_height() - scroll_offset;
         for index in 0..pinned_count {
             let row = index / PINNED_SHORTCUT_COLUMNS;
             let column = index % PINNED_SHORTCUT_COLUMNS;
@@ -146,7 +146,7 @@ pub(in crate::shell::chrome) fn sidebar_content_bottom(
     if tabbar.collapsed || tabbar.icon_rail {
         let count = 1 + tabbar.auxiliary_items.len() + usize::from(tabbar.show_auxiliary_add);
         return rect.top
-            + shell_top_bar_height()
+            + sidebar_header_height()
             + sidebar_item_gap()
             + count as i32 * (sidebar_rail_item_size() + sidebar_item_gap());
     }
@@ -155,7 +155,7 @@ pub(in crate::shell::chrome) fn sidebar_content_bottom(
     let unpinned_count = tabbar.auxiliary_items.len().saturating_sub(pinned_count);
     let group_index = tabbar.group_order_index.min(unpinned_count);
     let stride = sidebar_item_height() + sidebar_item_gap();
-    let start = rect.top + shell_top_bar_height() + pinned_height;
+    let start = rect.top + sidebar_header_height() + pinned_height;
     let group_top = start + group_index as i32 * stride;
     let items_height = if tabbar.items_collapsed || tabbar.items.is_empty() {
         0
@@ -185,7 +185,7 @@ pub(in crate::shell::chrome) fn sidebar_content_bottom(
             + unpinned_count.saturating_sub(group_index) as i32 * stride;
         bottom = bottom.max(top + sidebar_item_height());
     }
-    bottom.max(rect.top + shell_top_bar_height() + pinned_height)
+    bottom.max(rect.top + sidebar_header_height() + pinned_height)
 }
 
 pub(in crate::shell::chrome) fn sidebar_auxiliary_hit_test(
@@ -498,7 +498,7 @@ mod tests {
         let rows = sidebar_auxiliary_rects(sidebar, &tabbar, 0, sidebar.bottom).unwrap();
         let pin = rows.items[0].1;
         assert_eq!(pin.left, sidebar_icon_axis() - pinned_shortcut_size() / 2);
-        assert_eq!(pin.top, shell_top_bar_height());
+        assert_eq!(pin.top, sidebar_header_height());
         let point = ((pin.left + pin.right) / 2, (pin.top + pin.bottom) / 2);
 
         let Some(WindowsChromeHit::CommandWithContext {

@@ -429,11 +429,11 @@ async function expandMediumSidebar(
         ]) });
       } else {
         // The Windows control is custom-drawn and absent from UI Automation.
-        // Its chrome hit-test constants are physical pixels (34px cell, 4px
-        // bottom gap), while desktop window bounds are physical as well.
+        // Center the top caption target in the rail, converting DIP to
+        // physical desktop coordinates for the current display.
         const point: [number, number] = [
-          foreground.bounds.x + 28,
-          foreground.bounds.y + foreground.bounds.h - 21,
+          foreground.bounds.x + nativeWindowExtent(platform, foreground, 22),
+          foreground.bounds.y + nativeWindowExtent(platform, foreground, 16),
         ];
         await desktop.pointer.move({ at: point });
         await desktop.pointer.click({ at: point });
@@ -681,8 +681,8 @@ function pinnedShortcutPoint(
   const row = Math.floor(index / columns);
   const column = index % columns;
   return [
-    host.bounds.x + gridLeft + column * (tile + gap) + tile / 2,
-    host.bounds.y + 32 + row * (tile + gap) + tile / 2,
+    host.bounds.x + nativeWindowExtent('windows', host, gridLeft + column * (tile + gap) + tile / 2),
+    host.bounds.y + nativeWindowExtent('windows', host, 32 + row * (tile + gap) + tile / 2),
   ];
 }
 
@@ -711,14 +711,12 @@ function firstRailActionPoint(
   footerActionCount: number,
 ): [number, number] {
   const railWidth = nativeWindowExtent('windows', host, 44);
-  const expandCell = nativeWindowExtent('windows', host, 34);
   const cell = nativeWindowExtent('windows', host, 30);
   const gap = nativeWindowExtent('windows', host, 4);
-  const margin = nativeWindowExtent('windows', host, 6);
+  const margin = nativeWindowExtent('windows', host, 8);
   const topBar = nativeWindowExtent('windows', host, 32);
   const total = footerActionCount * cell + Math.max(0, footerActionCount - 1) * gap;
-  const expandTop = host.bounds.h - gap - expandCell;
-  const firstTop = Math.max(expandTop - margin - total, topBar);
+  const firstTop = Math.max(host.bounds.h - margin - total, topBar);
   return [
     host.bounds.x + Math.round(railWidth / 2),
     host.bounds.y + firstTop + Math.round(cell / 2),
@@ -732,7 +730,7 @@ function staticSettingsActionPoint(
   if (!rail) {
     // Typed Settings leads the header actions, right-aligned against the
     // collapse toggle at the 184-DIP sidebar's trailing edge.
-    const size = 28;
+    const size = 24;
     const gap = 4;
     const toggleLeft = 184 - 8 - size;
     const settingsLeft = toggleLeft - gap
@@ -761,16 +759,16 @@ function firstLxappWorkspacePoint(
   const topLevelGap = 4;
   const rowHeight = 36;
   return [
-    host.bounds.x + 84,
-    host.bounds.y
-      + topBarHeight
+    host.bounds.x + nativeWindowExtent('windows', host, 84),
+    host.bounds.y + nativeWindowExtent('windows', host,
+      topBarHeight
       + pinnedGridHeight
       + groupHeight
       + parentChildGap
       + rootPageCount * childHeight
       + topLevelGap
       + workspaceIndex * rowHeight
-      + rowHeight / 2,
+      + rowHeight / 2),
   ];
 }
 
@@ -787,12 +785,12 @@ function activeGuestGroupPoint(
   const rowHeight = 36;
   const topLevelGap = 4;
   return [
-    host.bounds.x + 84,
-    host.bounds.y
-      + topBarHeight
+    host.bounds.x + nativeWindowExtent('windows', host, 84),
+    host.bounds.y + nativeWindowExtent('windows', host,
+      topBarHeight
       + pinnedGridHeight
       + switcherIndex * (rowHeight + topLevelGap)
-      + rowHeight / 2,
+      + rowHeight / 2),
   ];
 }
 
@@ -808,10 +806,10 @@ function activeGuestGroupMenuRegion(
   const trailingControlWidth = 22;
   const [, centerY] = activeGuestGroupPoint(host, pinCount, switcherIndex);
   return [
-    host.bounds.x + sidebarWidth - itemInset - chevronWidth - trailingControlWidth * 2,
-    centerY - 18,
-    trailingControlWidth,
-    36,
+    host.bounds.x + nativeWindowExtent('windows', host, sidebarWidth - itemInset - chevronWidth - trailingControlWidth * 2),
+    centerY - nativeWindowExtent('windows', host, 18),
+    nativeWindowExtent('windows', host, trailingControlWidth),
+    nativeWindowExtent('windows', host, 36),
   ];
 }
 
@@ -856,10 +854,10 @@ function firstLxappWorkspaceRegion(
     host, pinCount, rootPageCount, workspaceIndex,
   );
   return [
-    host.bounds.x + itemInset,
-    centerY - 18,
-    sidebarWidth - itemInset * 2,
-    36,
+    host.bounds.x + nativeWindowExtent('windows', host, itemInset),
+    centerY - nativeWindowExtent('windows', host, 18),
+    nativeWindowExtent('windows', host, sidebarWidth - itemInset * 2),
+    nativeWindowExtent('windows', host, 36),
   ];
 }
 
@@ -982,13 +980,13 @@ function showcaseHomePagePoint(
   const parentChildGap = 1;
   const childHeight = 28;
   return [
-    host.bounds.x + 84,
-    host.bounds.y
-      + topBarHeight
+    host.bounds.x + nativeWindowExtent('windows', host, 84),
+    host.bounds.y + nativeWindowExtent('windows', host,
+      topBarHeight
       + pinnedGridHeight
       + groupHeight
       + parentChildGap
-      + childHeight / 2,
+      + childHeight / 2),
   ];
 }
 
@@ -1718,7 +1716,7 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
 
     // Exercise the real native footer action. Medium projects the header
     // actions (Settings, Downloads) and then the footer actions into the icon
-    // rail above its expand cell; Chat is the first footer action. Derive its
+    // rail footer; Chat is the first footer action. Derive its
     // cell center from that production geometry so this cannot click the
     // expand control, a header action, or a main-page item.
     await desktop.pointer.click({

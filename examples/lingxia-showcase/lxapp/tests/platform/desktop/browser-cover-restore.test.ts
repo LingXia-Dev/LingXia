@@ -68,7 +68,7 @@ function windowsStaticSettingsPoint(
   if (!rail) {
     // Typed Settings leads the header actions, which sit right-aligned
     // against the collapse toggle at the 184-DIP sidebar's trailing edge.
-    const size = 28;
+    const size = 24;
     const gap = 4;
     const toggleLeft = 184 - 8 - size;
     const shown = Math.min(1 + actions.header, 2);
@@ -83,10 +83,9 @@ function windowsStaticSettingsPoint(
   const cell = 30 * scale;
   const gap = 4 * scale;
   const margin = 8 * scale;
-  const expandCell = 34 * scale;
   const visible = Math.min(1 + actions.header + actions.footer, 5);
   const total = visible * cell + (visible - 1) * gap;
-  const firstTop = host.bounds.h - gap - expandCell - margin - total;
+  const firstTop = host.bounds.h - margin - total;
   return [
     host.bounds.x + 22 * scale,
     host.bounds.y + firstTop + cell / 2,
