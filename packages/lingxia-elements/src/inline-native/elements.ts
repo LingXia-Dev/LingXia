@@ -280,7 +280,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
         })
       );
     } else {
-      const geometry = measureNativeNodeGeometry(this);
+      const geometry = measureNativeNodeGeometry(this, isIOS());
       const iosComposition = this.iosComposition.measure(this);
       const published = publishCompiledRoot({
         compiled: result.root,
@@ -706,7 +706,7 @@ function pageViewportOffset(): { x: number; y: number } {
   return { x: window.scrollX || 0, y: window.scrollY || 0 };
 }
 
-function measureNativeNodeGeometry(root: Element): {
+function measureNativeNodeGeometry(root: Element, rootLocal: boolean): {
   rects: Record<string, { x: number; y: number; width: number; height: number }>;
   visibility: Record<string, boolean>;
   clipStacks: Record<string, unknown[]>;
@@ -726,8 +726,10 @@ function measureNativeNodeGeometry(root: Element): {
     rects[id] = rect;
     visibility[id] = elementIsVisible(child) && clips.every((clip) => rectsIntersect(rect, clip));
     clipStacks[id] = clips;
-    localClips[id] = overflowClipStack(child, root);
-    layoutVisibility[id] = elementIsVisible(child, false);
+    if (rootLocal) {
+      localClips[id] = overflowClipStack(child, root);
+      layoutVisibility[id] = elementIsVisible(child, false);
+    }
   }
   return { rects, visibility, clipStacks, localClips, layoutVisibility };
 }
