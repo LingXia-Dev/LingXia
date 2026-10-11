@@ -186,6 +186,7 @@ public enum Lingxia {
         shell.retainAppUIRuntime(hostRuntime)
         try hostRuntime.start()
         DevServiceMarkWindow.attachIfNeeded()
+        LxAppMacMainMenu.installIfNeeded()
         return shell
     }
     #else

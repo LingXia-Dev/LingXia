@@ -35,14 +35,34 @@ public enum L10n {
         return String(format: format, arguments: arguments)
     }
 
-    /// Curated native-chrome strings for host apps that build their own
-    /// macOS menu bar instead of relying on Cocoa's automatic one (see
-    /// `examples/lingxia-showcase/macos/Sources/main.swift`). This is the
-    /// supported public surface — it does not expose the SDK's full internal
-    /// key space, so internal key renames don't become host-app breakage.
+    /// Curated native-chrome strings. `Lingxia.quickStart()` builds the
+    /// default macOS menu bar from them; a host that builds its own menu bar
+    /// uses them too. This is the supported public surface — it does not
+    /// expose the SDK's full internal key space, so internal key renames don't
+    /// become host-app breakage.
     public enum AppMenu {
-        private static var hostAppName: String {
-            Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
+        /// The product name in the app's display language. Info.plist's own
+        /// value follows the system language, so read the bundle's localized
+        /// InfoPlist.strings for the in-app choice first.
+        static var hostAppName: String {
+            let locale = Lingxia.displayLanguage.replacingOccurrences(of: "_", with: "-")
+            if let localization = Bundle.preferredLocalizations(
+                from: Bundle.main.localizations,
+                forPreferences: [locale]
+            ).first,
+                let url = Bundle.main.url(
+                    forResource: "InfoPlist",
+                    withExtension: "strings",
+                    subdirectory: nil,
+                    localization: localization
+                ),
+                let strings = NSDictionary(contentsOf: url),
+                let name = (strings["CFBundleDisplayName"] ?? strings["CFBundleName"]) as? String,
+                !name.isEmpty
+            {
+                return name
+            }
+            return Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
                 ?? ProcessInfo.processInfo.processName
         }
 
