@@ -27,7 +27,9 @@ import com.lingxia.app.NativeApi
  *
  * Resources are looked up by the names the CLI generates
  * (`lingxia_splash_background` color, `lingxia_splash_image` drawable); when
- * the color is absent the launch screen is disabled entirely.
+ * the color is absent, the normal activity theme remains the starting window
+ * until home is ready. This fallback never marks a branded launch face or
+ * introduces a minimum display duration.
  */
 internal object SplashOverlay {
     private const val TIMEOUT_MS = 6_000L
@@ -74,8 +76,10 @@ internal object SplashOverlay {
     /** Whether a placeholder-only launch is still holding the system splash. */
     private var placeholderActive = false
 
-    /** Whether this cold start is showing a cover (drives seamless activity handoff). */
-    fun coverActive(): Boolean = launchCover != null && !homeReadySeen
+    private var firstDrawHolds = 0
+
+    /** Covers and theme-only launch windows both need a seamless activity handoff. */
+    fun launchActive(): Boolean = !homeReadySeen && (launchCover != null || firstDrawHolds > 0)
 
     /** Queued for the moment the cover starts lifting. */
     private val onCoverGone = mutableListOf<() -> Unit>()
@@ -130,7 +134,7 @@ internal object SplashOverlay {
      */
     fun attachBootstrap(activity: Activity): Boolean {
         resolveResources(activity)
-        if (launchBackground == null || homeReadySeen) return false
+        if (homeReadySeen) return false
         val cover = launchCover
         if (cover == null) {
             holdFirstDraw(activity)
@@ -255,7 +259,7 @@ internal object SplashOverlay {
         }
     }
 
-    /** Attach over the home activity on a cold start when splash resources exist. */
+    /** Protect the home cold start, including hosts without splash resources. */
     fun attachIfNeeded(activity: Activity, appId: String) {
         if (shownThisProcess || homeReadySeen) return
         if (appId != LxApp.homeAppId) {
@@ -266,10 +270,6 @@ internal object SplashOverlay {
             return
         }
         resolveResources(activity)
-        if (launchBackground == null) {
-            android.util.Log.i("SplashOverlay", "skipped: no splash background resource")
-            return
-        }
         val decor = activity.window?.decorView as? ViewGroup
         if (decor == null) {
             android.util.Log.i("SplashOverlay", "skipped: no decor view")
@@ -278,10 +278,8 @@ internal object SplashOverlay {
 
         val cover = launchCover
         if (cover == null) {
-            // No cover configured: suspend the first draw so the OS splash
-            // (brand color + app icon) stays on screen until the home page
-            // is ready — the launcher zoom, the splash, and its exit into
-            // real content are then all composed by the OS.
+            // API 21/22 retains the theme's starting window; API 31+ retains
+            // the system splash. Neither needs custom splash resources.
             placeholderActive = true
             holdFirstDraw(activity, trackPlaceholder = true)
             shownThisProcess = true
@@ -383,21 +381,39 @@ internal object SplashOverlay {
     /** Suspend an activity's first draw until home is ready (or the timeout). */
     private fun holdFirstDraw(activity: Activity, trackPlaceholder: Boolean = false) {
         val content = activity.findViewById<View>(android.R.id.content)
-        val start = android.os.SystemClock.uptimeMillis()
-        content.viewTreeObserver.addOnPreDrawListener(
-            object : android.view.ViewTreeObserver.OnPreDrawListener {
-                override fun onPreDraw(): Boolean {
-                    val timedOut =
-                        android.os.SystemClock.uptimeMillis() - start > TIMEOUT_MS
-                    if (homeReadySeen || timedOut) {
-                        if (trackPlaceholder) placeholderActive = false
-                        content.viewTreeObserver.removeOnPreDrawListener(this)
-                        return true
-                    }
-                    return false
-                }
-            }
-        )
+        val observer = content.viewTreeObserver
+        var released = false
+        lateinit var draw: android.view.ViewTreeObserver.OnPreDrawListener
+        lateinit var attach: View.OnAttachStateChangeListener
+        lateinit var timeout: Runnable
+        fun release() {
+            if (released) return
+            released = true
+            firstDrawHolds -= 1
+            if (trackPlaceholder) placeholderActive = false
+            if (observer.isAlive) observer.removeOnPreDrawListener(draw)
+            else content.viewTreeObserver.removeOnPreDrawListener(draw)
+            content.removeOnAttachStateChangeListener(attach)
+            mainHandler.removeCallbacks(timeout)
+        }
+        draw = android.view.ViewTreeObserver.OnPreDrawListener {
+            if (homeReadySeen) release()
+            released
+        }
+        attach = object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: View) = Unit
+            override fun onViewDetachedFromWindow(view: View) = release()
+        }
+        timeout = Runnable {
+            release()
+            // A stalled page may schedule no more draws: the deadline must
+            // release the listener itself rather than wait for another frame.
+            content.invalidate()
+        }
+        firstDrawHolds += 1
+        observer.addOnPreDrawListener(draw)
+        content.addOnAttachStateChangeListener(attach)
+        mainHandler.postDelayed(timeout, TIMEOUT_MS)
     }
 
     /**

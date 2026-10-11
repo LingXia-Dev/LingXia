@@ -72,6 +72,20 @@ named — the type that implements `WebViewDelegate` and drives lifecycle is
 | Page id | `PageInstanceId(String)` | UUID v4 |
 | Core creation stage | `WebViewCreateStage` | `Requested → NativeCreated → ControllerAttached → Ready → Destroyed` |
 
+## Android cold-start presentation
+
+`SplashOverlay` gates the bootstrap and home activities' first draw until the
+home lxapp reports `onHomeFirstReady`, even when no `splash:` resources exist.
+Without resources, retain the activity theme's starting window; do not mark a
+launch face or apply the branded splash minimum duration. Android 5 uses the
+legacy starting window, while Android 12+ uses the system splash. Suppress the
+bootstrap-to-home activity animation while either launch protection is active.
+
+Every draw gate must release at its timeout even if the page schedules no more
+frames, and remove its listener/timer when its view detaches. Warm launches and
+non-home activities must not acquire this cold-start gate. Configured covers
+and campaigns retain their existing presentation and timing.
+
 ## WebView Profiles
 
 Every WebView is created under one of two security profiles. The profile

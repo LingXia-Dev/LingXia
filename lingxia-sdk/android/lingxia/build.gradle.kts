@@ -41,6 +41,8 @@ android {
         freeCompilerArgs += listOf("-Xjvm-default=all")
     }
 
+    testOptions.unitTests.isIncludeAndroidResources = true
+
     sourceSets {
         getByName("main") {
             java.srcDirs(
@@ -68,6 +70,7 @@ dependencies {
     implementation(libs.media3.transformer)
     implementation(libs.androidx.exifinterface)
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidxTestRunner)
     androidTestImplementation(libs.androidxTestCore)
     androidTestImplementation(libs.androidxTestExtJunit)

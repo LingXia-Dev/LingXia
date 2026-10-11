@@ -15,6 +15,8 @@ camera = "1.5.3"
 exifinterface = "1.4.2"
 barcodeScanning = "17.3.0"
 junit = "4.13.2"
+# Keep API 21/22 test coverage; Robolectric 4.16+ requires API 23.
+robolectric = "4.15.1"
 androidxTestRunner = "1.7.0"
 androidxTestCore = "1.7.0"
 androidxTestExtJunit = "1.3.0"
@@ -46,6 +48,7 @@ androidx-camera-video = { group = "androidx.camera", name = "camera-video", vers
 androidx-exifinterface = { group = "androidx.exifinterface", name = "exifinterface", version.ref = "exifinterface" }
 mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "barcodeScanning" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 androidxTestRunner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
 androidxTestCore = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
 androidxTestExtJunit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }

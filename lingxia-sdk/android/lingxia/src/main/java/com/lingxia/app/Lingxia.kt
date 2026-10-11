@@ -152,9 +152,9 @@ object Lingxia {
             it.isFinishing || it.isDestroyed
         }
         LxApp.openHome()
-        if (SplashOverlay.coverActive()) {
-            // Both activities show the same full-bleed cover; any transition
-            // animation between them would read as the cover flickering.
+        if (SplashOverlay.launchActive()) {
+            // Keep the bootstrap-to-home handoff still while the launch
+            // cover or theme starting window is waiting for content.
             activity.overridePendingTransition(0, 0)
         }
         // A launcher tap or a link that arrives while the app is running can create another
