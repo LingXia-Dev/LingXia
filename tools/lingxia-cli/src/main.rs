@@ -28,6 +28,7 @@ mod cli_config;
 mod commands;
 mod compat;
 mod config;
+mod dist_manifest;
 // `gen` is a reserved keyword in Rust 2024 — escape it so the module name
 // stays aligned with the user-facing `lingxia gen …` subcommand.
 mod r#gen;
@@ -439,7 +440,8 @@ session per project and target: starting another takes over the old one.
 
     /// Install the built app to a device
     Install {
-        /// Path to artifact file (auto-detected if not specified)
+        /// Artifact file, or a `lingxia package` dist/<platform> directory
+        /// (auto-detected if not specified)
         #[arg(short = 'a', long)]
         artifact: Option<String>,
 
@@ -598,8 +600,13 @@ struct PublishArgs {
     token: Option<String>,
 
     /// Host package from `lingxia package` (Android APK, macOS/Windows update
-    /// zip). Omit to build and publish the lxapp or lxplugin in this directory.
+    /// zip), or the `dist/<platform>` directory it wrote. Omit to build and
+    /// publish the lxapp or lxplugin in this directory.
     package: Option<String>,
+
+    /// Resolve and verify the host package, print its path, upload nothing
+    #[arg(long)]
+    dry_run: bool,
 
     /// Upload server URL. Defaults to the server saved by
     /// `lingxia auth login lingxia --server`
@@ -1316,6 +1323,7 @@ fn main() -> Result<()> {
                 framework: args.framework,
                 progress: args.progress,
                 update_signing_key: args.update_signing_key,
+                dry_run: args.dry_run,
             })?;
         }
     }
