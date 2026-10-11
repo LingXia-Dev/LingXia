@@ -114,7 +114,7 @@ pub(super) fn sidebar_chevron_size() -> i32 {
 /// Side length of the sidebar header action buttons (settings/downloads),
 /// and the gap between them.
 pub(super) fn sidebar_header_action_size() -> i32 {
-    crate::dpi::px(28)
+    crate::dpi::px(24)
 }
 pub(super) fn sidebar_header_action_gap() -> i32 {
     crate::dpi::px(4)
@@ -476,8 +476,10 @@ fn sidebar_scroll_metrics(
         return None;
     }
     let viewport_bottom =
-        sidebar_navigation_viewport_bottom(tabbar_rect, tabbar, &layout.footer_actions)
-            .clamp(tabbar_rect.top + shell_top_bar_height(), tabbar_rect.bottom);
+        sidebar_navigation_viewport_bottom(tabbar_rect, tabbar, &layout.footer_actions).clamp(
+            tabbar_rect.top + sidebar_header_height(),
+            tabbar_rect.bottom,
+        );
     let (offset, max_offset) = clamp_sidebar_scroll(
         tabbar.main_scroll_offset,
         sidebar_content_bottom(tabbar_rect, tabbar),
@@ -538,7 +540,7 @@ fn chrome_mouse_wheel(
 
     let (current, max_offset, viewport_bottom) = sidebar_scroll_metrics(tabbar_rect, layout)?;
     if max_offset == 0
-        || point.1 < tabbar_rect.top + shell_top_bar_height()
+        || point.1 < tabbar_rect.top + sidebar_header_height()
         || point.1 >= viewport_bottom
     {
         return None;
@@ -706,7 +708,7 @@ fn chrome_hover_rect(
                 Some(expand)
             };
         }
-        if point.1 < tabbar_rect.top + shell_top_bar_height() || point.1 >= viewport_bottom {
+        if point.1 < tabbar_rect.top + sidebar_header_height() || point.1 >= viewport_bottom {
             return None;
         }
         for index in 0..=tabbar.auxiliary_items.len() {
@@ -731,7 +733,7 @@ fn chrome_hover_rect(
             return Some(rect);
         }
     }
-    if point.1 < tabbar_rect.top + shell_top_bar_height() || point.1 >= viewport_bottom {
+    if point.1 < tabbar_rect.top + sidebar_header_height() || point.1 >= viewport_bottom {
         return None;
     }
     let chevron = sidebar_group_chevron_rect(tabbar_rect, tabbar, scroll_offset);
@@ -1212,7 +1214,7 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
 
     // The WebView workspace is the second layer. Side and bottom clearance
     // keep the card distinct from the shell base; its top edge aligns with
-    // the first sidebar row immediately below the caption/address band.
+    // the sidebar control row below the caption/address band.
     if desktop_card {
         content = inset_desktop_workspace(content);
     }
@@ -1333,7 +1335,7 @@ pub(crate) fn collapsed_sidebar_tabbar_popup(
     let (scroll_offset, _, viewport_bottom) =
         sidebar_scroll_metrics(tabbar_rect, layout).unwrap_or((0, 0, tabbar_rect.bottom));
     let hit = |anchor: RECT| {
-        anchor.top >= tabbar_rect.top + shell_top_bar_height()
+        anchor.top >= tabbar_rect.top + sidebar_header_height()
             && anchor.bottom <= viewport_bottom
             && rect_contains(&anchor, point)
     };
@@ -1398,7 +1400,7 @@ pub(crate) fn collapsed_sidebar_tooltip(
     let (scroll_offset, _, viewport_bottom) =
         sidebar_scroll_metrics(tabbar_rect, layout).unwrap_or((0, 0, tabbar_rect.bottom));
     let in_sidebar_viewport = |anchor: RECT| {
-        anchor.top >= tabbar_rect.top + shell_top_bar_height()
+        anchor.top >= tabbar_rect.top + sidebar_header_height()
             && anchor.bottom <= viewport_bottom
             && rect_contains(&anchor, point)
     };
@@ -1709,7 +1711,7 @@ fn collapsed_sidebar_tabbar_popup_item_bounds(
         top: bounds.top
             + sidebar_tabbar_popup_padding()
             + collapsed_sidebar_popup_title_height(tabbar)
-            - shell_top_bar_height()
+            - sidebar_header_height()
             - sidebar_item_height()
             - sidebar_parent_child_gap(),
         right: bounds.right,
@@ -2388,7 +2390,7 @@ pub(super) fn chrome_hit_test(
             (0, 0, tabbar_rect.bottom)
         };
         let in_sidebar_viewport =
-            point.1 >= tabbar_rect.top + shell_top_bar_height() && point.1 < viewport_bottom;
+            point.1 >= tabbar_rect.top + sidebar_header_height() && point.1 < viewport_bottom;
         if sidebar {
             // Header actions remain interactive, while every unused pixel in
             // the sidebar's caption strip must behave like a native caption.
@@ -3122,6 +3124,88 @@ mod scroll_tests {
             tooltip.popup.right - tooltip.popup.left > 240,
             "long rail tooltip must grow past the old 240px cap"
         );
+    }
+
+    #[test]
+    fn sidebar_toggle_keeps_its_row_and_hit_target_across_modes() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 1100,
+            bottom: 737,
+        };
+        let center = |rect: RECT| ((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+        for position in [
+            WindowsShellTabBarPosition::Left,
+            WindowsShellTabBarPosition::Right,
+        ] {
+            let mut previous_y = None;
+            for icon_rail in [false, true] {
+                let mut tabbar = bottom_tabbar(true, false);
+                tabbar.position = position;
+                tabbar.dimension = 184;
+                tabbar.icon_rail = icon_rail;
+                tabbar.main_scroll_offset = 300;
+                let layout = WindowsShellWindowLayout {
+                    tab_bar: Some(tabbar),
+                    footer_actions: vec![super::WindowsShellFooterActionLayout {
+                        generation: 1,
+                        id: "action".into(),
+                        label: "Action".into(),
+                        icon_path: String::new(),
+                        disabled: false,
+                        source: super::WindowsShellSidebarActionSource::Runtime,
+                    }],
+                    ..Default::default()
+                };
+                let state = WindowsChromeState {
+                    hwnd: HWND::default(),
+                    client,
+                    layout: WindowsWindowLayout::new(layout.clone()),
+                    attached: None,
+                    frame_button_hover: None,
+                    frame_button_pressed: None,
+                    cursor: None,
+                };
+                let rects = compute_chrome_rects(client, &layout);
+                let sidebar = rects.tab_bar.unwrap();
+                let toggle = if icon_rail {
+                    sidebar_rail_expand_rect(sidebar)
+                } else {
+                    super::sidebar_header_toggle_rect(sidebar)
+                };
+                assert!(toggle.top >= rects.top_bar.bottom);
+                assert!(toggle.bottom <= sidebar.top + super::sidebar_header_height());
+                if let Some(y) = previous_y {
+                    assert_eq!(center(toggle).1, y);
+                }
+                previous_y = Some(center(toggle).1);
+                if icon_rail {
+                    let footer = footer_action_rects(client, &rects, &layout)[0].1;
+                    assert!(footer.top > toggle.bottom);
+                    assert_eq!(
+                        footer.bottom,
+                        sidebar.bottom - super::footer_action_margin()
+                    );
+                    assert!(
+                        super::sidebar_navigation_viewport_bottom(
+                            sidebar,
+                            layout.tab_bar.as_ref().unwrap(),
+                            &layout.footer_actions
+                        ) <= footer.top
+                    );
+                }
+                assert!(matches!(chrome_hit_test(&state, &layout, center(toggle)),
+                    Some(WindowsChromeHit::Command(command))
+                        if command.id == super::command_id::SIDEBAR_TOGGLE));
+                if matches!(position, WindowsShellTabBarPosition::Left) {
+                    assert!(matches!(
+                        chrome_hit_test(&state, &layout, (center(sidebar).0, 16)),
+                        Some(WindowsChromeHit::Caption)
+                    ));
+                }
+            }
+        }
     }
 
     #[test]

@@ -676,6 +676,17 @@ Expanded footer geometry:
 - Background is transparent; hover uses a quiet shell-owned wash (radius 6);
   disabled items mute icon/text with no hover wash.
 
+Desktop sidebar controls:
+
+- macOS and Windows MUST keep a fixed 32pt/dp control row below the window
+  controls, outside the navigation scroller. Frameless hosts MAY omit the
+  window-control clearance.
+- The collapse button is trailing-aligned when expanded; the expand button
+  is centered in the icon rail on the same vertical axis. Both use a 24pt/dp
+  hit target and an 18pt/dp glyph. Switching modes MUST NOT move the control
+  between the header and footer.
+- Footer space belongs to action shortcuts; it MUST NOT reserve a toggle slot.
+
 Compact rail:
 
 - Footer actions become icon-only, with label as tooltip/accessibility text,

@@ -10,6 +10,15 @@ mod footer_action;
 pub(super) use auxiliary::*;
 pub(super) use footer_action::*;
 
+/// Fixed sidebar controls sit below the native caption in both sidebar modes.
+fn sidebar_control_row_height() -> i32 {
+    px(32)
+}
+
+pub(super) fn sidebar_header_height() -> i32 {
+    shell_top_bar_height() + sidebar_control_row_height()
+}
+
 /// Phone bottom tab bar: 49px item strip plus a lower safe-area hit region.
 fn bottom_tab_icon_size() -> i32 {
     crate::dpi::px(22)
@@ -269,7 +278,7 @@ pub(super) fn draw_sidebar_tab_bar(
         let _ = IntersectClipRect(
             hdc,
             rect.left,
-            rect.top + shell_top_bar_height(),
+            rect.top + sidebar_header_height(),
             rect.right,
             viewport_bottom,
         );
@@ -507,7 +516,7 @@ fn draw_sidebar_rail(
         let _ = IntersectClipRect(
             hdc,
             rect.left,
-            rect.top + shell_top_bar_height(),
+            rect.top + sidebar_header_height(),
             rect.right,
             viewport_bottom,
         );
@@ -574,12 +583,11 @@ fn draw_sidebar_rail(
         let _ = RestoreDC(hdc, saved);
     }
 
-    // The collapse/expand toggle (same `SidebarExpand` design icon the top bar
-    // uses when expanded) pinned to the bottom of the rail. Compact desktop
-    // keeps the glyph but treats it as disabled chrome, not a dead click.
+    // Keep the control outside the scrolling navigation clip. Compact desktop
+    // retains the glyph and explains why expansion is unavailable.
     let expand_rect = sidebar_rail_expand_rect(rect);
     if !tabbar.rail_expand_disabled {
-        draw_hover_wash(hdc, expand_rect, 8, cursor);
+        draw_hover_wash(hdc, expand_rect, 6, cursor);
     }
     draw_design_icon_button(
         hdc,
@@ -594,7 +602,7 @@ fn draw_sidebar_rail(
         } else {
             shell_palette().text_muted
         },
-        18,
+        px(18),
     );
 }
 
@@ -649,16 +657,16 @@ pub(super) fn sidebar_rail_pinned_divider_rect(
     }))
 }
 
-/// The collapse/expand toggle cell, pinned to the bottom of an icon rail.
+/// The expand control shares the expanded header's vertical axis.
 pub(super) fn sidebar_rail_expand_rect(rect: RECT) -> RECT {
-    let cell = sidebar_rail_item_size();
+    let cell = sidebar_header_action_size();
     let left = rect.left + (rect_width(&rect) - cell).max(0) / 2;
-    let bottom = rect.bottom - sidebar_item_gap();
+    let top = sidebar_header_toggle_rect(rect).top;
     normalize_rect(RECT {
         left,
-        top: bottom - cell,
+        top,
         right: left + cell,
-        bottom,
+        bottom: top + cell,
     })
 }
 
@@ -694,7 +702,7 @@ pub(super) fn sidebar_auxiliary_rail_index(
 pub(super) fn sidebar_rail_item_rect(rect: RECT, index: usize, scroll_offset: i32) -> RECT {
     let cell = sidebar_rail_item_size();
     let top = rect.top
-        + shell_top_bar_height()
+        + sidebar_header_height()
         + sidebar_item_gap()
         + index as i32 * (cell + sidebar_item_gap())
         - scroll_offset;
@@ -713,7 +721,7 @@ fn sidebar_group_top(rect: RECT, tabbar: &WindowsShellTabBarLayout, scroll_offse
     let pinned = sidebar_pinned_count(tabbar);
     let unpinned = tabbar.auxiliary_items.len().saturating_sub(pinned);
     rect.top
-        + shell_top_bar_height()
+        + sidebar_header_height()
         + sidebar_pinned_grid_height(rect, tabbar)
         + tabbar.group_order_index.min(unpinned) as i32
             * (sidebar_item_height() + sidebar_item_gap())
@@ -812,27 +820,16 @@ pub(super) fn sidebar_group_menu_rect(
     })
 }
 
-/// Width the leading controls take before the action strip can start.
-///
-/// Header actions only draw while the sidebar is expanded, so the collapse
-/// toggle is always there; the app-menu button beside it exists only in the
-/// product shell — a runner-style build has no menu worth showing and draws
-/// none. Reserving for it regardless leaves a visibly empty slot the header
-/// then refuses to use.
+/// Window controls occupy the caption above this row.
 fn header_leading_reserve() -> i32 {
-    let app_menu = if cfg!(feature = "browser-shell") {
-        top_bar_button_size()
-    } else {
-        0
-    };
-    top_bar_padding() + app_menu + sidebar_header_action_gap()
+    sidebar_item_inset()
 }
 
-/// The collapse toggle: the header's trailing slot, flush with the chevron
-/// column below and centered on the same axis as the header actions, so the
-/// strip reads window menu leading, sidebar controls trailing (macOS order).
+/// Trailing control-row slot, aligned with the navigation chevrons below.
 pub(super) fn sidebar_header_toggle_rect(sidebar_rect: RECT) -> RECT {
-    let top = sidebar_rect.top + (shell_top_bar_height() - sidebar_header_action_size()).max(0) / 2;
+    let top = sidebar_rect.top
+        + shell_top_bar_height()
+        + (sidebar_control_row_height() - sidebar_header_action_size()).max(0) / 2;
     let right = sidebar_rect.right - sidebar_item_inset();
     normalize_rect(RECT {
         left: right - sidebar_header_action_size(),
@@ -858,19 +855,17 @@ fn header_action_capacity(available: i32) -> usize {
     ((available + sidebar_header_action_gap()) / stride).max(0) as usize
 }
 
-/// Sidebar action buttons in the top caption strip,
-/// hidden while the sidebar is collapsed. Right-aligned at the column's
-/// trailing edge (flush with the chevron below) so the strip reads as two
-/// groups - window controls leading, sidebar actions trailing - instead of
-/// four packed icons. Actions that would reach the leading buttons drop.
+/// Sidebar actions share the fixed control row with the collapse button.
 pub(super) fn sidebar_header_action_rects(
     sidebar_rect: RECT,
     tabbar: &WindowsShellTabBarLayout,
 ) -> Vec<(String, RECT)> {
-    if tabbar.header_actions.is_empty() || tabbar.collapsed {
+    if tabbar.header_actions.is_empty() || tabbar.collapsed || tabbar.icon_rail {
         return Vec::new();
     }
-    let top = sidebar_rect.top + (shell_top_bar_height() - sidebar_header_action_size()).max(0) / 2;
+    let top = sidebar_rect.top
+        + shell_top_bar_height()
+        + (sidebar_control_row_height() - sidebar_header_action_size()).max(0) / 2;
     let leading_limit = sidebar_rect.left + header_leading_reserve();
     let mut right = sidebar_header_toggle_rect(sidebar_rect).left - sidebar_header_action_gap();
     // Draw the ones that fit rather than measuring the whole set and giving up
@@ -996,18 +991,6 @@ mod tests {
         );
     }
 
-    /// Dropping the app-menu button hands its slot to the actions rather than
-    /// leaving a gap where it would have been.
-    #[test]
-    fn the_reserve_tracks_the_buttons_that_exist() {
-        let expected = if cfg!(feature = "browser-shell") {
-            top_bar_padding() + top_bar_button_size() + sidebar_header_action_gap()
-        } else {
-            top_bar_padding() + sidebar_header_action_gap()
-        };
-        assert_eq!(header_leading_reserve(), expected);
-    }
-
     #[test]
     fn the_toggle_closes_the_header_row_after_the_actions() {
         let sidebar = RECT {
@@ -1020,7 +1003,8 @@ mod tests {
         assert_eq!(toggle.right, shell_sidebar_width() - sidebar_item_inset());
         assert_eq!(toggle.right - toggle.left, sidebar_header_action_size());
         // Same vertical axis as the actions it sits beside.
-        let top = (shell_top_bar_height() - sidebar_header_action_size()).max(0) / 2;
+        let top = shell_top_bar_height()
+            + (sidebar_control_row_height() - sidebar_header_action_size()).max(0) / 2;
         assert_eq!(toggle.top, top);
     }
 
