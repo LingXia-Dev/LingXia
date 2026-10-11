@@ -86,15 +86,20 @@ pub(crate) use chrome::{
     phone_tab_switcher_hit, phone_tab_switcher_layout,
 };
 pub(crate) use chrome::{
+    SidebarPeekLayout, SidebarShortcut, compose_sidebar_peek_pixels, is_sidebar_peek_command,
+    paint_sidebar_peek, sidebar_peek_dismisses, sidebar_peek_layout, sidebar_shortcut,
+    sidebar_toggle_command,
+};
+pub(crate) use chrome::{
     TabbarOverflowHit, TabbarOverflowLayout, paint_tabbar_overflow, tabbar_overflow_hit,
     tabbar_overflow_layout, tabbar_overflow_panel_radius,
 };
 pub(crate) use chrome::{
     bottom_tabbar_rect, collapsed_sidebar_tabbar_click_command, collapsed_sidebar_tabbar_popup,
-    collapsed_sidebar_tabbar_popup_hit, collapsed_sidebar_tooltip, disabled_rail_expand_hit,
+    collapsed_sidebar_tabbar_popup_hit, collapsed_sidebar_tooltip,
     paint_collapsed_sidebar_tabbar_popup, paint_collapsed_sidebar_tooltip,
-    paint_transparent_tabbar_overlay, sidebar_rail_tooltip_radius, sidebar_tabbar_popup_radius,
-    transparent_tabbar_overlay_rect,
+    paint_transparent_tabbar_overlay, rail_expand_hit, sidebar_rail_tooltip_radius,
+    sidebar_tabbar_popup_radius, transparent_tabbar_overlay_rect,
 };
 
 pub(crate) use chrome::{workspace_corner_radii, workspace_silhouette_rect};

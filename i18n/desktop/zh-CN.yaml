@@ -40,8 +40,6 @@ terminal:
   reset: "重置终端"
   read_only: "终端只读"
 
-# Compact desktop keeps the rail expand glyph visible but inert.
 sidebar:
   expand: "展开侧栏"
   collapse: "收起侧栏"
-  expand_needs_wider_window: "窗口太窄，请先放大"
