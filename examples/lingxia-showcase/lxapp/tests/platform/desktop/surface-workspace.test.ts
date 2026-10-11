@@ -393,6 +393,19 @@ async function apiNavbarLeftEdge(
   return undefined;
 }
 
+// A pointer resting on the rail or header opens the sidebar peek or a control
+// tooltip, both separate windows that cover screen-pixel probes. Park it over
+// the workspace content instead.
+async function parkPointerOverContent(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+): Promise<void> {
+  await desktop.pointer.move({ at: [
+    host.bounds.x + Math.round(host.bounds.w * 0.7),
+    host.bounds.y + Math.round(host.bounds.h * 0.6),
+  ] });
+}
+
 async function expandMediumSidebar(
   desktop: DesktopDriver,
   platform: string,
@@ -438,6 +451,7 @@ async function expandMediumSidebar(
         await desktop.pointer.move({ at: point });
         await desktop.pointer.click({ at: point });
       }
+      await parkPointerOverContent(desktop, foreground);
 
       return await waitForValue(
         readExpanded,
@@ -466,6 +480,7 @@ async function ensureFullSidebar(
     const inset = main.bounds.x - latest.bounds.x;
     return inset >= nativeWindowExtent('windows', latest, 80) ? inset : undefined;
   });
+  await parkPointerOverContent(desktop, current);
   return (await desktop.windows()).find((window) => window.id === current.id) ?? current;
 }
 
