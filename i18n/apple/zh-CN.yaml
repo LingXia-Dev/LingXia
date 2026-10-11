@@ -31,8 +31,8 @@ menu:
 # macOS 顶部菜单栏，供手动构建 NSMenu（而非依赖 Cocoa 自动菜单栏）的宿主应用使用。
 # `%@` 为应用产品名。
 app:
-  about: "关于 %@"
-  quit: "退出 %@"
+  about: "关于%@"
+  quit: "退出%@"
   edit: "编辑"
   window: "窗口"
   minimize: "最小化"
