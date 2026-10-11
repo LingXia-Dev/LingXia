@@ -19,6 +19,38 @@ scrolling, clips partially visible nodes against overflow containers inside
 and outside Root, and removes fully offscreen nodes from paint and hit testing.
 Clipping preserves the video's dimensions; it never resizes the picture.
 
+### iOS composition
+
+Each Root owns a shadow-DOM scroll anchor and a native container. Match the
+anchor using its bounds, viewport position, and unique two-axis overflow extent;
+never choose the nearest scroll view. Mount into a matching `WKChildScrollView`
+so WebKit owns ancestor scrolling, clipping, and ordering against HTML. UIKit
+operations are public, but WebKit's subview hierarchy is undocumented: missing,
+ambiguous, replaced, transformed, zoomed, translucent, or overflowing anchors
+use the overlay path. A bounded retry handles asynchronous layer creation.
+
+Keep the Root itself visible; suppress only its slotted measurement children.
+Composited node coordinates subtract the anchor's document origin, and only
+clips inside Root are applied natively. Do not viewport-cull these nodes from a
+JS snapshot: WebKit can scroll them into view before the next JS frame.
+Snapshots must match the current Root generation and tree revision, and advance
+that Root's geometry revision.
+
+Run WebKit's hit test first. A composited native container may receive a touch
+only when WebKit chose its anchor subtree; HTML above it keeps its touches.
+The fallback overlay retains overlay ordering. Native hit tests honor ancestor
+clipping and alpha, paint order, and transparent container holes. Restore the
+anchor's pan recognizer when detaching; Root destroy/page teardown unregisters
+the container and cancels layer retries.
+
+On an iOS device or simulator, run `NATIVE-ISLAND-001` with `platform=ios`;
+it requires `data-lx-native-presentation="same-layer"` on the video Root.
+Also verify actual native taps with an HTML overlay above/below the Root,
+nested inertial scrolling while JS is busy, overlapping Roots, clipping at
+rounded ancestors, fullscreen video return, and page back/unmount in both themes.
+`NativeRootCompositionTests` covers UIKit routing and fallback lifecycle;
+DOM/Node tests alone cannot verify WebKit's layer hierarchy or visual smoothness.
+
 ## Factories
 
 Cover and Button are author recipes that expand to `view` / `tappable` before

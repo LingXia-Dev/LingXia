@@ -121,6 +121,15 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
   expect(wrapped.compileOk).toBeTruthy();
   expect(wrapped.kinds.join(',')).toBe('video');
   expect(wrapped.hasCover).toBeFalsy();
+  if (testArgs.platform?.toLowerCase() === 'ios') {
+    const presentation = await eventually(
+      () => video.eval(({ document }) =>
+        document.querySelector('#video-native-root')?.getAttribute('data-lx-native-presentation') ?? null),
+      (value) => value === 'same-layer',
+      { timeoutMs: 5_000, describe: 'iOS video Root attached to its WebKit scrolling layer' },
+    );
+    expect(presentation).toBe('same-layer');
+  }
   expect(await waitForElementText(
     t,
     video,
