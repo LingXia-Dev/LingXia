@@ -87,7 +87,7 @@ struct Edit {
 /// Platform SDK work that is not a source-file rewrite.
 enum SdkStep {
     Fetch { platform: SdkPlatform, cached: bool },
-    InjectApple { dir: PathBuf },
+    LinkApple { dir: PathBuf },
 }
 
 struct UpgradePlan {
@@ -525,7 +525,7 @@ fn collect_sdk_steps(root: &Path, in_workspace: bool, version: &str) -> Vec<SdkS
             cached: sdk_cache::sdk_is_cached(SdkPlatform::Apple, version),
         });
         for dir in apple_dirs {
-            steps.push(SdkStep::InjectApple { dir });
+            steps.push(SdkStep::LinkApple { dir });
         }
     }
     if root
@@ -546,12 +546,12 @@ impl SdkStep {
     fn is_pending(&self, sdk_version: &str) -> bool {
         match self {
             SdkStep::Fetch { cached, .. } => !cached,
-            SdkStep::InjectApple { dir } => apple_inject_pending(dir, sdk_version),
+            SdkStep::LinkApple { dir } => apple_link_pending(dir, sdk_version),
         }
     }
 }
 
-fn apple_inject_pending(dir: &Path, sdk_version: &str) -> bool {
+fn apple_link_pending(dir: &Path, sdk_version: &str) -> bool {
     if crate::platform::apple::sdk_package_is_hand_wired(dir) {
         return false;
     }
@@ -578,10 +578,10 @@ fn print_sdk_step(root: &Path, step: &SdkStep, sdk_version: &str) {
                 sdk_label(*platform)
             );
         }
-        SdkStep::InjectApple { dir } => {
+        SdkStep::LinkApple { dir } => {
             let rel = dir.strip_prefix(root).unwrap_or(dir);
             println!(
-                "    {}/Package.swift -> cached Apple SDK {sdk_version}",
+                "    .lingxia/sdk/apple -> cached Apple SDK {sdk_version} ({}/Package.swift)",
                 rel.display()
             );
         }
@@ -614,7 +614,7 @@ fn apply_sdk_steps(root: &Path, steps: &[SdkStep], sdk_version: &str) -> Vec<Str
                     }
                 }
             }
-            SdkStep::InjectApple { dir } => {
+            SdkStep::LinkApple { dir } => {
                 if crate::platform::apple::sdk_package_is_hand_wired(dir) {
                     println!(
                         "    keep hand-wired {}/Package.swift",
@@ -635,22 +635,24 @@ fn apply_sdk_steps(root: &Path, steps: &[SdkStep], sdk_version: &str) -> Vec<Str
                     continue;
                 }
                 let relative = dir.strip_prefix(root).unwrap_or(dir);
-                match crate::platform::apple::inject_sdk_package_dependency(dir, &sdk_dir) {
+                match crate::platform::apple::prepare_sdk_package_link(dir, &sdk_dir) {
                     Ok(()) if crate::platform::apple::sdk_package_points_at(dir, &sdk_dir) => {
-                        println!("    {} {}/Package.swift", "✓".green(), relative.display());
-                    }
-                    Ok(()) => {
-                        let message = format!(
-                            "{}/Package.swift was not updated to the cached Apple SDK",
+                        println!(
+                            "    {} Apple SDK link for {}",
+                            "✓".green(),
                             relative.display()
                         );
+                    }
+                    Ok(()) => {
+                        let message =
+                            format!("Apple SDK link for {} was not updated", relative.display());
                         println!("    {} {message}", "!".yellow());
                         failures.push(message);
                     }
                     Err(err) => {
                         println!("    {} {err}", "!".yellow());
                         failures.push(format!(
-                            "inject cached Apple SDK into {}/Package.swift ({err:#})",
+                            "prepare cached Apple SDK link for {} ({err:#})",
                             relative.display()
                         ));
                     }
@@ -1680,11 +1682,11 @@ version = "metadata"
                 SdkPlatform::Harmony
             ]
         );
-        let injects = steps
+        let links = steps
             .iter()
-            .filter(|s| matches!(s, SdkStep::InjectApple { .. }))
+            .filter(|s| matches!(s, SdkStep::LinkApple { .. }))
             .count();
-        assert_eq!(injects, 2);
+        assert_eq!(links, 2);
 
         assert!(collect_sdk_steps(root, true, "0.12.0").is_empty());
     }
@@ -1704,7 +1706,7 @@ version = "metadata"
             &root.join("ios")
         ));
         assert!(collect_sdk_steps(root, false, "0.12.0").is_empty());
-        assert!(!apple_inject_pending(&root.join("ios"), "0.12.0"));
+        assert!(!apple_link_pending(&root.join("ios"), "0.12.0"));
     }
 
     #[test]

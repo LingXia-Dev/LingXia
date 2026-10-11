@@ -14,6 +14,16 @@ Host UI (windows, asides, tray) is declared in `lingxia.yaml` →
 [Surfaces](./project.md#surfaces), never in Swift. Packet Tunnel packaging is a
 CLI convention: [iOS Packet Tunnel extensions](../cli/lingxia.md#ios-packet-tunnel-extensions).
 
+## SDK dependency
+
+Host `ios/Package.swift` and `macos/Package.swift` declare
+`.package(name: "lingxia", path: "../.lingxia/sdk/apple")` and the `lingxia`
+product. `lingxia build`, `dev`, and `upgrade` prepare that ignored symlink to
+the selected SDK cache; SDK upgrades do not rewrite the manifests. Keep
+`.lingxia/sdk/` out of Git. Old placeholder/CLI-managed absolute-path manifests
+must be updated to this declaration before using these commands. Explicitly
+vendored SDK dependencies are left alone.
+
 ## Quick start
 
 ```swift

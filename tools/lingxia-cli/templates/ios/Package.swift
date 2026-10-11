@@ -14,16 +14,14 @@ let package = Package(
         ),
     ],
     dependencies: [
-        // Add the LingXia Swift package dependency here before building.
-        // `lingxia build` temporarily injects a local `.package(path:)` to the
-        // cached SDK (unsafeFlags rules out a remote URL), then restores this
-        // manifest so machine-local paths never remain in the source tree.
+        // `lingxia build` prepares this ignored link to the selected cached SDK.
+        .package(name: "lingxia", path: "../.lingxia/sdk/apple"), // lingxia-sdk: managed by `lingxia build`
     ],
     targets: [
         .target(
             name: "{{SWIFT_TARGET_NAME}}",
             dependencies: [
-                // .product(name: "lingxia", package: "lingxia"), // managed by `lingxia build`
+                .product(name: "lingxia", package: "lingxia"),
             ],
             path: "Sources",
             resources: [
