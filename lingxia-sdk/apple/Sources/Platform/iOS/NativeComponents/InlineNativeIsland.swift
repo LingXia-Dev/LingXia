@@ -463,6 +463,9 @@ final class InlineNativeIsland {
                 self?.eventSink(authorId, name, detail)
             }
             video.mount(in: container)
+            // The player lifts itself with a zPosition for standalone use; inside
+            // an island, subview order is the paint order, or it covers its siblings.
+            video.view.layer.zPosition = 0
             item.video = video
             item.view = video.view
             manager?.attachIslandVideo(id: item.authorId, component: video)
