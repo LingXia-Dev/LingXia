@@ -127,9 +127,10 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     if (!this.shadowRoot) {
       const shadow = this.attachShadow({ mode: "open" });
       // Hiding the root itself also hides a native view mounted in its WebKit
-      // layer. On iOS suppress only the author children, preserving layout.
+      // layer. On iOS suppress only the author children's paint: `filter` keeps
+      // their computed opacity, so automation still reads them as visible.
       shadow.innerHTML = isIOS()
-        ? '<style>:host([data-lx-native-paint-hidden]:not([data-lx-native-measuring])) ::slotted(*) { opacity: 0 !important; }</style><slot></slot>'
+        ? '<style>:host([data-lx-native-paint-hidden]:not([data-lx-native-measuring])) ::slotted(*) { filter: opacity(0) !important; }</style><slot></slot>'
         : '<style>:host([data-lx-native-paint-hidden]:not([data-lx-native-measuring])) { opacity: 0 !important; }</style><slot></slot>';
     }
     this.iosComposition.setup(this.shadowRoot!);
