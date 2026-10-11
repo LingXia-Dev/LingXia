@@ -510,6 +510,11 @@ struct AndroidClickQueryResult {
     visible: bool,
     #[serde(default)]
     enabled: bool,
+    #[serde(default)]
+    obscured: bool,
+    #[cfg(feature = "servo")]
+    #[serde(default)]
+    viewport: [f64; 2],
 }
 
 impl WebViewInner {
@@ -542,14 +547,9 @@ impl WebViewInner {
         .map_err(|error| WebViewError::WebView(format!("Android {action} failed: {error:?}")))
     }
 
-    /// Native-dispatch a click on `selector` (nth match) via Chromium's own
-    /// touch pipeline. Steps:
-    ///  1. Run a CSP-safe expression that locates the element, scrolls it
-    ///     into view, and returns its viewport-relative center + DPR.
-    ///  2. Call Java `LingXiaWebView.dispatchClickAt(x, y)` which builds a
-    ///     real `MotionEvent` (ACTION_DOWN/UP) — Chromium treats it as a
-    ///     genuine touch (fires touchstart/touchend → click, focuses inputs,
-    ///     surfaces the IME).
+    /// Measure and hit-test the target, then submit native DOWN/UP events.
+    /// Servo rechecks the measured viewport on its engine thread before DOWN;
+    /// the system WebView receives Java MotionEvents on the Android UI thread.
     pub(crate) async fn click_inner(
         &self,
         selector: &str,
@@ -566,7 +566,9 @@ impl WebViewInner {
              const r = el.getBoundingClientRect(); \
              const s = window.getComputedStyle(el); \
              const disabled = !!el.disabled || el.getAttribute('aria-disabled') === 'true'; \
+             const hit = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2); \
              return {{ ok:true, cx:r.left + r.width/2, cy:r.top + r.height/2, dpr:window.devicePixelRatio || 1, \
+                       viewport: [window.innerWidth, window.innerHeight], obscured: !hit || !(hit === el || el.contains(hit)), \
                        enabled: !disabled, \
                        visible: r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && \
                                 r.top < window.innerHeight && r.left < window.innerWidth && \
@@ -597,9 +599,28 @@ impl WebViewInner {
                 "Element not enabled: {selector}"
             )));
         }
+        if result.obscured {
+            return Err(crate::WebViewInputError::ElementNotInteractable(format!(
+                "Element is obscured: {selector}"
+            )));
+        }
         let dpr = if result.dpr > 0.0 { result.dpr } else { 1.0 };
         let device_x = (result.cx * dpr) as f32;
         let device_y = (result.cy * dpr) as f32;
+        #[cfg(feature = "servo")]
+        {
+            super::servo::click(
+                &self.webtag,
+                self.native_view_id,
+                crate::servo_input::ClickTarget {
+                    point: [device_x, device_y],
+                    viewport: result.viewport,
+                    dpr,
+                },
+            )
+            .await
+        }
+        #[cfg(not(feature = "servo"))]
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
             env.call_method(
                 &*self.get_java_webview(),

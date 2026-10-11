@@ -549,6 +549,10 @@ enum Command {
     /// frames while it is away.
     SetSurfaceShown(bool),
     Touch(TouchEventType, i32, f32, f32),
+    Click {
+        target: crate::servo_input::ClickTarget,
+        reply: oneshot::Sender<Result<(), crate::WebViewInputError>>,
+    },
     Wheel(f64, f64),
     Input(InputEvent),
     Load(String),
@@ -1241,6 +1245,40 @@ impl EngineState {
                         TouchPointerType::Touch,
                     )));
                 }
+            }
+            Command::Click { target, reply } => {
+                if reply.is_closed() {
+                    return;
+                }
+                let Some(view) = &self.view else {
+                    let _ = reply.send(Err(crate::WebViewInputError::Platform(
+                        "Servo view is no longer available".into(),
+                    )));
+                    return;
+                };
+                if self.native_window.is_none()
+                    || !self.surface_shown
+                    || self.throttled
+                    || !target.matches_viewport([self.size.width, self.size.height])
+                {
+                    let _ = reply.send(Err(crate::WebViewInputError::ElementNotInteractable(
+                        "Servo viewport changed or is hidden; re-query the click target".into(),
+                    )));
+                    return;
+                }
+                // Validate and submit both events in one engine command. A
+                // queued resize must not split the tap or silently use old coordinates.
+                view.set_focused(true);
+                for kind in [TouchEventType::Down, TouchEventType::Up] {
+                    view.notify_input_event(InputEvent::Touch(TouchEvent::new(
+                        kind,
+                        TouchId(0),
+                        servo::DevicePoint::new(target.point[0], target.point[1]).into(),
+                        TouchPointerType::Touch,
+                    )));
+                }
+                // This acknowledges submission, not Script's eventual click handler.
+                let _ = reply.send(Ok(()));
             }
             Command::Wheel(dx, dy) => {
                 if let Some(view) = &self.view {
@@ -2973,6 +3011,25 @@ pub(super) fn evaluate(
             token: token.to_string(),
         },
     )
+}
+
+pub(super) async fn click(
+    webtag: &WebTag,
+    id: NativeWebViewId,
+    target: crate::servo_input::ClickTarget,
+) -> Result<(), crate::WebViewInputError> {
+    let (tx, rx) = oneshot::channel();
+    send(
+        &ViewKey::new(webtag, id),
+        Command::Click { target, reply: tx },
+    )
+    .map_err(|error| crate::WebViewInputError::Platform(error.to_string()))?;
+    tokio::time::timeout(Duration::from_secs(5), rx)
+        .await
+        .map_err(|_| crate::WebViewInputError::Platform("Servo click dispatch timed out".into()))?
+        .map_err(|_| {
+            crate::WebViewInputError::Platform("Servo click target was destroyed".into())
+        })?
 }
 
 pub(super) async fn current_url(
