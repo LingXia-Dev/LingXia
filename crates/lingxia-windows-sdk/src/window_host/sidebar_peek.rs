@@ -208,6 +208,7 @@ pub(super) fn open(owner: HWND) -> bool {
     if width <= 0 || height <= 0 {
         return false;
     }
+    cancel_sidebar_tooltip(owner);
     destroy_sidebar_tabbar_popup(owner);
     let window = match unsafe {
         WindowsAndMessaging::CreateWindowExW(
@@ -275,6 +276,7 @@ pub(super) fn close(owner: HWND) -> bool {
     let Some(peek) = peeks().remove(&hwnd_handle(owner)) else {
         return false;
     };
+    cancel_sidebar_tooltip(owner);
     if peek.tooltip_shown {
         destroy_sidebar_tabbar_popup(owner);
     }
@@ -609,22 +611,23 @@ fn pointer_moved(window: HWND, cursor: Option<(i32, i32)>) {
     let repaint = hover != peek.hover;
     peek.cursor = cursor;
     peek.hover = hover;
-    peek.tooltip_shown = sync_expand_tooltip(&peek);
+    peek.tooltip_shown = sync_tooltip(&peek);
     store(&peek);
     if repaint {
         upload(window, &peek);
     }
 }
 
-/// The expand control's label rides the shared rail float, which hides itself
-/// once the pointer leaves the control.
-fn sync_expand_tooltip(peek: &SidebarPeek) -> bool {
+/// Labels for the expand control and header actions ride the owner's single
+/// rail float, so only one shows; it hides once the pointer leaves its button.
+fn sync_tooltip(peek: &SidebarPeek) -> bool {
     let owner = hwnd_from_handle(peek.owner);
-    let tooltip = peek.cursor.and_then(|cursor| {
-        let (anchor, popup, text) = peek.layout.expand_tooltip()?;
-        point_in_rect(anchor, cursor).then_some((anchor, popup, text))
-    });
+    let tooltip = peek
+        .cursor
+        .and_then(|cursor| peek.layout.tooltip(cursor))
+        .map(|tooltip| (tooltip.anchor, tooltip.popup, tooltip.text));
     let Some((anchor, popup, text)) = tooltip else {
+        cancel_sidebar_tooltip(owner);
         if peek.tooltip_shown {
             destroy_sidebar_tabbar_popup(owner);
         }
@@ -636,17 +639,8 @@ fn sync_expand_tooltip(peek: &SidebarPeek) -> bool {
         right: rect.right + peek.screen.left,
         bottom: rect.bottom + peek.screen.top,
     };
-    show_sidebar_popup(
-        owner,
-        to_screen(popup),
-        to_screen(anchor),
-        SidebarPopupContent::Tooltip(text),
-    );
+    request_sidebar_control_tooltip(owner, to_screen(popup), to_screen(anchor), text);
     true
-}
-
-fn point_in_rect(rect: RECT, point: (i32, i32)) -> bool {
-    point.0 >= rect.left && point.0 < rect.right && point.1 >= rect.top && point.1 < rect.bottom
 }
 
 fn activate(window: HWND, point: (i32, i32), context_menu: bool) {

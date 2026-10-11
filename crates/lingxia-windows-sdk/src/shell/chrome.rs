@@ -372,6 +372,9 @@ pub(crate) struct CollapsedSidebarTooltip {
     pub(crate) anchor: RECT,
     pub(crate) popup: RECT,
     pub(crate) text: String,
+    /// A control's label (expand, collapse, header action) waits for the
+    /// system tooltip delay; rail entries name themselves at once.
+    pub(crate) delayed: bool,
 }
 
 pub(super) fn chrome_command(
@@ -1426,19 +1429,23 @@ pub(crate) fn collapsed_sidebar_tabbar_popup(
     })
 }
 
-pub(crate) fn collapsed_sidebar_tooltip(
-    client: RECT,
-    layout: &WindowsWindowLayout,
+/// Hover label for sidebar chrome: rail entries float beside the rail; the
+/// expanded header's actions and collapse toggle get one under the button.
+pub(crate) fn sidebar_tooltip(
+    state: &WindowsChromeState,
     point: (i32, i32),
 ) -> Option<CollapsedSidebarTooltip> {
-    let layout = shell_layout(layout)?;
+    let client = state.client;
+    let layout = shell_layout(&state.layout)?;
     let tabbar = layout.tab_bar.as_ref()?;
     if !matches!(
         tabbar.position,
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
-    ) || !(tabbar.collapsed || tabbar.icon_rail)
-    {
+    ) {
         return None;
+    }
+    if !(tabbar.collapsed || tabbar.icon_rail) {
+        return expanded_header_tooltip(state, layout, point);
     }
     let rects = compute_chrome_rects(client, layout);
     let tabbar_rect = rects.tab_bar?;
@@ -1523,6 +1530,73 @@ pub(crate) fn collapsed_sidebar_tooltip(
             bottom: top + height,
         },
         text: text.to_string(),
+        delayed: false,
+    })
+}
+
+fn expanded_header_tooltip(
+    state: &WindowsChromeState,
+    layout: &WindowsShellWindowLayout,
+    point: (i32, i32),
+) -> Option<CollapsedSidebarTooltip> {
+    // Same covering rules as `chrome_hit_test`: a control the click ignores
+    // gets no label either.
+    if maximized_native_panel_hit(state, point).is_some() {
+        return None;
+    }
+    let covered_layout = covering_panel_layout(state, layout);
+    let layout = covered_layout.as_ref().unwrap_or(layout);
+    let client = state.client;
+    let tabbar = layout.tab_bar.as_ref()?;
+    let rects = chrome_rects_for_state(state, layout);
+    let tabbar_rect = rects.tab_bar?;
+    let header_action = sidebar_header_action_rects(tabbar_rect, tabbar)
+        .into_iter()
+        .find(|(_, anchor)| rect_contains(anchor, point))
+        .and_then(|(id, anchor)| {
+            let action = tabbar
+                .header_actions
+                .iter()
+                .find(|action| action.id == id)?;
+            Some((anchor, action.label.clone()))
+        });
+    let (anchor, text) = header_action.or_else(|| {
+        let toggle = top_bar_controls(client, rects.top_bar, layout).sidebar_toggle?;
+        rect_contains(&toggle, point).then(|| {
+            (
+                toggle,
+                lingxia_logic::i18n::t(lingxia_logic::I18nKey::SidebarCollapse),
+            )
+        })
+    })?;
+    tooltip_below(anchor, &text, client)
+}
+
+/// A hover label centered under a header button, kept inside `client`.
+pub(super) fn tooltip_below(
+    anchor: RECT,
+    text: &str,
+    client: RECT,
+) -> Option<CollapsedSidebarTooltip> {
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    let (width, height) = sidebar_rail_tooltip_size(text, client);
+    let left = ((anchor.left + anchor.right - width) / 2)
+        .clamp(client.left, (client.right - width).max(client.left));
+    let top = (anchor.bottom + sidebar_rail_tooltip_gap())
+        .clamp(client.top, (client.bottom - height).max(client.top));
+    Some(CollapsedSidebarTooltip {
+        anchor,
+        popup: RECT {
+            left,
+            top,
+            right: left + width,
+            bottom: top + height,
+        },
+        text: text.to_string(),
+        delayed: true,
     })
 }
 
@@ -1711,7 +1785,7 @@ pub(crate) fn paint_collapsed_sidebar_tabbar_popup(
     );
 }
 
-pub(crate) fn paint_collapsed_sidebar_tooltip(hdc: HDC, text: &str, width: i32, height: i32) {
+pub(crate) fn paint_sidebar_tooltip(hdc: HDC, text: &str, width: i32, height: i32) {
     let bounds = normalize_rect(RECT {
         left: 0,
         top: 0,
@@ -2978,15 +3052,15 @@ mod scroll_tests {
         chrome_hit_test, chrome_rects_for_state, clamp_sidebar_scroll,
         collapsed_sidebar_popup_tabbar, collapsed_sidebar_tabbar_click_command,
         collapsed_sidebar_tabbar_popup_hit, collapsed_sidebar_tabbar_popup_item_bounds,
-        collapsed_sidebar_tabbar_popup_size, collapsed_sidebar_tooltip, compute_attached_layout,
-        compute_chrome_rects, covering_panel_layout, footer_action_rects,
-        layout_for_maximized_native_panel, layout_without_covered_main_chrome,
-        phone_browser_bar_active, phone_browser_bar_rects, rail_expand_hit, rect_height,
-        shell_content_inset, shell_top_bar_height, sidebar_auxiliary_rail_index,
-        sidebar_auxiliary_rects, sidebar_caption_contains, sidebar_group_rect, sidebar_icon_size,
-        sidebar_item_height, sidebar_item_rect, sidebar_rail_close_rect, sidebar_rail_expand_rect,
-        sidebar_rail_item_rect, sidebar_rail_pinned_divider_rect, sidebar_tabbar_popup_padding,
-        sidebar_tabbar_popup_width, sidebar_top_level_icon_rect, tabbar_requires_full_repaint,
+        collapsed_sidebar_tabbar_popup_size, compute_attached_layout, compute_chrome_rects,
+        covering_panel_layout, footer_action_rects, layout_for_maximized_native_panel,
+        layout_without_covered_main_chrome, phone_browser_bar_active, phone_browser_bar_rects,
+        rail_expand_hit, rect_height, shell_content_inset, shell_top_bar_height,
+        sidebar_auxiliary_rail_index, sidebar_auxiliary_rects, sidebar_caption_contains,
+        sidebar_group_rect, sidebar_icon_size, sidebar_item_height, sidebar_item_rect,
+        sidebar_rail_close_rect, sidebar_rail_expand_rect, sidebar_rail_item_rect,
+        sidebar_rail_pinned_divider_rect, sidebar_tabbar_popup_padding, sidebar_tabbar_popup_width,
+        sidebar_tooltip, sidebar_top_level_icon_rect, tabbar_requires_full_repaint,
         top_bar_controls,
     };
     use lingxia_windows_contract::{
@@ -2994,6 +3068,18 @@ mod scroll_tests {
         WindowsWindowLayout,
     };
     use windows::Win32::Foundation::{HWND, RECT};
+
+    fn tooltip_state(client: RECT, layout: &WindowsWindowLayout) -> WindowsChromeState {
+        WindowsChromeState {
+            hwnd: HWND::default(),
+            client,
+            layout: layout.clone(),
+            attached: None,
+            frame_button_hover: None,
+            frame_button_pressed: None,
+            cursor: None,
+        }
+    }
 
     fn bottom_tabbar(visible: bool, background_transparent: bool) -> WindowsShellTabBarLayout {
         WindowsShellTabBarLayout {
@@ -3111,9 +3197,8 @@ mod scroll_tests {
         let rects = compute_chrome_rects(client, &layout);
         let rail_rect = rects.tab_bar.unwrap();
         let web_rect = sidebar_rail_item_rect(rail_rect, sidebar_auxiliary_rail_index(&rail, 0), 0);
-        let web_tooltip = collapsed_sidebar_tooltip(
-            client,
-            &window_layout,
+        let web_tooltip = sidebar_tooltip(
+            &tooltip_state(client, &window_layout),
             (
                 (web_rect.left + web_rect.right) / 2,
                 (web_rect.top + web_rect.bottom) / 2,
@@ -3124,9 +3209,8 @@ mod scroll_tests {
         assert!(web_tooltip.popup.left > rail_rect.right);
 
         let action_rect = footer_action_rects(client, &rects, &layout)[0].1;
-        let action_tooltip = collapsed_sidebar_tooltip(
-            client,
-            &window_layout,
+        let action_tooltip = sidebar_tooltip(
+            &tooltip_state(client, &window_layout),
             (
                 (action_rect.left + action_rect.right) / 2,
                 (action_rect.top + action_rect.bottom) / 2,
@@ -3166,9 +3250,8 @@ mod scroll_tests {
         let window_layout = WindowsWindowLayout::new(layout.clone());
         let rail_rect = compute_chrome_rects(client, &layout).tab_bar.unwrap();
         let web_rect = sidebar_rail_item_rect(rail_rect, sidebar_auxiliary_rail_index(&rail, 0), 0);
-        let tooltip = collapsed_sidebar_tooltip(
-            client,
-            &window_layout,
+        let tooltip = sidebar_tooltip(
+            &tooltip_state(client, &window_layout),
             (
                 (web_rect.left + web_rect.right) / 2,
                 (web_rect.top + web_rect.bottom) / 2,
@@ -3270,6 +3353,145 @@ mod scroll_tests {
     }
 
     #[test]
+    fn rail_entries_label_at_once_and_controls_wait_for_the_delay() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 1100,
+            bottom: 737,
+        };
+        let center = |rect: RECT| ((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+        let footer = WindowsShellFooterActionLayout {
+            generation: 1,
+            id: "terminal".to_string(),
+            label: "Terminal".to_string(),
+            icon_path: String::new(),
+            disabled: false,
+            source: WindowsShellSidebarActionSource::Runtime,
+        };
+        let mut tabbar = bottom_tabbar(true, false);
+        tabbar.position = WindowsShellTabBarPosition::Left;
+        tabbar.dimension = 184;
+        tabbar
+            .auxiliary_items
+            .push(WindowsShellAuxiliaryItemLayout {
+                id: "web:docs".to_string(),
+                title: "Docs".to_string(),
+                active: false,
+                pinned: false,
+                closable: true,
+                icon_png: None,
+                icon_path: String::new(),
+                tabs: None,
+            });
+        tabbar.header_actions = vec![super::WindowsShellHeaderActionLayout {
+            generation: 1,
+            id: "settings".to_string(),
+            label: "Settings".to_string(),
+            icon_path: String::new(),
+            disabled: false,
+            source: WindowsShellSidebarActionSource::Runtime,
+        }];
+
+        let mut rail = tabbar.clone();
+        rail.icon_rail = true;
+        let rail_layout = WindowsShellWindowLayout {
+            tab_bar: Some(rail.clone()),
+            footer_actions: vec![footer.clone()],
+            ..Default::default()
+        };
+        let rail_state = tooltip_state(client, &WindowsWindowLayout::new(rail_layout.clone()));
+        let rects = compute_chrome_rects(client, &rail_layout);
+        let rail_rect = rects.tab_bar.unwrap();
+        let web = sidebar_rail_item_rect(rail_rect, sidebar_auxiliary_rail_index(&rail, 0), 0);
+        let rail_footer = footer_action_rects(client, &rects, &rail_layout)[0].1;
+        for point in [center(web), center(rail_footer)] {
+            assert!(!sidebar_tooltip(&rail_state, point).unwrap().delayed);
+        }
+
+        let pinned_layout = WindowsShellWindowLayout {
+            tab_bar: Some(tabbar.clone()),
+            footer_actions: vec![footer],
+            ..Default::default()
+        };
+        let pinned_state = tooltip_state(client, &WindowsWindowLayout::new(pinned_layout.clone()));
+        let rects = compute_chrome_rects(client, &pinned_layout);
+        let action = super::sidebar_header_action_rects(rects.tab_bar.unwrap(), &tabbar)[0].1;
+        let toggle = top_bar_controls(client, rects.top_bar, &pinned_layout)
+            .sidebar_toggle
+            .unwrap();
+        for point in [center(action), center(toggle)] {
+            assert!(sidebar_tooltip(&pinned_state, point).unwrap().delayed);
+        }
+    }
+
+    #[test]
+    fn pinned_header_controls_name_themselves_under_the_button() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 1100,
+            bottom: 737,
+        };
+        let action = |id: &str, label: &str| super::WindowsShellHeaderActionLayout {
+            generation: 1,
+            id: id.to_string(),
+            label: label.to_string(),
+            icon_path: String::new(),
+            disabled: false,
+            source: WindowsShellSidebarActionSource::Runtime,
+        };
+        let center = |rect: RECT| ((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+        for position in [
+            WindowsShellTabBarPosition::Left,
+            WindowsShellTabBarPosition::Right,
+        ] {
+            let mut tabbar = bottom_tabbar(true, false);
+            tabbar.position = position;
+            tabbar.dimension = 184;
+            tabbar.header_actions = vec![
+                action("settings", "Settings"),
+                action("downloads", "Downloads"),
+            ];
+            let layout = WindowsShellWindowLayout {
+                tab_bar: Some(tabbar.clone()),
+                ..Default::default()
+            };
+            let window_layout = WindowsWindowLayout::new(layout.clone());
+            let rects = compute_chrome_rects(client, &layout);
+            let sidebar = rects.tab_bar.unwrap();
+            let actions = super::sidebar_header_action_rects(sidebar, &tabbar);
+            assert_eq!(actions.len(), 2, "{position:?}");
+            for (id, rect) in actions {
+                let tooltip =
+                    sidebar_tooltip(&tooltip_state(client, &window_layout), center(rect)).unwrap();
+                let label = if id == "settings" {
+                    "Settings"
+                } else {
+                    "Downloads"
+                };
+                assert_eq!(tooltip.text, label, "{position:?}");
+                assert_eq!(tooltip.anchor, rect);
+                assert!(tooltip.popup.top >= rect.bottom);
+                assert!(tooltip.popup.left >= client.left && tooltip.popup.right <= client.right);
+            }
+            let toggle = top_bar_controls(client, rects.top_bar, &layout)
+                .sidebar_toggle
+                .unwrap();
+            let tooltip =
+                sidebar_tooltip(&tooltip_state(client, &window_layout), center(toggle)).unwrap();
+            assert_eq!(
+                tooltip.text,
+                lingxia_logic::i18n::t(lingxia_logic::I18nKey::SidebarCollapse)
+            );
+            assert!(tooltip.popup.right <= client.right, "{position:?}");
+            // Rows themselves carry visible titles and get no hover label.
+            let row = sidebar_group_rect(sidebar, &tabbar, 0);
+            assert!(sidebar_tooltip(&tooltip_state(client, &window_layout), center(row)).is_none());
+        }
+    }
+
+    #[test]
     fn compact_rail_expand_peeks_instead_of_pinning() {
         let client = RECT {
             left: 0,
@@ -3312,7 +3534,7 @@ mod scroll_tests {
             super::chrome_hover_rect(&state, &layout, center),
             Some(expand)
         );
-        assert!(collapsed_sidebar_tooltip(client, &window_layout, center).is_none());
+        assert!(sidebar_tooltip(&tooltip_state(client, &window_layout), center).is_none());
         assert!(rail_expand_hit(client, &window_layout, center));
         assert!(!rail_expand_hit(
             client,
@@ -3900,6 +4122,14 @@ mod scroll_tests {
         let mut sidebar = bottom_tabbar(true, false);
         sidebar.position = WindowsShellTabBarPosition::Left;
         sidebar.dimension = 220;
+        sidebar.header_actions = vec![super::WindowsShellHeaderActionLayout {
+            generation: 1,
+            id: "settings".to_string(),
+            label: "Settings".to_string(),
+            icon_path: String::new(),
+            disabled: false,
+            source: WindowsShellSidebarActionSource::Runtime,
+        }];
         let layout = WindowsShellWindowLayout {
             navigation_bar: Some(WindowsShellNavigationBarLayout {
                 visible: true,
@@ -3966,6 +4196,29 @@ mod scroll_tests {
         let painted_layout = covering_panel_layout(&state, &layout).unwrap();
         assert!(painted_layout.navigation_bar.is_none());
         assert!(painted_layout.tab_bar.is_none());
+
+        // The covered header controls ignore clicks, so they get no label.
+        let rects = compute_chrome_rects(client, &layout);
+        let toggle = top_bar_controls(client, rects.top_bar, &layout)
+            .sidebar_toggle
+            .unwrap();
+        let action = super::sidebar_header_action_rects(
+            rects.tab_bar.unwrap(),
+            layout.tab_bar.as_ref().unwrap(),
+        )[0]
+        .1;
+        let uncovered = tooltip_state(client, &state.layout);
+        for rect in [toggle, action] {
+            let center = ((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+            assert!(sidebar_tooltip(&uncovered, center).is_some());
+            assert!(sidebar_tooltip(&state, center).is_none());
+            assert!(!matches!(
+                chrome_hit_test(&state, &layout, center),
+                Some(WindowsChromeHit::Command(command))
+                    if command.id == super::command_id::SIDEBAR_TOGGLE
+                        || command.id == super::command_id::SIDEBAR_ACTION
+            ));
+        }
     }
 
     #[test]

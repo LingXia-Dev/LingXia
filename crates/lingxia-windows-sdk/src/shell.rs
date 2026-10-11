@@ -96,10 +96,10 @@ pub(crate) use chrome::{
 };
 pub(crate) use chrome::{
     bottom_tabbar_rect, collapsed_sidebar_tabbar_click_command, collapsed_sidebar_tabbar_popup,
-    collapsed_sidebar_tabbar_popup_hit, collapsed_sidebar_tooltip,
-    paint_collapsed_sidebar_tabbar_popup, paint_collapsed_sidebar_tooltip,
-    paint_transparent_tabbar_overlay, rail_expand_hit, sidebar_rail_tooltip_radius,
-    sidebar_tabbar_popup_radius, transparent_tabbar_overlay_rect,
+    collapsed_sidebar_tabbar_popup_hit, paint_collapsed_sidebar_tabbar_popup,
+    paint_sidebar_tooltip, paint_transparent_tabbar_overlay, rail_expand_hit,
+    sidebar_rail_tooltip_radius, sidebar_tabbar_popup_radius, sidebar_tooltip,
+    transparent_tabbar_overlay_rect,
 };
 
 pub(crate) use chrome::{workspace_corner_radii, workspace_silhouette_rect};
