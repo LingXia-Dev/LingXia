@@ -19,6 +19,51 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.25.0 — 2026-10-11
+
+### Breaking
+
+- **Breaking** — **apple**: resolve SDK through a project-local link (fcbeb1ca5)
+- **Breaking** — **cli**: hand package outputs to publish, store, and install through a dist manifest (48039e821)
+- **Breaking** — **cli**: publish what the package says, from anywhere (dc88f08c8)
+
+### Writing an lxapp
+
+- **elements**: measure Root-local clips only on iOS (2ea18b396)
+- **update**: fetch lxapps from the switched service on a prod build (d393ef2ce)
+- **update**: keep a prod build from fetching dev-service packages (41d981cd3)
+
+### Embedding a host app
+
+- **windows**: name sidebar header controls on hover (736478e3a)
+- **windows**: peek the Windows sidebar from its rail (18bd73994)
+- **apple**: peek the macOS sidebar from its rail (3838dc9f3)
+- **apple**: show a macOS pull-to-refresh on the refresh bar alone (4de445a2e)
+- **ios**: order overlay roots without lifting them over host components (bd77778f1)
+- **ios**: keep a resized native root on its WebKit layer (72f492dae)
+- **ios**: recycle native root anchor signatures (36bd4caf7)
+- **ios**: stop an island video from painting over its sibling nodes (db3f8c3ab)
+- **ios**: hide island measurement children without zeroing their opacity (1f9950494)
+- **ios**: keep a same-layer video from locking page scroll (fcfa3f2f7)
+- **ios**: re-resolve a native root container WebKit evicts from its layer (8bc402454)
+- **ios**: compose native roots in WebKit scrolling layers (b5721c59b)
+- **android**: guard cold starts without splash resources (d6842b184)
+- **shell**: share the sidebar caption clearance and keep rail controls on one axis (2dd249cff)
+- **shell**: keep desktop sidebar toggles at the top (89d76e89d)
+- **apple**: give every macOS host a standard menu bar (e8db36203)
+- **android**: update live browser WebView themes (a0780b04c)
+- **android**: repair SVG tab icons and browser startup (43a27031b)
+- **harmony**: attach only the current browser tab controller (be9330f54)
+- **harmony**: repair browser lifecycle and tab icon rendering (fe77b9f86)
+- **ios**: avoid executable and home resource name collisions (166df2992)
+
+### CLI and CI
+
+- **cli**: size Dock icons on Apple's 824/1024 grid (b228c53a9)
+- **cli**: publish the host version baked into the package (790e72b36)
+- **cli**: run the project's lingxia:prepare script instead of a template lifecycle (51159be60)
+- **cli**: hand template lifecycles plain paths on Windows (34778e571)
+
 ## 0.24.0 — 2026-10-10
 
 ### Breaking
