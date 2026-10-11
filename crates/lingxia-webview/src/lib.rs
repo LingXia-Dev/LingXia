@@ -105,6 +105,9 @@ mod android_document;
 mod servo_document;
 
 #[cfg(any(all(target_os = "android", feature = "servo"), test))]
+mod servo_input;
+
+#[cfg(any(all(target_os = "android", feature = "servo"), test))]
 mod servo_vsync;
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
