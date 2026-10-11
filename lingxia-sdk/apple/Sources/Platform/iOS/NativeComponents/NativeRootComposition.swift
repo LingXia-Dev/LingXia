@@ -25,11 +25,12 @@ final class NativeRootComposition {
         self.webView = webView
         overlay.addSubview(container)
         (container as? NativeRootContainerView)?.windowChanged = { [weak self] in
-            // WebKit may discard a scrolling layer without a DOM mutation.
+            // WebKit may discard a scrolling layer, or reset its subviews and drop
+            // only this container, without a DOM mutation.
             Task { @MainActor [weak self] in
                 guard let self, !self.tornDown, self.active, self.sameLayer,
                       let webView = self.webView, webView.window != nil,
-                      self.anchor?.isDescendant(of: webView) != true else { return }
+                      self.container.window == nil else { return }
                 self.update(self.descriptor)
             }
         }
