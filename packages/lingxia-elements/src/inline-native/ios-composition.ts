@@ -9,6 +9,14 @@ export interface IOSCompositionAnchor {
 }
 
 let nextAnchor = 0;
+// Fresh signatures are handed out first, so a released one is reused only
+// long after WebKit has dropped the layer it described.
+const releasedAnchors: number[] = [];
+
+function allocateAnchor(): number | undefined {
+  if (nextAnchor < 4096) return nextAnchor++;
+  return releasedAnchors.shift();
+}
 
 /** Distinguish coincident roots without guessing from their screen position. */
 export function iosAnchorExtent(index: number): { x: number; y: number } {
@@ -21,13 +29,17 @@ export function iosAnchorExtent(index: number): { x: number; y: number } {
 /** An isolated scrolling layer; author children stay in their original slots. */
 export class IOSRootComposition {
   private anchor?: HTMLDivElement;
+  private index?: number;
   private extent?: { x: number; y: number };
   private presented = false;
   private ready = false;
 
   setup(shadow: ShadowRoot): void {
-    if (!isIOS() || this.anchor || nextAnchor >= 4096) return;
-    this.extent = iosAnchorExtent(nextAnchor++);
+    if (!isIOS() || this.anchor) return;
+    const index = allocateAnchor();
+    if (index === undefined) return;
+    this.index = index;
+    this.extent = iosAnchorExtent(index);
     const anchor = document.createElement("div");
     anchor.setAttribute("aria-hidden", "true");
     anchor.style.cssText = "position:absolute;inset:0;overflow:scroll;-webkit-overflow-scrolling:touch;overscroll-behavior:none;scrollbar-width:none;";
@@ -84,6 +96,8 @@ export class IOSRootComposition {
   }
 
   destroy(): void {
+    if (this.index !== undefined) releasedAnchors.push(this.index);
+    this.index = undefined;
     this.anchor?.remove();
     this.anchor = undefined;
     this.extent = undefined;

@@ -58,6 +58,31 @@ assert.equal(composition.measure(root), undefined);
 composition.setup(shadow);
 assert.notDeepEqual(composition.measure(root).scrollExtent, iosAnchorExtent(0), "reconnected roots must not reclaim a stale layer");
 composition.destroy();
+
+// Exhaust the fresh signatures; only then may a released one come back.
+const held = [];
+for (;;) {
+  const next = new IOSRootComposition();
+  const target = { children: [], append(child) { this.children.push(child); } };
+  next.setup(target);
+  if (target.children.length === 0) break;
+  held.push(next);
+}
+const blocked = { children: [], append(child) { this.children.push(child); } };
+new IOSRootComposition().setup(blocked);
+assert.equal(blocked.children.length, 0, "no signature is handed out while every one is live");
+assert.ok(held.length > 0);
+const released = held.pop();
+const releasedExtent = released.measure(root).scrollExtent;
+released.destroy();
+const reused = new IOSRootComposition();
+const reusedShadow = { children: [], append(child) { this.children.push(child); } };
+reused.setup(reusedShadow);
+assert.equal(reusedShadow.children.length, 1, "a released signature must be reusable once fresh ones run out");
+assert.deepEqual(reused.measure(root).scrollExtent, releasedExtent);
+for (const live of held) {
+  assert.notDeepEqual(live.measure(root).scrollExtent, releasedExtent, "a reused signature must not collide with a live root");
+}
 ios = false;
 const count = elements.length;
 new IOSRootComposition().setup(shadow);
