@@ -42,9 +42,9 @@ fixed package revision; opening preserves the normal update lifecycle.
 
 `prod` publishes need `--update-signing-key` (or
 `LINGXIA_UPDATE_SIGNING_KEY`), draft channel included; `dev` may be
-unsigned. A prod host switched to the dev service does not fetch
-lxapps/plugins from that service; prod-service packages and host
-updates still require signatures. The CLI signs; never hand-build `signed` /
+unsigned. A prod host switched to the dev service accepts unsigned
+lxapps/plugins on any channel; prod-service packages and host updates still
+require signatures. The CLI signs; never hand-build `signed` /
 `signatures`.
 
 The value is one base64url (no `=`) 32-byte Ed25519 seed. Prefer the
