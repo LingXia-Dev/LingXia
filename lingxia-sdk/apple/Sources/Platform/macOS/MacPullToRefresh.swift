@@ -11,18 +11,17 @@ import WebKit
 /// that mounts the page — the shell's view controller and the Runner's
 /// simulator alike.
 ///
-/// A trackpad or wheel pull follows the fingers like `PullToRefreshHelper` on
-/// iOS and Android — a 150pt ceiling and the same rubber band — and, like
-/// Android, the 80pt trigger is measured after the band. That is roughly 70pt
-/// of trackpad travel here; iOS reaches its 80 through a scroll view that has
-/// already damped the finger, so the same constant asks for a longer drag there.
+/// A trackpad or wheel pull is measured like `PullToRefreshHelper` on iOS and
+/// Android — a 150pt ceiling and the same rubber band, with the 80pt trigger
+/// measured after the band, roughly 70pt of trackpad travel here — but the
+/// page itself never moves: a desktop page stays put under the pointer.
 ///
 /// Most desktop refreshes have no pull behind them (the context menu, ⌘R,
 /// `lx.startPullDownRefresh()`), so a running refresh always shows the same
 /// way: the page stays where it is and a full-width bar flows along its top
 /// edge, for at least 0.6s before it completes so an instant refresh still
-/// reads as one. A pull released past the trigger springs the page back and
-/// hands over to the bar.
+/// reads as one. A pull fills that same bar as it nears the trigger and,
+/// released past it, sets the bar running in place.
 @MainActor
 final class MacPullToRefreshController {
     /// Pull needed to arm a refresh, measured after the rubber band so the
@@ -39,20 +38,8 @@ final class MacPullToRefreshController {
 
     private weak var webView: WKWebView?
     private weak var container: NSView?
-    /// Grows in the strip a pull reveals behind the page.
-    private let indicator = MacRefreshSpinnerView()
-    /// Runs along the top of the page while it refreshes.
+    /// Fills as the page is pulled, and runs along its top while it refreshes.
     private let bar = MacRefreshBarView()
-    /// The page's own vertical constraints. Offsetting both by the same amount
-    /// slides the page without resizing it — a resize would be a full WebKit
-    /// relayout and a new viewport for the lxapp — and unlike a layer transform
-    /// it keeps AppKit's hit-testing on the pixels the user sees.
-    private var pageTop: NSLayoutConstraint?
-    private var pageBottom: NSLayoutConstraint?
-    /// The strip is exactly as tall as the page has been pulled, so the spinner
-    /// centres in what the user can actually see rather than in a fixed band
-    /// whose middle the page still covers.
-    private var indicatorHeight: NSLayoutConstraint?
 
     /// The document, and every scrollable ancestor of whatever last scrolled,
     /// are at their top. Mirrored from the page: WebKit owns scrolling, so only
@@ -86,7 +73,7 @@ final class MacPullToRefreshController {
     }
 
     /// Controllers that have refreshed, by page webtag: a stop has to reach
-    /// the indicator even after the runtime has dropped the page it names.
+    /// the bar even after the runtime has dropped the page it names.
     private static let refreshed =
         NSMapTable<NSString, MacPullToRefreshController>.strongToWeakObjects()
 
@@ -104,25 +91,6 @@ final class MacPullToRefreshController {
 
     private func install(in container: NSView) {
         self.container = container
-        indicator.translatesAutoresizingMaskIntoConstraints = false
-        indicator.isHidden = true
-        indicator.alphaValue = 0
-        // Directly behind this page — not at the back of the container, where
-        // a leftover sibling web view would cover the spinner when the page slides.
-        if let webView, webView.superview === container {
-            container.addSubview(indicator, positioned: .below, relativeTo: webView)
-        } else {
-            container.addSubview(indicator, positioned: .below, relativeTo: nil)
-        }
-        let height = indicator.heightAnchor.constraint(equalToConstant: 0)
-        indicatorHeight = height
-        NSLayoutConstraint.activate([
-            indicator.topAnchor.constraint(equalTo: container.topAnchor),
-            indicator.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            indicator.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            height
-        ])
-        MacNativeBridge.setOverlayOffset(0, in: container)
         refreshEnabledFlag()
     }
 
@@ -133,61 +101,21 @@ final class MacPullToRefreshController {
         refreshShownAt = nil
         cancelPendingFinish()
         bar.detach()
-        indicator.alphaValue = 0
-        indicator.isHidden = true
         pull = 0
         isPulling = false
-        // The previous attachment's constraints went with it.
-        pageTop = nil
-        pageBottom = nil
-        guard indicator.superview !== container else {
-            indicatorHeight?.constant = 0
-            MacNativeBridge.setOverlayOffset(0, in: container)
-            refreshEnabledFlag()
-            return
-        }
-        indicator.removeFromSuperview()
         install(in: container)
     }
 
-    /// Restack the strip immediately behind this page. Called after the web
-    /// view joins the container, because `install` often runs before that.
-    func didAttachPage() {
-        guard let webView, let container, webView.superview === container else { return }
-        container.addSubview(indicator, positioned: .below, relativeTo: webView)
-    }
-
-    /// The web view is leaving this container. Take the strip with it so a
-    /// later page does not inherit an extra layer behind its own.
+    /// The web view is leaving this container. Take the bar with it so a
+    /// later page does not inherit it.
     func unmount() {
         isRefreshing = false
         refreshShownAt = nil
         cancelPendingFinish()
         bar.detach()
-        indicator.removeFromSuperview()
-        pageTop = nil
-        pageBottom = nil
-        indicatorHeight = nil
         pull = 0
         isPulling = false
         container = nil
-    }
-
-    /// The web view's constraints, owned here so the pull can move it.
-    /// `attachWebViewToContainer` installs whatever this returns instead of its
-    /// own full-container pinning.
-    func pageConstraints(in container: NSView) -> [NSLayoutConstraint] {
-        guard let webView else { return [] }
-        let top = webView.topAnchor.constraint(equalTo: container.topAnchor)
-        let bottom = webView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
-        pageTop = top
-        pageBottom = bottom
-        return [
-            webView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            top,
-            bottom
-        ]
     }
 
     /// Re-read the page's declaration. Called when the page behind the web view
@@ -210,7 +138,7 @@ final class MacPullToRefreshController {
         refreshShownAt = nil
         cancelPendingFinish()
         bar.hide()
-        reset(animated: false)
+        cancelPull()
     }
 
     /// Whether this page is still the one on screen in its container. The
@@ -218,7 +146,7 @@ final class MacPullToRefreshController {
     /// that has been shown there, so a controller left behind by a page switch
     /// must not keep writing to them.
     private var isMounted: Bool {
-        webView?.superview === container && pageTop?.isActive == true
+        container != nil && webView?.superview === container
     }
 
     /// The page declared `enablePullDownRefresh` and is on screen, so a
@@ -272,7 +200,7 @@ final class MacPullToRefreshController {
             // The system took the gesture away; that is not a release.
             if isPulling {
                 isPulling = false
-                reset(animated: true)
+                cancelPull()
             }
             return false
         }
@@ -326,7 +254,7 @@ final class MacPullToRefreshController {
         guard pull > 0 else {
             // Pulled back past the top: hand the scroll back to the page.
             isPulling = false
-            reset(animated: false)
+            cancelPull()
             return false
         }
         applyPull()
@@ -338,7 +266,7 @@ final class MacPullToRefreshController {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.wheelIdleTimeout) { [weak self] in
             guard let self, self.isPulling, self.lastWheelAt == stamp else { return }
             self.isPulling = false
-            self.reset(animated: true)
+            self.cancelPull()
         }
     }
 
@@ -347,19 +275,18 @@ final class MacPullToRefreshController {
         if Self.rubberBand(pull) >= Self.triggerDistance {
             startRefreshing()
         } else {
-            reset(animated: true)
+            cancelPull()
         }
     }
 
     // MARK: - Presentation
 
     private func applyPull() {
-        let travel = Self.rubberBand(pull)
-        indicator.isHidden = false
-        indicator.alphaValue = min(1, (travel / Self.triggerDistance) * 1.5)
-        indicator.setProgress(travel / Self.triggerDistance)
-        paintIndicator()
-        setPageOffset(travel, animated: false)
+        guard let container else { return }
+        let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.appId)
+        bar.showPull(
+            Self.rubberBand(pull) / Self.triggerDistance, in: container,
+            color: WebViewManager.declaredRefreshIndicatorColor(dark: dark))
     }
 
     /// The same curve iOS and Android use, so the pull decelerates identically
@@ -373,60 +300,12 @@ final class MacPullToRefreshController {
         return maxPullDistance * (numerator / denominator)
     }
 
-    /// Slide the page down to reveal the indicator behind it. Both edges move,
-    /// so the web view keeps its size and the lxapp keeps its viewport.
-    private func setPageOffset(_ offset: CGFloat, animated: Bool) {
-        guard isMounted, let pageTop, let pageBottom, let container else { return }
-        MacNativeBridge.setOverlayOffset(offset, in: container)
-        guard animated else {
-            pageTop.constant = offset
-            pageBottom.constant = offset
-            indicatorHeight?.constant = offset
-            container.layoutSubtreeIfNeeded()
-            return
-        }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.25
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            context.allowsImplicitAnimation = true
-            pageTop.animator().constant = offset
-            pageBottom.animator().constant = offset
-            indicatorHeight?.animator().constant = offset
-            container.layoutSubtreeIfNeeded()
-        }
-    }
-
-    /// Keep the revealed strip on the page's own colour, and the spinner in
-    /// the host theme's refresh colour, else readable against the strip.
-    /// `underPageBackgroundColor` is WebKit's overscroll colour and tracks the
-    /// document background.
-    private func paintIndicator() {
-        let background = webView?.underPageBackgroundColor ?? .windowBackgroundColor
-        indicator.wantsLayer = true
-        indicator.layer?.backgroundColor = background.cgColor
-        let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.appId)
-        indicator.setColor(
-            WebViewManager.declaredRefreshIndicatorColor(dark: dark)
-                ?? Self.contrastingColor(for: background))
-    }
-
-    private static func contrastingColor(for background: NSColor) -> NSColor {
-        guard let rgb = background.usingColorSpace(.sRGB) ?? background.usingColorSpace(.deviceRGB)
-        else { return NSColor.black.withAlphaComponent(0.55) }
-        let luminance = 0.299 * rgb.redComponent + 0.587 * rgb.greenComponent
-            + 0.114 * rgb.blueComponent
-        return luminance > 0.5
-            ? NSColor.black.withAlphaComponent(0.55)
-            : NSColor.white.withAlphaComponent(0.85)
-    }
-
     // MARK: - Refresh state
 
     /// Also the entry point for `lx.startPullDownRefresh()`, the context menu
     /// and ⌘R, so every refresh looks the same: the page at rest and the bar
-    /// running along its top. A pull that got here springs back first. A start
-    /// while the bar finishes the previous refresh takes it straight back to
-    /// running.
+    /// running along its top. A start while the bar finishes the previous
+    /// refresh takes it straight back to running.
     func startRefreshing() {
         guard enabled, isMounted else { return }
         if pendingFinish != nil {
@@ -439,9 +318,7 @@ final class MacPullToRefreshController {
         isRefreshing = true
         isPulling = false
         refreshShownAt = Date()
-        if pull != 0 {
-            reset(animated: true)
-        }
+        pull = 0
         if let container {
             let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.appId)
             bar.start(
@@ -510,25 +387,11 @@ final class MacPullToRefreshController {
             ])
     }
 
-    private func reset(animated: Bool) {
+    /// Drop a pull that will not refresh.
+    private func cancelPull() {
         pull = 0
         isPulling = false
-        setPageOffset(0, animated: animated)
-        guard animated else {
-            indicator.alphaValue = 0
-            indicator.isHidden = true
-            return
-        }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.18
-            indicator.animator().alphaValue = 0
-        } completionHandler: { [weak self] in
-            MainActor.assumeIsolated {
-                // A new pull may have started while this one unwound.
-                guard let self, self.pull == 0 else { return }
-                self.indicator.isHidden = true
-            }
-        }
+        bar.cancelPull()
     }
 
     private static func normalizedPath(_ path: String) -> String {
@@ -539,17 +402,13 @@ final class MacPullToRefreshController {
     }
 
     deinit {
-        // The strip and the bar live in the container, not in the web view,
-        // so they outlive this controller unless they are taken down here. A
-        // deinit runs wherever the last reference was dropped, which for a web
-        // view is not necessarily the main thread.
-        let view = indicator
+        // The bar lives in the container, not in the web view, so it outlives
+        // this controller unless it is taken down here. A deinit runs wherever
+        // the last reference was dropped, which for a web view is not
+        // necessarily the main thread.
         let bar = bar
         let cleanup = { @Sendable in
-            MainActor.assumeIsolated {
-                view.removeFromSuperview()
-                bar.detach()
-            }
+            MainActor.assumeIsolated { bar.detach() }
         }
         if Thread.isMainThread {
             cleanup()

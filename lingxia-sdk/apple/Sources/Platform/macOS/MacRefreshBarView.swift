@@ -4,7 +4,8 @@ import QuartzCore
 
 /// The visible state of a refresh on macOS: a full-width bar along the top
 /// edge of the page in the theme colour, with a brighter band flowing along
-/// it while the refresh runs.
+/// it while the refresh runs. A pull fills it from the leading edge first, so
+/// the gesture and the refresh it arms share one indicator.
 ///
 /// Most desktop refreshes have no pull behind them (the context menu, ⌘R,
 /// `lx.startPullDownRefresh()`), so the page never moves for one: the bar is
@@ -28,6 +29,9 @@ final class MacRefreshBarView: NSView {
     private let base = CALayer()
     private let band = CAGradientLayer()
     private let solid = CALayer()
+    /// The pull's progress, over the base; outside `pulse` so it never breathes.
+    private let fill = CALayer()
+    private var pullProgress: CGFloat?
     private var timeline = Timeline()
     private var color = NSColor.secondaryLabelColor
     private var constraintsInContainer: [NSLayoutConstraint] = []
@@ -51,6 +55,8 @@ final class MacRefreshBarView: NSView {
         pulse.addSublayer(band)
         pulse.addSublayer(solid)
         content.addSublayer(pulse)
+        fill.anchorPoint = .zero
+        content.addSublayer(fill)
         layer?.addSublayer(content)
         resetLayers()
     }
@@ -67,22 +73,7 @@ final class MacRefreshBarView: NSView {
     /// that is still finishing the previous refresh straight back to running.
     /// `color` is the theme's refresh colour; `nil` follows the appearance.
     func start(in container: NSView, color: NSColor?) {
-        // Last in the container, so later siblings (the next page, component
-        // overlays) never cover it. Moved without `hide()`, which would lose
-        // a finish the new run carries on from.
-        if superview !== container || container.subviews.last !== self {
-            NSLayoutConstraint.deactivate(constraintsInContainer)
-            removeFromSuperview()
-            container.addSubview(self)
-            constraintsInContainer = [
-                topAnchor.constraint(equalTo: container.topAnchor),
-                leadingAnchor.constraint(equalTo: container.leadingAnchor),
-                trailingAnchor.constraint(equalTo: container.trailingAnchor),
-                heightAnchor.constraint(equalToConstant: Self.barHeight),
-            ]
-            // `layout()` starts the sweep once the width is known.
-            NSLayoutConstraint.activate(constraintsInContainer)
-        }
+        mount(in: container)
         let now = CACurrentMediaTime()
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let start = timeline.start(at: now, reduceMotion: reduceMotion)
@@ -91,13 +82,17 @@ final class MacRefreshBarView: NSView {
         self.color = color ?? .secondaryLabelColor
         isHidden = false
         layoutLayers()
-        let fresh = start == .fresh
-        if fresh { removeAnimations() }
+        // A pull handing over is already on screen: carry on from its track.
+        let fromPull = pullProgress != nil
+        pullProgress = nil
+        let fresh = start == .fresh && !fromPull
+        if start == .fresh { removeAnimations() }
         // Fade in from nothing, or from the finish a resumed run interrupts.
         let solidity: Float = reduceMotion ? 1 : 0
         fade(content, from: fresh ? 0 : nil, to: 1, over: Timeline.fadeIn)
         fade(solid, from: fresh ? solidity : nil, to: solidity, over: Timeline.fadeIn)
         fade(pulse, from: fresh ? 1 : nil, to: 1, over: Timeline.fadeIn)
+        fade(fill, to: 0, over: Timeline.fadeIn)
         if reduceMotion {
             let breathing = CABasicAnimation(keyPath: "opacity")
             breathing.fromValue = 1
@@ -114,6 +109,41 @@ final class MacRefreshBarView: NSView {
         setBandVisible(!reduceMotion)
         if !reduceMotion && band.animation(forKey: "sweep") == nil {
             addSweep(at: now)
+        }
+    }
+
+    /// Fills the bar to `progress` (0...1) of the way to arming a refresh.
+    /// A refresh already on screen keeps the bar.
+    func showPull(_ progress: CGFloat, in container: NSView, color: NSColor?) {
+        guard !timeline.isShown(at: CACurrentMediaTime()) else { return }
+        mount(in: container)
+        if pullProgress == nil {
+            generation += 1
+            removeAnimations()
+            self.color = color ?? .secondaryLabelColor
+            isHidden = false
+            setModel(content, 1)
+            setModel(pulse, 1)
+            setModel(solid, 0)
+            setModel(fill, 1)
+            setBandVisible(false)
+        }
+        pullProgress = min(max(progress, 0), 1)
+        layoutLayers()
+    }
+
+    /// A pull let go short of the trigger: fade the bar out.
+    func cancelPull() {
+        guard pullProgress != nil else { return }
+        pullProgress = nil
+        generation += 1
+        fade(content, to: 0, over: Timeline.fadeOut)
+        let generation = generation
+        DispatchQueue.main.asyncAfter(deadline: .now() + Timeline.fadeOut) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.generation == generation else { return }
+                self.hide()
+            }
         }
     }
 
@@ -147,6 +177,7 @@ final class MacRefreshBarView: NSView {
     /// Takes the bar down at once, for a refresh that was dropped.
     func hide() {
         generation += 1
+        pullProgress = nil
         timeline.reset()
         removeAnimations()
         resetLayers()
@@ -159,6 +190,24 @@ final class MacRefreshBarView: NSView {
         NSLayoutConstraint.deactivate(constraintsInContainer)
         constraintsInContainer = []
         removeFromSuperview()
+    }
+
+    /// Last in the container, so later siblings (the next page, component
+    /// overlays) never cover it. Moved without `hide()`, which would lose a
+    /// finish or a pull the caller carries on from.
+    private func mount(in container: NSView) {
+        guard superview !== container || container.subviews.last !== self else { return }
+        NSLayoutConstraint.deactivate(constraintsInContainer)
+        removeFromSuperview()
+        container.addSubview(self)
+        constraintsInContainer = [
+            topAnchor.constraint(equalTo: container.topAnchor),
+            leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            heightAnchor.constraint(equalToConstant: Self.barHeight),
+        ]
+        // `layout()` starts the sweep once the width is known.
+        NSLayoutConstraint.activate(constraintsInContainer)
     }
 
     override func layout() {
@@ -195,6 +244,10 @@ final class MacRefreshBarView: NSView {
         base.backgroundColor = cgColor.copy(alpha: cgColor.alpha * Timeline.baseAlpha)
         solid.backgroundColor = cgColor
         band.colors = [clear, cgColor, cgColor, clear]
+        fill.backgroundColor = cgColor
+        fill.position = .zero
+        fill.bounds = CGRect(
+            x: 0, y: 0, width: bounds.width * (pullProgress ?? 0), height: bounds.height)
         CATransaction.commit()
     }
 
@@ -203,11 +256,12 @@ final class MacRefreshBarView: NSView {
         setModel(content, 0)
         setModel(pulse, 1)
         setModel(solid, 0)
+        setModel(fill, 0)
         setBandVisible(false)
     }
 
     private func removeAnimations() {
-        for layer in [content, pulse, band, solid] {
+        for layer in [content, pulse, band, solid, fill] {
             layer.removeAllAnimations()
         }
     }

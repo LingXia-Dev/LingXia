@@ -323,20 +323,15 @@ final class WebViewManager {
     static func attachLxAppWebView(_ webView: WKWebView, to container: PlatformView) {
         hideLxAppScrollIndicators(webView)
         #if os(macOS)
-        // A leftover sibling (previous page, or its pull-to-refresh strip) sits
-        // behind the current web view. Sliding this page down to reveal the
-        // refresh indicator would then show that sibling instead of the spinner.
+        // One page per container: a leftover sibling would keep its
+        // companions (refresh bar, component overlay) alongside this page's.
         for subview in container.subviews {
             if let existing = subview as? WKWebView, existing !== webView {
                 detachLxAppWebView(existing)
             }
         }
-        // Pull-to-refresh moves the page by its own vertical constraints, so it
-        // supplies them here instead of the default full-container pinning.
-        let pullToRefresh = MacPullToRefreshController.attachIfNeeded(to: webView, in: container)
-        attachWebViewToContainer(
-            webView, container: container, constraints: pullToRefresh.pageConstraints(in: container))
-        pullToRefresh.didAttachPage()
+        MacPullToRefreshController.attachIfNeeded(to: webView, in: container)
+        attachWebViewToContainer(webView, container: container)
         MacNativeBridge.attachIfNeeded(to: webView, in: container)
         #else
         attachWebViewToContainer(webView, container: container)
@@ -344,8 +339,7 @@ final class WebViewManager {
     }
 
     /// Remove an lxapp page and every container-owned companion installed for
-    /// it. Callers must not detach the WKWebView first, because the refresh
-    /// strip is a sibling and cannot then be discovered from the container.
+    /// it.
     static func detachLxAppWebView(_ webView: WKWebView) {
         #if os(macOS)
         webView.lxPullToRefreshController?.unmount()
