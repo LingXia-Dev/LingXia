@@ -148,3 +148,6 @@ usvg = { workspace = true }
 filetime = "0.2"
 # Match the desktop scanner's image-compatible decoder version.
 rxing = { version = "0.8.3", default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+junction = "2.1"
