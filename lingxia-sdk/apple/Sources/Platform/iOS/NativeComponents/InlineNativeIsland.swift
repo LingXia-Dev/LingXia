@@ -1,9 +1,10 @@
 #if os(iOS)
 import UIKit
+import WebKit
 import CLingXiaRustAPI
 
 /// One ordered container for an inline native Root on iOS.
-/// Kind-specific views share this container; only public UIKit APIs are used.
+/// Kind-specific views share the Root's WebKit layer or its fallback overlay.
 @MainActor
 final class InlineNativeIsland {
     static let allowedKinds: Set<String> = ["root", "view", "text", "tappable", "video"]
@@ -13,7 +14,10 @@ final class InlineNativeIsland {
             || action == "root.leaseAccept" || action == "video.command"
     }
 
-    private let container = IslandContainerView()
+    private var compositions: [String: NativeRootComposition] = [:]
+    private var geometryRevisions: [String: UInt64] = [:]
+    private var presentationModes: [String: Bool] = [:]
+    private weak var webView: WKWebView?
     private weak var manager: NativeComponentManager?
     private weak var host: UIView?
     private let appId: String
@@ -39,31 +43,50 @@ final class InlineNativeIsland {
     init(
         host: UIView,
         manager: NativeComponentManager,
+        webView: WKWebView?,
         appId: String,
         eventSink: @escaping (_ componentId: String, _ event: String, _ detail: [String: Any]) -> Void
     ) {
         self.manager = manager
+        self.webView = webView
         self.host = host
         self.appId = appId
         self.eventSink = eventSink
-        container.isUserInteractionEnabled = true
-        // The overlay host pins to the scroll view's content layout guide, which
-        // resolves empty because nothing sizes it; clipping to it erases the island.
-        container.clipsToBounds = false
-        if container.superview == nil {
-            host.addSubview(container)
-        }
-        syncContainerFrame()
     }
 
-    /// Cover every committed node so the container both paints and hit-tests.
-    private func syncContainerFrame() {
-        var size = host?.bounds.size ?? .zero
-        for node in nodes.values where node.visible {
-            size.width = max(size.width, node.rect.maxX)
-            size.height = max(size.height, node.rect.maxY)
+    private func ensureComposition(_ rootKey: String) -> NativeRootComposition? {
+        if let existing = compositions[rootKey] { return existing }
+        guard let host else { return nil }
+        let container = IslandContainerView()
+        container.clipsToBounds = false
+        let composition = NativeRootComposition(container: container, overlay: host, webView: webView)
+        compositions[rootKey] = composition
+        composition.changed = { [weak self, weak composition] in
+            guard let self, let composition else { return }
+            UIView.performWithoutAnimation {
+                self.nodes.values.filter { $0.rootKey == rootKey }.forEach(self.applyFrame)
+                self.syncContainerFrame()
+                self.restack()
+            }
+            if self.presentationModes[rootKey] != composition.sameLayer, let root = self.roots[rootKey] {
+                self.presentationModes[rootKey] = composition.sameLayer
+                self.manager?.publishIslandPresentation(root: root, sameLayer: composition.sameLayer)
+            }
         }
-        container.frame = CGRect(origin: .zero, size: size)
+        composition.setActive(pageActive)
+        return composition
+    }
+
+    /// Overlay roots use content coordinates; composited roots use their own layer.
+    private func syncContainerFrame() {
+        for (rootKey, composition) in compositions where !composition.sameLayer {
+            var size = host?.bounds.size ?? .zero
+            for node in nodes.values where node.rootKey == rootKey && node.visible {
+                size.width = max(size.width, node.rect.maxX)
+                size.height = max(size.height, node.rect.maxY)
+            }
+            composition.container.frame = CGRect(origin: .zero, size: size)
+        }
     }
 
     func handle(message: [String: Any]) -> Bool {
@@ -100,7 +123,7 @@ final class InlineNativeIsland {
     /// still answers hit tests meant for the page now on screen.
     func setPageActive(_ active: Bool) {
         pageActive = active
-        container.isHidden = !active
+        compositions.values.forEach { $0.setActive(active) }
         nodes.values.forEach(applyFrame)
     }
 
@@ -110,7 +133,10 @@ final class InlineNativeIsland {
         for key in Array(nodes.keys) {
             removeNode(key)
         }
-        container.removeFromSuperview()
+        compositions.values.forEach { $0.teardown() }
+        compositions.removeAll()
+        geometryRevisions.removeAll()
+        presentationModes.removeAll()
         pendingOutgoing.removeAll()
         leases.removeAll()
         lastAppliedRevision = 0
@@ -154,6 +180,9 @@ final class InlineNativeIsland {
             nodes.values.filter { $0.rootKey == rootKey }.map(\.key).forEach(removeNode)
             revisions.removeValue(forKey: rootKey)
             leases.removeValue(forKey: rootKey)
+            geometryRevisions.removeValue(forKey: rootKey)
+            compositions.removeValue(forKey: rootKey)?.teardown()
+            presentationModes.removeValue(forKey: rootKey)
         } else if base != last {
             pendingOutgoing.append([
                 "action": "root.resyncRequired", "id": rootKey, "root": root,
@@ -219,17 +248,28 @@ final class InlineNativeIsland {
         roots.removeValue(forKey: rootKey)
         rootOrders.removeValue(forKey: rootKey)
         leases.removeValue(forKey: rootKey)
+        geometryRevisions.removeValue(forKey: rootKey)
+        compositions.removeValue(forKey: rootKey)?.teardown()
+        presentationModes.removeValue(forKey: rootKey)
         lastAppliedRevision = revisions.values.max() ?? 0
         restack()
         syncContainerFrame()
     }
 
     private func applyGeometry(_ message: [String: Any]) {
+        guard let revision = message["revision"] as? UInt64, revision > 0 else { return }
+        var admittedRoots = Set<String>()
+        var descriptors: [String: [String: Any]] = [:]
         for entry in message["roots"] as? [[String: Any]] ?? [] {
             guard let ref = entry["ref"] as? [String: Any],
                   let rootKey = ref["rootKey"] as? String,
-                  let current = roots[rootKey], sameRootGeneration(current, ref)
+                  let current = roots[rootKey], sameRootGeneration(current, ref),
+                  entry["basisTreeRevision"] as? UInt64 == revisions[rootKey],
+                  revision > (geometryRevisions[rootKey] ?? 0)
             else { continue }
+            admittedRoots.insert(rootKey)
+            geometryRevisions[rootKey] = revision
+            descriptors[rootKey] = entry["iosComposition"] as? [String: Any]
             rootOrders[rootKey] = entry["rootOrder"] as? Int ?? Int.max
         }
         guard let entries = message["nodes"] as? [[String: Any]] else { return }
@@ -237,7 +277,9 @@ final class InlineNativeIsland {
             guard let ref = entry["ref"] as? [String: Any],
                   let key = ref["nodeKey"] as? String,
                   let node = nodes[key],
+                  admittedRoots.contains(node.rootKey),
                   (ref["rootKey"] as? String) == node.rootKey,
+                  let current = roots[node.rootKey], sameRootGeneration(current, ref),
                   let rect = entry["contentRect"] as? [String: Any]
             else { continue }
             node.rect = CGRect(
@@ -247,8 +289,14 @@ final class InlineNativeIsland {
                 height: max(cg(rect["height"]), 1)
             )
             node.clipRect = NativeComponentClip.intersection(node.rect, clips: entry["clipStack"])
+            node.localClipRect = NativeComponentClip.intersection(node.rect, clips: entry["iosClipStack"])
+            node.layoutVisible = entry["iosLayoutVisible"] as? Bool ?? (entry["visible"] as? Bool ?? true)
             node.visible = entry["visible"] as? Bool ?? true
-            applyFrame(node)
+        }
+        UIView.performWithoutAnimation {
+            for rootKey in admittedRoots {
+                ensureComposition(rootKey)?.update(descriptors[rootKey])
+            }
         }
         restack()
         syncContainerFrame()
@@ -369,14 +417,12 @@ final class InlineNativeIsland {
         )
         factoryView(item)
         nodes[key] = item
+        guard let container = ensureComposition(rootKey)?.container else { return }
         if item.view.superview == nil {
             container.addSubview(item.view)
         }
         applyProps(item)
         applyFrame(item)
-        if item.kind == "tappable" || item.kind == "video" {
-            manager?.registerIslandTouchTarget(item.view)
-        }
     }
 
     private func update(_ operation: [String: Any]) {
@@ -397,6 +443,7 @@ final class InlineNativeIsland {
     }
 
     private func factoryView(_ item: IslandNode) {
+        guard let container = ensureComposition(item.rootKey)?.container else { return }
         switch item.kind {
         case "video":
             // The player retains this sink for its lifetime, so hold the node weakly.
@@ -590,9 +637,11 @@ final class InlineNativeIsland {
     }
 
     private func applyFrame(_ item: IslandNode) {
+        guard let composition = compositions[item.rootKey],
+              let container = composition.container as? IslandContainerView else { return }
         // A fullscreen video lives in its own window until it exits; leave its layout alone.
         guard item.view.superview === container else { return }
-        let rect = textFittedRect(item)
+        let rect = textFittedRect(item).offsetBy(dx: -composition.origin.x, dy: -composition.origin.y)
         if let video = item.video {
             // The player owns its view's layout: assigning the frame here first makes
             // its own setFrame a no-op, leaving the player layer at zero bounds.
@@ -600,11 +649,13 @@ final class InlineNativeIsland {
         } else {
             item.view.frame = rect
         }
-        item.view.isHidden = !pageActive || !item.visible || item.rect.width <= 0 || item.rect.height <= 0
-        let localClip = item.clipRect?.offsetBy(dx: -textFittedRect(item).minX, dy: -textFittedRect(item).minY)
+        let visible = composition.sameLayer ? item.layoutVisible : item.visible
+        item.view.isHidden = !pageActive || !visible || item.rect.width <= 0 || item.rect.height <= 0
+        let clip = composition.sameLayer ? item.localClipRect : item.clipRect
+        let localClip = clip?.offsetBy(dx: -textFittedRect(item).minX, dy: -textFittedRect(item).minY)
         container.setClipRect(localClip, for: item.view)
         if let localClip {
-            let mask = CAShapeLayer()
+            let mask = item.clipMask
             mask.path = CGPath(rect: localClip, transform: nil)
             item.view.layer.mask = mask
             item.view.isHidden = item.view.isHidden || localClip.isEmpty
@@ -650,20 +701,28 @@ final class InlineNativeIsland {
             }
         }
         append(parentKey: nil)
-        var index = 0
-        for node in ordered where node.view.superview === container {
+        var indices: [String: Int] = [:]
+        for node in ordered {
+            guard let container = compositions[node.rootKey]?.container, node.view.superview === container else { continue }
+            let index = indices[node.rootKey] ?? 0
             container.insertSubview(node.view, at: index)
-            index += 1
+            indices[node.rootKey] = index + 1
+        }
+        for key in compositions.keys.sorted(by: {
+            let lhs = rootOrders[$0] ?? Int.max, rhs = rootOrders[$1] ?? Int.max
+            return lhs == rhs ? $0 < $1 : lhs < rhs
+        }) {
+            guard let composition = compositions[key], !composition.sameLayer else { continue }
+            host?.bringSubviewToFront(composition.container)
         }
     }
 
     private func removeNode(_ key: String) {
         guard let node = nodes.removeValue(forKey: key) else { return }
-        manager?.unregisterIslandTouchTarget(node.view)
         if node.video != nil {
             manager?.detachIslandVideo(id: node.authorId)
         }
-        container.setClipRect(nil, for: node.view)
+        (compositions[node.rootKey]?.container as? IslandContainerView)?.setClipRect(nil, for: node.view)
         node.video?.unmount()
         node.view.removeFromSuperview()
     }
@@ -786,7 +845,10 @@ final class InlineNativeIsland {
         var scrim: CAGradientLayer?
         var rect: CGRect = .zero
         var clipRect: CGRect?
+        var localClipRect: CGRect?
+        let clipMask = CAShapeLayer()
         var visible = true
+        var layoutVisible = true
 
         init(
             key: String,
@@ -819,7 +881,7 @@ private final class IslandButton: UIButton {
     }
 }
 
-private final class IslandContainerView: UIView {
+private final class IslandContainerView: NativeRootContainerView {
     private var clipRects: [ObjectIdentifier: CGRect] = [:]
 
     func setClipRect(_ rect: CGRect?, for view: UIView) {
