@@ -711,12 +711,18 @@ final class InlineNativeIsland {
             container.insertSubview(node.view, at: index)
             indices[node.rootKey] = index + 1
         }
-        for key in compositions.keys.sorted(by: {
+        // Order overlay Roots among themselves in the slot they already hold;
+        // lifting them to the front would cover the host's other components.
+        guard let host else { return }
+        let overlays = compositions.keys.sorted(by: {
             let lhs = rootOrders[$0] ?? Int.max, rhs = rootOrders[$1] ?? Int.max
             return lhs == rhs ? $0 < $1 : lhs < rhs
-        }) {
-            guard let composition = compositions[key], !composition.sameLayer else { continue }
-            host?.bringSubviewToFront(composition.container)
+        }).compactMap { compositions[$0] }
+            .filter { !$0.sameLayer && $0.container.superview === host }
+            .map(\.container)
+        guard let base = overlays.compactMap({ host.subviews.firstIndex(of: $0) }).min() else { return }
+        for (offset, container) in overlays.enumerated() {
+            host.insertSubview(container, at: base + offset)
         }
     }
 
