@@ -58,11 +58,12 @@ impl StorePlatform {
         }
     }
 
-    /// Artifact extensions to look for, in priority order.
-    pub fn artifact_exts(self) -> &'static [&'static str] {
+    /// `dist` manifest artifact formats this store takes, in priority order.
+    pub fn artifact_formats(self) -> &'static [&'static str] {
         match self {
-            Self::Windows => &["msixupload", "msix"],
-            Self::Ios | Self::Macos => &["ipa", "pkg"],
+            Self::Windows => &["msix"],
+            Self::Ios => &["ipa"],
+            Self::Macos => &["pkg"],
             Self::Harmony => &["app", "hap"],
             // Google Play prefers App Bundles; the Chinese stores take APKs.
             Self::GooglePlay => &["aab", "apk"],
@@ -83,52 +84,14 @@ pub struct SubmitOptions {
     pub test_version_id: Option<String>,
 }
 
-/// Find the built artifact in `dist/<platform>/`. `submit` never builds — fail
-/// clearly (pointing at `lingxia build`) when the artifact is missing.
+/// The artifact `lingxia package` recorded for this store in
+/// `dist/<platform>/manifest.json`. `submit` never builds, and never guesses
+/// by file name or age.
 pub fn find_artifact(project_root: &Path, platform: StorePlatform) -> Result<PathBuf> {
     let dir = project_root.join("dist").join(platform.dist_subdir());
-    if !dir.is_dir() {
-        bail!(
-            "No build output at {} — run `lingxia build --platform {}` first.",
-            dir.display(),
-            platform.dist_subdir()
-        );
-    }
-    for ext in platform.artifact_exts() {
-        if let Some(found) = newest_with_ext(&dir, ext)? {
-            return Ok(found);
-        }
-    }
-    bail!(
-        "No {} artifact ({}) in {} — run `lingxia build --platform {}` first.",
-        platform.store_name(),
-        platform.artifact_exts().join(" / ."),
-        dir.display(),
-        platform.dist_subdir()
-    )
-}
-
-fn newest_with_ext(dir: &Path, ext: &str) -> Result<Option<PathBuf>> {
-    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
-    for entry in std::fs::read_dir(dir).with_context(|| format!("read dir {}", dir.display()))? {
-        let entry = entry?;
-        let path = entry.path();
-        let matches = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|e| e.eq_ignore_ascii_case(ext))
-            .unwrap_or(false);
-        if matches {
-            let mtime = entry
-                .metadata()
-                .and_then(|m| m.modified())
-                .unwrap_or(std::time::UNIX_EPOCH);
-            if best.as_ref().map(|(t, _)| mtime > *t).unwrap_or(true) {
-                best = Some((mtime, path));
-            }
-        }
-    }
-    Ok(best.map(|(_, p)| p))
+    crate::dist_manifest::resolve(&dir, platform.artifact_formats())
+        .map(|(_, path)| path)
+        .with_context(|| format!("No {} artifact to submit", platform.store_name()))
 }
 
 /// A shared ureq agent for store API calls.
@@ -151,20 +114,36 @@ mod tests {
     }
 
     #[test]
-    fn find_artifact_missing_dir_errors() {
-        let tmp = std::env::temp_dir().join(format!("lx-store-art-{}", std::process::id()));
-        let err = find_artifact(&tmp, StorePlatform::Windows).unwrap_err();
-        assert!(err.to_string().contains("lingxia build"));
+    fn find_artifact_without_a_package_points_at_lingxia_package() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = format!(
+            "{:#}",
+            find_artifact(tmp.path(), StorePlatform::Windows).unwrap_err()
+        );
+        assert!(err.contains("lingxia package"), "{err}");
     }
 
     #[test]
-    fn find_artifact_picks_by_extension() {
-        let root = std::env::temp_dir().join(format!("lx-store-art2-{}", std::process::id()));
-        let dir = root.join("dist").join("windows");
+    fn find_artifact_takes_the_store_format_from_the_manifest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("dist").join("android");
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("App.msix"), b"x").unwrap();
-        let found = find_artifact(&root, StorePlatform::Windows).unwrap();
-        assert_eq!(found.extension().unwrap(), "msix");
-        let _ = std::fs::remove_dir_all(&root);
+        let file = |name: &str, format| {
+            let path = dir.join(name);
+            std::fs::write(&path, name).unwrap();
+            crate::dist_manifest::Produced { format, path }
+        };
+        let files = [file("Demo.apk", "apk"), file("Demo.aab", "aab")];
+        crate::dist_manifest::write(&dir, "android", "1.0.0", "prod", None, &files).unwrap();
+        // A newer stray file is not what was packaged.
+        std::fs::write(dir.join("Stray.aab"), b"x").unwrap();
+        assert_eq!(
+            find_artifact(tmp.path(), StorePlatform::GooglePlay).unwrap(),
+            dir.join("Demo.aab")
+        );
+        assert_eq!(
+            find_artifact(tmp.path(), StorePlatform::Xiaomi).unwrap(),
+            dir.join("Demo.apk")
+        );
     }
 }

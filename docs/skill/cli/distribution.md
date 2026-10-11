@@ -5,7 +5,10 @@ Flags: `lingxia <cmd> --help`.
 
 Packages land in `dist/<platform>/`; names include the project, version, and
 `-dev` for dev builds, plus platform-specific format/architecture suffixes.
-Rebuilding replaces matching artifacts.
+Rebuilding replaces matching artifacts. `dist/<platform>/manifest.json` records
+what the last `lingxia package` produced (format, file, sha256); `publish`,
+`store submit`, and `install` take artifacts from it and refuse a file that
+changed since.
 
 ## `lingxia publish`
 
@@ -14,8 +17,10 @@ Uploads a package to the LingXia server (OS stores are `lingxia store`).
 - `lingxia publish` in an lxapp or lxplugin project builds it, then uploads the
   id, version, and `minRuntime` of the built package's `lxapp.json` or
   `lxplugin.json`.
-- `lingxia publish <PACKAGE>` uploads a host package `lingxia package` wrote
-  (Android APK, macOS or Windows update zip), from any directory. The platform
+- `lingxia publish <PACKAGE|DIR>` uploads a host package `lingxia package`
+  wrote (Android APK, macOS or Windows update zip), from any directory; a
+  `dist/<platform>` directory resolves to its manifest's update payload.
+  `--dry-run` only prints the resolved path, for checks before upload. The platform
   comes from the package's layout; `lingxiaId`, `productVersion`, and `env`
   from its `app.json`. An `--env` other than the package's is an error. No
   `--channel`.
@@ -177,8 +182,9 @@ Signing, publishing, and store credentials:
 
 ## `lingxia store`
 
-`submit` uploads; `status` queries. Build/package first: artifacts come from
-`dist/<platform>/` (Harmony `.app`, iOS App Store–signed `.ipa`). Store records
+`submit` uploads; `status` queries. Package first: the artifact is the one
+`dist/<platform>/manifest.json` records for the store (Harmony `.app`, iOS
+App Store–signed `.ipa`, Google Play `.aab`). Store records
 and default tracks live in the platform blocks of `lingxia.yaml`; credentials
 come from `lingxia auth` or complete provider-specific env groups.
 

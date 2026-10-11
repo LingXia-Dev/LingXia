@@ -163,7 +163,8 @@ update payload for `lingxia publish` (MSIX-only builds have none). More:
 ## Devices: `devices`, `install`, `uninstall`, `launch`
 
 - `lingxia devices` lists devices; pass the id when more than one is connected.
-- `lingxia install` installs a built artifact (auto-detected, or an APK/HAP).
+- `lingxia install` installs a built artifact (auto-detected, an APK/HAP, or a
+  `lingxia package` `dist/<platform>` directory).
 - `lingxia uninstall` removes the app (id from `lingxia.yaml` by default).
 - `lingxia launch` starts it; `--restart` works on Android and iOS.
 

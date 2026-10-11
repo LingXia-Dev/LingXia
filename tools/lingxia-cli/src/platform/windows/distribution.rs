@@ -4,11 +4,10 @@ use crate::config::LingXiaConfig;
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use std::{
     fs,
     io::{Read, Seek, SeekFrom},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize)]
@@ -117,22 +116,13 @@ pub(super) fn safe_component(value: &str) -> Result<&str> {
     Ok(value)
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Artifact {
-    format: String,
-    file: String,
-    sha256: String,
-    size: u64,
-}
-
 pub fn package(
     project_root: &Path,
     config: &LingXiaConfig,
     exe: &Path,
     formats: &[WindowsPackageFormat],
     self_signed: bool,
-) -> Result<Vec<PathBuf>> {
+) -> Result<Vec<crate::dist_manifest::Produced>> {
     let mut config = config.clone();
     let payload = exe.parent().context("Executable has no parent")?;
     let generated: serde_json::Value =
@@ -241,63 +231,29 @@ pub fn package(
         write_zip(&source, &zip)?;
         artifacts.push(zip);
     }
-    let records: Vec<Artifact> = artifacts
-        .iter()
-        .map(|path| -> Result<Artifact> {
-            let mut file = fs::File::open(path)?;
-            let mut hash = Sha256::new();
-            let mut buffer = [0u8; 65536];
-            loop {
-                let read = file.read(&mut buffer)?;
-                if read == 0 {
-                    break;
-                }
-                hash.update(&buffer[..read]);
-            }
-            let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
-            let format = if file_name.ends_with("-windows.zip") {
-                "update"
-            } else if file_name.ends_with("-Setup.exe") {
-                "nsis"
-            } else if file_name.ends_with("-Portable.exe") {
-                "portable"
-            } else if file_name.ends_with(".msix") {
-                "msix"
-            } else {
-                "zip"
-            };
-            Ok(Artifact {
-                format: format.into(),
-                file: file_name,
-                sha256: hash.finalize().iter().map(|b| format!("{b:02x}")).collect(),
-                size: fs::metadata(path)?.len(),
-            })
-        })
-        .collect::<Result<_>>()?;
-    let manifest = output.join(format!("{name}-{version}-{arch}-artifacts.json"));
-    fs::write(
-        &manifest,
-        serde_json::to_vec_pretty(
-            &serde_json::json!({"schemaVersion": 1, "appId": config.resolved_package_id("windows")?, "version": version, "architecture": arch, "artifacts": records}),
-        )?,
-    )?;
-    // Publish only after every format and checksum succeeds. Failed compilers
-    // leave previously published artifacts and their manifest intact.
+    // Publish only after every format succeeds. Failed compilers leave
+    // previously published artifacts in place.
     let mut published = Vec::new();
     for path in &artifacts {
-        let dest = output_dir.join(path.file_name().context("Invalid artifact path")?);
+        let file_name = path.file_name().context("Invalid artifact path")?;
+        let dest = output_dir.join(file_name);
         fs::rename(path, &dest)?;
-        published.push(dest);
+        println!("✓ package → {}", dest.display());
+        let name = file_name.to_string_lossy();
+        let format = if name.ends_with("-windows.zip") {
+            "update"
+        } else if name.ends_with("-Setup.exe") {
+            "setup"
+        } else if name.ends_with("-Portable.exe") {
+            "portable"
+        } else if name.ends_with(".msix") {
+            "msix"
+        } else {
+            "zip"
+        };
+        published.push(crate::dist_manifest::Produced { format, path: dest });
     }
-    let manifest_dest = output_dir.join(manifest.file_name().context("Invalid manifest path")?);
-    fs::rename(manifest, &manifest_dest)?;
-    let artifacts = published;
-    let manifest = manifest_dest;
-    for path in &artifacts {
-        println!("✓ package → {}", path.display());
-    }
-    println!("✓ artifact manifest → {}", manifest.display());
-    Ok(artifacts)
+    Ok(published)
 }
 
 fn validate_payload(dir: &Path) -> Result<()> {
@@ -365,8 +321,9 @@ mod tests {
     #[test]
     #[ignore = "requires Windows and the packaging smoke-test fixture"]
     fn windows_distribution_smoke_fixture() {
-        let root =
-            PathBuf::from(std::env::var_os("LINGXIA_PACKAGING_TEST_ROOT").expect("fixture root"));
+        let root = std::path::PathBuf::from(
+            std::env::var_os("LINGXIA_PACKAGING_TEST_ROOT").expect("fixture root"),
+        );
         let config: LingXiaConfig =
             serde_yaml_ng::from_slice(&fs::read(root.join("lingxia.yaml")).unwrap()).unwrap();
         image::RgbaImage::from_pixel(256, 256, image::Rgba([35, 80, 150, 255]))
@@ -447,12 +404,13 @@ mod tests {
             false,
         )
         .unwrap();
-        assert_eq!(files.len(), 2);
-        let mut portable = zip::ZipArchive::new(fs::File::open(&files[0]).unwrap()).unwrap();
+        let formats: Vec<_> = files.iter().map(|file| file.format).collect();
+        assert_eq!(formats, ["zip", "update"]);
+        let mut portable = zip::ZipArchive::new(fs::File::open(&files[0].path).unwrap()).unwrap();
         assert!(portable.by_name("demo.exe").is_ok());
         assert!(portable.by_name(".lingxia-update/manifest.json").is_err());
         assert!(portable.by_name("assets/.lingxia/cache/dev.txt").is_err());
-        let mut update = zip::ZipArchive::new(fs::File::open(&files[1]).unwrap()).unwrap();
+        let mut update = zip::ZipArchive::new(fs::File::open(&files[1].path).unwrap()).unwrap();
         let metadata: serde_json::Value =
             serde_json::from_reader(update.by_name(".lingxia-update/manifest.json").unwrap())
                 .unwrap();
@@ -460,23 +418,11 @@ mod tests {
         assert_eq!(metadata["architecture"], "x64");
         assert!(!payload.join(".lingxia-update").exists());
         assert!(payload.join("assets/.lingxia/cache/dev.txt").is_file());
-        let manifest: serde_json::Value = serde_json::from_slice(
-            &fs::read(root.join("dist/windows/demo-dev-1.2.3-x64-artifacts.json")).unwrap(),
-        )
-        .unwrap();
-        for record in manifest["artifacts"].as_array().unwrap() {
-            let bytes = fs::read(
-                root.join("dist/windows")
-                    .join(record["file"].as_str().unwrap()),
-            )
-            .unwrap();
-            let checksum: String = Sha256::digest(&bytes)
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect();
-            assert_eq!(record["sha256"], checksum);
-            assert_eq!(record["size"].as_u64().unwrap(), bytes.len() as u64);
-        }
+        assert!(
+            !root
+                .join("dist/windows/demo-dev-1.2.3-x64-artifacts.json")
+                .exists()
+        );
     }
 
     #[test]

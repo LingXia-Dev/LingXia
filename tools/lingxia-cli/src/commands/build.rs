@@ -522,11 +522,12 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         let should_assemble_windows_dist = matches!(platform_type, PlatformType::Windows)
             && (matches!(build_config.profile, platform::BuildProfile::Release) || package || msix);
         let mut artifacts = platform.build(&build_config)?;
+        let mut produced = Vec::new();
         if should_assemble_windows_dist {
             artifacts =
                 assemble_windows_dist(&project_root, &config, resolved_env.version, artifacts)?;
             if !windows_formats.is_empty() {
-                crate::platform::windows::distribution::package(
+                produced = crate::platform::windows::distribution::package(
                     &project_root,
                     &config,
                     artifacts.path(),
@@ -536,7 +537,28 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             }
         }
         if package {
-            stage_package_artifact(&project_root, &platform_type, &artifacts)?;
+            if let Some(staged) = stage_package_artifact(&project_root, &platform_type, &artifacts)?
+            {
+                produced.extend(staged_format(&staged).map(|format| {
+                    crate::dist_manifest::Produced {
+                        format,
+                        path: staged,
+                    }
+                }));
+            }
+            produced.extend(packaged_outputs(&artifacts));
+            let app = config.app.as_ref();
+            if let Some(manifest) = crate::dist_manifest::write(
+                &project_root.join("dist").join(platform_type.as_str()),
+                platform_type.as_str(),
+                app.map(|app| app.product_version.trim())
+                    .unwrap_or_default(),
+                resolved_env.version.as_str(),
+                app.and_then(|app| app.lingxia_id.as_deref()),
+                &produced,
+            )? {
+                println!("{} manifest → {}", "✓".green(), manifest.display());
+            }
         }
         if matches!(platform_type, PlatformType::Windows) {
             crate::platform::windows::record_last_build_exe(&project_root, artifacts.path())?;
@@ -739,6 +761,39 @@ fn assemble_windows_dist(
         }
     }
     Ok(BuildArtifacts::Windows { exe_path: dist_exe })
+}
+
+fn staged_format(path: &Path) -> Option<&'static str> {
+    match path.extension()?.to_str()? {
+        "apk" => Some("apk"),
+        "aab" => Some("aab"),
+        "app" => Some("app"),
+        "hap" => Some("hap"),
+        _ => None,
+    }
+}
+
+/// Package outputs the platform builder already wrote into `dist/<platform>`.
+fn packaged_outputs(artifacts: &BuildArtifacts) -> Vec<crate::dist_manifest::Produced> {
+    let produced = |format, path: &Option<PathBuf>| {
+        path.clone()
+            .map(|path| crate::dist_manifest::Produced { format, path })
+    };
+    match artifacts {
+        BuildArtifacts::Ios { ipa_path, .. } => produced("ipa", ipa_path).into_iter().collect(),
+        BuildArtifacts::MacOs {
+            update_zip_path,
+            dmg_path,
+            ..
+        } => [
+            produced("update", update_zip_path),
+            produced("dmg", dmg_path),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
+        _ => Vec::new(),
+    }
 }
 
 fn stage_package_artifact(

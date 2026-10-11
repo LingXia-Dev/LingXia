@@ -19,6 +19,7 @@ pub struct PublishOptions {
     pub framework: Option<String>,
     pub progress: Option<String>,
     pub update_signing_key: Option<String>,
+    pub dry_run: bool,
 }
 
 #[derive(Debug)]
@@ -50,6 +51,12 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
 
     let (meta, package) = resolve_publish_target(&cwd, &opts)?;
     let package_path = &package.path;
+    if opts.dry_run {
+        // The resolved, verified package is the dry run's whole output, so CI
+        // can hand it to its own checks.
+        println!("{}", package_path.display());
+        return Ok(());
+    }
     // Resolve server and token after env is known. The token is keyed by
     // (canonical server URL, env) in the wallet.
     let lingxia_server = resolve_lingxia_server(meta.env, opts.lingxia_server)?;
@@ -386,10 +393,7 @@ fn resolve_publish_target(
                 "--channel is not supported for a host package; host updates are env-scoped and carry no channel"
             );
         }
-        let path = cwd.join(package);
-        if !path.is_file() {
-            bail!("Package not found: {}", path.display());
-        }
+        let path = host_package_path(&cwd.join(package))?;
         let (platform, metadata) = read_host_package(&path)?;
         reject_env_mismatch(opts.env.as_deref(), &path, metadata.env)?;
         let meta = PackageMeta {
@@ -408,6 +412,9 @@ fn resolve_publish_target(
                 cleanup_after_publish: false,
             },
         ));
+    }
+    if opts.dry_run {
+        bail!("--dry-run takes a host package: lingxia publish <PACKAGE|DIR> --dry-run");
     }
     let mut meta = resolve_meta(cwd, opts.env.as_deref(), opts.channel.as_deref())?;
     let package = package_current_project(cwd, opts.framework.clone(), opts.progress.clone())?;
@@ -523,6 +530,24 @@ fn reject_env_mismatch(given: Option<&str>, package: &Path, packaged: AppEnv) ->
         );
     }
     Ok(())
+}
+
+/// A file is the package itself; a directory is a `lingxia package` output,
+/// whose manifest names (and checksums) its update payload.
+fn host_package_path(path: &Path) -> Result<PathBuf> {
+    if path.is_file() {
+        return Ok(path.to_path_buf());
+    }
+    if !path.is_dir() {
+        bail!("Package not found: {}", path.display());
+    }
+    let manifest = crate::dist_manifest::read(path)?;
+    let formats: &[&str] = match manifest.platform.as_str() {
+        "android" => &["apk"],
+        "macos" | "windows" => &["update"],
+        other => bail!("{other} host apps update through their store; use `lingxia store submit`"),
+    };
+    Ok(crate::dist_manifest::resolve(path, formats)?.1)
 }
 
 /// Identify a host package by its layout, never its file name: each layout
@@ -901,9 +926,9 @@ fn build_multipart(
 mod tests {
     use super::{
         AppPackageMetadata, PackageMeta, PublishOptions, apply_packaged_manifest, build_multipart,
-        classify_host_package, normalize_channel, publish_build_args, publish_upload,
-        read_host_package, reject_env_mismatch, resolve_meta, resolve_publish_target,
-        signed_multipart_fields,
+        classify_host_package, host_package_path, normalize_channel, publish_build_args,
+        publish_upload, read_host_package, reject_env_mismatch, resolve_meta,
+        resolve_publish_target, signed_multipart_fields,
     };
     use super::{draft_open_url, draft_qr_png};
     use crate::config::AppEnv;
@@ -1190,6 +1215,7 @@ mod tests {
             framework: None,
             progress: None,
             update_signing_key: None,
+            dry_run: false,
         }
     }
 
@@ -1216,6 +1242,74 @@ mod tests {
             err.contains("--channel is not supported for a host package"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn a_package_directory_publishes_its_recorded_update_payload() {
+        let temp = TempDir::new().unwrap();
+        let dir = temp.path().join("dist/macos");
+        fs::create_dir_all(&dir).unwrap();
+        let update = write_macos_package(&dir, "0.2.6");
+        let dmg = dir.join("Flourish-0.2.6.dmg");
+        fs::write(&dmg, b"dmg").unwrap();
+        // An older build left beside it is not what was packaged.
+        write_macos_package(&dir, "0.2.5");
+        crate::dist_manifest::write(
+            &dir,
+            "macos",
+            "0.2.6",
+            "prod",
+            Some("demo"),
+            &[
+                crate::dist_manifest::Produced {
+                    format: "update",
+                    path: update.clone(),
+                },
+                crate::dist_manifest::Produced {
+                    format: "dmg",
+                    path: dmg,
+                },
+            ],
+        )
+        .unwrap();
+        assert_eq!(host_package_path(&dir).unwrap(), update);
+
+        let mut dry_run = options(Some(dir.display().to_string()));
+        dry_run.dry_run = true;
+        let (meta, resolved) = resolve_publish_target(temp.path(), &dry_run).unwrap();
+        assert_eq!(meta.version, "0.2.6");
+        assert_eq!(resolved.path, update);
+
+        let ios = temp.path().join("dist/ios");
+        fs::create_dir_all(&ios).unwrap();
+        let ipa = ios.join("Demo.ipa");
+        fs::write(&ipa, b"ipa").unwrap();
+        crate::dist_manifest::write(
+            &ios,
+            "ios",
+            "0.2.6",
+            "prod",
+            None,
+            &[crate::dist_manifest::Produced {
+                format: "ipa",
+                path: ipa,
+            }],
+        )
+        .unwrap();
+        let err = host_package_path(&ios).unwrap_err().to_string();
+        assert!(err.contains("lingxia store submit"), "{err}");
+    }
+
+    #[test]
+    fn dry_run_needs_a_host_package() {
+        let temp = TempDir::new().unwrap();
+        let mut dry_run = options(None);
+        dry_run.dry_run = true;
+        let err = resolve_publish_target(temp.path(), &dry_run)
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(err.contains("--dry-run takes a host package"), "{err}");
     }
 
     #[test]
