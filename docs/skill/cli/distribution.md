@@ -11,16 +11,18 @@ Rebuilding replaces matching artifacts.
 
 Uploads a package to the LingXia server (OS stores are `lingxia store`).
 
-- An lxapp or lxplugin publish builds the current project, then reads id and
-  version from `lxapp.json` or `lxplugin.json`.
-- A host publish does not build. It uploads the package `lingxia package`
-  already wrote: Android `.apk`, macOS `*-macos.zip`, Windows `*-windows.zip`.
-  `lingxiaId`, `productVersion`, and `env` come from that package's `app.json`.
-  `lingxia.yaml` finds the project and the artifact; it does not set the
-  published version, and an invalid `productVersion` there does not block
-  publish. No `--channel`.
-- `--env dev|prod` picks server and token for an lxapp or lxplugin (default
-  `dev`). `--channel release|draft` picks the lxapp line (default `release`).
+- `lingxia publish` in an lxapp or lxplugin project builds it, then uploads the
+  id, version, and `minRuntime` of the built package's `lxapp.json` or
+  `lxplugin.json`.
+- `lingxia publish <PACKAGE>` uploads a host package `lingxia package` wrote
+  (Android APK, macOS or Windows update zip), from any directory. The platform
+  comes from the package's layout; `lingxiaId`, `productVersion`, and `env`
+  from its `app.json`. An `--env` other than the package's is an error. No
+  `--channel`.
+- `--lingxia-server` picks the upload server; otherwise the default below.
+- `--env dev|prod` picks the token and server default for an lxapp or lxplugin
+  (default `dev`). `--channel release|draft` picks the lxapp line (default
+  `release`).
 - Token: `--token`, `LINGXIA_PUBLISH_TOKEN`, or the wallet
   (`lingxia auth login lingxia --env prod --token …`, keyed by server + env).
 
@@ -64,10 +66,9 @@ LINGXIA_UPDATE_SIGNING_KEY=<seed> lingxia publish --env prod
 
 ### Server default
 
-Lxapp projects have no `lingxia.yaml`; set a per-user server with
-`lingxia auth login lingxia --server …`, which writes
-`~/.lingxia/cli/config.toml` (same shape as `app.lingxiaServer`). The
-`--lingxia-server` flag and `app.lingxiaServer` win.
+Set a per-user server with `lingxia auth login lingxia --server …`, which
+writes `~/.lingxia/cli/config.toml`; `--lingxia-server` wins. Publish never
+reads the server from `lingxia.yaml` or the package.
 
 ```toml
 [publish.lingxiaServer]

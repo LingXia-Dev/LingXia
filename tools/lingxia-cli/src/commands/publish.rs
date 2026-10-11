@@ -6,16 +6,14 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::cli_config::CliConfig;
-use crate::config::{AppEnv, HOST_CONFIG_FILE, LingXiaConfig, has_host_config};
+use crate::config::{AppEnv, has_host_config};
 use crate::http_client;
 use crate::lxapp;
-use crate::platform::detector::PlatformType;
 
 pub struct PublishOptions {
     pub token: Option<String>,
     pub lingxia_server: Option<String>,
     pub package: Option<String>,
-    pub platform: Option<String>,
     pub env: Option<String>,
     pub channel: Option<String>,
     pub framework: Option<String>,
@@ -50,31 +48,11 @@ impl Drop for ResolvedPackage {
 pub fn execute(opts: PublishOptions) -> Result<()> {
     let cwd = env::current_dir()?;
 
-    let mut meta = resolve_meta(&cwd, opts.env.as_deref(), opts.channel.as_deref())?;
-    let package = resolve_package_for_publish(
-        &cwd,
-        &meta,
-        opts.package,
-        opts.platform,
-        opts.framework,
-        opts.progress,
-    )?;
+    let (meta, package) = resolve_publish_target(&cwd, &opts)?;
     let package_path = &package.path;
-    if meta.target == "app" {
-        let metadata = read_app_package_metadata(package_path).with_context(|| {
-            format!(
-                "Failed to read app package metadata from {}",
-                package_path.display()
-            )
-        })?;
-        apply_host_package_identity(&mut meta, metadata);
-        if let Some(note) = project_version_drift(&cwd, &meta.version) {
-            eprintln!("{} {note}", "ℹ".blue());
-        }
-    }
     // Resolve server and token after env is known. The token is keyed by
     // (canonical server URL, env) in the wallet.
-    let lingxia_server = resolve_lingxia_server(&cwd, meta.env, opts.lingxia_server)?;
+    let lingxia_server = resolve_lingxia_server(meta.env, opts.lingxia_server)?;
     let lingxia_server = lingxia_server.trim_end_matches('/').to_string();
     let token = resolve_token(meta.env, &lingxia_server, opts.token)?;
     let file_name = package_path
@@ -110,7 +88,7 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
         "app" => package
             .platform
             .clone()
-            .context("host app publish requires --platform")?,
+            .context("host package platform is unknown")?,
         _ => "any".to_string(),
     };
     let update_signing_key = clean_arg(opts.update_signing_key, "--update-signing-key")?;
@@ -277,9 +255,8 @@ fn print_draft_qr(url: &str) -> Result<()> {
 }
 
 /// `lingxia auth login lingxia`: store the token in the wallet, keyed by the
-/// canonical server URL + env — the project already names the server and env,
-/// so publish never asks which token to use. `--server` also saves the
-/// machine-wide server default for lxapp projects without a `lingxia.yaml`.
+/// canonical server URL + env, so publish finds it from the server and env
+/// alone. `--server` also saves the machine-wide server default.
 pub fn publish_login(
     server: Option<String>,
     token: Option<String>,
@@ -296,9 +273,8 @@ pub fn publish_login(
         .unwrap_or(AppEnv::Dev);
 
     // The token is keyed by the server: an explicit --server wins, otherwise
-    // the project / machine default for this env names it.
-    let cwd = env::current_dir()?;
-    let server_url = resolve_lingxia_server(&cwd, env, server.clone())
+    // the machine default for this env names it.
+    let server_url = resolve_lingxia_server(env, server.clone())
         .context("cannot determine which server this token is for; pass --server")?;
     let canonical = crate::wallet::canonical_publish_server(&server_url)?;
 
@@ -344,8 +320,7 @@ pub fn publish_logout(server: Option<String>, env: Option<String>) -> Result<()>
         .map(AppEnv::parse_cli)
         .transpose()?
         .unwrap_or(AppEnv::Dev);
-    let cwd = env::current_dir()?;
-    let server_url = resolve_lingxia_server(&cwd, env, server)
+    let server_url = resolve_lingxia_server(env, server)
         .context("cannot determine which server to log out from; pass --server")?;
     let canonical = crate::wallet::canonical_publish_server(&server_url)?;
     let wallet = crate::wallet::Wallet::open()?;
@@ -399,36 +374,45 @@ fn mask_token(token: &str) -> String {
     format!("{head}…{tail}")
 }
 
-fn resolve_package_for_publish(
+/// A given package is a host package and carries its own identity; without
+/// one, the lxapp or lxplugin in `cwd` is built and its archive published.
+fn resolve_publish_target(
     cwd: &Path,
-    meta: &PackageMeta,
-    explicit: Option<String>,
-    platform: Option<String>,
-    framework: Option<String>,
-    progress: Option<String>,
-) -> Result<ResolvedPackage> {
-    match meta.target.as_str() {
-        "lxapp" | "lxplugin" => {
-            if platform.is_some() {
-                bail!("--platform is only supported when publishing target=app.");
-            }
-            if explicit.is_some() {
-                bail!(
-                    "--package-path is not supported for {}. lingxia publish always packages the current project first.",
-                    meta.target
-                );
-            }
-            package_current_project(cwd, framework, progress)
+    opts: &PublishOptions,
+) -> Result<(PackageMeta, ResolvedPackage)> {
+    if let Some(package) = opts.package.as_deref() {
+        if opts.channel.is_some() {
+            bail!(
+                "--channel is not supported for a host package; host updates are env-scoped and carry no channel"
+            );
         }
-        _ => {
-            let platform = resolve_publish_platform(cwd, &meta.target, platform.as_deref())?;
-            Ok(ResolvedPackage {
-                path: find_or_resolve_package(cwd, &meta.target, explicit, platform.as_deref())?,
-                platform,
+        let path = cwd.join(package);
+        if !path.is_file() {
+            bail!("Package not found: {}", path.display());
+        }
+        let (platform, metadata) = read_host_package(&path)?;
+        reject_env_mismatch(opts.env.as_deref(), &path, metadata.env)?;
+        let meta = PackageMeta {
+            target: "app".to_string(),
+            target_id: metadata.lingxia_id,
+            version: metadata.version,
+            env: metadata.env,
+            channel: None,
+            min_runtime: String::new(),
+        };
+        return Ok((
+            meta,
+            ResolvedPackage {
+                path,
+                platform: Some(platform.to_string()),
                 cleanup_after_publish: false,
-            })
-        }
+            },
+        ));
     }
+    let mut meta = resolve_meta(cwd, opts.env.as_deref(), opts.channel.as_deref())?;
+    let package = package_current_project(cwd, opts.framework.clone(), opts.progress.clone())?;
+    apply_packaged_manifest(&mut meta, &package.path)?;
+    Ok((meta, package))
 }
 
 fn package_current_project(
@@ -463,80 +447,45 @@ fn resolve_meta(
     env_arg: Option<&str>,
     channel_arg: Option<&str>,
 ) -> Result<PackageMeta> {
-    let target = detect_target(cwd)?;
     let env = env_arg
         .map(AppEnv::parse_cli)
         .transpose()?
         .unwrap_or(AppEnv::Dev);
-
-    match target.as_str() {
-        "lxapp" => {
-            let (id, version, min_runtime) = read_lxapp_json(cwd)?;
-            let channel = match channel_arg {
-                Some(value) => normalize_channel(value)?,
-                None => lingxia_update::default_channel().as_str().to_string(),
-            };
-            Ok(PackageMeta {
-                target,
-                target_id: id,
-                version,
-                env,
-                channel: Some(channel),
-                min_runtime,
-            })
-        }
-        "lxplugin" => {
-            let (id, version) = read_lxplugin_json(cwd)?;
-            let channel = match channel_arg {
-                Some(value) => normalize_channel(value)?,
-                None => lingxia_update::default_channel().as_str().to_string(),
-            };
-            Ok(PackageMeta {
-                target,
-                target_id: id,
-                version,
-                env,
-                channel: Some(channel),
-                min_runtime: String::new(),
-            })
-        }
-        "app" => {
-            if channel_arg.is_some() {
-                bail!(
-                    "--channel is not supported when publishing target=app; \
-                     host updates are env-scoped and do not carry a channel"
-                );
-            }
-            // The project file selects the platform and the server. The
-            // published id, version, and env come from the package.
-            LingXiaConfig::load_for_publish(cwd)?;
-            Ok(PackageMeta {
-                target,
-                target_id: String::new(),
-                version: String::new(),
-                env,
-                channel: None,
-                min_runtime: String::new(),
-            })
-        }
-        _ => bail!("Unknown target: {target}"),
-    }
-}
-
-fn detect_target(cwd: &Path) -> Result<String> {
+    let channel = Some(match channel_arg {
+        Some(value) => normalize_channel(value)?,
+        None => lingxia_update::default_channel().as_str().to_string(),
+    });
     if cwd.join("lxapp.json").exists() {
-        return Ok("lxapp".to_string());
+        let (id, version, min_runtime) = read_lxapp_json(cwd)?;
+        return Ok(PackageMeta {
+            target: "lxapp".to_string(),
+            target_id: id,
+            version,
+            env,
+            channel,
+            min_runtime,
+        });
     }
     if cwd.join("lxplugin.json").exists() {
-        return Ok("lxplugin".to_string());
+        let (id, version) = read_lxplugin_json(cwd)?;
+        return Ok(PackageMeta {
+            target: "lxplugin".to_string(),
+            target_id: id,
+            version,
+            env,
+            channel,
+            min_runtime: String::new(),
+        });
     }
     if has_host_config(cwd) {
-        return Ok("app".to_string());
+        bail!(
+            "A host app publishes the package `lingxia package` wrote: lingxia publish <PACKAGE>"
+        );
     }
     bail!(
-        "Could not detect project type. No lxapp.json, lxplugin.json, or {} found.\nRun publish from an lxapp, lxplugin, or host app project root.",
-        HOST_CONFIG_FILE
-    );
+        "No lxapp.json or lxplugin.json in {}. Run publish from an lxapp or lxplugin project, or pass a host package: lingxia publish <PACKAGE>",
+        cwd.display()
+    )
 }
 
 fn normalize_channel(s: &str) -> Result<String> {
@@ -561,52 +510,99 @@ struct AppPackageMetadata {
     version: String,
 }
 
-fn apply_host_package_identity(meta: &mut PackageMeta, metadata: AppPackageMetadata) {
-    meta.env = metadata.env;
-    meta.target_id = metadata.lingxia_id;
-    meta.version = metadata.version;
-    meta.channel = None;
-}
-
-/// Host yaml can drift from a package built earlier. The feed must follow the
-/// package, and the mismatch is otherwise silent.
-fn project_version_drift(cwd: &Path, packaged_version: &str) -> Option<String> {
-    let cfg = LingXiaConfig::load_for_publish(cwd).ok()?;
-    let project_version = cfg.app.as_ref()?.product_version.trim();
-    if project_version.is_empty() || project_version == packaged_version {
-        return None;
-    }
-    Some(format!(
-        "lingxia.yaml productVersion is {project_version}; publishing {packaged_version} from the package."
-    ))
-}
-
-fn read_app_package_metadata(path: &Path) -> Result<AppPackageMetadata> {
-    let app_json = if path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("apk"))
-    {
-        read_zip_entry(path, &["assets/app.json", "app/src/main/assets/app.json"])?
-    } else if path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.ends_with("-macos.zip"))
-    {
-        read_macos_zip_app_json(path)?
-    } else if path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.ends_with("-windows.zip"))
-    {
-        read_windows_zip_app_json(path)?
-    } else {
-        bail!(
-            "unsupported app package type; expected Android .apk, macOS *-macos.zip, or Windows *-windows.zip"
-        );
+/// A host package is built for one env and publishes only there; an `--env`
+/// that disagrees would send it to the wrong server.
+fn reject_env_mismatch(given: Option<&str>, package: &Path, packaged: AppEnv) -> Result<()> {
+    let Some(given) = given.map(AppEnv::parse_cli).transpose()? else {
+        return Ok(());
     };
+    if given != packaged {
+        bail!(
+            "{} was packaged for {packaged}, so it publishes to {packaged}. Drop --env, or run `lingxia package --env {given}` first.",
+            package.display()
+        );
+    }
+    Ok(())
+}
+
+/// Identify a host package by its layout, never its file name: each layout
+/// `lingxia package` writes is distinct, and anything else is refused.
+fn read_host_package(path: &Path) -> Result<(&'static str, AppPackageMetadata)> {
+    let not_host = || {
+        anyhow::anyhow!(
+            "{} is not a host package from `lingxia package` (an Android APK, or a macOS/Windows update zip)",
+            path.display()
+        )
+    };
+    let file =
+        fs::File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
+    let mut zip = zip::ZipArchive::new(file).map_err(|_| not_host())?;
+    // PowerShell `Compress-Archive` stores backslash-separated names.
+    let names: Vec<(String, String)> = zip
+        .file_names()
+        .map(|name| (name.replace('\\', "/"), name.to_string()))
+        .collect();
+    let normalized: Vec<&str> = names.iter().map(|(name, _)| name.as_str()).collect();
+    let (platform, app_json) = classify_host_package(&normalized).ok_or_else(not_host)?;
+    let original = names
+        .iter()
+        .find(|(name, _)| *name == app_json)
+        .map(|(_, original)| original.clone())
+        .ok_or_else(not_host)?;
+    let mut data = Vec::new();
+    zip.by_name(&original)
+        .with_context(|| format!("Failed to read {app_json} from {}", path.display()))?
+        .read_to_end(&mut data)
+        .with_context(|| format!("Failed to read {app_json} from {}", path.display()))?;
+    Ok((platform, parse_app_json(&data)?))
+}
+
+/// The platform and the `app.json` entry of a host package layout; `None`
+/// unless exactly one layout matches.
+fn classify_host_package(names: &[&str]) -> Option<(&'static str, String)> {
+    let has = |name: &str| names.contains(&name);
+    let mut found = Vec::new();
+    if has("AndroidManifest.xml") && has("assets/app.json") {
+        found.push(("android", "assets/app.json".to_string()));
+    }
+    for name in names {
+        if let Some(bundle) = name.strip_suffix("/Contents/Info.plist")
+            && bundle.ends_with(".app")
+            && !bundle.contains('/')
+        {
+            let app_json = format!("{bundle}/Contents/Resources/app.json");
+            if has(&app_json) {
+                found.push(("macos", app_json));
+            }
+        }
+    }
+    // The install directory, at the root or under one top folder.
+    for name in names {
+        if let Some(stem) = name.strip_suffix(".exe") {
+            let dir = stem
+                .rsplit_once('/')
+                .map(|(dir, _)| format!("{dir}/"))
+                .unwrap_or_default();
+            let app_json = format!("{dir}assets/app.json");
+            if dir.matches('/').count() <= 1
+                && has(&app_json)
+                && !found
+                    .iter()
+                    .any(|(platform, json)| *platform == "windows" && *json == app_json)
+            {
+                found.push(("windows", app_json));
+            }
+        }
+    }
+    match found.as_slice() {
+        [(platform, app_json)] => Some((platform, app_json.clone())),
+        _ => None,
+    }
+}
+
+fn parse_app_json(data: &[u8]) -> Result<AppPackageMetadata> {
     let value: serde_json::Value =
-        serde_json::from_slice(&app_json).context("Failed to parse app.json in package")?;
+        serde_json::from_slice(data).context("Failed to parse app.json in package")?;
     let env = value
         .get("env")
         .and_then(|value| value.as_str())
@@ -638,103 +634,91 @@ fn read_app_package_metadata(path: &Path) -> Result<AppPackageMetadata> {
     })
 }
 
-fn read_zip_entry(path: &Path, names: &[&str]) -> Result<Vec<u8>> {
-    let file =
-        fs::File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
-    let mut zip = zip::ZipArchive::new(file)
-        .with_context(|| format!("Failed to read zip archive {}", path.display()))?;
-    for name in names {
-        if let Ok(mut entry) = zip.by_name(name) {
-            let mut data = Vec::new();
-            entry
-                .read_to_end(&mut data)
-                .with_context(|| format!("Failed to read {name} from {}", path.display()))?;
-            return Ok(data);
-        }
-    }
-    bail!(
-        "app.json not found in {}; looked for {}",
-        path.display(),
-        names.join(", ")
-    )
-}
-
-fn read_macos_zip_app_json(path: &Path) -> Result<Vec<u8>> {
-    let file =
-        fs::File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
-    let mut outer = zip::ZipArchive::new(file)
-        .with_context(|| format!("Failed to read zip archive {}", path.display()))?;
-    // A single unreadable entry (corrupt header, ZIP64 edge, etc.) shouldn't
-    // abort the whole publish — skip it and keep scanning.
-    for index in 0..outer.len() {
-        let mut entry = match outer.by_index(index) {
-            Ok(entry) => entry,
-            Err(_) => continue,
-        };
-        let name = entry.name().to_string();
-        if name.ends_with(".app/Contents/Resources/app.json") {
-            let mut data = Vec::new();
-            entry
-                .read_to_end(&mut data)
-                .with_context(|| format!("Failed to read {name} from {}", path.display()))?;
-            return Ok(data);
-        }
-    }
-    bail!("app.json not found in macOS app package {}", path.display())
-}
-
-fn read_windows_zip_app_json(path: &Path) -> Result<Vec<u8>> {
-    let file =
-        fs::File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
-    let mut archive = zip::ZipArchive::new(file)
-        .with_context(|| format!("Failed to read zip archive {}", path.display()))?;
-    // The Windows update package zips the install directory (exe + assets/),
-    // so app.json sits at `assets/app.json`, optionally under a top folder.
-    // Normalize separators: zips built by PowerShell `Compress-Archive` store
-    // entry names with backslashes.
-    for index in 0..archive.len() {
-        let mut entry = match archive.by_index(index) {
-            Ok(entry) => entry,
-            Err(_) => continue,
-        };
-        let name = entry.name().replace('\\', "/");
-        if name.ends_with("assets/app.json") {
-            let mut data = Vec::new();
-            entry
-                .read_to_end(&mut data)
-                .with_context(|| format!("Failed to read {name} from {}", path.display()))?;
-            return Ok(data);
-        }
-    }
-    bail!(
-        "app.json not found in Windows app package {}",
-        path.display()
-    )
-}
-
 fn read_lxapp_json(cwd: &Path) -> Result<(String, String, String)> {
-    let path = cwd.join("lxapp.json");
-    if !path.exists() {
-        bail!("lxapp.json not found in {}", cwd.display());
-    }
-    let val: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(&path)?).context("Failed to parse lxapp.json")?;
-    let id = non_empty_str(&val["appId"], "appId in lxapp.json")?;
-    let version = non_empty_str(&val["version"], "version in lxapp.json")?;
-    let min_runtime = crate::versions::lxapp_min_runtime(&val)?;
-    Ok((id, version, min_runtime))
+    parse_lxapp_manifest(&read_project_manifest(cwd, "lxapp.json")?)
 }
 
 fn read_lxplugin_json(cwd: &Path) -> Result<(String, String)> {
-    let path = cwd.join("lxplugin.json");
+    parse_lxplugin_manifest(&read_project_manifest(cwd, "lxplugin.json")?)
+}
+
+fn read_project_manifest(cwd: &Path, name: &str) -> Result<serde_json::Value> {
+    let path = cwd.join(name);
     if !path.exists() {
-        bail!("lxplugin.json not found in {}", cwd.display());
+        bail!("{name} not found in {}", cwd.display());
     }
-    let val: serde_json::Value = serde_json::from_str(&fs::read_to_string(&path)?)
-        .context("Failed to parse lxplugin.json")?;
+    serde_json::from_str(&fs::read_to_string(&path)?)
+        .with_context(|| format!("Failed to parse {name}"))
+}
+
+fn parse_lxapp_manifest(val: &serde_json::Value) -> Result<(String, String, String)> {
+    let id = non_empty_str(&val["appId"], "appId in lxapp.json")?;
+    let version = non_empty_str(&val["version"], "version in lxapp.json")?;
+    let min_runtime = crate::versions::lxapp_min_runtime(val)?;
+    Ok((id, version, min_runtime))
+}
+
+fn parse_lxplugin_manifest(val: &serde_json::Value) -> Result<(String, String)> {
     let id = non_empty_str(&val["lxPluginId"], "lxPluginId in lxplugin.json")?;
     let version = non_empty_str(&val["version"], "version in lxplugin.json")?;
     Ok((id, version))
+}
+
+/// The uploader vouches for what it uploads: id, version, and minRuntime come
+/// from the manifest inside the archive, and a project that disagrees with its
+/// own build stops the publish.
+fn apply_packaged_manifest(meta: &mut PackageMeta, package: &Path) -> Result<()> {
+    let (id, version, min_runtime) = match meta.target.as_str() {
+        "lxapp" => parse_lxapp_manifest(&read_archive_manifest(package, "lxapp.json")?)?,
+        "lxplugin" => {
+            let (id, version) =
+                parse_lxplugin_manifest(&read_archive_manifest(package, "lxplugin.json")?)?;
+            (id, version, String::new())
+        }
+        _ => return Ok(()),
+    };
+    if (&id, &version, &min_runtime) != (&meta.target_id, &meta.version, &meta.min_runtime) {
+        bail!(
+            "{} holds {} v{} (minRuntime {}), but the project declares {} v{} (minRuntime {}); rebuild before publishing",
+            package.display(),
+            id,
+            version,
+            display_or_none(&min_runtime),
+            meta.target_id,
+            meta.version,
+            display_or_none(&meta.min_runtime)
+        );
+    }
+    Ok(())
+}
+
+fn display_or_none(value: &str) -> &str {
+    if value.is_empty() { "none" } else { value }
+}
+
+fn read_archive_manifest(package: &Path, name: &str) -> Result<serde_json::Value> {
+    let file = fs::File::open(package)
+        .with_context(|| format!("Failed to open package {}", package.display()))?;
+    let decoder = zstd::stream::read::Decoder::new(file)
+        .with_context(|| format!("Failed to read package {}", package.display()))?;
+    let mut archive = tar::Archive::new(decoder);
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?.into_owned();
+        let normalized: PathBuf = path
+            .components()
+            .filter(|component| !matches!(component, std::path::Component::CurDir))
+            .collect();
+        if normalized == Path::new(name) {
+            let mut text = String::new();
+            entry
+                .read_to_string(&mut text)
+                .with_context(|| format!("Failed to read {name} from {}", package.display()))?;
+            return serde_json::from_str(&text)
+                .with_context(|| format!("Failed to parse {name} in {}", package.display()));
+        }
+    }
+    bail!("{name} is missing from package {}", package.display())
 }
 
 fn non_empty_str(val: &serde_json::Value, label: &str) -> Result<String> {
@@ -784,7 +768,7 @@ fn publish_upload(
     let id = urlencoding::encode(meta.target_id.trim());
     let url = match meta.target.as_str() {
         "app" => {
-            let platform = platform.context("host app publish requires --platform")?;
+            let platform = platform.context("host package platform is unknown")?;
             format!(
                 "{server}/api/v2/lingxia/{id}/package?platform={}",
                 urlencoding::encode(platform)
@@ -813,11 +797,10 @@ fn publish_upload(
     Ok((url, fields))
 }
 
-fn resolve_lingxia_server(
-    cwd: &Path,
-    env: AppEnv,
-    lingxia_server_arg: Option<String>,
-) -> Result<String> {
+/// The upload server is the publisher's choice: `--lingxia-server`, else the
+/// default `lingxia auth login lingxia --server` saved. Packages and project
+/// files never pick it.
+fn resolve_lingxia_server(env: AppEnv, lingxia_server_arg: Option<String>) -> Result<String> {
     if let Some(s) = lingxia_server_arg {
         let trimmed = s.trim();
         if trimmed.is_empty() {
@@ -825,263 +808,17 @@ fn resolve_lingxia_server(
         }
         return Ok(trimmed.to_string());
     }
-    // Project config wins next: route to the env-specific server when a
-    // host config exists and configures one.
-    let config_path = cwd.join(HOST_CONFIG_FILE);
-    if config_path.exists()
-        && let Ok(cfg) = LingXiaConfig::load_for_publish(cwd)
-        && let Ok(resolved) = cfg.resolve_env(env)
-        && !resolved.lingxia_server.is_empty()
-    {
-        return Ok(resolved.lingxia_server);
-    }
-
-    // Lowest precedence: the machine-wide default in ~/.lingxia/cli/config.toml,
-    // so lxapp projects (no lingxia.yaml) needn't repeat --lingxia-server.
     if let Some(url) = global_lingxia_server(env) {
         return Ok(url);
     }
-
     bail!("Use --lingxia-server to specify the package upload server URL.");
 }
 
 /// `[publish]` server from `~/.lingxia/cli/config.toml`, routed by env
-/// (defaults to `dev` when absent). Lowest precedence: flag and project
-/// config win first.
+/// (defaults to `dev` when absent); `--lingxia-server` wins.
 fn global_lingxia_server(env: AppEnv) -> Option<String> {
     let publish = CliConfig::load().ok()?.publish?;
     publish.lingxia_server_for(env).map(str::to_string)
-}
-
-fn find_or_resolve_package(
-    cwd: &Path,
-    target: &str,
-    explicit: Option<String>,
-    platform: Option<&str>,
-) -> Result<PathBuf> {
-    if let Some(p) = explicit {
-        let path = if Path::new(&p).is_absolute() {
-            PathBuf::from(p)
-        } else {
-            cwd.join(p)
-        };
-        if !path.exists() {
-            bail!("Package not found: {}", path.display());
-        }
-        if !path.is_file() {
-            bail!("Package is not a file: {}", path.display());
-        }
-        return Ok(path);
-    }
-
-    let mut candidates = Vec::new();
-    let dist_dir = cwd.join("dist");
-    collect_matching_packages(cwd, &dist_dir, target, platform, &mut candidates, 0);
-    collect_matching_packages(
-        &dist_dir,
-        &dist_dir,
-        target,
-        platform,
-        &mut candidates,
-        MAX_PACKAGE_SEARCH_DEPTH,
-    );
-    if candidates.is_empty() {
-        collect_common_build_packages(cwd, target, platform, &mut candidates);
-    }
-    candidates.sort();
-    candidates.dedup();
-
-    match candidates.len() {
-        0 => bail!("{}", missing_package_message(target, platform)),
-        1 => Ok(candidates.remove(0)),
-        _ => {
-            let list = candidates
-                .iter()
-                .map(|p| format!("  {}", p.display()))
-                .collect::<Vec<_>>()
-                .join("\n");
-            bail!(
-                "Multiple packages found. Use --platform <platform> or --package-path <PATH> to specify one:\n{list}"
-            )
-        }
-    }
-}
-
-const MAX_PACKAGE_SEARCH_DEPTH: u32 = 3;
-
-fn resolve_publish_platform(
-    cwd: &Path,
-    target: &str,
-    platform: Option<&str>,
-) -> Result<Option<String>> {
-    if target != "app" {
-        if platform.is_some() {
-            bail!("--platform is only supported when publishing target=app.");
-        }
-        return Ok(None);
-    }
-
-    if let Some(platform) = platform {
-        return normalize_platform(platform).map(Some);
-    }
-
-    let Ok(config) = LingXiaConfig::load_for_publish(cwd) else {
-        return Ok(None);
-    };
-    let Some(app) = config.app.as_ref() else {
-        return Ok(None);
-    };
-
-    let mut platforms = app
-        .platforms
-        .iter()
-        .map(|platform| normalize_config_platform(platform))
-        .collect::<Result<Vec<_>>>()?
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
-    platforms.sort();
-    platforms.dedup();
-
-    match platforms.as_slice() {
-        [only] => Ok(Some(only.clone())),
-        [] => bail!(
-            "Host app publishing supports Android and macOS. iOS uses App Store; Harmony uses app marketplace."
-        ),
-        _ => {
-            let list = platforms.join(", ");
-            bail!(
-                "Multiple app platforms are configured: {list}\n\
-                 Pass `--platform <platform>` when publishing, or use `--package-path <PATH>`."
-            )
-        }
-    }
-}
-
-fn normalize_platform(value: &str) -> Result<String> {
-    let platform: PlatformType = value.parse()?;
-    match platform {
-        PlatformType::Android | PlatformType::MacOs | PlatformType::Windows => {
-            Ok(platform.as_str().to_string())
-        }
-        PlatformType::Ios => bail!("iOS host app publishing uses App Store."),
-        PlatformType::Harmony => bail!("Harmony host app publishing uses app marketplace."),
-    }
-}
-
-fn normalize_config_platform(value: &str) -> Result<Option<String>> {
-    let platform: PlatformType = value.parse()?;
-    Ok(match platform {
-        PlatformType::Android | PlatformType::MacOs | PlatformType::Windows => {
-            Some(platform.as_str().to_string())
-        }
-        PlatformType::Ios | PlatformType::Harmony => None,
-    })
-}
-
-fn collect_common_build_packages(
-    cwd: &Path,
-    target: &str,
-    platform: Option<&str>,
-    out: &mut Vec<PathBuf>,
-) {
-    if target != "app" {
-        return;
-    }
-
-    let rels: &[(&str, &str)] = &[
-        (
-            "android",
-            "android/app/build/outputs/apk/release/app-release.apk",
-        ),
-        ("android", "app/build/outputs/apk/release/app-release.apk"),
-    ];
-
-    for (candidate_platform, rel) in rels {
-        if platform.is_some_and(|platform| platform != *candidate_platform) {
-            continue;
-        }
-        let path = cwd.join(rel);
-        if path.is_file() {
-            out.push(path);
-        }
-    }
-}
-
-fn missing_package_message(target: &str, platform: Option<&str>) -> String {
-    if target == "app" {
-        let platform_suffix = platform
-            .map(|platform| format!(" for platform '{platform}'"))
-            .unwrap_or_default();
-        return format!(
-            "No package found for target '{target}'{platform_suffix}.\n\
-             Run `lingxia package --platform <platform>` first, then retry `lingxia publish`.\n\
-             Searched ./dist for Android APKs, macOS update zips, and Windows update zips, plus common Android release outputs.\n\
-             If the package is elsewhere, pass `--package-path <PATH>`."
-        );
-    }
-
-    format!(
-        "No package found for target '{target}'. Run `lingxia package` first, or use --package-path <PATH>."
-    )
-}
-
-fn collect_matching_packages(
-    dir: &Path,
-    dist_dir: &Path,
-    target: &str,
-    platform: Option<&str>,
-    out: &mut Vec<PathBuf>,
-    max_depth: u32,
-) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if max_depth > 0 {
-                collect_matching_packages(&path, dist_dir, target, platform, out, max_depth - 1);
-            }
-            continue;
-        }
-        if !path.is_file() {
-            continue;
-        }
-
-        if package_matches(target, &path, dist_dir, platform) {
-            out.push(path);
-        }
-    }
-}
-
-fn package_matches(target: &str, path: &Path, dist_dir: &Path, platform: Option<&str>) -> bool {
-    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
-        return false;
-    };
-
-    match target {
-        "app" => package_platform(file_name, path, dist_dir).is_some_and(|candidate| {
-            platform
-                .map(|platform| candidate == platform)
-                .unwrap_or(true)
-        }),
-        _ => false,
-    }
-}
-
-fn package_platform(file_name: &str, path: &Path, dist_dir: &Path) -> Option<&'static str> {
-    if file_name.ends_with(".apk") {
-        return Some("android");
-    }
-    if file_name.ends_with("-macos.zip") && path.starts_with(dist_dir.join("macos")) {
-        return Some("macos");
-    }
-    if file_name.ends_with("-windows.zip") && path.starts_with(dist_dir.join("windows")) {
-        return Some("windows");
-    }
-    None
 }
 
 fn upload_transport_error(url: &str, package_bytes: usize, err: ureq::Error) -> anyhow::Error {
@@ -1163,10 +900,10 @@ fn build_multipart(
 #[cfg(test)]
 mod tests {
     use super::{
-        AppPackageMetadata, PackageMeta, apply_host_package_identity, build_multipart,
-        find_or_resolve_package, normalize_channel, normalize_platform, package_matches,
-        project_version_drift, publish_build_args, publish_upload, read_app_package_metadata,
-        resolve_meta, resolve_publish_platform, signed_multipart_fields,
+        AppPackageMetadata, PackageMeta, PublishOptions, apply_packaged_manifest, build_multipart,
+        classify_host_package, normalize_channel, publish_build_args, publish_upload,
+        read_host_package, reject_env_mismatch, resolve_meta, resolve_publish_target,
+        signed_multipart_fields,
     };
     use super::{draft_open_url, draft_qr_png};
     use crate::config::AppEnv;
@@ -1176,32 +913,6 @@ mod tests {
     use zip::write::SimpleFileOptions;
 
     use super::{clean_arg, mask_token, validate_publish_server};
-
-    const HOST_YAML_AT_9: &str = r#"
-app:
-  projectName: demo
-  packageId: app.example.demo
-  productName: Demo
-  productVersion: 9.9.9
-  lingxiaId: demo
-  lingxiaServer: https://api.example.com
-  platforms:
-    - android
-  homeAppId: demo.home
-"#;
-
-    const HOST_YAML_BAD_VERSION: &str = r#"
-app:
-  projectName: demo
-  packageId: app.example.demo
-  productName: Demo
-  productVersion: nope
-  lingxiaId: demo
-  lingxiaServer: https://api.example.com
-  platforms:
-    - android
-  homeAppId: demo.home
-"#;
 
     #[test]
     fn validate_publish_server_requires_http_scheme() {
@@ -1225,146 +936,6 @@ app:
     fn mask_token_hides_the_middle() {
         assert_eq!(mask_token("lx_abcdefgh"), "lx_a…efgh");
         assert_eq!(mask_token("short"), "*****");
-    }
-
-    #[test]
-    fn app_package_match_accepts_cli_generated_macos_zip_only_in_dist_macos() {
-        let temp = TempDir::new().unwrap();
-        let dist_dir = temp.path().join("dist");
-        let allowed = dist_dir.join("macos").join("Demo-1.0.0-macos.zip");
-        let rejected = temp.path().join("Demo-1.0.0-macos.zip");
-
-        fs::create_dir_all(allowed.parent().unwrap()).unwrap();
-        fs::write(&allowed, b"zip").unwrap();
-        fs::write(&rejected, b"zip").unwrap();
-
-        assert!(package_matches("app", &allowed, &dist_dir, None));
-        assert!(!package_matches("app", &rejected, &dist_dir, None));
-    }
-
-    #[test]
-    fn find_or_resolve_package_ignores_unrelated_root_zip_for_app_publish() {
-        let temp = TempDir::new().unwrap();
-        let dist_macos = temp.path().join("dist").join("macos");
-        fs::create_dir_all(&dist_macos).unwrap();
-        fs::write(temp.path().join("notes.zip"), b"zip").unwrap();
-
-        let expected = dist_macos.join("Demo-1.0.0-macos.zip");
-        fs::write(&expected, b"zip").unwrap();
-
-        let resolved = find_or_resolve_package(temp.path(), "app", None, None).unwrap();
-        assert_eq!(resolved, expected);
-    }
-
-    #[test]
-    fn find_or_resolve_package_falls_back_to_android_release_output() {
-        let temp = TempDir::new().unwrap();
-        let expected = temp
-            .path()
-            .join("android/app/build/outputs/apk/release/app-release.apk");
-        fs::create_dir_all(expected.parent().unwrap()).unwrap();
-        fs::write(&expected, b"apk").unwrap();
-
-        let resolved = find_or_resolve_package(temp.path(), "app", None, None).unwrap();
-        assert_eq!(resolved, expected);
-    }
-
-    #[test]
-    fn find_or_resolve_package_prefers_dist_over_common_build_output() {
-        let temp = TempDir::new().unwrap();
-        let dist = temp.path().join("dist/android/app-release.apk");
-        let build = temp
-            .path()
-            .join("android/app/build/outputs/apk/release/app-release.apk");
-        fs::create_dir_all(dist.parent().unwrap()).unwrap();
-        fs::create_dir_all(build.parent().unwrap()).unwrap();
-        fs::write(&dist, b"dist-apk").unwrap();
-        fs::write(&build, b"build-apk").unwrap();
-
-        let resolved = find_or_resolve_package(temp.path(), "app", None, None).unwrap();
-        assert_eq!(resolved, dist);
-    }
-
-    #[test]
-    fn find_or_resolve_package_filters_by_platform() {
-        let temp = TempDir::new().unwrap();
-        let android = temp.path().join("dist/android/app-release.apk");
-        let macos = temp.path().join("dist/macos/Demo-1.0.0-macos.zip");
-        fs::create_dir_all(android.parent().unwrap()).unwrap();
-        fs::create_dir_all(macos.parent().unwrap()).unwrap();
-        fs::write(&android, b"apk").unwrap();
-        fs::write(&macos, b"zip").unwrap();
-
-        let resolved = find_or_resolve_package(temp.path(), "app", None, Some("android")).unwrap();
-        assert_eq!(resolved, android);
-    }
-
-    #[test]
-    fn resolve_publish_platform_requires_platform_for_multi_platform_config() {
-        let temp = TempDir::new().unwrap();
-        fs::write(
-            temp.path().join("lingxia.yaml"),
-            r#"
-app:
-  projectName: demo
-  packageId: app.example.demo
-  productName: Demo
-  productVersion: 1.0.0
-  lingxiaId: demo
-  lingxiaServer: https://api.example.com
-  platforms:
-    - android
-    - macos
-  homeAppId: demo.home
-surfaces:
-  - lxapp: demo.home
-    role: main
-    launch: true
-"#,
-        )
-        .unwrap();
-
-        let error = resolve_publish_platform(temp.path(), "app", None).unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("Multiple app platforms are configured")
-        );
-    }
-
-    #[test]
-    fn resolve_publish_platform_rejects_harmony_host_publish() {
-        let error = normalize_platform("harmony").unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("Harmony host app publishing uses app marketplace")
-        );
-    }
-
-    #[test]
-    fn resolve_publish_platform_ignores_store_only_config_platforms() {
-        let temp = TempDir::new().unwrap();
-        fs::write(
-            temp.path().join("lingxia.yaml"),
-            r#"
-app:
-  projectName: demo
-  packageId: app.example.demo
-  productName: Demo
-  productVersion: 1.0.0
-  lingxiaId: demo
-  lingxiaServer: https://api.example.com
-  platforms:
-    - android
-    - harmony
-  homeAppId: demo.home
-"#,
-        )
-        .unwrap();
-
-        let platform = resolve_publish_platform(temp.path(), "app", None).unwrap();
-        assert_eq!(platform.as_deref(), Some("android"));
     }
 
     #[test]
@@ -1600,30 +1171,117 @@ app:
     }
 
     #[test]
-    fn app_publish_rejects_explicit_channel() {
+    fn a_host_project_publishes_its_package_not_itself() {
         let temp = TempDir::new().unwrap();
-        fs::write(
-            temp.path().join("lingxia.yaml"),
-            r#"
-app:
-  projectName: demo
-  productName: Demo
-  productVersion: 1.0.0
-  lingxiaId: demo
-  platforms:
-    - android
-  homeAppId: demo.home
-android:
-  packageId: app.example.demo
-"#,
-        )
-        .unwrap();
-
-        let err = resolve_meta(temp.path(), None, Some("draft"))
+        fs::write(temp.path().join("lingxia.yaml"), "app: {}\n").unwrap();
+        let err = resolve_meta(temp.path(), None, None)
             .unwrap_err()
             .to_string();
+        assert!(err.contains("lingxia publish <PACKAGE>"), "{err}");
+    }
 
-        assert!(err.contains("not supported when publishing target=app"));
+    fn options(package: Option<String>) -> PublishOptions {
+        PublishOptions {
+            token: None,
+            lingxia_server: None,
+            package,
+            env: None,
+            channel: None,
+            framework: None,
+            progress: None,
+            update_signing_key: None,
+        }
+    }
+
+    #[test]
+    fn a_host_package_publishes_from_anywhere_with_its_own_identity() {
+        let temp = TempDir::new().unwrap();
+        let package = write_macos_package(temp.path(), "0.2.6");
+        let (meta, resolved) =
+            resolve_publish_target(temp.path(), &options(Some(package.display().to_string())))
+                .unwrap();
+        assert_eq!(meta.target, "app");
+        assert_eq!(meta.target_id, "demo");
+        assert_eq!(meta.version, "0.2.6");
+        assert_eq!(meta.env, AppEnv::Prod);
+        assert_eq!(resolved.platform.as_deref(), Some("macos"));
+
+        let mut with_channel = options(Some(package.display().to_string()));
+        with_channel.channel = Some("draft".into());
+        let err = resolve_publish_target(temp.path(), &with_channel)
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(
+            err.contains("--channel is not supported for a host package"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn host_packages_are_identified_by_layout_not_name() {
+        assert_eq!(
+            classify_host_package(&["AndroidManifest.xml", "classes.dex", "assets/app.json"]),
+            Some(("android", "assets/app.json".to_string()))
+        );
+        assert_eq!(
+            classify_host_package(&[
+                "Demo.app/Contents/Info.plist",
+                "Demo.app/Contents/MacOS/demo",
+                "Demo.app/Contents/Resources/app.json",
+            ]),
+            Some(("macos", "Demo.app/Contents/Resources/app.json".to_string()))
+        );
+        assert_eq!(
+            classify_host_package(&["demo.exe", "assets/app.json"]),
+            Some(("windows", "assets/app.json".to_string()))
+        );
+        assert_eq!(
+            classify_host_package(&["Demo/demo.exe", "Demo/assets/app.json"]),
+            Some(("windows", "Demo/assets/app.json".to_string()))
+        );
+        // Neither a stray app.json nor an exe without its assets is a package.
+        assert_eq!(classify_host_package(&["assets/app.json"]), None);
+        assert_eq!(classify_host_package(&["demo.exe", "README.txt"]), None);
+        // Two layouts at once is not a package `lingxia package` writes.
+        assert_eq!(
+            classify_host_package(&["AndroidManifest.xml", "assets/app.json", "demo.exe"]),
+            None
+        );
+    }
+
+    #[test]
+    fn a_misnamed_package_is_read_by_what_it_contains() {
+        let temp = TempDir::new().unwrap();
+        let mac = write_macos_package(temp.path(), "0.2.6");
+        let renamed = temp.path().join("Demo-0.2.6-windows.zip");
+        fs::rename(&mac, &renamed).unwrap();
+        assert_eq!(read_host_package(&renamed).unwrap().0, "macos");
+
+        // PowerShell `Compress-Archive` writes backslash-separated names.
+        let windows = temp.path().join("Demo.zip");
+        write_zip(
+            &windows,
+            &[
+                ("Demo\\demo.exe", b""),
+                (
+                    "Demo\\assets\\app.json",
+                    br#"{"lingxiaId":"demo","productVersion":"1.0.0","env":"dev"}"#,
+                ),
+            ],
+        );
+        let (platform, metadata) = read_host_package(&windows).unwrap();
+        assert_eq!(platform, "windows");
+        assert_eq!(metadata.env, AppEnv::Dev);
+
+        let other = temp.path().join("notes.zip");
+        write_zip(&other, &[("notes.txt", b"hi")]);
+        let err = read_host_package(&other).unwrap_err().to_string();
+        assert!(err.contains("is not a host package"), "{err}");
+    }
+
+    fn read_app_package_metadata(path: &std::path::Path) -> anyhow::Result<AppPackageMetadata> {
+        read_host_package(path).map(|(_, metadata)| metadata)
     }
 
     #[test]
@@ -1632,7 +1290,7 @@ android:
         let apk = temp.path().join("app-dev.apk");
         write_zip(
             &apk,
-            &[(
+            &[("AndroidManifest.xml", b""), (
                 "assets/app.json",
                 br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","env":"dev","lingxiaId":"demo.dev"}"#,
             )],
@@ -1651,7 +1309,7 @@ android:
         let zip = temp.path().join("Demo-1.0.0-macos.zip");
         write_zip(
             &zip,
-            &[(
+            &[("Demo.app/Contents/Info.plist", b""), (
                 "Demo.app/Contents/Resources/app.json",
                 br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","env":"prod","lingxiaId":"demo"}"#,
             )],
@@ -1669,7 +1327,7 @@ android:
         let apk = temp.path().join("app.apk");
         write_zip(
             &apk,
-            &[(
+            &[("AndroidManifest.xml", b""), (
                 "assets/app.json",
                 br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","lingxiaId":"demo"}"#,
             )],
@@ -1685,7 +1343,7 @@ android:
         let apk = temp.path().join("app-dev.apk");
         write_zip(
             &apk,
-            &[(
+            &[("AndroidManifest.xml", b""), (
                 "assets/app.json",
                 br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","env":"dev","lingxiaId":"demo.dev"}"#,
             )],
@@ -1701,7 +1359,13 @@ android:
     fn publish_rejects_app_package_without_lingxia_id() {
         let temp = TempDir::new().unwrap();
         let apk = temp.path().join("app.apk");
-        write_zip(&apk, &[("assets/app.json", br#"{"env":"prod"}"#)]);
+        write_zip(
+            &apk,
+            &[
+                ("AndroidManifest.xml", b""),
+                ("assets/app.json", br#"{"env":"prod"}"#),
+            ],
+        );
 
         let error = read_app_package_metadata(&apk).unwrap_err().to_string();
         assert!(error.contains("lingxiaId is missing"), "{error}");
@@ -1713,7 +1377,10 @@ android:
         let apk = temp.path().join("app.apk");
         write_zip(
             &apk,
-            &[("assets/app.json", br#"{"lingxiaId":"demo","env":"prod"}"#)],
+            &[
+                ("AndroidManifest.xml", b""),
+                ("assets/app.json", br#"{"lingxiaId":"demo","env":"prod"}"#),
+            ],
         );
 
         let error = read_app_package_metadata(&apk).unwrap_err().to_string();
@@ -1726,74 +1393,103 @@ android:
         let apk = temp.path().join("app.apk");
         write_zip(
             &apk,
-            &[(
-                "assets/app.json",
-                br#"{"lingxiaId":"demo","productVersion":"1.0","env":"prod"}"#,
-            )],
+            &[
+                ("AndroidManifest.xml", b""),
+                (
+                    "assets/app.json",
+                    br#"{"lingxiaId":"demo","productVersion":"1.0","env":"prod"}"#,
+                ),
+            ],
         );
 
         let error = read_app_package_metadata(&apk).unwrap_err().to_string();
         assert!(error.contains("semantic version"), "{error}");
     }
 
-    #[test]
-    fn host_publish_version_comes_from_the_package() {
-        let mut meta = PackageMeta {
-            target: "app".into(),
-            target_id: "from-yaml".into(),
-            version: "9.9.9".into(),
-            env: AppEnv::Prod,
-            channel: None,
-            min_runtime: String::new(),
-        };
-        apply_host_package_identity(
-            &mut meta,
-            AppPackageMetadata {
-                env: AppEnv::Dev,
-                lingxia_id: "demo.dev".into(),
-                version: "1.2.3".into(),
-            },
-        );
-        assert_eq!(meta.version, "1.2.3");
-        assert_eq!(meta.target_id, "demo.dev");
-        assert_eq!(meta.env, AppEnv::Dev);
-        assert!(meta.channel.is_none());
+    fn write_lxapp_archive(path: &std::path::Path, manifest: &str) {
+        let file = fs::File::create(path).unwrap();
+        let encoder = zstd::stream::write::Encoder::new(file, 0).unwrap();
+        let mut tar = tar::Builder::new(encoder);
+        let mut header = tar::Header::new_gnu();
+        header.set_size(manifest.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        tar.append_data(&mut header, "./lxapp.json", manifest.as_bytes())
+            .unwrap();
+        tar.into_inner().unwrap().finish().unwrap();
+    }
+
+    fn lxapp_meta(version: &str) -> PackageMeta {
+        PackageMeta {
+            target: "lxapp".into(),
+            target_id: "demo.home".into(),
+            version: version.into(),
+            env: AppEnv::Dev,
+            channel: Some("release".into()),
+            min_runtime: "0.24.0".into(),
+        }
     }
 
     #[test]
-    fn app_publish_does_not_take_version_from_yaml() {
+    fn lxapp_publish_vouches_for_the_packaged_manifest() {
         let temp = TempDir::new().unwrap();
-        fs::write(temp.path().join("lingxia.yaml"), HOST_YAML_AT_9).unwrap();
-
-        let meta = resolve_meta(temp.path(), None, None).unwrap();
-
-        assert_eq!(meta.target, "app");
-        assert!(meta.version.is_empty(), "{}", meta.version);
-        assert_eq!(
-            project_version_drift(temp.path(), "1.2.3").as_deref(),
-            Some("lingxia.yaml productVersion is 9.9.9; publishing 1.2.3 from the package.")
+        let archive = temp.path().join("home-1.0.1.tar.zst");
+        write_lxapp_archive(
+            &archive,
+            r#"{"appId":"demo.home","version":"1.0.1","minRuntime":"0.24.0"}"#,
         );
-        assert!(project_version_drift(temp.path(), "9.9.9").is_none());
+
+        let mut meta = lxapp_meta("1.0.1");
+        apply_packaged_manifest(&mut meta, &archive).unwrap();
+        assert_eq!(meta.version, "1.0.1");
+
+        let error = apply_packaged_manifest(&mut lxapp_meta("1.0.2"), &archive)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("holds demo.home v1.0.1"), "{error}");
+        assert!(error.contains("rebuild before publishing"), "{error}");
     }
 
     #[test]
-    fn app_publish_accepts_an_invalid_yaml_product_version() {
+    fn an_archive_without_its_manifest_is_refused() {
         let temp = TempDir::new().unwrap();
-        fs::write(temp.path().join("lingxia.yaml"), HOST_YAML_BAD_VERSION).unwrap();
+        let archive = temp.path().join("plugin.tar.zst");
+        write_lxapp_archive(&archive, "{}");
+        let mut meta = lxapp_meta("1.0.0");
+        meta.target = "lxplugin".into();
+        let error = apply_packaged_manifest(&mut meta, &archive)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("lxplugin.json is missing"), "{error}");
+    }
 
-        let meta = resolve_meta(temp.path(), None, None).unwrap();
+    fn write_macos_package(dir: &std::path::Path, version: &str) -> std::path::PathBuf {
+        let path = dir.join(format!("Flourish-{version}-macos.zip"));
+        let app_json =
+            format!(r#"{{"lingxiaId":"demo","productVersion":"{version}","env":"prod"}}"#);
+        write_zip(
+            &path,
+            &[
+                ("Flourish.app/Contents/Info.plist", b""),
+                (
+                    "Flourish.app/Contents/Resources/app.json",
+                    app_json.as_bytes(),
+                ),
+            ],
+        );
+        path
+    }
 
-        assert!(meta.version.is_empty(), "{}", meta.version);
-        assert_eq!(
-            resolve_publish_platform(temp.path(), "app", None)
-                .unwrap()
-                .as_deref(),
-            Some("android")
-        );
-        assert_eq!(
-            project_version_drift(temp.path(), "1.2.3").as_deref(),
-            Some("lingxia.yaml productVersion is nope; publishing 1.2.3 from the package.")
-        );
+    #[test]
+    fn host_publish_refuses_an_env_the_package_was_not_built_for() {
+        let package = std::path::Path::new("Flourish-0.2.6-macos.zip");
+        reject_env_mismatch(None, package, AppEnv::Prod).unwrap();
+        reject_env_mismatch(Some("prod"), package, AppEnv::Prod).unwrap();
+        let error = reject_env_mismatch(Some("dev"), package, AppEnv::Prod)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("packaged for prod"), "{error}");
+        assert!(error.contains("lingxia package --env dev"), "{error}");
     }
 
     fn write_zip(path: &std::path::Path, entries: &[(&str, &[u8])]) {
