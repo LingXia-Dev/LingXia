@@ -181,7 +181,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// Border, capsule and Dock mark while an AI assistant drives the app.
     private var controlSessionIndicator: ControlSessionIndicator?
     private var navigationToolbar: MacNavigationToolbar?
+    /// The committed sidebar width, held by `sidebarSlot`. A peek widens the
+    /// sidebar view past it without moving anything laid out against the slot.
     private var sidebarWidthConstraint: NSLayoutConstraint?
+    /// Invisible stand-in for the sidebar's committed footprint; docked panels
+    /// and workspace geometry anchor to it.
+    private let sidebarSlot = NSView()
+    private var sidebarFollowsSlotConstraint: NSLayoutConstraint?
+    private var sidebarPeekWidthConstraint: NSLayoutConstraint?
+    private var sidebarPeek: SidebarPeekPresentation?
     private var contentLeadingConstraint: NSLayoutConstraint?
     /// Extra leading inset for an active left-edge dock panel. The content card's
     /// leading is `sidebar width + this`, so the card shrinks to make room for a
@@ -631,11 +639,14 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         let sidebar = SidebarView()
         sidebar.translatesAutoresizingMaskIntoConstraints = false
+        // Navigation from a peek also closes it; toggles below leave it open.
         sidebar.onAppPageSelected = { [weak self] appId, itemIndex in
             self?.handleSidebarPageSelection(appId: appId, itemIndex: itemIndex)
+            self?.endSidebarPeek(animated: true)
         }
         sidebar.onAppSelected = { [weak self] appId in
             self?.handleSidebarAppSelection(appId: appId)
+            self?.endSidebarPeek(animated: true)
         }
         sidebar.onAppCloseRequested = { [weak self] appId in
             self?.closeTab(appId)
@@ -652,6 +663,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.onShowRequested = { [weak self] in
             self?.showSidebar()
         }
+        sidebar.onPeekRequested = { [weak self] in
+            self?.beginSidebarPeek()
+        }
+        sidebar.onPeekDismissRequested = { [weak self] in
+            self?.endSidebarPeek(animated: true)
+        }
         sidebar.onWidthChanged = { [weak self] width, animated in
             self?.updateSidebarWidth(width, animated: animated)
         }
@@ -663,16 +680,20 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             if self.managedMainAddHandler?() != true {
                 self.browserCoordinator.addTab()
             }
+            self.endSidebarPeek(animated: true)
         }
         sidebar.onBookmarkOpen = { [weak self] url in
             self?.browserCoordinator.openBookmark(url: url)
+            self?.endSidebarPeek(animated: true)
         }
         sidebar.onManageBookmarks = { [weak self] in
             self?.browserCoordinator.openBookmarks()
+            self?.endSidebarPeek(animated: true)
         }
         sidebar.reloadBookmarks()
         sidebar.onBrowserTabSelected = { [weak self] id in
             self?.browserCoordinator.selectTab(id: id)
+            self?.endSidebarPeek(animated: true)
         }
         sidebar.onBrowserTabCloseRequested = { [weak self] id in
             self?.browserCoordinator.closeTab(id: id)
@@ -710,6 +731,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             }
         }
         sidebarView = sidebar
+        sidebarSlot.translatesAutoresizingMaskIntoConstraints = false
+        sidebarSlot.isHidden = true
+        contentView.addSubview(sidebarSlot)
         contentView.addSubview(sidebar)
         // A declaration that arrived before this view existed is held on the
         // shell, not lost; project it now that there is something to draw it.
@@ -760,7 +784,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         workspaceManager.configure(
             overlayParent: contentView,
-            sidebar: sidebar,
+            sidebar: sidebarSlot,
             padding: Layout.contentPanelPadding
         ) { [weak self] trailingInset, bottomInset, topInset, leadingInset in
             guard let self else { return }
@@ -782,8 +806,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         right.addSubview(workspaceRoot)
 
         // Layout constraints
-        let sidebarWidth = sidebar.widthAnchor.constraint(equalToConstant: Layout.sidebarWidth)
+        let sidebarWidth = sidebarSlot.widthAnchor.constraint(equalToConstant: Layout.sidebarWidth)
         sidebarWidthConstraint = sidebarWidth
+        // The sidebar follows its slot; a peek swaps this for its own width.
+        let followSlot = sidebar.widthAnchor.constraint(equalTo: sidebarSlot.widthAnchor)
+        sidebarFollowsSlotConstraint = followSlot
+        sidebarPeekWidthConstraint = sidebar.widthAnchor.constraint(equalToConstant: 0)
 
         let p = Layout.contentPanelPadding
         let contentLeading = shadowWrapper.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Layout.sidebarWidth)
@@ -817,6 +845,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             sidebar.topAnchor.constraint(equalTo: topAccessoryContainer.bottomAnchor),
             sidebar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             sidebar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            followSlot,
+            sidebarSlot.topAnchor.constraint(equalTo: sidebar.topAnchor),
+            sidebarSlot.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor),
+            sidebarSlot.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor),
             sidebarWidth,
 
             cardTop,
@@ -1103,6 +1135,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     private func applyEffectiveSidebarProjection() {
+        endSidebarPeek(animated: false)
         guard let constraint = sidebarWidthConstraint else {
             refreshSidebarVisibilityUI()
             return
@@ -1136,8 +1169,61 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         refreshSidebarVisibilityUI()
     }
 
+    // MARK: - Sidebar peek
+
+    private func beginSidebarPeek() {
+        guard sidebarPeek == nil, sidebarChromeEnabled, let sidebar = sidebarView, sidebar.isCompact,
+              let window, let contentView = window.contentView,
+              let widthConstraint = sidebarPeekWidthConstraint,
+              let followsSlot = sidebarFollowsSlotConstraint,
+              let committedWidth = sidebarWidthConstraint?.constant,
+              committedWidth >= Layout.sidebarHiddenThreshold
+        else { return }
+        let peek = SidebarPeekPresentation(
+            window: window, container: contentView, sidebar: sidebar,
+            widthConstraint: widthConstraint, followsSlot: followsSlot)
+        peek.onDismissRequested = { [weak self] in
+            self?.endSidebarPeek(animated: true)
+        }
+        sidebarPeek = peek
+        peek.present(
+            from: committedWidth,
+            to: max(lastExpandedSidebarWidth, SidebarView.Layout.expandedWidth))
+    }
+
+    private func endSidebarPeek(animated: Bool) {
+        guard let peek = sidebarPeek else { return }
+        // An animated close already under way finishes on its own.
+        guard !peek.isDismissing || !animated else { return }
+        peek.dismiss(to: sidebarWidthConstraint?.constant ?? 0, animated: animated) { [weak self] in
+            guard let self, self.sidebarPeek === peek else { return }
+            self.sidebarPeek = nil
+        }
+    }
+
+    /// Cmd+\: pin or collapse the sidebar, or toggle the peek where pinning
+    /// is unavailable.
+    func toggleSidebarFromKeyboard() -> Bool {
+        guard sidebarChromeEnabled, let sidebar = sidebarView else { return false }
+        if surfaceSizeClass == .compact {
+            if sidebarPeek != nil {
+                endSidebarPeek(animated: true)
+            } else {
+                beginSidebarPeek()
+            }
+        } else if (sidebarWidthConstraint?.constant ?? 0) < Layout.sidebarHiddenThreshold {
+            setSidebarVisible(true, animated: true)
+        } else if sidebar.isCompact {
+            showSidebar()
+        } else {
+            hideSidebar()
+        }
+        return true
+    }
+
     private func hideSidebar() {
         guard surfaceSizeClass != .compact else { return }
+        endSidebarPeek(animated: false)
         mediumSidebarExpandedByUser = false
         collapseSidebarToRail(animated: true)
     }
@@ -1149,7 +1235,16 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             mediumSidebarExpandedByUser = true
         }
         sidebarView?.setCompactMode(false)
+        // Pinning a peek: the sidebar is already drawn expanded, so it holds
+        // its width while the workspace slides over to make room.
+        let pinningPeek = sidebarPeek.map { !$0.isDismissing } ?? false
+        if pinningPeek { sidebarPeek?.finishAsPin() }
         updateSidebarWidth(lastExpandedSidebarWidth, animated: true)
+        if pinningPeek {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self] in
+                MainActor.assumeIsolated { self?.endSidebarPeek(animated: false) }
+            }
+        }
     }
 
     private func collapseSidebarToRail(animated: Bool) {
@@ -1174,6 +1269,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     private func setSidebarVisible(_ visible: Bool, animated: Bool) {
+        endSidebarPeek(animated: false)
         guard let constraint = sidebarWidthConstraint else { return }
         guard sidebarChromeEnabled else {
             sidebarView?.setCompactMode(false)

@@ -160,6 +160,13 @@ class LxAppWindow: NSWindow {
             }
         }
 
+        // Match the typed character so layouts that move the backslash key still work.
+        if modifiers == [.command], event.charactersIgnoringModifiers == "\\",
+           let controller = windowController as? LxAppShell,
+           controller.toggleSidebarFromKeyboard() {
+            return true
+        }
+
         // Backspace (keyCode 51) for back navigation
         if event.keyCode == 51 && event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [] {
             // Don't intercept if typing in a native text field

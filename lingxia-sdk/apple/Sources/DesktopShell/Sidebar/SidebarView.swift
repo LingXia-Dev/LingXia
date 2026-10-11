@@ -649,7 +649,7 @@ class SidebarView: NSView {
         /// Rail footer chrome around its action stack: 6pt above (below the
         /// 1pt separator) and 6pt below.
         static let railFooterChromeHeight: CGFloat = 6 + 1 + 6
-        /// Header actions and both sidebar toggles share a 24pt target.
+        /// Header actions and the collapse toggle share a 24pt target.
         static let actionButtonSize: CGFloat = 24
         static let actionButtonSpacing: CGFloat = 2
         static let resizeHandleWidth: CGFloat = 5
@@ -699,10 +699,10 @@ class SidebarView: NSView {
     /// The rail-state expand toggle sits below the native window controls.
     private let railExpandButton = NSButton()
     private var railExpandTrackingArea: NSTrackingArea?
-    /// Compact desktop keeps the glyph visible but inert: the rail is already
-    /// the admitted sidebar, so a click must not pretend it can expand.
+    /// False in a compact window, where the rail cannot be pinned open and
+    /// the expand control previews instead.
     var railExpandEnabled = true {
-        didSet { updateRailExpandAffordances() }
+        didSet { updateRailExpandTooltip() }
     }
     private var panelButtons: [SidebarActionRowView] = []
     /// The panel items currently materialized as footer buttons. Lets
@@ -715,6 +715,19 @@ class SidebarView: NSView {
 
     /// True when the sidebar is collapsed to the icon-only rail.
     private(set) var isCompact = false
+    /// The expanded layout shown as a transient overlay over a committed rail.
+    /// `isCompact` stays the committed mode the shell persists.
+    private(set) var isPeeking = false
+    private var showsRail: Bool { isCompact && !isPeeking }
+    private var isRailExpandHovered = false
+    private var peekIntentTask: Task<Void, Never>?
+    private var peekDismissTask: Task<Void, Never>?
+    private var peekTrackingArea: NSTrackingArea?
+    private var peekMenuObservers: [NSObjectProtocol] = []
+    /// Pins the expand control to the rail's axis, which a widening peek
+    /// must not drag along.
+    private var railExpandCenterXConstraint: NSLayoutConstraint?
+    private var isMenuTracking = false
 
     private var headerHeightConstraint: NSLayoutConstraint?
     private var controlsAlignedToTop = false
@@ -810,6 +823,7 @@ class SidebarView: NSView {
         }
     }
     private var buttonCenterYConstraints: [NSLayoutConstraint] = []
+    private var railExpandCenterYConstraint: NSLayoutConstraint?
 
     var isFullyHidden: Bool {
         return frame.width < Layout.fullyHiddenThreshold
@@ -826,8 +840,12 @@ class SidebarView: NSView {
     var onManagedMainRenameCommitted: ((String, String) -> Void)?
     /// Called when the header collapse button is clicked
     var onHideRequested: (() -> Void)?
-    /// Called when the rail expand button is clicked
+    /// Called when the rail expand control pins the sidebar, from the rail or a peek
     var onShowRequested: (() -> Void)?
+    /// Hovering the rail expand control (or clicking it where pinning is
+    /// unavailable) asks the shell to present the peek.
+    var onPeekRequested: (() -> Void)?
+    var onPeekDismissRequested: (() -> Void)?
     /// Called when width changes via drag: (width, animated)
     var onWidthChanged: ((CGFloat, Bool) -> Void)?
     /// Called when the global "+" button requests content for the active main.
@@ -1062,21 +1080,24 @@ class SidebarView: NSView {
         railExpandButton.imagePosition = .imageOnly
         railExpandButton.imageScaling = .scaleProportionallyDown
         railExpandButton.wantsLayer = true
-        railExpandButton.layer?.cornerRadius = 6
+        // Rail item metrics: it reads as the first rail tile, not a header button.
+        railExpandButton.layer?.cornerRadius = 8
         railExpandButton.layer?.backgroundColor = NSColor.clear.cgColor
-        updateRailExpandAffordances()
+        railExpandButton.setAccessibilityLabel(L10n.string("lx_sidebar_expand"))
+        updateRailExpandTooltip()
         railExpandButton.contentTintColor = LxAppHostTheme.mutedForeground
         railExpandButton.image = LxIcon.image(
             named: "icon_sidebar_expand",
-            size: NSSize(width: 18, height: 18))
+            size: NSSize(width: Layout.railIconSize, height: Layout.railIconSize))
         railExpandButton.target = self
         railExpandButton.action = #selector(railExpandClicked)
         headerView.addSubview(railExpandButton)
+        let railExpandCenterX = railExpandButton.centerXAnchor.constraint(equalTo: leadingAnchor)
+        railExpandCenterX.isActive = true
+        railExpandCenterXConstraint = railExpandCenterX
         NSLayoutConstraint.activate([
-            railExpandButton.widthAnchor.constraint(equalToConstant: Layout.actionButtonSize),
-            railExpandButton.heightAnchor.constraint(equalToConstant: Layout.actionButtonSize),
-            // Rail controls share the rail's axis, which excludes the resize handle.
-            railExpandButton.centerXAnchor.constraint(equalTo: railScrollView.centerXAnchor),
+            railExpandButton.widthAnchor.constraint(equalToConstant: Layout.railButtonSize),
+            railExpandButton.heightAnchor.constraint(equalToConstant: Layout.railButtonSize),
             railFooterScrollView.topAnchor.constraint(equalTo: footerSeparator.bottomAnchor, constant: 6),
             railFooterScrollView.leadingAnchor.constraint(equalTo: footerView.leadingAnchor),
             railFooterScrollView.trailingAnchor.constraint(
@@ -1151,8 +1172,9 @@ class SidebarView: NSView {
             equalTo: headerView.topAnchor, constant: centerY)
         let toggleCenter = hideButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
         let expandCenter = railExpandButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
-        buttonCenterYConstraints = [headerActionsCenter, toggleCenter, expandCenter]
-        NSLayoutConstraint.activate(buttonCenterYConstraints)
+        buttonCenterYConstraints = [headerActionsCenter, toggleCenter]
+        railExpandCenterYConstraint = expandCenter
+        NSLayoutConstraint.activate(buttonCenterYConstraints + [expandCenter])
         updateControlRowGeometry()
 
         // Document view fills scroll view width
@@ -1211,6 +1233,8 @@ class SidebarView: NSView {
 
     // MARK: - Compact (icon-rail) mode
 
+    /// The rail's control row, below the window controls. A peek keeps it, so
+    /// the expand control under the pointer stays put.
     private var controlRowCenterY: CGFloat {
         guard isCompact else { return windowControlsCenterYFromTop }
         let captionHeight = controlsAlignedToTop
@@ -1220,9 +1244,15 @@ class SidebarView: NSView {
 
     private func updateControlRowGeometry() {
         let centerY = controlRowCenterY
-        buttonCenterYConstraints.forEach { $0.constant = centerY }
+        // Header actions and the collapse toggle stay on the window-control
+        // row, where a pinned sidebar draws them; only the expand control
+        // drops to the rail's row.
+        buttonCenterYConstraints.forEach { $0.constant = windowControlsCenterYFromTop }
+        railExpandCenterYConstraint?.constant = centerY
         headerHeightConstraint?.constant = isCompact
             ? centerY + Layout.controlRowHeight / 2 : Layout.trafficLightsHeight
+        // Rail controls share the rail's axis, which excludes the resize handle.
+        railExpandCenterXConstraint?.constant = (effectiveRailWidth - Layout.resizeHandleWidth) / 2
     }
 
     /// Frameless hosts omit the rail window-control clearance.
@@ -1756,7 +1786,7 @@ class SidebarView: NSView {
         relativeTo button: NSButton
     ) {
         let label = label.isEmpty ? selectionAppId : label
-        guard isCompact, !button.isHidden, button.window != nil else {
+        guard showsRail, !button.isHidden, button.window != nil else {
             closeRailHoverPanel()
             return
         }
@@ -1870,11 +1900,11 @@ class SidebarView: NSView {
 
     func updateVisibilityState() {
         let hidden = isFullyHidden
-        let compact = isCompact && !hidden && !appUIOnlyMode
+        let compact = showsRail && !hidden && !appUIOnlyMode
         scrollView.isHidden = hidden || appUIOnlyMode || compact
         railScrollView.isHidden = hidden || appUIOnlyMode || !compact
         // The toggle remains in the header; action shortcuts keep the footer.
-        railExpandButton.isHidden = hidden || appUIOnlyMode || !compact
+        railExpandButton.isHidden = hidden || appUIOnlyMode || !isCompact
         railFooterScrollView.isHidden = hidden
             || appUIOnlyMode
             || !compact
@@ -1882,13 +1912,15 @@ class SidebarView: NSView {
         footerSeparator.isHidden = compact
         // Header actions and footer cells don't fit the rail.
         updateHeaderActionVisibility()
-        // Exactly one toggle is visible in the header in either mode.
-        hideButton.isHidden = hidden || appUIOnlyMode || compact
+        // Exactly one toggle is visible in the header in either mode; a peek
+        // keeps the rail's, which pins it.
+        hideButton.isHidden = hidden || appUIOnlyMode || isCompact
         panelScroll.isHidden = compact
         footerView.isHidden = hidden || (compact
             ? headerActionItems.isEmpty && model.panelItems.isEmpty
             : model.panelItems.isEmpty)
-        resizeHandle.isHidden = hidden
+        // A peek is transient: dragging it would commit a width.
+        resizeHandle.isHidden = hidden || isPeeking
     }
 
     func setAppUIOnlyMode(_ enabled: Bool) {
@@ -2011,7 +2043,7 @@ class SidebarView: NSView {
     /// buttons rather than being one narrower than it wants. The leading
     /// reserve is the traffic lights plus the collapse toggle.
     private func updateHeaderActionVisibility() {
-        let hidden = isFullyHidden || appUIOnlyMode || isCompact || headerActionItems.isEmpty
+        let hidden = isFullyHidden || appUIOnlyMode || showsRail || headerActionItems.isEmpty
         headerActionStack.isHidden = hidden
         guard !hidden else { return }
         let reserve = measuredHeaderLeadingReserve()
@@ -2075,7 +2107,7 @@ class SidebarView: NSView {
     }
 
     private func updateSidebarActionFooterHeight() {
-        if isCompact {
+        if showsRail {
             // The rail stack carries the header actions ahead of the footer ones.
             let railActions = headerActionItems.count + model.panelItems.count
             let visibleActions = min(CGFloat(railActions), Layout.footerMaxRows)
@@ -2812,39 +2844,120 @@ class SidebarView: NSView {
     }
 
     @objc private func railExpandClicked() {
+        peekIntentTask?.cancel()
         if railExpandEnabled {
             onShowRequested?()
+        } else if isPeeking {
+            onPeekDismissRequested?()
+        } else {
+            // A compact window cannot pin; the click previews instead.
+            onPeekRequested?()
+        }
+    }
+
+    // MARK: - Peek
+
+    private static let peekHoverDelay: UInt64 = 300_000_000
+    /// The same grace the rail's hover floats use.
+    private static let peekDismissGrace: UInt64 = 250_000_000
+
+    /// Show the expanded layout over the committed rail, or return to it. The
+    /// shell owns the overlay's width and stacking.
+    func setPeeking(_ peeking: Bool) {
+        guard peeking != isPeeking else { return }
+        isPeeking = peeking
+        peekIntentTask?.cancel()
+        peekDismissTask?.cancel()
+        if peeking {
+            closeRailHoverPanel()
+            observeMenuTracking()
+        } else {
+            peekMenuObservers.forEach(NotificationCenter.default.removeObserver)
+            peekMenuObservers = []
+            isMenuTracking = false
+        }
+        if !peeking { setRailExpandHovered(false) }
+        updateControlRowGeometry()
+        updateSidebarActionFooterHeight()
+        updateVisibilityState()
+        updateTrackingAreas()
+        if peeking {
+            NSAccessibility.post(element: self, notification: .layoutChanged)
+        }
+    }
+
+    private func schedulePeekIntent() {
+        peekIntentTask?.cancel()
+        guard showsRail, railPagePanel?.isVisible != true, NSEvent.pressedMouseButtons == 0 else {
             return
         }
-        showRailExpandBlockedHint()
-    }
-
-    private static let railExpandBlockedKey = "rail-expand-blocked"
-
-    private func railExpandBlockedLabel() -> String {
-        L10n.string("lx_sidebar_expand_needs_wider_window")
-    }
-
-    private func showRailExpandBlockedHint() {
-        showRailTooltip(
-            key: Self.railExpandBlockedKey,
-            label: railExpandBlockedLabel(),
-            relativeTo: railExpandButton
-        )
-    }
-
-    private func updateRailExpandAffordances() {
-        // Stay enabled so hover and click can still show the rail hint. A
-        // disabled NSButton swallows both, which is the "nothing happens" feel.
-        railExpandButton.isEnabled = true
-        railExpandButton.alphaValue = railExpandEnabled ? 1 : 0.45
-        railExpandButton.toolTip = nil
-        railExpandButton.setAccessibilityLabel(
-            railExpandEnabled ? L10n.string("lx_sidebar_expand") : railExpandBlockedLabel()
-        )
-        if railExpandEnabled, railHoverKey == Self.railExpandBlockedKey {
-            closeRailHoverPanel()
+        peekIntentTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.peekHoverDelay)
+            guard !Task.isCancelled, let self, self.showsRail, self.isRailExpandHovered,
+                  self.railPagePanel?.isVisible != true, NSEvent.pressedMouseButtons == 0
+            else { return }
+            self.onPeekRequested?()
         }
+    }
+
+    private func schedulePeekDismiss() {
+        peekDismissTask?.cancel()
+        peekDismissTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.peekDismissGrace)
+            guard !Task.isCancelled, let self, self.isPeeking,
+                  !self.isPointerInside, !self.isMenuTracking, !self.isEditingInline
+            else { return }
+            self.onPeekDismissRequested?()
+        }
+    }
+
+    private var isPointerInside: Bool {
+        guard let window else { return false }
+        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        return bounds.contains(point)
+    }
+
+    /// A rename field inside the peek keeps it open until the edit ends.
+    private var isEditingInline: Bool {
+        guard let editor = window?.firstResponder as? NSText,
+              let field = editor.delegate as? NSView
+        else { return false }
+        return field.isDescendant(of: self)
+    }
+
+    /// A context menu opened from the peek runs its own tracking loop, during
+    /// which the pointer is outside; the peek waits for it.
+    private func observeMenuTracking() {
+        let center = NotificationCenter.default
+        peekMenuObservers = [
+            center.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) {
+                [weak self] _ in
+                MainActor.assumeIsolated { self?.isMenuTracking = true }
+            },
+            center.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) {
+                [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.isMenuTracking = false
+                    if self.isPeeking, !self.isPointerInside { self.schedulePeekDismiss() }
+                }
+            },
+        ]
+    }
+
+    /// Names what a click does; a compact window's click only previews.
+    private func updateRailExpandTooltip() {
+        railExpandButton.toolTip = railExpandEnabled ? L10n.string("lx_sidebar_expand") : nil
+    }
+
+    private func setRailExpandHovered(_ hovered: Bool) {
+        isRailExpandHovered = hovered
+        railExpandButton.layer?.backgroundColor = hovered
+            ? themeCGColor(LxAppHostTheme.foreground.withAlphaComponent(0.09))
+            : NSColor.clear.cgColor
+        railExpandButton.contentTintColor = hovered
+            ? LxAppHostTheme.foreground
+            : LxAppHostTheme.mutedForeground
     }
 
     // MARK: - Footer / Add button hover
@@ -2889,6 +3002,21 @@ class SidebarView: NSView {
         )
         railExpandButton.addTrackingArea(expandArea)
         railExpandTrackingArea = expandArea
+
+        if let existing = peekTrackingArea {
+            removeTrackingArea(existing)
+            peekTrackingArea = nil
+        }
+        if isPeeking {
+            let area = NSTrackingArea(
+                rect: bounds,
+                options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                owner: self,
+                userInfo: nil
+            )
+            addTrackingArea(area)
+            peekTrackingArea = area
+        }
     }
 
     override public func mouseEntered(with event: NSEvent) {
@@ -2896,8 +3024,11 @@ class SidebarView: NSView {
             setAddButtonHovered(true)
         } else if event.trackingArea === hideButtonTrackingArea {
             setHideButtonHovered(true)
-        } else if event.trackingArea === railExpandTrackingArea, !railExpandEnabled {
-            showRailExpandBlockedHint()
+        } else if event.trackingArea === railExpandTrackingArea {
+            setRailExpandHovered(true)
+            schedulePeekIntent()
+        } else if event.trackingArea === peekTrackingArea {
+            peekDismissTask?.cancel()
         }
     }
 
@@ -2906,9 +3037,11 @@ class SidebarView: NSView {
             setAddButtonHovered(false)
         } else if event.trackingArea === hideButtonTrackingArea {
             setHideButtonHovered(false)
-        } else if event.trackingArea === railExpandTrackingArea,
-                  railHoverKey == Self.railExpandBlockedKey {
-            scheduleRailHoverDismiss()
+        } else if event.trackingArea === railExpandTrackingArea {
+            setRailExpandHovered(false)
+            if !isPeeking { peekIntentTask?.cancel() }
+        } else if event.trackingArea === peekTrackingArea {
+            schedulePeekDismiss()
         }
     }
 
