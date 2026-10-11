@@ -416,16 +416,14 @@ impl Platform for MacosPlatform {
             ),
         }
 
+        apple::ensure_sdk_package_dependency(&config.project_root, &macos_dir)?;
+
         let (bin_dir, executable_path) =
             apple::with_temporary_package_manifest(&macos_dir, || {
                 // SwiftPM takes its minimum OS from Package.swift even when --triple
                 // includes a newer version, so align the build-time manifest with
                 // lingxia.yaml without changing the project copy.
                 apple::sync_macos_deployment_target(&macos_dir, &deployment_target)?;
-
-                // Point the build-time manifest at the cached Apple SDK (no-op
-                // in-workspace), then restore it after the final SwiftPM command.
-                apple::ensure_sdk_package_dependency(&config.project_root, &macos_dir)?;
 
                 let mut bin_dir = self.swift_build_and_get_bin_dir(
                     &macos_dir,
