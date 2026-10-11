@@ -815,7 +815,11 @@ pub(super) fn sidebar_group_menu_rect(
     })
 }
 
-/// Reserve the app menu caption slot when present.
+/// Width the leading controls take before the action strip can start.
+///
+/// Only the product shell draws the app-menu button; a runner-style build has
+/// none. Reserving for it regardless leaves a visibly empty slot the header
+/// then refuses to use.
 fn header_leading_reserve() -> i32 {
     let app_menu = if cfg!(feature = "browser-shell") {
         top_bar_button_size()
@@ -825,7 +829,9 @@ fn header_leading_reserve() -> i32 {
     top_bar_padding() + app_menu + sidebar_header_action_gap()
 }
 
-/// Trailing control-row slot, aligned with the navigation chevrons below.
+/// The collapse toggle: the control row's trailing slot, flush with the
+/// chevron column below, so the strip reads window menu leading, sidebar
+/// controls trailing (macOS order).
 pub(super) fn sidebar_header_toggle_rect(sidebar_rect: RECT) -> RECT {
     let top = sidebar_rect.top + (shell_top_bar_height() - sidebar_header_action_size()).max(0) / 2;
     let right = sidebar_rect.right - sidebar_item_inset();
@@ -853,7 +859,9 @@ fn header_action_capacity(available: i32) -> usize {
     ((available + sidebar_header_action_gap()) / stride).max(0) as usize
 }
 
-/// Sidebar actions share the fixed control row with the collapse button.
+/// Sidebar actions share the fixed control row with the collapse button,
+/// right-aligned against it so the strip reads as two groups instead of packed
+/// icons. Actions that would reach the leading buttons drop.
 pub(super) fn sidebar_header_action_rects(
     sidebar_rect: RECT,
     tabbar: &WindowsShellTabBarLayout,
@@ -985,6 +993,18 @@ mod tests {
                 >= MAX_HEADER_SIDEBAR_ACTIONS,
             "the standard sidebar must seat every action the contract allows"
         );
+    }
+
+    /// Dropping the app-menu button hands its slot to the actions rather than
+    /// leaving a gap where it would have been.
+    #[test]
+    fn the_reserve_tracks_the_buttons_that_exist() {
+        let expected = if cfg!(feature = "browser-shell") {
+            top_bar_padding() + top_bar_button_size() + sidebar_header_action_gap()
+        } else {
+            top_bar_padding() + sidebar_header_action_gap()
+        };
+        assert_eq!(header_leading_reserve(), expected);
     }
 
     #[test]

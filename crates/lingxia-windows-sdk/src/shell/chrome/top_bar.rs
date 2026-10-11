@@ -105,17 +105,15 @@ pub(super) fn top_bar_controls(
         .map(|tabbar| {
             let width = super::sidebar_column_width(tabbar);
             let sidebar_rect = match tabbar.position {
-                WindowsShellTabBarPosition::Right => RECT {
-                    left: client.right - width,
-                    top: top_bar.top
-                        + if layout.top_inset == 0 && !layout.suppress_window_controls {
-                            shell_top_bar_height()
-                        } else {
-                            0
-                        },
-                    right: client.right,
-                    bottom: top_bar.bottom + shell_top_bar_height(),
-                },
+                WindowsShellTabBarPosition::Right => {
+                    let clearance = super::right_sidebar_caption_clearance(layout);
+                    RECT {
+                        left: client.right - width,
+                        top: top_bar.top + clearance,
+                        right: client.right,
+                        bottom: top_bar.bottom + clearance,
+                    }
+                }
                 _ => RECT {
                     left: client.left,
                     top: top_bar.top,

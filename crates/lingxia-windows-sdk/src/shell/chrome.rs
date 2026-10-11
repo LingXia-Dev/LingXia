@@ -1124,13 +1124,29 @@ pub(super) struct ChromeRects {
     pub(super) phone_bar: Option<RECT>,
 }
 
+/// Desktop windows draw the floating workspace card under native caption
+/// buttons; framed/mobile presentations are edge-to-edge.
+fn is_desktop_card(layout: &WindowsShellWindowLayout) -> bool {
+    layout.top_inset.max(0) == 0 && !layout.suppress_window_controls
+}
+
+/// A right-docked sidebar starts below the native caption buttons, which own
+/// that corner of a desktop window.
+pub(super) fn right_sidebar_caption_clearance(layout: &WindowsShellWindowLayout) -> i32 {
+    if is_desktop_card(layout) {
+        shell_top_bar_height()
+    } else {
+        0
+    }
+}
+
 pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayout) -> ChromeRects {
     // Reserve the device frame's status-bar strip at the very top; the nav bar +
     // content stack below it (the device frame's status-bar overlay paints the
     // strip's time/signal). 0 for un-framed windows, so the browser shell is
     // unchanged.
     let top_inset = layout.top_inset.max(0);
-    let desktop_card = top_inset == 0 && !layout.suppress_window_controls;
+    let desktop_card = is_desktop_card(layout);
     let mut content = client;
     content.top += top_inset;
     let tab_bar = layout
@@ -1164,13 +1180,7 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
                 let left = (content.right - width).max(content.left);
                 let rect = RECT {
                     left,
-                    // Right-side controls must clear the native caption buttons.
-                    top: content.top
-                        + if desktop_card {
-                            shell_top_bar_height()
-                        } else {
-                            0
-                        },
+                    top: content.top + right_sidebar_caption_clearance(layout),
                     right: content.right,
                     bottom: content.bottom,
                 };
@@ -1198,7 +1208,7 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
             Some(WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right)
         );
     let reserve_top_bar = side_tabbar
-        || (top_inset == 0 && !layout.suppress_window_controls)
+        || desktop_card
         || (address_bar_visible(layout) && !phone_browser_bar_active(client, layout));
 
     // The caption/address row belongs to the shell's base layer. Keep it at
@@ -2085,7 +2095,7 @@ pub(super) fn draw_window_chrome(
     // A framed/mobile presentation has no floating workspace card: content is
     // edge-to-edge, the nav bar fuses with the status strip above and the page
     // below (square corners, no divider, flat backdrop).
-    let desktop_card = layout.top_inset.max(0) == 0 && !layout.suppress_window_controls;
+    let desktop_card = is_desktop_card(layout);
 
     fill_rect(hdc, client, shell_palette().window_background);
     // Under a fused status strip the device frame's status-bar overlay fades

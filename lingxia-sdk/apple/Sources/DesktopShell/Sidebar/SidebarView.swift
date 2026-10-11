@@ -646,6 +646,9 @@ class SidebarView: NSView {
         // Only the rail needs a separate toggle row below the traffic lights.
         static let trafficLightsHeight: CGFloat = 28
         static let controlRowHeight: CGFloat = 32
+        /// Rail footer chrome around its action stack: 6pt above (below the
+        /// 1pt separator) and 6pt below.
+        static let railFooterChromeHeight: CGFloat = 6 + 1 + 6
         /// Header actions and both sidebar toggles share a 24pt target.
         static let actionButtonSize: CGFloat = 24
         static let actionButtonSpacing: CGFloat = 2
@@ -670,6 +673,10 @@ class SidebarView: NSView {
 
     private let headerView = NSView()
     private let headerActionStack = NSStackView()
+    /// Keeps the action buttons clear of the traffic lights. The clearance is
+    /// measured, not assumed: the buttons may be hidden or placed in the
+    /// toolbar, and reserving for them anyway leaves a visibly empty strip that
+    /// the header then refuses to use.
     private var headerActionLeadingConstraint: NSLayoutConstraint?
     private var headerActionItems: [PanelIconItem] = []
     private var headerActionIdentities: [ObjectIdentifier: SidebarActionIdentity] = [:]
@@ -1068,10 +1075,12 @@ class SidebarView: NSView {
         NSLayoutConstraint.activate([
             railExpandButton.widthAnchor.constraint(equalToConstant: Layout.actionButtonSize),
             railExpandButton.heightAnchor.constraint(equalToConstant: Layout.actionButtonSize),
-            railExpandButton.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
+            // Rail controls share the rail's axis, which excludes the resize handle.
+            railExpandButton.centerXAnchor.constraint(equalTo: railScrollView.centerXAnchor),
             railFooterScrollView.topAnchor.constraint(equalTo: footerSeparator.bottomAnchor, constant: 6),
             railFooterScrollView.leadingAnchor.constraint(equalTo: footerView.leadingAnchor),
-            railFooterScrollView.trailingAnchor.constraint(equalTo: footerView.trailingAnchor),
+            railFooterScrollView.trailingAnchor.constraint(
+                equalTo: footerView.trailingAnchor, constant: -Layout.resizeHandleWidth),
             railFooterScrollView.bottomAnchor.constraint(equalTo: footerView.bottomAnchor, constant: -6),
         ])
 
@@ -2072,7 +2081,8 @@ class SidebarView: NSView {
             let visibleActions = min(CGFloat(railActions), Layout.footerMaxRows)
             footerHeightConstraint?.constant = visibleActions > 0
                 ? visibleActions * Layout.railButtonSize
-                    + max(0, visibleActions - 1) * railFooterStack.spacing + 13
+                    + max(0, visibleActions - 1) * railFooterStack.spacing
+                    + Layout.railFooterChromeHeight
                 : 0
             return
         }
