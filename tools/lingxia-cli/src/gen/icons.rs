@@ -173,7 +173,7 @@ pub fn svg_to_ico_bytes(svg_content: &str, sizes: &[u32]) -> Result<Vec<u8>> {
 }
 
 /// Pack a source app-icon PNG (e.g. a 1024px `AppIcon.png`) into a multi-size
-/// Windows ICO. Dock-normalizes (73% plate + 22% corners) so the embedded
+/// Windows ICO. Dock-normalizes (Apple-grid plate + rounded corners) so the embedded
 /// `.exe` icon matches the runtime taskbar / alt-tab look.
 pub fn png_to_ico_bytes(png: &[u8], sizes: &[u32]) -> Result<Vec<u8>> {
     let source = image::load_from_memory_with_format(png, image::ImageFormat::Png)
@@ -195,8 +195,8 @@ pub fn png_to_ico_bytes(png: &[u8], sizes: &[u32]) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
-/// Dock-normalize a full-bleed brand plate: 73% visual ratio and a 22%
-/// rounded corner, matching macOS `AppIcon`.
+/// Dock-normalize a full-bleed brand plate to the Apple-grid plate and
+/// corner radius, matching macOS `AppIcon`.
 /// Keep in sync with `lingxia-windows-sdk` `app_icon::dock_normalize_icon`.
 pub(crate) fn dock_normalize_icon(image: image::RgbaImage) -> image::RgbaImage {
     let (width, height) = image.dimensions();
@@ -207,10 +207,10 @@ pub(crate) fn dock_normalize_icon(image: image::RgbaImage) -> image::RgbaImage {
     let ratio = opaque_bounds_ratio(&image);
     // Art already at dock size (e.g. a CLI-staged dev icon whose env badge
     // overhangs the plate) passes through; rescaling would shrink it again.
-    if ratio <= 0.73 + 0.05 {
+    if ratio <= crate::appicon::DOCK_PLATE_RATIO + 0.05 {
         return image;
     }
-    let scale = (0.73 / ratio).clamp(0.60, 0.92);
+    let scale = (crate::appicon::DOCK_PLATE_RATIO / ratio).clamp(0.60, 1.0);
     let mut icon_size = (canvas as f32 * scale).round().max(1.0) as u32;
     // Keep the plate's parity equal to the canvas's so the centering offset
     // is exact; a half-pixel shift reads as a lopsided tile at 16px.
@@ -224,7 +224,10 @@ pub(crate) fn dock_normalize_icon(image: image::RgbaImage) -> image::RgbaImage {
         icon_size,
         image::imageops::FilterType::Lanczos3,
     );
-    apply_dock_corner_mask(&mut plate, icon_size as f32 * 0.22);
+    apply_dock_corner_mask(
+        &mut plate,
+        icon_size as f32 * crate::appicon::DOCK_PLATE_CORNER_RATIO,
+    );
     let mut out = image::RgbaImage::new(canvas, canvas);
     image::imageops::overlay(&mut out, &plate, offset as i64, offset as i64);
     out

@@ -79,7 +79,7 @@ pub fn stage_dev_badged_icon(
 }
 
 /// Badge a Windows host icon in place on its taskbar plate. The runtime
-/// normalizes full-bleed art to a rounded 73% plate, which would clip a
+/// normalizes full-bleed art to a rounded Apple-grid plate, which would clip a
 /// corner badge; normalize here first so the badge sits on the plate's
 /// corner, and the runtime passes the already-sized art through.
 fn badge_windows_host_icon(path: &Path, version: AppEnv) -> Result<bool> {

@@ -136,7 +136,8 @@ fn current_app_icon_handles() -> Option<AppIconHandles> {
 }
 
 /// Decodes the launcher PNG and Dock-normalizes it for the taskbar / alt-tab
-/// cell: 73% visual ratio plus a 22% rounded plate, matching macOS `AppIcon`.
+/// cell: the Apple-grid plate (824 of 1024) with rounded corners, matching
+/// macOS `AppIcon`.
 ///
 /// Keep the ratios in sync with `tools/lingxia-cli/src/gen/icons.rs`
 /// (`png_to_ico_bytes`), or the embedded `.exe` icon and the live taskbar
@@ -156,7 +157,7 @@ pub(crate) fn prepare_app_icon_image(path: &Path) -> Result<image::RgbaImage, St
     Ok(dock_normalize_icon(image))
 }
 
-const TARGET_DOCK_VISUAL_RATIO: f32 = 0.73;
+const TARGET_DOCK_VISUAL_RATIO: f32 = 824.0 / 1024.0;
 const APP_TILE_CORNER_RATIO: f32 = 0.22;
 
 fn dock_normalize_icon(image: image::RgbaImage) -> image::RgbaImage {
@@ -171,7 +172,7 @@ fn dock_normalize_icon(image: image::RgbaImage) -> image::RgbaImage {
     if ratio <= TARGET_DOCK_VISUAL_RATIO + 0.05 {
         return image;
     }
-    let scale = (TARGET_DOCK_VISUAL_RATIO / ratio).clamp(0.60, 0.92);
+    let scale = (TARGET_DOCK_VISUAL_RATIO / ratio).clamp(0.60, 1.0);
     let mut icon_size = (canvas as f32 * scale).round().max(1.0) as u32;
     // Keep the plate's parity equal to the canvas's so the centering offset
     // is exact; a half-pixel shift reads as a lopsided tile at 16px.

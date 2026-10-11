@@ -1289,7 +1289,7 @@ pub fn generate_icons(
     let resources_dir = get_resources_dir(&macos_dir, macos_config, app_project_name)?;
     let normalized_icon = build_macos_icon_source(source_icon)?;
     crate::appicon::generate_macos_icons(normalized_icon.path(), &resources_dir)?;
-    // Dock catalog keeps the 73% inset. Sidebar / Settings need the
+    // The Dock catalog gets the Apple-grid plate. Sidebar / Settings need the
     // full-bleed source so a 16pt tile matches lxapp artwork.
     crate::r#gen::icons::write_host_chrome_icon(source_icon, &resources_dir)
 }
@@ -1318,15 +1318,18 @@ pub(crate) fn build_macos_icon_source(source_icon: &Path) -> Result<tempfile::Na
     let canvas_size = width.max(height).max(1);
 
     let source_visual_ratio = estimate_nontransparent_bounds_ratio(&img);
-    const TARGET_DOCK_VISUAL_RATIO: f32 = 0.73;
-    let content_scale = (TARGET_DOCK_VISUAL_RATIO / source_visual_ratio).clamp(0.60, 0.92);
+    // A source already on the grid passes through at scale 1.
+    let content_scale = (crate::appicon::DOCK_PLATE_RATIO / source_visual_ratio).clamp(0.60, 1.0);
 
     let icon_size = (canvas_size as f32 * content_scale).round().max(1.0) as u32;
     let offset = (canvas_size - icon_size) / 2;
     let mut resized = img
         .resize_exact(icon_size, icon_size, FilterType::Lanczos3)
         .to_rgba8();
-    apply_rounded_corner_mask(&mut resized, icon_size as f32 * 0.22);
+    apply_rounded_corner_mask(
+        &mut resized,
+        icon_size as f32 * crate::appicon::DOCK_PLATE_CORNER_RATIO,
+    );
 
     let mut canvas = image::RgbaImage::new(canvas_size, canvas_size);
     image::imageops::overlay(&mut canvas, &resized, offset as i64, offset as i64);
@@ -1512,5 +1515,42 @@ mod name_tests {
                 .unwrap();
         assert!(localized.contains("产品名称"));
         assert!(bundle.join("Contents/MacOS/Technical").is_file());
+    }
+}
+
+#[cfg(test)]
+mod dock_icon_tests {
+    use super::*;
+
+    fn plate_width(path: &Path) -> u32 {
+        let img = image::open(path).unwrap().to_rgba8();
+        let row = img.height() / 2;
+        (0..img.width())
+            .filter(|&x| img.get_pixel(x, row).0[3] > 12)
+            .count() as u32
+    }
+
+    fn write_source(dir: &Path, body: u32) -> PathBuf {
+        let mut canvas = image::RgbaImage::new(1024, 1024);
+        let offset = (1024 - body) / 2;
+        for y in offset..offset + body {
+            for x in offset..offset + body {
+                canvas.put_pixel(x, y, image::Rgba([20, 110, 240, 255]));
+            }
+        }
+        let path = dir.join(format!("icon-{body}.png"));
+        canvas.save(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn dock_icons_use_the_apple_grid_plate() {
+        let temp = tempfile::tempdir().unwrap();
+        // Full-bleed art shrinks onto the 824 px plate neighbouring apps use.
+        let full_bleed = build_macos_icon_source(&write_source(temp.path(), 1024)).unwrap();
+        assert!((822..=826).contains(&plate_width(full_bleed.path())));
+        // Art already on the grid passes through rather than shrinking again.
+        let gridded = build_macos_icon_source(&write_source(temp.path(), 824)).unwrap();
+        assert!((822..=826).contains(&plate_width(gridded.path())));
     }
 }
