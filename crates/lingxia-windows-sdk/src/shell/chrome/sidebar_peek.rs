@@ -277,30 +277,30 @@ impl SidebarPeekLayout {
         *self = next;
     }
 
-    /// Expand control tooltip in peek-window coordinates: anchor, popup, text.
-    /// Compact has nothing to pin, so no label.
-    pub(crate) fn expand_tooltip(&self) -> Option<(RECT, RECT, String)> {
-        if self.compact {
-            return None;
-        }
-        let anchor = self.expand_rect();
-        let text = lingxia_logic::i18n::t(lingxia_logic::I18nKey::SidebarExpand);
-        let client = offset_rect(self.client, -self.frame.left, -self.frame.top);
-        let (width, height) = sidebar_rail_tooltip_size(&text, client);
-        let left = ((anchor.left + anchor.right - width) / 2)
-            .clamp(client.left, (client.right - width).max(client.left));
-        let top = (anchor.bottom + sidebar_rail_tooltip_gap())
-            .clamp(client.top, (client.bottom - height).max(client.top));
-        Some((
+    /// Hover label in peek-window coordinates for the expand control (absent
+    /// in compact, which has nothing to pin) or a header action.
+    pub(crate) fn tooltip(&self, point: (i32, i32)) -> Option<CollapsedSidebarTooltip> {
+        let expand = self.expand_rect();
+        let (anchor, text) = if rect_contains(&expand, point) {
+            if self.compact {
+                return None;
+            }
+            (
+                expand,
+                lingxia_logic::i18n::t(lingxia_logic::I18nKey::SidebarExpand),
+            )
+        } else {
+            let (index, anchor) = self
+                .header_action_rects()
+                .into_iter()
+                .find(|(_, rect)| rect_contains(rect, point))?;
+            (anchor, self.header_actions[index].label.clone())
+        };
+        tooltip_below(
             anchor,
-            RECT {
-                left,
-                top,
-                right: left + width,
-                bottom: top + height,
-            },
-            text,
-        ))
+            &text,
+            offset_rect(self.client, -self.frame.left, -self.frame.top),
+        )
     }
 
     /// Horizontal offset of the content beyond the rail column at `progress`
@@ -721,13 +721,58 @@ mod tests {
     }
 
     #[test]
-    fn expand_tooltip_stays_inside_the_window() {
-        let peek =
-            peek_layout_for(client(), &rail_layout(WindowsShellTabBarPosition::Right)).unwrap();
-        let (_, popup, _) = peek.expand_tooltip().unwrap();
-        let popup = offset_rect(popup, peek.frame.left, peek.frame.top);
-        assert!(popup.left >= client().left && popup.right <= client().right);
-        assert!(popup.top >= client().top && popup.bottom <= client().bottom);
+    fn peek_tooltips_name_the_control_under_the_pointer() {
+        let action = |id: &str, label: &str| WindowsShellHeaderActionLayout {
+            generation: 1,
+            id: id.to_string(),
+            label: label.to_string(),
+            icon_path: String::new(),
+            disabled: false,
+            source: WindowsShellSidebarActionSource::Runtime,
+        };
+        for position in [
+            WindowsShellTabBarPosition::Left,
+            WindowsShellTabBarPosition::Right,
+        ] {
+            let mut layout = rail_layout(position);
+            layout.tab_bar.as_mut().unwrap().header_actions = vec![
+                action("settings", "Settings"),
+                action("downloads", "Downloads"),
+            ];
+            let peek = peek_layout_for(client(), &layout).unwrap();
+            let window_client = offset_rect(client(), -peek.frame.left, -peek.frame.top);
+            let expand = peek.expand_rect();
+            let tooltip = peek.tooltip(center(expand)).unwrap();
+            assert_eq!(
+                tooltip.text,
+                lingxia_logic::i18n::t(lingxia_logic::I18nKey::SidebarExpand)
+            );
+            assert_eq!(tooltip.anchor, expand);
+            assert!(
+                tooltip.delayed,
+                "a control label waits for the system delay"
+            );
+            for (index, rect) in peek.header_action_rects() {
+                let tooltip = peek.tooltip(center(rect)).unwrap();
+                assert_eq!(
+                    tooltip.text, peek.header_actions[index].label,
+                    "{position:?}"
+                );
+                assert_eq!(tooltip.anchor, rect);
+                assert!(tooltip.delayed);
+                assert!(
+                    tooltip.popup.top >= rect.bottom,
+                    "anchored under the button"
+                );
+                assert!(tooltip.popup.left >= window_client.left);
+                assert!(tooltip.popup.right <= window_client.right, "{position:?}");
+            }
+            // Nothing to name over the rows' blank caption space.
+            assert!(
+                peek.tooltip((peek.local_body().left + 2, peek.local_body().top + 2))
+                    .is_none()
+            );
+        }
     }
 
     #[test]
@@ -736,7 +781,7 @@ mod tests {
         layout.tab_bar.as_mut().unwrap().rail_expand_disabled = true;
         let peek = peek_layout_for(client(), &layout).unwrap();
         assert!(peek.compact);
-        assert!(peek.expand_tooltip().is_none());
+        assert!(peek.tooltip(center(peek.expand_rect())).is_none());
         assert_eq!(
             command_id_of(peek.hit(center(peek.expand_rect()))).as_deref(),
             Some(command_id::SIDEBAR_PEEK)

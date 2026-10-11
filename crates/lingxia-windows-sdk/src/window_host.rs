@@ -131,6 +131,9 @@ static TRANSPARENT_TABBAR_OVERLAYS: OnceLock<Mutex<HashMap<isize, TransparentTab
 #[cfg(feature = "shell-chrome")]
 static SIDEBAR_TABBAR_POPUPS: OnceLock<Mutex<HashMap<isize, SidebarTabbarPopup>>> = OnceLock::new();
 #[cfg(feature = "shell-chrome")]
+static PENDING_SIDEBAR_TOOLTIPS: OnceLock<Mutex<HashMap<isize, PendingSidebarTooltip>>> =
+    OnceLock::new();
+#[cfg(feature = "shell-chrome")]
 static SHELL_NOTICE_POPUPS: OnceLock<Mutex<HashMap<isize, ShellNoticePopup>>> = OnceLock::new();
 #[cfg(feature = "shell-chrome")]
 static TERMINAL_SELECTION_DRAGS: OnceLock<Mutex<HashMap<isize, TerminalSelectionDrag>>> =
@@ -148,6 +151,9 @@ fn overlay_margin() -> i32 {
 const SIDEBAR_TABBAR_POPUP_TIMER_ID: usize = 0x5A18;
 #[cfg(feature = "shell-chrome")]
 const SIDEBAR_TABBAR_POPUP_TIMER_MS: u32 = 80;
+/// Owner timer: a pending control label's initial delay.
+#[cfg(feature = "shell-chrome")]
+const SIDEBAR_TOOLTIP_DELAY_TIMER_ID: usize = 0x5A1E;
 #[cfg(feature = "shell-chrome")]
 const SHELL_NOTICE_TIMER_ID: usize = 0x5A19;
 #[cfg(feature = "shell-chrome")]
@@ -357,6 +363,17 @@ struct SidebarTabbarPopup {
     anchor: RECT,
     rect: RECT,
     content: SidebarPopupContent,
+    /// A control's label, which lets the next control label skip the delay.
+    control: bool,
+}
+
+/// A control label waiting out the system tooltip delay.
+#[cfg(feature = "shell-chrome")]
+#[derive(Debug, Clone)]
+struct PendingSidebarTooltip {
+    popup: RECT,
+    anchor: RECT,
+    text: String,
 }
 
 #[derive(Debug, Clone)]
@@ -3557,24 +3574,28 @@ fn sync_sidebar_tabbar_popup(hwnd: HWND, point: (i32, i32)) {
         }
     }
     let layout = current_window_layout(&webtag_key);
-    let (popup_bounds, anchor_bounds, content) = if let Some(popup) =
-        crate::shell::collapsed_sidebar_tabbar_popup(client, &layout, point)
-    {
-        (
-            popup.popup,
-            popup.anchor,
-            SidebarPopupContent::Tabbar(Box::new(popup.tabbar)),
-        )
-    } else if let Some(tooltip) = crate::shell::collapsed_sidebar_tooltip(client, &layout, point) {
-        (
-            tooltip.popup,
-            tooltip.anchor,
-            SidebarPopupContent::Tooltip(tooltip.text),
-        )
-    } else {
-        maybe_destroy_sidebar_tabbar_popup(hwnd);
-        return;
-    };
+    let (popup_bounds, anchor_bounds, content, control) =
+        if let Some(popup) = crate::shell::collapsed_sidebar_tabbar_popup(client, &layout, point) {
+            (
+                popup.popup,
+                popup.anchor,
+                SidebarPopupContent::Tabbar(Box::new(popup.tabbar)),
+                false,
+            )
+        } else if let Some(tooltip) = chrome_state_for_window(hwnd)
+            .and_then(|state| crate::shell::sidebar_tooltip(&state, point))
+        {
+            (
+                tooltip.popup,
+                tooltip.anchor,
+                SidebarPopupContent::Tooltip(tooltip.text),
+                tooltip.delayed,
+            )
+        } else {
+            cancel_sidebar_tooltip(hwnd);
+            maybe_destroy_sidebar_tabbar_popup(hwnd);
+            return;
+        };
 
     let mut origin = POINT {
         x: popup_bounds.left,
@@ -3607,13 +3628,129 @@ fn sync_sidebar_tabbar_popup(hwnd: HWND, point: (i32, i32)) {
         right: anchor_right_bottom.x,
         bottom: anchor_right_bottom.y,
     };
-    show_sidebar_popup(hwnd, popup_rect, anchor, content);
+    match content {
+        SidebarPopupContent::Tooltip(text) if control => {
+            request_sidebar_control_tooltip(hwnd, popup_rect, anchor, text);
+        }
+        content => {
+            cancel_sidebar_tooltip(hwnd);
+            show_sidebar_popup(hwnd, popup_rect, anchor, content, false);
+        }
+    }
+}
+
+/// Shows a control's label after the system tooltip delay, or at once when a
+/// control label is already up (tooltip "reshow"). Screen coordinates.
+#[cfg(feature = "shell-chrome")]
+fn request_sidebar_control_tooltip(owner: HWND, popup: RECT, anchor: RECT, text: String) {
+    let showing_control = sidebar_tabbar_popup_for_owner(owner)
+        .is_some_and(|popup| is_window_handle_valid(popup.window) && popup.control);
+    if showing_control {
+        cancel_sidebar_tooltip(owner);
+        show_sidebar_popup(
+            owner,
+            popup,
+            anchor,
+            SidebarPopupContent::Tooltip(text),
+            true,
+        );
+        return;
+    }
+    let mut pending = PENDING_SIDEBAR_TOOLTIPS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if pending
+        .get(&hwnd_handle(owner))
+        .is_some_and(|waiting| waiting.anchor == anchor && waiting.text == text)
+    {
+        return;
+    }
+    pending.insert(
+        hwnd_handle(owner),
+        PendingSidebarTooltip {
+            popup,
+            anchor,
+            text,
+        },
+    );
+    drop(pending);
+    // A rail float from another anchor must not linger through the delay.
+    destroy_sidebar_tabbar_popup(owner);
+    unsafe {
+        let _ = WindowsAndMessaging::SetTimer(
+            Some(owner),
+            SIDEBAR_TOOLTIP_DELAY_TIMER_ID,
+            sidebar_tooltip_initial_delay_ms(),
+            Some(sidebar_tooltip_delay_proc),
+        );
+    }
+}
+
+/// The system tooltip initial delay (`TTDT_INITIAL`'s default).
+#[cfg(feature = "shell-chrome")]
+fn sidebar_tooltip_initial_delay_ms() -> u32 {
+    match unsafe { windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime() } {
+        0 => 500,
+        delay => delay,
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn cancel_sidebar_tooltip(owner: HWND) {
+    let removed = PENDING_SIDEBAR_TOOLTIPS
+        .get()
+        .and_then(|pending| pending.lock().ok())
+        .and_then(|mut pending| pending.remove(&hwnd_handle(owner)));
+    if removed.is_some() {
+        unsafe {
+            let _ = WindowsAndMessaging::KillTimer(Some(owner), SIDEBAR_TOOLTIP_DELAY_TIMER_ID);
+        }
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+unsafe extern "system" fn sidebar_tooltip_delay_proc(
+    owner: HWND,
+    _msg: u32,
+    _id: usize,
+    _time: u32,
+) {
+    unsafe {
+        let _ = WindowsAndMessaging::KillTimer(Some(owner), SIDEBAR_TOOLTIP_DELAY_TIMER_ID);
+    }
+    let Some(waiting) = PENDING_SIDEBAR_TOOLTIPS
+        .get()
+        .and_then(|pending| pending.lock().ok())
+        .and_then(|mut pending| pending.remove(&hwnd_handle(owner)))
+    else {
+        return;
+    };
+    let mut cursor = POINT::default();
+    if unsafe { WindowsAndMessaging::GetCursorPos(&mut cursor) }.is_ok()
+        && point_in_screen_rect(cursor, waiting.anchor)
+    {
+        let _scale = crate::dpi::enter_window_message(owner);
+        show_sidebar_popup(
+            owner,
+            waiting.popup,
+            waiting.anchor,
+            SidebarPopupContent::Tooltip(waiting.text),
+            true,
+        );
+    }
 }
 
 /// Shows (or keeps) the owner's single rail float at screen `popup_rect`. It
 /// dismisses itself once the cursor leaves both `anchor` and the float.
 #[cfg(feature = "shell-chrome")]
-fn show_sidebar_popup(hwnd: HWND, popup_rect: RECT, anchor: RECT, content: SidebarPopupContent) {
+fn show_sidebar_popup(
+    hwnd: HWND,
+    popup_rect: RECT,
+    anchor: RECT,
+    content: SidebarPopupContent,
+    control: bool,
+) {
     let width = popup_rect.right - popup_rect.left;
     let height = popup_rect.bottom - popup_rect.top;
     // Called per mouse move over the rail anchor; skip when the popup already
@@ -3642,6 +3779,7 @@ fn show_sidebar_popup(hwnd: HWND, popup_rect: RECT, anchor: RECT, content: Sideb
                 anchor,
                 rect: popup_rect,
                 content: content.clone(),
+                control,
             },
         );
     }
@@ -3715,7 +3853,7 @@ fn upload_sidebar_tabbar_popup(hwnd: HWND, content: &SidebarPopupContent, width:
                 crate::shell::paint_collapsed_sidebar_tabbar_popup(dc, tabbar, width, height);
             }
             SidebarPopupContent::Tooltip(text) => {
-                crate::shell::paint_collapsed_sidebar_tooltip(dc, text, width, height);
+                crate::shell::paint_sidebar_tooltip(dc, text, width, height);
             }
         }
         let pixel_count = (width * height) as usize;
@@ -9782,7 +9920,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 #[cfg(feature = "shell-chrome")]
                 full_chrome_caption::destroy_full_chrome_caption_overlay(hwnd);
                 #[cfg(feature = "shell-chrome")]
-                destroy_sidebar_tabbar_popup(hwnd);
+                {
+                    cancel_sidebar_tooltip(hwnd);
+                    destroy_sidebar_tabbar_popup(hwnd);
+                }
                 #[cfg(feature = "shell-chrome")]
                 sidebar_peek::close(hwnd);
                 #[cfg(feature = "shell-chrome")]
@@ -9810,7 +9951,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 #[cfg(feature = "shell-chrome")]
                 full_chrome_caption::destroy_full_chrome_caption_overlay(hwnd);
                 #[cfg(feature = "shell-chrome")]
-                destroy_sidebar_tabbar_popup(hwnd);
+                {
+                    cancel_sidebar_tooltip(hwnd);
+                    destroy_sidebar_tabbar_popup(hwnd);
+                }
                 #[cfg(feature = "shell-chrome")]
                 tabbar_overflow::destroy_tabbar_overflow(hwnd);
                 #[cfg(feature = "shell-chrome")]
