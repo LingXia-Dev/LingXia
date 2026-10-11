@@ -18,6 +18,17 @@ final class NativeRootCompositionTests: XCTestCase {
     }
 
     @MainActor
+    func testBoundAnchorSurvivesAResizeWebKitHasNotCommitted() {
+        let scroll = UIScrollView(frame: CGRect(x: 0, y: 0, width: 200, height: 100))
+        scroll.contentSize = CGSize(width: 216, height: 120)
+        let signature = CGSize(width: 16, height: 20)
+        // The DOM already reports the new size; WebKit still has the old layer.
+        XCTAssertFalse(NativeRootComposition.matches(scroll, extent: signature, size: CGSize(width: 300, height: 150)))
+        XCTAssertTrue(NativeRootComposition.carriesSignature(scroll, extent: signature))
+        XCTAssertFalse(NativeRootComposition.carriesSignature(scroll, extent: CGSize(width: 20, height: 20)))
+    }
+
+    @MainActor
     func testFallbackVisibilityAndTeardown() {
         let web = WKWebView()
         let overlay = UIView()

@@ -100,7 +100,9 @@ final class NativeRootComposition {
            (16...268).contains(x.doubleValue), (16...268).contains(y.doubleValue),
            abs(webView.scrollView.zoomScale - 1) < 0.001 {
             let signature = CGSize(width: x.doubleValue, height: y.doubleValue)
-            if let anchor, anchor.isDescendant(of: webView), Self.matches(anchor, extent: signature, size: viewport.size) {
+            // The signature is unique per live Root, so a bound anchor stays valid
+            // while WebKit catches up with a resize the DOM already reports.
+            if let anchor, anchor.isDescendant(of: webView), Self.carriesSignature(anchor, extent: signature) {
                 target = anchor
             } else {
                 var matches: [UIScrollView] = []
@@ -132,10 +134,12 @@ final class NativeRootComposition {
             }
             if container.superview !== target { target.addSubview(container) }
             container.frame = CGRect(origin: .zero, size: target.bounds.size)
+            container.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             sameLayer = true
             NativeComponentHitRouter.shared.registerNativeView(container, in: target, requiresWebKitHit: true)
         } else {
             restoreAnchor()
+            container.autoresizingMask = []
             if container.superview !== overlay { overlay.addSubview(container) }
             origin = .zero
             sameLayer = false
@@ -150,7 +154,11 @@ final class NativeRootComposition {
 
     static func matches(_ scroll: UIScrollView, extent: CGSize, size: CGSize) -> Bool {
         abs(scroll.bounds.width - size.width) <= 1 && abs(scroll.bounds.height - size.height) <= 1 &&
-            abs(scroll.contentSize.width - scroll.bounds.width - extent.width) <= 1 &&
+            carriesSignature(scroll, extent: extent)
+    }
+
+    static func carriesSignature(_ scroll: UIScrollView, extent: CGSize) -> Bool {
+        abs(scroll.contentSize.width - scroll.bounds.width - extent.width) <= 1 &&
             abs(scroll.contentSize.height - scroll.bounds.height - extent.height) <= 1 &&
             abs(scroll.contentOffset.x) <= 0.5 && abs(scroll.contentOffset.y) <= 0.5
     }
