@@ -114,4 +114,4 @@ only when the size class does; exact widths are CSS and container queries.
 - A `float` requires `tray:`, and at most one surface may declare a tray on each target.
 - Tray icons are host-root-relative square SVG source files.
 
-For the complete schema and tray behavior, install the LingXia skill and read `app/project.md`. For responsive lxapp implementation, see [LxApp pages](../lxapp-pages/).
+For the complete schema and tray behavior, install the LingXia skill and read `app/project.md`. For responsive lxapp implementation, see [lxapp pages](../lxapp-pages/).

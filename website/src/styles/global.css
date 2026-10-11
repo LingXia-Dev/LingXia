@@ -16,6 +16,8 @@
   /* Paper — warm near-white canvas */
   --color-paper: #fafaf7;
   --color-paper-2: #f2f3ee;
+  /* Raised surface — cards, buttons, nav */
+  --color-surface: #ffffff;
 
   /* Ink — used by terminal / device mock surfaces */
   --color-ink-950: #0c0f14;
@@ -55,11 +57,28 @@
 }
 
 /* ------------------------------------------------------------------ *
+ *  Dark theme — `data-theme` is set before paint from the same
+ *  `starlight-theme` choice the docs use, so both halves agree.
+ * ------------------------------------------------------------------ */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-paper: #0b0e12;
+  --color-paper-2: #10141a;
+  --color-surface: #141920;
+  --color-fg: #e6ebf1;
+  --color-fg-muted: #9ba8b6;
+  --color-fg-dim: #6b7785;
+  /* Accent text tones lift to stay legible on the dark canvas. */
+  --color-jade-600: #35e3ad;
+  --color-jade-700: #6ff5cd;
+  --color-cyan-600: #38d4f0;
+}
+
+/* ------------------------------------------------------------------ *
  *  Base
  * ------------------------------------------------------------------ */
 @layer base {
   :root {
-    color-scheme: light;
     scroll-behavior: smooth;
     scroll-padding-top: 6rem;
   }
@@ -103,12 +122,12 @@
     background: var(--color-paper-2);
   }
   ::-webkit-scrollbar-thumb {
-    background: #c6ccd2;
+    background: color-mix(in oklab, var(--color-fg) 22%, transparent);
     border-radius: 9999px;
     border: 3px solid var(--color-paper-2);
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #aab2bb;
+    background: color-mix(in oklab, var(--color-fg) 32%, transparent);
   }
 }
 
@@ -134,14 +153,14 @@
 /* Faint engineering grid backdrop */
 .bg-grid {
   background-image:
-    linear-gradient(to right, color-mix(in oklab, #1a2430 6%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in oklab, #1a2430 6%, transparent) 1px, transparent 1px);
+    linear-gradient(to right, color-mix(in oklab, var(--color-fg) 6%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--color-fg) 6%, transparent) 1px, transparent 1px);
   background-size: 56px 56px;
 }
 
 .bg-dots {
   background-image: radial-gradient(
-    color-mix(in oklab, #1a2430 10%, transparent) 1px,
+    color-mix(in oklab, var(--color-fg) 10%, transparent) 1px,
     transparent 1px
   );
   background-size: 22px 22px;
@@ -156,8 +175,8 @@
 /* Card surface — solid white on paper, hairline border, soft shadow */
 .card {
   position: relative;
-  background: #fff;
-  border: 1px solid color-mix(in oklab, #18222e 9%, transparent);
+  background: var(--color-surface);
+  border: 1px solid color-mix(in oklab, var(--color-fg) 9%, transparent);
   border-radius: 1rem;
   box-shadow:
     0 1px 2px rgba(20, 28, 38, 0.04),
@@ -271,12 +290,12 @@
 
 .btn-ghost {
   color: var(--color-fg);
-  background: #fff;
-  border: 1px solid color-mix(in oklab, #18222e 13%, transparent);
+  background: var(--color-surface);
+  border: 1px solid color-mix(in oklab, var(--color-fg) 13%, transparent);
   box-shadow: 0 1px 2px rgba(20, 28, 38, 0.05);
 }
 .btn-ghost:hover {
-  border-color: color-mix(in oklab, #18222e 24%, transparent);
+  border-color: color-mix(in oklab, var(--color-fg) 24%, transparent);
   box-shadow: 0 6px 16px -8px rgba(20, 28, 38, 0.18);
   transform: translateY(-2px);
 }
@@ -298,16 +317,21 @@
 
 /* Nav once the page is scrolled (class toggled in Interactions) */
 .nav-scrolled {
-  background: color-mix(in oklab, #fff 78%, transparent);
+  background: color-mix(in oklab, var(--color-surface) 78%, transparent);
   backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(18, 26, 36, 0.08);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-fg) 8%, transparent);
   box-shadow: 0 10px 28px -20px rgba(18, 26, 36, 0.18);
 }
+
+/* Theme toggle shows the theme it switches to */
+.theme-icon-sun { display: none; }
+:root[data-theme='dark'] .theme-icon-sun { display: block; }
+:root[data-theme='dark'] .theme-icon-moon { display: none; }
 
 /* Section heading helpers */
 .section {
   position: relative;
-  padding-block: clamp(4.5rem, 10vw, 8rem);
+  padding-block: clamp(3.5rem, 7vw, 5.5rem);
 }
 
 /* Glow blob */
