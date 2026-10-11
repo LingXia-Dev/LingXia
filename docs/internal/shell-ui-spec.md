@@ -676,6 +676,19 @@ Expanded footer geometry:
 - Background is transparent; hover uses a quiet shell-owned wash (radius 6);
   disabled items mute icon/text with no hover wash.
 
+Desktop sidebar controls:
+
+- Desktop toggles stay at the top, outside the navigation scroller. Expanded
+  sidebars MUST retain the existing caption-row controls and navigation inset.
+- Windows centers left-sidebar toggles in the caption row; right sidebars
+  clear the native caption buttons. macOS aligns expanded
+  controls with the traffic lights; the rail adds a 32pt row below those
+  controls (without the clearance in frameless hosts).
+- The collapse button is trailing-aligned; the expand button is centered in
+  the icon rail. Both use a 24pt/dp hit target and an 18pt/dp glyph. Switching
+  modes MUST NOT move the control between the header and footer.
+- Footer space belongs to action shortcuts; it MUST NOT reserve a toggle slot.
+
 Compact rail:
 
 - Footer actions become icon-only, with label as tooltip/accessibility text,

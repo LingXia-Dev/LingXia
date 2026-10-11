@@ -180,11 +180,10 @@ fn rail_footer_action_rects(
     if count == 0 {
         return Vec::new();
     }
-    let expand = sidebar_rail_expand_rect(tabbar_rect);
     let total =
         count as i32 * footer_action_size() + count.saturating_sub(1) as i32 * footer_action_gap();
-    let mut top =
-        (expand.top - footer_action_margin() - total).max(tabbar_rect.top + shell_top_bar_height());
+    let mut top = (tabbar_rect.bottom - footer_action_margin() - total)
+        .max(tabbar_rect.top + sidebar_header_height());
     let left = tabbar_rect.left + (rect_width(&tabbar_rect) - footer_action_size()) / 2;
     footer_actions
         .iter()
@@ -277,7 +276,7 @@ pub(in crate::shell::chrome) fn sidebar_navigation_viewport_bottom(
         return rail_footer_action_rects(tabbar_rect, tabbar, footer_actions)
             .first()
             .map(|(_, rect)| rect.top - footer_action_margin())
-            .unwrap_or_else(|| sidebar_rail_expand_rect(tabbar_rect).top - footer_action_margin());
+            .unwrap_or(tabbar_rect.bottom - footer_action_margin());
     }
     tabbar_rect.bottom - tabbar.footer_action_height
 }
