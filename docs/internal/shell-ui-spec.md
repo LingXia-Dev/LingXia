@@ -684,9 +684,11 @@ Desktop sidebar controls:
   clear the native caption buttons. macOS aligns expanded
   controls with the traffic lights; the rail adds a 32pt row below those
   controls (without the clearance in frameless hosts).
-- The collapse button is trailing-aligned; the expand button is centered in
-  the icon rail. Both use a 24pt/dp hit target and an 18pt/dp glyph. Switching
-  modes MUST NOT move the control between the header and footer.
+- The collapse button is trailing-aligned and uses header metrics: a 24pt/dp
+  hit target and an 18pt/dp glyph. The expand button is centered in the icon
+  rail and uses rail item metrics (the rail tile's hit target, glyph and hover
+  wash), so it reads as the first rail item. Both show the shell hover wash.
+  Switching modes MUST NOT move the control between the header and footer.
 - Footer space belongs to action shortcuts; it MUST NOT reserve a toggle slot.
 
 Compact rail:
@@ -697,10 +699,32 @@ Compact rail:
   MUST NOT overlap it or run off-window. Rail width MAY stay platform-specific
   for system-chrome clearance.
 - In the compact desktop size class the expand control stays visible but MUST
-  NOT activate or persist a sidebar choice. It SHOULD expose a tooltip that the
-  window is too narrow. Medium still allows a session expand.
+  NOT activate or persist a sidebar choice; clicking it opens the peek instead.
+  Medium still allows a session expand.
 - In device-compact projections sidebar actions do not render, but declarations
   still validate and reappear if the same process returns to a desktop form.
+
+Sidebar peek:
+
+- Hovering the rail's expand control for 300ms shows the expanded sidebar as
+  an overlay above the workspace with a shadow. The committed sidebar width,
+  the workspace layout, docked panels and the reported surface metrics MUST
+  NOT change; the peek is transient and never persisted. It opens with a short
+  slide (none under reduced motion). Hovering rail items never opens it.
+- The peek stays while the pointer is inside it and closes 250ms after the
+  pointer leaves, at once on Esc, on a click outside, or when the window
+  resigns key. A size-class change or a pin closes it first.
+- Choosing a navigation target (a page, an lxapp, a browser tab, a bookmark, a
+  new tab) navigates and closes the peek; toggles (panel actions, closing an
+  item, a context menu, rename) keep it open.
+- The peek keeps the rail's header row, so the expand control stays exactly
+  where the pointer found it; header actions keep their pinned positions and
+  the expanded content starts below that row. Clicking it, or
+  Cmd/Ctrl+\, pins the sidebar expanded as today. In the compact desktop size
+  class pinning is unavailable: clicking it closes the peek and Cmd/Ctrl+\
+  toggles the peek.
+- Opening the peek closes rail hover floats; it does not open while a rail page
+  panel is shown or a pointer button is held.
 
 ### 4.6 Aside slots
 
