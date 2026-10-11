@@ -3,9 +3,18 @@
 #[cfg(feature = "shell-chrome")]
 mod full_chrome_caption;
 #[cfg(feature = "shell-chrome")]
+mod sidebar_peek;
+#[cfg(feature = "shell-chrome")]
 mod tabbar_overflow;
 #[cfg(feature = "shell-chrome")]
 pub(crate) use tabbar_overflow::{dismiss_tabbar_overflow_on_owner, toggle_tabbar_overflow};
+
+/// Closes the shell window's sidebar peek; true when one was open. Call on the
+/// window's thread.
+#[cfg(feature = "shell-chrome")]
+pub(crate) fn close_sidebar_peek(window: isize) -> bool {
+    sidebar_peek::close(hwnd_from_handle(window))
+}
 
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
@@ -410,6 +419,14 @@ struct PlatformNativeViewHost;
 
 impl WindowsWebViewNativeViewHost for PlatformNativeViewHost {
     fn handle_accelerator(&self, webtag: &WebTag, virtual_key: u32) -> bool {
+        #[cfg(feature = "shell-chrome")]
+        if let Some(host) = window_handle_for_key(webtag.key()).map(|window| unsafe {
+            WindowsAndMessaging::GetAncestor(window, WindowsAndMessaging::GA_ROOT)
+        }) && !host.0.is_null()
+            && sidebar_peek::handle_key_deferred(host, virtual_key)
+        {
+            return true;
+        }
         #[cfg(feature = "components")]
         if crate::pull_to_refresh::handle_refresh_key(webtag, virtual_key) {
             return true;
@@ -3092,6 +3109,7 @@ fn sync_window_layout(hwnd: HWND) {
 
 #[cfg(feature = "shell-chrome")]
 fn sync_chrome_overlays(hwnd: HWND, webtag_key: Option<&str>) {
+    sidebar_peek::sync(hwnd);
     sync_transparent_tabbar_overlay(hwnd, webtag_key);
     full_chrome_caption::sync_full_chrome_caption_overlay(hwnd);
     tabbar_overflow::reposition_tabbar_overflow(hwnd);
@@ -3589,6 +3607,15 @@ fn sync_sidebar_tabbar_popup(hwnd: HWND, point: (i32, i32)) {
         right: anchor_right_bottom.x,
         bottom: anchor_right_bottom.y,
     };
+    show_sidebar_popup(hwnd, popup_rect, anchor, content);
+}
+
+/// Shows (or keeps) the owner's single rail float at screen `popup_rect`. It
+/// dismisses itself once the cursor leaves both `anchor` and the float.
+#[cfg(feature = "shell-chrome")]
+fn show_sidebar_popup(hwnd: HWND, popup_rect: RECT, anchor: RECT, content: SidebarPopupContent) {
+    let width = popup_rect.right - popup_rect.left;
+    let height = popup_rect.bottom - popup_rect.top;
     // Called per mouse move over the rail anchor; skip when the popup already
     // shows this content at this place, else it would repaint continuously.
     if let Some(existing) = sidebar_tabbar_popup_for_owner(hwnd)
@@ -6624,6 +6651,8 @@ fn invalidate_frame_buttons(hwnd: HWND) {
 }
 
 fn invalidate_window_chrome(hwnd: HWND) {
+    #[cfg(feature = "shell-chrome")]
+    sidebar_peek::sync(hwnd);
     let Some(renderer) = windows_chrome_renderer() else {
         invalidate_window(hwnd);
         return;
@@ -7542,7 +7571,10 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         }
     }
     #[cfg(feature = "shell-chrome")]
-    sync_sidebar_tabbar_popup(hwnd, point);
+    {
+        sync_sidebar_tabbar_popup(hwnd, point);
+        sidebar_peek::track_rail_hover(hwnd, point);
+    }
     let hover = match hit {
         Some(WindowsChromeHit::FrameButton(button)) => Some(button),
         _ => None,
@@ -7672,6 +7704,9 @@ fn finish_terminal_selection_drag(hwnd: HWND, point: Option<(i32, i32)>) -> bool
 }
 
 fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
+    // The owner only sees presses outside the peek.
+    #[cfg(feature = "shell-chrome")]
+    sidebar_peek::close(hwnd);
     if let Some(vertical) = begin_attached_panel_resize_drag(hwnd, point) {
         unsafe {
             let _ = SetCapture(hwnd);
@@ -7846,27 +7881,17 @@ fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
             command,
             context_menu: _,
         }) => {
+            #[cfg(feature = "shell-chrome")]
+            if crate::shell::is_sidebar_peek_command(&command) {
+                sidebar_peek::open(hwnd);
+                return true;
+            }
             if let Some(webtag_key) = webtag_key {
                 invoke_chrome_command(&webtag_key, hwnd, point, command);
             }
             true
         }
-        Some(WindowsChromeHit::Chrome) => {
-            #[cfg(feature = "shell-chrome")]
-            if let Some(webtag_key) = webtag_key.as_ref() {
-                let mut client = RECT::default();
-                if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_ok()
-                    && crate::shell::disabled_rail_expand_hit(
-                        client,
-                        &current_window_layout(webtag_key),
-                        point,
-                    )
-                {
-                    sync_sidebar_tabbar_popup(hwnd, point);
-                }
-            }
-            true
-        }
+        Some(WindowsChromeHit::Chrome) => true,
         Some(WindowsChromeHit::Focusable { .. }) => true,
         _ => false,
     }
@@ -9447,6 +9472,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_ACTIVATE => {
+                #[cfg(feature = "shell-chrome")]
+                if (wparam.0 & 0xffff) as u32 == WindowsAndMessaging::WA_INACTIVE {
+                    sidebar_peek::close(hwnd);
+                }
                 #[cfg(feature = "runtime")]
                 dismiss_tray_popover_on_deactivate(hwnd, wparam);
                 dismiss_surface_on_deactivate(hwnd, wparam, lparam);
@@ -9688,6 +9717,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             }
             WM_MOUSELEAVE | WindowsAndMessaging::WM_NCMOUSELEAVE => {
                 clear_chrome_hover(hwnd);
+                #[cfg(feature = "shell-chrome")]
+                sidebar_peek::cancel_hover(hwnd);
                 if chrome_interaction(hwnd).frame_button_hover.is_some() {
                     update_chrome_interaction(hwnd, |state| state.frame_button_hover = None);
                     invalidate_frame_buttons(hwnd);
@@ -9752,6 +9783,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 full_chrome_caption::destroy_full_chrome_caption_overlay(hwnd);
                 #[cfg(feature = "shell-chrome")]
                 destroy_sidebar_tabbar_popup(hwnd);
+                #[cfg(feature = "shell-chrome")]
+                sidebar_peek::close(hwnd);
                 #[cfg(feature = "shell-chrome")]
                 destroy_phone_tab_switcher(hwnd);
                 #[cfg(feature = "shell-chrome")]
@@ -9852,6 +9885,15 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 #[cfg(feature = "shell-chrome")]
                 if wparam.0 == usize::from(VK_ESCAPE.0) && cancel_pane_drag(hwnd, true) {
                     suppress_next_escape_char(hwnd);
+                    return LRESULT(0);
+                }
+                #[cfg(feature = "shell-chrome")]
+                if (wparam.0 == usize::from(VK_ESCAPE.0) || focused_input_host_panel().is_none())
+                    && sidebar_peek::handle_key(hwnd, wparam.0 as u32, lparam.0 & (1 << 30) != 0)
+                {
+                    if wparam.0 == usize::from(VK_ESCAPE.0) {
+                        suppress_next_escape_char(hwnd);
+                    }
                     return LRESULT(0);
                 }
                 #[cfg(feature = "shell-chrome")]

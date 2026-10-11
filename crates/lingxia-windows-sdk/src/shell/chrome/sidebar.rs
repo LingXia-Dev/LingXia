@@ -578,26 +578,16 @@ fn draw_sidebar_rail(
         let _ = RestoreDC(hdc, saved);
     }
 
-    // Keep the control outside the scrolling navigation clip. Compact desktop
-    // retains the glyph and explains why expansion is unavailable.
+    // Keep the control outside the scrolling navigation clip. It stays
+    // actionable in compact desktop, where it peeks instead of pinning.
     let expand_rect = sidebar_rail_expand_rect(rect);
-    if !tabbar.rail_expand_disabled {
-        draw_hover_wash(hdc, expand_rect, 6, cursor);
-    }
+    draw_hover_wash(hdc, expand_rect, 6, cursor);
     draw_design_icon_button(
         hdc,
         expand_rect,
         WindowsDesignIcon::SidebarExpand,
-        if tabbar.rail_expand_disabled {
-            blend_rgb(
-                shell_palette().text_muted,
-                shell_palette().sidebar_background,
-                40,
-            )
-        } else {
-            shell_palette().text_muted
-        },
-        px(18),
+        shell_palette().text_muted,
+        sidebar_rail_icon_size(),
     );
 }
 
@@ -652,16 +642,27 @@ pub(super) fn sidebar_rail_pinned_divider_rect(
     }))
 }
 
-/// The expand control shares the expanded header's vertical axis.
+/// The expand control reads as the first rail tile but keeps the expanded
+/// collapse toggle's vertical center, so it does not jump between modes.
 pub(super) fn sidebar_rail_expand_rect(rect: RECT) -> RECT {
-    let cell = sidebar_header_action_size();
+    let cell = sidebar_rail_item_size();
     let left = rect.left + (rect_width(&rect) - cell).max(0) / 2;
-    let top = sidebar_header_toggle_rect(rect).top;
+    let toggle = sidebar_header_toggle_rect(rect);
+    let center_y = (toggle.top + toggle.bottom) / 2;
+    let mut top = center_y - cell / 2;
+    let mut bottom = top + cell;
+    // The tile is taller than the caption row; trim it evenly so it stays in
+    // the sidebar without moving its center.
+    let overflow = rect.top - top;
+    if overflow > 0 {
+        top += overflow;
+        bottom -= overflow;
+    }
     normalize_rect(RECT {
         left,
         top,
         right: left + cell,
-        bottom: top + cell,
+        bottom,
     })
 }
 
@@ -820,7 +821,7 @@ pub(super) fn sidebar_group_menu_rect(
 /// Only the product shell draws the app-menu button; a runner-style build has
 /// none. Reserving for it regardless leaves a visibly empty slot the header
 /// then refuses to use.
-fn header_leading_reserve() -> i32 {
+pub(super) fn header_leading_reserve() -> i32 {
     let app_menu = if cfg!(feature = "browser-shell") {
         top_bar_button_size()
     } else {
@@ -1021,6 +1022,43 @@ mod tests {
         // Same vertical axis as the actions it sits beside.
         let top = (shell_top_bar_height() - sidebar_header_action_size()).max(0) / 2;
         assert_eq!(toggle.top, top);
+    }
+
+    #[test]
+    fn rail_expand_uses_tile_metrics_on_the_toggle_axis() {
+        let rail = RECT {
+            left: 0,
+            top: 0,
+            right: shell_sidebar_rail_width(),
+            bottom: 600,
+        };
+        let expand = sidebar_rail_expand_rect(rail);
+        let toggle = sidebar_header_toggle_rect(RECT {
+            right: shell_sidebar_width(),
+            ..rail
+        });
+        assert_eq!(expand.right - expand.left, sidebar_rail_item_size());
+        assert_eq!(
+            expand.left - rail.left,
+            rail.right - expand.right,
+            "centered in the rail"
+        );
+        assert_eq!(
+            (expand.top + expand.bottom) / 2,
+            (toggle.top + toggle.bottom) / 2
+        );
+        assert!(expand.top >= rail.top);
+        assert!(expand.bottom <= rail.top + sidebar_header_height());
+        assert!(expand.bottom <= sidebar_rail_item_rect(rail, 0, 0).top);
+
+        // A right rail starts below the caption clearance; same row rules.
+        let clear = RECT {
+            top: shell_top_bar_height(),
+            ..rail
+        };
+        let expand = sidebar_rail_expand_rect(clear);
+        assert!(expand.top >= clear.top);
+        assert!(expand.bottom <= sidebar_rail_item_rect(clear, 0, 0).top);
     }
 
     #[test]

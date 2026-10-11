@@ -147,7 +147,6 @@ export const I18N_KEYS = [
   "shell_pin_limit_title",
   "sidebar_collapse",
   "sidebar_expand",
-  "sidebar_expand_needs_wider_window",
   "splash_skip",
   "surface_close",
   "surface_close_after",

@@ -719,7 +719,7 @@ fn premultiply(rgb: u32, alpha: f32) -> u32 {
 }
 
 /// Windows' "Show animations in Windows" setting; off means no motion.
-fn animations_enabled() -> bool {
+pub(crate) fn animations_enabled() -> bool {
     let mut enabled = windows::core::BOOL(1);
     unsafe {
         let _ = WindowsAndMessaging::SystemParametersInfoW(

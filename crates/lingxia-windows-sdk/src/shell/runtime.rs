@@ -2645,6 +2645,20 @@ fn adaptive_tabbar_projection(
     }
 }
 
+/// User toggle is two-state: expanded <-> icon rail. Fully hidden sidebars are
+/// controlled by content-driven auto-hide only.
+fn toggle_sidebar(appid: &str) {
+    let size_class = shell_owner_appid()
+        .and_then(|owner| lxapp::try_get(&owner))
+        .and_then(|app| app.surface_derived_layout())
+        .map(|plan| plan.size_class)
+        .unwrap_or(SizeClass::Expanded);
+    update_sidebar_ui_state(appid, |state| {
+        toggle_sidebar_projection(state, size_class);
+    });
+    sync_shell_layout(appid);
+}
+
 fn toggle_sidebar_projection(state: &mut SidebarUiState, size_class: SizeClass) {
     if size_class == SizeClass::Compact {
         return;
@@ -4137,17 +4151,7 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             return;
         }
         chrome_command::SIDEBAR_TOGGLE => {
-            // User toggle is two-state: expanded <-> icon rail. Fully hidden
-            // sidebars are controlled by content-driven auto-hide only.
-            let size_class = shell_owner_appid()
-                .and_then(|owner| lxapp::try_get(&owner))
-                .and_then(|app| app.surface_derived_layout())
-                .map(|plan| plan.size_class)
-                .unwrap_or(SizeClass::Expanded);
-            update_sidebar_ui_state(appid, |state| {
-                toggle_sidebar_projection(state, size_class);
-            });
-            sync_shell_layout(appid);
+            toggle_sidebar(appid);
             return;
         }
         chrome_command::SIDEBAR_GROUP_TOGGLE => {
@@ -5068,6 +5072,44 @@ fn show_main_surface_context_menu(
     );
 }
 
+/// Retries the inline rename on the window thread after the pinned layout has
+/// painted its title rects.
+fn begin_rename_after_layout(
+    window: isize,
+    target_id: String,
+    title: String,
+    commit: super::text_input::InlineEditCommit,
+    attempts: u8,
+) {
+    let posted = lingxia_windows_contract::post_to_window_thread(
+        window,
+        Box::new(move || {
+            // Title rects are recorded by the chrome paint.
+            unsafe {
+                let _ = windows::Win32::Graphics::Gdi::UpdateWindow(
+                    windows::Win32::Foundation::HWND(window as *mut core::ffi::c_void),
+                );
+            }
+            if super::chrome::begin_sidebar_surface_rename(
+                window,
+                &target_id,
+                &title,
+                commit.clone(),
+            ) {
+                return;
+            }
+            if attempts > 1 {
+                begin_rename_after_layout(window, target_id, title, commit, attempts - 1);
+            } else {
+                log::warn!("sidebar row is unavailable for inline surface rename");
+            }
+        }),
+    );
+    if !posted {
+        log::warn!("failed to schedule inline surface rename");
+    }
+}
+
 fn surface_menu_entry(
     item: &lingxia_shell::SurfaceMenuItem,
 ) -> super::context_menu::ContextMenuEntry {
@@ -5133,13 +5175,10 @@ fn handle_main_surface_menu_action(
         SurfaceMenuAction::Switcher {
             action: SurfaceMenuBuiltinAction::Rename,
         } => {
-            let owner_appid = owner_appid.to_string();
-            let surface_id = surface_id.to_string();
             let target_id = format!("{AUX_SURFACE_PREFIX}{surface_id}");
-            let started = super::chrome::begin_sidebar_surface_rename(
-                window,
-                &target_id,
-                title,
+            let commit: super::text_input::InlineEditCommit = {
+                let owner_appid = owner_appid.to_string();
+                let surface_id = surface_id.to_string();
                 Arc::new(move |value| {
                     let value = value.trim().to_string();
                     if value.is_empty() {
@@ -5156,11 +5195,24 @@ fn handle_main_surface_menu_action(
                             value: Some(value),
                         },
                     );
-                }),
-            );
-            if !started {
-                log::warn!("sidebar row is unavailable for inline surface rename");
+                })
+            };
+            if super::chrome::begin_sidebar_surface_rename(
+                window,
+                &target_id,
+                title,
+                commit.clone(),
+            ) {
+                return;
             }
+            // A peek only draws the expanded rows; the editable row exists once
+            // the sidebar is pinned, as the expand control would.
+            if crate::window_host::close_sidebar_peek(window) {
+                toggle_sidebar(owner_appid);
+                begin_rename_after_layout(window, target_id, title.to_string(), commit, 3);
+                return;
+            }
+            log::warn!("sidebar row is unavailable for inline surface rename");
         }
         action => perform_main_surface_menu_intent(
             owner_appid,

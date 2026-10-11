@@ -39,6 +39,7 @@ mod native_panel;
 mod notice;
 mod phone_bar;
 mod sidebar;
+mod sidebar_peek;
 mod tabbar_overflow;
 mod top_bar;
 use aside_panel::*;
@@ -48,6 +49,11 @@ use native_panel::*;
 pub(crate) use notice::paint_shell_notice;
 pub(crate) use phone_bar::*;
 use sidebar::*;
+pub(crate) use sidebar_peek::{
+    SidebarPeekLayout, SidebarShortcut, compose_sidebar_peek_pixels, is_sidebar_peek_command,
+    paint_sidebar_peek, sidebar_peek_dismisses, sidebar_peek_layout, sidebar_shortcut,
+    sidebar_toggle_command,
+};
 pub(crate) use tabbar_overflow::*;
 #[cfg(feature = "browser-runtime")]
 pub use top_bar::begin_address_edit;
@@ -345,6 +351,8 @@ pub(super) mod command_id {
     pub(super) const BROWSER_PAGE_MENU: &str = "browser.page-menu";
     pub(super) const BROWSER_CLOSE: &str = "browser.close";
     pub(super) const SIDEBAR_TOGGLE: &str = "sidebar.toggle";
+    /// Host-handled: opens the sidebar peek instead of reaching the runtime.
+    pub(super) const SIDEBAR_PEEK: &str = "sidebar.peek";
     pub(super) const SIDEBAR_GROUP_TOGGLE: &str = "sidebar.group.toggle";
     pub(super) const SIDEBAR_ACTION: &str = "sidebar.action";
     pub(super) const SIDEBAR_SCROLL: &str = "sidebar.scroll";
@@ -499,12 +507,39 @@ fn chrome_mouse_wheel(
     point: (i32, i32),
     delta: i16,
 ) -> Option<WindowsChromeCommand> {
-    if delta == 0 {
-        return None;
-    }
     let covered_layout = covering_panel_layout(state, layout);
     let layout = covered_layout.as_ref().unwrap_or(layout);
     let rects = chrome_rects_for_state(state, layout);
+    let group = layout.tab_bar.as_ref()?.group_id.clone();
+    Some(
+        match sidebar_wheel(state.client, &rects, layout, point, delta)? {
+            SidebarWheel::FooterRow(row) => {
+                WindowsChromeCommand::new(command_id::FOOTER_ACTION_SCROLL)
+                    .with_payload(json!({ "group": group, "row": row }))
+            }
+            SidebarWheel::Scroll(offset) => WindowsChromeCommand::new(command_id::SIDEBAR_SCROLL)
+                .with_payload(json!({ "group": group, "offset": offset })),
+        },
+    )
+}
+
+/// What one wheel notch over the sidebar moves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SidebarWheel {
+    FooterRow(usize),
+    Scroll(i32),
+}
+
+pub(super) fn sidebar_wheel(
+    client: RECT,
+    rects: &ChromeRects,
+    layout: &WindowsShellWindowLayout,
+    point: (i32, i32),
+    delta: i16,
+) -> Option<SidebarWheel> {
+    if delta == 0 {
+        return None;
+    }
     let tabbar_rect = rects.tab_bar?;
     let tabbar = layout.tab_bar.as_ref()?;
     if !matches!(
@@ -517,7 +552,7 @@ fn chrome_mouse_wheel(
 
     let footer_action_max =
         footer_action_max_scroll_row(tabbar_rect, tabbar, &layout.footer_actions);
-    let over_footer_actions = footer_action_rects(state.client, &rects, layout)
+    let over_footer_actions = footer_action_rects(client, rects, layout)
         .iter()
         .any(|(_, rect)| rect_contains(rect, point));
     if footer_action_max > 0 && over_footer_actions {
@@ -527,15 +562,7 @@ fn chrome_mouse_wheel(
         } else {
             (current + 1).min(footer_action_max)
         };
-        if row != current {
-            return Some(
-                WindowsChromeCommand::new(command_id::FOOTER_ACTION_SCROLL).with_payload(json!({
-                    "group": tabbar.group_id,
-                    "row": row,
-                })),
-            );
-        }
-        return None;
+        return (row != current).then_some(SidebarWheel::FooterRow(row));
     }
 
     let (current, max_offset, viewport_bottom) = sidebar_scroll_metrics(tabbar_rect, layout)?;
@@ -551,12 +578,7 @@ fn chrome_mouse_wheel(
     } else {
         (current + step).min(max_offset)
     };
-    (offset != current).then(|| {
-        WindowsChromeCommand::new(command_id::SIDEBAR_SCROLL).with_payload(json!({
-            "group": tabbar.group_id,
-            "offset": offset,
-        }))
-    })
+    (offset != current).then_some(SidebarWheel::Scroll(offset))
 }
 
 /// Bounding rect of the hover-highlightable element under `point`. Mirrors
@@ -680,7 +702,18 @@ fn chrome_hover_rect(
         return None;
     }
 
-    for (_, rect) in footer_action_rects(client, &rects, layout) {
+    sidebar_hover_rect(client, &rects, layout, point)
+}
+
+/// Hover target among footer actions and the sidebar column; shared with the
+/// sidebar peek.
+pub(super) fn sidebar_hover_rect(
+    client: RECT,
+    rects: &ChromeRects,
+    layout: &WindowsShellWindowLayout,
+    point: (i32, i32),
+) -> Option<RECT> {
+    for (_, rect) in footer_action_rects(client, rects, layout) {
         if rect_contains(&rect, point) {
             return Some(rect);
         }
@@ -702,11 +735,7 @@ fn chrome_hover_rect(
             sidebar_scroll_metrics(tabbar_rect, layout).unwrap_or((0, 0, tabbar_rect.bottom));
         let expand = sidebar_rail_expand_rect(tabbar_rect);
         if rect_contains(&expand, point) {
-            return if tabbar.rail_expand_disabled {
-                None
-            } else {
-                Some(expand)
-            };
+            return Some(expand);
         }
         if point.1 < tabbar_rect.top + sidebar_header_height() || point.1 >= viewport_bottom {
             return None;
@@ -1470,34 +1499,13 @@ pub(crate) fn collapsed_sidebar_tooltip(
             }
         }
     }
-    let expand_label;
-    if hovered.is_none() && tabbar.rail_expand_disabled {
-        let expand = sidebar_rail_expand_rect(tabbar_rect);
-        if rect_contains(&expand, point) {
-            expand_label =
-                lingxia_logic::i18n::t(lingxia_logic::I18nKey::SidebarExpandNeedsWiderWindow);
-            hovered = Some((expand, expand_label.as_str()));
-        }
-    }
 
     let (anchor, text) = hovered?;
     let text = text.trim();
     if text.is_empty() {
         return None;
     }
-    // Hug the real Segoe string, not a 7/14 guess — that undersizes at 125%+
-    // DPI and DT_END_ELLIPSIS then clips the label. Cap to the window, not 240.
-    let text_width = match measure_chrome_text_width(text) {
-        w if w > 0 => w,
-        _ => text
-            .chars()
-            .map(|ch| if ch.is_ascii() { px(8) } else { px(16) })
-            .sum::<i32>(),
-    };
-    let max_width =
-        (client.right - client.left - sidebar_rail_tooltip_gap() * 2).clamp(px(72), px(480));
-    let width = (text_width + sidebar_rail_tooltip_padding() * 2 + px(4)).clamp(px(72), max_width);
-    let height = sidebar_rail_tooltip_height();
+    let (width, height) = sidebar_rail_tooltip_size(text, client);
     let desired_left = match tabbar.position {
         WindowsShellTabBarPosition::Left => tabbar_rect.right + sidebar_rail_tooltip_gap(),
         WindowsShellTabBarPosition::Right => tabbar_rect.left - sidebar_rail_tooltip_gap() - width,
@@ -1518,9 +1526,24 @@ pub(crate) fn collapsed_sidebar_tooltip(
     })
 }
 
-/// Compact rail expand is inert chrome. True only on that glyph so a click can
-/// refresh its hint without dismissing other rail floats.
-pub(crate) fn disabled_rail_expand_hit(
+pub(super) fn sidebar_rail_tooltip_size(text: &str, client: RECT) -> (i32, i32) {
+    // Hug the real Segoe string, not a 7/14 guess — that undersizes at 125%+
+    // DPI and DT_END_ELLIPSIS then clips the label. Cap to the window, not 240.
+    let text_width = match measure_chrome_text_width(text) {
+        w if w > 0 => w,
+        _ => text
+            .chars()
+            .map(|ch| if ch.is_ascii() { px(8) } else { px(16) })
+            .sum::<i32>(),
+    };
+    let max_width =
+        (client.right - client.left - sidebar_rail_tooltip_gap() * 2).clamp(px(72), px(480));
+    let width = (text_width + sidebar_rail_tooltip_padding() * 2 + px(4)).clamp(px(72), max_width);
+    (width, sidebar_rail_tooltip_height())
+}
+
+/// True on the collapsed rail's expand control, where hovering arms the peek.
+pub(crate) fn rail_expand_hit(
     client: RECT,
     layout: &WindowsWindowLayout,
     point: (i32, i32),
@@ -1531,7 +1554,7 @@ pub(crate) fn disabled_rail_expand_hit(
     let Some(tabbar) = layout.tab_bar.as_ref() else {
         return false;
     };
-    if !tabbar.rail_expand_disabled || !(tabbar.collapsed || tabbar.icon_rail) {
+    if !(tabbar.collapsed || tabbar.icon_rail) {
         return false;
     }
     if !matches!(
@@ -2371,7 +2394,30 @@ pub(super) fn chrome_hit_test(
         return Some(hit);
     }
 
-    for (panel_id, rect) in footer_action_rects(client, &rects, layout) {
+    if let Some(hit) = sidebar_hit_test(client, &rects, layout, point) {
+        return Some(hit);
+    }
+
+    if let Some(hit) = native_panel_hit(state, point) {
+        return Some(hit);
+    }
+
+    if rect_contains(&rects.top_bar, point) {
+        return Some(WindowsChromeHit::Caption);
+    }
+
+    None
+}
+
+/// Footer actions and the tab bar / sidebar column. Shared with the sidebar
+/// peek, which hit-tests a synthesized expanded layout in its own coordinates.
+pub(super) fn sidebar_hit_test(
+    client: RECT,
+    rects: &ChromeRects,
+    layout: &WindowsShellWindowLayout,
+    point: (i32, i32),
+) -> Option<WindowsChromeHit> {
+    for (panel_id, rect) in footer_action_rects(client, rects, layout) {
         let action = layout
             .footer_actions
             .iter()
@@ -2439,12 +2485,13 @@ pub(super) fn chrome_hit_test(
             if (tabbar.collapsed || tabbar.icon_rail)
                 && rect_contains(&sidebar_rail_expand_rect(tabbar_rect), point)
             {
-                if tabbar.rail_expand_disabled {
-                    // Consume the click before caption dragging; the tooltip
-                    // explains why expansion is unavailable.
-                    return Some(WindowsChromeHit::Chrome);
-                }
-                return Some(chrome_command(command_id::SIDEBAR_TOGGLE, json!({})));
+                // Compact cannot pin an expanded sidebar; the click peeks instead.
+                let command = if tabbar.rail_expand_disabled {
+                    command_id::SIDEBAR_PEEK
+                } else {
+                    command_id::SIDEBAR_TOGGLE
+                };
+                return Some(chrome_command(command, json!({})));
             }
             if sidebar_caption_contains(tabbar_rect, point) {
                 return Some(WindowsChromeHit::Caption);
@@ -2637,15 +2684,6 @@ pub(super) fn chrome_hit_test(
         }
         return Some(WindowsChromeHit::Chrome);
     }
-
-    if let Some(hit) = native_panel_hit(state, point) {
-        return Some(hit);
-    }
-
-    if rect_contains(&rects.top_bar, point) {
-        return Some(WindowsChromeHit::Caption);
-    }
-
     None
 }
 
@@ -2941,12 +2979,12 @@ mod scroll_tests {
         collapsed_sidebar_popup_tabbar, collapsed_sidebar_tabbar_click_command,
         collapsed_sidebar_tabbar_popup_hit, collapsed_sidebar_tabbar_popup_item_bounds,
         collapsed_sidebar_tabbar_popup_size, collapsed_sidebar_tooltip, compute_attached_layout,
-        compute_chrome_rects, covering_panel_layout, disabled_rail_expand_hit, footer_action_rects,
+        compute_chrome_rects, covering_panel_layout, footer_action_rects,
         layout_for_maximized_native_panel, layout_without_covered_main_chrome,
-        phone_browser_bar_active, phone_browser_bar_rects, rect_height, shell_content_inset,
-        shell_top_bar_height, sidebar_auxiliary_rail_index, sidebar_auxiliary_rects,
-        sidebar_caption_contains, sidebar_group_rect, sidebar_icon_size, sidebar_item_height,
-        sidebar_item_rect, sidebar_rail_close_rect, sidebar_rail_expand_rect,
+        phone_browser_bar_active, phone_browser_bar_rects, rail_expand_hit, rect_height,
+        shell_content_inset, shell_top_bar_height, sidebar_auxiliary_rail_index,
+        sidebar_auxiliary_rects, sidebar_caption_contains, sidebar_group_rect, sidebar_icon_size,
+        sidebar_item_height, sidebar_item_rect, sidebar_rail_close_rect, sidebar_rail_expand_rect,
         sidebar_rail_item_rect, sidebar_rail_pinned_divider_rect, sidebar_tabbar_popup_padding,
         sidebar_tabbar_popup_width, sidebar_top_level_icon_rect, tabbar_requires_full_repaint,
         top_bar_controls,
@@ -3232,7 +3270,7 @@ mod scroll_tests {
     }
 
     #[test]
-    fn compact_rail_expand_stays_visible_but_rejects_the_click() {
+    fn compact_rail_expand_peeks_instead_of_pinning() {
         let client = RECT {
             left: 0,
             top: 0,
@@ -3267,16 +3305,16 @@ mod scroll_tests {
 
         assert!(matches!(
             chrome_hit_test(&state, &layout, center),
-            Some(WindowsChromeHit::Chrome)
+            Some(WindowsChromeHit::Command(command))
+                if command.id == super::command_id::SIDEBAR_PEEK
         ));
-
-        let tooltip = collapsed_sidebar_tooltip(client, &window_layout, center).unwrap();
         assert_eq!(
-            tooltip.text,
-            lingxia_logic::i18n::t(lingxia_logic::I18nKey::SidebarExpandNeedsWiderWindow)
+            super::chrome_hover_rect(&state, &layout, center),
+            Some(expand)
         );
-        assert!(disabled_rail_expand_hit(client, &window_layout, center));
-        assert!(!disabled_rail_expand_hit(
+        assert!(collapsed_sidebar_tooltip(client, &window_layout, center).is_none());
+        assert!(rail_expand_hit(client, &window_layout, center));
+        assert!(!rail_expand_hit(
             client,
             &window_layout,
             (

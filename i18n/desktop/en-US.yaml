@@ -40,8 +40,6 @@ terminal:
   reset: "Reset Terminal"
   read_only: "Terminal Read-only"
 
-# Compact desktop keeps the rail expand glyph visible but inert.
 sidebar:
   expand: "Expand sidebar"
   collapse: "Collapse sidebar"
-  expand_needs_wider_window: "Widen the window first"
