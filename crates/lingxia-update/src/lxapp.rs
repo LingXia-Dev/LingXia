@@ -133,9 +133,6 @@ fn ensure_runtime_version_compatible<H: LxAppUpdateHost>(
 }
 
 pub fn spawn_background_update_check<H: LxAppUpdateHost>(host: H, current_version: Option<String>) {
-    if crate::blocks_dev_service_packages() {
-        return;
-    }
     let runner = host.clone();
     host.spawn_detached(Box::pin(async move {
         let scope = lxapp_update_scope_key(runner.target_appid(), runner.channel());
@@ -237,10 +234,6 @@ pub async fn ensure_first_install<H: LxAppUpdateHost>(host: &H) -> Result<(), Up
         return Ok(());
     }
 
-    if crate::blocks_dev_service_packages() {
-        return Err(crate::dev_service_package_refusal());
-    }
-
     if !host.has_update_provider() {
         return Err(UpdateError::unsupported(format!(
             "lxapp '{}' is not installed; remote install unavailable",
@@ -298,17 +291,9 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
                 "targetVersion {target_version} is older than installed {installed}; downgrades are not supported"
             )));
         }
-        // Draft normally falls through so a same-version republish can be
-        // fetched. With fetching blocked, the installed draft is what opens.
-        if installed.trim() == target_version
-            && (!republish || !host.is_ota_managed() || crate::blocks_dev_service_packages())
-        {
+        if installed.trim() == target_version && (!republish || !host.is_ota_managed()) {
             return Ok(());
         }
-    }
-
-    if crate::blocks_dev_service_packages() {
-        return Err(crate::dev_service_package_refusal());
     }
 
     let pkg = with_foreground_update_timeout(
