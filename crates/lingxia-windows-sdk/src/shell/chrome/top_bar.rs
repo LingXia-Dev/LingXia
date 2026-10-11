@@ -85,9 +85,8 @@ pub(super) fn top_bar_controls(
     });
     let compact_sidebar = tabbar.is_some_and(|tabbar| tabbar.collapsed || tabbar.icon_rail);
 
-    // App-menu button at the window's leading edge. When a sidebar exists it
-    // shares the sidebar header's leading edge with the toggle (which moves
-    // to its right); otherwise it anchors the top bar. Only the product shell
+    // App-menu button at the window's leading edge, above the sidebar controls
+    // when a sidebar exists. Otherwise it anchors the top bar. Only the product shell
     // (`browser-shell`) has a real app menu (About/Exit); a runner-style
     // build would offer a lone "Exit" that just duplicates the window close,
     // so it gets no button at all.
@@ -99,11 +98,8 @@ pub(super) fn top_bar_controls(
     let app_icon =
         (cfg!(feature = "browser-shell") && !compact_sidebar).then(|| square_button(app_icon_left));
 
-    // The collapse toggle lives at the trailing edge of the sidebar header
-    // while the sidebar is expanded. Once collapsed to a rail, the rail draws
-    // the *same* toggle icon pinned to its bottom (see `draw_sidebar_rail`),
-    // so the top bar shows none here — otherwise the rail would carry two
-    // expand affordances.
+    // The rail renders its own centered toggle on the same fixed control row.
+    // Only the expanded sidebar contributes a trailing toggle here.
     let sidebar_toggle = tabbar
         .filter(|_| has_sidebar_toggle && !compact_sidebar)
         .map(|tabbar| {

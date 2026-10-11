@@ -1684,10 +1684,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         let toolbarCenterY: CGFloat
         if let window = window as? LxAppWindow {
             let effectiveCenterY = window.effectiveTrafficLightCenterYFromTop()
-            sidebarView?.buttonCenterYFromTop = effectiveCenterY
+            sidebarView?.windowControlsCenterYFromTop = effectiveCenterY
             toolbarCenterY = max(0, effectiveCenterY - Layout.contentPanelPadding)
         } else {
-            sidebarView?.buttonCenterYFromTop = Layout.toolbarCenterY
+            sidebarView?.windowControlsCenterYFromTop = Layout.toolbarCenterY
             toolbarCenterY = Layout.toolbarCenterY
         }
         browserCoordinator.syncToolbarCenterY(toolbarCenterY)
@@ -1907,9 +1907,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 window?.standardWindowButton(type)?.isHidden = !visible
             }
         }
-        // A frameless host (no traffic lights) shouldn't reserve a traffic-light
-        // header above the rail — align its first icon to the content top.
-        sidebarView?.setRailAlignedToTop(!visible)
+        // Frameless hosts start with the sidebar control row in either mode.
+        sidebarView?.setControlsAlignedToTop(!visible)
         syncSidebarHeaderButtonAlignment()
         sidebarView?.updateVisibilityState()
     }

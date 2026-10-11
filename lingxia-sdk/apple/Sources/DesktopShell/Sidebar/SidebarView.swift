@@ -643,13 +643,10 @@ class SidebarView: NSView {
         /// `railIconSize` so it covers the icon, narrower than
         /// `railButtonSize` so the tile edge still re-selects.
         static let railCloseBadgeSize: CGFloat = railIconSize + 6
-        // Reserve only the shared traffic-light / toolbar row; the titlebar offset is
-        // already handled by `buttonCenterYFromTop`. 28pt matches the standard
-        // macOS titlebar row height.
+        // Keep window controls above the sidebar's fixed control row.
         static let trafficLightsHeight: CGFloat = 28
-        /// Header icon buttons (actions and the collapse toggle). 24pt with a
-        /// 2pt pitch seats two actions beside the traffic lights in the default
-        /// 148pt sidebar; 28pt/4pt fit only one.
+        static let controlRowHeight: CGFloat = 32
+        /// Header actions and both sidebar toggles share a 24pt target.
         static let actionButtonSize: CGFloat = 24
         static let actionButtonSpacing: CGFloat = 2
         static let resizeHandleWidth: CGFloat = 5
@@ -673,11 +670,6 @@ class SidebarView: NSView {
 
     private let headerView = NSView()
     private let headerActionStack = NSStackView()
-    /// Keeps the action buttons clear of the traffic lights. The clearance is
-    /// measured, not assumed: the buttons may be hidden or placed in the
-    /// toolbar, and reserving for them anyway leaves a visibly empty strip that
-    /// the header then refuses to use.
-    private var headerActionLeadingConstraint: NSLayoutConstraint?
     private var headerActionItems: [PanelIconItem] = []
     private var headerActionIdentities: [ObjectIdentifier: SidebarActionIdentity] = [:]
     private let scrollView = SidebarScrollView()
@@ -696,8 +688,7 @@ class SidebarView: NSView {
     /// sidebar actions; clicking it collapses the sidebar to the icon rail.
     private let hideButton = NSButton()
     private var hideButtonTrackingArea: NSTrackingArea?
-    /// The rail-state expand toggle — the first icon in the collapsed rail,
-    /// above the lxapp icons; clicking it restores the expanded sidebar.
+    /// The rail-state expand toggle shares the collapse button's control row.
     private let railExpandButton = NSButton()
     private var railExpandTrackingArea: NSTrackingArea?
     /// Compact desktop keeps the glyph visible but inert: the rail is already
@@ -717,10 +708,8 @@ class SidebarView: NSView {
     /// True when the sidebar is collapsed to the icon-only rail.
     private(set) var isCompact = false
 
-    /// Rail top inset. Normally clears the traffic lights; a host with no traffic
-    /// lights (the frameless runner) zeroes it so the first rail icon aligns with
-    /// the content/webview top instead of sitting a header-height below it.
-    private var railTopConstraint: NSLayoutConstraint?
+    private var headerHeightConstraint: NSLayoutConstraint?
+    private var controlsAlignedToTop = false
     /// Supplies the minimum width that still clears the macOS traffic lights,
     /// so the rail can be as narrow as those controls allow.
     var trafficLightClearanceProvider: (() -> CGFloat)?
@@ -742,8 +731,7 @@ class SidebarView: NSView {
     /// Container hosting the rail; shown only in compact mode.
     private let railScrollView = SidebarScrollView()
     private let railStack = NSStackView()
-    /// Footer actions stay anchored above the rail expand control, matching the
-    /// expanded footer and the Windows rail instead of joining navigation.
+    /// Action shortcuts retain their bottom dock independently of the toggle.
     private let railFooterScrollView = SidebarScrollView()
     private let railFooterStack = NSStackView()
     /// Rail buttons keyed by a composite id ("app:<appId>" / "web:<tabId>").
@@ -806,11 +794,11 @@ class SidebarView: NSView {
     private var isAddButtonHovered = false
     private var isHideButtonHovered = false
 
-    /// Target center Y for the header buttons, measured from the header's top edge.
-    var buttonCenterYFromTop: CGFloat = Layout.trafficLightsHeight / 2 {
+    /// Measured window-control center; sidebar controls sit below its row.
+    var windowControlsCenterYFromTop: CGFloat = Layout.trafficLightsHeight / 2 {
         didSet {
-            guard oldValue != buttonCenterYFromTop else { return }
-            buttonCenterYConstraints.forEach { $0.constant = buttonCenterYFromTop }
+            guard oldValue != windowControlsCenterYFromTop else { return }
+            updateControlRowGeometry()
         }
     }
     private var buttonCenterYConstraints: [NSLayoutConstraint] = []
@@ -828,7 +816,7 @@ class SidebarView: NSView {
     var onAppCloseRequested: ((String) -> Void)?
     var onManagedMainContextMenuRequested: ((String, NSEvent, NSView) -> Bool)?
     var onManagedMainRenameCommitted: ((String, String) -> Void)?
-    /// Called when the bottom hide button is clicked
+    /// Called when the header collapse button is clicked
     var onHideRequested: (() -> Void)?
     /// Called when the rail expand button is clicked
     var onShowRequested: (() -> Void)?
@@ -1059,34 +1047,31 @@ class SidebarView: NSView {
         hideButton.action = #selector(hideButtonClicked)
         headerView.addSubview(hideButton)
 
-        // Rail expand toggle: pinned to the bottom of the rail (not in the
-        // scrolling icon stack) so it stays anchored as chrome below the
-        // sidebar actions, leaving the top free for a future branding header.
+        // The fixed header keeps the toggle reachable while navigation scrolls.
         railExpandButton.translatesAutoresizingMaskIntoConstraints = false
         railExpandButton.isBordered = false
         railExpandButton.bezelStyle = .regularSquare
         railExpandButton.imagePosition = .imageOnly
         railExpandButton.imageScaling = .scaleProportionallyDown
         railExpandButton.wantsLayer = true
-        railExpandButton.layer?.cornerRadius = 8
+        railExpandButton.layer?.cornerRadius = 6
         railExpandButton.layer?.backgroundColor = NSColor.clear.cgColor
         updateRailExpandAffordances()
         railExpandButton.contentTintColor = LxAppHostTheme.mutedForeground
         railExpandButton.image = LxIcon.image(
             named: "icon_sidebar_expand",
-            size: NSSize(width: Layout.railIconSize, height: Layout.railIconSize))
+            size: NSSize(width: 18, height: 18))
         railExpandButton.target = self
         railExpandButton.action = #selector(railExpandClicked)
-        footerView.addSubview(railExpandButton)
+        headerView.addSubview(railExpandButton)
         NSLayoutConstraint.activate([
-            railExpandButton.widthAnchor.constraint(equalToConstant: Layout.railButtonSize),
-            railExpandButton.heightAnchor.constraint(equalToConstant: Layout.railButtonSize),
-            railExpandButton.centerXAnchor.constraint(equalTo: footerView.centerXAnchor),
-            railExpandButton.bottomAnchor.constraint(equalTo: footerView.bottomAnchor, constant: -6),
+            railExpandButton.widthAnchor.constraint(equalToConstant: Layout.actionButtonSize),
+            railExpandButton.heightAnchor.constraint(equalToConstant: Layout.actionButtonSize),
+            railExpandButton.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
             railFooterScrollView.topAnchor.constraint(equalTo: footerSeparator.bottomAnchor, constant: 6),
             railFooterScrollView.leadingAnchor.constraint(equalTo: footerView.leadingAnchor),
             railFooterScrollView.trailingAnchor.constraint(equalTo: footerView.trailingAnchor),
-            railFooterScrollView.bottomAnchor.constraint(equalTo: railExpandButton.topAnchor, constant: -6),
+            railFooterScrollView.bottomAnchor.constraint(equalTo: footerView.bottomAnchor, constant: -6),
         ])
 
         // Resize handle on right edge
@@ -1094,20 +1079,20 @@ class SidebarView: NSView {
         resizeHandle.wantsLayer = true
         addSubview(resizeHandle)
 
-        railTopConstraint = railScrollView.topAnchor.constraint(
-            equalTo: topAnchor, constant: Layout.trafficLightsHeight)
+        headerHeightConstraint = headerView.heightAnchor.constraint(
+            equalToConstant: Layout.trafficLightsHeight + Layout.controlRowHeight)
 
         NSLayoutConstraint.activate([
             headerView.topAnchor.constraint(equalTo: topAnchor),
             headerView.leadingAnchor.constraint(equalTo: leadingAnchor),
             headerView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            headerView.heightAnchor.constraint(equalToConstant: Layout.trafficLightsHeight),
+            headerHeightConstraint!,
 
             hideButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -8),
 
             headerActionStack.trailingAnchor.constraint(
                 equalTo: hideButton.leadingAnchor, constant: -Layout.actionButtonSpacing),
-            headerActionLeadingClearance(),
+            headerActionStack.leadingAnchor.constraint(greaterThanOrEqualTo: headerView.leadingAnchor, constant: 8),
 
             // Scroll view: inset trailing by resize handle width, extends above footer
             scrollView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
@@ -1115,10 +1100,7 @@ class SidebarView: NSView {
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.resizeHandleWidth),
             scrollView.bottomAnchor.constraint(equalTo: footerView.topAnchor),
 
-            // Rail occupies the same region as the main scroll view, but its top
-            // inset is adjustable (see railTopConstraint) — the rail's header is
-            // empty in compact mode, so a frameless host can pull it to the top.
-            railTopConstraint!,
+            railScrollView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
             railScrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             railScrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.resizeHandleWidth),
             railScrollView.bottomAnchor.constraint(equalTo: footerView.topAnchor),
@@ -1154,13 +1136,14 @@ class SidebarView: NSView {
         footerHeight.isActive = true
         footerHeightConstraint = footerHeight
 
-        // Button center constraints — stored so we can align them to the effective traffic-light center.
-        let centerY = buttonCenterYFromTop
+        let centerY = controlRowCenterY
         let headerActionsCenter = headerActionStack.centerYAnchor.constraint(
             equalTo: headerView.topAnchor, constant: centerY)
         let toggleCenter = hideButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
-        buttonCenterYConstraints = [headerActionsCenter, toggleCenter]
+        let expandCenter = railExpandButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
+        buttonCenterYConstraints = [headerActionsCenter, toggleCenter, expandCenter]
         NSLayoutConstraint.activate(buttonCenterYConstraints)
+        updateControlRowGeometry()
 
         // Document view fills scroll view width
         if let docView = scrollView.documentView {
@@ -1218,11 +1201,22 @@ class SidebarView: NSView {
 
     // MARK: - Compact (icon-rail) mode
 
-    /// Switch between the expanded sidebar and the collapsed icon rail.
-    /// When true (a frameless host with no traffic lights), the collapsed rail's
-    /// first icon aligns to the very top instead of clearing a traffic-light header.
-    func setRailAlignedToTop(_ alignedToTop: Bool) {
-        railTopConstraint?.constant = alignedToTop ? 0 : Layout.trafficLightsHeight
+    private var controlRowCenterY: CGFloat {
+        let captionHeight = controlsAlignedToTop
+            ? 0 : max(Layout.trafficLightsHeight, windowControlsCenterYFromTop + Layout.trafficLightsHeight / 2)
+        return captionHeight + Layout.controlRowHeight / 2
+    }
+
+    private func updateControlRowGeometry() {
+        let centerY = controlRowCenterY
+        buttonCenterYConstraints.forEach { $0.constant = centerY }
+        headerHeightConstraint?.constant = centerY + Layout.controlRowHeight / 2
+    }
+
+    /// Frameless hosts omit the window-control row in both sidebar modes.
+    func setControlsAlignedToTop(_ alignedToTop: Bool) {
+        controlsAlignedToTop = alignedToTop
+        updateControlRowGeometry()
     }
 
     func setCompactMode(_ compact: Bool) {
@@ -1481,10 +1475,6 @@ class SidebarView: NSView {
             railFooterStack.addArrangedSubview(button)
             railButtons[key] = button
         }
-
-        // The expand toggle is not part of this stack — it's pinned to the rail's
-        // bottom in setup() so it always anchors the bottom regardless of how many
-        // sidebar actions are present.
 
         refreshRailHighlight()
     }
@@ -1870,23 +1860,21 @@ class SidebarView: NSView {
         let compact = isCompact && !hidden && !appUIOnlyMode
         scrollView.isHidden = hidden || appUIOnlyMode || compact
         railScrollView.isHidden = hidden || appUIOnlyMode || !compact
-        // Footer actions and the expand toggle retain their bottom ownership in
-        // the rail instead of entering the navigation scroll region.
+        // The toggle remains in the header; action shortcuts keep the footer.
         railExpandButton.isHidden = hidden || appUIOnlyMode || !compact
         railFooterScrollView.isHidden = hidden
             || appUIOnlyMode
             || !compact
-            || model.panelItems.isEmpty
+            || (headerActionItems.isEmpty && model.panelItems.isEmpty)
         footerSeparator.isHidden = compact
         // Header actions and footer cells don't fit the rail.
         updateHeaderActionVisibility()
-        // The header collapse toggle shows only in the expanded layout; the rail
-        // carries its own expand toggle anchored at the bottom when compact.
+        // Exactly one toggle occupies the fixed control row in either mode.
         hideButton.isHidden = hidden || appUIOnlyMode || compact
         panelScroll.isHidden = compact
-        // The compact footer always keeps the expand affordance; expanded mode
-        // needs a footer only when app-owned actions exist.
-        footerView.isHidden = hidden || (compact ? false : model.panelItems.isEmpty)
+        footerView.isHidden = hidden || (compact
+            ? headerActionItems.isEmpty && model.panelItems.isEmpty
+            : model.panelItems.isEmpty)
         resizeHandle.isHidden = hidden
     }
 
@@ -1987,34 +1975,17 @@ class SidebarView: NSView {
         }
     }
 
-    /// The constraint keeping the actions clear of the traffic lights, created
-    /// once and refreshed whenever the measured clearance changes.
-    private func headerActionLeadingClearance() -> NSLayoutConstraint {
-        let constraint = headerActionStack.leadingAnchor.constraint(
-            greaterThanOrEqualTo: headerView.leadingAnchor,
-            constant: measuredHeaderLeadingReserve()
-        )
-        headerActionLeadingConstraint = constraint
-        return constraint
-    }
-
-    /// How much of the header's leading edge the window buttons actually take.
-    private func measuredHeaderLeadingReserve() -> CGFloat {
-        trafficLightClearanceProvider?() ?? Layout.railWidth
-    }
-
     /// Show the buttons the header can seat, hiding only the overflow.
     ///
     /// Measuring the whole set and hiding the stack means one action too many
     /// removes the ones that did fit, which reads as the sidebar losing its
     /// buttons rather than being one narrower than it wants. The leading
-    /// reserve is the traffic lights plus the collapse toggle.
+    /// reserve is the outer inset plus the collapse toggle.
     private func updateHeaderActionVisibility() {
         let hidden = isFullyHidden || appUIOnlyMode || isCompact || headerActionItems.isEmpty
         headerActionStack.isHidden = hidden
         guard !hidden else { return }
-        let reserve = measuredHeaderLeadingReserve()
-        headerActionLeadingConstraint?.constant = reserve
+        let reserve: CGFloat = 8
         let availableWidth = max(
             0,
             bounds.width - reserve - 8 - Layout.actionButtonSize - Layout.actionButtonSpacing
@@ -2078,15 +2049,10 @@ class SidebarView: NSView {
             // The rail stack carries the header actions ahead of the footer ones.
             let railActions = headerActionItems.count + model.panelItems.count
             let visibleActions = min(CGFloat(railActions), Layout.footerMaxRows)
-            let actionHeight = visibleActions > 0
+            footerHeightConstraint?.constant = visibleActions > 0
                 ? visibleActions * Layout.railButtonSize
-                    + max(0, visibleActions - 1) * railFooterStack.spacing
-                    + 6
+                    + max(0, visibleActions - 1) * railFooterStack.spacing + 13
                 : 0
-            footerHeightConstraint?.constant = 6
-                + Layout.railButtonSize
-                + actionHeight
-                + (visibleActions > 0 ? 6 : 0)
             return
         }
         guard !model.panelItems.isEmpty else {
