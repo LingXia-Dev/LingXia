@@ -17,6 +17,8 @@ import { isFallbackElement } from "./structure.js";
 import { applyIslandHostEvent } from "./events.js";
 import { effectiveOpacity } from "./style.js";
 import { observeNativeLayout } from "./layout.js";
+import { IOSRootComposition } from "./ios-composition.js";
+import { isIOS } from "../platform.js";
 import { ensureComponentId } from "../component.js";
 import {
   registerNativeComponentHandler,
@@ -110,6 +112,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   private runtime: RootRuntimeState = createRootRuntimeState();
   private unregisterHost?: () => void;
   private fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+  private iosComposition = new IOSRootComposition();
 
   lastCompileResult(): CompileInlineNativeResult | null {
     return this.lastResult;
@@ -123,8 +126,14 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   connectedCallback(): void {
     if (!this.shadowRoot) {
       const shadow = this.attachShadow({ mode: "open" });
-      shadow.innerHTML = '<style>:host([data-lx-native-paint-hidden]:not([data-lx-native-measuring])) { opacity: 0 !important; }</style><slot></slot>';
+      // Hiding the root itself also hides a native view mounted in its WebKit
+      // layer. On iOS suppress only the author children, preserving layout.
+      shadow.innerHTML = isIOS()
+        ? '<style>:host([data-lx-native-paint-hidden]:not([data-lx-native-measuring])) ::slotted(*) { opacity: 0 !important; }</style><slot></slot>'
+        : '<style>:host([data-lx-native-paint-hidden]:not([data-lx-native-measuring])) { opacity: 0 !important; }</style><slot></slot>';
     }
+    this.iosComposition.setup(this.shadowRoot!);
+    this.iosComposition.setPresentation(false);
     this.style.display = this.style.display || "block";
     this.style.position = this.style.position || "relative";
     this.unregisterHost = registerNativeComponentHandler(this.rootKey, (message) => {
@@ -141,7 +150,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     sendNativeComponentMessage({ id: this.rootKey, action: "component.ready" });
     this.observer = new MutationObserver((records) => {
       if (records.every(record => record.target === this &&
-          ["data-lx-native-measuring", "data-lx-native-paint-hidden"].includes(record.attributeName ?? ""))) return;
+          ["data-lx-native-measuring", "data-lx-native-paint-hidden", "data-lx-native-presentation"].includes(record.attributeName ?? ""))) return;
       this.syncResizeObservation();
       this.scheduleCompile();
     });
@@ -168,6 +177,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   }
 
   disconnectedCallback(): void {
+    this.iosComposition.destroy();
     const root = this.runtime.identified?.rootRef ?? this.rootRef();
     sendNativeComponentMessage({ id: this.rootKey, action: "root.destroy", root });
     this.runtime = createRootRuntimeState();
@@ -270,6 +280,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
       );
     } else {
       const geometry = measureNativeNodeGeometry(this);
+      const iosComposition = this.iosComposition.measure(this);
       const published = publishCompiledRoot({
         compiled: result.root,
         rootRef: this.rootRef(),
@@ -292,6 +303,18 @@ export class LxNativeRootElement extends LxNativeBaseElement {
         }
       }
       this.runtime = published.state;
+      if (isIOS()) {
+        published.messages.geometry.roots[0].iosComposition = iosComposition;
+        const authors = new Map(Object.values(published.state.identified!.table.byAuthorId)
+          .map(record => [record.nodeKey, record.authorId]));
+        for (const node of published.messages.geometry.nodes) {
+          const authorId = authors.get(node.ref.nodeKey);
+          if (authorId) {
+            node.iosClipStack = geometry.localClips[authorId];
+            node.iosLayoutVisible = geometry.layoutVisibility[authorId];
+          }
+        }
+      }
       sendNativeComponentMessage({ id: this.rootKey, ...published.messages.geometry });
       this.dispatchEvent(
         new CustomEvent(STRUCTURE_COMPILED_EVENT, {
@@ -313,6 +336,12 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   }): void {
     const currentRoot = this.runtime.identified?.rootRef ?? this.rootRef();
     if (message.root && !sameRootGeneration(message.root, currentRoot)) {
+      return;
+    }
+    if (message.action === "root.presentation") {
+      const mode = (message as { mode?: string }).mode === "same-layer" ? "same-layer" : "overlay";
+      this.setAttribute("data-lx-native-presentation", mode);
+      this.iosComposition.setPresentation(mode === "same-layer");
       return;
     }
     if (applyIslandHostEvent(this, message)) {
@@ -365,6 +394,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   }
 
   private updateFallbackVisibility(show: boolean): void {
+    this.iosComposition.setReady(!show);
     if (this.hasAttribute("data-lx-native-paint-hidden") === show) {
       this.toggleAttribute("data-lx-native-paint-hidden", !show);
     }
@@ -382,6 +412,8 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   }
 
   private destroyPublishedRoot(): void {
+    this.iosComposition.setPresentation(false);
+    this.removeAttribute("data-lx-native-presentation");
     const root = this.runtime.identified?.rootRef;
     if (!root) return;
     sendNativeComponentMessage({ id: this.rootKey, action: "root.destroy", root });
@@ -677,10 +709,14 @@ function measureNativeNodeGeometry(root: Element): {
   rects: Record<string, { x: number; y: number; width: number; height: number }>;
   visibility: Record<string, boolean>;
   clipStacks: Record<string, unknown[]>;
+  localClips: Record<string, unknown[]>;
+  layoutVisibility: Record<string, boolean>;
 } {
   const rects: Record<string, { x: number; y: number; width: number; height: number }> = {};
   const visibility: Record<string, boolean> = {};
   const clipStacks: Record<string, unknown[]> = {};
+  const localClips: Record<string, unknown[]> = {};
+  const layoutVisibility: Record<string, boolean> = {};
   for (const child of nativeDescendants(root)) {
     const tag = child.tagName.toLowerCase();
     const id = ensureComponentId(child as HTMLElement, tag);
@@ -689,8 +725,10 @@ function measureNativeNodeGeometry(root: Element): {
     rects[id] = rect;
     visibility[id] = elementIsVisible(child) && clips.every((clip) => rectsIntersect(rect, clip));
     clipStacks[id] = clips;
+    localClips[id] = overflowClipStack(child, root);
+    layoutVisibility[id] = elementIsVisible(child, false);
   }
-  return { rects, visibility, clipStacks };
+  return { rects, visibility, clipStacks, localClips, layoutVisibility };
 }
 
 function nativeDescendants(root: Element): Element[] {
@@ -698,7 +736,7 @@ function nativeDescendants(root: Element): Element[] {
     .filter((element) => !isFallbackElement(element) && element.closest("lx-native-root") === root);
 }
 
-function elementIsVisible(element: Element): boolean {
+function elementIsVisible(element: Element, checkViewport = true): boolean {
   const html = element as HTMLElement;
   if (typeof getComputedStyle !== "function") return true;
   const style = getComputedStyle(html);
@@ -709,16 +747,17 @@ function elementIsVisible(element: Element): boolean {
   if (rect.width <= 0 || rect.height <= 0 || html.getClientRects().length === 0) {
     return false;
   }
-  if (typeof window === "undefined") return true;
+  if (!checkViewport || typeof window === "undefined") return true;
   return rect.right > 0 && rect.bottom > 0 && rect.left < window.innerWidth && rect.top < window.innerHeight;
 }
 
 function overflowClipStack(
-  element: Element
+  element: Element, stopAt?: Element
 ): Array<{ x: number; y: number; width: number; height: number }> {
   if (typeof getComputedStyle !== "function") return [];
   const clips: Array<{ x: number; y: number; width: number; height: number }> = [];
   for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+    if (ancestor === stopAt) break;
     const style = getComputedStyle(ancestor);
     const clipsX = style.overflowX !== "visible";
     const clipsY = style.overflowY !== "visible";

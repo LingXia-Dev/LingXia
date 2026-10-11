@@ -1,5 +1,6 @@
 import type { IdentifiedRoot } from "./identity.js";
 import type { RootRef } from "./types.js";
+import type { IOSCompositionAnchor } from "./ios-composition.js";
 
 export interface NativeGeometrySnapshotJson {
   action: "geometry.snapshot";
@@ -16,6 +17,7 @@ export interface NativeGeometrySnapshotJson {
     chainKey: string;
     contentRect: { x: number; y: number; width: number; height: number };
     visible: boolean;
+    iosComposition?: IOSCompositionAnchor;
   }>;
   nodes: Array<{
     ref: IdentifiedRoot["children"][number]["nodeRef"];
@@ -23,6 +25,8 @@ export interface NativeGeometrySnapshotJson {
     contentRect: { x: number; y: number; width: number; height: number };
     clipStack: unknown[];
     visible: boolean;
+    iosClipStack?: unknown[];
+    iosLayoutVisible?: boolean;
   }>;
   chains: Array<{
     chainKey: string;
