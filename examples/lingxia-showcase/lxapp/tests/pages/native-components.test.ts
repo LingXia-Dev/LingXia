@@ -55,7 +55,8 @@ const testGlobals = globalThis as typeof globalThis & {
   __LINGXIA_TEST__?: { run: () => Promise<unknown> };
   __RONG_TEST__?: { run: () => Promise<unknown> };
 };
-const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
+const testHost = globalThis.__LINGXIA_AUTOMATION_HOST__;
+const testPlatform = (testHost?.control?.platform ?? testHost?.args?.platform)?.toLowerCase();
 if (testGlobals.__LINGXIA_TEST__ && !testGlobals.__RONG_TEST__) {
   testGlobals.__RONG_TEST__ = testGlobals.__LINGXIA_TEST__;
 }
@@ -121,7 +122,7 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
   expect(wrapped.compileOk).toBeTruthy();
   expect(wrapped.kinds.join(',')).toBe('video');
   expect(wrapped.hasCover).toBeFalsy();
-  if (testArgs.platform?.toLowerCase() === 'ios') {
+  if (testPlatform === 'ios') {
     const presentation = await eventually(
       () => video.eval(({ document }) =>
         document.querySelector('#video-native-root')?.getAttribute('data-lx-native-presentation') ?? null),
@@ -413,7 +414,7 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
       return true;
     }).catch(() => {});
   });
-  const starveAnimationFrames = testArgs.platform?.toLocaleLowerCase() === 'windows';
+  const starveAnimationFrames = testPlatform === 'windows';
   if (starveAnimationFrames) {
     const scrollY = await video.eval(({ document, window }) => {
       const page = window as unknown as FrameProbeWindow;
@@ -470,7 +471,7 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
   }
   if (!nativeButton) throw new Error('native menu More button disappeared after scroll');
   const automation = t.automation;
-  if (testArgs.platform?.toLocaleLowerCase() === 'windows') {
+  if (testPlatform === 'windows') {
     const desktop = automation.desktop;
     const host = (await desktop.windows())
       .filter((window) => (
