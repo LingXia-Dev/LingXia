@@ -449,9 +449,9 @@ class LxAppActivity : AppCompatActivity() {
             }
         }
 
-        if (SplashOverlay.coverActive()) {
-            // The bootstrap activity underneath shows the same full-bleed
-            // cover; an enter animation would read as the cover flickering.
+        if (SplashOverlay.launchActive()) {
+            // Do not animate an empty home activity over the bootstrap
+            // cover or theme starting window.
             @Suppress("DEPRECATION")
             overridePendingTransition(0, 0)
         }
