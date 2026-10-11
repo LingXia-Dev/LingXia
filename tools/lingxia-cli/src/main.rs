@@ -378,10 +378,10 @@ session per project and target: starting another takes over the old one.
 
     /// Publish a package to the LingXia server
     ///
-    /// Lxapps and lxplugins are built first. Host apps upload an existing
-    /// Android APK or macOS/Windows update zip; id, version, and env come
-    /// from that package. Tokens come from the wallet
-    /// (`lingxia auth login lingxia`), keyed by the server URL + env.
+    /// Without a package, builds and publishes the lxapp or lxplugin here.
+    /// `lingxia publish <PACKAGE>` uploads a host package from anywhere; id,
+    /// version, env, and platform come from the package. Tokens come from the
+    /// wallet (`lingxia auth login lingxia`), keyed by the server URL + env.
     Publish {
         #[command(flatten)]
         args: PublishArgs,
@@ -597,21 +597,18 @@ struct PublishArgs {
     #[arg(long)]
     token: Option<String>,
 
-    /// LingXia server URL
+    /// Host package from `lingxia package` (Android APK, macOS/Windows update
+    /// zip). Omit to build and publish the lxapp or lxplugin in this directory.
+    package: Option<String>,
+
+    /// Upload server URL. Defaults to the server saved by
+    /// `lingxia auth login lingxia --server`
     #[arg(long)]
     lingxia_server: Option<String>,
 
-    /// Prebuilt host package: Android `.apk`, `*-macos.zip`, or `*-windows.zip`
-    #[arg(long = "package-path")]
-    package_path: Option<String>,
-
-    /// App platform to publish: android, macos, windows
-    #[arg(long, value_parser = ["android", "macos", "windows"])]
-    platform: Option<String>,
-
-    /// Host env for server and publish token: `dev` | `prod`.
-    /// Defaults to `dev` for lxapp/lxplugin; host-app publish reads `env`
-    /// from the packaged `app.json`.
+    /// Env for the publish token and server default: `dev` | `prod`.
+    /// Defaults to `dev` for lxapp/lxplugin; a host package publishes to the
+    /// env it was built for.
     #[arg(long = "env", value_parser = ["dev", "prod"])]
     env: Option<String>,
 
@@ -1313,8 +1310,7 @@ fn main() -> Result<()> {
             commands::publish::execute(commands::publish::PublishOptions {
                 token: args.token,
                 lingxia_server: args.lingxia_server,
-                package: args.package_path,
-                platform: args.platform,
+                package: args.package,
                 env: args.env,
                 channel: args.channel,
                 framework: args.framework,
