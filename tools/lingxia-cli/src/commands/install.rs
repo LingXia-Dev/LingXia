@@ -79,7 +79,7 @@ fn packaged_installable(dir: &Path) -> Result<(PlatformType, PathBuf, String)> {
         PlatformType::Harmony => &["hap"],
         other => {
             return Err(anyhow!(
-                "`lingxia install` installs android, ios, or harmony packages, not {}",
+                "`lingxia install` installs onto Android, iOS, and HarmonyOS devices, not {}",
                 other.as_str()
             ));
         }

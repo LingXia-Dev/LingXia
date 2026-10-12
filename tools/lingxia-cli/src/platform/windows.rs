@@ -121,11 +121,9 @@ impl Platform for WindowsPlatform {
     }
 
     fn install(&self, _config: &InstallConfig) -> Result<()> {
-        println!(
-            "{} Windows apps run directly, no installation needed",
-            "info".blue()
-        );
-        Ok(())
+        Err(anyhow!(
+            "`lingxia install` installs onto Android, iOS, and HarmonyOS devices; run the Windows installer or .exe directly"
+        ))
     }
 
     fn uninstall(&self, _package_id: &str, _device_id: Option<&str>) -> Result<()> {

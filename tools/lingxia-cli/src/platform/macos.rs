@@ -664,12 +664,9 @@ impl Platform for MacosPlatform {
     }
 
     fn install(&self, _config: &InstallConfig) -> Result<()> {
-        // macOS apps don't need installation - they run directly
-        println!(
-            "{} macOS apps run directly, no installation needed",
-            "ℹ".blue()
-        );
-        Ok(())
+        Err(anyhow!(
+            "`lingxia install` installs onto Android, iOS, and HarmonyOS devices; open the macOS .app or .dmg directly"
+        ))
     }
 
     fn uninstall(&self, _package_id: &str, _device_id: Option<&str>) -> Result<()> {

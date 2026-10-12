@@ -634,6 +634,15 @@ impl Platform for AndroidPlatform {
         if !apk_path.exists() {
             return Err(anyhow!("APK not found at: {}", apk_path.display()));
         }
+        if apk_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("aab"))
+        {
+            return Err(anyhow!(
+                "{} is an Android App Bundle, which only a store installs; install the .apk instead",
+                apk_path.display()
+            ));
+        }
 
         // Get APK file size
         let file_size = std::fs::metadata(&apk_path).map(|m| m.len()).unwrap_or(0);
