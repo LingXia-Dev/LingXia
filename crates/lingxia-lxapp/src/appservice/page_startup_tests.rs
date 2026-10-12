@@ -155,13 +155,13 @@ fn page_startup_eager_worker_delivers_initial_state() {
         let snapshots = f.snapshots();
         let initial = snapshots.get(&page.instance_id_string());
         assert_eq!(f.host.html_loads.load(Ordering::SeqCst), 1);
-        if initial.is_none() {
-            missing += 1;
-        } else {
+        if let Some(initial) = initial {
             assert_eq!(
-                initial.unwrap()["state"],
+                initial["state"],
                 json!({"startupMarker": "logic-state-ready"})
             );
+        } else {
+            missing += 1;
         }
     }
     eprintln!(
