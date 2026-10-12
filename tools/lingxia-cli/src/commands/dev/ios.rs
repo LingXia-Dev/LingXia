@@ -65,7 +65,7 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
             reinstall: ctx.reinstall,
             quiet: false,
         };
-        platform.install(&install_config)?;
+        let bundle_id = platform.install_app(&install_config)?;
 
         println!();
 
@@ -73,9 +73,6 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
         println!("{}", "Step 3/3: Launching...".bold());
         let _session_registration =
             log_store::register_session(&ctx.project_root, &session, platform_name, &host_ws_url)?;
-
-        // Read bundle ID from the signed app (signing may change it for free accounts)
-        let bundle_id = platform::ios::read_bundle_id(app_path)?;
 
         let run_config = RunConfig {
             package_id: bundle_id.clone(),
