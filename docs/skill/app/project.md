@@ -320,7 +320,9 @@ A campaign screen after launch: [Launch screen](../native/splash.md).
   `publisherDisplayName` (the publisher's name, default the `O=`/`CN=` of
   `publisher`), optional `appId`, optional `store:` (Partner Center id).
   `extraFiles: [path, ...]` copies files beside the executable.
-  `portableData: true` keeps data under `<launcher-dir>/data/<appId>`.
+  Installed builds keep data under `%LOCALAPPDATA%\<appId>`, keyed by the app
+  id (never `productName`, so renaming keeps data); `portableData: true` keeps
+  it under `<launcher-dir>/data/<appId>`.
 
 `executableName` selects a build target, never a display name. Omit it for a
 single executable; Windows also respects Cargo `default-run`. Ambiguous builds

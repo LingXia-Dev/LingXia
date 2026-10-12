@@ -405,7 +405,8 @@ impl Platform {
         let app_identifier = config
             .windows_app_id
             .unwrap_or_else(|| DEFAULT_APP_IDENTIFIER.to_string());
-        let root = state_root_for_product(&product_name);
+        let root = state_root_override()
+            .unwrap_or_else(|| app_state_root(&local_app_data(), &app_identifier, &product_name));
         Ok(Self {
             data_dir: root.join("data"),
             cache_dir: root.join("cache"),
@@ -427,7 +428,7 @@ impl Platform {
     /// Run-entry value name. `app_identifier` falls back to a constant shared
     /// by every LingXia app without an explicit `windows_app_id`, so two such
     /// apps would clobber each other's entry — disambiguate with the product
-    /// name (the same per-app key `state_root_for_product` uses).
+    /// name (the same fallback key `app_state_root` uses).
     pub(super) fn autostart_value_name(&self) -> String {
         if self.app_identifier != DEFAULT_APP_IDENTIFIER {
             self.app_identifier.clone()
@@ -890,13 +891,49 @@ fn default_state_root() -> PathBuf {
     })
 }
 
-fn state_root_for_product(product_name: &str) -> PathBuf {
-    state_root_override().unwrap_or_else(|| {
-        std::env::var_os("LOCALAPPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(std::env::temp_dir)
-            .join(product_name)
-    })
+fn local_app_data() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+}
+
+/// File only a LingXia state root holds: the app registry database under its
+/// data dir. Guards the one-time move so an unrelated program's folder that
+/// happens to share the product name is never taken.
+const LEGACY_STATE_MARKER: &str = "data/lingxia/lxapps.redb";
+
+/// Per-app state root under `base`, keyed by the stable app identity, never
+/// the display name, so renaming the product keeps its data. Apps without an
+/// explicit `windowsAppId` keep the per-product folder (the shared default id
+/// cannot tell them apart). State left at the per-product folder by earlier
+/// versions moves once; if it cannot (e.g. files in use), it stays in use.
+fn app_state_root(base: &Path, app_identifier: &str, product_name: &str) -> PathBuf {
+    let legacy = base.join(product_name);
+    if app_identifier == DEFAULT_APP_IDENTIFIER {
+        return legacy;
+    }
+    let root = base.join(app_identifier);
+    if root.exists() || legacy == root || !legacy.join(LEGACY_STATE_MARKER).is_file() {
+        return root;
+    }
+    match fs::rename(&legacy, &root) {
+        Ok(()) => {
+            log::info!(
+                "moved app state from {} to {}",
+                legacy.display(),
+                root.display()
+            );
+            root
+        }
+        Err(err) => {
+            log::warn!(
+                "keeping app state at {}; could not move it to {}: {err}",
+                legacy.display(),
+                root.display()
+            );
+            legacy
+        }
+    }
 }
 
 /// Persist registrations against the portable launcher, never its extracted host.
@@ -991,6 +1028,58 @@ impl GeneratedAppConfig {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn app_state_is_keyed_by_app_id_and_moves_once_from_the_product_folder() {
+        use super::{DEFAULT_APP_IDENTIFIER, LEGACY_STATE_MARKER, app_state_root};
+
+        let base = std::env::temp_dir().join(format!("lingxia-state-root-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let base = base.as_path();
+        let marker = |dir: &std::path::Path| {
+            let file = dir.join(LEGACY_STATE_MARKER);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, b"db").unwrap();
+        };
+
+        // Fresh install: the app id, whatever the display name.
+        assert_eq!(
+            app_state_root(base, "com.example.app", "Example"),
+            base.join("com.example.app")
+        );
+
+        // State from an earlier version moves once, then the old folder is gone.
+        marker(&base.join("Old Name"));
+        let root = app_state_root(base, "com.example.moved", "Old Name");
+        assert_eq!(root, base.join("com.example.moved"));
+        assert!(root.join(LEGACY_STATE_MARKER).is_file());
+        assert!(!base.join("Old Name").exists());
+
+        // An unrelated folder sharing the product name is never taken.
+        std::fs::create_dir_all(base.join("Notes/data")).unwrap();
+        assert_eq!(
+            app_state_root(base, "com.example.notes", "Notes"),
+            base.join("com.example.notes")
+        );
+        assert!(base.join("Notes/data").is_dir());
+
+        // Existing app-id state wins over a leftover product folder.
+        marker(&base.join("Kept"));
+        std::fs::create_dir_all(base.join("com.example.kept")).unwrap();
+        assert_eq!(
+            app_state_root(base, "com.example.kept", "Kept"),
+            base.join("com.example.kept")
+        );
+        assert!(base.join("Kept").exists());
+
+        // Without an explicit app id, apps stay apart by product name.
+        assert_eq!(
+            app_state_root(base, DEFAULT_APP_IDENTIFIER, "Shared"),
+            base.join("Shared")
+        );
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
     use super::*;
 
     #[test]
