@@ -331,12 +331,13 @@ Publisher and the executable's CompanyName. It is never derived from the
 product name: without `publisher` / `publisherDisplayName` the latter two stay
 empty and an MSIX build fails.
 
-For Microsoft Store, use Partner Center's Package/Identity/Name as the package
-id (inherit `app.packageId` or override `windows.appId`) and
-Package/Identity/Publisher as `windows.publisher` (a distinguished name,
-also matching the signing certificate when signed), and
-Package/Properties/PublisherDisplayName as `windows.publisherDisplayName`.
-`windows.store.appId` is the separate Store product ID. Auth/upload: [Distribution](../cli/distribution.md#microsoft-store).
+For Microsoft Store, copy Partner Center's Product identity:
+Package/Identity/Name → `windows.store.identityName` (the MSIX Identity Name
+only; NSIS, update feeds and the taskbar identity keep `windows.appId`),
+Package/Identity/Publisher → `windows.publisher` (a distinguished name, also
+matching the signing certificate when signed), and
+Package/Properties/PublisherDisplayName → `windows.publisherDisplayName`.
+`windows.store.appId` is the Store ID. Auth/upload: [Distribution](../cli/distribution.md#microsoft-store).
 
 ## Surfaces
 

@@ -115,9 +115,7 @@ fn expected_identity(config: &LingXiaConfig, platform: StorePlatform) -> Result<
         | StorePlatform::Oppo
         | StorePlatform::Honor => android_package(config)?.to_string(),
         StorePlatform::Harmony => config.resolved_package_id("harmony")?,
-        StorePlatform::Windows => crate::platform::windows::msix::sanitize_identity(
-            &config.resolved_package_id("windows")?,
-        ),
+        StorePlatform::Windows => crate::platform::windows::msix::identity_name(config)?,
     })
 }
 

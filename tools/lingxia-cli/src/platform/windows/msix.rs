@@ -44,7 +44,7 @@ pub fn package(
     let windows_cfg = config.windows.as_ref();
 
     let architecture = super::distribution::pe_architecture(&dist_dir.join(exe_name))?;
-    let identity = sanitize_identity(&config.resolved_package_id("windows")?);
+    let identity = identity_name(config)?;
     // The Identity Publisher names who publishes the package and must match
     // the signing cert's subject (Partner Center's value for the Store). It is
     // never invented from the app name; only a local self-signed test package
@@ -214,8 +214,24 @@ fn four_part_version(version: &str) -> String {
     parts.join(".")
 }
 
+/// MSIX package Identity `Name`: Partner Center's `windows.store.identityName`
+/// when set, else the sanitized Windows package id.
+pub(crate) fn identity_name(config: &LingXiaConfig) -> Result<String> {
+    let store_name = config
+        .windows
+        .as_ref()
+        .and_then(|w| w.store.as_ref())
+        .and_then(|store| store.identity_name.as_deref())
+        .map(str::trim)
+        .filter(|name| !name.is_empty());
+    Ok(match store_name {
+        Some(name) => name.to_string(),
+        None => sanitize_identity(&config.resolved_package_id("windows")?),
+    })
+}
+
 /// MSIX package Identity `Name`: letters, digits, `.` and `-` only.
-pub(crate) fn sanitize_identity(raw: &str) -> String {
+fn sanitize_identity(raw: &str) -> String {
     let cleaned: String = raw
         .chars()
         .map(|c| {
@@ -403,6 +419,22 @@ fn single_package_pri_config(generated: &str) -> Result<String> {
 mod name_tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn store_identity_name_overrides_only_the_msix_identity() {
+        let base = "app:\n  projectName: t\n  productName: T\n  productVersion: 1.0.0\n  packageId: com.example.demo\n  platforms: [windows]\n";
+        let config: LingXiaConfig = serde_yaml_ng::from_str(base).unwrap();
+        assert_eq!(identity_name(&config).unwrap(), "com.example.demo");
+        let config: LingXiaConfig = serde_yaml_ng::from_str(&format!(
+            "{base}windows:\n  store:\n    appId: 9NXVTK4NM824\n    identityName: 817A4EEF.3535255DDC6C4\n"
+        ))
+        .unwrap();
+        assert_eq!(identity_name(&config).unwrap(), "817A4EEF.3535255DDC6C4");
+        assert_eq!(
+            config.resolved_package_id("windows").unwrap(),
+            "com.example.demo"
+        );
+    }
 
     #[test]
     fn single_package_index_keeps_languages_together_and_preserves_sdk_settings() {
