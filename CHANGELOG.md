@@ -24,6 +24,7 @@ written out in full in that release's notes on GitHub.
 ### Breaking
 
 - **Breaking** — **cli**: refuse what `lingxia install` cannot install instead of reporting success (7ddd261c3)
+- **Breaking** — **windows**: MSIX requires `windows.publisher` instead of defaulting to `CN=<productName>` (e95055013)
 
 ### Writing an lxapp
 
@@ -40,7 +41,7 @@ written out in full in that release's notes on GitHub.
 
 ### Other
 
-- never default publisher or vendor identity to the app or a placeholder (e95055013)
+- never default publisher or vendor identity to the app or a placeholder: Windows uninstall Publisher and exe CompanyName, `harmony.vendor` (e95055013)
 
 ## 0.25.0 — 2026-10-11
 
