@@ -1690,6 +1690,11 @@ pub fn distinguished_name_owner(dn: &str) -> String {
 pub struct MsStoreConfig {
     /// Partner-Center-reserved Store ID (app id) for the application.
     pub app_id: String,
+    /// Partner Center's Package/Identity/Name (e.g. `12345Contoso.App`), the
+    /// MSIX Identity Name only. NSIS, update feeds and the taskbar identity
+    /// keep `windows.appId`. Omitted uses the sanitized Windows package id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_name: Option<String>,
 }
 
 impl LingXiaConfig {
