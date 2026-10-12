@@ -1,6 +1,7 @@
 //! Run the real setup callback before the creating thread resumes, modeling
 //! immediate native readiness and a worker that outruns instance registration.
 //! Logic creation, registry lookup, cleanup, and snapshots use production code.
+//! Surface-close dispatch is recorded without invoking platform UI.
 
 use super::*;
 use std::collections::HashMap;
@@ -12,6 +13,9 @@ static HOSTS: OnceLock<Mutex<HashMap<String, Weak<TestHost>>>> = OnceLock::new()
 #[derive(Default)]
 pub(crate) struct TestHost {
     pub(crate) outcomes: Mutex<Vec<Result<(), String>>>,
+    pub(crate) native_create_error: Mutex<Option<String>>,
+    pub(crate) html_error: Mutex<Option<String>>,
+    pub(crate) closed_surfaces: Mutex<Vec<(String, String)>>,
     pub(crate) html_loads: AtomicUsize,
     pub(crate) allocation_barrier: Mutex<Option<Arc<std::sync::Barrier>>>,
 }
@@ -50,26 +54,36 @@ impl TestHost {
             .enable_all()
             .build()
             .unwrap();
-        let result = rt.block_on(async {
-            tokio::time::timeout(Duration::from_secs(5), setup)
-                .await
-                .expect("page setup did not settle; possible registration-lock deadlock")
-        });
+        let result = match self.native_create_error.lock().unwrap().clone() {
+            Some(error) => Err(error),
+            None => rt.block_on(async {
+                tokio::time::timeout(Duration::from_secs(5), setup)
+                    .await
+                    .expect("page setup did not settle; possible registration-lock deadlock")
+            }),
+        };
         self.outcomes.lock().unwrap().push(result.clone());
         page.finish_webview_setup(result);
     }
 
     pub(crate) fn load_html(&self) -> Result<(), LxAppError> {
         self.html_loads.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+        match self.html_error.lock().unwrap().clone() {
+            Some(error) => Err(LxAppError::Runtime(error)),
+            None => Ok(()),
+        }
     }
 }
 
 pub(crate) fn for_page(page: &PageInstance) -> Option<Arc<TestHost>> {
+    for_app(&page.appid())
+}
+
+pub(crate) fn for_app(appid: &str) -> Option<Arc<TestHost>> {
     HOSTS
         .get()?
         .lock()
         .unwrap()
-        .get(&page.appid())
+        .get(appid)
         .and_then(Weak::upgrade)
 }

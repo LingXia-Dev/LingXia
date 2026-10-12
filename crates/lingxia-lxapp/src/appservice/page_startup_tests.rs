@@ -5,6 +5,7 @@ use super::*;
 use crate::appservice::LxAppWorkers;
 use crate::lxapp::{AppSessionClass, config::LxAppLogicEntry};
 use crate::page::startup_test_host::{Registration, TestHost};
+use crate::page::{PageInstance, PageWebViewAwait};
 use rong::{JSEngine, RongJS};
 use serde_json::{Value, json};
 use std::sync::atomic::AtomicBool;
@@ -126,6 +127,30 @@ impl Fixture {
             .recv_timeout(Duration::from_secs(5))
             .unwrap()
     }
+
+    fn pending_page(&self, isolated: bool) -> PageInstance {
+        let page = PageInstance::new_with_isolation(
+            self.app.appid.clone(),
+            PATH.to_string(),
+            &self.app,
+            isolated,
+        );
+        self.app
+            .state
+            .lock()
+            .unwrap()
+            .pages_by_id
+            .lock()
+            .unwrap()
+            .insert(page.instance_id_string(), page.clone());
+        page
+    }
+}
+
+fn ready_outcome(page: &PageInstance) -> mpsc::Receiver<PageWebViewAwait> {
+    let (tx, rx) = mpsc::channel();
+    page.on_webview_ready(move |outcome| tx.send(outcome).unwrap());
+    rx
 }
 
 impl Drop for Fixture {
@@ -150,7 +175,7 @@ fn page_startup_eager_worker_delivers_initial_state() {
         {
             skipped_creation += 1;
         }
-        // Exercise the exact fallback that previously showed HTML with no Logic.
+        // Reload after startup must retain a PageSvc and its initial state.
         page.ensure_live_webview();
         let snapshots = f.snapshots();
         let initial = snapshots.get(&page.instance_id_string());
@@ -230,4 +255,114 @@ fn page_startup_concurrent_route_candidates_start_only_the_winner() {
     assert_eq!(f.host.outcomes.lock().unwrap().len(), 1);
     assert_eq!(f.creates.load(Ordering::SeqCst), 1);
     assert_eq!(f.snapshots().len(), 1);
+}
+
+#[test]
+fn page_startup_native_failure_reports_failed_after_removal() {
+    let f = Fixture::new();
+    let page = f.pending_page(false);
+    let outcome = ready_outcome(&page);
+    *f.host.native_create_error.lock().unwrap() = Some("native creation failed".to_string());
+    page.start_webview(|_| async { panic!("native failure must skip setup") });
+    assert!(f.app.get_page_by_instance_id(&page.instance_id()).is_none());
+    let late_outcome = ready_outcome(&page);
+    drop(page);
+    for outcome in [outcome, late_outcome] {
+        assert!(matches!(
+            outcome.recv_timeout(Duration::from_secs(5)).unwrap(),
+            PageWebViewAwait::Failed(error) if error == "native creation failed"
+        ));
+    }
+    assert_eq!(f.creates.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn page_startup_disposed_before_native_failure_reports_gone() {
+    let f = Fixture::new();
+    let page = f.pending_page(false);
+    let outcome = ready_outcome(&page);
+    f.app
+        .dispose_page_instance(&page.instance_id(), crate::CloseReason::Programmatic)
+        .unwrap();
+    *f.host.native_create_error.lock().unwrap() = Some("native creation cancelled".to_string());
+    page.start_webview(|_| async { panic!("native failure must skip setup") });
+    assert!(matches!(
+        outcome.recv_timeout(Duration::from_secs(5)).unwrap(),
+        PageWebViewAwait::Gone
+    ));
+}
+
+#[test]
+fn page_startup_isolated_failure_closes_its_hosting_surface() {
+    use crate::lxapp::SurfaceRecord;
+    use lingxia_platform::traits::ui::{SurfaceContentKind, SurfaceKind, WindowChrome};
+
+    let f = Fixture::new();
+    let page = f.pending_page(true);
+    let surface = SurfaceRecord {
+        chrome: WindowChrome::default(),
+        owner_page_instance_id: Some("owner".to_string()),
+        content_page_instance_id: Some(page.instance_id_string()),
+        content: SurfaceContentKind::Page,
+        target: PATH.to_string(),
+        kind: SurfaceKind::Overlay,
+        role: lingxia_surface::Role::Float,
+        url_callback: false,
+        ephemeral_web_data: false,
+    };
+    {
+        let state = f.app.state.lock().unwrap();
+        let mut surfaces = state.surfaces.lock().unwrap();
+        surfaces.insert("hosting".to_string(), surface.clone());
+        surfaces.insert(
+            "unrelated".to_string(),
+            SurfaceRecord {
+                content_page_instance_id: Some("another-page".to_string()),
+                ..surface
+            },
+        );
+    }
+    page.start_webview(|_| async { Err("initial setup failed".to_string()) });
+    assert!(f.app.get_page_by_instance_id(&page.instance_id()).is_none());
+    assert_eq!(
+        *f.host.closed_surfaces.lock().unwrap(),
+        [("hosting".to_string(), "programmatic".to_string())]
+    );
+}
+
+#[test]
+fn page_startup_headless_failed_reload_retains_service_and_pin() {
+    let f = Fixture::new();
+    let page = f.app.ensure_headless_page_service(PATH).unwrap();
+    assert!(matches!(
+        ready_outcome(&page)
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap(),
+        PageWebViewAwait::Ready(_)
+    ));
+    let original = f.snapshots();
+    assert_eq!(original.len(), 1);
+    f.app.mark_hidden();
+    page.discard_webview().unwrap();
+    *f.host.html_error.lock().unwrap() = Some("document reload failed".to_string());
+    page.ensure_live_webview();
+    assert!(f.host.outcomes.lock().unwrap()[0].is_err());
+    assert!(f.app.get_page_by_instance_id(&page.instance_id()).is_some());
+    assert!(page.is_discarded());
+    assert_eq!(f.snapshots(), original);
+    assert_eq!(
+        f.app
+            .state
+            .lock()
+            .unwrap()
+            .path_pins
+            .lock()
+            .unwrap()
+            .get(PATH),
+        Some(&page.instance_id_string())
+    );
+    *f.host.html_error.lock().unwrap() = None;
+    page.ensure_live_webview();
+    assert_eq!(f.snapshots(), original);
+    assert_eq!(f.creates.load(Ordering::SeqCst), 1);
 }

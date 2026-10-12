@@ -117,6 +117,8 @@ pub use runtime_registry::{
     PageWebView, await_page_webview, await_page_webview_then, find_page_by_instance_id,
     find_page_by_webtag, get_platform, try_get,
 };
+#[cfg(all(test, feature = "js-appservice"))]
+pub(crate) use surface::SurfaceRecord;
 pub use surface::{
     HostMainSurfaceRegistration, HostSurfaceMenuExecution, LxAppRuntimeSurfaceInfo,
     ManagedNativeSurface, PageSurface, PageSurfaceRequest, PageSurfaceTarget, UrlCallbackSurface,
@@ -3554,14 +3556,19 @@ impl LxApp {
     }
 
     /// Remove a page instance whose setup failed: it never became usable and
-    /// must not stay resolvable.
-    pub(crate) fn remove_failed_page(&self, page: &PageInstance) {
+    /// must not stay resolvable. Returns whether this call removed it.
+    pub(crate) fn remove_failed_page(&self, page: &PageInstance) -> bool {
         let id = page.instance_id_string();
-        if let Ok(state) = self.state.lock() {
+        let removed = if let Ok(state) = self.state.lock() {
+            let removed = state
+                .pages_by_id
+                .lock()
+                .unwrap()
+                .remove(id.as_str())
+                .is_some();
             let _ =
                 self.executor
                     .terminate_page_svc(self.clone_arc(), page.path(), Some(id.clone()));
-            state.pages_by_id.lock().unwrap().remove(id.as_str());
             // A failed setup can land after the entry pushed the instance; a
             // dangling stack slot would wedge current_page() and navigation.
             if let Ok(mut stack) = state.page_stack.lock() {
@@ -3583,14 +3590,19 @@ impl LxApp {
             {
                 let _ = cancel.send(());
             }
-        }
+            removed
+        } else {
+            false
+        };
 
+        self.close_surfaces_hosting(&page.instance_id(), CloseReason::Programmatic);
         page.cancel_bridge_work();
         let webview = page.webview();
         page.detach_webview();
         if let Some(webview) = webview {
             destroy_webview_if_matches(&page.webtag(), &webview);
         }
+        removed
     }
 
     pub fn ensure_headless_page_service(&self, path: &str) -> Result<PageInstance, LxAppError> {
@@ -3623,23 +3635,18 @@ impl LxApp {
             Some(page.instance_id_string()),
             ack_tx,
         ) {
-            page.mark_webview_ready(Err(err.to_string()));
-            self.remove_failed_page(&page);
+            page.finish_webview_setup(Err(err.to_string()));
             return Err(err);
         }
 
         let page_clone = page.clone();
-        let lxapp = self.clone_arc();
         crate::executor::spawn(async move {
             let result = match ack_rx.await {
                 Ok(Ok(())) => Ok(()),
                 Ok(Err(e)) => Err(e),
                 Err(err) => Err(err.to_string()),
             };
-            if result.is_err() {
-                lxapp.remove_failed_page(&page_clone);
-            }
-            page_clone.mark_webview_ready(result);
+            page_clone.finish_webview_setup(result);
         });
 
         Ok(page)
