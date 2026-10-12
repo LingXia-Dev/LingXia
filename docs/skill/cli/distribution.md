@@ -160,7 +160,9 @@ names. All four → release-signed; otherwise debug-signed.
 - For local MSIX installation, use `--format msix --self-signed`. Store uploads
   can be unsigned; Microsoft signs distribution packages.
 - Store validation requires MSIX `PublisherDisplayName` to equal the Partner
-  Center publisher display name; set it with `windows.publisherDisplayName`.
+  Center publisher display name; set it with `windows.publisherDisplayName`
+  (Partner Center's Publisher is a `CN=<GUID>`, so the default taken from
+  `windows.publisher` is not enough there).
 - The first install downloads WebView2 when it is missing.
 
 ### Harmony

@@ -1620,7 +1620,8 @@ pub struct WindowsConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub publisher: Option<String>,
     /// MSIX `PublisherDisplayName`. The Store requires it to equal the Partner
-    /// Center publisher display name. Defaults to the product display name.
+    /// Center publisher display name. Defaults to the `O=` (else `CN=`) value
+    /// of `publisher`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub publisher_display_name: Option<String>,
     /// Microsoft Store (Partner Center) identity for `lingxia store`.
