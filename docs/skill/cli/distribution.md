@@ -159,6 +159,8 @@ names. All four → release-signed; otherwise debug-signed.
   or `LINGXIA_MAKEPRI`); without it the MSIX shows `productName` in every language.
 - For local MSIX installation, use `--format msix --self-signed`. Store uploads
   can be unsigned; Microsoft signs distribution packages.
+- Store validation requires MSIX `PublisherDisplayName` to equal the Partner
+  Center publisher display name; set it with `windows.publisherDisplayName`.
 - The first install downloads WebView2 when it is missing.
 
 ### Harmony

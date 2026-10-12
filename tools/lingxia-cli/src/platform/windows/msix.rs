@@ -81,11 +81,17 @@ pub fn package(
     } else {
         product_name
     };
+    let publisher_display_name = windows_cfg
+        .and_then(|w| w.publisher_display_name.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(display_name);
     let manifest = render_manifest(
         &identity,
         &publisher,
         &version,
         display_name,
+        publisher_display_name,
         &exe_name.to_string_lossy(),
         architecture,
         &languages,
@@ -247,11 +253,13 @@ fn render_manifest(
     publisher: &str,
     version: &str,
     display_name: &str,
+    publisher_display_name: &str,
     executable: &str,
     architecture: &str,
     languages: &[String],
 ) -> String {
     let display = xml_escape(display_name);
+    let publisher_display = xml_escape(publisher_display_name);
     let resources = languages
         .iter()
         .map(|language| format!("    <Resource Language=\"{}\" />", xml_escape(language)))
@@ -266,7 +274,7 @@ fn render_manifest(
   <Identity Name="{identity}" Publisher="{publisher}" Version="{version}" ProcessorArchitecture="{architecture}" />
   <Properties>
     <DisplayName>{display}</DisplayName>
-    <PublisherDisplayName>{display}</PublisherDisplayName>
+    <PublisherDisplayName>{publisher_display}</PublisherDisplayName>
     <Logo>Images\StoreLogo.png</Logo>
   </Properties>
   <Dependencies>
@@ -460,11 +468,13 @@ mod name_tests {
             "CN=Example",
             "1.0.0.0",
             "ms-resource:Resources/ProductName",
+            "Example & Co",
             "Technical.exe",
             "x64",
             &languages,
         );
         assert!(manifest.contains("DisplayName=\"ms-resource:Resources/ProductName\""));
+        assert!(manifest.contains("<PublisherDisplayName>Example &amp; Co</PublisherDisplayName>"));
         assert!(manifest.contains("Language=\"zh-CN\""));
         assert!(manifest.contains("Executable=\"Technical.exe\""));
     }

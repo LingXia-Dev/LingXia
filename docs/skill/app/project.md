@@ -316,7 +316,8 @@ A campaign screen after launch: [Launch screen](../native/splash.md).
 - `macos` — `deploymentTarget`, `targetName`, optional `executableName`, optional
   `bundleId`, optional `store:` (App Store Connect identity).
 - `windows` — optional `executableName`, `publisher` (MSIX, default `CN=<productName>`),
-  optional `appId`, optional `store:` (Partner Center id).
+  `publisherDisplayName` (MSIX, default the product name), optional `appId`,
+  optional `store:` (Partner Center id).
   `extraFiles: [path, ...]` copies files beside the executable.
   `portableData: true` keeps data under `<launcher-dir>/data/<appId>`.
 
@@ -327,8 +328,9 @@ require an explicit selection. Product launcher names follow the system language
 For Microsoft Store, use Partner Center's Package/Identity/Name as the package
 id (inherit `app.packageId` or override `windows.appId`) and
 Package/Identity/Publisher as `windows.publisher` (a distinguished name,
-also matching the signing certificate when signed). `windows.store.appId` is
-the separate Store product ID. Auth/upload: [Distribution](../cli/distribution.md#microsoft-store).
+also matching the signing certificate when signed), and
+Package/Properties/PublisherDisplayName as `windows.publisherDisplayName`.
+`windows.store.appId` is the separate Store product ID. Auth/upload: [Distribution](../cli/distribution.md#microsoft-store).
 
 ## Surfaces
 
