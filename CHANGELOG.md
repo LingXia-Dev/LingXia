@@ -19,6 +19,29 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.25.1 — 2026-10-12
+
+### Breaking
+
+- **Breaking** — **cli**: refuse what `lingxia install` cannot install instead of reporting success (7ddd261c3)
+
+### Writing an lxapp
+
+- **lxapp**: preserve setup failure lifecycle semantics (eed1ffbbe)
+- **lxapp**: register page instances before starting native setup (358640abb)
+
+### Embedding a host app
+
+- **windows**: key app data by the app id, not the product name (377c87855)
+- **windows**: take the MSIX Identity Name from windows.store.identityName (4c68aee66)
+- **windows**: default PublisherDisplayName to the publisher, not the app (cfa209c30)
+- **windows**: set MSIX PublisherDisplayName from windows.publisherDisplayName (f7db4017b)
+- **ios**: install an .ipa, a .app, or a package directory, signing a copy (9973bf300)
+
+### Other
+
+- never default publisher or vendor identity to the app or a placeholder (e95055013)
+
 ## 0.25.0 — 2026-10-11
 
 ### Breaking
