@@ -228,6 +228,7 @@ mod tests {
                 app_id: Some("app.example.demo.windows".into()),
                 executable_name: Some("Demo".into()),
                 publisher: None,
+                publisher_display_name: None,
                 store: None,
             }),
             features: None,
