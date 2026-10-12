@@ -10,11 +10,12 @@ use super::{
 };
 use crate::config::{AppEnv, IosConfig, LingXiaConfig};
 use crate::permission_cache::{DEFAULT_MAX_AGE_SECONDS, PermissionCache, PermissionPlatform};
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use colored::Colorize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tempfile::TempDir;
 
 mod doctor;
 pub use doctor::doctor_checks;
@@ -230,6 +231,66 @@ impl IosPlatform {
     /// Find the .app bundle in build output.
     ///
     /// Searches in the target directory where AppBundler places the .app.
+    /// Sign a copy of the app for the device and install it. Returns the
+    /// bundle id the device now has, which signing may have changed.
+    pub fn install_app(&self, config: &InstallConfig) -> Result<String> {
+        apple::ensure_macos()?;
+        apple::devicectl::DeviceCtl::ensure_available()?;
+
+        let host_config = crate::config::LingXiaConfig::load(&config.project_root).ok();
+        let source = if let Some(ref path) = config.artifact_path {
+            path.clone()
+        } else {
+            self.find_app_bundle(&config.project_root, None)?
+        };
+
+        if !source.exists() {
+            return Err(anyhow!("App not found at: {}", source.display()));
+        }
+
+        // Device signing rewrites the bundle, so it works on a copy.
+        let staged = stage_app_for_install(&source)?;
+        let app_path = staged.app_path.clone();
+
+        let app_link_hosts = app_link_hosts_for_install(host_config.as_ref(), &app_path);
+
+        let device_identifier = if let Some(device_id) = config.device_id.as_deref() {
+            device_id.to_string()
+        } else {
+            apple::devicectl::DeviceCtl::wait_for_device(30)?.identifier
+        };
+
+        // Sign the app before installing
+        apple::provisioning::sign_app(&app_path, Some(&device_identifier), &app_link_hosts)?;
+        if !config.quiet {
+            println!("Installing {}", describe_app(&app_path, &source));
+        }
+
+        if config.reinstall {
+            let bundle_id = read_bundle_id(&app_path).ok();
+            if let Some(bundle_id) = bundle_id {
+                if let Err(err) =
+                    apple::devicectl::uninstall_app(&bundle_id, Some(&device_identifier))
+                {
+                    eprintln!(
+                        "{} failed to uninstall {} before install: {}",
+                        "Warning:".yellow(),
+                        bundle_id,
+                        err
+                    );
+                }
+            } else {
+                eprintln!(
+                    "{} could not resolve iOS bundle id for --reinstall; continuing install",
+                    "Warning:".yellow()
+                );
+            }
+        }
+
+        apple::devicectl::install_app(&app_path, Some(&device_identifier))?;
+        read_bundle_id(&app_path)
+    }
+
     fn find_app_bundle(
         &self,
         project_root: &Path,
@@ -476,54 +537,7 @@ impl Platform for IosPlatform {
     }
 
     fn install(&self, config: &InstallConfig) -> Result<()> {
-        apple::ensure_macos()?;
-        apple::devicectl::DeviceCtl::ensure_available()?;
-
-        let host_config = crate::config::LingXiaConfig::load(&config.project_root).ok();
-        // Determine app path
-        let app_path = if let Some(ref path) = config.artifact_path {
-            path.clone()
-        } else {
-            self.find_app_bundle(&config.project_root, None)?
-        };
-
-        if !app_path.exists() {
-            return Err(anyhow!("App bundle not found at: {}", app_path.display()));
-        }
-
-        let app_link_hosts = app_link_hosts_for_install(host_config.as_ref(), &app_path);
-
-        let device_identifier = if let Some(device_id) = config.device_id.as_deref() {
-            device_id.to_string()
-        } else {
-            apple::devicectl::DeviceCtl::wait_for_device(30)?.identifier
-        };
-
-        // Sign the app before installing
-        apple::provisioning::sign_app(&app_path, Some(&device_identifier), &app_link_hosts)?;
-
-        if config.reinstall {
-            let bundle_id = read_bundle_id(&app_path).ok();
-            if let Some(bundle_id) = bundle_id {
-                if let Err(err) =
-                    apple::devicectl::uninstall_app(&bundle_id, Some(&device_identifier))
-                {
-                    eprintln!(
-                        "{} failed to uninstall {} before install: {}",
-                        "Warning:".yellow(),
-                        bundle_id,
-                        err
-                    );
-                }
-            } else {
-                eprintln!(
-                    "{} could not resolve iOS bundle id for --reinstall; continuing install",
-                    "Warning:".yellow()
-                );
-            }
-        }
-
-        apple::devicectl::install_app(&app_path, Some(&device_identifier))
+        self.install_app(config).map(|_| ())
     }
 
     fn uninstall(&self, package_id: &str, device_id: Option<&str>) -> Result<()> {
@@ -725,6 +739,91 @@ pub fn generate_icons(
     crate::appicon::generate_ios_icons(source_icon, &resources_dir)
 }
 
+/// The app bundle `install` signs and hands to the device, in a temporary
+/// directory that lives as long as this value.
+struct StagedApp {
+    _dir: TempDir,
+    app_path: PathBuf,
+}
+
+/// Copy a `.app` bundle, or unpack an `.ipa`, into a temporary directory.
+fn stage_app_for_install(source: &Path) -> Result<StagedApp> {
+    let dir = TempDir::new().context("Failed to create install staging directory")?;
+    let extension = source
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(str::to_ascii_lowercase);
+    let app_path = match extension.as_deref() {
+        Some("app") if source.is_dir() => {
+            let name = source
+                .file_name()
+                .ok_or_else(|| anyhow!("Invalid app path {}", source.display()))?;
+            let dest = dir.path().join(name);
+            apple::copy_dir_recursive(source, &dest)
+                .with_context(|| format!("Failed to copy {}", source.display()))?;
+            dest
+        }
+        Some("ipa") if source.is_file() => unpack_ipa(source, dir.path())?,
+        _ => bail!(
+            "{} is not an iOS app; pass a .app bundle, an .ipa, or a `lingxia package` dist/ios directory",
+            source.display()
+        ),
+    };
+    Ok(StagedApp {
+        _dir: dir,
+        app_path,
+    })
+}
+
+/// Extract `ipa` into `dir` and return its single `Payload/*.app`.
+fn unpack_ipa(ipa: &Path, dir: &Path) -> Result<PathBuf> {
+    let file = fs::File::open(ipa).with_context(|| format!("Failed to open {}", ipa.display()))?;
+    zip::ZipArchive::new(file)
+        .and_then(|mut archive| archive.extract(dir))
+        .with_context(|| format!("Failed to unpack {}", ipa.display()))?;
+
+    let payload = dir.join("Payload");
+    let apps: Vec<PathBuf> = fs::read_dir(&payload)
+        .map(|entries| {
+            entries
+                .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+                .filter(|path| path.is_dir() && path.extension().is_some_and(|ext| ext == "app"))
+                .collect()
+        })
+        .unwrap_or_default();
+    match apps.as_slice() {
+        [app] => Ok(app.clone()),
+        [] => bail!("{} has no Payload/*.app", ipa.display()),
+        _ => bail!("{} has more than one Payload/*.app", ipa.display()),
+    }
+}
+
+/// `Name 1.2.3 (bundle.id) from <source>`, with whatever the Info.plist has.
+fn describe_app(app_path: &Path, source: &Path) -> String {
+    let info = plist::Value::from_file(app_path.join("Info.plist")).ok();
+    let field = |key: &str| {
+        info.as_ref()
+            .and_then(|value| value.as_dictionary())
+            .and_then(|dict| dict.get(key))
+            .and_then(|value| value.as_string())
+            .map(str::to_string)
+    };
+    let name = field("CFBundleName").unwrap_or_else(|| {
+        app_path
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    });
+    let mut text = name;
+    if let Some(version) = field("CFBundleShortVersionString") {
+        text.push_str(&format!(" {version}"));
+    }
+    if let Some(bundle_id) = field("CFBundleIdentifier") {
+        text.push_str(&format!(" ({bundle_id})"));
+    }
+    format!("{text} from {}", source.display())
+}
+
 /// Hosts to re-sign into an already-built app. Prefer the list baked into
 /// the bundle's `app.json` so a release artifact is not signed with
 /// developer domains (Apple disables associated domains if any requested
@@ -781,6 +880,69 @@ pub fn get_resources_dir(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write_app(dir: &Path, name: &str) -> PathBuf {
+        let app = dir.join(name);
+        fs::create_dir_all(&app).unwrap();
+        let mut info = plist::Dictionary::new();
+        info.insert("CFBundleName".into(), "Demo".into());
+        info.insert("CFBundleShortVersionString".into(), "1.2.3".into());
+        info.insert("CFBundleIdentifier".into(), "com.example.demo".into());
+        plist::Value::Dictionary(info)
+            .to_file_xml(app.join("Info.plist"))
+            .unwrap();
+        fs::write(app.join("Demo"), b"binary").unwrap();
+        app
+    }
+
+    #[test]
+    fn installing_an_app_bundle_signs_a_copy() {
+        let root = tempfile::tempdir().unwrap();
+        let app = write_app(root.path(), "Demo.app");
+
+        let staged = stage_app_for_install(&app).unwrap();
+
+        assert_ne!(staged.app_path, app);
+        assert_eq!(staged.app_path.file_name().unwrap(), "Demo.app");
+        fs::write(staged.app_path.join("Demo"), b"signed").unwrap();
+        assert_eq!(fs::read(app.join("Demo")).unwrap(), b"binary");
+        assert_eq!(
+            describe_app(&staged.app_path, &app),
+            format!("Demo 1.2.3 (com.example.demo) from {}", app.display())
+        );
+    }
+
+    #[test]
+    fn installing_an_ipa_unpacks_its_payload_app() {
+        let root = tempfile::tempdir().unwrap();
+        let app = write_app(root.path(), "Demo.app");
+        let ipa = apple::signer::create_ipa(&app, &root.path().join("Demo.ipa")).unwrap();
+
+        let staged = stage_app_for_install(&ipa).unwrap();
+
+        assert_eq!(staged.app_path.file_name().unwrap(), "Demo.app");
+        assert_eq!(fs::read(staged.app_path.join("Demo")).unwrap(), b"binary");
+        assert_eq!(
+            read_bundle_id(&staged.app_path).unwrap(),
+            "com.example.demo"
+        );
+    }
+
+    #[test]
+    fn an_ipa_without_an_app_or_a_stray_file_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        let empty = root.path().join("Empty.ipa");
+        zip::ZipWriter::new(fs::File::create(&empty).unwrap())
+            .finish()
+            .unwrap();
+        let err = stage_app_for_install(&empty).err().unwrap().to_string();
+        assert!(err.contains("has no Payload/*.app"), "{err}");
+
+        let stray = root.path().join("notes.txt");
+        fs::write(&stray, b"x").unwrap();
+        let err = stage_app_for_install(&stray).err().unwrap().to_string();
+        assert!(err.contains("is not an iOS app"), "{err}");
+    }
 
     #[test]
     fn install_hosts_come_from_the_bundle_app_json() {
