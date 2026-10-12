@@ -81,17 +81,20 @@ pub fn package(
     } else {
         product_name
     };
+    // PublisherDisplayName names the publisher, never the app: take it from
+    // `windows.publisherDisplayName`, else from the publisher's own DN.
     let publisher_display_name = windows_cfg
         .and_then(|w| w.publisher_display_name.as_deref())
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or(display_name);
+        .map(str::to_string)
+        .unwrap_or_else(|| publisher_name(&publisher));
     let manifest = render_manifest(
         &identity,
         &publisher,
         &version,
         display_name,
-        publisher_display_name,
+        &publisher_display_name,
         &exe_name.to_string_lossy(),
         architecture,
         &languages,
@@ -237,6 +240,36 @@ fn sanitize_cn(raw: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+/// The publisher's name from its distinguished name: `O=`, else `CN=`, else
+/// the raw string (e.g. `CN=Contoso Ltd, O=Contoso, C=US` -> `Contoso`).
+fn publisher_name(publisher: &str) -> String {
+    let mut parts = Vec::new();
+    let (mut current, mut quoted, mut escaped) = (String::new(), false, false);
+    for c in publisher.chars() {
+        match c {
+            _ if escaped => {
+                current.push(c);
+                escaped = false;
+            }
+            '\\' => escaped = true,
+            '"' => quoted = !quoted,
+            ',' | ';' | '+' if !quoted => parts.push(std::mem::take(&mut current)),
+            _ => current.push(c),
+        }
+    }
+    parts.push(current);
+    let attribute = |key: &str| {
+        parts.iter().find_map(|part| {
+            let (name, value) = part.split_once('=')?;
+            let value = value.trim();
+            (name.trim().eq_ignore_ascii_case(key) && !value.is_empty()).then(|| value.to_string())
+        })
+    };
+    attribute("O")
+        .or_else(|| attribute("CN"))
+        .unwrap_or_else(|| publisher.trim().to_string())
 }
 
 fn xml_escape(value: &str) -> String {
@@ -409,6 +442,15 @@ fn single_package_pri_config(generated: &str) -> Result<String> {
 mod name_tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn publisher_display_name_comes_from_the_publisher_identity() {
+        assert_eq!(publisher_name("CN=Contoso Ltd, O=Contoso, C=US"), "Contoso");
+        assert_eq!(publisher_name("CN=拱石聚力"), "拱石聚力");
+        assert_eq!(publisher_name(r#"CN="Acme, Inc.", C=US"#), "Acme, Inc.");
+        assert_eq!(publisher_name(r"CN=Acme\, Inc., C=US"), "Acme, Inc.");
+        assert_eq!(publisher_name("Contoso"), "Contoso");
+    }
 
     #[test]
     fn single_package_index_keeps_languages_together_and_preserves_sdk_settings() {

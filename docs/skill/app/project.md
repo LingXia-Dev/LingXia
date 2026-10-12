@@ -316,7 +316,7 @@ A campaign screen after launch: [Launch screen](../native/splash.md).
 - `macos` — `deploymentTarget`, `targetName`, optional `executableName`, optional
   `bundleId`, optional `store:` (App Store Connect identity).
 - `windows` — optional `executableName`, `publisher` (MSIX, default `CN=<productName>`),
-  `publisherDisplayName` (MSIX, default the product name), optional `appId`,
+  `publisherDisplayName` (MSIX, default the `O=`/`CN=` of `publisher`), optional `appId`,
   optional `store:` (Partner Center id).
   `extraFiles: [path, ...]` copies files beside the executable.
   `portableData: true` keeps data under `<launcher-dir>/data/<appId>`.
