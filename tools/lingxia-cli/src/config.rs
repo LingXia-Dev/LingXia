@@ -1583,6 +1583,10 @@ pub struct HarmonyConfig {
     /// Equivalent to Android targetSdk
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_sdk_version: Option<String>,
+    /// The developer named by `AppScope/app.json5` `vendor`. Written at build
+    /// time; omitted leaves `vendor` empty, never a placeholder or the app name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vendor: Option<String>,
     /// Huawei AppGallery Connect identity for `lingxia store`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub store: Option<AppGalleryConfig>,
@@ -1615,18 +1619,68 @@ pub struct WindowsConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub executable_name: Option<String>,
     /// MSIX package Identity `Publisher` (a distinguished name such as
-    /// `CN=Contoso`). Must match the signing certificate's subject. Defaults to
-    /// `CN=<productName>` when omitted.
+    /// `CN=Contoso`). Must match the signing certificate's subject. Required to
+    /// build an MSIX, except a `--self-signed` local test package.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub publisher: Option<String>,
-    /// MSIX `PublisherDisplayName`. The Store requires it to equal the Partner
-    /// Center publisher display name. Defaults to the `O=` (else `CN=`) value
-    /// of `publisher`.
+    /// The publisher's human-readable name: MSIX `PublisherDisplayName`, the
+    /// uninstall entry's Publisher and the executable's CompanyName. The Store
+    /// requires it to equal the Partner Center publisher display name. Defaults
+    /// to the `O=` (else `CN=`) value of `publisher`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub publisher_display_name: Option<String>,
     /// Microsoft Store (Partner Center) identity for `lingxia store`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub store: Option<MsStoreConfig>,
+}
+
+impl WindowsConfig {
+    /// The configured MSIX Identity `Publisher`, if any.
+    pub fn publisher(&self) -> Option<&str> {
+        non_empty(self.publisher.as_deref())
+    }
+
+    /// The publisher's name: `publisherDisplayName`, else the owner named by
+    /// `publisher`. Never derived from the product name.
+    pub fn publisher_name(&self) -> Option<String> {
+        non_empty(self.publisher_display_name.as_deref())
+            .map(str::to_string)
+            .or_else(|| self.publisher().map(distinguished_name_owner))
+    }
+}
+
+fn non_empty(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+/// The owner a distinguished name identifies: `O=`, else `CN=`, else the raw
+/// string (e.g. `CN=Contoso Ltd, O=Contoso, C=US` -> `Contoso`).
+pub fn distinguished_name_owner(dn: &str) -> String {
+    let mut parts = Vec::new();
+    let (mut current, mut quoted, mut escaped) = (String::new(), false, false);
+    for c in dn.chars() {
+        match c {
+            _ if escaped => {
+                current.push(c);
+                escaped = false;
+            }
+            '\\' => escaped = true,
+            '"' => quoted = !quoted,
+            ',' | ';' | '+' if !quoted => parts.push(std::mem::take(&mut current)),
+            _ => current.push(c),
+        }
+    }
+    parts.push(current);
+    let attribute = |key: &str| {
+        parts.iter().find_map(|part| {
+            let (name, value) = part.split_once('=')?;
+            let value = value.trim();
+            (name.trim().eq_ignore_ascii_case(key) && !value.is_empty()).then(|| value.to_string())
+        })
+    };
+    attribute("O")
+        .or_else(|| attribute("CN"))
+        .unwrap_or_else(|| dn.trim().to_string())
 }
 
 /// Microsoft Store (Partner Center) record settings. Lives in `lingxia.yaml`
@@ -2881,6 +2935,31 @@ pub fn dir_matches_host_config(dir: &Path, requested_name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn windows_publisher_name_comes_from_the_publisher_never_the_app() {
+        assert_eq!(
+            distinguished_name_owner("CN=Contoso Ltd, O=Contoso, C=US"),
+            "Contoso"
+        );
+        assert_eq!(distinguished_name_owner("CN=拱石聚力"), "拱石聚力");
+        assert_eq!(
+            distinguished_name_owner(r#"CN="Acme, Inc.", C=US"#),
+            "Acme, Inc."
+        );
+        assert_eq!(
+            distinguished_name_owner(r"CN=Acme\, Inc., C=US"),
+            "Acme, Inc."
+        );
+        assert_eq!(distinguished_name_owner("Contoso"), "Contoso");
+
+        let mut windows = WindowsConfig::default();
+        assert_eq!(windows.publisher_name(), None);
+        windows.publisher = Some("CN=Contoso Ltd, O=Contoso".into());
+        assert_eq!(windows.publisher_name().as_deref(), Some("Contoso"));
+        windows.publisher_display_name = Some(" 拱石聚力 ".into());
+        assert_eq!(windows.publisher_name().as_deref(), Some("拱石聚力"));
+    }
+
     use super::*;
     use lingxia_app_context::{ThemeColor, ThemeStyle};
     use tempfile::TempDir;

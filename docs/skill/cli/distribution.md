@@ -157,8 +157,10 @@ names. All four → release-signed; otherwise debug-signed.
   match the certificate subject.
 - Localized MSIX names need Windows SDK `makepri.exe` (beside `makeappx.exe`,
   or `LINGXIA_MAKEPRI`); without it the MSIX shows `productName` in every language.
-- For local MSIX installation, use `--format msix --self-signed`. Store uploads
-  can be unsigned; Microsoft signs distribution packages.
+- MSIX requires `windows.publisher`. For local MSIX installation, use
+  `--format msix --self-signed`, which may omit it (stand-in
+  `CN=LingXia Local Test`). Store uploads can be unsigned; Microsoft signs
+  distribution packages.
 - Store validation requires MSIX `PublisherDisplayName` to equal the Partner
   Center publisher display name; set it with `windows.publisherDisplayName`
   (Partner Center's Publisher is a `CN=<GUID>`, so the default taken from
@@ -168,7 +170,8 @@ names. All four → release-signed; otherwise debug-signed.
 ### Harmony
 
 The CLI resolves AGC credentials and manages the signing key, certificate, and
-profile.
+profile. `harmony.vendor` is written to `AppScope/app.json5` `vendor` at build
+time; without it `vendor` is left empty, never a placeholder.
 
 ## `lingxia auth`
 

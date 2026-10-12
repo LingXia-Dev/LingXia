@@ -1,11 +1,12 @@
 {
   "app": {
     "bundleName": "{{PACKAGE_ID}}",
-    "vendor": "example",
+    "vendor": "",
     "versionCode": 1000000,
     "versionName": "1.0.0",
-    // versionName / versionCode are overwritten at `lingxia build`
-    // from app.productVersion. These values are scaffold placeholders.
+    // vendor is overwritten at `lingxia build` from harmony.vendor, and
+    // versionName / versionCode from app.productVersion. These values are
+    // scaffold placeholders.
     "icon": "$media:layered_image",
     "label": "$string:app_name"
   }

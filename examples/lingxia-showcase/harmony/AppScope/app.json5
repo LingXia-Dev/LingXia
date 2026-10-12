@@ -1,7 +1,7 @@
 {
   "app": {
     "bundleName": "app.lingxia.lxapp.example",
-    "vendor": "example",
+    "vendor": "",
     "versionCode": 1000000,
     "versionName": "1.0.0",
     "icon": "$media:layered_image",

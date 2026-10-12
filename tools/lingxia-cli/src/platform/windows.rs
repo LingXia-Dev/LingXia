@@ -84,6 +84,16 @@ impl Platform for WindowsPlatform {
                 )
                 .env("LINGXIA_PRODUCT_VERSION", &app.product_version);
         }
+        // The exe's CompanyName is the publisher; left unset rather than guessed.
+        match config
+            .lingxia_config
+            .as_ref()
+            .and_then(|c| c.windows.as_ref())
+            .and_then(|w| w.publisher_name())
+        {
+            Some(publisher) => command.env("LINGXIA_PUBLISHER_NAME", publisher),
+            None => command.env_remove("LINGXIA_PUBLISHER_NAME"),
+        };
 
         if matches!(config.profile, super::BuildProfile::Release) {
             command.arg("--release");

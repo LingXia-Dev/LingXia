@@ -695,9 +695,43 @@ fn rewrite_app_bundle_name(staging: &Path, config: &BuildConfig) -> Result<()> {
     let content = std::fs::read_to_string(&app_json_path)
         .with_context(|| format!("Failed to read {}", app_json_path.display()))?;
     let updated = replace_json5_string_field_value(&content, "bundleName", &effective_bundle_name)?;
+    let vendor = config
+        .lingxia_config
+        .as_ref()
+        .and_then(|c| c.harmony.as_ref())
+        .and_then(|h| h.vendor.as_deref());
+    let updated = set_app_vendor(&updated, vendor, &effective_bundle_name)?;
     std::fs::write(&app_json_path, updated)
         .with_context(|| format!("Failed to write {}", app_json_path.display()))?;
     Ok(())
+}
+
+/// `vendor` names the developer from `harmony.vendor`. Without it the field is
+/// emptied rather than left at a scaffold placeholder such as `example`; when
+/// absent from `app.json5` it is added right after `bundleName`.
+fn set_app_vendor(content: &str, vendor: Option<&str>, bundle_name: &str) -> Result<String> {
+    let vendor = vendor.map(str::trim).filter(|vendor| !vendor.is_empty());
+    if let Some(updated) =
+        try_replace_json5_string_field_value(content, "vendor", vendor.unwrap_or(""))?
+    {
+        return Ok(updated);
+    }
+    let Some(vendor) = vendor else {
+        return Ok(content.to_string());
+    };
+    const MARK: &str = "__lingxia_vendor_anchor__";
+    let marked = replace_json5_string_field_value(content, "bundleName", MARK)?;
+    let anchor = ["\"", "'"]
+        .iter()
+        .map(|quote| format!("{quote}{MARK}{quote}"))
+        .find(|anchor| marked.contains(anchor.as_str()))
+        .ok_or_else(|| anyhow!("could not place vendor beside bundleName"))?;
+    let fields = format!(
+        "{}, \"vendor\": {}",
+        serde_json::to_string(bundle_name)?,
+        serde_json::to_string(vendor)?
+    );
+    Ok(marked.replacen(&anchor, &fields, 1))
 }
 
 fn rewrite_app_version(staging: &Path, config: &BuildConfig) -> Result<()> {
@@ -734,6 +768,16 @@ fn rewrite_app_version(staging: &Path, config: &BuildConfig) -> Result<()> {
 /// fields. Unquoted JSON5 keys (`bundleName: "x"`) are *not* supported — the
 /// caller controls the source format and Harmony's `app.json5` always quotes.
 fn replace_json5_string_field_value(content: &str, field: &str, value: &str) -> Result<String> {
+    try_replace_json5_string_field_value(content, field, value)?
+        .ok_or_else(|| anyhow!("field '{field}' not found"))
+}
+
+/// [`replace_json5_string_field_value`], with `None` when `field` is absent.
+fn try_replace_json5_string_field_value(
+    content: &str,
+    field: &str,
+    value: &str,
+) -> Result<Option<String>> {
     let bytes = content.as_bytes();
     let mut out = String::with_capacity(content.len() + value.len());
     let mut i = 0;
@@ -823,10 +867,7 @@ fn replace_json5_string_field_value(content: &str, field: &str, value: &str) -> 
         i += ch.len_utf8();
     }
 
-    if !replaced {
-        return Err(anyhow!("field '{field}' not found"));
-    }
-    Ok(out)
+    Ok(replaced.then_some(out))
 }
 
 /// Same token-aware scan as [`replace_json5_string_field_value`], but the
@@ -1155,7 +1196,7 @@ mod tests {
     use super::{
         copy_dir_recursive_excluding, replace_json5_number_field_value,
         replace_json5_string_field_value, rewrite_build_profile_src_paths,
-        rewrite_file_dependencies, source_path_string, upsert_lingxia_har_dep,
+        rewrite_file_dependencies, set_app_vendor, source_path_string, upsert_lingxia_har_dep,
     };
     use std::{fs, path::Path};
     use tempfile::TempDir;
@@ -1502,6 +1543,26 @@ mod tests {
             .to_string();
 
         assert!(err.contains("more than once"));
+    }
+
+    #[test]
+    fn vendor_comes_from_config_never_a_placeholder() {
+        let content = "{\n  \"app\": {\n    \"bundleName\": \"com.example.demo\",\n    \"vendor\": \"example\",\n  }\n}";
+        let set = set_app_vendor(content, Some(" 拱石聚力 "), "com.example.demo").unwrap();
+        assert!(set.contains(r#""vendor": "拱石聚力""#));
+        let emptied = set_app_vendor(content, None, "com.example.demo").unwrap();
+        assert!(emptied.contains(r#""vendor": """#));
+
+        let absent = r#"{"app":{"bundleName":'com.example.demo.dev',"label":"x"}}"#;
+        let added = set_app_vendor(absent, Some("Acme \"Q\""), "com.example.demo.dev").unwrap();
+        assert_eq!(
+            added,
+            r#"{"app":{"bundleName":"com.example.demo.dev", "vendor": "Acme \"Q\"","label":"x"}}"#
+        );
+        assert_eq!(
+            set_app_vendor(absent, None, "com.example.demo.dev").unwrap(),
+            absent
+        );
     }
 
     #[test]

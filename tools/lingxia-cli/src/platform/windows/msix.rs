@@ -12,7 +12,10 @@ use anyhow::{Context, Result, anyhow, bail};
 use colored::Colorize;
 use image::imageops::FilterType;
 
-use crate::config::LingXiaConfig;
+use crate::config::{LingXiaConfig, distinguished_name_owner};
+
+/// Stand-in Identity Publisher for `--self-signed` local test packages only.
+const SELF_SIGNED_PUBLISHER: &str = "CN=LingXia Local Test";
 
 /// Tile/store logos MSIX requires, generated from the app icon into the
 /// package's `Images/` dir. Kept out of the runtime `assets/` dir to dodge the
@@ -42,14 +45,21 @@ pub fn package(
 
     let architecture = super::distribution::pe_architecture(&dist_dir.join(exe_name))?;
     let identity = sanitize_identity(&config.resolved_package_id("windows")?);
-    // The Identity Publisher must match the eventual signing cert's subject.
-    // Default to a readable `CN=<product>`; override with `windows.publisher`.
-    let publisher = windows_cfg
-        .and_then(|w| w.publisher.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| format!("CN={}", sanitize_cn(product_name)));
+    // The Identity Publisher names who publishes the package and must match
+    // the signing cert's subject (Partner Center's value for the Store). It is
+    // never invented from the app name; only a local self-signed test package
+    // gets a stand-in identity.
+    let publisher = match windows_cfg.and_then(|w| w.publisher()) {
+        Some(publisher) => publisher.to_string(),
+        None if matches!(signing, super::signing::WindowsSigning::SelfSigned) => {
+            SELF_SIGNED_PUBLISHER.to_string()
+        }
+        None => bail!(
+            "windows.publisher is required to build an MSIX: use Partner Center's \
+             Package/Identity/Publisher for the Store, or the signing certificate's \
+             subject; --self-signed builds a local test package without it"
+        ),
+    };
     let version = four_part_version(&app.product_version);
 
     // Stage a copy of the payload, then add `Images/` logos + the manifest.
@@ -81,14 +91,9 @@ pub fn package(
     } else {
         product_name
     };
-    // PublisherDisplayName names the publisher, never the app: take it from
-    // `windows.publisherDisplayName`, else from the publisher's own DN.
     let publisher_display_name = windows_cfg
-        .and_then(|w| w.publisher_display_name.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| publisher_name(&publisher));
+        .and_then(|w| w.publisher_name())
+        .unwrap_or_else(|| distinguished_name_owner(&publisher));
     let manifest = render_manifest(
         &identity,
         &publisher,
@@ -226,50 +231,6 @@ pub(crate) fn sanitize_identity(raw: &str) -> String {
     } else {
         cleaned
     }
-}
-
-/// Strip characters that would need escaping in a `CN=` distinguished name.
-fn sanitize_cn(raw: &str) -> String {
-    let cleaned: String = raw
-        .chars()
-        .filter(|c| !matches!(c, ',' | '=' | '+' | '<' | '>' | '#' | ';' | '"' | '\\'))
-        .collect();
-    let trimmed = cleaned.trim();
-    if trimmed.is_empty() {
-        "LingXia".to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
-/// The publisher's name from its distinguished name: `O=`, else `CN=`, else
-/// the raw string (e.g. `CN=Contoso Ltd, O=Contoso, C=US` -> `Contoso`).
-fn publisher_name(publisher: &str) -> String {
-    let mut parts = Vec::new();
-    let (mut current, mut quoted, mut escaped) = (String::new(), false, false);
-    for c in publisher.chars() {
-        match c {
-            _ if escaped => {
-                current.push(c);
-                escaped = false;
-            }
-            '\\' => escaped = true,
-            '"' => quoted = !quoted,
-            ',' | ';' | '+' if !quoted => parts.push(std::mem::take(&mut current)),
-            _ => current.push(c),
-        }
-    }
-    parts.push(current);
-    let attribute = |key: &str| {
-        parts.iter().find_map(|part| {
-            let (name, value) = part.split_once('=')?;
-            let value = value.trim();
-            (name.trim().eq_ignore_ascii_case(key) && !value.is_empty()).then(|| value.to_string())
-        })
-    };
-    attribute("O")
-        .or_else(|| attribute("CN"))
-        .unwrap_or_else(|| publisher.trim().to_string())
 }
 
 fn xml_escape(value: &str) -> String {
@@ -442,15 +403,6 @@ fn single_package_pri_config(generated: &str) -> Result<String> {
 mod name_tests {
     use super::*;
     use std::collections::BTreeMap;
-
-    #[test]
-    fn publisher_display_name_comes_from_the_publisher_identity() {
-        assert_eq!(publisher_name("CN=Contoso Ltd, O=Contoso, C=US"), "Contoso");
-        assert_eq!(publisher_name("CN=拱石聚力"), "拱石聚力");
-        assert_eq!(publisher_name(r#"CN="Acme, Inc.", C=US"#), "Acme, Inc.");
-        assert_eq!(publisher_name(r"CN=Acme\, Inc., C=US"), "Acme, Inc.");
-        assert_eq!(publisher_name("Contoso"), "Contoso");
-    }
 
     #[test]
     fn single_package_index_keeps_languages_together_and_preserves_sdk_settings() {
