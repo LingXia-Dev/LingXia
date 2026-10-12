@@ -1548,8 +1548,8 @@ mod tests {
     #[test]
     fn vendor_comes_from_config_never_a_placeholder() {
         let content = "{\n  \"app\": {\n    \"bundleName\": \"com.example.demo\",\n    \"vendor\": \"example\",\n  }\n}";
-        let set = set_app_vendor(content, Some(" 拱石聚力 "), "com.example.demo").unwrap();
-        assert!(set.contains(r#""vendor": "拱石聚力""#));
+        let set = set_app_vendor(content, Some(" 示例公司 "), "com.example.demo").unwrap();
+        assert!(set.contains(r#""vendor": "示例公司""#));
         let emptied = set_app_vendor(content, None, "com.example.demo").unwrap();
         assert!(emptied.contains(r#""vendor": """#));
 
