@@ -315,15 +315,21 @@ A campaign screen after launch: [Launch screen](../native/splash.md).
 
 - `macos` — `deploymentTarget`, `targetName`, optional `executableName`, optional
   `bundleId`, optional `store:` (App Store Connect identity).
-- `windows` — optional `executableName`, `publisher` (MSIX, default `CN=<productName>`),
-  `publisherDisplayName` (MSIX, default the `O=`/`CN=` of `publisher`), optional `appId`,
-  optional `store:` (Partner Center id).
+- `windows` — optional `executableName`, `publisher` (MSIX Identity Publisher,
+  a distinguished name; required for MSIX except `--self-signed`),
+  `publisherDisplayName` (the publisher's name, default the `O=`/`CN=` of
+  `publisher`), optional `appId`, optional `store:` (Partner Center id).
   `extraFiles: [path, ...]` copies files beside the executable.
   `portableData: true` keeps data under `<launcher-dir>/data/<appId>`.
 
 `executableName` selects a build target, never a display name. Omit it for a
 single executable; Windows also respects Cargo `default-run`. Ambiguous builds
 require an explicit selection. Product launcher names follow the system language.
+
+The publisher's name feeds MSIX `PublisherDisplayName`, the uninstall entry's
+Publisher and the executable's CompanyName. It is never derived from the
+product name: without `publisher` / `publisherDisplayName` the latter two stay
+empty and an MSIX build fails.
 
 For Microsoft Store, use Partner Center's Package/Identity/Name as the package
 id (inherit `app.packageId` or override `windows.appId`) and

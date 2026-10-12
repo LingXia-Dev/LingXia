@@ -114,9 +114,13 @@ fn write_localized_resources(
 fn set_product_version_info(res: &mut winresource::WindowsResource) {
     println!("cargo:rerun-if-env-changed=LINGXIA_PRODUCT_NAME");
     println!("cargo:rerun-if-env-changed=LINGXIA_PRODUCT_VERSION");
+    println!("cargo:rerun-if-env-changed=LINGXIA_PUBLISHER_NAME");
     if let Ok(name) = std::env::var("LINGXIA_PRODUCT_NAME") {
         res.set("ProductName", &name);
         res.set("FileDescription", &name);
+    }
+    if let Ok(publisher) = std::env::var("LINGXIA_PUBLISHER_NAME") {
+        res.set("CompanyName", &publisher);
     }
     let Ok(version) = std::env::var("LINGXIA_PRODUCT_VERSION") else {
         return;

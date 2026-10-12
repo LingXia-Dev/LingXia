@@ -67,6 +67,7 @@ app:
   platforms: [windows]
 windows:
   portableData: false
+  publisher: CN=LingXia Packaging Smoke
 "@
         [IO.File]::WriteAllText((Join-Path $project 'lingxia.yaml'), $yaml)
         $env:LINGXIA_PACKAGING_TEST_ROOT = $project
@@ -84,6 +85,7 @@ windows:
     Assert ((Read-Report) -contains 'ARGS=hello|two words') 'App arguments changed'
     $registry = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$identity"
     Assert ((Get-ItemProperty $registry).DisplayVersion -eq '1.0.0') 'Uninstall registration missing'
+    Assert ((Get-ItemProperty $registry).Publisher -eq 'LingXia Packaging Smoke') 'Uninstall publisher missing'
     # Shortcuts carry the bare product name; the installer records it for upgrades.
     $shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'LingXia Packaging Smoke.lnk'
     Assert (Test-Path $shortcut) 'Start Menu shortcut missing'

@@ -122,6 +122,8 @@ fn render(
     }
     let file_version = format!("{}.{}.{}.0", version.major, version.minor, version.patch);
     let portable_data = config.windows.as_ref().is_some_and(|w| w.portable_data);
+    // Undefined when unknown: Windows then shows no publisher rather than the app.
+    let publisher = config.windows.as_ref().and_then(|w| w.publisher_name());
     let mut script = String::new();
     for (key, value) in [
         ("PRODUCT", app.product_name.clone()),
@@ -148,6 +150,9 @@ fn render(
         ),
     ] {
         script.push_str(&format!("!define {key} \"{}\"\n", literal(&value)?));
+    }
+    if let Some(publisher) = publisher {
+        script.push_str(&format!("!define PUBLISHER \"{}\"\n", literal(&publisher)?));
     }
     let ico = payload.join("AppIcon.ico");
     if ico.is_file() {
@@ -237,6 +242,28 @@ mod tests {
         assert!(language_pass.rfind("zh-CN").unwrap() > language_pass.rfind("zh-TW").unwrap());
     }
     #[test]
+    fn uninstall_publisher_is_the_publisher_never_the_app() {
+        let render_with = |yaml: &str| {
+            let config: LingXiaConfig = serde_yaml_ng::from_str(&format!(
+                "app:\n  projectName: test\n  productName: Test App\n  productVersion: 1.2.3\n  packageId: com.lingxia.packaging_test\n  platforms: [windows]\n{yaml}"
+            ))
+            .unwrap();
+            render(
+                &config,
+                Path::new("payload"),
+                OsStr::new("app.exe"),
+                Path::new("out.exe"),
+                WindowsPackageFormat::Portable,
+                "x64",
+                Path::new("resources"),
+            )
+            .unwrap()
+        };
+        assert!(!render_with("").contains("!define PUBLISHER"));
+        let script = render_with("windows:\n  publisher: CN=Contoso Ltd, O=Contoso\n");
+        assert!(script.contains("!define PUBLISHER \"Contoso\"\n"));
+    }
+    #[test]
     fn compile_installers_when_nsis_available() {
         if find_makensis().is_err() {
             return;
@@ -246,7 +273,7 @@ mod tests {
         fs::create_dir_all(payload.join("assets")).unwrap();
         fs::write(payload.join("app.exe"), b"fixture").unwrap();
         fs::write(payload.join("assets/app.json"), b"{}").unwrap();
-        let config: LingXiaConfig = serde_yaml_ng::from_str("app:\n  projectName: test\n  productName: Test App\n  productNames:\n    zh-CN: 测试应用\n  productVersion: 1.2.3\n  packageId: com.lingxia.packaging_test\n  platforms: [windows]\n").unwrap();
+        let config: LingXiaConfig = serde_yaml_ng::from_str("app:\n  projectName: test\n  productName: Test App\n  productNames:\n    zh-CN: 测试应用\n  productVersion: 1.2.3\n  packageId: com.lingxia.packaging_test\n  platforms: [windows]\nwindows:\n  publisherDisplayName: Test Publisher\n").unwrap();
         for format in [WindowsPackageFormat::Nsis, WindowsPackageFormat::Portable] {
             let out = temp.path().join(format!("{format:?}.exe"));
             package(

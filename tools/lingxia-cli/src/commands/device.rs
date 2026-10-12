@@ -220,6 +220,7 @@ mod tests {
                 bundle_name: Some("com.example.demo.hm".into()),
                 compatible_sdk_version: None,
                 target_sdk_version: None,
+                vendor: None,
                 store: None,
             }),
             windows: Some(WindowsConfig {
