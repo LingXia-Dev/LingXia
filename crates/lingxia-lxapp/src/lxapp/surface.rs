@@ -2830,6 +2830,14 @@ impl LxApp {
     fn close_surfaces(&self, ids: Vec<String>, reason: CloseReason) {
         let reason = close_reason_str(reason);
         for id in ids {
+            #[cfg(all(test, feature = "js-appservice"))]
+            if let Some(host) = crate::page::startup_test_host::for_app(&self.appid) {
+                host.closed_surfaces
+                    .lock()
+                    .unwrap()
+                    .push((id, reason.to_string()));
+                continue;
+            }
             if let Err(err) = self.close_surface(&id, reason) {
                 warn!("Failed to close surface {}: {}", id, err).with_appid(self.appid.clone());
             }

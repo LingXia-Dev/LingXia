@@ -106,7 +106,14 @@ pub enum PageWebViewAwait {
     Gone,
 }
 
-type WebviewReadyReceiver = Arc<Mutex<watch::Receiver<Option<Result<(), String>>>>>;
+#[derive(Clone)]
+struct WebviewSetupResult {
+    result: Result<(), String>,
+    // Failure cleanup must preserve the error even after the instance is dropped.
+    removed_after_failure: bool,
+}
+
+type WebviewReadyReceiver = Arc<Mutex<watch::Receiver<Option<WebviewSetupResult>>>>;
 
 const DEFAULT_VIEW_CALL_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -134,7 +141,7 @@ pub(crate) struct PageInstanceInner {
     bridge: PageBridge,
 
     // notify when WebView wiring is ready (delegate set & setup ran)
-    webview_ready_tx: watch::Sender<Option<Result<(), String>>>,
+    webview_ready_tx: watch::Sender<Option<WebviewSetupResult>>,
     webview_ready_rx: WebviewReadyReceiver,
 
     // Isolated surface pages: the opener creates PageSvc on the JS worker
@@ -791,22 +798,27 @@ impl PageInstance {
         });
     }
 
-    fn finish_webview_setup(&self, result: Result<(), String>) {
+    pub(crate) fn finish_webview_setup(&self, result: Result<(), String>) {
         self.inner
             .webview_create_in_flight
             .store(false, Ordering::SeqCst);
-        if result.is_ok() {
+        let removed_after_failure = if result.is_ok() {
             self.inner
                 .initial_setup_succeeded
                 .store(true, Ordering::SeqCst);
+            false
         } else if self.inner.initial_setup_succeeded.load(Ordering::SeqCst) {
             self.inner.discarded.store(true, Ordering::SeqCst);
+            false
         } else {
             // A failed first setup has no preserved PageSvc. It must not enter
             // the memory-reclamation path, which reloads only the document.
-            self.owning_lxapp().remove_failed_page(self);
-        }
-        self.mark_webview_ready(result);
+            self.owning_lxapp().remove_failed_page(self)
+        };
+        self.mark_webview_ready(WebviewSetupResult {
+            result,
+            removed_after_failure,
+        });
     }
 
     /// The webview tag identifying this page instance's view (also the
@@ -1474,7 +1486,8 @@ impl PageInstance {
             .webview_ready_rx
             .lock()
             .ok()
-            .and_then(|rx| rx.borrow().clone());
+            .and_then(|rx| rx.borrow().clone())
+            .map(|setup| setup.result);
         let (webview_ready, webview_error) = match webview_result {
             Some(Ok(())) => (true, None),
             Some(Err(error)) => (false, Some(error)),
@@ -1508,8 +1521,8 @@ impl PageInstance {
         }
     }
 
-    pub(crate) fn mark_webview_ready(&self, result: Result<(), String>) {
-        let ok = result.is_ok();
+    fn mark_webview_ready(&self, result: WebviewSetupResult) {
+        let ok = result.result.is_ok();
         // Ignore errors; receiver will handle missing updates.
         let _ = self.inner.webview_ready_tx.send(Some(result));
         if ok {
@@ -1519,17 +1532,18 @@ impl PageInstance {
 
     /// Whether the WebView is attached and its document loaded.
     pub(crate) fn webview_ready_now(&self) -> bool {
-        self.inner
-            .webview_ready_rx
-            .lock()
-            .is_ok_and(|rx| matches!(*rx.borrow(), Some(Ok(()))))
-            && self.webview().is_some()
+        self.inner.webview_ready_rx.lock().is_ok_and(|rx| {
+            rx.borrow()
+                .as_ref()
+                .is_some_and(|setup| setup.result.is_ok())
+        }) && self.webview().is_some()
     }
 
     /// Call `done` once the WebView is ready, failed, or the page is gone.
     ///
     /// Holds no strong reference to the page while waiting: a page that is
-    /// removed and dropped resolves as [`PageWebViewAwait::Gone`].
+    /// disposed while waiting resolves as [`PageWebViewAwait::Gone`]. Removal
+    /// caused by failed setup preserves [`PageWebViewAwait::Failed`].
     pub fn on_webview_ready(&self, done: impl FnOnce(PageWebViewAwait) + Send + 'static) {
         if self.is_discarded() {
             self.ensure_live_webview();
@@ -1549,20 +1563,26 @@ impl PageInstance {
                     break None;
                 }
             };
-            // A retired page can still be held by its own creation task and
-            // WebView delegate, so being dropped is not the test: it must
-            // still be registered.
+            // Creation tasks and delegates may retain disposed pages. Registry
+            // membership controls readiness unless setup itself removed the page.
             let outcome = match (
                 page.upgrade().map(PageInstance::from_inner),
                 state.flatten(),
             ) {
+                (
+                    _,
+                    Some(WebviewSetupResult {
+                        result: Err(error),
+                        removed_after_failure: true,
+                    }),
+                ) => PageWebViewAwait::Failed(error),
                 (Some(page), Some(result))
                     if page
                         .owning_lxapp()
                         .get_page_by_instance_id(&page.instance_id())
                         .is_some() =>
                 {
-                    match result {
+                    match result.result {
                         Ok(()) => PageWebViewAwait::Ready(page),
                         Err(error) => PageWebViewAwait::Failed(error),
                     }
@@ -1646,13 +1666,13 @@ impl PageInstance {
 
         // Fast-path: already has a value.
         if let Some(res) = rx.borrow().clone() {
-            return res;
+            return res.result;
         }
 
         let mut rx = rx;
         while rx.changed().await.is_ok() {
             if let Some(res) = rx.borrow().clone() {
-                return res;
+                return res.result;
             }
         }
 
