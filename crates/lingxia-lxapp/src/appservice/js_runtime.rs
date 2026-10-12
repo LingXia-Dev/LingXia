@@ -75,6 +75,10 @@ const RONG_MODULES: [&str; 14] = [
 ];
 
 #[cfg(test)]
+#[path = "page_startup_tests.rs"]
+mod page_startup_tests;
+
+#[cfg(test)]
 mod rong_modules_tests {
     #[test]
     fn requested_rong_modules_resolve() {

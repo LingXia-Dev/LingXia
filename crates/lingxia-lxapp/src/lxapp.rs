@@ -3555,7 +3555,7 @@ impl LxApp {
 
     /// Remove a page instance whose setup failed: it never became usable and
     /// must not stay resolvable.
-    fn remove_failed_page(&self, page: &PageInstance) {
+    pub(crate) fn remove_failed_page(&self, page: &PageInstance) {
         let id = page.instance_id_string();
         if let Ok(state) = self.state.lock() {
             let _ =
