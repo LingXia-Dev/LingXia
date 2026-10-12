@@ -426,10 +426,10 @@ mod name_tests {
         let config: LingXiaConfig = serde_yaml_ng::from_str(base).unwrap();
         assert_eq!(identity_name(&config).unwrap(), "com.example.demo");
         let config: LingXiaConfig = serde_yaml_ng::from_str(&format!(
-            "{base}windows:\n  store:\n    appId: 9NXVTK4NM824\n    identityName: 817A4EEF.3535255DDC6C4\n"
+            "{base}windows:\n  store:\n    appId: 9NXXXXXXXXXX\n    identityName: 12345Contoso.ContosoApp\n"
         ))
         .unwrap();
-        assert_eq!(identity_name(&config).unwrap(), "817A4EEF.3535255DDC6C4");
+        assert_eq!(identity_name(&config).unwrap(), "12345Contoso.ContosoApp");
         assert_eq!(
             config.resolved_package_id("windows").unwrap(),
             "com.example.demo"

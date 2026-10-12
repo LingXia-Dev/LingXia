@@ -2946,7 +2946,7 @@ mod tests {
             distinguished_name_owner("CN=Contoso Ltd, O=Contoso, C=US"),
             "Contoso"
         );
-        assert_eq!(distinguished_name_owner("CN=拱石聚力"), "拱石聚力");
+        assert_eq!(distinguished_name_owner("CN=示例公司"), "示例公司");
         assert_eq!(
             distinguished_name_owner(r#"CN="Acme, Inc.", C=US"#),
             "Acme, Inc."
@@ -2961,8 +2961,8 @@ mod tests {
         assert_eq!(windows.publisher_name(), None);
         windows.publisher = Some("CN=Contoso Ltd, O=Contoso".into());
         assert_eq!(windows.publisher_name().as_deref(), Some("Contoso"));
-        windows.publisher_display_name = Some(" 拱石聚力 ".into());
-        assert_eq!(windows.publisher_name().as_deref(), Some("拱石聚力"));
+        windows.publisher_display_name = Some(" 示例公司 ".into());
+        assert_eq!(windows.publisher_name().as_deref(), Some("示例公司"));
     }
 
     use super::*;
