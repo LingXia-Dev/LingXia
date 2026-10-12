@@ -1,6 +1,8 @@
 pub(crate) mod config;
 pub(crate) mod definition;
 pub(crate) mod runtime;
+#[cfg(all(test, feature = "js-appservice"))]
+pub(crate) mod startup_test_host;
 
 pub use definition::{register_page_resolver, resolve_page_path};
 
@@ -161,6 +163,7 @@ pub(crate) struct PageInstanceInner {
     /// instance stay; [`PageInstance::ensure_live_webview`] recreates the view.
     discarded: AtomicBool,
     webview_create_in_flight: AtomicBool,
+    initial_setup_succeeded: AtomicBool,
 }
 
 /// A page runs on three independent clocks, and conflating them is what let
@@ -480,28 +483,19 @@ impl PageInstance {
         }
     }
 
-    /// Create a new page in pending state (WebView creation in progress)
-    pub(crate) fn new<F, Fut>(appid: String, path: String, lxapp: &LxApp, setup_callback: F) -> Self
-    where
-        F: Fn(&PageInstance) -> Fut + Send + 'static,
-        Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
-    {
-        Self::new_with_isolation(appid, path, lxapp, false, setup_callback)
+    /// Allocate a pending page. Register it before calling `start_webview`.
+    pub(crate) fn new(appid: String, path: String, lxapp: &LxApp) -> Self {
+        Self::new_with_isolation(appid, path, lxapp, false)
     }
 
     /// `isolated` marks surface-owned pages: they never resolve by bare path
     /// and their dispose lifecycle belongs to the owning surface.
-    pub(crate) fn new_with_isolation<F, Fut>(
+    pub(crate) fn new_with_isolation(
         appid: String,
         path: String,
         lxapp: &LxApp,
         isolated: bool,
-        setup_callback: F,
-    ) -> Self
-    where
-        F: Fn(&PageInstance) -> Fut + Send + 'static,
-        Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
-    {
+    ) -> Self {
         // Build page state from LxApp configuration
         let page_state = Self::build_page_state(lxapp, &path);
         let id = PageInstanceId::new();
@@ -540,11 +534,25 @@ impl PageInstance {
             loaded_tx,
             discarded: AtomicBool::new(false),
             webview_create_in_flight: AtomicBool::new(true),
+            initial_setup_succeeded: AtomicBool::new(false),
         });
 
         let page = Self { inner };
-        page.spawn_strict_webview(setup_callback);
+        #[cfg(all(test, feature = "js-appservice"))]
+        if let Some(host) = startup_test_host::for_page(&page) {
+            host.allocated();
+        }
         page
+    }
+
+    /// Only the caller that registered this instance starts its native setup.
+    /// A candidate that lost a concurrent route lookup must never start.
+    pub(crate) fn start_webview<F, Fut>(&self, setup_callback: F)
+    where
+        F: Fn(&PageInstance) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<(), String>> + Send + 'static,
+    {
+        self.spawn_strict_webview(setup_callback);
     }
 
     /// Create a headless page (nonce allocated, no WebView created).
@@ -582,6 +590,7 @@ impl PageInstance {
             loaded_tx,
             discarded: AtomicBool::new(false),
             webview_create_in_flight: AtomicBool::new(false),
+            initial_setup_succeeded: AtomicBool::new(false),
         });
         Self { inner }
     }
@@ -688,6 +697,11 @@ impl PageInstance {
         F: Fn(&PageInstance) -> Fut + Send + 'static,
         Fut: Future<Output = Result<(), String>> + Send + 'static,
     {
+        #[cfg(all(test, feature = "js-appservice"))]
+        if let Some(host) = startup_test_host::for_page(self) {
+            host.run_setup(self, setup_callback(self));
+            return;
+        }
         let page_weak_for_lx = Arc::downgrade(&self.inner);
         let lxapp = self.owning_lxapp();
         let runtime_for_nav = lxapp.runtime.clone();
@@ -773,15 +787,26 @@ impl PageInstance {
                     Err(e.to_string())
                 }
             };
-            page_for_task
-                .inner
-                .webview_create_in_flight
-                .store(false, Ordering::SeqCst);
-            if result.is_err() {
-                page_for_task.inner.discarded.store(true, Ordering::SeqCst);
-            }
-            page_for_task.mark_webview_ready(result);
+            page_for_task.finish_webview_setup(result);
         });
+    }
+
+    fn finish_webview_setup(&self, result: Result<(), String>) {
+        self.inner
+            .webview_create_in_flight
+            .store(false, Ordering::SeqCst);
+        if result.is_ok() {
+            self.inner
+                .initial_setup_succeeded
+                .store(true, Ordering::SeqCst);
+        } else if self.inner.initial_setup_succeeded.load(Ordering::SeqCst) {
+            self.inner.discarded.store(true, Ordering::SeqCst);
+        } else {
+            // A failed first setup has no preserved PageSvc. It must not enter
+            // the memory-reclamation path, which reloads only the document.
+            self.owning_lxapp().remove_failed_page(self);
+        }
+        self.mark_webview_ready(result);
     }
 
     /// The webview tag identifying this page instance's view (also the
@@ -1712,6 +1737,10 @@ impl PageInstance {
     /// Does not wait on the permission snapshot: an empty WebView is torn down
     /// before the grant arrives. Fetches stay denied until it is ready.
     pub(crate) fn load_html(&self) -> Result<(), LxAppError> {
+        #[cfg(all(test, feature = "js-appservice"))]
+        if let Some(host) = startup_test_host::for_page(self) {
+            return host.load_html();
+        }
         // A real document is coming: its navigation events drive the render
         // pipeline again.
         if let Ok(mut state) = self.inner.state.lock() {
