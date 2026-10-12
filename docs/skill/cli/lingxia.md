@@ -163,8 +163,9 @@ update payload for `lingxia publish` (MSIX-only builds have none). More:
 ## Devices: `devices`, `install`, `uninstall`, `launch`
 
 - `lingxia devices` lists devices; pass the id when more than one is connected.
-- `lingxia install` installs a built artifact (auto-detected, an APK/HAP, or a
-  `lingxia package` `dist/<platform>` directory).
+- `lingxia install` installs onto an Android, iOS, or HarmonyOS device: the
+  latest build, an `.apk`/`.app`/`.ipa`/`.hap`, or a `lingxia package`
+  `dist/<platform>` directory. iOS and HarmonyOS sign a copy for the device.
 - `lingxia uninstall` removes the app (id from `lingxia.yaml` by default).
 - `lingxia launch` starts it; `--restart` works on Android and iOS.
 

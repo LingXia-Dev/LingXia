@@ -440,8 +440,8 @@ session per project and target: starting another takes over the old one.
 
     /// Install the built app to a device
     Install {
-        /// Artifact file, or a `lingxia package` dist/<platform> directory
-        /// (auto-detected if not specified)
+        /// An .apk, .app, .ipa, or .hap, or a `lingxia package`
+        /// dist/<platform> directory (default: the latest build)
         #[arg(short = 'a', long)]
         artifact: Option<String>,
 
