@@ -92,8 +92,15 @@ pub(super) async fn scope_lxapp_network_access<F, T>(lxapp: Arc<LxApp>, future: 
 where
     F: Future<Output = T>,
 {
-    rong_rt::http::scope_network_access_guard(Arc::new(LxAppNetworkAccessGuard { lxapp }), future)
-        .await
+    let appid = lxapp.appid.clone();
+    lingxia_transfer::scope_network_owner(
+        &appid,
+        rong_rt::http::scope_network_access_guard(
+            Arc::new(LxAppNetworkAccessGuard { lxapp }),
+            future,
+        ),
+    )
+    .await
 }
 
 #[cfg(test)]

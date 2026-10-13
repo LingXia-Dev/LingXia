@@ -10,6 +10,8 @@ repository.workspace = true
 [features]
 # Per-task HTTP proxy for browser downloads; only browser hosts link reqwest.
 http-proxy = ["dep:reqwest", "dep:futures-util"]
+# Attribute requests to their owner in Rong's network observer (dev hosts).
+network-observer = ["rong_rt/network-observer"]
 
 [dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"], optional = true }

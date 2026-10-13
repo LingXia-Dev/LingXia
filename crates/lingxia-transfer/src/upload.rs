@@ -501,7 +501,7 @@ pub async fn upload_file_with_behavior(
         }
     }
 
-    let request_obj = request_builder.body(body.boxed()).map_err(|err| {
+    let mut request_obj = request_builder.body(body.boxed()).map_err(|err| {
         UploadFailure::new(
             UploadFailureKind::Internal,
             url.clone(),
@@ -621,6 +621,7 @@ pub async fn upload_file_with_behavior(
         Ok::<u64, UploadFailure>(uploaded_bytes)
     });
 
+    crate::tag_network_kind(&mut request_obj, crate::TransferKind::Upload);
     let mut response =
         Some(host_http::send(request_obj, upload_request_options(behavior, abort_rx)).await);
 

@@ -377,7 +377,13 @@ pub(crate) fn ensure_fresh<S: AsRef<str>>(appids: &[S]) {
                 return;
             };
             match fetch_records(&appid, crate::default_channel().into()).await {
-                Ok(Some(info)) => fetch_icons(&appid, &info).await,
+                Ok(Some(info)) => {
+                    lingxia_transfer::scope_host_network_owner(
+                        "registry",
+                        fetch_icons(&appid, &info),
+                    )
+                    .await
+                }
                 Ok(None) => {}
                 Err(err) => {
                     crate::warn!("lxapp registry refresh failed: {}", err);
@@ -413,7 +419,11 @@ pub async fn ensure_open_allowed(appid: &str) -> Result<(), LxAppError> {
                     if let Some(info) = info.clone() {
                         let appid = appid.to_string();
                         std::mem::drop(crate::executor::spawn(Box::pin(async move {
-                            fetch_icons(&appid, &info).await;
+                            lingxia_transfer::scope_host_network_owner(
+                                "registry",
+                                fetch_icons(&appid, &info),
+                            )
+                            .await;
                         })));
                     }
                     info.map(|info| info.status).unwrap_or_default()
@@ -476,10 +486,12 @@ pub(crate) async fn fetch_records(
         return Ok(None);
     }
 
-    let info = provider
-        .fetch_registry_info(LxAppRegistryRequest::new(appid, channel))
-        .await
-        .map_err(|err| crate::provider::provider_error_to_lxapp_error(&err))?;
+    let info = lingxia_transfer::scope_host_network_owner(
+        "registry",
+        provider.fetch_registry_info(LxAppRegistryRequest::new(appid, channel)),
+    )
+    .await
+    .map_err(|err| crate::provider::provider_error_to_lxapp_error(&err))?;
     mark_attempted(appid);
 
     let previous = record(appid);
