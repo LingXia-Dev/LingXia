@@ -32,6 +32,7 @@ pub(super) fn write_root_manifest(project: &Project) -> Result<()> {
 
             rewrite_manifest_pages(value.get_mut("pages"), &page_map)?;
             let min_runtime = crate::versions::lxapp_min_runtime(&value)?;
+            crate::versions::ensure_build_target(&min_runtime)?;
             reject_npm_ahead_of_min_runtime(&project.root, &min_runtime)?;
 
             fs::write(
@@ -472,7 +473,7 @@ mod tests {
   "appId": "demo",
   "appName": "Demo",
   "version": "1.0.0",
-  "minRuntime": "0.17.0",
+  "minRuntime": "0.25.0",
   "pages": [
     { "name": "home", "path": "pages/home/index" },
     { "name": "settings", "path": "pages/settings/index" }
@@ -505,7 +506,7 @@ mod tests {
             Some("home")
         );
         assert!(manifest["tabBar"]["items"][0].get("pagePath").is_none());
-        assert_eq!(manifest["minRuntime"].as_str(), Some("0.17.0"));
+        assert_eq!(manifest["minRuntime"].as_str(), Some("0.25.0"));
     }
 
     #[test]
@@ -517,12 +518,12 @@ mod tests {
         write_file(
             temp.path(),
             "lxapp.json",
-            r#"{ "appId": "demo", "minRuntime": "0.17.0", "pages": [ { "name": "home", "path": "pages/home/index" } ] }"#,
+            r#"{ "appId": "demo", "minRuntime": "0.25.0", "pages": [ { "name": "home", "path": "pages/home/index" } ] }"#,
         );
         write_file(
             temp.path(),
             "node_modules/@lingxia/page-runtime/package.json",
-            r#"{ "name": "@lingxia/page-runtime", "version": "0.18.1" }"#,
+            r#"{ "name": "@lingxia/page-runtime", "version": "0.26.1" }"#,
         );
         fs::create_dir_all(&project.output_dir).unwrap();
 

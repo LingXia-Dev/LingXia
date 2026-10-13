@@ -29,8 +29,10 @@ my-lxapp/
   is only a fallback; the app registry's name wins. It declares no network
   hosts or privileges: those are [host grants](../native/permissions.md),
   unrestricted by default.
-- `minRuntime` — the lowest host SDK that may open the package; `lingxia new`
-  writes it and `lingxia upgrade` raises it. An older host refuses the
+- `minRuntime` — the lowest host SDK line (major.minor; patch is ignored)
+  that may open the package; `lingxia new` writes it and `lingxia upgrade`
+  raises it. The CLI builds only for lines from its supported floor up to
+  its own, and names the CLI to use otherwise. An older host refuses the
   package; detect that with `hostUpgradeRequired(error)` from
   `@lingxia/types/error` and ask the user to update the host app.
 - `lxapp.config.ts` — build config (view tooling, aliases, `staticDirs`).
