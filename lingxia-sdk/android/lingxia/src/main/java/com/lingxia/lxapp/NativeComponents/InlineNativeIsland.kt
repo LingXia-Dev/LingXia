@@ -16,6 +16,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import com.lingxia.lxapp.NativeComponents.Components.VideoComponent
 import com.lingxia.app.NativeApi
+import com.lingxia.lxapp.updateFrameLayoutParamsIfChanged
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.roundToInt
@@ -40,6 +41,8 @@ internal class InlineNativeIsland(
         clipChildren = true
     }
     private val nodes = linkedMapOf<String, IslandNode>()
+    private var stackDirty = false
+    private var paintOrder = emptyList<View>()
     private val touchDelegates = CompositeTouchDelegate(container).also { container.touchDelegate = it }
     private val revisions = mutableMapOf<String, Long>()
     private val roots = mutableMapOf<String, Map<String, Any?>>()
@@ -100,6 +103,7 @@ internal class InlineNativeIsland(
     }
 
     fun onWebViewScroll(scrollX: Int, scrollY: Int) {
+        if (scrollXPx == scrollX && scrollYPx == scrollY) return
         scrollXPx = scrollX
         scrollYPx = scrollY
         nodes.values.forEach { applyFrame(it) }
@@ -114,6 +118,8 @@ internal class InlineNativeIsland(
 
     fun teardown() {
         nodes.keys.toList().forEach(::removeNode)
+        paintOrder = emptyList()
+        stackDirty = false
         (container.parent as? ViewGroup)?.removeView(container)
         pendingOutgoing.clear()
         revisions.clear()
@@ -193,7 +199,12 @@ internal class InlineNativeIsland(
                     if ((asMap(node["ref"]) ?: node)["rootKey"] != rootKey) continue
                     val key = nodeKey(node) ?: continue
                     val order = (op["order"] as? Number)?.toInt() ?: continue
-                    nodes[key]?.order = order
+                    nodes[key]?.let {
+                        if (it.order != order) {
+                            it.order = order
+                            stackDirty = true
+                        }
+                    }
                 }
                 "reparent" -> {
                     val node = asMap(op["node"]) ?: continue
@@ -201,7 +212,13 @@ internal class InlineNativeIsland(
                     val key = nodeKey(node) ?: continue
                     val parent = asMap(op["parent"])
                     if (parent != null && parent["rootKey"] != rootKey) continue
-                    nodes[key]?.parentKey = parent?.get("nodeKey") as? String
+                    nodes[key]?.let {
+                        val parentKey = parent?.get("nodeKey") as? String
+                        if (it.parentKey != parentKey) {
+                            it.parentKey = parentKey
+                            stackDirty = true
+                        }
+                    }
                 }
             }
         }
@@ -236,7 +253,8 @@ internal class InlineNativeIsland(
             val ref = asMap(entry["ref"]) ?: return@forEach
             val rootKey = ref["rootKey"] as? String ?: return@forEach
             if (roots[rootKey]?.let { sameRootGeneration(it, ref) } == true) {
-                rootOrders[rootKey] = (entry["rootOrder"] as? Number)?.toInt() ?: Int.MAX_VALUE
+                val order = (entry["rootOrder"] as? Number)?.toInt() ?: Int.MAX_VALUE
+                if (rootOrders.put(rootKey, order) != order) stackDirty = true
             }
         }
         val entries = message["nodes"] as? List<*> ?: return
@@ -344,6 +362,7 @@ internal class InlineNativeIsland(
         }
         val item = factoryNode(key, rootKey, kind, authorId, automationId, parentKey, order, props)
         nodes[key] = item
+        stackDirty = true
         (item.view.parent as? ViewGroup)?.removeView(item.view)
         item.viewport.addView(item.view)
         container.addView(item.viewport)
@@ -358,6 +377,7 @@ internal class InlineNativeIsland(
         val patch = asMap(op["patch"]) ?: return
         existing.props = existing.props + patch
         applyProps(existing)
+        updateHitSlop(existing)
     }
 
     private fun factoryNode(
@@ -580,6 +600,9 @@ internal class InlineNativeIsland(
         node.view.accessibilityDelegate = object : View.AccessibilityDelegate() {
             override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
                 super.onInitializeAccessibilityNodeInfo(host, info)
+                // Publish identity for OS automation without making screen readers
+                // announce internal component ids as the accessible name.
+                info.viewIdResourceName = node.automationId ?: node.authorId
                 info.className = when (node.kind) {
                     "tappable" -> "android.widget.Button"
                     "text" -> "android.widget.TextView"
@@ -624,7 +647,7 @@ internal class InlineNativeIsland(
             (clipped.height() * density).roundToInt().coerceAtLeast(0))
         viewport.leftMargin = (clipped.left * density - scrollXPx).roundToInt()
         viewport.topMargin = (clipped.top * density - scrollYPx).roundToInt()
-        node.viewport.layoutParams = viewport
+        node.viewport.updateFrameLayoutParamsIfChanged(viewport)
         node.viewport.visibility = if (node.visible && !clipped.isEmpty) View.VISIBLE else View.GONE
         val left = ((node.rectX - clipped.left) * density).roundToInt()
         val top = ((node.rectY - clipped.top) * density).roundToInt()
@@ -634,23 +657,23 @@ internal class InlineNativeIsland(
         if (node.video != null) {
             // Player positions via translationX/Y; layout margins on the same
             // view would double-offset the picture away from the CSS rect.
-            node.video?.setFrame(
-                android.graphics.RectF(
-                    left.toFloat(),
-                    top.toFloat(),
-                    (left + width).toFloat(),
-                    (top + height).toFloat()
-                )
+            val frame = android.graphics.RectF(
+                left.toFloat(), top.toFloat(), (left + width).toFloat(), (top + height).toFloat()
             )
+            if (node.videoFrame != frame) {
+                node.video?.setFrame(frame)
+                node.videoFrame = frame
+            }
             return
         }
-        val params = (node.view.layoutParams as? FrameLayout.LayoutParams)
+        val params = (node.view.layoutParams as? FrameLayout.LayoutParams)?.let { FrameLayout.LayoutParams(it) }
             ?: FrameLayout.LayoutParams(width, height)
         params.width = width
         params.height = height
         params.leftMargin = left
         params.topMargin = top
-        node.view.layoutParams = params
+        node.view.updateFrameLayoutParamsIfChanged(params)
+        // Clip bounds can change the expanded hit target without resizing the view.
         updateHitSlop(node)
     }
 
@@ -676,9 +699,14 @@ internal class InlineNativeIsland(
     }
 
     private fun restack() {
+        if (!stackDirty) return
+        stackDirty = false
+        // Build adjacency once; looking up children by scanning all nodes at
+        // every depth made a geometry update quadratic in the island size.
+        val children = nodes.values.groupBy { it.parentKey }
         val ordered = mutableListOf<IslandNode>()
         fun append(parentKey: String?) {
-            nodes.values.filter { it.parentKey == parentKey }
+            children[parentKey].orEmpty()
                 .sortedWith(compareBy(
                     { if (parentKey == null) rootOrders[it.rootKey] ?: Int.MAX_VALUE else 0 },
                     { it.order },
@@ -690,6 +718,9 @@ internal class InlineNativeIsland(
                 }
         }
         append(null)
+        val nextOrder = ordered.map { it.viewport }
+        if (nextOrder == paintOrder) return
+        paintOrder = nextOrder
         ordered.forEachIndexed { index, node ->
             container.bringChildToFront(node.viewport)
             node.viewport.z = index.toFloat()
@@ -698,6 +729,7 @@ internal class InlineNativeIsland(
 
     private fun removeNode(key: String) {
         val node = nodes.remove(key) ?: return
+        stackDirty = true
         touchDelegates.remove(key)
         node.video?.unmount()
         container.removeView(node.viewport)
@@ -757,6 +789,7 @@ internal class InlineNativeIsland(
         var visible: Boolean = true,
         var clipRect: android.graphics.RectF? = null
     ) {
+        var videoFrame: android.graphics.RectF? = null
         val viewport = FrameLayout(view.context).apply {
             clipChildren = true
             clipToPadding = true

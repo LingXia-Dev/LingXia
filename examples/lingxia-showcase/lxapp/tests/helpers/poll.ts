@@ -62,15 +62,14 @@ export type Caught<T = unknown> =
   | { ok: true; value?: T; code?: undefined; message?: undefined; data?: undefined }
   | { ok: false; value?: undefined; code?: string; message: string; data?: unknown };
 
-/** Schedule `lx.reLaunch` without awaiting the torn-down eval context. */
+/** Wait for stack commitment before binding a new instance of the same route. */
 export async function relaunchFromLogic(
   app: TestApp,
   page: string,
   query?: Record<string, string>,
 ): Promise<void> {
-  await app.logic.eval(({ lx }, page, query) => {
-    void lx.reLaunch(query === null ? { page } : { page, query });
-    return 'scheduled';
+  await app.logic.eval(async ({ lx }, page, query) => {
+    await lx.reLaunch(query === null ? { page } : { page, query });
   }, page, query ?? null);
 }
 

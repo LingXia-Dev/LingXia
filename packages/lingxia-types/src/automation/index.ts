@@ -42,6 +42,7 @@ export const AUTOMATION_ERROR_CODES = [
   'E_PAGE_NOT_ACTIVE',
   /** The page has no WebView or current page to act on yet. */
   'E_PAGE_NOT_READY',
+  'E_DOCUMENT_CHANGED',
   /** A page action (`page.action`) rejected without a code of its own. `data: { action, cause }`. */
   'E_PAGE_ACTION',
   /** No element matched the selector at dispatch. */

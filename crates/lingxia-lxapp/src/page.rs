@@ -628,6 +628,11 @@ impl PageInstance {
         self.webview().is_some() && !self.is_discarded()
     }
 
+    #[cfg(target_os = "android")]
+    pub(crate) fn is_parked(&self) -> bool {
+        self.inner.state.lock().is_ok_and(|state| state.parked)
+    }
+
     /// Destroy the native WebView without unloading the page. Logic, `data`,
     /// query, and the instance stay; the next show recreates the document.
     pub(crate) fn discard_webview(&self) -> Result<(), LxAppError> {
@@ -727,12 +732,12 @@ impl PageInstance {
                 let page_weak_for_lx = page_weak_for_lx.clone();
                 async move {
                     let Some(inner) = page_weak_for_lx.upgrade() else {
-                        return None.into();
+                        return lingxia_webview::SchemeOutcome::Cancelled;
                     };
                     let page = PageInstance::from_inner(inner);
                     let lxapp = page.owning_lxapp();
                     if lxapp.status() == LxAppSessionStatus::Closed {
-                        return None.into();
+                        return lingxia_webview::SchemeOutcome::Cancelled;
                     }
                     lxapp.handle_lingxia_request(&page, req).into()
                 }
@@ -965,7 +970,7 @@ impl PageInstance {
             state.parked = true;
         }
         // Transparent so the host-owned page background shows through.
-        const PARKED_DOCUMENT: &str = "<!DOCTYPE html><html><head><meta charset=\"utf-8\">\
+        const PARKED_DOCUMENT: &str = "<!DOCTYPE html><html data-lingxia-parked><head><meta charset=\"utf-8\">\
              <style>html,body{background:transparent}</style></head><body></body></html>";
         if let Some(controller) = self.webview_controller()
             && let Err(err) =

@@ -40,9 +40,7 @@ export function createRootRuntimeState(): RootRuntimeState {
   };
 }
 
-export function publishCompiledRoot(options: {
-  compiled: CompiledNativeRoot;
-  rootRef: RootRef;
+interface RootGeometryOptions {
   state: RootRuntimeState;
   rootRect: { x: number; y: number; width: number; height: number };
   nodeRects: Record<string, { x: number; y: number; width: number; height: number }>;
@@ -52,6 +50,11 @@ export function publishCompiledRoot(options: {
   rootOrder?: number;
   viewportOffset?: { x: number; y: number };
   nowMs?: number;
+}
+
+export function publishCompiledRoot(options: RootGeometryOptions & {
+  compiled: CompiledNativeRoot;
+  rootRef: RootRef;
 }): { state: RootRuntimeState; messages: RootHostMessages } {
   const identified = identifyCompiledRoot(
     options.compiled,
@@ -75,6 +78,20 @@ export function publishCompiledRoot(options: {
       commit = next;
     }
   }
+  const published = publishRootGeometry({
+    ...options,
+    state: { ...options.state, identified, treeRevision },
+  });
+  published.messages.commit = commit;
+  return published;
+}
+
+/** Geometry-only updates keep node identity and the host's tree revision. */
+export function publishRootGeometry(options: RootGeometryOptions): {
+  state: RootRuntimeState; messages: RootHostMessages;
+} {
+  const { identified, treeRevision } = options.state;
+  if (!identified) throw new Error("Native geometry requires a published tree");
   const geometryRevision = options.state.geometryRevision + 1;
   const nodeRects = mapRectsToNodeKeys(identified, options.nodeRects);
   const nodeVisibility = mapValuesToNodeKeys(identified, options.nodeVisibility ?? {});
@@ -100,7 +117,6 @@ export function publishCompiledRoot(options: {
   return {
     state,
     messages: {
-      commit,
       geometry,
       ready: state.lease.phase === "active",
     },

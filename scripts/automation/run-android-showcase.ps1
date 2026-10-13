@@ -3,6 +3,7 @@ param(
   [ValidateSet('react', 'vue', 'all')]
   [string]$Framework = 'all',
   [string]$Device,
+  [string[]]$NativeFeature = @(),
   [int]$TimeoutSeconds = 600
 )
 
@@ -181,6 +182,9 @@ function Invoke-ProcessRestoreProbe {
 
 function Test-BenignAndroidSessionError {
   param([string]$Message)
+  # Servo reports canceled module fetches at error level after their native
+  # view has closed. Live-view missing handlers/assets remain failures.
+  if ($Message -match '^Fetching (module|classic) script failed (LoadCancelled|Load cancelled)($| \(UrlWithBlobClaim)') { return $true }
   # The image contract deliberately probes a missing file and reports ENOENT
   # through the host log; the test asserts that rejection separately.
   if ($Message -match 'readInfo failed.*missing\.png.*ENOENT') { return $true }
@@ -211,7 +215,7 @@ function Get-UnexpectedAndroidSessionErrors {
 
   $unexpected = @(
     $entries | Where-Object {
-      $message = "{0} {1}" -f ([string]$_.data.message), ([string]$_.data.path)
+      $message = ("{0} {1}" -f ([string]$_.data.message), ([string]$_.data.path)).Trim()
       -not (Test-BenignAndroidSessionError $message)
     }
   )
@@ -287,6 +291,7 @@ try {
         $currentFramework
       )
       if (-not [string]::IsNullOrWhiteSpace($Device)) { $devArguments += @('--device', $Device) }
+      foreach ($feature in $NativeFeature) { $devArguments += @('--native-feature', $feature) }
       # Returns once the session is ready, or fails having stopped it.
       Invoke-Checked $lingxia $devArguments
       $started = $true

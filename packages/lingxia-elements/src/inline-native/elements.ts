@@ -10,6 +10,7 @@ import {
   applyHostLeaseMessage,
   createRootRuntimeState,
   publishCompiledRoot,
+  publishRootGeometry,
   rootFallbackAllowed,
   type RootRuntimeState,
 } from "./runtime.js";
@@ -106,6 +107,8 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   private resizeObserver?: ResizeObserver;
   private stopLayoutObservation?: () => void;
   private lastResult: CompileInlineNativeResult | null = null;
+  private compileDirty = true;
+  private lastGeometry = "";
   private styleDiagnostics = new Set<string>();
   private rootKey = nextOpaqueKey("root");
   private rootEpoch = 1;
@@ -173,7 +176,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     }
     document.addEventListener("scroll", this.onViewportGeometryChanged, true);
     window.addEventListener("resize", this.onViewportGeometryChanged);
-    this.stopLayoutObservation = observeNativeLayout(this, () => this.scheduleCompile());
+    this.stopLayoutObservation = observeNativeLayout(this, (change) => this.scheduleCompile(change === "style"));
     this.scheduleCompile();
   }
 
@@ -182,6 +185,8 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     const root = this.runtime.identified?.rootRef ?? this.rootRef();
     sendNativeComponentMessage({ id: this.rootKey, action: "root.destroy", root });
     this.runtime = createRootRuntimeState();
+    this.lastGeometry = "";
+    this.compileDirty = true;
     this.rootEpoch += 1;
     this.observer?.disconnect();
     this.observer = undefined;
@@ -209,9 +214,10 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     }
   }
 
-  private scheduleCompile(): void {
+  private scheduleCompile(recompile = true): void {
+    this.compileDirty ||= recompile;
     if (typeof requestAnimationFrame !== "function") {
-      this.compileNow();
+      this.flushCompile();
       return;
     }
     // A hidden document never services animation frames — an occluded or
@@ -221,7 +227,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
       if (this.pending.timer != null) return;
       this.pending.timer = setTimeout(() => {
         this.pending.timer = null;
-        this.compileNow();
+        this.flushCompile();
       }, 0);
       return;
     }
@@ -232,7 +238,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
         clearTimeout(this.pending.timer);
         this.pending.timer = null;
       }
-      this.compileNow();
+      this.flushCompile();
     });
     // Browsers may defer animation frames while a window is occluded or while
     // automation owns the frame clock. Geometry must still reach the native
@@ -243,24 +249,32 @@ export class LxNativeRootElement extends LxNativeBaseElement {
         cancelAnimationFrame(this.pending.frame);
         this.pending.frame = null;
       }
-      this.compileNow();
+      this.flushCompile();
     }, 50);
   }
 
   compileNow(): CompileInlineNativeResult {
+    this.compileDirty = true;
+    return this.flushCompile();
+  }
+
+  private flushCompile(): CompileInlineNativeResult {
+    const recompile = this.compileDirty || !this.lastResult?.ok || !this.runtime.identified;
+    this.compileDirty = false;
     // Measure author CSS synchronously, then suppress its duplicate paint before the browser frame.
     const measuring = this.hasAttribute("data-lx-native-measuring");
     this.setAttribute("data-lx-native-measuring", "");
     try {
-      return this.compileMeasured();
+      return this.compileMeasured(recompile);
     } finally {
       if (!measuring) this.removeAttribute("data-lx-native-measuring");
     }
   }
 
-  private compileMeasured(): CompileInlineNativeResult {
-    const author = collectAuthorTreeFromElement(this);
-    const result = compileInlineNativeRoot(author, { rootRef: this.rootRef() });
+  private compileMeasured(recompile: boolean): CompileInlineNativeResult {
+    const result = recompile || !this.lastResult
+      ? compileInlineNativeRoot(collectAuthorTreeFromElement(this), { rootRef: this.rootRef() })
+      : this.lastResult;
     this.lastResult = result;
     const nextDiagnostics = new Set(result.diagnostics.map((diagnostic) => diagnostic.message));
     const previousDiagnostics = this.styleDiagnostics;
@@ -282,9 +296,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     } else {
       const geometry = measureNativeNodeGeometry(this, isIOS());
       const iosComposition = this.iosComposition.measure(this);
-      const published = publishCompiledRoot({
-        compiled: result.root,
-        rootRef: this.rootRef(),
+      const geometryOptions = {
         state: this.runtime,
         rootRect: elementContentRect(this),
         rootVisible: elementIsVisible(this),
@@ -293,7 +305,10 @@ export class LxNativeRootElement extends LxNativeBaseElement {
         nodeClipStacks: geometry.clipStacks,
         rootOrder: nativeRootOrder(this),
         viewportOffset: pageViewportOffset(),
-      });
+      };
+      const published = recompile
+        ? publishCompiledRoot({ ...geometryOptions, compiled: result.root, rootRef: this.rootRef() })
+        : publishRootGeometry(geometryOptions);
       // Adopt the published state only once the host has actually been told about
       // it: a dropped first commit carries every mount operation, and the next
       // compile would only produce a diff against a tree the host never saw.
@@ -316,7 +331,16 @@ export class LxNativeRootElement extends LxNativeBaseElement {
           }
         }
       }
-      sendNativeComponentMessage({ id: this.rootKey, ...published.messages.geometry });
+      // Revisions order deliveries; they are not themselves a geometry change.
+      const { revision, ...geometryPayload } = published.messages.geometry;
+      const geometryKey = JSON.stringify(geometryPayload);
+      if (published.messages.commit || geometryKey !== this.lastGeometry) {
+        if (sendNativeComponentMessage({ id: this.rootKey, ...geometryPayload, revision })) {
+          this.lastGeometry = geometryKey;
+        } else {
+          this.scheduleCompile(false);
+        }
+      }
       this.dispatchEvent(
         new CustomEvent(STRUCTURE_COMPILED_EVENT, {
           detail: result.root,
@@ -350,6 +374,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     }
     if (message.action === "root.resyncRequired") {
       this.runtime = createRootRuntimeState();
+      this.lastGeometry = "";
       this.updateFallbackVisibility(true);
       this.scheduleCompile();
       return;
@@ -419,10 +444,11 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     if (!root) return;
     sendNativeComponentMessage({ id: this.rootKey, action: "root.destroy", root });
     this.runtime = createRootRuntimeState();
+    this.lastGeometry = "";
     this.rootEpoch += 1;
   }
 
-  private onViewportGeometryChanged = (): void => this.scheduleCompile();
+  private onViewportGeometryChanged = (event: Event): void => this.scheduleCompile(event.type === "resize");
 
   private syncResizeObservation(): void {
     if (!this.resizeObserver) return;

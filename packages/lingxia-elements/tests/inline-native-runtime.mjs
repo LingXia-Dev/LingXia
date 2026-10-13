@@ -13,6 +13,7 @@ import {
   applyHostLeaseMessage,
   createRootRuntimeState,
   publishCompiledRoot,
+  publishRootGeometry,
 } from "../dist/inline-native/runtime.js";
 
 const compiled = compileInlineNativeRoot({
@@ -145,9 +146,7 @@ assert.equal(published.messages.geometry.nodes[0].contentRect.width, 320);
 assert.equal(published.messages.geometry.nodes[0].visible, false);
 assert.equal(published.messages.geometry.nodes[0].clipStack.length, 1);
 assert.equal(published.messages.geometry.roots[0].rootOrder, 3);
-const scrolled = publishCompiledRoot({
-  compiled: compiled.root,
-  rootRef,
+const scrolled = publishRootGeometry({
   state: published.state,
   rootRect: { x: 0, y: 40, width: 320, height: 180 },
   nodeRects: { hero: { x: 0, y: 40, width: 320, height: 180 } },
@@ -156,6 +155,9 @@ assert.equal(scrolled.messages.commit, undefined);
 assert.equal(scrolled.messages.geometry.revision, published.messages.geometry.revision + 1);
 assert.equal(scrolled.messages.geometry.roots[0].basisTreeRevision, published.messages.commit.revision);
 assert.equal(scrolled.messages.geometry.nodes[0].contentRect.y, 40);
+assert.equal(scrolled.state.identified, published.state.identified, "scrolling must preserve the identified tree");
+assert.throws(() => publishRootGeometry({ state: createRootRuntimeState(), nodeRects: {}, rootRect: {} }),
+  /requires a published tree/);
 
 const leased = applyHostLeaseMessage(
   published.state,
