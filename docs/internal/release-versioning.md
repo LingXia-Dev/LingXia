@@ -50,7 +50,8 @@ A change to CLI-generated output that a host line inside the window cannot read
 must either emit the old form for that `minRuntime` or raise
 `BUILD_TARGET_FLOOR` in the same change and say so in the release notes. CLI-
 generated output: dist `lxapp.json`, injected page HTML, `logic.js` wrapper and
-registration calls, package layout.
+registration calls, package layout. View entry scaffolds count too: they import
+`@lingxia/*` subpaths, so a new import ties the build to that npm line.
 
 ## Release commands
 
