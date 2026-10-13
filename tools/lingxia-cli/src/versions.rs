@@ -75,6 +75,42 @@ pub fn lxapp_min_runtime(manifest: &serde_json::Value) -> anyhow::Result<String>
     Ok(raw.to_string())
 }
 
+/// Oldest host line this CLI builds for. Raise it in the same change that
+/// makes build output unreadable to that line; otherwise gate the new output
+/// on `minRuntime`.
+pub const BUILD_TARGET_FLOOR: (u32, u32) = (0, 25);
+
+/// Refuses a `minRuntime` outside the host lines this CLI can build for: below
+/// [`BUILD_TARGET_FLOOR`] or above the CLI's own line. Patch never matters.
+pub fn ensure_build_target(min_runtime: &str) -> anyhow::Result<()> {
+    let target = numeric_line(min_runtime);
+    let (floor_major, floor_minor) = BUILD_TARGET_FLOOR;
+    if target < BUILD_TARGET_FLOOR {
+        anyhow::bail!(
+            "lxapp.json minRuntime {min_runtime} is older than this CLI supports \
+             (>= {floor_major}.{floor_minor}); build it with a CLI from its line: \
+             `lingxia upgrade --version {}.{}.0`",
+            target.0,
+            target.1
+        );
+    }
+    let cli = numeric_line(env!("LINGXIA_RUST_CRATE_VERSION"));
+    if target > cli {
+        anyhow::bail!(
+            "lxapp.json minRuntime {min_runtime} is newer than this CLI ({}.{}); \
+             run `lingxia upgrade`",
+            cli.0,
+            cli.1
+        );
+    }
+    Ok(())
+}
+
+fn numeric_line(version: &str) -> (u32, u32) {
+    let (major, minor) = major_minor(version);
+    (major.parse().unwrap_or(0), minor.parse().unwrap_or(0))
+}
+
 fn major_minor(version: &str) -> (&str, &str) {
     let mut parts = version.split('.');
     (
@@ -117,6 +153,19 @@ mod tests {
     fn min_runtime_floor_is_the_compat_line_patch_zero() {
         let (major, minor) = major_minor(env!("LINGXIA_RUST_CRATE_VERSION"));
         assert_eq!(min_runtime_floor(), format!("{major}.{minor}.0"));
+    }
+
+    #[test]
+    fn build_target_window_spans_floor_to_cli_line() {
+        let (floor_major, floor_minor) = BUILD_TARGET_FLOOR;
+        let (major, minor) = numeric_line(env!("LINGXIA_RUST_CRATE_VERSION"));
+        assert!(ensure_build_target(&format!("{floor_major}.{floor_minor}.0")).is_ok());
+        assert!(ensure_build_target(&format!("{floor_major}.{floor_minor}.9")).is_ok());
+        assert!(ensure_build_target(&format!("{major}.{minor}.99")).is_ok());
+        let below = ensure_build_target(&format!("{floor_major}.{}.0", floor_minor - 1));
+        assert!(below.unwrap_err().to_string().contains("--version"));
+        let above = ensure_build_target(&format!("{major}.{}.0", minor + 1));
+        assert!(above.unwrap_err().to_string().contains("lingxia upgrade"));
     }
 
     #[test]

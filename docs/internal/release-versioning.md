@@ -39,6 +39,19 @@ published patch. Scaffolds use `~M.m.0`, allowing packages ahead of or behind
 the base patch to resolve on the same minor line. The release scripts currently
 version all npm packages together; there is no `npm:<package>` component.
 
+## `minRuntime` is a build target
+
+`minRuntime` gates on major.minor everywhere; patches never gate. The host
+refuses a package whose line is above its own. The CLI builds only for lines in
+`[BUILD_TARGET_FLOOR, CLI line]` (`tools/lingxia-cli/src/versions.rs`) and
+refuses others with the CLI to use instead.
+
+A change to CLI-generated output that a host line inside the window cannot read
+must either emit the old form for that `minRuntime` or raise
+`BUILD_TARGET_FLOOR` in the same change and say so in the release notes. CLI-
+generated output: dist `lxapp.json`, injected page HTML, `logic.js` wrapper and
+registration calls, package layout.
+
 ## Release commands
 
 [version.sh](../../scripts/release/version.sh) and the

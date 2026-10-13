@@ -353,7 +353,8 @@ impl UpdatePackageInfo {
     }
 }
 
-/// Refuses `target_name@version` when this runtime is below its floor.
+/// Refuses `target_name@version` when this runtime's major.minor line is below
+/// its floor. Patches add no API surface, so they never gate.
 pub fn ensure_runtime_satisfies(
     min_runtime: &str,
     current_runtime_version: &str,
@@ -371,11 +372,11 @@ pub fn ensure_runtime_satisfies(
             update_version: version.to_string(),
             runtime_version: min_runtime.to_string(),
         })?;
-    if current < required {
+    if (current.major, current.minor) < (required.major, required.minor) {
         return Err(RuntimeCompatibilityError::RequiresRuntimeUpgrade {
             target: target_name.to_string(),
             update_version: version.to_string(),
-            min_runtime: required.to_string(),
+            min_runtime: format!("{}.{}", required.major, required.minor),
             current_runtime_version: current.to_string(),
         });
     }
@@ -428,18 +429,18 @@ mod tests {
     };
 
     #[test]
-    fn runtime_floor_is_a_full_semver_comparison() {
+    fn runtime_floor_compares_major_minor_only() {
         let check =
             |required, current| ensure_runtime_satisfies(required, current, "demo", "1.0.0");
         assert!(check("0.17.0", "0.17.0").is_ok());
         assert!(check("0.17.0", "0.17.3").is_ok());
+        assert!(check("0.17.3", "0.17.0").is_ok());
         assert!(check("0.17.0", "1.0.0").is_ok());
         assert!(matches!(
             check("0.18.0", "0.17.9"),
             Err(RuntimeCompatibilityError::RequiresRuntimeUpgrade { .. })
         ));
-        // A pre-release host sorts below its own line's `M.m.0` floor.
-        assert!(check("0.18.0", "0.18.0-rc.1").is_err());
+        assert!(check("1.0.0", "0.99.0").is_err());
         assert!(matches!(
             check("seventeen", "0.17.0"),
             Err(RuntimeCompatibilityError::InvalidMinRuntime { .. })

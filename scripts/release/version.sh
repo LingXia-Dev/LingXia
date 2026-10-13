@@ -36,7 +36,7 @@ With --component all (default), this updates:
   - LingXia Runner crate versions + macOS Info.plist (tracks the CLI version)
   - example native host LingXia crate dependency versions
   - example native host Cargo.lock LingXia package versions
-  - example lxapp.json minRuntime (raised to the new major.minor line)
+  - example and built-in lxapp.json minRuntime (raised to the new major.minor line)
   - package versions under packages/*
   - @lingxia/browser-shell-webui (crates/lingxia-browser-shell/webui)
   - internal @lingxia/* package dependency versions in published package.json files
@@ -307,9 +307,9 @@ else:
 PY
 }
 
-# The example lxapps resolve @lingxia/* from the workspace, and the CLI refuses
-# to build an lxapp whose minRuntime is behind the installed packages, so every
-# minor bump has to move the examples' minRuntime with it (same rule as
+# The example and built-in lxapps resolve @lingxia/* from the workspace, and
+# the CLI refuses to build an lxapp whose minRuntime is behind the installed
+# packages, so every minor bump has to move their minRuntime with it (same rule as
 # `lingxia upgrade`: M.m.0, never lowered).
 update_example_min_runtime() {
   python3 - "$ROOT_DIR" "$VERSION" "$DRY_RUN" <<'PY'
@@ -328,7 +328,12 @@ def key(version):
     return (int(parts[0]), int(parts[1]))
 
 
-manifests = sorted(root.glob("examples/*/lxapp.json")) + sorted(root.glob("examples/*/lxapp/lxapp.json"))
+manifests = (
+    sorted(root.glob("examples/*/lxapp.json"))
+    + sorted(root.glob("examples/*/lxapp/lxapp.json"))
+    # Built-in lxapps ship inside the SDK of the same line.
+    + [root / "crates/lingxia-browser-shell/webui/lxapp.json", root / "packages/lingxia-terminal-settings/lxapp.json"]
+)
 pattern = re.compile(r'("minRuntime"\s*:\s*")([^"]+)(")')
 for manifest in manifests:
     text = manifest.read_text()
