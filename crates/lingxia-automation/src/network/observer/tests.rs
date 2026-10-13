@@ -425,3 +425,85 @@ fn queue_overflow_marks_records_and_the_recent_list_is_bounded() {
     }
     assert_eq!(state.recent.len(), MAX_RECENT);
 }
+
+#[test]
+fn a_gzip_bomb_inflates_only_to_the_display_cap() {
+    let mut state = recording(Some(APP));
+    let wire = gzip(&vec![b'a'; capture::MAX_TEXT_BODY_BYTES * 8]);
+    assert!(wire.len() < capture::MAX_TEXT_BODY_BYTES);
+    fetch(&mut state, 1, "https://a.test/bomb");
+    head(
+        &mut state,
+        1,
+        200,
+        &[("content-type", "text/plain"), ("content-encoding", "gzip")],
+    );
+    chunk(&mut state, 1, &wire);
+    end(&mut state, 1, NetworkOutcome::Completed);
+
+    let record = &state.dev.as_ref().unwrap().records[0];
+    let (body, cut) = record.decoded_body(capture::MAX_TEXT_BODY_BYTES);
+    assert_eq!(body.len(), capture::MAX_TEXT_BODY_BYTES);
+    assert!(cut);
+    let stopped = state.stop(DEV_SESSION_OWNER).unwrap();
+    assert_eq!(stopped.requests[0]["responseBodyTruncated"], true);
+    let scenario = stopped.scenario.to_scenario("rec");
+    assert!(scenario["rules"][0]["body"].is_null(), "{scenario}");
+}
+
+#[test]
+fn ndjson_lines_survive_chunk_splits_and_crlf() {
+    let mut state = recording(Some(APP));
+    fetch(&mut state, 1, "https://a.test/stream");
+    head(
+        &mut state,
+        1,
+        200,
+        &[("content-type", "application/x-ndjson")],
+    );
+    chunk(&mut state, 1, b"{\"n\":1}\r\n{\"n\"");
+    chunk(&mut state, 1, b":2}\r\n\r\n{\"token\":\"Bearer abc\"}");
+    end(&mut state, 1, NetworkOutcome::Completed);
+
+    let stopped = state.stop(DEV_SESSION_OWNER).unwrap();
+    let record = &stopped.requests[0];
+    assert_eq!(
+        record["lines"],
+        json!(["{\"n\":1}", "{\"n\":2}", "{\"token\":\"Bearer ***\"}"])
+    );
+    assert_eq!(record["chunkLog"].as_array().unwrap().len(), 2);
+    assert!(
+        stopped.scenario.to_scenario("rec")["rules"][0]["note"]
+            .as_str()
+            .unwrap()
+            .contains("streaming body")
+    );
+}
+
+#[test]
+fn credential_headers_and_redirect_targets_are_masked() {
+    let mut state = recording(Some(APP));
+    let mut start = start_event(1, Some(APP), "fetch", "https://u:p@a.test/x");
+    if let NetworkEvent::RequestStart(start) = &mut start {
+        start.headers = headers(&[
+            ("proxy-authorization", "Basic dXNlcjpwYXNz"),
+            ("x-api-key", "k-123"),
+            ("cookie", "sid=1"),
+        ]);
+    }
+    state.apply(start, false, 0);
+    head(
+        &mut state,
+        1,
+        302,
+        &[("location", "https://b.test/cb?code=1&access_token=t-456")],
+    );
+    end(&mut state, 1, NetworkOutcome::Completed);
+
+    let stopped = state.stop(DEV_SESSION_OWNER).unwrap();
+    let record = stopped.requests[0].to_string();
+    for secret in ["dXNlcjpwYXNz", "k-123", "sid=1", "t-456", "u:p@"] {
+        assert!(!record.contains(secret), "{secret} leaked: {record}");
+    }
+    assert!(record.contains("code=1"), "{record}");
+}

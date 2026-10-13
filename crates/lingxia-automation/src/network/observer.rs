@@ -546,6 +546,8 @@ fn headers_json(headers: &[(String, String)]) -> Value {
             .map(|(name, value)| {
                 let value = if capture::is_secret_field(name) {
                     REDACTED.to_string()
+                } else if name.eq_ignore_ascii_case("location") {
+                    capture::redact_url(value, REDACTED)
                 } else {
                     capture::redact_text(value).into_owned()
                 };

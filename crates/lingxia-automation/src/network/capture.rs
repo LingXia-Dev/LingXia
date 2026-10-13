@@ -49,7 +49,7 @@ const MAX_CAPTURED_BYTES: usize = 8 * 1024 * 1024;
 /// Names whose values are never recorded or logged, as JSON fields and as
 /// query parameters. Compared case-insensitively with `_` and `-` removed,
 /// so `access_token`, `accessToken` and `Access-Token` all match.
-const SECRET_NAMES: [&str; 14] = [
+const SECRET_NAMES: [&str; 15] = [
     "token",
     "accesstoken",
     "refreshtoken",
@@ -59,6 +59,7 @@ const SECRET_NAMES: [&str; 14] = [
     "clientsecret",
     "password",
     "authorization",
+    "proxyauthorization",
     "session",
     "sessionid",
     "cookie",
