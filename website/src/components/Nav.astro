@@ -1,6 +1,6 @@
 ---
 import Logo from './Logo.astro';
-import { withBase, GITHUB_URL } from '~/lib/url';
+import { withBase, GITHUB_URL, guideUrl } from '~/lib/url';
 import { langHome, type Lang, type T } from '~/i18n/ui';
 
 interface Props {
@@ -10,14 +10,15 @@ interface Props {
 const { t, lang } = Astro.props;
 
 const links = [
+  { href: '#development', label: t.nav.development },
   { href: '#architecture', label: t.nav.architecture },
   { href: '#features', label: t.nav.features },
-  { href: '#development', label: t.nav.development },
   { href: '#build', label: t.nav.build },
   { href: '#ai', label: t.nav.ai },
 ];
 const home = withBase(langHome(lang));
-const docs = withBase(lang === 'zh' ? '/zh/guide/introduction' : '/guide/introduction');
+const docs = guideUrl(lang, 'introduction');
+const start = guideUrl(lang, 'getting-started');
 ---
 
 <header
@@ -95,7 +96,7 @@ const docs = withBase(lang === 'zh' ? '/zh/guide/introduction' : '/guide/introdu
         </svg>
       </a>
 
-      <a href={docs} class="btn btn-primary hidden h-9 px-4 py-0 text-sm md:inline-flex">
+      <a href={start} class="btn btn-primary hidden h-9 px-4 py-0 text-sm md:inline-flex">
         {t.nav.getStarted}
       </a>
 
@@ -131,7 +132,7 @@ const docs = withBase(lang === 'zh' ? '/zh/guide/introduction' : '/guide/introdu
       <a href={docs} class="rounded-lg px-3 py-2.5 text-sm font-medium text-fg-muted hover:bg-fg/5 hover:text-fg">{t.nav.docs}</a>
       <div class="mt-2 flex items-center gap-2">
         <a href={GITHUB_URL} target="_blank" rel="noopener" class="btn btn-ghost flex-1 text-sm">{t.nav.github}</a>
-        <a href={docs} class="btn btn-primary flex-1 text-sm">{t.nav.getStarted}</a>
+        <a href={start} class="btn btn-primary flex-1 text-sm">{t.nav.getStarted}</a>
       </div>
       <div class="mt-2 flex items-center gap-2 text-sm">
         <a href={withBase(langHome('en'))} class={lang === 'en' ? 'font-semibold text-jade-600' : 'text-fg-dim'}>English</a>

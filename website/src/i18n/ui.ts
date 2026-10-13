@@ -33,8 +33,9 @@ export const ui = {
       titleC: 'on every platform.',
       subtitle:
         'LingXia is a Rust-powered runtime for building page-based lxapps and native host apps. One codebase ships to Android, iOS, macOS, Windows, and HarmonyOS — with UI rendering and business logic kept cleanly apart.',
-      installLabel: 'Install the CLI',
       ctaPrimary: 'Get started',
+      mockTitle: 'Hello, lxapp',
+      mockSubtitle: 'View renders · Logic owns state',
       ctaSecondary: 'Star on GitHub',
       runtimeNote: 'MIT licensed · Rust runtime · React, Vue, or HTML views',
       copy: 'Copy',
@@ -214,7 +215,6 @@ export const ui = {
     cta: {
       title: 'Build your first lxapp today.',
       subtitle: 'One command to install, one to create, one to run.',
-      installLabel: 'Install the CLI',
       ctaPrimary: 'Read the quick start',
       ctaSecondary: 'Browse the source',
     },
@@ -265,8 +265,9 @@ export const ui = {
       titleC: '运行。',
       subtitle:
         'LingXia 是由 Rust 驱动的运行时，用于构建页面式 lxapp 和原生宿主应用。一套代码即可交付到 Android、iOS、macOS、Windows 与 HarmonyOS——界面渲染与业务逻辑彻底分离。',
-      installLabel: '安装命令行工具',
       ctaPrimary: '开始使用',
+      mockTitle: '你好，lxapp',
+      mockSubtitle: 'View 负责渲染 · Logic 持有状态',
       ctaSecondary: '在 GitHub 加星',
       runtimeNote: 'MIT 许可 · Rust 运行时 · React / Vue / HTML 视图',
       copy: '复制',
@@ -446,7 +447,6 @@ export const ui = {
     cta: {
       title: '今天就构建你的第一个 lxapp。',
       subtitle: '一条命令安装，一条命令创建，一条命令运行。',
-      installLabel: '安装命令行工具',
       ctaPrimary: '阅读快速开始',
       ctaSecondary: '浏览源码',
     },

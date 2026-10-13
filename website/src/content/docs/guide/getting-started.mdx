@@ -88,7 +88,7 @@ lxdev logs -f         # follow native + webview + logic logs
 lxdev lxapp nav to home
 ```
 
-`lxdev` ships with the CLI and discovers live sessions through a per-user local broker. With one session it connects automatically from any directory; with several sessions, select one using `lxdev --session <id-or-target> ...`.
+`lxdev` ships with the CLI and discovers live sessions through a per-user local broker. Inside a project it connects to that project's session; elsewhere it uses the only running session, or select one using `lxdev --session <id-or-target> ...`.
 
 See the [CLI](../cli/) for the `lingxia` / `lxdev` split, and [Development workflow](../development-workflow/) for the edit → save → interact → assert → logs loop.
 

@@ -17,7 +17,7 @@ The public declarations are not maintained as a second handwritten API tree:
 2. TypeScript-only contracts—such as semantic unions, callbacks, handles, and lifecycle metadata—are declared alongside those bindings.
 3. `rong-typegen` generates `packages/lingxia-types/src/generated/logic.ts` and the DOM-free Logic Web declarations.
 4. The generated outputs are committed and published as `@lingxia/types`, so consumers do not need Rust or the generator.
-5. This website reads `@lingxia/types` at build time — the sibling package in this repository when present, otherwise the pinned install — and emits one **Logic JS API** page per capability group.
+5. This website reads `packages/lingxia-types` in this repository at build time and emits one **Logic JS API** page per capability group.
 
 :::note
 The generated pages keep identifiers and type signatures in their source language. When browsing them in Chinese, the information notice means “shared generated reference,” not “this content is unsupported.”

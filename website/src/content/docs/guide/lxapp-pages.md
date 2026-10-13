@@ -50,14 +50,14 @@ export default function Home() {
 }
 ```
 
-The first bridge snapshot may be empty while the page connects. Guard required nested data or render a skeleton until it exists. Keep transient presentation state such as hover or an open popover in the View; keep business state and drafts that must survive remounts in Logic.
+The page mounts once its first state arrives, so `data` is whole from the first render. Keep transient presentation state such as hover or an open popover in the View; keep business state and drafts that must survive remounts in Logic.
 
 ## Types and platform APIs
 
-Install `@lingxia/types` as a development dependency. Its declarations are global in Logic—there is no import for `lx`, `Page`, or `App`.
+`lingxia new` adds `@lingxia/types` as a development dependency on the CLI's version line. Its declarations are global in Logic—there is no import for `lx`, `Page`, or `App`.
 
 ```bash
-npm install --save-dev @lingxia/types
+npm install --save-dev @lingxia/types@<lingxia-version>
 ```
 
 Logic includes standard Web APIs such as `fetch`, timers, URL, streams, and console, but it has no DOM. Network hosts and privilege classes are host grants, not `lxapp.json` fields — the default (no provider) allows public network and every privilege class; a registered provider is the only path that restricts. `lingxia.yaml` carries no permission settings. Existing non-public address restrictions still apply.
@@ -87,14 +87,14 @@ Component callbacks are not uniform:
 |---|---|
 | Island nodes (`LxNativeButton`, `LxVideo`, Root) | **Payload first** — `onPress(({ source }) => …)`, `onTimeUpdate(({ currentTime }) => …)`. HTML still reads `CustomEvent.detail`. |
 | `LxPicker` | **Resolved value** — `string \| string[]` |
-| `LxMediaSwiper` | Raw DOM `CustomEvent` — `event.detail.index` |
+| `LxMediaSwiper` | **Payload first** — `onChange(({ index }) => …)`. HTML still reads `CustomEvent.detail`. |
 | `LxNavigator` | Raw DOM `CustomEvent` |
 
 Use the generated [Components reference](../../reference/components/) for attributes. Island structure and seek/controls contracts live in the LingXia skill's `lxapp/components.md`.
 
 ## Adapt to the surface
 
-Use CSS or container queries for spacing and column changes. When the interaction model changes, subscribe in Logic with `lx.surface.watchContext`, replicate the serializable context through `setData`, and select Compact versus Workspace with `sizeClass` **and** `isDesktop()` — `regular` is not desktop. See [Adaptive surfaces](../adaptive-surfaces/).
+Use CSS or container queries for spacing and column changes. When the interaction model changes, select Compact versus Workspace in the View with `useLxHost()` — `sizeClass` **and** `formFactor`, since `regular` is not desktop. Subscribe with `lx.surface.watchContext` only when Logic itself acts on the size. See [Adaptive surfaces](../adaptive-surfaces/).
 
 ## Develop and verify
 

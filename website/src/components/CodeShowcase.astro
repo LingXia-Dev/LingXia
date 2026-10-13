@@ -19,8 +19,6 @@ const samples: Record<string, { copy: string; lines: Line[] }> = {
       { kind: 'cmd', text: 'lingxia new my-lxapp -t lxapp -y' },
       { kind: 'cmd', text: 'cd my-lxapp' },
       { kind: 'cmd', text: 'lingxia dev' },
-      { kind: 'out', text: 'Building lxapp View + Logic…' },
-      { kind: 'out', text: 'Launching LingXia Runner' },
     ],
   },
   native: {
@@ -31,20 +29,19 @@ const samples: Record<string, { copy: string; lines: Line[] }> = {
       { kind: 'cont', text: '--package-id com.example.myapp -y' },
       { kind: 'cmd', text: 'cd my-app' },
       { kind: 'cmd', text: 'lingxia doctor --platform macos' },
-      { kind: 'out', text: 'macOS toolchain ready' },
       { kind: 'cmd', text: 'lingxia dev' },
     ],
   },
   skill: {
-    copy: 'lingxia new my-app',
+    copy: 'lingxia new my-app -t lxapp -y',
     lines: [
       { kind: 'comment', text: '# Claude Code, Codex CLI, Cursor, any agent that reads AGENTS.md' },
-      { kind: 'cmd', text: 'lingxia new my-app' },
+      { kind: 'cmd', text: 'lingxia new my-app -t lxapp -y' },
       { kind: 'out', text: 'Setting up AI tooling...' },
       { kind: 'out', text: 'Installed the LingXia skill to ~/.agents/skills/lingxia' },
       { kind: 'comment', text: '# every later command keeps it in step' },
       { kind: 'cmd', text: 'lingxia upgrade' },
-      { kind: 'out', text: 'Updated the installed LingXia agent skill (0.19.0 -> 0.20.0).' },
+      { kind: 'out', text: 'Updated the installed LingXia agent skill (0.24.0 -> 0.25.0).' },
     ],
   },
 };

@@ -17,7 +17,7 @@ sidebar:
 2. 语义 union、callback、handle、生命周期等仅存在于 TypeScript 的契约，也与 bindings 一起声明。
 3. `rong-typegen` 自动生成 `packages/lingxia-types/src/generated/logic.ts` 和不依赖 DOM 的 Logic Web 声明。
 4. 生成结果会提交到仓库并发布为 `@lingxia/types`，使用者不需要安装 Rust 或生成器。
-5. Website 在构建时读取 `@lingxia/types`——本仓库中的兄弟包优先，否则用锁定安装的版本——按能力分组产出 **Logic JS API** 页面。
+5. Website 在构建时读取本仓库的 `packages/lingxia-types`，按能力分组产出 **Logic JS API** 页面。
 
 :::note
 自动生成页会保留 API 标识符和类型签名的原文。中文站中的提示表达的是“中英文共用同一份生成 Reference”，不是“此内容不支持你的语言”。

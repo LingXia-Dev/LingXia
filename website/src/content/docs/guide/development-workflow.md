@@ -69,14 +69,12 @@ The command set is dynamic by project type. Use `lxdev <family> <command> --help
 
 ## Multiple sessions
 
-One live session is selected automatically, even when `lxdev` runs outside the project directory. If several are live, `lxdev` refuses to guess:
+Without `--session`, `lxdev` uses the current project's session; outside any project it uses the only running session. Otherwise select one:
 
 ```bash
 lxdev session
 lxdev --session ios lxapp current
 ```
-
-The global selector must appear before the command family.
 
 ## Keep repeatable behavior as tests
 

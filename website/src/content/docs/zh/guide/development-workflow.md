@@ -68,14 +68,12 @@ lxdev session                # 运行中的 session 及其状态
 
 ## 多 session 选择
 
-只有一个 live session 时，即使在项目目录之外运行，`lxdev` 也会自动选择。存在多个 session 时，它会拒绝猜测：
+不带 `--session` 时，`lxdev` 使用当前项目的 session；在项目之外则使用唯一正在运行的 session。其他情况需显式选择：
 
 ```bash
 lxdev session
 lxdev --session ios lxapp current
 ```
-
-全局 selector 必须写在命令家族之前。
 
 ## 把可重复行为沉淀为测试
 

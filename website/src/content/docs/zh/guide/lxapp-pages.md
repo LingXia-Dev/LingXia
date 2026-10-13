@@ -50,14 +50,14 @@ export default function Home() {
 }
 ```
 
-页面刚连接时，首个 bridge snapshot 可能为空。读取必需的嵌套数据前先 guard，或显示 skeleton。hover、popover 是否打开等临时展示状态留在 View；业务状态和必须跨 remount 保存的草稿留在 Logic。
+页面在收到首个状态后才挂载，所以 `data` 从首次渲染起就是完整的。hover、popover 是否打开等临时展示状态留在 View；业务状态和必须跨 remount 保存的草稿留在 Logic。
 
 ## 类型与平台 API
 
-把 `@lingxia/types` 安装为开发依赖。它在 Logic 中提供全局声明，`lx`、`Page`、`App` 都不需要 import。
+`lingxia new` 会按 CLI 的版本线把 `@lingxia/types` 加为开发依赖。它在 Logic 中提供全局声明，`lx`、`Page`、`App` 都不需要 import。
 
 ```bash
-npm install --save-dev @lingxia/types
+npm install --save-dev @lingxia/types@<lingxia-version>
 ```
 
 Logic 包含 `fetch`、timer、URL、stream、console 等标准 Web API，但没有 DOM。可访问的域名和特权由宿主 grant，不写在 `lxapp.json` 里——没有 provider 时默认放行公网和全部特权；只有注册了 provider 才按 grant 收紧。`lingxia.yaml` 不配置 permission。现有非公网地址限制继续保留。
@@ -87,14 +87,14 @@ import { LxNativeRoot, LxVideo, LxPicker } from '@lingxia/react'
 |---|---|
 | Island 节点（`LxNativeButton`、`LxVideo`、Root） | **先给 payload** — `onPress(({ source }) => …)`、`onTimeUpdate(({ currentTime }) => …)`。HTML 仍读 `CustomEvent.detail`。 |
 | `LxPicker` | **解析后的 value** — `string \| string[]` |
-| `LxMediaSwiper` | 原始 DOM `CustomEvent` — `event.detail.index` |
+| `LxMediaSwiper` | **payload 优先** — `onChange(({ index }) => …)`；HTML 仍读 `CustomEvent.detail`。 |
 | `LxNavigator` | 原始 DOM `CustomEvent` |
 
 属性见生成的[组件参考](../../reference/components/)。Island 结构与 seek/controls 约定见 LingXia skill 的 `lxapp/components.md`。
 
 ## 适配 surface
 
-间距与列数变化使用 CSS 或 container query；交互模型发生变化时，在 Logic 中订阅 `lx.surface.watchContext`，通过 `setData` 复制可序列化 context，再用 `sizeClass` **和** `isDesktop()` 选择 Compact 或 Workspace——`regular` 不是桌面。详见[自适应 surfaces](../adaptive-surfaces/)。
+间距与列数变化使用 CSS 或 container query；交互模型发生变化时，在 View 中用 `useLxHost()` 的 `sizeClass` **和** `formFactor` 选择 Compact 或 Workspace——`regular` 不是桌面。只有 Logic 自己要响应尺寸时才订阅 `lx.surface.watchContext`。详见[自适应 surfaces](../adaptive-surfaces/)。
 
 ## 开发与验证
 

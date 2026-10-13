@@ -1,26 +1,25 @@
 // Build-time native-components reference generator.
 //
-// Reads the published `@lingxia/elements` package type definitions and emits a
-// Starlight markdown page per `Lx<Name>Attributes` interface into
+// Reads `packages/lingxia-elements` in this repository and emits a Starlight
+// markdown page per `Lx<Name>Attributes` interface into
 // src/content/docs/reference/components/. Run before `astro build`/`astro dev`
 // (wired in package.json). Output is a build artifact (gitignored) so the docs
-// always track the pinned package version — never hand-edited.
+// always track the repository — never hand-edited.
 
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { Project } from 'ts-morph';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..');
-const require = createRequire(import.meta.url);
 
 function resolveElementsEntry() {
-  const sibling = join(projectRoot, '../packages/lingxia-elements/src/index.ts');
-  if (existsSync(sibling)) return sibling;
-  const elementsEntry = require.resolve('@lingxia/elements');
-  return elementsEntry.replace(/\.js$/, '.d.ts');
+  const entry = join(projectRoot, '../packages/lingxia-elements/src/index.ts');
+  if (!existsSync(entry)) {
+    throw new Error(`${entry} not found; build the website from the LingXia repository.`);
+  }
+  return entry;
 }
 
 const elementsDts = resolveElementsEntry();
@@ -124,7 +123,8 @@ function frontmatter(title, order, description, label) {
   if (description) lines.push(`description: ${JSON.stringify(description)}`);
   lines.push('sidebar:', `  order: ${order}`);
   if (label) lines.push(`  label: ${label}`);
-  lines.push('---', '');
+  // Generated, gitignored output has no source file to edit.
+  lines.push('editUrl: false', '---', '');
   return lines.join('\n');
 }
 
@@ -240,7 +240,7 @@ index += `| --- | --- | --- |\n`;
 for (const r of overviewRows) {
   index += `| [${r.title}](./${r.slug}/) | \`<${r.tag}>\` | ${escapeCell(r.summary)} |\n`;
 }
-index += `\n:::note\nThis reference is generated at build time from \`@lingxia/elements\` in this repository when present, otherwise the pinned install. It lists the low-level attribute surface; wrapper callbacks can reshape events. Read [lxapp pages](../../guide/lxapp-pages/) before wiring handlers.\n:::\n`;
+index += `\n:::note\nThis reference is generated at build time from \`@lingxia/elements\` in this repository. It lists the low-level attribute surface; wrapper callbacks can reshape events. Read [lxapp pages](../../guide/lxapp-pages/) before wiring handlers.\n:::\n`;
 writeFileSync(join(outDir, 'index.md'), index, 'utf8');
 
 // Keep existing generated pages in place so Astro's incremental content loader

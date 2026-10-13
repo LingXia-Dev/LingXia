@@ -38,7 +38,7 @@ LingXia 把 endpoint 放在 `<app_data>/lingxia/control`，绝不会把 executab
 socket 写进宿主拥有的 `app_state`。
 
 这不是 `lxdev`。宿主拥有的 `AutomationRuntime` 带原生 runtime 权限，不会冒充某个
-lxapp。lxapp 清单里的 `automation` 或 `host` 只是请求；跨 lxapp、浏览器、shell、
+lxapp。lxapp 的权限来自 app registry 记录，而不是清单；跨 lxapp、浏览器、shell、
 设备、终端和桌面进程操作还需要封存在该 session 上的原生 grant。已保留的 driver
 每次调用都会再校验，owner session 开始拆除时即失效。
 

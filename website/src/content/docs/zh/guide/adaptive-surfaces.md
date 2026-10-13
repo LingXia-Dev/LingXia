@@ -14,7 +14,7 @@ sidebar:
 | 内容键 | 打开的内容 | 支持的角色 |
 |---|---|---|
 | `lxapp` | 以 `appId` 标识的 lxapp | `main`、`aside`、`float` |
-| `url` | 应用内浏览器页面；需要 `capabilities.browser` | macOS / Windows 上可作为 `main`；宿主支持停靠时也可为 `aside` |
+| `url` | 应用内浏览器页面；需要 `capabilities.browser` | macOS / Windows 上可作为 `main`；Windows 上也可为 `aside` |
 | `native` | 宿主原生 surface：`terminal` 或 `browser` | `terminal`：桌面上可为 `main` / `aside`；`browser`：macOS / Windows 上可为 `main` |
 
 角色描述关系，而不是平台控件：
@@ -63,7 +63,7 @@ lxapp 通过 `lx.surface.watchContext` 获得自己的 surface viewport 等级�
 | `compact` | 小于 600 logical pixels |
 | `regular` | 600 及以上 |
 
-这是 lxapp surface 的尺寸，不是设备类型判断，也不一定等于宿主窗口尺寸。宽桌面宿主里的 aside 仍可能是 `compact`。`regular` 不是桌面：要和 `isMobile()` / `isDesktop()` 一起用（平板和折叠屏手机都是 mobile）。展开折叠屏会改 `sizeClass`，不会改宿主形态。平板是 `regular` + mobile（系统分屏很窄时是 `compact` + mobile），壳仍是手机投影，没有桌面侧栏。桌面 workspace View 是桌面宿主上的 `regular`；手持设备上的两栏是 mobile 上的 `regular`，用 CSS，不要第三档 size class。
+这是 lxapp surface 的尺寸，不是设备类型判断，也不一定等于宿主窗口尺寸。宽桌面宿主里的 aside 仍可能是 `compact`。`regular` 不是桌面：要和 `useLxHost().formFactor` 一起用（平板和折叠屏手机都是 mobile）。展开折叠屏会改 `sizeClass`，不会改宿主形态。平板是 `regular` + mobile（系统分屏很窄时是 `compact` + mobile），壳仍是手机投影，没有桌面侧栏。桌面 workspace View 是桌面宿主上的 `regular`；手持设备上的两栏是 mobile 上的 `regular`，用 CSS，不要第三档 size class。
 
 宿主 shell 仍用独立的 `medium` 档做 chrome 仲裁（icon rail、最多一个停靠 aside）——那个名字不是页面尺寸档。
 

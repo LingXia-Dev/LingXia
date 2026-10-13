@@ -43,8 +43,8 @@ LingXia keeps the endpoint under `<app_data>/lingxia/control`; it never writes
 an executable, locator, or socket into the host-owned `app_state`.
 
 `lxdev` is not this interface. Host-owned `AutomationRuntime` programs carry a
-native runtime authority and do not impersonate an lxapp. An lxapp manifest's
-`automation` or `host` entry is only a request; cross-lxapp, browser, shell,
+native runtime authority and do not impersonate an lxapp. An lxapp's privileges come
+from its app registry record, not its manifest; cross-lxapp, browser, shell,
 device, terminal, and desktop process operations also need a native grant
 sealed to that exact session. Retained drivers are revalidated on each call
 and expire when their owner session begins teardown.

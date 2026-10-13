@@ -12,10 +12,10 @@ Cases are written with `@lingxia/test`, the authoring SDK. Spec bodies run in a 
 ## Install
 
 ```bash
-npm install --save-dev @lingxia/test
+npm install --save-dev @lingxia/test@<lingxia-version>
 ```
 
-Keep it on the same version as your CLI. `lxdev` warns when the two drift apart, because the SDK and the runner share a protocol.
+`lingxia new` already adds it. Keep it on your CLI's version line: the SDK and the runner share a protocol, so `lxdev test` refuses to run across lines. Check with `lingxia doctor --project`.
 
 ## Write a case
 

@@ -14,7 +14,7 @@ Every entry has exactly one content key. Its value is also the surface identity;
 | Content key | What it opens | Supported roles |
 |---|---|---|
 | `lxapp` | An lxapp by `appId` | `main`, `aside`, `float` |
-| `url` | An in-app browser page; requires `capabilities.browser` | `main` on macOS/Windows; `aside` where the host docks browser asides |
+| `url` | An in-app browser page; requires `capabilities.browser` | `main` on macOS/Windows; `aside` on Windows |
 | `native` | A host-native surface: `terminal` or `browser` | `terminal`: `main` / `aside` on desktop; `browser`: `main` on macOS/Windows |
 
 Roles describe relationships, not platform widgets:
@@ -63,7 +63,7 @@ An lxapp receives its own surface viewport class through `lx.surface.watchContex
 | `compact` | less than 600 logical pixels |
 | `regular` | 600 and above |
 
-This is the lxapp surface size, not a device-family check and not necessarily the host window size. An aside inside a wide desktop shell may still be `compact`. `regular` is not desktop: pair it with `isMobile()` / `isDesktop()` (tablets and foldable phones are mobile). Unfolding a fold changes `sizeClass` and does not change host form. A tablet is `regular` + mobile (or `compact` + mobile in a narrow OS split); its shell stays the mobile projection — no desktop sidebar. A desktop workspace View is `regular` on a desktop host; two-pane on a handheld is `regular` on mobile, done with CSS, not a third size class.
+This is the lxapp surface size, not a device-family check and not necessarily the host window size. An aside inside a wide desktop shell may still be `compact`. `regular` is not desktop: pair it with `useLxHost().formFactor` (tablets and foldable phones are mobile). Unfolding a fold changes `sizeClass` and does not change host form. A tablet is `regular` + mobile (or `compact` + mobile in a narrow OS split); its shell stays the mobile projection — no desktop sidebar. A desktop workspace View is `regular` on a desktop host; two-pane on a handheld is `regular` on mobile, done with CSS, not a third size class.
 
 The host shell still uses a separate `medium` band for chrome admission (icon rail, one docked aside) — that name is not a page size class.
 
