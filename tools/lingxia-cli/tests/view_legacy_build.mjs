@@ -39,7 +39,7 @@ function fixture(name, tooling, config) {
   fs.mkdirSync(path.join(dir, 'pages/home'), { recursive: true });
   fs.symlinkSync(tooling, path.join(dir, 'node_modules'), 'dir');
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name, version: '1.0.0', type: 'module', lingxia: { framework: 'html' } }));
-  fs.writeFileSync(path.join(dir, 'lxapp.json'), JSON.stringify({ appId: name, appName: name, version: '1.0.0', minRuntime: '0.19.0', logic: false, pages: [{ name: 'home', path: 'pages/home/index' }] }));
+  fs.writeFileSync(path.join(dir, 'lxapp.json'), JSON.stringify({ appId: name, appName: name, version: '1.0.0', minRuntime: '0.25.0', logic: false, pages: [{ name: 'home', path: 'pages/home/index' }] }));
   fs.writeFileSync(path.join(dir, 'pages/home/index.html'), '<!doctype html><html><head><link rel="stylesheet" href="./index.css"></head><body><div id="result"></div><script type="module" src="./entry.js"></script></body></html>');
   fs.writeFileSync(path.join(dir, 'pages/home/index.css'), '#result{color:#135723}');
   fs.writeFileSync(path.join(dir, 'pages/home/entry.js'), `window.runFixture = async function (value) { value ||= 3; const lazy = await import('./lazy.js'); document.querySelector('#result').textContent = (value?.name ?? lazy.default); }; window.runFixture();`);
