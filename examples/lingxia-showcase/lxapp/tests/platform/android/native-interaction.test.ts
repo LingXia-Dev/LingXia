@@ -26,7 +26,9 @@ androidSpec('pull down from the screen to refresh, then refresh again', {
       y1: Math.round(height * .22), y2: Math.round(height * .75), duration: 650 });
     await expect.poll(async () => (await page.data()).refreshCount).toBe(before + 1);
     await expect(page.view.testId('pull-refresh-count')).toHaveText(String(before + 1));
-    await page.view.testId('pull-refresh-stop').click();
+    // The refresh indicator translates the native WebView container; use its
+    // screen bounds instead of a DOM click while that container is moving.
+    await device.tapText('lx.stopPullDownRefresh()', 'android.widget.Button');
     await expect.poll(async () => (await page.data()).isRefreshing).toBe(false);
     await expect(page.view.testId('pull-refresh-status')).toContainText('Idle');
   }

@@ -4,6 +4,7 @@ export interface AndroidNode {
   text: string;
   description: string;
   resource: string;
+  className?: string;
   bounds: [number, number, number, number];
 }
 
@@ -35,7 +36,7 @@ export function androidDevice(t: Fixture) {
         .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
       const coordinates = attr('bounds').match(/-?\d+/g)?.map(Number) ?? [];
       if (coordinates.length !== 4) throw new Error('Invalid Android node bounds');
-      return { text: attr('text'), description: attr('content-desc'), resource: attr('resource-id'), bounds: coordinates as AndroidNode['bounds'] };
+      return { text: attr('text'), description: attr('content-desc'), resource: attr('resource-id'), className: attr('class'), bounds: coordinates as AndroidNode['bounds'] };
     });
   };
   const tap = async (node: AndroidNode) => {
@@ -48,10 +49,11 @@ export function androidDevice(t: Fixture) {
     key: (key: 'back' | 'enter' | 'tab' | 'escape') => request('key', { key }),
     size: () => request<{ width: number; height: number }>('size'),
     swipe: (input: { x1: number; y1: number; x2: number; y2: number; duration: number }) => request('swipe', input),
-    async tapText(text: string | readonly string[]) {
+    async tapText(text: string | readonly string[], className?: string) {
       const labels = typeof text === 'string' ? [text] : text;
-      const found = await t.waitFor(nodes, { until: (items) => items.some((item) => labels.includes(item.text)), timeout: 15000 });
-      const matches = found.filter((item) => labels.includes(item.text));
+      const matchesControl = (item: AndroidNode) => labels.includes(item.text) && (!className || item.className === className);
+      const found = await t.waitFor(nodes, { until: (items) => items.some(matchesControl), timeout: 15000 });
+      const matches = found.filter(matchesControl);
       if (matches.length !== 1) throw new Error(`Expected one Android control ${JSON.stringify(labels)}, found ${matches.length}`);
       await tap(matches[0]);
     },

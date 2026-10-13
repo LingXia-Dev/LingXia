@@ -70,15 +70,16 @@ for (const action of ['confirm', 'cancel', 'back', 'outside'] as const) {
     await page.view.testId('modal-show').click();
     await t.waitFor(() => device.nodes(), { until: (nodes) => nodes.some((node) => node.text === 'CANCEL') });
     if (action === 'confirm') {
-      await device.tapText('This is a modal dialog');
+      // WebView also exposes the form's matching text as an EditText.
+      await device.tapText('This is a modal dialog', 'android.widget.TextView');
       expect((await page.data()).modalResult).toBe(null);
-      expect((await device.nodes()).some((node) => node.text === 'OK')).toBe(true);
+      expect((await device.nodes()).some((node) => node.text === 'OK' && node.className === 'android.widget.Button')).toBe(true);
     }
     if (action === 'back') await device.key('back');
     else if (action === 'outside') {
       const { width, height } = await device.size();
       await device.tap({ text: '', description: '', resource: '', bounds: [0, Math.round(height * .2), width, Math.round(height * .3)] });
-    } else await device.tapText(action === 'confirm' ? 'OK' : 'CANCEL');
+    } else await device.tapText(action === 'confirm' ? 'OK' : 'CANCEL', 'android.widget.Button');
     const result = { status: action === 'confirm' ? 'ok' : 'canceled' };
     await expect.poll(async () => (await page.data()).modalResult).toEqual(result);
     await expect(page.view.testId('modal-result')).toContainText(`"status": "${result.status}"`);
@@ -94,7 +95,7 @@ androidSpec('a confirm-only modal consumes Back and outside taps until confirmed
   const { app, defer } = bindFixture(t, 'ANDROID-MODAL-CONFIRM-ONLY-001');
   const device = androidDevice(t);
   defer(async () => {
-    const ok = (await device.nodes()).find((node) => node.text === 'OK');
+    const ok = (await device.nodes()).find((node) => node.text === 'OK' && node.className === 'android.widget.Button');
     if (ok) await device.tap(ok);
     await app.nav.relaunch({ page: 'home' });
   });
@@ -104,15 +105,15 @@ androidSpec('a confirm-only modal consumes Back and outside taps until confirmed
   const page = await app.page<PageContract<{ modalResult: ModalResult | null }>>();
   await page.view.css('#modalShowCancel').click();
   await page.view.testId('modal-show').click();
-  const nodes = await t.waitFor(() => device.nodes(), { until: (items) => items.some((node) => node.text === 'OK') });
+  const nodes = await t.waitFor(() => device.nodes(), { until: (items) => items.some((node) => node.text === 'OK' && node.className === 'android.widget.Button') });
   expect(nodes.some((node) => node.text === 'CANCEL')).toBe(false);
   await device.key('back');
   const { width, height } = await device.size();
   await device.tap({ text: '', description: '', resource: '', bounds: [0, Math.round(height * .2), width, Math.round(height * .3)] });
-  expect((await device.nodes()).some((node) => node.text === 'OK')).toBe(true);
+  expect((await device.nodes()).some((node) => node.text === 'OK' && node.className === 'android.widget.Button')).toBe(true);
   expect((await page.data()).modalResult).toBe(null);
   expect((await app.nav.current()).instanceId).toBe(current.instanceId);
-  await device.tapText('OK');
+  await device.tapText('OK', 'android.widget.Button');
   await expect.poll(async () => (await page.data()).modalResult).toEqual({ status: 'ok' });
 });
 
