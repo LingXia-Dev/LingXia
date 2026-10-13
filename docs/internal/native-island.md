@@ -19,6 +19,12 @@ scrolling, clips partially visible nodes against overflow containers inside
 and outside Root, and removes fully offscreen nodes from paint and hit testing.
 Clipping preserves the video's dimensions; it never resizes the picture.
 
+Geometry-only invalidations reuse the published tree; DOM/style changes and
+resize still recompile it. Identical geometry may skip delivery, but a new
+commit or host resync must publish geometry again. Failed sends must not update
+the delivery cache. Keep style polling for CSSOM and pseudo-class changes;
+cache membership until child-list mutations and share ancestor reads per frame.
+
 ### iOS composition
 
 Each Root owns a shadow-DOM scroll anchor and a native container. Match the
