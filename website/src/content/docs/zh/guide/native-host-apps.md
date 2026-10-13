@@ -48,7 +48,7 @@ lingxia new my-browser -t native-app -p windows --main browser --control lxapp -
 - `lingxia.yaml` 中 `features.appService: false`
 - home `lxapp.json` 中 `"logic": false` —— 或以桌面 `native: terminal|browser` 为主界面时直接省略控制 lxapp
 
-这种形态在仍有控制 lxapp 时使用 HTML-only View，由 Rust 替代 Logic。appService 被关闭时，启用 logic 的 lxapp 会在启动时被拒绝。
+这种形态在仍有控制 lxapp 时，View 仍可用 HTML、React 或 Vue，由 Rust 替代 Logic。appService 被关闭时，启用 logic 的 lxapp 会在启动时被拒绝。
 
 ## 添加宿主专属 Rust API
 

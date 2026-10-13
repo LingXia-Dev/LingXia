@@ -2,7 +2,7 @@
 import CopyCommand from './CopyCommand.astro';
 import PlatformIcon from './PlatformIcon.astro';
 import Icon from './Icon.astro';
-import { INSTALL_CMD, GITHUB_URL, guideUrl } from '~/lib/url';
+import { INSTALL_CMD, INSTALL_CMD_WINDOWS, GITHUB_URL, guideUrl } from '~/lib/url';
 import type { Lang, T } from '~/i18n/ui';
 
 interface Props {
@@ -56,6 +56,7 @@ const platforms = [
 
       <div class="reveal mt-6 max-w-md" data-delay="240">
         <CopyCommand command={INSTALL_CMD} copyLabel={t.hero.copy} copiedLabel={t.hero.copied} />
+          <CopyCommand command={INSTALL_CMD_WINDOWS} prompt="PS>" class="mt-2" copyLabel={t.hero.copy} copiedLabel={t.hero.copied} />
       </div>
 
       <p class="reveal mt-4 text-sm text-fg-dim" data-delay="300">{t.hero.runtimeNote}</p>
