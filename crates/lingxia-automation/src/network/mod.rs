@@ -6,17 +6,18 @@
 //! so no route outlives the run that installed it; the one other owner is a
 //! dev session's scenario (`dev`), which stands aside while a run is active.
 //! Logic contexts get a thin `fetch` wrapper, and `Rong.SSE` a wrapper, whose
-//! fast path is one atomic load while no route, run, or recording exists.
+//! fast path is one atomic load while no route, run, mock or capture exists.
 //! While a run is active the wrappers also log every call (`capture`) for
-//! failure reports; a recording captures real responses as a scenario, and
-//! a contract capture (`captureResponses()`) keeps what the app received
-//! for `lxdev test --openapi`. All three share one observation per call and
-//! one read of a response body.
+//! failure reports, and a contract capture (`captureResponses()`) keeps what
+//! the app received for `lxdev test --openapi`. Recordings of real traffic
+//! come from Rong's network observer (`observer`), which sees every request
+//! that reaches the network whatever sent it; routes and mocks never do.
 
 mod capture;
 pub(crate) mod companion;
 pub(crate) mod dev;
 mod mocks;
+pub(crate) mod observer;
 mod registry;
 mod scenario;
 mod test_scenario;
@@ -131,6 +132,7 @@ pub(crate) fn attach_run_scope(
 /// terminal transition of the run.
 pub(crate) fn clear_run(run_id: &str) {
     registry::with_registry(|routes| routes.clear_run(run_id));
+    observer::drop_recording(run_id);
 }
 
 /// The run's scenario lock, when `ctx` is a host automation context.
@@ -956,14 +958,13 @@ fn parse_sse_item(value: &Value, last: bool) -> Result<SseStep, String> {
 
 /// Wraps the global `fetch` of a context. `host` carries the Rust side:
 ///
-/// - `active()` is the fast path: false while no route, run, or recording
+/// - `active()` is the fast path: false while no route, run, mock or capture
 ///   watches Logic `fetch`.
 /// - `observe(kind, method, url)` opens a call-log entry: `null`, or
-///   `[id, record, contract]`: `record` asks for the real response body
-///   whatever its type (a recording), `contract` for the status and content
-///   type of what the app receives and its body when JSON (a contract
-///   capture). A buffered body is read from a clone; a streamed one is read
-///   once and the app gets an equivalent buffered `Response`.
+///   `[id, contract]`: `contract` asks for the status and content type of
+///   what the app receives and its body when JSON (a contract capture). A
+///   buffered body is read from a clone; a streamed one is read once and the
+///   app gets an equivalent buffered `Response`.
 /// - `decide(method, url, headersJson, body, bodyOverflow, id)` returns
 ///   `undefined` to pass through, a fulfillment record, `{ sse }` (a
 ///   `text/event-stream` answer, held open while `holds(hold)`), `{ patch }`
@@ -989,8 +990,6 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
   const settle = host.settle;
   const holds = host.holds;
   const bodyLimit = host.bodyLimit;
-  const binaryLimit = host.binaryLimit;
-  const textLimit = host.textLimit;
   const contractLimit = host.contractLimit;
   const ResponseCtor = globalThis.Response;
   const RequestCtor = globalThis.Request;
@@ -1047,9 +1046,6 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
     try { Object.defineProperty(response, 'url', { value: url, enumerable: true }); } catch (_) {}
     return response;
   };
-  const textual = function (type) {
-    return type.indexOf('text/') === 0 || /json|xml|javascript|x-www-form-urlencoded|graphql/.test(type);
-  };
   // Must agree with `capture::is_json_type`: streaming JSON types are not
   // buffered for a contract capture, or an app reading them incrementally
   // would stall.
@@ -1060,24 +1056,13 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
   // A buffered body is observed through a clone, so the app's fetch is not
   // delayed. Rong cannot clone a streamed body (no or a large Content-Length):
   // that one is read once and the app gets an equivalent buffered Response.
-  // Bodies are read with text()/arrayBuffer(), which undo Content-Encoding.
-  const consume = function (id, response, url, watch) {
+  // Bodies are read with text(), which undoes Content-Encoding.
+  const consume = function (id, response, url) {
     const status = response.status;
     const type = typeOf(response);
-    const contractJson = watch.contract && JSON_TYPE.test(type);
-    let isText = true;
+    let read = JSON_TYPE.test(type);
     let note = null;
-    const declared = Number(response.headers.get('content-length'));
-    if (watch.record) {
-      isText = textual(type);
-      if (type.indexOf('text/event-stream') === 0) note = 'event stream body not recorded; write an sse answer';
-      else if (!isText && declared > binaryLimit) note = 'binary body of ' + declared + ' bytes not recorded';
-      else if (/(?:ndjson|json-seq)/.test(type) || (type.indexOf('text/plain') === 0 && !declared)) {
-        note = 'streaming body not recorded';
-      }
-    }
-    let read = watch.record ? note === null : contractJson;
-    if (read && declared > (contractJson ? contractLimit : isText ? textLimit : binaryLimit)) {
+    if (read && Number(response.headers.get('content-length')) > contractLimit) {
       read = false;
       note = 'body exceeds capture limit';
     }
@@ -1088,31 +1073,29 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
     let copy = null;
     try { copy = response.clone(); } catch (_) {}
     if (copy !== null) {
-      (isText ? copy.text() : copy.arrayBuffer()).then(function (body) {
+      copy.text().then(function (body) {
         try { settle(id, status, null, type, body, null); } catch (_) {}
       }, function (error) {
         try { settle(id, status, null, type, null, 'body observation failed: ' + errorText(error)); } catch (_) {}
       });
       return response;
     }
-    return (isText ? response.text() : response.arrayBuffer()).then(function (body) {
+    return response.text().then(function (body) {
       try { settle(id, status, null, type, body, null); } catch (_) {}
       const headers = new HeadersCtor(response.headers);
       headers.delete('content-length');
       headers.delete('content-encoding');
-      const empty = isText ? body.length === 0 : body.byteLength === 0;
-      return withUrl(new ResponseCtor(empty ? null : body, {
+      return withUrl(new ResponseCtor(body.length === 0 ? null : body, {
         status: status,
         statusText: response.statusText,
         headers: headers,
       }), response.url || url);
     });
   };
-  const NO_BODY = { record: false, contract: false };
-  const track = function (promise, id, watch, url) {
+  const track = function (promise, id, contract, url) {
     if (!id) return promise;
     return promise.then(function (response) {
-      if (watch.record || watch.contract) return consume(id, response, url, watch);
+      if (contract) return consume(id, response, url);
       try { settle(id, response.status, null, typeOf(response), null, null); } catch (_) {}
       return response;
     }, function (error) {
@@ -1281,7 +1264,7 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
     let seen = null;
     try { seen = observe('fetch', method, url); } catch (_) {}
     const id = seen ? seen[0] : 0;
-    const watch = seen ? { record: Boolean(seen[1]), contract: Boolean(seen[2]) } : NO_BODY;
+    const contract = seen ? Boolean(seen[1]) : false;
     let hit;
     try {
       const body = sentBody(init);
@@ -1291,25 +1274,25 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
       return Promise.reject(error);
     }
     if (hit === undefined || hit === null) {
-      return track(originalFetch.apply(this, arguments), id, watch, url);
+      return track(originalFetch.apply(this, arguments), id, contract, url);
     }
-    const c = { self: self, args: args, url: url, init: init, id: id, contract: watch.contract, method: method, input: input };
+    const c = { self: self, args: args, url: url, init: init, id: id, contract: contract, method: method, input: input };
     if (typeof hit.unhandled === 'string') {
-      return track(Promise.reject(failWith(hit.unhandled)), id, NO_BODY, url);
+      return track(Promise.reject(failWith(hit.unhandled)), id, false, url);
     }
     if (typeof hit.mock === 'string' && typeof hit.patch !== 'string') {
       // A mocks/ handler answers; `continue` from it reaches the network.
       return mocks.run(hit.mock, method, url, input, init, id).then(function (next) {
-        if (next.real === true) return track(originalFetch.apply(self, args), id, watch, url);
-        return track(answer(c, next), id, NO_BODY, url);
+        if (next.real === true) return track(originalFetch.apply(self, args), id, contract, url);
+        return track(answer(c, next), id, false, url);
       }, function (error) {
         if (id) { try { settle(id, 0, errorText(error), null, null, null); } catch (_) {} }
         throw error;
       });
     }
-    // A route's or a mock's answer is never recorded, and a fulfilled one
-    // is captured when it is decided; a patch settles with its own body.
-    return track(answer(c, hit), id, NO_BODY, url);
+    // A fulfilled answer is captured when it is decided; a patch settles
+    // with its own body.
+    return track(answer(c, hit), id, false, url);
   };
   Object.defineProperty(fetch, WRAPPED, { value: true });
   Object.defineProperty(fetch, ORIGINAL, { value: originalFetch });
@@ -1804,8 +1787,6 @@ fn interceptor_host(ctx: &JSContext, resolve: Resolve) -> JSResult<JSObject> {
     let host = JSObject::new(ctx);
     host.set("active", JSFunc::new(ctx, registry::any_active)?)?;
     host.set("bodyLimit", registry::MAX_REQUEST_BODY_BYTES as f64)?;
-    host.set("binaryLimit", capture::MAX_BINARY_BODY_BYTES as f64)?;
-    host.set("textLimit", capture::MAX_TEXT_BODY_BYTES as f64)?;
     host.set("contractLimit", capture::MAX_CAPTURE_BODY_BYTES as f64)?;
     let decide_target = resolve.clone();
     host.set(
@@ -1912,9 +1893,7 @@ fn interceptor_host(ctx: &JSContext, resolve: Resolve) -> JSResult<JSObject> {
                 match registry::with_registry(|routes| {
                     routes.observe(&target.appid, kind, &method, &url)
                 }) {
-                    Some((id, watch)) => {
-                        json_to_js(&ctx, &serde_json::json!([id, watch.record, watch.contract]))
-                    }
+                    Some((id, contract)) => json_to_js(&ctx, &serde_json::json!([id, contract])),
                     None => Ok(JSValue::null(&ctx)),
                 }
             },
@@ -1935,10 +1914,6 @@ fn interceptor_host(ctx: &JSContext, resolve: Resolve) -> JSResult<JSObject> {
                     Some(capture::RecordedBody::Omitted(note))
                 } else if body.is_string() {
                     Some(capture::RecordedBody::Text(body.to_rust::<String>()?))
-                } else if body.is_array_buffer() {
-                    Some(capture::RecordedBody::Binary(
-                        body.to_rust::<JSArrayBuffer>()?.as_bytes().to_vec(),
-                    ))
                 } else {
                     None
                 };

@@ -314,6 +314,11 @@ mod interceptor {
                         });
                     })?;
                     ctx.global().set("__mockReset", mock_reset)?;
+                    super::super::observer::install();
+                    rong_http::set_network_owner(
+                        &ctx,
+                        Some(rong_rt::http::NetworkOwner::new(appid)),
+                    );
                     ctx.eval_async::<String>(Source::from_bytes(script)).await
                 })
                 .await
@@ -1030,7 +1035,8 @@ ${{error && error.stack}}` }});
         const APP: &str = "network-interceptor-capture";
         const OWNER: &str = "network-interceptor-capture-run";
         let base = json_server(r#"{"user":"ada","access_token":"secret-token"}"#, 1);
-        // A contract capture shares the recording's single read of the body.
+        // The recording comes from the network observer; the contract
+        // capture reads what the app received.
         registry::with_registry(|routes| routes.captures.enable(OWNER, APP, 1024, || true))
             .unwrap();
         let script: &'static str = Box::leak(
@@ -1318,8 +1324,7 @@ ${{error && error.stack}}` }});
 
 mod scenarios {
     use super::super::capture::{
-        self, Call, CallLog, RecordedBody, Recording, Settled, Watch, redact_json, redact_url,
-        url_pattern,
+        self, Exchange, RecordedBody, Recording, Settled, redact_json, redact_url, url_pattern,
     };
     use super::super::registry::{DEV_SESSION_OWNER, Registry, SseStep};
     use super::super::scenario::{iso_utc, parse_scenario, render_action, render_templates};
@@ -2055,13 +2060,13 @@ mod scenarios {
         assert!(matcher.is_match("https://api.test/v1/{id}?token=other"));
         assert!(!matcher.is_match("https://api.test/v1/x?token=other"));
 
-        let mut calls = CallLog::new();
+        let mut calls = capture::CallLog::new();
         let id = calls.begin(
             "app",
             "fetch",
             "get",
             "https://api.test/me?token=abc&q=secret-9",
-            Watch::default(),
+            false,
         );
         calls.settle(
             id,
@@ -2079,19 +2084,14 @@ mod scenarios {
     }
 
     fn exchange(recording: &mut Recording, method: &str, url: &str, settled: Settled) {
-        let mut log = CallLog::new();
-        let id = log.begin(
-            "app",
-            "fetch",
-            method,
-            url,
-            Watch {
-                record: true,
-                contract: false,
-            },
-        );
-        let call: Call = log.settle(id, &settled).expect("a recorded call");
-        recording.push(&call, settled);
+        recording.push(Exchange {
+            method: method.to_string(),
+            url: url.to_string(),
+            status: settled.status,
+            content_type: settled.content_type,
+            body: settled.body,
+            error: settled.error,
+        });
     }
 
     #[test]
@@ -2125,7 +2125,7 @@ mod scenarios {
     #[test]
     fn recorded_bodies_lose_secret_fields_tokens_and_bearers() {
         let jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl";
-        let mut recording = Recording::new("run", None, None);
+        let mut recording = Recording::default();
         let json_body = format!(
             r#"{{"token":"t1","apiKey":"k","session_id":"s","nested":[{{"client_secret":"c"}}],"note":"Bearer abc.def","jwt":"{jwt}","user":"ann"}}"#
         );
@@ -2174,7 +2174,7 @@ mod scenarios {
 
     #[test]
     fn a_recording_becomes_a_scenario_file() {
-        let mut recording = Recording::new("run", None, None);
+        let mut recording = Recording::default();
         let json_answer = |status: u16, body: &str| Settled {
             status: Some(status),
             content_type: Some("application/json; charset=utf-8".into()),
@@ -2448,14 +2448,14 @@ mod scenarios {
     }
 
     #[test]
-    fn calls_are_observed_only_while_a_run_or_recording_watches() {
+    fn calls_are_observed_only_while_a_run_watches() {
         let mut registry = Registry::default();
         assert_eq!(registry.observe("app", "fetch", "GET", "https://h/a"), None);
         registry.begin_run("run");
-        let (id, watch) = registry
+        let (id, contract) = registry
             .observe("app", "fetch", "GET", "https://h/a")
             .unwrap();
-        assert_eq!(watch, Watch::default());
+        assert!(!contract);
         let spec = RouteSpec::new(
             UrlMatcher::glob("**/a").unwrap(),
             None,
@@ -2485,123 +2485,11 @@ mod scenarios {
         assert_eq!(calls[0]["status"], 201);
         registry.clear_run("run");
         assert_eq!(registry.observe("app", "fetch", "GET", "https://h/a"), None);
-
-        registry.dev_recording = Some(Recording::new(
-            DEV_SESSION_OWNER,
-            Some("app".into()),
-            Some(UrlMatcher::glob("**/api/**").unwrap()),
-        ));
-        assert_eq!(
-            registry.observe("app", "fetch", "GET", "https://h/other"),
-            None
-        );
-        assert_eq!(
-            registry.observe("other", "fetch", "GET", "https://h/api/x"),
-            None
-        );
-        let (id, watch) = registry
-            .observe("app", "fetch", "GET", "https://h/api/x")
-            .unwrap();
-        assert!(watch.record && !watch.contract);
-        registry.settle(
-            id,
-            Settled {
-                status: Some(200),
-                content_type: Some("text/plain".into()),
-                body: Some(RecordedBody::Text("hi".into())),
-                ..Settled::default()
-            },
-        );
-        assert_eq!(registry.dev_recording.as_ref().unwrap().exchanges.len(), 1);
-        // A request the app cancelled is not an answer.
-        let (id, _) = registry
-            .observe("app", "fetch", "GET", "https://h/api/y")
-            .unwrap();
-        registry.settle(
-            id,
-            Settled {
-                error: Some("AbortError: aborted".into()),
-                ..Settled::default()
-            },
-        );
-        assert_eq!(registry.dev_recording.as_ref().unwrap().exchanges.len(), 1);
-    }
-    fn settle_text(registry: &mut Registry, id: u64, body: &str) {
-        registry.settle(
-            id,
-            Settled {
-                status: Some(200),
-                content_type: Some("text/plain".into()),
-                body: Some(RecordedBody::Text(body.into())),
-                ..Settled::default()
-            },
-        );
-    }
-
-    #[test]
-    fn a_dev_recording_pauses_while_a_run_records_its_own() {
-        let mut registry = Registry::default();
-        registry.dev_recording = Some(Recording::new(DEV_SESSION_OWNER, None, None));
-        let (id, watch) = registry
-            .observe("app", "fetch", "GET", "https://h/before")
-            .unwrap();
-        assert!(watch.record);
-        settle_text(&mut registry, id, "dev");
-
-        // A run starts: the dev recording captures nothing of it, with or
-        // without a run recording of its own.
-        registry.begin_run("run");
-        let (id, watch) = registry
-            .observe("app", "fetch", "GET", "https://h/unrecorded")
-            .unwrap();
-        assert!(!watch.record);
-        settle_text(&mut registry, id, "test traffic");
-        registry.run_recording = Some(Recording::new("run", None, None));
-        let (id, watch) = registry
-            .observe("app", "fetch", "GET", "https://h/during")
-            .unwrap();
-        assert!(watch.record);
-        settle_text(&mut registry, id, "run");
-        let dev = registry.dev_recording.as_ref().unwrap();
-        assert_eq!(dev.exchanges.len(), 1);
-        assert_eq!(dev.exchanges[0].url, "https://h/before");
-        let run = registry.run_recording.as_ref().unwrap();
-        assert_eq!(run.exchanges.len(), 1);
-        assert_eq!(run.exchanges[0].url, "https://h/during");
-
-        // A call the dev recording saw start still lands there when it
-        // settles during a run, never in the run's recording.
-        registry.clear_run("run");
-        assert!(registry.run_recording.is_none());
-        let (late, _) = registry
-            .observe("app", "fetch", "GET", "https://h/late")
-            .unwrap();
-        registry.begin_run("run-2");
-        registry.run_recording = Some(Recording::new("run-2", None, None));
-        settle_text(&mut registry, late, "late");
-        assert_eq!(registry.dev_recording.as_ref().unwrap().exchanges.len(), 2);
-        assert!(
-            registry
-                .run_recording
-                .as_ref()
-                .unwrap()
-                .exchanges
-                .is_empty()
-        );
-
-        // The run ends: the dev recording resumes.
-        registry.clear_run("run-2");
-        let (id, watch) = registry
-            .observe("app", "fetch", "GET", "https://h/after")
-            .unwrap();
-        assert!(watch.record);
-        settle_text(&mut registry, id, "dev again");
-        assert_eq!(registry.dev_recording.as_ref().unwrap().exchanges.len(), 3);
     }
 
     #[test]
     fn a_run_recording_masks_the_runs_secret_args() {
-        let mut recording = Recording::new("run", None, None);
+        let mut recording = Recording::default();
         exchange(
             &mut recording,
             "GET",

@@ -186,3 +186,7 @@ answers, and a call none matches goes to the selection.
   message says why.
 - Record a starting point from real traffic: `lxdev network record start`,
   use the app, `lxdev network record stop --out tests/scenarios/x.json`.
+  Only `fetch` answers become rules; `--requests FILE` also writes every
+  request that reached the network (`fetch`, SSE, `lx` transfers, redirect
+  hops) with headers, timing and decoded bodies. `record start --all`
+  includes other apps and host traffic.

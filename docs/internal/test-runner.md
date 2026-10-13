@@ -871,14 +871,18 @@ Development machine: lxdev receives progress, results, and artifacts
 
 ## Network observation
 
-One observation per Logic request feeds three consumers: the call log a
-failed spec reports, a network recording (`--record-network`, `lxdev network
-record`), and the contract capture `--openapi` reads
-(`NetworkDriver.captureResponses()` / `responses()`). They share one wrapper
-per context, one `observe`/`settle` pair and one read of a response body;
-each consumer keeps its own bounds and redaction in
-`lingxia-automation/src/network/capture.rs`, and all state lives in the
-route table (`Registry`) under its one lock.
+Two sources. The Logic `fetch`/`Rong.SSE` wrapper sees every call an lxapp
+makes, routed or not, and feeds the call log a failed spec reports and the
+contract capture `--openapi` reads (`NetworkDriver.captureResponses()` /
+`responses()`); its state lives in the route table (`Registry`) under its one
+lock. Rong's network observer (`network/observer.rs`, feature
+`network-observer`, enabled only by the `runtime` feature) sees every request
+that reaches the network, whoever sent it, and feeds recordings
+(`--record-network`, `lxdev network record`) and the `observed` list of
+`session.network.status`. Routes and mocks never reach the network, so only
+the wrapper can say who answered; only the observer sees transfers, host
+traffic, redirect hops, response headers and wire timing. Bounds and
+redaction live in `capture.rs`.
 
 - Wrapping: `install_fetch_interceptor` replaces the global `fetch` and the
   `Rong.SSE` member wrapper replaces `Rong.SSE`, once per Logic context. Both
@@ -888,35 +892,27 @@ route table (`Registry`) under its one lock.
   context never observes a call twice. Both capture the real timers when
   they are built, before any test clock can be installed.
 - Fast path: `ACTIVE` counts routes, active runs (`begin_run` from
-  `attach_run_scope`, ended by `clear_run`), recordings and captured apps.
-  While it is 0, `fetch` calls the native one with the caller's `this` and
-  arguments and returns its promise untouched, and `new Rong.SSE()` constructs
-  the native client. A context no lxapp owns is never observed either.
-- `observe(kind, method, url)` opens a `CallLog` entry when a run, recording
-  or capture watches and answers `[id, record, contract]` (`capture::Watch`):
-  `record` when the recording wants this `fetch` (SSE connections are never
-  recorded), `contract` when a run captures the app's `fetch` responses.
-  `decide_route(…, call)` marks the entry routed: a routed answer clears
-  `record` (a recording keeps what the server said); a fulfillment is
-  captured right there from the route's own answer and clears `contract`,
-  as do `abort`, `hang` and `sse`; `continue` and `patchJson` keep it.
-- One read: the wrapper's `consume` step is the only place a body is read
-  for Rust. With `record` it reads `text()` for textual types or
-  `arrayBuffer()` for binary ones within 64 KiB (a larger declared
-  `content-length` and event streams are noted unread); with only `contract`
-  it reads `text()` of a JSON type (`application/json`, `text/json`,
-  `*+json`; never `x-ndjson`, `json-seq` or SSE, which an app may read
-  incrementally; `JSON_TYPE` mirrors `capture::is_json_type`). It settles the
-  call with the body and hands the app a rebuilt `Response` (status, status
-  text, headers minus `content-length`/`content-encoding`, `url`; `redirected`
-  and `type` are not reproduced). Anything else settles with status and
-  content type and the app gets the original response. `patchJson` reads the
-  real body anyway: it settles with the patched text (source `patch`), and
-  the generic settle after it is a no-op (`CallLog::settle` ignores a second
-  settle).
-- `Registry::settle` hands a settled call to the capture (`Observed::settled`:
-  source `patch` or `network`, JSON text only) and, unless it was the app's
-  own `AbortError`, to the recording.
+  `attach_run_scope`, ended by `clear_run`), mocks and captured apps; a
+  recording does not count. While it is 0, `fetch` calls the native one with
+  the caller's `this` and arguments and returns its promise untouched, and
+  `new Rong.SSE()` constructs the native client. A context no lxapp owns is
+  never observed either.
+- `observe(kind, method, url)` opens a `CallLog` entry when a run, dev
+  scenario, mocks or capture watches and answers `[id, contract]`, `contract`
+  when a run captures the app's `fetch` responses. `decide_route(…, call)`
+  marks the entry routed: a fulfillment is captured right there from the
+  route's own answer and clears `contract`, as do `abort`, `hang` and `sse`;
+  `continue` and `patchJson` keep it.
+- One read: with `contract`, the wrapper's `consume` step reads `text()` of a
+  JSON type (`application/json`, `text/json`, `*+json`; never `x-ndjson`,
+  `json-seq` or SSE, which an app may read incrementally; `JSON_TYPE` mirrors
+  `capture::is_json_type`) from a clone, or once from a streamed body, handing
+  the app a rebuilt `Response` (status, status text, headers minus
+  `content-length`/`content-encoding`, `url`; `redirected` and `type` are not
+  reproduced). Anything else settles with status and content type and the
+  app gets the original response. `patchJson` reads the real body anyway: it
+  settles with the patched text (source `patch`), and the generic settle
+  after it is a no-op (`CallLog::settle` ignores a second settle).
 - Call log: 200 calls process-wide, URLs through `capture::redact_url`
   (userinfo dropped, secret-named query values `***`). The host object's
   `networkLog(sinceMs, limit)` returns the newest entries with the run's
@@ -924,30 +920,61 @@ route table (`Registry`) under its one lock.
   case's `error.network` (flattened into `failures[]`, rendered by
   `renderNetwork`), and lxdev copies `error.network` into the `failures[]` it
   rebuilds.
-- Recordings (`capture::Recording`): `Registry::dev_recording` (the dev
-  session) and `run_recording` (a run's `networkRecord`). `observe` picks the
-  run's while any run is active, else the dev one, so a dev recording pauses
-  during runs, and stores the chosen owner on the call (`Call::recorder`);
-  `settle` pushes only into that recording. At most 500 exchanges and 16 MiB
-  of bodies per recording; text over
-  1 MiB and binary over 64 KiB are noted. `to_scenario` writes one `http`
-  rule per method and URL, keeps one answer only when all are equal (else a `sequence` of up to
-  100, so the n-th replayed call gets the n-th recorded answer), turns
-  transport failures into `abort`, drops `AbortError`s, and redacts
-  credential-named fields (`redact_json`, `SECRET_NAMES`, compared
-  case-insensitively without `_`/`-`), JWTs and `Bearer` values in every text
-  body and JSON string (`redact_text`), and query values (`url_pattern`).
-  `dev::run_record` masks the run's `--secret-arg` values in the stopped
-  scenario. For `--record-network` the framework starts a recording per spec
-  and attaches the stopped scenario as `network.scenario.json` (masked like
-  any attachment); lxdev copies each to `<dir>/<spec id>.json` after the
-  run, suffixing `-2`, `-3`… when two spec ids sanitize to one name.
-  An unconfirmed start fails the case and attempts a stop, since the
-  recording may have started before its acknowledgement failed; the run goes
-  on. A stop while calls are still in flight counts them as `dropped`.
-  `lxdev network record stop --out [--name]` creates a placeholder next to the output
-  before `RECORD_STOP` and renames over it after writing; on a write failure
-  it prints the scenario to stdout and fails.
+- Owners: `register_app_ctx` sets each Logic context's owner to its appid
+  (`rong_http::set_network_owner`), so `fetch` and `Rong.SSE` carry it across
+  the executor hop and every redirect. Rust-side requests take the enclosing
+  `lingxia_transfer::scope_network_owner`: `lx` downloads and uploads (inside
+  `scope_lxapp_network_access`) and download retry/resume use the appid
+  (`tag_network_kind` reports them as `download`/`upload`, not `other`);
+  host app update check and download, lxapp/plugin update checks and
+  package downloads, the lxapp registry and its icons, and favicons use
+  `host:<subsystem>`. Anything else (provider-internal I/O outside those
+  scopes, native `lingxia::file` calls, an automation program's own `fetch`)
+  has no owner.
+- Observer (`observer::install` at `register_automation_runtime`): the
+  callback only `try_send`s into a 16 384-event queue (a full queue counts
+  `droppedEvents`; a record that lived through a drop is `incomplete`), and
+  skips body chunks while no recording runs. One thread builds a `Record`
+  per request id (at most 1 024 in flight); it asks `registry::runs_active()`
+  before taking its own lock and never holds that lock while taking the
+  route table's, so status (route table, then observer) cannot deadlock it.
+  `stop_recording` first flushes the queue, so it must not run under the
+  route table lock. Finished records go to a 200-entry recent list without
+  bodies.
+- Recordings (`observer::Recording`): one for the dev session, one for a
+  run's `networkRecord`. A request is assigned when it starts: to the run's
+  while any run is active, else to the dev one (so a dev recording pauses
+  during runs), if its owner equals the recording's appid (`--all`: any
+  owner) and its URL matches; a redirect hop follows its predecessor.
+  Recorded requests keep wire bodies within 64 KiB (request), 1 MiB (textual
+  response) or 64 KiB (other response); at most 500 records and 16 MiB of
+  bodies per recording, past which bodies are dropped with a `bodyNote`.
+  Stop returns every record in its report form (`requests`: headers with
+  secret-named values `***`, TTFB, duration, outcome incl. `blocked`,
+  `redirectedFrom`, body decoded from gzip/deflate for display and redacted,
+  SSE `events` / NDJSON `lines` and a `chunkLog`, in-flight ones as
+  `inFlight`) and the scenario of its finished lxapp `fetch` records
+  (`capture::Recording`): a redirect chain is one exchange (first request,
+  last answer), the app's own abort is skipped, a failure or block becomes
+  `abort`, an event stream or NDJSON body, a body cut at its cap, or one the
+  app never read to its end is noted instead of replayed. `to_scenario`
+  writes one `http` rule per method and URL, keeps one answer only when all
+  are equal (else a `sequence` of up to 100, so the n-th replayed call gets
+  the n-th recorded answer), and redacts credential-named fields
+  (`redact_json`, `SECRET_NAMES`, compared case-insensitively without
+  `_`/`-`), JWTs and `Bearer` values in every text body and JSON string
+  (`redact_text`), and query values (`url_pattern`). In-flight records count
+  as `dropped`. `dev::run_record` masks the run's `--secret-arg` values in
+  the stopped scenario. For `--record-network` the framework starts a
+  recording per spec and attaches the stopped scenario as
+  `network.scenario.json` (masked like any attachment); lxdev copies each to
+  `<dir>/<spec id>.json` after the run, suffixing `-2`, `-3`… when two spec
+  ids sanitize to one name. An unconfirmed start fails the case and attempts
+  a stop, since the recording may have started before its acknowledgement
+  failed; the run goes on. `lxdev network record stop --out [--requests]
+  [--name]` creates placeholders next to the outputs before `RECORD_STOP` and
+  renames over them after writing; on a write failure it prints the JSON to
+  stdout and fails.
 - A pass-through `Rong.SSE` (no route, or `patchJson`) is the native client;
   its call-log entry settles on the first `next()` (200) or its rejection
   (`settleOnOpen`), so reports never show a null status for it.

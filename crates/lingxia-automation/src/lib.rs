@@ -367,6 +367,9 @@ pub fn register_automation_runtime() {
     lx::register_logic_extension(Box::new(AutomationExtension));
     #[cfg(feature = "runtime")]
     dialogs::register_hook();
+    // Installed at bootstrap so host traffic before the first recording shows too.
+    #[cfg(feature = "runtime")]
+    network::observer::install();
     // `Rong.SSE` can only be wrapped before lxapp freezes `Rong`.
     #[cfg(feature = "runtime")]
     lx::register_rong_member_wrapper("SSE", network::wrap_logic_sse);

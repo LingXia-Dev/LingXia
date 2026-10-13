@@ -38,14 +38,18 @@ enum NetworkCommand {
 
 #[derive(Subcommand, Clone)]
 enum RecordCommand {
-    /// Start capturing real Logic fetch responses
+    /// Start capturing real network traffic of an lxapp
     Start {
         /// Only record URLs matching this glob (or /regex/flags)
         #[arg(long = "match", value_name = "GLOB")]
         matcher: Option<String>,
         /// Target lxapp id, home, or current (default: home, then current)
-        #[arg(long = "app")]
+        #[arg(long = "app", conflicts_with = "all")]
         appid: Option<String>,
+        /// Record every owner's traffic, host subsystems' included; only
+        /// lxapp `fetch` calls become scenario rules
+        #[arg(long)]
+        all: bool,
         /// Print JSON output
         #[arg(long)]
         json: bool,
@@ -58,6 +62,9 @@ enum RecordCommand {
         /// Scenario name (default: "recorded <start time>")
         #[arg(long)]
         name: Option<String>,
+        /// Also write every recorded request (headers, timing, bodies) here
+        #[arg(long, value_name = "FILE")]
+        requests: Option<PathBuf>,
         /// Replace this value with `***` wherever it appears (repeatable)
         #[arg(long = "redact", value_name = "VALUE")]
         redact: Vec<String>,
@@ -92,17 +99,18 @@ pub fn execute(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
         NetworkCommand::Record(RecordCommand::Start {
             matcher,
             appid,
+            all,
             json,
         }) => {
             let status = call(
                 ws,
                 method::RECORD_START,
-                Some(json!({ "match": matcher, "appid": appid })),
+                Some(json!({ "match": matcher, "appid": appid, "all": all })),
             )?;
             print(&status, json, |status| {
                 print_warning(status);
                 println!(
-                    "recording real Logic traffic{}; stop with `lxdev network record stop --out <file.json>`",
+                    "recording real network traffic{}; stop with `lxdev network record stop --out <file.json>`",
                     matcher
                         .as_deref()
                         .map(|m| format!(" matching {m}"))
@@ -113,15 +121,21 @@ pub fn execute(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
         NetworkCommand::Record(RecordCommand::Stop {
             out,
             name,
+            requests,
             redact,
             json,
         }) => {
-            // Make sure the file can be written before the recording is
+            // Make sure the files can be written before the recording is
             // taken from the host: stopping it is not undoable.
             let sink = ScenarioSink::prepare(&out)?;
+            let requests_sink = requests.as_deref().map(ScenarioSink::prepare).transpose()?;
             let mut result = call(ws, method::RECORD_STOP, Some(json!({ "name": name })))?;
             mask_values(&mut result["scenario"], &redact);
+            mask_values(&mut result["requests"], &redact);
             sink.commit_or_print(&result["scenario"], &mut std::io::stdout())?;
+            if let Some(sink) = requests_sink {
+                sink.commit_or_print(&result["requests"], &mut std::io::stdout())?;
+            }
             let routes = result["scenario"]["rules"].as_array().map_or(0, Vec::len);
             print(&result, json, |result| {
                 println!(
@@ -141,6 +155,13 @@ pub fn execute(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
                 for rule in result["scenario"]["rules"].as_array().into_iter().flatten() {
                     if let Some(note) = rule["note"].as_str() {
                         eprintln!("note: {}: {note}", rule["http"].as_str().unwrap_or(""));
+                    }
+                }
+                let requests = result["requests"].as_array().cloned().unwrap_or_default();
+                if !requests.is_empty() {
+                    println!("recorded requests:");
+                    for request in &requests {
+                        println!("  {}", request_line(request));
                     }
                 }
             })
@@ -397,6 +418,37 @@ pub(crate) fn call_lines(calls: &[Value]) -> Vec<String> {
         .collect()
 }
 
+/// `#3 GET <url> 200 · app-id fetch · ttfb 12ms · 30ms`: one observed request.
+pub(crate) fn request_line(request: &Value) -> String {
+    let outcome = request["outcome"].as_str().unwrap_or("?");
+    let answer = match request["status"].as_u64() {
+        Some(status) if outcome == "completed" => status.to_string(),
+        Some(status) => format!("{status} {outcome}"),
+        None => outcome.to_string(),
+    };
+    let mut line = format!(
+        "#{} {} {} {answer} · {} {}",
+        request["id"],
+        request["method"].as_str().unwrap_or("?"),
+        request["url"].as_str().unwrap_or("?"),
+        request["owner"].as_str().unwrap_or("(no owner)"),
+        request["kind"].as_str().unwrap_or("?"),
+    );
+    if let Some(from) = request["redirectedFrom"].as_u64() {
+        line.push_str(&format!(" · redirected from #{from}"));
+    }
+    if let Some(ttfb) = request["ttfbMs"].as_f64() {
+        line.push_str(&format!(" · ttfb {ttfb}ms"));
+    }
+    if let Some(duration) = request["durationMs"].as_f64() {
+        line.push_str(&format!(" · {duration}ms"));
+    }
+    if let Some(error) = request["error"].as_str() {
+        line.push_str(&format!(" · {error}"));
+    }
+    line
+}
+
 pub(crate) fn print_status(status: &Value) {
     match status
         .get("scenario")
@@ -432,6 +484,13 @@ pub(crate) fn print_status(status: &Value) {
         }
     }
     print_recording(status);
+    let observed = status["observed"].as_array().cloned().unwrap_or_default();
+    if !observed.is_empty() {
+        println!("reached the network, oldest first:");
+        for request in &observed {
+            println!("  {}", request_line(request));
+        }
+    }
     let calls = status["calls"].as_array().cloned().unwrap_or_default();
     if calls.is_empty() {
         if status["active"] == true {
