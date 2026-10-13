@@ -351,6 +351,7 @@
             <div data-testid="actionsheet-show" class="px-4 py-10 text-base text-blue-600 dark:text-blue-400 font-medium text-center cursor-pointer hover:bg-blue-50" @click="showDemoActionSheet">
               Show Action Sheet
             </div>
+            <pre v-if="data.actionSheetResult" data-testid="actionsheet-result" class="p-4 text-xs whitespace-pre-wrap">{{ JSON.stringify(data.actionSheetResult, null, 2) }}</pre>
           </div>
         </template>
 

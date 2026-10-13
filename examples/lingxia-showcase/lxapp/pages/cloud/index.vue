@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-linear-to-br from-surface-50 to-surface-100">
+  <div data-testid="cloud-page" :data-mode="type" class="min-h-screen bg-linear-to-br from-surface-50 to-surface-100">
     <div class="px-4 py-6">
       <template v-if="type === 'mqtt'">
         <div class="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
@@ -47,9 +47,10 @@
                   {{ mqttSubscribed ? 'active' : 'inactive' }}
                 </span>
               </div>
-              <div class="mt-3 text-sm font-semibold text-gray-800">{{ mqttStatus }}</div>
+              <div data-testid="cloud-mqtt-status" class="mt-3 text-sm font-semibold text-gray-800">{{ mqttStatus }}</div>
               <div class="mt-4 grid grid-cols-2 gap-3">
                 <button
+                  data-testid="cloud-subscribe"
                   @click="startMqttDemo"
                   :disabled="mqttSubscribed"
                   class="py-3 text-sm font-medium rounded-xl transition-all duration-200 shadow-sm active:scale-[0.98]"
@@ -62,6 +63,7 @@
                   Subscribe
                 </button>
                 <button
+                  data-testid="cloud-unsubscribe"
                   @click="stopMqttDemo"
                   :disabled="!mqttSubscribed"
                   class="py-3 text-sm font-medium rounded-xl transition-all duration-200 shadow-sm active:scale-[0.98]"
@@ -132,17 +134,18 @@
             </div>
           </div>
           <div class="p-5 space-y-4">
-            <div class="rounded-xl border border-line-200 bg-surface-50 p-4 text-sm text-gray-700">
+            <div data-testid="cloud-functions-status" class="rounded-xl border border-line-200 bg-surface-50 p-4 text-sm text-gray-700">
               {{ functionsStatus }}
             </div>
             <div class="grid grid-cols-3 gap-3">
               <button
                 v-for="name in functionsAvailable"
                 :key="name"
+                data-testid="cloud-function" :data-function="name"
                 @click="callNamedFunction({ name })"
                 class="rounded-xl bg-linear-to-r from-indigo-600 to-indigo-500 px-3 py-3 text-sm font-medium text-white shadow-sm active:scale-[0.98]"
               >
-                {{ name }}
+                Call {{ name }}
               </button>
             </div>
             <div v-if="functionsLastCall || functionsLastResult" class="rounded-xl border border-line-200 bg-surface p-4">
@@ -174,18 +177,21 @@
                    it silently refreshes, so hide it in favor of Add Identity. -->
               <button
                 v-if="!tenant"
+                data-testid="cloud-login"
                 @click="loginInteractive"
                 class="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-linear-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-600 text-white"
               >
                 Interactive Login
               </button>
               <button
+                data-testid="cloud-add-identity"
                 @click="addTenant"
                 class="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-linear-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white"
               >
                 Add Identity
               </button>
               <button
+                data-testid="cloud-logout"
                 @click="logoutCurrentTenant"
                 class="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-linear-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white"
               >
@@ -213,7 +219,7 @@
               </div>
               <div class="flex justify-between items-center py-3 border-b border-line-200 gap-4">
                 <span class="text-sm text-gray-600">Status</span>
-                <span class="text-sm font-semibold px-3 py-1 rounded-lg text-right" :class="authStatusColorClass">{{ status }}</span>
+                <span data-testid="cloud-auth-status" class="text-sm font-semibold px-3 py-1 rounded-lg text-right" :class="authStatusColorClass">{{ status }}</span>
               </div>
               <div class="flex justify-between items-center py-3 border-b border-line-200 gap-4">
                 <span class="text-sm text-gray-600">Active Tenant</span>

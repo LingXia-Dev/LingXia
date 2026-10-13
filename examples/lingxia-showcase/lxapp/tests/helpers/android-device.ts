@@ -1,0 +1,61 @@
+import type { Fixture } from '@lingxia/test';
+
+export interface AndroidNode {
+  text: string;
+  description: string;
+  resource: string;
+  className?: string;
+  bounds: [number, number, number, number];
+}
+
+// Default native chrome uses the SDK's English and Chinese catalogs.
+export const androidCancelLabels: readonly string[] = ['Cancel', 'CANCEL', '取消'];
+export const androidConfirmLabels: readonly string[] = ['OK', '确定'];
+
+export function androidDevice(t: Fixture) {
+  const base = t.arg('androidDevice');
+  if (!base) throw new Error('Android device fixture is required');
+  const send = async <T>(path: string, body?: object): Promise<T> => {
+    const response = await fetch(`${base}/${path}`, body === undefined ? {} : {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(`Android ${path}: ${response.status} ${await response.text()}`);
+    return response.json() as Promise<T>;
+  };
+  // A timed-out assertion can leave a UI dump in flight while cleanup begins.
+  let pending: Promise<unknown> = Promise.resolve();
+  const request = <T>(path: string, body?: object): Promise<T> => {
+    const result = pending.then(() => send<T>(path, body));
+    pending = result.catch(() => undefined);
+    return result;
+  };
+  const nodes = async (): Promise<AndroidNode[]> => {
+    const { xml } = await request<{ xml: string }>('hierarchy');
+    return [...xml.matchAll(/<node\b[^>]*>/g)].map(([node]) => {
+      const attr = (name: string) => (node.match(new RegExp(` ${name}="([^"]*)"`))?.[1] ?? '')
+        .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      const coordinates = attr('bounds').match(/-?\d+/g)?.map(Number) ?? [];
+      if (coordinates.length !== 4) throw new Error('Invalid Android node bounds');
+      return { text: attr('text'), description: attr('content-desc'), resource: attr('resource-id'), className: attr('class'), bounds: coordinates as AndroidNode['bounds'] };
+    });
+  };
+  const tap = async (node: AndroidNode) => {
+    const [left, top, right, bottom] = node.bounds;
+    if (left < 0 || top < 0 || right <= left || bottom <= top) throw new Error('Android control has no tappable bounds');
+    await request('tap', { x: Math.round((left + right) / 2), y: Math.round((top + bottom) / 2) });
+  };
+  return {
+    nodes, tap,
+    key: (key: 'back' | 'enter' | 'tab' | 'escape') => request('key', { key }),
+    size: () => request<{ width: number; height: number }>('size'),
+    swipe: (input: { x1: number; y1: number; x2: number; y2: number; duration: number }) => request('swipe', input),
+    async tapText(text: string | readonly string[], className?: string) {
+      const labels = typeof text === 'string' ? [text] : text;
+      const matchesControl = (item: AndroidNode) => labels.includes(item.text) && (!className || item.className === className);
+      const found = await t.waitFor(nodes, { until: (items) => items.some(matchesControl), timeout: 15000 });
+      const matches = found.filter(matchesControl);
+      if (matches.length !== 1) throw new Error(`Expected one Android control ${JSON.stringify(labels)}, found ${matches.length}`);
+      await tap(matches[0]);
+    },
+  };
+}

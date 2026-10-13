@@ -56,9 +56,10 @@ test("list returns the selection and runs nothing", async () => {
   const report = await list();
   assert.deepEqual(ran, []);
   assert.equal(report.total, 0);
+  const reportedFile = here.replaceAll("\\", "/");
   assert.deepEqual(report.listed, [
-    { id: "first", title: "first", file: here, line: lines[0], tags: ["unit"] },
-    { id: "third", title: "third", file: here, line: lines[2], tags: ["unit"] },
+    { id: "first", title: "first", file: reportedFile, line: lines[0], tags: ["unit"] },
+    { id: "third", title: "third", file: reportedFile, line: lines[2], tags: ["unit"] },
   ]);
 });
 

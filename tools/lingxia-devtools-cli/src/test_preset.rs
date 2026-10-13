@@ -523,6 +523,10 @@ pub fn expand(argv: Vec<OsString>, cwd: &Path) -> Result<Vec<OsString>> {
 /// `Some(false)` a value only when the next token is not a flag, `None`
 /// nothing (or not a flag of `lxdev test`).
 fn takes_value(flag: &str) -> Option<bool> {
+    // The global session selector is accepted after `test` but is not in TestOptions.
+    if flag == "--session" {
+        return Some(true);
+    }
     let command =
         <crate::test::TestOptions as clap::Args>::augment_args(clap::Command::new("test"));
     let long = flag.strip_prefix("--")?;
@@ -878,6 +882,19 @@ mod tests {
     }"#;
 
     #[test]
+    fn session_after_test_keeps_the_preset_entry() {
+        let dir = project(r#"{"test":{"presets":{"android":["tests/android.test.ts"]}}}"#);
+        for selector in [vec!["--session", "android"], vec!["--session=android"]] {
+            let mut argv = os(&["lxdev", "test", "--preset", "android"]);
+            argv.extend(os(&selector));
+            let expanded = expand(argv, dir.path()).unwrap();
+            let entry = dir.path().join("tests").join("android.test.ts");
+            assert!(expanded.contains(&entry.into_os_string()), "{expanded:?}");
+            assert!(expanded.ends_with(&os(&selector)), "{expanded:?}");
+        }
+    }
+
+    #[test]
     fn a_preset_goes_before_the_command_line() {
         let dir = project(FILE);
         let argv = os(&[
@@ -932,8 +949,9 @@ mod tests {
 
     #[test]
     fn preset_paths_resolve_against_the_preset_file() {
+        let absolute = std::env::temp_dir().join("abs-results");
         let dir = project(
-            r#"{ "test": { "presets": { "p": [
+            &r#"{ "test": { "presets": { "p": [
                 "tests/all.test.ts",
                 "--openapi", "../contract.yaml",
                 "--covers-manifest=tests/coverage.yaml",
@@ -945,10 +963,20 @@ mod tests {
                 "--grep", "a/b",
                 "--shuffle",
                 "--arg", "dir=relative/path"
-            ] } } }"#,
+            ] } } }"#
+                .replace(
+                    "\"/tmp/abs-results\"",
+                    &serde_json::to_string(&absolute).unwrap(),
+                ),
         );
         let root = dir.path();
-        let at = |relative: &str| root.join(relative).to_string_lossy().into_owned();
+        let at = |relative: &str| {
+            relative
+                .split('/')
+                .fold(root.to_path_buf(), |path, part| path.join(part))
+                .to_string_lossy()
+                .into_owned()
+        };
         let parent = root.parent().unwrap().join("contract.yaml");
         // Run from a subdirectory: the preset still names the project's files.
         let expanded = expand(
@@ -970,7 +998,7 @@ mod tests {
             "--record-network".to_string(),
             at("recorded"),
             "--output-dir".to_string(),
-            "/tmp/abs-results".to_string(),
+            absolute.to_string_lossy().into_owned(),
             "--tag".to_string(),
             "unit/x".to_string(),
             "--grep".to_string(),

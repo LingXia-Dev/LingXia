@@ -39,6 +39,14 @@ CI runs both frameworks on Windows and React on macOS. Android uses its matching
 thin platform entry locally. Shared cases must never be copied into a platform
 entry.
 
+From the repository root, `scripts/automation/run-android-showcase.ps1 -Device
+<serial>` builds and checks both Android frameworks. It starts the HTTP and
+Android system-input fixtures and reverses their ports through adb. Direct
+`lxdev test` runs need `--secret-arg androidDevice=...` to include OS-input
+cases; see [harness setup](harness/README.md#android-system-input).
+Keep other installed development variants stopped so they cannot replace the
+intended runtime connection on the forwarded dev port.
+
 ## What every public capability needs
 
 Use these coverage levels in order:
@@ -155,8 +163,45 @@ the host, and waits for the runtime websocket before `lxdev test` starts. The
 default `all` mode runs React and Vue in separate sessions and retains test
 artifacts plus session logs for both.
 
+After installation the script grants coarse/fine location to the test host
+(`-PackageId`, default `com.lingxia.example.lxapp.dev`) and requires Location
+services on. Wi-Fi scanning needs these; otherwise `startWifi` waits for a
+system permission dialog the JS runner cannot answer and the eval times out.
+When invoking `lxdev test` directly, prepare these permissions first.
+
 The Android JavaScript suite can drive Logic and page DOM and can take page/app
 screenshots. It cannot operate permission dialogs, the photo picker, share
 sheet, or other Android system UI. Add those actions to an external
 UIAutomator/Appium device-lab suite, then return to `lxdev` for the app-state
 assertion.
+
+## Interpreting skips
+
+Android's entry also imports the shared pending backlog. A skip is not
+automatically a non-Android case: `planned` means the assertion is not implemented,
+`external-ui` needs an OS UI driver, and `external-fixture` needs its stated
+service or device setup. Some backlog entries explicitly target desktop or iOS.
+Read each report's `reason`; skips do not count as verified coverage. Promote a
+pending entry only after replacing it with an executable assertion.
+
+## Error-code ownership
+
+`error-catalog.mjs` assigns all 41 `LxErrorCode`, 8 `SurfaceErrorCode`, and
+14 `BRIDGE_*` values to executable tests. `npm run test:harness` checks this
+inventory against the source declarations and rejects missing or stale owners.
+Run the owners from the repository root:
+
+```sh
+npm run test:runtime --prefix packages/lingxia-types
+npm test --prefix packages/lingxia-bridge
+```
+
+The types owner verifies normalization, precedence, unknown-code rejection,
+and surface-code extraction. The bridge owner verifies error-envelope
+preservation, readiness, and close races using a controlled transport.
+These layers do not prove every native failure can be induced on a phone.
+The catalog separately lists stronger real-device owners and states the
+remaining origin-coverage limits for each family. `CHANNEL-ERROR-001` covers
+real disconnected sends and missing topics; `PULL-001` covers invalid refresh
+state. App lifecycle and native page-JSON chrome are covered on Android by
+`NAV-APP-001` and `ANDROID-PAGE-CONFIG-001` respectively.

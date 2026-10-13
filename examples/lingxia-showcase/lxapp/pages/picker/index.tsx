@@ -120,7 +120,7 @@ export default function PickerPage() {
                 onConfirm={(value) => onPickerConfirm?.({ field: 'multiTime', value })}
                 onColumnChange={(value) => onPickerScroll?.({ field: 'multiTime', value })}
               >
-                <div className="p-3 bg-linear-to-r from-purple-500 to-pink-500 text-white rounded-lg text-center">
+                <div data-testid="picker-time-trigger" className="p-3 bg-linear-to-r from-purple-500 to-pink-500 text-white rounded-lg text-center">
                   {multiTime.join(':')}
                 </div>
               </LxPicker>

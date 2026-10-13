@@ -62,7 +62,8 @@ internal object LxAppPicker {
         confirmText: String,
         confirmButtonColor: String,
         confirmTextColor: String,
-        callbackId: Long
+        callbackId: Long,
+        initialIndex: Int = 0
     ) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
@@ -74,7 +75,7 @@ internal object LxAppPicker {
         val config = PickerConfig(
             mode = "selector",
             range = options.toList(),
-            value = listOf(0),
+            value = listOf(initialIndex),
             cascading = false,
             cancelText = cancelText,
             cancelButtonColor = cancelButtonColor,
@@ -105,7 +106,8 @@ internal object LxAppPicker {
         confirmText: String,
         confirmButtonColor: String,
         confirmTextColor: String,
-        callbackId: Long
+        callbackId: Long,
+        initialIndices: List<Int> = listOf(0, 0)
     ) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
@@ -117,7 +119,7 @@ internal object LxAppPicker {
         val config = PickerConfig(
             mode = "multiSelector",
             range = listOf(firstColumn.toList(), secondColumn.toList()),
-            value = listOf(0, 0),
+            value = initialIndices,
             cascading = false,
             cancelText = cancelText,
             cancelButtonColor = cancelButtonColor,
@@ -149,7 +151,8 @@ internal object LxAppPicker {
         confirmText: String,
         confirmButtonColor: String,
         confirmTextColor: String,
-        callbackId: Long
+        callbackId: Long,
+        initialIndices: List<Int> = listOf(0, 0)
     ) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
@@ -169,7 +172,7 @@ internal object LxAppPicker {
         val config = PickerConfig(
             mode = "multiSelector",
             range = listOf(firstColumn.toList(), cascadingMap as Map<String, List<String>>),
-            value = listOf(0, 0),
+            value = initialIndices,
             cascading = true,
             cancelText = cancelText,
             cancelButtonColor = cancelButtonColor,
@@ -452,8 +455,9 @@ internal object LxAppPicker {
 
                         // For cascading, show the first column and the corresponding second column
                         val secondColumn = if (firstColumn.isNotEmpty()) {
-                            val selectedFirstIndex = currentSelectedIndices.getOrNull(0) ?: 0
-                            val firstKey = firstColumn.getOrNull(selectedFirstIndex) ?: firstColumn[0]
+                            val selectedFirstIndex = (currentSelectedIndices.getOrNull(0) ?: 0)
+                                .coerceIn(0, firstColumn.lastIndex)
+                            val firstKey = firstColumn[selectedFirstIndex]
                             cascadingData?.get(firstKey) ?: emptyList()
                         } else {
                             emptyList()
@@ -472,10 +476,12 @@ internal object LxAppPicker {
                 else -> listOf(config.range.mapNotNull { it as? String })
             }
 
-            // Ensure currentSelectedIndices has enough elements to cover all columns
-            while (currentSelectedIndices.size < columns.size) {
-                currentSelectedIndices.add(0)
+            // Clamp against the resolved columns, including the selected parent's children.
+            val selectedIndices = columns.mapIndexed { index, items ->
+                (currentSelectedIndices.getOrNull(index) ?: 0).coerceIn(0, items.lastIndex.coerceAtLeast(0))
             }
+            currentSelectedIndices.clear()
+            currentSelectedIndices.addAll(selectedIndices)
 
             columns.forEachIndexed { columnIndex, columnItems ->
                 val customPicker = createCustomScrollPicker(context, columnItems, columnIndex, callbackId)
@@ -564,6 +570,8 @@ internal object LxAppPicker {
                     leftMargin = (16 * context.resources.displayMetrics.density).toInt()
                 }
             }
+
+            if (items.isEmpty()) return@apply
 
             val itemHeight = (40 * context.resources.displayMetrics.density).toInt()
             val centerOffset = (80 * context.resources.displayMetrics.density).toInt() // Center position offset
