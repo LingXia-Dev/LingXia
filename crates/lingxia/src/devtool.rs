@@ -563,7 +563,7 @@ pub async fn lxapp_dev_page_wait(
     }
 }
 
-/// Reloads an lxapp in place and waits for its live page to finish loading.
+/// Cold restarts an lxapp and waits for its live page to finish loading.
 ///
 /// Dev reload must preserve the host-owned surface. A full product restart
 /// closes that surface and cannot reconstruct whether a dynamic lxapp was a
@@ -595,7 +595,7 @@ pub async fn lxapp_dev_restart(
     let runtime = crate::runtime::platform().map_err(|err| err.to_string())?;
     sync::sync_dev_home_bundle(runtime)?;
 
-    app.restart_in_place_and_wait()
+    app.cold_restart_and_wait()
         .await
         .map_err(|err| err.to_string())?;
     let deadline = tokio::time::Instant::now()

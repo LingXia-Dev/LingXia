@@ -1005,11 +1005,11 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
     }
 
     @objc private func contextMenuRestart() {
-        _ = onLxappEvent(providerAppId, LxAppEvent.capsuleClick, "restart_in_place")
+        _ = onLxappEvent(providerAppId, LxAppEvent.capsuleClick, "cold_restart")
     }
 
     @objc private func contextMenuCleanCache() {
-        _ = onLxappEvent(providerAppId, LxAppEvent.capsuleClick, "clean_cache_restart_in_place")
+        _ = onLxappEvent(providerAppId, LxAppEvent.capsuleClick, "clean_cache_cold_restart")
     }
 
     @objc private func contextMenuUninstall() {

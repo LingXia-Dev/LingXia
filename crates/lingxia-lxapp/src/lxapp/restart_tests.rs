@@ -89,7 +89,7 @@ fn tracked(manager: &LxApps, app: &LxApp) -> bool {
 }
 
 #[tokio::test]
-async fn in_place_restart_replays_launch_then_show_only_for_a_shown_app() {
+async fn cold_restart_replays_launch_then_show_only_for_a_shown_app() {
     for shown in [true, false] {
         let f = Fixture::new();
         f.old.set_status(LxAppSessionStatus::Opened);
@@ -97,7 +97,7 @@ async fn in_place_restart_replays_launch_then_show_only_for_a_shown_app() {
         f.old.app_launch_dispatched.store(true, Ordering::SeqCst);
         f.old.launch_settled.send_replace(true);
 
-        f.old.restart_app_service_in_place().unwrap();
+        f.old.cold_restart_app_service().unwrap();
 
         let _ack = f.take_ack();
         assert!(matches!(

@@ -5776,10 +5776,10 @@ fn show_lxapp_auxiliary_context_menu(
             }
             Some(LxappContextMenuAction::TogglePin) => {}
             Some(LxappContextMenuAction::Restart) => {
-                schedule_lxapp_restart_in_place(target_appid.clone(), false);
+                schedule_lxapp_cold_restart(target_appid.clone(), false);
             }
             Some(LxappContextMenuAction::CleanCacheRestart) => {
-                schedule_lxapp_restart_in_place(target_appid.clone(), true);
+                schedule_lxapp_cold_restart(target_appid.clone(), true);
             }
             Some(LxappContextMenuAction::Uninstall) => {
                 schedule_lxapp_capsule_action(target_appid.clone(), "uninstall");
@@ -5873,7 +5873,7 @@ fn schedule_lxapp_capsule_action(appid: String, action: &'static str) {
     }));
 }
 
-fn schedule_lxapp_restart_in_place(appid: String, clear_cache: bool) {
+fn schedule_lxapp_cold_restart(appid: String, clear_cache: bool) {
     // Native context-menu callbacks run on the WebView UI thread. WebView2's
     // synchronous Reload command rejects that thread, after the app service
     // has already restarted, leaving fresh logic behind stale DOM. Run the
@@ -5885,7 +5885,7 @@ fn schedule_lxapp_restart_in_place(appid: String, clear_cache: bool) {
             if clear_cache {
                 app.clear_user_cache().map_err(|err| err.to_string())?;
             }
-            app.restart_in_place().map_err(|err| err.to_string())
+            app.cold_restart().map_err(|err| err.to_string())
         })();
         if let Err(err) = result {
             let action = if clear_cache {

@@ -757,7 +757,7 @@ fn release_badge(release_type: &str) -> Option<lingxia_windows_sdk::WindowsDevic
     }
 }
 
-/// In-place lxapp restart: recreate the JS app service (re-running `onLaunch`,
+/// Cold lxapp restart: recreate the JS app service (re-running `onLaunch`,
 /// so globalData/network state is rebuilt) and reload the page WebView in the
 /// existing window. The device-frame window and its overlays stay put — no
 /// teardown or flash, unlike the full-lifecycle restart which recreates the
@@ -770,7 +770,7 @@ fn restart_lxapp(appid: &str, clean_cache: bool) -> Result<(), String> {
     if clean_cache {
         app.clear_user_cache().map_err(|err| err.to_string())?;
     }
-    app.restart_in_place().map_err(|err| err.to_string())
+    app.cold_restart().map_err(|err| err.to_string())
 }
 
 fn maintain_device_frame(home_app_id: String) {

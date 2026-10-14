@@ -979,7 +979,7 @@ impl PageInstance {
 
     /// Prepare a retained WebView for a freshly-created PageSvc.
     ///
-    /// An in-place app-service restart keeps the native page instance, so the
+    /// A cold app-service restart keeps the native page instance, so the
     /// normal attach path cannot clear the old worker's bridge/lifecycle state.
     pub(crate) fn prepare_for_service_restart(&self) {
         self.cancel_bridge_work();

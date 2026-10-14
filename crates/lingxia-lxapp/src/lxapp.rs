@@ -3332,9 +3332,9 @@ impl LxApp {
     }
 
     /// Restart the app service without closing the host surface or recreating
-    /// the LxApp instance. Dev runners use this for an in-place lxapp restart:
+    /// the LxApp instance. Dev runners use this for a cold lxapp restart:
     /// logic is recreated, while the existing window/frame stays put.
-    pub fn restart_app_service_in_place(&self) -> Result<(), LxAppError> {
+    pub fn cold_restart_app_service(&self) -> Result<(), LxAppError> {
         self.executor.restart_app_svc(self.clone_arc())?;
         self.app_launch_dispatched.store(false, Ordering::SeqCst);
         self.launch_settled.send_replace(false);
@@ -3372,7 +3372,7 @@ impl LxApp {
             .map_err(LxAppError::from)
     }
 
-    /// In-place restart: recreate the JS app service, rebuild the live page
+    /// Cold restart: recreate the JS app service, rebuild the live page
     /// services, then regenerate HTML in their retained WebViews — without closing or
     /// recreating the host surface.
     /// The steps belong together: restarting the app service alone leaves the
@@ -3380,12 +3380,12 @@ impl LxApp {
     /// page services drops the page's bridge messages ("page service not
     /// loaded"). Reloading waits for every new PageSvc acknowledgement so a
     /// fast WebView cannot send its ready handshake before the service exists.
-    pub fn restart_in_place(&self) -> Result<(), LxAppError> {
-        let pending = self.begin_in_place_restart()?;
+    pub fn cold_restart(&self) -> Result<(), LxAppError> {
+        let pending = self.begin_cold_restart()?;
         let appid = self.appid.clone();
         std::mem::drop(crate::executor::spawn(async move {
-            if let Err(error) = Self::finish_in_place_restart(pending).await {
-                error!("Failed to finish in-place lxapp restart: {error}").with_appid(appid);
+            if let Err(error) = Self::finish_cold_restart(pending).await {
+                error!("Failed to finish cold lxapp restart: {error}").with_appid(appid);
             }
         }));
         Ok(())
@@ -3393,13 +3393,13 @@ impl LxApp {
 
     /// Awaitable form used by devtools, which must not report success before
     /// the retained page has completed the new document load.
-    pub async fn restart_in_place_and_wait(&self) -> Result<(), LxAppError> {
-        let pending = self.begin_in_place_restart()?;
-        Self::finish_in_place_restart(pending).await
+    pub async fn cold_restart_and_wait(&self) -> Result<(), LxAppError> {
+        let pending = self.begin_cold_restart()?;
+        Self::finish_cold_restart(pending).await
     }
 
-    fn begin_in_place_restart(&self) -> Result<Vec<PendingPageServiceRestart>, LxAppError> {
-        self.restart_app_service_in_place()?;
+    fn begin_cold_restart(&self) -> Result<Vec<PendingPageServiceRestart>, LxAppError> {
+        self.cold_restart_app_service()?;
         self.reload_manifest()?;
         self.refresh_live_page_config();
         self.sync_host_ui();
@@ -3442,7 +3442,7 @@ impl LxApp {
         Ok(pending)
     }
 
-    async fn finish_in_place_restart(
+    async fn finish_cold_restart(
         pending: Vec<PendingPageServiceRestart>,
     ) -> Result<(), LxAppError> {
         let mut pages = Vec::with_capacity(pending.len());
@@ -3515,7 +3515,7 @@ impl LxApp {
             self.executor
                 .eval_app_service(self.clone_arc(), "return true;".into(), false)
                 .await?;
-            Self::finish_in_place_restart(pending).await?;
+            Self::finish_cold_restart(pending).await?;
             loop {
                 if self.session.is_cancelled() {
                     return Ok(());

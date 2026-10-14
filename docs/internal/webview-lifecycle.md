@@ -590,8 +590,8 @@ Compact hosts still warm strip slots.
 
 ## Page Lifecycle Events vs WebView Callbacks
 
-An in-place Logic restart retains the host surface, so no new native open
-callback arrives. `restart_app_service_in_place()` must enqueue `App.onLaunch`
+A cold Logic restart retains the host surface, so no new native open
+callback arrives. `cold_restart_app_service()` must enqueue `App.onLaunch`
 and, if the app is currently shown, `App.onShow` with `source: lxapp` and
 `reason: open` for the fresh service. Hidden apps wait for their next real show.
 Retained pages replay their own load/show/ready through the page lifecycle gates.
@@ -868,7 +868,7 @@ timed out, leaving the context wedged for the next spec.
 auto-request in `notify_bridge_ready`, so a handshake racing the entry cannot
 boot a lifecycle of its own — `onLoad` with the previous entry's query, plus
 `onReady` — at a page nobody is on. Pages that handshake while live (surfaces,
-an in-place app-service restart) still boot from there.
+a cold app-service restart) still boot from there.
 
 The claim is the page's own `PageReset::Pending`, not the timer entry: if the
 page is back on the stack when the timer fires, the teardown stays owed and
