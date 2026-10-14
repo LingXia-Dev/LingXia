@@ -90,6 +90,12 @@ Page({
     });
   },
 
+  navigateToAudioPage: async function() {
+    await lx.navigateTo({
+      page: "audio",
+    });
+  },
+
   navigateToOpenFilePage: async function() {
     await lx.navigateTo({
       page: "file",
