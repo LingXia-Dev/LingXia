@@ -12,7 +12,12 @@ spec('capture the host window in process and attach it', {
   id: 'APP-CAPTURE-001',
   app: SHOWCASE_APP_ID,
 }, async (t) => {
-  const shot = await t.app.screenshot();
+  // Two captures in a row of the same size: the window is not mid-rotation.
+  const [, shot] = await t.waitFor(async () => [await t.app.screenshot(), await t.app.screenshot()] as const, {
+    until: ([a, b]) => a.width === b.width && a.height === b.height,
+    timeout: 8_000,
+    interval: 300,
+  });
   expect(shot.path).toMatch(/^attachments\/.+\/app-\d+\.png$/);
   expect(shot.scale >= 1).toBe(true);
   // At least a phone-sized window, in points.
