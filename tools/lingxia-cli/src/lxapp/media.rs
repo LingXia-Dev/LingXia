@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 /// Scan a built lxapp `dist/` for Web media the View must not own.
 ///
 /// `<video>` / `<audio>` / `new Audio()` belong to the native player
-/// (`<lx-video>` / `lx.createVideoContext`) or are not available yet
-/// (`lx.audio`). The check walks the **built** bundle so a tag inside a
+/// (`<lx-video>` / `lx.createVideoContext`) or to Logic (`lx.audio`). The
+/// check walks the **built** bundle so a tag inside a
 /// third-party component is caught the same way as authored markup.
 pub(crate) fn audit_output_media(output_dir: &Path) -> Result<()> {
     let mut findings = Vec::new();
@@ -94,10 +94,10 @@ impl MediaKind {
                 "`<video>` is not allowed in an lxapp View. Use `<lx-video>` as a direct child of `<lx-native-root>`; live/pushed streams go through `lx.createVideoContext(id).setStreamSource(...)`"
             }
             Self::AudioElement => {
-                "`<audio>` is not allowed in an lxapp View. Audio playback is not available yet; `lx.audio` is planned"
+                "`<audio>` is not allowed in an lxapp View. Play audio from Logic with `lx.audio.createPlayer()` (long-form) or `lx.audio.loadSound()` (effects)"
             }
             Self::NewAudio => {
-                "`new Audio()` is not allowed in an lxapp View. Audio playback is not available yet; `lx.audio` is planned"
+                "`new Audio()` is not allowed in an lxapp View. Play audio from Logic with `lx.audio.createPlayer()` (long-form) or `lx.audio.loadSound()` (effects)"
             }
             Self::BareLxVideo => {
                 "bare `<lx-video>` is not allowed. Make it a direct child of `<lx-native-root>`"
@@ -859,7 +859,7 @@ mod tests {
             .to_string();
         assert!(err.contains("index.html:1:"), "{err}");
         assert!(err.contains("`<audio>`"), "{err}");
-        assert!(err.contains("`lx.audio` is planned"), "{err}");
+        assert!(err.contains("`lx.audio.createPlayer()`"), "{err}");
     }
 
     #[test]
@@ -1008,7 +1008,7 @@ mod tests {
         .to_string();
         assert!(err.contains("vendor.js:1:"), "{err}");
         assert!(err.contains("`new Audio()`"), "{err}");
-        assert!(err.contains("`lx.audio` is planned"), "{err}");
+        assert!(err.contains("`lx.audio.createPlayer()`"), "{err}");
     }
 
     #[test]
