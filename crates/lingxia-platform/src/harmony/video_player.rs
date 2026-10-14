@@ -190,7 +190,44 @@ struct InfoCallbackData {
     buffering_status: AtomicI32,
 }
 
+/// (playing, silent) per component; the audio coordinator hears only changes in
+/// audibility, so a muted video never takes focus.
+static AUDIBILITY: OnceLock<Mutex<HashMap<String, (bool, bool)>>> = OnceLock::new();
+
+fn update_audibility(component_id: &str, playing: Option<bool>, silent: Option<bool>) {
+    let Ok(mut map) = AUDIBILITY.get_or_init(|| Mutex::new(HashMap::new())).lock() else {
+        return;
+    };
+    let entry = map
+        .entry(component_id.to_string())
+        .or_insert((false, false));
+    let before = entry.0 && !entry.1;
+    if let Some(playing) = playing {
+        entry.0 = playing;
+    }
+    if let Some(silent) = silent {
+        entry.1 = silent;
+    }
+    let after = entry.0 && !entry.1;
+    drop(map);
+    if before != after {
+        crate::traits::audio::notify_video_audible(component_id, after);
+    }
+}
+
+fn forget_audibility(component_id: &str) {
+    update_audibility(component_id, Some(false), None);
+    if let Ok(mut map) = AUDIBILITY.get_or_init(|| Mutex::new(HashMap::new())).lock() {
+        map.remove(component_id);
+    }
+}
+
 fn notify_arkts(component_id: &str, event: &str, payload: Option<&str>) {
+    match event {
+        "playing" => update_audibility(component_id, Some(true), None),
+        "pause" | "ended" | "stop" => update_audibility(component_id, Some(false), None),
+        _ => {}
+    }
     let result = match payload {
         Some(payload) => lingxia_webview::platform::harmony::tsfn::call_arkts(
             "videoPlayerEvent",
@@ -1145,6 +1182,7 @@ impl NativeVideoPlayer {
 
     pub fn set_volume(&mut self, volume: f32) -> Result<(), PlatformError> {
         self.volume = volume.clamp(0.0, 1.0);
+        update_audibility(&self.component_id, None, Some(self.volume <= 0.0));
         check_av_result(
             unsafe { OH_AVPlayer_SetVolume(self.player, self.volume, self.volume) },
             "OH_AVPlayer_SetVolume",
@@ -1348,6 +1386,8 @@ fn remove_stream_decoder_if_current(
         if let Some(current) = guard.get(component_id) {
             if Arc::ptr_eq(current, wrapper) {
                 guard.remove(component_id);
+                drop(guard);
+                forget_audibility(component_id);
                 return true;
             }
         }
@@ -1617,6 +1657,7 @@ impl StreamDecoderState {
     fn set_volume(&mut self, volume: f32) -> Result<(), PlatformError> {
         let volume = volume.clamp(0.0, 1.0);
         self.volume = volume;
+        update_audibility(&self.component_id, None, Some(volume <= 0.0));
         if let Some(audio_state) = self.audio.as_mut() {
             if !audio_state.renderer.is_null() {
                 let result = unsafe { OH_AudioRenderer_SetVolume(audio_state.renderer, volume) };
@@ -2975,6 +3016,8 @@ pub fn destroy_player(component_id: &str) -> Result<(), PlatformError> {
             p.release()?;
         }
     }
+    drop(players);
+    forget_audibility(component_id);
     remove_surface_id(component_id);
     Ok(())
 }
