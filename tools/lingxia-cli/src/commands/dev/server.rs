@@ -86,7 +86,7 @@ impl DevServerHandle {
     }
 
     /// The device `t.device.screenshot()` captures (an adb serial, a
-    /// simulator UDID, an hdc target).
+    /// `devicectl` device, an hdc target).
     pub fn set_capture_device(&self, id: &str) {
         self.state.set_capture_device(id);
     }
@@ -120,6 +120,7 @@ impl DevServerHandle {
         } else {
             Ok(())
         };
+        self.state.discard_captures();
         super::companion::finish(result, self.companion.as_ref())
     }
 }
@@ -2200,8 +2201,8 @@ fn handle_client_connection(
         return Ok(());
     }
 
-    if method.as_str() == lingxia_control_protocol::methods::session::device::CAPTURES {
-        let reply = state.device_captures_reply(id, params);
+    if method.as_str() == lingxia_control_protocol::methods::session::capture::STAGED {
+        let reply = state.staged_captures_reply(id, params);
         send_wire_message(&mut websocket, &reply)?;
         let _ = websocket.close(None);
         return Ok(());

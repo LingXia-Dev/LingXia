@@ -175,6 +175,11 @@ pub mod methods {
             /// [`crate::dev_session::CaptureArgs`], payload the PNG the host
             /// captured in process. Returns [`crate::dev_session::Capture`].
             pub const PUT: &str = "session.capture.put";
+            /// Sent by `lxdev test` once its run ended: every capture the run
+            /// staged, app and device alike. Args
+            /// [`crate::dev_session::StagedCapturesArgs`]; returns
+            /// [`crate::dev_session::StagedCaptures`].
+            pub const STAGED: &str = "session.capture.staged";
             /// The session's target cannot be captured; the message says why.
             pub const UNSUPPORTED: &str = "capture_unsupported";
             /// The capture or its staging failed.
@@ -182,17 +187,12 @@ pub mod methods {
         }
 
         /// Whole-display captures the dev server takes from outside the app
-        /// (`adb screencap`, `simctl io`, `hdc snapshot_display`).
+        /// (`adb screencap`, `idevicescreenshot`, `hdc snapshot_display`).
         pub mod device {
             /// Sent by the runtime for a host run. Args
             /// [`crate::dev_session::CaptureArgs`]; returns
             /// [`crate::dev_session::Capture`].
             pub const SCREENSHOT: &str = "session.device.screenshot";
-            /// Sent by `lxdev test` once its run ended: every capture the run
-            /// staged, app and device alike. Args
-            /// [`crate::dev_session::DeviceCapturesArgs`]; returns
-            /// [`crate::dev_session::DeviceCaptures`].
-            pub const CAPTURES: &str = "session.device.captures";
         }
 
         /// The dev session's companion (`.lingxia/dev-companion.json`).
@@ -848,16 +848,16 @@ pub mod dev_session {
         Ok((request, &frame[4 + length..]))
     }
 
-    /// `session.device.captures` arguments.
+    /// `session.capture.staged` arguments.
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    pub struct DeviceCapturesArgs {
+    pub struct StagedCapturesArgs {
         pub run_id: String,
     }
 
-    /// `session.device.captures` result: `files` (report-relative paths) are
-    /// staged under `dir` on this machine for the client to copy.
+    /// `session.capture.staged` result: `files` (report-relative paths) are
+    /// staged under `dir` on this machine for the client to copy, then remove.
     #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-    pub struct DeviceCaptures {
+    pub struct StagedCaptures {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub dir: Option<String>,
         #[serde(default)]
