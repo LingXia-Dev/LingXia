@@ -107,7 +107,7 @@ if (lx.supports('surface.window.fullChrome')) {
 - `true` is not permission: grants and failures surface at the call. With
   `capabilities.process`, `lx.supports('process')` is true yet every call throws
   until the host grants the process resource.
-- Optional namespaces share it: `terminal`, `app.autostart`,
+- Optional namespaces share it: `audio`, `terminal`, `app.autostart`,
   `app.notification`, `app.banner`.
 - Required features need a matching `minRuntime`; optional ones need a
   fallback.
@@ -115,6 +115,37 @@ if (lx.supports('surface.window.fullChrome')) {
   ([Control app](../app/control-app.md)).
 - Unsupported cosmetic calls (tray on mobile) are silent no-ops; calls with a
   result reject.
+
+## Audio
+
+`lx.audio` (present exactly when `lx.supports('audio')`) plays audio from
+Logic; the View cannot (`<audio>` and `new Audio()` fail the build).
+
+```ts
+const player = lx.audio!.createPlayer({ signal: this.signal })
+player.on('state', (s) => this.setData({ status: s.status }))
+await player.load('lx://lxapp/assets/intro.mp3', { autoplay: true })
+
+const tap = await lx.audio!.loadSound('lx://lxapp/assets/tap.wav')
+tap.play({ volume: 0.6 })
+```
+
+- Sources: http(s) URLs (host network grant) or `lx://lxapp/<path>`,
+  `lx://userdata/…`, `lx://usercache/…`, `lx://temp/…`. Relative and native
+  paths reject. Sounds take local files or `{ bytes, mimeType }`; download a
+  remote sound first.
+- Players are foreground only: they pause when the lxapp hides
+  (`interruption` with `reason: 'appHidden'`) and never resume on their own.
+  `dispose()` or the `signal` ends one; destroying the lxapp ends all.
+- `focus`: `exclusive` (player default) pauses the user's music and this
+  host's other exclusive players, including `LxVideo`; `duck` lowers others;
+  `mix` (sound default) plays alongside and obeys the iOS silent switch.
+- Commands resolve after the `state` event they cause; `play()` resolves once
+  audio renders. Read a rejection's reason with `audioErrorCode(error)` from
+  `@lingxia/types/error`.
+- `output: 'earpiece'` needs `lx.supports('audio.output.earpiece')`, else
+  `play()` rejects `output_unsupported`. `proximity: true` is a no-op without
+  `audio.proximity`.
 
 ## Badges
 

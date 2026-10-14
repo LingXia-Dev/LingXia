@@ -132,8 +132,9 @@ inside `LxNativeRoot`.
 
 - `lingxia build` rejects `<video>`, `<audio>`, and `new Audio()`;
   `video.srcObject` is unsupported. Live streams use
-  `lx.createVideoContext(id).setStreamSource(...)`. Audio playback is not
-  available.
+  `lx.createVideoContext(id).setStreamSource(...)`. Play audio from Logic
+  with [`lx.audio`](./lx-api.md#audio). An audible video takes exclusive audio
+  focus: it pauses `exclusive` audio players, and they pause it.
 - Remote URLs (`src`, `poster`, quality/watermark URLs, stream sources) follow
   the host [network grant](../native/permissions.md); protocol-relative URLs
   are rejected.
