@@ -3573,29 +3573,12 @@ fn reconcile_lxapp_main_from_layout(plan: &LayoutPresentationPlan) {
     else {
         return;
     };
-    let explicitly_requested = take_lxapp_main_activation(app_id);
-    #[cfg(not(feature = "browser-runtime"))]
-    let _ = explicitly_requested;
-    let physical_app_id = active_host_window_webtag_key()
-        .and_then(|key| key.split_once(':').map(|(appid, _)| appid.to_string()));
-    if physical_app_id.as_deref() == Some(app_id) {
-        return;
-    }
-    // A browser tab intentionally covers the graph's lxapp main until its own
-    // close/back action restores it. An explicit lxapp activation is the one
-    // exception: it replaces that cover; resize/aside commits preserve it.
-    #[cfg(feature = "browser-runtime")]
-    if presented_browser_tab().is_some() {
-        if !explicitly_requested {
-            return;
-        }
-        clear_browser_presentation();
-    }
     let Some(app) = lxapp::try_get(app_id) else {
         return;
     };
-    // A first open activates before its page WebView exists; `show_lxapp`
-    // presents it once created, so there is nothing to reconcile yet.
+    // A first open activates before its page WebView exists. Leave the
+    // one-shot flag set so the commit that runs once `show_lxapp` has created
+    // the page still raises the window and selects the sidebar row.
     let page_ready = app
         .current_page()
         .ok()
@@ -3607,8 +3590,67 @@ fn reconcile_lxapp_main_from_layout(plan: &LayoutPresentationPlan) {
         log::debug!("lxapp main not ready to reconcile yet: {app_id}");
         return;
     }
-    if !present_current_lxapp_main(&app) {
+    let explicitly_requested = take_lxapp_main_activation(app_id);
+    let physical_matches = active_host_window_webtag_key()
+        .and_then(|key| key.split_once(':').map(|(appid, _)| appid.to_string()))
+        .as_deref()
+        == Some(app_id);
+    #[cfg(feature = "browser-runtime")]
+    let browser_covering = presented_browser_tab().is_some();
+    #[cfg(not(feature = "browser-runtime"))]
+    let browser_covering = false;
+    let LxappMainFocus::Focus { present } =
+        lxapp_main_focus_action(physical_matches, explicitly_requested, browser_covering)
+    else {
+        return;
+    };
+    // A browser tab intentionally covers the graph's lxapp main until its own
+    // close/back action restores it. An explicit lxapp activation is the one
+    // exception: it replaces that cover; resize/aside commits preserve it.
+    #[cfg(feature = "browser-runtime")]
+    if browser_covering {
+        clear_browser_presentation();
+    }
+    if present && !present_current_lxapp_main(&app) {
         log::warn!("failed to reconcile Windows lxapp main from layout: {app_id}");
+        return;
+    }
+    // `lx.shell.openApp` has no sidebar click to activate the host or repaint
+    // the switcher. A matching physical webtag used to return before either.
+    if explicitly_requested {
+        if let Some(owner_appid) = shell_owner_appid() {
+            reveal_and_sync_sidebar(&owner_appid, app_id);
+        }
+        foreground_shell_window();
+    }
+}
+
+/// What an lxapp-main layout commit should do once the page WebView exists.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LxappMainFocus {
+    Skip,
+    Focus { present: bool },
+}
+
+fn lxapp_main_focus_action(
+    physical_matches: bool,
+    explicitly_requested: bool,
+    browser_covering: bool,
+) -> LxappMainFocus {
+    if browser_covering && !explicitly_requested {
+        return LxappMainFocus::Skip;
+    }
+    if physical_matches && !explicitly_requested {
+        return LxappMainFocus::Skip;
+    }
+    LxappMainFocus::Focus {
+        present: !physical_matches || browser_covering,
+    }
+}
+
+fn foreground_shell_window() {
+    if let Some(handle) = crate::window_host::primary_host_window_handle() {
+        crate::window_host::foreground_host_window(handle);
     }
 }
 
@@ -7698,11 +7740,11 @@ fn resolve_asset_path(asset_dir: &Path, raw: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::{
-        LxappContextMenuAction, LxappShortcutAction, MainWorkspaceAddTarget,
+        LxappContextMenuAction, LxappMainFocus, LxappShortcutAction, MainWorkspaceAddTarget,
         PresentationCompletion, SidebarUiState, adaptive_tabbar_projection, auxiliary_lxapp_id,
         browser_internal_page_deep_link, browser_internal_page_key, browser_url_is_hidden,
         build_lxapp_context_menu, chrome_command, chrome_command_is_page_scoped,
-        lxapp_shortcut_action, main_workspace_add_target_for_capabilities,
+        lxapp_main_focus_action, lxapp_shortcut_action, main_workspace_add_target_for_capabilities,
         merge_related_shell_appids, preferred_sidebar_group_appid, sidebar_content_available,
         toggle_sidebar_projection,
     };
@@ -7755,6 +7797,30 @@ mod tests {
         assert!(!chrome_command_is_page_scoped(
             chrome_command::BROWSER_TAB_CLICK
         ));
+    }
+
+    #[test]
+    fn explicit_lxapp_open_focuses_even_when_the_page_is_already_showing() {
+        assert_eq!(
+            lxapp_main_focus_action(true, false, false),
+            LxappMainFocus::Skip
+        );
+        assert_eq!(
+            lxapp_main_focus_action(true, true, false),
+            LxappMainFocus::Focus { present: false }
+        );
+        assert_eq!(
+            lxapp_main_focus_action(false, false, false),
+            LxappMainFocus::Focus { present: true }
+        );
+        assert_eq!(
+            lxapp_main_focus_action(false, false, true),
+            LxappMainFocus::Skip
+        );
+        assert_eq!(
+            lxapp_main_focus_action(true, true, true),
+            LxappMainFocus::Focus { present: true }
+        );
     }
 
     #[test]

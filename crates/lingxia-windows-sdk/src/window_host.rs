@@ -6548,6 +6548,40 @@ pub(crate) fn primary_host_window_handle() -> Option<isize> {
     primary_host_window_except(None).map(hwnd_handle)
 }
 
+/// Raise `handle` above other apps. `SetForegroundWindow` is ignored when this
+/// thread does not own the foreground, which is the usual case for
+/// `lx.shell.openApp` (a JS worker, not a click). Attaching to the foreground
+/// thread's input queue is what makes the call stick. A minimized host is
+/// restored first; otherwise the sidebar can switch behind a taskbar button.
+pub(crate) fn foreground_host_window(handle: isize) {
+    if handle == 0 || !is_window_handle_valid(handle) {
+        return;
+    }
+    let hwnd = hwnd_from_handle(handle);
+    let owner_thread = unsafe { WindowsAndMessaging::GetWindowThreadProcessId(hwnd, None) };
+    let this_thread = unsafe { GetCurrentThreadId() };
+    if owner_thread != 0 && owner_thread != this_thread {
+        let _ = post_to_window_thread(handle, Box::new(move || foreground_host_window(handle)));
+        return;
+    }
+    unsafe {
+        if WindowsAndMessaging::IsIconic(hwnd).as_bool() {
+            let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_RESTORE);
+        }
+        let foreground = WindowsAndMessaging::GetForegroundWindow();
+        let fg_thread = WindowsAndMessaging::GetWindowThreadProcessId(foreground, None);
+        let attached = fg_thread != 0
+            && fg_thread != this_thread
+            && AttachThreadInput(this_thread, fg_thread, true).as_bool();
+        let _ = WindowsAndMessaging::BringWindowToTop(hwnd);
+        let _ = WindowsAndMessaging::SetForegroundWindow(hwnd);
+        let _ = SetFocus(Some(hwnd));
+        if attached {
+            let _ = AttachThreadInput(this_thread, fg_thread, false);
+        }
+    }
+}
+
 /// Ask DWM to round the outer window without extending its non-client frame
 /// into the client. Extending even one pixel recreates the unpaintable system
 /// strip this custom shell deliberately removes.

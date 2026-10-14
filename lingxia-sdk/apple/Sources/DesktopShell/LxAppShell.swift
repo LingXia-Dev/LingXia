@@ -1566,6 +1566,21 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         mountLxAppMainProvider(appId: appId)
     }
 
+    /// Raise this host above other apps. `makeKeyAndOrderFront` only orders
+    /// windows of an already-active app.
+    func orderShellFront() {
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Select the switcher row for an lxapp opened from JS. Managed rows are
+    /// keyed by Surface id; a dynamic open's surface id is the app id.
+    func selectSidebarLxApp(appId: String, surfaceId: String) {
+        sidebarView?.setActiveHighlight(
+            appId: managedMainSurfaceByLxappId[appId] ?? surfaceId
+        )
+    }
+
     /// Mount the selected lxapp provider after the Surface graph has accepted
     /// it. Unlike reconciliation this intentionally reattaches an existing VC:
     /// initial declaration registration can publish the active root before its
