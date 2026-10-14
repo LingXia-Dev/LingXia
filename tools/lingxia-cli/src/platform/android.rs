@@ -1174,6 +1174,22 @@ fn adb_command(device_id: Option<&str>) -> Command {
     command
 }
 
+/// The device's current screen as PNG bytes. `exec-out`, not `shell`: a
+/// shell pty may rewrite line endings inside the binary stream.
+pub fn screencap_png(device_id: Option<&str>) -> Result<Vec<u8>> {
+    let output = adb_command(device_id)
+        .args(["exec-out", "screencap", "-p"])
+        .output()
+        .context("Failed to execute adb exec-out screencap")?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "adb exec-out screencap failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(output.stdout)
+}
+
 /// Pick the installed application id matching `base_id` (canonical) or
 /// `base_id.<single-segment>` (env-suffixed via Gradle's
 /// `applicationIdSuffix`). When several coexist, prefer the canonical id.

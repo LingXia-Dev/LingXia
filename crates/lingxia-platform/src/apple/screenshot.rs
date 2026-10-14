@@ -55,6 +55,21 @@ impl AppScreenshot for Platform {
         }
     }
 
+    async fn capture_window_id(
+        &self,
+        surface: Option<&str>,
+    ) -> Result<Option<String>, PlatformError> {
+        #[cfg(target_os = "macos")]
+        {
+            capture_window_id_macos(surface).await
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = surface;
+            Ok(None)
+        }
+    }
+
     async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, PlatformError> {
         #[cfg(target_os = "ios")]
         {
@@ -288,6 +303,62 @@ async fn bring_to_front_macos(id: &str, focus: bool) -> Result<(), PlatformError
         )),
         Err(_) => Err(PlatformError::Platform(
             "raising the window timed out".to_string(),
+        )),
+    }
+}
+
+/// The window tagged for `surface` (a float or window surface has its own),
+/// else the shell's host window; `None` leaves the default to capture, as in
+/// the Runner, which tags none. The tags are `NSWindow.identifier`s the Swift
+/// shell sets.
+#[cfg(target_os = "macos")]
+async fn capture_window_id_macos(surface: Option<&str>) -> Result<Option<String>, PlatformError> {
+    use dispatch2::DispatchQueue;
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+    use objc2_foundation::NSString;
+
+    const LOOKUP_TIMEOUT: Duration = Duration::from_secs(2);
+    let mut wanted: Vec<String> = surface
+        .map(|id| format!("lingxia.surface.{id}"))
+        .into_iter()
+        .collect();
+    wanted.push("lingxia.host".to_string());
+    let (tx, rx) = oneshot::channel::<Option<i64>>();
+    DispatchQueue::main().exec_async(move || unsafe {
+        let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+        let windows: *mut AnyObject = if app.is_null() {
+            std::ptr::null_mut()
+        } else {
+            msg_send![app, windows]
+        };
+        let count: usize = if windows.is_null() {
+            0
+        } else {
+            msg_send![windows, count]
+        };
+        let mut tagged = Vec::new();
+        for index in 0..count {
+            let window: *mut AnyObject = msg_send![windows, objectAtIndex: index];
+            let visible: bool = msg_send![window, isVisible];
+            let identifier: *mut NSString = msg_send![window, identifier];
+            if visible && !identifier.is_null() {
+                let number: i64 = msg_send![window, windowNumber];
+                tagged.push(((&*identifier).to_string(), number));
+            }
+        }
+        let found = wanted.iter().find_map(|tag| {
+            tagged
+                .iter()
+                .find(|(identifier, _)| identifier == tag)
+                .map(|(_, number)| *number)
+        });
+        let _ = tx.send(found);
+    });
+    match timeout(LOOKUP_TIMEOUT, rx).await {
+        Ok(Ok(found)) => Ok(found.map(|number| number.to_string())),
+        _ => Err(PlatformError::Platform(
+            "looking up the capture window timed out".to_string(),
         )),
     }
 }

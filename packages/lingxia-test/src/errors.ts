@@ -39,6 +39,12 @@ export const TEST_ERROR_CODES = [
   "failed",
   /** A routed response broke the run's OpenAPI contract (`lxdev test --openapi`). */
   "E_OPENAPI_CONTRACT",
+  /** `t.app.screenshot()` / `t.device.screenshot()`: this session cannot take the capture. */
+  "E_CAPTURE_UNSUPPORTED",
+  /** `t.device.screenshot()`: the OS withholds the screen (macOS Screen Recording). */
+  "E_CAPTURE_PERMISSION",
+  /** `t.app.screenshot()` / `t.device.screenshot()`: the capture failed. */
+  "E_CAPTURE_FAILED",
   /** A fixture call ran out of time (a wait, an action budget, an eval, a nav), or the spec did. */
   "E_TIMEOUT",
   /** `t.skip()` stopped the spec. */
@@ -49,3 +55,19 @@ export const TEST_ERROR_CODES = [
 type Unlisted = Exclude<TestErrorCode, (typeof TEST_ERROR_CODES)[number]>;
 const listsEveryCode: [Unlisted] extends [never] ? true : Unlisted = true;
 void listsEveryCode;
+
+/**
+ * A capture this session cannot take: `unsupported` (no capture on this
+ * target, or a host without `lingxia dev`) or `permission` (the OS withholds
+ * the screen until a grant). `hint` says what to do; pass it to `t.skip`.
+ */
+export class CaptureUnavailableError extends Error {
+  override readonly name = "CaptureUnavailableError";
+  readonly code: "E_CAPTURE_UNSUPPORTED" | "E_CAPTURE_PERMISSION";
+
+  constructor(readonly reason: "unsupported" | "permission", readonly hint: string, options?: { cause?: unknown }) {
+    super(hint);
+    if (options && "cause" in options) (this as { cause?: unknown }).cause = options.cause;
+    this.code = reason === "permission" ? "E_CAPTURE_PERMISSION" : "E_CAPTURE_UNSUPPORTED";
+  }
+}

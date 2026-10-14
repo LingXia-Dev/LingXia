@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { CaptureUnavailableError, expect, spec } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture } from '../helpers/poll.js';
 
@@ -92,4 +92,49 @@ spec('accept both device orientations and reject an unknown one', {
   expect(result.portrait.value).toBe(true);
   expect(result.invalid.ok).toBe(false);
   expect(result.invalid.code).toBe('E_INVALID_ARG');
+});
+
+/**
+ * Whether the frame the user sees turns with setDeviceOrientation: a phone
+ * rotates its display; a desktop host accepts the call and keeps its window.
+ */
+const ROTATES_FRAME: Record<string, boolean> = {
+  android: true,
+  ios: true,
+  harmony: true,
+  macos: false,
+  windows: false,
+};
+
+spec('rotate the captured app window after setDeviceOrientation', {
+  id: 'DEVICE-ORIENTATION-FRAME-001',
+  covers: ['lx.setDeviceOrientation'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  if (!(ROTATES_FRAME[platform ?? ''] ?? true)) {
+    t.skip(`the ${platform} host keeps its window shape on setDeviceOrientation; DEVICE-ORIENTATION-001 owns its contract`);
+  }
+  const { app, defer } = bindFixture(t, 'DEVICE-ORIENTATION-FRAME-001');
+  // The whole app window as the host draws it, so its size is the frame the
+  // user sees, not the WebView's.
+  const capture = () => t.app.screenshot().catch((error: unknown) => {
+    if (error instanceof CaptureUnavailableError) t.skip(error.hint);
+    throw error;
+  });
+  const orient = (value: 'portrait' | 'landscape') =>
+    app.logic.eval(({ lx }, next) => lx.setDeviceOrientation(next), value);
+  const shape = (shot: { width: number; height: number }) =>
+    shot.width > shot.height ? 'landscape' : shot.height > shot.width ? 'portrait' : 'square';
+
+  const before = await capture();
+  defer(async () => { await orient('portrait').catch(() => undefined); });
+
+  expect(await orient('portrait')).toBe(true);
+  const portrait = await t.waitFor(capture, { until: (shot) => shape(shot) === 'portrait', timeout: 8_000, interval: 500 });
+  expect(await orient('landscape')).toBe(true);
+  const landscape = await t.waitFor(capture, { until: (shot) => shape(shot) === 'landscape', timeout: 8_000, interval: 500 });
+
+  // The same window turned a quarter: its two sides swap exactly.
+  expect([landscape.width, landscape.height]).toEqual([portrait.height, portrait.width]);
+  expect(before.width * before.height).toBe(portrait.width * portrait.height);
 });

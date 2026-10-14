@@ -87,7 +87,7 @@ urlencoding = "2.1"
 url = "2.5"
 qrcode = { version = "0.14.1", default-features = false }
 
-image = { version = "0.25.10", default-features = false, features = ["png", "webp"] }
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 ico = "0.5"
 
 # Resource-generation deps (i18n/icons), absorbed from the former

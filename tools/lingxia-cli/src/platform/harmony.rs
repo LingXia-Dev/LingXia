@@ -16,6 +16,7 @@ pub mod signer;
 
 pub use agc::{AgcApiCredentials, AgcConnectClient, AgcToken};
 pub use capabilities::resolve_effective_acl_permissions;
+pub use deploy::snapshot_display;
 pub use doctor::doctor_checks;
 pub use project::{
     generate_icons, read_bundle_name, resolve_harmony_dir, resolve_harmony_rawfile_dir,

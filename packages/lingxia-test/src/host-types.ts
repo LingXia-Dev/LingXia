@@ -27,6 +27,14 @@ export interface AutomationHost {
   networkLog?: (sinceMs: number, limit?: number) => unknown;
   /** `lxdev test --record-network`: start, or stop and return the scenario. */
   networkRecord?: (command: "start" | "stop", name?: string) => unknown;
+  /**
+   * Capture the window showing the current page (or `surface`) into `name`
+   * (a report-relative `.png` path), staged on the dev machine where lxdev
+   * collects it. Only the size comes back.
+   */
+  appScreenshot?: (name: string, surface?: string) => Promise<{ path: string; width: number; height: number; scale: number }>;
+  /** The same for the whole display. */
+  deviceScreenshot?: (name: string) => Promise<{ path: string; width: number; height: number; scale: number }>;
   /** Whether the screen is locked; `undefined` where the host cannot tell. */
   screenLocked?: () => boolean | undefined;
   /**
