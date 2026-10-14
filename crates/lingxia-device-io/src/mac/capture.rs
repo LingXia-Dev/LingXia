@@ -50,6 +50,11 @@ fn capture_error(what: &str) -> Error {
 }
 
 pub(crate) fn capture_frame(target: &CaptureTarget) -> Result<crate::engine::EngineFrame> {
+    // Without the grant a screen capture still succeeds, showing only the
+    // wallpaper and this process's own windows: refuse it instead.
+    if !matches!(target, CaptureTarget::Window(_)) && !CGPreflightScreenCaptureAccess() {
+        return Err(capture_error("the screen"));
+    }
     match target {
         CaptureTarget::Window(id) => {
             let wid = parse_window_id(id)?;
