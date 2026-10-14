@@ -264,6 +264,21 @@ mod tests {
         assert!(script.contains("!define PUBLISHER \"Contoso\"\n"));
     }
     #[test]
+    fn launcher_waits_while_pumping_messages() {
+        let portable = include_str!("../../../templates/windows/portable.nsi");
+        let common = include_str!("../../../templates/windows/common.nsh");
+        let instruction = |source: &str, name: &str| {
+            source
+                .lines()
+                .any(|line| line.trim_start().starts_with(name))
+        };
+        assert!(!instruction(portable, "ExecWait"));
+        assert!(instruction(portable, "Call ExecAndWait"));
+        assert!(instruction(common, "Function ExecAndWait"));
+        assert!(common.contains("MsgWaitForMultipleObjects"));
+        assert!(!instruction(common, "ExecWait"));
+    }
+    #[test]
     fn compile_installers_when_nsis_available() {
         if find_makensis().is_err() {
             return;

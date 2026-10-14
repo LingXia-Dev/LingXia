@@ -24,13 +24,15 @@ Section
   IfErrors failed
   System::Call 'kernel32::SetEnvironmentVariableW(w "LINGXIA_STATE_ROOT", w "$EXEDIR\data\${APP_ID}")'
 !endif
-  ${GetParameters} $0
+  ${GetParameters} $2
+  StrCpy $0 '"$PLUGINSDIR\app\${EXE}" $2'
+  StrCpy $1 "$PLUGINSDIR\app"
   ClearErrors
-  ExecWait '"$PLUGINSDIR\app\${EXE}" $0' $1
+  Call ExecAndWait
   IfErrors failed
   SetOutPath "$TEMP"
   RMDir /r "$PLUGINSDIR\app"
-  SetErrorLevel $1
+  SetErrorLevel $0
   Quit
 failed:
   MessageBox MB_OK|MB_ICONSTOP "Unable to unpack or start ${PRODUCT}." /SD IDOK
