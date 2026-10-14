@@ -3,6 +3,7 @@
 //! This module provides Swift FFI interfaces for iOS and macOS platforms.
 
 mod app;
+mod audio;
 #[cfg(all(target_os = "macos", not(test)))]
 pub(crate) mod banner;
 mod clipboard;

@@ -1,4 +1,5 @@
 pub mod app;
+mod audio;
 pub mod camera;
 mod clipboard;
 mod device;

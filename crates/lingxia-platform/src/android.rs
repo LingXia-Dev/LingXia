@@ -6,6 +6,7 @@ use jni::{
 use std::sync::OnceLock;
 
 mod app;
+mod audio;
 mod clipboard;
 mod device;
 mod file;
