@@ -285,7 +285,14 @@ fn iphone_png(device: Option<&str>) -> Result<Vec<u8>, CaptureError> {
         )
     })?;
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        // idevicescreenshot reports some failures on stdout.
+        let stderr = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stderr),
+            String::from_utf8_lossy(&output.stdout)
+        )
+        .trim()
+        .to_string();
         // iOS 17 and later no longer offer the lockdown screenshotr service.
         if stderr.contains("screenshotr") {
             return Err((
