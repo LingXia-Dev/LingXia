@@ -590,6 +590,12 @@ Compact hosts still warm strip slots.
 
 ## Page Lifecycle Events vs WebView Callbacks
 
+An in-place Logic restart retains the host surface, so no new native open
+callback arrives. `restart_app_service_in_place()` must enqueue `App.onLaunch`
+and, if the app is currently shown, `App.onShow` with `source: lxapp` and
+`reason: open` for the fresh service. Hidden apps wait for their next real show.
+Retained pages replay their own load/show/ready through the page lifecycle gates.
+
 `PageInstance` implements `WebViewDelegate`:
 - `on_navigation_event(Started)` → sets render status `Started`.
 - `on_navigation_event(Succeeded)` for the **current attempt** (folded

@@ -3343,7 +3343,22 @@ impl LxApp {
         // restart skips that lifecycle, so fire it explicitly. It is enqueued
         // before the page reload, so the reloaded page's first globalData read
         // (which arrives only after the page re-loads) observes the fresh state.
-        self.ensure_app_launch_dispatched()
+        self.ensure_app_launch_dispatched()?;
+        // The retained surface sends no new open callback. Replay its current
+        // visibility into the fresh AppSvc, just as a cold open would.
+        if self.is_shown() {
+            self.appservice_notify(
+                AppServiceEvent::OnShow,
+                Some(
+                    crate::lifecycle::AppServiceEventArgs {
+                        source: crate::lifecycle::AppServiceEventSource::Lxapp,
+                        reason: crate::lifecycle::AppServiceEventReason::Open,
+                    }
+                    .to_json_string(),
+                ),
+            )?;
+        }
+        Ok(())
     }
 
     /// Reload the current page's WebView in place (without recreating the host
