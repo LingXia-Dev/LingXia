@@ -1093,6 +1093,43 @@ fn hdc_command_failed(stdout: &str, stderr: &str) -> bool {
     has_failure_marker(stdout) || has_failure_marker(stderr)
 }
 
+/// The device's current screen as the image `snapshot_display` writes
+/// (JPEG), pulled back through a scratch file on the device.
+pub fn snapshot_display(device_id: Option<&str>) -> Result<Vec<u8>> {
+    const REMOTE: &str = "/data/local/tmp/lingxia-capture.jpeg";
+    let hdc = ensure_command("hdc")?;
+    let run = |args: &[&str]| -> Result<()> {
+        let mut cmd = Command::new(&hdc);
+        if let Some(device_id) = device_id {
+            cmd.arg("-t").arg(device_id);
+        }
+        let output = cmd
+            .args(args)
+            .output()
+            .with_context(|| format!("Failed to execute hdc {}", args[0]))?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !output.status.success() || hdc_command_failed(&stdout, &stderr) {
+            bail!(
+                "hdc {} failed: {} {}",
+                args.join(" "),
+                stdout.trim(),
+                stderr.trim()
+            );
+        }
+        Ok(())
+    };
+    run(&["shell", "snapshot_display", "-f", REMOTE])?;
+    let local = tempfile::Builder::new()
+        .prefix("lingxia-capture-")
+        .suffix(".jpeg")
+        .tempfile()
+        .context("Failed to create a capture file")?;
+    let local_path = local.path().to_string_lossy().into_owned();
+    run(&["file", "recv", REMOTE, &local_path])?;
+    std::fs::read(local.path()).context("Failed to read the pulled capture")
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

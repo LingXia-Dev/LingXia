@@ -20,6 +20,9 @@ export interface ResolvedHost {
   networkLog?(sinceMs: number, limit?: number): unknown;
   /** Network recording for `--record-network`; `undefined` on a host without it. */
   networkRecord?(command: "start" | "stop", name?: string): unknown;
+  /** Captures staged by the dev server; `undefined` on a host without them. */
+  appScreenshot?(name: string, surface?: string): Promise<{ path: string; width: number; height: number; scale: number }>;
+  deviceScreenshot?(name: string): Promise<{ path: string; width: number; height: number; scale: number }>;
   /** `true` only when the host knows the screen is locked. */
   screenLocked(): boolean;
   /** Spec attempts; `undefined` on a host that does not scope resources to them. */
@@ -74,6 +77,12 @@ export function resolveHost(): ResolvedHost {
         beginAttempt: () => raw.beginAttempt!(),
         endAttempt: async (token: number) => await raw.endAttempt!(token),
       }
+      : {}),
+    ...(typeof raw?.appScreenshot === "function"
+      ? { appScreenshot: async (name: string, surface?: string) => await (surface === undefined ? raw.appScreenshot!(name) : raw.appScreenshot!(name, surface)) }
+      : {}),
+    ...(typeof raw?.deviceScreenshot === "function"
+      ? { deviceScreenshot: async (name: string) => await raw.deviceScreenshot!(name) }
       : {}),
     ...(typeof raw?.revoke === "function"
       ? { revoke: async (reason: string) => await raw.revoke!(reason) }

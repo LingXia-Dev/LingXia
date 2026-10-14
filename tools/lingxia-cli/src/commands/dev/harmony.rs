@@ -15,6 +15,9 @@ pub(super) fn execute_harmony(ctx: DevContext) -> Result<()> {
     )?;
     let host_ws_url = server.ws_url();
     let device_ws_url = loopback_ws_url(server.port());
+    if let Some(device) = ctx.device.as_deref() {
+        server.set_capture_device(device);
+    }
     let session = server.session().clone();
 
     let run_result = (|| -> Result<()> {

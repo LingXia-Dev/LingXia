@@ -16,7 +16,8 @@ import { ScenarioScope, installScenario } from "./mock.js";
 import { ClockScope, wrapClock } from "./clock.js";
 import { watchDialogs, wrapDialogs, type DialogWatch } from "./dialogs.js";
 import { activeOpenApi } from "./openapi.js";
-import { ActionDeadline, TimeoutError, asFixtureTimeout } from "./deadline.js";
+import { ActionDeadline, TimeoutError, asFixtureTimeout, errorCode } from "./deadline.js";
+import { CaptureUnavailableError } from "./errors.js";
 import { isTransientTransportError, matchesErrorCode } from "./deadline.js";
 import { checkJsonArgs, explainRemoteError, isRetryableRemoteError, functionDetail, logicScript, pageScript, type RemoteTarget } from "./remote.js";
 import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolveOrigin } from "./ids.js";
@@ -32,6 +33,8 @@ import {
 } from "./locator.js";
 import type {
   ArgOptions,
+  AppScreenshotOptions,
+  Capture,
   ExpectOptions,
   Fixture,
   StepScope,
@@ -58,6 +61,7 @@ import type {
   NavButton,
   NavOptions,
   NavWaitOptions,
+  TestDevice,
   TestView,
   WaitForOptions,
 } from "./types.js";
@@ -230,6 +234,44 @@ export class LiveFixture implements Fixture {
       }
       return scenario;
     } };
+  }
+
+  get device(): TestDevice {
+    return {
+      screenshot: () => this.capture("device", undefined, (host, name) => host.deviceScreenshot?.bind(host, name)),
+    };
+  }
+
+  private captures = 0;
+
+  /** Have the host stage a capture as `<kind>-N.png` and attach it; the PNG never reaches JS. */
+  private capture(
+    kind: "app" | "device",
+    detail: string | undefined,
+    call: (host: ResolvedHost, name: string) => (() => Promise<Capture>) | undefined,
+  ): Promise<Capture> {
+    const name = `${kind}-${++this.captures}.png`;
+    return this.act(`${kind}.screenshot`, detail ?? name, async () => {
+      const capture = call(this.host, `attachments/${this.specId}/${name}`);
+      if (!capture) {
+        throw new CaptureUnavailableError("unsupported", "this host cannot stage captures; run it under `lingxia dev` with a matching lxdev");
+      }
+      let shot: Capture;
+      try {
+        shot = await capture();
+      } catch (error) {
+        const code = errorCode(error);
+        if (code !== "E_CAPTURE_UNSUPPORTED" && code !== "E_CAPTURE_PERMISSION") throw error;
+        throw new CaptureUnavailableError(code === "E_CAPTURE_PERMISSION" ? "permission" : "unsupported",
+          error instanceof Error ? error.message : String(error), { cause: error });
+      }
+      // The dev server holds the file; lxdev copies it to this path.
+      const current = this.stepStack[this.stepStack.length - 1];
+      const ref: AttachmentRef = { name, path: shot.path, mimeType: "image/png", ...this.traceMeta(),
+        ...(current ? { step: current.path } : {}) };
+      (current ? current.attachments : this.attachments).push(ref);
+      return { path: shot.path, width: shot.width, height: shot.height, scale: shot.scale };
+    });
   }
 
   get raw(): LxAppDriver {
@@ -1034,6 +1076,14 @@ export class LiveFixture implements Fixture {
       info: () => this.act("app.info", "", () => this.readRetrying(() => driver().info())),
       pages: () => this.act("app.pages", "", () => this.readRetrying(() => driver().pages())),
       surfaceLayout: () => this.act("app.surfaceLayout", "", () => this.readRetrying(() => driver().surfaceLayout())),
+      screenshot: (options?: AppScreenshotOptions) => {
+        const surface = options?.surface;
+        if (surface !== undefined && (typeof surface !== "string" || surface === "")) {
+          throw new TypeError("app.screenshot({ surface }) takes a surface id from t.app.surfaceLayout()");
+        }
+        return this.capture("app", surface,
+          (host, name) => host.appScreenshot?.bind(host, name, surface));
+      },
     } as TestApp;
   }
 

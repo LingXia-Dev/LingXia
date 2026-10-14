@@ -24,6 +24,9 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
         &lan_ws_url(server.port())?,
         &auth_token,
     );
+    if let Some(device) = ctx.device.as_deref() {
+        server.set_capture_device(device);
+    }
     let session = server.session().clone();
 
     let run_result = (|| -> Result<()> {

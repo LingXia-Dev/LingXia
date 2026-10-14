@@ -714,9 +714,13 @@ function renderAttachmentRefs(attachments: AttachmentRef[], item: CaseRecord): s
     // whenever the report is read from the directory the CLI wrote it to.
     const link = `<a class="path" href="${escapeHtml(attachment.path)}">${escapeHtml(attachment.path)}</a>`;
     const context = attachmentContext(attachment);
-    if (inlined?.dataUrl) {
+    // A device capture never crossed the bridge, so it has no data URL; the
+    // file sits next to the report.
+    const image = inlined?.dataUrl
+      ?? (attachment.mimeType.startsWith("image/") ? escapeHtml(attachment.path) : undefined);
+    if (image) {
       return `<figure class="shot">
-        <img alt="${escapeHtml(attachment.name)}" src="${inlined.dataUrl}" loading="lazy">
+        <img alt="${escapeHtml(attachment.name)}" src="${image}" loading="lazy">
         <figcaption>${escapeHtml(attachment.name)}${context} &middot; ${link}</figcaption>
       </figure>`;
     }

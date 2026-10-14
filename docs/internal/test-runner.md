@@ -87,6 +87,39 @@ received artifacts. Keep the following invariants when changing these layers:
   saw them. lxdev also scrubs declared values from every polled event (JSON
   re-serialized, text replaced) and withholds an HTML/XML artifact that still
   carries one, then renders its own report pages from the scrubbed JSON.
+- Captures are named by what the image holds: `t.app.view.screenshot()` the
+  page WebView (bytes travel as an artifact), `t.app.screenshot({ surface? })`
+  everything the host draws in the window showing the current page or that
+  surface, `t.device.screenshot()` the whole display. App and device PNGs
+  never enter JS (the runtime `btoa` re-encodes bytes): the host's
+  `appScreenshot` / `deviceScreenshot(name)` reserve the attachment name,
+  and the dev server stages the PNG under `<staging>/<run_id>/<name>`,
+  answering only `{ path, width, height, scale }`.
+  - An app capture is taken in process (macOS `cacheDisplay` of the window,
+    WebViews and the Metal terminal drawing themselves into it; Windows
+    window DC plus WebView2 and compositor overlays; iOS layer render;
+    Android `PixelCopy`; Harmony `window.snapshot`), so it needs no
+    permission anywhere. The PNG goes up as a binary `session.capture.put`.
+  - A device capture on a phone is taken outside the app by the dev server
+    (`session.device.screenshot`: adb `screencap`, `idevicescreenshot`, hdc
+    `snapshot_display`). A desktop host captures its screen in process and
+    puts it like an app capture: on Windows the dev server may sit in a
+    non-interactive SSH session that cannot see the desktop, and on macOS
+    Screen Recording is checked first because without it a capture still
+    "succeeds" with only the wallpaper and the app's own windows.
+  - On macOS TCC attributes Screen Recording to the *responsible* process:
+    the terminal that ran `lingxia dev`, which spawns the host directly; the
+    host itself when launched from Finder or `open`. That is why the device
+    capture is the only one that needs a grant, and why its hint names the
+    responsible app.
+  - The server cannot write the run directory itself: lxdev names it after
+    the run id and may put it anywhere (`--output-dir`). Before writing
+    reports, lxdev asks `session.device.captures { run_id }` and copies every
+    staged file, app and device alike, to the same report-relative paths; a
+    failed collection is a run error.
+  - `E_CAPTURE_UNSUPPORTED` (no capture on this target, no dev session) and
+    `E_CAPTURE_PERMISSION` become `CaptureUnavailableError { reason, hint }`
+    for the spec to skip on; `E_CAPTURE_FAILED` fails the spec.
 - Retry artifacts have attempt-specific paths. Do not overwrite the first failure
   with the successful attempt. Terminal output is a presentation of the report,
   not an alternate result model.
