@@ -114,9 +114,10 @@ received artifacts. Keep the following invariants when changing these layers:
     responsible app.
   - The server cannot write the run directory itself: lxdev names it after
     the run id and may put it anywhere (`--output-dir`). Before writing
-    reports, lxdev asks `session.device.captures { run_id }` and copies every
-    staged file, app and device alike, to the same report-relative paths; a
-    failed collection is a run error.
+    reports, lxdev asks `session.capture.staged { run_id }`, copies every
+    staged file, app and device alike, to the same report-relative paths, and
+    removes the run's staging; a failed collection is a run error. The server
+    removes the whole staging root when it stops.
   - `E_CAPTURE_UNSUPPORTED` (no capture on this target, no dev session) and
     `E_CAPTURE_PERMISSION` become `CaptureUnavailableError { reason, hint }`
     for the spec to skip on; `E_CAPTURE_FAILED` fails the spec.

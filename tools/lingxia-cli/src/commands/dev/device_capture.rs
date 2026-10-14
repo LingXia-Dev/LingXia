@@ -7,11 +7,11 @@
 //! the run id only once the run has started, so the server cannot write
 //! there. It stages each PNG under the run instead and answers the runtime
 //! with the size alone; `lxdev` copies the staged files into its output
-//! directory when the run ends (`session.device.captures`).
+//! directory when the run ends (`session.capture.staged`) and removes them.
 
 use super::DevServerState;
 use lingxia_control_protocol::dev_session::{
-    Capture, CaptureArgs, DevSessionMessage, DeviceCaptures, DeviceCapturesArgs,
+    Capture, CaptureArgs, DevSessionMessage, StagedCaptures, StagedCapturesArgs,
 };
 use lingxia_control_protocol::methods::session::{capture, device};
 use std::path::{Component, Path, PathBuf};
@@ -80,7 +80,8 @@ impl DevServerState {
         *target = target.clone().with_device(id);
     }
 
-    /// The staging root, created on first use and removed with the server.
+    /// The staging root, created on first use and removed by
+    /// [`Self::discard_captures`].
     fn capture_root(&self) -> std::io::Result<PathBuf> {
         let mut root = self
             .capture_root
@@ -152,19 +153,19 @@ impl DevServerState {
         })
     }
 
-    /// Answer `lxdev`'s `session.device.captures`: what a run staged.
-    pub(super) fn device_captures_reply(
+    /// Answer `lxdev`'s `session.capture.staged`: what a run staged.
+    pub(super) fn staged_captures_reply(
         &self,
         id: String,
         params: Option<serde_json::Value>,
     ) -> DevSessionMessage {
-        let args: DeviceCapturesArgs = match serde_json::from_value(params.unwrap_or_default()) {
+        let args: StagedCapturesArgs = match serde_json::from_value(params.unwrap_or_default()) {
             Ok(args) => args,
             Err(err) => {
                 return DevSessionMessage::error(
                     id,
                     "invalid_params",
-                    format!("{}: {err}", device::CAPTURES),
+                    format!("{}: {err}", capture::STAGED),
                 );
             }
         };
@@ -177,19 +178,34 @@ impl DevServerState {
         }
     }
 
-    fn staged_captures(&self, run_id: &str) -> Result<DeviceCaptures, String> {
+    fn staged_captures(&self, run_id: &str) -> Result<StagedCaptures, String> {
         check_component(run_id, "run id")?;
         let root = self.capture_root.lock().unwrap_or_else(|p| p.into_inner());
         let Some(dir) = root.as_ref().map(|root| root.path().join(run_id)) else {
-            return Ok(DeviceCaptures::default());
+            return Ok(StagedCaptures::default());
         };
         let mut files = Vec::new();
         collect_files(&dir, &dir, &mut files);
         files.sort();
-        Ok(DeviceCaptures {
+        Ok(StagedCaptures {
             dir: (!files.is_empty()).then(|| dir.display().to_string()),
             files,
         })
+    }
+
+    /// Remove the staging root. Connection threads outlive `stop()` and keep
+    /// the state alive, so dropping the server never reaches the `TempDir`.
+    pub(crate) fn discard_captures(&self) {
+        let root = self
+            .capture_root
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        if let Some(root) = root
+            && let Err(err) = root.close()
+        {
+            eprintln!("[lingxia dev] staged captures were not removed: {err}");
+        }
     }
 }
 
@@ -446,7 +462,7 @@ mod tests {
         let state = state();
         assert_eq!(
             state.staged_captures("r1").unwrap(),
-            DeviceCaptures::default()
+            StagedCaptures::default()
         );
         let args = serde_json::json!({ "run_id": "r1", "name": "attachments/s/attempt-1/app-1.png", "scale": 2.0 });
         let result = response(state.capture_put_reply("1".into(), Some(args), &png(2, 1)))
@@ -472,5 +488,15 @@ mod tests {
             b"GIF89a",
         ));
         assert_eq!(refused.error.unwrap().code, capture::FAILED);
+
+        state.discard_captures();
+        assert!(
+            !root.exists(),
+            "the staging root is removed with the server"
+        );
+        assert_eq!(
+            state.staged_captures("r1").unwrap(),
+            StagedCaptures::default()
+        );
     }
 }

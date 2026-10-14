@@ -607,11 +607,11 @@ fn execute_inner(
 
     // Run-level work first: whatever fails here belongs in every report, so
     // no report is written before it is done.
-    match collect_device_captures(&info.ws_url, &run_id, &output_dir) {
+    match collect_staged_captures(&info.ws_url, &run_id, &output_dir) {
         Ok(copied) => outcome.artifacts.extend(copied),
         Err(error) => outcome
             .run_errors
-            .push(format!("device captures were not collected: {error:#}")),
+            .push(format!("staged captures were not collected: {error:#}")),
     }
     if let Some(dir) = &options.record_network {
         match crate::test_network::save_recorded_scenarios(dir, &outcome.artifacts) {
@@ -3249,26 +3249,27 @@ fn artifact_path(output_dir: &Path, name: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
-/// Copy the device captures (`t.device.screenshot()`) the dev server staged
-/// for this run into its output directory. They never travel the artifact
-/// channel: the image stays on this machine from capture to report.
-fn collect_device_captures(
+/// Copy the captures (`t.app.screenshot()`, `t.device.screenshot()`) the dev
+/// server staged for this run into its output directory, then remove the
+/// staging. They never travel the artifact channel: the image stays on this
+/// machine from capture to report.
+fn collect_staged_captures(
     ws_url: &str,
     run_id: &str,
     output_dir: &Path,
 ) -> Result<Vec<(String, PathBuf, usize)>> {
-    use lingxia_control_protocol::dev_session::{DeviceCaptures, DeviceCapturesArgs};
+    use lingxia_control_protocol::dev_session::{StagedCaptures, StagedCapturesArgs};
     let value = execute_command(
         ws_url,
-        methods::session::device::CAPTURES,
-        serde_json::to_value(DeviceCapturesArgs {
+        methods::session::capture::STAGED,
+        serde_json::to_value(StagedCapturesArgs {
             run_id: run_id.to_string(),
         })
         .ok(),
     )?
     .unwrap_or_default();
-    let captures: DeviceCaptures =
-        serde_json::from_value(value).context("unreadable session.device.captures answer")?;
+    let captures: StagedCaptures =
+        serde_json::from_value(value).context("unreadable session.capture.staged answer")?;
     let Some(dir) = captures.dir else {
         return Ok(Vec::new());
     };
@@ -3276,8 +3277,12 @@ fn collect_device_captures(
     for name in captures.files {
         let path = artifact_path(output_dir, &name)?;
         let bytes = std::fs::copy(Path::new(&dir).join(&name), &path)
-            .with_context(|| format!("failed to copy device capture {name}"))?;
+            .with_context(|| format!("failed to copy capture {name}"))?;
         copied.push((name, path, bytes as usize));
+    }
+    // The report owns the files now; the server would keep them until it exits.
+    if let Err(err) = std::fs::remove_dir_all(&dir) {
+        eprintln!("warning: staged captures were not removed from {dir}: {err}");
     }
     Ok(copied)
 }
