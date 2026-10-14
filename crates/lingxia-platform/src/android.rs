@@ -93,10 +93,11 @@ pub enum CachedClass {
     LxAppShare = 19,
     LxAppClipboard = 20,
     LxAppNotification = 21,
+    LxAppAudio = 22,
 }
 
 impl CachedClass {
-    const COUNT: usize = 22;
+    const COUNT: usize = 23;
 
     pub const fn class_path(self) -> &'static str {
         match self {
@@ -122,6 +123,7 @@ impl CachedClass {
             CachedClass::LxAppShare => "com/lingxia/lxapp/APIs/LxAppShare",
             CachedClass::LxAppClipboard => "com/lingxia/lxapp/APIs/LxAppClipboard",
             CachedClass::LxAppNotification => "com/lingxia/lxapp/APIs/LxAppNotification",
+            CachedClass::LxAppAudio => "com/lingxia/lxapp/APIs/LxAppAudio",
         }
     }
 
@@ -215,12 +217,17 @@ impl CachedClass {
                 "Global class reference not found: ",
                 "com/lingxia/lxapp/APIs/LxAppNotification"
             ),
+            CachedClass::LxAppAudio => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/APIs/LxAppAudio"
+            ),
         }
     }
 }
 
 fn cached_slot(kind: CachedClass) -> &'static OnceLock<Global<JClass<'static>>> {
     static CLASS_CACHE: [OnceLock<Global<JClass<'static>>>; CachedClass::COUNT] = [
+        OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),

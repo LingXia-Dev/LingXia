@@ -17,6 +17,7 @@
 -keep class com.lingxia.app.UpdateManager { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.LxApp { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.NativeComponents.ComponentRouter { public static !synthetic <methods>; }
+-keep class com.lingxia.lxapp.APIs.LxAppAudio { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppActionSheet { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppCapsule { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppClipboard { public static !synthetic <methods>; }
