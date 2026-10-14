@@ -126,15 +126,24 @@ spec('rotate the captured app window after setDeviceOrientation', {
   const shape = (shot: { width: number; height: number }) =>
     shot.width > shot.height ? 'landscape' : shot.height > shot.width ? 'portrait' : 'square';
 
-  const before = await capture();
-  defer(async () => { await orient('portrait').catch(() => undefined); });
+  // A rotation animates the window through in-between sizes (Harmony visibly);
+  // a shape counts once two captures in a row agree on it.
+  const settled = (want: 'portrait' | 'landscape') =>
+    t.waitFor(async () => [await capture(), await capture()] as const, {
+      until: ([a, b]) => shape(b) === want && a.width === b.width && a.height === b.height,
+      timeout: 8_000,
+      interval: 300,
+    }).then(([, shot]) => shot);
+  // Leave portrait settled so the next spec does not capture mid-rotation.
+  defer(async () => {
+    if (await orient('portrait').catch(() => false)) await settled('portrait').catch(() => undefined);
+  });
 
   expect(await orient('portrait')).toBe(true);
-  const portrait = await t.waitFor(capture, { until: (shot) => shape(shot) === 'portrait', timeout: 8_000, interval: 500 });
+  const portrait = await settled('portrait');
   expect(await orient('landscape')).toBe(true);
-  const landscape = await t.waitFor(capture, { until: (shot) => shape(shot) === 'landscape', timeout: 8_000, interval: 500 });
+  const landscape = await settled('landscape');
 
   // The same window turned a quarter: its two sides swap exactly.
   expect([landscape.width, landscape.height]).toEqual([portrait.height, portrait.width]);
-  expect(before.width * before.height).toBe(portrait.width * portrait.height);
 });
