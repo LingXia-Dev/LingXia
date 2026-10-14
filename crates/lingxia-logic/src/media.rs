@@ -1,3 +1,4 @@
+pub(crate) mod audio;
 mod image;
 mod picker;
 mod preview;
@@ -16,5 +17,6 @@ pub fn init(ctx: &JSContext) -> JSResult<()> {
     picker::init(ctx)?;
     scan::init(ctx)?;
     video::init(ctx)?;
+    audio::init(ctx)?;
     Ok(())
 }

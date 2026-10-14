@@ -1,5 +1,6 @@
 import type { AnySurface, Lx, SurfaceErrorCode } from "../src/index.js";
-import { SURFACE_ERROR_CODES } from "../src/error.js";
+import { AUDIO_ERROR_CODES, SURFACE_ERROR_CODES } from "../src/error.js";
+import type { AudioErrorCode } from "../src/index.js";
 
 declare const lx: Lx;
 declare const wide: boolean;
@@ -10,6 +11,9 @@ declare const wide: boolean;
 type MissingSurfaceErrorCode = Exclude<SurfaceErrorCode, (typeof SURFACE_ERROR_CODES)[number]>;
 type AssertNever<T extends never> = T;
 type SurfaceErrorCodesAreExhaustive = AssertNever<MissingSurfaceErrorCode>;
+type AudioErrorCodesAreExhaustive = AssertNever<
+  Exclude<AudioErrorCode, (typeof AUDIO_ERROR_CODES)[number]>
+>;
 
 // Probe 1: an illegal placement names the legal ones, instead of demanding an
 // unrelated `appId` from a home-lxapp-only branch.
@@ -154,6 +158,7 @@ export type SurfaceNamespaceGate = [
   typeof windowOffered,
   typeof unsubscribeContext,
   SurfaceErrorCodesAreExhaustive,
+  AudioErrorCodesAreExhaustive,
 ];
 
 // `as` decides which options exist: a float anchors, a window is decorated.

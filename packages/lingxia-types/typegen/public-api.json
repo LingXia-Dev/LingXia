@@ -192,7 +192,32 @@
     "WifiConnectedCallback",
     "WifiConnectedInfo",
     "WifiInfo",
-    "WindowSurfaceSize"
+    "WindowSurfaceSize",
+    "AudioBytes",
+    "AudioErrorCode",
+    "AudioFocus",
+    "AudioHostInterruption",
+    "AudioInterruption",
+    "AudioLoadOptions",
+    "AudioLoadedInfo",
+    "AudioOutput",
+    "AudioPlayer",
+    "AudioPlayerEvents",
+    "AudioPlayerOptions",
+    "AudioPlayerState",
+    "AudioPlayerStatus",
+    "AudioQueueItem",
+    "AudioQueueOptions",
+    "AudioRepeat",
+    "AudioRoute",
+    "AudioRouteChange",
+    "AudioSource",
+    "LoadSoundOptions",
+    "Sound",
+    "SoundPlayOptions",
+    "SoundVoice",
+    "AudioApi",
+    "AudioRouteApi"
   ],
   "documented": [
     "HostAppApi",
@@ -202,6 +227,9 @@
     "PageTargetOptions",
     "PreviewMediaHandle",
     "DownloadOptions",
-    "Lx"
+    "Lx",
+    "AudioErrorCode",
+    "AudioPlayer",
+    "Sound"
   ]
 }

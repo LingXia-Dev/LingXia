@@ -9,6 +9,8 @@ import {
   requireLxApiError,
   surfaceErrorCode,
   SURFACE_ERROR_CODES,
+  audioErrorCode,
+  AUDIO_ERROR_CODES,
 } from "../dist/error.js";
 import { ERR_CODE_INFO_BY_CODE } from '../dist/generated/error.js';
 
@@ -54,6 +56,13 @@ for (const code of SURFACE_ERROR_CODES) {
 for (const code of ['unknown', '', 1000, null]) {
   assert.equal(surfaceErrorCode({ data: { code } }), null);
 }
+for (const code of AUDIO_ERROR_CODES) {
+  const rejection = { code: 'E_INVALID_ARG', data: { bizCode: 1002, detail: 'x', code } };
+  assert.equal(audioErrorCode(rejection), code);
+  assert.equal(parseLxApiError(rejection)?.code, 1002, 'the business code still parses');
+  assert.equal(audioErrorCode({ code }), null, 'audio codes belong in data.code');
+}
+assert.equal(audioErrorCode({ data: { code: 'unsupported_placement' } }), null);
 
 const raw = Object.freeze({
   code: 1000,
