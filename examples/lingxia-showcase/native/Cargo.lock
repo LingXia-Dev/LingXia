@@ -1285,7 +1285,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1888,7 +1888,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -2370,6 +2370,7 @@ name = "lingxia-automation"
 version = "0.25.1"
 dependencies = [
  "base64 0.23.1",
+ "flate2",
  "futures",
  "http",
  "lingxia-browser",
@@ -2380,6 +2381,7 @@ dependencies = [
  "lingxia-platform",
  "lingxia-service",
  "lingxia-shell",
+ "lingxia-transfer",
  "lingxia-webview",
  "lingxia-windows-contract",
  "log",
@@ -2387,6 +2389,7 @@ dependencies = [
  "rong",
  "rong_console",
  "rong_modules",
+ "rong_rt",
  "rong_timer",
  "serde",
  "serde_json",
@@ -2595,7 +2598,7 @@ dependencies = [
  "tokio",
  "urlencoding",
  "uuid",
- "zstd 0.14.0",
+ "zstd",
 ]
 
 [[package]]
@@ -3220,7 +3223,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4045,7 +4048,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
@@ -4083,9 +4086,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4541,14 +4544,14 @@ dependencies = [
 
 [[package]]
 name = "rong_compression"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b43fd26bca2d2b33ed8ef0438ab4d67c8e56bf2993dae61a4695ffd687205efd"
+checksum = "4e245b8e845afb81c4e1147a1e5d81628b625a3825ccf437a1f848fe1e18345d"
 dependencies = [
  "flate2",
  "rong",
  "tokio",
- "zstd 0.13.3",
+ "zstd",
 ]
 
 [[package]]
@@ -4592,9 +4595,9 @@ dependencies = [
 
 [[package]]
 name = "rong_crypto"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe02361e8f2a8bb983c1700e654e0e60533f6ff0671fa2ff061c54a2cd079631"
+checksum = "29f84d1985136e6e73ae20ee93199521590b5d77a4caa37b7212d9e6ee5128d0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -4612,11 +4615,11 @@ dependencies = [
 
 [[package]]
 name = "rong_encoding"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebcfe90e25f5cb1edb0dfb02a5109d8af806c7354e13fa6db6dcd2b6f216c559"
+checksum = "d3cae3b3d8dbec80e83f997d25aea930deb98564333d995c00e68f1d2589180f"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "rong",
 ]
 
@@ -4657,9 +4660,9 @@ dependencies = [
 
 [[package]]
 name = "rong_http"
-version = "0.6.3"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "603f912f0d0563cb69799ae247a9403c58d0ec51d768e1619df6119e69955b51"
+checksum = "894868c95480033aff8fee927ab08b5a34e3045167f2916df59d2d23e335bdc8"
 dependencies = [
  "bytes",
  "flate2",
@@ -4717,9 +4720,9 @@ dependencies = [
 
 [[package]]
 name = "rong_modules"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac4fa26ed7e732e825cc401282eac42230af225468e7ce312fbb9c5f7a36981f"
+checksum = "b8355907522f58485a8543dccb87ff79199a950ccdeea5113b5e28fdb7dd0a3e"
 dependencies = [
  "rong",
  "rong_abort",
@@ -4781,9 +4784,9 @@ dependencies = [
 
 [[package]]
 name = "rong_rt"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "610f4a250b210d8e76eb706d31747583007a2983b77948c3a86dca2f7d6ac234"
+checksum = "d8841f978944b057e977d125d41ae010262ece8e0de822fbf6424ba06c792453"
 dependencies = [
  "bytes",
  "futures",
@@ -4806,9 +4809,9 @@ dependencies = [
 
 [[package]]
 name = "rong_s3"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "330623e59f9f6f1f7853ee31a1d030a6dd777ab024d09199193bd874ecd14df0"
+checksum = "fbaba25a722ae879223d89b54e2b236685194ea3b60e53649844d90daab2a7f7"
 dependencies = [
  "bytes",
  "chrono",
@@ -4999,7 +5002,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5634,10 +5637,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6360,7 +6363,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6845,29 +6848,11 @@ dependencies = [
 
 [[package]]
 name = "zstd"
-version = "0.13.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
-dependencies = [
- "zstd-safe 7.3.0",
-]
-
-[[package]]
-name = "zstd"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf06bd8162af0734b344780deb55b42a2429ae430870d13fcc12f238e880fe6e"
 dependencies = [
- "zstd-safe 8.0.0",
-]
-
-[[package]]
-name = "zstd-safe"
-version = "7.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64d80649ab6db9d9f6f9c80a40becd948eda4714a0a5ac8c4d157a32231c7882"
-dependencies = [
- "zstd-sys",
+ "zstd-safe",
 ]
 
 [[package]]
