@@ -22,5 +22,5 @@ pub use types::{
 
 /// Whether this build has a native audio backend.
 pub const fn available() -> bool {
-    false
+    cfg!(target_os = "windows")
 }

@@ -612,6 +612,7 @@ pub(super) fn apply_video_props(key: &str, props: &ComponentProps) {
     }
     if let Some(muted) = props.muted {
         player.set_muted(muted);
+        refresh_video_audible(key);
     }
     if let Some((appid, source)) = source {
         if source.is_empty() {
@@ -734,13 +735,31 @@ pub(super) fn video_event_sink(key: String, container: isize, surface: isize) ->
 }
 
 fn set_video_playing(key: &str, playing: bool) {
-    let mut components = components();
-    if let Some(video) = components
-        .get_mut(key)
-        .and_then(|entry| entry.video.as_mut())
     {
-        video.playing = playing;
+        let mut components = components();
+        if let Some(video) = components
+            .get_mut(key)
+            .and_then(|entry| entry.video.as_mut())
+        {
+            video.playing = playing;
+        }
     }
+    refresh_video_audible(key);
+}
+
+/// Tell the host audio coordinator whether this video is audible, so it
+/// takes and yields exclusive focus like an `lx.audio` player.
+pub(super) fn refresh_video_audible(key: &str) {
+    let Some((component_id, audible)) = ({
+        let components = components();
+        components.get(key).and_then(|entry| {
+            let video = entry.video.as_ref()?;
+            Some((entry.component_id.clone(), video.playing && !video.muted))
+        })
+    }) else {
+        return;
+    };
+    lingxia_platform::traits::audio::notify_video_audible(&component_id, audible);
 }
 
 fn set_video_stopped(key: &str, stopped: bool) {
