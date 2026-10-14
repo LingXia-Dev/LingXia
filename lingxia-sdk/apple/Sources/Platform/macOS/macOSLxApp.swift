@@ -210,7 +210,7 @@ extension macOSLxApp {
     ) {
         if let s = Self.activeShell() {
             s.openLxApp(appId: appId, path: path, pageInstanceId: pageInstanceId, sessionId: sessionId)
-            s.window?.makeKeyAndOrderFront(nil)
+            s.orderShellFront()
         } else {
             Self.openShellWindow()
             Self.activeShell()?.openLxApp(

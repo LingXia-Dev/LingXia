@@ -49,15 +49,20 @@ enum LxAppLayoutReconciler {
 
     static func requestLxappMainActivation(appId: String) {
         requestedLxappMainActivation = appId
-        // Home is often already the graph's active main while a browser tab
-        // covers it (Settings, Downloads). `set_active_main` then publishes
-        // no new plan, so the layout pass never consumes this intent. Replace
-        // the cover immediately when one is up.
-        guard let shell = LxAppActiveHost.activeShell, shell.browserIsCoveringMain else {
-            return
+        guard let shell = LxAppActiveHost.activeShell else { return }
+        // `lx.shell.openApp` is not a click in this process's foreground
+        // window. Order the host front before the layout commit; a background
+        // app stays behind other apps on `makeKeyAndOrderFront` alone.
+        shell.orderShellFront()
+        // The sidebar highlight is not in the surface graph. Selecting here
+        // covers a reopen whose active main did not change, so no later plan
+        // would move the row. A browser cover is replaced first; otherwise
+        // its deactivation clears the selection we just set.
+        if shell.browserIsCoveringMain {
+            requestedLxappMainActivation = nil
+            shell.reconcileActiveMain(appId: appId)
         }
-        requestedLxappMainActivation = nil
-        shell.reconcileActiveMain(appId: appId)
+        shell.selectSidebarLxApp(appId: appId, surfaceId: appId)
     }
 
     /// A newly-presented browser/native cover invalidates any older intent —
@@ -298,16 +303,25 @@ enum LxAppLayoutReconciler {
         if let activeMainId = plan.activeMainId,
            let item = plan.mainSwitcher?.items.first(where: { $0.surfaceId == activeMainId }),
            item.content.kind == "lxapp",
-           let appId = item.content.appId,
-           appId != shell.attachedMainAppId {
+           let appId = item.content.appId {
             let explicitlyRequested = requestedLxappMainActivation == appId
             if explicitlyRequested { requestedLxappMainActivation = nil }
             // An undeclared browser tab covers the lxapp main until its own
             // close/back flow restores it. Explicit activation is the one
             // exception; unrelated commits must not evict the cover (mirrors
-            // the Windows reconciler).
-            if !shell.browserIsCoveringMain || explicitlyRequested {
+            // the Windows reconciler). An already-attached main still needs
+            // the sidebar selection: that highlight is not in the graph, and
+            // `lx.shell.openApp` never went through a sidebar click.
+            let show = !shell.browserIsCoveringMain || explicitlyRequested
+            let alreadyAttached = shell.attachedMainAppId == appId
+            if show && !alreadyAttached {
                 shell.reconcileActiveMain(appId: appId)
+            }
+            if explicitlyRequested || (show && !alreadyAttached) {
+                shell.selectSidebarLxApp(appId: appId, surfaceId: activeMainId)
+            }
+            if explicitlyRequested {
+                shell.orderShellFront()
             }
         }
         LxAppMacAppUIRuntime.refreshSurfaceSwitcherProjection()
