@@ -122,6 +122,18 @@ spec('player lifecycle, queue, and errors through lx.audio', {
       player.dispose();
     }
     out.disposed = await player.play().then(() => 'resolved', reason);
+
+    // Repeat 'one' restarts the item in place: several ends, still playing.
+    const looping = audio.createPlayer({ repeat: 'one', timeUpdateIntervalMs: 0 });
+    let loops = 0;
+    looping.on('ended', () => { loops++; });
+    try {
+      await looping.load(tone, { autoplay: true });
+      await wait(2_600);
+      out.repeatOne = [loops >= 2, looping.state.status];
+    } finally {
+      looping.dispose();
+    }
     out.statuses = statuses;
     out.items = items;
     out.ended = ended;
@@ -160,6 +172,7 @@ spec('player lifecycle, queue, and errors through lx.audio', {
   expect(r.wrapNext).toBe(0);
   if (r.earpiece !== 'supported') expect(r.earpiece).toEqual([6000, 'output_unsupported']);
   expect(r.disposed).toEqual([4000, 'disposed']);
+  expect(r.repeatOne).toEqual([true, 'playing']);
   const statuses = r.statuses as string[];
   for (const status of ['loading', 'paused', 'playing', 'stopped', 'ended', 'disposed']) {
     expect(statuses.includes(status)).toBe(true);
