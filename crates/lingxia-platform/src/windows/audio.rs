@@ -84,6 +84,8 @@ enum Command {
         id: u64,
         req: u64,
         uri: String,
+        #[serde(default)]
+        headers: HashMap<String, String>,
         start_ms: u64,
     },
     #[serde(rename = "player.play")]
@@ -635,11 +637,24 @@ impl Worker {
                 id,
                 req,
                 uri,
+                headers,
                 start_ms,
             } => {
                 let Some(player) = self.players.get(&id) else {
                     return Ok(());
                 };
+                // `MediaSource::CreateFromUri` cannot send headers; fetching the
+                // bare URL would fail later as an unexplained `network` error.
+                if !headers.is_empty() {
+                    emit(json!({
+                        "event": "player.error",
+                        "id": id,
+                        "req": req,
+                        "code": "invalid_source",
+                        "message": "request headers (source.headers, referrerPolicy 'origin') are not supported on Windows",
+                    }));
+                    return Ok(());
+                }
                 let shared = &player.shared;
                 shared.load_req.store(req, Ordering::Release);
                 shared.start_ms.store(start_ms, Ordering::Release);
