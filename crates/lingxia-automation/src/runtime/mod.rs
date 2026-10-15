@@ -10,6 +10,7 @@
 //! yields is timed out and its worker marked unhealthy.
 
 pub(crate) mod authority;
+mod capture;
 mod context;
 mod manager;
 mod profile;

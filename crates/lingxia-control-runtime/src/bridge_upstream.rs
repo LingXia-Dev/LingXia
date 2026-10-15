@@ -1,9 +1,11 @@
 //! Requests the runtime sends up its dev session connection, and their
 //! answers: how a host run's `t.scenario.use()` reaches the dev session's
-//! companion. The bridge thread owns the websocket, so a request is queued
-//! here, sent on the bridge's next turn, and resolved when the matching
-//! response arrives, the connection drops, or it times out.
+//! companion and its screenshots reach the dev server. The bridge thread owns
+//! the websocket, so a request is queued here, sent on the bridge's next
+//! turn, and resolved when the matching response arrives, the connection
+//! drops, or it times out.
 
+use crate::bridge::Outgoing;
 use lingxia_automation::runtime::network::{UpstreamError, UpstreamFuture, set_upstream};
 use lingxia_control_protocol::methods::session::companion::NOT_SENT;
 use lingxia_control_protocol::{ControlRequest, ControlResponse};
@@ -22,7 +24,7 @@ struct Pending {
     deadline: Instant,
 }
 
-static OUTBOX: Mutex<Option<mpsc::Sender<ControlRequest>>> = Mutex::new(None);
+static OUTBOX: Mutex<Option<mpsc::Sender<Outgoing>>> = Mutex::new(None);
 static PENDING: Mutex<Option<HashMap<String, Pending>>> = Mutex::new(None);
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -46,15 +48,19 @@ pub(crate) fn install() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
         set_upstream(Some(Arc::new(
-            |method: &str, params: Value| -> UpstreamFuture {
+            |method: &str, params: Value, payload: Option<Vec<u8>>| -> UpstreamFuture {
                 let method = method.to_string();
-                Box::pin(async move { request(method, params).await })
+                Box::pin(async move { request(method, params, payload).await })
             },
         )));
     });
 }
 
-async fn request(method: String, params: Value) -> Result<Value, UpstreamError> {
+async fn request(
+    method: String,
+    params: Value,
+    payload: Option<Vec<u8>>,
+) -> Result<Value, UpstreamError> {
     let id = format!("runtime-{}", NEXT_ID.fetch_add(1, Ordering::Relaxed));
     let (reply, answer) = oneshot::channel();
     {
@@ -74,10 +80,13 @@ async fn request(method: String, params: Value) -> Result<Value, UpstreamError> 
                 deadline: Instant::now() + TIMEOUT,
             },
         );
-        let sent = outbox.send(ControlRequest {
-            id: id.clone(),
-            method,
-            params: Some(params),
+        let sent = outbox.send(Outgoing {
+            request: ControlRequest {
+                id: id.clone(),
+                method,
+                params: Some(params),
+            },
+            payload,
         });
         if sent.is_err() {
             pending().get_or_insert_with(HashMap::new).remove(&id);
@@ -93,7 +102,7 @@ async fn request(method: String, params: Value) -> Result<Value, UpstreamError> 
 }
 
 /// A connection is up: requests queue for it.
-pub(crate) fn attach() -> mpsc::Receiver<ControlRequest> {
+pub(crate) fn attach() -> mpsc::Receiver<Outgoing> {
     let (sender, receiver) = mpsc::channel();
     *OUTBOX
         .lock()
@@ -174,11 +183,13 @@ mod tests {
             let call = request(
                 "session.companion.scenario.use".into(),
                 serde_json::json!({ "owner": "test:r" }),
+                Some(b"bytes".to_vec()),
             );
             let respond = async {
                 let sent = loop {
                     if let Ok(sent) = outbox.try_recv() {
-                        break sent;
+                        assert_eq!(sent.payload.as_deref(), Some(&b"bytes"[..]));
+                        break sent.request;
                     }
                     tokio::task::yield_now().await;
                 };
@@ -196,7 +207,7 @@ mod tests {
         assert!(!resolve(ControlResponse::success("unknown", None)));
 
         let failed = runtime.block_on(async {
-            let call = request("session.companion.scenario.clear".into(), Value::Null);
+            let call = request("session.companion.scenario.clear".into(), Value::Null, None);
             let drop_it = async {
                 while outbox.try_recv().is_err() {
                     tokio::task::yield_now().await;
@@ -207,7 +218,7 @@ mod tests {
             answer
         });
         assert_eq!(failed.unwrap_err().code, "connection_lost");
-        let offline = runtime.block_on(request("x".into(), Value::Null));
+        let offline = runtime.block_on(request("x".into(), Value::Null, None));
         assert_eq!(offline.unwrap_err().code, NOT_SENT);
     }
 }

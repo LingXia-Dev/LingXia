@@ -33,6 +33,7 @@ runtime = [
     "dep:rong_modules",
     "dep:rong_console",
     "dep:rong_timer",
+    "dep:lingxia-device-io",
 ]
 
 [dependencies]
@@ -83,3 +84,7 @@ rong_modules = { workspace = true, optional = true, default-features = false, fe
 
 [target.'cfg(target_os = "macos")'.dependencies]
 rong_modules = { workspace = true, optional = true, default-features = false, features = ["tls-aws-lc"] }
+
+# `t.device.screenshot()` on a desktop host captures the screen in process.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+lingxia-device-io = { workspace = true, optional = true, features = ["snapshot"] }

@@ -71,6 +71,8 @@ lxdev test tests/pages/notes.test.ts
 | Restore state before each attempt | `spec.reset(async (t) => { ... })` (required by `--retries`) |
 | Skip or expect failure | `t.skip(reason)`, `spec.skip`, `spec.fixme`, `spec.fail(title, { expected: { code, message } }, body)` |
 | Group trace, add evidence | `t.step(name, fn)`, `t.attach(name, data)` |
+| See what the app draws (native chrome, every WebView) | `await t.app.screenshot({ surface? })` → `{ path, width, height, scale }`, attached to the report; captured in process, so no permission. `surface` is an id from `t.app.surfaceLayout()` |
+| See the whole display (system UI, other apps) | `await t.device.screenshot()` → the same shape. On macOS it needs Screen Recording for the app that launched the host (the terminal running `lingxia dev`). Where it cannot capture it rejects with `CaptureUnavailableError` (`reason: 'unsupported' \| 'permission'`): `catch` it into `t.skip(error.hint)` |
 | Another running lxapp | `t.automation.lxapp(appId)` |
 | App lifecycle, inbound links | `t.automation.lxapps` (`applink({ url })`) |
 | External web pages, auth/payment callbacks | `t.automation.browser` |

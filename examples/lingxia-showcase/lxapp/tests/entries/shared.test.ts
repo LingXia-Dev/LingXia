@@ -16,6 +16,7 @@ import '../api/runtime.test.js';
 import '../api/navigation.test.js';
 import '../api/navigation-app.test.js';
 import '../api/device-profile.test.js';
+import '../api/capture.test.js';
 import '../api/io-contracts.test.js';
 import '../api/host-app.test.js';
 import '../api/argument-contracts.test.js';

@@ -25,6 +25,14 @@ const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 const SESSION_STALE_AFTER: Duration = Duration::from_secs(15);
 
+/// A request the runtime sends up; one with a payload goes out as a binary
+/// frame.
+#[cfg_attr(not(feature = "test-runtime"), allow(dead_code))]
+pub(crate) struct Outgoing {
+    pub(crate) request: ControlRequest,
+    pub(crate) payload: Option<Vec<u8>>,
+}
+
 struct RunnerDisplayLanguageLease(Option<lxapp::DisplayLanguageSessionOwner>);
 
 impl RunnerDisplayLanguageLease {
@@ -272,7 +280,7 @@ fn log_connect_failure(attempt: u32, err: &WsError) {
 fn bridge_loop(
     websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
     attached: AttachedLogStream,
-    outbox: Option<&std::sync::mpsc::Receiver<ControlRequest>>,
+    outbox: Option<&std::sync::mpsc::Receiver<Outgoing>>,
 ) -> Result<(), String> {
     let (recent, mut receiver) = attached.into_parts();
     let mut last_received = Instant::now();
@@ -301,10 +309,10 @@ fn bridge_loop(
             send_log_batch(websocket, &batch)?;
         }
 
-        // Requests this runtime sends up (a run's companion calls).
+        // Requests this runtime sends up (a run's companion calls, captures).
         if let Some(outbox) = outbox {
-            while let Ok(request) = outbox.try_recv() {
-                send_wire_message(websocket, &DevSessionMessage::Request(request))?;
+            while let Ok(outgoing) = outbox.try_recv() {
+                send_outgoing(websocket, outgoing)?;
             }
             #[cfg(feature = "test-runtime")]
             crate::bridge_upstream::expire();
@@ -432,6 +440,21 @@ fn send_wire_message(
     let text = serde_json::to_string(message).map_err(|err| err.to_string())?;
     websocket
         .send(Message::Text(text.into()))
+        .map_err(|err| err.to_string())
+}
+
+fn send_outgoing(
+    websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
+    outgoing: Outgoing,
+) -> Result<(), String> {
+    let Some(payload) = outgoing.payload else {
+        return send_wire_message(websocket, &DevSessionMessage::Request(outgoing.request));
+    };
+    let frame =
+        lingxia_control_protocol::dev_session::encode_binary_request(&outgoing.request, &payload)
+            .map_err(|err| err.to_string())?;
+    websocket
+        .send(Message::Binary(frame.into()))
         .map_err(|err| err.to_string())
 }
 

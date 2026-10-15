@@ -72,6 +72,18 @@ pub trait AppScreenshot: Send + Sync {
             .ok_or_else(|| PlatformError::Platform("no app window is available".to_string()))
     }
 
+    /// The window id [`Self::take_app_screenshot`] takes to capture the window
+    /// showing `surface`, or the current page's window when `None`. `None`
+    /// back means the platform's default window already is that window
+    /// (single-window hosts, or surfaces drawn inside the main window).
+    async fn capture_window_id(
+        &self,
+        surface: Option<&str>,
+    ) -> Result<Option<String>, PlatformError> {
+        let _ = surface;
+        Ok(None)
+    }
+
     /// Capture and return PNG-encoded bytes of the app's window.
     ///
     /// When `window_id` is `None`, the platform picks a sensible default

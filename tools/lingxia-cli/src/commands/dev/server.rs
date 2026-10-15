@@ -71,6 +71,12 @@ impl DevServerHandle {
         &self.session
     }
 
+    /// The device `t.device.screenshot()` captures (an adb serial, a
+    /// `devicectl` device, an hdc target).
+    pub fn set_capture_device(&self, id: &str) {
+        self.state.set_capture_device(id);
+    }
+
     /// Watch local lxapp sources and rebuild + reload them on save.
     /// No-op when the project has no watchable lxapp (web Runner, package-only
     /// bundles, prebuilt dist). A watcher failure is reported and ignored so
@@ -103,6 +109,7 @@ impl DevServerHandle {
         } else {
             Ok(())
         };
+        self.state.discard_captures();
         super::companion::finish(result, self.companion.as_ref())
     }
 }
@@ -136,6 +143,9 @@ impl SessionLogWriter {
 
 #[path = "companion_relay.rs"]
 mod companion_relay;
+#[path = "device_capture.rs"]
+mod device_capture;
+pub(crate) use device_capture::DeviceTarget;
 
 pub(crate) struct DevServerState {
     pub(crate) project_root: PathBuf,
@@ -189,6 +199,10 @@ pub(crate) struct DevServerState {
     mocks: Mutex<Vec<super::mocks::AppMocks>>,
     /// `--mock all` startup is held on a failed push until a reload succeeds.
     mocks_gated: AtomicBool,
+    /// What `session.device.screenshot` captures.
+    device_target: Mutex<DeviceTarget>,
+    /// Staged app and device captures, per run, until `lxdev` copies them.
+    capture_root: Mutex<Option<tempfile::TempDir>>,
 }
 
 /// One `session.watch.pause` lease.
@@ -234,6 +248,10 @@ impl DevServerState {
             companion_cleanup_failed: Mutex::new(std::collections::HashSet::new()),
             mocks: Mutex::new(Vec::new()),
             mocks_gated: AtomicBool::new(false),
+            device_target: Mutex::new(DeviceTarget::Unsupported {
+                platform: "unknown".to_string(),
+            }),
+            capture_root: Mutex::new(None),
         }
     }
 
@@ -967,6 +985,7 @@ fn start_server_on_with_roots(
         auth_token,
         session_ends_on_runtime_gone(platform),
     ));
+    state.set_device_target(DeviceTarget::for_platform(platform));
     if let Some(companion) = &companion {
         let _ = state.companion.set(companion.link());
     }
@@ -1377,6 +1396,8 @@ fn handle_devtool_connection(
             }
 
             match websocket.read() {
+                // Only a capture's PNG travels as a binary frame.
+                Ok(Message::Binary(frame)) => route_runtime_frame(&frame, state),
                 Ok(message) => match parse_text_message(message)? {
                     ParsedWireMessage::Wire(message) => {
                         route_runtime_message(
@@ -1452,9 +1473,45 @@ fn route_runtime_message(
                 }
             });
         }
+        // A capture can take seconds (adb, hdc); answered off this connection too.
+        DevSessionMessage::Request(request)
+            if request.method == lingxia_control_protocol::methods::session::device::SCREENSHOT =>
+        {
+            let state = Arc::clone(state);
+            thread::spawn(move || {
+                let reply = state.device_screenshot_reply(request.id, request.params);
+                if let Some(sender) = state.runtime_sender() {
+                    let _ = sender.send(reply);
+                }
+            });
+        }
         DevSessionMessage::Hello { .. } | DevSessionMessage::Request(_) => {}
     }
     Ok(())
+}
+
+/// A binary frame from the runtime: a `session.capture.put` and its PNG.
+fn route_runtime_frame(frame: &[u8], state: &Arc<DevServerState>) {
+    use lingxia_control_protocol::methods::session::capture;
+    let reply = match lingxia_control_protocol::dev_session::decode_binary_request(frame) {
+        Ok((request, png)) if request.method == capture::PUT => {
+            state.capture_put_reply(request.id, request.params, png)
+        }
+        Ok((request, _)) => DevSessionMessage::error(
+            request.id,
+            "unknown_method",
+            format!("{} does not take a binary payload", request.method),
+        ),
+        Err(message) => {
+            eprintln!(
+                "[lingxia dev] dropped an unreadable binary frame from the runtime: {message}"
+            );
+            return;
+        }
+    };
+    if let Some(sender) = state.runtime_sender() {
+        let _ = sender.send(reply);
+    }
 }
 
 fn persist_runtime_events(
@@ -1545,6 +1602,13 @@ fn handle_client_connection(
 
     if method.starts_with(lingxia_control_protocol::methods::session::companion::PREFIX) {
         let reply = state.companion_reply(id, &method, params);
+        send_wire_message(&mut websocket, &reply)?;
+        let _ = websocket.close(None);
+        return Ok(());
+    }
+
+    if method.as_str() == lingxia_control_protocol::methods::session::capture::STAGED {
+        let reply = state.staged_captures_reply(id, params);
         send_wire_message(&mut websocket, &reply)?;
         let _ = websocket.close(None);
         return Ok(());

@@ -23,6 +23,9 @@ pub(super) fn execute_android(mut ctx: DevContext) -> Result<()> {
         stop_requested.clone(),
         None,
     )?;
+    if let Some(device) = ctx.device.as_deref() {
+        server.set_capture_device(device);
+    }
     let host_ws_url = server.ws_url();
     let device_ws_url = loopback_ws_url(server.port());
     let session = server.session().clone();
