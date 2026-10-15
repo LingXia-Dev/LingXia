@@ -56,6 +56,7 @@ Page({
     status: "idle",
     trackTitle: "Nothing loaded",
     index: -1,
+    hasNext: false,
     tracks: [] as Array<{ id: string; title: string }>,
     positionText: "--:--",
     durationText: "--:--",
@@ -135,9 +136,12 @@ Page({
 
   _render(state: AudioPlayerState) {
     const id = state.item?.id;
+    const index = state.index ?? -1;
     this.setData({
       status: state.status,
-      index: state.index ?? -1,
+      index,
+      // `next()` rejects past the last item unless the queue repeats.
+      hasNext: index >= 0 && (state.repeat === "all" || index + 1 < this.data.tracks.length),
       trackTitle: id ? this.titles.get(id) ?? id : "Nothing loaded",
       positionText: formatMs(state.positionMs),
       durationText: formatMs(state.durationMs),

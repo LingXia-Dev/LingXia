@@ -32,7 +32,7 @@
             >
               {{ data?.status === 'playing' ? 'Pause' : 'Play' }}
             </button>
-            <button :class="secondary" @click="next">Next</button>
+            <button :class="secondary" :disabled="!data?.hasNext" @click="next">Next</button>
             <button :class="secondary" @click="stop">Stop</button>
           </div>
           <div class="grid grid-cols-2 gap-2">
@@ -132,6 +132,7 @@ type PageData = {
   status?: string;
   trackTitle?: string;
   index?: number;
+  hasNext?: boolean;
   tracks?: Array<{ id: string; title: string }>;
   positionText?: string;
   durationText?: string;
@@ -162,7 +163,7 @@ type PageActions = {
   stopSounds(): void;
 };
 
-const secondary = 'py-2.5 rounded-lg bg-surface-200 text-gray-900 text-sm font-medium';
+const secondary = 'py-2.5 rounded-lg bg-surface-200 text-gray-900 text-sm font-medium disabled:opacity-40';
 
 const { data, actions } = useLxPage<PageData, PageActions>();
 const {

@@ -7,6 +7,7 @@ type PageData = {
   status?: string;
   trackTitle?: string;
   index?: number;
+  hasNext?: boolean;
   tracks?: Array<{ id: string; title: string }>;
   positionText?: string;
   durationText?: string;
@@ -37,7 +38,7 @@ type PageActions = {
   stopSounds(): void;
 };
 
-const secondary = 'py-2.5 rounded-lg bg-surface-200 text-gray-900 text-sm font-medium';
+const secondary = 'py-2.5 rounded-lg bg-surface-200 text-gray-900 text-sm font-medium disabled:opacity-40';
 
 export default function AudioPage() {
   const { data, actions } = useLxPage<PageData, PageActions>();
@@ -88,7 +89,7 @@ export default function AudioPage() {
               >
                 {playing ? 'Pause' : 'Play'}
               </button>
-              <button className={secondary} onClick={next}>Next</button>
+              <button className={secondary} disabled={!data?.hasNext} onClick={next}>Next</button>
               <button className={secondary} onClick={stop}>Stop</button>
             </div>
             <div className="grid grid-cols-2 gap-2">
