@@ -60,10 +60,11 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
 - **`onLaunch` runs once per Logic start.** Restarts start Logic again:
   - `lx.update.applyUpdate()` closes the session (`onHide`, `close`) and opens
     a new one: `onLaunch`, `onShow` (`open`), then the initial page's `onLoad`.
-  - A dev or code reload keeps the window but starts fresh Logic: `onLaunch`,
-    then `onShow` (`open`) if the lxapp is on screen. A hidden lxapp gets its
-    `onShow` on the next real show. Open pages replay `onLoad` → `onShow` →
-    `onReady`.
+  - A dev or code reload, or a device switch in the Runner, keeps the window
+    but starts fresh Logic: `onLaunch`, then `onShow` (`open`) if the lxapp is
+    on screen. A hidden lxapp gets its `onShow` on the next real show. Open
+    pages replay `onLoad` → `onShow` → `onReady`. A closed lxapp cannot be
+    reloaded this way; open it again.
 
 ## Cold open
 

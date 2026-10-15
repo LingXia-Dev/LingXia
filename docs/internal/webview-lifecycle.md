@@ -261,11 +261,14 @@ sync when dispatch changes. The runtime side:
 - **Late visibility is dropped.** `notify_lxapp_host_visibility` and
   `notify_page_host_visibility` ignore events while `Closing`/`Closed`; the
   close `onHide` is queued before Logic shuts down.
-- **A cold restart replays the open.** `cold_restart_app_service()` keeps the
-  host surface, so no native open callback arrives for the fresh Logic. It
-  must enqueue `App.onLaunch` and, if the app is currently shown, `App.onShow`
-  with `source: lxapp` and `reason: open`. Hidden apps wait for their next real
-  show. Retained pages replay load/show/ready through the page gates.
+- **Fresh Logic on a retained surface replays the open.** Cold restart and
+  the Runner device switch get no native open callback, so both go through
+  `relaunch_logic()`: `App.onLaunch`, then `App.onShow` (`lxapp`/`open`) only
+  when the app is `Opened` and shown. While `Opening`, the pending
+  `on_lxapp_opened` sends the show; replaying too would double it. Hidden apps
+  wait for their next real show. Retained pages replay load/show/ready through
+  the page gates. `cold_restart_app_service()` refuses any status other than
+  `Opened`/`Opening`.
 - **Restart is not a user activation.** `restart()` and
   `cold_restart_app_service()` must never raise the host window over other
   apps; only an explicit `lx.shell.openApp` may.

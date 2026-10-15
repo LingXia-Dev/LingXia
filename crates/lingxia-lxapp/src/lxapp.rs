@@ -3335,18 +3335,32 @@ impl LxApp {
     /// the LxApp instance. Dev runners use this for a cold lxapp restart:
     /// logic is recreated, while the existing window/frame stays put.
     pub fn cold_restart_app_service(&self) -> Result<(), LxAppError> {
+        // A closed instance has no surface to keep, and a full restart already
+        // replaces this instance; booting Logic there runs App hooks for an app
+        // nobody is looking at.
+        let status = self.status();
+        if !matches!(
+            status,
+            LxAppSessionStatus::Opened | LxAppSessionStatus::Opening
+        ) {
+            return Err(LxAppError::Runtime(format!(
+                "cannot cold restart lxapp while {status:?}"
+            )));
+        }
         self.executor.restart_app_svc(self.clone_arc())?;
+        // Enqueued before the page reload, so the reloaded page's first
+        // globalData read observes the fresh state.
+        self.relaunch_logic()
+    }
+
+    /// Run `App` hooks for a fresh Logic context on a retained surface. No
+    /// native open callback follows, so replay the show a cold open sends. An
+    /// open still in flight sends its own; replaying then would double it.
+    fn relaunch_logic(&self) -> Result<(), LxAppError> {
         self.app_launch_dispatched.store(false, Ordering::SeqCst);
         self.launch_settled.send_replace(false);
-        // Re-run onLaunch so app-service state (globalData, network init) is
-        // rebuilt. onLaunch normally fires only during open(); an in-place
-        // restart skips that lifecycle, so fire it explicitly. It is enqueued
-        // before the page reload, so the reloaded page's first globalData read
-        // (which arrives only after the page re-loads) observes the fresh state.
         self.ensure_app_launch_dispatched()?;
-        // The retained surface sends no new open callback. Replay its current
-        // visibility into the fresh AppSvc, just as a cold open would.
-        if self.is_shown() {
+        if self.is_opened() && self.is_shown() {
             self.appservice_notify(
                 AppServiceEvent::OnShow,
                 Some(
@@ -3502,8 +3516,7 @@ impl LxApp {
             return Ok(());
         }
         self.ensure_app_service_running()?;
-        self.app_launch_dispatched.store(false, Ordering::SeqCst);
-        self.ensure_app_launch_dispatched()?;
+        self.relaunch_logic()?;
         // A device transition must rebuild isolated surface pages too.
         let pending = self.recreate_retained_page_services(true)?;
         let pages = pending
