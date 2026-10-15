@@ -134,6 +134,9 @@ pub fn execute(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
             mask_values(&mut result["requests"], &redact);
             sink.commit_or_print(&result["scenario"], &mut std::io::stdout())?;
             if let Some(sink) = requests_sink {
+                if !result["requests"].is_array() {
+                    bail!("the host returned no `requests`; rebuild it with this lxdev's release");
+                }
                 sink.commit_or_print(&result["requests"], &mut std::io::stdout())?;
             }
             let routes = result["scenario"]["rules"].as_array().map_or(0, Vec::len);
