@@ -293,11 +293,27 @@ struct Player {
     live: bool,
     started: u64,
     paused_by: Option<InterruptionReason>,
+    /// Paused natively, not by a command. Some backends report the pause an
+    /// interruption causes before the interruption itself; this lets that
+    /// interruption still claim the player.
+    system_paused: bool,
 }
 
 impl Player {
     fn snap(&self) -> MutexGuard<'_, PlayerSnapshot> {
         self.shared.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Live, or a load that will start playing on its own: both must yield
+    /// to a new focus holder or an interruption.
+    fn wants_focus(&self) -> bool {
+        self.live || (self.autoplay && self.snap().status == PlayerStatus::Loading)
+    }
+
+    /// Playing, or loaded and waiting for native playback to start.
+    fn started_or_starting(&self, snap: &PlayerSnapshot) -> bool {
+        snap.status == PlayerStatus::Playing
+            || (snap.status == PlayerStatus::Loading && self.load_req.is_none())
     }
 
     fn emit(&self, event: PlayerEvent) {
@@ -353,6 +369,12 @@ struct Video {
     started: u64,
 }
 
+struct Owner {
+    tx: UnboundedSender<HostEvent>,
+    /// Players are foreground only: a hidden owner cannot start one.
+    visible: bool,
+}
+
 pub struct Coordinator {
     sink: CommandSink,
     capabilities: AudioDeviceCapabilities,
@@ -360,7 +382,7 @@ pub struct Coordinator {
     route_shared: Arc<Mutex<Route>>,
     proximity_near: bool,
     session: SessionSpec,
-    owners: HashMap<OwnerId, UnboundedSender<HostEvent>>,
+    owners: HashMap<OwnerId, Owner>,
     players: HashMap<u64, Player>,
     sounds: HashMap<u64, Sound>,
     videos: HashMap<String, Video>,
@@ -410,7 +432,7 @@ impl Coordinator {
     pub fn handle(&mut self, input: Input) {
         match input {
             Input::RegisterOwner { owner, tx } => {
-                self.owners.insert(owner, tx);
+                self.owners.insert(owner, Owner { tx, visible: true });
             }
             Input::OwnerVisible { owner, visible } => self.owner_visible(owner, visible),
             Input::OwnerShutdown { owner } => self.owner_shutdown(owner),
@@ -484,7 +506,9 @@ impl Coordinator {
             .players
             .iter()
             .filter(|(id, p)| {
-                Some(**id) != except_player && p.live && p.options.focus == Focus::Exclusive
+                Some(**id) != except_player
+                    && p.options.focus == Focus::Exclusive
+                    && p.wants_focus()
             })
             .map(|(id, _)| *id)
             .collect();
@@ -508,6 +532,9 @@ impl Coordinator {
     // ----- owners -----
 
     fn owner_visible(&mut self, owner: OwnerId, visible: bool) {
+        if let Some(state) = self.owners.get_mut(&owner) {
+            state.visible = visible;
+        }
         let ids: Vec<u64> = self
             .players
             .iter()
@@ -569,9 +596,15 @@ impl Coordinator {
     }
 
     fn broadcast(&self, event: HostEvent) {
-        for tx in self.owners.values() {
-            let _ = tx.send(event.clone());
+        for owner in self.owners.values() {
+            let _ = owner.tx.send(event.clone());
         }
+    }
+
+    /// Unregistered owners (tests, or a context that never saw onShow) count
+    /// as visible: the lxapp is launching in front of the user.
+    fn owner_is_visible(&self, owner: OwnerId) -> bool {
+        self.owners.get(&owner).is_none_or(|o| o.visible)
     }
 
     // ----- players -----
@@ -606,6 +639,7 @@ impl Coordinator {
             live: false,
             started: 0,
             paused_by: None,
+            system_paused: false,
         };
         let (volume, rate) = {
             let snap = player.snap();
@@ -624,6 +658,13 @@ impl Coordinator {
         if player.snap().status == PlayerStatus::Disposed {
             player.reply(req, Err(AudioError::disposed()));
             return;
+        }
+        if !matches!(
+            command,
+            PlayerCommand::Seek(_) | PlayerCommand::ApplySettings | PlayerCommand::SetOutput(_)
+        ) && let Some(player) = self.players.get_mut(&id)
+        {
+            player.system_paused = false;
         }
         match command {
             PlayerCommand::SetQueue {
@@ -798,9 +839,33 @@ impl Coordinator {
 
     fn start_play(&mut self, id: u64) {
         let earpiece_unsupported = !self.capabilities.earpiece;
+        let hidden = self
+            .players
+            .get(&id)
+            .is_some_and(|p| !self.owner_is_visible(p.owner));
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
+        if hidden {
+            // Foreground only: the outcome is the one a hide would have caused
+            // a moment later, so onShow still ends the interruption.
+            let reason = InterruptionReason::AppHidden;
+            let error = AudioError::new(
+                AudioErrorCode::Interrupted,
+                format!("interrupted: {}", reason.as_str()),
+            );
+            for req in std::mem::take(&mut player.play_replies) {
+                player.reply(req, Err(error.clone()));
+            }
+            player.paused_by = Some(reason);
+            player.emit(PlayerEvent::Interruption(Interruption {
+                phase: InterruptionPhase::Began,
+                reason,
+                should_resume: false,
+                resumed: false,
+            }));
+            return;
+        }
         if player.options.output == OutputRequest::Earpiece && earpiece_unsupported {
             let error = AudioError::new(
                 AudioErrorCode::OutputUnsupported,
@@ -847,7 +912,7 @@ impl Coordinator {
         let was_live = player.live;
         let changed = {
             let mut snap = player.snap();
-            if snap.status == PlayerStatus::Playing {
+            if player.started_or_starting(&snap) {
                 snap.position_ms = snap.position_now();
                 snap.position_at = Instant::now();
                 snap.status = PlayerStatus::Paused;
@@ -1094,8 +1159,7 @@ impl Coordinator {
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
-        let loading_to_play = player.snap().status == PlayerStatus::Loading && player.autoplay;
-        if !player.live && !loading_to_play {
+        if !player.wants_focus() && !std::mem::take(&mut player.system_paused) {
             return;
         }
         let error = AudioError::new(
@@ -1109,7 +1173,7 @@ impl Coordinator {
         let was_live = std::mem::replace(&mut player.live, false);
         {
             let mut snap = player.snap();
-            if snap.status == PlayerStatus::Playing {
+            if player.started_or_starting(&snap) {
                 snap.position_ms = snap.position_now();
                 snap.position_at = Instant::now();
                 snap.status = PlayerStatus::Paused;
@@ -1346,9 +1410,15 @@ impl Coordinator {
             return;
         }
         player.load_req = None;
+        let autoplay = std::mem::take(&mut player.autoplay);
+        let resume_live = player.live;
         let index = {
             let mut snap = player.snap();
-            snap.status = PlayerStatus::Paused;
+            // Playback follows: stay `loading` until it starts, so a track
+            // change while playing never shows a `paused` in between.
+            if !(autoplay || resume_live) {
+                snap.status = PlayerStatus::Paused;
+            }
             snap.duration_ms = duration_ms.filter(|d| *d > 0);
             snap.position_at = Instant::now();
             snap.index.unwrap_or(0)
@@ -1357,15 +1427,35 @@ impl Coordinator {
         if let Some(reply) = player.load_reply.take() {
             player.reply(reply, Ok(Reply::Loaded { duration_ms, index }));
         }
-        let autoplay = std::mem::take(&mut player.autoplay);
-        let resume_live = player.live;
-        if autoplay || resume_live {
-            if resume_live {
-                // Item change while playing: focus is already held.
-                self.send(Command::PlayerPlay { id });
-            } else {
-                self.start_play(id);
+        if resume_live {
+            // Item change while playing: focus is already held.
+            self.send(Command::PlayerPlay { id });
+        } else if autoplay {
+            self.start_play(id);
+            self.settle_unstarted(id);
+        }
+    }
+
+    /// A loaded item whose playback was refused or cancelled before it
+    /// started is `paused`.
+    fn settle_unstarted(&mut self, id: u64) {
+        let Some(player) = self.players.get(&id) else {
+            return;
+        };
+        if player.live || player.load_req.is_some() {
+            return;
+        }
+        let changed = {
+            let mut snap = player.snap();
+            let loaded = snap.status == PlayerStatus::Loading;
+            if loaded {
+                snap.status = PlayerStatus::Paused;
+                snap.position_at = Instant::now();
             }
+            loaded
+        };
+        if changed {
+            player.emit_state();
         }
     }
 
@@ -1399,7 +1489,7 @@ impl Coordinator {
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
-        let system_pause = player.live && player.snap().status == PlayerStatus::Playing;
+        let system_pause = player.live && player.started_or_starting(&player.snap());
         {
             let mut snap = player.snap();
             if let Some(position) = position_ms {
@@ -1413,6 +1503,7 @@ impl Coordinator {
         }
         if system_pause {
             player.live = false;
+            player.system_paused = true;
             player.emit_state();
             self.apply_session();
         }
@@ -1492,7 +1583,11 @@ impl Coordinator {
         player.emit(PlayerEvent::Ended { index });
         match repeat {
             Repeat::One => {
-                player.snap().position_ms = 0;
+                {
+                    let mut snap = player.snap();
+                    snap.position_ms = 0;
+                    snap.position_at = Instant::now();
+                }
                 self.send(Command::PlayerSeek {
                     id,
                     req,
@@ -1594,7 +1689,7 @@ impl Coordinator {
         player.live = false;
         {
             let mut snap = player.snap();
-            if snap.status == PlayerStatus::Playing {
+            if player.started_or_starting(&snap) {
                 snap.position_ms = snap.position_now();
                 snap.position_at = Instant::now();
                 snap.status = PlayerStatus::Paused;
@@ -1630,7 +1725,7 @@ impl Coordinator {
                 let ids: Vec<u64> = self
                     .players
                     .iter()
-                    .filter(|(_, p)| p.live)
+                    .filter(|(_, p)| p.wants_focus() || p.system_paused)
                     .map(|(id, _)| *id)
                     .collect();
                 for id in ids {

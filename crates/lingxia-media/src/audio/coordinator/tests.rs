@@ -865,3 +865,238 @@ fn sounds_mix_steal_voices_and_report_ends() {
     assert_eq!(events.try_recv(), Ok(SoundEvent::VoiceEnded(4)));
     assert_eq!(h.take().last(), Some(&SessionSpec::INACTIVE.command()));
 }
+
+#[test]
+fn a_hidden_lxapp_cannot_start_a_player_until_it_shows_again() {
+    let mut h = Harness::new(phone());
+    let (tx, _rx) = unbounded_channel();
+    h.coordinator.handle(Input::RegisterOwner { owner: 7, tx });
+    let mut p = h.player(1, 7, PlayerOptions::default());
+    h.loaded(&mut p, vec![entry("a")]);
+    h.coordinator.handle(Input::OwnerVisible {
+        owner: 7,
+        visible: false,
+    });
+    p.drain();
+    let play = h.command(&p, PlayerCommand::Play);
+    let events = p.drain();
+    assert_eq!(
+        replies(&events),
+        vec![(play, Err(AudioErrorCode::Interrupted))]
+    );
+    assert_eq!(
+        interruptions(&events)[0].reason,
+        InterruptionReason::AppHidden
+    );
+    assert_eq!(p.status(), PlayerStatus::Paused);
+    assert!(!h.take().contains(&Command::PlayerPlay { id: 1 }));
+    h.coordinator.handle(Input::OwnerVisible {
+        owner: 7,
+        visible: true,
+    });
+    let shown = interruptions(&p.drain());
+    assert_eq!(shown[0].phase, InterruptionPhase::Ended);
+    h.command(&p, PlayerCommand::Play);
+    assert!(h.take().contains(&Command::PlayerPlay { id: 1 }));
+}
+
+#[test]
+fn a_load_about_to_autoplay_yields_focus_like_a_live_player() {
+    let mut h = Harness::new(phone());
+    let mut first = h.player(1, 7, PlayerOptions::default());
+    let mut second = h.player(2, 7, PlayerOptions::default());
+    h.loaded(&mut second, vec![entry("b")]);
+    let load = h.command(
+        &first,
+        PlayerCommand::SetQueue {
+            items: vec![entry("a")],
+            start_index: 0,
+            autoplay: true,
+        },
+    );
+    let first_req = h.last_load_req(1);
+    first.drain();
+    h.playing(&mut second);
+    // The second player took exclusive focus while the first was still loading.
+    assert_eq!(
+        interruptions(&first.drain())[0].reason,
+        InterruptionReason::FocusTaken
+    );
+    h.take();
+    h.native(NativeEvent::PlayerLoaded {
+        id: 1,
+        req: first_req,
+        duration_ms: Some(1_000),
+    });
+    let events = first.drain();
+    assert_eq!(
+        replies(&events),
+        vec![(
+            load,
+            Ok(Reply::Loaded {
+                duration_ms: Some(1_000),
+                index: 0
+            })
+        )]
+    );
+    assert_eq!(first.status(), PlayerStatus::Paused);
+    assert!(!h.take().contains(&Command::PlayerPlay { id: 1 }));
+    assert_eq!(second.status(), PlayerStatus::Playing);
+}
+
+#[test]
+fn a_track_change_while_playing_goes_from_loading_straight_to_playing() {
+    let mut h = Harness::new(phone());
+    let mut p = h.player(1, 7, PlayerOptions::default());
+    h.loaded(&mut p, vec![entry("a"), entry("b")]);
+    h.playing(&mut p);
+    h.take();
+
+    let next = h.command(&p, PlayerCommand::Next);
+    let req = h.last_load_req(1);
+    h.native(NativeEvent::PlayerLoaded {
+        id: 1,
+        req,
+        duration_ms: Some(3_000),
+    });
+    assert_eq!(p.status(), PlayerStatus::Loading);
+    assert!(h.take().contains(&Command::PlayerPlay { id: 1 }));
+    h.native(NativeEvent::PlayerPlaying {
+        id: 1,
+        position_ms: Some(0),
+    });
+    let events = p.drain();
+    assert_eq!(
+        statuses(&events),
+        vec![
+            PlayerStatus::Loading,
+            PlayerStatus::Loading,
+            PlayerStatus::Playing
+        ]
+    );
+    assert!(replies(&events).contains(&(
+        next,
+        Ok(Reply::Loaded {
+            duration_ms: Some(3_000),
+            index: 1
+        })
+    )));
+}
+
+#[test]
+fn a_pause_before_the_loaded_item_starts_settles_paused() {
+    let mut h = Harness::new(phone());
+    let p = h.player(1, 7, PlayerOptions::default());
+    h.command(
+        &p,
+        PlayerCommand::SetQueue {
+            items: vec![entry("a")],
+            start_index: 0,
+            autoplay: true,
+        },
+    );
+    let req = h.last_load_req(1);
+    h.native(NativeEvent::PlayerLoaded {
+        id: 1,
+        req,
+        duration_ms: Some(3_000),
+    });
+    assert_eq!(p.status(), PlayerStatus::Loading);
+    h.take();
+
+    h.command(&p, PlayerCommand::Pause);
+    assert_eq!(p.status(), PlayerStatus::Paused);
+    assert!(h.take().contains(&Command::PlayerPause { id: 1 }));
+    // The native start that was already on its way is ignored.
+    h.native(NativeEvent::PlayerPlaying {
+        id: 1,
+        position_ms: Some(0),
+    });
+    assert_eq!(p.status(), PlayerStatus::Paused);
+}
+
+#[test]
+fn an_autoplay_load_refused_for_a_hidden_lxapp_settles_paused() {
+    let mut h = Harness::new(phone());
+    let (tx, _rx) = unbounded_channel();
+    h.coordinator.handle(Input::RegisterOwner { owner: 7, tx });
+    let p = h.player(1, 7, PlayerOptions::default());
+    h.coordinator.handle(Input::OwnerVisible {
+        owner: 7,
+        visible: false,
+    });
+    h.command(
+        &p,
+        PlayerCommand::SetQueue {
+            items: vec![entry("a")],
+            start_index: 0,
+            autoplay: true,
+        },
+    );
+    let req = h.last_load_req(1);
+    h.native(NativeEvent::PlayerLoaded {
+        id: 1,
+        req,
+        duration_ms: Some(3_000),
+    });
+    assert_eq!(p.status(), PlayerStatus::Paused);
+    assert!(!h.take().contains(&Command::PlayerPlay { id: 1 }));
+}
+
+#[test]
+fn an_interruption_reported_after_its_native_pause_still_resumes() {
+    let mut h = Harness::new(phone());
+    let mut p = h.player(
+        1,
+        7,
+        PlayerOptions {
+            resume_after_interruption: true,
+            ..PlayerOptions::default()
+        },
+    );
+    h.loaded(&mut p, vec![entry("a")]);
+    h.playing(&mut p);
+    h.take();
+
+    h.native(NativeEvent::PlayerPaused {
+        id: 1,
+        position_ms: Some(1_000),
+    });
+    assert_eq!(p.status(), PlayerStatus::Paused);
+    h.native(NativeEvent::Interruption {
+        phase: InterruptionPhase::Began,
+        reason: InterruptionReason::OtherApp,
+        should_resume: false,
+    });
+    assert_eq!(interruptions(&p.drain()).len(), 1);
+    h.take();
+    h.native(NativeEvent::Interruption {
+        phase: InterruptionPhase::Ended,
+        reason: InterruptionReason::OtherApp,
+        should_resume: true,
+    });
+    let ended = interruptions(&p.drain());
+    assert_eq!(ended.len(), 1);
+    assert!(ended[0].resumed);
+    assert!(h.take().contains(&Command::PlayerPlay { id: 1 }));
+}
+
+#[test]
+fn a_command_after_a_native_pause_keeps_a_later_interruption_away() {
+    let mut h = Harness::new(phone());
+    let mut p = h.player(1, 7, PlayerOptions::default());
+    h.loaded(&mut p, vec![entry("a")]);
+    h.playing(&mut p);
+    h.native(NativeEvent::PlayerPaused {
+        id: 1,
+        position_ms: Some(1_000),
+    });
+    h.command(&p, PlayerCommand::Pause);
+    p.drain();
+    h.native(NativeEvent::Interruption {
+        phase: InterruptionPhase::Began,
+        reason: InterruptionReason::OtherApp,
+        should_resume: false,
+    });
+    assert!(interruptions(&p.drain()).is_empty());
+}
