@@ -30,6 +30,9 @@ import type {
 } from '../automation/index.js';
 import type {
   AppearanceApi,
+  AudioApi,
+  AudioPlayer,
+  AudioRouteApi,
   AppCacheApi,
   AutostartApi,
   BannerApi,
@@ -52,6 +55,8 @@ import type {
   TabSurface,
   PageSurface,
   ShellApi,
+  Sound,
+  SoundVoice,
   Storage,
   SurfaceApi,
   TabBarApi,
@@ -70,6 +75,7 @@ export const LX_API_NAMES = [
   'host',
   'automation',
   'alert',
+  'audio',
   'confirm',
   'pickFile',
   'pickFiles',
@@ -227,6 +233,30 @@ const LX_FILE_API = [
 ] as const;
 const STORAGE_API = ['clear', 'delete', 'get', 'has', 'info', 'list', 'set'] as const;
 const UPDATE_MANAGER_API = ['applyUpdate', 'onUpdateFailed', 'onUpdateReady'] as const;
+const AUDIO_API = ['createPlayer', 'loadSound', 'onInterruption', 'route'] as const;
+const AUDIO_ROUTE_API = ['get', 'watch'] as const;
+const AUDIO_PLAYER_API = [
+  'dispose',
+  'load',
+  'next',
+  'on',
+  'pause',
+  'play',
+  'previous',
+  'queue',
+  'seek',
+  'setMuted',
+  'setOutput',
+  'setQueue',
+  'setRate',
+  'setRepeat',
+  'setVolume',
+  'skipTo',
+  'state',
+  'stop',
+] as const;
+const SOUND_API = ['dispose', 'durationMs', 'play', 'stopAll'] as const;
+const SOUND_VOICE_API = ['ended', 'stop'] as const;
 const VIDEO_CONTEXT_API = [
   'exitFullScreen',
   'pause',
@@ -384,8 +414,9 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx',
     members: LX_API_NAMES,
-    optionalMembers: ['terminal'],
+    optionalMembers: ['audio', 'terminal'],
     properties: [
+      'audio',
       'clipboard',
       'env',
       'fs',
@@ -514,6 +545,21 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.terminal?.windows',
     members: WINDOWS_TERMINAL_API,
+    optional: true,
+  },
+  {
+    name: 'lx.audio',
+    layer: 'logic',
+    expression: 'lx.audio',
+    members: AUDIO_API,
+    properties: ['route'],
+    optional: true,
+  },
+  {
+    name: 'lx.audio.route',
+    layer: 'logic',
+    expression: 'lx.audio?.route',
+    members: AUDIO_ROUTE_API,
     optional: true,
   },
   {
@@ -711,6 +757,33 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     factory: 'lx.createVideoContext',
   },
   {
+    name: 'AudioPlayer',
+    members: AUDIO_PLAYER_API,
+    properties: ['queue', 'state'],
+    optionalProperties: [],
+    fixture: 'external-media',
+    factory: 'lx.audio.createPlayer',
+    optional: true,
+  },
+  {
+    name: 'Sound',
+    members: SOUND_API,
+    properties: ['durationMs'],
+    optionalProperties: [],
+    fixture: 'external-media',
+    factory: 'lx.audio.loadSound',
+    optional: true,
+  },
+  {
+    name: 'SoundVoice',
+    members: SOUND_VOICE_API,
+    properties: ['ended'],
+    optionalProperties: [],
+    fixture: 'external-media',
+    factory: 'Sound.play',
+    optional: true,
+  },
+  {
     name: 'DownloadTask',
     members: DOWNLOAD_TASK_API,
     properties: ['result', 'progress'],
@@ -853,6 +926,11 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<Storage, typeof STORAGE_API>>,
   AssertTrue<Exact<UpdateManager, typeof UPDATE_MANAGER_API>>,
   AssertTrue<Exact<VideoContext, typeof VIDEO_CONTEXT_API>>,
+  AssertTrue<Exact<AudioApi, typeof AUDIO_API>>,
+  AssertTrue<Exact<AudioRouteApi, typeof AUDIO_ROUTE_API>>,
+  AssertTrue<Exact<AudioPlayer, typeof AUDIO_PLAYER_API>>,
+  AssertTrue<Exact<Sound, typeof SOUND_API>>,
+  AssertTrue<Exact<SoundVoice, typeof SOUND_VOICE_API>>,
   AssertTrue<Exact<Automation, typeof AUTOMATION_API>>,
   AssertTrue<Exact<ShellDriver, typeof SHELL_DRIVER_API>>,
   AssertTrue<Exact<TerminalDriver, typeof TERMINAL_DRIVER_API>>,

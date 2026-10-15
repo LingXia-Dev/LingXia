@@ -1,4 +1,4 @@
-import type { SurfaceErrorCode } from './generated/logic.js';
+import type { AudioErrorCode, SurfaceErrorCode } from './generated/logic.js';
 import { ERR_CODE_INFO_BY_CODE, type LxErrorCode, type LxErrorCodeInfo } from "./generated/error.js";
 
 const ERR_CODE_INDEX = ERR_CODE_INFO_BY_CODE as Record<number, LxErrorCodeInfo>;
@@ -84,6 +84,46 @@ export function surfaceErrorCode(error: unknown): SurfaceErrorCode | null {
     ? (code as SurfaceErrorCode)
     : null;
 }
+
+/**
+ * The audio reason carried by an `lx.audio` rejection, or `null` for any
+ * other error.
+ *
+ * The rejection's `code` is the shared business code (`parseLxApiError` keeps
+ * working); the audio-specific member of `AudioErrorCode` rides on `data.code`.
+ *
+ * ```ts
+ * try {
+ *   await player.play()
+ * } catch (error) {
+ *   if (audioErrorCode(error) === 'output_unsupported') await player.setOutput('auto')
+ *   else throw error
+ * }
+ * ```
+ */
+export function audioErrorCode(error: unknown): AudioErrorCode | null {
+  const root = toRecord(error);
+  const data = root ? toRecord(root.data) : null;
+  const code = data?.code;
+  return typeof code === 'string' && (AUDIO_ERROR_CODES as readonly string[]).includes(code)
+    ? (code as AudioErrorCode)
+    : null;
+}
+
+/** Every member of `AudioErrorCode`, for runtime narrowing. */
+export const AUDIO_ERROR_CODES = [
+  'invalid_source',
+  'invalid_options',
+  'source_not_found',
+  'network',
+  'unsupported_format',
+  'output_unsupported',
+  'decode_failed',
+  'source_too_large',
+  'disposed',
+  'interrupted',
+  'background_unavailable',
+] as const satisfies readonly AudioErrorCode[];
 
 /**
  * Why an lxapp refused to open, when the operator took it down.

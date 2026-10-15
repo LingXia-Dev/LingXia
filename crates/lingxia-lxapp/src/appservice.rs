@@ -6,7 +6,7 @@ mod js_runtime;
 mod js_worker_pool;
 
 #[cfg(feature = "js-appservice")]
-pub use js_runtime::PageSvc;
+pub use js_runtime::{PageSvc, register_logic_visibility_observer};
 
 #[cfg(all(test, feature = "js-appservice"))]
 pub(crate) use js_runtime::ServiceMessage;

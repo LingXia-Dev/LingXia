@@ -33,6 +33,9 @@ enum Predicate {
     MediaCapture,
     Window,
     FullChrome,
+    Audio,
+    AudioEarpiece,
+    AudioProximity,
 }
 
 fn registry() -> &'static Result<Vec<FeatureEntry>, String> {
@@ -131,6 +134,9 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     #[cfg(not(feature = "terminal"))]
     let focused = false;
     use lingxia_platform::traits::update::UpdateService;
+    let audio = (!focused)
+        .then(|| crate::media::audio::device_capabilities(&app))
+        .flatten();
     let entries = registry().as_ref().map_err(js_internal_error)?;
     let supported = resolve(entries, |predicate| {
         if focused && predicate != Predicate::Terminal {
@@ -155,6 +161,9 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
             Predicate::MediaCapture => lingxia_app_context::capability::media_capture(),
             Predicate::Window => crate::surface::window_placement_available(),
             Predicate::FullChrome => crate::surface::window_full_chrome_available(),
+            Predicate::Audio => audio.is_some(),
+            Predicate::AudioEarpiece => audio.is_some_and(|caps| caps.earpiece),
+            Predicate::AudioProximity => audio.is_some_and(|caps| caps.proximity),
         }
     })
     .map_err(js_internal_error)?;

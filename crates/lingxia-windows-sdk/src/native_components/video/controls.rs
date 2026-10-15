@@ -54,6 +54,7 @@ pub(super) fn video_controls_sink(key: String) -> crate::video_controls::Control
                         video.muted = muted;
                     }
                 }
+                super::refresh_video_audible(&key);
                 update_video_controls(&key);
             }
             ControlsAction::ToggleFullscreen => set_video_fullscreen(&key, !fullscreen),

@@ -3692,9 +3692,12 @@ dependencies = [
 name = "lingxia-media"
 version = "0.25.1"
 dependencies = [
+ "lingxia-messaging",
  "lingxia-platform",
  "log",
+ "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

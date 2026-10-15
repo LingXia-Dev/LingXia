@@ -32,6 +32,14 @@ pub fn register_windows_video_command_dispatcher(dispatcher: WindowsVideoCommand
     }
 }
 
+/// Deliver `command` to a mounted video component, as its context would.
+pub(crate) fn dispatch(component_id: &str, command: &VideoPlayerCommand) -> Result<(), String> {
+    let dispatcher = DISPATCHER
+        .get()
+        .ok_or_else(|| "no native video host is registered".to_string())?;
+    dispatcher(component_id, command)
+}
+
 impl VideoPlayerManager for Platform {
     fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
         let dispatcher = DISPATCHER

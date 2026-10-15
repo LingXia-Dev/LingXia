@@ -523,6 +523,16 @@ mod bridge {
 
         #[swift_bridge(swift_name = "LxAppNetwork.removeNetworkChangeListener")]
         fn remove_network_change_listener(callback_id: u64);
+
+        // Audio backend of the host audio coordinator (JSON commands/events)
+        #[swift_bridge(swift_name = "LxAppAudio.capabilities")]
+        fn audio_capabilities() -> u32;
+
+        #[swift_bridge(swift_name = "LxAppAudio.attach")]
+        fn audio_attach(callback_id: u64);
+
+        #[swift_bridge(swift_name = "LxAppAudio.send")]
+        fn audio_send(command_json: &str);
     }
 }
 
@@ -567,6 +577,9 @@ pub use bridge::{choose_directory, choose_file};
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]
 pub use bridge::{dispatch_video_command, set_video_player_callback};
+
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+pub use bridge::{audio_attach, audio_capabilities, audio_send};
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]

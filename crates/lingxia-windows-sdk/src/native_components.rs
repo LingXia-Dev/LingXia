@@ -1195,6 +1195,9 @@ fn destroy_component(key: &str) {
 fn purge_component_state(key: &str) {
     let entry = components().remove(key);
     if let Some(entry) = entry {
+        if entry.video.is_some() {
+            lingxia_platform::traits::audio::notify_video_audible(&entry.component_id, false);
+        }
         containers().remove(&entry.container);
         suppressed_edits().remove(&entry.edit);
     }

@@ -50,6 +50,7 @@ unsafe extern "C" {
     fn OH_GetIncrementalVersion() -> *const c_char;
     fn OH_GetOsReleaseType() -> *const c_char;
     fn OH_GetOSFullName() -> *const c_char;
+    fn OH_GetDeviceType() -> *const c_char;
     fn OH_GetVersionId() -> *const c_char;
     fn OH_GetBuildType() -> *const c_char;
     fn OH_GetBuildUser() -> *const c_char;
@@ -240,6 +241,11 @@ fn cstr_to_string(ptr: *const c_char) -> Option<String> {
             .to_string();
         if s.is_empty() { None } else { Some(s) }
     }
+}
+
+/// `phone`, `tablet`, `2in1`, `wearable`, ... as the system reports it.
+pub(crate) fn device_type() -> Option<String> {
+    call_cstr(OH_GetDeviceType)
 }
 
 /// Call a 0-arg C function that returns const char* and convert to String

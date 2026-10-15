@@ -25,6 +25,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.lingxia.app.media.UrlPlayerEngine
+import com.lingxia.lxapp.APIs.LxAppAudio
 import com.lingxia.app.media.UrlPlayerEngineFactory
 import com.lingxia.app.media.UrlPlayerEngineRequest
 import com.lingxia.app.media.UrlPlayerOutput
@@ -262,6 +263,9 @@ internal class LxMediaPlayer(
     private var currentSource: Uri? = null
     private var isFullscreen = false
     private var isPausedByUser = false  // Track if user explicitly paused (vs buffering)
+    private var audioPlaying = false
+    private var audioSilent = false
+    private var reportedAudible = false
     private var isBufferingForUi = false
     private var firstFrameDisplayed = false
     private var hasEnded = false
@@ -868,6 +872,8 @@ internal class LxMediaPlayer(
     }
 
     fun detach() {
+        audioPlaying = false
+        reportAudible()
         rectSyncRunnable?.let { mainHandler.removeCallbacks(it) }
         rectSyncRunnable = null
         controlsOverlay?.cancelPendingDeferredActions()
@@ -2002,6 +2008,26 @@ internal class LxMediaPlayer(
         }
     }
 
+    // Audible output is a participant of the host audio coordinator.
+    private fun trackAudible(event: CorePlayerEvent) {
+        when (event) {
+            is CorePlayerEvent.Playing -> audioPlaying = true
+            is CorePlayerEvent.Pause, is CorePlayerEvent.Stop, is CorePlayerEvent.Ended,
+            is CorePlayerEvent.Error -> audioPlaying = false
+            is CorePlayerEvent.VolumeChange -> audioSilent = event.muted || event.volume <= 0f
+            else -> return
+        }
+        reportAudible()
+    }
+
+    private fun reportAudible() {
+        val id = componentId ?: return
+        val audible = audioPlaying && !audioSilent
+        if (audible == reportedAudible) return
+        reportedAudible = audible
+        LxAppAudio.notifyVideoAudible(id, audible)
+    }
+
     private fun handleCoreEvent(event: CorePlayerEvent) {
         when (event) {
             CorePlayerEvent.PlayRequest -> {
@@ -2132,6 +2158,7 @@ internal class LxMediaPlayer(
             is CorePlayerEvent.FullscreenChange -> Unit
         }
 
+        trackAudible(event)
         eventSink(JsEventMapper.toPayload(event))
         mapCoreEventToTypedEvent(event)?.let { typedEventSink?.invoke(it) }
 

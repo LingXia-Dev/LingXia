@@ -172,6 +172,17 @@ pub fn js_error_from_business_code_with_detail(code: u32, detail: impl AsRef<str
     host_error_from_business_code_with_detail(code, detail).into()
 }
 
+/// A business-coded rejection that also names a domain reason on `data.code`
+/// (read by helpers such as `audioErrorCode` in `@lingxia/types/error`).
+pub fn js_error_with_reason(biz_code: u32, reason: &str, detail: impl AsRef<str>) -> RongJSError {
+    HostError::new(
+        host_error_kind_for_code(biz_code),
+        err_code_message(biz_code),
+    )
+    .with_data(rong::err_data!({ bizCode: (biz_code), detail: (detail.as_ref()), code: (reason) }))
+    .into()
+}
+
 pub fn js_internal_error(detail: impl AsRef<str>) -> RongJSError {
     js_error_from_business_code_with_detail(1005, detail)
 }

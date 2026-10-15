@@ -220,6 +220,15 @@ pub(crate) struct WorkerService {
     pub(crate) svc: ServiceMessage,
 }
 
+static LOGIC_VISIBILITY_OBSERVER: std::sync::OnceLock<fn(&JSContext, bool)> =
+    std::sync::OnceLock::new();
+
+/// Observe an lxapp's onShow/onHide on its Logic thread, before the App
+/// handler runs, so Logic-owned resources can follow the app's visibility.
+pub fn register_logic_visibility_observer(observer: fn(&JSContext, bool)) {
+    let _ = LOGIC_VISIBILITY_OBSERVER.set(observer);
+}
+
 // Handles a typed AppService event
 async fn handle_app_service_event(
     worker_id: usize,
@@ -240,6 +249,14 @@ async fn handle_app_service_event(
             return;
         }
     };
+
+    if let Some(observer) = LOGIC_VISIBILITY_OBSERVER.get() {
+        match event {
+            AppServiceEvent::OnShow => observer(ctx, true),
+            AppServiceEvent::OnHide => observer(ctx, false),
+            _ => {}
+        }
+    }
 
     if matches!(
         event,

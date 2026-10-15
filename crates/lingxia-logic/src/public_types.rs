@@ -2288,5 +2288,257 @@ true
     disabled?: boolean;
 }"###;
 
+        /// `lx.audio`: Logic-owned playback over the host's one audio session.
+        ///
+        type AudioApi = r###"{
+    /**
+     * A long-form player: one stream at a time over a native queue.
+     * Foreground only: it pauses when the lxapp hides.
+     */
+    createPlayer(options?: AudioPlayerOptions): AudioPlayer;
+    /** Preload a short effect for low-latency, polyphonic playback. */
+    loadSound(source: AudioSource | AudioBytes, options?: LoadSoundOptions): Promise<Sound>;
+    /** External interruptions (calls, alarms, other apps) for the whole host. */
+    onInterruption(listener: (event: AudioHostInterruption) => void): () => void;
+    readonly route: AudioRouteApi;
+}"###;
+
+        type AudioRouteApi = r###"{
+    /** Where audio plays right now. */
+    get(): AudioRoute;
+    /** Called with the current route before this returns, then on each change. */
+    watch(listener: (change: AudioRouteChange) => void): () => void;
+}"###;
+
+        /// How a participant shares the device's audio with other apps and
+        /// with this host's other players: `exclusive` pauses others (and the
+        /// user's music), `duck` lowers them, `mix` plays alongside.
+        ///
+        type AudioFocus = r###"'exclusive' | 'duck' | 'mix'"###;
+
+        /// Requested output on the built-in route. Wired, Bluetooth, USB, and
+        /// AirPlay devices always win; `state.route` says where audio really goes.
+        ///
+        type AudioOutput = r###"'auto' | 'speaker' | 'earpiece'"###;
+
+        /// Where audio comes from: an http(s) URL under the host network grant,
+        /// or `lx://lxapp/<path>` (package), `lx://userdata/…`, `lx://usercache/…`,
+        /// `lx://temp/…`. Relative and native paths are rejected.
+        ///
+        type AudioSource = r###"string | {
+    uri: string;
+    /** Request headers for a remote source. Sent on Android and HarmonyOS; Windows rejects a source with headers `invalid_source`. */
+    headers?: Record<string, string>;
+    /** `'origin'` sends `Referer: https://<appId>.lxapp/`. Default `'no-referrer'`. */
+    referrerPolicy?: 'no-referrer' | 'origin';
+    /** Container hint when the URL has no telling extension, e.g. `'application/x-mpegURL'`. */
+    mimeType?: string;
+}"###;
+
+        /// Encoded audio held in memory, for `loadSound`.
+        ///
+        type AudioBytes = r###"{
+    bytes: Uint8Array | ArrayBuffer;
+    mimeType: string;
+}"###;
+
+        type AudioRepeat = r###"'off' | 'one' | 'all'"###;
+
+        type AudioPlayerOptions = r###"{
+    /** Default `'exclusive'`. */
+    focus?: AudioFocus;
+    /** iOS silent switch. Default: `focus === 'mix'`. */
+    obeySilentSwitch?: boolean;
+    /** Default `'auto'`. `'earpiece'` needs `lx.supports('audio.output.earpiece')`. */
+    output?: AudioOutput;
+    /** At the ear, switch to the earpiece and turn the screen off. No-op without a sensor. */
+    proximity?: boolean;
+    /** Resume when an external interruption ends and the OS allows it. Default `false`. */
+    resumeAfterInterruption?: boolean;
+    /** 0..1, default 1. */
+    volume?: number;
+    /** 0.5..2, pitch-preserving, default 1. */
+    rate?: number;
+    repeat?: AudioRepeat;
+    /** Cadence of `time` events; `0` disables them. Default 250. */
+    timeUpdateIntervalMs?: number;
+    /** Abort disposes the player; pass a page's `this.signal` to scope it to the page. */
+    signal?: AbortSignal;
+}"###;
+
+        /// `stopped`: rewound with the decoder and focus released; `play()`
+        /// prepares again. `ended`: the queue played out; `play()` restarts it.
+        ///
+        type AudioPlayerStatus = r###"'idle' | 'loading' | 'paused' | 'playing' | 'stopped' | 'ended' | 'failed' | 'disposed'"###;
+
+        type AudioRoute = r###"{
+    output: 'speaker' | 'earpiece' | 'headphones' | 'bluetooth' | 'usb' | 'hdmi' | 'airplay' | 'other';
+    name?: string;
+}"###;
+
+        type AudioRouteChange = r###"{
+    route: AudioRoute;
+    reason: 'deviceAdded' | 'deviceRemoved' | 'override' | 'proximity' | 'other';
+}"###;
+
+        /// The reason on `data.code` of an audio rejection and on `error`
+        /// events. Read a rejection's with `audioErrorCode(error)` from
+        /// `@lingxia/types/error`; `code` stays the shared numeric business code.
+        ///
+        type AudioErrorCode = r###"/** 1002: not an accepted URL or `lx://` URI, or nothing loaded yet. */
+'invalid_source'
+/** 1002 */
+ | 'invalid_options'
+/** 1003 */
+ | 'source_not_found'
+/** 5000, or 3000 when the network grant refuses the host. */
+ | 'network'
+/** 6000: the platform cannot decode it. */
+ | 'unsupported_format'
+/** 6000: `'earpiece'` on a device without one. */
+ | 'output_unsupported'
+/** 1005 */
+ | 'decode_failed'
+/** 1002: a sound over the in-memory cap. */
+ | 'source_too_large'
+/** 4000 */
+ | 'disposed'
+/** 4000: a later command, a pause, or focus loss superseded this one. */
+ | 'interrupted'
+/** 6000: background playback is not available in this runtime. */
+ | 'background_unavailable'"###;
+
+        type AudioPlayerState = r###"{
+    readonly status: AudioPlayerStatus;
+    readonly buffering: boolean;
+    readonly seeking: boolean;
+    /** Extrapolated while playing. */
+    readonly positionMs: number;
+    /** `null` while unknown or live. */
+    readonly durationMs: number | null;
+    readonly bufferedMs: number;
+    readonly index: number | null;
+    readonly item: AudioQueueItem | null;
+    readonly volume: number;
+    readonly muted: boolean;
+    readonly rate: number;
+    readonly repeat: AudioRepeat;
+    /** Requested output. */
+    readonly output: AudioOutput;
+    /** Where audio actually plays. */
+    readonly route: AudioRoute;
+    readonly error: { code: AudioErrorCode; message: string } | null;
+}"###;
+
+        type AudioQueueItem = r###"{
+    source: AudioSource;
+    /** Your own identifier, echoed back on `state.item` and `item` events. */
+    id?: string;
+    startMs?: number;
+}"###;
+
+        type AudioLoadOptions = r###"{
+    /** Start playing once loaded. Listeners attached before awaiting see every event. */
+    autoplay?: boolean;
+}"###;
+
+        type AudioQueueOptions = r###"AudioLoadOptions & {
+    startIndex?: number;
+}"###;
+
+        type AudioLoadedInfo = r###"{
+    durationMs: number | null;
+    index: number;
+}"###;
+
+        type AudioInterruption = r###"{
+    phase: 'began' | 'ended';
+    reason: 'system' | 'call' | 'otherApp' | 'focusTaken' | 'appHidden';
+    /** OS hint on `ended`. */
+    shouldResume: boolean;
+    /** Whether the runtime resumed playback itself. */
+    resumed: boolean;
+}"###;
+
+        type AudioHostInterruption = r###"AudioInterruption & { scope: 'host' }"###;
+
+        type AudioPlayerEvents = r###"{
+    /** After every status or flag change; `player.state` is already updated. */
+    state: AudioPlayerState;
+    time: { positionMs: number; durationMs: number | null };
+    item: { index: number; item: AudioQueueItem; reason: 'load' | 'auto' | 'next' | 'previous' | 'skip' };
+    /** An item played to its end, before any automatic advance. */
+    ended: { index: number };
+    error: { code: AudioErrorCode; message: string; index: number | null };
+    interruption: AudioInterruption;
+    route: AudioRouteChange;
+}"###;
+
+        /// A long-form player. Commands resolve after the `state` event of the
+        /// transition they cause; rejections carry an `AudioErrorCode`.
+        ///
+        type AudioPlayer = r###"{
+    /** Synchronous snapshot. */
+    readonly state: AudioPlayerState;
+    readonly queue: readonly AudioQueueItem[];
+    /** Replace the queue with one item. */
+    load(source: AudioSource | AudioQueueItem, options?: AudioLoadOptions): Promise<AudioLoadedInfo>;
+    setQueue(items: AudioQueueItem[], options?: AudioQueueOptions): Promise<AudioLoadedInfo>;
+    /** Resolves once audio renders; rejects `interrupted` while the lxapp is hidden. Restarts after `stopped` or `ended`. */
+    play(): Promise<void>;
+    pause(): Promise<void>;
+    /** Pause, rewind, and release the decoder and focus. */
+    stop(): Promise<void>;
+    seek(positionMs: number): Promise<void>;
+    next(): Promise<void>;
+    /** Restarts the current item when more than 3 s in. */
+    previous(): Promise<void>;
+    skipTo(index: number): Promise<void>;
+    setVolume(volume: number): void;
+    setMuted(muted: boolean): void;
+    setRate(rate: number): void;
+    setRepeat(mode: AudioRepeat): void;
+    /** Rejects `output_unsupported` for `'earpiece'` without a receiver. */
+    setOutput(output: AudioOutput): Promise<void>;
+    on<K extends keyof AudioPlayerEvents>(event: K, listener: (payload: AudioPlayerEvents[K]) => void): () => void;
+    /** Idempotent; every later command rejects `disposed`. */
+    dispose(): void;
+}"###;
+
+        type LoadSoundOptions = r###"{
+    /** Default `'mix'`. */
+    focus?: 'duck' | 'mix';
+    /** Default: `focus === 'mix'`. */
+    obeySilentSwitch?: boolean;
+    /** Simultaneous voices, 1..16, default 4. The oldest is stopped beyond it. */
+    maxVoices?: number;
+    signal?: AbortSignal;
+}"###;
+
+        type SoundPlayOptions = r###"{
+    /** 0..1 */
+    volume?: number;
+    /** 0.5..2 */
+    rate?: number;
+    /** -1 (left) .. 1 (right) */
+    pan?: number;
+    loop?: boolean;
+}"###;
+
+        type SoundVoice = r###"{
+    stop(): void;
+    /** Settles when the voice finishes, is stopped, or its sound is disposed. */
+    readonly ended: Promise<void>;
+}"###;
+
+        /// A preloaded effect. Each `play()` starts an independent voice.
+        ///
+        type Sound = r###"{
+    readonly durationMs: number;
+    play(options?: SoundPlayOptions): SoundVoice;
+    stopAll(): void;
+    dispose(): void;
+}"###;
+
     }
 }
