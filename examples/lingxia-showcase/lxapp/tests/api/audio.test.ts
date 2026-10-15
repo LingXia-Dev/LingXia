@@ -129,7 +129,9 @@ spec('player lifecycle, queue, and errors through lx.audio', {
     looping.on('ended', () => { loops++; });
     try {
       await looping.load(tone, { autoplay: true });
-      await wait(2_600);
+      // Restart latency varies by backend (AVPlayer adds ~0.4 s a loop), so
+      // wait for the loops instead of a fixed window.
+      for (let waited = 0; loops < 2 && waited < 6_000; waited += 100) await wait(100);
       out.repeatOne = [loops >= 2, looping.state.status];
     } finally {
       looping.dispose();
