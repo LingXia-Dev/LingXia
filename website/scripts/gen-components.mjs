@@ -1,26 +1,25 @@
 // Build-time native-components reference generator.
 //
-// Reads the published `@lingxia/elements` package type definitions and emits a
-// Starlight markdown page per `Lx<Name>Attributes` interface into
+// Reads `packages/lingxia-elements` in this repository and emits a Starlight
+// markdown page per `Lx<Name>Attributes` interface into
 // src/content/docs/reference/components/. Run before `astro build`/`astro dev`
 // (wired in package.json). Output is a build artifact (gitignored) so the docs
-// always track the pinned package version — never hand-edited.
+// always track the repository — never hand-edited.
 
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { Project } from 'ts-morph';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..');
-const require = createRequire(import.meta.url);
 
 function resolveElementsEntry() {
-  const sibling = join(projectRoot, '../packages/lingxia-elements/src/index.ts');
-  if (existsSync(sibling)) return sibling;
-  const elementsEntry = require.resolve('@lingxia/elements');
-  return elementsEntry.replace(/\.js$/, '.d.ts');
+  const entry = join(projectRoot, '../packages/lingxia-elements/src/index.ts');
+  if (!existsSync(entry)) {
+    throw new Error(`${entry} not found; build the website from the LingXia repository.`);
+  }
+  return entry;
 }
 
 const elementsDts = resolveElementsEntry();
@@ -119,10 +118,13 @@ React/Vue: import \`LxNativeRoot\` from \`@lingxia/react\` or \`@lingxia/vue\`. 
   },
 ];
 
-function frontmatter(title, order, description) {
+function frontmatter(title, order, description, label) {
   const lines = ['---', `title: ${title}`];
   if (description) lines.push(`description: ${JSON.stringify(description)}`);
-  lines.push('sidebar:', `  order: ${order}`, '---', '');
+  lines.push('sidebar:', `  order: ${order}`);
+  if (label) lines.push(`  label: ${label}`);
+  // Generated, gitignored output has no source file to edit.
+  lines.push('editUrl: false', '---', '');
   return lines.join('\n');
 }
 
@@ -182,7 +184,7 @@ for (const { name, alias } of found) {
   if (meta.summary) body += `${meta.summary}\n\n`;
   body += `Custom element: \`<${meta.tag}>\`\n\n`;
   body += `Attributes interface: \`${name}\` (from \`@lingxia/elements\`).\n\n`;
-  body += `React and Vue apps should import the framework wrapper from \`@lingxia/react\` or \`@lingxia/vue\`; HTML views use the custom element directly. See [LxApp pages](../../../guide/lxapp-pages/) for framework and callback guidance.\n\n`;
+  body += `React and Vue apps should import the framework wrapper from \`@lingxia/react\` or \`@lingxia/vue\`; HTML views use the custom element directly. See [lxapp pages](../../../guide/lxapp-pages/) for framework and callback guidance.\n\n`;
 
   body += `## Properties\n\n`;
   if (props.length) {
@@ -216,7 +218,7 @@ for (const island of ISLAND) {
   body += `${island.summary}\n\n`;
   body += `Custom element: \`<${island.tag}>\`\n\n`;
   body += island.body;
-  body += `\nSee [LxApp pages](../../../guide/lxapp-pages/) for the island tree and callback shapes.\n`;
+  body += `\nSee [lxapp pages](../../../guide/lxapp-pages/) for the island tree and callback shapes.\n`;
   writeFileSync(join(outDir, `${island.slug}.md`), body, 'utf8');
   overviewRows.push({
     title: island.title,
@@ -230,7 +232,7 @@ for (const island of ISLAND) {
 overviewRows.sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || a.title.localeCompare(b.title));
 
 // Overview index page.
-let index = frontmatter('Components', 0, 'Native-backed custom elements provided by @lingxia/elements.');
+let index = frontmatter('Components', 0, 'Native-backed custom elements provided by @lingxia/elements.', 'Overview');
 index += `Native-backed custom elements provided by the \`@lingxia/elements\` package. React and Vue apps normally import their wrappers from \`@lingxia/react\` or \`@lingxia/vue\`; HTML views use these custom elements directly.\n\n`;
 index += `Two families: the **inline native island** (\`LxNativeRoot\` wraps \`LxVideo\`, plus Cover / View / Text / Button) and **presenters** (\`LxPicker\`, \`LxMediaSwiper\`, \`LxNavigator\`). Text entry stays on the web platform with \`<input>\` and \`<textarea>\`—there is no \`LxInput\`.\n\n`;
 index += `| Component | Element | Description |\n`;
@@ -238,7 +240,7 @@ index += `| --- | --- | --- |\n`;
 for (const r of overviewRows) {
   index += `| [${r.title}](./${r.slug}/) | \`<${r.tag}>\` | ${escapeCell(r.summary)} |\n`;
 }
-index += `\n:::note\nThis reference is generated at build time from \`@lingxia/elements\` in this repository when present, otherwise the pinned install. It lists the low-level attribute surface; wrapper callbacks can reshape events. Read [LxApp pages](../../guide/lxapp-pages/) before wiring handlers.\n:::\n`;
+index += `\n:::note\nThis reference is generated at build time from \`@lingxia/elements\` in this repository. It lists the low-level attribute surface; wrapper callbacks can reshape events. Read [lxapp pages](../../guide/lxapp-pages/) before wiring handlers.\n:::\n`;
 writeFileSync(join(outDir, 'index.md'), index, 'utf8');
 
 // Keep existing generated pages in place so Astro's incremental content loader

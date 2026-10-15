@@ -31,7 +31,7 @@ await control.appearance.setPreference('dark')
 
 这些作用于产品本身，而不是调用方 lxapp：
 
-- `lx.host.exit()`、`lx.host.setBadge()`、`lx.host.cache`、`lx.host.checkUpdate()`、`lx.host.claimCustomUpdate()`、`lx.host.screenshot()`、`lx.host.autostart.*`
+- `lx.host.exit()`、`lx.host.setBadge()`、`lx.host.cache`、`lx.host.checkUpdate()`、`lx.host.claimCustomUpdate()`、`lx.host.screenshot()`、`lx.host.autostart.*`、`lx.host.notification.*`、`lx.host.banner.*`、`lx.tray.*`
 - `lx.host.control.displayLanguage` / `lx.host.control.appearance`（写入）
 - `lx.shell.*` 的变更 —— `sidebarActions`、打开或重配已声明 surface
 

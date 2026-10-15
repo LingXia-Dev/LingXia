@@ -7,23 +7,41 @@ interface Props {
   lang: Lang;
 }
 const { t } = Astro.props;
+
+// Column per layer: View bindings / Logic + host clients / testing + internals.
+const layerOf: Record<string, number> = {
+  '@lingxia/react': 0,
+  '@lingxia/vue': 0,
+  '@lingxia/html': 0,
+  '@lingxia/types': 1,
+  '@lingxia/native': 1,
+  '@lingxia/test': 2,
+  '@lingxia/bridge': 2,
+  '@lingxia/elements': 2,
+};
+const columns = t.packages.layers.map((label, i) => ({
+  label,
+  items: t.packages.items.filter((p) => (layerOf[p.name] ?? 2) === i),
+}));
 ---
 
 <section id="packages" class="section">
   <div class="mx-auto max-w-7xl px-5 sm:px-8">
     <SectionHeading eyebrow={t.packages.eyebrow} title={t.packages.title} subtitle={t.packages.subtitle} />
 
-    <div class="reveal mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <div class="mt-12 grid grid-cols-1 gap-5 lg:grid-cols-3">
       {
-        t.packages.items.map((p) => (
-          <div class="card card-hover flex items-center gap-4 p-4 sm:p-5">
-            <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ink-900 font-mono text-base font-bold text-jade-300">
-              {'{ }'}
-            </span>
-            <div class="min-w-0">
-              <code class="block truncate font-mono text-sm font-medium text-fg">{p.name}</code>
-              <p class="mt-0.5 text-xs leading-snug text-fg-muted">{p.desc}</p>
-            </div>
+        columns.map((col, i) => (
+          <div class="reveal card flex flex-col p-6 sm:p-7" data-delay={i * 80}>
+            <span class="font-mono text-xs uppercase tracking-[0.18em] text-jade-700">{col.label}</span>
+            <ul class="mt-4 divide-y divide-fg/8">
+              {col.items.map((p) => (
+                <li class="py-3.5 first:pt-0 last:pb-0">
+                  <code class="block font-mono text-sm font-medium text-fg">{p.name}</code>
+                  <p class="mt-1 text-sm leading-snug text-fg-muted">{p.desc}</p>
+                </li>
+              ))}
+            </ul>
           </div>
         ))
       }

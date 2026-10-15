@@ -95,7 +95,7 @@ View never mutates `data`; it calls an action and Logic answers with
 |---|---|---|
 | **A. Standalone lxapp** | Page-based mini-app that runs in any LingXia host (e.g. macOS Runner). | UI/page work, no native shell. |
 | **B. Host app + JS lxapp** | Native installable app (Android/iOS/macOS/Windows/Harmony) embedding a home lxapp whose Logic is JS. | Most product apps. |
-| **C. Host app + native Rust control** | Either an HTML control lxapp with `logic: false`, or a macOS/Windows terminal/browser main with no bundled lxapp. | Rust-controlled utilities and products whose main experience is a built-in native capability. |
+| **C. Host app + native Rust control** | Either a control lxapp (HTML, React, or Vue View) with `logic: false`, or a macOS/Windows terminal/browser main with no bundled lxapp. | Rust-controlled utilities and products whose main experience is a built-in native capability. |
 
 A JS-Logic lxapp that calls Rust routes is still B. B's id rule:
 [`app`](./app/project.md#app). C's `appService`/`logic` rule:
