@@ -24,6 +24,8 @@ pub use types::{
 pub const fn available() -> bool {
     cfg!(any(
         target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
         target_os = "windows",
         target_env = "ohos"
     ))
