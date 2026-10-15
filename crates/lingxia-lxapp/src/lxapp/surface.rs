@@ -2363,7 +2363,7 @@ impl LxApp {
                         if clear_cache {
                             app.clear_user_cache()?;
                         }
-                        app.restart_in_place()
+                        app.cold_restart()
                     })();
                     if let Err(error) = result {
                         warn!("Failed to run lxapp surface maintenance: {error}")

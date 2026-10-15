@@ -52,7 +52,7 @@ public class RunnerApp {
     private var controllerEventsTask: Task<Void, Never>?
     private let appMenu = RunnerAppMenu()
     private var pendingPhoneLifecycleReopens: [String: (appId: String, path: String, sessionId: UInt64)] = [:]
-    /// App ids whose next phone reopen should reload the webview in place (restart),
+    /// App ids whose next phone reopen should cold restart the webview,
     /// keeping the device-frame window visible instead of rebuilding it.
     private var phoneRestartReloadPending: Set<String> = []
     /// The lxapp stack behind the current phone window: opening another lxapp
@@ -237,7 +237,7 @@ public class RunnerApp {
                     let shellActiveAppId = RunnerSupport.Runtime.removeShellTab(for: session.appId)
                     if let phoneHost = self.windowController, phoneHost.appId == session.appId {
                         if let pending = self.pendingPhoneLifecycleReopens.removeValue(forKey: session.appId) {
-                            // Restart: reload the webview in place so the device frame
+                            // Cold restart: reload the webview so the device frame
                             // never disappears.
                             self.phoneRestartReloadPending.insert(session.appId)
                             self.reopenCurrentAppAfterLifecycleAction(pending)
@@ -434,7 +434,7 @@ public class RunnerApp {
             existingController.applyDeviceChange(deviceSize)
             existingController.window?.makeKeyAndOrderFront(nil)
             if phoneRestartReloadPending.remove(appId) != nil {
-                // Fresh session after a restart: swap the inner webview in place.
+                // Fresh session after a cold restart: swap the inner webview.
                 existingController.reloadContentForRestart(path: path)
             } else {
                 existingController.navigate(to: path)

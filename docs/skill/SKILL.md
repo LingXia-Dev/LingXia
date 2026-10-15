@@ -129,6 +129,7 @@ never add them to a project.
 | Mocks and scenarios: `mocks/`, `lxdev mock`, `lingxia dev --mock`, `t.scenario.use` | [lxapp/mock.md](./lxapp/mock.md) |
 | **Lxapp** | |
 | Pages: `Page({})`, View hooks, lifecycle, events, `App({})`, tab bar, page chrome | [lxapp/guide.md](./lxapp/guide.md) |
+| Hook order, `App`/`Page` triggers, what each navigation or restart fires | [lxapp/lifecycle.md](./lxapp/lifecycle.md) |
 | `setData`, streams, channels | [lxapp/bridge.md](./lxapp/bridge.md) |
 | Native components: `LxNativeRoot` + `LxVideo`, `LxPicker`, `LxMediaSwiper`, `LxNavigator`; text inputs | [lxapp/components.md](./lxapp/components.md) |
 | Logic runtime: typing, Web globals, product settings, `lx.supports`, badges, notifications, errors | [lxapp/lx-api.md](./lxapp/lx-api.md) |

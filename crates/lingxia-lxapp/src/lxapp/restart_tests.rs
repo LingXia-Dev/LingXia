@@ -89,6 +89,86 @@ fn tracked(manager: &LxApps, app: &LxApp) -> bool {
 }
 
 #[tokio::test]
+async fn cold_restart_replays_launch_then_show_only_for_a_shown_app() {
+    for shown in [true, false] {
+        let f = Fixture::new();
+        f.old.set_status(LxAppSessionStatus::Opened);
+        f.old.shown.store(shown, Ordering::SeqCst);
+        f.old.app_launch_dispatched.store(true, Ordering::SeqCst);
+        f.old.launch_settled.send_replace(true);
+
+        f.old.cold_restart_app_service().unwrap();
+
+        let _ack = f.take_ack();
+        assert!(matches!(
+            f.messages.try_recv().unwrap(),
+            ServiceMessage::CreateAppSvc { .. }
+        ));
+        assert!(matches!(
+            f.messages.try_recv().unwrap(),
+            ServiceMessage::CallAppSvcEvent {
+                event: AppServiceEvent::OnLaunch,
+                ..
+            }
+        ));
+        if shown {
+            let ServiceMessage::CallAppSvcEvent { event, args, .. } =
+                f.messages.try_recv().unwrap()
+            else {
+                panic!("fresh visible AppSvc must receive onShow after onLaunch");
+            };
+            assert_eq!(event, AppServiceEvent::OnShow);
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&args.unwrap()).unwrap(),
+                serde_json::json!({ "source": "lxapp", "reason": "open" })
+            );
+        }
+        assert!(f.messages.try_recv().is_err());
+        assert_eq!(f.old.is_shown(), shown);
+        assert!(!*f.old.launch_settled.borrow());
+    }
+}
+
+#[tokio::test]
+async fn cold_restart_during_an_open_leaves_the_show_to_that_open() {
+    let f = Fixture::new();
+    f.old.set_status(LxAppSessionStatus::Opening);
+    f.old.shown.store(true, Ordering::SeqCst);
+
+    f.old.cold_restart_app_service().unwrap();
+
+    let _ack = f.take_ack();
+    assert!(matches!(
+        f.messages.try_recv().unwrap(),
+        ServiceMessage::CreateAppSvc { .. }
+    ));
+    assert!(matches!(
+        f.messages.try_recv().unwrap(),
+        ServiceMessage::CallAppSvcEvent {
+            event: AppServiceEvent::OnLaunch,
+            ..
+        }
+    ));
+    assert!(f.messages.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn cold_restart_refuses_an_app_without_a_live_surface() {
+    for status in [
+        LxAppSessionStatus::Closed,
+        LxAppSessionStatus::Closing,
+        LxAppSessionStatus::Restarting,
+    ] {
+        let f = Fixture::new();
+        f.old.set_status(status);
+        f.old.shown.store(true, Ordering::SeqCst);
+
+        assert!(f.old.cold_restart_app_service().is_err());
+        assert!(f.messages.try_recv().is_err());
+    }
+}
+
+#[tokio::test]
 async fn channel_switch_waits_for_the_only_logic_worker_and_blocks_early_opens() {
     #[cfg(target_vendor = "apple")]
     let _host = crate::apple_host_stubs::headless_lifecycle();

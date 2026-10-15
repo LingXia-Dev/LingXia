@@ -466,13 +466,13 @@ impl LxApp {
                 }
                 return true;
             }
-            "clean_cache_restart_in_place" => {
-                info!("Clean cache & in-place restart requested").with_appid(self.appid.clone());
+            "clean_cache_cold_restart" => {
+                info!("Clean cache & cold restart requested").with_appid(self.appid.clone());
                 if let Err(e) = self.clear_user_cache() {
                     error!("Failed to clear user cache: {}", e).with_appid(self.appid.clone());
                 }
-                if let Err(e) = self.restart_in_place() {
-                    error!("Failed to restart app in place after cache cleanup: {}", e)
+                if let Err(e) = self.cold_restart() {
+                    error!("Failed to cold restart app after cache cleanup: {}", e)
                         .with_appid(self.appid.clone());
                     return false;
                 }
@@ -486,10 +486,10 @@ impl LxApp {
                 }
                 return true;
             }
-            "restart_in_place" => {
-                info!("In-place restart requested").with_appid(self.appid.clone());
-                if let Err(e) = self.restart_in_place() {
-                    error!("Failed to restart app in place: {}", e).with_appid(self.appid.clone());
+            "cold_restart" => {
+                info!("Cold restart requested").with_appid(self.appid.clone());
+                if let Err(e) = self.cold_restart() {
+                    error!("Failed to cold restart app: {}", e).with_appid(self.appid.clone());
                     return false;
                 }
                 return true;

@@ -104,7 +104,9 @@ fire.
 > pages (allow `lx`/`data`/`blob`, silently cancel `about:`, everything else →
 > `open_url(External)` + cancel), `lingxia-browser` for tabs. The only scheme
 > the core reserves is `lx-apple` (the Apple bridge transport); registering it
-> is rejected by `normalize()`.
+> is rejected by `normalize()`. To change what a strict page does with an
+> external URL, edit that handler in `lingxia-lxapp/src/page.rs`; it applies
+> to every platform at once.
 
 `StrictDefault` policy (what the core actually enforces):
 - Non-persistent data store (Apple `WKWebsiteDataStore::nonPersistentDataStore`).
@@ -116,6 +118,8 @@ fire.
   to the host via `open_url(…, External)` and the navigation cancelled. The
   host decides what to do with the URL; nothing external ever loads in a strict
   WebView.
+  Never browse the web in a strict WebView: storage, download, file-chooser
+  and external-navigation policy exist only in `BrowserRelaxed`.
 - Apple-only extra layer: the navigation delegate has an
   `intercept_https_navigation` flag that can offer top-level `https://` to a
   registered `https` scheme handler. For lxapp pages this path is **dead
@@ -146,7 +150,7 @@ by who creates the instance and which profile is used.
 | Browser tab (internal page) | `lingxia-browser` | `BrowserRelaxed` | Browser shell UI via `lingxia://` | `BrowserTabDelegate` → headless `Page` | Full (headless page only) |
 | Host-attached page | SDK container (Apple `LxAppHostView`) | An existing strict page WebView reparented into the host's view hierarchy | LxApp page | The page's existing `PageInstance` | Full (attachment triggers `onPageShow`) |
 
-## PageInstance Model
+## PageInstance
 
 A `PageInstance` wraps a `Page` (which holds the `WebView`) and is the unit that
 `LxApp` tracks in its page maps. Its identity lives on the instance; its
@@ -234,6 +238,40 @@ Transitions are driven by `PageInstanceEvent`. `Visible`/`Hidden` before
 | `Hidden { reason }` | Dispatches `onHide`; then: `AppClosed` → dispose immediately; else if a dispose TTL is set → start the timer; else cancel the timer (page stays alive) |
 | `Disposed { reason }` | Cancels the timer, then runs full disposal (see [PageInstance disposal](#pageinstance-disposal)) |
 | `Resized { width, height }` | Informational; no state change |
+
+## App and page hook dispatch
+
+The developer contract (which hook fires for which event, and in what order)
+is [`docs/skill/lxapp/lifecycle.md`](../skill/lxapp/lifecycle.md). Keep it in
+sync when dispatch changes. The runtime side:
+
+- **One entry for app hooks.** `LxApp::appservice_notify` sends
+  `onLaunch`/`onShow`/`onHide`/`onUserCaptureScreen`; `onShow` marks the app
+  shown and retries terminated renderers, `onHide` marks it hidden. It drops
+  events while `Restarting`.
+- **App hooks are independent tasks.** The worker spawns each one
+  (`CallAppSvcEvent`), so an awaiting `onLaunch` does not delay `onShow` or
+  page `onLoad`. Wait on `launch_settled` when `onLaunch` must have finished.
+- **Page hooks are serial per page.** `PageSvc::enqueue_lifecycle_event`
+  awaits each handler's promise before the next; pages do not wait on each
+  other. `abort_lifetime()` runs before `onUnload`.
+- **`onLaunch` is guarded** by `app_launch_dispatched` in
+  `ensure_app_launch_dispatched`, which also consumes the AppLink scene so the
+  following `onShow` is not a second `8003` hop.
+- **Late visibility is dropped.** `notify_lxapp_host_visibility` and
+  `notify_page_host_visibility` ignore events while `Closing`/`Closed`; the
+  close `onHide` is queued before Logic shuts down.
+- **Fresh Logic on a retained surface replays the open.** Cold restart and
+  the Runner device switch get no native open callback, so both go through
+  `relaunch_logic()`: `App.onLaunch`, then `App.onShow` (`lxapp`/`open`) only
+  when the app is `Opened` and shown. While `Opening`, the pending
+  `on_lxapp_opened` sends the show; replaying too would double it. Hidden apps
+  wait for their next real show. Retained pages replay load/show/ready through
+  the page gates. `cold_restart_app_service()` refuses any status other than
+  `Opened`/`Opening`.
+- **Restart is not a user activation.** `restart()` and
+  `cold_restart_app_service()` must never raise the host window over other
+  apps; only an explicit `lx.shell.openApp` may.
 
 ## Core Objects and Ownership
 
@@ -438,7 +476,8 @@ Creation:
    - download — starts the LingXia download flow.
    - file chooser — delegates to the platform/media chooser.
 4. When the session becomes ready:
-   - External URL → `webview.load_url(url)`; **no** LxApp page lifecycle.
+   - External URL → `webview.load_url(url)`; **no** LxApp page lifecycle, so
+     never `wait_webview_ready()` on such a tab.
    - Internal browser page (`lingxia://`) **and** the no-URL startup case → bind a
      headless `Page` and load HTML with the bridge. This headless page gets full
      page lifecycle so the browser shell webui can use the LxApp bridge and appservice
@@ -504,6 +543,7 @@ Discard deliberately retains the tab id, URL, title, favicon, ownership, and
 sidebar position. It does not emit page `onHide`/`onUnload` and must not run the
 close-tab successor logic. A subsequent user activation therefore looks like
 an ordinary tab switch, except the document reloads in a newly created WebView.
+Always `reactivate_browser_tab` before presenting a discarded tab.
 
 Platform hosts decide *when* to discard:
 
@@ -712,7 +752,8 @@ Two-phase creation (different from Apple/Android):
    `LxAppContainer`.)
 4. Rust `webview_controller_created()` syncs the tag, clears stale state,
    registers ArkWeb lifecycle callbacks and the JS proxy, and sends the creation
-   oneshot `Ok(webview)`.
+   oneshot `Ok(webview)`. Only this ack means ready; `createWebViewController`
+   returning does not.
 
 Destroy:
 - Rust `Drop for WebViewInner` → ArkTS `destroyWebViewController(webtag)`.
@@ -862,7 +903,7 @@ timed out, leaving the context wedged for the next spec.
 auto-request in `notify_bridge_ready`, so a handshake racing the entry cannot
 boot a lifecycle of its own — `onLoad` with the previous entry's query, plus
 `onReady` — at a page nobody is on. Pages that handshake while live (surfaces,
-an in-place app-service restart) still boot from there.
+a cold app-service restart) still boot from there.
 
 The claim is the page's own `PageReset::Pending`, not the timer entry: if the
 page is back on the stack when the timer fires, the teardown stays owed and
@@ -1004,53 +1045,6 @@ name is still in the binary. What that rules out, and what replaces it:
   program or in an lxapp's Logic. Timeouts are cooperative: the run times out
   and the worker is marked unhealthy; the stuck context stays busy until the
   app is reopened.
-
-## Known Pitfalls
-
-- **Reuse semantics**: the same `WebTag` does not imply a fresh instance.
-  Different effective options are rejected; even matching options are rejected if
-  the recreate request carries callbacks (callbacks are immutable after first
-  create).
-- **`detach_webview()` does not clear the delegate.** Breaking the
-  `PageInstance ↔ WebView` cycle takes both `detach_webview()` *and*
-  `destroy_webview_if_matches()` → `remove_delegate()`.
-- **`onPageShow` is fired in the SDK/UI container layer**, not in
-  `lingxia-webview`.
-- **Eviction ≠ disposal.** LRU eviction skips `onHide`/`onUnload` and surface
-  cascades, though it does detach before matched destruction. Do not assume an
-  evicted page ran the full disposal path.
-- **`Reclaimed` is its own close reason.** A surface WebView reclaimed after its
-  30s TTL closes with `Reclaimed`, not the user/programmatic reason — JS relies
-  on this distinction.
-- **Surface content cascade matters.** Disposing a page that is the *content* of
-  a surface closes that surface (`close_surfaces_hosting`); otherwise the owner
-  keeps a live handle to a dead page.
-- **Harmony creation is async-ack from the UI** (`onAppear` for pages,
-  `onControllerAttached` for browser tabs). Treating
-  `createWebViewController` as fully ready is incorrect; wait for
-  `onWebviewControllerCreated`.
-- **`destroy_webview_if_matches()` without detaching page references can delay native drop**
-  (the native object only drops when the last `Arc<WebView>` is released).
-- **Browser external pages have no LxApp page lifecycle.** Do not wait for
-  `wait_webview_ready()` on a normal web URL tab. Internal pages (and the shared
-  startup page) are the exception — they bind a headless `Page`.
-- **Browser tab discard is not close.** Do not remove the tab state or run
-  successor selection while reclaiming memory. Keep host active state in sync
-  before discarding, and always reactivate a discarded tab before attempting to
-  present its WebView.
-- **Lxapp page discard is not close and is not LRU eviction.** Do not dispatch
-  `onUnload`, do not drop PageSvc, and do not evict the current tab of a hidden
-  main. Reactivate before presenting. The browser and lxapp live-view counters
-  must not share one budget.
-- **External-navigation policy lives in the lxapp navigation handler, not in
-  the core or the Apple https interception.** If you need to change what
-  happens when a strict page hits an external URL, edit the handler in
-  `lingxia-lxapp/src/page.rs`, on every platform at once.
-- **Do not use strict page WebViews for general web browsing** — that bypasses
-  browser-profile policy for storage, downloads, file chooser, and external
-  navigation.
-- **`Panel` presentation kind is currently unused** — surfaces only produce
-  `Window` or `Overlay`.
 
 ## Sequence: LxApp Page
 

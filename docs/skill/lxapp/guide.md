@@ -101,6 +101,8 @@ Page({
 
 ### Lifecycle
 
+Order across `App` and `Page`, and what each navigation fires: [Lifecycle](./lifecycle.md).
+
 | Hook | When it fires |
 | --- | --- |
 | `onLoad(options)` | Entering the page, with its query. |
