@@ -47,13 +47,17 @@ enum LxAppLayoutReconciler {
     /// commits (resize, aside changes); only this intent may replace it.
     private static var requestedLxappMainActivation: String?
 
-    static func requestLxappMainActivation(appId: String) {
+    /// `raiseHost` is true only for the runtime's explicit `lx.shell.openApp`;
+    /// a sidebar click already runs in the foreground, and an lxapp restart or
+    /// self-close must never pull this host over another app.
+    static func requestLxappMainActivation(appId: String, raiseHost: Bool) {
         requestedLxappMainActivation = appId
         guard let shell = LxAppActiveHost.activeShell else { return }
-        // `lx.shell.openApp` is not a click in this process's foreground
-        // window. Order the host front before the layout commit; a background
-        // app stays behind other apps on `makeKeyAndOrderFront` alone.
-        shell.orderShellFront()
+        if raiseHost {
+            // Not a click in this process's foreground window: order the host
+            // front before the layout commit.
+            shell.orderShellFront()
+        }
         // The sidebar highlight is not in the surface graph. Selecting here
         // covers a reopen whose active main did not change, so no later plan
         // would move the row. A browser cover is replaced first; otherwise
@@ -319,9 +323,6 @@ enum LxAppLayoutReconciler {
             }
             if explicitlyRequested || (show && !alreadyAttached) {
                 shell.selectSidebarLxApp(appId: appId, surfaceId: activeMainId)
-            }
-            if explicitlyRequested {
-                shell.orderShellFront()
             }
         }
         LxAppMacAppUIRuntime.refreshSurfaceSwitcherProjection()

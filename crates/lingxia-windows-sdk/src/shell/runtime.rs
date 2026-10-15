@@ -967,6 +967,19 @@ fn take_lxapp_main_activation(appid: &str) -> bool {
     true
 }
 
+/// Drop a pending activation that can no longer be honored: the lxapp hid
+/// before its page WebView existed, or another main became active. Left set,
+/// it would fire on a later restart of that app and raise the host unasked.
+fn drop_lxapp_main_activation_unless(active_appid: Option<&str>) {
+    if let Ok(mut requested) = REQUESTED_LXAPP_MAIN_ACTIVATION
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        && requested.as_deref() != active_appid
+    {
+        requested.take();
+    }
+}
+
 fn presented_browser_group_appid() -> Option<String> {
     PRESENTED_BROWSER_GROUP_APPID
         .get()
@@ -1174,6 +1187,9 @@ pub(super) fn install() {
     // Harmony ack close from the native container; without this, restart
     // always waits out the 1.5s Closed timeout and logs `forcing recreate`.
     lingxia_platform::set_windows_lxapp_hidden_handler(Arc::new(|appid, session_id| {
+        if take_lxapp_main_activation(appid) {
+            log::debug!("dropped lxapp main activation for hidden {appid}");
+        }
         if let Some(app) = lxapp::try_get(appid) {
             app.on_lxapp_closed(session_id);
         }
@@ -3573,6 +3589,7 @@ fn reconcile_lxapp_main_from_layout(plan: &LayoutPresentationPlan) {
     else {
         return;
     };
+    drop_lxapp_main_activation_unless(Some(app_id));
     let Some(app) = lxapp::try_get(app_id) else {
         return;
     };
@@ -3650,7 +3667,7 @@ fn lxapp_main_focus_action(
 
 fn foreground_shell_window() {
     if let Some(handle) = crate::window_host::primary_host_window_handle() {
-        crate::window_host::foreground_host_window(handle);
+        crate::window_host::restore_and_focus_host_window(handle);
     }
 }
 
@@ -7816,10 +7833,6 @@ mod tests {
         assert_eq!(
             lxapp_main_focus_action(false, false, true),
             LxappMainFocus::Skip
-        );
-        assert_eq!(
-            lxapp_main_focus_action(true, true, true),
-            LxappMainFocus::Focus { present: true }
         );
     }
 

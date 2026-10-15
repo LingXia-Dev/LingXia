@@ -210,7 +210,9 @@ extension macOSLxApp {
     ) {
         if let s = Self.activeShell() {
             s.openLxApp(appId: appId, path: path, pageInstanceId: pageInstanceId, sessionId: sessionId)
-            s.orderShellFront()
+            // Restart and self-close also land here; only the explicit
+            // activation request may raise the app over others.
+            s.window?.makeKeyAndOrderFront(nil)
         } else {
             Self.openShellWindow()
             Self.activeShell()?.openLxApp(
