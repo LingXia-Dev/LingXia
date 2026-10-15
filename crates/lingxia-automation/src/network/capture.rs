@@ -103,21 +103,26 @@ pub(crate) fn redact_url(url: &str, mask: &str) -> String {
     let path = strip_userinfo(path);
     let mut out = path;
     if let Some(query) = query {
-        let pairs: Vec<String> = query
-            .split('&')
-            .map(|pair| match pair.split_once('=') {
-                Some((name, _)) if is_secret_param(name) => format!("{name}={mask}"),
-                _ => pair.to_string(),
-            })
-            .collect();
         out.push('?');
-        out.push_str(&pairs.join("&"));
+        out.push_str(&redact_form(query, mask));
     }
     if let Some(fragment) = fragment {
         out.push('#');
         out.push_str(fragment);
     }
     out
+}
+
+/// `name=value&...` (a query or a form body) with every secret value masked.
+pub(crate) fn redact_form(pairs: &str, mask: &str) -> String {
+    pairs
+        .split('&')
+        .map(|pair| match pair.split_once('=') {
+            Some((name, _)) if is_secret_param(name) => format!("{name}={mask}"),
+            _ => pair.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("&")
 }
 
 /// `scheme://host[:port]/path` of `url`: userinfo, query and fragment can

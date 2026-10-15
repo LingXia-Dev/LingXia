@@ -372,13 +372,15 @@ impl Record {
         if let Some(encoding) = Self::header(&self.response_headers, "content-encoding") {
             out["responseDecoded"] = json!(encoding);
         }
-        if !body.is_empty() {
-            out["responseBody"] = body_json(&body, content_type.as_deref());
-        }
         if cut {
             out["responseBodyTruncated"] = json!(true);
         }
         let streamed = content_type.as_deref().is_some_and(is_stream_type);
+        // A stream shows as its frames, each redacted on its own; the raw
+        // text beside them would carry what the frames mask.
+        if !body.is_empty() && !streamed {
+            out["responseBody"] = body_json(&body, content_type.as_deref());
+        }
         if streamed || self.kind == "sse" {
             out["chunkLog"] = json!(self.chunk_log);
             let text = String::from_utf8_lossy(&body);
@@ -392,7 +394,7 @@ impl Record {
                     text.lines()
                         .filter(|line| !line.trim().is_empty())
                         .take(MAX_FRAMES)
-                        .map(|line| json!(capture::redact_text(line)))
+                        .map(frame_json)
                         .collect(),
                 );
             }
@@ -557,9 +559,17 @@ fn headers_json(headers: &[(String, String)]) -> Value {
     )
 }
 
-/// A body for display: redacted JSON when it is JSON, redacted text when
-/// textual (or untyped UTF-8), else base64.
+/// A body for display: redacted JSON when it is JSON, a form with secret
+/// values masked, redacted text when textual (or untyped UTF-8), else base64.
+/// Multipart parts carry files and fields no masking can see into: omitted.
 fn body_json(bytes: &[u8], content_type: Option<&str>) -> Value {
+    let lower = content_type.map(str::to_ascii_lowercase);
+    if lower
+        .as_deref()
+        .is_some_and(|kind| kind.starts_with("multipart/"))
+    {
+        return json!({ "omitted": format!("multipart body of {} bytes", bytes.len()) });
+    }
     let Ok(text) = std::str::from_utf8(bytes) else {
         return json!({ "base64": BASE64.encode(bytes) });
     };
@@ -573,7 +583,24 @@ fn body_json(bytes: &[u8], content_type: Option<&str>) -> Value {
     if text.contains('\0') || content_type.is_some_and(|kind| !is_textual(kind)) {
         return json!({ "base64": BASE64.encode(bytes) });
     }
+    if lower
+        .as_deref()
+        .is_some_and(|kind| kind.contains("x-www-form-urlencoded"))
+    {
+        return json!(capture::redact_text(&capture::redact_form(text, REDACTED)));
+    }
     json!(capture::redact_text(text))
+}
+
+/// One NDJSON line or SSE `data`: redacted by field when it is JSON.
+fn frame_json(text: &str) -> Value {
+    match serde_json::from_str::<Value>(text) {
+        Ok(mut value) if value.is_object() || value.is_array() => {
+            capture::redact_json(&mut value);
+            value
+        }
+        _ => json!(capture::redact_text(text)),
+    }
 }
 
 /// `text/event-stream` events: `{ event?, data, id? }`.
@@ -597,7 +624,7 @@ fn sse_events(text: &str) -> Vec<Value> {
             if data.is_empty() && event.is_none() {
                 return None;
             }
-            let mut out = json!({ "data": capture::redact_text(&data.join("\n")) });
+            let mut out = json!({ "data": frame_json(&data.join("\n")) });
             if let Some(event) = event {
                 out["event"] = json!(event);
             }
@@ -623,6 +650,8 @@ pub(crate) struct Recording {
     body_bytes: usize,
     /// Records past the recording's limit.
     dropped: usize,
+    /// Requests a dropped record was redirected from: their chain went on.
+    dropped_followed: HashSet<u64>,
 }
 
 impl Recording {
@@ -635,6 +664,7 @@ impl Recording {
             records: Vec::new(),
             body_bytes: 0,
             dropped: 0,
+            dropped_followed: HashSet::new(),
         }
     }
 
@@ -651,6 +681,7 @@ impl Recording {
     fn push(&mut self, mut record: Record) {
         if self.records.len() >= capture::MAX_EXCHANGES {
             self.dropped += 1;
+            self.dropped_followed.extend(record.redirected_from);
             return;
         }
         let len = record.body_len();
@@ -668,10 +699,14 @@ impl Recording {
         let mut scenario = capture::Recording::default();
         scenario.dropped = self.dropped + in_flight.len();
         let by_id: HashMap<u64, &Record> = self.records.iter().map(|r| (r.id, r)).collect();
+        // A hop that was dropped or is still in flight means the chain's
+        // answer is unknown: its earlier hops are not answers either.
         let followed: HashSet<u64> = self
             .records
             .iter()
+            .chain(&in_flight)
             .filter_map(|record| record.redirected_from)
+            .chain(self.dropped_followed.iter().copied())
             .collect();
         for record in &self.records {
             if record.kind != "fetch"
@@ -785,12 +820,8 @@ impl State {
         match event {
             NetworkEvent::RequestStart(start) => {
                 let recorder = self.recorder_for(&start, runs_active);
-                if self.in_flight.len() >= MAX_IN_FLIGHT
-                    && let Some((_, evicted)) = self.in_flight.pop_first()
-                    && let Some(owner) = &evicted.recorder
-                    && let Some(recording) = self.recording_mut(owner)
-                {
-                    recording.dropped += 1;
+                if self.in_flight.len() >= MAX_IN_FLIGHT {
+                    self.evict();
                 }
                 self.in_flight
                     .insert(id, Record::new(start, recorder, dropped));
@@ -822,6 +853,30 @@ impl State {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// Make room: forget the oldest unrecorded request, else file the oldest
+    /// recorded one (often a long-lived stream) as incomplete so it is not
+    /// silently lost.
+    fn evict(&mut self) {
+        let unrecorded = self
+            .in_flight
+            .iter()
+            .find(|(_, record)| record.recorder.is_none())
+            .map(|(id, _)| *id);
+        let Some(id) = unrecorded.or_else(|| self.in_flight.keys().next().copied()) else {
+            return;
+        };
+        let Some(mut record) = self.in_flight.remove(&id) else {
+            return;
+        };
+        if let Some(owner) = record.recorder.clone()
+            && let Some(recording) = self.recording_mut(&owner)
+        {
+            record.incomplete = true;
+            record.drop_bodies("too many requests were in flight to keep following it");
+            recording.push(record);
         }
     }
 

@@ -469,7 +469,7 @@ fn ndjson_lines_survive_chunk_splits_and_crlf() {
     let record = &stopped.requests[0];
     assert_eq!(
         record["lines"],
-        json!(["{\"n\":1}", "{\"n\":2}", "{\"token\":\"Bearer ***\"}"])
+        json!([{ "n": 1 }, { "n": 2 }, { "token": REDACTED }])
     );
     assert_eq!(record["chunkLog"].as_array().unwrap().len(), 2);
     assert!(
@@ -506,4 +506,111 @@ fn credential_headers_and_redirect_targets_are_masked() {
         assert!(!record.contains(secret), "{secret} leaked: {record}");
     }
     assert!(record.contains("code=1"), "{record}");
+}
+
+fn post(state: &mut State, id: u64, url: &str, content_type: &str, body: &[u8]) {
+    let mut start = start_event(id, Some(APP), "fetch", url);
+    if let NetworkEvent::RequestStart(start) = &mut start {
+        start.method = http::Method::POST;
+        start.headers = headers(&[("content-type", content_type)]);
+    }
+    state.apply(start, false, 0);
+    request_chunk(state, id, Bytes::copy_from_slice(body));
+}
+
+#[test]
+fn form_multipart_and_stream_frame_secrets_are_masked() {
+    let mut state = recording(Some(APP));
+    post(
+        &mut state,
+        1,
+        "https://a.test/oauth/token",
+        "application/x-www-form-urlencoded",
+        b"grant_type=refresh_token&client_secret=cs-1&refresh_token=rt-2",
+    );
+    head(&mut state, 1, 200, &[("content-type", "application/json")]);
+    end(&mut state, 1, NetworkOutcome::Completed);
+    post(
+        &mut state,
+        2,
+        "https://a.test/upload",
+        "multipart/form-data; boundary=x",
+        b"--x\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\npw-3\r\n--x--",
+    );
+    end(&mut state, 2, NetworkOutcome::Completed);
+    fetch(&mut state, 3, "https://a.test/events");
+    head(&mut state, 3, 200, &[("content-type", "text/event-stream")]);
+    chunk(
+        &mut state,
+        3,
+        b"data: {\"access_token\":\"at-4\",\"n\":1}\n\n",
+    );
+    end(&mut state, 3, NetworkOutcome::Completed);
+
+    let stopped = state.stop(DEV_SESSION_OWNER).unwrap();
+    let all = json!(stopped.requests).to_string();
+    for secret in ["cs-1", "rt-2", "pw-3", "at-4"] {
+        assert!(!all.contains(secret), "{secret} leaked: {all}");
+    }
+    assert_eq!(
+        stopped.requests[0]["requestBody"],
+        json!(format!(
+            "grant_type=refresh_token&client_secret={REDACTED}&refresh_token={REDACTED}"
+        ))
+    );
+    assert!(stopped.requests[1]["requestBody"]["omitted"].is_string());
+    assert_eq!(stopped.requests[2]["events"][0]["data"]["n"], 1);
+}
+
+#[test]
+fn eviction_spares_recorded_streams_and_files_them_when_it_cannot() {
+    let mut state = recording(Some(APP));
+    fetch(&mut state, 1, "https://a.test/sse");
+    for id in 2..=MAX_IN_FLIGHT as u64 {
+        state.apply(
+            start_event(id, Some("other"), "fetch", "https://b.test/x"),
+            false,
+            0,
+        );
+    }
+    // Full: an unrecorded request makes room, not the recorded stream.
+    state.apply(
+        start_event(5_000, Some("other"), "fetch", "https://b.test/y"),
+        false,
+        0,
+    );
+    assert!(state.in_flight.contains_key(&1));
+    assert!(!state.in_flight.contains_key(&2));
+
+    let mut state = recording(Some(APP));
+    for id in 1..=MAX_IN_FLIGHT as u64 {
+        fetch(&mut state, id, "https://a.test/x");
+    }
+    fetch(&mut state, 5_000, "https://a.test/y");
+    let stopped = state.stop(DEV_SESSION_OWNER).unwrap();
+    let evicted = stopped.requests.iter().find(|r| r["id"] == 1).unwrap();
+    assert_eq!(evicted["incomplete"], true);
+    assert!(evicted["bodyNote"].as_str().unwrap().contains("in flight"));
+}
+
+#[test]
+fn a_chain_whose_last_hop_is_unknown_is_not_replayed_as_a_redirect() {
+    let mut state = recording(Some(APP));
+    fetch(&mut state, 10, "https://a.test/start");
+    head(&mut state, 10, 302, &[("location", "https://b.test/final")]);
+    end(&mut state, 10, NetworkOutcome::Completed);
+    let mut hop = start_event(11, Some(APP), "fetch", "https://b.test/final");
+    if let NetworkEvent::RequestStart(start) = &mut hop {
+        start.redirected_from = Some(rid(10));
+    }
+    state.apply(hop, false, 0);
+
+    // The final hop is still in flight when the recording stops.
+    let stopped = state.stop(DEV_SESSION_OWNER).unwrap();
+    let scenario = stopped.scenario.to_scenario("rec");
+    assert_eq!(
+        scenario["rules"].as_array().map_or(0, Vec::len),
+        0,
+        "{scenario}"
+    );
 }
