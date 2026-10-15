@@ -91,7 +91,7 @@
         <div class="px-4 py-4 border-b border-line-100">
           <div class="text-sm text-gray-900 font-medium">Sound effects</div>
           <div class="text-xs text-gray-500 mt-1">
-            lx.audio.loadSound preloads a short beep; each tap is an independent voice that mixes with the player.
+            lx.audio.loadSound preloads a short beep; each tap is an independent voice that mixes with the player. Left and Right pan it; use headphones to hear the difference.
           </div>
         </div>
         <div class="px-4 py-4 grid grid-cols-4 gap-2">
