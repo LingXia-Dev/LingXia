@@ -1,6 +1,7 @@
 //! `AudioSource` → something a native player can open, under the same file
 //! and network rules as every other `lx` media API.
 
+use crate::url::{is_http_url, split_url_scheme_host};
 use lingxia_media::audio::{AudioError, AudioErrorCode, QueueEntry};
 use lxapp::{LxApp, LxAppError};
 use rong::{AnyJSTypedArray, JSArrayBuffer, JSObject, JSValue};
@@ -86,23 +87,6 @@ pub(super) fn optional_string(object: &JSObject, key: &str) -> Result<Option<Str
     }
 }
 
-fn is_remote(uri: &str) -> bool {
-    let lower = uri.get(..8).unwrap_or(uri).to_ascii_lowercase();
-    lower.starts_with("https://") || lower.starts_with("http://")
-}
-
-fn url_host(uri: &str) -> Option<&str> {
-    let rest = uri.split_once("://")?.1;
-    let authority = rest.split(['/', '?', '#']).next()?;
-    let host_port = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
-    let host = if let Some(bracketed) = host_port.strip_prefix('[') {
-        bracketed.split_once(']')?.0
-    } else {
-        host_port.split(':').next()?
-    };
-    (!host.is_empty()).then_some(host)
-}
-
 /// `lx://lxapp/<path>` names this lxapp's package; the runtime spells it with
 /// the app id in front.
 fn package_uri(app: &LxApp, uri: &str) -> String {
@@ -135,8 +119,11 @@ fn resolve_local(app: &LxApp, uri: &str) -> Result<PathBuf, AudioError> {
     Ok(path)
 }
 
+/// Same authority rules as every other host-fetched URL: no userinfo, and the
+/// host is read by the shared splitter so a disguised authority is refused.
 fn authorize_remote(app: &LxApp, uri: &str) -> Result<(), AudioError> {
-    let host = url_host(uri).ok_or_else(|| invalid_source(format!("'{uri}' has no host")))?;
+    let (_, host) = split_url_scheme_host(uri)
+        .ok_or_else(|| invalid_source(format!("'{uri}' has no host or carries userinfo")))?;
     if !app.is_domain_allowed(host) {
         return Err(AudioError::new(
             AudioErrorCode::NetworkDenied,
@@ -164,7 +151,7 @@ pub(super) fn resolve_player_source(
 ) -> Result<QueueEntry, AudioError> {
     let raw = read_source(value)?;
     let uri = raw.uri.trim();
-    if is_remote(uri) {
+    if is_http_url(uri) {
         authorize_remote(app, uri)?;
         let mut headers = raw.headers;
         if raw.referrer_origin {
@@ -213,7 +200,7 @@ pub(super) fn resolve_sound_source(app: &LxApp, value: &JSValue) -> Result<PathB
     }
     let raw = read_source(value)?;
     let uri = raw.uri.trim();
-    if is_remote(uri) {
+    if is_http_url(uri) {
         return Err(invalid_source(
             "sounds load from lx:// files or bytes; download a remote sound first (lx.downloadFile)",
         ));
@@ -253,20 +240,6 @@ fn extension_for(mime: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn hosts_are_read_from_urls() {
-        assert_eq!(
-            url_host("https://cdn.example.com/a.mp3"),
-            Some("cdn.example.com")
-        );
-        assert_eq!(url_host("http://user@10.0.0.2:8080/a"), Some("10.0.0.2"));
-        assert_eq!(url_host("https://[::1]:443/x"), Some("::1"));
-        assert_eq!(url_host("https:///x"), None);
-        assert!(is_remote("HTTPS://x.y/z"));
-        assert!(!is_remote("//cdn.example.com/a.mp3"));
-        assert!(!is_remote("file:///tmp/a.mp3"));
-    }
 
     #[test]
     fn mime_types_pick_an_extension() {
