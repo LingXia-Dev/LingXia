@@ -71,6 +71,7 @@ Page({
   },
   player: null as AudioPlayer | null,
   sound: null as Sound | null,
+  unwatchRoute: null as (() => void) | null,
   titles: new Map<string, string>(),
 
   onLoad: async function () {
@@ -80,7 +81,7 @@ Page({
       return;
     }
     this.setData({ earpiece: lx.supports("audio.output.earpiece") });
-    audio.route.watch(({ route, reason }) => {
+    this.unwatchRoute = audio.route.watch(({ route, reason }) => {
       this.setData({ routeText: route.name ? `${route.output} · ${route.name}` : route.output });
       this._log(`route ${route.output} (${reason})`);
     });
@@ -124,6 +125,12 @@ Page({
     } catch (error) {
       this._fail(error, "Audio setup failed");
     }
+  },
+
+  onUnload() {
+    // The player and sound follow `this.signal`; the route watch does not.
+    this.unwatchRoute?.();
+    this.unwatchRoute = null;
   },
 
   _render(state: AudioPlayerState) {
