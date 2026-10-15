@@ -20,7 +20,6 @@ recoverable from the code alone.
 
 - [`trusted-control-plane.md`](docs/internal/trusted-control-plane.md) — session classes, route audiences, and the ingress lock discipline. Read before touching authorization, session creation, or WebView message ingress.
 - [`bridge-protocol.md`](docs/internal/bridge-protocol.md) — normative wire contract for `LegacyV2` / `RequiredV3`.
-- [`page-lifecycle.md`](docs/internal/page-lifecycle.md) — `App`/`Page` hook order and which runtime event owes each hook. Read before touching open/close, navigation, visibility, or restart.
 - [`webview-lifecycle.md`](docs/internal/webview-lifecycle.md) — WebView creation, presentation, and teardown across platforms.
 - [`lingxia-facade-boundary.md`](docs/internal/lingxia-facade-boundary.md) — what stays behind the `lingxia` crate facade.
 - [`shell-ui-spec.md`](docs/internal/shell-ui-spec.md) · [`view-environment-spec.md`](docs/internal/view-environment-spec.md) — surface layout and View environment contracts.
