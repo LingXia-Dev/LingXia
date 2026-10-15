@@ -2327,7 +2327,7 @@ true
         ///
         type AudioSource = r###"string | {
     uri: string;
-    /** Request headers for a remote source. */
+    /** Request headers for a remote source. Sent on Android and HarmonyOS; Windows rejects a source with headers `invalid_source`. */
     headers?: Record<string, string>;
     /** `'origin'` sends `Referer: https://<appId>.lxapp/`. Default `'no-referrer'`. */
     referrerPolicy?: 'no-referrer' | 'origin';
@@ -2484,7 +2484,7 @@ true
     /** Replace the queue with one item. */
     load(source: AudioSource | AudioQueueItem, options?: AudioLoadOptions): Promise<AudioLoadedInfo>;
     setQueue(items: AudioQueueItem[], options?: AudioQueueOptions): Promise<AudioLoadedInfo>;
-    /** Resolves once audio renders. Restarts after `stopped` or `ended`. */
+    /** Resolves once audio renders; rejects `interrupted` while the lxapp is hidden. Restarts after `stopped` or `ended`. */
     play(): Promise<void>;
     pause(): Promise<void>;
     /** Pause, rewind, and release the decoder and focus. */

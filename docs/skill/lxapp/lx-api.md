@@ -132,16 +132,20 @@ tap.play({ volume: 0.6 })
 
 - Sources: http(s) URLs (host network grant) or `lx://lxapp/<path>`,
   `lx://userdata/…`, `lx://usercache/…`, `lx://temp/…`. Relative and native
-  paths reject. Sounds take local files or `{ bytes, mimeType }`; download a
-  remote sound first.
+  paths reject. `{ uri, headers }` sends headers on Android and HarmonyOS;
+  Windows rejects it `invalid_source`.
+  Sounds take local files or `{ bytes, mimeType }`; download a remote sound
+  first.
 - Players are foreground only: they pause when the lxapp hides
-  (`interruption` with `reason: 'appHidden'`) and never resume on their own.
-  `dispose()` or the `signal` ends one; destroying the lxapp ends all.
+  (`interruption` with `reason: 'appHidden'`), `play()` while hidden rejects
+  `interrupted`, and nothing resumes on its own. `dispose()` or the `signal`
+  ends one; destroying the lxapp ends all.
 - `focus`: `exclusive` (player default) pauses the user's music and this
   host's other exclusive players, including `LxVideo`; `duck` lowers others;
   `mix` (sound default) plays alongside and obeys the iOS silent switch.
 - Commands resolve after the `state` event they cause; `play()` resolves once
-  audio renders. Read a rejection's reason with `audioErrorCode(error)` from
+  audio renders. A load or track change that will play stays `loading` until
+  it does, never `paused` in between. Read a rejection's reason with `audioErrorCode(error)` from
   `@lingxia/types/error`.
 - `output: 'earpiece'` needs `lx.supports('audio.output.earpiece')`, else
   `play()` rejects `output_unsupported`. `proximity: true` is a no-op without
