@@ -138,14 +138,16 @@ fn span(ms: u64) -> TimeSpan {
     }
 }
 
-/// `MediaSource` takes URIs; local files become `file:///` URIs.
+/// `MediaSource` takes URIs; local files become `file:///` URIs. Resolved
+/// paths arrive canonicalized as `\\?\C:\...`, which no URI parser accepts.
 fn source_uri(uri: &str) -> String {
     let lower = uri.to_ascii_lowercase();
     if lower.starts_with("http://") || lower.starts_with("https://") {
         return uri.to_string();
     }
+    let path = uri.strip_prefix(r"\\?\").unwrap_or(uri);
     let mut out = String::from("file:///");
-    for ch in uri.trim_start_matches(['\\', '/']).chars() {
+    for ch in path.trim_start_matches(['\\', '/']).chars() {
         match ch {
             '\\' => out.push('/'),
             ' ' => out.push_str("%20"),
@@ -867,6 +869,10 @@ mod tests {
         assert_eq!(
             source_uri(r"C:\Users\me\My Music\a#1.mp3"),
             "file:///C:/Users/me/My%20Music/a%231.mp3"
+        );
+        assert_eq!(
+            source_uri(r"\\?\D:\cache\tone.wav"),
+            "file:///D:/cache/tone.wav"
         );
         assert_eq!(source_uri("https://x.y/a.mp3"), "https://x.y/a.mp3");
     }
