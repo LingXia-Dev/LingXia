@@ -1520,7 +1520,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             // Managed switcher rows are activated by the runtime before it
             // calls back into this attach primitive; re-entering the runtime
             // here would recurse.
-            LxAppLayoutReconciler.requestLxappMainActivation(appId: appId)
+            LxAppLayoutReconciler.requestLxappMainActivation(appId: appId, raiseHost: false)
             _ = setActiveMain(appId)
         }
         // The sidebar highlight stays imperative: it is not part of the surface
@@ -1567,7 +1567,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     /// Raise this host above other apps. `makeKeyAndOrderFront` only orders
-    /// windows of an already-active app.
+    /// windows of an already-active app. macOS 14+ may still refuse a
+    /// background app's self-activation; nothing stronger exists.
     func orderShellFront() {
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

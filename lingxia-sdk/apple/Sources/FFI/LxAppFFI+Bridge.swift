@@ -280,7 +280,7 @@ extension LxApp {
         guard !appId.isEmpty else { return }
         dispatchOnMain {
             #if os(macOS)
-            LxAppLayoutReconciler.requestLxappMainActivation(appId: appId)
+            LxAppLayoutReconciler.requestLxappMainActivation(appId: appId, raiseHost: true)
             #endif
         }
     }

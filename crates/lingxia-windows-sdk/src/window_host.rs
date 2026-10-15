@@ -6206,11 +6206,30 @@ pub fn restore_and_focus_host_window(window: isize) -> bool {
                 WindowsAndMessaging::SW_SHOW
             };
             let _ = WindowsAndMessaging::ShowWindow(hwnd, show_command);
-            let _ = WindowsAndMessaging::BringWindowToTop(hwnd);
-            let _ = WindowsAndMessaging::SetForegroundWindow(hwnd);
-            let _ = SetFocus(Some(hwnd));
+            bring_to_foreground(hwnd);
         }),
     )
+}
+
+/// `SetForegroundWindow` is ignored unless the calling thread owns the
+/// foreground, which it never does for a tray click, an update-helper launch,
+/// or `lx.shell.openApp`. Attaching to the foreground thread's input queue
+/// makes the call stick. Runs on the window's own UI thread.
+unsafe fn bring_to_foreground(hwnd: HWND) {
+    unsafe {
+        let foreground = WindowsAndMessaging::GetForegroundWindow();
+        let fg_thread = WindowsAndMessaging::GetWindowThreadProcessId(foreground, None);
+        let this_thread = GetCurrentThreadId();
+        let attached = fg_thread != 0
+            && fg_thread != this_thread
+            && AttachThreadInput(this_thread, fg_thread, true).as_bool();
+        let _ = WindowsAndMessaging::BringWindowToTop(hwnd);
+        let _ = WindowsAndMessaging::SetForegroundWindow(hwnd);
+        let _ = SetFocus(Some(hwnd));
+        if attached {
+            let _ = AttachThreadInput(this_thread, fg_thread, false);
+        }
+    }
 }
 
 pub fn hide_host_window(window: isize) -> bool {
@@ -6546,40 +6565,6 @@ pub(crate) fn reveal_initial_home_window() {
 /// can restore the exact HWND the user closed.
 pub(crate) fn primary_host_window_handle() -> Option<isize> {
     primary_host_window_except(None).map(hwnd_handle)
-}
-
-/// Raise `handle` above other apps. `SetForegroundWindow` is ignored when this
-/// thread does not own the foreground, which is the usual case for
-/// `lx.shell.openApp` (a JS worker, not a click). Attaching to the foreground
-/// thread's input queue is what makes the call stick. A minimized host is
-/// restored first; otherwise the sidebar can switch behind a taskbar button.
-pub(crate) fn foreground_host_window(handle: isize) {
-    if handle == 0 || !is_window_handle_valid(handle) {
-        return;
-    }
-    let hwnd = hwnd_from_handle(handle);
-    let owner_thread = unsafe { WindowsAndMessaging::GetWindowThreadProcessId(hwnd, None) };
-    let this_thread = unsafe { GetCurrentThreadId() };
-    if owner_thread != 0 && owner_thread != this_thread {
-        let _ = post_to_window_thread(handle, Box::new(move || foreground_host_window(handle)));
-        return;
-    }
-    unsafe {
-        if WindowsAndMessaging::IsIconic(hwnd).as_bool() {
-            let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_RESTORE);
-        }
-        let foreground = WindowsAndMessaging::GetForegroundWindow();
-        let fg_thread = WindowsAndMessaging::GetWindowThreadProcessId(foreground, None);
-        let attached = fg_thread != 0
-            && fg_thread != this_thread
-            && AttachThreadInput(this_thread, fg_thread, true).as_bool();
-        let _ = WindowsAndMessaging::BringWindowToTop(hwnd);
-        let _ = WindowsAndMessaging::SetForegroundWindow(hwnd);
-        let _ = SetFocus(Some(hwnd));
-        if attached {
-            let _ = AttachThreadInput(this_thread, fg_thread, false);
-        }
-    }
 }
 
 /// Ask DWM to round the outer window without extending its non-client frame
@@ -10780,11 +10765,9 @@ fn persist_primary_window_frame(hwnd: HWND) {
     }
 }
 
-/// Center `hwnd` on its monitor's work area and pull it to the foreground. Uses
-/// the `AttachThreadInput` trick - attach to the current foreground thread's
-/// input queue so `SetForegroundWindow` is honored even though this process was
-/// launched in the background by the update helper. Runs on the window's own UI
-/// thread (from `WM_SHOWWINDOW`), so it doesn't race the app's own layout.
+/// Center `hwnd` on its monitor's work area and pull it to the foreground. Runs
+/// on the window's own UI thread (from `WM_SHOWWINDOW`), so it doesn't race the
+/// app's own layout.
 fn center_and_foreground_window(hwnd: HWND) {
     unsafe {
         if !RESTORED_WINDOW_FRAME.load(Ordering::Acquire) {
@@ -10813,19 +10796,7 @@ fn center_and_foreground_window(hwnd: HWND) {
                 );
             }
         }
-
-        let foreground = WindowsAndMessaging::GetForegroundWindow();
-        let fg_thread = WindowsAndMessaging::GetWindowThreadProcessId(foreground, None);
-        let this_thread = GetCurrentThreadId();
-        let attached = fg_thread != 0
-            && fg_thread != this_thread
-            && AttachThreadInput(this_thread, fg_thread, true).as_bool();
-        let _ = WindowsAndMessaging::BringWindowToTop(hwnd);
-        let _ = WindowsAndMessaging::SetForegroundWindow(hwnd);
-        let _ = SetFocus(Some(hwnd));
-        if attached {
-            let _ = AttachThreadInput(this_thread, fg_thread, false);
-        }
+        bring_to_foreground(hwnd);
     }
 }
 
