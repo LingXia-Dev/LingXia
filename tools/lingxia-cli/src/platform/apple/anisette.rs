@@ -165,7 +165,7 @@ impl OmnisetteProvider {
             let data = super::aoskit::local_anisette()
                 .context("This Mac's anisette identity is unavailable")?;
             println!("  → Using this Mac's anisette identity");
-            return Ok(data);
+            Ok(data)
         }
 
         #[cfg(not(target_os = "macos"))]
