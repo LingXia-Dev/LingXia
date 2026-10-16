@@ -671,7 +671,19 @@ internal class MediaPreviewFragment : Fragment() {
         player.setOnControlsVisibilityChanged { _ ->
             updateCloseButtonVisibility()
         }
-        sharedPlayerHost?.let { player.attach(it) }
+        sharedPlayerHost?.let { host ->
+            player.attach(host)
+            // ViewPager2 can select its first page while laying out a sibling.
+            // The host and newly attached player missed that pass's measure;
+            // layout can clear their request flags while leaving them at 0x0.
+            if (host.isInLayout) {
+                host.post {
+                    if (!finished && sharedPlayerHost === host && sharedPlayer === player) {
+                        host.requestLayout()
+                    }
+                }
+            }
+        }
         sharedPlayer = player
         return player
     }
