@@ -1,5 +1,5 @@
 //! Mocks, network scenarios and recordings driven by a dev session
-//! (`lxdev mock …`, `lxdev network record …`) while no test runs, and the
+//! (`lxdev mock …`, `lxdev network capture …`) while no test runs, and the
 //! recording and call log a host automation run reads through its host
 //! object.
 //!
@@ -322,7 +322,7 @@ pub fn record_start(appid: Option<&str>, matcher: Option<&str>) -> Result<(), St
     start_recording(DEV_SESSION_OWNER, appid, matcher)?;
     warn(
         appid.unwrap_or("*"),
-        "dev network recording started: real network traffic is being captured".into(),
+        "dev network capture started: real network traffic is being captured".into(),
     );
     Ok(())
 }
@@ -331,7 +331,7 @@ pub fn record_start(appid: Option<&str>, matcher: Option<&str>) -> Result<(), St
 /// `requests` every recorded request in its report form.
 pub fn record_stop(name: Option<&str>) -> Result<Value, String> {
     let stopped = observer::stop_recording(DEV_SESSION_OWNER)
-        .ok_or_else(|| "no dev-session network recording is running".to_string())?;
+        .ok_or_else(|| "no dev-session network capture is running".to_string())?;
     let name = name.map_or_else(
         || format!("recorded {}", scenario::iso_utc(stopped.started_ms as i64)),
         str::to_string,

@@ -904,8 +904,8 @@ impl State {
         let slot = self.slot(owner);
         if let Some(active) = slot {
             return Err(if active.owner == DEV_SESSION_OWNER {
-                "a dev-session network recording is already running; stop it first \
-                 (`lxdev network record stop`)"
+                "a dev-session network capture is already running; stop it first \
+                 (`lxdev network capture stop`)"
                     .to_string()
             } else {
                 "another test run is recording network traffic".to_string()
