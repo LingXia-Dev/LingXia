@@ -878,7 +878,7 @@ contract capture `--openapi` reads (`NetworkDriver.captureResponses()` /
 lock. Rong's network observer (`network/observer.rs`, feature
 `network-observer`, enabled only by the `runtime` feature) sees every request
 that reaches the network, whoever sent it, and feeds recordings
-(`--record-network`, `lxdev network record`) and the `observed` list of
+(`--record-network`, `lxdev network capture`) and the `observed` list of
 `session.network.status`. Routes and mocks never reach the network, so only
 the wrapper can say who answered; only the observer sees transfers, host
 traffic, redirect hops, response headers and wire timing. Bounds and
@@ -971,10 +971,11 @@ redaction live in `capture.rs`.
   `<dir>/<spec id>.json` after the run, suffixing `-2`, `-3`… when two spec
   ids sanitize to one name. An unconfirmed start fails the case and attempts
   a stop, since the recording may have started before its acknowledgement
-  failed; the run goes on. `lxdev network record stop --out [--requests]
-  [--name]` creates placeholders next to the outputs before `RECORD_STOP` and
-  renames over them after writing; on a write failure it prints the JSON to
-  stdout and fails.
+  failed; the run goes on. `lxdev network capture stop [JSON] [--har FILE]`
+  writes the captured requests and, with `--har`, that same capture as HAR 1.2.
+  It does not write a scenario. Placeholders are created before `RECORD_STOP`
+  and renamed after writing; on a write failure it prints the JSON to stdout
+  and fails.
 - A pass-through `Rong.SSE` (no route, or `patchJson`) is the native client;
   its call-log entry settles on the first `next()` (200) or its rejection
   (`settleOnOpen`), so reports never show a null status for it.

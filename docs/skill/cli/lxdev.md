@@ -103,11 +103,14 @@ lxdev mock                        # the selection, its source, hits, errors
 lxdev mock all | none [TARGET…]   # live, until lxdev mock reset
 lxdev mock use checkout:empty-cart
 lxdev network status              # who answered each call; what reached the network
-lxdev network record start        # then: record stop --out x.json [--requests r.json]
+lxdev network capture start       # then: capture stop r.json [--har r.har]
 ```
 
 Mock selection, clear, and reset affect the whole session; an app target does
 not narrow that scope. A partial reset fails and reports the unfinished phases.
+
+`r.json` is the captured requests. `--har` is that same capture for a network
+viewer. Page WebViews do not reach the network (`connect-src 'none'`).
 
 Everything else: [Mocks](../lxapp/mock.md).
 
