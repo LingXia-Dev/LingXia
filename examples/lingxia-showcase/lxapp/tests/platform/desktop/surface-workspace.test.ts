@@ -2894,6 +2894,143 @@ desktopTest('rejects stable-root mutations without changing the host model', {
   expect(rootItem?.closable).toBeFalsy();
 });
 
+/** An enabled, on-screen AX node named `match` inside the host window. */
+async function visibleHostAxNode(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+  match: string,
+): Promise<DesktopAxNode | undefined> {
+  const nodes = await desktop.ax.query({ window: host.id, match, all: true }).catch(() => []);
+  return nodes
+    .filter((node) => (
+      node.rect.w > 0
+      && node.rect.h > 0
+      && node.rect.x >= host.bounds.x - CHAT_INPUT_AX_SLOP_PX
+      && node.rect.y >= host.bounds.y - CHAT_INPUT_AX_SLOP_PX
+      && node.rect.x + node.rect.w <= host.bounds.x + host.bounds.w + CHAT_INPUT_AX_SLOP_PX
+      && node.rect.y + node.rect.h <= host.bounds.y + host.bounds.h + CHAT_INPUT_AX_SLOP_PX
+    ))
+    .sort((a, b) => b.rect.w * b.rect.h - a.rect.w * a.rect.h)[0];
+}
+
+/** The docked right aside begins past the middle of an expanded host. */
+function inRightAside(host: DesktopWindowInfo, rect: { x: number; w: number }): boolean {
+  return rect.x >= host.bounds.x + host.bounds.w / 2
+    && rect.x + rect.w <= host.bounds.x + host.bounds.w + CHAT_INPUT_AX_SLOP_PX;
+}
+
+desktopTest('keeps an aside lxapp page stack and its floats inside the aside', {
+  id: 'DESKTOP-ASIDE-NAV-001',
+  timeout: DESKTOP_CASE_MS,
+  covers: ['lx.shell.openApp', 'lx.navigateTo', 'lx.navigateBack', 'lx.surface.openPage'],
+}, async (t) => {
+  const app = await desktopApp(t);
+  const platform = await runtimePlatform(app);
+  const desktop = t.automation.desktop;
+  let host = desktopShowcaseHost(platform, await desktop.windows());
+  if (!host) throw new Error('visible LingXia host window was not found');
+  const originalBounds = { ...host.bounds };
+  const floatKey = `automation-aside-float-${Date.now()}`;
+  const chat = t.automation.lxapp('lingxia-chat');
+  try {
+    await closeChatSurface(t, app);
+    host = await resizeHostOnScreen(desktop, host, Math.round(1_200 * host.scale), 900);
+    await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+    });
+    const asideLayout = await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      const slot = layout.asideSlots.find((candidate) => (
+        candidate.children.includes('lingxia-chat')
+      ));
+      return layout.sizeClass === 'expanded' && slot?.visible && !slot.overlay
+        ? layout
+        : undefined;
+    }, 'docked right Chat aside');
+    const mainBaseline = {
+      activeMainId: asideLayout.activeMainId,
+      mains: asideLayout.mains,
+      switcher: asideLayout.mainSwitcher.items.map((item) => item.surfaceId),
+    };
+    expect(asideLayout.mains.includes('lingxia-chat')).toBeFalsy();
+    const expectMainUnchanged = async (phase: string) => {
+      const layout = await app.surfaceLayout();
+      expect({
+        phase,
+        activeMainId: layout.activeMainId,
+        mains: layout.mains,
+        switcher: layout.mainSwitcher.items.map((item) => item.surfaceId),
+      }).toEqual({ phase, ...mainBaseline });
+    };
+
+    const chatInput = await waitForChatInput(desktop, host, 'Chat input in the aside');
+    expect(inRightAside(host, chatInput.rect)).toBeTruthy();
+
+    // navigateTo from the aside lxapp's Logic: the page pushes inside the aside.
+    await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      await lx.navigateTo({ page: 'feedback' });
+    });
+    await waitForValue(async () => {
+      const current = await chat.nav.current();
+      return current.name === 'feedback' && current.ready ? current : undefined;
+    }, 'Chat feedback page ready');
+    const feedback = await waitForValue(
+      () => visibleHostAxNode(desktop, host!, 'Help us improve'),
+      'feedback page rendered',
+      60_000,
+    );
+    expect(inRightAside(host, feedback.rect)).toBeTruthy();
+    await expectMainUnchanged('after navigateTo');
+
+    // navigateBack pops inside the aside and reveals the chat page there again.
+    await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      await lx.navigateBack();
+    });
+    const chatAgain = await waitForChatInput(desktop, host, 'Chat input after navigateBack');
+    expect(inRightAside(host, chatAgain.rect)).toBeTruthy();
+    await expectMainUnchanged('after navigateBack');
+
+    // A float the aside opens anchors to the aside, not the main (#615).
+    // Windows floats keep their own placement path; this covers AppKit.
+    if (platform === 'macos') {
+      const before = await desktop.windows();
+      await chat.logic.eval({ timeout: 20_000 }, async ({ lx }, key) => {
+        await lx.surface.openPage('feedback', {
+          as: 'float',
+          key,
+          position: 'bottom',
+          size: { width: '100%', height: '80%' },
+          interaction: { closeButton: true, dismiss: 'manual', modal: true },
+        });
+      }, floatKey);
+      const known = new Set(before.map((window) => window.id));
+      const floatWindow = await waitForDesktopWindow(
+        () => desktop.windows(),
+        (windows) => windows.find((window) => (
+          window.visible
+          && window.pid === host!.pid
+          && !known.has(window.id)
+          && window.bounds.w > 0
+          && window.bounds.h > 0
+        )),
+        'Chat feedback float window',
+      );
+      expect(inRightAside(host, floatWindow.bounds)).toBeTruthy();
+      await expectMainUnchanged('after float');
+    }
+  } catch (error) {
+    await attachDesktopFailure(t, 'aside-nav', desktop, host);
+    throw error;
+  } finally {
+    await chat.logic.eval({ timeout: 15_000 }, async ({ lx }, key) => {
+      const handle = lx.surface.getByKey(key) as { close(): Promise<void> } | null;
+      if (handle) await handle.close();
+    }, floatKey).catch(() => undefined);
+    await closeChatSurface(t, app).catch(() => undefined);
+    if (host) await restoreHostBounds(desktop, host.id, originalBounds).catch(() => undefined);
+  }
+});
+
 desktopTest('migrates one keyed workspace across aside edges and main exactly once', {
   id: 'DESKTOP-MIGRATE-001',
   timeout: DESKTOP_CASE_MS,
