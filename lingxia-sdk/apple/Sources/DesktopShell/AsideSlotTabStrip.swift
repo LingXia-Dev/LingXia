@@ -66,6 +66,7 @@ final class AsideSlotTabStripView: NSView {
             named: "icon_aside_collapse", size: CGSize(width: 15, height: 15))
         collapseButton.contentTintColor = LxAppHostTheme.mutedForeground
         collapseButton.toolTip = "Collapse panel"
+        collapseButton.setAccessibilityLabel("Collapse panel")
         collapseButton.target = self
         collapseButton.action = #selector(collapseTapped)
         addSubview(collapseButton)
@@ -172,6 +173,7 @@ private final class AsideSlotTabItemView: NSView {
         closeButton.contentTintColor = LxAppHostTheme.mutedForeground
         closeButton.target = self
         closeButton.action = #selector(closeTapped)
+        closeButton.setAccessibilityLabel("Close \(tab.title)")
 
         row.orientation = .horizontal
         row.spacing = 5

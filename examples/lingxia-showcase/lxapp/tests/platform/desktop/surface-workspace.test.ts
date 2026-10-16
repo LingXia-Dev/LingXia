@@ -3087,6 +3087,50 @@ desktopTest('keeps an aside lxapp page stack and its floats inside the aside', {
         if (handle?.alive) await handle.close();
       }).catch(() => undefined);
     }
+
+    // The aside slot's tab × closes the aside lxapp for real: the region
+    // goes away and the session ends. A reopen docks a fresh aside whose page
+    // stack again navigates inside it.
+    await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      return layout.activeMainId === mainBaseline.activeMainId
+        && JSON.stringify(layout.mains) === JSON.stringify(mainBaseline.mains)
+        ? true
+        : undefined;
+    }, 'main back to the baseline after closing the second main');
+    if (platform === 'macos') {
+      const close = await waitForValue(async () => {
+        const node = await visibleHostAxNode(desktop, host!, 'Close LingXia Chat');
+        return node?.role === 'button' && node.enabled && inRightAside(host!, node.rect)
+          ? node
+          : undefined;
+      }, 'Chat aside tab close button');
+      await desktop.ax.invoke({ window: host.id, match: `id:${close.id}` });
+      await waitForValue(async () => (
+        containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
+      ), 'Chat aside removed by its tab close');
+      await waitForValue(async () => {
+        const row = (await t.automation.lxapps.list()).find((candidate) => (
+          candidate.appId === 'lingxia-chat'
+        ));
+        return !row || row.status !== 'opened' ? true : undefined;
+      }, 'Chat session closed by its tab close');
+      await waitForValue(async () => (
+        await visibleChatInputAxNode(desktop, host!) ? undefined : true
+      ), 'Chat page gone with its aside');
+      await expectMainUnchanged('after the aside tab close');
+
+      await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+        await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+      });
+      const reopened = await waitForChatInput(desktop, host, 'Chat input after reopening the aside');
+      expect(inRightAside(host, reopened.rect)).toBeTruthy();
+      await pushFeedback('after reopen');
+      await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+        await lx.navigateBack();
+      });
+      await expectChatBackInAside('navigateBack after reopen');
+    }
   } catch (error) {
     await attachDesktopFailure(t, 'aside-nav', desktop, host);
     throw error;
