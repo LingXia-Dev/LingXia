@@ -4326,6 +4326,56 @@ mod delayed_destroy_tests {
     }
 
     #[test]
+    fn native_close_recall_does_not_duplicate_the_landing_page() {
+        use crate::delegate::LxAppDelegate;
+        #[cfg(target_vendor = "apple")]
+        let _host = crate::apple_host_stubs::headless_lifecycle();
+        let appid = format!("app.lingxia.close-recall.{}", Uuid::new_v4());
+        register_synthetic_lxapp(appid.clone());
+        let runtime = class_test_runtime();
+        let manager = LxApps::new((*runtime).clone(), LxAppWorkers::init(1), 2);
+        let app = manager
+            .ensure_lxapp(appid.clone(), Channel::Release)
+            .unwrap();
+        let path = "pages/home/index";
+        let page = crate::page::PageInstance::new_headless(appid.clone(), path.into(), &app);
+        app.state
+            .lock()
+            .unwrap()
+            .pages_by_id
+            .lock()
+            .unwrap()
+            .insert(page.instance_id_string(), page.clone());
+        app.pin_page_path(&page);
+
+        for _ in 0..3 {
+            app.clone().on_lxapp_opened(path.into(), app.session_id());
+            assert_eq!(app.get_page_stack_size(), 1, "recall has one landing page");
+
+            app.on_lxapp_closed(app.session_id() + 1);
+            assert_eq!(
+                app.get_page_stack_size(),
+                1,
+                "stale close preserves history"
+            );
+            assert_eq!(app.status(), LxAppSessionStatus::Opened);
+
+            app.on_lxapp_closed(app.session_id());
+            assert_eq!(
+                app.get_page_stack_size(),
+                0,
+                "native close discards history"
+            );
+            assert!(!app.session.is_cancelled(), "close preserves cached Logic");
+            let recalled = manager
+                .ensure_lxapp(appid.clone(), Channel::Release)
+                .unwrap();
+            assert!(Arc::ptr_eq(&app, &recalled));
+        }
+        manager.retire_lxapp(&appid).unwrap();
+    }
+
+    #[test]
     fn capsule_closed_app_is_recallable_but_retired_app_gets_a_new_session() {
         #[cfg(target_vendor = "apple")]
         let _host = crate::apple_host_stubs::headless_lifecycle();

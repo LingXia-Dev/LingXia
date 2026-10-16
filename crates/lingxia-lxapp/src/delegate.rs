@@ -47,6 +47,11 @@ fn finalize_lxapp_close(app: &Arc<LxApp>, session_id: u64) -> bool {
     }
 
     app.set_status(LxAppSessionStatus::Closed);
+    // Recall reuses the cached instance but pushes its landing page anew.
+    // Native/back closes must discard history just like capsule close does.
+    if let Err(error) = app.clear_page_stack() {
+        error!("Failed to clear page stack: {}", error).with_appid(app.appid.clone());
+    }
     app.clear_open_region();
     app.clear_transient_files();
     app.runtime.clear_lxapp_appearance(&app.appid);
