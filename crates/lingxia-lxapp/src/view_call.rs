@@ -170,12 +170,21 @@ pub(crate) fn cancel_view_call(id: &str, message: Option<String>) {
     }
 }
 
-pub(crate) fn cancel_view_calls_for_work(work_id: SessionWorkId, reason: &str) {
+pub(crate) fn cancel_view_calls_for_work(
+    work_id: SessionWorkId,
+    page_instance_id: &str,
+    reason: &str,
+) {
     let entries = {
         let mut pending = registry().pending.lock().unwrap();
+        // Work ids restart at 1 on every bridge. This map is process-wide, so
+        // a match on the id alone cancels another page's in-flight call when
+        // a hidden page is reclaimed.
         let ids = pending
             .iter()
-            .filter(|(_, entry)| entry.work_id == work_id)
+            .filter(|(_, entry)| {
+                entry.work_id == work_id && entry.page_instance_id == page_instance_id
+            })
             .map(|(id, _)| id.clone())
             .collect::<Vec<_>>();
         ids.into_iter()
@@ -349,10 +358,48 @@ mod tests {
         );
         drop(pending);
 
-        cancel_view_calls_for_work(SessionWorkId::for_test(31), "session reset");
+        cancel_view_calls_for_work(SessionWorkId::for_test(31), "page-1", "session reset");
 
         assert!(matches!(old_rx.try_recv(), Ok(Err(_))));
         assert!(new_rx.try_recv().is_err());
         registry().pending.lock().unwrap().remove(new_id);
+    }
+
+    #[test]
+    fn canceling_one_pages_work_leaves_another_pages_same_work_id() {
+        let foreground_id = "lv_foreground_work";
+        let hidden_id = "lv_hidden_work";
+        let (foreground_tx, mut foreground_rx) = oneshot::channel();
+        let (hidden_tx, mut hidden_rx) = oneshot::channel();
+        let mut pending = registry().pending.lock().unwrap();
+        pending.insert(
+            foreground_id.to_string(),
+            PendingViewCallEntry {
+                page_instance_id: "foreground".to_string(),
+                work_id: SessionWorkId::for_test(1),
+                _outbound: None,
+                tx: foreground_tx,
+            },
+        );
+        pending.insert(
+            hidden_id.to_string(),
+            PendingViewCallEntry {
+                page_instance_id: "hidden".to_string(),
+                work_id: SessionWorkId::for_test(1),
+                _outbound: None,
+                tx: hidden_tx,
+            },
+        );
+        drop(pending);
+
+        cancel_view_calls_for_work(
+            SessionWorkId::for_test(1),
+            "hidden",
+            "Document session revoked",
+        );
+
+        assert!(matches!(hidden_rx.try_recv(), Ok(Err(_))));
+        assert!(foreground_rx.try_recv().is_err());
+        registry().pending.lock().unwrap().remove(foreground_id);
     }
 }
