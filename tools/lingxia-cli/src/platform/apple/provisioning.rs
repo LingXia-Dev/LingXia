@@ -252,8 +252,6 @@ impl Drop for TempKeychain {
 pub struct ProvisioningContext {
     /// Resolved Apple credentials (wallet or CI env)
     auth: ResolvedAppleAuth,
-    /// Device info for API calls
-    device_info: DeviceInfo,
     /// Target device UDID
     target_device_udid: String,
     /// Target device name
@@ -264,7 +262,6 @@ impl ProvisioningContext {
     /// Create a new provisioning context
     pub fn new(target_device: &ConnectedDevice) -> Result<Self> {
         let auth = crate::resolver::resolve_apple_auth(Some(AppleChannel::Ios), AppleNeed::Auth)?;
-        let device_info = DeviceInfo::default_macos();
 
         let udid = target_device
             .udid()
@@ -275,7 +272,6 @@ impl ProvisioningContext {
 
         Ok(Self {
             auth,
-            device_info,
             target_device_udid: udid,
             target_device_name: name,
         })
@@ -292,7 +288,6 @@ impl ProvisioningContext {
         let auth = crate::resolver::resolve_apple_auth(Some(AppleChannel::Ios), AppleNeed::Auth)?;
         Ok(Self {
             auth,
-            device_info: DeviceInfo::default_macos(),
             target_device_udid: String::new(),
             target_device_name: String::new(),
         })
@@ -380,11 +375,12 @@ impl ProvisioningContext {
         // Get fresh anisette data
         let mut anisette_provider = super::anisette::OmnisetteProvider::new();
         let anisette = anisette_provider.fetch_anisette_data()?;
+        let device_info = DeviceInfo::for_anisette(&anisette);
 
         // Determine whether the selected team is free (Personal Team) or paid.
         // Default to paid if the team cannot be found, since bundle-id rewriting is only
         // required for free teams and can be disruptive for paid teams.
-        let teams = developer_services::list_teams(adsid, app_token, &self.device_info, &anisette)?;
+        let teams = developer_services::list_teams(adsid, app_token, &device_info, &anisette)?;
         let is_free_team = teams
             .iter()
             .find(|t| t.id == team_id)
@@ -392,7 +388,7 @@ impl ProvisioningContext {
             .unwrap_or(false);
 
         let client =
-            DeveloperServicesClient::new(adsid, app_token, team_id, &self.device_info, &anisette);
+            DeveloperServicesClient::new(adsid, app_token, team_id, &device_info, &anisette);
 
         // 1. Register device
         println!("{}", "Step 1/4: Registering device...".cyan());
@@ -499,12 +495,85 @@ impl ProvisioningContext {
                 cached_distribution_identity,
                 original_bundle_id,
             ),
-            AuthCredentials::AppleId { .. } => bail!(
-                "App Store IPA signing needs an App Store Connect API key \
-                 (`lingxia auth login apple`). Apple ID login only issues device \
-                 development profiles."
+            AuthCredentials::AppleId {
+                adsid,
+                app_token,
+                team_id,
+                ..
+            } => self.provision_app_store_with_apple_id(
+                &adsid,
+                &app_token,
+                &team_id,
+                original_bundle_id,
             ),
         }
+    }
+
+    /// App Store signing with the Apple ID session Xcode uses.
+    ///
+    /// Account Holder and Admin can create the distribution certificate and
+    /// store profile. Other roles reuse a distribution identity already in the
+    /// login keychain when the portal still lists that certificate.
+    fn provision_app_store_with_apple_id(
+        &self,
+        adsid: &str,
+        app_token: &str,
+        team_id: &str,
+        original_bundle_id: &str,
+    ) -> Result<ProvisioningResult> {
+        let mut anisette_provider = super::anisette::OmnisetteProvider::new();
+        let anisette = anisette_provider.fetch_anisette_data()?;
+        let device_info = DeviceInfo::for_anisette(&anisette);
+
+        let teams = developer_services::list_teams(adsid, app_token, &device_info, &anisette)?;
+        let is_free_team = teams
+            .iter()
+            .find(|t| t.id == team_id)
+            .map(|t| t.is_free())
+            .unwrap_or(false);
+        if is_free_team {
+            bail!(
+                "App Store IPA signing needs a paid Apple Developer Program team. \
+                 This Apple ID's selected team is a Personal Team, which only issues \
+                 device development profiles."
+            );
+        }
+
+        let client =
+            DeveloperServicesClient::new(adsid, app_token, team_id, &device_info, &anisette);
+
+        println!(
+            "{}",
+            "Step 1/3: Ensuring distribution certificate...".cyan()
+        );
+        let (cert_id, signing_identity, identity_material) =
+            self.ensure_distribution_certificate_apple_id(&client, team_id)?;
+
+        println!("{}", "Step 2/3: Ensuring App ID...".cyan());
+        let (app_id_id, _) = self.ensure_app_id(&client, original_bundle_id, team_id, false)?;
+
+        println!(
+            "{}",
+            "Step 3/3: Creating App Store provisioning profile...".cyan()
+        );
+        let profile_data = self.create_store_profile_apple_id(
+            &client,
+            &app_id_id,
+            original_bundle_id,
+            &cert_id,
+            &signing_identity,
+        )?;
+
+        let entitlements = extract_entitlements_from_profile(&profile_data)?;
+        println!("  {} App Store provisioning complete", "✓".green());
+
+        Ok(ProvisioningResult {
+            signing_identity,
+            profile_data,
+            bundle_id: original_bundle_id.to_string(),
+            entitlements,
+            identity_material,
+        })
     }
 
     fn provision_app_store_with_asc(
@@ -707,6 +776,79 @@ Tip: Ensure your login keychain contains an \"Apple Development\" identity for t
         Ok(None)
     }
 
+    /// Returns (cert_id, SHA-1 fingerprint, optional identity material).
+    ///
+    /// Material is present when LingXia holds the private key. It is absent when
+    /// the login keychain already has the matching distribution identity.
+    fn ensure_distribution_certificate_apple_id(
+        &self,
+        client: &DeveloperServicesClient,
+        team_id: &str,
+    ) -> Result<(String, String, Option<IdentityMaterial>)> {
+        let portal_certs = client
+            .list_distribution_certificates()
+            .context("Failed to list distribution certificates")?;
+
+        let wallet = Wallet::open()?;
+        if let Some(cached) = wallet.load_apple_distribution(team_id)? {
+            if cached_distribution_matches(&portal_certs, &cached) {
+                let cert_data = base64_decode(&cached.cert_data_b64)?;
+                println!("  {} Reusing cached distribution certificate", "✓".green());
+                return Ok((
+                    cached.cert_id,
+                    cached.signing_identity,
+                    Some(IdentityMaterial {
+                        cert_data,
+                        private_key: cached.private_key,
+                    }),
+                ));
+            }
+            println!(
+                "  {} Cached distribution certificate is no longer on the team",
+                "!".yellow()
+            );
+            wallet.save_apple_distribution(team_id, None)?;
+        }
+
+        let identities = KeychainManager::new()
+            .list_identities()
+            .context("Failed to list code signing identities from Keychain")?;
+        if let Some((cert_id, sha1)) =
+            match_ios_distribution_identity(team_id, &portal_certs, &identities)
+        {
+            println!(
+                "  {} Using existing distribution certificate from Keychain",
+                "✓".green()
+            );
+            return Ok((cert_id, sha1, None));
+        }
+
+        println!("  Creating new distribution certificate...");
+        let (csr_content, private_key) = generate_csr("LingXia Distribution")?;
+        let new_cert = client.submit_distribution_csr(&csr_content).context(
+            "Failed to create a distribution certificate. Account Holder or Admin can create one. \
+             If the team already has its distribution certificates, revoke an unused one, or install \
+             that certificate's private key in the login keychain (Xcode uses the same identity).",
+        )?;
+        let cert_content = new_cert
+            .certificate_content
+            .as_ref()
+            .ok_or_else(|| anyhow!("No certificate content"))?;
+        let cert_data = base64_decode(cert_content)?;
+        let sha1 = sha1_hex_upper(&cert_data);
+        let result = (
+            new_cert.id,
+            sha1,
+            Some(IdentityMaterial {
+                cert_data,
+                private_key,
+            }),
+        );
+        self.cache_created_distribution_identity(team_id, &result)?;
+        println!("  {} Created distribution certificate", "✓".green());
+        Ok(result)
+    }
+
     fn ensure_app_id(
         &self,
         client: &DeveloperServicesClient,
@@ -818,6 +960,7 @@ Tip: Ensure your login keychain contains an \"Apple Development\" identity for t
                 app_id_id,
                 &[cert_id],
                 &device_ids,
+                developer_services::ProvisioningProfileKind::Development,
             ) {
                 Ok(profile) => {
                     // Download the profile
@@ -841,6 +984,98 @@ Tip: Ensure your login keychain contains an \"Apple Development\" identity for t
         }
 
         unreachable!("profile creation loop should always return")
+    }
+
+    fn create_store_profile_apple_id(
+        &self,
+        client: &DeveloperServicesClient,
+        app_id_id: &str,
+        bundle_identifier: &str,
+        cert_id: &str,
+        signing_identity: &str,
+    ) -> Result<Vec<u8>> {
+        let prefix = store_profile_name_prefix(bundle_identifier);
+        let profiles = client.list_provisioning_profiles()?;
+        if let Some(existing) = select_reusable_dev_profile_by_prefix(
+            profiles.iter().map(|p| (p.id.as_str(), p.name.as_str())),
+            &prefix,
+        ) {
+            match client.download_provisioning_profile(existing.profile_id) {
+                Ok(profile_data)
+                    if profile_includes_signing_identity(&profile_data, signing_identity)?
+                        && profile_matches_bundle_id(&profile_data, bundle_identifier)? =>
+                {
+                    println!(
+                        "  {} Reusing App Store profile: {}",
+                        "✓".green(),
+                        existing.profile_name
+                    );
+                    return Ok(profile_data);
+                }
+                Ok(_) => println!(
+                    "  {} Reusable App Store profile {} does not match, creating a new one",
+                    "!".yellow(),
+                    existing.profile_name
+                ),
+                Err(err) => println!(
+                    "  {} Failed to download App Store profile {}, creating a new one: {}",
+                    "!".yellow(),
+                    existing.profile_name,
+                    err
+                ),
+            }
+        }
+
+        for profile in profiles
+            .iter()
+            .filter(|profile| !profile.name.starts_with(&prefix))
+            .filter(|profile| is_distribution_profile_type(profile.profile_type.as_deref()))
+        {
+            match client.download_provisioning_profile(&profile.id) {
+                Ok(profile_data)
+                    if store_profile_matches(
+                        &profile_data,
+                        signing_identity,
+                        bundle_identifier,
+                    )? =>
+                {
+                    println!(
+                        "  {} Reusing App Store profile: {}",
+                        "✓".green(),
+                        profile.name
+                    );
+                    return Ok(profile_data);
+                }
+                Ok(_) => {}
+                Err(err) => println!(
+                    "  {} Failed to download profile {}: {}",
+                    "!".yellow(),
+                    profile.name,
+                    err
+                ),
+            }
+        }
+
+        let profile_name = format!(
+            "{}{}-{}",
+            prefix,
+            chrono::Utc::now().timestamp_millis(),
+            std::process::id()
+        );
+        let profile = client.create_provisioning_profile(
+            &profile_name,
+            app_id_id,
+            &[cert_id],
+            &[],
+            developer_services::ProvisioningProfileKind::AppStore,
+        )?;
+        let profile_data = client.download_provisioning_profile(&profile.id)?;
+        println!(
+            "  {} Created App Store profile: {}",
+            "✓".green(),
+            profile_name
+        );
+        Ok(profile_data)
     }
 
     fn ensure_device_registered_asc(&self, client: &AppStoreConnectClient) -> Result<()> {
@@ -1993,6 +2228,118 @@ fn write_associated_domains(entitlements: &mut plist::Dictionary, key: &str, dom
     }
 }
 
+fn is_distribution_profile_type(profile_type: Option<&str>) -> bool {
+    let Some(kind) = profile_type else {
+        return false;
+    };
+    let kind = kind.to_ascii_lowercase();
+    if kind.contains("development")
+        || kind == "limited"
+        || kind.contains("adhoc")
+        || kind.contains("ad hoc")
+        || kind.contains("inhouse")
+        || kind.contains("in-house")
+    {
+        return false;
+    }
+    kind == "store"
+        || kind.contains("app store")
+        || kind.contains("distribution")
+        || kind.contains("ios_app_store")
+}
+
+fn is_app_store_mobileprovision(profile: &plist::Value) -> bool {
+    let Some(dict) = profile.as_dictionary() else {
+        return false;
+    };
+    if dict.get("ProvisionedDevices").is_some() || dict.get("ProvisionsAllDevices").is_some() {
+        return false;
+    }
+    let get_task_allow = dict
+        .get("Entitlements")
+        .and_then(|value| value.as_dictionary())
+        .and_then(|entitlements| entitlements.get("get-task-allow"))
+        .and_then(|value| value.as_boolean());
+    get_task_allow != Some(true)
+}
+
+fn store_profile_matches(
+    profile_data: &[u8],
+    signing_identity: &str,
+    bundle_identifier: &str,
+) -> Result<bool> {
+    Ok(
+        profile_includes_signing_identity(profile_data, signing_identity)?
+            && profile_matches_bundle_id(profile_data, bundle_identifier)?
+            && decode_mobileprovision_plist(profile_data)
+                .map(|profile| is_app_store_mobileprovision(&profile))
+                .unwrap_or(false),
+    )
+}
+
+fn cached_distribution_matches(
+    certs: &[developer_services::DeveloperCertificate],
+    cache: &CachedSigningIdentity,
+) -> bool {
+    let Some(cert) = certs.iter().find(|c| c.id == cache.cert_id) else {
+        return false;
+    };
+    let Some(content) = cert.certificate_content.as_deref() else {
+        return true;
+    };
+    match base64_decode(content) {
+        Ok(der) => sha1_hex_upper(&der) == cache.signing_identity,
+        Err(_) => false,
+    }
+}
+
+fn match_ios_distribution_identity(
+    team_id: &str,
+    certs: &[developer_services::DeveloperCertificate],
+    identities: &[super::keychain::SigningIdentity],
+) -> Option<(String, String)> {
+    let mut cert_id_by_sha1: HashMap<String, String> = HashMap::new();
+    for cert in certs {
+        let Some(content) = cert.certificate_content.as_deref() else {
+            continue;
+        };
+        let Ok(der) = base64_decode(content) else {
+            continue;
+        };
+        cert_id_by_sha1.insert(sha1_hex_upper(&der), cert.id.clone());
+    }
+
+    let mut matched: Option<(String, String)> = None;
+    for identity in identities.iter().filter(|id| id.is_distribution()) {
+        let sha1 = identity.sha1.to_ascii_uppercase();
+        if let Some(cert_id) = cert_id_by_sha1.get(&sha1) {
+            let prefer = identity.team_id() == Some(team_id);
+            if matched.is_none() || prefer {
+                matched = Some((cert_id.clone(), sha1));
+                if prefer {
+                    break;
+                }
+            }
+        }
+    }
+    if matched.is_some() {
+        return matched;
+    }
+
+    // The portal sometimes omits certificate bytes. One distribution cert plus
+    // one keychain identity for this team is the same assumption Xcode makes.
+    if cert_id_by_sha1.is_empty() && certs.len() == 1 {
+        let mut team_identities = identities
+            .iter()
+            .filter(|id| id.is_distribution())
+            .filter(|id| id.team_id() == Some(team_id));
+        if let (Some(identity), None) = (team_identities.next(), team_identities.next()) {
+            return Some((certs[0].id.clone(), identity.sha1.to_ascii_uppercase()));
+        }
+    }
+    None
+}
+
 fn update_permission_cache(platform: PermissionPlatform, app_id: &str, permissions: &[String]) {
     let Ok(mut cache) = PermissionCache::load() else {
         return;
@@ -2003,7 +2350,113 @@ fn update_permission_cache(platform: PermissionPlatform, app_id: &str, permissio
 
 #[cfg(test)]
 mod tests {
+    use super::super::keychain::SigningIdentity;
     use super::*;
+
+    fn portal_cert(id: &str, content: Option<&str>) -> developer_services::DeveloperCertificate {
+        developer_services::DeveloperCertificate {
+            id: id.to_string(),
+            name: None,
+            display_name: None,
+            status: None,
+            type_string: Some("Apple Distribution".to_string()),
+            serial_number: None,
+            expiration_date: None,
+            certificate_content: content.map(str::to_string),
+        }
+    }
+
+    fn identity(sha1: &str, common_name: &str) -> SigningIdentity {
+        SigningIdentity {
+            sha1: sha1.to_string(),
+            common_name: common_name.to_string(),
+        }
+    }
+
+    #[test]
+    fn cached_distribution_cert_must_still_be_on_the_team() {
+        let der = [1_u8, 2, 3, 4];
+        let cache = CachedSigningIdentity {
+            cert_id: "CERT".to_string(),
+            signing_identity: sha1_hex_upper(&der),
+            cert_data_b64: base64_encode(&der),
+            private_key: "key".to_string(),
+        };
+        assert!(cached_distribution_matches(
+            &[portal_cert("CERT", Some(&base64_encode(&der)))],
+            &cache
+        ));
+        assert!(!cached_distribution_matches(
+            &[portal_cert("OTHER", Some(&base64_encode(&der)))],
+            &cache
+        ));
+        assert!(cached_distribution_matches(
+            &[portal_cert("CERT", None)],
+            &cache
+        ));
+    }
+
+    #[test]
+    fn keychain_distribution_identity_matches_the_portal_cert() {
+        let der = b"distribution-cert";
+        let sha1 = sha1_hex_upper(der);
+        let certs = [portal_cert("CERT", Some(&base64_encode(der)))];
+        let identities = [
+            identity(&sha1, "Apple Development: Jane (TEAM1)"),
+            identity("OTHER", "Apple Distribution: Jane (TEAM1)"),
+            identity(&sha1, "Apple Distribution: Jane (TEAM1)"),
+        ];
+        assert_eq!(
+            match_ios_distribution_identity("TEAM1", &certs, &identities),
+            Some(("CERT".to_string(), sha1))
+        );
+    }
+
+    #[test]
+    fn one_distribution_cert_without_bytes_matches_the_team_keychain_identity() {
+        let certs = [portal_cert("CERT", None)];
+        let identities = [
+            identity("AAA", "Apple Distribution: Other (TEAM2)"),
+            identity("BBB", "Apple Distribution: Jane (TEAM1)"),
+        ];
+        assert_eq!(
+            match_ios_distribution_identity("TEAM1", &certs, &identities),
+            Some(("CERT".to_string(), "BBB".to_string()))
+        );
+        let two = [
+            identity("BBB", "Apple Distribution: Jane (TEAM1)"),
+            identity("CCC", "iPhone Distribution: Jane (TEAM1)"),
+        ];
+        assert_eq!(match_ios_distribution_identity("TEAM1", &certs, &two), None);
+    }
+
+    #[test]
+    fn app_store_profile_has_no_devices_and_no_debug_entitlement() {
+        assert!(is_distribution_profile_type(Some("store")));
+        assert!(is_distribution_profile_type(Some("iOS Distribution")));
+        assert!(!is_distribution_profile_type(Some("iOS Development")));
+        assert!(!is_distribution_profile_type(Some("adhoc")));
+
+        let mut store = plist::Dictionary::new();
+        let mut entitlements = plist::Dictionary::new();
+        entitlements.insert("get-task-allow".into(), plist::Value::Boolean(false));
+        store.insert(
+            "Entitlements".into(),
+            plist::Value::Dictionary(entitlements),
+        );
+        assert!(is_app_store_mobileprovision(&plist::Value::Dictionary(
+            store
+        )));
+
+        let mut ad_hoc = plist::Dictionary::new();
+        ad_hoc.insert(
+            "ProvisionedDevices".into(),
+            plist::Value::Array(vec!["UDID".into()]),
+        );
+        assert!(!is_app_store_mobileprovision(&plist::Value::Dictionary(
+            ad_hoc
+        )));
+    }
 
     #[test]
     fn app_store_extensions_get_their_own_profile_and_entitlements() {

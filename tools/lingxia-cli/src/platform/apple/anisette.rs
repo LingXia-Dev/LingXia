@@ -1,7 +1,8 @@
-//! Anisette data provider using Omnisette service.
+//! Anisette data provider.
 //!
-//! Anisette data is device fingerprinting required by Apple's authentication.
-//! We use the public Omnisette service (sidestore.io) to generate this data.
+//! On macOS the one-time password comes from this Mac's AOSKit. The public
+//! Omnisette service is the fallback for other hosts. Login must send the
+//! same machine identity the OTP was issued for.
 
 use super::http_agent;
 use anyhow::{Context, Result, anyhow};
@@ -12,6 +13,7 @@ use tungstenite::{Message, WebSocket, connect, stream::MaybeTlsStream};
 use uuid::Uuid;
 
 const OMNISETTE_URL: &str = "https://ani.sidestore.io";
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 const OMNISETTE_WS_URL: &str = "wss://ani.sidestore.io/v3/provisioning_session";
 
 /// Anisette data required for Apple authentication
@@ -27,14 +29,23 @@ pub struct AnisetteData {
     pub local_user_id: String,
     /// Device ID (X-Mme-Device-Id)
     pub device_id: String,
+    /// `X-Mme-Client-Info` the anisette machine was provisioned as.
+    pub client_info: String,
+    /// `User-Agent` paired with `client_info`.
+    pub user_agent: String,
+    /// `X-Apple-I-SRL-NO`. The remote service has no serial, so that path
+    /// keeps a placeholder; the local path sends this Mac's serial.
+    pub serial_number: String,
 }
 
 /// Omnisette Anisette provider
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub struct OmnisetteProvider {
     url: String,
     local_user_uid: Uuid,
     provisioning_data: Option<ProvisioningData>,
     client_info: Option<String>,
+    user_agent: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +54,7 @@ struct ProvisioningData {
     routing_info: u64,
 }
 
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 impl OmnisetteProvider {
     /// Create a new Omnisette provider
     pub fn new() -> Self {
@@ -51,6 +63,7 @@ impl OmnisetteProvider {
             local_user_uid: Uuid::new_v4(),
             provisioning_data: None,
             client_info: None,
+            user_agent: None,
         }
     }
 
@@ -110,14 +123,16 @@ impl OmnisetteProvider {
             .join("anisette_cache.json"))
     }
 
-    fn get_client_info(&mut self) -> Result<String> {
-        if let Some(ref info) = self.client_info {
-            return Ok(info.clone());
+    fn client_identity(&mut self) -> Result<(String, String)> {
+        if let (Some(info), Some(user_agent)) = (&self.client_info, &self.user_agent) {
+            return Ok((info.clone(), user_agent.clone()));
         }
 
         #[derive(Deserialize)]
         struct ClientInfoResponse {
             client_info: String,
+            #[serde(default)]
+            user_agent: Option<String>,
         }
 
         let url = format!("{}/v3/client_info", self.url);
@@ -132,62 +147,85 @@ impl OmnisetteProvider {
             .context("Failed to read client info response")?;
         let info: ClientInfoResponse =
             serde_json::from_str(&body).context("Failed to parse client info response")?;
+        let user_agent = info
+            .user_agent
+            .filter(|agent| !agent.is_empty())
+            .unwrap_or_else(|| super::grandslam::GRANDSLAM_USER_AGENT.to_string());
 
         self.client_info = Some(info.client_info.clone());
-        Ok(info.client_info)
+        self.user_agent = Some(user_agent.clone());
+        Ok((info.client_info, user_agent))
     }
 
     /// Fetch anisette data (provision if needed)
     pub fn fetch_anisette_data(&mut self) -> Result<AnisetteData> {
-        // Ensure client info is available (required by Apple GSA provisioning calls).
-        let _ = self.get_client_info()?;
-
-        // Compute local user ID (SHA256 hash of UUID)
-        let local_user_id = compute_local_user_id(&self.local_user_uid);
-
-        // Try to load cached provisioning data
-        if self.provisioning_data.is_none() {
-            let _ = self.load_cached();
+        #[cfg(target_os = "macos")]
+        {
+            // The public anisette service is what Apple answers with -80045.
+            let data = super::aoskit::local_anisette()
+                .context("This Mac's anisette identity is unavailable")?;
+            println!("  → Using this Mac's anisette identity");
+            return Ok(data);
         }
 
-        // Try to get OTP if we have provisioning data
-        if let Some(ref prov) = self.provisioning_data {
-            match self.request_otp(prov) {
-                Ok((machine_id, otp, routing_info)) => {
-                    return Ok(AnisetteData {
-                        machine_id,
-                        otp,
-                        routing_info,
-                        local_user_id,
-                        device_id: self.local_user_uid.to_string().to_uppercase(),
-                    });
-                }
-                Err(e) => {
-                    eprintln!("  OTP request failed, re-provisioning: {}", e);
-                    self.provisioning_data = None;
+        #[cfg(not(target_os = "macos"))]
+        {
+            // The OTP is bound to this identity. Login must send the same pair.
+            let (client_info, user_agent) = self.client_identity()?;
+
+            // Compute local user ID (SHA256 hash of UUID)
+            let local_user_id = compute_local_user_id(&self.local_user_uid);
+
+            // Try to load cached provisioning data
+            if self.provisioning_data.is_none() {
+                let _ = self.load_cached();
+            }
+
+            // Try to get OTP if we have provisioning data
+            if let Some(ref prov) = self.provisioning_data {
+                match self.request_otp(prov) {
+                    Ok((machine_id, otp, routing_info)) => {
+                        return Ok(AnisetteData {
+                            machine_id,
+                            otp,
+                            routing_info,
+                            local_user_id,
+                            device_id: self.local_user_uid.to_string().to_uppercase(),
+                            client_info: client_info.clone(),
+                            user_agent: user_agent.clone(),
+                            serial_number: "C02XXXXXXXXX".to_string(),
+                        });
+                    }
+                    Err(e) => {
+                        eprintln!("  OTP request failed, re-provisioning: {}", e);
+                        self.provisioning_data = None;
+                    }
                 }
             }
+
+            // Need to provision
+            eprintln!("  Provisioning with Omnisette (this may take a moment)...");
+            self.provision()?;
+
+            // Try again with new provisioning data
+            let prov = self
+                .provisioning_data
+                .as_ref()
+                .ok_or_else(|| anyhow!("Provisioning failed"))?;
+
+            let (machine_id, otp, routing_info) = self.request_otp(prov)?;
+
+            Ok(AnisetteData {
+                machine_id,
+                otp,
+                routing_info,
+                local_user_id,
+                device_id: self.local_user_uid.to_string().to_uppercase(),
+                client_info,
+                user_agent,
+                serial_number: "C02XXXXXXXXX".to_string(),
+            })
         }
-
-        // Need to provision
-        eprintln!("  Provisioning with Omnisette (this may take a moment)...");
-        self.provision()?;
-
-        // Try again with new provisioning data
-        let prov = self
-            .provisioning_data
-            .as_ref()
-            .ok_or_else(|| anyhow!("Provisioning failed"))?;
-
-        let (machine_id, otp, routing_info) = self.request_otp(prov)?;
-
-        Ok(AnisetteData {
-            machine_id,
-            otp,
-            routing_info,
-            local_user_id,
-            device_id: self.local_user_uid.to_string().to_uppercase(),
-        })
     }
 
     /// Provision with Omnisette service via WebSocket
@@ -550,6 +588,7 @@ impl OmnisetteProvider {
 }
 
 /// Compute local user ID from UUID (SHA256 hash, uppercase hex)
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn compute_local_user_id(uuid: &Uuid) -> String {
     use sha2::{Digest, Sha256};
     let hash = Sha256::digest(uuid.to_string().as_bytes());
@@ -557,6 +596,7 @@ fn compute_local_user_id(uuid: &Uuid) -> String {
 }
 
 /// WebSocket message wrapper
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 #[derive(Debug, Deserialize)]
 struct WsMessage {
     result: String,
@@ -564,6 +604,7 @@ struct WsMessage {
     data: serde_json::Map<String, serde_json::Value>,
 }
 
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn receive_message(socket: &mut WebSocket<MaybeTlsStream<TcpStream>>) -> Result<WsMessage> {
     loop {
         match socket.read()? {
@@ -586,6 +627,7 @@ fn receive_message(socket: &mut WebSocket<MaybeTlsStream<TcpStream>>) -> Result<
     }
 }
 
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn send_json(
     socket: &mut WebSocket<MaybeTlsStream<TcpStream>>,
     value: &serde_json::Value,

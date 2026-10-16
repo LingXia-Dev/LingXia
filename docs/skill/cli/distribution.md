@@ -119,9 +119,10 @@ Access). Env overrides, each group complete: `LINGXIA_APPLE_KEY_PATH` /
 
 ### iOS
 
-A provisioning profile plus a distribution certificate from your Apple
-Developer account; store the account with `lingxia auth login apple`. Embedded
-extensions need matching profiles and capabilities.
+Sign in with `lingxia auth login apple`. Password login follows Xcode: on a
+paid team, Account Holder or Admin gets an App Store IPA; other roles get
+device development profiles. `--mode key` signs an IPA with no interactive
+login, for CI. Embedded extensions need matching profiles and capabilities.
 
 ### Android
 

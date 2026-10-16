@@ -289,8 +289,8 @@ fn login_with_password(
         .context("Failed to get Anisette data")?;
     println!("  {} Anisette data obtained", "✓".green());
 
-    // Step 2: Create device info
-    let device_info = DeviceInfo::default_macos();
+    // Step 2: Advertise the same machine the anisette OTP was issued for.
+    let device_info = DeviceInfo::for_anisette(&anisette_data);
 
     // Step 3: Authenticate with GrandSlam
     println!("  {} Authenticating with Apple...", "→".dimmed());

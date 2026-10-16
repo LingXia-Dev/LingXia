@@ -5,6 +5,8 @@
 
 // Submodules
 pub mod anisette;
+#[cfg(target_os = "macos")]
+mod aoskit;
 pub mod app_bundle;
 pub mod asc;
 pub mod assets;

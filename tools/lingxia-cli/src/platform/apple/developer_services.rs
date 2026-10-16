@@ -1,14 +1,13 @@
-//! Apple Developer Services API client.
+//! Apple Developer Services client for an Apple ID session (the API Xcode uses).
 //!
-//! Used for Apple Developer Services operations after Apple ID authentication.
-//! This API is used for free developer accounts (via Apple ID + GrandSlam auth).
-//!
-//! For paid accounts, use the App Store Connect API (`asc.rs`) instead.
+//! Development signing works for members with Certificates access. Distribution
+//! certificates and App Store profiles require Account Holder or Admin.
+//! `asc.rs` is the API-key path for CI.
 
 use anyhow::{Context, Result, anyhow};
 
 use super::anisette::AnisetteData;
-use super::grandslam::DeviceInfo;
+use super::grandslam::{DeviceInfo, XCODE_VERSION};
 use super::http_agent;
 
 const DEVELOPER_SERVICES_BASE: &str = "https://developerservices2.apple.com/services";
@@ -18,9 +17,6 @@ const CLIENT_ID: &str = "XABBG36SBA";
 // Client
 
 /// Developer Services API client for Apple ID authenticated requests.
-///
-/// This client is used for free developer accounts that authenticate via
-/// Apple ID (GrandSlam). For paid accounts, use `AppStoreConnectClient` instead.
 pub struct DeveloperServicesClient<'a> {
     pub adsid: &'a str,
     pub app_token: &'a str,
@@ -83,7 +79,7 @@ impl<'a> DeveloperServicesClient<'a> {
             .header("Accept", "text/x-xml-plist")
             .header("Content-Type", "text/x-xml-plist")
             .header("User-Agent", "Xcode")
-            .header("X-Xcode-Version", "14.2 (14C18)")
+            .header("X-Xcode-Version", XCODE_VERSION)
             .header("X-Apple-App-Info", "com.apple.gs.xcode.auth")
             // Auth
             .header("X-Apple-I-Identity-Id", self.adsid)
@@ -181,14 +177,29 @@ impl<'a> DeveloperServicesClient<'a> {
     // Certificate Management
     // =========================================================================
 
-    /// List all certificates for the team
+    /// List development certificates for the team.
     pub fn list_certificates(&self) -> Result<Vec<DeveloperCertificate>> {
         let response = self.ios_request("listAllDevelopmentCerts", &[])?;
         parse_certificates_response(&response)
     }
 
-    /// Submit a Certificate Signing Request (CSR) to create a new certificate
+    /// List distribution certificates for the team (`Apple Distribution`).
+    pub fn list_distribution_certificates(&self) -> Result<Vec<DeveloperCertificate>> {
+        let response = self.ios_request("listDistributionCertRequests", &[])?;
+        parse_certificates_response(&response)
+    }
+
+    /// Submit a development CSR. The private key stays with the caller.
     pub fn submit_development_csr(&self, csr_content: &str) -> Result<DeveloperCertificate> {
+        self.submit_csr("submitDevelopmentCSR", csr_content)
+    }
+
+    /// Submit a distribution CSR. Account Holder or Admin only; the private key stays with the caller.
+    pub fn submit_distribution_csr(&self, csr_content: &str) -> Result<DeveloperCertificate> {
+        self.submit_csr("submitDistributionCSR", csr_content)
+    }
+
+    fn submit_csr(&self, action: &str, csr_content: &str) -> Result<DeveloperCertificate> {
         let params = vec![
             ("csrContent", plist::Value::String(csr_content.to_string())),
             (
@@ -200,30 +211,47 @@ impl<'a> DeveloperServicesClient<'a> {
                 plist::Value::String("LingXia CLI".to_string()),
             ),
         ];
-        let response = self.ios_request("submitDevelopmentCSR", &params)?;
+        let response = self.ios_request(action, &params)?;
 
         let dict = response
             .as_dictionary()
-            .ok_or_else(|| anyhow!("Invalid submitDevelopmentCSR response"))?;
+            .ok_or_else(|| anyhow!("Invalid {action} response"))?;
 
         let cert = dict
             .get("certRequest")
+            .or_else(|| dict.get("certificate"))
             .and_then(|v| v.as_dictionary())
-            .ok_or_else(|| anyhow!("Missing certRequest in response"))?;
+            .ok_or_else(|| anyhow!("Missing certRequest in {action} response"))?;
 
         let cert = parse_certificate(cert)?;
 
-        // If the certificate content is not in the response, fetch it separately
-        if cert.certificate_content.is_none() {
-            let certs = self.list_certificates()?;
-            let full_cert = certs
-                .into_iter()
-                .find(|c| c.id == cert.id)
-                .ok_or_else(|| anyhow!("Certificate {} not found after submission", cert.id))?;
-            return Ok(full_cert);
+        if cert.certificate_content.is_some() {
+            return Ok(cert);
         }
 
-        Ok(cert)
+        let mut certs = if action == "submitDistributionCSR" {
+            self.list_distribution_certificates()?
+        } else {
+            self.list_certificates()?
+        };
+        if action == "submitDistributionCSR"
+            && !certs
+                .iter()
+                .any(|c| c.id == cert.id && c.certificate_content.is_some())
+            && let Ok(downloaded) = self.download_distribution_certificates()
+        {
+            certs = downloaded;
+        }
+
+        certs
+            .into_iter()
+            .find(|c| c.id == cert.id)
+            .ok_or_else(|| anyhow!("Certificate {} not found after {action}", cert.id))
+    }
+
+    fn download_distribution_certificates(&self) -> Result<Vec<DeveloperCertificate>> {
+        let response = self.ios_request("downloadDistributionCerts", &[])?;
+        parse_certificates_response(&response)
     }
 
     /// List all App IDs for the team
@@ -282,36 +310,24 @@ impl<'a> DeveloperServicesClient<'a> {
         Ok(encoded_profile.to_vec())
     }
 
-    /// Create a new development provisioning profile
+    /// Create a provisioning profile.
+    ///
+    /// Development profiles (`limited`) include `device_ids`. App Store profiles
+    /// (`store`) do not; Apple rejects devices on a store profile.
     pub fn create_provisioning_profile(
         &self,
         name: &str,
         app_id_id: &str,
         certificate_ids: &[&str],
         device_ids: &[&str],
+        kind: ProvisioningProfileKind,
     ) -> Result<ProvisioningProfile> {
-        let cert_array: Vec<plist::Value> = certificate_ids
+        let owned =
+            provisioning_profile_request(name, app_id_id, certificate_ids, device_ids, kind);
+        let params: Vec<(&str, plist::Value)> = owned
             .iter()
-            .map(|id| plist::Value::String(id.to_string()))
+            .map(|(key, value)| (key.as_str(), value.clone()))
             .collect();
-        let device_array: Vec<plist::Value> = device_ids
-            .iter()
-            .map(|id| plist::Value::String(id.to_string()))
-            .collect();
-
-        let params = vec![
-            (
-                "provisioningProfileName",
-                plist::Value::String(name.to_string()),
-            ),
-            ("appIdId", plist::Value::String(app_id_id.to_string())),
-            ("certificateIds", plist::Value::Array(cert_array)),
-            ("deviceIds", plist::Value::Array(device_array)),
-            (
-                "distributionType",
-                plist::Value::String("limited".to_string()),
-            ),
-        ];
         let response = self.ios_request("createProvisioningProfile", &params)?;
 
         let dict = response
@@ -335,6 +351,62 @@ impl<'a> DeveloperServicesClient<'a> {
         self.ios_request("deleteProvisioningProfile", &params)?;
         Ok(())
     }
+}
+
+/// Which provisioning profile `createProvisioningProfile` should issue.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProvisioningProfileKind {
+    /// Device development (`distributionType=limited`).
+    Development,
+    /// App Store (`distributionType=store`). Devices are omitted.
+    AppStore,
+}
+
+pub(crate) fn provisioning_profile_request(
+    name: &str,
+    app_id_id: &str,
+    certificate_ids: &[&str],
+    device_ids: &[&str],
+    kind: ProvisioningProfileKind,
+) -> Vec<(String, plist::Value)> {
+    let cert_array: Vec<plist::Value> = certificate_ids
+        .iter()
+        .map(|id| plist::Value::String((*id).to_string()))
+        .collect();
+    let mut params = vec![
+        (
+            "provisioningProfileName".to_string(),
+            plist::Value::String(name.to_string()),
+        ),
+        (
+            "appIdId".to_string(),
+            plist::Value::String(app_id_id.to_string()),
+        ),
+        (
+            "certificateIds".to_string(),
+            plist::Value::Array(cert_array),
+        ),
+    ];
+    match kind {
+        ProvisioningProfileKind::Development => {
+            let device_array: Vec<plist::Value> = device_ids
+                .iter()
+                .map(|id| plist::Value::String((*id).to_string()))
+                .collect();
+            params.push(("deviceIds".to_string(), plist::Value::Array(device_array)));
+            params.push((
+                "distributionType".to_string(),
+                plist::Value::String("limited".to_string()),
+            ));
+        }
+        ProvisioningProfileKind::AppStore => {
+            params.push((
+                "distributionType".to_string(),
+                plist::Value::String("store".to_string()),
+            ));
+        }
+    }
+    params
 }
 
 /// A registered device in the developer portal
@@ -463,7 +535,7 @@ pub fn list_teams(
         .header("Accept", "text/x-xml-plist")
         .header("Content-Type", "text/x-xml-plist")
         .header("User-Agent", "Xcode")
-        .header("X-Xcode-Version", "14.2 (14C18)")
+        .header("X-Xcode-Version", XCODE_VERSION)
         .header("X-Apple-App-Info", "com.apple.gs.xcode.auth")
         // Auth
         .header("X-Apple-I-Identity-Id", adsid)
@@ -658,7 +730,7 @@ fn parse_device(dict: &plist::Dictionary) -> Result<RegisteredDevice> {
 fn parse_certificates_response(response: &plist::Value) -> Result<Vec<DeveloperCertificate>> {
     let dict = response
         .as_dictionary()
-        .ok_or_else(|| anyhow!("Invalid listAllDevelopmentCerts response"))?;
+        .ok_or_else(|| anyhow!("Invalid certificate list response"))?;
 
     let certs_array = dict
         .get("certificates")
@@ -964,4 +1036,53 @@ fn parse_profile(dict: &plist::Dictionary) -> Result<ProvisioningProfile> {
         team_identifier,
         entitlements,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn param<'a>(params: &'a [(String, plist::Value)], key: &str) -> Option<&'a plist::Value> {
+        params.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+
+    #[test]
+    fn development_profile_request_lists_devices() {
+        let params = provisioning_profile_request(
+            "LingXia Dev",
+            "APP",
+            &["CERT"],
+            &["DEVICE"],
+            ProvisioningProfileKind::Development,
+        );
+        assert_eq!(
+            param(&params, "distributionType").and_then(|v| v.as_string()),
+            Some("limited")
+        );
+        let devices = param(&params, "deviceIds")
+            .and_then(|v| v.as_array())
+            .unwrap();
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].as_string(), Some("DEVICE"));
+    }
+
+    #[test]
+    fn app_store_profile_request_omits_devices() {
+        let params = provisioning_profile_request(
+            "LingXia Store",
+            "APP",
+            &["CERT"],
+            &["DEVICE"],
+            ProvisioningProfileKind::AppStore,
+        );
+        assert_eq!(
+            param(&params, "distributionType").and_then(|v| v.as_string()),
+            Some("store")
+        );
+        assert!(param(&params, "deviceIds").is_none());
+        assert_eq!(
+            param(&params, "appIdId").and_then(|v| v.as_string()),
+            Some("APP")
+        );
+    }
 }

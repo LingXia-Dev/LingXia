@@ -12,6 +12,12 @@ use super::srp::SrpClient;
 
 const GSA_LOOKUP_URL: &str = "https://gsa.apple.com/grandslam/GsService2/lookup";
 
+/// `X-Xcode-Version`. Same constant xtool sends; not this Mac's installed Xcode.
+pub const XCODE_VERSION: &str = "26.5 (17F42)";
+
+/// GrandSlam `User-Agent`. The `26.5` matches [`XCODE_VERSION`].
+pub const GRANDSLAM_USER_AGENT: &str = "AuthKit/1 (Macintosh; OS X 27.0) (com.apple.dt.Xcode/26.5)";
+
 /// GrandSlam endpoints fetched from lookup
 #[derive(Debug, Clone)]
 pub struct GrandSlamEndpoints {
@@ -86,8 +92,8 @@ impl GrandSlamClient {
     /// Lookup GrandSlam endpoints
     pub fn lookup(
         &mut self,
-        device_info: &DeviceInfo,
-        _anisette: &AnisetteData,
+        _device_info: &DeviceInfo,
+        anisette: &AnisetteData,
     ) -> Result<&GrandSlamEndpoints> {
         // `if let` here would extend the borrow of self.endpoints across the
         // whole fn (the returned &ref ties to self), conflicting with the
@@ -100,8 +106,8 @@ impl GrandSlamClient {
         let mut request = http_agent().get(GSA_LOOKUP_URL);
 
         // Add headers
-        request = request.header("X-Mme-Client-Info", &device_info.client_info);
-        request = request.header("X-Mme-Device-Id", &device_info.device_id);
+        request = request.header("X-Mme-Client-Info", &anisette.client_info);
+        request = request.header("X-Mme-Device-Id", &anisette.device_id);
         request = request.header("X-Apple-I-Locale", "en_US");
         request = request.header("X-Apple-I-TimeZone", "UTC");
 
@@ -109,14 +115,8 @@ impl GrandSlamClient {
             .call()
             .context("Failed to lookup GrandSlam endpoints")?;
 
-        let body = response
-            .body_mut()
-            .read_to_string()
-            .context("Failed to read lookup response")?;
-
-        // Parse plist response
-        let plist: plist::Value = plist::from_bytes(body.as_bytes())
-            .context("Failed to parse lookup response as plist")?;
+        let plist =
+            read_response_plist(&mut response).context("Failed to parse lookup response")?;
 
         let urls = plist
             .as_dictionary()
@@ -270,7 +270,7 @@ impl GrandSlamClient {
     pub fn request_trusted_device_push(
         &self,
         partial_login: &TwoFactorRequired,
-        device_info: &DeviceInfo,
+        _device_info: &DeviceInfo,
         anisette: &AnisetteData,
     ) -> Result<()> {
         let endpoints = self
@@ -286,11 +286,11 @@ impl GrandSlamClient {
             .header("Accept", "application/x-buddyml")
             .header("Content-Type", "application/x-plist")
             .header("X-Apple-App-Info", "com.apple.gs.xcode.auth")
-            .header("X-Xcode-Version", "14.2 (14C18)")
+            .header("X-Xcode-Version", XCODE_VERSION)
             .header("X-Apple-Identity-Token", partial_login.identity_token())
             // From GrandSlamClient.send() - X-Mme-Client-Info
             // Must match the client_info used in initial authentication
-            .header("X-Mme-Client-Info", &device_info.client_info)
+            .header("X-Mme-Client-Info", &anisette.client_info)
             // Anisette data headers
             .header("X-Apple-Locale", "en_US")
             .header("X-Apple-I-TimeZone", "UTC")
@@ -309,10 +309,14 @@ impl GrandSlamClient {
         let mut response =
             response.map_err(|e| anyhow!("Failed to send trusted device push request: {}", e))?;
 
-        let response_body = response.body_mut().read_to_string()?;
+        let plist_response: Option<plist::Value> = response
+            .body_mut()
+            .read_to_vec()
+            .ok()
+            .and_then(|bytes| plist::from_bytes(&bytes).ok());
 
         // Check for errors in response
-        if let Ok(plist_response) = plist::from_bytes::<plist::Value>(response_body.as_bytes())
+        if let Some(plist_response) = plist_response
             && let Some(status) = plist_response
                 .as_dictionary()
                 .and_then(|d| d.get("Status"))
@@ -339,7 +343,7 @@ impl GrandSlamClient {
         &mut self,
         code: &str,
         partial_login: &TwoFactorRequired,
-        device_info: &DeviceInfo,
+        _device_info: &DeviceInfo,
         anisette_provider: &mut super::anisette::OmnisetteProvider,
     ) -> Result<()> {
         let endpoints = self
@@ -362,10 +366,10 @@ impl GrandSlamClient {
             .header("Accept", "application/x-buddyml")
             .header("Content-Type", "application/x-plist")
             .header("X-Apple-App-Info", "com.apple.gs.xcode.auth")
-            .header("X-Xcode-Version", "14.2 (14C18)")
+            .header("X-Xcode-Version", XCODE_VERSION)
             .header("X-Apple-Identity-Token", partial_login.identity_token())
             // From GrandSlamClient.send() - X-Mme-Client-Info
-            .header("X-Mme-Client-Info", &device_info.client_info)
+            .header("X-Mme-Client-Info", &anisette.client_info)
             // Anisette data headers
             .header("X-Apple-Locale", "en_US")
             .header("X-Apple-I-TimeZone", "UTC")
@@ -444,18 +448,13 @@ impl GrandSlamClient {
             .post(endpoint)
             .header("Content-Type", "text/x-xml-plist")
             .header("Accept", "*/*")
-            .header("User-Agent", &device_info.user_agent)
-            .header("X-Mme-Client-Info", &device_info.client_info)
+            .header("User-Agent", &anisette.user_agent)
+            .header("X-Mme-Client-Info", &anisette.client_info)
             .send(body.as_bytes())
             .context("Failed to send auth init request")?;
 
-        let response_body = response
-            .body_mut()
-            .read_to_string()
-            .context("Failed to read auth init response")?;
-
-        let plist_response: plist::Value = plist::from_bytes(response_body.as_bytes())
-            .context("Failed to parse auth init response")?;
+        let plist_response =
+            read_response_plist(&mut response).context("Failed to parse auth init response")?;
 
         self.check_error(&plist_response)?;
 
@@ -541,18 +540,13 @@ impl GrandSlamClient {
             .post(endpoint)
             .header("Content-Type", "text/x-xml-plist")
             .header("Accept", "*/*")
-            .header("User-Agent", &device_info.user_agent)
-            .header("X-Mme-Client-Info", &device_info.client_info)
+            .header("User-Agent", &anisette.user_agent)
+            .header("X-Mme-Client-Info", &anisette.client_info)
             .send(body.as_bytes())
             .context("Failed to send auth complete request")?;
 
-        let response_body = response
-            .body_mut()
-            .read_to_string()
-            .context("Failed to read auth complete response")?;
-
-        let plist_response: plist::Value = plist::from_bytes(response_body.as_bytes())
-            .context("Failed to parse auth complete response")?;
+        let plist_response =
+            read_response_plist(&mut response).context("Failed to parse auth complete response")?;
 
         self.check_error(&plist_response)?;
 
@@ -590,7 +584,11 @@ impl GrandSlamClient {
         // Device info
         cpd.insert(
             "X-Mme-Device-Id".to_string(),
-            device_info.device_id.clone().into(),
+            anisette.device_id.clone().into(),
+        );
+        cpd.insert(
+            "X-Mme-Client-Info".to_string(),
+            anisette.client_info.clone().into(),
         );
         cpd.insert(
             "X-Apple-I-SRL-NO".to_string(),
@@ -700,18 +698,13 @@ impl GrandSlamClient {
             .post(&endpoints.gs_service)
             .header("Content-Type", "text/x-xml-plist")
             .header("Accept", "*/*")
-            .header("User-Agent", &device_info.user_agent)
-            .header("X-Mme-Client-Info", &device_info.client_info)
+            .header("User-Agent", &anisette.user_agent)
+            .header("X-Mme-Client-Info", &anisette.client_info)
             .send(&body)
             .context("Failed to send app tokens request")?;
 
-        let response_body = response
-            .body_mut()
-            .read_to_string()
-            .context("Failed to read app tokens response")?;
-
-        let plist_response: plist::Value = plist::from_bytes(response_body.as_bytes())
-            .context("Failed to parse app tokens response")?;
+        let plist_response =
+            read_response_plist(&mut response).context("Failed to parse app tokens response")?;
 
         self.check_error(&plist_response)?;
 
@@ -807,6 +800,68 @@ impl GrandSlamClient {
     }
 }
 
+/// Read a GrandSlam body as bytes. `read_to_string` replaces invalid UTF-8,
+/// which corrupts a binary plist into a stream the parser cannot finish.
+fn read_response_plist(response: &mut ureq::http::Response<ureq::Body>) -> Result<plist::Value> {
+    let status = response.status();
+    let content_type = response
+        .headers()
+        .get(ureq::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    if status.as_u16() == 429 {
+        let retry_after = response
+            .headers()
+            .get(ureq::http::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| !value.is_empty());
+        let wait = match retry_after {
+            Some(value) => format!(" Apple asked to wait {value}."),
+            None => " Wait a few minutes and try once.".to_string(),
+        };
+        return Err(anyhow!("Apple rate-limited this login (HTTP 429).{wait}"));
+    }
+    let bytes = response
+        .body_mut()
+        .read_to_vec()
+        .context("Failed to read response body")?;
+    if content_type.contains("text/html") {
+        return Err(anyhow!(
+            "Apple returned an HTML error page (HTTP {status})."
+        ));
+    }
+    plist::from_bytes(&bytes)
+        .with_context(|| format!("HTTP {status} {content_type}: {}", response_preview(&bytes)))
+}
+
+/// Short, non-secret description of a rejected GrandSlam body.
+fn response_preview(bytes: &[u8]) -> String {
+    if bytes.starts_with(b"bplist") {
+        return format!("binary plist, {} bytes", bytes.len());
+    }
+    let text = String::from_utf8_lossy(bytes);
+    let mut preview = String::new();
+    let mut run = 0usize;
+    for ch in text.chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '+' | '/' | '=') {
+            run += 1;
+            if run <= 12 {
+                preview.push(ch);
+            } else if run == 13 {
+                preview.push('…');
+            }
+        } else {
+            run = 0;
+            preview.push(ch);
+        }
+        if preview.chars().count() >= 160 {
+            break;
+        }
+    }
+    preview
+}
+
 /// Device info for authentication
 #[derive(Debug, Clone)]
 pub struct DeviceInfo {
@@ -821,7 +876,19 @@ pub struct DeviceInfo {
 }
 
 impl DeviceInfo {
-    /// Create device info with reasonable defaults
+    /// Identity of the machine that issued `anisette`.
+    ///
+    /// Apple rejects the login when this differs from the anisette OTP.
+    pub fn for_anisette(anisette: &AnisetteData) -> Self {
+        let mut info = Self::default_macos();
+        info.device_id = anisette.device_id.clone();
+        info.client_info = anisette.client_info.clone();
+        info.user_agent = anisette.user_agent.clone();
+        info.serial_number = anisette.serial_number.clone();
+        info
+    }
+
+    /// Placeholder machine. Callers that present an anisette OTP use [`Self::for_anisette`].
     pub fn default_macos() -> Self {
         let device_id = uuid::Uuid::new_v4().to_string().to_uppercase();
 
@@ -834,7 +901,7 @@ impl DeviceInfo {
             client_info:
                 "<MacBookPro15,1> <Mac OS X;14.3.1;23D60> <com.apple.AuthKit/1 (com.apple.akd/1.0)>"
                     .to_string(),
-            user_agent: "akd/1.0 CFNetwork/978.0.7 Darwin/18.7.0".to_string(),
+            user_agent: GRANDSLAM_USER_AGENT.to_string(),
         }
     }
 }
@@ -852,4 +919,83 @@ struct AuthInitResponse {
 struct AuthCompleteResponse {
     hamk: Vec<u8>,
     encrypted_response: Vec<u8>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_anisette() -> AnisetteData {
+        AnisetteData {
+            machine_id: "machine".into(),
+            otp: "otp".into(),
+            routing_info: 1,
+            local_user_id: "user".into(),
+            device_id: "DEVICE-ID".into(),
+            client_info:
+                "<MacBookPro13,2> <macOS;13.1;22C65> <com.apple.AuthKit/1 (com.apple.akd/1.0)>"
+                    .into(),
+            user_agent: "akd/1.0 CFNetwork/808.1.4".into(),
+            serial_number: "C02XXXXXXXXX".into(),
+        }
+    }
+
+    #[test]
+    fn login_identity_matches_the_anisette_machine() {
+        let anisette = sample_anisette();
+        let info = DeviceInfo::for_anisette(&anisette);
+        assert_eq!(info.device_id, anisette.device_id);
+        assert_eq!(info.client_info, anisette.client_info);
+        assert_eq!(info.user_agent, anisette.user_agent);
+        assert_eq!(info.serial_number, anisette.serial_number);
+        let marketing = XCODE_VERSION.split_whitespace().next().unwrap();
+        assert!(GRANDSLAM_USER_AGENT.contains(marketing));
+
+        let cpd = GrandSlamClient::new()
+            .build_client_data(&info, &anisette)
+            .into_dictionary()
+            .unwrap();
+        assert_eq!(
+            cpd.get("X-Mme-Client-Info").and_then(|v| v.as_string()),
+            Some(anisette.client_info.as_str())
+        );
+        assert_eq!(
+            cpd.get("X-Mme-Device-Id").and_then(|v| v.as_string()),
+            Some(anisette.device_id.as_str())
+        );
+        assert_eq!(
+            cpd.get("X-Apple-I-SRL-NO").and_then(|v| v.as_string()),
+            Some(anisette.serial_number.as_str())
+        );
+    }
+
+    #[test]
+    fn response_preview_keeps_words_and_hides_long_tokens() {
+        assert_eq!(response_preview(b"Request blocked"), "Request blocked");
+        let preview = response_preview(format!("token {}", "A".repeat(40)).as_bytes());
+        assert!(preview.starts_with("token AAAAAAAAAAAA…"), "{preview}");
+        assert!(!preview.contains(&"A".repeat(20)));
+    }
+
+    #[test]
+    fn binary_plist_parses_from_raw_bytes() {
+        let mut dict = plist::Dictionary::new();
+        dict.insert(
+            "et".into(),
+            plist::Value::Data(vec![0xff, 0xfe, 0x80, 0x01]),
+        );
+        let mut bytes = Vec::new();
+        plist::to_writer_binary(&mut bytes, &plist::Value::Dictionary(dict)).unwrap();
+        let parsed: plist::Value = plist::from_bytes(&bytes).unwrap();
+        assert_eq!(
+            parsed
+                .as_dictionary()
+                .unwrap()
+                .get("et")
+                .unwrap()
+                .as_data()
+                .unwrap(),
+            &[0xff, 0xfe, 0x80, 0x01]
+        );
+    }
 }

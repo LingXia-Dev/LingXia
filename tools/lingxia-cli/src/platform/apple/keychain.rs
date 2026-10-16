@@ -284,10 +284,12 @@ impl SigningIdentity {
         self.common_name.contains("Development") || self.common_name.contains("Developer")
     }
 
-    /// Check if this is a distribution certificate
-    #[allow(dead_code)]
+    /// Apple Distribution / iPhone Distribution, the identity that signs an App Store IPA.
     pub fn is_distribution(&self) -> bool {
-        self.common_name.contains("Distribution")
+        let name = self.common_name.as_str();
+        name.contains("Apple Distribution")
+            || name.contains("iPhone Distribution")
+            || name.contains("iOS Distribution")
     }
 }
 
@@ -388,6 +390,15 @@ mod tests {
         );
         assert_eq!(identity.team_id(), Some("ABCD1234EF"));
         assert!(identity.is_development());
+        assert!(!identity.is_distribution());
+    }
+
+    #[test]
+    fn distribution_identity_is_not_a_development_cert() {
+        let line = r#"  1) ABC123DEF456ABC123DEF456ABC123DEF456ABC1 "Apple Distribution: Jane Doe (ABCD1234EF)""#;
+        let identity = parse_identity_line(line).unwrap();
+        assert!(identity.is_distribution());
+        assert!(!identity.is_development());
     }
 
     #[test]
