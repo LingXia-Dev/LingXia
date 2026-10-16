@@ -422,7 +422,7 @@ enum LxAppSurface {
             )
         }
 
-        let contentContext = surfaceContext(kind: kind)
+        let contentContext = surfaceContext(kind: kind, appId: appId)
         // A bottom sheet only gains reach, not size: it is still measured
         // against the page's own frame, then its lower edge drops onto the
         // device screen so the card and its backdrop cover the tab bar.
@@ -1352,14 +1352,17 @@ enum LxAppSurface {
         )
     }
 
-    private static func surfaceContext(kind: Int32) -> SurfaceContext {
+    /// The frame a popup of `appId` is laid out against: the region that
+    /// lxapp occupies (its aside panel when it is an aside, else the main
+    /// content panel), so an aside's float stays over that aside.
+    private static func surfaceContext(kind: Int32, appId: String) -> SurfaceContext {
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
         guard kind != kindWindow else {
             return SurfaceContext(frame: screenFrame, anchorView: nil, parentWindow: nil)
         }
 
         if let shell = LxAppActiveHost.activeShell,
-           let context = contextFrame(for: shell.contentPanelView ?? shell.window?.contentView) {
+           let context = contextFrame(for: shell.presentationRegionView(for: appId)) {
             return context
         }
 
