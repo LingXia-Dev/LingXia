@@ -881,6 +881,7 @@ impl PageBridge {
         self.cancel_host_notifies_for_work(connection.work_id);
         crate::view_call::cancel_view_calls_for_work(
             connection.work_id,
+            page.instance_id_string().as_str(),
             "Document session revoked",
         );
         self.close_host_channels_for_work(page, connection.work_id, reason);
