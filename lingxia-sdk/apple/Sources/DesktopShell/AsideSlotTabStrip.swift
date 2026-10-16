@@ -106,7 +106,7 @@ final class AsideSlotTabStripView: NSView {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         itemViews.removeAll()
         for tab in tabs {
-            let icon = tab.iconPath.flatMap { NSImage(contentsOfFile: $0) } ?? Self.defaultTabIcon
+            let icon = tab.iconPath.flatMap { TabBarHelper.chromeIconImage(contentsOfFile: $0) } ?? Self.defaultTabIcon
             let tiled = icon.map { TabBarHelper.appTileIcon($0, size: ChromeTabMetrics.iconSize) }
             let item = AsideSlotTabItemView(tab: tab, icon: tiled)
             item.onSelect = { [weak self] in self?.onSelect?(tab.id) }
