@@ -22,8 +22,9 @@ use crate::policy::{
 use crate::tabs::{
     TabCreateState, browser_clear_pending_if_token_matches,
     browser_commit_navigation_if_token_matches, browser_create_token_for_path,
-    browser_internal_url_if_token_matches, browser_remove_tab_if_token_matches,
-    browser_tab_create_state, browser_tab_generation_matches, ensure_browser_lxapp,
+    browser_finish_webview_create, browser_internal_url_if_token_matches,
+    browser_pending_url_replaced, browser_remove_tab_if_token_matches, browser_tab_create_state,
+    browser_tab_generation_matches, ensure_browser_lxapp,
 };
 use crate::types::{BrowserNavigationPolicyDecision, BrowserNavigationPolicyRequest};
 use lingxia_log::{LogBuilder, LogLevel as LxLogLevel, LogTag};
@@ -954,57 +955,10 @@ async fn browser_on_webview_ready(
                     e
                 );
             }
-            if let Some(url) = pending_url {
-                // Internal browser pages (`lingxia://X`) need the startup bridge attached
-                // so they can communicate with the JS app service worker.
-                let is_browser_internal =
-                    extract_url_scheme(&url).as_deref() == Some(LINGXIA_SCHEME);
-                if is_browser_internal {
-                    if let Err(e) = browser_attach_tab_page(
-                        webview.clone(),
-                        &documents,
-                        &path,
-                        session_id,
-                        create_token,
-                        &tab_id,
-                        Some(url.as_str()),
-                    )
-                    .await
-                    {
-                        lxapp::warn!(
-                            "[InternalBrowser] Failed to attach startup page for internal tab {}: {}",
-                            tab_id,
-                            e
-                        );
-                        browser_clear_pending_if_token_matches(&tab_id, session_id, create_token);
-                        let _ = webview.load_url("about:blank");
-                    } else {
-                        browser_commit_navigation_if_token_matches(
-                            &tab_id,
-                            session_id,
-                            create_token,
-                            Some(&url),
-                        );
-                    }
-                } else {
-                    // Direct URL load — no bridge handshake needed, just navigate.
-                    if let Err(e) = webview.load_url(&url) {
-                        lxapp::warn!(
-                            "[InternalBrowser] Failed to load URL for tab {}: {}",
-                            tab_id,
-                            e
-                        );
-                        browser_clear_pending_if_token_matches(&tab_id, session_id, create_token);
-                    } else {
-                        browser_commit_navigation_if_token_matches(
-                            &tab_id,
-                            session_id,
-                            create_token,
-                            Some(&url),
-                        );
-                    }
-                }
-            } else {
+            // Replay a target that arrived while this load was still running.
+            // Same-URL opens are not a second load: commit already dropped them.
+            let mut pending_url = pending_url;
+            if pending_url.is_none() {
                 // Startup page: attach WebView to the tab's headless PageInstance, then load with nonce.
                 if let Err(e) = browser_attach_tab_page(
                     webview.clone(),
@@ -1034,10 +988,73 @@ async fn browser_on_webview_ready(
                         create_token,
                         Some(&startup_url),
                     );
+                    pending_url = browser_pending_url_replaced(
+                        &tab_id,
+                        session_id,
+                        create_token,
+                        &startup_url,
+                    );
                 }
+            }
+            while let Some(url) = pending_url {
+                // Internal browser pages (`lingxia://X`) need the startup bridge attached
+                // so they can communicate with the JS app service worker.
+                let is_browser_internal =
+                    extract_url_scheme(&url).as_deref() == Some(LINGXIA_SCHEME);
+                if is_browser_internal {
+                    if let Err(e) = browser_attach_tab_page(
+                        webview.clone(),
+                        &documents,
+                        &path,
+                        session_id,
+                        create_token,
+                        &tab_id,
+                        Some(url.as_str()),
+                    )
+                    .await
+                    {
+                        lxapp::warn!(
+                            "[InternalBrowser] Failed to attach startup page for internal tab {}: {}",
+                            tab_id,
+                            e
+                        );
+                        browser_clear_pending_if_token_matches(&tab_id, session_id, create_token);
+                        let _ = webview.load_url("about:blank");
+                        break;
+                    } else {
+                        browser_commit_navigation_if_token_matches(
+                            &tab_id,
+                            session_id,
+                            create_token,
+                            Some(&url),
+                        );
+                    }
+                } else {
+                    // Direct URL load — no bridge handshake needed, just navigate.
+                    if let Err(e) = webview.load_url(&url) {
+                        lxapp::warn!(
+                            "[InternalBrowser] Failed to load URL for tab {}: {}",
+                            tab_id,
+                            e
+                        );
+                        browser_clear_pending_if_token_matches(&tab_id, session_id, create_token);
+                        break;
+                    } else {
+                        browser_commit_navigation_if_token_matches(
+                            &tab_id,
+                            session_id,
+                            create_token,
+                            Some(&url),
+                        );
+                    }
+                }
+                pending_url = browser_pending_url_replaced(&tab_id, session_id, create_token, &url);
             }
         }
     }
+    // Includes a stale callback: its token no longer matches, so this does
+    // not clear the replacement create that now owns the tab.
+    browser_finish_webview_create(&tab_id, session_id, create_token);
 }
 
 pub(crate) fn browser_find_webview(

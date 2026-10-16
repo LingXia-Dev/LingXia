@@ -186,3 +186,21 @@ answers, and a call none matches goes to the selection.
   message says why.
 - Record a starting point from real traffic: `lxdev network record start`,
   use the app, `lxdev network record stop --out tests/scenarios/x.json`.
+  Only `fetch` answers become rules; `--requests FILE` also writes every
+  request that reached the network (`fetch`, SSE, `lx` transfers, redirect
+  hops) with headers, timing and decoded bodies. `record start --all`
+  includes other apps and host traffic. Each request names its `owner`
+  (the lxapp's appid, or `host:<subsystem>`) and `kind`:
+
+  ```text
+  $ lxdev network record stop --out x.json --requests r.json
+  recorded requests:
+    #40 GET http://127.0.0.1:8789/health 200 · lingxia-showcase fetch · ttfb 1.2ms · 1.2ms
+    #41 POST http://127.0.0.1:8789/upload 415 · lingxia-showcase fetch · ttfb 1.4ms · 1.4ms
+    #42 GET http://127.0.0.1:8789/media/sample.png 200 · lingxia-showcase download · ttfb 1.7ms · 1.7ms
+  ```
+
+  In `r.json`, secrets are masked in headers, URLs, JSON and form bodies,
+  and stream frames (`"requestBody": "user=alice&password=***"`). Page
+  WebViews cannot reach the network (`connect-src 'none'`); only their
+  `<img>` loads bypass the recording.

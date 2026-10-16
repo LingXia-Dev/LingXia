@@ -7,8 +7,9 @@
 //! answers, logs a warning to the session log, and it stands aside while a
 //! host automation run is active so it never steers a test.
 
-use super::capture::{self, REPORT_CALLS, Recording};
+use super::capture::{self, REPORT_CALLS};
 use super::mocks::Fresh;
+use super::observer;
 use super::registry::{
     self, DEV_SESSION_OWNER, DevClearReason, InstalledScenario, Registry, RouteAction, RuleSlot,
     now_ms,
@@ -286,22 +287,8 @@ pub(crate) fn status_of(routes: &Registry) -> Value {
             "clearedAt": scenario::iso_utc(cleared.cleared_ms as i64),
         })
     });
-    let recording = routes
-        .dev_recording
-        .as_ref()
-        .or(routes.run_recording.as_ref())
-        .map(|recording| {
-            let dev = recording.owner == DEV_SESSION_OWNER;
-            json!({
-                "owner": if dev { "dev-session" } else { "test-run" },
-                "appid": recording.appid,
-                "match": recording.matcher.as_ref().map(|m| m.label()),
-                "startedAt": scenario::iso_utc(recording.started_ms as i64),
-                "exchanges": recording.exchanges.len(),
-                // A dev recording pauses while a test run is active.
-                "paused": dev && routes.runs_active(),
-            })
-        });
+    let recording = observer::recording_status(routes.runs_active());
+    let (observer, observed) = observer::status(STATUS_CALLS);
     json!({
         "scope": "session",
         "active": scenario.is_some(),
@@ -314,6 +301,9 @@ pub(crate) fn status_of(routes: &Registry) -> Value {
         "recording": recording,
         "mock": routes.mocks.status(routes.runs_active()),
         "calls": routes.calls.recent(0, STATUS_CALLS, &[]),
+        // What reached the network, whoever sent it.
+        "observer": observer,
+        "observed": observed,
     })
 }
 
@@ -322,75 +312,35 @@ fn start_recording(owner: &str, appid: Option<&str>, matcher: Option<&str>) -> R
         .filter(|glob| !glob.trim().is_empty())
         .map(scenario::parse_url_string)
         .transpose()?;
-    registry::with_registry(|routes| {
-        let slot = if owner == DEV_SESSION_OWNER {
-            &mut routes.dev_recording
-        } else {
-            &mut routes.run_recording
-        };
-        if let Some(active) = slot {
-            return Err(if active.owner == DEV_SESSION_OWNER {
-                "a dev-session network recording is already running; stop it first \
-                 (`lxdev network record stop`)"
-                    .to_string()
-            } else {
-                "another test run is recording network traffic".to_string()
-            });
-        }
-        *slot = Some(Recording::new(owner, appid.map(str::to_string), matcher));
-        Ok(())
-    })
+    observer::start_recording(owner, appid.map(str::to_string), matcher)
 }
 
-fn stop_recording(owner: &str) -> Result<Option<Recording>, String> {
-    registry::with_registry(|routes| {
-        let incomplete = routes.calls.incomplete_recording(owner);
-        let in_flight = routes.calls.pending_recording(owner);
-        routes.calls.clear_recording(owner);
-        let slot = if owner == DEV_SESSION_OWNER {
-            &mut routes.dev_recording
-        } else {
-            &mut routes.run_recording
-        };
-        let stopped = slot.take_if(|recording| recording.owner == owner);
-        if incomplete {
-            return Err("network recording is incomplete: a call it was waiting on was evicted from the call history; recording discarded".to_string());
-        }
-        Ok(stopped.map(|mut recording| {
-            recording.dropped += in_flight;
-            recording
-        }))
-    })
-}
-
-/// Start capturing real Logic `fetch` traffic of `appid` (every app when
-/// `None`), optionally only URLs matching a glob or `/regex/`.
+/// Start capturing the real traffic of `appid` (every owner's, host
+/// subsystems' included, when `None`), optionally only URLs matching a glob
+/// or `/regex/`.
 pub fn record_start(appid: Option<&str>, matcher: Option<&str>) -> Result<(), String> {
     start_recording(DEV_SESSION_OWNER, appid, matcher)?;
     warn(
         appid.unwrap_or("*"),
-        "dev network recording started: real Logic fetch responses are being captured".into(),
+        "dev network recording started: real network traffic is being captured".into(),
     );
     Ok(())
 }
 
-/// Stop the dev recording: `{ scenario, exchanges, dropped }`.
+/// Stop the dev recording: `{ scenario, exchanges, dropped, requests }`,
+/// `requests` every recorded request in its report form.
 pub fn record_stop(name: Option<&str>) -> Result<Value, String> {
-    let recording = stop_recording(DEV_SESSION_OWNER)?
+    let stopped = observer::stop_recording(DEV_SESSION_OWNER)
         .ok_or_else(|| "no dev-session network recording is running".to_string())?;
     let name = name.map_or_else(
-        || {
-            format!(
-                "recorded {}",
-                scenario::iso_utc(recording.started_ms as i64)
-            )
-        },
+        || format!("recorded {}", scenario::iso_utc(stopped.started_ms as i64)),
         str::to_string,
     );
     Ok(json!({
-        "scenario": recording.to_scenario(&name),
-        "exchanges": recording.exchanges.len(),
-        "dropped": recording.dropped,
+        "scenario": stopped.scenario.to_scenario(&name),
+        "exchanges": stopped.scenario.exchanges.len(),
+        "dropped": stopped.scenario.dropped,
+        "requests": stopped.requests,
     }))
 }
 
@@ -398,10 +348,7 @@ pub fn record_stop(name: Option<&str>) -> Result<Value, String> {
 /// recording and mocks go with it (the next session loads its own).
 pub fn session_ended() {
     let had_scenario = end_scenario(DevClearReason::SessionEnded);
-    let had_recording = registry::with_registry(|routes| {
-        routes.calls.clear_recording(DEV_SESSION_OWNER);
-        routes.dev_recording.take().is_some()
-    });
+    let had_recording = observer::drop_recording(DEV_SESSION_OWNER);
     let had_mocks = registry::with_registry(|routes| {
         let had = !routes.mocks.sets.is_empty();
         routes.mocks.clear();
@@ -574,15 +521,19 @@ pub(crate) fn run_record(
 ) -> Result<Value, String> {
     match command {
         "start" => start_recording(run_id, None, None).map(|()| Value::Null),
-        "stop" => Ok(stop_recording(run_id)?
-            .map(|recording| run_scenario(&recording, name.unwrap_or("recorded"), secrets))
+        "stop" => Ok(observer::stop_recording(run_id)
+            .map(|stopped| run_scenario(&stopped.scenario, name.unwrap_or("recorded"), secrets))
             .unwrap_or(Value::Null)),
         other => Err(format!("unknown networkRecord command '{other}'")),
     }
 }
 
 /// The scenario a run recording amounts to, `secrets` masked everywhere.
-pub(crate) fn run_scenario(recording: &Recording, name: &str, secrets: &[String]) -> Value {
+pub(crate) fn run_scenario(
+    recording: &capture::Recording,
+    name: &str,
+    secrets: &[String],
+) -> Value {
     let mut scenario = recording.to_scenario(name);
     capture::mask_strings(&mut scenario, secrets);
     scenario

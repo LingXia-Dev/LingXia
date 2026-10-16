@@ -1,20 +1,20 @@
-//! Watching Logic `fetch` without changing it. One observation feeds three
-//! consumers:
+//! Watching Logic `fetch` without changing it. The wrapper's observation
+//! feeds two consumers:
 //!
 //! - the bounded call log that failed specs carry into their report;
-//! - a recording of real traffic into a scenario file (`--record-network`,
-//!   `lxdev network record`);
 //! - the response capture a contract check reads (`captureResponses()`,
 //!   `lxdev test --openapi`).
 //!
 //! The `fetch` wrapper opens a call with `observe`, which says whether a
-//! consumer wants the response body; the wrapper reads a clone of a buffered
-//! body (a streamed one once, handing the app an equivalent `Response`) and
-//! closes the call with `settle`.
+//! contract capture wants the response body; the wrapper reads a clone of a
+//! buffered body (a streamed one once, handing the app an equivalent
+//! `Response`) and closes the call with `settle`. Recordings of real traffic
+//! come from the network observer instead (`observer.rs`), and become a
+//! scenario file here ([`Recording`]).
 //! Each consumer applies its own bounds and redaction here. Pure Rust, so it
 //! is unit-testable without a JS engine.
 
-use super::registry::{Decision, UrlMatcher, now_ms};
+use super::registry::{Decision, now_ms};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::{Map, Value, json};
@@ -34,7 +34,7 @@ pub(crate) const MAX_TEXT_BODY_BYTES: usize = 1024 * 1024;
 /// A binary body larger than this is noted instead of recorded.
 pub(crate) const MAX_BINARY_BODY_BYTES: usize = 64 * 1024;
 /// Bodies one recording keeps in total.
-const MAX_RECORDED_BYTES: usize = 16 * 1024 * 1024;
+pub(crate) const MAX_RECORDED_BYTES: usize = 16 * 1024 * 1024;
 /// What a redacted value becomes in a report or a recorded body.
 pub(crate) const REDACTED: &str = "***";
 /// Captured body bytes per response unless the run asks for another limit.
@@ -49,7 +49,7 @@ const MAX_CAPTURED_BYTES: usize = 8 * 1024 * 1024;
 /// Names whose values are never recorded or logged, as JSON fields and as
 /// query parameters. Compared case-insensitively with `_` and `-` removed,
 /// so `access_token`, `accessToken` and `Access-Token` all match.
-const SECRET_NAMES: [&str; 14] = [
+const SECRET_NAMES: [&str; 15] = [
     "token",
     "accesstoken",
     "refreshtoken",
@@ -59,6 +59,7 @@ const SECRET_NAMES: [&str; 14] = [
     "clientsecret",
     "password",
     "authorization",
+    "proxyauthorization",
     "session",
     "sessionid",
     "cookie",
@@ -102,21 +103,26 @@ pub(crate) fn redact_url(url: &str, mask: &str) -> String {
     let path = strip_userinfo(path);
     let mut out = path;
     if let Some(query) = query {
-        let pairs: Vec<String> = query
-            .split('&')
-            .map(|pair| match pair.split_once('=') {
-                Some((name, _)) if is_secret_param(name) => format!("{name}={mask}"),
-                _ => pair.to_string(),
-            })
-            .collect();
         out.push('?');
-        out.push_str(&pairs.join("&"));
+        out.push_str(&redact_form(query, mask));
     }
     if let Some(fragment) = fragment {
         out.push('#');
         out.push_str(fragment);
     }
     out
+}
+
+/// `name=value&...` (a query or a form body) with every secret value masked.
+pub(crate) fn redact_form(pairs: &str, mask: &str) -> String {
+    pairs
+        .split('&')
+        .map(|pair| match pair.split_once('=') {
+            Some((name, _)) if is_secret_param(name) => format!("{name}={mask}"),
+            _ => pair.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("&")
 }
 
 /// `scheme://host[:port]/path` of `url`: userinfo, query and fragment can
@@ -204,21 +210,6 @@ pub(crate) struct CallRoute {
     pub rule: Option<(usize, String)>,
 }
 
-/// Which consumers want an observed call's response body.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct Watch {
-    /// The active recording keeps the response, whatever its type.
-    pub record: bool,
-    /// A contract capture keeps the response, and its body when JSON.
-    pub contract: bool,
-}
-
-impl Watch {
-    pub(crate) fn wants_body(self) -> bool {
-        self.record || self.contract
-    }
-}
-
 /// One observed Logic `fetch` (or SSE connection attempt).
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Call {
@@ -245,12 +236,10 @@ pub(crate) struct Call {
     /// asked (a route or rule answered, or the app has no mocks).
     pub selection: Option<&'static str>,
     pub(crate) raw_url: String,
-    /// Who wants this call's response.
-    pub(crate) watch: Watch,
+    /// A contract capture keeps the response, and its body when JSON.
+    pub(crate) contract: bool,
     /// The run capturing this call when it was sent, not when it settles.
     pub(crate) contract_owner: Option<String>,
-    /// Owner of the recording that keeps this call's response.
-    pub(crate) recorder: Option<String>,
 }
 
 impl Call {
@@ -333,8 +322,6 @@ pub(crate) struct Settled {
 pub(crate) struct CallLog {
     next_id: u64,
     calls: VecDeque<Call>,
-    /// Recording owners that lost an unfinished call to eviction.
-    incomplete_recordings: Vec<String>,
     incomplete_contract_apps: std::collections::BTreeSet<String>,
 }
 
@@ -343,7 +330,6 @@ impl CallLog {
         Self {
             next_id: 0,
             calls: VecDeque::new(),
-            incomplete_recordings: Vec::new(),
             incomplete_contract_apps: std::collections::BTreeSet::new(),
         }
     }
@@ -354,21 +340,15 @@ impl CallLog {
         kind: &'static str,
         method: &str,
         url: &str,
-        watch: Watch,
+        contract: bool,
     ) -> u64 {
         self.next_id += 1;
         if self.calls.len() >= MAX_CALLS
             && let Some(evicted) = self.calls.pop_front()
             && evicted.duration_ms.is_none()
+            && evicted.contract
         {
-            if evicted.watch.contract {
-                self.incomplete_contract_apps.insert(evicted.appid.clone());
-            }
-            if let Some(owner) = evicted.recorder
-                && !self.incomplete_recordings.contains(&owner)
-            {
-                self.incomplete_recordings.push(owner);
-            }
+            self.incomplete_contract_apps.insert(evicted.appid.clone());
         }
         self.calls.push_back(Call {
             id: self.next_id,
@@ -386,9 +366,8 @@ impl CallLog {
             unhandled: false,
             selection: None,
             raw_url: url.to_string(),
-            watch,
+            contract,
             contract_owner: None,
-            recorder: None,
         });
         self.next_id
     }
@@ -403,25 +382,11 @@ impl CallLog {
         self.calls.iter_mut().rev().find(|call| call.id == id)
     }
 
-    pub(crate) fn set_recorder(&mut self, id: u64, recorder: Option<String>) {
-        if let Some(call) = self.find(id) {
-            call.recorder = recorder;
-        }
-    }
-
-    /// `owner`'s recorded calls still waiting for their response.
-    pub(crate) fn pending_recording(&self, owner: &str) -> usize {
-        self.calls
-            .iter()
-            .filter(|call| call.recorder.as_deref() == Some(owner) && call.duration_ms.is_none())
-            .count()
-    }
-
     /// Snapshot only calls already in flight at a contract read boundary.
     pub(crate) fn pending_contract_ids(&self, appid: &str) -> Vec<u64> {
         self.calls
             .iter()
-            .filter(|call| call.appid == appid && call.watch.contract && call.duration_ms.is_none())
+            .filter(|call| call.appid == appid && call.contract && call.duration_ms.is_none())
             .map(|call| call.id)
             .collect()
     }
@@ -449,25 +414,8 @@ impl CallLog {
                 .as_ref()
                 .is_some_and(|owner| owner == run_id)
             {
-                call.watch.contract = false;
+                call.contract = false;
                 call.contract_owner = None;
-            }
-        }
-    }
-
-    pub(crate) fn incomplete_recording(&self, owner: &str) -> bool {
-        self.incomplete_recordings
-            .iter()
-            .any(|incomplete| incomplete == owner)
-    }
-
-    pub(crate) fn clear_recording(&mut self, owner: &str) {
-        self.incomplete_recordings
-            .retain(|incomplete| incomplete != owner);
-        for call in &mut self.calls {
-            if call.recorder.as_deref() == Some(owner) {
-                call.recorder = None;
-                call.watch.record = false;
             }
         }
     }
@@ -479,10 +427,6 @@ impl CallLog {
         use super::registry::RouteAction;
         let call = self.find(id)?;
         let action = decision.action.kind();
-        // A recording captures what the server said, not a route.
-        if !matches!(decision.action, RouteAction::Continue) {
-            call.watch.record = false;
-        }
         call.route = Some(CallRoute {
             pattern: decision.pattern.clone(),
             action,
@@ -491,20 +435,19 @@ impl CallLog {
             rule: decision.rule.clone(),
         });
         let fulfilled = matches!(decision.action, RouteAction::Fulfill(_));
-        let contract = call.watch.contract && fulfilled;
+        let contract = call.contract && fulfilled;
         // A pass-through or patched response is captured when it settles;
         // an abort, a hang or an event stream has no body to check.
         if !matches!(
             decision.action,
             RouteAction::Continue | RouteAction::Patch(_)
         ) {
-            call.watch.contract = false;
+            call.contract = false;
         }
         contract.then(|| call.clone())
     }
 
-    /// Finish a call; returns it when a recording or a contract capture
-    /// wants its response.
+    /// Finish a call; returns it when a contract capture wants its response.
     pub(crate) fn settle(&mut self, id: u64, settled: &Settled) -> Option<Call> {
         let call = self.find(id)?;
         if call.duration_ms.is_some() {
@@ -516,7 +459,7 @@ impl CallLog {
             .error
             .as_ref()
             .map(|error| error.chars().take(MAX_ERROR_CHARS).collect());
-        call.watch.wants_body().then(|| call.clone())
+        call.contract.then(|| call.clone())
     }
 
     /// The last `limit` calls that started at or after `since_ms`, oldest
@@ -592,14 +535,9 @@ pub(crate) struct Exchange {
     pub error: Option<String>,
 }
 
-/// Real Logic `fetch` traffic being captured into a scenario.
-#[derive(Debug)]
+/// Real `fetch` exchanges on their way into a scenario file.
+#[derive(Debug, Default)]
 pub(crate) struct Recording {
-    /// The run that started it, or the dev-session owner.
-    pub owner: String,
-    pub appid: Option<String>,
-    pub matcher: Option<UrlMatcher>,
-    pub started_ms: u64,
     pub exchanges: Vec<Exchange>,
     /// Exchanges past [`MAX_EXCHANGES`] or the body budget, or still in
     /// flight when the recording stopped.
@@ -608,30 +546,8 @@ pub(crate) struct Recording {
 }
 
 impl Recording {
-    pub(crate) fn new(owner: &str, appid: Option<String>, matcher: Option<UrlMatcher>) -> Self {
-        Self {
-            owner: owner.to_string(),
-            appid,
-            matcher,
-            started_ms: now_ms(),
-            exchanges: Vec::new(),
-            dropped: 0,
-            body_bytes: 0,
-        }
-    }
-
-    pub(crate) fn wants(&self, appid: &str, url: &str) -> bool {
-        self.appid
-            .as_deref()
-            .is_none_or(|expected| expected == appid)
-            && self
-                .matcher
-                .as_ref()
-                .is_none_or(|matcher| matcher.is_match(url))
-    }
-
-    pub(crate) fn push(&mut self, call: &Call, mut settled: Settled) {
-        settled.body = settled.body.map(|body| match body {
+    pub(crate) fn push(&mut self, mut exchange: Exchange) {
+        exchange.body = exchange.body.map(|body| match body {
             RecordedBody::Text(text) if text.len() > MAX_TEXT_BODY_BYTES => {
                 RecordedBody::Omitted(format!("text body of {} bytes not recorded", text.len()))
             }
@@ -640,21 +556,14 @@ impl Recording {
             }
             body => body,
         });
-        let body_len = settled.body.as_ref().map_or(0, RecordedBody::len);
+        let body_len = exchange.body.as_ref().map_or(0, RecordedBody::len);
         if self.exchanges.len() >= MAX_EXCHANGES || self.body_bytes + body_len > MAX_RECORDED_BYTES
         {
             self.dropped += 1;
             return;
         }
         self.body_bytes += body_len;
-        self.exchanges.push(Exchange {
-            method: call.method.clone(),
-            url: call.raw_url.clone(),
-            status: settled.status,
-            content_type: settled.content_type,
-            body: settled.body,
-            error: settled.error,
-        });
+        self.exchanges.push(exchange);
     }
 
     /// The scenario file this recording amounts to: one `http` rule per

@@ -271,8 +271,7 @@ impl lingxia_update::AppUpdateHost for HostAppUpdateService {
     ) -> BoxFuture<'a, Result<Option<UpdatePackageInfo>, UpdateError>> {
         Box::pin(async move {
             let target = UpdateTarget::app(Some(current_version));
-            self.provider
-                .check_update(target)
+            lingxia_transfer::scope_host_network_owner("update", self.provider.check_update(target))
                 .await
                 .map_err(UpdateError::from)
         })
@@ -283,7 +282,8 @@ impl lingxia_update::AppUpdateHost for HostAppUpdateService {
         update: &'a UpdatePackageInfo,
         progress: AppUpdateProgressReporter,
     ) -> BoxFuture<'a, Result<PathBuf, UpdateError>> {
-        Box::pin(async move {
+        Box::pin(lingxia_transfer::scope_host_network_owner(
+            "update",
             download_host_app_update_package(
                 self.runtime.clone(),
                 &update.url,
@@ -291,9 +291,8 @@ impl lingxia_update::AppUpdateHost for HostAppUpdateService {
                 &update.version,
                 update.size,
                 progress,
-            )
-            .await
-        })
+            ),
+        ))
     }
 
     fn install_app_update(&self, package_path: &Path, info_json: &str) -> Result<(), UpdateError> {

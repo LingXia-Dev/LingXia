@@ -16,6 +16,13 @@ standard = ["js-appservice"]
 automation = []
 # Test-only constructors for exercising native caller matrices across crates.
 test-utils = []
+# Attribute Logic and transfer traffic to its lxapp in Rong's network
+# observer. Development hosts only (the automation test runtime).
+network-observer = [
+    "rong_rt/network-observer",
+    "rong_http?/network-observer",
+    "lingxia-transfer/network-observer",
+]
 # OS process execution for explicitly capable desktop product hosts. Runtime
 # initialization remains restricted to the privileged home lxapp.
 process = ["js-appservice", "dep:rong_command"]

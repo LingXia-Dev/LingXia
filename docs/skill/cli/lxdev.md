@@ -102,7 +102,8 @@ the Runner):
 lxdev mock                        # the selection, its source, hits, errors
 lxdev mock all | none [TARGET…]   # live, until lxdev mock reset
 lxdev mock use checkout:empty-cart
-lxdev network status              # who answered each call
+lxdev network status              # who answered each call; what reached the network
+lxdev network record start        # then: record stop --out x.json [--requests r.json]
 ```
 
 Mock selection, clear, and reset affect the whole session; an app target does

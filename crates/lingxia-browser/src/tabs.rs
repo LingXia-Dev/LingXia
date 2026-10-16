@@ -35,10 +35,13 @@ pub(crate) struct BrowserTabState {
     /// Monotonic token to identify the current create lifecycle of this tab.
     /// Used to ignore stale async callbacks when tab gets recreated quickly.
     pub(crate) create_token: u64,
-    /// True while a WebView create for `create_token` is still in-flight.
-    /// Cleared once the create resolves; used to detect dead tabs whose
-    /// earlier create failed so they can be recreated instead of being
-    /// stuck with a `pending_url` that is never replayed.
+    /// True while a WebView create for `create_token` has not yet applied its
+    /// first navigation. An open in that window only updates `pending_url`;
+    /// the ready callback is the one load. A second trusted load races the
+    /// first and the loser fails attestation (`lost its WebView lifecycle
+    /// binding`). Cleared when that callback finishes, including when create
+    /// itself fails, so a dead tab can be recreated instead of keeping a
+    /// `pending_url` that is never replayed.
     pub(crate) create_in_flight: bool,
     /// URL queued for loading while WebView creation is in-flight.
     pub(crate) pending_url: Option<String>,
@@ -797,9 +800,9 @@ pub(crate) fn browser_tab_create_state(
     let user_agent_override = state.user_agent_override.clone();
     match state.tabs.get_mut(tab_id) {
         Some(tab) if tab.session_id == session_id && tab.create_token == create_token => {
-            // This create cycle now owns a live WebView; clear the in-flight
-            // marker so a missing WebView later means the tab must be recreated.
-            tab.create_in_flight = false;
+            // Leave `create_in_flight` set until the ready callback finishes
+            // the first navigation. Clearing it here lets an open find the
+            // live WebView and start a second trusted load.
             TabCreateState::Active {
                 pending_url: tab.pending_url.clone(),
                 user_agent_override,
@@ -858,8 +861,13 @@ pub(crate) fn browser_commit_navigation_if_token_matches(
             && tab.session_id == session_id
             && tab.create_token == create_token
         {
-            tab.pending_url = None;
-            tab.current_url = normalize_optional_string(current_url);
+            let committed_url = normalize_optional_string(current_url);
+            // A navigation requested while this load was running replaced
+            // `pending_url`. Keep that target; the ready callback replays it.
+            if tab.pending_url.as_deref().map(str::trim) == committed_url.as_deref() {
+                tab.pending_url = None;
+            }
+            tab.current_url = committed_url;
             true
         } else {
             false
@@ -867,6 +875,35 @@ pub(crate) fn browser_commit_navigation_if_token_matches(
     };
     if committed {
         notify_tabs_changed();
+    }
+}
+
+/// `pending_url` when it names a different target than the load that just
+/// finished. `None` when there is nothing further to replay.
+pub(crate) fn browser_pending_url_replaced(
+    tab_id: &str,
+    session_id: u64,
+    create_token: u64,
+    loaded_url: &str,
+) -> Option<String> {
+    let state = lock_state();
+    let tab = state.tabs.get(tab_id)?;
+    if tab.session_id != session_id || tab.create_token != create_token {
+        return None;
+    }
+    tab.pending_url
+        .as_ref()
+        .and_then(|pending| (pending.trim() != loaded_url.trim()).then(|| pending.clone()))
+}
+
+/// The ready callback has applied this create's first navigation.
+pub(crate) fn browser_finish_webview_create(tab_id: &str, session_id: u64, create_token: u64) {
+    let mut state = lock_state();
+    if let Some(tab) = state.tabs.get_mut(tab_id)
+        && tab.session_id == session_id
+        && tab.create_token == create_token
+    {
+        tab.create_in_flight = false;
     }
 }
 
@@ -994,15 +1031,24 @@ fn open_internal_browser_tab_with_scope(
         return Ok(tab_id);
     }
 
-    // Existing tab — load target URL if provided.
+    // Existing tab — load target URL if provided. While the ready callback
+    // still owns the first navigation, `pending_url` (set above) is the
+    // request; loading here as well races that callback.
     if has_target_url {
-        let create_token = lock_state()
+        let (create_token, create_in_flight) = lock_state()
             .tabs
             .get(&tab_id)
-            .map(|tab| tab.create_token)
+            .map(|tab| (tab.create_token, tab.create_in_flight))
             .ok_or_else(|| {
                 LxAppError::ResourceNotFound(format!("browser tab not found: {tab_id}"))
             })?;
+        if create_in_flight {
+            if !standalone {
+                let _ = set_active_browser_tab(&tab_id);
+            }
+            notify_tabs_changed();
+            return Ok(tab_id);
+        }
         match browser_load_url(&path, session_id, create_token, &normalized_target_url) {
             Ok(()) => {
                 if let Some(s) = lock_state().tabs.get_mut(&tab_id) {
@@ -1685,10 +1731,60 @@ mod tests {
                 user_agent_override: Some(user_agent),
             } if url == "https://example.test/" && user_agent == "TestAgent/1.0"
         ));
+        // The ready callback still owns the first navigation.
+        assert!(lock_state().tabs[&tab_id].create_in_flight);
+        browser_finish_webview_create(&tab_id, 42, 7);
         assert!(!lock_state().tabs[&tab_id].create_in_flight);
         let mut state = lock_state();
         state.tabs.remove(&tab_id);
         state.user_agent_override = previous_user_agent;
+    }
+
+    #[test]
+    fn commit_keeps_a_pending_url_replaced_during_the_load() {
+        let tab_id = generate_tab_id();
+        {
+            let mut state = lock_state();
+            state.tabs.insert(
+                tab_id.clone(),
+                BrowserTabState {
+                    session_id: 42,
+                    created_order: next_browser_created_order(),
+                    create_token: 7,
+                    create_in_flight: true,
+                    pending_url: Some("lingxia://settings".into()),
+                    initial_url: Some("lingxia://settings".into()),
+                    current_url: None,
+                    title: None,
+                    title_url: None,
+                    favicon_png: None,
+                    can_go_back: false,
+                    can_go_forward: false,
+                    discarded: false,
+                    data_mode: WebViewDataMode::ProfileDefault,
+                    url_callback: Arc::new(AtomicBool::new(false)),
+                    standalone: false,
+                    aside: false,
+                    owner_appid: None,
+                    owner_session_id: None,
+                },
+            );
+        }
+        browser_commit_navigation_if_token_matches(&tab_id, 42, 7, Some("lingxia://settings"));
+        assert!(lock_state().tabs[&tab_id].pending_url.is_none());
+
+        lock_state().tabs.get_mut(&tab_id).unwrap().pending_url =
+            Some("lingxia://downloads".into());
+        browser_commit_navigation_if_token_matches(&tab_id, 42, 7, Some("lingxia://settings"));
+        assert_eq!(
+            lock_state().tabs[&tab_id].pending_url.as_deref(),
+            Some("lingxia://downloads")
+        );
+        assert_eq!(
+            browser_pending_url_replaced(&tab_id, 42, 7, "lingxia://settings").as_deref(),
+            Some("lingxia://downloads")
+        );
+        lock_state().tabs.remove(&tab_id);
     }
 
     #[test]

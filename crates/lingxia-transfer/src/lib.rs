@@ -42,6 +42,53 @@ pub mod user_cache {
     };
 }
 
+/// Prefix of a host subsystem's network owner, so it never collides with an appid.
+pub const HOST_NETWORK_OWNER_PREFIX: &str = "host:";
+
+/// Attribute the requests `future` sends to `owner` (an appid, or
+/// `host:<subsystem>`) in a development host's network observer.
+pub async fn scope_network_owner<F: std::future::Future>(owner: &str, future: F) -> F::Output {
+    #[cfg(feature = "network-observer")]
+    {
+        rong_rt::http::scope_network_owner(rong_rt::http::NetworkOwner::new(owner), future).await
+    }
+    #[cfg(not(feature = "network-observer"))]
+    {
+        let _ = owner;
+        future.await
+    }
+}
+
+/// Which transfer a request is, for the network observer; without one it
+/// reports as `other`.
+#[derive(Clone, Copy)]
+pub(crate) enum TransferKind {
+    Download,
+    Upload,
+}
+
+pub(crate) fn tag_network_kind<B>(request: &mut http::Request<B>, kind: TransferKind) {
+    #[cfg(feature = "network-observer")]
+    if rong_rt::http::network_observer_installed() {
+        use rong_rt::http::{NetworkRequestKind, NetworkRequestTag};
+        let kind = match kind {
+            TransferKind::Download => NetworkRequestKind::Download,
+            TransferKind::Upload => NetworkRequestKind::Upload,
+        };
+        NetworkRequestTag::new(kind).insert_into(request);
+    }
+    #[cfg(not(feature = "network-observer"))]
+    let _ = (request, kind);
+}
+
+/// [`scope_network_owner`] for host subsystem `subsystem`.
+pub async fn scope_host_network_owner<F: std::future::Future>(
+    subsystem: &str,
+    future: F,
+) -> F::Output {
+    scope_network_owner(&format!("{HOST_NETWORK_OWNER_PREFIX}{subsystem}"), future).await
+}
+
 #[derive(Debug, Error)]
 pub enum DownloadsError {
     #[error("invalid parameter: {0}")]
@@ -202,19 +249,22 @@ pub fn retry(app_data_dir: &Path, task_id: &str) -> Result<()> {
                 task_id_owned.clone(),
                 user_cache::DownloadOwner {
                     kind: user_cache::DownloadOwnerKind::LxApp,
-                    appid: owner_appid,
+                    appid: owner_appid.clone(),
                     page_path: None,
                     tab_id: None,
                 },
                 true,
             );
-            let result = user_cache::download_to_path_with_behavior(
-                Some(persistence),
-                target_path,
-                user_cache::UserCacheDownloadRequest { url, headers },
-                user_agent,
-                behavior,
-                |_| {},
+            let result = scope_network_owner(
+                &owner_appid,
+                user_cache::download_to_path_with_behavior(
+                    Some(persistence),
+                    target_path,
+                    user_cache::UserCacheDownloadRequest { url, headers },
+                    user_agent,
+                    behavior,
+                    |_| {},
+                ),
             )
             .await;
             if let Err(err) = result {
@@ -271,19 +321,22 @@ pub fn resume(app_data_dir: &Path, task_id: &str) -> Result<()> {
                 task_id_owned.clone(),
                 user_cache::DownloadOwner {
                     kind: user_cache::DownloadOwnerKind::LxApp,
-                    appid: owner_appid,
+                    appid: owner_appid.clone(),
                     page_path: None,
                     tab_id: None,
                 },
                 true,
             );
-            let result = user_cache::download_to_path_with_behavior(
-                Some(persistence),
-                target_path,
-                user_cache::UserCacheDownloadRequest { url, headers },
-                user_agent,
-                behavior,
-                |_| {},
+            let result = scope_network_owner(
+                &owner_appid,
+                user_cache::download_to_path_with_behavior(
+                    Some(persistence),
+                    target_path,
+                    user_cache::UserCacheDownloadRequest { url, headers },
+                    user_agent,
+                    behavior,
+                    |_| {},
+                ),
             )
             .await;
             if let Err(err) = result

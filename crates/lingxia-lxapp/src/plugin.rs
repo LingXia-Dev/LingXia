@@ -418,16 +418,16 @@ async fn download_and_install_internal(
         version: required_version.to_string(),
         channel,
     };
-    let package = provider
-        .check_update(target)
-        .await
-        .map_err(|e| provider_error_to_lxapp_error(&e))?
-        .ok_or_else(|| {
-            LxAppError::IoError(format!(
-                "Plugin {} (lxPluginId: {}) not found on server",
-                plugin_name, plugin_id
-            ))
-        })?;
+    let package =
+        lingxia_transfer::scope_host_network_owner("update", provider.check_update(target))
+            .await
+            .map_err(|e| provider_error_to_lxapp_error(&e))?
+            .ok_or_else(|| {
+                LxAppError::IoError(format!(
+                    "Plugin {} (lxPluginId: {}) not found on server",
+                    plugin_name, plugin_id
+                ))
+            })?;
     let package = lingxia_update::verify_checked_update(
         package,
         &lingxia_update::UpdateVerifyTarget {

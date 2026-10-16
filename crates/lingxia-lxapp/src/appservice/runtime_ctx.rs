@@ -67,6 +67,11 @@ pub(crate) fn register_app_ctx(
     lxapp: &Arc<LxApp>,
 ) -> Rc<RefCell<HashMap<String, PageSvc>>> {
     let page_svc_map = Rc::new(RefCell::new(HashMap::new()));
+    #[cfg(all(feature = "network-observer", feature = "js-appservice"))]
+    rong_http::set_network_owner(
+        ctx,
+        Some(rong_rt::http::NetworkOwner::new(lxapp.appid.as_str())),
+    );
     ctx.set_service(LxAppRuntimeCtx {
         appid: lxapp.appid.clone(),
         active: Cell::new(true),

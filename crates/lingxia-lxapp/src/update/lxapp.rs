@@ -151,14 +151,15 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
         update: &'a UpdatePackageInfo,
     ) -> BoxFuture<'a, Result<(), UpdateError>> {
         Box::pin(async move {
-            self.manager()
-                .download_archive_with_checksum(
-                    &self.target_appid,
-                    self.release_type,
-                    &update.url,
-                    &update.checksum_sha256,
-                    &update.version,
-                )
+            let manager = self.manager();
+            let download = manager.download_archive_with_checksum(
+                &self.target_appid,
+                self.release_type,
+                &update.url,
+                &update.checksum_sha256,
+                &update.version,
+            );
+            lingxia_transfer::scope_host_network_owner("update", download)
                 .await
                 .map(|_| ())
                 .map_err(lxapp_error_to_update_error)
@@ -235,7 +236,9 @@ impl UpdateManager {
             LxAppUpdateQuery::Latest { .. } => None,
         };
         let target = UpdateTarget::lxapp(lxappid, release_type, query);
-        let package = provider.check_update(target).await.map_err(|e| {
+        let checked =
+            lingxia_transfer::scope_host_network_owner("update", provider.check_update(target));
+        let package = checked.await.map_err(|e| {
             crate::error!("check_update failed: {}", e).with_appid(lxappid);
             provider_error_to_lxapp_error(&e)
         })?;

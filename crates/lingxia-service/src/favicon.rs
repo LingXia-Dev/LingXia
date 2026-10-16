@@ -115,7 +115,11 @@ pub fn cached_or_request(
         let cache_root = cache_root.to_path_buf();
         let request_origin = origin.clone();
         std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
-            let succeeded = match fetch_and_store(&cache_root, &request_origin, &key).await {
+            let fetched = lingxia_transfer::scope_host_network_owner(
+                "favicon",
+                fetch_and_store(&cache_root, &request_origin, &key),
+            );
+            let succeeded = match fetched.await {
                 Ok(()) => {
                     on_ready();
                     true

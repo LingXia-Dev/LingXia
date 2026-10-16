@@ -68,7 +68,11 @@ pub(crate) fn handle(handler: &str, args: Option<Value>) -> Result<Option<Value>
         method::SCENARIO_CLEAR => Ok(Some(json!({ "cleared": network::clear_scenario() }))),
         method::STATUS => Ok(Some(network::status())),
         method::RECORD_START => {
-            let appid = Some(target_appid(text("appid"))?);
+            let appid = if args["all"] == true {
+                None
+            } else {
+                Some(target_appid(text("appid"))?)
+            };
             network::record_start(appid.as_deref(), text("match").as_deref())
                 .map_err(|err| format!("(usage): {err}"))?;
             let mut status = network::status();

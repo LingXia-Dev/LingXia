@@ -29,7 +29,6 @@ BACKUP_TARGET_DIR="$TARGET_PARENT/.prev-runner-$RUNNER_VERSION-$$"
 LINGXIA_BIN="${LINGXIA_BIN:-lingxia}"
 CARGO_BIN="${CARGO_BIN:-cargo}"
 NPM_BIN="${NPM_BIN:-npm}"
-APP_NAME="LingXiaRunner.app"
 BRIDGE_DIR="$ROOT_DIR/packages/lingxia-bridge"
 BRIDGE_RUNTIME="$BRIDGE_DIR/dist/bridge-runtime.es2020.js"
 
@@ -61,10 +60,10 @@ source "$ROOT_DIR/scripts/lib/cargo-target-dir.sh"
 # shellcheck source=../../../scripts/lib/swift-bridge.sh
 source "$ROOT_DIR/scripts/lib/swift-bridge.sh"
 TARGET_BASE="$(resolve_cargo_target_dir "$SCRIPT_DIR" "$ROOT_DIR/Cargo.toml")"
-APP_SRC="$TARGET_BASE/lingxia/macos/$APP_NAME"
+APP_OUT="$TARGET_BASE/lingxia/macos"
 
 echo "==> Cleaning Runner build outputs"
-rm -rf "$SCRIPT_DIR/.build" "$SCRIPT_DIR/.lingxia" "$TARGET_BASE/lingxia/macos"
+rm -rf "$SCRIPT_DIR/.build" "$SCRIPT_DIR/.lingxia" "$APP_OUT"
 
 echo "==> Building bridge runtime"
 (
@@ -112,10 +111,15 @@ echo "==> Building Runner"
   "$LINGXIA_BIN" build
 )
 
-if [[ ! -d "$APP_SRC" ]]; then
-  echo "ERROR: built app not found: $APP_SRC" >&2
+# The bundle name follows the package's display name ("LingXia Runner.app"
+# or "LingXiaRunner.app"); the output dir was emptied above, so take the one
+# bundle there, as `lingxia dev` does when it looks the Runner up.
+APP_SRC="$(find "$APP_OUT" -maxdepth 1 -name '*.app' -print -quit 2>/dev/null || true)"
+if [[ -z "$APP_SRC" || ! -d "$APP_SRC" ]]; then
+  echo "ERROR: built app not found in $APP_OUT" >&2
   exit 1
 fi
+APP_NAME="$(basename "$APP_SRC")"
 
 echo "==> Installing $APP_NAME to $TARGET_DIR"
 rm -rf "$TMP_TARGET_DIR" "$BACKUP_TARGET_DIR"

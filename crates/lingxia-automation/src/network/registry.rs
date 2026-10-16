@@ -2,7 +2,7 @@
 //! and the matched-request log. Pure Rust so it is unit-testable without a
 //! JS engine; `super` adapts it to the automation driver and Logic `fetch`.
 
-use super::capture::{CallLog, Captures, Observed, Recording, Settled, Source, Watch};
+use super::capture::{CallLog, Captures, Observed, Settled, Source};
 use super::mocks::{MOCK_HOLDER, MockDecision, Mocks};
 use lingxia_control_protocol::scenario::Matcher;
 use regex::Regex;
@@ -639,11 +639,6 @@ pub(crate) struct Registry {
     /// The dev scenario cleared last, and why.
     pub(crate) dev_cleared: Option<ClearedDevScenario>,
     pub(crate) calls: CallLog,
-    /// A recording a dev session started (`lxdev network record`). It
-    /// pauses while a host automation run is active, like dev routes.
-    pub(crate) dev_recording: Option<Recording>,
-    /// A recording a host run started (`lxdev test --record-network`).
-    pub(crate) run_recording: Option<Recording>,
     /// Contract captures of host runs (`captureResponses()`).
     pub(crate) captures: Captures,
     /// Every lxapp's `mocks/` handlers and the mock selection.
@@ -805,30 +800,20 @@ impl Registry {
             .find(|scenario| scenario.id == id)
     }
 
-    /// Open a call-log entry for a Logic request when a run or a recording
-    /// watches it: `(id, who wants its response)`. Only a `fetch` response
-    /// is captured for a contract check.
+    /// Open a call-log entry for a Logic request when a run, a dev scenario
+    /// or mocks watch it: `(id, contract)`, `contract` when a run captures
+    /// the app's `fetch` responses.
     pub(crate) fn observe(
         &mut self,
         appid: &str,
         kind: &'static str,
         method: &str,
         url: &str,
-    ) -> Option<(u64, Watch)> {
-        // A recording replays `fetch` answers; SSE connections are not
-        // recorded.
-        let recorder = (kind == "fetch")
-            .then(|| self.active_recording())
-            .flatten()
-            .filter(|recording| recording.wants(appid, url))
-            .map(|recording| recording.owner.clone());
-        let watch = Watch {
-            record: recorder.is_some(),
-            contract: kind == "fetch" && self.captures.capturing(appid),
-        };
+    ) -> Option<(u64, bool)> {
+        let contract = kind == "fetch" && self.captures.capturing(appid);
         // A dev scenario is logged too, so `lxdev network status` can say
         // who answered each call.
-        if !watch.wants_body()
+        if !contract
             && self.active_runs.is_empty()
             && self.dev.is_none()
             && self.mocks.sets.is_empty()
@@ -836,57 +821,22 @@ impl Registry {
         {
             return None;
         }
-        let id = self.calls.begin(appid, kind, method, url, watch);
-        if watch.contract
-            && let Some(call) = self.calls.find(id)
-        {
+        let id = self.calls.begin(appid, kind, method, url, contract);
+        if contract && let Some(call) = self.calls.find(id) {
             call.contract_owner = self.captures.owner(appid);
         }
-        self.calls.set_recorder(id, recorder);
-        Some((id, watch))
+        Some((id, contract))
     }
 
-    /// The recording that captures new calls: a run's while any host run is
-    /// active (a dev recording pauses, so it never captures test traffic),
-    /// otherwise the dev session's.
-    fn active_recording(&self) -> Option<&Recording> {
-        if self.runs_active() {
-            self.run_recording.as_ref()
-        } else {
-            self.dev_recording.as_ref()
-        }
-    }
-
-    /// Close a call-log entry and hand its response to whoever wants it:
-    /// the recording, the contract capture. Settling twice is a no-op.
+    /// Close a call-log entry and hand its response to the contract capture
+    /// that wants it. Settling twice is a no-op.
     pub(crate) fn settle(&mut self, id: u64, settled: Settled) {
         let Some(call) = self.calls.settle(id, &settled) else {
             return;
         };
-        if call.watch.contract
-            && let Some(observed) = Observed::settled(&call, &settled)
-        {
+        if let Some(observed) = Observed::settled(&call, &settled) {
             self.captures
                 .record_owned(&call.appid, call.contract_owner.as_ref(), observed);
-        }
-        // An app cancelling its own request is not something the server said.
-        if !call.watch.record
-            || settled
-                .error
-                .as_deref()
-                .is_some_and(|error| error.starts_with("AbortError"))
-        {
-            return;
-        }
-        // The recording that was active when the call started, if it still
-        // runs: a call does not move into a recording started later.
-        let owner = call.recorder.as_deref();
-        if let Some(recording) = [self.run_recording.as_mut(), self.dev_recording.as_mut()]
-            .into_iter()
-            .flatten()
-            .find(|recording| Some(recording.owner.as_str()) == owner)
-        {
-            recording.push(&call, settled);
         }
     }
 
@@ -960,15 +910,6 @@ impl Registry {
     pub(crate) fn clear_run(&mut self, run_id: &str) {
         self.scenario_pending.remove(run_id);
         self.active_runs.retain(|run| run != run_id);
-        // A dev recording outlives a scenario change; the session end stops it.
-        if self
-            .run_recording
-            .as_ref()
-            .is_some_and(|recording| recording.owner == run_id)
-        {
-            self.run_recording = None;
-        }
-        self.calls.clear_recording(run_id);
         if run_id == DEV_SESSION_OWNER {
             self.dev = None;
         }
@@ -1402,13 +1343,10 @@ impl Registry {
             match &decision {
                 MockDecision::Mock { key } => {
                     observed.mock = Some(key.clone());
-                    // A recording captures what a server said, not a mock.
-                    observed.watch.record = false;
                 }
                 MockDecision::Unhandled { .. } => {
                     observed.unhandled = true;
-                    observed.watch.record = false;
-                    observed.watch.contract = false;
+                    observed.contract = false;
                 }
                 MockDecision::Real => {}
             }
@@ -1433,7 +1371,7 @@ impl Registry {
         if matches!(action, RouteAction::Patch(_)) {
             return;
         }
-        let contract = std::mem::take(&mut observed.watch.contract);
+        let contract = std::mem::take(&mut observed.contract);
         let (appid, method, url) = (
             observed.appid.clone(),
             observed.method.clone(),
@@ -1566,8 +1504,6 @@ impl Registry {
     fn watched(&self) -> usize {
         self.routes.len()
             + self.active_runs.len()
-            + usize::from(self.dev_recording.is_some())
-            + usize::from(self.run_recording.is_some())
             + self.captures.len()
             + self.mocks.sets.len()
             + usize::from(!self.mocks.selection.owners().is_empty())
@@ -1616,12 +1552,10 @@ static ROUTES: Mutex<Registry> = Mutex::new(Registry {
     dev_scenario_generation: 0,
     dev_cleared: None,
     calls: CallLog::new(),
-    dev_recording: None,
-    run_recording: None,
     captures: Captures::new(),
     mocks: Mocks::new(),
 });
-/// Installed routes plus active runs and recordings, mirrored outside the
+/// Installed routes plus active runs and captures, mirrored outside the
 /// lock so Logic `fetch` pays one atomic load when nothing watches it.
 static ACTIVE: AtomicUsize = AtomicUsize::new(0);
 
@@ -1637,6 +1571,11 @@ pub(crate) fn with_registry<R>(f: impl FnOnce(&mut Registry) -> R) -> R {
 
 pub(crate) fn any_active() -> bool {
     ACTIVE.load(Ordering::Acquire) != 0
+}
+
+/// Whether a host automation run is active.
+pub(crate) fn runs_active() -> bool {
+    with_registry(|routes| routes.runs_active())
 }
 
 #[cfg(test)]

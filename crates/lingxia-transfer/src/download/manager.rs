@@ -2208,8 +2208,9 @@ pub async fn download_to_path_with_behavior(
 // proxy app control requests (or the proxy engine itself) recursively.
 async fn send_download_request(
     task: &DownloadTask,
-    request: HttpRequest<http_body_util::combinators::BoxBody<Bytes, IoError>>,
+    mut request: HttpRequest<http_body_util::combinators::BoxBody<Bytes, IoError>>,
 ) -> Result<host_http::HttpResponse, host_http::HttpError> {
+    crate::tag_network_kind(&mut request, crate::TransferKind::Download);
     #[cfg(feature = "http-proxy")]
     if let Some(proxy) = &task.http_proxy {
         return send_with_explicit_proxy(task, proxy.as_deref(), request).await;
