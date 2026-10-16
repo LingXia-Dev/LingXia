@@ -191,7 +191,7 @@ where
             let anisette = anisette_provider
                 .fetch_anisette_data()
                 .context("Failed to get anisette data")?;
-            let device_info = DeviceInfo::default_macos();
+            let device_info = DeviceInfo::for_anisette(&anisette);
             AppleDsClient::Private(Box::new(PrivateDsAuth {
                 adsid,
                 app_token,
