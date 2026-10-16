@@ -1809,6 +1809,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     func refreshNavigationBar(for appId: String) {
+        if let viewController = asideViewControllers[appId] {
+            viewController.updateNavigationBar(appId: appId, path: viewController.currentPath)
+            return
+        }
         guard currentViewController?.appId == appId,
               let viewController = getViewController(for: appId) else {
             return

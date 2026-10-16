@@ -28,16 +28,30 @@ class MacNavigationToolbar: NSView {
 
     private var showNavbar = false
     private var forceHidden = false
+    /// The window toolbar follows the shared (main) navigation state. An
+    /// aside lxapp's bar is fed its own app's state through `apply(_:)`.
+    private let followsSharedState: Bool
+    private var ownedState: NavigationBarState?
+    private var currentState: NavigationBarState? {
+        followsSharedState ? NavigationBarStateManager.shared.currentState : ownedState
+    }
     private var hasHostActions: Bool { !hostActionButtons.isEmpty }
 
     /// Called with "back" or "home" when user clicks a nav button
     var onNavigationAction: ((String) -> Void)?
     var onHostAction: ((String) -> Void)?
 
-    override init(frame frameRect: NSRect) {
+    override convenience init(frame frameRect: NSRect) {
+        self.init(frame: frameRect, followsSharedState: true)
+    }
+
+    init(frame frameRect: NSRect = .zero, followsSharedState: Bool) {
+        self.followsSharedState = followsSharedState
         super.init(frame: frameRect)
         setupViews()
-        subscribeToState()
+        if followsSharedState {
+            subscribeToState()
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -47,7 +61,7 @@ class MacNavigationToolbar: NSView {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         separator.layer?.backgroundColor = LxAppHostTheme.separator.cgColor
-        updateFromState(NavigationBarStateManager.shared.currentState)
+        updateFromState(currentState)
     }
 
     private func setupViews() {
@@ -70,6 +84,7 @@ class MacNavigationToolbar: NSView {
         backButton.contentTintColor = LxAppHostTheme.foreground.withAlphaComponent(0.8)
         backButton.target = self
         backButton.action = #selector(backClicked)
+        backButton.setAccessibilityLabel("Back")
         backButton.isHidden = true
         contentContainer.addSubview(backButton)
 
@@ -82,6 +97,7 @@ class MacNavigationToolbar: NSView {
         homeButton.contentTintColor = LxAppHostTheme.foreground.withAlphaComponent(0.8)
         homeButton.target = self
         homeButton.action = #selector(homeClicked)
+        homeButton.setAccessibilityLabel("Home")
         homeButton.isHidden = true
         contentContainer.addSubview(homeButton)
 
@@ -206,7 +222,13 @@ class MacNavigationToolbar: NSView {
     }
 
     func refreshCurrentState() {
-        updateFromState(NavigationBarStateManager.shared.currentState)
+        updateFromState(currentState)
+    }
+
+    /// Show `state` on a bar that does not follow the shared state.
+    func apply(_ state: NavigationBarState?) {
+        ownedState = state
+        updateFromState(state)
     }
 
     func updateHostActions(_ items: [LxAppUIActionItem]) {
