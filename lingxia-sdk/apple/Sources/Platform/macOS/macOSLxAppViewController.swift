@@ -17,6 +17,10 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     /// page until the runtime names one.
     private var currentPageInstanceId: String?
     private var sessionId: UInt64
+    /// Set when this controller hosts an lxapp presented as an aside. The
+    /// window's navigation toolbar and the core's current page belong to the
+    /// main, so an aside's page changes must not write either.
+    internal var hostsAside = false
     private var webViewContainer: NSView!
     private weak var activeWebView: WKWebView?
     /// Covers a freshly swapped-in webview until its document paints:
@@ -378,7 +382,9 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 animationType: animationType
             )
         }
-        LxAppCore.setCurrentPath(path, pageInstanceId: pageInstanceId)
+        if !hostsAside {
+            LxAppCore.setCurrentPath(path, pageInstanceId: pageInstanceId)
+        }
     }
 
     /// The page's WebView does not exist yet: show it when the runtime reports
@@ -433,6 +439,8 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     @MainActor
     func updateNavigationBar(appId: String, path: String) {
+        // The navigation toolbar is the main's; an aside has no slot in it.
+        guard !hostsAside else { return }
         NavigationBarStateManager.shared.updateState(appId: appId, path: path)
     }
 

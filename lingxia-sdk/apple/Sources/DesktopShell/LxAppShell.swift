@@ -229,6 +229,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private let sidebarRevealButton = NSButton()
     private var currentViewController: macOSLxAppViewController?
     private var viewControllers: [String: macOSLxAppViewController] = [:]
+    /// Lxapps presented as an aside, each in its own controller inside its
+    /// panel container. Separate from `viewControllers`, which are mains: an
+    /// aside never becomes the active main, and its page stack navigates in
+    /// place inside the panel.
+    private var asideViewControllers: [String: macOSLxAppViewController] = [:]
+    /// The aside panel each aside lxapp is mounted in.
+    private var asidePanelIdByAppId: [String: String] = [:]
     internal var appSessions: [String: UInt64] = [:]
     /// After a close, the shell reveals the runtime's next lxapp itself (and
     /// closes its window when none remain). A host that orchestrates closes
@@ -300,6 +307,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private(set) var contentPanelView: NSView?
 
     func getViewController(for appId: String) -> macOSLxAppViewController? {
+        // An lxapp occupies one region; when it is an aside its controller
+        // is the panel's, never a main.
+        if let viewController = asideViewControllers[appId] {
+            return viewController
+        }
         if let viewController = viewControllers[appId] {
             return viewController
         }
@@ -327,6 +339,27 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     func storeSession(_ sessionId: UInt64, for appId: String) {
         appSessions[appId] = sessionId
         LxAppCore.setSessionId(sessionId, for: appId)
+    }
+
+    /// The controller hosting `appId` when it is presented as an aside.
+    func asideViewController(for appId: String) -> macOSLxAppViewController? {
+        asideViewControllers[appId]
+    }
+
+    /// The view that bounds what `appId` presents: its aside panel while it
+    /// is a visible aside, else the main content panel. Floats an lxapp opens
+    /// anchor here, so a float from an aside lands over that aside.
+    func presentationRegionView(for appId: String?) -> NSView? {
+        if let appId,
+           let panelId = asidePanelIdByAppId[appId],
+           let container = workspaceManager.panelContainer(id: panelId),
+           container.window != nil,
+           !container.isHiddenOrHasHiddenAncestor,
+           container.bounds.width > 0,
+           container.bounds.height > 0 {
+            return container
+        }
+        return contentPanelView ?? window?.contentView
     }
 
     func ensureViewController(
@@ -1436,6 +1469,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     /// `pageInstanceId` names the page at `path`; nil means the app's current page.
     func openLxApp(appId: String, path: String, pageInstanceId: String?, sessionId: UInt64) {
+        // Opening as a main moves the lxapp out of any aside it was in; its
+        // navigation must then reach the main controller.
+        detachAsideLxApp(appId: appId)
         storeSession(sessionId, for: appId)
         LxAppCore.setCurrentApp(appId: appId, path: path, pageInstanceId: pageInstanceId)
         tabManager.addTab(appId: appId)
@@ -1929,6 +1965,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             viewController.view.removeFromSuperview()
             viewControllers.removeValue(forKey: appId)
         }
+        if let viewController = asideViewControllers[appId] {
+            viewController.destroyNativeComponents()
+        }
+        detachAsideLxApp(appId: appId)
 
         tabManager.closeTab(appId: appId)
         appSessions.removeValue(forKey: appId)
@@ -2630,12 +2670,6 @@ extension LxAppShell: BrowserCoordinatorHost {
 // MARK: - Panel Methods
 
 extension LxAppShell {
-    // A cold Logic worker can take several seconds before it starts the page
-    // navigation. Keep the themed placeholder until then instead of replacing
-    // it with a blank WKWebView as soon as the view object is allocated.
-    private static let panelAttachMaxRetry = 240
-    private static let panelAttachRetryDelay: TimeInterval = 0.05
-
     func showPanelWithContent(
         id: String,
         position: PanelPosition,
@@ -2662,8 +2696,7 @@ extension LxAppShell {
         lxShellStdoutLog(
             "showPanelWithContent afterShow id=\(id) containerFrame=\(lxShellFormatRect(workspaceManager.panelContainer(id: id)?.frame ?? .zero)) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))"
         )
-        attachPanelWebViewWhenReady(
-            panelId: id, appId: appId, path: path, pageInstanceId: pageInstanceId, attempt: 0)
+        mountAsideLxApp(panelId: id, appId: appId, path: path, pageInstanceId: pageInstanceId)
     }
 
     func showPanelWithNativeContent(
@@ -2745,11 +2778,63 @@ extension LxAppShell {
             let config = PanelConfig(id: id, position: position)
             workspaceManager.registerPanel(config)
         }
-        attachPanelWebViewWhenReady(
-            panelId: id, appId: appId, path: path, pageInstanceId: pageInstanceId, attempt: 0)
+        mountAsideLxApp(panelId: id, appId: appId, path: path, pageInstanceId: pageInstanceId)
+    }
+
+    /// Host the aside lxapp in its own controller inside the panel, so its
+    /// page stack (navigateTo / navigateBack / redirectTo) presents in the
+    /// panel with page transitions instead of building a main for the app.
+    /// `pageInstanceId` names the page to show; nil means the app's current page.
+    private func mountAsideLxApp(
+        panelId: String,
+        appId: String,
+        path: String,
+        pageInstanceId: String?
+    ) {
+        guard let sessionId = resolvedSessionId(for: appId),
+              let container = workspaceManager.panelContainer(id: panelId) else {
+            lxShellStdoutLog("mountAsideLxApp missingSessionOrContainer id=\(panelId) appId=\(appId)")
+            return
+        }
+        if let previousPanelId = asidePanelIdByAppId[appId], previousPanelId != panelId,
+           let viewController = asideViewControllers[appId] {
+            viewController.view.removeFromSuperview()
+        }
+        asidePanelIdByAppId[appId] = panelId
+
+        if let viewController = asideViewControllers[appId] {
+            // One lxapp, one region — a re-open names the page to show now.
+            viewController.updateSessionId(sessionId)
+            attachPanelContentView(viewController.view, container: container)
+            viewController.navigate(
+                appId: appId, to: path, pageInstanceId: pageInstanceId, with: .none)
+            return
+        }
+
+        let viewController = macOSLxAppViewController(
+            appId: appId,
+            path: path,
+            pageInstanceId: pageInstanceId,
+            sessionId: sessionId
+        )
+        viewController.hostsAside = true
+        asideViewControllers[appId] = viewController
+        // Loading the view mounts the page, waiting for its WebView when a
+        // cold Logic worker has not created it yet.
+        attachPanelContentView(viewController.view, container: container)
+    }
+
+    /// Take `appId` out of its aside panel without ending the session.
+    private func detachAsideLxApp(appId: String) {
+        asidePanelIdByAppId.removeValue(forKey: appId)
+        guard let viewController = asideViewControllers.removeValue(forKey: appId) else { return }
+        viewController.view.removeFromSuperview()
     }
 
     func unregisterPanel(id: String) {
+        for (appId, panelId) in asidePanelIdByAppId where panelId == id {
+            detachAsideLxApp(appId: appId)
+        }
         preserveWindowFrameDuringPanelLayout(reason: "unregisterPanel:\(id)") {
             workspaceManager.unregisterPanel(id: id)
         }
@@ -2875,50 +2960,6 @@ extension LxAppShell {
         suppressFrameRestorationMove = true
         window.setFrame(frameBefore, display: true)
         suppressFrameRestorationMove = false
-    }
-
-    /// `pageInstanceId` names the panel's page; nil means the app's current page.
-    private func attachPanelWebViewWhenReady(
-        panelId: String,
-        appId: String,
-        path: String,
-        pageInstanceId: String?,
-        attempt: Int
-    ) {
-        guard let sessionId = appSessions[appId],
-              let container = workspaceManager.panelContainer(id: panelId) else {
-            return
-        }
-
-        if let webView = WebViewManager.pageWebView(
-            appId: appId,
-            sessionId: sessionId,
-            pageInstanceId: pageInstanceId
-        ), webView.url != nil, !webView.isLoading {
-            // One lxapp, one region — a re-open with a DIFFERENT page replaces
-            // the older content: clear previous subviews (stale webview or the
-            // loading spinner) so they don't stack up behind the new page.
-            container.subviews.filter { $0 !== webView }.forEach { $0.removeFromSuperview() }
-            WebViewManager.configureWebViewTransparency(webView, transparent: false)
-            WebViewManager.hideLxAppScrollIndicators(webView)
-            WebViewManager.attachWebViewToContainer(webView, container: container)
-            return
-        }
-
-        guard attempt < Self.panelAttachMaxRetry else {
-            LXLog.error("panel webview attach timed out for panel=\(panelId) appId=\(appId) path=\(path)", category: "LxAppShell")
-            return
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.panelAttachRetryDelay) { [weak self] in
-            self?.attachPanelWebViewWhenReady(
-                panelId: panelId,
-                appId: appId,
-                path: path,
-                pageInstanceId: pageInstanceId,
-                attempt: attempt + 1
-            )
-        }
     }
 
     private func attachPanelContentView(_ view: NSView, container: NSView) {
