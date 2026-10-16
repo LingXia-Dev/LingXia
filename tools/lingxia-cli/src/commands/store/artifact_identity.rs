@@ -60,7 +60,7 @@ fn extract(artifact: &Path) -> Result<Extracted> {
             let mut zip = zip::ZipArchive::new(file)
                 .with_context(|| format!("read {}", artifact.display()))?;
             let inner = (0..zip.len()).find_map(|i| {
-                let name = zip.name_for_index(i)?.to_string();
+                let name = zip.name_for_index(i)?.ok()?.into_owned();
                 name.to_ascii_lowercase().ends_with(".msix").then_some(i)
             });
             match inner {
@@ -118,7 +118,7 @@ fn ipa_plist(artifact: &Path) -> Result<plist::Value> {
     let mut zip =
         zip::ZipArchive::new(file).with_context(|| format!("read {}", artifact.display()))?;
     let plist_index = (0..zip.len()).find_map(|i| {
-        let name = zip.name_for_index(i)?;
+        let name = zip.name_for_index(i)?.ok()?;
         let mut parts = name.split('/');
         (parts.next() == Some("Payload")
             && parts.next().is_some_and(|p| p.ends_with(".app"))

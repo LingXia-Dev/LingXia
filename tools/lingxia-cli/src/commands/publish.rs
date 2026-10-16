@@ -565,8 +565,9 @@ fn read_host_package(path: &Path) -> Result<(&'static str, AppPackageMetadata)> 
     // PowerShell `Compress-Archive` stores backslash-separated names.
     let names: Vec<(String, String)> = zip
         .file_names()
-        .map(|name| (name.replace('\\', "/"), name.to_string()))
-        .collect();
+        .map(|name| name.map(|name| (name.replace('\\', "/"), name.into_owned())))
+        .collect::<zip::result::ZipResult<_>>()
+        .map_err(|_| not_host())?;
     let normalized: Vec<&str> = names.iter().map(|(name, _)| name.as_str()).collect();
     let (platform, app_json) = classify_host_package(&normalized).ok_or_else(not_host)?;
     let original = names

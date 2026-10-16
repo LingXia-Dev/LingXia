@@ -1100,10 +1100,12 @@ fn pack_harmony_app(
 
 fn embed_signed_hap(app: &Path, dest: &Path, signed_hap: &Path) -> Result<()> {
     let mut archive = zip::ZipArchive::new(std::fs::File::open(app)?)?;
-    let hap_names: Vec<_> = archive
+    let hap_names: Vec<String> = archive
         .file_names()
+        .collect::<zip::result::ZipResult<Vec<_>>>()?
+        .into_iter()
         .filter(|name| name.ends_with(".hap"))
-        .map(str::to_owned)
+        .map(|name| name.into_owned())
         .collect();
     if hap_names.len() != 1 {
         bail!(
@@ -1118,10 +1120,11 @@ fn embed_signed_hap(app: &Path, dest: &Path, signed_hap: &Path) -> Result<()> {
         let mut writer = zip::ZipWriter::new(output.as_file_mut());
         for index in 0..archive.len() {
             let entry = archive.by_index(index)?;
-            if entry.name() == hap_names[0] {
+            let name = entry.name()?.into_owned();
+            if name == hap_names[0] {
                 let options = zip::write::SimpleFileOptions::default()
                     .compression_method(entry.compression());
-                writer.start_file(entry.name(), options)?;
+                writer.start_file(name, options)?;
                 std::io::copy(&mut std::fs::File::open(signed_hap)?, &mut writer)?;
             } else {
                 writer.raw_copy_file(entry)?;
