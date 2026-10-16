@@ -49,14 +49,6 @@ impl IosPlatform {
         let profile_dir = config.profile.as_str();
         let cargo_target_dir = resolve_cargo_target_dir(project_root);
 
-        if !config.build_native {
-            // Return expected path even if not building
-            return Ok(cargo_target_dir
-                .join(IOS_TARGET)
-                .join(profile_dir)
-                .join("liblingxia.a"));
-        }
-
         if config.lingxia_config.is_none() {
             return Ok(cargo_target_dir
                 .join(IOS_TARGET)
@@ -361,7 +353,7 @@ impl Platform for IosPlatform {
         // `build_rust_library`.
         if !config.skip_native_build {
             self.do_build_rust_library(&config.project_root, config, ios_config)?;
-            if config.build_native && config.lingxia_config.is_some() {
+            if config.lingxia_config.is_some() {
                 apple::update_spm_rust_link_stamp(
                     &config.project_root,
                     &sdk_root,
@@ -521,7 +513,7 @@ impl Platform for IosPlatform {
     fn build_rust_library(&self, config: &BuildConfig) -> Result<()> {
         let ios_config = self.ios_config(config);
         self.do_build_rust_library(&config.project_root, config, ios_config)?;
-        if config.build_native && config.lingxia_config.is_some() {
+        if config.lingxia_config.is_some() {
             apple::update_spm_rust_link_stamp(
                 &config.project_root,
                 &config.project_root,

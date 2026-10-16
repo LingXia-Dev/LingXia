@@ -82,25 +82,8 @@ impl HarmonyPlatform {
             }
         }
 
-        if config.build_native {
-            let so_path = self.build_rust_library(&config.project_root, config)?;
-            self.stage_native_library(&so_path, &staging)?;
-        } else {
-            // A hap without the native library installs fine and then crashes
-            // on launch, so "use existing" must mean one actually exists.
-            let staged = staging.join("entry/libs/arm64-v8a/liblingxia.so");
-            if !staged.is_file() {
-                anyhow::bail!(
-                    "--skip-native, but no staged native library at {} — run once without \
-                     --skip-native first",
-                    staged.display()
-                );
-            }
-            println!(
-                "  {} Skipping native compilation (using existing .so)",
-                "⏭️".dimmed()
-            );
-        }
+        let so_path = self.build_rust_library(&config.project_root, config)?;
+        self.stage_native_library(&so_path, &staging)?;
 
         if config.native_only {
             // CI build-verification: the ohos cross-compile is the goal. The
@@ -343,7 +326,7 @@ fn prepare_harmony_staging(source: &Path, config: &BuildConfig) -> Result<PathBu
         .join("harmony")
         .join("build")
         .join(config.resolved_env.version.as_str());
-    mirror_harmony_project(source, &staging, !config.build_native)?;
+    mirror_harmony_project(source, &staging)?;
     rewrite_staged_source_paths(&staging, source)?;
     rewrite_app_bundle_name(&staging, config)?;
     rewrite_app_version(&staging, config)?;
@@ -360,17 +343,7 @@ fn prepare_harmony_staging(source: &Path, config: &BuildConfig) -> Result<PathBu
     Ok(staging)
 }
 
-fn mirror_harmony_project(source: &Path, staging: &Path, preserve_native: bool) -> Result<()> {
-    let library = staging.join("entry/libs/arm64-v8a/liblingxia.so");
-    // The source mirror can contain an older library. Preserve the last
-    // successful build before cleaning staging when --skip-native is used.
-    let saved_library = if preserve_native && library.is_file() {
-        let saved = tempfile::NamedTempFile::new()?;
-        std::fs::copy(&library, saved.path())?;
-        Some(saved)
-    } else {
-        None
-    };
+fn mirror_harmony_project(source: &Path, staging: &Path) -> Result<()> {
     if staging.exists() {
         std::fs::remove_dir_all(staging)
             .with_context(|| format!("Failed to clean {}", staging.display()))?;
@@ -378,10 +351,6 @@ fn mirror_harmony_project(source: &Path, staging: &Path, preserve_native: bool) 
     const SKIP: &[&str] = &[".lingxia", "oh_modules", "build"];
     copy_dir_recursive_excluding(source, staging, SKIP)
         .with_context(|| format!("Failed to mirror Harmony project to {}", staging.display()))?;
-    if let Some(saved) = saved_library {
-        std::fs::create_dir_all(library.parent().unwrap())?;
-        std::fs::copy(saved.path(), &library)?;
-    }
     Ok(())
 }
 
@@ -1245,33 +1214,6 @@ mod tests {
                 .unwrap();
             assert_eq!(bytes, expected);
         }
-    }
-
-    #[test]
-    fn skip_native_keeps_built_library_instead_of_stale_source_copy() {
-        let root = TempDir::new().unwrap();
-        let source = root.path().join("source");
-        let staging = root.path().join("staging");
-        let relative = "entry/libs/arm64-v8a/liblingxia.so";
-        for directory in [&source, &staging] {
-            fs::create_dir_all(directory.join(relative).parent().unwrap()).unwrap();
-        }
-        fs::write(source.join(relative), b"old source library").unwrap();
-        fs::write(staging.join(relative), b"current built library").unwrap();
-        super::mirror_harmony_project(&source, &staging, true).unwrap();
-        assert_eq!(
-            fs::read(staging.join(relative)).unwrap(),
-            b"current built library"
-        );
-        assert_eq!(
-            fs::read(source.join(relative)).unwrap(),
-            b"old source library"
-        );
-        super::mirror_harmony_project(&source, &staging, false).unwrap();
-        assert_eq!(
-            fs::read(staging.join(relative)).unwrap(),
-            b"old source library"
-        );
     }
 
     #[test]

@@ -70,7 +70,6 @@ fn dev_native_features(
 pub struct DevExecuteOptions {
     pub target: Option<String>,
     pub release: bool,
-    pub build_native: bool,
     pub framework: Option<String>,
     pub progress: Option<String>,
     pub device: Option<String>,
@@ -114,7 +113,6 @@ struct DevContext {
     project_root: std::path::PathBuf,
     config: LingXiaConfig,
     build_profile: BuildProfile,
-    build_native: bool,
     framework: Option<ProjectFramework>,
     progress: Option<String>,
     device: Option<String>,
@@ -471,7 +469,6 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
         project_root,
         config,
         build_profile,
-        build_native: options.build_native,
         framework: options
             .framework
             .as_deref()

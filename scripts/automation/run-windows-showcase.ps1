@@ -247,13 +247,11 @@ function Get-UnexpectedWindowsSessionErrors {
 
 function Start-ShowcaseSession {
   param(
-    [string]$Framework,
-    [switch]$SkipNative
+    [string]$Framework
   )
   $devArguments = @(
     'dev', '--background', '--platform', 'windows', '--framework', $Framework
   )
-  if ($SkipNative) { $devArguments += '--skip-native' }
   # Returns once the session is ready; a failed or timed-out start has
   # already stopped what it started and exits non-zero with its log.
   Invoke-Checked $lingxia $devArguments
@@ -330,14 +328,11 @@ try {
 
     $frameworks = if ($Framework -eq 'all') { @('react', 'vue') } else { @($Framework) }
     $frameworks = @($frameworks)
-    for ($frameworkIndex = 0; $frameworkIndex -lt $frameworks.Count; $frameworkIndex += 1) {
-      $currentFramework = $frameworks[$frameworkIndex]
+    foreach ($currentFramework in $frameworks) {
       Write-Host "Starting Windows Showcase ($currentFramework)..."
       $started = $false
       try {
-        # React and Vue exercise the same native host. Keep the second pass in
-        # this job and only rebuild its lxapp assets.
-        Start-ShowcaseSession -Framework $currentFramework -SkipNative:($frameworkIndex -gt 0)
+        Start-ShowcaseSession -Framework $currentFramework
         $started = $true
 
         Push-Location $lxappRoot
@@ -352,7 +347,7 @@ try {
             Write-Host "Stopping Windows Showcase ($currentFramework)..."
             Stop-ShowcaseSession
             $started = $false
-            Start-ShowcaseSession -Framework $currentFramework -SkipNative
+            Start-ShowcaseSession -Framework $currentFramework
             $started = $true
             Set-Location $lxappRoot
             $testExitCode = Invoke-ShowcaseSuite -Framework $currentFramework -ResultDirectory $resultDirectory

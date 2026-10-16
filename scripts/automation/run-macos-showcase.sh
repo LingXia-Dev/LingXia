@@ -48,15 +48,10 @@ else
 fi
 (cd "$showcase_root" && "$lingxia" doctor --platform macos)
 
-for framework_index in "${!frameworks[@]}"; do
-  current_framework=${frameworks[$framework_index]}
+for current_framework in "${frameworks[@]}"; do
   session_name="showcase-macos-$current_framework"
   dev_args=(dev --background --platform macos --framework "$current_framework"
     --name "$session_name")
-  if (( framework_index > 0 )); then
-    # Both renderers use the same native host; only restage the Vue lxapp.
-    dev_args+=(--skip-native)
-  fi
 
   result_dir="$lxapp_root/test-results/automation/macos-$current_framework"
   mkdir -p "$result_dir"

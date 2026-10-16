@@ -164,10 +164,6 @@ gradle.settingsEvaluated {{ settings ->
 
     /// Build Rust library for Android
     fn do_build_rust_library(&self, project_root: &Path, config: &BuildConfig) -> Result<()> {
-        if !config.build_native {
-            return Ok(());
-        }
-
         println!("{}", "Compiling native code...".cyan());
 
         let ndk_path = Self::detect_ndk_path()?;

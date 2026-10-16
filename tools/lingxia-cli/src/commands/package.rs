@@ -5,10 +5,6 @@ use clap::Args;
 
 #[derive(Args, Clone)]
 pub struct PackageOptions {
-    /// Skip native Rust library compilation (use existing binaries)
-    #[arg(long)]
-    pub skip_native: bool,
-
     /// Android ABIs (comma-separated). Default: arm64-v8a. Use `all` for arm32 + arm64.
     #[arg(
         long = "android-abis",
@@ -75,7 +71,6 @@ pub struct PackageOptions {
 }
 
 pub struct PackageExecuteOptions {
-    pub build_native: bool,
     pub android_abis: Vec<String>,
     pub macos_arch: Option<String>,
     pub framework: Option<String>,
@@ -99,7 +94,6 @@ pub fn execute(options: PackageExecuteOptions) -> Result<()> {
     let env_version = options.env_version.or_else(|| Some("prod".to_string()));
     build::execute(BuildExecuteOptions {
         release: true,
-        build_native: options.build_native,
         android_abis: options.android_abis,
         macos_arch: options.macos_arch,
         framework: options.framework,
