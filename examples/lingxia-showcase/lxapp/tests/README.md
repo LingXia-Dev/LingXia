@@ -126,8 +126,7 @@ From the repository root:
 The runner builds `lingxia` and `lxdev` from the current checkout, installs
 both executables into `~/.local/bin`, then starts and tests React and Vue in
 separate Windows dev sessions. Pass `-Framework react` or `-Framework vue` to
-run one renderer. In `all` mode, Vue reuses the React native build with
-`--skip-native`. Artifacts and session logs are retained under
+run one renderer. Artifacts and session logs are retained under
 `lxapp/test-results/automation/windows-<framework>`.
 
 ## Running on macOS
@@ -138,9 +137,7 @@ From the repository root:
 bash scripts/automation/run-macos-showcase.sh all
 ```
 
-Pass `react` or `vue` as the first argument to run one renderer. The `all`
-mode builds the native host for React, then reuses that host with
-`--skip-native` for Vue.
+Pass `react` or `vue` as the first argument to run one renderer.
 
 ## Running on Android locally
 

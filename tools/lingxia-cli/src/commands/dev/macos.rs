@@ -26,7 +26,6 @@ pub(super) fn execute_macos(ctx: DevContext) -> Result<()> {
         let build_config = BuildConfig {
             project_root: ctx.project_root.clone(),
             profile: ctx.build_profile,
-            build_native: ctx.build_native,
             targets: vec![],
             lingxia_config: Some(ctx.config.clone()),
             ipa: false,

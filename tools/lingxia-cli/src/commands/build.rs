@@ -14,7 +14,6 @@ use std::{env, fs};
 
 pub struct BuildExecuteOptions {
     pub release: bool,
-    pub build_native: bool,
     pub android_abis: Vec<String>,
     pub macos_arch: Option<String>,
     pub framework: Option<String>,
@@ -71,7 +70,6 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     let _preparation = crate::build_prepare::Scope::enter();
     let BuildExecuteOptions {
         release,
-        build_native,
         android_abis,
         macos_arch,
         framework,
@@ -238,7 +236,6 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         return build_standalone_apple_swift_package(
             &project_root,
             inferred_platform_from_subdir,
-            build_native,
             release,
             macos_arch,
             platforms,
@@ -447,7 +444,6 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         let build_config = BuildConfig {
             project_root: project_root.clone(),
             profile: build_profile,
-            build_native,
             targets: if matches!(platform_type, PlatformType::Android) {
                 build_targets.clone()
             } else {
@@ -922,7 +918,6 @@ fn find_standalone_native_crate(project_root: &std::path::Path) -> Result<std::p
 fn build_standalone_apple_swift_package(
     project_root: &std::path::Path,
     inferred_platform: Option<PlatformType>,
-    build_native: bool,
     release: bool,
     macos_arch: Option<String>,
     platforms: Vec<String>,
@@ -998,7 +993,6 @@ fn build_standalone_apple_swift_package(
         let build_config = BuildConfig {
             project_root: project_root.to_path_buf(),
             profile: build_profile,
-            build_native,
             targets: Vec::new(),
             lingxia_config: None,
             ipa: ipa && matches!(platform_type, PlatformType::Ios),

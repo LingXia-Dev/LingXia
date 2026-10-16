@@ -164,8 +164,6 @@ pub(crate) fn lingxia_workspace_root(project_root: &Path) -> Option<PathBuf> {
 pub struct BuildConfig {
     pub project_root: PathBuf,
     pub profile: BuildProfile,
-    /// Whether to build native Rust libraries
-    pub build_native: bool,
     pub targets: Vec<String>,
     /// Optional project configuration
     pub lingxia_config: Option<LingXiaConfig>,

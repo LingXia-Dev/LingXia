@@ -107,13 +107,6 @@ impl MacosPlatform {
         let profile_dir = config.profile.as_str();
         let cargo_target_dir = resolve_cargo_target_dir(project_root);
 
-        if !config.build_native {
-            return Ok(cargo_target_dir
-                .join(rust_target)
-                .join(profile_dir)
-                .join("liblingxia.a"));
-        }
-
         if config.lingxia_config.is_none() {
             return Ok(cargo_target_dir
                 .join(rust_target)
@@ -378,7 +371,7 @@ impl Platform for MacosPlatform {
         let native_lib_path = if !config.skip_native_build {
             let lib =
                 self.do_build_rust_library(&config.project_root, config, arch, &deployment_target)?;
-            if config.build_native && config.lingxia_config.is_some() {
+            if config.lingxia_config.is_some() {
                 apple::update_spm_rust_link_stamp(
                     &config.project_root,
                     &sdk_root,
@@ -440,9 +433,7 @@ impl Platform for MacosPlatform {
                         .as_ref()
                         .and_then(|c| c.executable_name.as_deref()),
                 )?;
-                if config.build_native
-                    && executable_needs_native_relink(&executable_path, &native_lib_path)
-                {
+                if executable_needs_native_relink(&executable_path, &native_lib_path) {
                     println!(
                         "  {} Swift executable is older than native library; forcing relink",
                         "ℹ".blue()
@@ -648,7 +639,7 @@ impl Platform for MacosPlatform {
         let (arch, deployment_target) = self.resolve_macos_params(config)?;
         let arch: &str = &arch;
         self.do_build_rust_library(&config.project_root, config, arch, &deployment_target)?;
-        if config.build_native && config.lingxia_config.is_some() {
+        if config.lingxia_config.is_some() {
             apple::update_spm_rust_link_stamp(
                 &config.project_root,
                 &config.project_root,

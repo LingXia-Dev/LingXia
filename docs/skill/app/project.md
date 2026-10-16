@@ -467,6 +467,4 @@ resources; use source files, not generated lxapp runtime assets.
 
 - Adding Settings or Downloads as surfaces — they are built-in browser pages.
 - Expecting hidden surfaces to destroy WebViews — hiding keeps state.
-- `lingxia build --skip-native` links an existing Rust library, so capability
-  changes stay stale; build normally.
 - An older `lingxia` on `PATH` after a config schema change.

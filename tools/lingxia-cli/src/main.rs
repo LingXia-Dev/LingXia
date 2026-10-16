@@ -73,10 +73,6 @@ struct BuildOptions {
     #[arg(long)]
     release: bool,
 
-    /// Skip native Rust library compilation (use existing binaries)
-    #[arg(long)]
-    skip_native: bool,
-
     /// Override LxApp view framework detection (multi-framework demo projects
     /// only — a real project has exactly one; hidden from help)
     #[arg(long, hide = true, value_parser = ["react", "vue", "html"])]
@@ -994,7 +990,6 @@ fn main() -> Result<()> {
         } => {
             commands::build::execute(commands::build::BuildExecuteOptions {
                 release: build_options.release,
-                build_native: !build_options.skip_native,
                 android_abis: platform_options.android_abis,
                 macos_arch: platform_options.macos_arch,
                 framework: build_options.framework,
@@ -1024,7 +1019,6 @@ fn main() -> Result<()> {
             all_platforms,
         } => {
             commands::package::execute(commands::package::PackageExecuteOptions {
-                build_native: !package_options.skip_native,
                 android_abis: package_options.android_abis,
                 macos_arch: package_options.macos_arch,
                 framework: package_options.framework,
@@ -1072,7 +1066,6 @@ fn main() -> Result<()> {
             commands::dev::execute(commands::dev::DevExecuteOptions {
                 target: dev_options.target,
                 release: dev_options.build_options.release,
-                build_native: !dev_options.build_options.skip_native,
                 framework: dev_options.build_options.framework,
                 progress: dev_options.build_options.progress,
                 device: dev_options.device,
