@@ -2913,6 +2913,9 @@ async function visibleHostAxNode(
     .sort((a, b) => b.rect.w * b.rect.h - a.rect.w * a.rect.h)[0];
 }
 
+/** A bundled lxapp other than Chat, opened as a main beside the Chat aside. */
+const ASIDE_NAV_OTHER_APP_ID = 'app.lingxia.terminal-settings';
+
 /** The docked right aside begins past the middle of an expanded host. */
 function inRightAside(host: DesktopWindowInfo, rect: { x: number; w: number }): boolean {
   return rect.x >= host.bounds.x + host.bounds.w / 2
@@ -2922,7 +2925,7 @@ function inRightAside(host: DesktopWindowInfo, rect: { x: number; w: number }): 
 desktopTest('keeps an aside lxapp page stack and its floats inside the aside', {
   id: 'DESKTOP-ASIDE-NAV-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.shell.openApp', 'lx.navigateTo', 'lx.navigateBack', 'lx.surface.openPage'],
+  covers: ['lx.shell.openApp', 'lx.navigateTo', 'lx.navigateBack', 'lx.surface.openPage', 'lx.surface.getByKey'],
 }, async (t) => {
   const app = await desktopApp(t);
   const platform = await runtimePlatform(app);
@@ -2967,28 +2970,56 @@ desktopTest('keeps an aside lxapp page stack and its floats inside the aside', {
     expect(inRightAside(host, chatInput.rect)).toBeTruthy();
 
     // navigateTo from the aside lxapp's Logic: the page pushes inside the aside.
-    await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.navigateTo({ page: 'feedback' });
-    });
-    await waitForValue(async () => {
-      const current = await chat.nav.current();
-      return current.name === 'feedback' && current.ready ? current : undefined;
-    }, 'Chat feedback page ready');
-    const feedback = await waitForValue(
-      () => visibleHostAxNode(desktop, host!, 'Help us improve'),
-      'feedback page rendered',
-      60_000,
-    );
-    expect(inRightAside(host, feedback.rect)).toBeTruthy();
-    await expectMainUnchanged('after navigateTo');
+    const pushFeedback = async (phase: string) => {
+      await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+        await lx.navigateTo({ page: 'feedback' });
+      });
+      await waitForValue(async () => {
+        const current = await chat.nav.current();
+        return current.name === 'feedback' && current.ready ? current : undefined;
+      }, `Chat feedback page ready (${phase})`);
+      const feedback = await waitForValue(
+        () => visibleHostAxNode(desktop, host!, 'Help us improve'),
+        `feedback page rendered (${phase})`,
+        60_000,
+      );
+      expect(inRightAside(host!, feedback.rect)).toBeTruthy();
+      await expectMainUnchanged(`after navigateTo (${phase})`);
+      return feedback;
+    };
+    const expectChatBackInAside = async (phase: string) => {
+      const chatAgain = await waitForChatInput(desktop, host!, `Chat input after ${phase}`);
+      expect(inRightAside(host!, chatAgain.rect)).toBeTruthy();
+      expect((await chat.nav.current()).name).toBe('chat');
+      await expectMainUnchanged(`after ${phase}`);
+    };
+
+    // AppKit gives an aside page the same navigation bar a main page has,
+    // sized to the aside: the page's title, and Back once the aside's own
+    // stack is deeper than one page. Back pops inside the aside.
+    if (platform === 'macos') {
+      const feedback = await pushFeedback('navbar back');
+      const title = await waitForValue(async () => {
+        const node = await visibleHostAxNode(desktop, host!, 'Feedback');
+        return node && inRightAside(host!, node.rect) && node.rect.y < feedback.rect.y
+          ? node
+          : undefined;
+      }, 'aside navigation bar title');
+      expect(inRightAside(host, title.rect)).toBeTruthy();
+      const back = await waitForValue(async () => {
+        const node = await visibleHostAxNode(desktop, host!, 'Back');
+        return node?.role === 'button' && inRightAside(host!, node.rect) ? node : undefined;
+      }, 'aside navigation bar Back button');
+      await desktop.ax.invoke({ window: host.id, match: `id:${back.id}` });
+      await expectChatBackInAside('navbar Back');
+    }
 
     // navigateBack pops inside the aside and reveals the chat page there again.
+    await pushFeedback('navigateBack');
     await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
       await lx.navigateBack();
     });
-    const chatAgain = await waitForChatInput(desktop, host, 'Chat input after navigateBack');
-    expect(inRightAside(host, chatAgain.rect)).toBeTruthy();
-    await expectMainUnchanged('after navigateBack');
+    await expectChatBackInAside('navigateBack');
 
     // A float the aside opens anchors to the aside, not the main (#615).
     // Windows floats keep their own placement path; this covers AppKit.
@@ -3017,6 +3048,44 @@ desktopTest('keeps an aside lxapp page stack and its floats inside the aside', {
       );
       expect(inRightAside(host, floatWindow.bounds)).toBeTruthy();
       await expectMainUnchanged('after float');
+      await chat.logic.eval({ timeout: 15_000 }, async ({ lx }, key) => {
+        const handle = lx.surface.getByKey(key) as { close(): Promise<void> } | null;
+        if (handle) await handle.close();
+      }, floatKey);
+    }
+
+    // Opening another lxapp as the main afterwards leaves both alive and in
+    // their own regions: the new main takes the main area, Chat keeps its
+    // aside and its page.
+    const otherMainId = await app.logic.eval({ timeout: 60_000 }, async ({ lx }, appId) => {
+      const handle = await lx.shell.openApp(appId, { as: 'main' });
+      (globalThis as unknown as Record<string, unknown>).__asideNavOtherMain = handle;
+      return handle.id;
+    }, ASIDE_NAV_OTHER_APP_ID);
+    try {
+      const withOtherMain = await waitForValue(async () => {
+        const layout = await app.surfaceLayout();
+        const slot = layout.asideSlots.find((candidate) => (
+          candidate.children.includes('lingxia-chat')
+        ));
+        return layout.activeMainId === otherMainId && slot?.visible ? layout : undefined;
+      }, 'second lxapp as the active main beside the Chat aside');
+      expect(withOtherMain.mains.includes('lingxia-chat')).toBeFalsy();
+      const lxapps = await t.automation.lxapps.list();
+      for (const appId of ['lingxia-chat', ASIDE_NAV_OTHER_APP_ID]) {
+        expect({ appId, status: lxapps.find((row) => row.appId === appId)?.status })
+          .toEqual({ appId, status: 'opened' });
+      }
+      const chatStill = await waitForChatInput(desktop, host, 'Chat input beside the second main');
+      expect(inRightAside(host, chatStill.rect)).toBeTruthy();
+      expect((await chat.nav.current()).name).toBe('chat');
+    } finally {
+      await app.logic.eval({ timeout: 20_000 }, async () => {
+        const held = globalThis as unknown as Record<string, { alive?: boolean; close(): Promise<void> } | undefined>;
+        const handle = held.__asideNavOtherMain;
+        delete held.__asideNavOtherMain;
+        if (handle?.alive) await handle.close();
+      }).catch(() => undefined);
     }
   } catch (error) {
     await attachDesktopFailure(t, 'aside-nav', desktop, host);
