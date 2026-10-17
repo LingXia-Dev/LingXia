@@ -5,6 +5,7 @@ use super::processing::{self, BuildSelection, ProcessingError, ProcessingOptions
 use super::{
     appgallery, appstore, artifact_identity, asc_material, expected_identity, load_config,
 };
+use crate::config::AppEnv;
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use std::path::PathBuf;
@@ -143,11 +144,14 @@ fn execute(
         bail!("Waiting requires --submission-id, or Apple --version and --build-number");
     }
     let config = load_config()?;
+    // Status queries without a package look at the prod app.
+    let mut env = AppEnv::Prod;
     let artifact = if submit.is_some() {
-        let artifact = find_artifact(&std::env::current_dir()?, platform)?;
-        report.artifact = Some(artifact.clone());
-        artifact_identity::verify(&artifact, &expected_identity(&config, platform)?)?;
-        Some(artifact)
+        let packaged = find_artifact(&std::env::current_dir()?, platform)?;
+        env = packaged.env;
+        report.artifact = Some(packaged.path.clone());
+        artifact_identity::verify(&packaged.path, &expected_identity(&config, platform, env)?)?;
+        Some(packaged.path)
     } else {
         None
     };
@@ -176,7 +180,8 @@ fn execute(
             } else {
                 asc_material(platform)?
             };
-            let app_id = appstore::resolve_app_id(&creds, &expected_identity(&config, platform)?)?;
+            let app_id =
+                appstore::resolve_app_id(&creds, &expected_identity(&config, platform, env)?)?;
             if let (Some(opts), Some(artifact)) = (submit, artifact) {
                 appstore::submit(&creds, platform, &artifact, &opts)?;
                 report.uploaded = true;
