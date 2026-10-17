@@ -82,7 +82,7 @@ pub(crate) fn handle(handler: &str, args: Option<Value>) -> Result<Option<Value>
             }
             Ok(Some(status))
         }
-        method::RECORD_STOP => network::record_stop(text("name").as_deref())
+        method::RECORD_STOP => network::record_stop()
             .map(Some)
             .map_err(|err| format!("(usage): {err}")),
         method::MOCK_READY => {

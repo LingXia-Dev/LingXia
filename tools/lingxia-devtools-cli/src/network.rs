@@ -684,28 +684,31 @@ fn har_response(request: &Value) -> Value {
         "size": request["responseBytes"].as_u64().unwrap_or(0),
     });
     let mut notes = Vec::new();
+    if let Some(note) = request["bodyNote"].as_str() {
+        notes.push(note.to_string());
+    }
     if let Some(body) = request.get("responseBody").filter(|body| !body.is_null()) {
         match body_text(body, header_value(headers, "content-type")) {
-            BodyText::Text(text) => {
-                content["size"] = json!(text.len());
-                content["text"] = json!(text);
-            }
+            BodyText::Text(text) => content["text"] = json!(text),
             BodyText::Base64(data) => {
                 content["text"] = json!(data);
                 content["encoding"] = json!("base64");
-                if let Some(len) = base64_len(&data) {
-                    content["size"] = json!(len);
-                }
             }
             BodyText::Omitted(note) => notes.push(note),
         }
+    } else if let Some(text) = stream_text(request) {
+        content["text"] = json!(text);
+        notes.push("stream rebuilt from its redacted frames".to_string());
     }
     if let Some(encoding) = request["responseDecoded"].as_str() {
-        if let (Some(size), Some(wire)) =
-            (content["size"].as_u64(), request["responseBytes"].as_u64())
-            && size >= wire
-        {
-            content["compression"] = json!(size - wire);
+        if let (Some(size), Some(wire)) = (
+            request["responseDecodedBytes"].as_u64(),
+            request["responseBytes"].as_u64(),
+        ) {
+            content["size"] = json!(size);
+            if size >= wire {
+                content["compression"] = json!(size - wire);
+            }
         }
         notes.push(format!("decoded from {encoding}"));
     }
@@ -830,10 +833,31 @@ fn body_text(body: &Value, content_type: Option<&str>) -> BodyText {
     }
 }
 
-fn base64_len(data: &str) -> Option<u64> {
-    base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data)
-        .ok()
-        .and_then(|bytes| u64::try_from(bytes.len()).ok())
+/// A stream's body is reported as its frames (`events` for SSE, `lines` for
+/// NDJSON), each redacted; this is their wire text again.
+fn stream_text(request: &Value) -> Option<String> {
+    let frame = |value: &Value| match value {
+        Value::String(text) => text.clone(),
+        other => serde_json::to_string(other).unwrap_or_default(),
+    };
+    if let Some(events) = request["events"].as_array() {
+        let mut text = String::new();
+        for event in events {
+            if let Some(name) = event["event"].as_str() {
+                text.push_str(&format!("event: {name}\n"));
+            }
+            if let Some(id) = event["id"].as_str() {
+                text.push_str(&format!("id: {id}\n"));
+            }
+            for line in frame(&event["data"]).split('\n') {
+                text.push_str(&format!("data: {line}\n"));
+            }
+            text.push('\n');
+        }
+        return Some(text);
+    }
+    let lines = request["lines"].as_array()?;
+    Some(lines.iter().map(|line| frame(line) + "\n").collect())
 }
 
 fn query_string(url: &str) -> Value {
@@ -1086,6 +1110,23 @@ mod tests {
                 "chunkLog": [[2, 10], [102, 10], [202, 4]],
                 "responseHeaders": [["content-type", "text/event-stream"]],
                 "responseBytes": 24,
+                "events": [
+                    { "event": "tick", "data": "1", "id": "e1" },
+                    { "data": { "token": "***" } },
+                    { "data": "a\nb" },
+                ],
+            }),
+            json!({
+                "id": 7,
+                "owner": "lingxia-showcase",
+                "kind": "fetch",
+                "method": "GET",
+                "url": "https://api.test/feed",
+                "startedAt": "2026-10-16T06:16:03.000Z",
+                "status": 200,
+                "responseHeaders": [["content-type", "application/x-ndjson"]],
+                "responseBytes": 20,
+                "lines": [{ "n": 1 }, "plain"],
             }),
         ]);
         let first = &har["log"]["entries"][0];
@@ -1108,7 +1149,18 @@ mod tests {
         );
         assert_eq!(second["timings"]["wait"], 2.0);
         assert_eq!(second["timings"]["receive"], 200.0);
-        assert!(second["response"]["content"].get("text").is_none());
+        assert_eq!(
+            second["response"]["content"]["text"],
+            "event: tick\nid: e1\ndata: 1\n\ndata: {\"token\":\"***\"}\n\ndata: a\ndata: b\n\n"
+        );
+        assert_eq!(
+            second["response"]["content"]["comment"],
+            "stream rebuilt from its redacted frames"
+        );
+        assert_eq!(second["response"]["content"]["size"], 24);
+        let ndjson = &har["log"]["entries"][2]["response"]["content"];
+        assert_eq!(ndjson["text"], "{\"n\":1}\nplain\n");
+        assert!(first["response"]["content"].get("text").is_none());
     }
 
     #[test]
@@ -1159,6 +1211,33 @@ mod tests {
                 "responseBytes": 9,
                 "responseBodyTruncated": true,
             }),
+            json!({
+                "id": 10,
+                "owner": "lingxia-showcase",
+                "kind": "fetch",
+                "method": "GET",
+                "url": "https://api.test/big",
+                "startedAt": "2026-10-16T06:16:06.000Z",
+                "status": 200,
+                "outcome": "completed",
+                "responseHeaders": [["content-type", "application/json"]],
+                "responseBody": { "items": [] },
+                "responseDecoded": "gzip",
+                "responseDecodedBytes": 40,
+                "responseBytes": 12,
+            }),
+            json!({
+                "id": 11,
+                "owner": "lingxia-showcase",
+                "kind": "download",
+                "method": "GET",
+                "url": "https://cdn.test/huge.bin",
+                "startedAt": "2026-10-16T06:16:07.000Z",
+                "status": 200,
+                "outcome": "completed",
+                "bodyNote": "the recording's body budget was spent",
+                "responseBytes": 900,
+            }),
         ]);
         let blocked = &har["log"]["entries"][0];
         assert_eq!(blocked["response"]["status"], 0);
@@ -1193,12 +1272,23 @@ mod tests {
         // A JSON content type is the body, not the binary wrapper.
         let text = upload["response"]["content"]["text"].as_str().unwrap();
         assert_eq!(text, r#"{"base64":"not-a-wrapper"}"#);
-        assert_eq!(upload["response"]["content"]["size"], text.len());
-        assert_eq!(upload["response"]["content"]["compression"], text.len() - 9);
+        // Cut before it was fully decoded: the decoded size is unknown.
+        assert_eq!(upload["response"]["content"]["size"], 9);
+        assert!(upload["response"]["content"].get("compression").is_none());
         assert_eq!(
             upload["response"]["content"]["comment"],
             "decoded from gzip; response body truncated"
         );
+
+        let compressed = &har["log"]["entries"][3]["response"]["content"];
+        assert_eq!(compressed["size"], 40);
+        assert_eq!(compressed["compression"], 28);
+        assert_eq!(compressed["text"], r#"{"items":[]}"#);
+
+        let budget = &har["log"]["entries"][4]["response"]["content"];
+        assert_eq!(budget["size"], 900);
+        assert_eq!(budget["comment"], "the recording's body budget was spent");
+        assert!(budget.get("text").is_none());
     }
 
     #[test]
