@@ -243,8 +243,9 @@ fn port_error(err: anyhow::Error, bind_host: &str, port: u16) -> anyhow::Error {
 }
 
 fn resolve_source(project_root: &Path) -> Result<PathBuf> {
-    project_root
-        .canonicalize()
+    // `canonicalize` keeps the `\\?\` prefix on Windows, and Node then fails
+    // the Vite build with `EISDIR: lstat 'D:'`.
+    dunce::canonicalize(project_root)
         .with_context(|| format!("Failed to resolve {}", project_root.display()))
 }
 
