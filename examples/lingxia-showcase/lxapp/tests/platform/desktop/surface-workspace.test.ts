@@ -2937,7 +2937,15 @@ desktopTest('keeps an aside lxapp page stack and its floats inside the aside', {
   const chat = t.automation.lxapp('lingxia-chat');
   try {
     await closeChatSurface(t, app);
-    host = await resizeHostOnScreen(desktop, host, Math.round(1_200 * host.scale), 900);
+    // The same expanded geometry DESKTOP-ADAPTIVE-001 docks Chat at. It has to
+    // fit the CI display (1024x768 on macOS runners), where AppKit keeps the
+    // window below the menu bar and a full-height request never settles.
+    host = await resizeHostOnScreen(
+      desktop,
+      host,
+      nativeWindowExtent(platform, host, 1_000),
+      nativeWindowExtent(platform, host, 640),
+    );
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
       await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
     });
