@@ -1990,8 +1990,8 @@ fn validate_attach(
     if !source.join("lxapp.json").is_file() {
         return Err(anyhow!("{} has no lxapp.json", source.display()));
     }
-    let source = source
-        .canonicalize()
+    // Same `\\?\` prefix Node cannot load; see `resolve_source`.
+    let source = dunce::canonicalize(&source)
         .with_context(|| format!("Failed to resolve {}", source.display()))?;
     let app_id = super::lxapp_watch::read_app_id(&source)?;
     if let Some(message) =
