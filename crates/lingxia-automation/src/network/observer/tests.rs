@@ -146,6 +146,7 @@ fn a_record_follows_its_events_and_shows_a_gzip_body_decoded() {
     // Wire bytes are counted; the body is shown decoded and redacted.
     assert_eq!(record["responseBytes"], wire.len() as u64);
     assert_eq!(record["responseDecoded"], "gzip");
+    assert_eq!(record["responseDecodedBytes"], body.len());
     assert_eq!(record["responseBody"]["user"], "ada");
     assert_eq!(record["responseBody"]["access_token"], "***");
     assert_eq!(record["requestBody"]["password"], "***");
@@ -333,8 +334,9 @@ fn an_event_stream_keeps_its_frames_and_shows_in_flight() {
             { "data": "Bearer ***", "id": "e2" }
         ])
     );
-    // Not finished, so not an exchange.
+    // Not finished, so not an exchange; still listed, so not dropped.
     assert_eq!(stopped.scenario.dropped, 1);
+    assert_eq!(stopped.dropped, 0);
     assert!(stopped.scenario.exchanges.is_empty());
     // The builder forgets the stream's bodies once nothing records it.
     assert!(state.in_flight[&5].response_body.is_empty());

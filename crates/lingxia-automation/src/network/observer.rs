@@ -371,6 +371,9 @@ impl Record {
         let (body, cut) = self.decoded_body(capture::MAX_TEXT_BODY_BYTES);
         if let Some(encoding) = Self::header(&self.response_headers, "content-encoding") {
             out["responseDecoded"] = json!(encoding);
+            if !cut {
+                out["responseDecodedBytes"] = json!(body.len());
+            }
         }
         if cut {
             out["responseBodyTruncated"] = json!(true);
@@ -728,6 +731,7 @@ impl Recording {
         Stopped {
             started_ms: self.started_ms,
             requests: requests.into_iter().map(Record::to_json).collect(),
+            dropped: self.dropped,
             scenario,
         }
     }
@@ -742,6 +746,8 @@ pub(crate) struct Stopped {
     pub started_ms: u64,
     /// Every recorded request in start order, in its report form.
     pub requests: Vec<Value>,
+    /// Requests past the recording's limit, not in `requests`.
+    pub dropped: usize,
     pub scenario: capture::Recording,
 }
 

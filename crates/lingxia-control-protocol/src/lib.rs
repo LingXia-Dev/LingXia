@@ -204,8 +204,7 @@ pub mod methods {
             /// Start recording real Logic `fetch` traffic. Args:
             /// `{ appid?, match? }`.
             pub const RECORD_START: &str = "session.network.record.start";
-            /// Stop recording. Args: `{ name? }`; returns
-            /// `{ scenario, exchanges, dropped }`.
+            /// Stop the capture. Returns `{ dropped, requests }`.
             pub const RECORD_STOP: &str = "session.network.record.stop";
             /// Load an lxapp's mock handlers and its `mocks/config.json`
             /// selection. Args: `{ appid, source, keys, config?: { mock,

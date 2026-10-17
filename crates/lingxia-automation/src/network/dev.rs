@@ -327,19 +327,13 @@ pub fn record_start(appid: Option<&str>, matcher: Option<&str>) -> Result<(), St
     Ok(())
 }
 
-/// Stop the dev recording: `{ scenario, exchanges, dropped, requests }`,
-/// `requests` every recorded request in its report form.
-pub fn record_stop(name: Option<&str>) -> Result<Value, String> {
+/// Stop the dev capture: `{ dropped, requests }`, `requests` every captured
+/// request in its report form and `dropped` those past the capture limit.
+pub fn record_stop() -> Result<Value, String> {
     let stopped = observer::stop_recording(DEV_SESSION_OWNER)
         .ok_or_else(|| "no dev-session network capture is running".to_string())?;
-    let name = name.map_or_else(
-        || format!("recorded {}", scenario::iso_utc(stopped.started_ms as i64)),
-        str::to_string,
-    );
     Ok(json!({
-        "scenario": stopped.scenario.to_scenario(&name),
-        "exchanges": stopped.scenario.exchanges.len(),
-        "dropped": stopped.scenario.dropped,
+        "dropped": stopped.dropped,
         "requests": stopped.requests,
     }))
 }
