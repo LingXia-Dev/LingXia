@@ -27,6 +27,7 @@ mod mocks;
 mod server;
 
 mod android;
+mod attach;
 mod forward;
 mod harmony;
 mod ios;
@@ -97,7 +98,13 @@ pub struct DevExecuteOptions {
 }
 
 pub enum DevSessionAction {
-    Stop { session: Option<String> },
+    Stop {
+        session: Option<String>,
+    },
+    Listen {
+        port: Option<u16>,
+        session: Option<String>,
+    },
 }
 
 /// `-p runner`: the lxapp in the local desktop Runner — what `lingxia dev`
@@ -129,6 +136,25 @@ impl DevContext {
             matches!(self.build_profile, BuildProfile::Release),
         );
     }
+}
+
+/// The first flag `lingxia dev listen` would otherwise ignore. Native
+/// features and providers also come from the environment, so they are not
+/// refused here.
+fn host_only_flag(options: &DevExecuteOptions, runner_requested: bool) -> Option<&'static str> {
+    [
+        (options.target.is_some(), "a TARGET"),
+        (runner_requested, "`-p runner`"),
+        (options.runner_device.is_some(), "`--runner`"),
+        (options.headless, "`--headless`"),
+        (options.display_language.is_some(), "`--display-language`"),
+        (options.reinstall, "`--reinstall`"),
+        (options.env_version.is_some(), "`--env`"),
+        (options.provider_path.is_some(), "`--provider-path`"),
+        (options.progress.is_some(), "`--progress`"),
+    ]
+    .into_iter()
+    .find_map(|(set, flag)| set.then_some(flag))
 }
 
 /// Per-user token authenticating a physical iOS device's connection to the
@@ -292,9 +318,13 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
         options.platform_arg = None;
     }
 
-    if let Some(action) = options.action {
-        return execute_session_action(&project_root, action);
-    }
+    let listen = match options.action {
+        Some(DevSessionAction::Stop { session }) => {
+            return stop_session(&project_root, session.as_deref());
+        }
+        Some(DevSessionAction::Listen { port, ref session }) => Some((port, session.clone())),
+        None => None,
+    };
     mocks::set_baseline(options.mock);
 
     if options
@@ -321,6 +351,17 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
     // Fail fast on a CLI / package version skew, before minutes of build.
     crate::compat::ensure_project(&project_root, &[])?;
 
+    if options.background
+        && env::var_os(BACKGROUND_CHILD_ENV).is_none()
+        && listen.is_some()
+        && attach::is_standalone_lxapp(&project_root)
+    {
+        return Err(anyhow!(
+            "`--background` starts a host session. In a standalone lxapp, `lingxia dev listen` \
+             stays attached until Ctrl+C."
+        ));
+    }
+
     if options.background && env::var_os(BACKGROUND_CHILD_ENV).is_none() {
         // The target the child registers, when this command names it; an
         // auto-detected platform is left to the child.
@@ -339,6 +380,39 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
 
     let stop_requested = Arc::new(AtomicBool::new(false));
     install_ctrlc_handler(stop_requested.clone())?;
+
+    if let Some((port, session)) = listen {
+        if !attach::is_standalone_lxapp(&project_root) {
+            return Err(anyhow!(
+                "`lingxia dev listen` develops one lxapp on a device whose host app is already \
+                 installed. Run it in that lxapp's directory (lxapp.json) with `-p <platform> \
+                 --port <the port on the app's dev tab>`. In a host project, run `lingxia dev`."
+            ));
+        }
+        if options.mock.is_some() && port.is_none() {
+            return Err(anyhow!(
+                "`--mock` sets the baseline of a session this command starts, which needs \
+                 `--port`. A running host session keeps its own."
+            ));
+        }
+        if let Some(flag) = host_only_flag(&options, runner_requested) {
+            return Err(anyhow!(
+                "`lingxia dev listen` does not take {flag}. It builds only this lxapp; the \
+                 host app is already installed."
+            ));
+        }
+        return attach::execute(attach::AttachRequest {
+            project_root,
+            session,
+            framework: options.framework,
+            release: options.release,
+            stop_requested,
+            platform_arg: options.platform_arg,
+            device: options.device,
+            port,
+            name: options.name,
+        });
+    }
 
     if let Some(target) = runner::resolve_dev_target(&project_root, options.target.as_deref())? {
         return runner::execute_runner_dev(project_root, target, options, stop_requested);
@@ -496,12 +570,6 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
 #[cfg(target_os = "windows")]
 pub fn focus_windows_launch(executable: &Path, excluded_pids: &str) -> Result<()> {
     runner::focus_windows_launch(executable, excluded_pids)
-}
-
-fn execute_session_action(project_root: &Path, action: DevSessionAction) -> Result<()> {
-    match action {
-        DevSessionAction::Stop { session } => stop_session(project_root, session.as_deref()),
-    }
 }
 
 /// `lingxia dev --background`: start the session owner detached, return once

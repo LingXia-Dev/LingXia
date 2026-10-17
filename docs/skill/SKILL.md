@@ -59,7 +59,7 @@ View, `index.json` is page config. More forms: [`lingxia new`](./cli/lingxia.md#
 
 | You changed | Do |
 |---|---|
-| lxapp code (View, Logic, `lxapp.json`), standalone or embedded | Save. The session rebuilds and reloads in place. |
+| lxapp code (View, Logic, `lxapp.json`), standalone or embedded | Save. [Auto-reload](./cli/dev-reload.md). |
 | host code (`lingxia.yaml`, native Rust, platform projects) | Re-run `lingxia dev`; it takes over the previous session. |
 
 ```bash
@@ -124,6 +124,7 @@ never add them to a project.
 |---|---|
 | **Loop** | |
 | `lingxia` commands: new, dev, build, package, devices, skill, upgrade | [cli/lingxia.md](./cli/lingxia.md) |
+| Saving an lxapp, `lingxia dev listen`, attaching one the host does not declare | [cli/dev-reload.md](./cli/dev-reload.md) |
 | Drive a running session: `lxdev` lxapp/runner/host/browser/logs | [cli/lxdev.md](./cli/lxdev.md) |
 | Write and run specs (`@lingxia/test`, `lxdev test`) | [lxapp/testing.md](./lxapp/testing.md) |
 | Mocks and scenarios: `mocks/`, `lxdev mock`, `lingxia dev --mock`, `t.scenario.use` | [lxapp/mock.md](./lxapp/mock.md) |
@@ -177,6 +178,7 @@ never add them to a project.
 | Stream cancel never cleans up | [bridge.md → Stream](./lxapp/bridge.md#stream) |
 | `lingxia.yaml` change ignored after rebuild | [`lingxia clean`](./cli/lingxia.md#lingxia-clean) |
 | iOS dev app can't reach the Mac | [`lingxia dev`](./cli/lingxia.md#lingxia-dev) |
+| A save did not update the running lxapp | [dev-reload.md](./cli/dev-reload.md) |
 | TS doesn't know `lx.foo()` / `Page({})` | [Install typing](./lxapp/lx-api.md#install-typing) |
 | `<LxVideo>` / `<LxPicker>` prop not recognized | [components.md](./lxapp/components.md) |
 | Build rejects `<video>` / `<audio>` / `new Audio()` | [components.md → LxVideo](./lxapp/components.md#lxvideo) |

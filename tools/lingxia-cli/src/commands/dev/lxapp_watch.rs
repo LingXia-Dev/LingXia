@@ -1,8 +1,11 @@
 //! Watch lxapp sources during `lingxia dev` and rebuild + reload in place.
 //!
 //! Standalone projects watch the `lxapp.json` directory. Host apps watch each
-//! `resources.bundles[].path` that is a local lxapp. Build outputs (`dist`,
-//! `node_modules`, `.lingxia`, …) are not watched, so a rebuild cannot loop.
+//! `resources.bundles[].path` that is a local lxapp. A host session also
+//! accepts one more directory while a standalone `lingxia dev listen` holds
+//! its connection; that root leaves when the connection closes. Build outputs
+//! (`dist`, `node_modules`, `.lingxia`, …) are not watched, so a rebuild
+//! cannot loop.
 
 use super::server::{DevServerState, RestartOutcome};
 use anyhow::{Context, Result};
@@ -36,6 +39,17 @@ pub(super) struct WatchRoot {
     pub path: PathBuf,
 }
 
+/// Add or remove a root while the watcher is already running.
+pub(super) enum WatchCmd {
+    Add {
+        root: WatchRoot,
+        ack: mpsc::Sender<std::result::Result<(), String>>,
+    },
+    /// Drops a root this session attached. A yaml bundle with the same id
+    /// stays: only an id added through [`WatchCmd::Add`] is removed.
+    Remove(String),
+}
+
 pub(super) struct LxAppWatchOptions {
     pub framework: Option<String>,
     pub release: bool,
@@ -51,30 +65,42 @@ impl LxAppWatch {
         options: LxAppWatchOptions,
     ) -> Result<Option<Self>> {
         let roots = discover_watch_roots(&state.project_root)?;
-        if roots.is_empty() {
-            return Ok(None);
+        // The thread starts even with nothing to watch, so a later attach has
+        // a place to add a root. An empty list used to skip the thread, and
+        // the session could not grow one.
+        if !roots.is_empty() {
+            let names = roots
+                .iter()
+                .map(|root| root.app_id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            println!(
+                "  {} watching {} — save to rebuild and reload",
+                "•".cyan(),
+                names.cyan()
+            );
         }
 
-        let names = roots
-            .iter()
-            .map(|root| root.app_id.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
-        println!(
-            "  {} watching {} — save to rebuild and reload",
-            "•".cyan(),
-            names.cyan()
-        );
-
+        state.set_watch_build(options.framework.clone(), options.release);
+        let (cmd_tx, cmd_rx) = mpsc::channel();
+        state.set_watch_commands(cmd_tx);
         let stop_flag = state.stop_flag.clone();
-        let thread = thread::Builder::new()
+        let watch_state = Arc::clone(&state);
+        let ended = Arc::clone(&state);
+        let thread = match thread::Builder::new()
             .name("lxapp-watch".into())
             .spawn(move || {
-                if let Err(err) = run_watch(state, roots, options, stop_flag) {
+                if let Err(err) = run_watch(watch_state, roots, options, stop_flag, cmd_rx) {
                     eprintln!("⚠ lxapp auto-reload stopped ({err:#})");
                 }
-            })
-            .context("Failed to start lxapp watcher")?;
+                ended.clear_watch_commands();
+            }) {
+            Ok(thread) => thread,
+            Err(err) => {
+                state.clear_watch_commands();
+                return Err(err).context("Failed to start lxapp watcher");
+            }
+        };
         Ok(Some(Self {
             thread: Some(thread),
         }))
@@ -160,7 +186,89 @@ pub(super) fn watch_entries(root: &Path) -> Vec<(PathBuf, RecursiveMode)> {
     entries
 }
 
-fn read_app_id(lxapp_dir: &Path) -> Result<String> {
+fn watch_root(
+    watcher: &mut RecommendedWatcher,
+    subtrees: &mut BTreeSet<PathBuf>,
+    root: &Path,
+) -> Result<()> {
+    for (path, mode) in watch_entries(root) {
+        watcher
+            .watch(&path, mode)
+            .with_context(|| format!("Failed to watch {}", path.display()))?;
+        if mode == RecursiveMode::Recursive {
+            subtrees.insert(path);
+        }
+    }
+    Ok(())
+}
+
+fn unwatch_root(watcher: &mut RecommendedWatcher, subtrees: &mut BTreeSet<PathBuf>, root: &Path) {
+    let root_key = strip_verbatim_prefix(root);
+    let watched: Vec<PathBuf> = subtrees
+        .iter()
+        .filter(|path| strip_verbatim_prefix(path).starts_with(root_key))
+        .cloned()
+        .collect();
+    for path in watched {
+        let _ = watcher.unwatch(&path);
+        subtrees.remove(&path);
+    }
+    let _ = watcher.unwatch(root);
+}
+
+fn apply_watch_cmd(
+    cmd: WatchCmd,
+    watcher: &mut RecommendedWatcher,
+    subtrees: &mut BTreeSet<PathBuf>,
+    roots: &mut Vec<WatchRoot>,
+    attached: &mut BTreeSet<String>,
+    dirty: &mut BTreeSet<String>,
+    mocks_dirty: &mut BTreeSet<String>,
+) {
+    match cmd {
+        WatchCmd::Add { root, ack } => {
+            let root = resolved_root(root);
+            let result = if roots.iter().any(|existing| existing.app_id == root.app_id) {
+                Err(format!(
+                    "{} is already watched by this session",
+                    root.app_id
+                ))
+            } else {
+                match watch_root(watcher, subtrees, &root.path) {
+                    Ok(()) => {
+                        println!(
+                            "  {} watching {} — save to rebuild and reload",
+                            "•".cyan(),
+                            root.app_id.cyan()
+                        );
+                        attached.insert(root.app_id.clone());
+                        roots.push(root);
+                        Ok(())
+                    }
+                    Err(err) => {
+                        unwatch_root(watcher, subtrees, &root.path);
+                        Err(format!("{err:#}"))
+                    }
+                }
+            };
+            let _ = ack.send(result);
+        }
+        WatchCmd::Remove(app_id) => {
+            if !attached.remove(&app_id) {
+                return;
+            }
+            dirty.remove(&app_id);
+            mocks_dirty.remove(&app_id);
+            if let Some(index) = roots.iter().position(|existing| existing.app_id == app_id) {
+                let root = roots.remove(index);
+                unwatch_root(watcher, subtrees, &root.path);
+                println!("  {} detached {}", "•".cyan(), app_id.cyan());
+            }
+        }
+    }
+}
+
+pub(super) fn read_app_id(lxapp_dir: &Path) -> Result<String> {
     let manifest: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(lxapp_dir.join("lxapp.json")).with_context(|| {
             format!("Failed to read {}", lxapp_dir.join("lxapp.json").display())
@@ -189,8 +297,9 @@ fn run_watch(
     roots: Vec<WatchRoot>,
     options: LxAppWatchOptions,
     stop_flag: Arc<AtomicBool>,
+    commands: mpsc::Receiver<WatchCmd>,
 ) -> Result<()> {
-    let roots: Vec<WatchRoot> = roots.into_iter().map(resolved_root).collect();
+    let mut roots: Vec<WatchRoot> = roots.into_iter().map(resolved_root).collect();
     let (tx, rx) = mpsc::channel();
     let mut watcher = RecommendedWatcher::new(tx, notify::Config::default())
         .context("Failed to create filesystem watcher")?;
@@ -199,21 +308,27 @@ fn run_watch(
     // removed and made again.
     let mut subtrees: BTreeSet<PathBuf> = BTreeSet::new();
     for root in &roots {
-        for (path, mode) in watch_entries(&root.path) {
-            watcher
-                .watch(&path, mode)
-                .with_context(|| format!("Failed to watch {}", path.display()))?;
-            if mode == RecursiveMode::Recursive {
-                subtrees.insert(path);
-            }
-        }
+        watch_root(&mut watcher, &mut subtrees, &root.path)?;
     }
 
     let mut dirty: BTreeSet<String> = BTreeSet::new();
+    let mut attached: BTreeSet<String> = BTreeSet::new();
     // Saves under `mocks/` reload the mocks only: no rebuild, no restart.
     let mut mocks_dirty: BTreeSet<String> = BTreeSet::new();
     let mut deferred = false;
+    let mut was_paused = false;
     while !stop_flag.load(Ordering::Acquire) {
+        while let Ok(cmd) = commands.try_recv() {
+            apply_watch_cmd(
+                cmd,
+                &mut watcher,
+                &mut subtrees,
+                &mut roots,
+                &mut attached,
+                &mut dirty,
+                &mut mocks_dirty,
+            );
+        }
         let timeout = if dirty.is_empty() && mocks_dirty.is_empty() {
             IDLE_POLL
         } else {
@@ -257,6 +372,12 @@ fn run_watch(
                 eprintln!("⚠ lxapp watch: {err}");
             }
             Err(RecvTimeoutError::Timeout) => {
+                // An lxapp a test run kept from opening opens when it ends.
+                let paused = state.watch_paused();
+                if was_paused && !paused {
+                    state.catch_up_current();
+                }
+                was_paused = paused;
                 if (dirty.is_empty() && mocks_dirty.is_empty()) || stop_flag.load(Ordering::Acquire)
                 {
                     continue;
@@ -322,7 +443,7 @@ fn reload_one(state: &DevServerState, app_id: &str, options: &LxAppWatchOptions)
         }
         Ok(RestartOutcome::NotConnected) => {
             println!(
-                "  {} rebuilt {} (runtime not connected yet)",
+                "  {} rebuilt {} (reloads when the app connects)",
                 "✓".green(),
                 app_id.cyan()
             );
@@ -335,8 +456,24 @@ fn reload_one(state: &DevServerState, app_id: &str, options: &LxAppWatchOptions)
             );
             return Reload::Deferred;
         }
+        Ok(RestartOutcome::NotOpen) => {
+            println!(
+                "  {} rebuilt {} (loads the next time it opens)",
+                "✓".green(),
+                app_id.cyan()
+            );
+        }
+        Ok(RestartOutcome::Failed(message)) => {
+            eprintln!(
+                "  {} rebuilt {app_id}, restart failed: {message}",
+                "✗".red()
+            );
+        }
         Err(err) => {
-            eprintln!("  {} rebuilt {app_id}, restart failed: {err:#}", "✗".red());
+            eprintln!(
+                "  {} rebuilt {app_id}, restart failed: {err:#} (retried when the app reconnects)",
+                "✗".red()
+            );
         }
     }
     Reload::Done
@@ -399,23 +536,6 @@ mod tests {
             fs::create_dir_all(parent).unwrap();
         }
         fs::write(path, contents).unwrap();
-    }
-
-    #[test]
-    fn a_sibling_bundle_root_matches_resolved_event_paths() {
-        let temp = tempfile::tempdir().unwrap();
-        let workspace = dunce::canonicalize(temp.path()).unwrap();
-        fs::create_dir_all(workspace.join("host")).unwrap();
-        write(&workspace.join("chat/lxapp.json"), r#"{"appId":"chat"}"#);
-        let root = resolved_root(WatchRoot {
-            app_id: "chat".into(),
-            path: workspace.join("host/../chat"),
-        });
-        let event = workspace.join("chat/pages/index.tsx");
-        assert_eq!(
-            root_for_path(&[root], &event).map(|r| r.app_id.as_str()),
-            Some("chat")
-        );
     }
 
     #[test]
@@ -507,6 +627,23 @@ mod tests {
         assert_eq!(
             subtree_change(&roots, &subtrees, &temp.path().join("app.ts")),
             None
+        );
+    }
+
+    #[test]
+    fn a_sibling_bundle_root_matches_resolved_event_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = dunce::canonicalize(temp.path()).unwrap();
+        fs::create_dir_all(workspace.join("host")).unwrap();
+        write(&workspace.join("chat/lxapp.json"), r#"{"appId":"chat"}"#);
+        let root = resolved_root(WatchRoot {
+            app_id: "chat".into(),
+            path: workspace.join("host/../chat"),
+        });
+        let event = workspace.join("chat/pages/index.tsx");
+        assert_eq!(
+            root_for_path(&[root], &event).map(|r| r.app_id.as_str()),
+            Some("chat")
         );
     }
 

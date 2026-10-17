@@ -87,9 +87,7 @@ lingxia dev --background --mock all        # answer from mocks/ (CI against mock
 
 - **Takeover.** Re-running for the same platform stops that project's session
   and starts fresh. Different platforms run side by side.
-- **Watch and reload.** Saving a standalone lxapp or a local
-  `resources.bundles[].path` rebuilds and reloads it in place (`pages`,
-  `tabBar`, `navigationStyle` included). Host code needs a new `lingxia dev`.
+- **Watch and reload.** [Auto-reload](./dev-reload.md).
 - **Background.** `--background` returns once the session it started is
   ready (`--json` prints it); parallel starts of the same project (one per
   platform) each wait for their own. On failure or no readiness within 30 minutes it stops what it

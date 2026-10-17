@@ -2,8 +2,15 @@
 
 For contributors changing `lingxia dev`, the session broker, or `lxdev`
 transport. The usage contract is
-[`docs/skill/cli/lingxia.md`](../skill/cli/lingxia.md#lingxia-dev) and
-[`docs/skill/cli/lxdev.md`](../skill/cli/lxdev.md).
+[`docs/skill/cli/lingxia.md`](../skill/cli/lingxia.md#lingxia-dev),
+[`docs/skill/cli/lxdev.md`](../skill/cli/lxdev.md), and
+[auto-reload](../skill/cli/dev-reload.md).
+
+## Reconnect
+
+[Auto-reload](../skill/cli/dev-reload.md) — `lingxia dev listen`: developing
+one lxapp against an installed host, on the port its dev tab shows, or
+attached to a running host session.
 
 ## Registration
 
