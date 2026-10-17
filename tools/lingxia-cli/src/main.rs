@@ -194,9 +194,9 @@ struct DevOptions {
 enum DevAction {
     /// End a session (a no-op when none is running)
     Stop {
-        /// Which session of this project: its name (`lingxia dev --name`),
-        /// target (macos, android, …), TARGET@<project-dir>, or id prefix.
-        /// Omit it when only one is running
+        /// Which session: its name (`lingxia dev --name`, from any
+        /// directory), or one of this project's by target (macos, android, …),
+        /// TARGET@<project-dir>, or id prefix. Omit it when only one is running
         session: Option<String>,
     },
     /// Develop this lxapp on a device whose host app is already installed.
