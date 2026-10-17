@@ -18,6 +18,8 @@ use crate::platform::harmony::AgcApiCredentials;
 const ASC_FILE: &str = "asc.json";
 const APPLE_ID_FILE: &str = "apple-id.json";
 const DEVELOPER_ID_FILE: &str = "developer-id.json";
+/// Display-only facts about a team (name, account), no secrets.
+const TEAM_INFO_FILE: &str = "team.json";
 const AGC_FILE: &str = "agc.json";
 const STORE_SLOT_FILE: &str = "creds.json";
 const LEGACY_NOTICE_MARKER: &str = ".legacy-noticed";
@@ -45,6 +47,21 @@ struct StoreSlotOwned<T> {
     creds: T,
 }
 
+/// What a login learned about a team, for people reading status output.
+/// An ASC key login learns only the team id.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppleTeamInfo {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// `Paid` or `Free`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_type: Option<String>,
+    /// The Apple ID whose session is stored for this team.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub apple_id: Option<String>,
+}
+
 /// Which Apple mechanism slots exist for one team.
 #[derive(Debug, Clone)]
 pub struct AppleTeamSlots {
@@ -52,11 +69,29 @@ pub struct AppleTeamSlots {
     pub has_asc: bool,
     pub has_apple_id: bool,
     pub has_developer_id: bool,
+    pub info: AppleTeamInfo,
 }
 
 impl AppleTeamSlots {
     pub fn has_auth(&self) -> bool {
         self.has_asc || self.has_apple_id
+    }
+
+    /// `Heights Telecom LLC · Paid`, or `None` before any Apple ID login.
+    pub fn label(&self) -> Option<String> {
+        let name = self.info.name.as_deref()?;
+        Some(match self.info.account_type.as_deref() {
+            Some(kind) => format!("{name} · {kind}"),
+            None => name.to_string(),
+        })
+    }
+
+    /// One line for listings: `3V2F5C8343  Heights Telecom LLC · Paid`.
+    pub fn display(&self) -> String {
+        match self.label() {
+            Some(label) => format!("{}  {label}", self.team_id),
+            None => self.team_id.clone(),
+        }
     }
 
     /// Short mechanism summary for candidate listings, e.g. `ASC key, Apple ID`.
@@ -65,8 +100,13 @@ impl AppleTeamSlots {
         if self.has_asc {
             parts.push("ASC key");
         }
+        let apple_id;
         if self.has_apple_id {
-            parts.push("Apple ID");
+            apple_id = match self.info.apple_id.as_deref() {
+                Some(account) => format!("Apple ID {}", mask(account)),
+                None => "Apple ID".to_string(),
+            };
+            parts.push(&apple_id);
         }
         if self.has_developer_id {
             parts.push("Developer ID");
@@ -128,6 +168,7 @@ impl Wallet {
                 has_asc: dir.join(ASC_FILE).is_file(),
                 has_apple_id: dir.join(APPLE_ID_FILE).is_file(),
                 has_developer_id: dir.join(DEVELOPER_ID_FILE).is_file(),
+                info: read_team_info(&dir),
             };
             if slots.has_asc || slots.has_apple_id || slots.has_developer_id {
                 teams.push(slots);
@@ -147,6 +188,7 @@ impl Wallet {
             has_asc: dir.join(ASC_FILE).is_file(),
             has_apple_id: dir.join(APPLE_ID_FILE).is_file(),
             has_developer_id: dir.join(DEVELOPER_ID_FILE).is_file(),
+            info: read_team_info(&dir),
         };
         if slots.has_asc || slots.has_apple_id || slots.has_developer_id {
             Ok(Some(slots))
@@ -223,6 +265,26 @@ impl Wallet {
         let path = self.apple_team_dir(creds.team_id())?.join(file);
         write_secret(&path, serde_json::to_string_pretty(creds)?.as_bytes())?;
         Ok(path)
+    }
+
+    /// Record what a login learned about `team_id`. Fields it did not learn
+    /// keep their stored value.
+    pub fn save_apple_team_info(&self, team_id: &str, info: &AppleTeamInfo) -> Result<()> {
+        let dir = self.apple_team_dir(team_id)?;
+        let mut merged = read_team_info(&dir);
+        if info.name.is_some() {
+            merged.name = info.name.clone();
+        }
+        if info.account_type.is_some() {
+            merged.account_type = info.account_type.clone();
+        }
+        if info.apple_id.is_some() {
+            merged.apple_id = info.apple_id.clone();
+        }
+        write_secret(
+            &dir.join(TEAM_INFO_FILE),
+            &serde_json::to_vec_pretty(&merged)?,
+        )
     }
 
     pub fn load_apple_developer_id(&self, team_id: &str) -> Result<Option<DeveloperIdCredentials>> {
@@ -557,6 +619,14 @@ impl Wallet {
     }
 }
 
+/// A missing or unreadable `team.json` only costs the display name.
+fn read_team_info(team_dir: &Path) -> AppleTeamInfo {
+    fs::read(team_dir.join(TEAM_INFO_FILE))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+
 /// Reject identifiers that could escape the wallet directory.
 fn validate_path_component(value: &str) -> Result<()> {
     if value.is_empty() || value.len() > 64 {
@@ -656,6 +726,39 @@ pub fn display_fingerprint(fingerprint: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn team_info_keeps_what_a_later_login_did_not_learn() {
+        let tmp = tempfile::tempdir().unwrap();
+        let wallet = Wallet::at(tmp.path());
+        wallet.save_apple_auth(&apple_id("TEAMAAAAAA")).unwrap();
+        assert_eq!(
+            wallet.apple_team("TEAMAAAAAA").unwrap().unwrap().label(),
+            None
+        );
+        wallet
+            .save_apple_team_info(
+                "TEAMAAAAAA",
+                &AppleTeamInfo {
+                    name: Some("Heights".into()),
+                    account_type: Some("Paid".into()),
+                    apple_id: None,
+                },
+            )
+            .unwrap();
+        wallet
+            .save_apple_team_info(
+                "TEAMAAAAAA",
+                &AppleTeamInfo {
+                    apple_id: Some("a@b.com".into()),
+                    ..AppleTeamInfo::default()
+                },
+            )
+            .unwrap();
+        let team = wallet.apple_team("TEAMAAAAAA").unwrap().unwrap();
+        assert_eq!(team.label().as_deref(), Some("Heights · Paid"));
+        assert_eq!(team.info.apple_id.as_deref(), Some("a@b.com"));
+    }
 
     #[test]
     fn distribution_identity_survives_env_only_runs_and_api_key_rotation() {

@@ -354,16 +354,13 @@ fn resolve_team_fresh(
                     candidates.len(),
                     candidates
                         .iter()
-                        .map(|c| c.team_id.as_str())
+                        .map(AppleTeamSlots::display)
                         .collect::<Vec<_>>()
                         .join(", ")
                 );
             }
             eprintln!("This checkout can use {} Apple teams:", candidates.len());
-            let labels: Vec<String> = candidates
-                .iter()
-                .map(|c| format!("{}   {}", c.team_id, c.mechanisms()))
-                .collect();
+            let labels: Vec<String> = candidates.iter().map(team_line).collect();
             let selection = dialoguer::Select::new()
                 .with_prompt("Select once for this checkout")
                 .items(&labels)
@@ -522,6 +519,42 @@ pub struct ChannelDiagnosis {
     pub ready: bool,
     pub error_code: Option<&'static str>,
     pub fix: Option<String>,
+    /// Why the credential above is the one, when there is one.
+    pub chosen_by: Option<ChosenBy>,
+    /// The credential as a person reads it: `TEAM  Name · Paid   ASC key`.
+    pub detail: Option<String>,
+    /// What a selection would choose from, same format as `detail`.
+    pub candidates: Vec<String>,
+}
+
+/// Why a channel resolves to its credential.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChosenBy {
+    Environment,
+    ProjectConfig,
+    ThisCheckout,
+    OnlyOne,
+}
+
+impl ChannelDiagnosis {
+    fn new(channel: &'static str, constraint: Option<String>) -> Self {
+        Self {
+            channel,
+            constraint,
+            binding: None,
+            credential: None,
+            ready: false,
+            error_code: None,
+            fix: None,
+            chosen_by: None,
+            detail: None,
+            candidates: Vec::new(),
+        }
+    }
+}
+
+fn team_line(slots: &AppleTeamSlots) -> String {
+    format!("{}   {}", slots.display(), slots.mechanisms())
 }
 
 pub fn diagnose_apple_channel(
@@ -529,19 +562,13 @@ pub fn diagnose_apple_channel(
     channel: AppleChannel,
 ) -> Result<ChannelDiagnosis> {
     let constraint = team_constraint(Some(project), Some(channel));
-    let mut diagnosis = ChannelDiagnosis {
-        channel: channel.as_str(),
-        constraint: constraint.clone(),
-        binding: None,
-        credential: None,
-        ready: false,
-        error_code: None,
-        fix: None,
-    };
+    let mut diagnosis = ChannelDiagnosis::new(channel.as_str(), constraint.clone());
 
     match asc_from_env(constraint.as_deref()) {
         Ok(Some(_)) => {
             diagnosis.credential = Some("environment (ASC key)".to_string());
+            diagnosis.chosen_by = Some(ChosenBy::Environment);
+            diagnosis.detail = Some("App Store Connect key from the environment".to_string());
             diagnosis.ready = true;
             return Ok(diagnosis);
         }
@@ -589,8 +616,15 @@ fn diagnose_apple_wallet_channel(
     {
         if slots.has_auth() {
             diagnosis.credential = Some(describe(&slots));
+            diagnosis.detail = Some(team_line(&slots));
+            diagnosis.chosen_by = Some(if constraint.is_some() {
+                ChosenBy::ProjectConfig
+            } else {
+                ChosenBy::ThisCheckout
+            });
             diagnosis.ready = true;
         } else {
+            diagnosis.detail = Some(team_line(&slots));
             diagnosis.error_code = Some(codes::CREDENTIAL_CAPABILITY_MISSING);
             diagnosis.fix = Some("lingxia auth login apple".to_string());
         }
@@ -602,6 +636,8 @@ fn diagnose_apple_wallet_channel(
             && slots.has_auth()
         {
             diagnosis.credential = Some(describe(&slots));
+            diagnosis.detail = Some(team_line(&slots));
+            diagnosis.chosen_by = Some(ChosenBy::ProjectConfig);
             diagnosis.ready = true;
         } else {
             diagnosis.error_code = Some(codes::CREDENTIALS_MISSING);
@@ -634,10 +670,16 @@ fn diagnose_apple_wallet_channel(
                 ));
             } else {
                 diagnosis.credential = Some(describe(&candidates[0]));
+                diagnosis.detail = Some(team_line(&candidates[0]));
+                diagnosis.chosen_by = Some(ChosenBy::OnlyOne);
                 diagnosis.ready = true;
+            }
+            if !diagnosis.ready {
+                diagnosis.candidates = vec![team_line(&candidates[0])];
             }
         }
         _ => {
+            diagnosis.candidates = candidates.iter().map(team_line).collect();
             diagnosis.error_code = Some(codes::CREDENTIAL_SELECTION_REQUIRED);
             diagnosis.fix = Some(
                 "run any Apple command interactively to select once, or set teamId in lingxia.yaml"
@@ -678,15 +720,7 @@ fn harmony_from_env() -> Result<Option<AgcApiCredentials>> {
 /// Read-only Harmony project status using the same stale-binding rules as the
 /// real resolver. It never writes a binding or prompts.
 pub fn diagnose_harmony_channel(project: &ProjectContext) -> Result<ChannelDiagnosis> {
-    let mut diagnosis = ChannelDiagnosis {
-        channel: "harmony",
-        constraint: None,
-        binding: None,
-        credential: None,
-        ready: false,
-        error_code: None,
-        fix: None,
-    };
+    let mut diagnosis = ChannelDiagnosis::new("harmony", None);
 
     match harmony_from_env() {
         Ok(Some(credentials)) => {
@@ -694,6 +728,8 @@ pub fn diagnose_harmony_channel(project: &ProjectContext) -> Result<ChannelDiagn
                 "environment (AGC client {})",
                 credentials.client_id
             ));
+            diagnosis.detail = diagnosis.credential.clone();
+            diagnosis.chosen_by = Some(ChosenBy::Environment);
             diagnosis.ready = true;
             return Ok(diagnosis);
         }
@@ -732,6 +768,8 @@ fn diagnose_single_identity_channel(
         && identities.contains(&binding.identity)
     {
         diagnosis.credential = Some(binding.identity.clone());
+        diagnosis.detail = Some(binding.identity.clone());
+        diagnosis.chosen_by = Some(ChosenBy::ThisCheckout);
         diagnosis.ready = true;
         return Ok(diagnosis);
     }
@@ -743,9 +781,12 @@ fn diagnose_single_identity_channel(
         }
         [identity] if binding.is_none() => {
             diagnosis.credential = Some(identity.clone());
+            diagnosis.detail = Some(identity.clone());
+            diagnosis.chosen_by = Some(ChosenBy::OnlyOne);
             diagnosis.ready = true;
         }
         [identity] => {
+            diagnosis.candidates = vec![identity.clone()];
             diagnosis.error_code = Some(codes::CREDENTIAL_SELECTION_REQUIRED);
             diagnosis.fix = Some(format!(
                 "this checkout previously used {label} {}; run a Harmony command interactively to confirm {identity}, or `lingxia auth forget --platform {channel}` first",
@@ -753,6 +794,7 @@ fn diagnose_single_identity_channel(
             ));
         }
         _ => {
+            diagnosis.candidates = identities.to_vec();
             diagnosis.error_code = Some(codes::CREDENTIAL_SELECTION_REQUIRED);
             diagnosis.fix = Some(format!(
                 "run a Harmony command interactively to select one {label}, or provide its environment credential group"
@@ -1012,15 +1054,7 @@ mod tests {
     }
 
     fn empty_diagnosis(channel: &'static str) -> ChannelDiagnosis {
-        ChannelDiagnosis {
-            channel,
-            constraint: None,
-            binding: None,
-            credential: None,
-            ready: false,
-            error_code: None,
-            fix: None,
-        }
+        ChannelDiagnosis::new(channel, None)
     }
 
     #[test]
@@ -1117,6 +1151,44 @@ mod tests {
             Some(codes::CREDENTIAL_SELECTION_REQUIRED)
         );
         assert_eq!(diagnosis.binding.as_deref(), Some("TEAMAAAAAA"));
+    }
+
+    #[test]
+    fn apple_diagnosis_names_the_candidates_and_why_one_is_chosen() {
+        let f = fixture();
+        f.wallet.save_apple_auth(&asc("TEAMAAAAAA")).unwrap();
+        f.wallet.save_apple_auth(&apple_id("TEAMBBBBBB")).unwrap();
+        f.wallet
+            .save_apple_team_info(
+                "TEAMBBBBBB",
+                &crate::wallet::AppleTeamInfo {
+                    name: Some("Jane Doe".into()),
+                    account_type: Some("Paid".into()),
+                    apple_id: Some("jane@example.com".into()),
+                },
+            )
+            .unwrap();
+        let diagnose = |constraint: Option<&str>| {
+            diagnose_apple_wallet_channel(
+                f.project.path(),
+                AppleChannel::Ios,
+                constraint.map(str::to_string),
+                &f.wallet,
+                &f.bindings,
+                empty_diagnosis("ios"),
+            )
+            .unwrap()
+        };
+
+        let open = diagnose(None);
+        assert!(!open.ready);
+        assert_eq!(open.candidates.len(), 2);
+        assert!(open.candidates[1].starts_with("TEAMBBBBBB  Jane Doe · Paid"));
+
+        let pinned = diagnose(Some("TEAMBBBBBB"));
+        assert!(pinned.ready);
+        assert_eq!(pinned.chosen_by, Some(ChosenBy::ProjectConfig));
+        assert!(pinned.detail.unwrap().contains("Apple ID j***@example.com"));
     }
 
     #[test]

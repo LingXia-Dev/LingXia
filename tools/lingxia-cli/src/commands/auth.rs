@@ -49,6 +49,10 @@ struct ChannelStatusJson {
     status: &'static str,
     error_code: Option<&'static str>,
     fix: Option<String>,
+    /// `environment`, `lingxiaYaml`, `thisCheckout`, or `onlyOne`.
+    chosen_by: Option<&'static str>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    candidates: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -56,6 +60,10 @@ struct ChannelStatusJson {
 struct AppleTeamJson {
     team_id: String,
     mechanisms: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    account_type: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -134,6 +142,13 @@ pub fn auth_status(json: bool) -> Result<bool> {
                     },
                     error_code: c.error_code,
                     fix: c.fix.clone(),
+                    chosen_by: c.chosen_by.map(|by| match by {
+                        resolver::ChosenBy::Environment => "environment",
+                        resolver::ChosenBy::ProjectConfig => "lingxiaYaml",
+                        resolver::ChosenBy::ThisCheckout => "thisCheckout",
+                        resolver::ChosenBy::OnlyOne => "onlyOne",
+                    }),
+                    candidates: c.candidates.clone(),
                 })
                 .collect(),
             apple_teams: wallet
@@ -141,6 +156,8 @@ pub fn auth_status(json: bool) -> Result<bool> {
                 .into_iter()
                 .map(|t| AppleTeamJson {
                     mechanisms: t.mechanisms(),
+                    name: t.info.name.clone(),
+                    account_type: t.info.account_type.clone(),
                     team_id: t.team_id,
                 })
                 .collect(),
@@ -156,36 +173,13 @@ pub fn auth_status(json: bool) -> Result<bool> {
         return Ok(ready);
     }
 
+    let project_name = project
+        .as_ref()
+        .and_then(|p| p.root.file_name())
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
     for diagnosis in &channels {
-        let title = match diagnosis.channel {
-            "harmony" => "Harmony".to_string(),
-            channel => format!("Apple / {channel}"),
-        };
-        println!("{}", title.cyan().bold());
-        if diagnosis.channel != "harmony" {
-            match &diagnosis.constraint {
-                Some(team) => println!("  constraint: {team} (lingxia.yaml)"),
-                None => println!("  constraint: none"),
-            }
-        }
-        if let Some(binding) = &diagnosis.binding {
-            println!("  binding:    {binding} (this checkout)");
-        }
-        if let Some(credential) = &diagnosis.credential {
-            println!("  credential: {credential}");
-        }
-        if diagnosis.ready {
-            println!("  result:     {}", "readyLocal".green());
-        } else {
-            println!(
-                "  result:     {} ({})",
-                "actionRequired".yellow(),
-                diagnosis.error_code.unwrap_or("UNKNOWN")
-            );
-            if let Some(fix) = &diagnosis.fix {
-                println!("  next:       {fix}");
-            }
-        }
+        print_channel(&project_name, diagnosis);
         println!();
     }
 
@@ -202,4 +196,106 @@ pub fn auth_status(json: bool) -> Result<bool> {
         }
     }
     Ok(ready)
+}
+
+/// One project channel, in words: what signs it and why, or what to do.
+fn print_channel(project_name: &str, d: &resolver::ChannelDiagnosis) {
+    use resolver::ChosenBy;
+    use resolver::codes;
+    let apple = d.channel != "harmony";
+    let (platform, build) = match d.channel {
+        "ios" => ("iOS", "an iOS build"),
+        "macos" => ("macOS", "a macOS build"),
+        _ => ("Harmony", "a Harmony build"),
+    };
+    let thing = if apple {
+        "Apple team"
+    } else {
+        "Harmony AGC identity"
+    };
+    println!("{}", format!("{project_name} · {platform}").cyan().bold());
+
+    if d.ready {
+        let line = d
+            .detail
+            .as_deref()
+            .or(d.credential.as_deref())
+            .unwrap_or("");
+        println!("  {} {line}", "✓".green());
+        match d.chosen_by {
+            Some(ChosenBy::ProjectConfig) => {
+                println!("    set by {}.teamId in lingxia.yaml", d.channel)
+            }
+            Some(ChosenBy::ThisCheckout) => {
+                if apple {
+                    println!("    chosen earlier for this checkout (not set in lingxia.yaml)");
+                } else {
+                    println!("    chosen earlier for this checkout");
+                }
+                println!("    change: lingxia auth forget --platform {}", d.channel);
+            }
+            Some(ChosenBy::OnlyOne) => println!("    the only {thing} on this Mac"),
+            Some(ChosenBy::Environment) | None => {}
+        }
+        return;
+    }
+
+    let fix = d.fix.as_deref().unwrap_or("");
+    match d.error_code {
+        Some(codes::CREDENTIAL_SELECTION_REQUIRED)
+            if d.binding.is_some() && d.candidates.len() == 1 =>
+        {
+            let previous = d.binding.as_deref().unwrap_or("");
+            println!(
+                "  {} This checkout used {previous}, which this Mac has no login for any more.",
+                "✗".red()
+            );
+            println!("    Now available: {}", d.candidates[0]);
+            println!("    Use it: run {build} in a terminal and confirm,");
+            println!(
+                "            or lingxia auth forget --platform {}",
+                d.channel
+            );
+        }
+        Some(codes::CREDENTIAL_SELECTION_REQUIRED) if !d.candidates.is_empty() => {
+            println!(
+                "  {} No {thing} chosen yet. {} can sign it:",
+                "✗".red(),
+                d.candidates.len()
+            );
+            for candidate in &d.candidates {
+                println!("      {candidate}");
+            }
+            println!("    Choose one:");
+            if apple {
+                println!(
+                    "      lingxia.yaml  {}: {{ teamId: <team> }}   whole team and CI",
+                    d.channel
+                );
+                println!("      or run {build} in a terminal and pick   this checkout only");
+            } else {
+                println!("      run {build} in a terminal and pick   this checkout only");
+                println!("      or set LINGXIA_AGC_CLIENT_ID and LINGXIA_AGC_CLIENT_SECRET   CI");
+            }
+        }
+        Some(codes::CREDENTIALS_MISSING) if d.constraint.is_some() => {
+            println!(
+                "  {} lingxia.yaml sets {}.teamId {}, but this Mac has no login for that team.",
+                "✗".red(),
+                d.channel,
+                d.constraint.as_deref().unwrap_or("")
+            );
+            println!("    Log in: {fix}");
+        }
+        Some(codes::CREDENTIALS_MISSING) => {
+            println!("  {} No {thing} on this Mac.", "✗".red());
+            println!("    Log in: {fix}");
+        }
+        Some(codes::CREDENTIAL_CAPABILITY_MISSING) => {
+            let team = d.detail.as_deref().or(d.binding.as_deref()).unwrap_or("");
+            println!("  {} {team} has no login that can sign.", "✗".red());
+            println!("    Log in: {fix}");
+        }
+        _ => println!("  {} {fix}", "✗".red()),
+    }
 }
