@@ -220,7 +220,9 @@ lingxia store submit --platform windows
 ### Apple
 
 The same upload appears in App Store and TestFlight after processing;
-omit `--track`. Configure export compliance and tester groups in App Store
+omit `--track`. A `--env dev` package goes to the app for its `.dev` bundle
+id, which needs its own App Store Connect record; other stores take prod
+packages only. Configure export compliance and tester groups in App Store
 Connect. External testing may need beta review.
 
 ```bash

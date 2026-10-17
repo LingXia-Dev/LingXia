@@ -23,7 +23,7 @@ use clap::Subcommand;
 use colored::Colorize;
 use std::env;
 
-use crate::config::LingXiaConfig;
+use crate::config::{AppEnv, LingXiaConfig};
 use crate::resolver::{self, AppleChannel, AppleNeed, AscMaterial};
 use backend::{StorePlatform, SubmitOptions, find_artifact};
 use creds::{resolve_googleplay, resolve_honor, resolve_msstore, resolve_oppo, resolve_xiaomi};
@@ -106,10 +106,17 @@ fn load_config() -> Result<LingXiaConfig> {
     LingXiaConfig::load(&root)
 }
 
-/// The platform-block identity the artifact must carry for this store.
-fn expected_identity(config: &LingXiaConfig, platform: StorePlatform) -> Result<String> {
+/// The platform-block identity the artifact must carry for this store. App
+/// Store Connect finds the app by bundle id, so an Apple package of either
+/// env goes to that env's app; the other stores upload into the listing
+/// `lingxia.yaml` names, which is the prod app.
+fn expected_identity(
+    config: &LingXiaConfig,
+    platform: StorePlatform,
+    env: AppEnv,
+) -> Result<String> {
     Ok(match platform {
-        StorePlatform::Ios | StorePlatform::Macos => apple_bundle_id(config, platform)?,
+        StorePlatform::Ios | StorePlatform::Macos => apple_bundle_id(config, platform, env)?,
         StorePlatform::GooglePlay
         | StorePlatform::Xiaomi
         | StorePlatform::Oppo
@@ -123,12 +130,13 @@ fn android_package(config: &LingXiaConfig) -> Result<String> {
     config.resolved_package_id("android")
 }
 
-fn apple_bundle_id(config: &LingXiaConfig, platform: StorePlatform) -> Result<String> {
-    match platform {
-        StorePlatform::Ios => config.resolved_package_id("ios"),
-        StorePlatform::Macos => config.resolved_package_id("macos"),
+fn apple_bundle_id(config: &LingXiaConfig, platform: StorePlatform, env: AppEnv) -> Result<String> {
+    let name = match platform {
+        StorePlatform::Ios => "ios",
+        StorePlatform::Macos => "macos",
         _ => bail!("not an Apple platform"),
-    }
+    };
+    config.resolved_package_id_with_suffix(name, &config.resolve_env(env)?)
 }
 
 /// Resolve the ASC key for store use (env group → wallet, in-place login).
@@ -158,8 +166,12 @@ fn submit(platform: StorePlatform, opts: SubmitOptions) -> Result<()> {
     let root = env::current_dir()?;
     // Validate the artifact before touching credentials or the network, so a
     // wrong/missing package fails before any login flow starts.
-    let artifact = find_artifact(&root, platform)?;
-    artifact_identity::verify(&artifact, &expected_identity(&config, platform)?)?;
+    let packaged = find_artifact(&root, platform)?;
+    let artifact = packaged.path;
+    artifact_identity::verify(
+        &artifact,
+        &expected_identity(&config, platform, packaged.env)?,
+    )?;
 
     println!(
         "{} uploading {} to {}",
@@ -253,7 +265,7 @@ fn status(platform: StorePlatform) -> Result<()> {
             msstore::status(&resolve_msstore()?, cfg)?;
         }
         StorePlatform::Ios | StorePlatform::Macos => {
-            let bundle_id = apple_bundle_id(&config, platform)?;
+            let bundle_id = apple_bundle_id(&config, platform, AppEnv::Prod)?;
             appstore::status(&asc_material(platform)?, &bundle_id)?;
         }
         StorePlatform::Harmony => {

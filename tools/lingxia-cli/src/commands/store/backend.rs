@@ -3,6 +3,8 @@
 use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 
+use crate::config::AppEnv;
+
 /// The store target selected by `--platform`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StorePlatform {
@@ -84,14 +86,27 @@ pub struct SubmitOptions {
     pub test_version_id: Option<String>,
 }
 
+/// A packaged artifact and the host env it was packaged for.
+#[derive(Debug, PartialEq)]
+pub struct PackagedArtifact {
+    pub path: PathBuf,
+    pub env: AppEnv,
+}
+
 /// The artifact `lingxia package` recorded for this store in
 /// `dist/<platform>/manifest.json`. `submit` never builds, and never guesses
 /// by file name or age.
-pub fn find_artifact(project_root: &Path, platform: StorePlatform) -> Result<PathBuf> {
+pub fn find_artifact(project_root: &Path, platform: StorePlatform) -> Result<PackagedArtifact> {
     let dir = project_root.join("dist").join(platform.dist_subdir());
-    crate::dist_manifest::resolve(&dir, platform.artifact_formats())
-        .map(|(_, path)| path)
-        .with_context(|| format!("No {} artifact to submit", platform.store_name()))
+    let (manifest, path) = crate::dist_manifest::resolve(&dir, platform.artifact_formats())
+        .with_context(|| format!("No {} artifact to submit", platform.store_name()))?;
+    let env = AppEnv::parse_cli(&manifest.env).with_context(|| {
+        format!(
+            "{} records an unknown env",
+            dir.join(crate::dist_manifest::FILE).display()
+        )
+    })?;
+    Ok(PackagedArtifact { path, env })
 }
 
 /// A shared ureq agent for store API calls.
@@ -139,11 +154,34 @@ mod tests {
         std::fs::write(dir.join("Stray.aab"), b"x").unwrap();
         assert_eq!(
             find_artifact(tmp.path(), StorePlatform::GooglePlay).unwrap(),
-            dir.join("Demo.aab")
+            PackagedArtifact {
+                path: dir.join("Demo.aab"),
+                env: AppEnv::Prod
+            }
         );
         assert_eq!(
-            find_artifact(tmp.path(), StorePlatform::Xiaomi).unwrap(),
+            find_artifact(tmp.path(), StorePlatform::Xiaomi)
+                .unwrap()
+                .path,
             dir.join("Demo.apk")
+        );
+    }
+
+    #[test]
+    fn find_artifact_carries_the_packaged_env() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("dist").join("ios");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("Demo-dev.ipa");
+        std::fs::write(&path, b"ipa").unwrap();
+        let files = [crate::dist_manifest::Produced {
+            format: "ipa",
+            path,
+        }];
+        crate::dist_manifest::write(&dir, "ios", "1.0.0", "dev", None, &files).unwrap();
+        assert_eq!(
+            find_artifact(tmp.path(), StorePlatform::Ios).unwrap().env,
+            AppEnv::Dev
         );
     }
 }
