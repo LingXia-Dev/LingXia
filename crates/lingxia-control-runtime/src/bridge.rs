@@ -191,6 +191,8 @@ fn run_dev_bridge(ws_url: String) {
                     continue;
                 }
 
+                lingxia::dev::dev_session_connected();
+
                 // The override belongs to this concrete websocket session.
                 // Dropping this lease clears normal disconnects, failed setup,
                 // crashes of the peer, and every reconnect attempt.

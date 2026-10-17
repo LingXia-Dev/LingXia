@@ -172,6 +172,41 @@ fn omitted_channel_keeps_the_live_draft_session() {
 }
 
 #[test]
+fn dev_bundle_registration_keeps_the_live_channel() {
+    #[cfg(target_vendor = "apple")]
+    let _host = crate::apple_host_stubs::headless_lifecycle();
+    let f = Fixture::new();
+    f.install_channel(Channel::Release);
+    let release = f
+        .manager
+        .ensure_lxapp(f.appid.clone(), Channel::Release)
+        .unwrap();
+    release.set_status(LxAppSessionStatus::Opened);
+    register_dev_bundle_source(f.appid.clone(), f.root.path());
+    assert_eq!(
+        f.manager.resolve_open_channel(&f.appid, None),
+        Channel::Release
+    );
+    assert_eq!(
+        f.manager
+            .resolve_open_channel(&f.appid, Some(Channel::Release)),
+        Channel::Release
+    );
+    let fresh = format!("{}-fresh", f.appid);
+    register_dev_bundle_source(fresh.clone(), f.root.path());
+    assert_eq!(f.manager.resolve_open_channel(&fresh, None), Channel::Draft);
+    f.manager.retire_lxapp(&f.appid).unwrap();
+}
+
+#[test]
+fn builtin_registration_leaves_a_dev_bundle_in_place() {
+    let appid = format!("app.lingxia.keep-dev.{}", Uuid::new_v4());
+    register_dev_bundle_source(appid.clone(), std::env::temp_dir());
+    register_builtin_asset_bundle(appid.clone());
+    assert!(is_dev_bundle_appid(&appid));
+}
+
+#[test]
 fn explicit_channel_switch_applies_the_pending_target_package() {
     #[cfg(target_vendor = "apple")]
     let _host = crate::apple_host_stubs::headless_lifecycle();

@@ -88,6 +88,8 @@ pub use lingxia_webview::url_callback;
 /// Host-owned data-root override for isolated test runs. Not an lxapp API.
 #[doc(hidden)]
 pub use lxapp::data_profile;
+#[cfg(feature = "dev-bundles")]
+pub use lxapp::set_dev_bundle_preparer;
 pub use lxapp::set_num_workers;
 pub use lxapp::{
     AppSessionClass, CloseReason, CreatePageInstanceRequest, CreatedPageInstance,

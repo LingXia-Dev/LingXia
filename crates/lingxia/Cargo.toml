@@ -16,7 +16,7 @@ automation = ["dep:lingxia-automation"]
 # automation facade does not pull native input, AX, clipboard, or snapshot code.
 desktop-automation = ["automation", "lingxia-automation/desktop"]
 automation-runtime = ["automation", "lingxia-automation/runtime"]
-devtool = ["lxapp/automation"]
+devtool = ["lxapp/automation", "lxapp/dev-bundles"]
 process = ["lxapp/process"]
 # Low-level managed browser tabs. Advanced hosts may provide their own native
 # browser UI/chrome on top of this.
