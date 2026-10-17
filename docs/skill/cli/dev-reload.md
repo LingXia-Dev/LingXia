@@ -59,8 +59,9 @@ lingxia dev listen -p ios --port 39231
 - A busy port fails; listen does not pick another, and names the session
   holding it.
 - It works in a bundled lxapp's directory too, home included.
-- The iOS host dials the Wi-Fi address it was built with. After that address
-  changes, rebuild it once with `lingxia dev -p ios`.
+- The iOS host dials this Mac by its Bonjour name (`<LocalHostName>.local`),
+  so an address change needs no rebuild. The address it had at build time is
+  the fallback where the network drops multicast.
 
 A relaunched app opens the lxapp again. A foregrounded one keeps its page,
 and one you closed stays closed. A save the app missed while away reloads

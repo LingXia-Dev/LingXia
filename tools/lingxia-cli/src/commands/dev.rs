@@ -1219,9 +1219,13 @@ fn lan_ws_url(port: u16) -> Result<String> {
     {
         return Ok(format!("ws://{}:{port}", host.trim()));
     }
-    match detect_lan_ip() {
-        Some(ip) => Ok(format!("ws://{ip}:{port}")),
-        None => {
+    // The Bonjour name survives a DHCP change; the address it had now is the
+    // fallback for networks that drop multicast.
+    match (bonjour_host_name(), detect_lan_ip()) {
+        (Some(name), Some(ip)) => Ok(format!("ws://{name}:{port}/?fallback={ip}")),
+        (Some(name), None) => Ok(format!("ws://{name}:{port}")),
+        (None, Some(ip)) => Ok(format!("ws://{ip}:{port}")),
+        (None, None) => {
             eprintln!(
                 "{} Failed to detect a LAN address; falling back to localhost. Use a reachable host address if your device cannot connect.",
                 "Warning:".yellow(),
@@ -1229,6 +1233,20 @@ fn lan_ws_url(port: u16) -> Result<String> {
             Ok(loopback_ws_url(port))
         }
     }
+}
+
+/// This Mac's `<LocalHostName>.local`, which an iOS device resolves over mDNS.
+fn bonjour_host_name() -> Option<String> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
+    let output = std::process::Command::new("scutil")
+        .args(["--get", "LocalHostName"])
+        .output()
+        .ok()?;
+    let name = String::from_utf8(output.stdout).ok()?;
+    let name = name.trim();
+    (output.status.success() && !name.is_empty()).then(|| format!("{name}.local"))
 }
 
 /// Address LAN peers should dial. Prefers a private (RFC1918) interface: the

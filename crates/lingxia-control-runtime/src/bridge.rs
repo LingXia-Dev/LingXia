@@ -97,18 +97,8 @@ fn dev_ws_url() -> Option<String> {
 fn connect_with_timeout(
     ws_url: &str,
 ) -> Result<WebSocket<MaybeTlsStream<std::net::TcpStream>>, WsError> {
-    let authority = ws_url
-        .trim_start_matches("ws://")
-        .split(['/', '?'])
-        .next()
-        .unwrap_or_default();
-    let addr = authority.parse::<std::net::SocketAddr>().map_err(|err| {
-        WsError::Url(tungstenite::error::UrlError::UnableToConnect(
-            err.to_string(),
-        ))
-    })?;
     let stream =
-        std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(5)).map_err(WsError::Io)?;
+        lingxia::dev::connect_dev_server(ws_url, Duration::from_secs(5)).map_err(WsError::Io)?;
     prevent_sigpipe(&stream).map_err(WsError::Io)?;
     stream
         .set_read_timeout(Some(Duration::from_secs(5)))
