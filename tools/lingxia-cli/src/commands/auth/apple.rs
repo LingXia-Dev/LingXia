@@ -377,8 +377,9 @@ fn login_with_password(
     };
 
     // Fetch app tokens and teams
-    let (team_id, app_token) =
+    let (team, app_token) =
         select_team(&client, &login_data, &device_info, &mut anisette_provider)?;
+    let team_id = team.id.clone();
 
     let credentials = AuthCredentials::AppleId {
         adsid: login_data.adsid.clone(),
@@ -393,11 +394,19 @@ fn login_with_password(
     }
 
     let path = wallet.save_apple_auth(&credentials)?;
+    wallet.save_apple_team_info(
+        &team_id,
+        &crate::wallet::AppleTeamInfo {
+            name: Some(team.name.clone()),
+            account_type: Some(team.account_type().to_string()),
+            apple_id: Some(username.clone()),
+        },
+    )?;
 
     println!();
     println!("{} Successfully logged in!", "✓".green());
     println!("  Apple ID: {}", username);
-    println!("  Team ID:  {}", team_id);
+    println!("  Team:     {} ({})", team.name, team_id);
     println!("  Credentials saved to: {}", path.display());
 
     Ok(team_id)
@@ -771,24 +780,32 @@ pub fn apple_status() -> Result<()> {
     wallet.notice_legacy_files();
     let teams = wallet.apple_teams()?;
 
-    println!("{}", "Apple".cyan().bold());
+    println!("{}", "Apple accounts on this Mac".cyan().bold());
     if teams.is_empty() {
-        println!(
-            "  {} No credentials. Fix: lingxia auth login apple",
-            "✗".red()
-        );
+        println!("  {} None. Log in: lingxia auth login apple", "✗".red());
         return Ok(());
     }
     for team in teams {
-        println!("  {}  {}", team.team_id, team.mechanisms());
-        if team.has_apple_id
-            && let Some(creds) = wallet.load_apple_auth(&team.team_id)?
-            && creds.is_expired()
-        {
-            println!(
-                "    {} Apple ID session expired. Fix: lingxia auth login apple --mode password",
-                "⚠".yellow()
-            );
+        let mut line = format!("  {}   {}", team.display(), team.mechanisms());
+        let session = if team.has_apple_id {
+            wallet.load_apple_id(&team.team_id)?
+        } else {
+            None
+        };
+        if let Some(AuthCredentials::AppleId { expiry, .. }) = &session {
+            let local = expiry.with_timezone(&chrono::Local);
+            if session.as_ref().is_some_and(AuthCredentials::is_expired) {
+                line.push_str(&format!(" · {}", "session expired".yellow()));
+            } else {
+                line.push_str(&format!(" · session until {}", local.format("%m-%d %H:%M")));
+            }
+        }
+        println!("{line}");
+        if team.label().is_none() && team.has_apple_id {
+            println!("    (log in again with the Apple ID to show the team name)");
+        }
+        if session.as_ref().is_some_and(AuthCredentials::is_expired) {
+            println!("    Renew: lingxia auth login apple --mode password");
         }
     }
     Ok(())
@@ -797,13 +814,13 @@ pub fn apple_status() -> Result<()> {
 /// Fetch developer teams and let the user pick one.
 ///
 /// If there is exactly one team, it is selected automatically.
-/// Returns (team_id, app_token) tuple.
+/// Returns the team and the app token.
 fn select_team(
     client: &GrandSlamClient,
     login_data: &GrandSlamLoginData,
     device_info: &DeviceInfo,
     anisette_provider: &mut OmnisetteProvider,
-) -> Result<(String, String)> {
+) -> Result<(developer_services::DeveloperTeam, String)> {
     println!();
     println!("  {} Fetching app tokens...", "→".dimmed());
 
@@ -838,7 +855,7 @@ fn select_team(
             team.id,
             team.account_type()
         );
-        return Ok((team.id.clone(), app_token));
+        return Ok((team.clone(), app_token));
     }
 
     // Multiple teams — let the user choose
@@ -856,8 +873,7 @@ fn select_team(
         .default(0)
         .interact()?;
 
-    let team = &teams[selection];
-    Ok((team.id.clone(), app_token))
+    Ok((teams[selection].clone(), app_token))
 }
 
 /// Expand ~ in path to home directory
