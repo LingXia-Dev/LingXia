@@ -266,14 +266,17 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_splashMinDurationMs(
     jlong::try_from(lingxia_app_context::splash_min_duration().as_millis()).unwrap_or(jlong::MAX)
 }
 
-/// Prod build currently on the dev service. The shell draws the mark; a dev
-/// build stays false even if a leftover override file is present.
+/// Touch-through dev mark text. Empty when the mark stays hidden.
+/// `compact` is the phone tab: a session port replaces `DEV`.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_app_NativeApi_devServiceBanner(
-    _env: EnvUnowned,
-    _class: JClass,
-) -> jboolean {
-    jboolean::from(lingxia_app_context::dev_service_banner())
+pub extern "system" fn Java_com_lingxia_app_NativeApi_devMark<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    compact: jboolean,
+) -> JString<'a> {
+    let label = lingxia_app_context::dev_mark(compact).unwrap_or_default();
+    env.with_env(|env| env.new_string(label))
+        .resolve::<LogErrorAndDefault>()
 }
 
 #[unsafe(no_mangle)]

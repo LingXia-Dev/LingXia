@@ -1,4 +1,4 @@
-//! Prod build on the dev service. One owned, click-through chip per top-level
+//! Touch-through dev mark. One owned, click-through chip per top-level
 //! window, raised above that window's floats. It is not topmost, so it stays
 //! with the app and does not cover other programs.
 
@@ -51,10 +51,11 @@ pub(crate) fn sync(hwnd: HWND) {
     if !is_host(hwnd) {
         return;
     }
-    if !lingxia_app_context::dev_service_banner()
-        || !unsafe { IsWindowVisible(hwnd) }.as_bool()
-        || unsafe { IsIconic(hwnd) }.as_bool()
-    {
+    let Some(label) = lingxia_app_context::dev_mark(false) else {
+        destroy(hwnd);
+        return;
+    };
+    if !unsafe { IsWindowVisible(hwnd) }.as_bool() || unsafe { IsIconic(hwnd) }.as_bool() {
         destroy(hwnd);
         return;
     }
@@ -69,7 +70,7 @@ pub(crate) fn sync(hwnd: HWND) {
         return;
     }
     let dpi = window_dpi(hwnd);
-    let (width, height) = chip_size(dpi);
+    let (width, height) = chip_size(dpi, &label);
     let x = frame.right - width - px(dpi, 16);
     let y = frame.bottom - height - px(dpi, 16);
     let owner = handle(hwnd);
@@ -88,7 +89,7 @@ pub(crate) fn sync(hwnd: HWND) {
         let Some(window) = create(hwnd, x, y, width, height) else {
             return;
         };
-        if !paint(from_handle(window), width, height, dpi) {
+        if !paint(from_handle(window), width, height, dpi, &label) {
             unsafe {
                 let _ = DestroyWindow(from_handle(window));
             }
@@ -192,8 +193,15 @@ fn px(dpi: i32, dp: i32) -> i32 {
     (dp * dpi + 48) / 96
 }
 
-fn chip_size(dpi: i32) -> (i32, i32) {
-    (px(dpi, 58), px(dpi, 22))
+fn chip_size(dpi: i32, label: &str) -> (i32, i32) {
+    // "DEV" keeps the original 58dp chip. A port needs about 11dp per glyph,
+    // which is what those three letters already occupy.
+    let width = if label == "DEV" {
+        58
+    } else {
+        18 + 11 * label.chars().count() as i32 + 8
+    };
+    (px(dpi, width), px(dpi, 22))
 }
 
 fn create(owner: HWND, x: i32, y: i32, width: i32, height: i32) -> Option<isize> {
@@ -205,7 +213,7 @@ fn create(owner: HWND, x: i32, y: i32, width: i32, height: i32) -> Option<isize>
         CreateWindowExW(
             WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
             class_name(),
-            PCWSTR::null(),
+            w!("LingXia Dev"),
             WS_POPUP,
             x,
             y,
@@ -255,7 +263,7 @@ unsafe extern "system" fn wnd_proc(
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
 }
 
-fn paint(hwnd: HWND, width: i32, height: i32, dpi: i32) -> bool {
+fn paint(hwnd: HWND, width: i32, height: i32, dpi: i32, label: &str) -> bool {
     unsafe {
         let screen = GetDC(None);
         if screen.is_invalid() {
@@ -305,7 +313,7 @@ fn paint(hwnd: HWND, width: i32, height: i32, dpi: i32) -> bool {
             pixels,
             width,
             height,
-            "DEV",
+            label,
             text,
             0x00ff_ffff,
             (11 * dpi + 36) / 72,

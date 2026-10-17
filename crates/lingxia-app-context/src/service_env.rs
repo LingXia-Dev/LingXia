@@ -130,13 +130,48 @@ fn dev_service_mark(build_env: AppEnv, service_env: AppEnv) -> bool {
     build_env == AppEnv::Prod && service_env == AppEnv::Dev
 }
 
-/// Prod build currently talking to the dev service.
-///
-/// Hosts draw a non-interactive status-bar label from this. A dev build
-/// never shows it: that package is already the dev server.
-pub fn dev_service_banner() -> bool {
+fn dev_service_banner() -> bool {
     let snap = running_snapshot();
     dev_service_mark(snap.build_env, snap.service_env)
+}
+
+fn dev_session_port() -> Option<u16> {
+    crate::app_config()
+        .and_then(|config| config.dev_ws_url.as_deref())
+        .and_then(dev_ws_port)
+}
+
+/// Text of the touch-through dev mark, or `None` when it stays hidden.
+///
+/// One mark covers both signals. A prod build on the dev service says `DEV`.
+/// A baked `devWsUrl` contributes the port the process dials. `compact` is
+/// the phone tab, which fits one token, so a port replaces `DEV`. A desktop
+/// chip shows the port, and `DEV` plus the port when both apply.
+pub fn dev_mark(compact: bool) -> Option<String> {
+    dev_mark_from(dev_service_banner(), dev_session_port(), compact)
+}
+
+fn dev_ws_port(url: &str) -> Option<u16> {
+    let rest = url
+        .trim()
+        .strip_prefix("ws://")
+        .or_else(|| url.trim().strip_prefix("wss://"))?;
+    let authority = rest
+        .split(['/', '?'])
+        .next()
+        .filter(|value| !value.is_empty())?;
+    let port = authority.rsplit_once(':')?.1.parse::<u16>().ok()?;
+    (port != 0).then_some(port)
+}
+
+fn dev_mark_from(service: bool, port: Option<u16>, compact: bool) -> Option<String> {
+    match (service, port, compact) {
+        (false, None, _) => None,
+        (true, None, _) => Some("DEV".to_string()),
+        (_, Some(port), true) => Some(port.to_string()),
+        (false, Some(port), false) => Some(port.to_string()),
+        (true, Some(port), false) => Some(format!("DEV {port}")),
+    }
 }
 
 /// Effective cloud server for discovery, auth, MQTT, and product HTTP.
@@ -865,5 +900,42 @@ mod tests {
     fn toggle_target_flips_between_dev_and_prod() {
         assert_eq!(toggle_target(AppEnv::Prod), AppEnv::Dev);
         assert_eq!(toggle_target(AppEnv::Dev), AppEnv::Prod);
+    }
+
+    #[test]
+    fn dev_mark_shows_the_service_word_or_the_session_port() {
+        assert_eq!(dev_mark_from(false, None, true), None);
+        assert_eq!(dev_mark_from(false, None, false), None);
+        assert_eq!(dev_mark_from(true, None, true).as_deref(), Some("DEV"));
+        assert_eq!(dev_mark_from(true, None, false).as_deref(), Some("DEV"));
+        assert_eq!(
+            dev_mark_from(false, Some(39123), true).as_deref(),
+            Some("39123")
+        );
+        assert_eq!(
+            dev_mark_from(false, Some(39123), false).as_deref(),
+            Some("39123")
+        );
+        assert_eq!(
+            dev_mark_from(true, Some(39123), true).as_deref(),
+            Some("39123")
+        );
+        assert_eq!(
+            dev_mark_from(true, Some(39123), false).as_deref(),
+            Some("DEV 39123")
+        );
+    }
+
+    #[test]
+    fn dev_ws_port_reads_the_baked_websocket_authority() {
+        assert_eq!(dev_ws_port("ws://127.0.0.1:39123"), Some(39123));
+        assert_eq!(
+            dev_ws_port("ws://192.168.1.20:12345/?token=abc"),
+            Some(12345)
+        );
+        assert_eq!(dev_ws_port("wss://10.0.0.2:9"), Some(9));
+        assert_eq!(dev_ws_port("ws://127.0.0.1"), None);
+        assert_eq!(dev_ws_port("ws://127.0.0.1:0"), None);
+        assert_eq!(dev_ws_port("http://127.0.0.1:80"), None);
     }
 }

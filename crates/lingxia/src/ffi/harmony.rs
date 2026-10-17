@@ -826,10 +826,11 @@ pub fn on_pushlink_received(url: String, trigger: i32) -> i32 {
     lingxia_service::applink::deliver(&url)
 }
 
-/// Prod build running the dev service. The host draws a non-interactive label.
+/// Touch-through dev mark text. Empty when the mark stays hidden.
+/// `compact` is the phone tab: a session port replaces `DEV`.
 #[napi]
-pub fn dev_service_banner() -> bool {
-    lingxia_app_context::dev_service_banner()
+pub fn dev_mark(compact: bool) -> String {
+    lingxia_app_context::dev_mark(compact).unwrap_or_default()
 }
 
 /// Get current active LxApp ID and path from Rust stack

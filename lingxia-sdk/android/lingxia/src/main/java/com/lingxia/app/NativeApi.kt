@@ -116,11 +116,11 @@ internal object NativeApi {
     external fun splashMinDurationMs(): Long
 
     /**
-     * True only when this process is a prod build whose service env is dev.
-     * The shell uses it to draw the DEV chip. A dev build is always false.
+     * Touch-through dev mark text, or empty when the mark stays hidden.
+     * `compact` is the phone tab: a session port replaces `DEV`.
      */
     @JvmStatic
-    external fun devServiceBanner(): Boolean
+    external fun devMark(compact: Boolean): String
 
     /**
      * The host-declared page floor for one appearance, as `#RRGGBB`, or an

@@ -17,9 +17,9 @@ import com.lingxia.app.NativeApi
 import java.util.WeakHashMap
 
 /**
- * Prod build on the dev service. Auth sheets and guest lxapps are views in
- * the current activity, so a chip inside the page paints underneath the next
- * one added. This is its own sub-window, above those, and it does not take
+ * Touch-through dev mark. Auth sheets and guest lxapps are views in the
+ * current activity, so a chip inside the page paints underneath the next one
+ * added. This is its own sub-window, above those, and it does not take
  * touches. A new activity gets its own; the previous one hides with its parent.
  */
 internal object DevServiceMark {
@@ -28,7 +28,9 @@ internal object DevServiceMark {
 
     fun attach(activity: Activity) {
         if (activity.isFinishing || activity.isDestroyed) return
-        if (!NativeApi.ensureLoaded() || !NativeApi.devServiceBanner()) return
+        if (!NativeApi.ensureLoaded()) return
+        val label = NativeApi.devMark(true)
+        if (label.isEmpty()) return
         shown[activity]?.let { existing ->
             if (existing.isAttachedToWindow) return
             shown.remove(activity)
@@ -45,10 +47,10 @@ internal object DevServiceMark {
             })
             return
         }
-        val chip = chip(activity)
+        val mark = chip(activity, label)
         val params = WindowManager.LayoutParams(
             dp(activity, 24),
-            dp(activity, 60),
+            dp(activity, mark.heightDp),
             WindowManager.LayoutParams.TYPE_APPLICATION_SUB_PANEL,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
@@ -62,12 +64,12 @@ internal object DevServiceMark {
         }
         val wm = activity.getSystemService(Activity.WINDOW_SERVICE) as WindowManager
         try {
-            wm.addView(chip, params)
+            wm.addView(mark.view, params)
         } catch (error: RuntimeException) {
             LxLog.e(TAG, "open failed: $error")
             return
         }
-        shown[activity] = chip
+        shown[activity] = mark.view
         Log.i(TAG, "dev service mark shown")
     }
 
@@ -80,7 +82,12 @@ internal object DevServiceMark {
         }
     }
 
-    private fun chip(activity: Activity): View {
+    private class MarkChip(val view: View, val heightDp: Int)
+
+    private fun chip(activity: Activity, label: String): MarkChip {
+        val word = label.length <= 3
+        val textWidthDp = if (word) 36 else label.length * 8 + 4
+        val tabHeightDp = if (word) 60 else textWidthDp + 28
         val tab = FrameLayout(activity).apply {
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#C62828"))
@@ -101,18 +108,18 @@ internal object DevServiceMark {
             topMargin = dp(activity, 8)
         })
         tab.addView(TextView(activity).apply {
-            text = "DEV"
+            text = label
             gravity = Gravity.CENTER
             rotation = -90f
-            translationY = dp(activity, 7).toFloat()
+            translationY = dp(activity, if (word) 7 else 8).toFloat()
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_DIP, 11f)
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             includeFontPadding = false
             isClickable = false
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }, FrameLayout.LayoutParams(dp(activity, 36), dp(activity, 16), Gravity.CENTER))
-        return tab
+        }, FrameLayout.LayoutParams(dp(activity, textWidthDp), dp(activity, 16), Gravity.CENTER))
+        return MarkChip(tab, tabHeightDp)
     }
 
     private fun dp(activity: Activity, value: Int): Int {
