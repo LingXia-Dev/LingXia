@@ -17,6 +17,14 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     /// page until the runtime names one.
     private var currentPageInstanceId: String?
     private var sessionId: UInt64
+    /// Set when this controller hosts an lxapp presented as an aside. The
+    /// window's navigation toolbar and the core's current page belong to the
+    /// main, so an aside's page changes must not write either.
+    internal var hostsAside = false
+    /// The aside's own navigation bar. The window toolbar shows the main's
+    /// page; an aside page gets the same bar sized to the aside, fed this
+    /// app's navigation state. It collapses for `navigationStyle: custom`.
+    private var asideNavigationBar: MacNavigationToolbar?
     private var webViewContainer: NSView!
     private weak var activeWebView: WKWebView?
     /// Covers a freshly swapped-in webview until its document paints:
@@ -74,8 +82,32 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
         setupWebViewContainer()
 
+        let contentTop: NSLayoutYAxisAnchor
+        if hostsAside {
+            let bar = MacNavigationToolbar(followsSharedState: false)
+            bar.translatesAutoresizingMaskIntoConstraints = false
+            bar.onNavigationAction = { [weak self] action in
+                guard let self else { return }
+                let event = action == "home"
+                    ? LxAppEvent.navigationActionHome
+                    : LxAppEvent.navigationActionBack
+                _ = onLxappEvent(self.appId, LxAppEvent.navigationClick, event)
+            }
+            view.addSubview(bar)
+            NSLayoutConstraint.activate([
+                bar.topAnchor.constraint(equalTo: view.topAnchor),
+                bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            ])
+            asideNavigationBar = bar
+            contentTop = bar.bottomAnchor
+            updateNavigationBar(appId: appId, path: currentPath)
+        } else {
+            contentTop = view.topAnchor
+        }
+
         NSLayoutConstraint.activate([
-            webViewContainer.topAnchor.constraint(equalTo: view.topAnchor),
+            webViewContainer.topAnchor.constraint(equalTo: contentTop),
             webViewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webViewContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             webViewContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
@@ -378,7 +410,9 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 animationType: animationType
             )
         }
-        LxAppCore.setCurrentPath(path, pageInstanceId: pageInstanceId)
+        if !hostsAside {
+            LxAppCore.setCurrentPath(path, pageInstanceId: pageInstanceId)
+        }
     }
 
     /// The page's WebView does not exist yet: show it when the runtime reports
@@ -433,6 +467,12 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     @MainActor
     func updateNavigationBar(appId: String, path: String) {
+        // The window toolbar is the main's; an aside shows its own bar.
+        if hostsAside {
+            guard !path.isEmpty else { return }
+            asideNavigationBar?.apply(lingxia.getNavigationBarState(appId, path))
+            return
+        }
         NavigationBarStateManager.shared.updateState(appId: appId, path: path)
     }
 

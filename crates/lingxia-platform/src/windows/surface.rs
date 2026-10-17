@@ -135,6 +135,16 @@ pub(super) fn show_webtag_window(
 }
 
 pub(super) fn navigate_webtag_window(webtag: WebTag, title: String, animation: AnimationType) {
+    // An lxapp presented as an aside keeps its page stack in that aside: the
+    // destination replaces the aside's page instead of taking the main.
+    let retargeted = RUNTIME_LXAPP_ASIDES
+        .lock()
+        .ok()
+        .and_then(|mut entries| retarget_runtime_lxapp_aside(&mut entries, &webtag));
+    if let Some(retargeted) = retargeted {
+        navigate_runtime_lxapp_aside(retargeted, webtag, title);
+        return;
+    }
     let animation = nav_animation(animation);
     let request_key = show_request_key(&webtag, LxAppOpenMode::Normal, "");
     let request_id = remember_show_request(&request_key);
@@ -150,6 +160,74 @@ pub(super) fn navigate_webtag_window(webtag: WebTag, title: String, animation: A
                 return;
             };
             show_webview_handler_navigate(handler, &title, animation);
+        }),
+    );
+}
+
+/// A runtime lxapp aside whose page was switched by a navigation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RetargetedLxappAside {
+    panel_id: String,
+    previous: WebTag,
+    title: String,
+}
+
+/// Point the runtime aside hosting `webtag`'s lxapp session at `webtag`.
+/// `None` when that session is not presented as an aside.
+fn retarget_runtime_lxapp_aside(
+    entries: &mut HashMap<String, RuntimeLxappAside>,
+    webtag: &WebTag,
+) -> Option<RetargetedLxappAside> {
+    let appid = webtag.extract_appid();
+    let session_id = webtag.session_id();
+    let (panel_id, entry) = entries.iter_mut().find(|(_, entry)| {
+        entry.webtag.extract_appid() == appid && entry.webtag.session_id() == session_id
+    })?;
+    let previous = std::mem::replace(&mut entry.webtag, webtag.clone());
+    Some(RetargetedLxappAside {
+        panel_id: panel_id.clone(),
+        previous,
+        title: entry.title.clone(),
+    })
+}
+
+/// Present the aside's new page through the lxapp aside slot, then hide the
+/// page it replaced (no longer an aside child, so the slot sync would not).
+fn navigate_runtime_lxapp_aside(
+    retargeted: RetargetedLxappAside,
+    webtag: WebTag,
+    host_title: String,
+) {
+    let RetargetedLxappAside {
+        panel_id,
+        previous,
+        title,
+    } = retargeted;
+    let request_key = show_request_key(&webtag, LxAppOpenMode::Panel, &panel_id);
+    let request_id = remember_show_request(&request_key);
+    let tag = webtag.clone();
+    await_page_webview(
+        webtag,
+        Box::new(move |_ready| {
+            if !show_request_is_current(&request_key, request_id) {
+                return;
+            }
+            let Some(handler) = find_webview_handler(&tag) else {
+                log::error!("No Windows WebView for aside navigation to {}", tag.key());
+                return;
+            };
+            install_close_handler(&tag, close_action_for_mode(LxAppOpenMode::Panel));
+            show_webview_handler_for_mode(
+                handler,
+                &host_title,
+                &title,
+                false,
+                LxAppOpenMode::Panel,
+                &panel_id,
+            );
+            if previous != tag {
+                let _ = hide_webview_window(&previous);
+            }
         }),
     );
 }
@@ -1535,7 +1613,64 @@ fn present_surface_with_handler(webtag: &WebTag, id: &str, target: PresentationT
 
 #[cfg(test)]
 mod tests {
-    use super::should_hide_runtime_lxapp_aside;
+    #[test]
+    fn navigation_in_an_aside_lxapp_retargets_its_aside() {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "agent".to_string(),
+            RuntimeLxappAside {
+                webtag: WebTag::from("agent:pages/chat/index.tsx#7"),
+                title: "Agent".to_string(),
+            },
+        );
+        let engines = WebTag::from("agent:pages/engines/index.tsx#7");
+
+        let retargeted = retarget_runtime_lxapp_aside(&mut entries, &engines);
+
+        assert_eq!(
+            retargeted,
+            Some(RetargetedLxappAside {
+                panel_id: "agent".to_string(),
+                previous: WebTag::from("agent:pages/chat/index.tsx#7"),
+                title: "Agent".to_string(),
+            })
+        );
+        assert_eq!(entries["agent"].webtag, engines);
+
+        // navigateBack names the chat page again; the aside follows it.
+        let chat = WebTag::from("agent:pages/chat/index.tsx#7");
+        let back = retarget_runtime_lxapp_aside(&mut entries, &chat).expect("aside");
+        assert_eq!(back.previous, engines);
+        assert_eq!(entries["agent"].webtag, chat);
+    }
+
+    #[test]
+    fn navigation_outside_an_aside_session_leaves_asides_alone() {
+        let mut entries = HashMap::new();
+        let chat = WebTag::from("agent:pages/chat/index.tsx#7");
+        entries.insert(
+            "agent".to_string(),
+            RuntimeLxappAside {
+                webtag: chat.clone(),
+                title: "Agent".to_string(),
+            },
+        );
+
+        // A main lxapp, and a later session of the aside's lxapp, both
+        // navigate in their own region.
+        for webtag in [
+            WebTag::from("home:pages/index.tsx#3"),
+            WebTag::from("agent:pages/engines/index.tsx#8"),
+        ] {
+            assert_eq!(retarget_runtime_lxapp_aside(&mut entries, &webtag), None);
+        }
+        assert_eq!(entries["agent"].webtag, chat);
+    }
+
+    use super::{
+        HashMap, RetargetedLxappAside, RuntimeLxappAside, WebTag, retarget_runtime_lxapp_aside,
+        should_hide_runtime_lxapp_aside,
+    };
 
     #[test]
     fn cold_lxapp_tab_swap_keeps_the_previous_aside_until_the_target_is_presented() {

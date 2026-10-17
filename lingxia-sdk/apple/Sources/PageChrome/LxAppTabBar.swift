@@ -125,6 +125,40 @@ struct TabBarHelper {
     }
 
     #if os(macOS)
+    /// Load icon artwork for native chrome, decoding raster files already
+    /// downsampled. Drawing a photo-sized JPEG (a 3000x2000 brand mark, say)
+    /// into a 16–20pt tile makes ImageIO take its hardware JPEG decoder on
+    /// every redraw; on Intel Macs that decoder's AppleVPA worker thread can
+    /// take the whole process down (EXC_BAD_ACCESS off the main thread while
+    /// the sidebar rebuilds). A bounded thumbnail decode stays in software
+    /// and costs a fraction of the draw. Vector and unreadable files load as
+    /// they did.
+    static func chromeIconImage(contentsOfFile path: String, maxPixelSize: Int = 256) -> NSImage? {
+        let url = URL(fileURLWithPath: path)
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              CGImageSourceGetCount(source) > 0,
+              let type = CGImageSourceGetType(source) as String?,
+              type != "com.adobe.pdf",
+              !type.contains("svg") else {
+            return NSImage(contentsOfFile: path)
+        }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return NSImage(contentsOfFile: path)
+        }
+        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+    }
+
+    /// `chromeIconImage(contentsOfFile:)` for a file URL; other URLs load as before.
+    static func chromeIconImage(contentsOf url: URL) -> NSImage? {
+        url.isFileURL ? chromeIconImage(contentsOfFile: url.path) : NSImage(contentsOf: url)
+    }
+
     /// Raster lxapp artwork as a rounded tile. Favicons and template glyphs
     /// must not go through this — they stay square / tintable.
     static func appTileIcon(_ image: NSImage, size: CGFloat) -> NSImage {

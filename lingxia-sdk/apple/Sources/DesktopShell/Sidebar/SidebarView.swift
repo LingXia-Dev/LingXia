@@ -778,7 +778,7 @@ class SidebarView: NSView {
     }
 
     private static func sidebarActionIcon(_ url: URL?, size: CGFloat) -> NSImage? {
-        guard let url, let image = NSImage(contentsOf: url) else { return nil }
+        guard let url, let image = TabBarHelper.chromeIconImage(contentsOf: url) else { return nil }
         return TabBarHelper.appKitIcon(image, path: url.path, size: size)
     }
 
@@ -2171,7 +2171,7 @@ class SidebarView: NSView {
         guard let index = renderedPanelItems.firstIndex(where: { $0.id == panelId }),
               index < panelButtons.count,
               let url = URL(string: iconFileUrl),
-              let image = NSImage(contentsOf: url) else { return }
+              let image = TabBarHelper.chromeIconImage(contentsOf: url) else { return }
         panelButtons[index].setIcon(image, path: url.path)
         if let railButton = railButtons["sidebar-action:\(panelId)"] {
             let template = TabBarHelper.isTemplateIcon(url.path)
@@ -3286,7 +3286,7 @@ final class SidebarActionRowView: NSView {
         accentView.isHidden = !self.active
         addSubview(accentView)
 
-        let icon = iconURL.flatMap { NSImage(contentsOf: $0) }
+        let icon = iconURL.flatMap { TabBarHelper.chromeIconImage(contentsOf: $0) }
             ?? systemImageName.flatMap {
                 NSImage(systemSymbolName: $0, accessibilityDescription: label)
             }
