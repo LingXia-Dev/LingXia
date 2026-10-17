@@ -7,7 +7,10 @@ use lxapp::automation as auto;
 const LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 const RUNNER_WEB_URL_ENV: &str = "LINGXIA_RUNNER_WEB_URL";
 
+mod net;
 mod sync;
+
+pub use net::connect_dev_server;
 
 #[derive(Debug, serde::Deserialize)]
 #[allow(non_snake_case)]

@@ -140,10 +140,11 @@ fn host_and_attach(request: AttachRequest, port: u16) -> Result<()> {
     let app_id = read_app_id(&source)?;
     take_over_target_session(&source, platform_name)?;
 
-    // An iOS host built on this machine dials its Wi-Fi address with this
-    // machine's device token; the others dial loopback.
+    // An iOS host built on this machine dials this Mac over Wi-Fi (its
+    // Bonjour name, which may resolve to IPv6) with this machine's device
+    // token; the others dial loopback.
     let (bind_host, auth_token) = match platform {
-        PlatformType::Ios => ("0.0.0.0", Some(persistent_device_token()?)),
+        PlatformType::Ios => ("[::]", Some(persistent_device_token()?)),
         _ => ("127.0.0.1", None),
     };
     let mut server = server::start_server_at_with_roots(

@@ -3,7 +3,6 @@ use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -261,13 +260,7 @@ fn verify_file_size(path: &Path, file: &DevManifestFile) -> Result<(), String> {
 /// Status and body of a GET. Only a transport or framing failure is an `Err`.
 fn http_get(url: &str) -> Result<(u16, Vec<u8>), String> {
     let parsed = ParsedHttpUrl::parse(url)?;
-    let mut addrs = (parsed.host.as_str(), parsed.port)
-        .to_socket_addrs()
-        .map_err(|err| format!("failed to resolve {}: {}", parsed.host, err))?;
-    let addr = addrs
-        .next()
-        .ok_or_else(|| format!("no address resolved for {}", parsed.host))?;
-    let mut stream = TcpStream::connect_timeout(&addr, HTTP_TIMEOUT)
+    let mut stream = super::net::connect_dev_server(url, HTTP_TIMEOUT)
         .map_err(|err| format!("failed to connect {}: {}", url, err))?;
     let _ = stream.set_read_timeout(Some(HTTP_TIMEOUT));
     let request = format!(
@@ -303,10 +296,10 @@ fn parse_http_response(url: &str, response: &[u8]) -> Result<(u16, Vec<u8>), Str
     Ok((status, response[header_end + 4..].to_vec()))
 }
 
+/// The parts of a dev bundle URL the request line needs; the connection
+/// itself comes from [`super::net::connect_dev_server`].
 struct ParsedHttpUrl {
-    host: String,
     host_header: String,
-    port: u16,
     path: String,
 }
 
@@ -322,19 +315,8 @@ impl ParsedHttpUrl {
         if authority.is_empty() {
             return Err(format!("missing host in URL {}", url));
         }
-        let (host, port) = match authority.rsplit_once(':') {
-            Some((host, port)) if !host.is_empty() => {
-                let parsed_port = port
-                    .parse::<u16>()
-                    .map_err(|_| format!("invalid port in URL {}", url))?;
-                (host.to_string(), parsed_port)
-            }
-            _ => (authority.to_string(), 80),
-        };
         Ok(Self {
-            host,
             host_header: authority.to_string(),
-            port,
             path,
         })
     }

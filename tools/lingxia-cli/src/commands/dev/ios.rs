@@ -5,13 +5,13 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
     take_over_target_session(&ctx.project_root, platform_name)?;
     let platform = platform::ios::IosPlatform::new();
     let stop_requested = ctx.stop_requested.clone();
-    // The iOS device reaches the host over Wi-Fi, so this bind was always
-    // 0.0.0.0 — it now carries the persistent session token so the open bind
-    // is no longer unauthenticated.
+    // The iOS device reaches the host over Wi-Fi, so this bind is open and
+    // carries the persistent session token. `[::]` takes IPv4 too: the
+    // device's mDNS lookup of this Mac may answer with an IPv6 address.
     let auth_token = persistent_device_token()?;
     let mut server = server::start_server_fixed_with_stop(
         &ctx.project_root,
-        "0.0.0.0",
+        "[::]",
         platform_name,
         stop_requested.clone(),
         Some(auth_token.clone()),

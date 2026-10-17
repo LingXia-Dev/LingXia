@@ -2083,7 +2083,7 @@ fn handle_client_connection(
         let local = websocket
             .get_ref()
             .peer_addr()
-            .is_ok_and(|addr| addr.ip().is_loopback());
+            .is_ok_and(|addr| addr.ip().to_canonical().is_loopback());
         let token = params
             .as_ref()
             .and_then(|value| value.get("attachToken"))
