@@ -184,3 +184,6 @@ answers, and a call none matches goes to the selection.
 - `function` rules and Function targets need the dev session's companion to
   support them; otherwise nothing of the scenario is installed and the
   message says why.
+- To start a scenario from real traffic, run a spec with
+  `lxdev test --record-network DIR` ([Testing](testing.md)); only `fetch`
+  answers become rules.
