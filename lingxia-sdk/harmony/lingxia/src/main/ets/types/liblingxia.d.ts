@@ -358,10 +358,10 @@ declare module 'liblingxia.so' {
   export function getCurrentLxapp(): CurrentLxApp;
 
   /**
-   * True only when this process is a prod build talking to the dev service.
-   * Hosts draw a non-interactive status-bar label from this.
+   * Touch-through dev mark text, empty when hidden. `compact` is the phone
+   * tab: a session port replaces `DEV`.
    */
-  export function devServiceBanner(): boolean;
+  export function devMark(compact: boolean): string;
 
   /**
    * Get runtime session id for a specific LxApp.

@@ -8,7 +8,7 @@ import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
 import { SplashResources } from './SplashOverlay';
 import { extractWebTag, pauseAllComponentsByAppId } from './WebViewBridge';
-import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onLxappEvent, UiEventType, splashMarkLaunchFace, devServiceBanner } from 'liblingxia.so';
+import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onLxappEvent, UiEventType, splashMarkLaunchFace } from 'liblingxia.so';
 import { ToastManager } from './APIs/LxAppToast';
 import { ModalManager } from './APIs/LxAppModal';
 import { PickerManager } from './APIs/LxAppPicker';
@@ -63,8 +63,6 @@ export struct LxAppNavigation {
   // Webtag of the page instance the home container presents.
   @State homeWebTag: string = ''
   @State errorMessage: string = ''
-  // Prod build on the dev service. A corner chip, never a control.
-  @State private devServiceMark: boolean = false
 
   // Splash: the launch face. Rendered as this component's very first frame —
   // before the runtime boots — so the OS start window exits straight onto
@@ -391,16 +389,7 @@ export struct LxAppNavigation {
   }
 
   private refreshDevServiceMark(): void {
-    try {
-      this.devServiceMark = devServiceBanner();
-    } catch (error) {
-      this.devServiceMark = false;
-      LxLog.e(TAG, `dev service mark failed: ${error}`);
-      return;
-    }
-    if (this.devServiceMark) {
-      DevServiceMarkWindow.open();
-    }
+    DevServiceMarkWindow.open();
   }
 
   public openLxApp(appId: string, path: string): void {

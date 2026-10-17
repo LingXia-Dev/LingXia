@@ -1,12 +1,23 @@
 import Foundation
 
+@_silgen_name("lingxia_dev_mark")
+private func lingxiaDevMark(_ compact: Int32, _ out: UnsafeMutablePointer<UInt8>?, _ outLen: Int32) -> Int32
+
+/// Touch-through dev mark. `nil` keeps it hidden.
+/// `compact` is the phone tab: a session port replaces `DEV`.
+private func devMark(compact: Bool) -> String? {
+    let needed = lingxiaDevMark(compact ? 1 : 0, nil, 0)
+    guard needed > 0 else { return nil }
+    var buffer = [UInt8](repeating: 0, count: Int(needed))
+    let written = lingxiaDevMark(compact ? 1 : 0, &buffer, needed)
+    guard written == needed else { return nil }
+    return String(bytes: buffer, encoding: .utf8)
+}
+
 #if os(iOS)
 import UIKit
 
-@_silgen_name("lingxia_dev_service_banner")
-private func lingxiaDevServiceBanner() -> Int32
-
-/// Prod build on the dev service. Guest lxapps and the auth sheet live in
+/// Touch-through dev mark. Guest lxapps and the auth sheet live in
 /// the app window (and some host surfaces sit at `.alert + 1`), so the chip
 /// is its own window above those. It does not become key and does not take
 /// touches.
@@ -16,7 +27,7 @@ enum DevServiceMarkWindow {
     private static var watching = false
 
     static func attachIfNeeded() {
-        guard lingxiaDevServiceBanner() != 0 else { return }
+        guard devMark(compact: true) != nil else { return }
         watchScenes()
         for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
             attach(to: scene)
@@ -76,11 +87,16 @@ private final class DevServiceMarkViewController: UIViewController {
         dot.layer.cornerRadius = 3
         dot.isUserInteractionEnabled = false
 
+        let text = devMark(compact: true) ?? "DEV"
+        let word = text.count <= 3
+        let textWidth: CGFloat = word ? 36 : CGFloat(text.count * 8 + 4)
+        let chipHeight: CGFloat = word ? 60 : textWidth + 28
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "DEV"
+        label.text = text
         label.font = .systemFont(ofSize: 11, weight: .medium)
         label.textColor = .white
+        label.textAlignment = .center
         label.transform = CGAffineTransform(rotationAngle: -.pi / 2)
         label.isUserInteractionEnabled = false
 
@@ -90,15 +106,15 @@ private final class DevServiceMarkViewController: UIViewController {
 
         NSLayoutConstraint.activate([
             chip.widthAnchor.constraint(equalToConstant: 24),
-            chip.heightAnchor.constraint(equalToConstant: 60),
+            chip.heightAnchor.constraint(equalToConstant: chipHeight),
             dot.widthAnchor.constraint(equalToConstant: 6),
             dot.heightAnchor.constraint(equalToConstant: 6),
             dot.centerXAnchor.constraint(equalTo: chip.centerXAnchor),
             dot.topAnchor.constraint(equalTo: chip.topAnchor, constant: 8),
-            label.widthAnchor.constraint(equalToConstant: 36),
+            label.widthAnchor.constraint(equalToConstant: textWidth),
             label.heightAnchor.constraint(equalToConstant: 16),
             label.centerXAnchor.constraint(equalTo: chip.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: chip.centerYAnchor, constant: 7),
+            label.centerYAnchor.constraint(equalTo: chip.centerYAnchor, constant: word ? 7 : 8),
             chip.leftAnchor.constraint(equalTo: view.leftAnchor),
             chip.centerYAnchor.constraint(equalTo: view.centerYAnchor),
         ])
@@ -109,10 +125,7 @@ private final class DevServiceMarkViewController: UIViewController {
 #if os(macOS)
 import AppKit
 
-@_silgen_name("lingxia_dev_service_banner")
-private func lingxiaDevServiceBanner() -> Int32
-
-/// Prod build on the dev service. One chip per top-level window, ordered
+/// Touch-through dev mark. One chip per top-level window, ordered
 /// above that window's sheets and floats. It moves with the window and does
 /// not take clicks, so it never sits over another app.
 @MainActor
@@ -121,7 +134,7 @@ enum DevServiceMarkWindow {
     private static var watching = false
 
     static func attachIfNeeded() {
-        guard lingxiaDevServiceBanner() != 0 else { return }
+        guard devMark(compact: false) != nil else { return }
         watch()
         guard let app = NSApp else { return }
         for window in app.windows {
@@ -164,7 +177,7 @@ enum DevServiceMarkWindow {
     }
 
     private static func attach(to window: NSWindow) {
-        guard lingxiaDevServiceBanner() != 0 else { return }
+        guard let label = devMark(compact: false) else { return }
         guard hostsMark(window) else { return }
         let id = ObjectIdentifier(window)
         if marks[id] != nil {
@@ -177,6 +190,7 @@ enum DevServiceMarkWindow {
             backing: .buffered,
             defer: false
         )
+        panel.title = "LingXia Dev"
         panel.isFloatingPanel = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -187,7 +201,7 @@ enum DevServiceMarkWindow {
         panel.animationBehavior = .none
         panel.collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
         panel.isMovable = false
-        let chip = ChipView()
+        let chip = ChipView(label: label)
         panel.contentView = chip
         panel.setContentSize(chip.fittingSize)
         marks[id] = panel
@@ -238,9 +252,10 @@ enum DevServiceMarkWindow {
 }
 
 private final class ChipView: NSView {
-    private let label = NSTextField(labelWithString: "DEV")
+    private let label: NSTextField
 
-    init() {
+    init(label text: String) {
+        label = NSTextField(labelWithString: text)
         super.init(frame: NSRect(x: 0, y: 0, width: 64, height: 22))
         wantsLayer = true
         layer?.backgroundColor = CGColor(red: 198.0 / 255.0, green: 40.0 / 255.0, blue: 40.0 / 255.0, alpha: 1)

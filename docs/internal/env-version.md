@@ -71,6 +71,9 @@ A `prod` build using the `dev` service shows a touch-through `DEV` mark above
 its own content: a narrow vertical tab centered on the left screen edge on
 phones, or a chip at the bottom-end of each app window on desktop. It must
 remain above native sheets and guest lxapps without intercepting input.
+A process whose `app.json` has `devWsUrl` uses that same mark to show the
+port it dials. The phone tab shows only the port. The desktop chip shows the
+port, and `DEV` plus the port when the service mark is also up.
 
 `--env` is not a channel alias. `--channel` is not accepted on
 `lingxia build` / `dev` / `package`. `lingxia publish` splits the two axes:

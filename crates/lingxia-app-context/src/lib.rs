@@ -13,7 +13,7 @@ pub mod service_env;
 pub mod update;
 pub use service_env::{
     ServiceEnvError, ServiceEnvSnapshot, ServiceEnvSwitch, build_lingxia_server,
-    can_toggle_service_env, dev_service_banner, prepare_restore, prepare_switch, prepare_toggle,
+    can_toggle_service_env, dev_mark, prepare_restore, prepare_switch, prepare_toggle,
     service_app_link_hosts, service_env, service_lingxia_server, snapshot as service_env_snapshot,
     toggle_target,
 };
