@@ -154,6 +154,17 @@ pub mod methods {
             pub const RESUME: &str = "session.watch.resume";
         }
 
+        /// A standalone lxapp's `lingxia dev listen` asks this host session to
+        /// prepare, build, and watch that directory, and keep it open.
+        ///
+        /// Args `{ path, attachToken, framework?, release? }`; the token is
+        /// the session's, from a file only its user can read. The reply is
+        /// `{ appId, opened }`. The connection stays open: closing it drops
+        /// that watch and leaves the lxapp running. An app id already in the
+        /// host's `resources.bundles`, or one the session already develops,
+        /// is refused.
+        pub const LXAPP_ATTACH: &str = "session.lxapp.attach";
+
         /// The dev session's companion (`.lingxia/dev-companion.json`).
         /// Handled by the dev server, which forwards `scenario.*` requests
         /// to a companion that declared

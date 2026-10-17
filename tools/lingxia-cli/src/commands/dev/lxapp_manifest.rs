@@ -63,6 +63,11 @@ pub(crate) fn write_configured_manifests(
     Ok(written)
 }
 
+/// Whether this session publishes `app_id`: its manifest has been written.
+pub(crate) fn is_published(project_root: &Path, app_id: &str) -> bool {
+    manifest_path(project_root, app_id).is_file()
+}
+
 pub(crate) fn load_manifest(project_root: &Path, app_id: &str) -> Result<DevLxAppManifest> {
     let path = manifest_path(project_root, app_id);
     let bytes = fs::read(&path).with_context(|| format!("Failed to read {}", path.display()))?;
@@ -74,6 +79,18 @@ pub(crate) fn resolve_dist_file(
     app_id: &str,
     relative_path: &str,
 ) -> Result<PathBuf> {
+    let dist_dir = configured_dist_dir(project_root, app_id)?;
+    resolve_published_file(project_root, app_id, relative_path, &dist_dir)
+}
+
+/// A file from an attached lxapp. Its bytes live in that lxapp's `dist`, not
+/// in a `resources.bundles` path under the host project.
+pub(crate) fn resolve_published_file(
+    project_root: &Path,
+    app_id: &str,
+    relative_path: &str,
+    dist_dir: &Path,
+) -> Result<PathBuf> {
     validate_relative_path(relative_path)?;
     let manifest = load_manifest(project_root, app_id)?;
     if !manifest.files.iter().any(|file| file.path == relative_path) {
@@ -81,7 +98,6 @@ pub(crate) fn resolve_dist_file(
             "file is not listed in dev manifest: {relative_path}"
         ));
     }
-    let dist_dir = configured_dist_dir(project_root, app_id)?;
     let file_path = dist_dir.join(relative_path);
     let dist_root = dist_dir
         .canonicalize()
@@ -93,6 +109,66 @@ pub(crate) fn resolve_dist_file(
         return Err(anyhow!("invalid dev file path: {}", relative_path));
     }
     Ok(resolved)
+}
+
+pub(crate) fn publish_dist(project_root: &Path, dist_dir: &Path) -> Result<DevLxAppManifest> {
+    let manifest = build_manifest(dist_dir)
+        .with_context(|| format!("Failed to build dev manifest for {}", dist_dir.display()))?;
+    write_manifest(project_root, &manifest)?;
+    Ok(manifest)
+}
+
+pub(crate) fn remove_manifest(project_root: &Path, app_id: &str) -> Result<()> {
+    let path = manifest_path(project_root, app_id);
+    if path.is_file() {
+        fs::remove_file(&path).with_context(|| format!("Failed to remove {}", path.display()))?;
+    }
+    Ok(())
+}
+
+/// Why this lxapp cannot be attached: the host already ships it.
+pub(crate) fn declared_bundle_conflict(
+    project_root: &Path,
+    source: &Path,
+    app_id: &str,
+) -> Result<Option<String>> {
+    if !project_root.join("lingxia.yaml").is_file() {
+        return Ok(None);
+    }
+    let config = LingXiaConfig::load(project_root)?;
+    let Some(resources) = config.resources.as_ref() else {
+        return Ok(None);
+    };
+    let source = source
+        .canonicalize()
+        .unwrap_or_else(|_| source.to_path_buf());
+    for bundle in &resources.bundles {
+        if bundle.app_id == app_id {
+            return Ok(Some(format!(
+                "{app_id} is already declared in this host's lingxia.yaml. Attaching it would \
+                 replace that bundle."
+            )));
+        }
+        let Some(bundle_path) = bundle
+            .path
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        let Ok(bundle_dir) = project_root.join(bundle_path).canonicalize() else {
+            continue;
+        };
+        if bundle_dir == source {
+            return Ok(Some(format!(
+                "{} is already the host bundle {}. Attaching it would replace that bundle.",
+                source.display(),
+                bundle.app_id
+            )));
+        }
+    }
+    Ok(None)
 }
 
 fn write_manifest(project_root: &Path, manifest: &DevLxAppManifest) -> Result<()> {
@@ -116,6 +192,11 @@ fn manifest_path(project_root: &Path, app_id: &str) -> PathBuf {
 }
 
 fn configured_dist_dir(project_root: &Path, app_id: &str) -> Result<PathBuf> {
+    if project_root.join("lxapp.json").is_file()
+        && super::lxapp_watch::read_app_id(project_root)? == app_id
+    {
+        return Ok(project_root.join("dist"));
+    }
     let config = LingXiaConfig::load(project_root)?;
     let bundle = config
         .resources
@@ -342,5 +423,35 @@ mod tests {
         assert!(validate_relative_path("/secret").is_err());
         assert!(validate_relative_path("pages\\home\\index.html").is_err());
         assert!(validate_relative_path("pages//home").is_err());
+    }
+
+    #[test]
+    fn attach_refuses_an_app_id_or_directory_the_host_already_declares() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path();
+        fs::write(
+            project.join("lingxia.yaml"),
+            "app:\n  projectName: demo-host\n  packageId: app.example.demohost\n  productName: Demo Host\n  productVersion: 1.0.0\n  platforms: [windows]\n  homeAppId: demo\nresources:\n  bundles:\n    - type: lxapp\n      appId: demo\n      path: home\n",
+        )
+        .unwrap();
+        fs::create_dir_all(project.join("home")).unwrap();
+        let home = project.join("home").canonicalize().unwrap();
+        let other = project.join("other");
+        fs::create_dir_all(&other).unwrap();
+        let other = other.canonicalize().unwrap();
+
+        let by_id = declared_bundle_conflict(project, &other, "demo")
+            .unwrap()
+            .unwrap();
+        assert!(by_id.contains("already declared"));
+        let by_dir = declared_bundle_conflict(project, &home, "someone-else")
+            .unwrap()
+            .unwrap();
+        assert!(by_dir.contains("already the host bundle"));
+        assert!(
+            declared_bundle_conflict(project, &other, "someone-else")
+                .unwrap()
+                .is_none()
+        );
     }
 }

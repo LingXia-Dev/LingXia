@@ -71,10 +71,29 @@ impl DevServerHandle {
         &self.session
     }
 
+    pub fn runtime_connected(&self) -> bool {
+        self.state.runtime_sender().is_some()
+    }
+
+    /// Build `app_id` once and publish it, before anything is watched.
+    pub fn rebuild_lxapp(
+        &self,
+        app_id: &str,
+        framework: Option<&str>,
+        release: bool,
+    ) -> Result<()> {
+        self.state.rebuild_lxapp(app_id, framework, release)
+    }
+
+    /// Keep `app_id` open in the app; see [`DevServerState::present`].
+    pub fn present(&self, app_id: &str) -> Result<()> {
+        self.state.present(app_id)
+    }
+
     /// Watch local lxapp sources and rebuild + reload them on save.
-    /// No-op when the project has no watchable lxapp (web Runner, package-only
-    /// bundles, prebuilt dist). A watcher failure is reported and ignored so
-    /// the session still runs.
+    /// The watcher thread starts even when nothing is watchable yet, so a
+    /// standalone lxapp can attach later. A watcher failure is reported and
+    /// ignored so the session still runs.
     pub fn watch_lxapps(&mut self, framework: Option<&str>, release: bool) {
         if self.watch.is_some() {
             return;
@@ -189,6 +208,56 @@ pub(crate) struct DevServerState {
     mocks: Mutex<Vec<super::mocks::AppMocks>>,
     /// `--mock all` startup is held on a failed push until a reload succeeds.
     mocks_gated: AtomicBool,
+    /// Lxapps a standalone `lingxia dev listen` attached to this session.
+    attached: Mutex<Vec<AttachedLxapp>>,
+    /// Commands into the watcher thread. `None` until it is running.
+    watch_commands: Mutex<Option<mpsc::Sender<super::lxapp_watch::WatchCmd>>>,
+    /// `--framework` this session was started with. An attach that omits one
+    /// builds with it.
+    watch_framework: Mutex<Option<String>>,
+    /// `--release` this session was started with; an attach inherits it.
+    watch_release: AtomicBool,
+    /// Secret an attach must present. It is in a file only this user can
+    /// read: a loopback peer may be any process on a USB-reversed device.
+    attach_token: Mutex<Option<String>>,
+    /// Lxapps this session keeps open: the one `listen --port` develops, and
+    /// each attached one.
+    presented: Mutex<Vec<Presented>>,
+    /// Serializes opening presented lxapps, from an attach and a reconnect.
+    present_lock: Mutex<()>,
+    /// App ids rebuilt while the runtime could not restart them. A reconnect
+    /// restarts them.
+    stale: Mutex<std::collections::BTreeSet<String>>,
+}
+
+#[derive(Clone)]
+struct Presented {
+    app_id: String,
+    /// Opened since it was presented. The first open restarts it, so an
+    /// instance left from earlier shows the new build.
+    shown: bool,
+}
+
+/// An lxapp this session builds and serves from outside `lingxia.yaml`.
+#[derive(Clone)]
+struct AttachedLxapp {
+    app_id: String,
+    source: PathBuf,
+    framework: Option<String>,
+    release: bool,
+}
+
+/// Removes the attach when the listen connection ends, including on panic
+/// after the lxapp was registered.
+struct DetachOnDrop<'a> {
+    state: &'a DevServerState,
+    app_id: String,
+}
+
+impl Drop for DetachOnDrop<'_> {
+    fn drop(&mut self) {
+        self.state.detach_attached(&self.app_id);
+    }
 }
 
 /// One `session.watch.pause` lease.
@@ -234,6 +303,97 @@ impl DevServerState {
             companion_cleanup_failed: Mutex::new(std::collections::HashSet::new()),
             mocks: Mutex::new(Vec::new()),
             mocks_gated: AtomicBool::new(false),
+            attached: Mutex::new(Vec::new()),
+            watch_commands: Mutex::new(None),
+            watch_framework: Mutex::new(None),
+            watch_release: AtomicBool::new(false),
+            attach_token: Mutex::new(None),
+            presented: Mutex::new(Vec::new()),
+            present_lock: Mutex::new(()),
+            stale: Mutex::new(std::collections::BTreeSet::new()),
+        }
+    }
+
+    fn lock_attached(&self) -> std::sync::MutexGuard<'_, Vec<AttachedLxapp>> {
+        self.attached
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    pub(super) fn set_watch_commands(&self, sender: mpsc::Sender<super::lxapp_watch::WatchCmd>) {
+        *self
+            .watch_commands
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(sender);
+    }
+
+    pub(super) fn clear_watch_commands(&self) {
+        *self
+            .watch_commands
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    }
+
+    fn watch_sender(&self) -> Option<mpsc::Sender<super::lxapp_watch::WatchCmd>> {
+        self.watch_commands
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    pub(super) fn set_watch_build(&self, framework: Option<String>, release: bool) {
+        *self
+            .watch_framework
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = framework;
+        self.watch_release.store(release, Ordering::Release);
+    }
+
+    fn attach_authorized(&self, presented: Option<&str>) -> bool {
+        let expected = self
+            .attach_token
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        expected.is_some() && expected.as_deref() == presented
+    }
+
+    fn watch_framework(&self) -> Option<String> {
+        self.watch_framework
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    fn attached_spec(&self, app_id: &str) -> Option<AttachedLxapp> {
+        self.lock_attached()
+            .iter()
+            .find(|item| item.app_id == app_id)
+            .cloned()
+    }
+
+    fn attached_dist(&self, app_id: &str) -> Option<PathBuf> {
+        self.attached_spec(app_id)
+            .map(|item| item.source.join("dist"))
+    }
+
+    fn insert_attached(&self, spec: AttachedLxapp) -> Result<()> {
+        let mut attached = self.lock_attached();
+        if attached.iter().any(|item| item.app_id == spec.app_id) {
+            return Err(anyhow!(
+                "{} is already attached. Stop the other `lingxia dev listen` first.",
+                spec.app_id
+            ));
+        }
+        attached.push(spec);
+        Ok(())
+    }
+
+    fn detach_attached(&self, app_id: &str) {
+        self.lock_attached().retain(|item| item.app_id != app_id);
+        self.lock_presented().retain(|item| item.app_id != app_id);
+        let _ = super::lxapp_manifest::remove_manifest(&self.project_root, app_id);
+        if let Some(sender) = self.watch_sender() {
+            let _ = sender.send(super::lxapp_watch::WatchCmd::Remove(app_id.to_string()));
         }
     }
 
@@ -694,6 +854,7 @@ impl DevServerState {
                 .drop_companion_mock_owner(lingxia_control_protocol::mock::DEV_OWNER.to_string());
         });
         if !state.end_on_runtime_gone {
+            println!("  • app disconnected; waiting for it to reconnect");
             return;
         }
         let grace = match state.interrupted_test_run() {
@@ -799,6 +960,9 @@ impl DevServerState {
         framework: Option<&str>,
         release: bool,
     ) -> Result<()> {
+        if self.attached_spec(appid).is_some() {
+            return self.build_attached(appid);
+        }
         let mut args = serde_json::json!({
             "release": release,
             "appid": appid,
@@ -810,6 +974,32 @@ impl DevServerState {
         run_lxapp_build(&self.project_root, Some(&args))
     }
 
+    /// Build an attached lxapp with the framework and release it was attached
+    /// with, then publish its dist on this host's dev HTTP server.
+    fn build_attached(&self, app_id: &str) -> Result<()> {
+        if self.attached_spec(app_id).is_none() {
+            return Err(anyhow!("{app_id} is not attached"));
+        }
+        let _build = self.lock_build();
+        let Some(spec) = self.attached_spec(app_id) else {
+            return Ok(());
+        };
+        build_lxapp_dir(&spec.source, spec.framework.as_deref(), spec.release)?;
+        if self.attached_spec(app_id).is_none() {
+            return Ok(());
+        }
+        let manifest =
+            super::lxapp_manifest::publish_dist(&self.project_root, &spec.source.join("dist"))?;
+        if manifest.app_id != app_id {
+            let _ = super::lxapp_manifest::remove_manifest(&self.project_root, &manifest.app_id);
+            return Err(anyhow!(
+                "built appId '{}' does not match {app_id}",
+                manifest.app_id
+            ));
+        }
+        Ok(())
+    }
+
     /// Restart a running lxapp unless a test run is active.
     ///
     /// The watcher checks for a run before it rebuilds, but a rebuild takes
@@ -819,6 +1009,22 @@ impl DevServerState {
     /// until its response is observed, so no run can start between the check
     /// and the restart.
     pub(crate) fn restart_lxapp(&self, appid: &str) -> Result<RestartOutcome> {
+        let outcome = self.forward_restart(appid);
+        // What the runtime did not restart, a reconnect restarts.
+        let mut stale = self.lock_stale();
+        match &outcome {
+            Ok(RestartOutcome::Restarted | RestartOutcome::NotOpen | RestartOutcome::Failed(_)) => {
+                stale.remove(appid);
+            }
+            Ok(RestartOutcome::NotConnected) | Err(_) => {
+                stale.insert(appid.to_string());
+            }
+            Ok(RestartOutcome::Deferred) => {}
+        }
+        outcome
+    }
+
+    fn forward_restart(&self, appid: &str) -> Result<RestartOutcome> {
         let Some(sender) = self.runtime_sender() else {
             return Ok(RestartOutcome::NotConnected);
         };
@@ -839,13 +1045,11 @@ impl DevServerState {
             return Err(anyhow!("Failed to forward restart to runtime"));
         }
         match rx.recv_timeout(DEFAULT_COMMAND_TIMEOUT) {
-            Ok(DevSessionMessage::Response(response)) => {
-                if let Some(error) = response.error {
-                    Err(anyhow!("{}", error.message))
-                } else {
-                    Ok(RestartOutcome::Restarted)
-                }
-            }
+            Ok(DevSessionMessage::Response(response)) => match response.error {
+                Some(error) if error.code == "not_open" => Ok(RestartOutcome::NotOpen),
+                Some(error) => Ok(RestartOutcome::Failed(error.message)),
+                None => Ok(RestartOutcome::Restarted),
+            },
             Ok(_) => Err(anyhow!("unexpected restart response")),
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 let _ = self.take_pending_result(&id);
@@ -856,6 +1060,158 @@ impl DevServerState {
                 Err(anyhow!("runtime disconnected during restart"))
             }
         }
+    }
+
+    fn lock_stale(&self) -> std::sync::MutexGuard<'_, std::collections::BTreeSet<String>> {
+        self.stale
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_presented(&self) -> std::sync::MutexGuard<'_, Vec<Presented>> {
+        self.presented
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Keep `app_id` open in the app: now if it is connected, and again on
+    /// every reconnect that finds it closed.
+    pub(crate) fn present(&self, app_id: &str) -> Result<()> {
+        {
+            let mut presented = self.lock_presented();
+            if !presented.iter().any(|item| item.app_id == app_id) {
+                presented.push(Presented {
+                    app_id: app_id.to_string(),
+                    shown: false,
+                });
+            }
+        }
+        if self.runtime_sender().is_none() {
+            return Ok(());
+        }
+        self.show(app_id)
+    }
+
+    /// Bring the connected app up to date: restart what was rebuilt while it
+    /// was away, then open each presented lxapp it has not seen. Runs on
+    /// every connect, and when a test run's pause ends.
+    pub(crate) fn catch_up_current(&self) {
+        if let Some(runtime_id) = self.current_runtime_id() {
+            self.catch_up(runtime_id);
+        }
+    }
+
+    /// `runtime_id` is the connection this pass is for. Once a newer one
+    /// replaces it, that connection's own pass takes over; this one stops
+    /// rather than fail against a dead sender and mark builds stale.
+    fn catch_up(&self, runtime_id: u64) {
+        let stale: Vec<String> = self.lock_stale().iter().cloned().collect();
+        for app_id in stale {
+            if self.current_runtime_id() != Some(runtime_id) {
+                return;
+            }
+            match self.forward_restart(&app_id) {
+                Ok(RestartOutcome::Restarted) => {
+                    self.lock_stale().remove(&app_id);
+                    println!("  ✓ reloaded {app_id}");
+                }
+                Ok(RestartOutcome::NotOpen) => {
+                    self.lock_stale().remove(&app_id);
+                }
+                Ok(RestartOutcome::Failed(message)) => {
+                    self.lock_stale().remove(&app_id);
+                    eprintln!("  ✗ reload {app_id} failed: {message}");
+                }
+                Ok(RestartOutcome::NotConnected | RestartOutcome::Deferred) | Err(_) => {}
+            }
+        }
+        let presented: Vec<String> = self
+            .lock_presented()
+            .iter()
+            .map(|item| item.app_id.clone())
+            .collect();
+        for app_id in presented {
+            if self.current_runtime_id() != Some(runtime_id) {
+                return;
+            }
+            if let Err(err) = self.show(&app_id) {
+                eprintln!("  ✗ open {app_id} failed: {err:#}");
+            }
+        }
+    }
+
+    fn current_runtime_id(&self) -> Option<u64> {
+        self.runtime_sender
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .map(|(id, _)| *id)
+    }
+
+    fn show(&self, app_id: &str) -> Result<()> {
+        let _present = self
+            .present_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let Some(shown) = self
+            .lock_presented()
+            .iter()
+            .find(|item| item.app_id == app_id)
+            .map(|item| item.shown)
+        else {
+            return Ok(());
+        };
+        if shown {
+            // Only a relaunched app has never heard of it. A foregrounded one
+            // keeps its page, and one the developer closed stays closed.
+            if self.runtime_knows(app_id)? {
+                return Ok(());
+            }
+        } else {
+            // The restart pulls the new build first, so an instance left
+            // from earlier shows it.
+            match self.forward_restart(app_id) {
+                // A test run holds the app; this opens when its pause ends.
+                Ok(RestartOutcome::Deferred) => return Ok(()),
+                Ok(RestartOutcome::Failed(message)) => {
+                    eprintln!("  ✗ restart {app_id} failed: {message}");
+                }
+                Err(err) => eprintln!("  ✗ restart {app_id} failed: {err:#}"),
+                Ok(_) => {}
+            }
+        }
+        self.open_lxapp(app_id)?;
+        if let Some(item) = self
+            .lock_presented()
+            .iter_mut()
+            .find(|item| item.app_id == app_id)
+        {
+            item.shown = true;
+        }
+        println!("  ✓ opened {app_id}");
+        Ok(())
+    }
+
+    fn runtime_knows(&self, app_id: &str) -> Result<bool> {
+        let apps = self.runtime_request(
+            lingxia_control_protocol::methods::lxapp::LIST,
+            serde_json::json!({ "all": true }),
+            DEFAULT_COMMAND_TIMEOUT,
+        )?;
+        Ok(apps.as_array().is_some_and(|apps| {
+            apps.iter()
+                .any(|app| app.get("appid").and_then(serde_json::Value::as_str) == Some(app_id))
+        }))
+    }
+
+    fn open_lxapp(&self, app_id: &str) -> Result<()> {
+        let _guard = self.lock_command_forwarding();
+        self.runtime_request(
+            lingxia_control_protocol::methods::lxapp::OPEN,
+            serde_json::json!({ "appid": app_id }),
+            DEFAULT_COMMAND_TIMEOUT,
+        )?;
+        Ok(())
     }
 }
 
@@ -885,9 +1241,13 @@ fn handle_watch_request(
 }
 
 /// What [`DevServerState::restart_lxapp`] did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RestartOutcome {
     Restarted,
+    /// The runtime answered with an error; retrying would get the same one.
+    Failed(String),
+    /// The app does not have it open; the build loads on its next open.
+    NotOpen,
     /// No runtime is attached yet.
     NotConnected,
     /// A test run is active; restart after it ends.
@@ -923,7 +1283,7 @@ fn session_ends_on_runtime_gone(platform: &str) -> bool {
 pub fn start_server_on_with_stop(
     project_root: &Path,
     bind_addr: &str,
-    _platform: &str,
+    platform: &str,
     stop_flag: Arc<AtomicBool>,
     auth_token: Option<String>,
 ) -> Result<DevServerHandle> {
@@ -931,7 +1291,7 @@ pub fn start_server_on_with_stop(
         project_root,
         project_root,
         bind_addr,
-        _platform,
+        session_ends_on_runtime_gone(platform),
         stop_flag,
         auth_token,
     )
@@ -941,11 +1301,12 @@ fn start_server_on_with_roots(
     session_root: &Path,
     content_root: &Path,
     bind_addr: &str,
-    platform: &str,
+    end_on_runtime_gone: bool,
     stop_flag: Arc<AtomicBool>,
     auth_token: Option<String>,
 ) -> Result<DevServerHandle> {
     let session = create_session(session_root)?;
+    let attach_token = write_attach_token(&session.log_file)?;
     let listener = TcpListener::bind(bind_addr).context("Failed to bind dev websocket")?;
     listener
         .set_nonblocking(true)
@@ -965,8 +1326,12 @@ fn start_server_on_with_roots(
         content_root.to_path_buf(),
         stop_flag.clone(),
         auth_token,
-        session_ends_on_runtime_gone(platform),
+        end_on_runtime_gone,
     ));
+    *state
+        .attach_token
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(attach_token);
     if let Some(companion) = &companion {
         let _ = state.companion.set(companion.link());
     }
@@ -985,6 +1350,29 @@ fn start_server_on_with_roots(
         state,
         watch: None,
     })
+}
+
+/// The session of `lingxia dev listen --port`. Bind `host:port` exactly:
+/// unlike [`start_server_fixed_with_stop`], a busy port is an error, since it
+/// is the port the app already dials. It launched nothing, so the app leaving
+/// does not end it on any platform.
+pub fn start_server_at_with_roots(
+    session_root: &Path,
+    content_root: &Path,
+    host: &str,
+    port: u16,
+    stop_flag: Arc<AtomicBool>,
+    auth_token: Option<String>,
+) -> Result<DevServerHandle> {
+    let _preparation = crate::build_prepare::Scope::enter();
+    start_server_on_with_roots(
+        session_root,
+        content_root,
+        &format!("{host}:{port}"),
+        false,
+        stop_flag,
+        auth_token,
+    )
 }
 
 pub fn start_server_fixed_with_stop(
@@ -1036,7 +1424,7 @@ pub fn start_server_fixed_with_roots(
         session_root,
         content_root,
         &format!("{host}:{port}"),
-        platform,
+        session_ends_on_runtime_gone(platform),
         stop_flag.clone(),
         auth_token.clone(),
     ) {
@@ -1050,12 +1438,31 @@ pub fn start_server_fixed_with_roots(
                 session_root,
                 content_root,
                 &format!("{host}:0"),
-                platform,
+                session_ends_on_runtime_gone(platform),
                 stop_flag,
                 auth_token,
             )
         }
     }
+}
+
+/// Where a session keeps its attach secret: beside its log, readable only by
+/// this user. `lingxia dev listen` reads it through the broker's log path.
+pub(super) fn attach_token_path(log_file: &Path) -> PathBuf {
+    log_file.with_extension("attach")
+}
+
+fn write_attach_token(log_file: &Path) -> Result<String> {
+    let token = uuid::Uuid::new_v4().simple().to_string();
+    let path = attach_token_path(log_file);
+    std::fs::write(&path, &token).with_context(|| format!("Failed to write {}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .with_context(|| format!("Failed to restrict {}", path.display()))?;
+    }
+    Ok(token)
 }
 
 /// Deterministic dev-server port derived from a stable per-app key + platform,
@@ -1138,9 +1545,9 @@ fn handle_connection(
         if role == DevSessionRole::Runtime {
             state.runtime_rejected.store(true, Ordering::Release);
             return Err(anyhow!(
-                "Rejected a runtime peer with a missing or wrong session token — the running \
-                 device host likely predates session tokens; rebuild it from this revision \
-                 (or reinstall the Runner)"
+                "Rejected the app: its session token does not match this session. It was \
+                 built on another machine or against an older CLI; rebuild it here with \
+                 `lingxia dev` (or reinstall the Runner)"
             ));
         }
         return Err(anyhow!(
@@ -1206,20 +1613,14 @@ fn handle_http_connection(mut stream: TcpStream, state: &DevServerState) -> Resu
         .split_once('?')
         .map(|(path, _)| path)
         .unwrap_or(target);
+    // The runtime reads 404 as "not published here" and keeps its own
+    // source; any other failure is an error it reports and backs off from.
     match handle_dev_lxapp_http_request(state, target) {
-        Ok((content_type, body)) => write_http_response(&mut stream, 200, content_type, &body),
-        Err(err) => {
-            let message = err.to_string();
-            let status = if message.contains("not found")
-                || message.contains("No configured resource bundle")
-                || message.contains("not listed")
-            {
-                404
-            } else {
-                400
-            };
-            write_http_error(&mut stream, status, &message)
+        Ok(Some((content_type, body))) => {
+            write_http_response(&mut stream, 200, content_type, &body)
         }
+        Ok(None) => write_http_error(&mut stream, 404, "Not Found"),
+        Err(err) => write_http_error(&mut stream, 400, &err.to_string()),
     }
 }
 
@@ -1249,31 +1650,52 @@ fn parse_http_request_line(request: &str) -> Option<(&str, &str)> {
     Some((method, target))
 }
 
+/// `None` is a 404: no such endpoint, an app id this session does not
+/// publish, or a file its manifest does not list.
 fn handle_dev_lxapp_http_request(
     state: &DevServerState,
     target: &str,
-) -> Result<(&'static str, Vec<u8>)> {
+) -> Result<Option<(&'static str, Vec<u8>)>> {
     let Some(rest) = target.strip_prefix(DEV_LXAPP_HTTP_PREFIX) else {
-        return Err(anyhow!("dev HTTP endpoint not found"));
+        return Ok(None);
     };
 
     if let Some(app_id) = rest.strip_suffix("/manifest.json") {
         let app_id = decode_url_path_component(app_id)?;
+        if !super::lxapp_manifest::is_published(&state.project_root, &app_id) {
+            return Ok(None);
+        }
         let manifest = super::lxapp_manifest::load_manifest(&state.project_root, &app_id)?;
         let body = serde_json::to_vec_pretty(&manifest)?;
-        return Ok(("application/json; charset=utf-8", body));
+        return Ok(Some(("application/json; charset=utf-8", body)));
     }
 
     let Some((app_id, relative_path)) = rest.split_once("/files/") else {
-        return Err(anyhow!("dev HTTP endpoint not found"));
+        return Ok(None);
     };
     let app_id = decode_url_path_component(app_id)?;
     let relative_path = decode_url_path_component(relative_path)?;
-    let file_path =
-        super::lxapp_manifest::resolve_dist_file(&state.project_root, &app_id, &relative_path)?;
+    if !super::lxapp_manifest::is_published(&state.project_root, &app_id)
+        || !super::lxapp_manifest::load_manifest(&state.project_root, &app_id)?
+            .files
+            .iter()
+            .any(|file| file.path == relative_path)
+    {
+        return Ok(None);
+    }
+    let file_path = if let Some(dist) = state.attached_dist(&app_id) {
+        super::lxapp_manifest::resolve_published_file(
+            &state.project_root,
+            &app_id,
+            &relative_path,
+            &dist,
+        )?
+    } else {
+        super::lxapp_manifest::resolve_dist_file(&state.project_root, &app_id, &relative_path)?
+    };
     let body = std::fs::read(&file_path)
         .with_context(|| format!("Failed to read {}", file_path.display()))?;
-    Ok((content_type_for_path(&relative_path), body))
+    Ok(Some((content_type_for_path(&relative_path), body)))
 }
 
 fn decode_url_path_component(value: &str) -> Result<String> {
@@ -1357,11 +1779,16 @@ fn handle_devtool_connection(
     let (runtime_id, replaced_runtime) = state.claim_runtime_sender(outgoing_tx);
     if replaced_runtime {
         eprintln!("[lingxia dev] devtool runtime reconnected; replacing stale runtime connection");
+    } else {
+        println!("  ✓ app connected");
     }
     // The runtime's mocks end with its connection: load them again, off
     // this thread, which routes the answers.
     let pushing = Arc::clone(state);
-    thread::spawn(move || pushing.push_all_mocks());
+    thread::spawn(move || {
+        pushing.push_all_mocks();
+        pushing.catch_up(runtime_id);
+    });
 
     let result = thread::scope(|scope| {
         let (event_tx, event_rx) = mpsc::sync_channel(RUNTIME_EVENT_QUEUE_CAPACITY);
@@ -1489,6 +1916,156 @@ fn is_expected_tungstenite_shutdown_error(err: &WsError) -> bool {
     }
 }
 
+fn finish_attach_error(
+    websocket: &mut WebSocket<TcpStream>,
+    id: String,
+    message: String,
+) -> Result<()> {
+    send_wire_message(
+        websocket,
+        &DevSessionMessage::error(id, "attach_failed", message),
+    )?;
+    let _ = websocket.close(None);
+    Ok(())
+}
+
+fn handle_lxapp_attach(
+    mut websocket: WebSocket<TcpStream>,
+    state: &DevServerState,
+    id: String,
+    params: Option<serde_json::Value>,
+) -> Result<()> {
+    let spec = match validate_attach(state, params.as_ref()) {
+        Ok(spec) => spec,
+        Err(err) => return finish_attach_error(&mut websocket, id, format!("{err:#}")),
+    };
+    let app_id = spec.app_id.clone();
+    if let Err(err) = state.insert_attached(spec.clone()) {
+        return finish_attach_error(&mut websocket, id, format!("{err:#}"));
+    }
+    let _detach = DetachOnDrop {
+        state,
+        app_id: app_id.clone(),
+    };
+    // The session prepared only its own content at start. Prepare before
+    // watching: generated inputs it writes are not a save.
+    if let Err(err) = crate::build_prepare::prepare(&spec.source) {
+        return finish_attach_error(&mut websocket, id, format!("{err:#}"));
+    }
+    if let Err(err) = state.watch_add(super::lxapp_watch::WatchRoot {
+        app_id: app_id.clone(),
+        path: spec.source.clone(),
+    }) {
+        return finish_attach_error(&mut websocket, id, format!("{err:#}"));
+    }
+    if let Err(err) = state.build_attached(&app_id) {
+        return finish_attach_error(&mut websocket, id, format!("{err:#}"));
+    }
+    let connected = state.runtime_sender().is_some();
+    if let Err(err) = state.present(&app_id) {
+        return finish_attach_error(&mut websocket, id, format!("{err:#}"));
+    }
+    send_wire_message(
+        &mut websocket,
+        &DevSessionMessage::success(
+            id,
+            Some(serde_json::json!({ "appId": app_id, "opened": connected })),
+        ),
+    )?;
+    hold_attach(&mut websocket);
+    Ok(())
+}
+
+fn validate_attach(
+    state: &DevServerState,
+    params: Option<&serde_json::Value>,
+) -> Result<AttachedLxapp> {
+    let path = params
+        .and_then(|value| value.get("path"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("session.lxapp.attach requires path"))?;
+    let source = PathBuf::from(path);
+    if !source.join("lxapp.json").is_file() {
+        return Err(anyhow!("{} has no lxapp.json", source.display()));
+    }
+    let source = source
+        .canonicalize()
+        .with_context(|| format!("Failed to resolve {}", source.display()))?;
+    let app_id = super::lxapp_watch::read_app_id(&source)?;
+    if let Some(message) =
+        super::lxapp_manifest::declared_bundle_conflict(&state.project_root, &source, &app_id)?
+    {
+        return Err(anyhow!(message));
+    }
+    // Its own content (a `listen --port` lxapp) is already built, served, and
+    // watched; attaching it again would share, then delete, that state.
+    if super::lxapp_watch::discover_watch_roots(&state.project_root)?
+        .iter()
+        .any(|root| root.app_id == app_id || root.path == source)
+    {
+        return Err(anyhow!(
+            "this session already develops {app_id}; save in its directory to reload it"
+        ));
+    }
+    if state.watch_sender().is_none() {
+        return Err(anyhow!("this session is not watching lxapps"));
+    }
+    let framework = params
+        .and_then(|value| value.get("framework"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| state.watch_framework());
+    let release = params
+        .and_then(|value| value.get("release"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or_else(|| state.watch_release.load(Ordering::Acquire));
+    Ok(AttachedLxapp {
+        app_id,
+        source,
+        framework,
+        release,
+    })
+}
+
+impl DevServerState {
+    fn watch_add(&self, root: super::lxapp_watch::WatchRoot) -> Result<()> {
+        let sender = self
+            .watch_sender()
+            .ok_or_else(|| anyhow!("this session is not watching lxapps"))?;
+        let (ack_tx, ack_rx) = mpsc::channel();
+        sender
+            .send(super::lxapp_watch::WatchCmd::Add { root, ack: ack_tx })
+            .map_err(|_| anyhow!("the lxapp watcher stopped"))?;
+        match ack_rx.recv() {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(err)) => Err(anyhow!(err)),
+            Err(_) => Err(anyhow!("the lxapp watcher stopped")),
+        }
+    }
+}
+
+fn hold_attach(websocket: &mut WebSocket<TcpStream>) {
+    let _ = websocket
+        .get_mut()
+        .set_read_timeout(Some(Duration::from_secs(1)));
+    loop {
+        match websocket.read() {
+            Ok(Message::Close(_)) => return,
+            Ok(_) => {}
+            Err(WsError::Io(err))
+                if matches!(
+                    err.kind(),
+                    std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                ) => {}
+            Err(_) => return,
+        }
+    }
+}
+
 fn handle_client_connection(
     mut websocket: WebSocket<TcpStream>,
     state: &DevServerState,
@@ -1498,14 +2075,47 @@ fn handle_client_connection(
         return Err(anyhow!("Client websocket must send exactly one command"));
     };
 
+    // Attach keeps this socket open. Disconnect is what unregisters the extra
+    // watch, the same way a session's broker connection is its liveness.
+    if method.as_str() == lingxia_control_protocol::methods::session::LXAPP_ATTACH {
+        // An attach builds the directory it names. Only this machine may ask:
+        // a LAN peer holding an iOS session's token must not run builds here.
+        let local = websocket
+            .get_ref()
+            .peer_addr()
+            .is_ok_and(|addr| addr.ip().is_loopback());
+        let token = params
+            .as_ref()
+            .and_then(|value| value.get("attachToken"))
+            .and_then(serde_json::Value::as_str);
+        if !local || !state.attach_authorized(token) {
+            return finish_attach_error(
+                &mut websocket,
+                id,
+                "an lxapp can only be attached by `lingxia dev listen` as this user on this \
+                 machine"
+                    .to_string(),
+            );
+        }
+        return handle_lxapp_attach(websocket, state, id, params);
+    }
+
     // `lxapp.build` is an orchestrator-level rebuild operation: the dev server
     // owns the project + build pipeline, so it builds in-process rather than
     // forwarding to the runtime (which has no build toolchain). Works even with
     // no app attached.
     if method.as_str() == lingxia_control_protocol::methods::lxapp::BUILD {
-        let built = {
-            let _build = state.lock_build();
-            run_lxapp_build(&state.project_root, params.as_ref())
+        let attached = params
+            .as_ref()
+            .and_then(|value| value.get("appid"))
+            .and_then(serde_json::Value::as_str)
+            .filter(|appid| state.attached_spec(appid).is_some());
+        let built = match attached {
+            Some(appid) => state.build_attached(appid),
+            None => {
+                let _build = state.lock_build();
+                run_lxapp_build(&state.project_root, params.as_ref())
+            }
         };
         let payload = match built {
             Ok(()) => DevSessionMessage::success(id, None),
@@ -1661,6 +2271,18 @@ fn command_timeout(args: Option<&serde_json::Value>) -> Duration {
 /// project + build pipeline; this mirrors `lingxia build` run in a standalone
 /// lxapp dir. Output streams to the `lingxia dev` terminal; the client receives
 /// only ok/error.
+fn build_lxapp_dir(dir: &Path, framework: Option<&str>, release: bool) -> Result<()> {
+    let mut build_args = vec!["build".to_string()];
+    if release {
+        build_args.push("--release".to_string());
+    }
+    if let Some(framework) = framework {
+        build_args.push("--framework".to_string());
+        build_args.push(framework.to_string());
+    }
+    crate::lxapp::run_in_dir_for_dev(&build_args, dir)
+}
+
 fn run_lxapp_build(project_root: &Path, args: Option<&serde_json::Value>) -> Result<()> {
     let release = args
         .and_then(|value| value.get("release"))
@@ -1672,15 +2294,7 @@ fn run_lxapp_build(project_root: &Path, args: Option<&serde_json::Value>) -> Res
     let appid = args
         .and_then(|value| value.get("appid"))
         .and_then(serde_json::Value::as_str);
-    let mut build_args = vec!["build".to_string()];
-    if release {
-        build_args.push("--release".to_string());
-    }
-    if let Some(framework) = framework {
-        build_args.push("--framework".to_string());
-        build_args.push(framework.to_string());
-    }
-    crate::lxapp::run_in_dir_for_dev(&build_args, &resolve_lxapp_dir(project_root, appid)?)?;
+    build_lxapp_dir(&resolve_lxapp_dir(project_root, appid)?, framework, release)?;
 
     // Host dev sessions serve bundles through the generated manifest. Without
     // refreshing it here, the runtime sees the previous dist hash and a
@@ -1690,6 +2304,11 @@ fn run_lxapp_build(project_root: &Path, args: Option<&serde_json::Value>) -> Res
 }
 
 fn refresh_lxapp_manifests(project_root: &Path) -> Result<()> {
+    // A standalone session (`listen --port`) serves its own lxapp to the host.
+    if project_root.join("lxapp.json").is_file() {
+        super::lxapp_manifest::publish_dist(project_root, &project_root.join("dist"))?;
+        return Ok(());
+    }
     if !project_root.join("lingxia.yaml").is_file() {
         return Ok(());
     }
@@ -1812,6 +2431,16 @@ mod tests {
             Some("secret".to_string()),
             false,
         )
+    }
+
+    #[test]
+    fn an_attach_needs_the_session_attach_token() {
+        let state = authenticated_state();
+        assert!(!state.attach_authorized(Some("anything")));
+        *state.attach_token.lock().unwrap() = Some("attach".to_string());
+        assert!(!state.attach_authorized(None));
+        assert!(!state.attach_authorized(Some("secret")));
+        assert!(state.attach_authorized(Some("attach")));
     }
 
     #[test]

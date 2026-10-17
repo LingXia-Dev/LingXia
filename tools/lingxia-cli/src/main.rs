@@ -70,12 +70,11 @@ struct Cli {
 #[derive(clap::Args, Clone)]
 struct BuildOptions {
     /// Release build (debug is the default)
-    #[arg(long)]
+    #[arg(long, global = true)]
     release: bool,
 
-    /// Override LxApp view framework detection (multi-framework demo projects
-    /// only — a real project has exactly one; hidden from help)
-    #[arg(long, hide = true, value_parser = ["react", "vue", "html"])]
+    /// LxApp view framework, for a project that ships pages in more than one
+    #[arg(long, global = true, value_parser = ["react", "vue", "html"])]
     framework: Option<String>,
 
     /// LxApp progress output mode
@@ -142,11 +141,11 @@ struct DevOptions {
 
     /// Target platform (android, ios, macos, harmony, windows), or `runner`
     /// for an lxapp in the desktop Runner. Auto-detected if not specified.
-    #[arg(short = 'p', long)]
+    #[arg(short = 'p', long, global = true)]
     platform: Option<String>,
 
     /// Device ID (required if multiple devices connected)
-    #[arg(short = 'd', long)]
+    #[arg(short = 'd', long, global = true)]
     device: Option<String>,
 
     /// Reinstall app by uninstalling existing one first (best effort)
@@ -170,7 +169,7 @@ struct DevOptions {
     /// Return once the session is ready and leave it running (scripts, CI).
     /// If it fails or is not ready in time, what it started is stopped and
     /// the command fails with the end of its log
-    #[arg(long)]
+    #[arg(long, global = true)]
     background: bool,
 
     /// With --background: print the ready session as JSON
@@ -179,7 +178,7 @@ struct DevOptions {
 
     /// Name the session: `lxdev --session NAME` and `lingxia dev stop NAME`
     /// select it by name, and printed hints use it
-    #[arg(long, value_name = "NAME")]
+    #[arg(long, value_name = "NAME", global = true)]
     name: Option<String>,
 
     /// Answer every call with mocks (`all`) or the real backend (`none`)
@@ -198,6 +197,27 @@ enum DevAction {
         /// Which session of this project: its name (`lingxia dev --name`),
         /// target (macos, android, …), TARGET@<project-dir>, or id prefix.
         /// Omit it when only one is running
+        session: Option<String>,
+    },
+    /// Develop this lxapp on a device whose host app is already installed.
+    ///
+    /// Run it in an lxapp directory (`lxapp.json`, no `lingxia.yaml`). The
+    /// session builds the lxapp, opens it once, and rebuilds and reloads it
+    /// on save until this command exits. Nothing is built, installed, or
+    /// launched for the host.
+    #[command(after_help = "Examples:\n  \
+        lingxia dev listen -p ios --port 39231   be the session the app dials\n  \
+        lingxia dev listen                       join a running host session")]
+    Listen {
+        /// The port on the host app's dev tab. This command is then the
+        /// session that app dials; `-p` says how it gets here. Omit it to
+        /// attach to a `lingxia dev` session that is already running.
+        #[arg(long)]
+        port: Option<u16>,
+        /// Running host session to attach to, when more than one is running
+        /// (without `--port`). A name, target, TARGET@<project-dir>,
+        /// ordinal, or id prefix.
+        #[arg(long)]
         session: Option<String>,
     },
 }
@@ -1089,6 +1109,9 @@ fn main() -> Result<()> {
                     DevAction::Stop { session } => {
                         commands::dev::DevSessionAction::Stop { session }
                     }
+                    DevAction::Listen { port, session } => {
+                        commands::dev::DevSessionAction::Listen { port, session }
+                    }
                 }),
             })?;
         }
@@ -1560,8 +1583,16 @@ mod cli_tests {
                 .to_string(),
             "End a session (a no-op when none is running)"
         );
+        assert_eq!(
+            dev.find_subcommand("listen")
+                .unwrap()
+                .get_about()
+                .unwrap()
+                .to_string(),
+            "Develop this lxapp on a device whose host app is already installed"
+        );
         let names: Vec<&str> = dev.get_subcommands().map(|c| c.get_name()).collect();
-        assert_eq!(names, ["stop"]);
+        assert_eq!(names, ["stop", "listen"]);
         let mut help = Vec::new();
         Cli::command().write_help(&mut help).unwrap();
         let help = String::from_utf8(help).unwrap();
@@ -1626,6 +1657,63 @@ mod cli_tests {
     #[test]
     fn dev_lan_remote_control_is_removed() {
         assert!(Cli::try_parse_from(["lingxia", "dev", "--lan"]).is_err());
+    }
+
+    #[test]
+    fn dev_listen_parses_platform_and_port() {
+        let cli = Cli::try_parse_from([
+            "lingxia",
+            "dev",
+            "listen",
+            "-p",
+            "android",
+            "--port",
+            "39447",
+            "--framework",
+            "react",
+            "--release",
+        ])
+        .unwrap();
+        let Commands::Dev { dev_options } = cli.command else {
+            panic!("expected dev command");
+        };
+        assert_eq!(dev_options.platform.as_deref(), Some("android"));
+        assert!(dev_options.build_options.release);
+        assert_eq!(
+            dev_options.build_options.framework.as_deref(),
+            Some("react")
+        );
+        assert!(matches!(
+            dev_options.action,
+            Some(DevAction::Listen {
+                port: Some(39447),
+                session: None
+            })
+        ));
+    }
+
+    #[test]
+    fn attach_listen_parses_session() {
+        let cli = Cli::try_parse_from([
+            "lingxia",
+            "dev",
+            "listen",
+            "--session",
+            "mark-win",
+            "--framework",
+            "react",
+        ])
+        .unwrap();
+        let Commands::Dev { dev_options } = cli.command else {
+            panic!("expected dev command");
+        };
+        assert!(matches!(
+            dev_options.action,
+            Some(DevAction::Listen {
+                port: None,
+                session: Some(session)
+            }) if session == "mark-win"
+        ));
     }
 
     #[test]

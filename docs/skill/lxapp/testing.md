@@ -460,8 +460,8 @@ lxdev test report --failures      # reprint the last run, no session needed
   tag, or a spec registered in a loop, which a run may list differently.
 - `--retries N` needs `spec.reset`; `--shard 1/3` needs separate sessions.
 - `--cancel-active` cancels a run left behind by a client that exited.
-- Saves during a run rebuild once it ends. Keep files that setup generates
-  outside the watched project.
+- A run pauses [auto-reload](../cli/dev-reload.md). Keep files that setup
+  generates outside the watched project.
 - The run fails fast on [version skew](../cli/lingxia.md#lingxia-dev).
 - Rejections carry stable `TestErrorCode`s (`E_TIMEOUT`, `E_ELEMENT_NOT_FOUND`,
   `E_EVAL_SCRIPT`, `E_OPENAPI_CONTRACT`, …) for `t.reject` and `expected.code`.
