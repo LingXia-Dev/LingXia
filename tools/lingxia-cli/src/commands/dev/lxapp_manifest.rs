@@ -192,7 +192,9 @@ fn manifest_path(project_root: &Path, app_id: &str) -> PathBuf {
 }
 
 fn configured_dist_dir(project_root: &Path, app_id: &str) -> Result<PathBuf> {
-    if project_root.join("lxapp.json").is_file()
+    // A standalone session's own lxapp; a host project resolves its bundles.
+    if !project_root.join("lingxia.yaml").is_file()
+        && project_root.join("lxapp.json").is_file()
         && super::lxapp_watch::read_app_id(project_root)? == app_id
     {
         return Ok(project_root.join("dist"));

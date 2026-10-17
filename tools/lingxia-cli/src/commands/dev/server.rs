@@ -2304,16 +2304,13 @@ fn run_lxapp_build(project_root: &Path, args: Option<&serde_json::Value>) -> Res
 }
 
 fn refresh_lxapp_manifests(project_root: &Path) -> Result<()> {
-    // A standalone session (`listen --port`) serves its own lxapp to the host.
-    if project_root.join("lxapp.json").is_file() {
+    if project_root.join("lingxia.yaml").is_file() {
+        let config = crate::config::LingXiaConfig::load(project_root)?;
+        super::lxapp_manifest::write_configured_manifests(project_root, &config)?;
+    } else if project_root.join("lxapp.json").is_file() {
+        // A standalone session (`listen --port`) serves its own lxapp.
         super::lxapp_manifest::publish_dist(project_root, &project_root.join("dist"))?;
-        return Ok(());
     }
-    if !project_root.join("lingxia.yaml").is_file() {
-        return Ok(());
-    }
-    let config = crate::config::LingXiaConfig::load(project_root)?;
-    super::lxapp_manifest::write_configured_manifests(project_root, &config)?;
     Ok(())
 }
 
