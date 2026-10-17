@@ -320,6 +320,19 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
 
     let listen = match options.action {
         Some(DevSessionAction::Stop { session }) => {
+            let ignored = options.release
+                || options.framework.is_some()
+                || options.platform_arg.is_some()
+                || runner_requested
+                || options.device.is_some()
+                || options.background
+                || options.name.is_some();
+            if ignored {
+                return Err(anyhow!(
+                    "`lingxia dev stop` takes only the session to stop: a name, a target, \
+                     TARGET@<dir>, or an id prefix (`lingxia dev stop ios`)."
+                ));
+            }
             return stop_session(&project_root, session.as_deref());
         }
         Some(DevSessionAction::Listen { port, ref session }) => Some((port, session.clone())),
@@ -912,6 +925,26 @@ fn stop_session(project_root: &Path, selector: Option<&str>) -> Result<()> {
     match plan_stop(&sessions, selector, project_root)? {
         StopPlan::Stop(session) => stop_session_info(session),
         StopPlan::NothingRunning(message) => {
+            // A name, or TARGET@<dir>, names one session on this machine, so
+            // it reaches another project's session too.
+            if let Some(query) = selector.map(str::trim).filter(|value| !value.is_empty()) {
+                let all = lingxia_control_protocol::dev_session::broker::list_sessions()
+                    .context("Failed to list dev sessions")?;
+                let named = all.iter().find(|s| s.name.as_deref() == Some(query));
+                let located = || {
+                    query.contains('@').then(|| {
+                        lingxia_control_protocol::dev_session::select::select(
+                            &all,
+                            Some(query),
+                            project_root,
+                        )
+                        .ok()
+                    })?
+                };
+                if let Some(session) = named.or_else(located) {
+                    return stop_session_info(session);
+                }
+            }
             println!("{message}");
             Ok(())
         }
