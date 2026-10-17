@@ -385,6 +385,7 @@ export default function ChatPage() {
       onClear: () => void;
       onOpenTerminal: (params: { edge: 'left' | 'right' | 'top' | 'bottom' }) => void;
       onOpenBrowser: () => void;
+      onOpenAbout: () => void;
     }
   >();
 
@@ -423,6 +424,12 @@ export default function ChatPage() {
   return (
     <div className="flex flex-col bg-gray-100" style={{ height: '100vh' }}>
       <div className="absolute top-3 right-4 z-10 flex items-center gap-2">
+        <button
+          onClick={() => actions.onOpenAbout()}
+          className="text-xs text-blue-600 px-3 py-1 bg-white rounded-full shadow-sm active:opacity-70"
+        >
+          About
+        </button>
         {messages.length > 0 && !chat.streaming && (
           <button
             onClick={() => actions.onClear()}
