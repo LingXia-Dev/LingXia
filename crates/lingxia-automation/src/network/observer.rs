@@ -729,7 +729,6 @@ impl Recording {
         let mut requests: Vec<&Record> = self.records.iter().chain(in_flight.iter()).collect();
         requests.sort_by_key(|record| record.id);
         Stopped {
-            started_ms: self.started_ms,
             requests: requests.into_iter().map(Record::to_json).collect(),
             dropped: self.dropped,
             scenario,
@@ -743,7 +742,6 @@ fn is_lxapp_owner(owner: Option<&str>) -> bool {
 
 /// A stopped recording.
 pub(crate) struct Stopped {
-    pub started_ms: u64,
     /// Every recorded request in start order, in its report form.
     pub requests: Vec<Value>,
     /// Requests past the recording's limit, not in `requests`.
