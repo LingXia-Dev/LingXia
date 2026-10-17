@@ -175,6 +175,10 @@ pub(crate) async fn prepare_app_open(
     .map_err(|e| js_error_from_lxapp_error(&e))?;
     let (startup_options, _) =
         build_startup_options(&target_app, options).map_err(|e| js_error_from_lxapp_error(&e))?;
+    // Options default to the release channel. The instance above may already
+    // be a draft dev bundle; opening with the default asks for a channel switch.
+    let release_type = target_app.release_type();
+    let startup_options = startup_options.set_release_type(release_type);
 
     Ok((startup_options, release_type))
 }

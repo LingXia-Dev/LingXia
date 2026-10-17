@@ -117,6 +117,7 @@ fn tagged_handler_error(error: &str) -> (&'static str, String) {
     const TAGS: &[&str] = &[
         "usage",
         "not_found",
+        "not_open",
         "ambiguous",
         "timeout",
         "permission",

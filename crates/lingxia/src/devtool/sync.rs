@@ -30,9 +30,24 @@ struct DevManifestFile {
     size: u64,
 }
 
-pub(crate) fn sync_dev_home_bundle(runtime: Arc<lingxia_platform::Platform>) -> Result<(), String> {
+/// Result of pulling one app id from the dev bundle server.
+pub(crate) enum DevBundleSync {
+    /// No dev bundle server is configured, or the app id is empty.
+    Idle,
+    /// The server has no manifest for this app id (not a local bundle).
+    NotPublished,
+    /// Files are in `dev-lxapps/<appId>/current` and the source is registered.
+    Ready { root: std::path::PathBuf },
+}
+
+/// Pull `app_id` when this process has a dev bundle server. A missing manifest
+/// is [`DevBundleSync::NotPublished`]: downloaded guests are not published here.
+pub(crate) fn sync_dev_bundle(
+    runtime: Arc<lingxia_platform::Platform>,
+    app_id: &str,
+) -> Result<DevBundleSync, String> {
     let Some(config) = lingxia_app_context::app_config() else {
-        return Ok(());
+        return Ok(DevBundleSync::Idle);
     };
     let Some(base_url) = config
         .dev_bundle_base_url
@@ -40,24 +55,28 @@ pub(crate) fn sync_dev_home_bundle(runtime: Arc<lingxia_platform::Platform>) -> 
         .map(str::trim)
         .filter(|value| !value.is_empty())
     else {
-        return Ok(());
+        return Ok(DevBundleSync::Idle);
     };
 
-    let app_id = config.home_app_id.trim();
+    let app_id = app_id.trim();
     if app_id.is_empty() {
-        return Ok(());
+        return Ok(DevBundleSync::Idle);
     }
 
     let manifest_url = dev_bundle_url(
         base_url,
         &format!("lxapp/{}/manifest.json", encode_path_component(app_id)),
     );
-    let manifest_bytes = http_get(&manifest_url)?;
+    let manifest_bytes = match http_get(&manifest_url)? {
+        (200, body) => body,
+        (404, _) => return Ok(DevBundleSync::NotPublished),
+        (status, _) => return Err(format!("GET {manifest_url} returned HTTP {status}")),
+    };
     let manifest: DevManifest = serde_json::from_slice(&manifest_bytes)
         .map_err(|err| format!("invalid dev manifest from {}: {}", manifest_url, err))?;
     if manifest.app_id != app_id {
         return Err(format!(
-            "dev manifest appId '{}' does not match home appId '{}'",
+            "dev manifest appId '{}' does not match requested appId '{}'",
             manifest.app_id, app_id
         ));
     }
@@ -75,9 +94,9 @@ pub(crate) fn sync_dev_home_bundle(runtime: Arc<lingxia_platform::Platform>) -> 
         .is_some_and(|local| local.dist_hash == manifest.dist_hash)
         && current_dir.join("lxapp.json").is_file()
     {
-        lxapp::register_dev_bundle_source(app_id.to_string(), current_dir);
+        lxapp::register_dev_bundle_source(app_id.to_string(), current_dir.clone());
         log::info!("Using cached dev lxapp bundle for {}", app_id);
-        return Ok(());
+        return Ok(DevBundleSync::Ready { root: current_dir });
     }
 
     fs::create_dir_all(&root)
@@ -117,7 +136,10 @@ pub(crate) fn sync_dev_home_bundle(runtime: Arc<lingxia_platform::Platform>) -> 
                 encode_path_component(&file.path)
             ),
         );
-        let bytes = http_get(&url)?;
+        let bytes = match http_get(&url)? {
+            (200, body) => body,
+            (status, _) => return Err(format!("GET {url} returned HTTP {status}")),
+        };
         if bytes.len() as u64 != file.size {
             return Err(format!(
                 "dev file size mismatch for {}: expected {}, got {}",
@@ -155,13 +177,13 @@ pub(crate) fn sync_dev_home_bundle(runtime: Arc<lingxia_platform::Platform>) -> 
     })?;
     let _ = fs::remove_dir_all(&old_dir);
 
-    lxapp::register_dev_bundle_source(app_id.to_string(), current_dir);
+    lxapp::register_dev_bundle_source(app_id.to_string(), current_dir.clone());
     log::info!(
         "Synced dev lxapp bundle for {} ({})",
         app_id,
         manifest.dist_hash
     );
-    Ok(())
+    Ok(DevBundleSync::Ready { root: current_dir })
 }
 
 fn validate_manifest(manifest: &DevManifest) -> Result<(), String> {
@@ -236,7 +258,8 @@ fn verify_file_size(path: &Path, file: &DevManifestFile) -> Result<(), String> {
     Ok(())
 }
 
-fn http_get(url: &str) -> Result<Vec<u8>, String> {
+/// Status and body of a GET. Only a transport or framing failure is an `Err`.
+fn http_get(url: &str) -> Result<(u16, Vec<u8>), String> {
     let parsed = ParsedHttpUrl::parse(url)?;
     let mut addrs = (parsed.host.as_str(), parsed.port)
         .to_socket_addrs()
@@ -261,7 +284,7 @@ fn http_get(url: &str) -> Result<Vec<u8>, String> {
     parse_http_response(url, &response)
 }
 
-fn parse_http_response(url: &str, response: &[u8]) -> Result<Vec<u8>, String> {
+fn parse_http_response(url: &str, response: &[u8]) -> Result<(u16, Vec<u8>), String> {
     let header_end = response
         .windows(4)
         .position(|window| window == b"\r\n\r\n")
@@ -277,10 +300,7 @@ fn parse_http_response(url: &str, response: &[u8]) -> Result<Vec<u8>, String> {
         .nth(1)
         .and_then(|value| value.parse::<u16>().ok())
         .ok_or_else(|| format!("invalid HTTP status from {}", url))?;
-    if status != 200 {
-        return Err(format!("GET {} returned HTTP {}", url, status));
-    }
-    Ok(response[header_end + 4..].to_vec())
+    Ok((status, response[header_end + 4..].to_vec()))
 }
 
 struct ParsedHttpUrl {
@@ -377,7 +397,17 @@ fn sanitize_component(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{ParsedHttpUrl, dev_bundle_url};
+    use super::{ParsedHttpUrl, dev_bundle_url, parse_http_response};
+
+    #[test]
+    fn http_404_means_the_bundle_is_not_published() {
+        let (status, _) =
+            parse_http_response("http://127.0.0.1:9", b"HTTP/1.1 404 Not Found\r\n\r\n").unwrap();
+        assert_eq!(status, 404);
+        let (status, body) =
+            parse_http_response("http://127.0.0.1:9", b"HTTP/1.1 200 OK\r\n\r\n{}").unwrap();
+        assert_eq!((status, body.as_slice()), (200, b"{}".as_slice()));
+    }
 
     #[test]
     fn dev_bundle_paths_keep_auth_query_at_the_end() {

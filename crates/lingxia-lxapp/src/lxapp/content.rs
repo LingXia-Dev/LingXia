@@ -50,7 +50,27 @@ impl LxApp {
                 });
         }
 
+        // The page script is the stable `./view.js` alias. WebView2 keeps that
+        // module, so a dev reload would paint the previous bundle. A new query
+        // is a different request; the scheme also sends `Cache-Control: no-store`.
+        if let Some(src) = self.dev_view_script_src(path) {
+            injected_data = rewrite_dev_view_script(&injected_data, &src);
+        }
+
         injected_data
+    }
+
+    /// `./view.js?lxdev=<mtime>` while this app is served from a dev bundle.
+    fn dev_view_script_src(&self, page_path: &str) -> Option<String> {
+        let root = self.dev_bundle_root()?;
+        let dir = std::path::Path::new(page_path).parent()?;
+        let view = root.join(dir).join("view.js");
+        let modified = std::fs::metadata(&view).ok()?.modified().ok()?;
+        let millis = modified
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_millis();
+        Some(format!("./view.js?lxdev={millis}"))
     }
 
     /// Generate one native-owned control document with its V3 bootstrap.
@@ -484,12 +504,21 @@ fn find_ascii_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {
         .position(|window| window.eq_ignore_ascii_case(needle))
 }
 
+/// The bundler keeps `./view.js` stable across rebuilds. A dev reload has to
+/// change the request or WebView2 replays the module it already compiled.
+fn rewrite_dev_view_script(html: &[u8], src: &str) -> Vec<u8> {
+    String::from_utf8_lossy(html)
+        .replace("src=\"./view.js\"", &format!("src=\"{src}\""))
+        .into_bytes()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         LEGACY_BRIDGE_RUNTIME_TAG, TRUSTED_BRIDGE_RUNTIME_TAG, build_content_security_policy,
         build_control_document_bootstrap_script, find_bridge_runtime_script_start,
-        inject_bridge_config_with_bootstrap, strip_content_security_policy_meta,
+        inject_bridge_config_with_bootstrap, rewrite_dev_view_script,
+        strip_content_security_policy_meta,
     };
     use crate::issue_control_document_bootstrap;
     use ring::rand::SystemRandom;
@@ -519,6 +548,16 @@ mod tests {
         let csp = build_content_security_policy();
         assert!(!csp.contains("media-src"));
         assert!(csp.contains("default-src 'self' lx: lingxia:"));
+    }
+
+    #[test]
+    fn dev_reload_busts_the_stable_view_script() {
+        let html = br#"<script type="module" crossorigin src="./view.js"></script>"#;
+        let out = String::from_utf8(rewrite_dev_view_script(html, "./view.js?lxdev=5")).unwrap();
+        assert_eq!(
+            out,
+            r#"<script type="module" crossorigin src="./view.js?lxdev=5"></script>"#
+        );
     }
 
     #[test]

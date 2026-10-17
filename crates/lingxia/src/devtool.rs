@@ -275,10 +275,95 @@ pub(crate) fn prepare_host_app_config(
 }
 
 pub(crate) fn prepare_bundle_sources(runtime: &std::sync::Arc<lingxia_platform::Platform>) {
-    if let Err(err) = sync::sync_dev_home_bundle(runtime.clone()) {
-        log::warn!("Failed to sync dev home lxapp bundle: {}", err);
+    lxapp::set_dev_bundle_preparer(prepare_dev_bundle_for_open);
+    let home_id = lingxia_app_context::app_config()
+        .map(|config| config.home_app_id.trim().to_string())
+        .unwrap_or_default();
+    if !home_id.is_empty() {
+        // Home's own instance asks next, so record the answer: a `listen`
+        // session publishes only its lxapp, and an unreachable server must
+        // not cost home a second timeout.
+        match sync::sync_dev_bundle(runtime.clone(), &home_id) {
+            Ok(sync::DevBundleSync::NotPublished) => {
+                lock(&UNPUBLISHED).insert(home_id);
+            }
+            Ok(_) => {}
+            Err(err) => {
+                *lock(&UNREACHABLE_UNTIL) = Some(std::time::Instant::now() + UNREACHABLE_BACKOFF);
+                log::warn!("Failed to sync dev home lxapp bundle: {}", err);
+            }
+        }
     }
     register_bundle_source_override();
+}
+
+/// App ids the dev server had no manifest for, since the dev session last
+/// connected. A new connection may serve more, so it clears this.
+static UNPUBLISHED: std::sync::Mutex<std::collections::BTreeSet<String>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+/// After a failed fetch, opens skip the dev server until then, so an
+/// unreachable host costs one timeout and not one per open.
+static UNREACHABLE_UNTIL: std::sync::Mutex<Option<std::time::Instant>> =
+    std::sync::Mutex::new(None);
+const UNREACHABLE_BACKOFF: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn prepare_dev_bundle_for_open(app_id: &str) {
+    if lxapp::is_dev_bundle_appid(app_id) || lock(&UNPUBLISHED).contains(app_id) {
+        return;
+    }
+    if lock(&UNREACHABLE_UNTIL).is_some_and(|until| std::time::Instant::now() < until) {
+        return;
+    }
+    let Ok(runtime) = crate::runtime::platform() else {
+        return;
+    };
+    match sync::sync_dev_bundle(runtime, app_id) {
+        Ok(sync::DevBundleSync::NotPublished) => {
+            lock(&UNPUBLISHED).insert(app_id.to_string());
+        }
+        Ok(_) => {}
+        Err(err) => {
+            *lock(&UNREACHABLE_UNTIL) = Some(std::time::Instant::now() + UNREACHABLE_BACKOFF);
+            log::warn!("Failed to sync dev lxapp bundle for {app_id}: {err}");
+        }
+    }
+}
+
+/// The dev session (re)connected: what it publishes, and whether it is
+/// reachable, may have changed.
+pub fn dev_session_connected() {
+    lock(&UNPUBLISHED).clear();
+    *lock(&UNREACHABLE_UNTIL) = None;
+}
+
+fn lock<T>(mutex: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Sync the bundle this restart is about, and point a live instance at it.
+///
+/// Home stays an error when the server has no manifest. Any other app id with
+/// no manifest keeps the source it already opened from.
+fn sync_open_bundle(appid: &str) -> Result<(), String> {
+    let runtime = crate::runtime::platform().map_err(|err| err.to_string())?;
+    let home_id = lingxia_app_context::app_config()
+        .map(|config| config.home_app_id.trim().to_string())
+        .unwrap_or_default();
+    match sync::sync_dev_bundle(runtime, appid)? {
+        sync::DevBundleSync::Ready { root } => {
+            lock(&UNPUBLISHED).remove(appid);
+            if let Some(app) = lxapp::try_get(appid) {
+                app.adopt_dev_bundle(root);
+            }
+            Ok(())
+        }
+        sync::DevBundleSync::NotPublished if home_id == appid => {
+            Err(format!("dev server has no bundle manifest for {appid}"))
+        }
+        sync::DevBundleSync::NotPublished | sync::DevBundleSync::Idle => Ok(()),
+    }
 }
 
 fn register_bundle_source_override() {
@@ -573,27 +658,34 @@ pub async fn lxapp_dev_restart(
     timeout: std::time::Duration,
 ) -> Result<LxAppDevPageInfo, String> {
     let appid = resolve_dev_appid(appid)?;
-    let app = match resolve_dev_lxapp(&appid) {
-        Ok(app) => app,
+    // Pull this app id before deciding it is live. A closed guest keeps the
+    // files for its next open; a live one is retargeted before cold restart.
+    sync_open_bundle(&appid)?;
+    let home_id = lingxia_app_context::app_config()
+        .map(|config| config.home_app_id.trim().to_string())
+        .unwrap_or_default();
+    // A closed instance stays in the manager; it is not open either.
+    let open = lxapp::try_get(&appid).filter(|app| app.runtime_info().status == "opened");
+    let Some(app) = open else {
+        // A guest that is not open stays closed; `not_open` tells the dev
+        // session its build loads on the next open. Home still reopens: its
+        // surface is the product, and a failed load has nothing else to show.
+        if home_id != appid {
+            return Err(format!("(not_open): lxapp is not open: {appid}"));
+        }
         // A development bundle whose last load failed — a reopen that found
         // the build output mid-rebuild — is not live. The rebuild that asks
         // for this restart is what makes it loadable again, so open it.
-        Err(_) if lxapp::is_dev_bundle_appid(&appid) => {
+        if lxapp::is_dev_bundle_appid(&appid) {
             return open_unloaded_dev_lxapp(&appid, timeout).await;
         }
-        Err(err) => return Err(err),
+        return Err(format!("lxapp is not active: {appid}"));
     };
     let previous_session = app.runtime_info().session_id;
     let previous_page = app.current_page().map_err(|error| error.to_string())?;
     let previous_page_id = previous_page.instance_id_string();
     let previous_load = *previous_page.subscribe_loaded().borrow();
     let simulated_device = device_get().ok();
-
-    // A host dev session runs from its synchronized bundle cache rather than
-    // directly from the project dist directory. Pull the freshly generated
-    // manifest and files before restarting so reload cannot serve stale code.
-    let runtime = crate::runtime::platform().map_err(|err| err.to_string())?;
-    sync::sync_dev_home_bundle(runtime)?;
 
     app.cold_restart_and_wait()
         .await
@@ -653,8 +745,7 @@ async fn open_unloaded_dev_lxapp(
     appid: &str,
     timeout: std::time::Duration,
 ) -> Result<LxAppDevPageInfo, String> {
-    let runtime = crate::runtime::platform().map_err(|err| err.to_string())?;
-    sync::sync_dev_home_bundle(runtime)?;
+    sync_open_bundle(appid)?;
     log::info!("{appid} is not loaded; opening it after the rebuild");
     let app = lxapp::open_lxapp(appid, lxapp::LxAppStartupOptions::new(""))
         .map_err(|err| format!("failed to open {appid}: {err}"))?;

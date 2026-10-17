@@ -430,6 +430,16 @@ pub async fn ensure_first_install(
     target_appid: &str,
     release_type: Channel,
 ) -> Result<(), LxAppError> {
+    // A dev-served app id is installed once its source is registered. Instance
+    // creation registers it too, but after this check would have refused it.
+    // The fetch blocks, so it runs off the opener's thread.
+    #[cfg(feature = "dev-bundles")]
+    {
+        let appid = target_appid.to_string();
+        let _ =
+            tokio::task::spawn_blocking(move || lxapp_runtime::prepare_dev_bundle_source(&appid))
+                .await;
+    }
     lingxia_update::ensure_lxapp_first_install(&BoundLxAppUpdateHost::new(
         current_lxapp.clone(),
         target_appid.to_string(),

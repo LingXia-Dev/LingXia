@@ -14,6 +14,9 @@ standard = ["js-appservice"]
 # Shared automation lower half (target resolution, nav, DOM query script)
 # consumed by the devtool handlers and the lx.automation() JS API.
 automation = []
+# Dev-session bundle sync: pull an lxapp from `lingxia dev` and retarget a
+# live instance at it. Enabled by `lingxia/devtool`; product builds omit it.
+dev-bundles = []
 # Test-only constructors for exercising native caller matrices across crates.
 test-utils = []
 # Attribute Logic and transfer traffic to its lxapp in Rong's network

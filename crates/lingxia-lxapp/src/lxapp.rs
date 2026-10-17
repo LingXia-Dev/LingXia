@@ -149,6 +149,8 @@ const PAGE_STACK_MAX: usize = 10;
 static NUM_WORKERS: OnceLock<usize> = OnceLock::new();
 static LXAPP_SOURCE_OVERRIDES: OnceLock<Mutex<HashMap<String, LxAppBundleSource>>> =
     OnceLock::new();
+#[cfg(feature = "dev-bundles")]
+static DEV_BUNDLE_PREPARER: OnceLock<fn(&str)> = OnceLock::new();
 static TRANSIENT_FILE_GRANTS: OnceLock<DashMap<(String, LxAppSessionId, String), PathBuf>> =
     OnceLock::new();
 static TRANSIENT_FILE_REFERENCE_GRANTS: OnceLock<DashMap<(String, LxAppSessionId, String), ()>> =
@@ -214,6 +216,13 @@ fn get_num_workers() -> usize {
 /// platform asset root (Android `assets/`, iOS bundle, etc.). The on-disk asset
 /// prefix is always the appid — no separate `asset_root` argument.
 pub fn register_builtin_asset_bundle(appid: impl Into<String>) {
+    let appid = appid.into();
+    // Opening Terminal Settings re-registers the host snapshot. A dev bundle
+    // already published for this id must stay, or the running draft is rejected
+    // as a downloaded package.
+    if is_dev_bundle_appid(&appid) {
+        return;
+    }
     register_lxapp_bundle_source(appid, LxAppBundleSource::BuiltinAssets);
 }
 
@@ -254,6 +263,31 @@ pub fn register_dev_bundle_source(appid: impl Into<String>, root: impl Into<Path
     register_lxapp_bundle_source(appid, LxAppBundleSource::DevPath { root: root.into() });
 }
 
+/// Called once from the dev host, before the first lxapp is created. `prepare`
+/// may register a dev bundle source for `appid` so the instance is born reading
+/// the synced directory instead of the host asset snapshot.
+#[cfg(feature = "dev-bundles")]
+pub fn set_dev_bundle_preparer(prepare: fn(&str)) {
+    let _ = DEV_BUNDLE_PREPARER.set(prepare);
+}
+
+/// Pull the dev-served bundle of an app id with no live instance, so the
+/// install check and the instance born next both read it. A live instance is
+/// retargeted on restart instead.
+#[cfg(feature = "dev-bundles")]
+pub(crate) fn prepare_dev_bundle_source(appid: &str) {
+    if try_get(appid).is_some() {
+        return;
+    }
+    if let Some(prepare) = DEV_BUNDLE_PREPARER.get() {
+        prepare(appid);
+    }
+}
+
+#[cfg(not(feature = "dev-bundles"))]
+#[inline(always)]
+pub(crate) fn prepare_dev_bundle_source(_appid: &str) {}
+
 fn register_lxapp_bundle_source(appid: impl Into<String>, source: LxAppBundleSource) {
     let appid = appid.into();
     let registry = LXAPP_SOURCE_OVERRIDES.get_or_init(|| Mutex::new(HashMap::new()));
@@ -270,27 +304,43 @@ pub fn is_dev_bundle_appid(appid: &str) -> bool {
     )
 }
 
-/// The channel an open of `appid` runs on. A dev bundle is always a local
-/// draft; an omitted channel keeps the live session's channel so that only an
-/// explicit selector can retire it.
+/// The channel an open of `appid` runs on. A dev bundle with no live session is
+/// a local draft. An omitted channel, and the same channel again, keep the
+/// live session so a later dev-bundle registration is not a channel switch.
 pub fn resolve_open_channel(appid: &str, requested: Option<Channel>) -> Channel {
+    channel_for_open(
+        appid,
+        requested,
+        try_get(appid).map(|app| app.release_type()),
+    )
+}
+
+/// `live` is the channel of the session already in the manager, if any.
+fn channel_for_open(appid: &str, requested: Option<Channel>, live: Option<Channel>) -> Channel {
+    if requested.is_none()
+        && let Some(channel) = live
+    {
+        return channel;
+    }
     if is_dev_bundle_appid(appid) {
+        if let (Some(requested), Some(live)) = (requested, live)
+            && requested == live
+        {
+            return live;
+        }
         return Channel::Draft;
     }
-    requested
-        .or_else(|| try_get(appid).map(|app| app.release_type()))
-        .unwrap_or_else(crate::default_channel)
+    requested.or(live).unwrap_or_else(crate::default_channel)
 }
 
 impl LxApps {
     #[cfg(test)]
     pub(crate) fn resolve_open_channel(&self, appid: &str, requested: Option<Channel>) -> Channel {
-        if is_dev_bundle_appid(appid) {
-            return Channel::Draft;
-        }
-        requested
-            .or_else(|| self.lxapps.get(appid).map(|app| app.release_type()))
-            .unwrap_or_else(crate::default_channel)
+        channel_for_open(
+            appid,
+            requested,
+            self.lxapps.get(appid).map(|app| app.release_type()),
+        )
     }
 }
 
@@ -641,6 +691,7 @@ impl LxApps {
                 self.destroy_lxapp_with_options(&appid, true);
             }
 
+            prepare_dev_bundle_source(&appid);
             let app = Arc::new(LxApp::new_as_home(
                 appid.clone(),
                 self.runtime.clone(),
@@ -660,6 +711,7 @@ impl LxApps {
         release_type: Channel,
         session_class: AppSessionClass,
     ) -> Result<Arc<LxApp>, LxAppError> {
+        prepare_dev_bundle_source(&appid);
         let release_type = resolve_open_channel(&appid, Some(release_type));
         if session_class == AppSessionClass::ControlSurface
             && release_type == Channel::Draft
@@ -1162,6 +1214,10 @@ pub struct LxApp {
     pub runtime: Arc<Platform>,
     pub lxapp_dir: PathBuf,
     pub(crate) bundle_source: LxAppBundleSource,
+    /// Set when a guest opened from host assets is retargeted at the synced
+    /// dev directory. The surface stays; later reads use this path.
+    #[cfg(feature = "dev-bundles")]
+    dev_content_root: Mutex<Option<PathBuf>>,
     pub storage_file_path: PathBuf,
     pub user_data_dir: PathBuf,
     pub user_cache_dir: PathBuf,
@@ -1839,7 +1895,42 @@ impl LxApp {
     /// dev-served bundle is served live from a local `dist`, so there is no
     /// installed package to check or replace.
     pub(crate) fn is_ota_managed(&self) -> bool {
-        !matches!(self.bundle_source, LxAppBundleSource::DevPath { .. })
+        self.dev_bundle_root().is_none()
+    }
+
+    /// The directory this instance reads while it is served from a dev
+    /// bundle, either opened from one or retargeted at one; `None` otherwise.
+    pub(crate) fn dev_bundle_root(&self) -> Option<PathBuf> {
+        self.synced_dev_root().or_else(|| {
+            matches!(self.bundle_source, LxAppBundleSource::DevPath { .. })
+                .then(|| self.lxapp_dir.clone())
+        })
+    }
+
+    /// Point this live instance at a dev-synced directory.
+    ///
+    /// A guest opened from host assets captured that snapshot. Registering a
+    /// dev source afterwards only affects the next instance; this is what the
+    /// current surface reads on reload.
+    #[cfg(feature = "dev-bundles")]
+    pub fn adopt_dev_bundle(&self, root: impl Into<PathBuf>) {
+        if let Ok(mut slot) = self.dev_content_root.lock() {
+            *slot = Some(root.into());
+        }
+    }
+
+    #[cfg(feature = "dev-bundles")]
+    fn synced_dev_root(&self) -> Option<PathBuf> {
+        self.dev_content_root
+            .lock()
+            .ok()
+            .and_then(|root| root.clone())
+    }
+
+    #[cfg(not(feature = "dev-bundles"))]
+    #[inline(always)]
+    fn synced_dev_root(&self) -> Option<PathBuf> {
+        None
     }
 
     pub(crate) fn trigger_home_update_check_once(&self) {
@@ -2292,6 +2383,8 @@ impl LxApp {
             runtime,
             lxapp_dir: PathBuf::new(),
             bundle_source,
+            #[cfg(feature = "dev-bundles")]
+            dev_content_root: Mutex::new(None),
             storage_file_path: PathBuf::new(),
             user_data_dir: PathBuf::new(),
             user_cache_dir: PathBuf::new(),
@@ -2598,7 +2691,10 @@ impl LxApp {
     }
 
     fn apply_lxapp_json(&self, first_load: bool) -> Result<(), LxAppError> {
-        let lxapp_json_path = self.lxapp_dir.join("lxapp.json");
+        let bundle_dir = self
+            .synced_dev_root()
+            .unwrap_or_else(|| self.lxapp_dir.clone());
+        let lxapp_json_path = bundle_dir.join("lxapp.json");
         info!(
             " [{}] Loading lxapp.json from: {}",
             self.appid,
@@ -2630,7 +2726,7 @@ impl LxApp {
         let mut tabbar = config
             .tabBar
             .as_ref()
-            .map(|tabbar| tabbar.with_absolute_paths(&self.lxapp_dir));
+            .map(|tabbar| tabbar.with_absolute_paths(&bundle_dir));
         if !first_load && let Some(tabbar) = tabbar.as_mut() {
             // `with_absolute_paths` always starts at Home. In-place reload
             // keeps the current page, so re-select that tab (or clear if the
@@ -2742,6 +2838,11 @@ impl LxApp {
             .into());
         }
 
+        if let Some(root) = self.synced_dev_root() {
+            let source_path = root.join(&entry);
+            return Source::from_path(ctx, &source_path).await.map(Some);
+        }
+
         match &self.bundle_source {
             LxAppBundleSource::Installed | LxAppBundleSource::DevPath { .. } => {
                 let source_path = self.lxapp_dir.join(&entry);
@@ -2815,6 +2916,17 @@ impl LxApp {
         )? {
             Some(path) => path,
             None => {
+                if let Some(root) = self.synced_dev_root() {
+                    let file_path = root.join(relative_path);
+                    return fs::read(&file_path).map_err(|e| {
+                        LxAppError::ResourceNotFound(format!(
+                            "{}:{} (resolved: {})",
+                            relative_path,
+                            e,
+                            file_path.display()
+                        ))
+                    });
+                }
                 if matches!(self.bundle_source, LxAppBundleSource::BuiltinAssets) {
                     let asset_path = format!(
                         "{}/{}",
@@ -2903,10 +3015,19 @@ impl LxApp {
 
             // To keep it simple and predictable for "creation", relative paths
             // without lx:// prefix are resolved against the app bundle root by default.
+            if let Some(root) = self.synced_dev_root() {
+                return Ok(root.join(rel));
+            }
             if matches!(self.bundle_source, LxAppBundleSource::BuiltinAssets) {
                 return self.materialize_builtin_resource(rel);
             }
             return Ok(self.lxapp_dir.join(rel));
+        }
+
+        if let Some(root) = self.synced_dev_root()
+            && path_ref.starts_with(&root)
+        {
+            return Ok(path_ref.to_path_buf());
         }
 
         // 5. Handle Absolute paths: Must start with one of the trusted roots.
@@ -3040,7 +3161,9 @@ impl LxApp {
                     return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
                 }
 
-                if matches!(self.bundle_source, LxAppBundleSource::BuiltinAssets) {
+                if let Some(root) = self.synced_dev_root() {
+                    Ok(root.join(rel))
+                } else if matches!(self.bundle_source, LxAppBundleSource::BuiltinAssets) {
                     self.materialize_builtin_resource(rel)
                 } else {
                     Ok(self.lxapp_dir.join(rel))

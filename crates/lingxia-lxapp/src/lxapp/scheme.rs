@@ -100,6 +100,11 @@ impl LxApp {
             .status(StatusCode::OK)
             .header("Content-Type", mime_type)
             .header("Access-Control-Allow-Origin", "null");
+        // A dev rebuild keeps file names such as `./view.js`. Without this,
+        // WebView2 replays the module from the first load after a reload.
+        if self.dev_bundle_root().is_some() {
+            builder = builder.header("Cache-Control", "no-store");
+        }
 
         if let Ok(value) = http::HeaderValue::from_str(&file_len.to_string()) {
             builder = builder.header("Content-Length", value);
@@ -184,7 +189,10 @@ impl LxApp {
     ) -> Result<ResolvedLxAsset, LxAppError> {
         match uri.host() {
             Some(lx_uri::HOST_LXAPP) => {
-                if matches!(
+                if self.synced_dev_root().is_some() {
+                    self.resolve_lxapp_uri(page, uri)
+                        .map(ResolvedLxAsset::FilePath)
+                } else if matches!(
                     self.bundle_source,
                     crate::lxapp::LxAppBundleSource::BuiltinAssets
                 ) {
