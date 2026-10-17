@@ -175,12 +175,22 @@ fn read_app_id(lxapp_dir: &Path) -> Result<String> {
         .ok_or_else(|| anyhow::anyhow!("lxapp.json is missing appId"))
 }
 
+/// Events carry resolved paths (FSEvents on macOS), so a `../guest` bundle
+/// root must be resolved too or no save under it ever matches.
+fn resolved_root(mut root: WatchRoot) -> WatchRoot {
+    if let Ok(path) = dunce::canonicalize(&root.path) {
+        root.path = path;
+    }
+    root
+}
+
 fn run_watch(
     state: Arc<DevServerState>,
     roots: Vec<WatchRoot>,
     options: LxAppWatchOptions,
     stop_flag: Arc<AtomicBool>,
 ) -> Result<()> {
+    let roots: Vec<WatchRoot> = roots.into_iter().map(resolved_root).collect();
     let (tx, rx) = mpsc::channel();
     let mut watcher = RecommendedWatcher::new(tx, notify::Config::default())
         .context("Failed to create filesystem watcher")?;
@@ -389,6 +399,23 @@ mod tests {
             fs::create_dir_all(parent).unwrap();
         }
         fs::write(path, contents).unwrap();
+    }
+
+    #[test]
+    fn a_sibling_bundle_root_matches_resolved_event_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = dunce::canonicalize(temp.path()).unwrap();
+        fs::create_dir_all(workspace.join("host")).unwrap();
+        write(&workspace.join("chat/lxapp.json"), r#"{"appId":"chat"}"#);
+        let root = resolved_root(WatchRoot {
+            app_id: "chat".into(),
+            path: workspace.join("host/../chat"),
+        });
+        let event = workspace.join("chat/pages/index.tsx");
+        assert_eq!(
+            root_for_path(&[root], &event).map(|r| r.app_id.as_str()),
+            Some("chat")
+        );
     }
 
     #[test]
