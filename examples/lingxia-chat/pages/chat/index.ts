@@ -192,6 +192,10 @@ Page({
     }
   },
 
+  async onOpenAbout() {
+    await lx.navigateTo({ page: 'about' });
+  },
+
   onClear() {
     if (this.data.isStreaming) return;
     this.setData({ messages: [] });

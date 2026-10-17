@@ -1,0 +1,6 @@
+{
+  "navigationBar": {
+    "title": "About",
+    "style": { "backgroundColor": "#ffffff", "foregroundColor": "#000000" }
+  }
+}

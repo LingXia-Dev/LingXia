@@ -138,6 +138,7 @@ const { data, actions } = useLxPage<
   {
     onSend: (params: { text: string }) => LxStream<ChatChunk, void>;
     onClear: () => void;
+    onOpenAbout: () => void;
   }
 >();
 
@@ -190,12 +191,15 @@ function autoResize(e: Event) {
 
 <template>
   <div class="flex flex-col bg-gray-100" style="height: 100vh">
-    <!-- Clear button -->
-    <div
-      v-if="messages.length > 0 && !chat.streaming.value"
-      class="absolute top-3 right-4 z-10"
-    >
+    <div class="absolute top-3 right-4 z-10 flex items-center gap-2">
       <button
+        class="text-xs text-blue-600 px-3 py-1 bg-white rounded-full shadow-sm active:opacity-70"
+        @click="actions.onOpenAbout()"
+      >
+        About
+      </button>
+      <button
+        v-if="messages.length > 0 && !chat.streaming.value"
         class="text-xs text-blue-600 px-3 py-1 bg-white rounded-full shadow-sm active:opacity-70"
         @click="actions.onClear()"
       >
