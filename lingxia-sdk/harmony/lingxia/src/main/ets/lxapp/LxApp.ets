@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../app/LxLog';
 import { WebViewManager } from './WebViewBridge';
-import { AnimationType } from './LxAppNavigation';
+import { AnimationType, LxAppNavigation } from './LxAppNavigation';
 
 // Import native functions from Rust
 import { getLxappSessionId } from 'liblingxia.so';
@@ -74,6 +74,11 @@ export class LxApp {
     } else {
       LxLog.e(TAG, 'openHomeApp failed: homeAppId or navigationInstance not available');
     }
+  }
+
+  /// Left-edge swipe from the strip each container paints over its own Web.
+  public static dispatchEdgeBackSwipe(event: TouchEvent): void {
+    LxAppNavigation.dispatchEdgeBackSwipe(event);
   }
 
   /**

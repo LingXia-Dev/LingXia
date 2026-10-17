@@ -26,7 +26,7 @@ import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
 import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
 import { notePageOrigin, setCapsuleGeometryListener } from './capsuleGeometry';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from '../app/NativeBridge';
-import { AnimationType } from './LxAppNavigation';
+import { AnimationType, EDGE_BACK_SWIPE_ZONE_WIDTH_VP } from './LxAppNavigation';
 import { LxNativeVideoPlayer } from './APIs/media/player/LxNativeVideoPlayer';
 import { LxFullscreenVideoOverlay } from './APIs/media/player/LxFullscreenVideoOverlay';
 import { RefreshHeader } from './RefreshHeader';
@@ -826,6 +826,8 @@ export struct LxAppContainer {
             }
             .layoutWeight(1)
             .height('100%')
+
+            this.buildEdgeBackSwipeZone()
           }
 
           if (this.tabBarState && this.tabBarState.position === TabBarPosition.Right) {
@@ -840,6 +842,8 @@ export struct LxAppContainer {
           this.buildWebViewArea()
           this.buildNavigationBar()
           this.buildTabBar()
+
+          this.buildEdgeBackSwipeZone()
 
           if (this.shouldShowCapsuleButton()) {
             CapsuleButton({
@@ -942,6 +946,28 @@ export struct LxAppContainer {
     }
   }
 
+  // Sibling of this container's Web, above it and below the navbar (zIndex 10).
+  // The navigation-level strip is created before a guest lxapp's Web, and that
+  // Web composites over it, so a left-edge swipe on the second lxapp never
+  // reaches back. This strip is born with the Web it has to beat.
+  // Transparent: the Web still receives every touch in the edge strip, so taps
+  // and scrolls keep working; the handler only acts on a back-swipe shape.
+  // Where the navigation-level strip is also reachable both deliver the same
+  // touch; the handler resets once it fires, so back runs once.
+  @Builder
+  private buildEdgeBackSwipeZone(): void {
+    Column()
+      .width(EDGE_BACK_SWIPE_ZONE_WIDTH_VP)
+      .height('100%')
+      .position({ x: 0, y: 0 })
+      .backgroundColor(Color.Transparent)
+      .zIndex(8)
+      .hitTestBehavior(HitTestMode.Transparent)
+      .onTouch((event: TouchEvent) => {
+        LxApp.dispatchEdgeBackSwipe(event);
+      })
+  }
+
   /**
    * Build TabBar component
    */
@@ -961,6 +987,8 @@ export struct LxAppContainer {
           bottomInset: this.isTabBarVertical() ? 0 : this.bottomIndicatorInset,
           onTabSelected: (appId: string, index: number, item: TabBarItem): void => this.handleTabSelected(index)
         })
+          // Above the left-edge swipe strip so the first tab stays tappable.
+          .zIndex(11)
       }, (key: number) => `lx-tabbar-${this.appId}-${key}`)
     }
   }

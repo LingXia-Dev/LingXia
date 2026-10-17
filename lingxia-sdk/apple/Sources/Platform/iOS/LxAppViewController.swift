@@ -412,8 +412,16 @@ final class LxAppViewController: UIViewController, ObservableObject {
         }
         currentSessionId = sessionId
 
+        // Capture the outgoing app's page first: once the current app switches,
+        // `getCurrentWebView()` already returns a recalled app's own page and
+        // the old one would stay visible under it.
+        let outgoingWebView = LxAppCore.currentAppId == appId ? nil : getCurrentWebView()
+
         // Set current app state
         LxAppCore.setCurrentApp(appId: appId, path: path, pageInstanceId: pageInstanceId)
+        if let outgoingWebView, outgoingWebView !== getCurrentWebView() {
+            parkInactiveWebView(outgoingWebView)
+        }
 
         // Use unified navigation entry point
         navigate(appId: appId, to: path, pageInstanceId: pageInstanceId, with: .none)
@@ -510,9 +518,9 @@ final class LxAppViewController: UIViewController, ObservableObject {
                     )
                     return // Early return as performSlideTransition handles the rest
                 case .none, .fade:
-                    // No animation - immediate transition
-                    existingWebView.isHidden = true
-                    existingWebView.pauseWebView()
+                    // No animation - immediate transition. Park, don't just hide:
+                    // the next lxapp's page slide shares this container.
+                    parkInactiveWebView(existingWebView)
                 }
             }
 
@@ -597,8 +605,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
                     )
                     return
                 case .none, .fade:
-                    existingWebView.isHidden = true
-                    existingWebView.pauseWebView()
+                    parkInactiveWebView(existingWebView)
                 }
             }
 
@@ -674,13 +681,23 @@ final class LxAppViewController: UIViewController, ObservableObject {
     private func hideCurrentLxApp() {
         guard LxAppCore.currentAppId != nil else { return }
 
-        // Hide WebView
-        getCurrentWebView()?.isHidden = true
-        getCurrentWebView()?.pauseWebView()
+        if let webView = getCurrentWebView() {
+            parkInactiveWebView(webView)
+        }
 
         currentTabBar?.isHidden = true
         globalNavigationBar?.isHidden = true
         globalCapsuleButton?.isHidden = true
+    }
+
+    /// A hidden page stays in the container. Parking it off-screen keeps a guest
+    /// page's slide from revealing the lxapp underneath — WKWebView can still
+    /// composite a layer that `isHidden` did not remove.
+    private func parkInactiveWebView(_ webView: WKWebView) {
+        webView.isHidden = true
+        webView.pauseWebView()
+        let width = max(rootContainer?.bounds.width ?? view.bounds.width, 1)
+        webView.transform = CGAffineTransform(translationX: width, y: 0)
     }
 
     @objc
@@ -759,6 +776,10 @@ final class LxAppViewController: UIViewController, ObservableObject {
             webView.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: topOffset),
             bottomConstraint
         ]
+
+        // `.none` transitions (lxapp/tab switch) show a parked page through this
+        // path; without the reset it stays one screen to the right.
+        webView.transform = .identity
 
         // Use shared WebViewManager logic which will trigger onPageShow
         WebViewManager.attachWebViewToContainer(webView, container: rootContainer, constraints: constraints)
@@ -1359,7 +1380,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
         // Update constraints with the correct offset immediately
         updateWebViewConstraints(for: appId, topOffset: correctTopOffset)
 
-        // Ensure WebView is visible and active
+        // Ensure WebView is visible and active. Clear a park from the last hide.
+        webView.transform = .identity
         webView.isHidden = false
         webView.resumeWebView()
 
@@ -1392,6 +1414,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
         rootContainer.backgroundColor = canvas
         view.backgroundColor = canvas
         webView.backgroundColor = canvas
+        webView.transform = .identity
         webView.isHidden = false
         webView.alpha = 1.0
         webView.resumeWebView()
@@ -1479,6 +1502,9 @@ final class LxAppViewController: UIViewController, ObservableObject {
                 targetWebView.bottomAnchor.constraint(equalTo: rootContainer.bottomAnchor)
             ])
         }
+        // A pooled page is already in the container, possibly under a page
+        // re-attached since; it must slide in on top.
+        rootContainer.bringSubviewToFront(targetWebView)
 
         // Configure WebView appearance
         configureWebView(targetWebView, transparent: shouldUseTransparentMode(for: appId, path: path))
@@ -1498,6 +1524,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
         } else {
             // Different WebViews - normal slide transition
             // Ensure target WebView is properly configured and visible
+            targetWebView.transform = .identity
             targetWebView.isHidden = false
             targetWebView.alpha = 1.0
 
@@ -1579,9 +1606,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
                 // Clean up after animation
                 outgoingBarSnapshot?.removeFromSuperview()
                 enteringBarBackdrop?.removeFromSuperview()
-                currentWebView.isHidden = true
-                currentWebView.pauseWebView()
-                currentWebView.transform = .identity
+                self.parkInactiveWebView(currentWebView)
 
                 // Properly attach WebView to UI after animation
                 self.finalizeWebViewAttachment(
@@ -1605,17 +1630,26 @@ final class LxAppViewController: UIViewController, ObservableObject {
         UIView.animate(withDuration: animationDuration, delay: 0, options: [.curveEaseInOut], animations: {
             currentWebView.transform = CGAffineTransform(translationX: slideOutTranslation, y: 0)
         }, completion: { _ in
-            currentWebView.isHidden = true
-            currentWebView.pauseWebView()
-            currentWebView.transform = .identity
+            self.parkInactiveWebView(currentWebView)
         })
     }
 }
 
 extension LxAppViewController: UIGestureRecognizerDelegate {
-    public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        // Allow the back edge swipe to coexist with WebView scrolling.
-        gestureRecognizer === backEdgePanGesture
+    /// A guest lxapp's WKWebView is attached later and its scroll pan would
+    /// otherwise cancel this edge swipe. Only pans wait: taps and long-presses
+    /// near the edge stay immediate. The edge pan fails at once unless the
+    /// touch starts on the left edge.
+    public func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        guard gestureRecognizer === backEdgePanGesture,
+              otherGestureRecognizer is UIPanGestureRecognizer,
+              let otherView = otherGestureRecognizer.view else {
+            return false
+        }
+        return otherView.isDescendant(of: view)
     }
 }
 

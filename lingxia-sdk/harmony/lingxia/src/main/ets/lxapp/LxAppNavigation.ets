@@ -33,8 +33,9 @@ const SPLASH_SKIP_TOP: number = 44 + 12;
 const KEYCODE_BACK: number = 2;
 const BACK_PRESS_THROTTLE_MS: number = 200;
 
-// Edge-swipe back gesture area (system gesture-back is disabled in LingxiaBaseAbility)
-const EDGE_BACK_SWIPE_ZONE_WIDTH_VP: number = 40;
+// Edge-swipe back gesture area (system gesture-back is disabled in LingxiaBaseAbility).
+// Exported: each lxapp container lays the same strip over its own Web.
+export const EDGE_BACK_SWIPE_ZONE_WIDTH_VP: number = 40;
 const EDGE_BACK_SWIPE_TRIGGER_DISTANCE_VP: number = 18;
 const EDGE_BACK_SWIPE_MAX_VERTICAL_DRIFT_VP: number = 200;
 const EDGE_BACK_SWIPE_VERTICAL_CANCEL_MARGIN_VP: number = 8;
@@ -83,6 +84,12 @@ export struct LxAppNavigation {
   private campaignDismissTimer: number = -1
   private splashTimeout: number = -1
   private static current: LxAppNavigation | null = null
+
+  /// Left-edge swipe from a container-local strip. The navigation-level strip
+  /// is covered once a second lxapp's Web is on screen.
+  static dispatchEdgeBackSwipe(event: TouchEvent): void {
+    LxAppNavigation.current?.handleEdgeBackSwipeTouch(event);
+  }
 
   // Current modal LxApp state (only one modal app can be shown at a time)
   @State private currentModalAppId: string = ''
