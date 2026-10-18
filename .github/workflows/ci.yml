@@ -19,7 +19,6 @@ on:
           - auto
           - automation-full
           - automation-windows
-          - launch-storyboards
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -65,7 +64,6 @@ jobs:
       rust_test: ${{ steps.compute.outputs.rust_test }}
       control_security: ${{ steps.compute.outputs.control_security }}
       release_tooling: ${{ steps.filter.outputs.release_tooling }}
-      launch_storyboards: ${{ steps.filter.outputs.launch_storyboards }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v4
@@ -260,8 +258,6 @@ jobs:
               - '.github/actions/**'
               - 'scripts/ci/**'
               - 'scripts/lib/**'
-            launch_storyboards:
-              - 'tools/lingxia-cli/assets/apple/launch/**'
             release_tooling:
               - 'scripts/release/**'
               - 'scripts/ci/check-release-notes.mjs'
@@ -1721,40 +1717,6 @@ jobs:
       - name: Verify Harmony rawfile icons resolve
         run: node scripts/ci/check-harmony-rawfile-icons.mjs
 
-  # The CLI embeds precompiled launch storyboards so iOS builds need no
-  # Interface Builder. Recompile them here, where Xcode has the iOS platform,
-  # and fail when the committed copies are stale; the artifact is the fix.
-  launch-storyboards:
-    needs: changes
-    if: ${{ needs.changes.outputs.launch_storyboards == 'true' || inputs.focus == 'launch-storyboards' }}
-    name: Launch storyboards
-    runs-on: macos-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-      - uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "26.0"
-      # ibtool compiles in the iOS simulator runtime matching the pinned Xcode,
-      # which the image may not carry. This job runs only when the storyboards
-      # change.
-      - name: Install the iOS platform
-        run: xcodebuild -downloadPlatform iOS
-      - name: Compile launch storyboards
-        run: bash tools/lingxia-cli/assets/apple/launch/compile.sh
-      - name: Upload compiled storyboards
-        uses: actions/upload-artifact@v6
-        with:
-          name: launch-storyboards
-          path: tools/lingxia-cli/assets/apple/launch/compiled
-      - name: Check the committed copies are current
-        run: |
-          if [[ -n "$(git status --porcelain -- tools/lingxia-cli/assets/apple/launch/compiled)" ]]; then
-            git status --short -- tools/lingxia-cli/assets/apple/launch/compiled
-            echo "Commit the compiled storyboards (artifact: launch-storyboards)."
-            exit 1
-          fi
-
   # Single required check. Skipped gating jobs report result 'skipped' (≠
   # 'failure'), so a scoped PR still goes green and stays mergeable — require
   # ONLY this check in branch protection, never the individual jobs.
@@ -1782,7 +1744,6 @@ jobs:
       - showcase-automation-types
       - showcase-automation
       - release-tooling
-      - launch-storyboards
     runs-on: ubuntu-latest
     if: always()
     steps:

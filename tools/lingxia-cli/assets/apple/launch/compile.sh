@@ -7,7 +7,7 @@
 #   LingXiaSplash        cover art, aspect-filled edge to edge
 #   LingXiaLaunchMark    mark, centered at its @3x point size
 # Needs Xcode with the iOS platform. Run after editing a .storyboard and
-# commit compiled/; CI compiles them too and fails when compiled/ is stale.
+# commit compiled/.
 set -euo pipefail
 cd "$(dirname "$0")"
 # The oldest iOS LingXia supports, so one compiled copy runs everywhere.
