@@ -738,6 +738,9 @@ The aside region is fixed at three slots, grouped by rendering engine:
 
 - Slot tab switching performs hide/show and preserves content state; only an
   explicit close destroys the current content.
+- Collapsing a slot hides it without closing anything. The lxapp child it was
+  showing receives page `onHide`; restoring the slot with that child still
+  active delivers `onShow`. Logic and the WebView stay alive throughout.
 - A terminal Surface is one workspace and may contain multiple provider-owned
   PTY tabs. Multiple keyed terminal Surfaces are separate workspaces and appear
   as separate slot children or main switcher entries; switching Surfaces never
@@ -1016,7 +1019,9 @@ Surface, navigation fails with
   opener's handle. Native surfaces support messaging only when the capability
   declares it.
 - Content can subscribe to its surface context (content size class
-  `compact` | `regular` plus viewport dimensions); the subscription fires
+  `compact` | `regular`, viewport dimensions, and `canDock` — whether the
+  window has a dock region right now, never where the content is shown;
+  content is not told its own role or edge); the subscription fires
   once immediately with the current value, then only on actual change.
   Crossing the shell's 840 boundary MUST NOT by itself change content
   `sizeClass`.

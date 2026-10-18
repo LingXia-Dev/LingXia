@@ -101,6 +101,7 @@ pub use runtime_bootstrap::dev_session_active as is_dev_session;
 pub use runtime_bootstrap::init;
 pub use runtime_bootstrap::runner_active as is_runner;
 pub use runtime_bootstrap::{keep_responsive_for_development, register_runner_host};
+pub(crate) use runtime_ops::notify_current_page_host_visibility;
 pub use runtime_ops::{
     close_lxapp, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
     ensure_builtin_lxapp, ensure_control_lxapp, ensure_control_surface_lxapp,

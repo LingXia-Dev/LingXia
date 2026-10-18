@@ -48,6 +48,10 @@ pub(crate) struct WindowSurfaceController {
     next_native_surface_id: AtomicU64,
     last_published_active_main: std::sync::Mutex<Option<String>>,
     active_main_publication_blocked: std::sync::Mutex<bool>,
+    /// The lxapp shown in the lxapp aside slot when the user collapsed it.
+    /// Collapsing hides that lxapp's page without any WebView detaching, so
+    /// the core owes it `onHide` now and `onShow` when the slot comes back.
+    collapsed_lxapp_child: std::sync::Mutex<Option<String>>,
 }
 
 #[derive(Clone)]
@@ -93,6 +97,44 @@ struct OpenNodeResult {
     evicted: Vec<String>,
     reused: bool,
     overlay: bool,
+}
+
+#[derive(Debug, Default, PartialEq)]
+struct CollapsedLxappTransition {
+    /// The lxapp child hidden by a collapsed lxapp slot after this plan.
+    collapsed: Option<String>,
+    hide: Option<String>,
+    show: Option<String>,
+}
+
+/// Page `onHide` / `onShow` owed by collapsing and restoring the lxapp aside
+/// slot. Only the child that was showing is owed `onShow` on restore: a
+/// restore that also switched the active child (opening or focusing another
+/// app) is shown by that child's own presentation, and a closed child is owed
+/// nothing.
+fn collapsed_lxapp_transition(
+    previous: Option<&str>,
+    slot: Option<&lingxia_surface::PlanAsideSlot>,
+) -> CollapsedLxappTransition {
+    let collapsed = slot
+        .filter(|slot| slot.collapsed)
+        .and_then(|slot| slot.active_child.clone());
+    if previous == collapsed.as_deref() {
+        return CollapsedLxappTransition {
+            collapsed,
+            ..Default::default()
+        };
+    }
+    let show = previous
+        .filter(|id| {
+            slot.is_some_and(|slot| !slot.collapsed && slot.active_child.as_deref() == Some(*id))
+        })
+        .map(str::to_string);
+    CollapsedLxappTransition {
+        hide: collapsed.clone(),
+        collapsed,
+        show,
+    }
 }
 
 fn previous_main_for_visibility<'a>(
@@ -147,6 +189,7 @@ pub(crate) fn window_controller(
                 next_native_surface_id: AtomicU64::new(1),
                 last_published_active_main: std::sync::Mutex::new(None),
                 active_main_publication_blocked: std::sync::Mutex::new(false),
+                collapsed_lxapp_child: std::sync::Mutex::new(None),
             })
         })
         .clone()
@@ -295,6 +338,7 @@ impl WindowSurfaceController {
             Ok(()) | Err(lingxia_platform::PlatformError::NotSupported(_)) => {}
             Err(_) => return false,
         }
+        self.publish_collapsed_lxapp_visibility(&plan);
         if *self.active_main_publication_blocked.lock().unwrap() {
             return true;
         }
@@ -314,6 +358,44 @@ impl WindowSurfaceController {
             let _ = observer(previous, current.as_deref());
         }
         true
+    }
+
+    /// Collapsing hides the lxapp aside without detaching its WebView, so the
+    /// page visibility events come from here; see `collapsed_lxapp_transition`.
+    fn publish_collapsed_lxapp_visibility(&self, plan: &lingxia_surface::LayoutPresentationPlan) {
+        let transition = {
+            let mut guard = self.collapsed_lxapp_child.lock().unwrap();
+            let slot = plan
+                .aside_slots
+                .iter()
+                .find(|slot| slot.kind == lingxia_surface::SlotKind::Lxapp);
+            let transition = collapsed_lxapp_transition(guard.as_deref(), slot);
+            *guard = transition.collapsed.clone();
+            transition
+        };
+        let app_of = |id: Option<String>| {
+            let id = id?;
+            let manager = self.manager.lock().unwrap();
+            match manager.graph().get(&id).map(|surface| &surface.content) {
+                Some(lingxia_surface::SurfaceContent::Lxapp { app_id, .. }) => Some(app_id.clone()),
+                _ => None,
+            }
+        };
+        let changes: Vec<(String, bool)> = app_of(transition.hide)
+            .map(|app_id| (app_id, false))
+            .into_iter()
+            .chain(app_of(transition.show).map(|app_id| (app_id, true)))
+            .collect();
+        if changes.is_empty() {
+            return;
+        }
+        // Off the commit path: commits run under shell callbacks that may hold
+        // lxapp state, and page dispatch takes it.
+        std::mem::drop(crate::executor::spawn(async move {
+            for (app_id, visible) in changes {
+                notify_current_page_host_visibility(&app_id, visible);
+            }
+        }));
     }
 
     /// Mirror an opened surface into the core graph and read back the arbitrated
@@ -3121,6 +3203,57 @@ fn close_reason_str(reason: CloseReason) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn lxapp_slot(active: &str, collapsed: bool) -> lingxia_surface::PlanAsideSlot {
+        lingxia_surface::PlanAsideSlot {
+            kind: lingxia_surface::SlotKind::Lxapp,
+            edge: None,
+            children: vec!["agent".to_string(), "chat".to_string()],
+            active_child: Some(active.to_string()),
+            visible: true,
+            overlay: false,
+            collapsed,
+        }
+    }
+
+    #[test]
+    fn collapsing_the_lxapp_slot_hides_its_shown_child_and_restoring_shows_it() {
+        let collapse = collapsed_lxapp_transition(None, Some(&lxapp_slot("agent", true)));
+        assert_eq!(collapse.collapsed.as_deref(), Some("agent"));
+        assert_eq!(collapse.hide.as_deref(), Some("agent"));
+        assert_eq!(collapse.show, None);
+
+        // Unrelated commits while collapsed owe nothing.
+        let again = collapsed_lxapp_transition(Some("agent"), Some(&lxapp_slot("agent", true)));
+        assert_eq!(
+            again,
+            CollapsedLxappTransition {
+                collapsed: Some("agent".to_string()),
+                ..Default::default()
+            }
+        );
+
+        let restore = collapsed_lxapp_transition(Some("agent"), Some(&lxapp_slot("agent", false)));
+        assert_eq!(
+            restore,
+            CollapsedLxappTransition {
+                show: Some("agent".to_string()),
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn a_restore_onto_another_child_or_a_closed_slot_shows_nothing() {
+        // Opening "chat" restored the slot: chat's own presentation shows it.
+        let switched = collapsed_lxapp_transition(Some("agent"), Some(&lxapp_slot("chat", false)));
+        assert_eq!(switched, CollapsedLxappTransition::default());
+        // The last child closed while collapsed.
+        assert_eq!(
+            collapsed_lxapp_transition(Some("agent"), None),
+            CollapsedLxappTransition::default()
+        );
+    }
 
     #[test]
     fn views_are_sent_the_context_logic_describes() {
