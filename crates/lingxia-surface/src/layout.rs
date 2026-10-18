@@ -325,6 +325,13 @@ pub struct PlanFloat {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LayoutPresentationPlan {
+    /// Commit order, from [`crate::SurfaceManager::commit_plan`]: strictly
+    /// increasing per manager. A skin that applies plans off the committing
+    /// thread (a main-queue hop) uses it to drop a plan that arrives after a
+    /// newer one, which would otherwise undo the newer state (a maximize, a
+    /// collapse). `0` is a plan built for a query, never presented.
+    #[serde(default)]
+    pub sequence: u64,
     pub size_class: SizeClass,
     pub bottom_owner: BottomOwner,
     pub switcher_form: SwitcherForm,

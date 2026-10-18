@@ -32,6 +32,8 @@ pub struct SurfaceManager {
     /// restores on a second toggle, a main switch, or the slot collapsing or
     /// losing its last child.
     maximized_slot: Option<crate::SlotKind>,
+    /// Sequence of the last plan handed out by [`Self::commit_plan`].
+    plan_sequence: u64,
 }
 
 impl SurfaceManager {
@@ -52,6 +54,7 @@ impl SurfaceManager {
             size_class: SizeClass::from_width(width),
             overlay_fallback_surface_id: None,
             maximized_slot: None,
+            plan_sequence: 0,
         }
     }
 
@@ -507,6 +510,17 @@ impl SurfaceManager {
         self.graph.derive_layout(self.size_class)
     }
 
+    /// The plan to present now, stamped with the next commit sequence. Build
+    /// it under the same lock as the state it reflects: a plan built later
+    /// carries a higher sequence, so a skin applying plans asynchronously can
+    /// drop one that arrives out of order.
+    pub fn commit_plan(&mut self) -> LayoutPresentationPlan {
+        self.plan_sequence = self.plan_sequence.wrapping_add(1);
+        let mut plan = self.presentation_plan();
+        plan.sequence = self.plan_sequence;
+        plan
+    }
+
     /// Build the stable, skin-bindable [`LayoutPresentationPlan`] at the current
     /// size — the renderable contract platforms reconcile against. Slot
     /// admission respects both the size-class ceiling and the physical fit at
@@ -716,6 +730,19 @@ mod tests {
         m.set_width(1200.0);
         let slot = &m.presentation_plan().aside_slots[0];
         assert!(slot.overlay && slot.maximized);
+    }
+
+    #[test]
+    fn committed_plans_carry_an_increasing_sequence() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        let first = m.commit_plan();
+        let second = m.commit_plan();
+        assert!(first.sequence > 0);
+        assert!(second.sequence > first.sequence);
+        // A plan built for a query is not a commit.
+        assert_eq!(m.presentation_plan().sequence, 0);
+        assert_eq!(m.presentation_plan().size_class, second.size_class);
     }
 
     #[test]

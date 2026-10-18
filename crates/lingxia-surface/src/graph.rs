@@ -669,6 +669,7 @@ impl SurfaceGraph {
         let aside_slots = self.aside_slots_admitted(size_class, width, policy);
 
         LayoutPresentationPlan {
+            sequence: 0,
             size_class: derived.size_class,
             bottom_owner: derived.bottom_owner,
             switcher_form: derived.switcher_form,

@@ -333,7 +333,7 @@ impl WindowSurfaceController {
     /// lock is scoped to the `derive` call and dropped before `present_layout`,
     /// so the lock is never held across the outbound call.
     fn commit(&self) -> bool {
-        let plan = self.manager.lock().unwrap().presentation_plan();
+        let plan = self.manager.lock().unwrap().commit_plan();
         match self.runtime.present_layout(&self.window_id, &plan) {
             Ok(()) | Err(lingxia_platform::PlatformError::NotSupported(_)) => {}
             Err(_) => return false,

@@ -1429,6 +1429,14 @@ pub(super) fn present_layout(
     _product_name: &str,
 ) -> Result<(), PlatformError> {
     if let Ok(mut last) = LAST_LAYOUT_PLAN.lock() {
+        // A commit from another thread that lost the race to a newer one
+        // must not put the newer state back.
+        if last
+            .as_ref()
+            .is_some_and(|last| plan.sequence > 0 && plan.sequence < last.sequence)
+        {
+            return Ok(());
+        }
         *last = Some(plan.clone());
     }
     let known = SURFACES

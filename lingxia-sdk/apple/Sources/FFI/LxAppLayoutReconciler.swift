@@ -42,6 +42,8 @@ import AppKit
 enum LxAppLayoutReconciler {
     private static let log = OSLog(subsystem: "LingXia", category: "LayoutReconciler")
     private static var lastRevisionByWindow: [String: UInt64] = [:]
+    /// The last committed plan sequence applied per window.
+    private static var lastSequenceByWindow: [String: UInt64] = [:]
     /// One-shot explicit lxapp activation intent (`lx` API / switcher). A
     /// presented browser tab covers the lxapp main across unrelated layout
     /// commits (resize, aside changes); only this intent may replace it.
@@ -80,6 +82,7 @@ enum LxAppLayoutReconciler {
     /// reconciler acts on `asides` for now, but decodes the complete contract so
     /// any future skin binding has the full typed view.
     private struct LayoutPresentationPlan: Decodable {
+        let sequence: UInt64?
         let sizeClass: String
         let bottomOwner: String
         let switcherForm: String
@@ -160,6 +163,16 @@ enum LxAppLayoutReconciler {
               let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) else {
             LXLog.error("presentLayout: failed to parse layout json \(label)", category: "LayoutReconciler")
             return false
+        }
+        // Plans hop to the main queue, so one committed earlier from another
+        // thread can land after a newer one committed on the main thread (a
+        // maximize right after an aside opened). Applying it would put the
+        // slot back in its docked state. The core stamps every commit; drop
+        // a plan older than the last one applied.
+        if let sequence = plan.sequence, sequence > 0 {
+            let last = lastSequenceByWindow[windowId] ?? 0
+            if sequence < last { return true }
+            lastSequenceByWindow[windowId] = sequence
         }
         if let revision = plan.mainSwitcher?.revision {
             let last = lastRevisionByWindow[windowId] ?? 0
