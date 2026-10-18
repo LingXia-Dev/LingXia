@@ -302,9 +302,11 @@ enum LxAppLayoutReconciler {
         // (the next plan swaps the visible child); closing destroys that child;
         // collapsing puts the region away with every child still open. The strip
         // remains visible for a single child as its close affordance.
+        let previousSlots = lastAsideSlots
         lastAsideSlots = slots
         applyLxappSlotTabs(slots, shell: shell, workspace: workspace)
         applyCollapsedHandles(slots, shell: shell, workspace: workspace)
+        applyMaximizeFocus(from: previousSlots, to: slots, shell: shell)
         for slot in slots where slot.visible && slot.kind == "native" {
             guard let active = slot.activeChild ?? slot.children.last else { continue }
             LxAppMacAppUIRuntime.reflectAsideMaximized(surfaceId: active, maximized: slot.maximized == true)
@@ -423,6 +425,28 @@ enum LxAppLayoutReconciler {
                     _ = setAsideSlotMaximized(focusAppId, "lxapp", slot.maximized != true)
                 }
             )
+        }
+    }
+
+    /// Focus follows a maximize, whichever way it was asked for (the control,
+    /// Escape, a sidebar intent, Logic): into the covering page, back to the
+    /// main page on restore. The terminal slot moves focus with its own zoom.
+    private static func applyMaximizeFocus(
+        from previous: [PlanAsideSlot],
+        to slots: [PlanAsideSlot],
+        shell: LxAppShell
+    ) {
+        let shown = { (slot: PlanAsideSlot) in slot.visible && slot.maximized == true }
+        for kind in ["lxapp", "browser"] {
+            let was = previous.first(where: { $0.kind == kind }).map(shown) ?? false
+            let now = slots.first(where: { $0.kind == kind })
+            let isNow = now.map(shown) ?? false
+            guard was != isNow else { continue }
+            var panelId = now.flatMap { $0.activeChild ?? $0.children.last }
+            if kind == "browser" {
+                panelId = shell.browserCoordinator.activeDockedBrowser?.anchorSurfaceId
+            }
+            shell.asideSlotMaximizeDidChange(maximized: isNow, panelId: panelId)
         }
     }
 

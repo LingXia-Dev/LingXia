@@ -1282,6 +1282,24 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         return true
     }
 
+    /// Focus follows a slot maximize (spec §4.6): into the covering aside's
+    /// page, so Escape and Backspace act on it at once, and back to the main
+    /// page when the slot restores, whichever way it did. The reconciler
+    /// shows the panel on this pass; focus once it is in.
+    func asideSlotMaximizeDidChange(maximized: Bool, panelId: String?) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let target: NSView?
+            if maximized {
+                target = panelId.flatMap { self.workspaceManager.panelContentView(id: $0) }
+            } else {
+                target = self.currentViewController?.view ?? self.workspaceManager.contentContainer
+            }
+            guard let target, let webView = Self.firstWebView(in: target) else { return }
+            self.window?.makeFirstResponder(webView)
+        }
+    }
+
     private static func firstWebView(in view: NSView) -> WKWebView? {
         if let webView = view as? WKWebView, !webView.isHidden { return webView }
         for subview in view.subviews where !subview.isHidden {
