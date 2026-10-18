@@ -519,9 +519,24 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         nextResponder?.tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: sender)
     }
 
+    /// Keys the page did not use. WebKit re-sends an unhandled key event and
+    /// then passes it up the responder chain, so a key arrives here only when
+    /// no input, textarea or contenteditable took it: Backspace keeps deleting
+    /// text in a field, and pops the stack of a plain page. Back follows
+    /// focus: an aside pops its own stack and never the main's. A page with
+    /// nothing to pop still consumes the key, so the window does not act on
+    /// it for the main.
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if event.keyCode == 53, modifiers.isEmpty, leaveAsideMaximize() {
+            return
+        }
+        if event.keyCode == 51, modifiers.isEmpty {
+            if hostsAside {
+                _ = navigateBackFromKeyboard()
+            } else {
+                _ = LxAppWindow.navigateMainBackFromKeyboard()
+            }
             return
         }
         super.keyDown(with: event)
