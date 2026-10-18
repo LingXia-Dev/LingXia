@@ -673,11 +673,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         let sidebar = SidebarView()
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         // Navigation from a peek also closes it; toggles below leave it open.
+        // Every sidebar main entry is an intent to see main: a maximized aside
+        // goes back to its dock first, the selected entry included.
         sidebar.onAppPageSelected = { [weak self] appId, itemIndex in
+            self?.restoreMaximizedAsideForMainIntent()
             self?.handleSidebarPageSelection(appId: appId, itemIndex: itemIndex)
             self?.endSidebarPeek(animated: true)
         }
         sidebar.onAppSelected = { [weak self] appId in
+            self?.restoreMaximizedAsideForMainIntent()
             self?.handleSidebarAppSelection(appId: appId)
             self?.endSidebarPeek(animated: true)
         }
@@ -724,7 +728,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             self?.endSidebarPeek(animated: true)
         }
         sidebar.reloadBookmarks()
+        sidebar.onActiveGroupHeaderClicked = { [weak self] in
+            self?.restoreMaximizedAsideForMainIntent() ?? false
+        }
         sidebar.onBrowserTabSelected = { [weak self] id in
+            self?.restoreMaximizedAsideForMainIntent()
             self?.browserCoordinator.selectTab(id: id)
             self?.endSidebarPeek(animated: true)
         }
@@ -1083,6 +1091,18 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// Fired right before the active main changes (lxapp/browser switch), so the
     /// AppUI runtime can collapse any fullscreen-expanded aside back to docked.
     var onMainWillSwitch: (() -> Void)?
+
+    /// Take a maximized aside back to its dock; returns whether one was
+    /// maximized. Wired by the AppUI runtime to the core slot state.
+    var onRestoreMaximizedAside: (() -> Bool)?
+
+    /// A user intent to see main (draft §3.3): restore a maximized aside before
+    /// the switch, also when the target is the main already showing. The aside
+    /// keeps its size and its page.
+    @discardableResult
+    func restoreMaximizedAsideForMainIntent() -> Bool {
+        onRestoreMaximizedAside?() ?? false
+    }
 
     /// Whether `id`'s aside panel is currently expanded fullscreen.
     func isPanelFullscreen(id: String) -> Bool {

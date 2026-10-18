@@ -4024,6 +4024,10 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let switching_main = active_main_lxapp_id().as_deref() != Some(appid);
             if switching_main {
                 app.set_active_main();
+            } else {
+                // A sidebar tab of the main already showing is still an intent
+                // to see main: a maximized aside goes back to its dock first.
+                app.restore_shell_maximized_slot();
             }
             prime_tabbar_selection(&app, index);
             let _ = app.on_lxapp_event(LxAppUiEventType::TabBarClick, index.to_string());
@@ -4451,6 +4455,12 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(group) = payload_string(&event, "group") else {
                 return;
             };
+            // The active group's header (and chevron) share this command. Over
+            // a maximized aside the click means "show me main": restore the
+            // aside to its dock and leave the group as it is.
+            if app.restore_shell_maximized_slot() {
+                return;
+            }
             update_sidebar_ui_state(&group, |state| {
                 state.items_collapsed = !state.items_collapsed;
             });

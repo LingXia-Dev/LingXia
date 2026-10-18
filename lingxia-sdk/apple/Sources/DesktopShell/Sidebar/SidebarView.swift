@@ -834,6 +834,10 @@ class SidebarView: NSView {
     /// Called when user clicks an lxapp's name (group header): (appId) — switch
     /// the main to that lxapp even if it has no tabBar pages.
     var onAppSelected: ((String) -> Void)?
+    /// A click on the active group's header. Returns true when it was consumed
+    /// as an intent to see main (a maximized aside went back to its dock), so
+    /// the group does not also collapse.
+    var onActiveGroupHeaderClicked: (() -> Bool)?
     /// Called when user requests to close an app: (appId)
     var onAppCloseRequested: ((String) -> Void)?
     var onManagedMainContextMenuRequested: ((String, NSEvent, NSView) -> Bool)?
@@ -2373,6 +2377,9 @@ class SidebarView: NSView {
                 }
                 groupView.onAppSelected = { [weak self] appId in
                     self?.onAppSelected?(appId)
+                }
+                groupView.onActiveHeaderClicked = { [weak self] in
+                    self?.onActiveGroupHeaderClicked?() ?? false
                 }
                 groupView.onCloseRequested = { [weak self] appId in
                     self?.onAppCloseRequested?(appId)

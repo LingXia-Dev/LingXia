@@ -1026,6 +1026,14 @@ impl WindowSurfaceController {
         self.manager.lock().unwrap().slot_maximized(kind)
     }
 
+    fn restore_maximized_slot(&self) -> bool {
+        let restored = self.manager.lock().unwrap().restore_maximized_slot();
+        if restored {
+            self.commit();
+        }
+        restored
+    }
+
     fn set_slot_maximized(&self, kind: lingxia_surface::SlotKind, maximized: bool) -> bool {
         let changed = self
             .manager
@@ -2689,6 +2697,14 @@ impl LxApp {
             return false;
         };
         window_controller(PRIMARY_WINDOW, &self.runtime).set_slot_maximized(kind, maximized)
+    }
+
+    /// Take whichever aside slot is maximized back to its dock, before a user
+    /// intent to see main that does not select a main through the graph (a
+    /// sidebar tab item of the main that is already showing). Selecting a
+    /// main restores on its own. Returns whether a slot was maximized.
+    pub fn restore_shell_maximized_slot(&self) -> bool {
+        window_controller(PRIMARY_WINDOW, &self.runtime).restore_maximized_slot()
     }
 
     /// The keyboard toggle for an aside slot: collapse it when it shows,

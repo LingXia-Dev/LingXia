@@ -169,6 +169,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.onMainWillSwitch = { [weak self] in
             self?.collapseExpandedAsides()
         }
+        shell.onRestoreMaximizedAside = { [weak self] in
+            self?.collapseExpandedAsides() ?? false
+        }
         shell.setToolbarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
         }
@@ -860,16 +863,21 @@ final class LxAppMacAppUIRuntime: NSObject {
     /// maximize, not a new main, so it un-maximizes rather than floating over the
     /// newly-shown main. Mirrors the expand teardown in close/hide so the
     /// terminal's own zoom state stays in sync.
-    private func collapseExpandedAsides() {
+    /// Returns whether anything was maximized.
+    @discardableResult
+    private func collapseExpandedAsides() -> Bool {
+        var restored = false
         if let owner = graphOwnerAppId {
             for kind in ["lxapp", "browser", "native"] where isAsideSlotMaximized(owner, kind) {
-                _ = setAsideSlotMaximized(owner, kind, false)
+                restored = setAsideSlotMaximized(owner, kind, false) || restored
             }
         }
         for id in visibleSurfaceIDs where shell.isPanelFullscreen(id: id) {
             terminalWorkspaces[id]?.setSurfaceZoomEnabled(false, notifyRuntime: false)
             shell.setPanelFullscreen(id: id, enabled: false)
+            restored = true
         }
+        return restored
     }
 
     private func openSurfaceHandlingError(id: String, sourceActivatorID: String? = nil) {

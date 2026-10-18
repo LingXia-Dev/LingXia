@@ -342,17 +342,27 @@ impl SurfaceManager {
         self.revision = self.revision.wrapping_add(1);
     }
 
+    /// Select `id` as the active main. Every call is a user intent to see
+    /// main, so a maximized aside slot goes back to its dock first, also when
+    /// `id` already is the active main (a click on the selected sidebar row).
     pub fn set_active_main(&mut self, id: &str) -> bool {
         let changed = self.graph.active_main_id.as_deref() != Some(id);
         let active = self.graph.set_active_main(id);
         if active {
             self.overlay_fallback_surface_id = None;
-            if changed {
-                self.maximized_slot = None;
+            let restored = self.restore_maximized_slot();
+            if changed || restored {
                 self.bump_revision();
             }
         }
         active
+    }
+
+    /// Take a maximized aside slot back to its dock. The slot keeps its size,
+    /// children and collapse state; only the overlay over main goes. Returns
+    /// whether a slot was maximized.
+    pub fn restore_maximized_slot(&mut self) -> bool {
+        self.maximized_slot.take().is_some()
     }
     pub fn set_focus(&mut self, id: &str) -> bool {
         let focused = self.graph.set_focus(id);
@@ -369,8 +379,9 @@ impl SurfaceManager {
         let shown = self.graph.show(id);
         if shown && role == Some(Role::Main) {
             self.overlay_fallback_surface_id = None;
-            if activates_main {
-                self.maximized_slot = None;
+            // Showing a main is an intent to see main: see `set_active_main`.
+            let restored = self.restore_maximized_slot();
+            if activates_main || restored {
                 // `SurfaceGraph::show` performs the selection. Mirror
                 // `set_active_main`'s observable switcher revision here.
                 self.bump_revision();
@@ -686,6 +697,52 @@ mod tests {
         m.close("assistant");
         assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
         assert!(!m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+    }
+
+    #[test]
+    fn any_intent_to_see_main_restores_a_maximized_aside_first() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(main_s("other"));
+        m.set_active_main("home");
+        m.open(aside_s("assistant", Edge::Right));
+        let docked = m.presentation_plan().aside_slots[0].clone();
+
+        // Selecting the main that is already selected still restores.
+        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        let revision = m.switcher_snapshot().revision;
+        assert!(m.set_active_main("home"));
+        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+        assert_ne!(m.switcher_snapshot().revision, revision);
+        // The aside keeps its place: same children, still visible and docked.
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert!(slot.visible && !slot.overlay && !slot.collapsed);
+        assert_eq!(slot.children, docked.children);
+        assert_eq!(m.graph().role_of("assistant"), Some(Role::Aside));
+
+        // Showing a main (the selected one included).
+        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        assert!(m.show("home"));
+        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+
+        // Admitting a main in the background is not an intent to see it;
+        // opening it as the main (open, then select) is.
+        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        m.open(main_s("third"));
+        assert!(m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(m.set_active_main("third"));
+        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+
+        // An aside intent leaves the maximize alone.
+        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        m.open(aside_s("notes", Edge::Right));
+        assert!(m.slot_maximized(crate::SlotKind::Lxapp));
+
+        // Nothing maximized: re-selecting the active main is not a change.
+        m.restore_maximized_slot();
+        let revision = m.switcher_snapshot().revision;
+        assert!(m.set_active_main("third"));
+        assert_eq!(m.switcher_snapshot().revision, revision);
     }
 
     #[test]
