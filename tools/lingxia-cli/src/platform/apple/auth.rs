@@ -95,3 +95,14 @@ pub struct DeveloperIdCredentials {
     #[serde(default)]
     pub identity: Option<String>,
 }
+
+/// An Apple ID with an App-specific password, stored per team for App Store
+/// uploads through `altool`. Apple's public upload path for an Apple ID.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppPasswordCredentials {
+    /// The Apple ID (email) the password belongs to.
+    pub apple_id: String,
+    /// App-specific password from account.apple.com.
+    pub password: String,
+}

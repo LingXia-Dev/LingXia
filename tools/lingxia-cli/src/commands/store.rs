@@ -190,7 +190,16 @@ fn submit(platform: StorePlatform, opts: SubmitOptions) -> Result<()> {
             msstore::submit(&resolve_msstore()?, cfg, &artifact, &opts)?;
         }
         StorePlatform::Ios | StorePlatform::Macos => {
-            appstore::submit(&asc_material(platform)?, platform, &artifact, &opts)?;
+            let channel = match platform {
+                StorePlatform::Ios => AppleChannel::Ios,
+                _ => AppleChannel::Macos,
+            };
+            appstore::submit(
+                &resolver::resolve_apple_upload(Some(channel))?,
+                platform,
+                &artifact,
+                &opts,
+            )?;
         }
         StorePlatform::Harmony => {
             let cfg = config

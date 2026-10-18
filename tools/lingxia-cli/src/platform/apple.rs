@@ -4,6 +4,7 @@
 //! applications on Apple platforms.
 
 // Submodules
+pub mod altool;
 pub mod anisette;
 #[cfg(target_os = "macos")]
 mod aoskit;

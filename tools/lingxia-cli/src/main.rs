@@ -696,18 +696,20 @@ enum AuthAction {
 
 #[derive(Subcommand)]
 enum AuthLoginProvider {
-    /// Apple Developer credentials (ASC key, Apple ID, or Developer ID cert)
+    /// Apple Developer credentials (ASC key, Apple ID, Developer ID cert, or
+    /// App-specific password)
     Apple {
-        /// Apple ID (email) for password mode
+        /// Apple ID (email) for --mode password or app-password
         #[arg(short, long)]
         username: Option<String>,
 
-        /// Password for Apple ID mode (will prompt if not provided)
+        /// Apple ID password, or the App-specific password for --mode
+        /// app-password (will prompt if not provided)
         #[arg(short, long)]
         password: Option<String>,
 
         /// Authentication mode
-        #[arg(short = 'm', long, value_parser = ["key", "password", "developer-id"])]
+        #[arg(short = 'm', long, value_parser = ["key", "password", "developer-id", "app-password"])]
         mode: Option<String>,
 
         /// App Store Connect API Key ID (for --mode key)

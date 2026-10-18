@@ -62,6 +62,8 @@ pub enum AppleNeed {
     Asc,
     /// A Developer ID Application certificate.
     DeveloperId,
+    /// An App Store upload: an ASC key, or an App-specific password.
+    Upload,
 }
 
 impl AppleNeed {
@@ -70,6 +72,7 @@ impl AppleNeed {
             AppleNeed::Auth => slots.has_auth(),
             AppleNeed::Asc => slots.has_asc,
             AppleNeed::DeveloperId => slots.has_developer_id,
+            AppleNeed::Upload => slots.has_upload(),
         }
     }
 
@@ -78,6 +81,7 @@ impl AppleNeed {
             AppleNeed::Auth => "an Apple login",
             AppleNeed::Asc => "an App Store Connect API key",
             AppleNeed::DeveloperId => "a Developer ID certificate",
+            AppleNeed::Upload => "an App Store Connect API key or an App-specific password",
         }
     }
 }
@@ -378,7 +382,7 @@ pub fn resolve_apple_auth(
     channel: Option<AppleChannel>,
     need: AppleNeed,
 ) -> Result<ResolvedAppleAuth> {
-    debug_assert!(need != AppleNeed::DeveloperId);
+    debug_assert!(matches!(need, AppleNeed::Auth | AppleNeed::Asc));
     let project = detect_project()?;
     let constraint = team_constraint(project.as_ref(), channel);
 
@@ -418,6 +422,7 @@ pub fn resolve_apple_auth(
 }
 
 /// ASC key material for notarization/store use.
+#[derive(Clone)]
 pub struct AscMaterial {
     pub key_id: String,
     pub issuer_id: String,
@@ -456,7 +461,11 @@ pub fn try_resolve_apple_asc(channel: Option<AppleChannel>) -> Result<Option<Asc
         }
     };
 
-    Ok(auth.map(|auth| match auth {
+    Ok(auth.map(into_asc_material))
+}
+
+fn into_asc_material(auth: AuthCredentials) -> AscMaterial {
+    match auth {
         AuthCredentials::AppStoreConnect {
             key_id,
             issuer_id,
@@ -468,7 +477,49 @@ pub fn try_resolve_apple_asc(channel: Option<AppleChannel>) -> Result<Option<Asc
             private_key_pem,
         },
         AuthCredentials::AppleId { .. } => unreachable!("ASC slot holds an ASC key"),
-    }))
+    }
+}
+
+/// What an App Store upload authenticates with.
+pub enum AppleUpload {
+    Asc(AscMaterial),
+    AppPassword(crate::platform::apple::auth::AppPasswordCredentials),
+}
+
+/// Resolve upload credentials: the ASC key (env group, then wallet) when the
+/// team has one, else its App-specific password. In a TTY a missing
+/// credential triggers the login flow in place.
+pub fn resolve_apple_upload(channel: Option<AppleChannel>) -> Result<AppleUpload> {
+    let project = detect_project()?;
+    let constraint = team_constraint(project.as_ref(), channel);
+    if let Some(auth) = asc_from_env(constraint.as_deref())? {
+        return Ok(AppleUpload::Asc(into_asc_material(auth)));
+    }
+
+    let wallet = Wallet::open()?;
+    wallet.notice_legacy_files();
+    let bindings = BindingStore::open()?;
+    let team = resolve_team(&ResolveInput {
+        wallet: &wallet,
+        bindings: &bindings,
+        binding_key: binding_key(project.as_ref(), channel),
+        constraint: constraint.as_deref(),
+        need: AppleNeed::Upload,
+        allow_login: true,
+        interactive: interactive(),
+    })?;
+    if let Some(auth) = wallet.load_apple_asc(&team)? {
+        return Ok(AppleUpload::Asc(into_asc_material(auth)));
+    }
+    wallet
+        .load_apple_app_password(&team)?
+        .map(AppleUpload::AppPassword)
+        .ok_or_else(|| {
+            anyhow!(
+                "{}: credentials for team {team} disappeared during resolution",
+                codes::CREDENTIALS_MISSING
+            )
+        })
 }
 
 /// Resolve a Developer ID certificate if one is available (wallet only; the
