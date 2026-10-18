@@ -2900,8 +2900,16 @@ extension LxAppShell {
         }
     }
 
+    /// The lxapp aside controller presenting in panel `id`, if any.
+    private func asideViewController(inPanel id: String) -> macOSLxAppViewController? {
+        asidePanelIdByAppId.first { $0.value == id }.flatMap { asideViewControllers[$0.key] }
+    }
+
     func hidePanel(id: String, animated: Bool = true, updateCardEdges: Bool = true) {
         lxShellStdoutLog("hidePanel start id=\(id) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))")
+        // A page that leaves the screen (its slot collapsed, a sibling tab
+        // chosen) pauses its native components, as the main's does on hide.
+        asideViewController(inPanel: id)?.pauseNativeComponents()
         preserveWindowFrameDuringPanelLayout(reason: "hidePanel:\(id)") {
             workspaceManager.hidePanel(id: id, animated: animated, updateCardEdges: updateCardEdges)
         }
@@ -2913,6 +2921,7 @@ extension LxAppShell {
         preserveWindowFrameDuringPanelLayout(reason: "showPanel:\(id)") {
             workspaceManager.showPanel(id: id, animated: animated)
         }
+        asideViewController(inPanel: id)?.resumeNativeComponents()
         lxShellStdoutLog("showPanel end id=\(id) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))")
     }
 
