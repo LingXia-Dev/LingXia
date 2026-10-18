@@ -410,6 +410,14 @@ mod bridge {
         #[swift_bridge(swift_name = "collapseAsideSlot")]
         fn collapse_aside_slot(appid: &str, kind: &str) -> bool;
 
+        // Maximize an aside slot over the main area, or restore it. The core
+        // owns the state, so later plans keep it; the role never changes.
+        #[swift_bridge(swift_name = "setAsideSlotMaximized")]
+        fn set_aside_slot_maximized(appid: &str, kind: &str, maximized: bool) -> bool;
+
+        #[swift_bridge(swift_name = "isAsideSlotMaximized")]
+        fn is_aside_slot_maximized(appid: &str, kind: &str) -> bool;
+
         // Runtime sidebar action clicks hand off to the home Logic's registered
         // callback. The callback owns any resulting surface operation.
         #[swift_bridge(swift_name = "shellActivate")]
@@ -1792,6 +1800,18 @@ pub fn collapse_aside_slot(appid: &str, kind: &str) -> bool {
         } else {
             false
         }
+    })
+}
+
+pub fn set_aside_slot_maximized(appid: &str, kind: &str, maximized: bool) -> bool {
+    ffi_catch_unwind!("set_aside_slot_maximized", false, || {
+        lxapp::try_get(appid).is_some_and(|lxapp| lxapp.set_shell_slot_maximized(kind, maximized))
+    })
+}
+
+pub fn is_aside_slot_maximized(appid: &str, kind: &str) -> bool {
+    ffi_catch_unwind!("is_aside_slot_maximized", false, || {
+        lxapp::try_get(appid).is_some_and(|lxapp| lxapp.shell_slot_maximized(kind))
     })
 }
 

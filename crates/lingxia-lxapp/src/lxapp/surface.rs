@@ -1006,6 +1006,22 @@ impl WindowSurfaceController {
         changed
     }
 
+    fn slot_maximized(&self, kind: lingxia_surface::SlotKind) -> bool {
+        self.manager.lock().unwrap().slot_maximized(kind)
+    }
+
+    fn set_slot_maximized(&self, kind: lingxia_surface::SlotKind, maximized: bool) -> bool {
+        let changed = self
+            .manager
+            .lock()
+            .unwrap()
+            .set_slot_maximized(kind, maximized);
+        if changed {
+            self.commit();
+        }
+        changed
+    }
+
     /// Report the container width so the core resolves size class and physical
     /// aside admission, seeding the root main if absent. Commits whenever the
     /// render plan changes; returns whether the adaptive size class flipped.
@@ -2649,6 +2665,22 @@ impl LxApp {
         window_controller(PRIMARY_WINDOW, &self.runtime).set_slot_collapsed(kind, collapsed)
     }
 
+    /// Maximize an aside slot over the main area, or restore it (spec §4.6).
+    /// The plan marks the slot `maximized` and `overlay`, so skins present it
+    /// as they present any overlay; the role and the content are untouched.
+    pub fn set_shell_slot_maximized(&self, kind: &str, maximized: bool) -> bool {
+        let Some(kind) = shell_slot_kind(kind) else {
+            return false;
+        };
+        window_controller(PRIMARY_WINDOW, &self.runtime).set_slot_maximized(kind, maximized)
+    }
+
+    pub fn shell_slot_maximized(&self, kind: &str) -> bool {
+        shell_slot_kind(kind).is_some_and(|kind| {
+            window_controller(PRIMARY_WINDOW, &self.runtime).slot_maximized(kind)
+        })
+    }
+
     pub fn shell_slot_collapsed(&self, kind: &str) -> bool {
         shell_slot_kind(kind).is_some_and(|kind| {
             window_controller(PRIMARY_WINDOW, &self.runtime).slot_collapsed(kind)
@@ -3213,6 +3245,7 @@ mod tests {
             visible: true,
             overlay: false,
             collapsed,
+            maximized: false,
         }
     }
 

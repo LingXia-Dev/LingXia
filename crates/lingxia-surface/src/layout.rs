@@ -292,6 +292,10 @@ pub struct PlanAsideSlot {
     /// or focuses a child again.
     #[serde(default)]
     pub collapsed: bool,
+    /// The user maximized this slot over the main (spec §4.6). The role is
+    /// unchanged; skins present it exactly like `overlay`, which is also set.
+    #[serde(default)]
+    pub maximized: bool,
 }
 
 /// One float in the [`LayoutPresentationPlan`]: the surface id plus the

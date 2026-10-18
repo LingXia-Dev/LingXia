@@ -501,6 +501,7 @@ impl SurfaceGraph {
                         visible: false,
                         overlay: false,
                         collapsed: self.slot_collapsed(kind),
+                        maximized: false,
                     });
                     slots.last_mut().expect("just pushed")
                 }
