@@ -108,7 +108,7 @@ Order across `App` and `Page`, and what each navigation fires: [Lifecycle](./lif
 | `onLoad(options)` | Entering the page, with its query. |
 | `onShow()` | Becoming visible, on entry and every return. |
 | `onReady()` | The document finished rendering, after the first `onShow`. |
-| `onHide()` | Covered by another page, or the lxapp went to the background. |
+| `onHide()` | Covered by another page, the lxapp went to the background, or the desktop aside it is docked in was collapsed. |
 | `onUnload()` | Left the stack (`navigateBack`, `redirectTo`, a `switchTab` that drops it). |
 
 - **Leaving unloads.** Entering again starts a fresh instance: `data` is back

@@ -780,8 +780,8 @@ The aside region is fixed at three slots, grouped by rendering engine:
   height unless Home is offered (a non-initial, non-tab landing page);
   `navigationStyle: custom` never shows it. The slot tab already names the
   app. Page titles never move into the tab strip.
-- An lxapp with a tabBar always opens as an aside, with no warning and no
-  manifest option: on its tab pages the framework draws the tabBar as a
+- An lxapp with a tabBar can always be opened as an aside, with no warning and
+  no manifest option: on its tab pages the framework draws the tabBar as a
   28pt segmented row under the navigation bar (icon + label, scrolling on
   overflow; the current tab as a pop-up/menu below 240pt). Selection and
   `lx.tabBar.update()` behave as in the sidebar.

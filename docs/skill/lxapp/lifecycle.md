@@ -53,7 +53,9 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
 | Screenshot, where the platform reports it | `onUserCaptureScreen` | — | — |
 
 - **An aside does not hide the main.** `lx.shell.openApp(id, { as: 'aside' })`
-  opens beside the main, which gets no `onHide`.
+  opens beside the main, which gets no `onHide`. Collapsing a docked aside is
+  a page event, not an App event: the aside lxapp's App hooks stay quiet (see
+  Navigation below).
 - **AppLink arrives once.** A cold AppLink is in `onLaunch` options
   (`scene: 8003`, `url`); the `onShow` that follows carries no link. A warm
   AppLink is in `onShow` with `reason: 'switch_back'`.
@@ -88,6 +90,7 @@ but get no hook until first selected.
 | `reLaunch` | New instance: `onLoad` → `onShow` → `onReady` | Every loaded page, tabs included: `onUnload` |
 | Reopen at a named page (link, notification) | `onLoad` with the new query | — |
 | Host background / foreground | `onShow` | `onHide` |
+| Desktop aside collapsed / restored (the lxapp is docked as an aside) | `onShow`, `data` kept | `onHide` |
 
 - **`onReady` fires once per rendered document, not per entry.** A return to a
   kept page gets `onShow` only.
@@ -95,5 +98,11 @@ but get no hook until first selected.
   reclaim a hidden lxapp's inactive tab. `data` survives; the next show brings
   `onShow` and a new `onReady`, but no `onLoad`. Do not keep state only in the
   View.
+- **A collapsed aside hides its page.** On desktop the user can collapse the
+  aside an lxapp is docked in (the slot control, or Cmd+Option+\ / Ctrl+Alt+\).
+  The page it was showing gets `onHide`; restoring the aside with that page
+  still current gets `onShow`. Logic, the page and its WebView stay alive, and
+  App `onHide` does not fire, so pause polling or animation in page `onHide`
+  and treat "the user left the app" as App `onHide`.
 - **Surface pages** opened with `lx.surface.open` get `onHide` on close and
   `onUnload` 30 seconds later unless reopened first.
