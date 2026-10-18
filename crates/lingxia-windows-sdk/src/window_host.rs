@@ -856,10 +856,11 @@ fn show_webview_as_attached_panel(
             .and_then(|panels| panels.lock().ok())
             .and_then(|panels| {
                 panels.get(panel_id).map(|panel| {
-                    panel.webtag_key == webtag.key()
-                        && panel.position == position
-                        && panel.requested_size == preferred_size
-                        && panel.overlay == overlay
+                    // Overlay or docked, and the requested size, may differ:
+                    // a maximize and its restore re-present the same panel,
+                    // and the layout pass below moves it without a hide/show
+                    // blink.
+                    panel.webtag_key == webtag.key() && panel.position == position
                 })
             })
             .unwrap_or(false);
@@ -3073,6 +3074,11 @@ fn sync_window_layout(hwnd: HWND) {
     }
     let mut native_panel_takes_focus = focused_input_host_panel().is_some();
     let mut overlay_webtags = Vec::new();
+    // WebViews a maximized docked slot covers. They keep their frame and stay
+    // visible to the lifecycle (nothing fires for the main or the covered
+    // asides, as on macOS); only the controller is hidden under the overlay.
+    let mut covered_webtags = HashSet::new();
+    let mut docked_maximize = false;
     if let Some(attached) = attached_layout_for_window(hwnd, &webtag_key, client) {
         let mut laid_out_panels = HashSet::new();
         for panel in attached
@@ -3085,18 +3091,26 @@ fn sync_window_layout(hwnd: HWND) {
             sync_webtag_content_bounds(hwnd, &panel.webtag_key);
             if panel_is_overlay(&panel.panel_id) {
                 overlay_webtags.push(panel.webtag_key.clone());
+                docked_maximize |=
+                    lingxia_windows_contract::aside_panel_maximized(&panel.panel_id);
             }
         }
         // A maximized slot covers the other docked slots as well as the main.
         // Their WebViews are hidden under it for the same reason the main's
-        // is below: sibling z-order is not something WebView2 guarantees.
+        // is below: sibling z-order is not something WebView2 guarantees. A
+        // compact overlay replaces them (lifecycle hide); a docked maximize
+        // only covers them.
         if !overlay_webtags.is_empty() {
             for panel in attached
                 .panels
                 .iter()
                 .filter(|panel| !panel.webtag_key.is_empty() && !panel_is_overlay(&panel.panel_id))
             {
-                visible_webtags.remove(&panel.webtag_key);
+                if docked_maximize {
+                    covered_webtags.insert(panel.webtag_key.clone());
+                } else {
+                    visible_webtags.remove(&panel.webtag_key);
+                }
             }
         }
         if attached_has_maximized_native_panel(&attached) {
@@ -3112,8 +3126,12 @@ fn sync_window_layout(hwnd: HWND) {
     // visibility reconciliation.
     if overlay_webtags.is_empty() {
         visible_webtags.insert(webtag_key.clone());
+    } else if docked_maximize {
+        // The main keeps its frame and its lifecycle under a maximized slot.
+        visible_webtags.insert(webtag_key.clone());
+        covered_webtags.insert(webtag_key.clone());
     }
-    reconcile_host_webview_visibility(hwnd, &visible_webtags);
+    reconcile_host_webview_visibility(hwnd, &visible_webtags, &covered_webtags);
     for overlay_webtag in overlay_webtags {
         if let Some(webtag) = webtag_for_key(&overlay_webtag)
             && let Some(handler) = find_webview_handler(&webtag)
@@ -3125,7 +3143,9 @@ fn sync_window_layout(hwnd: HWND) {
     #[cfg(feature = "device-frame")]
     crate::device_frame::set_device_frame_overlays_visible(
         hwnd_handle(hwnd),
-        visible_webtags.contains(&webtag_key) && !native_panel_takes_focus,
+        visible_webtags.contains(&webtag_key)
+            && !covered_webtags.contains(&webtag_key)
+            && !native_panel_takes_focus,
     );
     #[cfg(not(feature = "device-frame"))]
     let _ = native_panel_takes_focus;
@@ -5088,7 +5108,51 @@ fn collapse_obscured_webview_panels(hwnd: HWND, laid_out: &HashSet<String>) {
     }
 }
 
-fn reconcile_host_webview_visibility(hwnd: HWND, visible_webtags: &HashSet<String>) {
+/// WebViews whose controller is hidden only because a maximized docked slot
+/// covers them. Their lifecycle visibility stays `true`: the page is still
+/// shown, under the overlay, and comes back with its frame untouched.
+static COVERED_WEBTAGS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+fn webtag_is_covered(webtag_key: &str) -> bool {
+    COVERED_WEBTAGS
+        .get()
+        .and_then(|covered| covered.lock().ok())
+        .is_some_and(|covered| covered.contains(webtag_key))
+}
+
+fn set_webtag_covered(webtag_key: &str, covered: bool) {
+    let registry = COVERED_WEBTAGS.get_or_init(|| Mutex::new(HashSet::new()));
+    if let Ok(mut registry) = registry.lock() {
+        if covered {
+            registry.insert(webtag_key.to_string());
+        } else {
+            registry.remove(webtag_key);
+        }
+    }
+}
+
+/// Whether the WebView's content is on screen: visible to the lifecycle and
+/// not covered by a maximized slot.
+pub(crate) fn webtag_content_is_shown(webtag_key: &str) -> bool {
+    webtag_is_visible(webtag_key) && !webtag_is_covered(webtag_key)
+}
+
+/// One WebView's visibility step: what its controller and its lifecycle
+/// should become, and whether the controller is currently shown.
+struct WebtagVisibilityStep {
+    key: String,
+    handler: WindowsWebViewHandler,
+    lifecycle_visible: bool,
+    covered: bool,
+    content_visible: bool,
+    content_was_visible: bool,
+}
+
+fn reconcile_host_webview_visibility(
+    hwnd: HWND,
+    visible_webtags: &HashSet<String>,
+    covered_webtags: &HashSet<String>,
+) {
     let host = hwnd_handle(hwnd);
     // A transiently invisible host (frame-style churn during a present, or a
     // minimize) must not strip its webviews: nothing is on screen anyway, and
@@ -5111,11 +5175,29 @@ fn reconcile_host_webview_visibility(hwnd: HWND, visible_webtags: &HashSet<Strin
         let Some(handler) = find_webview_handler(&webtag) else {
             continue;
         };
-        let should_show = visible_webtags.contains(&key);
-        match (should_show, webtag_is_visible(&key)) {
-            (true, false) => to_show.push((key, handler)),
-            (false, true) => to_hide.push((key, handler)),
-            _ => {}
+        let lifecycle_visible = visible_webtags.contains(&key);
+        let covered = lifecycle_visible && covered_webtags.contains(&key);
+        let content_visible = lifecycle_visible && !covered;
+        let was_covered = webtag_is_covered(&key);
+        let content_was_visible = webtag_is_visible(&key) && !was_covered;
+        if lifecycle_visible == webtag_is_visible(&key)
+            && covered == was_covered
+            && content_visible == content_was_visible
+        {
+            continue;
+        }
+        let step = WebtagVisibilityStep {
+            key,
+            handler,
+            lifecycle_visible,
+            covered,
+            content_visible,
+            content_was_visible,
+        };
+        if content_visible && !content_was_visible {
+            to_show.push(step);
+        } else {
+            to_hide.push(step);
         }
     }
 
@@ -5123,29 +5205,36 @@ fn reconcile_host_webview_visibility(hwnd: HWND, visible_webtags: &HashSet<Strin
     // controllers. Retire outgoing content first: a short shell-background
     // frame is preferable to leaking stale page pixels through the incoming
     // controller's rounded edges or letting the outgoing HWND intercept input.
-    for (key, handler) in to_hide {
-        hide_reconciled_webview(&key, &handler);
-    }
-    for (key, handler) in to_show {
-        show_reconciled_webview(&key, &handler);
+    for step in to_hide.into_iter().chain(to_show) {
+        apply_reconciled_visibility(step);
     }
 }
 
-fn show_reconciled_webview(key: &str, handler: &WindowsWebViewHandler) {
-    if let Err(err) = handler.set_content_visible(true) {
-        log::debug!("failed to show Windows WebView during visibility reconcile for {key}: {err}");
-        return;
+fn apply_reconciled_visibility(step: WebtagVisibilityStep) {
+    let WebtagVisibilityStep {
+        key,
+        handler,
+        lifecycle_visible,
+        covered,
+        content_visible,
+        content_was_visible,
+    } = step;
+    if content_visible != content_was_visible {
+        if let Err(err) = handler.set_content_visible(content_visible) {
+            log::debug!(
+                "failed to {} Windows WebView during visibility reconcile for {key}: {err}",
+                if content_visible { "show" } else { "hide" }
+            );
+            return;
+        }
+        if content_visible {
+            let _ = handler.notify_parent_position_changed();
+        }
     }
-    let _ = handler.notify_parent_position_changed();
-    notify_webtag_visibility(key, true);
-}
-
-fn hide_reconciled_webview(key: &str, handler: &WindowsWebViewHandler) {
-    if let Err(err) = handler.set_content_visible(false) {
-        log::debug!("failed to hide Windows WebView during visibility reconcile for {key}: {err}");
-        return;
-    }
-    notify_webtag_visibility(key, false);
+    set_webtag_covered(&key, covered);
+    // A covered WebView keeps its lifecycle visibility: nothing fires while a
+    // maximized slot is over it, and nothing fires when the slot restores.
+    notify_webtag_visibility(&key, lifecycle_visible);
 }
 
 fn webtag_content_bounds_changed(webtag_key: &str, bounds: ContentBounds) -> bool {
@@ -5278,7 +5367,11 @@ fn visible_panel_layout_inputs() -> Vec<WindowsChromePanelLayoutInput> {
                     requested_size: panel.requested_size,
                     docked: panel.docked,
                     overlay: panel.overlay,
-                    maximized: panel.maximized,
+                    // The core's slot maximize is mirrored per panel id; an
+                    // overlay flagged so is a docked slot covering the main.
+                    maximized: panel.maximized
+                        || (panel.overlay
+                            && lingxia_windows_contract::aside_panel_maximized(panel_id)),
                 });
             }
         }
@@ -5443,7 +5536,7 @@ fn exclude_host_webview_content_from_paint(hdc: HDC, hwnd: HWND, webtag_key: &st
     for panel in &attached.panels {
         // Native (chrome-drawn) panels have no webview; a not-yet-visible
         // webview panel still wants its placeholder card painted.
-        if !panel.webtag_key.is_empty() && webtag_is_visible(&panel.webtag_key) {
+        if !panel.webtag_key.is_empty() && webtag_content_is_shown(&panel.webtag_key) {
             // The aside's toolbar and navigation rows are chrome; only the
             // webview area below them leaves the paint clip.
             let mut rect = panel.rect;

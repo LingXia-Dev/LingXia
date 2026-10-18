@@ -1948,12 +1948,16 @@ fn compute_attached_layout(
     layout: &WindowsShellWindowLayout,
     panels: &[WindowsChromePanelLayoutInput],
 ) -> WindowsChromeAttachedLayout {
+    // A docked slot the user maximized (`overlay && maximized`) keeps the
+    // main's chrome and its docked room below: the main keeps its frame under
+    // the overlay, like on macOS, so a restore relays out nothing in it. A
+    // compact overlay never had a dock and still lets the main fill the area.
     let covered_layout = if panels
         .iter()
         .any(|panel| !panel.overlay && panel.docked && panel.maximized)
     {
         Some(layout_for_maximized_native_panel(layout))
-    } else if panels.iter().any(|panel| panel.overlay) {
+    } else if panels.iter().any(|panel| panel.overlay && !panel.maximized) {
         Some(layout_without_covered_main_chrome(layout))
     } else {
         None
@@ -1987,7 +1991,7 @@ fn compute_attached_layout(
     }
 
     for panel in ordered {
-        if panel.overlay {
+        if panel.overlay && !panel.maximized {
             let rect = shell_maximized_panel_rect(workspace);
             let header_rect = (matches!(
                 panel.position,
@@ -2106,10 +2110,18 @@ fn compute_attached_layout(
             || !aside_panel_tabs(&panel.panel_id).is_empty()))
         .then(|| aside_panel_toolbar_rect(rect));
 
+        // A maximized docked slot reserved its room above; it is drawn over
+        // the whole workspace, with no resize handle, until restored.
+        let (rect, resize_handle) = if panel.overlay {
+            (shell_maximized_panel_rect(workspace), None)
+        } else {
+            (normalize_rect(rect), resize_handle)
+        };
+        let header_rect = header_rect.map(|_| aside_panel_toolbar_rect(rect));
         out.push(WindowsChromePanelLayout {
             panel_id: panel.panel_id.clone(),
             webtag_key: panel.webtag_key.clone(),
-            rect: normalize_rect(rect),
+            rect,
             header_rect,
             resize_handle,
             overlay: panel.overlay,
@@ -2168,7 +2180,9 @@ fn collapsed_aside_handle_rects(main_region: RECT) -> Vec<(String, RECT)> {
 
 fn attached_panel_order(panel: &WindowsChromePanelLayoutInput) -> (u8, u8, u8, &str) {
     (
-        u8::from(panel.overlay),
+        // A maximized docked slot keeps its place among the docked panels, so
+        // the main's region is the same as before the maximize.
+        u8::from(panel.overlay && !panel.maximized),
         match panel.position {
             WindowsPanelPosition::Left | WindowsPanelPosition::Right => 0,
             WindowsPanelPosition::Top | WindowsPanelPosition::Bottom => 1,
@@ -4196,6 +4210,62 @@ mod scroll_tests {
                 .is_none()
         );
         assert!(chrome_rects_for_state(&state, &layout).tab_bar.is_none());
+    }
+
+    #[test]
+    fn a_maximized_docked_aside_keeps_the_main_region_and_covers_the_workspace() {
+        let layout = WindowsShellWindowLayout {
+            navigation_bar: Some(WindowsShellNavigationBarLayout {
+                visible: true,
+                title: "API".to_string(),
+                background_color: 0,
+                text_color: 0,
+                show_back_button: false,
+                show_home_button: false,
+                height: 38,
+            }),
+            ..Default::default()
+        };
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 1200,
+            bottom: 768,
+        };
+        let docked = WindowsChromePanelLayoutInput {
+            panel_id: "lxapp-aside".to_string(),
+            webtag_key: "lingxia-chat:pages/chat/index".to_string(),
+            position: WindowsPanelPosition::Right,
+            requested_size: Some(320),
+            docked: true,
+            overlay: false,
+            maximized: false,
+        };
+        let before = compute_attached_layout(client, &layout, std::slice::from_ref(&docked));
+
+        // The core marks a maximized docked slot `overlay` and `maximized`.
+        let maximized = WindowsChromePanelLayoutInput {
+            docked: false,
+            overlay: true,
+            maximized: true,
+            ..docked
+        };
+        let during = compute_attached_layout(client, &layout, &[maximized]);
+
+        // The main keeps its frame under the overlay: no relayout, and no
+        // lifecycle for it when the slot restores.
+        assert_eq!(during.main_region, before.main_region);
+        assert_eq!(during.main, before.main);
+        assert!(during.main.right < client.right);
+        // The slot itself covers the whole workspace, with no resize handle.
+        let workspace = compute_chrome_rects(client, &layout).workspace;
+        assert_eq!(during.panels[0].rect, workspace);
+        assert_eq!(during.panels[0].resize_handle, None);
+        assert!(during.panels[0].overlay);
+        assert_eq!(
+            during.panels[0].header_rect,
+            before.panels[0].header_rect.map(|_| super::aside_panel_toolbar_rect(workspace))
+        );
     }
 
     #[test]
