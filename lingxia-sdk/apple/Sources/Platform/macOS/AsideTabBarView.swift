@@ -138,7 +138,9 @@ final class AsideTabBarView: NSView {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         popUp.removeAllItems()
         for item in items {
-            let button = NSButton(title: item.text.toString(), target: self, action: #selector(segmentClicked(_:)))
+            let title = Self.displayTitle(for: item)
+            let hasText = !item.text.toString().isEmpty
+            let button = NSButton(title: title, target: self, action: #selector(segmentClicked(_:)))
             button.tag = Int(item.index)
             button.isBordered = false
             button.bezelStyle = .regularSquare
@@ -154,17 +156,43 @@ final class AsideTabBarView: NSView {
                 // artwork keeps its colours.
                 icon.isTemplate = TabBarHelper.isTemplateIcon(path)
                 button.image = icon
+                // An item with an icon and no text is its icon; the derived
+                // name stays on the tooltip and for accessibility.
+                if !hasText {
+                    button.title = ""
+                    button.imagePosition = .imageOnly
+                    button.toolTip = title
+                }
             }
+            button.setAccessibilityLabel(title)
             button.setButtonType(.momentaryChange)
             button.translatesAutoresizingMaskIntoConstraints = false
             button.heightAnchor.constraint(equalToConstant: 22).isActive = true
             button.setContentHuggingPriority(.required, for: .horizontal)
             button.setAccessibilityRole(.radioButton)
             stack.addArrangedSubview(button)
-            popUp.addItem(withTitle: item.text.toString())
+            popUp.addItem(withTitle: title)
             popUp.lastItem?.tag = Int(item.index)
+            if !hasText, let icon = button.image {
+                popUp.lastItem?.image = icon
+            }
         }
         needsLayout = true
+    }
+
+    /// What names a tab: its `text`, else a name read from its page path
+    /// (`pages/me/index` is "Me"), so no segment or menu row is ever blank.
+    static func displayTitle(for item: TabBarItem) -> String {
+        let text = item.text.toString()
+        if !text.isEmpty { return text }
+        var parts = item.page_path.toString().split(separator: "/").map(String.init)
+        if let last = parts.last, last == "index" || last.hasPrefix("index.") { parts.removeLast() }
+        if parts.first == "pages" { parts.removeFirst() }
+        guard var name = parts.last, !name.isEmpty else { return "Tab \(item.index + 1)" }
+        if let dot = name.firstIndex(of: ".") { name = String(name[..<dot]) }
+        name = name.replacingOccurrences(of: "[-_]+", with: " ", options: .regularExpression)
+        guard let first = name.first else { return "Tab \(item.index + 1)" }
+        return first.uppercased() + name.dropFirst()
     }
 
     private func applySelection() {
