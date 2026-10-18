@@ -167,6 +167,13 @@ class LxAppWindow: NSWindow {
             return true
         }
 
+        // Cmd+Option+\ collapses the lxapp aside or brings it back.
+        if modifiers == [.command, .option], event.charactersIgnoringModifiers == "\\" || event.keyCode == 42,
+           let controller = windowController as? LxAppShell,
+           controller.toggleLxappAsideFromKeyboard() {
+            return true
+        }
+
         // Backspace (keyCode 51) for back navigation
         if event.keyCode == 51 && event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [] {
             // Don't intercept if typing in a native text field

@@ -1006,6 +1006,22 @@ impl WindowSurfaceController {
         changed
     }
 
+    /// Collapse an occupied slot, or restore a collapsed one. `None` when the
+    /// slot holds nothing; otherwise whether it is now collapsed.
+    fn toggle_slot_collapsed(&self, kind: lingxia_surface::SlotKind) -> Option<bool> {
+        let collapsed = {
+            let mut manager = self.manager.lock().unwrap();
+            if !manager.slot_occupied(kind) {
+                return None;
+            }
+            let collapsed = !manager.graph().slot_collapsed(kind);
+            manager.set_slot_collapsed(kind, collapsed);
+            collapsed
+        };
+        self.commit();
+        Some(collapsed)
+    }
+
     fn slot_maximized(&self, kind: lingxia_surface::SlotKind) -> bool {
         self.manager.lock().unwrap().slot_maximized(kind)
     }
@@ -2673,6 +2689,13 @@ impl LxApp {
             return false;
         };
         window_controller(PRIMARY_WINDOW, &self.runtime).set_slot_maximized(kind, maximized)
+    }
+
+    /// The keyboard toggle for an aside slot: collapse it when it shows,
+    /// restore it when collapsed. `None` when the slot holds nothing.
+    pub fn toggle_shell_slot_collapsed(&self, kind: &str) -> Option<bool> {
+        let kind = shell_slot_kind(kind)?;
+        window_controller(PRIMARY_WINDOW, &self.runtime).toggle_slot_collapsed(kind)
     }
 
     pub fn shell_slot_maximized(&self, kind: &str) -> bool {

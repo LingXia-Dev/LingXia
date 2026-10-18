@@ -3783,6 +3783,15 @@ fn handle_managed_aside_event(event: WindowsAsidePanelEvent) {
     }
 }
 
+/// Ctrl+Alt+\: collapse the lxapp aside slot, or bring it back. Returns
+/// whether there was a slot to toggle.
+pub(crate) fn toggle_lxapp_aside_from_keyboard() -> bool {
+    shell_owner_appid()
+        .and_then(|owner_appid| lxapp::try_get(&owner_appid))
+        .and_then(|owner| owner.toggle_shell_slot_collapsed("lxapp"))
+        .is_some()
+}
+
 /// The lxapp the lxapp aside slot is showing, if any.
 fn lxapp_aside_active_app() -> Option<Arc<LxApp>> {
     let owner = lxapp::try_get(&shell_owner_appid()?)?;

@@ -414,6 +414,11 @@ impl SurfaceManager {
         true
     }
 
+    /// Whether an aside slot of `kind` holds any content.
+    pub fn slot_occupied(&self, kind: crate::SlotKind) -> bool {
+        self.slot_has_children(kind)
+    }
+
     pub fn slot_maximized(&self, kind: crate::SlotKind) -> bool {
         self.maximized_slot == Some(kind)
     }

@@ -410,6 +410,11 @@ mod bridge {
         #[swift_bridge(swift_name = "collapseAsideSlot")]
         fn collapse_aside_slot(appid: &str, kind: &str) -> bool;
 
+        // Keyboard toggle: collapse an occupied slot, restore a collapsed one.
+        // Returns 0 when the slot holds nothing, 1 collapsed, 2 restored.
+        #[swift_bridge(swift_name = "toggleAsideSlotCollapsed")]
+        fn toggle_aside_slot_collapsed(appid: &str, kind: &str) -> i32;
+
         // Bring a collapsed aside slot back (its edge handle).
         #[swift_bridge(swift_name = "restoreAsideSlot")]
         fn restore_aside_slot(appid: &str, kind: &str) -> bool;
@@ -1803,6 +1808,16 @@ pub fn collapse_aside_slot(appid: &str, kind: &str) -> bool {
             lxapp.set_shell_slot_collapsed(kind, true)
         } else {
             false
+        }
+    })
+}
+
+pub fn toggle_aside_slot_collapsed(appid: &str, kind: &str) -> i32 {
+    ffi_catch_unwind!("toggle_aside_slot_collapsed", 0, || {
+        match lxapp::try_get(appid).and_then(|lxapp| lxapp.toggle_shell_slot_collapsed(kind)) {
+            None => 0,
+            Some(true) => 1,
+            Some(false) => 2,
         }
     })
 }

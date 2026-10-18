@@ -440,7 +440,8 @@ impl WindowsWebViewNativeViewHost for PlatformNativeViewHost {
         if let Some(host) = window_handle_for_key(webtag.key()).map(|window| unsafe {
             WindowsAndMessaging::GetAncestor(window, WindowsAndMessaging::GA_ROOT)
         }) && !host.0.is_null()
-            && sidebar_peek::handle_key_deferred(host, virtual_key)
+            && (sidebar_peek::handle_aside_shortcut_deferred(host, virtual_key)
+                || sidebar_peek::handle_key_deferred(host, virtual_key))
         {
             return true;
         }

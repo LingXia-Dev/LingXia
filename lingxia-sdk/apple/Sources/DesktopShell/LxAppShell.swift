@@ -1234,6 +1234,40 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// Cmd+Option+\: collapse the lxapp aside slot or bring it back. Focus
+    /// follows: into the aside page when it returns, back to the main when it
+    /// goes away.
+    func toggleLxappAsideFromKeyboard() -> Bool {
+        guard let appId = attachedMainAppId ?? LxAppTabManager.shared.activeTab?.appId
+            ?? LxAppLayoutReconciler.activeLxappAsideId() else { return false }
+        switch toggleAsideSlotCollapsed(appId, "lxapp") {
+        case 1:
+            if let webView = Self.firstWebView(in: workspaceManager.rootView) {
+                window?.makeFirstResponder(webView)
+            }
+        case 2:
+            // The reconciler shows the panel on this pass; focus once it is in.
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      let id = LxAppLayoutReconciler.activeLxappAsideId(),
+                      let panel = self.workspaceManager.panelContentView(id: id),
+                      let webView = Self.firstWebView(in: panel) else { return }
+                self.window?.makeFirstResponder(webView)
+            }
+        default:
+            return false
+        }
+        return true
+    }
+
+    private static func firstWebView(in view: NSView) -> WKWebView? {
+        if let webView = view as? WKWebView, !webView.isHidden { return webView }
+        for subview in view.subviews where !subview.isHidden {
+            if let webView = firstWebView(in: subview) { return webView }
+        }
+        return nil
+    }
+
     /// Cmd+\: pin or collapse the sidebar, or toggle the peek where pinning
     /// is unavailable.
     func toggleSidebarFromKeyboard() -> Bool {

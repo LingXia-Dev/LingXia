@@ -490,6 +490,30 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }
     }
 
+    /// Escape the page did not use: an aside that is maximized goes back to
+    /// its dock. It never collapses the aside (too easy to hit by accident).
+    /// WebKit hands an unconsumed Escape up the responder chain as
+    /// `cancelOperation:`; a plain `keyDown` only arrives from native chrome
+    /// inside the controller.
+    override func cancelOperation(_ sender: Any?) {
+        if leaveAsideMaximize() { return }
+        nextResponder?.tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: sender)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if event.keyCode == 53, modifiers.isEmpty, leaveAsideMaximize() {
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    private func leaveAsideMaximize() -> Bool {
+        guard hostsAside, isAsideSlotMaximized(appId, "lxapp") else { return false }
+        _ = setAsideSlotMaximized(appId, "lxapp", false)
+        return true
+    }
+
     /// Keyboard Back for an aside page: pops this app's own stack when its
     /// page offers Back. Returns whether it navigated.
     @MainActor

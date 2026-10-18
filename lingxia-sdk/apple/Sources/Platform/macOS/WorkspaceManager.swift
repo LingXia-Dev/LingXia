@@ -460,6 +460,12 @@ class WorkspaceManager: NSObject {
 
     func isPanelRegistered(id: String) -> Bool { panels[id] != nil }
 
+    /// The view a visible panel presents its content in.
+    func panelContentView(id: String) -> NSView? {
+        guard let slot = panels[id], slot.isVisible else { return nil }
+        return slot.containerView
+    }
+
     /// Remove a panel provider after its surface has left the core graph.
     /// A destroyed provider must not remain in the registry because the layout
     /// reconciler treats that registry as the host's provider inventory.

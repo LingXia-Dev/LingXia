@@ -785,6 +785,10 @@ The aside region is fixed at three slots, grouped by rendering engine:
   `lx.tabBar.update()` behave as in the sidebar.
 - Keyboard Back (macOS Backspace) acts on the page stack of the region that
   has focus: an aside page pops its own stack, never the main's.
+- Cmd+Option+\ (Windows Ctrl+Alt+\) collapses the lxapp aside slot or
+  restores it; on macOS focus moves into the aside page when it returns and
+  back to the main when it goes. Escape that an aside page does not use
+  takes a maximized aside back to its dock; it never collapses the aside.
 - Browser "open in main browser" promotes and closes only the **current URL
   tab**; other browser-aside tabs stay. Closing the last tab closes the slot.
 - A desktop browser slot offers history navigation, refresh, title tabs, and

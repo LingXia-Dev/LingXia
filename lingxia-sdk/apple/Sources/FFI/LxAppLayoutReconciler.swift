@@ -356,6 +356,15 @@ enum LxAppLayoutReconciler {
     /// and icons against the current registry cache. The initial lookup
     /// schedules an asynchronous fetch; without this the strip stays on the
     /// titles/icons from that first pass until an unrelated layout commit.
+    /// The lxapp the lxapp aside slot shows, from the last plan; nil when the
+    /// slot is absent, collapsed or not admitted.
+    static func activeLxappAsideId() -> String? {
+        guard let slot = lastAsideSlots.first(where: { $0.kind == "lxapp" && $0.visible }) else {
+            return nil
+        }
+        return slot.activeChild ?? slot.children.last
+    }
+
     static func refreshVisibleSlotTabs() {
         guard let shell = LxAppActiveHost.activeShell else { return }
         applyLxappSlotTabs(

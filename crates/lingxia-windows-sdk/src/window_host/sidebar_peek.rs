@@ -420,6 +420,29 @@ unsafe extern "system" fn latch_timer_proc(owner: HWND, _msg: u32, _id: usize, _
     }
 }
 
+/// Ctrl+Alt+\ collapses the lxapp aside or brings it back. An auto-repeat
+/// is consumed without acting. True when the key was consumed.
+pub(super) fn handle_aside_shortcut_deferred(owner: HWND, virtual_key: u32) -> bool {
+    let down = |key: u16| unsafe { GetKeyState(i32::from(key)) } < 0;
+    if virtual_key != backslash_virtual_key()
+        || !down(VK_CONTROL.0)
+        || !down(VK_MENU.0)
+        || down(VK_SHIFT.0)
+    {
+        return false;
+    }
+    let handle = hwnd_handle(owner);
+    if latch_shortcut(owner, virtual_key) {
+        let _ = post_to_window_thread(
+            handle,
+            Box::new(|| {
+                crate::shell::toggle_lxapp_aside_from_keyboard();
+            }),
+        );
+    }
+    true
+}
+
 fn shortcut_target(owner: HWND, virtual_key: u32) -> Option<crate::shell::SidebarShortcut> {
     let down = |key: u16| unsafe { GetKeyState(i32::from(key)) } < 0;
     if !is_sidebar_shortcut(
