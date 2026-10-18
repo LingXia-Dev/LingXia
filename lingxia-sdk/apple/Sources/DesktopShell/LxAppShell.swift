@@ -1258,8 +1258,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// follows: into the aside page when it returns, back to the main when it
     /// goes away.
     func toggleLxappAsideFromKeyboard() -> Bool {
+        // Any live lxapp reaches the window's graph; a collapsed slot's child
+        // is one when no lxapp main is attached (a native or browser main).
         guard let appId = attachedMainAppId ?? LxAppTabManager.shared.activeTab?.appId
-            ?? LxAppLayoutReconciler.activeLxappAsideId() else { return false }
+            ?? LxAppLayoutReconciler.lxappAsideChildId() else { return false }
         switch toggleAsideSlotCollapsed(appId, "lxapp") {
         case 1:
             if let webView = Self.firstWebView(in: workspaceManager.rootView) {

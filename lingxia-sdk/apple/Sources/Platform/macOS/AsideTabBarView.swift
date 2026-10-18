@@ -150,7 +150,9 @@ final class AsideTabBarView: NSView {
             let path = item.icon_path.toString()
             if !path.isEmpty, let icon = TabBarHelper.chromeIconImage(contentsOfFile: path, maxPixelSize: 64) {
                 icon.size = NSSize(width: 14, height: 14)
-                icon.isTemplate = true
+                // Same rule as the sidebar: symbols and SVGs tint, raster
+                // artwork keeps its colours.
+                icon.isTemplate = TabBarHelper.isTemplateIcon(path)
                 button.image = icon
             }
             button.setButtonType(.momentaryChange)

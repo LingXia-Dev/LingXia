@@ -74,7 +74,9 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     override func viewDidLayout() {
         super.viewDidLayout()
-        let size = view.bounds.size
+        // The page's viewport: in an aside the view also holds the
+        // navigation bar and tabBar above the page.
+        let size = (webViewContainer ?? view).bounds.size
         guard size.width > 0, size.height > 0 else { return }
         _ = setSurfaceViewport(appId, Double(size.width), Double(size.height))
     }
@@ -218,6 +220,13 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             pageTransition.install(animation, on: webViewContainer)
         }
 
+        // Detaching the focused WebView hands first responder back to the
+        // window, which would take the next Backspace or Escape to the main's
+        // path. An aside keeps focus on the page it now shows.
+        let keepsFocus = hostsAside && activeWebView.map { old in
+            old !== webView && responderIsInside(old)
+        } ?? false
+
         if let old = activeWebView, old !== webView {
             WebViewManager.detachLxAppWebView(old)
         }
@@ -232,6 +241,16 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         WebViewManager.attachLxAppWebView(webView, to: webViewContainer)
         activeWebView = webView
         coverUntilContentPaints(webView)
+        if keepsFocus {
+            view.window?.makeFirstResponder(webView)
+        }
+    }
+
+    /// Whether the window's first responder is `webView` or a view inside it.
+    private func responderIsInside(_ webView: WKWebView) -> Bool {
+        guard let responder = view.window?.firstResponder else { return false }
+        if responder === webView { return true }
+        return (responder as? NSView)?.isDescendant(of: webView) ?? false
     }
 
     /// The ground behind the page. Anything that exposes it — a fade, a seam

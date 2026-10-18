@@ -352,10 +352,6 @@ enum LxAppLayoutReconciler {
         return true
     }
 
-    /// Re-bind visible lxapp aside tabs from the last plan, resolving names
-    /// and icons against the current registry cache. The initial lookup
-    /// schedules an asynchronous fetch; without this the strip stays on the
-    /// titles/icons from that first pass until an unrelated layout commit.
     /// The lxapp the lxapp aside slot shows, from the last plan; nil when the
     /// slot is absent, collapsed or not admitted.
     static func activeLxappAsideId() -> String? {
@@ -365,6 +361,18 @@ enum LxAppLayoutReconciler {
         return slot.activeChild ?? slot.children.last
     }
 
+    /// Any lxapp the lxapp aside slot holds, shown or not. A live lxapp
+    /// reaches the window's graph, which is what a collapsed slot's keyboard
+    /// restore needs when no lxapp main is attached.
+    static func lxappAsideChildId() -> String? {
+        guard let slot = lastAsideSlots.first(where: { $0.kind == "lxapp" }) else { return nil }
+        return slot.activeChild ?? slot.children.last
+    }
+
+    /// Re-bind visible lxapp aside tabs from the last plan, resolving names
+    /// and icons against the current registry cache. The initial lookup
+    /// schedules an asynchronous fetch; without this the strip stays on the
+    /// titles/icons from that first pass until an unrelated layout commit.
     static func refreshVisibleSlotTabs() {
         guard let shell = LxAppActiveHost.activeShell else { return }
         applyLxappSlotTabs(
@@ -432,7 +440,10 @@ enum LxAppLayoutReconciler {
             guard position == .left || position == .right else { return nil }
             // Any live lxapp reaches the window's graph; an lxapp child is one.
             var title = "Browser"
-            var graphAppId = shell.attachedMainAppId ?? ""
+            var graphAppId = shell.attachedMainAppId
+                ?? LxAppTabManager.shared.activeTab?.appId
+                ?? lxappAsideChildId()
+                ?? ""
             if slot.kind == "lxapp", let child = slot.activeChild ?? slot.children.last {
                 let name = getLxAppInfo(child).app_name.toString()
                 title = name.isEmpty ? child : name
