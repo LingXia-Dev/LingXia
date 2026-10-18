@@ -453,7 +453,14 @@ impl Platform for IosPlatform {
             &deployment_target,
             apple::assets::AssetPlatform::Ios,
         ) {
-            if matches!(config.resolved_env.version, crate::config::AppEnv::Prod) {
+            // App Store Connect rejects an upload without the catalog's icon,
+            // whatever the env, so an IPA needs it as much as a prod build.
+            if config.ipa {
+                return Err(err).context(
+                    "an App Store IPA requires a compiled asset catalog; App Store Connect \
+                     rejects an upload without its app icon",
+                );
+            } else if matches!(config.resolved_env.version, crate::config::AppEnv::Prod) {
                 return Err(err).context(
                     "prod iOS build requires a compiled asset catalog; without it the app icon and OS launch face are missing",
                 );
