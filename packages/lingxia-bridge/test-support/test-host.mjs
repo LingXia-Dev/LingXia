@@ -7,7 +7,7 @@ globalThis.window = {
     os: 'macOS',
     hostClass: 'desktop',
     displayLanguage: 'en-US',
-    surfaceContext: { sizeClass: 'regular', width: 1200, height: 800, aside: true },
+    surfaceContext: { sizeClass: 'regular', width: 1200, height: 800, canDock: true },
     surfaceContextRevision: 1,
   },
 };
@@ -20,7 +20,7 @@ assert.equal(document.documentElement.dir, 'ltr');
 const first = getHost();
 assert.deepEqual(first, {
   sizeClass: 'regular',
-  aside: true,
+  canDock: true,
   displayLanguage: 'en-US',
   formFactor: 'desktop',
   os: 'macOS',
@@ -32,11 +32,11 @@ let heard = 0;
 const stop = subscribeHost(() => heard++);
 assert.equal(heard, 0, 'change-only: nothing on subscribe');
 
-window.__lingxiaApplySurfaceContext({ sizeClass: 'regular', width: 1000, height: 700, aside: true }, 2);
+window.__lingxiaApplySurfaceContext({ sizeClass: 'regular', width: 1000, height: 700, canDock: true }, 2);
 assert.equal(heard, 0, 'a width change within the size class is not a host change');
 assert.equal(getHost(), first);
 
-window.__lingxiaApplySurfaceContext({ sizeClass: 'compact', width: 500, height: 700, aside: true }, 3);
+window.__lingxiaApplySurfaceContext({ sizeClass: 'compact', width: 500, height: 700, canDock: true }, 3);
 assert.equal(heard, 1, 'crossing the size class is');
 assert.equal(getHost().sizeClass, 'compact');
 assert.notEqual(getHost(), first, 'and a change is a new object');

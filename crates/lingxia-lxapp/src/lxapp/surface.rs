@@ -3129,7 +3129,7 @@ mod tests {
         fn snapshot(appid: &str) -> Option<String> {
             (appid == "known").then(|| {
                 let seen = VIEW_CONTEXT_REVISION.load(std::sync::atomic::Ordering::SeqCst);
-                format!(r#"{{"sizeClass":"regular","width":900,"height":700,"aside":false,"seen":{seen}}}"#)
+                format!(r#"{{"sizeClass":"regular","width":900,"height":700,"canDock":false,"seen":{seen}}}"#)
             })
         }
         register_surface_context_snapshot(snapshot);

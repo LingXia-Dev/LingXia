@@ -287,7 +287,7 @@ fn shell_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     }
 }
 
-/// Event name on the per-app bus carrying `{ sizeClass, width, height, aside }`.
+/// Event name on the per-app bus carrying `{ sizeClass, width, height, canDock }`.
 const SURFACE_CONTEXT_EVENT: &str = "SurfaceContextChange";
 
 /// `lx.surface.watchContext(handler)` — register a JS callback (scoped to this
@@ -340,7 +340,7 @@ fn context_json(lxapp: &LxApp) -> String {
         "sizeClass": context.size_class,
         "width": context.width,
         "height": context.height,
-        "aside": context.aside,
+        "canDock": context.can_dock,
     })
     .to_string()
 }
@@ -2127,7 +2127,8 @@ fn build_window_options(
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSSurfaceContext {
-    aside: bool,
+    #[js_name = "canDock"]
+    can_dock: bool,
     #[js_name = "sizeClass"]
     size_class: String,
     width: f64,
@@ -2146,7 +2147,7 @@ fn surface_context_for(lxapp: &LxApp) -> JSSurfaceContext {
         (0.0, 0.0, size_class)
     });
     JSSurfaceContext {
-        aside: aside_dock_available(lxapp),
+        can_dock: can_dock(lxapp),
         size_class: viewport_class.as_str().to_string(),
         width,
         height,
@@ -2186,7 +2187,7 @@ fn simulating_handheld_device() -> bool {
 
 /// Whether a docked aside region exists right now. Live: a desktop window
 /// dragged below the compact breakpoint loses its dock.
-pub(crate) fn aside_dock_available(lxapp: &LxApp) -> bool {
+pub(crate) fn can_dock(lxapp: &LxApp) -> bool {
     !url_aside_uses_compact_browser(lxapp)
 }
 

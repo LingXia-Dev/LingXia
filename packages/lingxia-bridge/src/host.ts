@@ -18,8 +18,8 @@ import { getSurfaceContext, subscribeSurfaceContext } from './surface-context';
 export interface LxHost {
   /** `compact` (< 600 logical px) or `regular`, with hysteresis; the same value Logic's `lx.surface.watchContext()` reports. */
   readonly sizeClass: 'compact' | 'regular';
-  /** Whether the host layout currently offers a docked aside. */
-  readonly aside: boolean;
+  /** Whether the window currently has a dock region for `as: 'aside'`; not where this page is shown. */
+  readonly canDock: boolean;
   /** The BCP-47 tag in effect, as Logic's `lx.host.displayLanguage.get()`. */
   readonly displayLanguage: string;
   /** Which kind of machine this is; fixed for the document. A narrowed desktop window is still `desktop`. */
@@ -36,7 +36,7 @@ function read(): LxHost {
   const surface = getSurfaceContext();
   return {
     sizeClass: surface.sizeClass,
-    aside: surface.aside,
+    canDock: surface.canDock,
     displayLanguage: getDisplayLanguage(),
     formFactor: isDesktop() ? 'desktop' : 'mobile',
     os: getPlatformOS(),
@@ -46,7 +46,7 @@ function read(): LxHost {
 
 function same(a: LxHost, b: LxHost): boolean {
   return a.sizeClass === b.sizeClass
-    && a.aside === b.aside
+    && a.canDock === b.canDock
     && a.displayLanguage === b.displayLanguage
     && a.formFactor === b.formFactor
     && a.os === b.os

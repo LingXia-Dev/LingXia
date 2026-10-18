@@ -7,7 +7,7 @@ the user agent, `screen.width`, or a browser media query.
 
 ```ts
 type SurfaceContext = {
-  aside: boolean;                    // does the host currently offer a docked aside
+  canDock: boolean;                  // can `as: 'aside'` dock beside the main right now
   sizeClass: 'compact' | 'regular';
   width: number;
   height: number;
@@ -21,8 +21,10 @@ type SurfaceContext = {
 
 - The size class is the lxapp's own presentation, not the window: an lxapp in
   a narrow region of a wide desktop is `compact`. It is one value per lxapp.
-- `aside` is whether the host offers a docked aside right now; read it, never
-  infer it from width.
+- `canDock` is whether the window has a dock region right now, so
+  `as: 'aside'` opens beside the main instead of as an overlay. It is not
+  where this lxapp is shown: nothing reports that; lay out by size. Read it,
+  never infer it from width.
 - `regular` is room, not desktop. Pair it with `formFactor`:
 
 | | mobile | desktop |
@@ -35,7 +37,7 @@ mobile `regular` surface is a CSS two-pane.
 
 ## Read it in the View
 
-`useLxHost().sizeClass` and `.aside` ([host facts](./guide.md#host-facts)) are
+`useLxHost().sizeClass` and `.canDock` ([host facts](./guide.md#host-facts)) are
 present before the first frame and change only when the class changes. A page
 that only picks a layout needs no Logic subscription. Size spacing and columns
 with CSS and container queries. Older hosts report `compact`, so keep

@@ -264,14 +264,14 @@ Read `useLxPage()` during component setup/render; pass its actions into helpers.
 ### Host facts
 
 ```ts
-const { sizeClass, aside, displayLanguage, formFactor, os, runner } = useLxHost();
+const { sizeClass, canDock, displayLanguage, formFactor, os, runner } = useLxHost();
 ```
 
 `getHost()` / `subscribeHost(cb)` in `@lingxia/html`;
 `window.LingXiaBridge.host.get()` / `.subscribe(cb)` in a page that bundles
 nothing. It never changes while a window is dragged.
 
-- `sizeClass` (`compact` | `regular`) and `aside` — how much room:
+- `sizeClass` (`compact` | `regular`) and `canDock` — how much room:
   [Adaptive UI](./adaptive-ui.md).
 - `formFactor` (`mobile` | `desktop`) — which machine. Branch on it for what a
   phone must not show. A narrow desktop window is `desktop`; a tablet or

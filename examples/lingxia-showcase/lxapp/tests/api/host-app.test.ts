@@ -801,7 +801,7 @@ spec('subscribe to and release the surface context listener', {
   const { app } = bindFixture(t, 'HOSTAPP-SURFACE-CTX-001');
 
   const result = await app.logic.eval(async ({ lx }) => {
-    let context: { aside?: unknown } | undefined;
+    let context: { canDock?: unknown } | undefined;
     const first = lx.surface.watchContext(value => { context = value; });
     const second = lx.surface.watchContext(() => {});
     first();
@@ -810,11 +810,11 @@ spec('subscribe to and release the surface context listener', {
     first();
     return {
       kinds: [typeof first, typeof second], distinct: first !== second,
-      aside: typeof context?.aside,
+      canDock: typeof context?.canDock,
     };
   });
 
   expect(result.kinds).toEqual(['function', 'function']);
   expect(result.distinct).toBeTruthy();
-  expect(result.aside).toBe('boolean');
+  expect(result.canDock).toBe('boolean');
 });

@@ -8,7 +8,7 @@ const fullChrome: boolean = lx.supports('surface.window.fullChrome');
 const notifications: boolean = lx.supports('app.notification');
 const control: boolean = lx.host.control !== undefined;
 lx.surface.watchContext((context: SurfaceContext) => {
-  const docked: boolean = context.aside;
+  const docked: boolean = context.canDock;
   void docked;
 });
 // @ts-expect-error unknown strings are runtime-compatible but statically checked

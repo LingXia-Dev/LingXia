@@ -2163,8 +2163,12 @@ export type SurfaceClosedEvent = {
  * spacing inside `regular` use CSS or the raw `width` / `height`.
  */
 export type SurfaceContext = {
-    /** Whether the host layout currently offers a docked aside. */
-    aside: boolean;
+    /**
+     * Whether the window currently has a dock region, so `as: 'aside'` docks
+     * beside the main instead of being reprojected as an overlay. A capability
+     * of the window, not where this lxapp is presented.
+     */
+    canDock: boolean;
     /** compact (<600) / regular (≥600). Shell medium/expanded are not distinct here. */
     sizeClass: 'compact' | 'regular';
     /** Actual surface viewport width in logical pixels. */
