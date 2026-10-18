@@ -60,6 +60,7 @@ struct ChannelStatusJson {
 struct AppleTeamJson {
     team_id: String,
     mechanisms: String,
+    capabilities: crate::wallet::AppleCapabilities,
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -156,6 +157,7 @@ pub fn auth_status(json: bool) -> Result<bool> {
                 .into_iter()
                 .map(|t| AppleTeamJson {
                     mechanisms: t.mechanisms(),
+                    capabilities: t.capabilities(),
                     name: t.info.name.clone(),
                     account_type: t.info.account_type.clone(),
                     team_id: t.team_id,

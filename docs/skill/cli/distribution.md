@@ -182,7 +182,8 @@ Signing, publishing, and store credentials:
   — add, refresh, or remove credentials (Apple modes `key`, `password`,
   `developer-id`, `app-password`)
 - `lingxia auth login|logout lingxia` — a LingXia server publish token
-- `lingxia auth status [--json]` — per-project diagnosis and the wallet
+- `lingxia auth status [--json]` — per-project diagnosis and the wallet,
+  with what each Apple team can sign, upload, and read (build status)
 - `lingxia auth forget --platform <channel>` — re-resolve this checkout's
   credential selection
 - `lingxia auth runner [set <LINGXIA_ID> --dev <URL> [--prod <URL>] | clear]`

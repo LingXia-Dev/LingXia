@@ -88,6 +88,15 @@ impl AppleTeamSlots {
         self.has_asc || self.has_apple_id || self.has_developer_id || self.has_app_password
     }
 
+    /// What this team's credentials let the CLI do.
+    pub fn capabilities(&self) -> AppleCapabilities {
+        AppleCapabilities {
+            sign: self.has_auth(),
+            upload: self.has_upload(),
+            build_status: self.has_asc,
+        }
+    }
+
     /// `Heights Telecom LLC · Paid`, or `None` before any Apple ID login.
     pub fn label(&self) -> Option<String> {
         let name = self.info.name.as_deref()?;
@@ -127,6 +136,20 @@ impl AppleTeamSlots {
         }
         parts.join(", ")
     }
+}
+
+/// Apple keeps signing and uploading apart: an Apple ID session signs but
+/// cannot upload, an App-specific password uploads but cannot sign, and only
+/// an App Store Connect API key does both and reads build status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppleCapabilities {
+    /// Device and App Store signing.
+    pub sign: bool,
+    /// `lingxia store submit`.
+    pub upload: bool,
+    /// `lingxia store submit --wait` and `lingxia store status`.
+    pub build_status: bool,
 }
 
 pub struct Wallet {
@@ -915,7 +938,14 @@ mod tests {
             .unwrap();
 
         let slots = wallet.apple_team("TEAMAAAAAA").unwrap().unwrap();
-        assert!(slots.has_app_password && slots.has_upload() && !slots.has_auth());
+        assert_eq!(
+            slots.capabilities(),
+            AppleCapabilities {
+                sign: false,
+                upload: true,
+                build_status: false
+            }
+        );
         let loaded = wallet
             .load_apple_app_password("TEAMAAAAAA")
             .unwrap()
