@@ -774,7 +774,11 @@ The aside region is fixed at three slots, grouped by rendering engine:
   main switch, or the slot collapsing or losing its last child, and survives
   every other plan. The control sits left of the slot's collapse control; a
   compact overlay, which already covers the main, does not offer it. Content
-  is told only its new size, never that it is maximized.
+  is told only its new size, never that it is maximized. The main and the
+  other docked slots keep their frames under it and fire no lifecycle event;
+  a restore relays nothing out. Keyboard focus moves into the maximized
+  slot's page and back to the main page on restore. The lxapp and browser
+  slots offer the control on macOS and Windows alike.
 - An lxapp aside shows the page navigation bar below its tab strip only while
   Back or Home has somewhere to go. At the root of its stack the bar takes no
   height unless Home is offered (a non-initial, non-tab landing page);
@@ -788,9 +792,20 @@ The aside region is fixed at three slots, grouped by rendering engine:
 - Keyboard Back (macOS Backspace) acts on the page stack of the region that
   has focus: an aside page pops its own stack, never the main's.
 - Cmd+Option+\ (Windows Ctrl+Alt+\) collapses the lxapp aside slot or
-  restores it; on macOS focus moves into the aside page when it returns and
-  back to the main when it goes. Escape that an aside page does not use
-  takes a maximized aside back to its dock; it never collapses the aside.
+  restores it, wherever focus is (a page, shell chrome, a native panel);
+  focus moves into the aside page when it returns and back to the main when
+  it goes. Escape in a maximized aside's page, or in the shell, takes the
+  aside back to its dock; it never collapses the aside.
+- Keyboard Back (macOS Backspace) is taken only when the page left the key
+  unhandled: an editable element (input, textarea, contenteditable) keeps
+  deleting text. Windows offers no keyboard Back: Backspace is not a Back key
+  on that platform and WebView2 gives the shell no unhandled-key path that
+  would spare typing.
+- A float an aside lxapp opens anchors to that aside's region, not to the main.
+- A tabBar item without `text` is never a blank segment or an empty menu row:
+  macOS shows the item's icon alone (named from its page path for the tooltip,
+  accessibility and the pop-up); Windows, whose row is text only, shows the
+  page's title, else its page name.
 - Browser "open in main browser" promotes and closes only the **current URL
   tab**; other browser-aside tabs stay. Closing the last tab closes the slot.
 - A desktop browser slot offers history navigation, refresh, title tabs, and

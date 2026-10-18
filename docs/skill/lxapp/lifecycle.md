@@ -103,6 +103,9 @@ but get no hook until first selected.
   The page it was showing gets `onHide`; restoring the aside with that page
   still current gets `onShow`. Logic, the page and its WebView stay alive, and
   App `onHide` does not fire, so pause polling or animation in page `onHide`
-  and treat "the user left the app" as App `onHide`.
+  and treat "the user left the app" as App `onHide`. Native components on the
+  page (video, camera) are paused and resumed with it, as they are for a main
+  page. Maximizing an aside over the main fires nothing, for the aside or for
+  the main underneath: both keep their frames and stay shown.
 - **Surface pages** opened with `lx.surface.open` get `onHide` on close and
   `onUnload` 30 seconds later unless reopened first.
