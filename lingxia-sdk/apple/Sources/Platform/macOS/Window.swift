@@ -185,7 +185,7 @@ class LxAppWindow: NSWindow {
     /// state belongs to the main.
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 51,
-           event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
+           event.modifierFlags.intersection([.shift, .control, .option, .command]).isEmpty,
            !(firstResponder is NSText),
            asideLxAppController(containing: firstResponder) == nil,
            Self.navigateMainBackFromKeyboard() {

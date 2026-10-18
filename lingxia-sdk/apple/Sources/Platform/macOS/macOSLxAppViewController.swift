@@ -527,7 +527,9 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     /// nothing to pop still consumes the key, so the window does not act on
     /// it for the main.
     override func keyDown(with event: NSEvent) {
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        // Only the four modifier keys matter: special keys carry other bits
+        // (the function flag, device bits on a synthesized Delete).
+        let modifiers = event.modifierFlags.intersection([.shift, .control, .option, .command])
         if event.keyCode == 53, modifiers.isEmpty, leaveAsideMaximize() {
             return
         }
