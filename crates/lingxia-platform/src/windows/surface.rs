@@ -902,9 +902,14 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         .find(|slot| slot.kind == lingxia_surface::SlotKind::Lxapp)
     else {
         set_aside_panel_tabs(ASIDE_LXAPP_PANEL_ID, Vec::new());
+        lingxia_windows_contract::set_aside_panel_maximized(ASIDE_LXAPP_PANEL_ID, false);
         hide_all_runtime_lxapp_asides();
         return false;
     };
+    lingxia_windows_contract::set_aside_panel_maximized(
+        ASIDE_LXAPP_PANEL_ID,
+        slot.visible && slot.maximized,
+    );
     if slot.children.is_empty() {
         set_aside_panel_tabs(ASIDE_LXAPP_PANEL_ID, Vec::new());
         hide_all_runtime_lxapp_asides();
@@ -1129,13 +1134,19 @@ fn handle_aside_panel_event(event: WindowsAsidePanelEvent) {
         WindowsAsidePanelEvent::TabClick { panel_id, .. }
         | WindowsAsidePanelEvent::TabClose { panel_id, .. }
         | WindowsAsidePanelEvent::Collapse { panel_id }
+        | WindowsAsidePanelEvent::ToggleMaximize { panel_id }
+        | WindowsAsidePanelEvent::NavHome { panel_id }
+        | WindowsAsidePanelEvent::TabBarClick { panel_id, .. }
         | WindowsAsidePanelEvent::NavBack { panel_id }
         | WindowsAsidePanelEvent::NavForward { panel_id }
         | WindowsAsidePanelEvent::NavReload { panel_id } => panel_id,
     };
-    // Collapsing is a slot state in the shared graph, never a local tab
-    // operation — the browser panel's own group has nothing to do for it.
-    let collapse = matches!(event, WindowsAsidePanelEvent::Collapse { .. });
+    // Collapsing and maximizing are slot states in the shared graph, never a
+    // local tab operation — the browser panel's own group has nothing to do.
+    let collapse = matches!(
+        event,
+        WindowsAsidePanelEvent::Collapse { .. } | WindowsAsidePanelEvent::ToggleMaximize { .. }
+    );
     if panel_id != ASIDE_BROWSER_PANEL_ID || collapse {
         if let Some(handler) = MANAGED_ASIDE_EVENT_HANDLER
             .lock()
@@ -1159,7 +1170,10 @@ fn handle_aside_panel_event(event: WindowsAsidePanelEvent) {
         }
         WindowsAsidePanelEvent::TabClose { surface_id, .. } => close_aside_tab(&surface_id),
         // Routed to the graph above; never reached here.
-        WindowsAsidePanelEvent::Collapse { .. } => {}
+        WindowsAsidePanelEvent::Collapse { .. } | WindowsAsidePanelEvent::ToggleMaximize { .. } => {
+        }
+        // Browser asides have no Home or tabBar.
+        WindowsAsidePanelEvent::NavHome { .. } | WindowsAsidePanelEvent::TabBarClick { .. } => {}
         WindowsAsidePanelEvent::NavBack { .. } => {
             with_active_aside_webview(|webview| webview.go_back())
         }
@@ -1407,6 +1421,12 @@ pub(super) fn present_layout(
         .iter()
         .find(|slot| slot.kind == lingxia_surface::SlotKind::Browser && slot.visible)
         .is_some_and(|slot| slot.overlay);
+    lingxia_windows_contract::set_aside_panel_maximized(
+        ASIDE_BROWSER_PANEL_ID,
+        plan.aside_slots.iter().any(|slot| {
+            slot.kind == lingxia_surface::SlotKind::Browser && slot.visible && slot.maximized
+        }),
+    );
     store_aside_browser_plan(planned_web_asides, active_browser, browser_overlay);
     sync_aside_browser_group();
     sync_runtime_lxapp_asides(plan);

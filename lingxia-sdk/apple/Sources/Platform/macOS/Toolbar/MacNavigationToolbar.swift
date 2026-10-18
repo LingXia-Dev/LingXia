@@ -36,6 +36,10 @@ class MacNavigationToolbar: NSView {
         followsSharedState ? NavigationBarStateManager.shared.currentState : ownedState
     }
     private var hasHostActions: Bool { !hostActionButtons.isEmpty }
+    /// An aside's bar has nothing to add at the root of its stack: the slot
+    /// tab already names the app. It shows only while Back or Home has
+    /// somewhere to go.
+    var collapsesWithoutNavigation = false
 
     /// Called with "back" or "home" when user clicks a nav button
     var onNavigationAction: ((String) -> Void)?
@@ -168,7 +172,10 @@ class MacNavigationToolbar: NSView {
     }
 
     private func updateFromState(_ state: NavigationBarState?) {
-        showNavbar = state?.show_navbar ?? false
+        showNavbar = state.map { state in
+            state.show_navbar
+                && (!collapsesWithoutNavigation || state.show_back_button || state.show_home_button)
+        } ?? false
         updateHeight()
 
         guard let state = state, showNavbar else {

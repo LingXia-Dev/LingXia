@@ -2876,12 +2876,10 @@ fn content_rect_for_window(hwnd: HWND, webtag_key: &str) -> RECT {
             .iter()
             .find(|panel| panel.webtag_key == webtag_key)
         {
-            // The browser aside's toolbar occupies the panel's top row; the
-            // webview fills the rest.
+            // The aside's toolbar (and an lxapp aside's navigation bar)
+            // occupy the panel's top rows; the webview fills the rest.
             let mut rect = panel.rect;
-            if let Some(header) = panel.header_rect {
-                rect.top = header.bottom.clamp(rect.top, rect.bottom);
-            }
+            rect.top = panel_webview_top(&panel.panel_id, panel.rect, panel.header_rect);
             return normalize_rect(rect);
         }
     }
@@ -5431,15 +5429,66 @@ fn exclude_host_webview_content_from_paint(hdc: HDC, hwnd: HWND, webtag_key: &st
         // Native (chrome-drawn) panels have no webview; a not-yet-visible
         // webview panel still wants its placeholder card painted.
         if !panel.webtag_key.is_empty() && webtag_is_visible(&panel.webtag_key) {
-            // The browser aside's toolbar row is chrome; only the webview
-            // area below it leaves the paint clip.
+            // The aside's toolbar and navigation rows are chrome; only the
+            // webview area below them leaves the paint clip.
             let mut rect = panel.rect;
-            if let Some(header) = panel.header_rect {
-                rect.top = header.bottom.clamp(rect.top, rect.bottom);
-            }
+            rect.top = panel_webview_top(&panel.panel_id, panel.rect, panel.header_rect);
             exclude_clip_rect_if_non_empty(hdc, rect);
         }
     }
+}
+
+/// Height of an lxapp aside's navigation bar, matching the main navbar.
+pub(crate) fn aside_panel_navigation_height() -> i32 {
+    crate::dpi::px(38)
+}
+
+/// The navigation bar row of an lxapp aside: directly under the slot
+/// header, while the page its active child shows wants one.
+pub(crate) fn aside_panel_navigation_rect(
+    panel_id: &str,
+    rect: RECT,
+    header: Option<RECT>,
+) -> Option<RECT> {
+    let header = header?;
+    lingxia_windows_contract::aside_panel_navigation(panel_id)?;
+    Some(normalize_rect(RECT {
+        left: header.left,
+        top: header.bottom,
+        right: header.right,
+        bottom: (header.bottom + aside_panel_navigation_height()).min(rect.bottom),
+    }))
+}
+
+/// Height of an lxapp aside's segmented tabBar row.
+pub(crate) fn aside_panel_tabbar_height() -> i32 {
+    crate::dpi::px(28)
+}
+
+/// The tabBar row of an lxapp aside: under its navigation bar (or its header
+/// when the bar takes no height), while its page is a tab page.
+pub(crate) fn aside_panel_tabbar_rect(
+    panel_id: &str,
+    rect: RECT,
+    header: Option<RECT>,
+) -> Option<RECT> {
+    let above = aside_panel_navigation_rect(panel_id, rect, header).or(header)?;
+    lingxia_windows_contract::aside_panel_tabbar(panel_id)?;
+    Some(normalize_rect(RECT {
+        left: above.left,
+        top: above.bottom,
+        right: above.right,
+        bottom: (above.bottom + aside_panel_tabbar_height()).min(rect.bottom),
+    }))
+}
+
+/// Top edge of a panel's webview: below its header, navigation and tabBar rows.
+pub(crate) fn panel_webview_top(panel_id: &str, rect: RECT, header: Option<RECT>) -> i32 {
+    aside_panel_tabbar_rect(panel_id, rect, header)
+        .or_else(|| aside_panel_navigation_rect(panel_id, rect, header))
+        .map(|row| row.bottom)
+        .or(header.map(|header| header.bottom))
+        .map_or(rect.top, |top| top.clamp(rect.top, rect.bottom))
 }
 
 fn exclude_clip_rect_if_non_empty(hdc: HDC, rect: RECT) {
@@ -5760,7 +5809,7 @@ fn flush_active_host_layout_batch() {
     }
 }
 
-fn sync_active_host_layout() {
+pub(crate) fn sync_active_host_layout() {
     let deferred = HOST_LAYOUT_BATCH_DEPTH.with(|depth| {
         if depth.get() == 0 {
             false

@@ -763,7 +763,17 @@ The aside region is fixed at three slots, grouped by rendering engine:
   open API, sidebar action entries, the sidebar browser "+"; page-level actions live
   in the tab's context menu.
 - Maximizing an aside covers only the main area and toggles back on the next
-  click; it does not change the role.
+  click; it does not change the role. The core owns the state (one maximized
+  slot per window at most; the plan marks it `maximized` and also `overlay`,
+  so skins present it as any overlay). It restores on the second toggle, a
+  main switch, or the slot collapsing or losing its last child, and survives
+  every other plan. The control sits left of the slot's collapse control; a
+  compact overlay, which already covers the main, does not offer it. Content
+  is told only its new size, never that it is maximized.
+- An lxapp aside shows the page navigation bar below its tab strip only while
+  Back or Home has somewhere to go: at the root of its stack (and for
+  `navigationStyle: custom`) the bar takes no height, since the slot tab
+  already names the app. Page titles never move into the tab strip.
 - Browser "open in main browser" promotes and closes only the **current URL
   tab**; other browser-aside tabs stay. Closing the last tab closes the slot.
 - A desktop browser slot offers history navigation, refresh, title tabs, and

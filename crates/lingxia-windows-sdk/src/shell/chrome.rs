@@ -332,7 +332,11 @@ pub(super) mod command_id {
     pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
     pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
     pub(super) const ASIDE_PANEL_COLLAPSE: &str = "aside-panel.collapse";
+    pub(super) const ASIDE_PANEL_MAXIMIZE: &str = "aside-panel.maximize";
     pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
+    pub(super) const ASIDE_PANEL_NAV_HOME: &str = "aside-panel.nav.home";
+    pub(super) const ASIDE_PANEL_TABBAR_CLICK: &str = "aside-panel.tabbar.click";
+    pub(super) const ASIDE_PANEL_TABBAR_MENU: &str = "aside-panel.tabbar.menu";
     pub(super) const ASIDE_PANEL_NAV_FORWARD: &str = "aside-panel.nav.forward";
     pub(super) const ASIDE_PANEL_NAV_RELOAD: &str = "aside-panel.nav.reload";
     pub(super) const NATIVE_PANEL_TAB_CLICK: &str = "native-panel.tab.click";
@@ -655,10 +659,21 @@ fn chrome_hover_rect(
             {
                 return Some(rect);
             }
+            if let Some(rect) = aside_panel_navigation_hover_rect(panel, point) {
+                return Some(rect);
+            }
+            if let Some(rect) = aside_panel_tabbar_hover_rect(panel, point) {
+                return Some(rect);
+            }
             if !browser_panel_header_visible(panel)
                 || !rect_contains(&browser_panel_header_rect(panel), point)
             {
                 continue;
+            }
+            if let Some(rect) = aside_panel_maximize_rect(panel)
+                && rect_contains(&rect, point)
+            {
+                return Some(rect);
             }
             for (_, rect) in aside_panel_nav_button_rects(panel) {
                 if rect_contains(&rect, point) {
@@ -2883,6 +2898,8 @@ pub(super) fn draw_content_cards(
             }
             if browser_panel_header_visible(panel) {
                 draw_browser_panel_header(hdc, panel, state.cursor);
+                draw_aside_panel_navigation(hdc, panel, state.cursor);
+                draw_aside_panel_tabbar(hdc, panel, state.cursor);
             }
         }
         for panel in &attached.panels {

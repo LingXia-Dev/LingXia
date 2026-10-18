@@ -121,6 +121,10 @@ enum LxAppLayoutReconciler {
         let activeChild: String?
         let visible: Bool
         let overlay: Bool
+        /// The user maximized the slot over the main. The core also sets
+        /// `overlay`, so placement below needs nothing else; the state lives
+        /// in the core and survives every later plan.
+        let maximized: Bool?
     }
 
     private struct PlanFloat: Decodable {
@@ -192,6 +196,13 @@ enum LxAppLayoutReconciler {
         // registered-but-hidden and switch via the slot's header tab strip.
         var desired: [String: PanelPosition] = [:]
         var overlayIds = Set<String>()
+        // Overlays the user maximized: they keep their docked room so the main
+        // keeps its frame underneath (see `setPanelFullscreen`).
+        var maximizedIds = Set<String>()
+        // A compact window has no dock to keep: there the main fills the area.
+        let keepsDockRoom = { (slot: PlanAsideSlot) in
+            slot.maximized == true && plan.splitForm != "fullScreen"
+        }
         if slots.isEmpty {
             if plan.splitForm != "fullScreen" {
                 for aside in plan.asides {
@@ -212,12 +223,14 @@ enum LxAppLayoutReconciler {
                     if projectedOverlay,
                        let anchor = shell.browserCoordinator.activeDockedBrowser?.anchorSurfaceId {
                         overlayIds.insert(anchor)
+                        if keepsDockRoom(slot) { maximizedIds.insert(anchor) }
                     }
                     continue
                 }
                 guard let active = slot.activeChild ?? slot.children.last else { continue }
                 desired[active] = panelPosition(for: slot.edge)
                 if projectedOverlay { overlayIds.insert(active) }
+                if projectedOverlay && keepsDockRoom(slot) { maximizedIds.insert(active) }
             }
         }
         let desiredIds = Set(desired.keys)
@@ -257,7 +270,10 @@ enum LxAppLayoutReconciler {
 
             let atCorrectEdge = workspace.panelPosition(id: id) == edge
             let visible = workspace.isPanelVisible(id: id)
-            workspace.setPanelFullscreen(id: id, enabled: overlayIds.contains(id))
+            workspace.setPanelFullscreen(
+                id: id,
+                enabled: overlayIds.contains(id),
+                keepsDockRoom: maximizedIds.contains(id))
 
             // Idempotent fast path: already shown at the right edge — leave it
             // exactly as is (no hide/show/re-place → no flicker, no empty paint).
@@ -287,6 +303,10 @@ enum LxAppLayoutReconciler {
         // remains visible for a single child as its close affordance.
         lastAsideSlots = slots
         applyLxappSlotTabs(slots, shell: shell, workspace: workspace)
+        for slot in slots where slot.visible && slot.kind == "native" {
+            guard let active = slot.activeChild ?? slot.children.last else { continue }
+            LxAppMacAppUIRuntime.reflectAsideMaximized(surfaceId: active, maximized: slot.maximized == true)
+        }
 
         // Float pass — popups above the layout. The reconciler is the single
         // authority for float visibility, mirroring the aside pass above: the
@@ -377,6 +397,11 @@ enum LxAppLayoutReconciler {
                 },
                 onCollapse: {
                     _ = collapseAsideSlot(focusAppId, "lxapp")
+                },
+                maximized: slot.maximized == true,
+                // A compact overlay already covers the main: nothing to toggle.
+                onToggleMaximize: slot.overlay && slot.maximized != true ? nil : {
+                    _ = setAsideSlotMaximized(focusAppId, "lxapp", slot.maximized != true)
                 }
             )
         }

@@ -23,8 +23,12 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     internal var hostsAside = false
     /// The aside's own navigation bar. The window toolbar shows the main's
     /// page; an aside page gets the same bar sized to the aside, fed this
-    /// app's navigation state. It collapses for `navigationStyle: custom`.
+    /// app's navigation state. It collapses for `navigationStyle: custom` and
+    /// at the root of the stack unless Home is offered.
     private var asideNavigationBar: MacNavigationToolbar?
+    /// The app's tabBar inside the aside (asides never enter the sidebar).
+    private var asideTabBar: AsideTabBarView?
+    nonisolated(unsafe) private var tabBarObserver: NSObjectProtocol?
     private var webViewContainer: NSView!
     private weak var activeWebView: WKWebView?
     /// Covers a freshly swapped-in webview until its document paints:
@@ -51,6 +55,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     deinit {
         closeAppObserver.map(NotificationCenter.default.removeObserver)
+        tabBarObserver.map(NotificationCenter.default.removeObserver)
     }
 
     override func loadView() {
@@ -85,6 +90,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         let contentTop: NSLayoutYAxisAnchor
         if hostsAside {
             let bar = MacNavigationToolbar(followsSharedState: false)
+            bar.collapsesWithoutNavigation = true
             bar.translatesAutoresizingMaskIntoConstraints = false
             bar.onNavigationAction = { [weak self] action in
                 guard let self else { return }
@@ -100,7 +106,15 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             ])
             asideNavigationBar = bar
-            contentTop = bar.bottomAnchor
+            let tabBar = AsideTabBarView(appId: appId)
+            view.addSubview(tabBar)
+            NSLayoutConstraint.activate([
+                tabBar.topAnchor.constraint(equalTo: bar.bottomAnchor),
+                tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            ])
+            asideTabBar = tabBar
+            contentTop = tabBar.bottomAnchor
             updateNavigationBar(appId: appId, path: currentPath)
         } else {
             contentTop = view.topAnchor
@@ -369,6 +383,17 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     // MARK: - Notifications
 
     private func setupNotificationObservers() {
+        if hostsAside {
+            tabBarObserver = NotificationCenter.default.addObserver(
+                forName: .tabBarStateChanged, object: nil, queue: .main
+            ) { [weak self] notification in
+                let appId = notification.object as? String
+                MainActor.assumeIsolated {
+                    guard let self, appId == nil || appId == self.appId else { return }
+                    self.asideTabBar?.refresh()
+                }
+            }
+        }
         closeAppObserver = NotificationCenter.default.addObserver(
             forName: NSNotification.Name(ACTION_CLOSE_LXAPP), object: nil, queue: .main
         ) { [weak self] notification in
@@ -465,12 +490,23 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }
     }
 
+    /// Keyboard Back for an aside page: pops this app's own stack when its
+    /// page offers Back. Returns whether it navigated.
+    @MainActor
+    func navigateBackFromKeyboard() -> Bool {
+        guard hostsAside, !currentPath.isEmpty,
+              lingxia.getNavigationBarState(appId, currentPath).show_back_button else { return false }
+        _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionBack)
+        return true
+    }
+
     @MainActor
     func updateNavigationBar(appId: String, path: String) {
         // The window toolbar is the main's; an aside shows its own bar.
         if hostsAside {
             guard !path.isEmpty else { return }
             asideNavigationBar?.apply(lingxia.getNavigationBarState(appId, path))
+            asideTabBar?.refresh()
             return
         }
         NavigationBarStateManager.shared.updateState(appId: appId, path: path)

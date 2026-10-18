@@ -2913,6 +2913,74 @@ async function visibleHostAxNode(
     .sort((a, b) => b.rect.w * b.rect.h - a.rect.w * a.rect.h)[0];
 }
 
+/**
+ * The in-bounds node with exactly this role and label (name or value). AX
+ * text matching is a substring match, and a page's web area carries the page
+ * title as its name ("Feedback" holds "Back").
+ */
+async function exactHostAxNode(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+  role: string,
+  label: string,
+): Promise<DesktopAxNode | undefined> {
+  const nodes = await desktop.ax.query({ window: host.id, match: label, all: true })
+    .catch(() => [] as DesktopAxNode[]);
+  return nodes.find((node) => (
+    node.role === role
+    && (node.name === label || node.value === label)
+    && node.rect.w > 0
+    && node.rect.h > 0
+    && node.rect.x >= host.bounds.x - CHAT_INPUT_AX_SLOP_PX
+    && node.rect.x + node.rect.w <= host.bounds.x + host.bounds.w + CHAT_INPUT_AX_SLOP_PX
+  ));
+}
+
+/**
+ * Screen y of the top of the aside page's WebView: the AX node of `text` less
+ * the element's own offset inside the page. CSS pixels are points on macOS
+ * and physical pixels on Windows (WebView2 rasterizes at scale 1), the same
+ * units the desktop driver reports.
+ */
+async function asidePageTop(
+  t: Fixture,
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+  pageName: 'chat' | 'feedback',
+  text: string,
+): Promise<{ top: number; left: number } | undefined> {
+  // The text node itself, never the web area (it carries the page title as
+  // its name, and the Chat page's title is its heading). macOS reports text
+  // as `statictext` with the text in `value`; Windows UIA as `text` with the
+  // text in `name`.
+  const node = (await desktop.ax.query({ window: host.id, match: text, all: true })
+    .catch(() => [] as DesktopAxNode[]))
+    .find((candidate) => (
+      (candidate.role === 'statictext' || candidate.role === 'text')
+      && (candidate.name === text || candidate.value === text)
+      && candidate.rect.w > 0
+      && candidate.rect.h > 0
+      && inRightAside(host, candidate.rect)
+    ));
+  if (!node) return undefined;
+  const page = await t.automation.lxapp('lingxia-chat').page({ name: pageName }, { timeout: 10_000 })
+    .catch(() => undefined);
+  if (!page) return undefined;
+  const offset = await page.view.eval(({ document }) => {
+    // The innermost element carrying the label comes last in document order.
+    const all = Array.from(document.querySelectorAll('body *'));
+    const match = all.filter((element) => {
+      const label = element.textContent?.trim() ?? '';
+      return label === 'AI Chat' || label === 'Help us improve';
+    }).pop();
+    if (!match) return null;
+    const rect = match.getBoundingClientRect();
+    return { top: rect.top, left: rect.left };
+  }).catch(() => null) as { top: number; left: number } | null;
+  if (!offset) return undefined;
+  return { top: node.rect.y - Math.round(offset.top), left: node.rect.x - Math.round(offset.left) };
+}
+
 /** A bundled lxapp other than Chat, opened as a main beside the Chat aside. */
 const ASIDE_NAV_OTHER_APP_ID = 'app.lingxia.terminal-settings';
 
@@ -3002,25 +3070,57 @@ desktopTest('keeps an aside lxapp page stack and its floats inside the aside', {
       await expectMainUnchanged(`after ${phase}`);
     };
 
-    // AppKit gives an aside page the same navigation bar a main page has,
-    // sized to the aside: the page's title, and Back once the aside's own
-    // stack is deeper than one page. Back pops inside the aside.
+    // An aside page gets the same navigation bar a main page has, sized to
+    // the aside — but only while Back or Home has somewhere to go. At the
+    // root of the aside's own stack the slot tab already names the app, so
+    // the bar takes no height and the page starts right under the tab strip.
+    const navbarHeight = nativeWindowExtent(platform, host, 38);
+    const slop = nativeWindowExtent(platform, host, 4);
+    const rootTop = await waitForValue(
+      () => asidePageTop(t, desktop, host!, 'chat', 'AI Chat'),
+      'Chat page top at the aside stack root',
+    );
     if (platform === 'macos') {
-      const feedback = await pushFeedback('navbar back');
+      expect(await exactHostAxNode(desktop, host, 'button', 'Back').then((node) => (
+        node !== undefined && inRightAside(host!, node.rect)
+      ))).toBeFalsy();
+    }
+    const feedback = await pushFeedback('navbar back');
+    // One page deeper the bar appears: the page moves down by its height.
+    const pushedTop = await waitForValue(async () => {
+      const top = await asidePageTop(t, desktop, host!, 'feedback', 'Help us improve');
+      return top && top.top - rootTop.top >= navbarHeight - slop ? top : undefined;
+    }, 'aside navigation bar under the tab strip after navigateTo');
+    expect(Math.abs(pushedTop.top - rootTop.top - navbarHeight) <= slop).toBeTruthy();
+    if (platform === 'macos') {
       const title = await waitForValue(async () => {
-        const node = await visibleHostAxNode(desktop, host!, 'Feedback');
+        const node = await exactHostAxNode(desktop, host!, 'statictext', 'Feedback');
         return node && inRightAside(host!, node.rect) && node.rect.y < feedback.rect.y
           ? node
           : undefined;
       }, 'aside navigation bar title');
       expect(inRightAside(host, title.rect)).toBeTruthy();
       const back = await waitForValue(async () => {
-        const node = await visibleHostAxNode(desktop, host!, 'Back');
-        return node?.role === 'button' && inRightAside(host!, node.rect) ? node : undefined;
+        const node = await exactHostAxNode(desktop, host!, 'button', 'Back');
+        return node && inRightAside(host!, node.rect) ? node : undefined;
       }, 'aside navigation bar Back button');
       await desktop.ax.invoke({ window: host.id, match: `id:${back.id}` });
-      await expectChatBackInAside('navbar Back');
+    } else {
+      // Windows paints the bar as shell chrome: click its Back glyph, the
+      // first 44-DIP button 8 DIP in from the panel's leading edge.
+      const current = (await desktop.windows()).find((window) => window.id === host!.id) ?? host;
+      await desktop.window.focus({ window: current.id });
+      await desktop.pointer.click({ at: [
+        pushedTop.left + nativeWindowExtent(platform, host, 8 + 11),
+        pushedTop.top - Math.round(navbarHeight / 2),
+      ] });
     }
+    await expectChatBackInAside('navbar Back');
+    // Back at the root the bar collapses again.
+    await waitForValue(async () => {
+      const top = await asidePageTop(t, desktop, host!, 'chat', 'AI Chat');
+      return top && Math.abs(top.top - rootTop.top) <= slop ? top : undefined;
+    }, 'aside navigation bar collapsed again at the stack root');
 
     // navigateBack pops inside the aside and reveals the chat page there again.
     await pushFeedback('navigateBack');

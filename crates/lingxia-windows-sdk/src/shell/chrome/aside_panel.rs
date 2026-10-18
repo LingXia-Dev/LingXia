@@ -26,6 +26,12 @@ pub(super) fn browser_panel_hit_test(
 ) -> Option<WindowsChromeHit> {
     let attached = state.attached.as_ref()?;
     for panel in &attached.panels {
+        if let Some(hit) = aside_panel_navigation_hit(panel, point) {
+            return Some(hit);
+        }
+        if let Some(hit) = aside_panel_tabbar_hit(panel, point) {
+            return Some(hit);
+        }
         if !browser_panel_header_visible(panel)
             || !rect_contains(&browser_panel_header_rect(panel), point)
         {
@@ -79,6 +85,14 @@ pub(super) fn aside_panel_header_hit(
             json!({ "panel_id": panel.panel_id.clone() }),
         );
     }
+    if let Some(maximize) = aside_panel_maximize_rect(panel)
+        && rect_contains(&maximize, point)
+    {
+        return chrome_command(
+            command_id::ASIDE_PANEL_MAXIMIZE,
+            json!({ "panel_id": panel.panel_id.clone() }),
+        );
+    }
     for (tab, rect) in tabs.iter().zip(aside_panel_tab_rects(panel, tabs)) {
         if let Some(close) = aside_panel_tab_close_rect(rect)
             && rect_contains(&close, point)
@@ -102,6 +116,265 @@ pub(super) fn aside_panel_header_hit(
         }
     }
     WindowsChromeHit::Chrome
+}
+
+/// Maximize control left of the collapse control (spec §4.6). A compact
+/// overlay already covers the main, so it has nothing to toggle there.
+pub(super) fn aside_panel_maximize_rect(panel: &WindowsChromePanel) -> Option<RECT> {
+    let maximized = lingxia_windows_contract::aside_panel_maximized(&panel.panel_id);
+    if panel.overlay && !maximized {
+        return None;
+    }
+    let collapse = browser_panel_close_rect(panel);
+    Some(normalize_rect(RECT {
+        left: collapse.left - browser_panel_button_gap() - rect_width(&collapse),
+        top: collapse.top,
+        right: collapse.left - browser_panel_button_gap(),
+        bottom: collapse.bottom,
+    }))
+}
+
+/// The lxapp aside's navigation bar, under its tab strip.
+pub(super) fn aside_panel_navigation_rect(panel: &WindowsChromePanel) -> Option<RECT> {
+    if panel.host_content.is_some() {
+        return None;
+    }
+    crate::window_host::aside_panel_navigation_rect(&panel.panel_id, panel.rect, panel.header_rect)
+}
+
+fn aside_panel_navigation_layout(
+    panel: &WindowsChromePanel,
+) -> Option<(RECT, WindowsShellNavigationBarLayout)> {
+    let rect = aside_panel_navigation_rect(panel)?;
+    let navigation = lingxia_windows_contract::aside_panel_navigation(&panel.panel_id)?;
+    Some((
+        rect,
+        WindowsShellNavigationBarLayout {
+            visible: true,
+            title: navigation.title,
+            background_color: navigation.background_color,
+            text_color: navigation.text_color,
+            show_back_button: navigation.show_back_button,
+            show_home_button: navigation.show_home_button,
+            height: rect_height(&rect),
+        },
+    ))
+}
+
+/// Back sits first; Home follows it, or takes its place at the stack root.
+fn aside_panel_navigation_button_rects(
+    rect: RECT,
+    navigation: &WindowsShellNavigationBarLayout,
+) -> Vec<(&'static str, RECT)> {
+    let buttons_left = navbar_buttons_left(rect);
+    let mut out = Vec::new();
+    if navigation.show_back_button {
+        out.push((
+            command_id::ASIDE_PANEL_NAV_BACK,
+            nav_button_rect(rect, buttons_left, 0),
+        ));
+    }
+    if navigation.show_home_button {
+        out.push((
+            command_id::ASIDE_PANEL_NAV_HOME,
+            nav_button_rect(rect, buttons_left, out.len() as i32),
+        ));
+    }
+    out
+}
+
+fn aside_panel_navigation_hit(
+    panel: &WindowsChromePanel,
+    point: (i32, i32),
+) -> Option<WindowsChromeHit> {
+    let (rect, navigation) = aside_panel_navigation_layout(panel)?;
+    if !rect_contains(&rect, point) {
+        return None;
+    }
+    for (command, button) in aside_panel_navigation_button_rects(rect, &navigation) {
+        if rect_contains(&button, point) {
+            return Some(chrome_command(
+                command,
+                json!({ "panel_id": panel.panel_id.clone() }),
+            ));
+        }
+    }
+    Some(WindowsChromeHit::Chrome)
+}
+
+/// Hover target inside an lxapp aside's navigation bar.
+pub(super) fn aside_panel_navigation_hover_rect(
+    panel: &WindowsChromePanel,
+    point: (i32, i32),
+) -> Option<RECT> {
+    let (rect, navigation) = aside_panel_navigation_layout(panel)?;
+    if !rect_contains(&rect, point) {
+        return None;
+    }
+    aside_panel_navigation_button_rects(rect, &navigation)
+        .into_iter()
+        .map(|(_, button)| button)
+        .find(|button| rect_contains(button, point))
+        .or(Some(rect))
+}
+
+/// Below this the segmented row turns into the current tab's pop-up.
+fn aside_panel_tabbar_segments_min_width() -> i32 {
+    px(240)
+}
+
+fn aside_panel_tabbar_layout(
+    panel: &WindowsChromePanel,
+) -> Option<(RECT, lingxia_windows_contract::WindowsAsidePanelTabBar)> {
+    if panel.host_content.is_some() {
+        return None;
+    }
+    let rect = crate::window_host::aside_panel_tabbar_rect(
+        &panel.panel_id,
+        panel.rect,
+        panel.header_rect,
+    )?;
+    let tabbar = lingxia_windows_contract::aside_panel_tabbar(&panel.panel_id)?;
+    Some((rect, tabbar))
+}
+
+/// Segment rects, index-aligned with `tabbar.items`; empty in the narrow
+/// pop-up form.
+fn aside_panel_tabbar_segment_rects(rect: RECT, count: usize) -> Vec<RECT> {
+    if count == 0 || rect_width(&rect) < aside_panel_tabbar_segments_min_width() {
+        return Vec::new();
+    }
+    let inner = inset_rect(rect, px(8), px(3));
+    let gap = px(2);
+    let count = count as i32;
+    let width = ((rect_width(&inner) - (count - 1) * gap) / count).max(1);
+    (0..count)
+        .map(|slot| {
+            let left = inner.left + slot * (width + gap);
+            normalize_rect(RECT {
+                left,
+                top: inner.top,
+                right: if slot == count - 1 {
+                    inner.right
+                } else {
+                    left + width
+                },
+                bottom: inner.bottom - 1,
+            })
+        })
+        .collect()
+}
+
+fn aside_panel_tabbar_hit(
+    panel: &WindowsChromePanel,
+    point: (i32, i32),
+) -> Option<WindowsChromeHit> {
+    let (rect, tabbar) = aside_panel_tabbar_layout(panel)?;
+    if !rect_contains(&rect, point) {
+        return None;
+    }
+    let segments = aside_panel_tabbar_segment_rects(rect, tabbar.items.len());
+    if segments.is_empty() {
+        return Some(WindowsChromeHit::Command(
+            WindowsChromeCommand::new(command_id::ASIDE_PANEL_TABBAR_MENU)
+                .with_payload(json!({ "panel_id": panel.panel_id.clone() }))
+                .with_screen_position(),
+        ));
+    }
+    for ((index, _), segment) in tabbar.items.iter().zip(segments) {
+        if rect_contains(&segment, point) {
+            return Some(chrome_command(
+                command_id::ASIDE_PANEL_TABBAR_CLICK,
+                json!({ "panel_id": panel.panel_id.clone(), "index": index }),
+            ));
+        }
+    }
+    Some(WindowsChromeHit::Chrome)
+}
+
+/// Hover target inside an lxapp aside's tabBar row.
+pub(super) fn aside_panel_tabbar_hover_rect(
+    panel: &WindowsChromePanel,
+    point: (i32, i32),
+) -> Option<RECT> {
+    let (rect, tabbar) = aside_panel_tabbar_layout(panel)?;
+    if !rect_contains(&rect, point) {
+        return None;
+    }
+    aside_panel_tabbar_segment_rects(rect, tabbar.items.len())
+        .into_iter()
+        .find(|segment| rect_contains(segment, point))
+        .or(Some(rect))
+}
+
+/// The lxapp aside's tabBar: segments under the navigation bar, the current
+/// tab with a ▾ when the panel is too narrow for them.
+pub(super) fn draw_aside_panel_tabbar(
+    hdc: HDC,
+    panel: &WindowsChromePanel,
+    cursor: Option<(i32, i32)>,
+) {
+    let Some((rect, tabbar)) = aside_panel_tabbar_layout(panel) else {
+        return;
+    };
+    let pal = shell_palette();
+    fill_rect(hdc, rect, pal.panel_background);
+    draw_bottom_border(hdc, rect, pal.divider);
+    let segments = aside_panel_tabbar_segment_rects(rect, tabbar.items.len());
+    if segments.is_empty() {
+        let label = tabbar
+            .items
+            .iter()
+            .find(|(index, _)| *index == tabbar.selected_index)
+            .or(tabbar.items.first())
+            .map(|(_, label)| format!("{label}  \u{25BE}"))
+            .unwrap_or_default();
+        let pill = inset_rect(rect, px(8), px(3));
+        draw_hover_wash(hdc, pill, 6, cursor);
+        draw_text(
+            hdc,
+            &label,
+            inset_rect(pill, px(8), 0),
+            pal.text_primary,
+            DT_LEFT,
+        );
+        return;
+    }
+    for ((index, label), segment) in tabbar.items.iter().zip(segments) {
+        let selected = *index == tabbar.selected_index;
+        if selected {
+            fill_round_rect_aa(hdc, segment, 6, pal.group_active_background);
+        } else {
+            draw_hover_wash(hdc, segment, 6, cursor);
+        }
+        let color = if selected {
+            pal.text_primary
+        } else {
+            pal.text_muted
+        };
+        draw_text(hdc, label, inset_rect(segment, px(4), 0), color, DT_CENTER);
+    }
+}
+
+/// The lxapp aside's navigation bar: the same bar the main draws, fed the
+/// aside page's state and sized to the panel.
+pub(super) fn draw_aside_panel_navigation(
+    hdc: HDC,
+    panel: &WindowsChromePanel,
+    cursor: Option<(i32, i32)>,
+) {
+    let Some((rect, navigation)) = aside_panel_navigation_layout(panel) else {
+        return;
+    };
+    draw_navigation_bar(
+        hdc,
+        rect,
+        [0; 4],
+        true,
+        navbar_buttons_left(rect),
+        &navigation,
+        cursor,
+    );
 }
 
 pub(super) fn panel_aside_tabs(panel: &WindowsChromePanel) -> Vec<WindowsAsidePanelTab> {
@@ -217,7 +490,10 @@ pub(super) fn aside_panel_tab_rects(
     } else {
         header.left + browser_panel_header_padding()
     };
-    let right_edge = browser_panel_close_rect(panel).left - browser_panel_header_padding();
+    let right_edge = aside_panel_maximize_rect(panel)
+        .unwrap_or_else(|| browser_panel_close_rect(panel))
+        .left
+        - browser_panel_header_padding();
     let count = tabs.len() as i32;
     let avail = (right_edge - left_edge - (count - 1) * aside_panel_tab_gap()).max(0);
     let mut widths = tabs
@@ -454,4 +730,13 @@ pub(super) fn draw_aside_panel_header(
         pal.frame_button_icon,
         16,
     );
+    if let Some(maximize) = aside_panel_maximize_rect(panel) {
+        draw_hover_wash(hdc, maximize, 5, cursor);
+        let glyph = if lingxia_windows_contract::aside_panel_maximized(&panel.panel_id) {
+            GLYPH_PANEL_SHRINK
+        } else {
+            GLYPH_PANEL_EXPAND
+        };
+        draw_frame_button_glyph_grayscale(hdc, glyph, maximize, pal.frame_button_icon);
+    }
 }

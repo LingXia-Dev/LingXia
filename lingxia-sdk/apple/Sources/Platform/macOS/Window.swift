@@ -173,6 +173,14 @@ class LxAppWindow: NSWindow {
             if let responder = firstResponder, responder is NSText {
                 return super.performKeyEquivalent(with: event)
             }
+            // Back follows focus: an aside lxapp page pops its own stack, not
+            // the main's. The window toolbar state belongs to the main.
+            if let aside = asideLxAppController(containing: firstResponder) {
+                if aside.navigateBackFromKeyboard() {
+                    return true
+                }
+                return super.performKeyEquivalent(with: event)
+            }
             // Only navigate back when back button is available
             if let state = NavigationBarStateManager.shared.currentState, state.show_back_button {
                 if let appId = LxAppTabManager.shared.activeTab?.appId {
@@ -182,6 +190,19 @@ class LxAppWindow: NSWindow {
             }
         }
         return super.performKeyEquivalent(with: event)
+    }
+
+    /// The aside lxapp controller whose view holds `responder`, found through
+    /// the responder chain (a view controller follows its view in it).
+    private func asideLxAppController(containing responder: NSResponder?) -> macOSLxAppViewController? {
+        var current = responder
+        while let next = current {
+            if let controller = next as? macOSLxAppViewController {
+                return controller.hostsAside ? controller : nil
+            }
+            current = next.nextResponder
+        }
+        return nil
     }
 }
 

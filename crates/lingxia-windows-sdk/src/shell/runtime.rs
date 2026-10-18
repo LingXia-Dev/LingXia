@@ -498,7 +498,11 @@ mod chrome_command {
     pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
     pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
     pub(super) const ASIDE_PANEL_COLLAPSE: &str = "aside-panel.collapse";
+    pub(super) const ASIDE_PANEL_MAXIMIZE: &str = "aside-panel.maximize";
     pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
+    pub(super) const ASIDE_PANEL_NAV_HOME: &str = "aside-panel.nav.home";
+    pub(super) const ASIDE_PANEL_TABBAR_CLICK: &str = "aside-panel.tabbar.click";
+    pub(super) const ASIDE_PANEL_TABBAR_MENU: &str = "aside-panel.tabbar.menu";
     pub(super) const ASIDE_PANEL_NAV_FORWARD: &str = "aside-panel.nav.forward";
     pub(super) const ASIDE_PANEL_NAV_RELOAD: &str = "aside-panel.nav.reload";
     pub(super) const NATIVE_PANEL_TAB_CLICK: &str = "native-panel.tab.click";
@@ -1694,6 +1698,7 @@ fn reconcile_declared_browser_surfaces() {
 }
 
 fn sync_app_shell_layout(appid: &str) {
+    sync_lxapp_aside_navigation();
     #[cfg(feature = "browser-runtime")]
     if SELF_BROWSER_HOST.load(Ordering::Acquire) && appid == lingxia_browser::BUILTIN_BROWSER_APPID
     {
@@ -3484,6 +3489,7 @@ fn shell_surface_in_graph(surface_id: &str) -> bool {
 /// empty content card while a WebView is still becoming ready.
 fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
     reconcile_lxapp_main_from_layout(plan);
+    sync_lxapp_aside_navigation();
 
     let native_slot = plan
         .aside_slots
@@ -3736,10 +3742,172 @@ fn handle_managed_aside_event(event: WindowsAsidePanelEvent) {
                 owner.set_shell_slot_collapsed(aside_slot_kind(&panel_id), true);
             }
         }
+        WindowsAsidePanelEvent::ToggleMaximize { panel_id } => {
+            if let Some(owner_appid) = shell_owner_appid()
+                && let Some(owner) = lxapp::try_get(&owner_appid)
+            {
+                let kind = aside_slot_kind(&panel_id);
+                owner.set_shell_slot_maximized(kind, !owner.shell_slot_maximized(kind));
+            }
+        }
+        WindowsAsidePanelEvent::NavBack { panel_id }
+            if panel_id == lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID =>
+        {
+            lxapp_aside_navigation_click("back");
+        }
+        WindowsAsidePanelEvent::NavHome { panel_id }
+            if panel_id == lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID =>
+        {
+            lxapp_aside_navigation_click("home");
+        }
+        WindowsAsidePanelEvent::TabBarClick { panel_id, index }
+            if panel_id == lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID =>
+        {
+            if let Some(app) = lxapp_aside_active_app() {
+                let _ = app.on_lxapp_event(LxAppUiEventType::TabBarClick, index.to_string());
+            }
+        }
         WindowsAsidePanelEvent::NavBack { .. }
+        | WindowsAsidePanelEvent::NavHome { .. }
+        | WindowsAsidePanelEvent::TabBarClick { .. }
         | WindowsAsidePanelEvent::NavForward { .. }
         | WindowsAsidePanelEvent::NavReload { .. } => {}
     }
+}
+
+/// The lxapp the lxapp aside slot is showing, if any.
+fn lxapp_aside_active_app() -> Option<Arc<LxApp>> {
+    let owner = lxapp::try_get(&shell_owner_appid()?)?;
+    let plan = owner.surface_derived_layout()?;
+    let slot = plan
+        .aside_slots
+        .iter()
+        .find(|slot| slot.kind == SlotKind::Lxapp && slot.visible)?;
+    let surface_id = slot
+        .active_child
+        .as_deref()
+        .or_else(|| slot.children.last().map(String::as_str))?;
+    let appid = match panel_target_for_id(surface_id) {
+        Some(PanelTarget::LxApp { appid, .. }) => appid,
+        // Runtime (undeclared) lxapp asides use appId as their surface id.
+        _ => surface_id.to_string(),
+    };
+    lxapp::try_get(&appid)
+}
+
+fn lxapp_aside_navigation_click(action: &str) {
+    if let Some(app) = lxapp_aside_active_app() {
+        let _ = app.on_lxapp_event(LxAppUiEventType::NavigationClick, action.to_string());
+    }
+}
+
+/// Publish the lxapp aside's navigation bar for the page its active child
+/// shows. Like the macOS aside bar it shows only while Back or Home has
+/// somewhere to go: at the stack root the slot tab already names the app.
+fn sync_lxapp_aside_navigation() {
+    let app = lxapp_aside_active_app();
+    let navigation = app.as_deref().and_then(|app| {
+        let path = app.current_page().ok()?.path();
+        let navbar = build_navigation_bar_layout(app, &path);
+        lxapp_aside_shows_navigation(&navbar).then_some(
+            lingxia_windows_contract::WindowsAsidePanelNavigation {
+                show_home_button: navbar.show_home_button && !navbar.show_back_button,
+                title: navbar.title,
+                background_color: navbar.background_color,
+                text_color: navbar.text_color,
+                show_back_button: navbar.show_back_button,
+            },
+        )
+    });
+    let tabbar = app.as_deref().and_then(lxapp_aside_tabbar);
+    let tabbar_changed = lingxia_windows_contract::set_aside_panel_tabbar(
+        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID,
+        tabbar,
+    );
+    if lingxia_windows_contract::set_aside_panel_navigation(
+        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID,
+        navigation,
+    ) | tabbar_changed
+    {
+        // The bar's height moves the aside's webview, not just its chrome.
+        crate::window_host::sync_active_host_layout();
+        lingxia_windows_contract::refresh_aside_panel(
+            lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID,
+        );
+    }
+}
+
+/// The narrow form of the lxapp aside's tabBar row: every item in a menu,
+/// the current one checked.
+fn show_lxapp_aside_tabbar_menu(panel_id: &str, screen_x: i32, screen_y: i32) {
+    let Some(tabbar) = lingxia_windows_contract::aside_panel_tabbar(panel_id) else {
+        return;
+    };
+    let Some(window) = shell_owner_appid().and_then(|appid| owner_window_handle(&appid)) else {
+        return;
+    };
+    let labels = tabbar
+        .items
+        .iter()
+        .map(|(_, label)| label.clone())
+        .collect();
+    let checked = tabbar
+        .items
+        .iter()
+        .map(|(index, _)| *index == tabbar.selected_index)
+        .collect();
+    let indices: Vec<i32> = tabbar.items.iter().map(|(index, _)| *index).collect();
+    let panel_id = panel_id.to_string();
+    super::context_menu::show_context_menu_checked(
+        window,
+        (screen_x, screen_y),
+        labels,
+        checked,
+        Arc::new(move |slot| {
+            if let Some(index) = indices.get(slot).copied() {
+                dispatch_aside_panel_event(WindowsAsidePanelEvent::TabBarClick {
+                    panel_id: panel_id.clone(),
+                    index,
+                });
+            }
+        }),
+    );
+}
+
+/// The lxapp aside's tabBar while its page is a tab page with somewhere else
+/// to go; the same items and selection the sidebar group shows for a main.
+/// Read from the app's own tabBar: `build_tab_bar_layout` is the sidebar,
+/// which an aside never enters.
+fn lxapp_aside_tabbar(app: &LxApp) -> Option<lingxia_windows_contract::WindowsAsidePanelTabBar> {
+    let tabbar = app.get_tabbar()?;
+    if !tabbar.is_effectively_visible() {
+        return None;
+    }
+    let items: Vec<(i32, String)> = tabbar
+        .visible_items()
+        .map(|(index, item)| (index as i32, item.text.clone().unwrap_or_default()))
+        .collect();
+    if items.len() < 2 {
+        return None;
+    }
+    // Selection follows the page shown, like the sidebar's.
+    let current_path = app
+        .peek_current_page()
+        .unwrap_or_else(|| app.initial_route());
+    let target = normalize_tab_path(&current_path);
+    let selected_index = tabbar
+        .items
+        .iter()
+        .position(|item| normalize_tab_path(&item.page_path) == target)
+        .map_or(-1, |index| index as i32);
+    Some(lingxia_windows_contract::WindowsAsidePanelTabBar {
+        items,
+        selected_index,
+    })
+}
+
+fn lxapp_aside_shows_navigation(navbar: &WindowsShellNavigationBarLayout) -> bool {
+    navbar.visible && (navbar.show_back_button || navbar.show_home_button)
 }
 
 /// Slot kind behind a well-known aside panel id.
@@ -4074,11 +4242,44 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             dispatch_aside_panel_event(WindowsAsidePanelEvent::Collapse { panel_id });
             return;
         }
+        chrome_command::ASIDE_PANEL_MAXIMIZE => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::ToggleMaximize { panel_id });
+            return;
+        }
         chrome_command::ASIDE_PANEL_NAV_BACK => {
             let Some(panel_id) = payload_string(&event, "panel_id") else {
                 return;
             };
             dispatch_aside_panel_event(WindowsAsidePanelEvent::NavBack { panel_id });
+            return;
+        }
+        chrome_command::ASIDE_PANEL_NAV_HOME => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::NavHome { panel_id });
+            return;
+        }
+        chrome_command::ASIDE_PANEL_TABBAR_CLICK => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            let Some(index) = payload_i32(&event, "index") else {
+                return;
+            };
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::TabBarClick { panel_id, index });
+            return;
+        }
+        chrome_command::ASIDE_PANEL_TABBAR_MENU => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            let screen_x = payload_i32(&event, "screen_x").unwrap_or(0);
+            let screen_y = payload_i32(&event, "screen_y").unwrap_or(0);
+            show_lxapp_aside_tabbar_menu(&panel_id, screen_x, screen_y);
             return;
         }
         chrome_command::ASIDE_PANEL_NAV_FORWARD => {
@@ -4130,6 +4331,15 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(panel_id) = payload_string(&event, "panel_id") else {
                 return;
             };
+            // A docked terminal aside maximizes through the core like every
+            // slot, so later plans keep the state instead of resetting it.
+            if shell_surface_is_active(&panel_id)
+                && let Some(owner_appid) = shell_owner_appid()
+                && let Some(owner) = lxapp::try_get(&owner_appid)
+            {
+                owner.set_shell_slot_maximized("native", !owner.shell_slot_maximized("native"));
+                return;
+            }
             super::terminal_panel::toggle_terminal_panel_maximized(&panel_id);
             return;
         }

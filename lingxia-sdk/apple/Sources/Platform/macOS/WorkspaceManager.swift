@@ -183,6 +183,14 @@ private class PanelSlot {
     var isVisible: Bool = false
     var currentSize: CGFloat
     var isFullscreen: Bool = false
+    /// A maximized aside covers the main but keeps reserving its docked room,
+    /// so the main card (and every page webview in it) keeps its real frame
+    /// underneath and restoring it relays out nothing in the main.
+    var keepsDockRoom: Bool = false
+
+    /// Whether the panel pushes the main card in (and takes room in its
+    /// edge's chain): docked, or maximized over a main that keeps its frame.
+    var occupiesDockRoom: Bool { !isFullscreen || keepsDockRoom }
 
     init(config: PanelConfig, cornerRadius: CGFloat) {
         self.config = config
@@ -442,12 +450,16 @@ class WorkspaceManager: NSObject {
         activeId: String?,
         onSelect: @escaping (String) -> Void,
         onClose: @escaping (String) -> Void,
-        onCollapse: @escaping () -> Void
+        onCollapse: @escaping () -> Void,
+        maximized: Bool = false,
+        onToggleMaximize: (() -> Void)? = nil
     ) {
         guard let slot = panels[panelId] else { return }
         slot.slotTabStrip.onSelect = onSelect
         slot.slotTabStrip.onClose = onClose
         slot.slotTabStrip.onCollapse = onCollapse
+        slot.slotTabStrip.onToggleMaximize = onToggleMaximize
+        slot.slotTabStrip.setMaximized(maximized)
         slot.setSlotTabs(tabs, activeId: activeId)
     }
 
@@ -639,17 +651,27 @@ class WorkspaceManager: NSObject {
         panels.values.contains { $0.isVisible && $0.isFullscreen }
     }
 
-    func setPanelFullscreen(id: String, enabled: Bool) {
+    /// Cover the main area with `id`'s panel, or dock it again.
+    ///
+    /// `keepsDockRoom` is for a user maximize: the main card keeps the frame it
+    /// has beside the docked panel, so nothing in the main relays out on either
+    /// edge of the maximize. Resizing a page webview the main has hidden (an
+    /// inactive tab) inside the animation can leave WebKit's content view at a
+    /// zero width, which shows as a black main when that page comes back. A
+    /// compact overlay never had a dock, so the main fills the area under it.
+    func setPanelFullscreen(id: String, enabled: Bool, keepsDockRoom: Bool = false) {
         guard let slot = panels[id] else {
             lxWorkspaceStdoutLog("setPanelFullscreen missing id=\(id)")
             return
         }
-        guard slot.isFullscreen != enabled else {
+        let keepsRoom = enabled && keepsDockRoom
+        guard slot.isFullscreen != enabled || slot.keepsDockRoom != keepsRoom else {
             lxWorkspaceStdoutLog("setPanelFullscreen no-op id=\(id) enabled=\(enabled)")
             return
         }
 
         slot.isFullscreen = enabled
+        slot.keepsDockRoom = keepsRoom
         slot.setFullscreenAppearance(enabled)
         lxWorkspaceStdoutLog("setPanelFullscreen id=\(id) enabled=\(enabled) visible=\(slot.isVisible)")
         if slot.config.position == .left || slot.config.position == .right {
@@ -820,8 +842,9 @@ class WorkspaceManager: NSObject {
 
     private func cardInset(for position: PanelPosition) -> CGFloat {
         let p = padding
-        // A fullscreen panel overlays the card instead of pushing it.
-        let slots = visibleSlots(at: position).filter { !$0.isFullscreen }
+        // A fullscreen panel overlays the card instead of pushing it, unless
+        // it is a maximize that keeps the main's frame (`keepsDockRoom`).
+        let slots = visibleSlots(at: position).filter(\.occupiesDockRoom)
         guard !slots.isEmpty else { return p }
         // Every visible panel on the edge pushes the card further in.
         return slots.reduce(p) { $0 + clampedPanelSize($1.currentSize, for: position, excluding: $1.config.id) + p }
@@ -835,7 +858,7 @@ class WorkspaceManager: NSObject {
     /// against the sidebar), and `padding + panels + padding` when some are, so
     /// the card shrinks to exactly clear them.
     private func cardLeadingInset() -> CGFloat {
-        let slots = visibleSlots(at: .left).filter { !$0.isFullscreen }
+        let slots = visibleSlots(at: .left).filter(\.occupiesDockRoom)
         guard !slots.isEmpty else { return 0 }
         return slots.reduce(padding) { $0 + clampedPanelSize($1.currentSize, for: .left, excluding: $1.config.id) + padding }
     }
@@ -848,8 +871,12 @@ class WorkspaceManager: NSObject {
         var offset: CGFloat = p
         for slot in visibleSlots(at: position) {
             // A fullscreen panel covers the pane (its dock constraints are
-            // swapped out) and consumes no chain room.
+            // swapped out); only a maximize that keeps the main's frame still
+            // holds its place in the chain.
             if slot.isFullscreen {
+                if slot.keepsDockRoom {
+                    offset += clampedPanelSize(slot.currentSize, for: position, excluding: slot.config.id) + p
+                }
                 continue
             }
             slot.edgeConstraint?.constant = position == .right ? -offset : offset

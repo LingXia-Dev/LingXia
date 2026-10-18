@@ -298,6 +298,12 @@ final class LxAppMacAppUIRuntime: NSObject {
         active?.refreshChromeActions()
     }
 
+    /// Mirror the core's slot maximize onto a terminal workspace's own zoom
+    /// button. The panel geometry already follows the plan's `overlay`.
+    static func reflectAsideMaximized(surfaceId: String, maximized: Bool) {
+        active?.terminalWorkspaces[surfaceId]?.setSurfaceZoomEnabled(maximized, notifyRuntime: false)
+    }
+
     /// A top-level surface window supersedes transient tray UI. This is also
     /// called when an existing window is shown, because a nonactivating panel
     /// can otherwise remain above a window that was already key.
@@ -855,6 +861,11 @@ final class LxAppMacAppUIRuntime: NSObject {
     /// newly-shown main. Mirrors the expand teardown in close/hide so the
     /// terminal's own zoom state stays in sync.
     private func collapseExpandedAsides() {
+        if let owner = graphOwnerAppId {
+            for kind in ["lxapp", "browser", "native"] where isAsideSlotMaximized(owner, kind) {
+                _ = setAsideSlotMaximized(owner, kind, false)
+            }
+        }
         for id in visibleSurfaceIDs where shell.isPanelFullscreen(id: id) {
             terminalWorkspaces[id]?.setSurfaceZoomEnabled(false, notifyRuntime: false)
             shell.setPanelFullscreen(id: id, enabled: false)
@@ -1292,10 +1303,19 @@ final class LxAppMacAppUIRuntime: NSObject {
             self?.logTerminal("runtime.workspaceRequestedClose surface=\(id)")
             self?.closeTerminalWorkspaceSurface(id: id)
         }
-        workspace.onToggleSurfaceZoom = { [weak self] zoomed in
+        workspace.onToggleSurfaceZoom = { [weak self, weak workspace] zoomed in
             guard let self else { return }
             self.logTerminal("runtime.toggleSurfaceZoom surface=\(id) enabled=\(zoomed)")
-            self.shell.setPanelFullscreen(id: id, enabled: zoomed)
+            // The core owns maximize, so the next plan keeps it instead of
+            // resetting the panel to its docked size.
+            if let owner = self.graphOwnerAppId {
+                if !setAsideSlotMaximized(owner, "native", zoomed) {
+                    workspace?.setSurfaceZoomEnabled(
+                        isAsideSlotMaximized(owner, "native"), notifyRuntime: false)
+                }
+            } else {
+                self.shell.setPanelFullscreen(id: id, enabled: zoomed)
+            }
         }
         workspace.ensureOpenTab()
         logTerminal(
