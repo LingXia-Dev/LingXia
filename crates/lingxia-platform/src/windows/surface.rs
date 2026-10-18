@@ -907,15 +907,12 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         hide_all_runtime_lxapp_asides();
         return false;
     };
-    lingxia_windows_contract::set_aside_panel_collapsed(
-        ASIDE_LXAPP_PANEL_ID,
-        (slot.collapsed && !slot.children.is_empty()).then(|| panel_position_for(slot.edge, 3)),
-    );
     lingxia_windows_contract::set_aside_panel_maximized(
         ASIDE_LXAPP_PANEL_ID,
         slot.visible && slot.maximized,
     );
     if slot.children.is_empty() {
+        lingxia_windows_contract::set_aside_panel_collapsed(ASIDE_LXAPP_PANEL_ID, None);
         set_aside_panel_tabs(ASIDE_LXAPP_PANEL_ID, Vec::new());
         hide_all_runtime_lxapp_asides();
         return false;
@@ -931,6 +928,17 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         .as_deref()
         .filter(|id| slot.children.iter().any(|child| child == *id))
         .or_else(|| slot.children.last().map(String::as_str));
+    let aside = plan
+        .asides
+        .iter()
+        .find(|aside| Some(aside.id.as_str()) == active_id);
+    // The same edge the panel docks at below, so a collapsed slot's handle
+    // sits where the panel was.
+    let edge = slot.edge.or_else(|| aside.and_then(|aside| aside.edge));
+    lingxia_windows_contract::set_aside_panel_collapsed(
+        ASIDE_LXAPP_PANEL_ID,
+        slot.collapsed.then(|| panel_position_for(edge, 3)),
+    );
     let tabs = slot
         .children
         .iter()
@@ -952,8 +960,6 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         && let Some(entry) = entries.get(active_id)
         && find_webview_handler(&entry.webtag).is_some()
     {
-        let aside = plan.asides.iter().find(|aside| aside.id == active_id);
-        let edge = slot.edge.or_else(|| aside.and_then(|aside| aside.edge));
         let preferred_size = aside.and_then(|aside| aside.preferred_size);
         let result = if slot.overlay {
             show_webview_as_overlay_panel(

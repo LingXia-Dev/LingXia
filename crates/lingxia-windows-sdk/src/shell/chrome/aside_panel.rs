@@ -25,7 +25,10 @@ pub(super) fn browser_panel_hit_test(
     point: (i32, i32),
 ) -> Option<WindowsChromeHit> {
     let attached = state.attached.as_ref()?;
-    for panel in &attached.panels {
+    // Panels are laid out docked first, overlays last, and drawn in that
+    // order, so an overlay (a maximized slot) is on top. Test it first: its
+    // header shares the top row with a docked slot's header underneath.
+    for panel in attached.panels.iter().rev() {
         if let Some(hit) = aside_panel_navigation_hit(panel, point) {
             return Some(hit);
         }

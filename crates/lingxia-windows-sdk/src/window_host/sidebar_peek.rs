@@ -428,6 +428,7 @@ pub(super) fn handle_aside_shortcut_deferred(owner: HWND, virtual_key: u32) -> b
         || !down(VK_CONTROL.0)
         || !down(VK_MENU.0)
         || down(VK_SHIFT.0)
+        || backslash_needs_alt_gr()
     {
         return false;
     }
@@ -488,6 +489,15 @@ fn backslash_virtual_key() -> u32 {
         return VK_OEM_5;
     }
     u32::from(scan as u16 & 0xff)
+}
+
+/// Whether this layout types `\` with AltGr (Spanish, German, ...). AltGr
+/// reads as Ctrl+Alt, so Ctrl+Alt+\ would swallow every backslash typed into
+/// a page; the shortcut stands down on such layouts.
+fn backslash_needs_alt_gr() -> bool {
+    const CTRL_ALT: u16 = 0x06;
+    let scan = unsafe { VkKeyScanW(u16::from(b'\\')) };
+    scan != -1 && ((scan as u16) >> 8) & CTRL_ALT == CTRL_ALT
 }
 
 fn is_sidebar_shortcut(

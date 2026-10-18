@@ -4361,12 +4361,16 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             };
             // A docked terminal aside maximizes through the core like every
             // slot, so later plans keep the state instead of resetting it.
+            // The core refuses a slot already shown as an overlay (a compact
+            // window): that panel keeps its own toggle.
             if shell_surface_is_active(&panel_id)
                 && let Some(owner_appid) = shell_owner_appid()
                 && let Some(owner) = lxapp::try_get(&owner_appid)
             {
-                owner.set_shell_slot_maximized("native", !owner.shell_slot_maximized("native"));
-                return;
+                let maximized = owner.shell_slot_maximized("native");
+                if owner.set_shell_slot_maximized("native", !maximized) || maximized {
+                    return;
+                }
             }
             super::terminal_panel::toggle_terminal_panel_maximized(&panel_id);
             return;

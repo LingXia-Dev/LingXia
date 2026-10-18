@@ -3087,6 +3087,18 @@ fn sync_window_layout(hwnd: HWND) {
                 overlay_webtags.push(panel.webtag_key.clone());
             }
         }
+        // A maximized slot covers the other docked slots as well as the main.
+        // Their WebViews are hidden under it for the same reason the main's
+        // is below: sibling z-order is not something WebView2 guarantees.
+        if !overlay_webtags.is_empty() {
+            for panel in attached
+                .panels
+                .iter()
+                .filter(|panel| !panel.webtag_key.is_empty() && !panel_is_overlay(&panel.panel_id))
+            {
+                visible_webtags.remove(&panel.webtag_key);
+            }
+        }
         if attached_has_maximized_native_panel(&attached) {
             native_panel_takes_focus = true;
             collapse_obscured_webview_panels(hwnd, &laid_out_panels);

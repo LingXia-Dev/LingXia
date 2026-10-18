@@ -664,7 +664,9 @@ fn chrome_hover_rect(
         {
             return Some(rect);
         }
-        for panel in &attached.panels {
+        // Overlays are laid out last and drawn on top: hover tests them first,
+        // as `browser_panel_hit_test` does.
+        for panel in attached.panels.iter().rev() {
             if panel.host_content.is_some()
                 && let Some(rect) =
                     super::terminal_panel::pane_hover_rect(&panel.panel_id, point.0, point.1)
