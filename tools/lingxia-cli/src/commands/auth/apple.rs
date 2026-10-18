@@ -195,9 +195,15 @@ fn select_login_mode() -> Result<String> {
 
 /// Login modes that can upload to the App Store.
 fn select_upload_login_mode() -> Result<String> {
+    println!(
+        "  {} Apple takes uploads with an App Store Connect API key or an App-specific\n    \
+         password, not the Apple ID login that signs. The API key also signs and\n    \
+         reads build status (`--wait`, `store status`).",
+        "ℹ".blue()
+    );
     let modes = vec![
-        "API Key        (requires paid Apple Developer Program membership)",
-        "App password   (Apple ID + App-specific password)",
+        "API Key        (recommended: also signs and reads build status)",
+        "App password   (Apple ID + App-specific password, uploads only)",
     ];
     let selection = Select::new()
         .with_prompt("Select login mode")
@@ -954,6 +960,30 @@ pub fn apple_logout(team_id: Option<String>) -> Result<()> {
     Ok(())
 }
 
+/// `sign ✓   upload ✓   build status ✗ (needs --mode key)`: what a team can
+/// do, and the login that adds what it cannot.
+fn capability_line(caps: crate::wallet::AppleCapabilities) -> String {
+    [
+        ("sign", caps.sign, "--mode password or key"),
+        ("upload", caps.upload, "--mode app-password or key"),
+        ("build status", caps.build_status, "--mode key"),
+    ]
+    .iter()
+    .map(|(what, ok, login)| {
+        if *ok {
+            format!("{what} {}", "✓".green())
+        } else {
+            format!(
+                "{what} {} {}",
+                "✗".red(),
+                format!("(needs {login})").dimmed()
+            )
+        }
+    })
+    .collect::<Vec<_>>()
+    .join("   ")
+}
+
 /// Print the Apple section of `lingxia auth status`.
 pub fn apple_status() -> Result<()> {
     let wallet = Wallet::open()?;
@@ -981,6 +1011,7 @@ pub fn apple_status() -> Result<()> {
             }
         }
         println!("{line}");
+        println!("    {}", capability_line(team.capabilities()));
         if team.label().is_none() && team.has_apple_id {
             println!("    (log in again with the Apple ID to show the team name)");
         }
