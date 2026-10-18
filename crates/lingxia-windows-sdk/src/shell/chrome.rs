@@ -4264,7 +4264,9 @@ mod scroll_tests {
         assert!(during.panels[0].overlay);
         assert_eq!(
             during.panels[0].header_rect,
-            before.panels[0].header_rect.map(|_| super::aside_panel_toolbar_rect(workspace))
+            before.panels[0]
+                .header_rect
+                .map(|_| super::aside_panel_toolbar_rect(workspace))
         );
     }
 

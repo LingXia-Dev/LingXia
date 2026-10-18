@@ -2451,7 +2451,8 @@ fn overlay_reference_rect_for_panel(host: HWND, webtag_key: &str) -> Option<RECT
     let mut rect = panel.rect;
     rect.top = panel_webview_top(&panel.panel_id, panel.rect, panel.header_rect);
     let rect = normalize_rect(rect);
-    if rect.right - rect.left <= 2 * overlay_margin() || rect.bottom - rect.top <= 2 * overlay_margin()
+    if rect.right - rect.left <= 2 * overlay_margin()
+        || rect.bottom - rect.top <= 2 * overlay_margin()
     {
         return None;
     }
@@ -3193,8 +3194,7 @@ fn sync_window_layout(hwnd: HWND) {
             sync_webtag_content_bounds(hwnd, &panel.webtag_key);
             if panel_is_overlay(&panel.panel_id) {
                 overlay_webtags.push(panel.webtag_key.clone());
-                docked_maximize |=
-                    lingxia_windows_contract::aside_panel_maximized(&panel.panel_id);
+                docked_maximize |= lingxia_windows_contract::aside_panel_maximized(&panel.panel_id);
             }
         }
         // A maximized slot covers the other docked slots as well as the main.

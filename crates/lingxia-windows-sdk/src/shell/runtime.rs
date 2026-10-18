@@ -3937,7 +3937,12 @@ fn lxapp_aside_tabbar(app: &LxApp) -> Option<lingxia_windows_contract::WindowsAs
 /// The label of a tabBar item in the aside's text-only row: its text, else
 /// the page title from the manifest, else the page name.
 fn aside_tabbar_item_label(app: &LxApp, item: &lxapp::tabbar::TabBarItem) -> String {
-    if let Some(text) = item.text.as_deref().map(str::trim).filter(|text| !text.is_empty()) {
+    if let Some(text) = item
+        .text
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+    {
         return text.to_string();
     }
     if !item.page_path.is_empty() {
