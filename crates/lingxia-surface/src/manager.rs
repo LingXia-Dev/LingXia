@@ -538,6 +538,11 @@ impl SurfaceManager {
                 .aside_slots
                 .iter_mut()
                 .find(|slot| slot.kind == kind && slot.visible && !slot.collapsed)
+            // A slot the plan already shows as an overlay (a compact window,
+            // the overlay fallback) has no dock to leave: the maximize is kept
+            // for when the dock returns, but the plan does not report it, so
+            // skins never reserve docked room for it.
+            && !slot.overlay
         {
             slot.maximized = true;
             slot.overlay = true;
@@ -691,6 +696,26 @@ mod tests {
         for slot in &plan.aside_slots {
             assert_eq!(slot.maximized, slot.kind == crate::SlotKind::Lxapp);
         }
+    }
+
+    #[test]
+    fn a_maximized_slot_shown_as_a_compact_overlay_does_not_report_maximized() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(aside_s("assistant", Edge::Right));
+        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+
+        // Shrinking to compact shows the slot as an overlay anyway: the plan
+        // marks it overlay, not maximized, and the user's maximize is kept
+        // for when the window is expanded again.
+        m.set_width(500.0);
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert!(slot.overlay && !slot.maximized);
+        assert!(m.slot_maximized(crate::SlotKind::Lxapp));
+
+        m.set_width(1200.0);
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert!(slot.overlay && slot.maximized);
     }
 
     #[test]
