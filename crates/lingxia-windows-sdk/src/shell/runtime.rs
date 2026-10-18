@@ -3900,9 +3900,12 @@ fn lxapp_aside_tabbar(app: &LxApp) -> Option<lingxia_windows_contract::WindowsAs
     if !tabbar.is_effectively_visible() {
         return None;
     }
+    // An item without `text` (icon only) still needs a label in a text-only
+    // row and in the menu, where an empty label would read as a separator:
+    // the page's configured title, else its page name.
     let items: Vec<(i32, String)> = tabbar
         .visible_items()
-        .map(|(index, item)| (index as i32, item.text.clone().unwrap_or_default()))
+        .map(|(index, item)| (index as i32, aside_tabbar_item_label(app, item)))
         .collect();
     if items.len() < 2 {
         return None;
@@ -3921,6 +3924,26 @@ fn lxapp_aside_tabbar(app: &LxApp) -> Option<lingxia_windows_contract::WindowsAs
         items,
         selected_index,
     })
+}
+
+/// The label of a tabBar item in the aside's text-only row: its text, else
+/// the page title from the manifest, else the page name.
+fn aside_tabbar_item_label(app: &LxApp, item: &lxapp::tabbar::TabBarItem) -> String {
+    if let Some(text) = item.text.as_deref().map(str::trim).filter(|text| !text.is_empty()) {
+        return text.to_string();
+    }
+    if !item.page_path.is_empty() {
+        let title = app.get_navbar_state(&item.page_path).title();
+        let title = title.trim();
+        if !title.is_empty() {
+            return title.to_string();
+        }
+    }
+    item.page
+        .rsplit('/')
+        .find(|segment| !segment.is_empty())
+        .unwrap_or(&item.page)
+        .to_string()
 }
 
 fn lxapp_aside_shows_navigation(navbar: &WindowsShellNavigationBarLayout) -> bool {
