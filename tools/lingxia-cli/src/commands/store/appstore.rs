@@ -1,8 +1,9 @@
 //! App Store Connect submission.
 //!
 //! The binary is uploaded with `xcrun altool` (the supported transport; needs
-//! Xcode, macOS only). Status is read from the App Store Connect API using an
-//! ES256 JWT minted locally from the `.p8` key.
+//! Xcode, macOS only), with an ASC key or an Apple ID and App-specific
+//! password. Status is read from the App Store Connect API using an ES256 JWT
+//! minted locally from the `.p8` key.
 //!
 //! Uploads feed both App Store versions and TestFlight testing.
 
@@ -17,7 +18,8 @@ use std::process::Command;
 use std::time::Duration;
 
 use super::backend::{StorePlatform, SubmitOptions, http};
-use crate::resolver::AscMaterial;
+use crate::platform::apple::altool;
+use crate::resolver::{AppleUpload, AscMaterial};
 
 const ASC_BASE: &str = "https://api.appstoreconnect.apple.com";
 
@@ -54,7 +56,7 @@ pub fn asc_jwt(creds: &AscMaterial) -> Result<String> {
 }
 
 pub fn submit(
-    creds: &AscMaterial,
+    creds: &AppleUpload,
     platform: StorePlatform,
     artifact: &Path,
     opts: &SubmitOptions,
@@ -63,28 +65,44 @@ pub fn submit(
         bail!("App Store upload uses `xcrun altool`, which requires Xcode on macOS.");
     }
     validate_submit_options(opts)?;
-    // altool resolves the API key from a private_keys search dir.
-    stage_private_key(creds)?;
 
     let type_arg = match platform {
         StorePlatform::Ios => "ios",
         StorePlatform::Macos => "macos",
         _ => bail!("App Store submit expects --platform ios or macos"),
     };
+    let upload = [
+        "--upload-app".as_ref(),
+        "--type".as_ref(),
+        type_arg.as_ref(),
+        "--file".as_ref(),
+        artifact.as_os_str(),
+    ];
 
     eprintln!("  uploading {} via altool…", artifact.display());
-    let output = Command::new("xcrun")
-        .args(["altool", "--upload-app", "--type", type_arg, "--file"])
-        .arg(artifact)
-        .args(["--apiKey", &creds.key_id, "--apiIssuer", &creds.issuer_id])
-        .args(["--output-format", "json"])
-        .output()
-        .context("run xcrun altool")?;
+    let output = match creds {
+        AppleUpload::Asc(asc) => {
+            // altool resolves the API key from a private_keys search dir.
+            stage_private_key(asc)?;
+            Command::new("xcrun")
+                .arg("altool")
+                .args(upload)
+                .args(["--apiKey", &asc.key_id, "--apiIssuer", &asc.issuer_id])
+                .args(["--output-format", "json"])
+                .output()
+                .context("run xcrun altool")?
+        }
+        AppleUpload::AppPassword(password) => altool::run(password, upload)?,
+    };
     check_upload_result(output.status.success(), &output.stdout)?;
     eprintln!("  {} uploaded to App Store Connect", "✓".green());
+    let poll = match creds {
+        AppleUpload::Asc(_) => format!(" (`lingxia store status --platform {type_arg}` to poll)"),
+        AppleUpload::AppPassword(_) => String::new(),
+    };
     eprintln!(
         "  {} processing takes a few minutes; then attach the build to a version \
-         and submit for review (`lingxia store status --platform {type_arg}` to poll){}",
+         and submit for review{poll}{}",
         "ℹ".blue(),
         opts.release_notes
             .as_ref()
@@ -97,27 +115,9 @@ pub fn submit(
 /// New altool versions can report validation errors with exit status zero.
 /// Require a structured success response before polling for the uploaded build.
 fn check_upload_result(exit_success: bool, stdout: &[u8]) -> Result<()> {
-    // xcrun may print a launcher banner before altool's JSON response.
-    let start = stdout
-        .iter()
-        .position(|byte| *byte == b'{')
-        .context("altool returned no JSON upload result; upload was not confirmed")?;
-    let response: Value =
-        serde_json::from_slice(&stdout[start..]).context("parse altool JSON upload result")?;
-    if let Some(errors) = response.get("product-errors").and_then(Value::as_array)
-        && !errors.is_empty()
-    {
-        let messages = errors
-            .iter()
-            .map(|error| {
-                error
-                    .pointer("/user-info/NSLocalizedFailureReason")
-                    .or_else(|| error.get("message"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("unknown validation error")
-            })
-            .collect::<Vec<_>>()
-            .join("; ");
+    let response = altool::json(stdout)
+        .context("altool returned no upload result; upload was not confirmed")?;
+    if let Some(messages) = altool::errors(&response) {
         bail!("altool upload failed: {messages}");
     }
     if !exit_success {

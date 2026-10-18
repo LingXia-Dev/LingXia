@@ -1,13 +1,17 @@
 //! Apple authentication commands (wallet-backed).
 //!
 //! `lingxia auth login apple` stores credentials per Apple Team in the
-//! wallet; mechanisms (ASC key, Apple ID session, Developer ID certificate)
-//! co-exist per team. Logging into the same team + mechanism again is a key
-//! rotation: the fingerprint change is shown and confirmed.
+//! wallet; mechanisms (ASC key, Apple ID session, Developer ID certificate,
+//! App-specific password) co-exist per team. Logging into the same team +
+//! mechanism again is a key rotation: the fingerprint change is shown and
+//! confirmed.
 
 use crate::path_completion::FilePathCompleter;
+use crate::platform::apple::altool;
 use crate::platform::apple::anisette::OmnisetteProvider;
-use crate::platform::apple::auth::{AuthCredentials, DeveloperIdCredentials};
+use crate::platform::apple::auth::{
+    AppPasswordCredentials, AuthCredentials, DeveloperIdCredentials,
+};
 use crate::platform::apple::developer_services;
 use crate::platform::apple::grandslam::{
     DeviceInfo, GrandSlamClient, GrandSlamLoginData, TwoFactorMode, TwoFactorRequired,
@@ -90,6 +94,9 @@ pub fn apple_login(options: AppleLoginOptions) -> Result<()> {
         "developer-id" => {
             login_developer_id(&wallet, team_id, p12, p12_password, identity, yes)?;
         }
+        "app-password" => {
+            login_app_password(&wallet, team_id, username, password, yes)?;
+        }
         _ => {
             login_with_password(&wallet, username, password, yes)?;
         }
@@ -133,6 +140,23 @@ pub fn inline_login(required_team: Option<&str>, need: AppleNeed) -> Result<Stri
             )?,
             _ => login_with_password(&wallet, None, None, false)?,
         },
+        AppleNeed::Upload => match select_upload_login_mode()?.as_str() {
+            "key" => login_with_api_key(
+                &wallet,
+                ApiKeyLoginArgs {
+                    team_id: required_team.map(str::to_string),
+                    ..Default::default()
+                },
+                false,
+            )?,
+            _ => login_app_password(
+                &wallet,
+                required_team.map(str::to_string),
+                None,
+                None,
+                false,
+            )?,
+        },
     };
 
     if let Some(required) = required_team
@@ -152,6 +176,7 @@ fn select_login_mode() -> Result<String> {
         "API Key        (requires paid Apple Developer Program membership)",
         "Password       (works with any Apple ID but uses private APIs)",
         "Developer ID   (.p12 certificate for macOS distribution/notarization)",
+        "App password   (Apple ID + App-specific password, for App Store uploads)",
     ];
 
     let selection = Select::new()
@@ -163,8 +188,28 @@ fn select_login_mode() -> Result<String> {
     Ok(match selection {
         0 => "key".to_string(),
         1 => "password".to_string(),
-        _ => "developer-id".to_string(),
+        2 => "developer-id".to_string(),
+        _ => "app-password".to_string(),
     })
+}
+
+/// Login modes that can upload to the App Store.
+fn select_upload_login_mode() -> Result<String> {
+    let modes = vec![
+        "API Key        (requires paid Apple Developer Program membership)",
+        "App password   (Apple ID + App-specific password)",
+    ];
+    let selection = Select::new()
+        .with_prompt("Select login mode")
+        .items(&modes)
+        .default(0)
+        .interact()?;
+    Ok(if selection == 0 {
+        "key"
+    } else {
+        "app-password"
+    }
+    .to_string())
 }
 
 fn resolve_login_mode(
@@ -176,9 +221,12 @@ fn resolve_login_mode(
 ) -> Result<String> {
     if let Some(mode) = mode {
         let normalized = mode.trim().to_ascii_lowercase();
-        if !matches!(normalized.as_str(), "key" | "password" | "developer-id") {
+        if !matches!(
+            normalized.as_str(),
+            "key" | "password" | "developer-id" | "app-password"
+        ) {
             return Err(anyhow!(
-                "Invalid mode '{}'. Expected one of: key, password, developer-id",
+                "Invalid mode '{}'. Expected one of: key, password, developer-id, app-password",
                 mode
             ));
         }
@@ -188,9 +236,11 @@ fn resolve_login_mode(
                 "API key parameters (--key-id/--issuer-id/--private-key-path) are only valid with --mode key."
             ));
         }
-        if normalized != "password" && (username.is_some() || password.is_some()) {
+        if !matches!(normalized.as_str(), "password" | "app-password")
+            && (username.is_some() || password.is_some())
+        {
             return Err(anyhow!(
-                "--username/--password are only valid with --mode password."
+                "--username/--password are only valid with --mode password or app-password."
             ));
         }
         if normalized != "developer-id" && has_p12_args {
@@ -211,7 +261,7 @@ fn resolve_login_mode(
         (false, false, true) => Ok("developer-id".to_string()),
         (false, false, false) => select_login_mode(),
         _ => Err(anyhow!(
-            "Cannot infer mode from the given flags. Please specify --mode key|password|developer-id."
+            "Cannot infer mode from the given flags. Please specify --mode key|password|developer-id|app-password."
         )),
     }
 }
@@ -593,6 +643,136 @@ fn login_developer_id(
     Ok(team_id)
 }
 
+/// Apple's `xxxx-xxxx-xxxx-xxxx` form of a typed or pasted App-specific
+/// password: dashes, spaces, and control bytes dropped, then the dashes put
+/// back. `None` when it is not 16 letters.
+fn normalize_app_password(input: &str) -> Option<String> {
+    let letters: Vec<char> = input
+        .chars()
+        .filter(|c| *c != '-' && !c.is_whitespace() && !c.is_control())
+        .collect();
+    if letters.len() != 16 || !letters.iter().all(char::is_ascii_alphabetic) {
+        return None;
+    }
+    Some(
+        letters
+            .chunks(4)
+            .map(|chunk| chunk.iter().collect::<String>())
+            .collect::<Vec<_>>()
+            .join("-"),
+    )
+}
+
+/// Store an Apple ID with an App-specific password for App Store uploads.
+/// altool checks the pair and lists the teams it can upload for.
+fn login_app_password(
+    wallet: &Wallet,
+    team_id: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
+    yes: bool,
+) -> Result<String> {
+    println!("{}", "App-specific Password".bold());
+    println!(
+        "  {} Create one at account.apple.com → Sign-In and Security → App-Specific Passwords.",
+        "ℹ".blue()
+    );
+    println!();
+
+    // The Apple ID a session login already recorded for this team.
+    let known_apple_id = match &team_id {
+        Some(team) => wallet
+            .apple_team(team)?
+            .and_then(|slots| slots.info.apple_id),
+        None => None,
+    };
+    let apple_id = match username {
+        Some(value) => value,
+        None => {
+            let mut input = Input::<String>::new().with_prompt("Apple ID");
+            if let Some(known) = known_apple_id {
+                input = input.default(known);
+            }
+            input.interact_text()?
+        }
+    };
+    let password = match password {
+        Some(value) => value,
+        None => Password::new()
+            .with_prompt("App-specific password")
+            .interact()?,
+    };
+    let Some(password) = normalize_app_password(&password) else {
+        bail!(
+            "that is not an App-specific password: expected 16 letters \
+             (`xxxx-xxxx-xxxx-xxxx`). The Apple ID password does not work here."
+        );
+    };
+    let credentials = AppPasswordCredentials {
+        apple_id: apple_id.trim().to_string(),
+        password,
+    };
+
+    println!("  {} Checking with altool...", "→".dimmed());
+    let providers = altool::list_providers(&credentials)?;
+    let provider = match &team_id {
+        Some(team) => providers
+            .iter()
+            .find(|p| &p.team_id == team)
+            .cloned()
+            .ok_or_else(|| {
+                anyhow!(
+                    "{} cannot upload for team {team} (it can for: {})",
+                    credentials.apple_id,
+                    providers
+                        .iter()
+                        .map(|p| p.team_id.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })?,
+        None => match providers.as_slice() {
+            [] => bail!("{} can upload for no team", credentials.apple_id),
+            [only] => only.clone(),
+            many => {
+                let labels: Vec<String> = many
+                    .iter()
+                    .map(|p| match &p.name {
+                        Some(name) => format!("{} ({name})", p.team_id),
+                        None => p.team_id.clone(),
+                    })
+                    .collect();
+                let selection = Select::new()
+                    .with_prompt("Select a team")
+                    .items(&labels)
+                    .default(0)
+                    .interact()?;
+                many[selection].clone()
+            }
+        },
+    };
+    let team_id = provider.team_id;
+
+    if let Some(old) = wallet.load_apple_app_password(&team_id)? {
+        confirm_rotation(&old, &credentials, "App-specific password", yes)?;
+    }
+    let path = wallet.save_apple_app_password(&team_id, &credentials)?;
+    wallet.save_apple_team_info(
+        &team_id,
+        &crate::wallet::AppleTeamInfo {
+            name: provider.name,
+            account_type: None,
+            apple_id: Some(credentials.apple_id.clone()),
+        },
+    )?;
+
+    println!();
+    println!("{} App-specific password saved.", "✓".green());
+    println!("  Team ID:  {}", team_id);
+    println!("  Saved to: {}", path.display());
+    Ok(team_id)
+}
+
 fn verify_developer_id_team(bytes: &[u8], password: &str, expected_team: &str) -> Result<String> {
     let certificates = p12_certificates(bytes, password)?;
     for certificate in certificates {
@@ -899,6 +1079,20 @@ mod tests {
         let mut params = CertificateParams::default();
         params.distinguished_name = distinguished_name;
         params.self_signed(&key).unwrap().der().to_vec()
+    }
+
+    #[test]
+    fn app_password_normalized_to_apple_form() {
+        let canonical = Some("abcd-efgh-ijkl-mnop".to_string());
+        assert_eq!(normalize_app_password("abcd-efgh-ijkl-mnop"), canonical);
+        assert_eq!(normalize_app_password("abcdefghijklmnop"), canonical);
+        assert_eq!(normalize_app_password(" abcd efgh-ijkl\tmnop\n"), canonical);
+        assert_eq!(
+            normalize_app_password("\u{1b}abcd-efgh-ijkl-mnop"),
+            canonical
+        );
+        assert_eq!(normalize_app_password("abcd-efgh-ijkl"), None);
+        assert_eq!(normalize_app_password("MyPassw0rd!MyPass"), None);
     }
 
     #[test]

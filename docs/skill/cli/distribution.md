@@ -180,7 +180,7 @@ Signing, publishing, and store credentials:
 
 - `lingxia auth login|logout apple|harmony|googleplay|xiaomi|oppo|honor|msstore`
   — add, refresh, or remove credentials (Apple modes `key`, `password`,
-  `developer-id`)
+  `developer-id`, `app-password`)
 - `lingxia auth login|logout lingxia` — a LingXia server publish token
 - `lingxia auth status [--json]` — per-project diagnosis and the wallet
 - `lingxia auth forget --platform <channel>` — re-resolve this checkout's
@@ -224,6 +224,11 @@ omit `--track`. A `--env dev` package goes to the app for its `.dev` bundle
 id, which needs its own App Store Connect record; other stores take prod
 packages only. Configure export compliance and tester groups in App Store
 Connect. External testing may need beta review.
+
+Uploading takes an App Store Connect API key, or an Apple ID with an
+App-specific password from account.apple.com
+(`lingxia auth login apple --mode app-password`). `--wait` and `store status`
+read App Store Connect and need the API key.
 
 ```bash
 lingxia store submit --platform ios --wait --json

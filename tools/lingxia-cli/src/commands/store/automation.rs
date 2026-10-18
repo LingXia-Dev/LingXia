@@ -168,22 +168,46 @@ fn execute(
                     "Waiting for a PKG requires --version and --build-number matching the uploaded package"
                 );
             }
-            let creds = if options.json {
-                let channel = if platform == StorePlatform::Ios {
-                    crate::resolver::AppleChannel::Ios
-                } else {
-                    crate::resolver::AppleChannel::Macos
+            let channel = if platform == StorePlatform::Ios {
+                crate::resolver::AppleChannel::Ios
+            } else {
+                crate::resolver::AppleChannel::Macos
+            };
+            let bundle_id = expected_identity(&config, platform, env)?;
+            // Upload alone takes an API key or an App-specific password;
+            // waiting and status read builds through the App Store Connect API.
+            if let (Some(opts), Some(artifact), false) = (&submit, &artifact, options.wait) {
+                let upload = crate::resolver::resolve_apple_upload(Some(channel))?;
+                let app_id = match &upload {
+                    crate::resolver::AppleUpload::Asc(creds) => {
+                        appstore::resolve_app_id(creds, &bundle_id)?
+                    }
+                    // Without the API, the app is known by its bundle id.
+                    crate::resolver::AppleUpload::AppPassword(_) => bundle_id,
                 };
+                appstore::submit(&upload, platform, artifact, opts)?;
+                report.uploaded = true;
+                let mut record = Record::new(&app_id, State::Uploaded);
+                record.version = build.version.clone();
+                record.build_number = build.build_number.clone();
+                report.results.push(record);
+                return check_target_records(targeted, &report.results);
+            }
+            let creds = if options.json {
                 crate::resolver::try_resolve_apple_asc(Some(channel))?.context(
                     "Apple API credentials missing; configure credentials before JSON automation",
                 )?
             } else {
                 asc_material(platform)?
             };
-            let app_id =
-                appstore::resolve_app_id(&creds, &expected_identity(&config, platform, env)?)?;
+            let app_id = appstore::resolve_app_id(&creds, &bundle_id)?;
             if let (Some(opts), Some(artifact)) = (submit, artifact) {
-                appstore::submit(&creds, platform, &artifact, &opts)?;
+                appstore::submit(
+                    &crate::resolver::AppleUpload::Asc(creds.clone()),
+                    platform,
+                    &artifact,
+                    &opts,
+                )?;
                 report.uploaded = true;
                 let mut record = Record::new(&app_id, State::Uploaded);
                 record.version = build.version.clone();

@@ -11,13 +11,14 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::platform::apple::auth::{
-    AuthCredentials, CachedSigningIdentity, DeveloperIdCredentials,
+    AppPasswordCredentials, AuthCredentials, CachedSigningIdentity, DeveloperIdCredentials,
 };
 use crate::platform::harmony::AgcApiCredentials;
 
 const ASC_FILE: &str = "asc.json";
 const APPLE_ID_FILE: &str = "apple-id.json";
 const DEVELOPER_ID_FILE: &str = "developer-id.json";
+const APP_PASSWORD_FILE: &str = "app-password.json";
 /// Display-only facts about a team (name, account), no secrets.
 const TEAM_INFO_FILE: &str = "team.json";
 const AGC_FILE: &str = "agc.json";
@@ -69,12 +70,22 @@ pub struct AppleTeamSlots {
     pub has_asc: bool,
     pub has_apple_id: bool,
     pub has_developer_id: bool,
+    pub has_app_password: bool,
     pub info: AppleTeamInfo,
 }
 
 impl AppleTeamSlots {
     pub fn has_auth(&self) -> bool {
         self.has_asc || self.has_apple_id
+    }
+
+    /// An App Store upload works with an ASC key or an App-specific password.
+    pub fn has_upload(&self) -> bool {
+        self.has_asc || self.has_app_password
+    }
+
+    fn has_any(&self) -> bool {
+        self.has_asc || self.has_apple_id || self.has_developer_id || self.has_app_password
     }
 
     /// `Heights Telecom LLC · Paid`, or `None` before any Apple ID login.
@@ -110,6 +121,9 @@ impl AppleTeamSlots {
         }
         if self.has_developer_id {
             parts.push("Developer ID");
+        }
+        if self.has_app_password {
+            parts.push("App-specific password");
         }
         parts.join(", ")
     }
@@ -168,9 +182,10 @@ impl Wallet {
                 has_asc: dir.join(ASC_FILE).is_file(),
                 has_apple_id: dir.join(APPLE_ID_FILE).is_file(),
                 has_developer_id: dir.join(DEVELOPER_ID_FILE).is_file(),
+                has_app_password: dir.join(APP_PASSWORD_FILE).is_file(),
                 info: read_team_info(&dir),
             };
-            if slots.has_asc || slots.has_apple_id || slots.has_developer_id {
+            if slots.has_any() {
                 teams.push(slots);
             }
         }
@@ -188,9 +203,10 @@ impl Wallet {
             has_asc: dir.join(ASC_FILE).is_file(),
             has_apple_id: dir.join(APPLE_ID_FILE).is_file(),
             has_developer_id: dir.join(DEVELOPER_ID_FILE).is_file(),
+            has_app_password: dir.join(APP_PASSWORD_FILE).is_file(),
             info: read_team_info(&dir),
         };
-        if slots.has_asc || slots.has_apple_id || slots.has_developer_id {
+        if slots.has_any() {
             Ok(Some(slots))
         } else {
             Ok(None)
@@ -309,6 +325,32 @@ impl Wallet {
         creds: &DeveloperIdCredentials,
     ) -> Result<PathBuf> {
         let path = self.apple_team_dir(team_id)?.join(DEVELOPER_ID_FILE);
+        write_secret(&path, serde_json::to_string_pretty(creds)?.as_bytes())?;
+        Ok(path)
+    }
+
+    pub fn load_apple_app_password(&self, team_id: &str) -> Result<Option<AppPasswordCredentials>> {
+        let path = self.apple_team_dir(team_id)?.join(APP_PASSWORD_FILE);
+        if !path.is_file() {
+            return Ok(None);
+        }
+        let content =
+            fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+        let creds = serde_json::from_str(&content).with_context(|| {
+            format!(
+                "parse {}. Re-run `lingxia auth login apple --mode app-password` to refresh it.",
+                path.display()
+            )
+        })?;
+        Ok(Some(creds))
+    }
+
+    pub fn save_apple_app_password(
+        &self,
+        team_id: &str,
+        creds: &AppPasswordCredentials,
+    ) -> Result<PathBuf> {
+        let path = self.apple_team_dir(team_id)?.join(APP_PASSWORD_FILE);
         write_secret(&path, serde_json::to_string_pretty(creds)?.as_bytes())?;
         Ok(path)
     }
@@ -858,6 +900,28 @@ mod tests {
 
         assert!(wallet.delete_apple_team("TEAMAAAAAA").unwrap());
         assert!(wallet.apple_team("TEAMAAAAAA").unwrap().is_none());
+    }
+
+    #[test]
+    fn app_password_slot_round_trips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let wallet = Wallet::at(tmp.path());
+        let creds = AppPasswordCredentials {
+            apple_id: "dev@example.com".into(),
+            password: "abcd-efgh-ijkl-mnop".into(),
+        };
+        wallet
+            .save_apple_app_password("TEAMAAAAAA", &creds)
+            .unwrap();
+
+        let slots = wallet.apple_team("TEAMAAAAAA").unwrap().unwrap();
+        assert!(slots.has_app_password && slots.has_upload() && !slots.has_auth());
+        let loaded = wallet
+            .load_apple_app_password("TEAMAAAAAA")
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.apple_id, creds.apple_id);
+        assert_eq!(loaded.password, creds.password);
     }
 
     #[test]
