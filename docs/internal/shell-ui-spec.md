@@ -775,9 +775,10 @@ The aside region is fixed at three slots, grouped by rendering engine:
   compact overlay, which already covers the main, does not offer it. Content
   is told only its new size, never that it is maximized.
 - An lxapp aside shows the page navigation bar below its tab strip only while
-  Back or Home has somewhere to go: at the root of its stack (and for
-  `navigationStyle: custom`) the bar takes no height, since the slot tab
-  already names the app. Page titles never move into the tab strip.
+  Back or Home has somewhere to go. At the root of its stack the bar takes no
+  height unless Home is offered (a non-initial, non-tab landing page);
+  `navigationStyle: custom` never shows it. The slot tab already names the
+  app. Page titles never move into the tab strip.
 - An lxapp with a tabBar always opens as an aside, with no warning and no
   manifest option: on its tab pages the framework draws the tabBar as a
   28pt segmented row under the navigation bar (icon + label, scrolling on
