@@ -338,6 +338,27 @@ pub trait WindowsHostBackend: Send + Sync {
         unsupported_operation("present_webview_as_overlay")
     }
 
+    /// Like `present_webview_as_overlay`, placed against the region `anchor`
+    /// is shown in (an aside panel) instead of the main content.
+    fn present_webview_as_overlay_anchored(
+        &self,
+        webtag: &WebTag,
+        width: f64,
+        height: f64,
+        width_ratio: f64,
+        height_ratio: f64,
+        position: u8,
+        _anchor: Option<&WebTag>,
+    ) -> StdResult<()> {
+        self.present_webview_as_overlay(webtag, width, height, width_ratio, height_ratio, position)
+    }
+
+    /// Move keyboard focus into a shown WebView's content.
+    fn focus_webview_content(&self, _webtag: &WebTag) {}
+
+    /// Move keyboard focus into the active host window's main page.
+    fn focus_active_main_webview(&self) {}
+
     fn configure_webview_surface_interaction(
         &self,
         _webtag: &WebTag,
@@ -1052,6 +1073,41 @@ pub fn active_host_window_webtag_key() -> Option<String> {
 
 pub fn present_webview_as_group_main(webtag: &WebTag, group_key: String) -> StdResult<()> {
     backend()?.present_webview_as_group_main(webtag, group_key)
+}
+
+/// A float placed against the aside `anchor` is shown in, when it is; the
+/// main content otherwise.
+#[allow(clippy::too_many_arguments)]
+pub fn present_webview_as_overlay_anchored(
+    webtag: &WebTag,
+    width: f64,
+    height: f64,
+    width_ratio: f64,
+    height_ratio: f64,
+    position: u8,
+    anchor: Option<&WebTag>,
+) -> StdResult<()> {
+    backend()?.present_webview_as_overlay_anchored(
+        webtag,
+        width,
+        height,
+        width_ratio,
+        height_ratio,
+        position,
+        anchor,
+    )
+}
+
+pub fn focus_webview_content(webtag: &WebTag) {
+    if let Ok(backend) = backend() {
+        backend.focus_webview_content(webtag);
+    }
+}
+
+pub fn focus_active_main_webview() {
+    if let Ok(backend) = backend() {
+        backend.focus_active_main_webview();
+    }
 }
 
 pub fn present_webview_as_overlay(

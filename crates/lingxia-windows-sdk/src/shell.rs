@@ -149,7 +149,7 @@ pub(crate) use runtime::handle_menu_bar_surface_action;
 pub(crate) use runtime::open_declared_browser;
 #[cfg(feature = "terminal-runtime")]
 pub(crate) use runtime::open_declared_terminal;
-pub(crate) use runtime::toggle_lxapp_aside_from_keyboard;
+pub(crate) use runtime::{restore_maximized_aside_from_keyboard, toggle_lxapp_aside_from_keyboard};
 pub(crate) use runtime::{
     configure_static_settings_source, open_home_app_with_target, open_self_browser,
     prime_lxapp_shell_layout, set_shell_owner_app_id, update_surface_width,

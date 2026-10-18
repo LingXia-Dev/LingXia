@@ -3792,6 +3792,14 @@ pub(crate) fn toggle_lxapp_aside_from_keyboard() -> bool {
         .is_some()
 }
 
+/// Escape inside a maximized aside: take it back to its dock. Returns
+/// whether a slot was maximized.
+pub(crate) fn restore_maximized_aside_from_keyboard() -> bool {
+    shell_owner_appid()
+        .and_then(|owner_appid| lxapp::try_get(&owner_appid))
+        .is_some_and(|owner| owner.restore_shell_maximized_slot())
+}
+
 /// The lxapp the lxapp aside slot is showing, if any.
 fn lxapp_aside_active_app() -> Option<Arc<LxApp>> {
     let owner = lxapp::try_get(&shell_owner_appid()?)?;

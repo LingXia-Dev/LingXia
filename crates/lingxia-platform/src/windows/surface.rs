@@ -11,8 +11,9 @@ use lingxia_webview::runtime as webview_runtime;
 use lingxia_windows_contract::{
     ASIDE_LXAPP_PANEL_ID, WindowsAsidePanelEvent, WindowsAsidePanelTab, WindowsNavAnimation,
     WindowsPanelPosition, active_host_window_is_device_framed,
-    configure_webview_surface_interaction, hide_host_panel, hide_webview_window,
-    navigate_webview_window, present_webview_as_overlay, present_webview_in_active_group,
+    configure_webview_surface_interaction, focus_active_main_webview, focus_webview_content,
+    hide_host_panel, hide_webview_window, navigate_webview_window,
+    present_webview_as_overlay_anchored, present_webview_in_active_group,
     refresh_aside_panel, set_aside_panel_tabs, set_webview_close_handler,
     set_windows_aside_panel_event_handler, show_webview_as_adaptive_panel,
     show_webview_as_overlay_panel, show_webview_as_panel, show_webview_window,
@@ -170,6 +171,22 @@ struct RetargetedLxappAside {
     panel_id: String,
     previous: WebTag,
     title: String,
+}
+
+/// The page WebView of the runtime aside hosting `webtag`'s lxapp session,
+/// `None` when that session is not presented as an aside.
+fn runtime_lxapp_aside_hosting(
+    entries: &HashMap<String, RuntimeLxappAside>,
+    webtag: &WebTag,
+) -> Option<WebTag> {
+    let appid = webtag.extract_appid();
+    let session_id = webtag.session_id();
+    entries
+        .values()
+        .find(|entry| {
+            entry.webtag.extract_appid() == appid && entry.webtag.session_id() == session_id
+        })
+        .map(|entry| entry.webtag.clone())
 }
 
 /// Point the runtime aside hosting `webtag`'s lxapp session at `webtag`.
@@ -825,13 +842,20 @@ fn present_entry(id: &str, entry: &SurfaceEntry, target: PresentationTarget) -> 
         ),
         (SurfaceRole::Float, _) => {
             let p = &entry.placement;
-            present_webview_as_overlay(
+            // A float an aside lxapp opens anchors to that aside, as on
+            // macOS; any other float anchors to the main.
+            let anchor = RUNTIME_LXAPP_ASIDES
+                .lock()
+                .ok()
+                .and_then(|entries| runtime_lxapp_aside_hosting(&entries, &entry.webtag));
+            present_webview_as_overlay_anchored(
                 &entry.webtag,
                 p.width,
                 p.height,
                 p.width_ratio,
                 p.height_ratio,
                 p.position,
+                anchor.as_ref(),
             )
         }
         (SurfaceRole::Main, _) => match entry.kind {
@@ -904,6 +928,7 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         set_aside_panel_tabs(ASIDE_LXAPP_PANEL_ID, Vec::new());
         lingxia_windows_contract::set_aside_panel_maximized(ASIDE_LXAPP_PANEL_ID, false);
         lingxia_windows_contract::set_aside_panel_collapsed(ASIDE_LXAPP_PANEL_ID, None);
+        forget_lxapp_aside_focus_state();
         hide_all_runtime_lxapp_asides();
         return false;
     };
@@ -914,6 +939,7 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
     if slot.children.is_empty() {
         lingxia_windows_contract::set_aside_panel_collapsed(ASIDE_LXAPP_PANEL_ID, None);
         set_aside_panel_tabs(ASIDE_LXAPP_PANEL_ID, Vec::new());
+        forget_lxapp_aside_focus_state();
         hide_all_runtime_lxapp_asides();
         return false;
     }
@@ -955,11 +981,13 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
     set_aside_panel_tabs(ASIDE_LXAPP_PANEL_ID, tabs);
 
     let mut active_presented = false;
+    let mut presented_webtag = None;
     if slot.visible
         && let Some(active_id) = active_id
         && let Some(entry) = entries.get(active_id)
         && find_webview_handler(&entry.webtag).is_some()
     {
+        presented_webtag = Some(entry.webtag.clone());
         let preferred_size = aside.and_then(|aside| aside.preferred_size);
         let result = if slot.overlay {
             show_webview_as_overlay_panel(
@@ -997,7 +1025,75 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         let _ = hide_host_panel(ASIDE_LXAPP_PANEL_ID);
     }
     refresh_aside_panel(ASIDE_LXAPP_PANEL_ID);
+    match lxapp_aside_focus_transition(LxappAsideFocusState {
+        collapsed: slot.collapsed,
+        maximized: slot.visible && slot.maximized,
+    }) {
+        Some(LxappAsideFocus::Aside) => {
+            if let Some(webtag) = presented_webtag.filter(|_| active_presented) {
+                focus_webview_content(&webtag);
+            }
+        }
+        Some(LxappAsideFocus::Main) => focus_active_main_webview(),
+        None => {}
+    }
     true
+}
+
+/// The lxapp aside slot's collapse and maximize state at the last plan, for
+/// the focus moves below.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LxappAsideFocusState {
+    collapsed: bool,
+    maximized: bool,
+}
+
+static LXAPP_ASIDE_FOCUS_STATE: Mutex<Option<LxappAsideFocusState>> = Mutex::new(None);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LxappAsideFocus {
+    /// Into the aside's page: it was maximized, or restored from a collapse.
+    Aside,
+    /// Back to the main page: the aside left (collapsed) or went back to its
+    /// dock from a maximize.
+    Main,
+}
+
+/// Where keyboard focus goes after the lxapp aside slot changed state, so
+/// Escape and Backspace act on the region the user is looking at (spec §4.6).
+/// Opening the slot, or the first plan, moves nothing.
+fn lxapp_aside_focus_transition(next: LxappAsideFocusState) -> Option<LxappAsideFocus> {
+    let mut state = LXAPP_ASIDE_FOCUS_STATE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let previous = state.replace(next);
+    lxapp_aside_focus_for(previous, next)
+}
+
+fn lxapp_aside_focus_for(
+    previous: Option<LxappAsideFocusState>,
+    next: LxappAsideFocusState,
+) -> Option<LxappAsideFocus> {
+    let previous = previous?;
+    if next.collapsed && !previous.collapsed {
+        return Some(LxappAsideFocus::Main);
+    }
+    if !next.collapsed && previous.collapsed {
+        return Some(LxappAsideFocus::Aside);
+    }
+    if next.maximized && !previous.maximized {
+        return Some(LxappAsideFocus::Aside);
+    }
+    if !next.maximized && previous.maximized {
+        return Some(LxappAsideFocus::Main);
+    }
+    None
+}
+
+fn forget_lxapp_aside_focus_state() {
+    *LXAPP_ASIDE_FOCUS_STATE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
 }
 
 fn should_hide_runtime_lxapp_aside(
@@ -1713,9 +1809,72 @@ mod tests {
     }
 
     use super::{
-        HashMap, RetargetedLxappAside, RuntimeLxappAside, WebTag, retarget_runtime_lxapp_aside,
+        HashMap, LxappAsideFocus, LxappAsideFocusState, RetargetedLxappAside, RuntimeLxappAside,
+        WebTag, lxapp_aside_focus_for, retarget_runtime_lxapp_aside, runtime_lxapp_aside_hosting,
         should_hide_runtime_lxapp_aside,
     };
+
+    #[test]
+    fn a_float_from_an_aside_session_anchors_to_that_aside_page() {
+        let mut entries = HashMap::new();
+        let chat = WebTag::from("agent:pages/chat/index.tsx#7");
+        entries.insert(
+            "agent".to_string(),
+            RuntimeLxappAside {
+                webtag: chat.clone(),
+                title: "Agent".to_string(),
+            },
+        );
+        let float = WebTag::from("agent:pages/picker/index.tsx#7");
+        assert_eq!(runtime_lxapp_aside_hosting(&entries, &float), Some(chat));
+        // Another session of the same lxapp, or another lxapp: the main.
+        for webtag in [
+            WebTag::from("agent:pages/picker/index.tsx#8"),
+            WebTag::from("home:pages/picker/index.tsx#7"),
+        ] {
+            assert_eq!(runtime_lxapp_aside_hosting(&entries, &webtag), None);
+        }
+    }
+
+    #[test]
+    fn aside_focus_follows_maximize_and_collapse_transitions() {
+        let docked = LxappAsideFocusState {
+            collapsed: false,
+            maximized: false,
+        };
+        let maximized = LxappAsideFocusState {
+            collapsed: false,
+            maximized: true,
+        };
+        let collapsed = LxappAsideFocusState {
+            collapsed: true,
+            maximized: false,
+        };
+        // The first plan, and an unchanged one, move nothing.
+        assert_eq!(lxapp_aside_focus_for(None, docked), None);
+        assert_eq!(lxapp_aside_focus_for(Some(docked), docked), None);
+        assert_eq!(
+            lxapp_aside_focus_for(Some(docked), maximized),
+            Some(LxappAsideFocus::Aside)
+        );
+        assert_eq!(
+            lxapp_aside_focus_for(Some(maximized), docked),
+            Some(LxappAsideFocus::Main)
+        );
+        assert_eq!(
+            lxapp_aside_focus_for(Some(docked), collapsed),
+            Some(LxappAsideFocus::Main)
+        );
+        // Collapsing ends a maximize too: one move, to main.
+        assert_eq!(
+            lxapp_aside_focus_for(Some(maximized), collapsed),
+            Some(LxappAsideFocus::Main)
+        );
+        assert_eq!(
+            lxapp_aside_focus_for(Some(collapsed), docked),
+            Some(LxappAsideFocus::Aside)
+        );
+    }
 
     #[test]
     fn cold_lxapp_tab_swap_keeps_the_previous_aside_until_the_target_is_presented() {
