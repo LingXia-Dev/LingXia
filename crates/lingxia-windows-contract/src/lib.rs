@@ -42,6 +42,8 @@ static ASIDE_PANEL_NAVIGATION: OnceLock<Mutex<HashMap<String, WindowsAsidePanelN
     OnceLock::new();
 static ASIDE_PANEL_TABBARS: OnceLock<Mutex<HashMap<String, WindowsAsidePanelTabBar>>> =
     OnceLock::new();
+static ASIDE_PANEL_COLLAPSED: OnceLock<Mutex<HashMap<String, WindowsPanelPosition>>> =
+    OnceLock::new();
 static ASIDE_PANEL_MAXIMIZED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 static ASIDE_PANEL_EVENT_HANDLER: OnceLock<Mutex<Option<WindowsAsidePanelEventHandler>>> =
     OnceLock::new();
@@ -94,6 +96,10 @@ pub enum WindowsAsidePanelEvent {
     },
     /// Cover the main area with the slot, or restore it. The role is unchanged.
     ToggleMaximize {
+        panel_id: String,
+    },
+    /// The collapsed slot's edge handle: bring the region back.
+    Restore {
         panel_id: String,
     },
     /// The lxapp slot's navigation bar Home button.
@@ -200,6 +206,36 @@ pub fn set_aside_panel_maximized(panel_id: &str, maximized: bool) {
             registry.remove(panel_id);
         }
     }
+}
+
+/// Records that an aside slot is collapsed with content still in it, at
+/// `edge`, so the shell keeps a handle there to bring it back; `None` clears
+/// it. Returns whether anything changed.
+pub fn set_aside_panel_collapsed(panel_id: &str, edge: Option<WindowsPanelPosition>) -> bool {
+    let registry = ASIDE_PANEL_COLLAPSED.get_or_init(|| Mutex::new(HashMap::new()));
+    let Ok(mut registry) = registry.lock() else {
+        return false;
+    };
+    match edge {
+        Some(edge) => registry.insert(panel_id.to_string(), edge) != Some(edge),
+        None => registry.remove(panel_id).is_some(),
+    }
+}
+
+/// Collapsed aside slots with content, by panel id, in a stable order.
+pub fn collapsed_aside_panels() -> Vec<(String, WindowsPanelPosition)> {
+    let mut out: Vec<_> = ASIDE_PANEL_COLLAPSED
+        .get()
+        .and_then(|registry| registry.lock().ok())
+        .map(|registry| {
+            registry
+                .iter()
+                .map(|(id, edge)| (id.clone(), *edge))
+                .collect()
+        })
+        .unwrap_or_default();
+    out.sort_by(|left, right| left.0.cmp(&right.0));
+    out
 }
 
 pub fn aside_panel_maximized(panel_id: &str) -> bool {

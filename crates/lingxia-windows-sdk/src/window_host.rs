@@ -5188,7 +5188,9 @@ fn attached_layout_for_window(
     let renderer = windows_chrome_renderer()?;
     let layout = current_window_layout(active_webtag_key);
     let panels = visible_panel_layout_inputs();
-    if panels.is_empty() {
+    // A collapsed aside with nothing else docked still has its restore handle
+    // to lay out: the main gives up that strip.
+    if panels.is_empty() && lingxia_windows_contract::collapsed_aside_panels().is_empty() {
         return None;
     }
     renderer

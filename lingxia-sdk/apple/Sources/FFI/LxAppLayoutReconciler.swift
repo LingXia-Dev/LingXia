@@ -125,6 +125,7 @@ enum LxAppLayoutReconciler {
         /// `overlay`, so placement below needs nothing else; the state lives
         /// in the core and survives every later plan.
         let maximized: Bool?
+        let collapsed: Bool?
     }
 
     private struct PlanFloat: Decodable {
@@ -303,6 +304,7 @@ enum LxAppLayoutReconciler {
         // remains visible for a single child as its close affordance.
         lastAsideSlots = slots
         applyLxappSlotTabs(slots, shell: shell, workspace: workspace)
+        applyCollapsedHandles(slots, shell: shell, workspace: workspace)
         for slot in slots where slot.visible && slot.kind == "native" {
             guard let active = slot.activeChild ?? slot.children.last else { continue }
             LxAppMacAppUIRuntime.reflectAsideMaximized(surfaceId: active, maximized: slot.maximized == true)
@@ -404,6 +406,34 @@ enum LxAppLayoutReconciler {
                     _ = setAsideSlotMaximized(focusAppId, "lxapp", slot.maximized != true)
                 }
             )
+        }
+    }
+
+    /// A collapsed slot that still holds content keeps a handle at its edge,
+    /// so the region can come back without the app opening it again.
+    private static func applyCollapsedHandles(
+        _ slots: [PlanAsideSlot],
+        shell: LxAppShell,
+        workspace: WorkspaceManager
+    ) {
+        let handles = slots.compactMap { slot -> CollapsedAsideHandle? in
+            guard slot.collapsed == true, !slot.children.isEmpty,
+                  slot.kind == "lxapp" || slot.kind == "browser" else { return nil }
+            let position = panelPosition(for: slot.edge)
+            guard position == .left || position == .right else { return nil }
+            // Any live lxapp reaches the window's graph; an lxapp child is one.
+            var title = "Browser"
+            var graphAppId = shell.attachedMainAppId ?? ""
+            if slot.kind == "lxapp", let child = slot.activeChild ?? slot.children.last {
+                let name = getLxAppInfo(child).app_name.toString()
+                title = name.isEmpty ? child : name
+                graphAppId = child
+            }
+            return CollapsedAsideHandle(
+                kind: slot.kind, position: position, title: title, graphAppId: graphAppId)
+        }
+        workspace.setCollapsedAsideHandles(handles) { handle in
+            _ = restoreAsideSlot(handle.graphAppId, handle.kind)
         }
     }
 

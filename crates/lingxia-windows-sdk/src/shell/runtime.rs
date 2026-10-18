@@ -501,6 +501,7 @@ mod chrome_command {
     pub(super) const ASIDE_PANEL_MAXIMIZE: &str = "aside-panel.maximize";
     pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
     pub(super) const ASIDE_PANEL_NAV_HOME: &str = "aside-panel.nav.home";
+    pub(super) const ASIDE_PANEL_RESTORE: &str = "aside-panel.restore";
     pub(super) const ASIDE_PANEL_TABBAR_CLICK: &str = "aside-panel.tabbar.click";
     pub(super) const ASIDE_PANEL_TABBAR_MENU: &str = "aside-panel.tabbar.menu";
     pub(super) const ASIDE_PANEL_NAV_FORWARD: &str = "aside-panel.nav.forward";
@@ -3742,6 +3743,13 @@ fn handle_managed_aside_event(event: WindowsAsidePanelEvent) {
                 owner.set_shell_slot_collapsed(aside_slot_kind(&panel_id), true);
             }
         }
+        WindowsAsidePanelEvent::Restore { panel_id } => {
+            if let Some(owner_appid) = shell_owner_appid()
+                && let Some(owner) = lxapp::try_get(&owner_appid)
+            {
+                owner.set_shell_slot_collapsed(aside_slot_kind(&panel_id), false);
+            }
+        }
         WindowsAsidePanelEvent::ToggleMaximize { panel_id } => {
             if let Some(owner_appid) = shell_owner_appid()
                 && let Some(owner) = lxapp::try_get(&owner_appid)
@@ -4261,6 +4269,13 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
                 return;
             };
             dispatch_aside_panel_event(WindowsAsidePanelEvent::NavHome { panel_id });
+            return;
+        }
+        chrome_command::ASIDE_PANEL_RESTORE => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::Restore { panel_id });
             return;
         }
         chrome_command::ASIDE_PANEL_TABBAR_CLICK => {

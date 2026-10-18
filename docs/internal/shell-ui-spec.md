@@ -738,6 +738,10 @@ The aside region is fixed at three slots, grouped by rendering engine:
 
 - Slot tab switching performs hide/show and preserves content state; only an
   explicit close destroys the current content.
+- A collapsed slot that still holds content leaves a slim handle at its edge
+  (macOS: a pill in the window gap; Windows: a strip the main gives up);
+  clicking it restores the slot. Opening or focusing a child still restores
+  it too.
 - Collapsing a slot hides it without closing anything. The lxapp child it was
   showing receives page `onHide`; restoring the slot with that child still
   active delivers `onShow`. Logic and the WebView stay alive throughout.
@@ -774,6 +778,13 @@ The aside region is fixed at three slots, grouped by rendering engine:
   Back or Home has somewhere to go: at the root of its stack (and for
   `navigationStyle: custom`) the bar takes no height, since the slot tab
   already names the app. Page titles never move into the tab strip.
+- An lxapp with a tabBar always opens as an aside, with no warning and no
+  manifest option: on its tab pages the framework draws the tabBar as a
+  28pt segmented row under the navigation bar (icon + label, scrolling on
+  overflow; the current tab as a pop-up/menu below 240pt). Selection and
+  `lx.tabBar.update()` behave as in the sidebar.
+- Keyboard Back (macOS Backspace) acts on the page stack of the region that
+  has focus: an aside page pops its own stack, never the main's.
 - Browser "open in main browser" promotes and closes only the **current URL
   tab**; other browser-aside tabs stay. Closing the last tab closes the slot.
 - A desktop browser slot offers history navigation, refresh, title tabs, and

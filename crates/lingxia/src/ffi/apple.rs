@@ -410,6 +410,10 @@ mod bridge {
         #[swift_bridge(swift_name = "collapseAsideSlot")]
         fn collapse_aside_slot(appid: &str, kind: &str) -> bool;
 
+        // Bring a collapsed aside slot back (its edge handle).
+        #[swift_bridge(swift_name = "restoreAsideSlot")]
+        fn restore_aside_slot(appid: &str, kind: &str) -> bool;
+
         // Maximize an aside slot over the main area, or restore it. The core
         // owns the state, so later plans keep it; the role never changes.
         #[swift_bridge(swift_name = "setAsideSlotMaximized")]
@@ -1800,6 +1804,12 @@ pub fn collapse_aside_slot(appid: &str, kind: &str) -> bool {
         } else {
             false
         }
+    })
+}
+
+pub fn restore_aside_slot(appid: &str, kind: &str) -> bool {
+    ffi_catch_unwind!("restore_aside_slot", false, || {
+        lxapp::try_get(appid).is_some_and(|lxapp| lxapp.set_shell_slot_collapsed(kind, false))
     })
 }
 
