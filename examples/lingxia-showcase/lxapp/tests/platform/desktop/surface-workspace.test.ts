@@ -3252,6 +3252,213 @@ desktopTest('keeps an aside lxapp page stack and its floats inside the aside', {
   }
 });
 
+const macosHostTest = targetPlatform === 'macos' && !selectedGate ? spec : spec.skip;
+
+/** The Chat aside slot of `layout`, if Chat is open as an aside. */
+function chatAsideSlot(layout: SurfaceLayoutSnapshot): SurfaceLayoutAsideSlot | undefined {
+  return layout.asideSlots.find((candidate) => candidate.children.includes('lingxia-chat'));
+}
+
+/** The showcase main page's web area: the left-most one that is not Chat's. */
+async function mainWebArea(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+): Promise<DesktopAxNode | undefined> {
+  const areas = await desktop.ax.query({ window: host.id, match: 'role:webarea', all: true })
+    .catch(() => [] as DesktopAxNode[]);
+  return areas
+    .filter((node) => node.rect.w > 0 && node.rect.h > 0 && !/chat/i.test(node.name ?? ''))
+    .sort((a, b) => a.rect.x - b.rect.x)[0];
+}
+
+/** A tab item of the showcase's sidebar group, by its label. */
+async function sidebarTabItem(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+  labels: string[],
+): Promise<DesktopAxNode | undefined> {
+  for (const label of labels) {
+    const nodes = await desktop.ax.query({ window: host.id, match: `value:${label}`, all: true })
+      .catch(() => [] as DesktopAxNode[]);
+    const item = nodes.find((node) => (
+      node.role === 'statictext'
+      && node.rect.w > 0
+      && node.rect.x < host.bounds.x + nativeWindowExtent('macos', host, 240)
+    ));
+    if (item) return item;
+  }
+  return undefined;
+}
+
+macosHostTest('maximizes an aside over a main that keeps its frame and restores it on every intent', {
+  id: 'DESKTOP-ASIDE-MAXIMIZE-001',
+  timeout: DESKTOP_CASE_MS,
+  covers: ['lx.shell.openApp'],
+}, async (t) => {
+  const app = await desktopApp(t);
+  const desktop = t.automation.desktop;
+  let host = desktopShowcaseHost('macos', await desktop.windows());
+  if (!host) throw new Error('visible LingXia host window was not found');
+  const originalBounds = { ...host.bounds };
+  try {
+    await closeChatSurface(t, app);
+    host = await resizeHostOnScreen(
+      desktop,
+      host,
+      nativeWindowExtent('macos', host, 1_000),
+      nativeWindowExtent('macos', host, 640),
+    );
+    await app.nav.switchTab({ page: 'home' });
+    await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+    });
+    const docked = await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      const slot = chatAsideSlot(layout);
+      return layout.sizeClass === 'expanded' && slot?.visible && !slot.overlay ? layout : undefined;
+    }, 'docked right Chat aside');
+    const chatInput = await waitForChatInput(desktop, host, 'Chat input in the aside');
+    expect(inRightAside(host, chatInput.rect)).toBeTruthy();
+    const mainBefore = await waitForValue(
+      () => mainWebArea(desktop, host!),
+      'main page web area beside the aside',
+    );
+    expect(mainBefore.rect.x + mainBefore.rect.w <= chatInput.rect.x).toBeTruthy();
+    const slop = nativeWindowExtent('macos', host, 2);
+    const expectMainFrame = async (phase: string) => {
+      const area = await waitForValue(
+        () => mainWebArea(desktop, host!),
+        `main page web area (${phase})`,
+      );
+      // The main keeps the frame it has beside the docked aside: a maximize
+      // covers it, nothing relays it out. Resizing a hidden tab's WKWebView in
+      // the maximize animation left it painting black when it came back.
+      expect({
+        phase,
+        x: Math.abs(area.rect.x - mainBefore.rect.x) <= slop,
+        w: Math.abs(area.rect.w - mainBefore.rect.w) <= slop,
+      }).toEqual({ phase, x: true, w: true });
+    };
+
+    const maximize = async (phase: string) => {
+      const button = await waitForValue(
+        () => visibleHostAxNode(desktop, host!, 'name:Maximize panel'),
+        `Maximize control (${phase})`,
+      );
+      await desktop.ax.invoke({ window: host!.id, match: `id:${button.id}` });
+      await waitForValue(async () => {
+        const slot = chatAsideSlot(await app.surfaceLayout());
+        return slot?.maximized && slot.overlay ? true : undefined;
+      }, `Chat aside maximized (${phase})`);
+      // Chat covers the main area: its input now starts left of the middle.
+      await waitForValue(async () => {
+        const input = await visibleChatInputAxNode(desktop, host!);
+        return input && input.rect.x < host!.bounds.x + host!.bounds.w / 2 ? input : undefined;
+      }, `Chat over the main (${phase})`);
+      await expectMainFrame(`maximized (${phase})`);
+    };
+    const expectRestored = async (phase: string) => {
+      await waitForValue(async () => {
+        const layout = await app.surfaceLayout();
+        const slot = chatAsideSlot(layout);
+        return slot?.visible && !slot.maximized && !slot.overlay
+          && layout.activeMainId === docked.activeMainId
+          ? true
+          : undefined;
+      }, `Chat aside back in its dock (${phase})`);
+      const input = await waitForChatInput(desktop, host!, `Chat input after ${phase}`);
+      expect(inRightAside(host!, input.rect)).toBeTruthy();
+      await expectMainFrame(`after ${phase}`);
+    };
+
+    // A sidebar tab of the main is an intent to see main: the aside goes back
+    // to its dock and the main switches to that tab.
+    await maximize('sidebar tab');
+    const apiTab = await waitForValue(
+      () => sidebarTabItem(desktop, host!, ['接口', 'API']),
+      'API tab in the sidebar',
+    );
+    await desktop.window.focus({ window: host.id });
+    await desktop.pointer.click({ at: [
+      apiTab.rect.x + Math.round(apiTab.rect.w / 2),
+      apiTab.rect.y + Math.round(apiTab.rect.h / 2),
+    ] });
+    await expectRestored('a sidebar tab click');
+    await waitForValue(async () => (
+      (await app.nav.current()).name === 'api' ? true : undefined
+    ), 'main on the API tab');
+    // The page the aside covered comes back with its full frame.
+    const homeTab = await waitForValue(
+      () => sidebarTabItem(desktop, host!, ['首页', 'Home']),
+      'Home tab in the sidebar',
+    );
+    await desktop.window.focus({ window: host.id });
+    await desktop.pointer.click({ at: [
+      homeTab.rect.x + Math.round(homeTab.rect.w / 2),
+      homeTab.rect.y + Math.round(homeTab.rect.h / 2),
+    ] });
+    await waitForValue(async () => {
+      const current = await app.nav.current();
+      return current.name === 'home' && current.ready ? true : undefined;
+    }, 'main back on the Home tab');
+    await expectMainFrame('Home tab again');
+
+    // The same control restores.
+    await maximize('control');
+    const restore = await waitForValue(
+      () => visibleHostAxNode(desktop, host!, 'name:Restore panel'),
+      'Restore control',
+    );
+    await desktop.ax.invoke({ window: host.id, match: `id:${restore.id}` });
+    await expectRestored('the Restore control');
+
+    // Escape inside the aside leaves Maximize; it does not collapse.
+    await maximize('Escape');
+    // Focus the Chat page on its heading, not in a text field: a field may
+    // consume Escape itself, and only an unconsumed Escape leaves Maximize.
+    const heading = await waitForValue(async () => {
+      const nodes = await desktop.ax.query({ window: host!.id, match: 'value:AI Chat', all: true })
+        .catch(() => [] as DesktopAxNode[]);
+      return nodes.find((node) => node.role === 'statictext' && node.rect.w > 0);
+    }, 'Chat heading to focus the aside');
+    await desktop.window.focus({ window: host.id });
+    await desktop.pointer.click({ at: [
+      heading.rect.x + Math.round(heading.rect.w / 2),
+      heading.rect.y + Math.round(heading.rect.h / 2),
+    ] });
+    await desktop.key.press({ key: 'Escape' });
+    await expectRestored('Escape');
+
+    // Collapse leaves a restore handle at the edge; it brings the aside back
+    // with its page.
+    const collapse = await waitForValue(
+      () => visibleHostAxNode(desktop, host!, 'name:Collapse panel'),
+      'Collapse control',
+    );
+    await desktop.ax.invoke({ window: host.id, match: `id:${collapse.id}` });
+    await waitForValue(async () => {
+      const slot = chatAsideSlot(await app.surfaceLayout());
+      return slot?.collapsed ? true : undefined;
+    }, 'Chat aside collapsed');
+    await waitForValue(async () => (
+      await visibleChatInputAxNode(desktop, host!) ? undefined : true
+    ), 'Chat page put away with its aside');
+    const handle = await waitForValue(
+      () => visibleHostAxNode(desktop, host!, 'name:Show LingXia Chat'),
+      'restore handle of the collapsed aside',
+    );
+    await desktop.ax.invoke({ window: host.id, match: `id:${handle.id}` });
+    await expectRestored('the restore handle');
+  } catch (error) {
+    await attachDesktopFailure(t, 'aside-maximize', desktop, host);
+    throw error;
+  } finally {
+    await closeChatSurface(t, app).catch(() => undefined);
+    await app.nav.switchTab({ page: 'home' }).catch(() => undefined);
+    if (host) await restoreHostBounds(desktop, host.id, originalBounds).catch(() => undefined);
+  }
+});
+
 desktopTest('migrates one keyed workspace across aside edges and main exactly once', {
   id: 'DESKTOP-MIGRATE-001',
   timeout: DESKTOP_CASE_MS,
