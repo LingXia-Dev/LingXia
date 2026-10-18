@@ -352,9 +352,9 @@ let package = Package(
         );
         // An empty `UILaunchScreen` is the baseline declaration that keeps the
         // app out of iOS's letterboxed compatibility mode; a configured splash
-        // replaces it with the real face once the bundle exists and it is known
-        // what this machine's Interface Builder tooling can produce. The ground
-        // also goes in raw, for the runtime overlay to paint its window with.
+        // replaces it with the launch storyboard once the bundle exists. The
+        // ground also goes in raw, for the runtime overlay to paint its window
+        // with.
         info.insert(
             "UILaunchScreen".into(),
             plist::Value::Dictionary(plist::Dictionary::new()),

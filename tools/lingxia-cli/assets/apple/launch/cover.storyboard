@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LingXia launch screen, cover face. Compiled by compile.sh; see there. -->
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="22505" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="lxVC">
+    <dependencies>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="22504"/>
+    </dependencies>
+    <scenes>
+        <scene sceneID="lxScene">
+            <objects>
+                <viewController id="lxVC" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="lxRoot">
+                        <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleToFill" image="LingXiaSplashGround" translatesAutoresizingMaskIntoConstraints="NO" id="lxGround">
+                                <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                            </imageView>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFill" image="LingXiaSplash" translatesAutoresizingMaskIntoConstraints="NO" id="lxFace">
+                                <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                            </imageView>
+                        </subviews>
+                        <viewLayoutGuide key="safeArea" id="lxSafeArea"/>
+                        <constraints>
+                            <constraint firstItem="lxGround" firstAttribute="top" secondItem="lxRoot" secondAttribute="top" id="lxGroundTop"/>
+                            <constraint firstItem="lxGround" firstAttribute="leading" secondItem="lxRoot" secondAttribute="leading" id="lxGroundLead"/>
+                            <constraint firstAttribute="trailing" secondItem="lxGround" secondAttribute="trailing" id="lxGroundTrail"/>
+                            <constraint firstAttribute="bottom" secondItem="lxGround" secondAttribute="bottom" id="lxGroundBottom"/>
+                            <constraint firstItem="lxFace" firstAttribute="top" secondItem="lxRoot" secondAttribute="top" id="lxTop"/>
+                            <constraint firstItem="lxFace" firstAttribute="leading" secondItem="lxRoot" secondAttribute="leading" id="lxLead"/>
+                            <constraint firstAttribute="trailing" secondItem="lxFace" secondAttribute="trailing" id="lxTrail"/>
+                            <constraint firstAttribute="bottom" secondItem="lxFace" secondAttribute="bottom" id="lxBottom"/>
+                        </constraints>
+                    </view>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="lxResponder" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+        </scene>
+    </scenes>
+    <resources>
+        <image name="LingXiaSplashGround" width="16" height="16"/>
+        <image name="LingXiaSplash" width="1024" height="2048"/>
+    </resources>
+</document>
