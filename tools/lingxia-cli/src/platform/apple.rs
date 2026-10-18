@@ -649,7 +649,8 @@ pub fn install_resource_bundles(
     for entry in fs::read_dir(&payload)? {
         let entry = entry?;
         let name = entry.file_name();
-        if name == "Info.plist" || is_apple_junk_entry(&name) {
+        // The catalog ships compiled, as `Assets.car`; its sources are dead weight.
+        if name == "Info.plist" || name == "Assets.xcassets" || is_apple_junk_entry(&name) {
             continue;
         }
         let path = entry.path();
@@ -969,6 +970,7 @@ mod tests {
         fs::create_dir_all(host.join("lxapps/home")).unwrap();
         fs::write(host.join("app.json"), "{}").unwrap();
         fs::write(host.join("lxapps/home/index.html"), "").unwrap();
+        fs::create_dir_all(host.join("Assets.xcassets/AppIcon.appiconset")).unwrap();
         let sdk = build.join("lingxia_lingxia.bundle");
         fs::create_dir_all(&sdk).unwrap();
         fs::write(sdk.join("404.html"), "").unwrap();
@@ -980,6 +982,7 @@ mod tests {
         assert!(root.join("app.json").is_file());
         assert!(root.join("lxapps/home/index.html").is_file());
         assert!(!root.join("lxapp_lxapp.bundle").exists());
+        assert!(!root.join("Assets.xcassets").exists());
         assert!(root.join("lingxia_lingxia.bundle/404.html").is_file());
     }
 
