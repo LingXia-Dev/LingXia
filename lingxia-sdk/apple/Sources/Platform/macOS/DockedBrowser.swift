@@ -96,6 +96,14 @@ final class DockedBrowser: NSObject {
     private let forwardButton = NSButton()
     private let refreshButton = NSButton()
     private let closeAsideButton = NSButton()
+    private let maximizeButton = NSButton()
+    private var maximized = false
+    /// Toggle the slot covering the main area (spec §4.6 Maximize), the same
+    /// control the lxapp slot strip offers. Nil hides it (a compact overlay
+    /// already covers the main).
+    var onToggleMaximize: (() -> Void)? {
+        didSet { maximizeButton.isHidden = onToggleMaximize == nil }
+    }
     private let tabStrip = NSStackView()
     private let separator = LxAppHostThemeLayerView(role: .separator)
     private let webContainer = NSView()
@@ -449,6 +457,16 @@ final class DockedBrowser: NSObject {
         closeAsideButton.action = #selector(closeAsideClicked)
         toolbar.addSubview(closeAsideButton)
 
+        maximizeButton.translatesAutoresizingMaskIntoConstraints = false
+        maximizeButton.isBordered = false
+        maximizeButton.imagePosition = .imageOnly
+        maximizeButton.contentTintColor = LxAppHostTheme.mutedForeground
+        maximizeButton.target = self
+        maximizeButton.action = #selector(maximizeClicked)
+        maximizeButton.isHidden = true
+        applyMaximizeState()
+        toolbar.addSubview(maximizeButton)
+
         // Title tab strip in the SAME bar. Tabs sit adjacent, leading-packed:
         // equal widths capped at maxTabWidth, shrinking evenly when crowded
         // (the strip grows with its tabs instead of filling the whole bar).
@@ -511,10 +529,15 @@ final class DockedBrowser: NSObject {
             closeAsideButton.widthAnchor.constraint(equalToConstant: Layout.closeSize),
             closeAsideButton.heightAnchor.constraint(equalToConstant: Layout.closeSize),
 
+            maximizeButton.trailingAnchor.constraint(equalTo: closeAsideButton.leadingAnchor, constant: -4),
+            maximizeButton.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
+            maximizeButton.widthAnchor.constraint(equalToConstant: Layout.closeSize),
+            maximizeButton.heightAnchor.constraint(equalToConstant: Layout.closeSize),
+
             // Tabs live in the SAME bar as back/forward/refresh (one row),
-            // leading-packed; the strip may grow up to the close button.
+            // leading-packed; the strip may grow up to the maximize button.
             tabStrip.leadingAnchor.constraint(equalTo: refreshButton.trailingAnchor, constant: Layout.edge),
-            tabStrip.trailingAnchor.constraint(lessThanOrEqualTo: closeAsideButton.leadingAnchor, constant: -Layout.edge),
+            tabStrip.trailingAnchor.constraint(lessThanOrEqualTo: maximizeButton.leadingAnchor, constant: -Layout.edge),
             tabStrip.bottomAnchor.constraint(equalTo: toolbar.bottomAnchor),
             tabStrip.heightAnchor.constraint(equalToConstant: Layout.tabHeight),
 
@@ -669,6 +692,25 @@ final class DockedBrowser: NSObject {
     @objc private func refreshClicked() {
         activeTab()?.webView?.reload()
     }
+
+    func setMaximized(_ maximized: Bool) {
+        guard self.maximized != maximized else { return }
+        self.maximized = maximized
+        applyMaximizeState()
+    }
+
+    private func applyMaximizeState() {
+        let symbol = maximized
+            ? "arrow.down.right.and.arrow.up.left"
+            : "arrow.up.left.and.arrow.down.right"
+        let label = maximized ? "Restore panel" : "Maximize panel"
+        maximizeButton.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .medium))
+        maximizeButton.toolTip = label
+        maximizeButton.setAccessibilityLabel(label)
+    }
+
+    @objc private func maximizeClicked() { onToggleMaximize?() }
 
     @objc private func closeAsideClicked() {
         onCloseAside()

@@ -305,6 +305,7 @@ enum LxAppLayoutReconciler {
         let previousSlots = lastAsideSlots
         lastAsideSlots = slots
         applyLxappSlotTabs(slots, shell: shell, workspace: workspace)
+        applyBrowserSlotMaximize(slots, shell: shell)
         applyCollapsedHandles(slots, shell: shell, workspace: workspace)
         applyMaximizeFocus(from: previousSlots, to: slots, shell: shell)
         for slot in slots where slot.visible && slot.kind == "native" {
@@ -447,6 +448,30 @@ enum LxAppLayoutReconciler {
                 panelId = shell.browserCoordinator.activeDockedBrowser?.anchorSurfaceId
             }
             shell.asideSlotMaximizeDidChange(maximized: isNow, panelId: panelId)
+        }
+    }
+
+    /// The browser slot's Maximize control, on the docked browser's own bar
+    /// (its tabs are its own, not a slot strip). The same core state and
+    /// rules as the lxapp slot: none on a compact overlay.
+    private static func applyBrowserSlotMaximize(_ slots: [PlanAsideSlot], shell: LxAppShell) {
+        guard let docked = shell.browserCoordinator.activeDockedBrowser else { return }
+        guard let slot = slots.first(where: { $0.kind == "browser" && $0.visible }) else {
+            docked.setMaximized(false)
+            docked.onToggleMaximize = nil
+            return
+        }
+        let maximized = slot.maximized == true
+        docked.setMaximized(maximized)
+        // Any live lxapp reaches the window's graph.
+        guard let graphAppId = shell.attachedMainAppId
+            ?? LxAppTabManager.shared.activeTab?.appId
+            ?? lxappAsideChildId(), !(slot.overlay && !maximized) else {
+            docked.onToggleMaximize = nil
+            return
+        }
+        docked.onToggleMaximize = {
+            _ = setAsideSlotMaximized(graphAppId, "browser", !maximized)
         }
     }
 
