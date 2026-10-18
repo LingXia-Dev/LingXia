@@ -14,12 +14,12 @@
 //!   OS frame cannot carry the art — the 12+ splash offers a colour and an
 //!   icon slot and nothing else — so its frame is the ground, and the art
 //!   arrives on the app's first frame.
-//! - iOS: a compiled launch storyboard naming the art as a plain bundle
-//!   resource — the only launch mechanism that can fill the screen, and so
-//!   the only one that can agree with the layer the SDK draws over it.
-//!   `UILaunchScreen`'s `UIImageName` has no content mode and centres the
-//!   image at its natural point size instead. Without Interface Builder the
-//!   frame degrades to the brand ground alone, which is the Android story.
+//! - iOS: a launch storyboard naming the art as a plain bundle resource —
+//!   the only launch mechanism that can fill the screen, and so the only one
+//!   that can agree with the layer the SDK draws over it. `UILaunchScreen`'s
+//!   `UIImageName` has no content mode and centres the image at its natural
+//!   point size instead. The storyboards ship precompiled in the CLI, so a
+//!   build needs no Interface Builder.
 //! - HarmonyOS: start-window colour, the art as the start window's own
 //!   background image, and a blanked icon slot, synced into the committed
 //!   entry module.
@@ -35,7 +35,6 @@ use image::imageops::FilterType;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use crate::config::SplashConfig;
 
@@ -55,14 +54,7 @@ pub const ANDROID_LIGHT_BARS_RES: &str = "lingxia_splash_light_bars";
 /// One universal entry: the fixed face must resolve identically in every
 /// appearance.
 pub const APPLE_COLOR_ASSET: &str = "LingXiaSplashBackground";
-/// The compiled launch storyboard, named by `UILaunchStoryboardName`. A
-/// storyboard, not `UILaunchScreen`: the plist dictionary has no content
-/// mode, so `UIImageName` draws the art at its natural *point* size — a
-/// 1024x2048 cover lands as a 2.5x centre crop, and the SDK's aspect-filled
-/// layer then snaps it back. That disagreement is the mid-launch swap this
-/// whole design exists to avoid. A storyboard can pin the art to the edges
-/// and fill, which is what the overlay does and what HarmonyOS's
-/// `startWindowBackgroundImageFit: Cover` does.
+/// The launch storyboard in the app, named by `UILaunchStoryboardName`.
 pub const APPLE_LAUNCH_STORYBOARD: &str = "LingXiaLaunchScreen";
 
 /// Harmony resource names — the start window points at the color and mark;
@@ -329,14 +321,13 @@ pub fn stage_apple_splash_resources(
 /// builds), and the overlay must not go missing when it does. The launch
 /// storyboard names the same files, so the OS frame and the overlay draw one
 /// picture from one source.
-pub const APPLE_IMAGE_NAME: &str = "LingXiaSplash";
-pub const APPLE_MARK_NAME: &str = "LingXiaSplashMark";
-/// The solid brand ground, for the launch frame this machine's tooling can
-/// still produce when Interface Builder is unavailable.
-pub const APPLE_GROUND_NAME: &str = "LingXiaSplashGround";
 pub const APPLE_BUNDLE_IMAGE: &str = "LingXiaSplash.png";
 pub const APPLE_BUNDLE_MARK: &str = "LingXiaSplashMark.png";
+/// The solid brand ground the launch storyboard stretches under the face.
 pub const APPLE_BUNDLE_GROUND: &str = "LingXiaSplashGround.png";
+/// The mark again, named `@3x` so the storyboard draws it at the point size
+/// the overlay gives it; the overlay's own copy stays where it looks.
+pub const APPLE_BUNDLE_LAUNCH_MARK: &str = "LingXiaLaunchMark@3x.png";
 
 /// Copy the splash images into a built `.app` as plain bundle resources.
 pub fn install_apple_bundle_images(app_bundle: &Path, splash: &ResolvedSplash) -> Result<()> {
@@ -349,61 +340,34 @@ pub fn install_apple_bundle_images(app_bundle: &Path, splash: &ResolvedSplash) -
     Ok(())
 }
 
-/// What the OS launch frame ended up being able to draw.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AppleLaunchFace {
-    /// The configured face, composed exactly as the SDK overlay composes it.
-    Storyboard,
-    /// The brand ground alone, because Interface Builder is not installed.
-    /// The art then arrives on the app's first frame — the Android story.
-    Ground,
+/// The launch storyboards, compiled once by `assets/apple/launch/compile.sh`.
+/// They name only the bundle images above, so one compiled copy serves every
+/// app and a build never needs Interface Builder.
+static APPLE_LAUNCH_STORYBOARDS: include_dir::Dir<'_> =
+    include_dir::include_dir!("$CARGO_MANIFEST_DIR/assets/apple/launch/compiled");
+
+/// Which compiled storyboard draws this splash: the cover filling the
+/// screen, else the centred mark, else the ground alone.
+fn apple_launch_variant(splash: &ResolvedSplash) -> &'static str {
+    match (&splash.image, &splash.mark) {
+        (Some(_), _) => "cover",
+        (None, Some(_)) => "mark",
+        (None, None) => "ground",
+    }
 }
 
 /// Install the OS launch face into a built `.app`, and point Info.plist at it.
 ///
-/// A compiled storyboard, not the `UILaunchScreen` dictionary. That
-/// dictionary has no content mode: `UIImageName` draws the image at its
-/// natural *point* size, centred — a 1024x2048 cover lands 2.3x oversized on
-/// a phone, and the overlay's aspect-filled copy then snaps it back. Two
-/// pictures, one launch. A storyboard pins the art to the edges and fills,
-/// which is what the overlay does and what HarmonyOS's start window does
-/// with `startWindowBackgroundImageFit: Cover`.
-///
-/// `ibtool` needs the iOS platform installed, exactly as `actool` does. When
-/// it is missing the frame falls back to the ground alone: a solid image
-/// larger than any screen, which reads the same whether the OS centres it at
-/// natural size or stretches it, and needs no compiled catalog to resolve.
-pub fn install_apple_launch_screen(
-    app_bundle: &Path,
-    splash: &ResolvedSplash,
-    deployment_target: &str,
-) -> Result<AppleLaunchFace> {
-    match compile_apple_launch_storyboard(app_bundle, splash, deployment_target) {
-        Ok(()) => {
-            set_launch_plist(app_bundle, |info| {
-                info.remove("UILaunchScreen");
-                info.insert(
-                    "UILaunchStoryboardName".into(),
-                    APPLE_LAUNCH_STORYBOARD.into(),
-                );
-            })?;
-            Ok(AppleLaunchFace::Storyboard)
-        }
-        Err(err) => {
-            install_apple_ground_face(app_bundle, splash)
-                .with_context(|| format!("Launch storyboard unavailable ({err})"))?;
-            Ok(AppleLaunchFace::Ground)
-        }
-    }
-}
-
-/// The ground alone, carried by a solid image rather than `UIColorName`: the
-/// colour only resolves out of a compiled catalog, and the same `actool`
-/// failure that costs the storyboard costs the colour too.
-fn install_apple_ground_face(app_bundle: &Path, splash: &ResolvedSplash) -> Result<()> {
-    // Larger than any screen in points, so the OS covers the display with it
-    // under either of the behaviours `UIImageName` is documented to have.
-    const GROUND_PX: u32 = 2048;
+/// A storyboard, not the `UILaunchScreen` dictionary. That dictionary has no
+/// content mode: `UIImageName` draws the image at its natural *point* size,
+/// centred — a 1024x2048 cover lands 2.3x oversized on a phone, and the
+/// overlay's aspect-filled copy then snaps it back. Two pictures, one launch.
+/// A storyboard pins the art to the edges and fills, which is what the
+/// overlay does and what HarmonyOS's start window does with
+/// `startWindowBackgroundImageFit: Cover`.
+pub fn install_apple_launch_screen(app_bundle: &Path, splash: &ResolvedSplash) -> Result<()> {
+    // Solid, so any size stretches to the same picture.
+    const GROUND_PX: u32 = 16;
     let [r, g, b, _] = crate::appicon::parse_hex_color(splash.background())?;
     let ground = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
         GROUND_PX,
@@ -411,161 +375,45 @@ fn install_apple_ground_face(app_bundle: &Path, splash: &ResolvedSplash) -> Resu
         image::Rgb([r, g, b]),
     ));
     save_png(&ground, &app_bundle.join(APPLE_BUNDLE_GROUND))?;
-    set_launch_plist(app_bundle, |info| {
-        info.remove("UILaunchStoryboardName");
-        let mut launch = plist::Dictionary::new();
-        launch.insert("UIImageName".into(), APPLE_GROUND_NAME.into());
-        launch.insert("UIImageRespectsSafeAreaInsets".into(), false.into());
-        info.insert("UILaunchScreen".into(), plist::Value::Dictionary(launch));
-    })
-}
+    let variant = apple_launch_variant(splash);
+    if variant == "mark"
+        && let Some(mark) = &splash.mark
+    {
+        save_png(mark, &app_bundle.join(APPLE_BUNDLE_LAUNCH_MARK))?;
+    }
 
-fn set_launch_plist(app_bundle: &Path, edit: impl FnOnce(&mut plist::Dictionary)) -> Result<()> {
+    let compiled = APPLE_LAUNCH_STORYBOARDS
+        .get_dir(format!("{variant}.storyboardc"))
+        .with_context(|| format!("the CLI embeds no `{variant}` launch storyboard"))?;
+    let dest = app_bundle.join(format!("{APPLE_LAUNCH_STORYBOARD}.storyboardc"));
+    if dest.exists() {
+        fs::remove_dir_all(&dest)?;
+    }
+    write_embedded_dir(compiled, compiled.path(), &dest)?;
+
     let path = app_bundle.join("Info.plist");
     let mut info: plist::Dictionary =
         plist::from_file(&path).context("Failed to read Info.plist for the launch face")?;
-    edit(&mut info);
+    info.remove("UILaunchScreen");
+    info.insert(
+        "UILaunchStoryboardName".into(),
+        APPLE_LAUNCH_STORYBOARD.into(),
+    );
     plist::to_file_xml(&path, &info).context("Failed to write Info.plist for the launch face")
 }
 
-/// Compile the launch storyboard straight into the built bundle.
-fn compile_apple_launch_storyboard(
-    app_bundle: &Path,
-    splash: &ResolvedSplash,
-    deployment_target: &str,
-) -> Result<()> {
-    // Never inside the bundle: whatever is left there gets signed and shipped.
-    let source_dir = tempfile::tempdir().context("Failed to stage the launch storyboard")?;
-    let source = source_dir
-        .path()
-        .join(format!("{APPLE_LAUNCH_STORYBOARD}.storyboard"));
-    fs::write(&source, apple_launch_storyboard_xml(splash)?)?;
-
-    let compiled = app_bundle.join(format!("{APPLE_LAUNCH_STORYBOARD}.storyboardc"));
-    let output = Command::new("xcrun")
-        .args(["ibtool", "--errors", "--warnings", "--notices"])
-        .args(["--target-device", "iphone", "--target-device", "ipad"])
-        .args(["--minimum-deployment-target", deployment_target])
-        .args(["--output-format", "human-readable-text", "--compile"])
-        .arg(&compiled)
-        .arg(&source)
-        .output()
-        .context("Failed to run ibtool")?;
-
-    let combined = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    // ibtool reports compile failures in its log and still exits 0.
-    if !output.status.success() || combined.contains("com.apple.ibtool.errors") {
-        fs::remove_dir_all(&compiled).ok();
-        return Err(anyhow!(
-            "ibtool could not compile the launch storyboard: {}",
-            combined
-                .lines()
-                .map(str::trim)
-                .filter(|line| line.contains("error"))
-                .collect::<Vec<_>>()
-                .join(" | ")
-        ));
+/// Write an embedded directory's files under `dest`, relative to `root`.
+fn write_embedded_dir(dir: &include_dir::Dir<'_>, root: &Path, dest: &Path) -> Result<()> {
+    fs::create_dir_all(dest)?;
+    for file in dir.files() {
+        let target = dest.join(file.path().strip_prefix(root)?);
+        fs::write(&target, file.contents())
+            .with_context(|| format!("Failed to write {}", target.display()))?;
+    }
+    for sub in dir.dirs() {
+        write_embedded_dir(sub, root, &dest.join(sub.path().strip_prefix(root)?))?;
     }
     Ok(())
-}
-
-/// The launch face as Interface Builder XML.
-///
-/// One view controller: the brand ground, and the face drawn on it — the
-/// cover pinned to all four edges and aspect-filled, or, with no cover, the
-/// mark centred at the same point size the overlay gives it (the authored
-/// pixels are 3x). Both name plain bundle resources, so the frame needs no
-/// compiled catalog.
-fn apple_launch_storyboard_xml(splash: &ResolvedSplash) -> Result<String> {
-    let [r, g, b, _] = crate::appicon::parse_hex_color(splash.background())?;
-    let component = |value: u8| format!("{:.10}", f64::from(value) / 255.0);
-    let (subview, constraints, resource) = match (&splash.image, &splash.mark) {
-        (Some(image), _) => {
-            let fitted = fit_splash(image);
-            (
-                format!(
-                    r#"<imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFill" image="{APPLE_IMAGE_NAME}" translatesAutoresizingMaskIntoConstraints="NO" id="lxFace">
-                                <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
-                            </imageView>"#
-                ),
-                r#"<constraint firstItem="lxFace" firstAttribute="top" secondItem="lxRoot" secondAttribute="top" id="lxTop"/>
-                            <constraint firstItem="lxFace" firstAttribute="leading" secondItem="lxRoot" secondAttribute="leading" id="lxLead"/>
-                            <constraint firstAttribute="trailing" secondItem="lxFace" secondAttribute="trailing" id="lxTrail"/>
-                            <constraint firstAttribute="bottom" secondItem="lxFace" secondAttribute="bottom" id="lxBottom"/>"#
-                    .to_string(),
-                format!(
-                    r#"<image name="{APPLE_IMAGE_NAME}" width="{}" height="{}"/>"#,
-                    fitted.width(),
-                    fitted.height()
-                ),
-            )
-        }
-        (None, Some(mark)) => {
-            // The authored mark is 3x, as the overlay reads it.
-            let width = f64::from(mark.width()) / 3.0;
-            let height = f64::from(mark.height()) / 3.0;
-            (
-                format!(
-                    r#"<imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="{APPLE_MARK_NAME}" translatesAutoresizingMaskIntoConstraints="NO" id="lxFace">
-                                <rect key="frame" x="0.0" y="0.0" width="{width}" height="{height}"/>
-                            </imageView>"#
-                ),
-                format!(
-                    r#"<constraint firstItem="lxFace" firstAttribute="centerX" secondItem="lxRoot" secondAttribute="centerX" id="lxCenterX"/>
-                            <constraint firstItem="lxFace" firstAttribute="centerY" secondItem="lxRoot" secondAttribute="centerY" id="lxCenterY"/>
-                            <constraint firstAttribute="width" constant="{width}" id="lxWidth"/>
-                            <constraint firstAttribute="height" constant="{height}" id="lxHeight"/>"#
-                ),
-                format!(
-                    r#"<image name="{APPLE_MARK_NAME}" width="{}" height="{}"/>"#,
-                    mark.width(),
-                    mark.height()
-                ),
-            )
-        }
-        (None, None) => (String::new(), String::new(), String::new()),
-    };
-
-    Ok(format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="22505" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="lxVC">
-    <dependencies>
-        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="22504"/>
-    </dependencies>
-    <scenes>
-        <scene sceneID="lxScene">
-            <objects>
-                <viewController id="lxVC" sceneMemberID="viewController">
-                    <view key="view" contentMode="scaleToFill" id="lxRoot">
-                        <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
-                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
-                        <subviews>
-                            {subview}
-                        </subviews>
-                        <viewLayoutGuide key="safeArea" id="lxSafeArea"/>
-                        <color key="backgroundColor" red="{red}" green="{green}" blue="{blue}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
-                        <constraints>
-                            {constraints}
-                        </constraints>
-                    </view>
-                </viewController>
-                <placeholder placeholderIdentifier="IBFirstResponder" id="lxResponder" userLabel="First Responder" sceneMemberID="firstResponder"/>
-            </objects>
-        </scene>
-    </scenes>
-    <resources>
-        {resource}
-    </resources>
-</document>
-"#,
-        red = component(r),
-        green = component(g),
-        blue = component(b),
-    ))
 }
 
 /// Only the ground colour: the launch face itself is a bundle resource the
@@ -928,58 +776,49 @@ mod tests {
 
     /// A cover is the app's real first face, so the system splash must not
     /// show a second one ahead of it.
-    /// The whole point: the OS frame fills, exactly as the overlay does.
-    /// `UILaunchScreen`'s `UIImageName` cannot, which is what put two
-    /// differently-sized copies of the art on one launch.
+    /// The OS frame must draw what the overlay draws: the cover when there is
+    /// one, else the centred mark, else the ground alone.
     #[test]
-    fn launch_storyboard_fills_with_the_cover() {
-        let xml = apple_launch_storyboard_xml(&splash(true)).unwrap();
-        assert!(xml.contains(&format!(
-            r#"contentMode="scaleAspectFill" image="{APPLE_IMAGE_NAME}""#
-        )));
-        for edge in ["top", "leading", "trailing", "bottom"] {
-            assert!(
-                xml.contains(&format!(r#"secondAttribute="{edge}""#)),
-                "{edge} unpinned"
-            );
-        }
-        assert!(
-            xml.contains(r#"red="0.0745098039""#),
-            "ground colour missing: {xml}"
-        );
-    }
-
-    /// A placeholder-only launch draws the mark at the point size the overlay
-    /// gives it — authored pixels are 3x on both sides.
-    #[test]
-    fn launch_storyboard_centers_the_mark_at_overlay_size() {
+    fn launch_storyboard_follows_the_configured_face() {
+        assert_eq!(apple_launch_variant(&splash(true)), "cover");
+        assert_eq!(apple_launch_variant(&splash_with_mark()), "cover");
         let mut mark_only = splash_with_mark();
         mark_only.image = None;
-        mark_only.mark = Some(DynamicImage::ImageRgba8(RgbaImage::new(885, 885)));
-        let xml = apple_launch_storyboard_xml(&mark_only).unwrap();
-        assert!(
-            xml.contains(r#"constant="295""#),
-            "mark not at 3x point size: {xml}"
-        );
-        assert!(xml.contains(r#"secondAttribute="centerY""#));
+        assert_eq!(apple_launch_variant(&mark_only), "mark");
+        assert_eq!(apple_launch_variant(&splash(false)), "ground");
+        for variant in ["cover", "mark", "ground"] {
+            assert!(
+                APPLE_LAUNCH_STORYBOARDS
+                    .get_dir(format!("{variant}.storyboardc"))
+                    .is_some(),
+                "{variant} not compiled: run assets/apple/launch/compile.sh"
+            );
+        }
     }
 
-    /// Without Interface Builder the frame is the ground alone, carried by an
-    /// image rather than `UIColorName`: the colour needs a compiled catalog,
-    /// and the same missing platform costs us that too.
+    /// No Interface Builder: the compiled storyboard is copied in, with the
+    /// images it names.
     #[test]
-    fn ground_face_needs_no_catalog() {
+    fn launch_screen_installs_the_precompiled_storyboard() {
         let dir = tempfile::tempdir().unwrap();
         plist::to_file_xml(dir.path().join("Info.plist"), &plist::Dictionary::new()).unwrap();
+        let mut mark_only = splash_with_mark();
+        mark_only.image = None;
 
-        install_apple_ground_face(dir.path(), &splash(true)).unwrap();
+        install_apple_launch_screen(dir.path(), &mark_only).unwrap();
 
+        let storyboard = dir
+            .path()
+            .join(format!("{APPLE_LAUNCH_STORYBOARD}.storyboardc"));
+        assert!(fs::read_dir(&storyboard).unwrap().next().is_some());
         assert!(dir.path().join(APPLE_BUNDLE_GROUND).is_file());
+        assert!(dir.path().join(APPLE_BUNDLE_LAUNCH_MARK).is_file());
         let info: plist::Dictionary = plist::from_file(dir.path().join("Info.plist")).unwrap();
-        let launch = info["UILaunchScreen"].as_dictionary().unwrap();
-        assert_eq!(launch["UIImageName"].as_string(), Some(APPLE_GROUND_NAME));
-        assert!(!launch.contains_key("UIColorName"));
-        assert!(!info.contains_key("UILaunchStoryboardName"));
+        assert_eq!(
+            info["UILaunchStoryboardName"].as_string(),
+            Some(APPLE_LAUNCH_STORYBOARD)
+        );
+        assert!(!info.contains_key("UILaunchScreen"));
     }
 
     #[test]

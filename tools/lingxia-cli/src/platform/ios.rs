@@ -414,30 +414,8 @@ impl Platform for IosPlatform {
                 // runtime overlay reads those, so it survives an actool
                 // failure that would leave the compiled catalog missing.
                 crate::splash::install_apple_bundle_images(&app_path, &resolved)?;
-                // The OS launch face, composed the way the overlay composes
-                // it. Without Interface Builder only the ground can be drawn
-                // and the art arrives on the app's first frame instead — the
-                // Android beat, fine for a dev build and not for a shipped one.
-                let face = crate::splash::install_apple_launch_screen(
-                    &app_path,
-                    &resolved,
-                    &deployment_target,
-                )?;
-                if face == crate::splash::AppleLaunchFace::Ground {
-                    if matches!(config.resolved_env.version, crate::config::AppEnv::Prod) {
-                        anyhow::bail!(
-                            "prod iOS build requires a compiled launch storyboard; \
-                             `ibtool` needs the iOS platform installed — run \
-                             `xcodebuild -downloadPlatform iOS`"
-                        );
-                    }
-                    eprintln!(
-                        "  {} No launch storyboard: `ibtool` needs the iOS platform installed, so\n     \
-                         the OS launch frame is the splash background alone and the art arrives\n     \
-                         with the app's first frame. Fix with: xcodebuild -downloadPlatform iOS",
-                        "Warning:".yellow()
-                    );
-                }
+                // The OS launch face, composed the way the overlay composes it.
+                crate::splash::install_apple_launch_screen(&app_path, &resolved)?;
                 crate::splash::stage_apple_splash_resources(
                     &staging_base,
                     &resources_dir,

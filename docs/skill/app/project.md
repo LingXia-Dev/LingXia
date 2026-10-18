@@ -301,8 +301,6 @@ A generated launch screen, held until the home page renders, then faded out.
 - `mark` — PNG centred by the OS frame when there is no `image`.
 - `minDuration` — ms from process start (default 600).
 - One face for every appearance; there is no dark variant.
-- iOS needs the platform installed (`xcodebuild -downloadPlatform iOS`); without
-  it a dev build shows `background` only and a release build fails.
 
 A campaign screen after launch: [Launch screen](../native/splash.md).
 
