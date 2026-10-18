@@ -107,8 +107,9 @@ fn check_actool() -> CheckResult {
             "actool",
             format!("Found but cannot compile asset catalogs: {err}"),
             Some(
-                "App icons and the splash launch frame will be missing. \
-                 Run `xcodebuild -downloadPlatform iOS` to install the platform files.",
+                "An iOS build prepares an asset compiler that needs no simulator runtime \
+                 under ~/.lingxia/apple/actool; if that fails too, run \
+                 `xcodebuild -downloadPlatform iOS`.",
             ),
         ),
     }
@@ -139,45 +140,45 @@ fn try_compile_probe_catalog() -> Result<(), String> {
         return Err(format!("could not stage a probe catalog: {err}"));
     }
 
-    let output = std::process::Command::new("xcrun")
-        .args(["--sdk", "iphoneos", "actool"])
-        .env_remove("SDKROOT")
-        .args([
-            "--output-format",
-            "human-readable-text",
-            "--output-partial-info-plist",
-            &root.join("probe.plist").to_string_lossy(),
-            "--minimum-deployment-target",
-            "17.0",
-            "--platform",
-            "iphoneos",
-            "--target-device",
-            "iphone",
-            "--compile",
-            &out.to_string_lossy(),
-            &root.join("Probe.xcassets").to_string_lossy(),
-        ])
-        .output();
-
-    let result = match output {
-        Ok(output) if out.join("Assets.car").is_file() => {
-            let _ = output;
-            Ok(())
+    let args: Vec<String> = vec![
+        "--output-format".into(),
+        "human-readable-text".into(),
+        "--output-partial-info-plist".into(),
+        root.join("probe.plist").to_string_lossy().into_owned(),
+        "--minimum-deployment-target".into(),
+        "17.0".into(),
+        "--platform".into(),
+        "iphoneos".into(),
+        "--target-device".into(),
+        "iphone".into(),
+        "--compile".into(),
+        out.to_string_lossy().into_owned(),
+        root.join("Probe.xcassets").to_string_lossy().into_owned(),
+    ];
+    // Xcode's actool, then the runtime-free one a build prepared: either
+    // producing Assets.car means a real build will too.
+    let mut result = Err("no Assets.car produced".to_string());
+    for mut command in apple::assets::ios_actool_commands() {
+        result = match command.args(&args).output() {
+            Ok(_) if out.join("Assets.car").is_file() => Ok(()),
+            Ok(output) => {
+                let text = format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                Err(text
+                    .lines()
+                    .find(|line| line.contains("error:"))
+                    .map(|line| line.trim().to_string())
+                    .unwrap_or_else(|| "no Assets.car produced".to_string()))
+            }
+            Err(err) => Err(err.to_string()),
+        };
+        if result.is_ok() {
+            break;
         }
-        Ok(output) => {
-            let text = format!(
-                "{}{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            );
-            Err(text
-                .lines()
-                .find(|line| line.contains("error:"))
-                .map(|line| line.trim().to_string())
-                .unwrap_or_else(|| "no Assets.car produced".to_string()))
-        }
-        Err(err) => Err(err.to_string()),
-    };
+    }
 
     cleanup();
     result
