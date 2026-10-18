@@ -157,6 +157,7 @@ impl SurfaceManager {
     }
 
     pub fn close(&mut self, id: &str) -> CloseOutcome {
+        let previous_active_main = self.graph.active_main_id.clone();
         let outcome = self.graph.close(id);
         let removed = outcome.removed();
         if self
@@ -164,6 +165,11 @@ impl SurfaceManager {
             .is_some_and(|kind| !self.slot_has_children(kind))
         {
             self.maximized_slot = None;
+        }
+        // Closing the active main switches to its successor: a main switch
+        // restores a maximized aside, the same as selecting one.
+        if self.graph.active_main_id != previous_active_main {
+            self.restore_maximized_slot();
         }
         if self
             .overlay_fallback_surface_id
@@ -360,9 +366,21 @@ impl SurfaceManager {
 
     /// Take a maximized aside slot back to its dock. The slot keeps its size,
     /// children and collapse state; only the overlay over main goes. Returns
-    /// whether a slot was maximized.
+    /// whether a maximized slot was on screen: a maximize the plan was not
+    /// presenting (the slot lost admission, or every child is hidden) is
+    /// forgotten silently, so the caller's own intent is not swallowed by a
+    /// restore nobody can see.
     pub fn restore_maximized_slot(&mut self) -> bool {
-        self.maximized_slot.take().is_some()
+        if self.maximized_slot.is_none() {
+            return false;
+        }
+        let presented = self
+            .presentation_plan()
+            .aside_slots
+            .iter()
+            .any(|slot| slot.maximized);
+        self.maximized_slot = None;
+        presented
     }
     pub fn set_focus(&mut self, id: &str) -> bool {
         let focused = self.graph.set_focus(id);
@@ -743,6 +761,51 @@ mod tests {
         let revision = m.switcher_snapshot().revision;
         assert!(m.set_active_main("third"));
         assert_eq!(m.switcher_snapshot().revision, revision);
+    }
+
+    #[test]
+    fn closing_the_active_main_restores_a_maximized_aside() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(main_s("other"));
+        m.set_active_main("other");
+        m.open(aside_s("assistant", Edge::Right));
+        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+
+        // Closing a background main is not a main switch.
+        m.open(main_s("third"));
+        m.close("third");
+        assert!(m.slot_maximized(crate::SlotKind::Lxapp));
+
+        // Closing the active main is: its successor shows under a docked aside.
+        m.close("other");
+        assert_eq!(m.graph().active_main_id.as_deref(), Some("home"));
+        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(!m.presentation_plan().aside_slots[0].overlay);
+    }
+
+    #[test]
+    fn a_maximize_nobody_sees_is_forgotten_without_claiming_a_restore() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(aside_s("assistant", Edge::Right));
+        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+
+        // Every child hidden: the slot is not presented, so there is no
+        // overlay on screen for a main intent to take down.
+        m.hide("assistant");
+        assert!(!m.presentation_plan().aside_slots[0].visible);
+        assert!(!m.restore_maximized_slot());
+        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+
+        // Shown again, the aside comes back docked.
+        m.show("assistant");
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert!(slot.visible && !slot.maximized && !slot.overlay);
+
+        // A maximize that is on screen reports the restore.
+        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+        assert!(m.restore_maximized_slot());
     }
 
     #[test]
