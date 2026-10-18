@@ -265,10 +265,11 @@ window and drives sidebar and aside arbitration:
 **Content size class** is computed per surface from its actual viewport width
 and is the only size class exposed on `lx.surface.watchContext`:
 
-`SurfaceContext.aside` separately reports whether the host shell is Medium or
-Expanded (false before a layout is available). It is not inferred from the
-content size class. Host docking changes emit context events even when the
-content viewport dimensions have not changed.
+`canDock` separately reports whether the window has a dock region right now:
+true when the shell size class is Medium or Expanded, false when it is Compact
+or before a layout is available. It is not inferred from the content size
+class, and it does not say where this content is shown. Host docking changes
+emit context events even when the content viewport dimensions have not changed.
 
 | Content size class | Available width |
 |---|---|
@@ -1206,7 +1207,8 @@ lowercase keys). Synonyms are not allowed.
 | sidebar | `sidebar` | — | `Sidebar*` | **tabbar** (reserved for the lxapp tabbar), rail (icon-rail state only) |
 | main area / main tab | `main` | `MainTab` | `MainArea`, `MainTab` | primary, home tab |
 | lxapp tab / web tab | `lxapp_tab / web_tab` | `LxappTab`, `WebTab` | same roots | auxiliary item |
-| aside / slot | `aside / slot` | `AsideSlot` | `AsideSlot`, `SlotKind` | panel, dock (dock is a presentation value only) |
+| aside / slot | `aside / slot` | `AsideSlot` | `AsideSlot`, `SlotKind` | panel (the presentation value is `dock`; the context capability is `canDock`) |
+| dock region | `can_dock` | `canDock` | `can_dock` | aside (that is the role), docked |
 | sidebar action | `sidebar_action` | `lx.shell.sidebarActions`, `ShellSidebarAction`, `ResolvedShellSidebarAction` | `SidebarAction*` | activator, launcher |
 | pin | `pin` | — | `Pin*`, `MAX_SHELL_PINS` | favorite, shortcut |
 | shell size class | `size_class` | automation `sizeClass` (`compact` \| `medium` \| `expanded`) | `SizeClass` | breakpoint (internal boundary values may use it) |

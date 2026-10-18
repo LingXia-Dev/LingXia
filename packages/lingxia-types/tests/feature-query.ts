@@ -15,7 +15,7 @@ lx.surface.watchContext((context: SurfaceContext) => {
 lx.supports('future.feature');
 // @ts-expect-error old objects are no longer accepted
 lx.supports({ capability: 'terminal' });
-// @ts-expect-error layout availability belongs to SurfaceContext
+// @ts-expect-error layout availability is SurfaceContext.canDock, not a feature
 lx.supports('surface.aside');
 // @ts-expect-error control is identity, not a feature
 lx.supports('control');
