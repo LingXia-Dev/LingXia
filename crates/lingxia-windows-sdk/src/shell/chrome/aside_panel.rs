@@ -221,9 +221,13 @@ pub(super) fn aside_panel_navigation_hover_rect(
         .or(Some(rect))
 }
 
-/// Below this the segmented row turns into the current tab's pop-up.
+/// Below this the row of page tabs turns into the current tab's pop-up.
 fn aside_panel_tabbar_segments_min_width() -> i32 {
     px(240)
+}
+/// Air either side of a page tab's label; neighbours sit two of these apart.
+fn aside_panel_tabbar_label_padding() -> i32 {
+    px(8)
 }
 
 fn aside_panel_tabbar_layout(
@@ -241,31 +245,31 @@ fn aside_panel_tabbar_layout(
     Some((rect, tabbar))
 }
 
-/// Segment rects, index-aligned with `tabbar.items`; empty in the narrow
-/// pop-up form.
-fn aside_panel_tabbar_segment_rects(rect: RECT, count: usize) -> Vec<RECT> {
-    if count == 0 || rect_width(&rect) < aside_panel_tabbar_segments_min_width() {
+/// Page tab rects, index-aligned with `tabbar.items`: each fitted to its
+/// label, left-aligned. Empty in the pop-up form — a panel narrower than the
+/// minimum, or one the labels do not fit (there is no horizontal scroll).
+fn aside_panel_tabbar_segment_rects(rect: RECT, items: &[(i32, String)]) -> Vec<RECT> {
+    if items.is_empty() || rect_width(&rect) < aside_panel_tabbar_segments_min_width() {
         return Vec::new();
     }
-    let inner = inset_rect(rect, px(8), px(3));
-    let gap = px(2);
-    let count = count as i32;
-    let width = ((rect_width(&inner) - (count - 1) * gap) / count).max(1);
-    (0..count)
-        .map(|slot| {
-            let left = inner.left + slot * (width + gap);
-            normalize_rect(RECT {
-                left,
-                top: inner.top,
-                right: if slot == count - 1 {
-                    inner.right
-                } else {
-                    left + width
-                },
-                bottom: inner.bottom - 1,
-            })
-        })
-        .collect()
+    let padding = aside_panel_tabbar_label_padding();
+    let inner = inset_rect(rect, px(4), 0);
+    let mut out = Vec::with_capacity(items.len());
+    let mut left = inner.left;
+    for (_, label) in items {
+        let right = left + measure_chrome_text_width(label) + 2 * padding;
+        if right > inner.right {
+            return Vec::new();
+        }
+        out.push(normalize_rect(RECT {
+            left,
+            top: inner.top,
+            right,
+            bottom: inner.bottom - 1,
+        }));
+        left = right;
+    }
+    out
 }
 
 fn aside_panel_tabbar_hit(
@@ -276,7 +280,7 @@ fn aside_panel_tabbar_hit(
     if !rect_contains(&rect, point) {
         return None;
     }
-    let segments = aside_panel_tabbar_segment_rects(rect, tabbar.items.len());
+    let segments = aside_panel_tabbar_segment_rects(rect, &tabbar.items);
     if segments.is_empty() {
         return Some(WindowsChromeHit::Command(
             WindowsChromeCommand::new(command_id::ASIDE_PANEL_TABBAR_MENU)
@@ -304,14 +308,15 @@ pub(super) fn aside_panel_tabbar_hover_rect(
     if !rect_contains(&rect, point) {
         return None;
     }
-    aside_panel_tabbar_segment_rects(rect, tabbar.items.len())
+    aside_panel_tabbar_segment_rects(rect, &tabbar.items)
         .into_iter()
         .find(|segment| rect_contains(segment, point))
         .or(Some(rect))
 }
 
-/// The lxapp aside's tabBar: segments under the navigation bar, the current
-/// tab with a ▾ when the panel is too narrow for them.
+/// The lxapp aside's tabBar: page tabs under the navigation bar, the current
+/// one in the selected colour over an underline (page chrome, not a second
+/// slot strip, so no fill chip); the current tab with a ▾ when they do not fit.
 pub(super) fn draw_aside_panel_tabbar(
     hdc: HDC,
     panel: &WindowsChromePanel,
@@ -323,7 +328,7 @@ pub(super) fn draw_aside_panel_tabbar(
     let pal = shell_palette();
     fill_rect(hdc, rect, pal.panel_background);
     draw_bottom_border(hdc, rect, pal.divider);
-    let segments = aside_panel_tabbar_segment_rects(rect, tabbar.items.len());
+    let segments = aside_panel_tabbar_segment_rects(rect, &tabbar.items);
     if segments.is_empty() {
         let label = tabbar
             .items
@@ -343,19 +348,30 @@ pub(super) fn draw_aside_panel_tabbar(
         );
         return;
     }
+    let selected_color = tabbar.selected_color.unwrap_or(pal.accent);
+    let idle_color = tabbar.color.unwrap_or(pal.text_muted);
     for ((index, label), segment) in tabbar.items.iter().zip(segments) {
         let selected = *index == tabbar.selected_index;
+        let label_rect = inset_rect(segment, aside_panel_tabbar_label_padding(), 0);
         if selected {
-            fill_round_rect_aa(hdc, segment, 6, pal.group_active_background);
+            // Clear of the row's bottom edge, where the page starts.
+            let bottom = segment.bottom - px(3);
+            fill_round_rect_aa(
+                hdc,
+                RECT {
+                    left: label_rect.left,
+                    top: bottom - px(2),
+                    right: label_rect.right,
+                    bottom,
+                },
+                px(1),
+                selected_color,
+            );
         } else {
-            draw_hover_wash(hdc, segment, 6, cursor);
+            draw_hover_wash(hdc, inset_rect(segment, px(2), px(3)), 6, cursor);
         }
-        let color = if selected {
-            pal.text_primary
-        } else {
-            pal.text_muted
-        };
-        draw_text(hdc, label, inset_rect(segment, px(4), 0), color, DT_CENTER);
+        let color = if selected { selected_color } else { idle_color };
+        draw_text(hdc, label, segment, color, DT_CENTER);
     }
 }
 

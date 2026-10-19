@@ -786,9 +786,13 @@ The aside region is fixed at three slots, grouped by rendering engine:
   app. Page titles never move into the tab strip.
 - An lxapp with a tabBar can always be opened as an aside, with no warning and
   no manifest option: on its tab pages the framework draws the tabBar as a
-  28pt segmented row under the navigation bar (icon + label, scrolling on
-  overflow; the current tab as a pop-up/menu below 240pt). Selection and
-  `lx.tabBar.update()` behave as in the sidebar.
+  28pt row of page tabs under the navigation bar (icon + label, scrolling on
+  overflow; the current tab as a pop-up/menu below 240pt). It is page chrome,
+  not a second slot strip: no fill chips — the current tab is its icon and
+  label in the selected colour over a 2pt underline. Colours map from
+  `tabBar.style` as in the sidebar (undeclared keys fall back to the host
+  accent / muted foreground). Selection and `lx.tabBar.update()` behave as in
+  the sidebar.
 - Keyboard Back (macOS Backspace) acts on the page stack of the region that
   has focus: an aside page pops its own stack, never the main's.
 - Cmd+Option+\ (Windows Ctrl+Alt+\) collapses the lxapp aside slot or

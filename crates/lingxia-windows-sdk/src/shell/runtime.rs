@@ -3928,9 +3928,21 @@ fn lxapp_aside_tabbar(app: &LxApp) -> Option<lingxia_windows_contract::WindowsAs
         .iter()
         .position(|item| normalize_tab_path(&item.page_path) == target)
         .map_or(-1, |index| index as i32);
+    // Only what the app declared, as the sidebar: the resolved values carry
+    // mobile defaults designed for a light bar.
+    let style = app.resolved_tabbar_style();
+    let declared = app.tabbar_declared_color_mask();
     Some(lingxia_windows_contract::WindowsAsidePanelTabBar {
         items,
         selected_index,
+        color: style
+            .as_ref()
+            .filter(|_| declared & 0b0001 != 0)
+            .map(|style| style.foreground_color.rgba() >> 8),
+        selected_color: style
+            .as_ref()
+            .filter(|_| declared & 0b0010 != 0)
+            .map(|style| style.selected_foreground_color.rgba() >> 8),
     })
 }
 
