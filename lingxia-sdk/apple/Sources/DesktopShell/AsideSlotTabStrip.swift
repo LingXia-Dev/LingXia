@@ -10,9 +10,9 @@ struct AsideSlotTab: Equatable {
     var iconPath: String? = nil
 }
 
-/// Header tab strip for an aside slot — the same bar the browser slot draws:
-/// Chrome-silhouette title tabs (ChromeTabRowView) bottom-aligned in a
-/// bar-height strip over a hairline, identical metrics and states. Always
+/// Header tab strip for an aside slot: the browser slot's bar metrics, with
+/// title tabs (ChromeTabRowView, non-bridging) as chips centred in a
+/// bar-height strip over a whole hairline. Always
 /// shown while the slot has content — even one child keeps its tab, since the
 /// strip is the slot's management surface (switch and close both live here).
 @MainActor
@@ -58,10 +58,10 @@ final class AsideSlotTabStripView: NSView {
         addSubview(separator)
 
         stack.orientation = .horizontal
-        // Negative spacing overlaps the flared feet so neighbouring tabs
-        // interlock like Chrome (matches the browser slot's title tabs).
-        stack.spacing = -ChromeTabMetrics.tabFoot
-        stack.alignment = .bottom
+        // Each chip is inset half a foot from its row edge; this leaves a
+        // small gap between neighbouring chips.
+        stack.spacing = -ChromeTabMetrics.tabFoot + 3
+        stack.alignment = .centerY
         stack.distribution = .fill
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
@@ -99,7 +99,7 @@ final class AsideSlotTabStripView: NSView {
             collapseButton.heightAnchor.constraint(equalToConstant: 22),
             collapseButton.centerYAnchor.constraint(
                 equalTo: separator.topAnchor,
-                constant: -ChromeTabMetrics.tabHeight / 2),
+                constant: -ChromeTabMetrics.barHeight / 2),
             maximizeButton.trailingAnchor.constraint(
                 equalTo: collapseButton.leadingAnchor, constant: -2),
             maximizeButton.widthAnchor.constraint(equalToConstant: 22),
@@ -108,7 +108,7 @@ final class AsideSlotTabStripView: NSView {
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: ChromeTabMetrics.edge),
             stack.trailingAnchor.constraint(
                 lessThanOrEqualTo: maximizeButton.leadingAnchor, constant: -6),
-            stack.bottomAnchor.constraint(equalTo: separator.topAnchor),
+            stack.centerYAnchor.constraint(equalTo: collapseButton.centerYAnchor),
         ])
     }
 
@@ -158,8 +158,8 @@ final class AsideSlotTabStripView: NSView {
         applySelection()
     }
 
-    /// Mirror of the browser strip's selection pass: active fill + z-lift,
-    /// tint steps for title/icon/close, and seam-divider suppression.
+    /// Selection pass: active fill, tint steps for title/icon/close, and
+    /// divider suppression beside the selection.
     private func applySelection() {
         for (index, item) in itemViews.enumerated() {
             let selected = tabs[index].id == activeId
@@ -222,13 +222,12 @@ private final class AsideSlotTabItemView: NSView {
         row.orientation = .horizontal
         row.spacing = 5
         row.alignment = .centerY
-        // Content clears the flared foot on the leading edge and the tab's
-        // top inset, so the icon/title sit centred in the tab body.
+        // The chip is centred in the row and inset half a foot each side.
         row.edgeInsets = NSEdgeInsets(
-            top: ChromeTabMetrics.tabTopInset + 4,
-            left: ChromeTabMetrics.tabFoot + 6,
+            top: 4,
+            left: ChromeTabMetrics.tabFoot * 0.5 + 8,
             bottom: 4,
-            right: ChromeTabMetrics.tabFoot
+            right: ChromeTabMetrics.tabFoot * 0.5 + 4
         )
         row.addArrangedSubview(iconView)
         row.addArrangedSubview(titleButton)
