@@ -3,7 +3,15 @@ import type { AppInstance } from "@lingxia/types";
 /** What `App({...})` in `lxapp.ts` adds on top of the runtime instance. */
 export interface ShowcaseAppInstance extends AppInstance {
   globalData: {
-    lifecycle: { launches: number; shows: number; hides: number; last: string };
+    lifecycle: {
+      launches: number;
+      shows: number;
+      hides: number;
+      last: string;
+      /** Home page `onHide` / `onShow` counts, for lifecycle probes in specs. */
+      pageHides: number;
+      pageShows: number;
+    };
     greeting: string;
     ipAddr: string;
     /** Written by the Wi-Fi page so the flag survives navigation away and back. */

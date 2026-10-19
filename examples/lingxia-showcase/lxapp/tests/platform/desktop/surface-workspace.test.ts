@@ -3823,3 +3823,372 @@ desktopTest('switches, deduplicates concurrent opens, and leaves no ghost rows',
   ]);
   expect(topology(result.afterCleanup)).toEqual(topology(before));
 });
+
+// ---------------------------------------------------------------------------
+// Browser asides on every edge, beside a maximized or collapsed lxapp aside.
+//
+// A Windows build of this branch opened a bottom-edge URL aside that never
+// appeared: its WebView was awaited for ever, the surface record stayed, and
+// the main's App onHide/onShow fired. These cases open a URL aside on each
+// edge, prove it is on screen, close it through the browser driver, and
+// watch the main's lifecycle counters while a browser aside opens next to a
+// docked, maximized and collapsed Chat aside.
+// ---------------------------------------------------------------------------
+
+type BrowserAsideEdge = 'bottom' | 'top' | 'left' | 'right';
+const BROWSER_ASIDE_EDGES: BrowserAsideEdge[] = ['bottom', 'top', 'left', 'right'];
+
+interface ShowcaseLifecycleCounts {
+  shows: number;
+  hides: number;
+  pageShows: number;
+  pageHides: number;
+}
+
+function surfaceFileUrl(nativeDir: string, relative: string): string {
+  const forward = nativeDir.replace(/\\/g, '/');
+  const absolute = forward.startsWith('/') ? forward : `/${forward}`;
+  return `file://${encodeURI(`${absolute}/${relative}`)}`;
+}
+
+function browserAsideSlot(layout: SurfaceLayoutSnapshot): SurfaceLayoutAsideSlot | undefined {
+  return layout.asideSlots.find((slot) => slot.kind === 'browser');
+}
+
+function layoutHoldsSurface(layout: SurfaceLayoutSnapshot, id: string): boolean {
+  return layout.asides.some((aside) => aside.id === id)
+    || layout.asideSlots.some((slot) => slot.children.includes(id));
+}
+
+/** Whether `rect` sits where an aside docked at `edge` belongs in `host`. */
+function rectOnEdge(
+  host: DesktopWindowInfo,
+  rect: { x: number; y: number; w: number; h: number },
+  edge: BrowserAsideEdge,
+): boolean {
+  const centerX = rect.x + rect.w / 2;
+  const centerY = rect.y + rect.h / 2;
+  const midX = host.bounds.x + host.bounds.w / 2;
+  const midY = host.bounds.y + host.bounds.h / 2;
+  switch (edge) {
+    case 'bottom': return centerY > midY;
+    case 'top': return centerY < midY;
+    case 'left': return centerX < midX;
+    case 'right': return centerX > midX;
+  }
+}
+
+function rectInside(host: DesktopWindowInfo, rect: { x: number; y: number; w: number; h: number }): boolean {
+  const slop = CHAT_INPUT_AX_SLOP_PX;
+  return rect.w > 0 && rect.h > 0
+    && rect.x >= host.bounds.x - slop
+    && rect.y >= host.bounds.y - slop
+    && rect.x + rect.w <= host.bounds.x + host.bounds.w + slop
+    && rect.y + rect.h <= host.bounds.y + host.bounds.h + slop;
+}
+
+/**
+ * The on-screen frame of the browser aside showing the fixture page `key`.
+ * macOS exposes the page's heading through accessibility; Windows exposes
+ * each shown WebView2 controller as a visible `msedgewebview2` window, and
+ * the aside is the one on `edge` that is not the main's (largest) WebView.
+ */
+async function visibleBrowserAsideFrame(
+  platform: string,
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+  key: string,
+  edge: BrowserAsideEdge,
+): Promise<{ x: number; y: number; w: number; h: number } | undefined> {
+  if (platform === 'windows') {
+    const views = (await desktop.windows().catch(() => [] as DesktopWindowInfo[]))
+      .filter((window) => (
+        window.visible
+        && window.process.toLocaleLowerCase() === 'msedgewebview2'
+        && windowContainsRect(host, window.bounds)
+      ))
+      .sort((left, right) => right.bounds.w * right.bounds.h - left.bounds.w * left.bounds.h);
+    const [main, ...others] = views;
+    if (!main) return undefined;
+    return others.map((window) => window.bounds).find((bounds) => rectOnEdge(host, bounds, edge));
+  }
+  const nodes = await desktop.ax.query({ window: host.id, match: key, all: true })
+    .catch(() => [] as DesktopAxNode[]);
+  return nodes
+    .filter((node) => (
+      (node.value === key || node.name === key)
+      && rectInside(host, node.rect)
+    ))
+    .map((node) => node.rect)
+    .find((rect) => rectOnEdge(host, rect, edge));
+}
+
+function windowContainsRect(
+  host: DesktopWindowInfo,
+  rect: { x: number; y: number; w: number; h: number },
+): boolean {
+  const tolerance = 8;
+  return rect.w > 0 && rect.h > 0
+    && rect.x >= host.bounds.x - tolerance
+    && rect.y >= host.bounds.y - tolerance
+    && rect.x + rect.w <= host.bounds.x + host.bounds.w + tolerance
+    && rect.y + rect.h <= host.bounds.y + host.bounds.h + tolerance;
+}
+
+async function lifecycleCounts(app: TestApp): Promise<ShowcaseLifecycleCounts> {
+  return app.logic.eval(({ getApp }) => {
+    const instance = getApp() as unknown as {
+      globalData: { lifecycle: ShowcaseLifecycleCounts };
+    } | null;
+    const lifecycle = instance?.globalData.lifecycle;
+    return {
+      shows: lifecycle?.shows ?? 0,
+      hides: lifecycle?.hides ?? 0,
+      pageShows: lifecycle?.pageShows ?? 0,
+      pageHides: lifecycle?.pageHides ?? 0,
+    };
+  });
+}
+
+/** Write the fixture page a URL aside loads; returns its file URL. */
+async function writeBrowserAsideFixture(app: TestApp, namespace: string, key: string): Promise<string> {
+  const relative = `${namespace}/${key}.html`;
+  await app.logic.eval(async ({ lx }, namespace, relative, key) => {
+    await lx.fs.mkdir('lx://userdata/' + namespace, { recursive: true });
+    await lx.fs.write('lx://userdata/' + relative,
+      '<!doctype html><html><head><meta charset="utf-8"><title>' + key + '</title></head>'
+      + '<body style="margin:0"><h1 data-fixture-page="' + key + '" style="font-size:16px">' + key + '</h1></body></html>',
+      { overwrite: true });
+  }, namespace, relative, key);
+  return surfaceFileUrl((await app.info()).dataDir, relative);
+}
+
+interface OpenedBrowserAside {
+  id: string;
+  realized: string;
+  alive: boolean;
+}
+
+async function openBrowserAside(
+  app: TestApp,
+  url: string,
+  key: string,
+  edge: BrowserAsideEdge,
+): Promise<OpenedBrowserAside> {
+  return app.logic.eval({ timeout: 20_000 }, async ({ lx }, url, key, edge) => {
+    const tab = await lx.surface.openUrl(url, { as: 'aside', edge, key });
+    return { id: tab.id, realized: String(tab.realized), alive: tab.alive };
+  }, url, key, edge);
+}
+
+async function closeNewBrowserTabs(browser: BrowserDriver, before: Set<string>): Promise<void> {
+  for (const tab of (await browser.tabs().catch(() => [])).filter((tab) => !before.has(tab.tab_id))) {
+    await browser.close({ tab: tab.tab_id }).catch(() => undefined);
+  }
+}
+
+desktopTest('docks a URL aside on every edge, shows it, and closes it from the browser driver', {
+  id: 'DESKTOP-BROWSER-ASIDE-EDGES-001',
+  timeout: DESKTOP_CASE_MS,
+  covers: ['lx.surface.openUrl', 'BrowserDriver.tabs', 'BrowserDriver.close'],
+}, async (t) => {
+  const app = await desktopApp(t);
+  const platform = await runtimePlatform(app);
+  const desktop = t.automation.desktop;
+  const browser = t.automation.browser;
+  let host = desktopShowcaseHost(platform, await desktop.windows());
+  if (!host) throw new Error('visible LingXia host window was not found');
+  const originalBounds = { ...host.bounds };
+  const namespace = `aside-edges-${Date.now().toString(36)}`;
+  const tabsBefore = new Set((await browser.tabs().catch(() => [])).map((tab) => tab.tab_id));
+  try {
+    await closeChatSurface(t, app);
+    host = await resizeHostOnScreen(
+      desktop,
+      host,
+      nativeWindowExtent(platform, host, 1_000),
+      nativeWindowExtent(platform, host, 640),
+    );
+    await app.nav.switchTab({ page: 'home' });
+
+    for (const edge of BROWSER_ASIDE_EDGES) {
+      const key = `${namespace}-${edge}`;
+      const url = await writeBrowserAsideFixture(app, namespace, key);
+      const opened = await openBrowserAside(app, url, key, edge);
+      expect({ edge, realized: opened.realized, alive: opened.alive })
+        .toEqual({ edge, realized: 'aside', alive: true });
+
+      // The core docks it on the requested edge ...
+      await waitForValue(async () => {
+        const layout = await app.surfaceLayout();
+        const slot = browserAsideSlot(layout);
+        return slot?.visible && !slot.overlay && slot.edge === edge && slot.children.includes(opened.id)
+          ? layout
+          : undefined;
+      }, `browser aside docked on the ${edge} edge`);
+      // ... and the skin shows it there: a page on screen with a frame on
+      // that edge of the host, not a surface the layout only claims.
+      const frame = await waitForValue(
+        () => visibleBrowserAsideFrame(platform, desktop, host!, key, edge),
+        `browser aside page on screen (${edge})`,
+      );
+      expect({ edge, onEdge: rectOnEdge(host, frame, edge) }).toEqual({ edge, onEdge: true });
+      // The browser knows the tab, so `browser close` can reach it.
+      const tab = await waitForValue(async () => (
+        (await browser.tabs()).find((candidate) => (
+          !tabsBefore.has(candidate.tab_id)
+          && (candidate.current_url ?? '').includes(key)
+        ))
+      ), `browser tab for the ${edge} aside`);
+
+      await browser.close({ tab: tab.tab_id });
+      await waitForValue(async () => (
+        layoutHoldsSurface(await app.surfaceLayout(), opened.id) ? undefined : true
+      ), `browser aside gone from the layout (${edge})`);
+      await waitForValue(async () => (
+        (await visibleBrowserAsideFrame(platform, desktop, host!, key, edge)) ? undefined : true
+      ), `browser aside gone from the screen (${edge})`);
+      const handle = await app.logic.eval(({ lx }, key) => {
+        const held = lx.surface.getByKey(key);
+        return { registered: held != null, alive: held?.alive ?? false };
+      }, key);
+      expect({ edge, ...handle }).toEqual({ edge, registered: false, alive: false });
+    }
+  } finally {
+    await closeNewBrowserTabs(browser, tabsBefore);
+    await app.logic.eval(async ({ lx }, namespace) => {
+      await lx.fs.remove('lx://userdata/' + namespace, { recursive: true }).catch(() => undefined);
+    }, namespace).catch(() => undefined);
+    await resizeHostOnScreen(desktop, host, originalBounds.w, originalBounds.h).catch(() => undefined);
+  }
+});
+
+desktopTest('opens a browser aside beside a docked, maximized and collapsed Chat aside without touching the main lifecycle', {
+  id: 'DESKTOP-BROWSER-ASIDE-LIFECYCLE-001',
+  timeout: DESKTOP_CASE_MS,
+  covers: ['lx.surface.openUrl', 'lx.shell.openApp', 'BrowserDriver.close'],
+}, async (t) => {
+  const app = await desktopApp(t);
+  const platform = await runtimePlatform(app);
+  const desktop = t.automation.desktop;
+  const browser = t.automation.browser;
+  let host = desktopShowcaseHost(platform, await desktop.windows());
+  if (!host) throw new Error('visible LingXia host window was not found');
+  const originalBounds = { ...host.bounds };
+  const namespace = `aside-lifecycle-${Date.now().toString(36)}`;
+  const tabsBefore = new Set((await browser.tabs().catch(() => [])).map((tab) => tab.tab_id));
+  try {
+    await closeChatSurface(t, app);
+    host = await resizeHostOnScreen(
+      desktop,
+      host,
+      nativeWindowExtent(platform, host, 1_000),
+      nativeWindowExtent(platform, host, 640),
+    );
+    await app.nav.switchTab({ page: 'home' });
+    await waitForValue(async () => {
+      const current = await app.nav.current();
+      return current.name === 'home' && current.ready ? true : undefined;
+    }, 'main on the Home page');
+    await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+    });
+    await waitForValue(async () => {
+      const slot = chatAsideSlot(await app.surfaceLayout());
+      return slot?.visible && !slot.overlay ? true : undefined;
+    }, 'docked Chat aside');
+
+    // The driver binds to a running lxapp: Chat is only active once opened.
+    const chat = t.automation.lxapp('lingxia-chat');
+    const chatPageHasFocus = async () => (await chat.page({ name: 'chat' }, { timeout: 30_000 }))
+      .view.eval(({ document }) => (document as unknown as { hasFocus(): boolean }).hasFocus())
+      .catch(() => false);
+    const mainPageHasFocus = async () => (await app.page({ name: 'home' }, { timeout: 30_000 }))
+      .view.eval(({ document }) => (document as unknown as { hasFocus(): boolean }).hasFocus())
+      .catch(() => false);
+
+    // The slot controls are accessibility nodes of the host window on macOS.
+    // The Windows shell draws its chrome itself and exposes no node for them,
+    // so there the maximized and collapsed variants are not driven; the
+    // docked variant still runs.
+    const control = (name: string) => visibleHostAxNode(desktop, host!, `name:${name}`);
+    const canDriveSlot = (await control('Maximize panel')) != null;
+
+    const openBeside = async (phase: string, edge: BrowserAsideEdge) => {
+      const key = `${namespace}-${phase}`;
+      const url = await writeBrowserAsideFixture(app, namespace, key);
+      const before = await lifecycleCounts(app);
+      const opened = await openBrowserAside(app, url, key, edge);
+      expect({ phase, realized: opened.realized }).toEqual({ phase, realized: 'aside' });
+      await waitForValue(async () => {
+        const slot = browserAsideSlot(await app.surfaceLayout());
+        return slot?.visible && slot.children.includes(opened.id) ? true : undefined;
+      }, `browser aside docked (${phase})`);
+      await waitForValue(
+        () => visibleBrowserAsideFrame(platform, desktop, host!, key, edge),
+        `browser aside page on screen (${phase})`,
+      );
+      // Nothing happened to the main: no App onHide/onShow and no Home page
+      // onHide/onShow, with the aside docked, maximized or collapsed.
+      await new Promise<void>((resolve) => setTimeout(resolve, 500));
+      const after = await lifecycleCounts(app);
+      expect({ phase, ...after }).toEqual({ phase, ...before });
+      const tab = await waitForValue(async () => (
+        (await browser.tabs()).find((candidate) => (
+          !tabsBefore.has(candidate.tab_id) && (candidate.current_url ?? '').includes(key)
+        ))
+      ), `browser tab (${phase})`);
+      await browser.close({ tab: tab.tab_id });
+      await waitForValue(async () => (
+        layoutHoldsSurface(await app.surfaceLayout(), opened.id) ? undefined : true
+      ), `browser aside closed (${phase})`);
+      const settled = await lifecycleCounts(app);
+      expect({ phase, ...settled }).toEqual({ phase, ...before });
+    };
+
+    await openBeside('docked', 'bottom');
+
+    if (canDriveSlot) {
+      // Maximize Chat; focus moves into its page.
+      const maximize = await waitForValue(() => control('Maximize panel'), 'Maximize control');
+      await desktop.ax.invoke({ window: host.id, match: `id:${maximize.id}` });
+      await waitForValue(async () => {
+        const slot = chatAsideSlot(await app.surfaceLayout());
+        return slot?.maximized && slot.overlay ? true : undefined;
+      }, 'Chat aside maximized');
+      await waitForValue(async () => ((await chatPageHasFocus()) ? true : undefined), 'focus in the maximized Chat page');
+      await openBeside('maximized', 'bottom');
+      await waitForValue(async () => {
+        const slot = chatAsideSlot(await app.surfaceLayout());
+        return slot?.maximized ? true : undefined;
+      }, 'Chat still maximized after the browser aside');
+      const restore = await waitForValue(() => control('Restore panel'), 'Restore control');
+      await desktop.ax.invoke({ window: host.id, match: `id:${restore.id}` });
+      await waitForValue(async () => {
+        const slot = chatAsideSlot(await app.surfaceLayout());
+        return slot?.visible && !slot.maximized && !slot.overlay ? true : undefined;
+      }, 'Chat aside restored');
+      await waitForValue(async () => ((await mainPageHasFocus()) ? true : undefined), 'focus back in the main page');
+
+      // Collapse Chat; the browser aside opens beside the collapsed slot.
+      const collapse = await waitForValue(() => control('Collapse panel'), 'Collapse control');
+      await desktop.ax.invoke({ window: host.id, match: `id:${collapse.id}` });
+      await waitForValue(async () => {
+        const slot = chatAsideSlot(await app.surfaceLayout());
+        return slot?.collapsed ? true : undefined;
+      }, 'Chat aside collapsed');
+      await openBeside('collapsed', 'bottom');
+      await waitForValue(async () => {
+        const slot = chatAsideSlot(await app.surfaceLayout());
+        return slot?.collapsed ? true : undefined;
+      }, 'Chat still collapsed after the browser aside');
+    }
+  } finally {
+    await closeNewBrowserTabs(browser, tabsBefore);
+    await closeChatSurface(t, app).catch(() => undefined);
+    await app.logic.eval(async ({ lx }, namespace) => {
+      await lx.fs.remove('lx://userdata/' + namespace, { recursive: true }).catch(() => undefined);
+    }, namespace).catch(() => undefined);
+    await resizeHostOnScreen(desktop, host, originalBounds.w, originalBounds.h).catch(() => undefined);
+  }
+});
