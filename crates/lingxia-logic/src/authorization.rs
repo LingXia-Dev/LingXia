@@ -1,6 +1,9 @@
-use crate::i18n::js_error_from_business_code_with_detail;
+use crate::i18n::{js_error_from_business_code_with_detail, js_invalid_parameter_error};
+use lingxia_service::navigation::{NavigationError, NavigationTarget};
+use lxapp::AppSessionClass;
 use lxapp::host::{self, EffectiveRoutePolicy, HostInvocationContext, RouteAudience};
 use rong::{JSContext, JSResult};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
@@ -45,6 +48,7 @@ pub(crate) enum LogicRoute {
     ShellOpenDeclared,
     ShellReconfigure,
     ShellOpenHostTerminalSettings,
+    SurfaceBringToFront,
     #[cfg(feature = "terminal")]
     TerminalSettingsGet,
     #[cfg(feature = "terminal")]
@@ -116,6 +120,7 @@ impl LogicRoute {
         Self::ShellOpenDeclared,
         Self::ShellReconfigure,
         Self::ShellOpenHostTerminalSettings,
+        Self::SurfaceBringToFront,
         #[cfg(feature = "terminal")]
         Self::TerminalSettingsGet,
         #[cfg(feature = "terminal")]
@@ -146,8 +151,11 @@ impl LogicRoute {
         Self::TerminalWindowsSetEnabled,
     ];
 
-    /// `lx.terminal.*` serves the host-bundled Settings surface and nothing
-    /// else; every other direct route belongs to the ControlApp.
+    /// `lx.terminal.*` serves the host-bundled Settings surface. The
+    /// attention routes (`lx.host.notification.*`, `lx.host.banner.*`,
+    /// `lx.surface.bringToFront`) admit every lxapp session and then scope
+    /// what each may touch with [`AttentionScope`]. Every other direct route
+    /// belongs to the ControlApp.
     ///
     /// Deliberately exhaustive: a catch-all arm would silently make the next
     /// route ControlApp-only, which is a breaking change for every guest
@@ -171,13 +179,6 @@ impl LogicRoute {
             | Self::AppScreenshot
             | Self::AppAutostartIsEnabled
             | Self::AppAutostartSetEnabled
-            | Self::AppNotificationGetPermission
-            | Self::AppNotificationRequestPermission
-            | Self::AppNotificationShow
-            | Self::AppNotificationCancel
-            | Self::AppNotificationCancelAll
-            | Self::AppBannerShow
-            | Self::AppBannerDismiss
             | Self::TraySetIcon
             | Self::TraySetTitle
             | Self::TraySetMenu
@@ -193,6 +194,14 @@ impl LogicRoute {
             | Self::ShellOpenDeclared
             | Self::ShellReconfigure
             | Self::ShellOpenHostTerminalSettings => RouteAudience::ControlAppOnly,
+            Self::AppNotificationGetPermission
+            | Self::AppNotificationRequestPermission
+            | Self::AppNotificationShow
+            | Self::AppNotificationCancel
+            | Self::AppNotificationCancelAll
+            | Self::AppBannerShow
+            | Self::AppBannerDismiss
+            | Self::SurfaceBringToFront => RouteAudience::AppSessionOnly,
             #[cfg(feature = "terminal")]
             Self::TerminalSettingsGet
             | Self::TerminalSettingsUpdate
@@ -259,6 +268,7 @@ impl LogicRoute {
             Self::ShellOpenDeclared => "lx.shell.openDeclared",
             Self::ShellReconfigure => "lx.shell.reconfigure",
             Self::ShellOpenHostTerminalSettings => "lx.shell.openApp.hostTerminalSettings",
+            Self::SurfaceBringToFront => "lx.surface.bringToFront",
             #[cfg(feature = "terminal")]
             Self::TerminalSettingsGet => "lx.terminal.settings.get",
             #[cfg(feature = "terminal")]
@@ -401,6 +411,150 @@ fn authorize_caller_then<T>(
     Ok(action())
 }
 
+/// Whose notifications, banners, and surface an attention route acts on.
+///
+/// The Control app speaks for the product: its ids are used as given and its
+/// notification may go anywhere. Every other lxapp session speaks only for
+/// itself: its ids live in a namespace derived from its app id, so it cannot
+/// replace or dismiss another app's, and its notification can open only
+/// itself. Derived from the native session class, never from a payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum AttentionScope {
+    Product,
+    App { app_id: String },
+}
+
+/// Why a scoped request was refused before anything reached the platform.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ScopeRefusal {
+    /// The Control app could make this request; this caller cannot.
+    Denied(String),
+    /// No caller could: the request itself is malformed.
+    Invalid(String),
+}
+
+impl ScopeRefusal {
+    pub(crate) fn into_js(self) -> rong::RongJSError {
+        match self {
+            Self::Denied(message) => js_error_from_business_code_with_detail(3000, message),
+            Self::Invalid(message) => js_invalid_parameter_error(message),
+        }
+    }
+}
+
+impl AttentionScope {
+    pub(crate) fn of(invocation: &HostInvocationContext) -> Self {
+        Self::for_caller(invocation.caller(), &invocation.lxapp().appid)
+    }
+
+    /// `app_id` is the invocation's own lxapp, which bridge dispatch has
+    /// already proved the caller's scope belongs to.
+    fn for_caller(caller: &host::AuthenticatedCaller, app_id: &str) -> Self {
+        match caller.session_class() {
+            Some(AppSessionClass::ControlApp) => Self::Product,
+            _ => Self::App {
+                app_id: caller
+                    .app_scope()
+                    .map(|scope| scope.identity().app_id().to_string())
+                    .unwrap_or_else(|| app_id.to_string()),
+            },
+        }
+    }
+
+    /// The guest lxapp this acts for; `None` for the product.
+    pub(crate) fn owner(&self) -> Option<&str> {
+        match self {
+            Self::Product => None,
+            Self::App { app_id } => Some(app_id),
+        }
+    }
+
+    /// The id the platform and the host stores hold a caller's `id` under.
+    ///
+    /// A guest's id is a digest of its app id and its own id: fixed length,
+    /// so it fits every platform's tag limit (Windows toasts allow 64
+    /// characters), and no guest can name another's. The product's ids are
+    /// unchanged, so existing Control-app notifications keep replacing.
+    pub(crate) fn platform_id(&self, id: &str) -> String {
+        match self {
+            Self::Product => id.to_string(),
+            Self::App { app_id } => {
+                let mut digest = Sha256::new();
+                digest.update(b"lingxia.attention.v1\0");
+                digest.update(app_id.as_bytes());
+                digest.update(b"\0");
+                digest.update(id.as_bytes());
+                let hex: String = digest
+                    .finalize()
+                    .iter()
+                    .take(20)
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect();
+                format!("lxapp-{hex}")
+            }
+        }
+    }
+
+    /// Resolve a `show()` target for this caller.
+    ///
+    /// A guest may only target itself: `{ kind: 'app' }` with its own
+    /// `appId` (or none, which means itself). An omitted target opens the
+    /// guest too, rather than only bringing the product forward.
+    pub(crate) fn notification_target(
+        &self,
+        route: &str,
+        target: Option<serde_json::Value>,
+    ) -> Result<NavigationTarget, ScopeRefusal> {
+        let invalid =
+            |error: NavigationError| ScopeRefusal::Invalid(format!("{route} {}", error.message()));
+        let target = target.filter(|value| !value.is_null());
+        let Self::App { app_id } = self else {
+            return match target {
+                None => Ok(NavigationTarget::Activate),
+                Some(value) => NavigationTarget::from_json(&value).map_err(invalid),
+            };
+        };
+        let mut object = match target {
+            None => serde_json::Map::from_iter([("kind".to_string(), "app".into())]),
+            Some(serde_json::Value::Object(object)) => object,
+            Some(_) => {
+                return Err(ScopeRefusal::Invalid(format!(
+                    "{route} target must be an object"
+                )));
+            }
+        };
+        match object.get("kind").and_then(serde_json::Value::as_str) {
+            Some("app") => {}
+            Some(kind @ ("activate" | "page" | "route" | "appLink")) => {
+                return Err(ScopeRefusal::Denied(format!(
+                    "{route} target {{ kind: '{kind}' }} is only available in the Control app; \
+                     a guest lxapp's notification opens only itself: {{ kind: 'app' }}"
+                )));
+            }
+            // Unknown or missing kinds are malformed for every caller.
+            _ => return NavigationTarget::from_json(&object.into()).map_err(invalid),
+        }
+        match object.get("appId") {
+            None | Some(serde_json::Value::Null) => {
+                object.insert("appId".to_string(), app_id.clone().into());
+            }
+            Some(serde_json::Value::String(target)) if target == app_id => {}
+            Some(serde_json::Value::String(target)) => {
+                return Err(ScopeRefusal::Denied(format!(
+                    "{route} target appId '{target}' is another lxapp; only the Control app \
+                     may open other lxapps, so a guest omits appId or names itself"
+                )));
+            }
+            Some(_) => {
+                return Err(ScopeRefusal::Invalid(format!(
+                    "{route} target.appId must be a string"
+                )));
+            }
+        }
+        NavigationTarget::from_json(&object.into()).map_err(invalid)
+    }
+}
+
 #[cfg(test)]
 mod audience_tests {
     use super::LogicRoute;
@@ -479,21 +633,53 @@ mod tests {
         for route in LogicRoute::ALL {
             let audience = inventory[route.name()].policy().audience();
             assert_eq!(audience, route.audience(), "{}", route.name());
-            let is_terminal = route.name().starts_with("lx.terminal.");
-            assert_eq!(
-                audience,
-                if is_terminal {
-                    RouteAudience::ControlSurfaceOnly
-                } else {
-                    RouteAudience::ControlAppOnly
-                },
-                "{}",
-                route.name()
-            );
+            let expected = if route.name().starts_with("lx.terminal.") {
+                RouteAudience::ControlSurfaceOnly
+            } else if is_attention_route(*route) {
+                RouteAudience::AppSessionOnly
+            } else {
+                RouteAudience::ControlAppOnly
+            };
+            assert_eq!(audience, expected, "{}", route.name());
         }
         // The entry that opens the Settings surface stays with home.
         assert_eq!(
             LogicRoute::ShellOpenHostTerminalSettings.audience(),
+            RouteAudience::ControlAppOnly
+        );
+    }
+
+    /// The routes a guest may call for itself. Widening this list widens
+    /// what every downloaded lxapp can do.
+    fn is_attention_route(route: LogicRoute) -> bool {
+        route.name().starts_with("lx.host.notification.")
+            || route.name().starts_with("lx.host.banner.")
+            || route == LogicRoute::SurfaceBringToFront
+    }
+
+    #[test]
+    fn the_attention_routes_are_exactly_these() {
+        let attention: Vec<&str> = LogicRoute::ALL
+            .iter()
+            .filter(|route| route.audience() == RouteAudience::AppSessionOnly)
+            .map(|route| route.name())
+            .collect();
+        assert_eq!(
+            attention,
+            [
+                "lx.host.notification.getPermission",
+                "lx.host.notification.requestPermission",
+                "lx.host.notification.show",
+                "lx.host.notification.cancel",
+                "lx.host.notification.cancelAll",
+                "lx.host.banner.show",
+                "lx.host.banner.dismiss",
+                "lx.surface.bringToFront",
+            ]
+        );
+        // Composing other lxapps into the shell stays with the Control app.
+        assert_eq!(
+            LogicRoute::ShellOpenApp.audience(),
             RouteAudience::ControlAppOnly
         );
     }
@@ -507,8 +693,10 @@ mod tests {
 
         for route in LogicRoute::ALL {
             let surface_route = route.audience() == RouteAudience::ControlSurfaceOnly;
-            assert!(
-                authorize_caller(&standard, *route).is_err(),
+            let attention = is_attention_route(*route);
+            assert_eq!(
+                authorize_caller(&standard, *route).is_ok(),
+                attention,
                 "{}",
                 route.name()
             );
@@ -520,7 +708,7 @@ mod tests {
             );
             assert_eq!(
                 authorize_caller(&surface, *route).is_ok(),
-                surface_route,
+                surface_route || attention,
                 "{}",
                 route.name()
             );
@@ -552,5 +740,161 @@ mod tests {
         )
         .expect("ControlApp is authorized");
         assert!(decoded, "authorized arguments may be decoded");
+    }
+}
+
+#[cfg(test)]
+mod attention_scope_tests {
+    use super::*;
+    use serde_json::json;
+
+    unsafe extern "Rust" {
+        #[link_name = "lingxia_lxapp_test_authenticated_caller_v1"]
+        fn test_authenticated_caller(
+            app_id: &str,
+            session_id: u64,
+            class: AppSessionClass,
+        ) -> host::AuthenticatedCaller;
+    }
+
+    fn scope_of(app_id: &str, class: AppSessionClass) -> AttentionScope {
+        // SAFETY: the private workspace test harness from the lxapp dev-dependency.
+        let caller = unsafe { test_authenticated_caller(app_id, 7, class) };
+        AttentionScope::for_caller(&caller, app_id)
+    }
+
+    fn guest() -> AttentionScope {
+        scope_of("com.example.guest", AppSessionClass::StandardApp)
+    }
+
+    const ROUTE: &str = "lx.host.notification.show";
+
+    #[test]
+    fn the_scope_follows_the_native_class() {
+        assert_eq!(
+            scope_of("com.example.home", AppSessionClass::ControlApp),
+            AttentionScope::Product
+        );
+        assert_eq!(guest().owner(), Some("com.example.guest"));
+        // A ControlSurface is not the product either.
+        assert_eq!(
+            scope_of("com.example.settings", AppSessionClass::ControlSurface).owner(),
+            Some("com.example.settings")
+        );
+    }
+
+    #[test]
+    fn product_ids_are_unchanged_and_guest_ids_are_namespaced() {
+        assert_eq!(AttentionScope::Product.platform_id("order:42"), "order:42");
+        let mine = guest().platform_id("run:1");
+        assert_eq!(mine, guest().platform_id("run:1"), "stable across calls");
+        assert!(mine.starts_with("lxapp-"));
+        assert!(mine.chars().count() <= 64, "fits a Windows toast tag");
+        assert_ne!(mine, guest().platform_id("run:2"));
+        assert_ne!(mine, "run:1", "a guest cannot reach the product's id");
+        let other = scope_of("com.example.other", AppSessionClass::StandardApp);
+        assert_ne!(
+            mine,
+            other.platform_id("run:1"),
+            "the same id in another app is another notification"
+        );
+        // The longest id a caller may pass still fits.
+        assert!(guest().platform_id(&"x".repeat(64)).chars().count() <= 64);
+    }
+
+    #[test]
+    fn a_guest_targets_only_itself() {
+        let own = NavigationTarget::App {
+            appid: "com.example.guest".into(),
+            page: None,
+            query: Default::default(),
+        };
+        assert_eq!(guest().notification_target(ROUTE, None), Ok(own.clone()));
+        assert_eq!(
+            guest().notification_target(ROUTE, Some(serde_json::Value::Null)),
+            Ok(own.clone())
+        );
+        assert_eq!(
+            guest().notification_target(ROUTE, Some(json!({ "kind": "app" }))),
+            Ok(own.clone())
+        );
+        assert_eq!(
+            guest().notification_target(
+                ROUTE,
+                Some(json!({ "kind": "app", "appId": "com.example.guest" }))
+            ),
+            Ok(own)
+        );
+        let with_query = guest()
+            .notification_target(
+                ROUTE,
+                Some(json!({ "kind": "app", "query": { "session": "s1" } })),
+            )
+            .unwrap();
+        assert!(matches!(
+            with_query,
+            NavigationTarget::App { ref appid, ref query, .. }
+                if appid == "com.example.guest" && query["session"] == "s1"
+        ));
+    }
+
+    #[test]
+    fn a_guest_is_refused_other_apps_and_product_targets() {
+        let refused = |target: serde_json::Value| guest().notification_target(ROUTE, Some(target));
+        assert!(matches!(
+            refused(json!({ "kind": "app", "appId": "com.example.home" })),
+            Err(ScopeRefusal::Denied(message)) if message.contains("com.example.home")
+        ));
+        for kind in [
+            json!({ "kind": "activate" }),
+            json!({ "kind": "page", "page": "home" }),
+            json!({ "kind": "route", "name": "downloads.detail" }),
+            json!({ "kind": "appLink", "url": "https://example.com/x" }),
+        ] {
+            assert!(
+                matches!(refused(kind.clone()), Err(ScopeRefusal::Denied(ref message))
+                    if message.contains("only available in the Control app")),
+                "{kind}"
+            );
+        }
+        // Malformed for every caller stays a parameter error, not a denial.
+        assert!(matches!(
+            refused(json!({ "kind": "nope" })),
+            Err(ScopeRefusal::Invalid(_))
+        ));
+        assert!(matches!(
+            refused(json!({ "kind": "app", "appId": 7 })),
+            Err(ScopeRefusal::Invalid(_))
+        ));
+        assert!(matches!(
+            refused(json!({ "kind": "app", "page": "/pages/x/index" })),
+            Err(ScopeRefusal::Invalid(_))
+        ));
+        assert!(matches!(
+            refused(json!("app")),
+            Err(ScopeRefusal::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn the_product_keeps_every_target_kind() {
+        let product = AttentionScope::Product;
+        assert_eq!(
+            product.notification_target(ROUTE, None),
+            Ok(NavigationTarget::Activate)
+        );
+        assert!(
+            product
+                .notification_target(ROUTE, Some(json!({ "kind": "route", "name": "a" })))
+                .is_ok()
+        );
+        assert!(
+            product
+                .notification_target(
+                    ROUTE,
+                    Some(json!({ "kind": "app", "appId": "com.example.guest" }))
+                )
+                .is_ok()
+        );
     }
 }

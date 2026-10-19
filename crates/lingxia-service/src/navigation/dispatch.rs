@@ -29,6 +29,8 @@ pub enum NavigationSource {
     Menu,
     Tray,
     Devtool,
+    /// `lx.surface.bringToFront` after the person picked a banner action.
+    Banner,
 }
 
 impl NavigationSource {
@@ -39,6 +41,7 @@ impl NavigationSource {
             Self::Menu => "menu",
             Self::Tray => "tray",
             Self::Devtool => "devtool",
+            Self::Banner => "banner",
         }
     }
 }

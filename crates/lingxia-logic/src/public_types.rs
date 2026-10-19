@@ -159,7 +159,7 @@ rong::js_api! {
         /// are available only to the native-assigned Control app; other lxapps receive
         /// a permission error.
         ///
-        /// Local notifications as a Control-app resume affordance.
+        /// Local notifications as a resume affordance.
         ///
         /// Absent unless the host declared `capabilities.notifications` and the
         /// platform implements the local API. Presence and
@@ -167,7 +167,11 @@ rong::js_api! {
         /// Declaring the capability never prompts; permission runs on
         /// `requestPermission()` or the first `show()` that reaches the OS.
         ///
-        /// Control app only. Guest lxapps receive a permission error.
+        /// Every lxapp may call it. The Control app speaks for the product; a
+        /// guest lxapp speaks only for itself: its ids are its own (it cannot
+        /// replace or cancel another app's), a tap can only open itself, it
+        /// may hold 32 live notifications, and it may cause at most one
+        /// permission prompt per launch, only while it is open on screen.
         ///
         /// A JSON value: what a navigation route parameter may hold. Not a way
         /// to smuggle a payload — every route declares its own parameter
@@ -219,6 +223,9 @@ rong::js_api! {
      *
      * `target` is where the tap goes, and an omitted one means
      * `{ kind: 'activate' }` — bring the product forward, nothing else.
+     * For a guest lxapp the only target is itself: `{ kind: 'app' }` with
+     * its own `appId` or none, plus `page` / `query`; an omitted target opens
+     * it too. Any other target rejects with `E_PERMISSION_DENIED`.
      * `{ kind: 'page' }` opens a page of this Control app the way
      * `lx.navigateTo` does. `{ kind: 'app' }` opens another lxapp the way
      * `lx.navigateToApp` does. `{ kind: 'route' }` names a location the host
@@ -254,13 +261,21 @@ rong::js_api! {
      * target. Unknown ids are fine.
      */
     cancel(id: string): Promise<void>;
-    /** Remove every local notification this API posted or scheduled. */
+    /**
+     * Remove every local notification this API posted or scheduled. A guest
+     * lxapp's call removes only its own.
+     */
     cancelAll(): Promise<void>;
 }"###;
 
         /// Product-drawn desktop banner, top-right. Not an OS notification and
-        /// not bound to App Link. Present only in the desktop Control app;
-        /// presence and `lx.supports('app.banner')` always agree.
+        /// not bound to App Link. Present on desktop, in every lxapp; presence
+        /// and `lx.supports('app.banner')` always agree.
+        ///
+        /// A guest lxapp's banner carries its name and icon, so
+        /// it cannot pass as the product's. Its ids are its own, it may have
+        /// three banners showing or waiting, and picking one of its actions
+        /// lets it call `lx.surface.bringToFront` once.
         ///
         /// No buttons: an informational card that auto-dismisses (5s unless
         /// `timeoutMs` is set). With buttons: a gate that waits for a choice,
@@ -1833,6 +1848,24 @@ true
      * function.
      */
     watchContext(handler: (context: SurfaceContext) => void): () => void;
+    /**
+     * Bring the product forward on this lxapp, the way a notification tap
+     * with `{ kind: 'app', appId: <this app> }` does: a docked aside comes
+     * back where it is, otherwise the lxapp opens in main. `page` and `query`
+     * reach it as a reopen (App `onShow`, `reason: 'switch_back'`).
+     *
+     * A guest lxapp may call this only right after the person picked an
+     * action on one of its `lx.host.banner` cards (within 10 seconds, once
+     * per action); otherwise it rejects with `E_PERMISSION_DENIED`. The
+     * Control app may call it at any time.
+     */
+    bringToFront(options?: BringToFrontOptions): Promise<void>;
+}"###;
+
+        type BringToFrontOptions = r###"{
+    /** Configured page name from this lxapp's `lxapp.json`. */
+    page?: ExternalPageName;
+    query?: PageQuery;
 }"###;
 
         /// Surfaces (docked asides, floats, windows, browser tabs, declared surfaces)

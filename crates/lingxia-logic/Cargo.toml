@@ -32,6 +32,7 @@ tokio = { workspace = true }
 urlencoding = { workspace = true }
 base64 = { workspace = true }
 uuid = { version = "1.26", features = ["v4"] }
+sha2 = "0.11"
 rong_modules = { workspace = true, default-features = false, features = ["timer", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "stream"] }
 rong_event = { workspace = true }
 rong_rt = { workspace = true }

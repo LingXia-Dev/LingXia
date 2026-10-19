@@ -22,6 +22,9 @@ const STORE_FILE: &str = "navigation-intents.json";
 /// it cancels; a new publish then fails rather than silently dropping one that
 /// is still tappable.
 const MAX_RECORDS: usize = 256;
+/// Live entries one guest lxapp may hold, so a guest cannot fill the store
+/// the product's own notifications share.
+pub const MAX_RECORDS_PER_OWNER: usize = 32;
 /// A consumed token is kept only to merge the OS's repeat callbacks.
 const CONSUMED_TTL_MS: u64 = 24 * 60 * 60 * 1000;
 /// Same bound as the startup dispatch queue: a host that never inits must
@@ -76,6 +79,8 @@ impl Status {
 #[derive(Debug, Clone)]
 struct Record {
     scope: String,
+    /// The guest lxapp that posted it; `None` for the product's own.
+    owner: Option<String>,
     id: String,
     generation: u64,
     token: String,
@@ -89,6 +94,7 @@ impl Record {
         serde_json::json!({
             "v": ENVELOPE_VERSION,
             "scope": self.scope,
+            "owner": self.owner,
             "id": self.id,
             "generation": self.generation,
             "token": self.token,
@@ -105,6 +111,11 @@ impl Record {
         }
         Some(Self {
             scope: object.get("scope")?.as_str()?.to_string(),
+            // Absent in records written before guests could post.
+            owner: object
+                .get("owner")
+                .and_then(Value::as_str)
+                .map(str::to_string),
             id: object.get("id")?.as_str()?.to_string(),
             generation: object.get("generation").and_then(Value::as_u64)?,
             token: object.get("token")?.as_str()?.to_string(),
@@ -194,6 +205,16 @@ pub fn recover() {
 /// Invalidate whatever `id` held and stage its replacement. The old generation
 /// stops resolving here, before the OS is touched.
 pub fn stage(id: &str, target: &NavigationTarget) -> Result<StagedIntent, NavigationError> {
+    stage_owned(id, target, None)
+}
+
+/// [`stage`] for a notification a guest lxapp posted. `id` is already the
+/// guest's namespaced id; `owner` is what [`ids_owned_by`] finds it by.
+pub fn stage_owned(
+    id: &str,
+    target: &NavigationTarget,
+    owner: Option<&str>,
+) -> Result<StagedIntent, NavigationError> {
     let mut store = locked();
     load(&mut store);
     store.records.retain(|record| record.id != id);
@@ -203,12 +224,25 @@ pub fn stage(id: &str, target: &NavigationTarget) -> Result<StagedIntent, Naviga
             "the notification intent store is full ({MAX_RECORDS} live entries); cancel some first"
         )));
     }
+    if let Some(owner) = owner
+        && store
+            .records
+            .iter()
+            .filter(|record| record.owner.as_deref() == Some(owner))
+            .count()
+            >= MAX_RECORDS_PER_OWNER
+    {
+        return Err(NavigationError::unavailable(format!(
+            "this lxapp already has {MAX_RECORDS_PER_OWNER} live notifications; cancel some first"
+        )));
+    }
     let generation = store.next_generation.wrapping_add(1);
     store.next_generation = generation;
     let created_ms = unix_now_ms();
     let token = derive_token(id, generation, created_ms);
     store.records.push(Record {
         scope: scope(),
+        owner: owner.map(str::to_string),
         id: id.to_string(),
         generation,
         token: token.clone(),
@@ -260,6 +294,18 @@ pub fn invalidate(id: &str) {
     if store.records.len() != before {
         persist_logged(&store, "invalidate");
     }
+}
+
+/// The ids a guest lxapp's notifications are held under, for its `cancelAll`.
+pub fn ids_owned_by(owner: &str) -> Vec<String> {
+    let mut store = locked();
+    load(&mut store);
+    store
+        .records
+        .iter()
+        .filter(|record| record.owner.as_deref() == Some(owner))
+        .map(|record| record.id.clone())
+        .collect()
 }
 
 pub fn invalidate_all() {
@@ -529,6 +575,36 @@ mod tests {
 
     fn target() -> NavigationTarget {
         NavigationTarget::route("downloads.detail")
+    }
+
+    #[test]
+    fn a_guest_owns_its_records_and_is_capped_alone() {
+        with_store(|| {
+            let mine = stage_owned("g:1", &target(), Some("com.example.guest")).unwrap();
+            commit(&mine);
+            let product = stage("p:1", &target()).unwrap();
+            commit(&product);
+            assert_eq!(ids_owned_by("com.example.guest"), vec!["g:1".to_string()]);
+            assert!(ids_owned_by("com.example.other").is_empty());
+
+            for index in 1..MAX_RECORDS_PER_OWNER {
+                stage_owned(
+                    &format!("g:{}", index + 1),
+                    &target(),
+                    Some("com.example.guest"),
+                )
+                .unwrap();
+            }
+            assert!(matches!(
+                stage_owned("g:overflow", &target(), Some("com.example.guest")),
+                Err(NavigationError::Unavailable(_))
+            ));
+            // Replacing one of its own ids is not a new entry.
+            assert!(stage_owned("g:1", &target(), Some("com.example.guest")).is_ok());
+            // Another guest and the product are not affected by that cap.
+            assert!(stage_owned("o:1", &target(), Some("com.example.other")).is_ok());
+            assert!(stage("p:2", &target()).is_ok());
+        });
     }
 
     #[test]

@@ -46,7 +46,7 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
 | What happened | Hook | `source` | `reason` |
 | --- | --- | --- | --- |
 | First open of this session | `onLaunch(options)`, then `onShow` | `lxapp` | `open` |
-| Reopened while still alive (a link, a notification tap, `navigateToApp`, `lx.shell.openApp` on its live surface) | `onShow` with path/query | `lxapp` | `switch_back` |
+| Reopened while still alive (a link, a notification tap, `navigateToApp`, `lx.shell.openApp` on its live surface, `lx.surface.bringToFront`) | `onShow` with path/query | `lxapp` | `switch_back` |
 | Another lxapp opened as the main | `onHide` | `lxapp` | `switch_away` |
 | Closed | `onHide` | `lxapp` | `close` |
 | Host app went to background / came back | `onHide` / `onShow` | `host` | `background` / `foreground` |

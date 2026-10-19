@@ -631,6 +631,16 @@ impl AuthenticatedCaller {
         }
     }
 
+    /// The native-assigned class of an lxapp caller; `None` for a browser
+    /// document. For routes that admit every session and then scope what
+    /// each class may touch. It is not an authorization check.
+    pub fn session_class(&self) -> Option<AppSessionClass> {
+        match &self.source {
+            AuthenticatedCallerSource::LxAppSession { class, .. } => Some(*class),
+            AuthenticatedCallerSource::BrowserDocument { .. } => None,
+        }
+    }
+
     #[cfg(test)]
     fn app_session_for_test(&self) -> Option<(AppSessionClass, &AppScope)> {
         match &self.source {
