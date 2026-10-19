@@ -118,6 +118,19 @@ async fn open_lxapp_page(
         .map_err(|error| error.to_string())?;
     let _ = lxapp::ensure_lxapp(appid, release_type).map_err(|error| error.to_string())?;
     let options = lxapp::LxAppStartupOptions::for_page(page, Some(query))?;
+    // Already docked in an aside: an app target opens in main, which an lxapp
+    // holding the aside cannot take. Bring the aside back where it is and hand
+    // its Logic the page and query (App `onShow`, `switch_back`) instead.
+    if let Some(app) = lxapp::try_get(appid)
+        && let Some(panel_id) = app.open_panel_id()
+    {
+        app.set_shell_surface_visible(&panel_id, true, None, None)
+            .await
+            .map_err(|error| error.to_string())?;
+        return app
+            .deliver_reopen(options)
+            .map_err(|error| error.to_string());
+    }
     lxapp::open_lxapp(appid, options)
         .map(|_| ())
         .map_err(|error| error.to_string())

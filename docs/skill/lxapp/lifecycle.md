@@ -46,7 +46,7 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
 | What happened | Hook | `source` | `reason` |
 | --- | --- | --- | --- |
 | First open of this session | `onLaunch(options)`, then `onShow` | `lxapp` | `open` |
-| Reopened while still alive | `onShow` with path/query | `lxapp` | `switch_back` |
+| Reopened while still alive (a link, a notification tap, `navigateToApp`, `lx.shell.openApp` on its live surface) | `onShow` with path/query | `lxapp` | `switch_back` |
 | Another lxapp opened as the main | `onHide` | `lxapp` | `switch_away` |
 | Closed | `onHide` | `lxapp` | `close` |
 | Host app went to background / came back | `onHide` / `onShow` | `host` | `background` / `foreground` |
@@ -55,7 +55,10 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
 - **An aside does not hide the main.** `lx.shell.openApp(id, { as: 'aside' })`
   opens beside the main, which gets no `onHide`. Collapsing a docked aside is
   a page event, not an App event: the aside lxapp's App hooks stay quiet (see
-  Navigation below).
+  Navigation below). Opening it again while it is docked (`lx.shell.openApp`
+  with the same role, or a notification tap with an `app` target) brings the
+  aside back and hands the new `page` / `query` to App `onShow`
+  (`switch_back`); route from there.
 - **AppLink arrives once.** A cold AppLink is in `onLaunch` options
   (`scene: 8003`, `url`); the `onShow` that follows carries no link. A warm
   AppLink is in `onShow` with `reason: 'switch_back'`.
@@ -88,7 +91,8 @@ but get no hook until first selected.
 | `switchTab`, first visit | `onLoad` → `onShow` → `onReady` | Left tab: `onHide`; pushed pages: `onUnload` |
 | `switchTab`, later visits | `onShow` only, `data` kept | Same |
 | `reLaunch` | New instance: `onLoad` → `onShow` → `onReady` | Every loaded page, tabs included: `onUnload` |
-| Reopen at a named page (link, notification) | `onLoad` with the new query | — |
+| Reopen at a named page (link, notification) in main, not the current page | `onLoad` with the new query | — |
+| Reopen at the current page, or on a live aside | App `onShow` (`switch_back`) carries `path` and `query`; the page stack is kept | — |
 | Host background / foreground | `onShow` | `onHide` |
 | Desktop aside collapsed / restored (the lxapp is docked as an aside) | `onShow`, `data` kept | `onHide` |
 

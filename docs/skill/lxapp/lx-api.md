@@ -160,6 +160,8 @@ yaml capability.
   - omitted, or `{ kind: 'activate' }` — bring the product forward;
   - `{ kind: 'page', page, query }` — a page of this app, as `lx.navigateTo`;
   - `{ kind: 'app', appId, page, query }` — another lxapp, as `lx.navigateToApp`;
+    one already docked as an aside is brought back there, and the query
+    reaches its App `onShow` (`switch_back`);
   - `{ kind: 'route', name, params }` — a host-registered location;
   - `{ kind: 'appLink', url }` — a URL on a configured
     [App Link](../app/applinks.md) host, delivered as `scene === 8003`.

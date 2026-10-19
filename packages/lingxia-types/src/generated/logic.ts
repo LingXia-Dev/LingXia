@@ -1899,6 +1899,12 @@ export type ShellOpenAppOptions = {
      * open that app's initial page. Full page routes are not supported.
      */
     page?: ExternalPageName;
+    /**
+     * Startup query. When the lxapp is already open in this role, the surface
+     * is focused, not reopened: `page` and `query` reach its Logic as App
+     * `onShow` with `reason: 'switch_back'`, `path` and `query`, and its page
+     * stack is kept.
+     */
     query?: PageQuery;
     /**
      * Lxapp publish channel. Defaults to `release` in every service environment.

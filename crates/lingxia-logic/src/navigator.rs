@@ -26,7 +26,7 @@ pub(crate) struct NavigateToAppOptions {
     pub(crate) target_version: Option<String>,
 }
 
-fn build_startup_options(
+pub(crate) fn build_startup_options(
     target: &LxApp,
     options: &NavigateToAppOptions,
 ) -> Result<(LxAppStartupOptions, Channel), LxAppError> {

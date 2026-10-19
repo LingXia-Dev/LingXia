@@ -3930,6 +3930,50 @@ impl LxApp {
         Ok(())
     }
 
+    /// Hand an lxapp that is already open the page and query it was opened
+    /// with again, without presenting it again: App `onShow` fires with
+    /// `reason: 'switch_back'` and the new `path` / `query`, as a link that
+    /// re-enters it does. The page stack is kept; Logic routes from the
+    /// query. For a surface the caller reused and revealed itself — an aside
+    /// that `lx.shell.openApp` or a notification tap brings back — where
+    /// `open` would present it a second time (or refuse the other region).
+    ///
+    /// `options.page` names the page asked for; without it, `options.path`,
+    /// else the current page. Rejects when the lxapp holds no open region.
+    pub fn deliver_reopen(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
+        if self.current_open_region().is_none() {
+            return Err(LxAppError::Runtime(format!(
+                "lxapp {} is not open; open it instead",
+                self.appid
+            )));
+        }
+        self.store_reopen_options(options)?;
+        self.emit_app_show(true);
+        Ok(())
+    }
+
+    /// The startup options a reopen leaves behind (what App `onShow` reads).
+    fn store_reopen_options(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
+        let path = match options.page.as_deref().map(str::trim) {
+            Some(page) => self
+                .find_page_path_by_name(page)
+                .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {page}")))?,
+            None if options.path.is_empty() => self
+                .peek_current_page_path()
+                .unwrap_or_else(|| self.initial_route()),
+            None => options.path.clone(),
+        };
+        let path = crate::route::resolve_route(self, &path)
+            .map(|resolved| resolved.internal_path())
+            .unwrap_or(path);
+        let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+        state.startup_options.path = path;
+        state.startup_options.query = options.query;
+        state.startup_options.scene = options.scene;
+        state.startup_options.link_url = options.link_url;
+        Ok(())
+    }
+
     fn emit_app_show(&self, already_open: bool) {
         let options = self
             .state
@@ -4496,6 +4540,72 @@ mod delayed_destroy_tests {
                 .unwrap();
             assert!(Arc::ptr_eq(&app, &recalled));
         }
+        manager.retire_lxapp(&appid).unwrap();
+    }
+
+    #[test]
+    fn a_reopen_of_a_live_lxapp_hands_its_logic_the_new_query_and_keeps_its_page() {
+        use crate::delegate::LxAppDelegate;
+        #[cfg(target_vendor = "apple")]
+        let _host = crate::apple_host_stubs::headless_lifecycle();
+        let appid = format!("app.lingxia.reopen-query.{}", Uuid::new_v4());
+        register_synthetic_lxapp(appid.clone());
+        let runtime = class_test_runtime();
+        let manager = LxApps::new((*runtime).clone(), LxAppWorkers::init(1), 2);
+        let app = manager
+            .ensure_lxapp(appid.clone(), Channel::Release)
+            .unwrap();
+        let path = "pages/home/index";
+        let page = crate::page::PageInstance::new_headless(appid.clone(), path.into(), &app);
+        app.state
+            .lock()
+            .unwrap()
+            .pages_by_id
+            .lock()
+            .unwrap()
+            .insert(page.instance_id_string(), page.clone());
+        app.pin_page_path(&page);
+        app.clone().on_lxapp_opened(path.into(), app.session_id());
+
+        let reopen = |session: &str| {
+            LxAppStartupOptions::for_page(None, Some(&serde_json::json!({ "session": session })))
+                .unwrap()
+        };
+
+        // Not open anywhere: nothing to hand it to.
+        assert!(app.deliver_reopen(reopen("s1")).is_err());
+
+        app.state.lock().unwrap().open_region = Some(LxAppOpenRegion::Aside);
+        app.deliver_reopen(reopen("s2")).unwrap();
+        let launch = app
+            .state
+            .lock()
+            .unwrap()
+            .startup_options
+            .launch_options_value();
+        assert_eq!(
+            launch["query"]["session"], "s2",
+            "App onShow reads the new query"
+        );
+        assert_eq!(launch["path"], path, "no page named: the current page");
+        assert_eq!(app.get_page_stack_size(), 1, "the page stack is kept");
+
+        // A page this lxapp does not configure is refused and changes nothing.
+        let mut unknown = reopen("s3");
+        unknown.page = Some("nowhere".into());
+        assert!(matches!(
+            app.deliver_reopen(unknown),
+            Err(LxAppError::ResourceNotFound(_))
+        ));
+        let launch = app
+            .state
+            .lock()
+            .unwrap()
+            .startup_options
+            .launch_options_value();
+        assert_eq!(launch["query"]["session"], "s2");
+
+        app.state.lock().unwrap().open_region = None;
         manager.retire_lxapp(&appid).unwrap();
     }
 
