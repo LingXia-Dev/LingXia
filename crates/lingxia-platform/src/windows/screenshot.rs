@@ -412,7 +412,7 @@ async fn visible_webview_screenshots_for_window(
         let snapshot = match lingxia_windows_contract::webview_window_snapshot(&webtag) {
             Ok(snapshot)
                 if snapshot.window_id == window_id
-                    && snapshot.visible
+                    && snapshot.on_screen
                     && snapshot.content_width > 0
                     && snapshot.content_height > 0 =>
             {

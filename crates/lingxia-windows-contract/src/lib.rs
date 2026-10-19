@@ -566,6 +566,10 @@ pub struct WindowsWebViewWindowSnapshot {
     pub window_id: usize,
     pub webtag_key: String,
     pub visible: bool,
+    /// The controller is painted. False when a maximized slot covers this
+    /// WebView: the page stays lifecycle-visible, but a screenshot must not
+    /// paste its CapturePreview over the overlay.
+    pub on_screen: bool,
     pub window_left: i32,
     pub window_top: i32,
     pub window_width: i32,

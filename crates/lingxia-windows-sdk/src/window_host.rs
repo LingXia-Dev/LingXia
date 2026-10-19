@@ -8503,6 +8503,8 @@ pub fn webview_window_snapshot(webtag: &WebTag) -> StdResult<WindowsWebViewWindo
         webtag_key: webtag.key().to_string(),
         visible: webtag_is_visible(webtag.key())
             && unsafe { WindowsAndMessaging::IsWindowVisible(hwnd).as_bool() },
+        on_screen: webtag_content_is_shown(webtag.key())
+            && unsafe { WindowsAndMessaging::IsWindowVisible(hwnd).as_bool() },
         window_left: window.left,
         window_top: window.top,
         window_width: (window.right - window.left).max(0),
