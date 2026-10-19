@@ -1,7 +1,7 @@
-use crate::traits::app_runtime::DesktopBannerShow;
+use crate::traits::app_runtime::{DesktopBannerShow, DesktopBannerSource};
 use serde_json::json;
 
-pub(crate) fn present(request: &DesktopBannerShow) -> bool {
+pub(crate) fn present(request: &DesktopBannerShow, source: Option<&DesktopBannerSource>) -> bool {
     let actions = request
         .actions
         .iter()
@@ -15,6 +15,10 @@ pub(crate) fn present(request: &DesktopBannerShow) -> bool {
         .collect::<Vec<_>>();
     let actions_json = serde_json::to_string(&actions).unwrap_or_else(|_| "[]".into());
     let background = request.background.as_ffi();
+    let source_name = source.map(|source| source.name.as_str()).unwrap_or("");
+    let source_icon = source
+        .and_then(|source| source.icon_path.as_deref())
+        .unwrap_or("");
     super::ffi::desktop_banner_show(
         &request.id,
         &request.title,
@@ -22,6 +26,8 @@ pub(crate) fn present(request: &DesktopBannerShow) -> bool {
         &actions_json,
         &background,
         request.actions.is_empty(),
+        source_name,
+        source_icon,
     )
 }
 

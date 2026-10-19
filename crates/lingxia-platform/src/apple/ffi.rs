@@ -275,6 +275,8 @@ mod bridge {
             actions_json: &str,
             background: &str,
             dismissible: bool,
+            source_name: &str,
+            source_icon_path: &str,
         ) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.desktopBannerHide")]

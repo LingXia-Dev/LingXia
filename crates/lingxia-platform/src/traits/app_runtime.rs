@@ -120,6 +120,16 @@ pub struct DesktopBannerShow {
     pub background: DesktopBannerBackground,
 }
 
+/// The guest lxapp a banner speaks for. The card names it so a guest cannot
+/// pass its banner off as the product's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DesktopBannerSource {
+    pub app_id: String,
+    pub name: String,
+    /// Absolute path of the lxapp's icon; `None` keeps the product icon.
+    pub icon_path: Option<String>,
+}
+
 /// How a desktop banner finished. Failures to present are errors, not this.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DesktopBannerOutcome {
@@ -477,6 +487,16 @@ pub trait AppRuntime:
     fn banner_enqueue(
         &self,
         _request: &DesktopBannerShow,
+    ) -> Result<DesktopBannerPending, PlatformError> {
+        Err(PlatformError::NotSupported("banner".to_string()))
+    }
+
+    /// [`Self::banner_enqueue`] for a banner a guest lxapp posted; the card
+    /// shows `source` instead of the product. Desktop only.
+    fn banner_enqueue_from(
+        &self,
+        _request: &DesktopBannerShow,
+        _source: &DesktopBannerSource,
     ) -> Result<DesktopBannerPending, PlatformError> {
         Err(PlatformError::NotSupported("banner".to_string()))
     }

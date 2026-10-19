@@ -4,7 +4,9 @@
 //! and who is waiting.
 
 use crate::error::PlatformError;
-use crate::traits::app_runtime::{DesktopBannerOutcome, DesktopBannerPending, DesktopBannerShow};
+use crate::traits::app_runtime::{
+    DesktopBannerOutcome, DesktopBannerPending, DesktopBannerShow, DesktopBannerSource,
+};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
@@ -13,11 +15,15 @@ use std::time::Duration;
 
 const DEFAULT_TOAST_MS: u64 = 5_000;
 const MAX_ID_CHARS: usize = 64;
+/// Banners one guest lxapp may have visible or waiting, so it cannot bury
+/// the product's own behind a queue of its own.
+pub const MAX_PER_SOURCE: usize = 3;
 
 type Reply = Sender<Result<DesktopBannerOutcome, PlatformError>>;
 
 struct Waiter {
     request: DesktopBannerShow,
+    source: Option<DesktopBannerSource>,
     tx: Reply,
     generation: u64,
 }
@@ -50,9 +56,17 @@ pub fn show(request: DesktopBannerShow) -> Result<DesktopBannerOutcome, Platform
 
 /// Queue this banner (or put it on screen) and hand back its waiter.
 pub fn enqueue_show(request: DesktopBannerShow) -> Result<DesktopBannerPending, PlatformError> {
+    enqueue_show_from(request, None)
+}
+
+/// [`enqueue_show`] for a banner that names the guest lxapp it came from.
+pub fn enqueue_show_from(
+    request: DesktopBannerShow,
+    source: Option<DesktopBannerSource>,
+) -> Result<DesktopBannerPending, PlatformError> {
     validate(&request)?;
     let (tx, rx) = mpsc::channel();
-    enqueue(request, tx);
+    enqueue(request, source, tx)?;
     Ok(DesktopBannerPending::new(rx))
 }
 
@@ -131,11 +145,35 @@ fn finish(id: &str, result: Result<DesktopBannerOutcome, PlatformError>) {
     }
 }
 
-fn enqueue(request: DesktopBannerShow, tx: Reply) {
+fn enqueue(
+    request: DesktopBannerShow,
+    source: Option<DesktopBannerSource>,
+    tx: Reply,
+) -> Result<(), PlatformError> {
     let next = {
         let mut state = lock();
+        if let Some(source) = &source {
+            let held = state
+                .visible
+                .iter()
+                .chain(state.queue.iter())
+                .filter(|waiter| {
+                    waiter.request.id != request.id
+                        && waiter
+                            .source
+                            .as_ref()
+                            .is_some_and(|held| held.app_id == source.app_id)
+                })
+                .count();
+            if held >= MAX_PER_SOURCE {
+                return Err(PlatformError::Platform(format!(
+                    "this lxapp already has {MAX_PER_SOURCE} banners showing or waiting; dismiss one first"
+                )));
+            }
+        }
         let incoming = Waiter {
             request,
+            source,
             tx,
             generation: GENERATION.fetch_add(1, Ordering::SeqCst),
         };
@@ -173,6 +211,7 @@ fn enqueue(request: DesktopBannerShow, tx: Reply) {
     if let Some(next) = next {
         present_waiter(next);
     }
+    Ok(())
 }
 
 fn take_next(state: &mut State) -> Option<Waiter> {
@@ -181,12 +220,13 @@ fn take_next(state: &mut State) -> Option<Waiter> {
 
 fn present_waiter(waiter: Waiter) {
     let request = waiter.request.clone();
+    let source = waiter.source.clone();
     let generation = waiter.generation;
     {
         let mut state = lock();
         state.visible = Some(waiter);
     }
-    if !present_ui(&request) {
+    if !present_ui(&request, source.as_ref()) {
         fail(&request.id, "failed to present banner");
         return;
     }
@@ -224,18 +264,18 @@ fn visible_generation_is(generation: u64) -> bool {
         .is_some_and(|waiter| waiter.generation == generation)
 }
 
-fn present_ui(request: &DesktopBannerShow) -> bool {
+fn present_ui(request: &DesktopBannerShow, source: Option<&DesktopBannerSource>) -> bool {
     #[cfg(all(not(test), target_os = "windows"))]
     {
-        crate::windows::banner::present(request)
+        crate::windows::banner::present(request, source)
     }
     #[cfg(all(not(test), target_os = "macos"))]
     {
-        crate::apple::banner::present(request)
+        crate::apple::banner::present(request, source)
     }
     #[cfg(any(test, not(any(target_os = "windows", target_os = "macos"))))]
     {
-        let _ = request;
+        let _ = (request, source);
         true
     }
 }
@@ -311,6 +351,32 @@ mod tests {
         });
         let error = show(request).unwrap_err();
         assert!(error.to_string().contains("at most two"));
+    }
+
+    #[test]
+    fn a_guest_is_capped_alone_and_may_replace_its_own() {
+        let source = |app_id: &str| {
+            Some(DesktopBannerSource {
+                app_id: app_id.into(),
+                name: "Guest".into(),
+                icon_path: None,
+            })
+        };
+        let mut pending = Vec::new();
+        for index in 0..MAX_PER_SOURCE {
+            pending.push(
+                enqueue_show_from(prompt(&format!("cap-g{index}")), source("cap.guest")).unwrap(),
+            );
+        }
+        let error = enqueue_show_from(prompt("cap-over"), source("cap.guest")).unwrap_err();
+        assert!(error.to_string().contains("already has"));
+        assert!(enqueue_show_from(prompt("cap-g0"), source("cap.guest")).is_ok());
+        assert!(enqueue_show_from(prompt("cap-other"), source("cap.other")).is_ok());
+        assert!(enqueue_show(prompt("cap-product")).is_ok());
+        for id in ["cap-g0", "cap-g1", "cap-g2", "cap-other", "cap-product"] {
+            dismiss(id);
+        }
+        drop(pending);
     }
 
     #[test]
