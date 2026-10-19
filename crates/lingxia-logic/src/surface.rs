@@ -1114,6 +1114,7 @@ async fn open_app_spec(
         }
         if lxapp::try_get(&app_id).is_some_and(|app| app.release_type() == requested_channel) {
             show_lxapp_region(&lxapp, &app_id, &app_id, current_region, edge.as_deref()).await?;
+            deliver_to_reused_app(&app_id, &target)?;
             return lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id, current_region);
         }
     }
@@ -1144,6 +1145,28 @@ async fn open_app_spec(
     };
     lxapp::schedule_lxapp_update_check(&app_id, release_type);
     lxapp_surface_handle(&ctx, lxapp, app_id, shell_surface_id, region)
+}
+
+/// A reused surface still gets what this open asked for: the named page and
+/// the query reach the running lxapp's Logic as App `onShow`
+/// (`reason: 'switch_back'`, with `path` and `query`). Its page stack is kept.
+/// An open that names neither is a plain reveal and says nothing.
+fn deliver_to_reused_app(
+    app_id: &str,
+    target: &crate::navigator::NavigateToAppOptions,
+) -> JSResult<()> {
+    if target.page.is_none() && target.query.is_none() {
+        return Ok(());
+    }
+    let app = lxapp::try_get(app_id).ok_or_else(|| {
+        surface_error(
+            SurfaceErrorCode::NotDeclared,
+            format!("lxapp is not active: {app_id}"),
+        )
+    })?;
+    let (options, _) =
+        crate::navigator::build_startup_options(&app, target).map_err(lxapp_open_error)?;
+    app.deliver_reopen(options).map_err(lxapp_open_error)
 }
 
 fn open_lxapp_region(

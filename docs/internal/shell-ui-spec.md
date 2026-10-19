@@ -1000,7 +1000,11 @@ semantics every language surface MUST share.
   reproject the same aside.
 - A dynamic App Surface is singleton by appId within the window. Reopening the
   same appId under its current role focuses it without restarting its lifecycle
-  or replacing startup parameters. A live main/aside role change currently
+  or its page stack; a `page` or `query` on that call is delivered to its Logic
+  as App `onShow` (`reason: 'switch_back'`, `path`, `query`). A notification or
+  menu `app` target that names an lxapp docked as an aside brings that aside
+  back and delivers the same way, instead of failing to take main. A live
+  main/aside role change currently
   fails with `E_SURFACE_CONFLICT`; close it before reopening in the other role.
   It returns a lifecycle handle and, when main, owns an independent switcher item.
 - `lx.surface.openPage(page, options?)` opens the caller's own page as a float
