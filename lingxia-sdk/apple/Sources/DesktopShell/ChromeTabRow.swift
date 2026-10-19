@@ -63,8 +63,9 @@ final class ChromeTabRowView: NSStackView {
     /// Whether the active tab bridges into the content below: filled with the
     /// surface colour, feet flaring over the strip's baseline hairline. Only
     /// true when LingXia chrome in that colour sits right under the strip
-    /// (the docked browser's toolbar). Off, the active tab is a fill chip
-    /// above a whole baseline: the content below (an lxapp page) has its own
+    /// (the docked browser's toolbar). Off, every state is a borderless chip
+    /// centred in the row — the active one in the selection fill, like the
+    /// sidebar's — because the content below (an lxapp page) has its own
     /// background, which a merged tab would cut into.
     var bridgesIntoContent = true {
         didSet {
@@ -83,20 +84,12 @@ final class ChromeTabRowView: NSStackView {
         let foot = ChromeTabMetrics.tabFoot
         let corner = ChromeTabMetrics.tabCorner
 
-        if isActiveTab && !bridgesIntoContent {
-            // The hover wash's shape in the active fill, clear of the
-            // baseline so the hairline under the strip stays whole.
-            let path = NSBezierPath(
-                roundedRect: washRect(topInset: topInset, foot: foot, bottomGap: 1),
-                xRadius: corner,
-                yRadius: corner
-            )
-            LxAppHostTheme.surfaceBackground.setFill()
-            path.fill()
-            LxAppHostTheme.separator.withAlphaComponent(0.5).setStroke()
-            path.lineWidth = pixel
-            path.stroke()
-        } else if isActiveTab {
+        if !bridgesIntoContent {
+            drawChip(foot: foot, corner: corner, pixel: pixel)
+            return
+        }
+
+        if isActiveTab {
             // The active tab is the page surfacing up through the bar: fill
             // with the content colour, flared feet merging into the toolbar
             // bottom (overdraw 1px to bridge the toolbar separator).
@@ -111,7 +104,12 @@ final class ChromeTabRowView: NSStackView {
         } else if isHovered {
             // Hover: a gently rounded wash inset from the edges, no feet.
             let path = NSBezierPath(
-                roundedRect: washRect(topInset: topInset, foot: foot, bottomGap: 0),
+                roundedRect: NSRect(
+                    x: foot * 0.5,
+                    y: topInset + 1,
+                    width: max(0, bounds.width - foot),
+                    height: max(0, bounds.height - topInset - 1)
+                ),
                 xRadius: corner,
                 yRadius: corner
             )
@@ -130,15 +128,34 @@ final class ChromeTabRowView: NSStackView {
         }
     }
 
-    /// The footless rounded body the hover wash (and a non-bridging active
-    /// tab) fills, inset from the edges; `bottomGap` lifts it off the baseline.
-    private func washRect(topInset: CGFloat, foot: CGFloat, bottomGap: CGFloat) -> NSRect {
-        NSRect(
+    /// Non-bridging states: one chip shape centred in the row, so the active
+    /// fill and the hover wash line up and neither touches the baseline.
+    private func drawChip(foot: CGFloat, corner: CGFloat, pixel: CGFloat) {
+        let chip = NSRect(
             x: foot * 0.5,
-            y: topInset + 1,
+            y: 2,
             width: max(0, bounds.width - foot),
-            height: max(0, bounds.height - topInset - 1 - bottomGap)
+            height: max(0, bounds.height - 4)
         )
+        let fill: NSColor? = if isActiveTab {
+            LxAppHostTheme.selectionBackground
+        } else if isHovered {
+            LxAppHostTheme.foreground.withAlphaComponent(0.06)
+        } else {
+            nil
+        }
+        if let fill {
+            fill.setFill()
+            NSBezierPath(roundedRect: chip, xRadius: corner, yRadius: corner).fill()
+        } else if !suppressTrailingSeparator {
+            LxAppHostTheme.separator.withAlphaComponent(0.5).setFill()
+            NSRect(
+                x: bounds.width - pixel,
+                y: chip.minY + 6,
+                width: pixel,
+                height: max(0, chip.height - 12)
+            ).fill()
+        }
     }
 
     /// A Chrome tab silhouette (flipped coords): rounded top corners and

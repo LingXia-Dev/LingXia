@@ -459,10 +459,18 @@ fn aside_panel_tab_text_padding() -> i32 {
 fn aside_panel_tab_gap() -> i32 {
     crate::dpi::px(4)
 }
-/// Air above the tabs; they run flush to the toolbar's bottom edge so the
-/// active tab merges into the content below (Chrome style).
+/// Air above the tabs. Bridging tabs run flush to the toolbar's bottom edge
+/// so the active one merges into the content below (Chrome style); the rest
+/// keep the same air below and sit centred in the strip.
 fn aside_panel_tab_top_inset() -> i32 {
     crate::dpi::px(6)
+}
+/// Only the browser's own toolbar sits flush under the strip in the card's
+/// fill. Below an lxapp tab is its page (or its declared navigation bar
+/// colour), so its active tab stays a chip clear of the seam instead of
+/// pretending to merge into it.
+fn aside_panel_tabs_bridge(panel: &WindowsChromePanel) -> bool {
+    panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID
 }
 /// Upper-corner radius of the active tab shape.
 fn aside_panel_tab_radius() -> i32 {
@@ -514,6 +522,11 @@ pub(super) fn aside_panel_tab_rects(
             *width = (*width * avail / total).max(24);
         }
     }
+    let bottom = if aside_panel_tabs_bridge(panel) {
+        header.bottom
+    } else {
+        header.bottom - aside_panel_tab_top_inset()
+    };
     let mut out = Vec::with_capacity(tabs.len());
     let mut left = left_edge;
     for width in widths {
@@ -521,7 +534,7 @@ pub(super) fn aside_panel_tab_rects(
             left,
             top: header.top + aside_panel_tab_top_inset(),
             right: (left + width).min(right_edge),
-            bottom: header.bottom,
+            bottom,
         }));
         left += width + aside_panel_tab_gap();
     }
@@ -671,23 +684,12 @@ pub(super) fn draw_aside_panel_header(
         }
     }
 
-    // Only the browser's own toolbar sits flush under the strip in the card's
-    // fill. Below an lxapp tab is its page (or its declared navigation bar
-    // colour), so its active tab stays a chip clear of the seam instead of
-    // pretending to merge into it.
-    let bridges = panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID;
+    let bridges = aside_panel_tabs_bridge(panel);
     let rects = aside_panel_tab_rects(panel, tabs);
     for (index, (tab, rect)) in tabs.iter().zip(rects.iter().copied()).enumerate() {
         if tab.active && !bridges {
-            fill_round_rect_aa(
-                hdc,
-                RECT {
-                    bottom: rect.bottom - px(2),
-                    ..rect
-                },
-                aside_panel_tab_radius(),
-                pal.panel_background,
-            );
+            // The white card on the grey cap, as the sidebar's selected child.
+            fill_round_rect_aa(hdc, rect, px(6), pal.panel_background);
         } else if tab.active {
             // Rounded top, flush bottom: the tab joins the web content.
             fill_round_rect_aa(hdc, rect, aside_panel_tab_radius(), pal.panel_background);
@@ -716,7 +718,12 @@ pub(super) fn draw_aside_panel_header(
             );
         }
         if !tab.active {
-            draw_hover_wash(hdc, rect, aside_panel_tab_radius(), cursor);
+            let radius = if bridges {
+                aside_panel_tab_radius()
+            } else {
+                px(6)
+            };
+            draw_hover_wash(hdc, rect, radius, cursor);
         }
         let close = aside_panel_tab_close_rect(rect);
         let title_rect = normalize_rect(RECT {
