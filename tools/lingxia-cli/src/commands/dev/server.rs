@@ -1,4 +1,5 @@
 use super::log_store::{DevLogSession, create_session};
+use crate::config::AppEnv;
 use anyhow::{Context, Result, anyhow};
 use lingxia_control_protocol::{
     ControlRequest,
@@ -1284,6 +1285,7 @@ pub fn start_server_on_with_stop(
     project_root: &Path,
     bind_addr: &str,
     platform: &str,
+    app_env: AppEnv,
     stop_flag: Arc<AtomicBool>,
     auth_token: Option<String>,
 ) -> Result<DevServerHandle> {
@@ -1292,6 +1294,7 @@ pub fn start_server_on_with_stop(
         project_root,
         bind_addr,
         session_ends_on_runtime_gone(platform),
+        app_env,
         stop_flag,
         auth_token,
     )
@@ -1302,6 +1305,7 @@ fn start_server_on_with_roots(
     content_root: &Path,
     bind_addr: &str,
     end_on_runtime_gone: bool,
+    app_env: AppEnv,
     stop_flag: Arc<AtomicBool>,
     auth_token: Option<String>,
 ) -> Result<DevServerHandle> {
@@ -1320,8 +1324,14 @@ fn start_server_on_with_roots(
     for root in super::lxapp_watch::discover_watch_roots(content_root)? {
         crate::build_prepare::prepare(&root.path)?;
     }
-    let companion =
-        super::companion::DevCompanion::start(session_root, stop_flag.clone(), writer.clone())?;
+    // The companion learns the session's env and decides itself whether a
+    // local backend belongs in it.
+    let companion = super::companion::DevCompanion::start(
+        session_root,
+        app_env,
+        stop_flag.clone(),
+        writer.clone(),
+    )?;
     let state = Arc::new(DevServerState::new(
         content_root.to_path_buf(),
         stop_flag.clone(),
@@ -1370,6 +1380,8 @@ pub fn start_server_at_with_roots(
         content_root,
         &format!("{host}:{port}"),
         false,
+        // `listen` takes no `--env`: the session keeps the default env.
+        AppEnv::Dev,
         stop_flag,
         auth_token,
     )
@@ -1379,6 +1391,7 @@ pub fn start_server_fixed_with_stop(
     project_root: &Path,
     host: &str,
     platform: &str,
+    app_env: AppEnv,
     stop_flag: Arc<AtomicBool>,
     auth_token: Option<String>,
 ) -> Result<DevServerHandle> {
@@ -1389,6 +1402,7 @@ pub fn start_server_fixed_with_stop(
         project_root,
         &format!("{host}:{port}"),
         platform,
+        app_env,
         stop_flag.clone(),
         auth_token.clone(),
     ) {
@@ -1402,6 +1416,7 @@ pub fn start_server_fixed_with_stop(
                 project_root,
                 &format!("{host}:0"),
                 platform,
+                app_env,
                 stop_flag,
                 auth_token,
             )
@@ -1414,6 +1429,7 @@ pub fn start_server_fixed_with_roots(
     content_root: &Path,
     host: &str,
     platform: &str,
+    app_env: AppEnv,
     stop_flag: Arc<AtomicBool>,
     auth_token: Option<String>,
 ) -> Result<DevServerHandle> {
@@ -1425,6 +1441,7 @@ pub fn start_server_fixed_with_roots(
         content_root,
         &format!("{host}:{port}"),
         session_ends_on_runtime_gone(platform),
+        app_env,
         stop_flag.clone(),
         auth_token.clone(),
     ) {
@@ -1439,6 +1456,7 @@ pub fn start_server_fixed_with_roots(
                 content_root,
                 &format!("{host}:0"),
                 session_ends_on_runtime_gone(platform),
+                app_env,
                 stop_flag,
                 auth_token,
             )

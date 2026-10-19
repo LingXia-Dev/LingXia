@@ -13,6 +13,7 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
         &ctx.project_root,
         "[::]",
         platform_name,
+        ctx.resolved_env.version,
         stop_requested.clone(),
         Some(auth_token.clone()),
     )?;

@@ -235,6 +235,7 @@ pub(super) fn execute_runner_dev(
         content_root,
         "127.0.0.1",
         platform_name,
+        runner_env,
         stop_requested.clone(),
         None,
     )?;

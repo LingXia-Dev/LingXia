@@ -97,6 +97,10 @@ lingxia dev --background --mock all        # answer from mocks/ (CI against mock
 - **Mocks.** `--mock all|none` answers the session from `mocks/` handlers or
   the real backend from its first request, replacing `mocks/config.json`;
   the ready output prints the selection. [Mocks](../lxapp/mock.md).
+- **Env.** `--env dev|prod` (default `dev`) also reaches the template's
+  dev companion. A Worker template runs its local Worker only in `dev`;
+  with `--env prod` none starts and Functions call the deployed `prod`
+  Worker. `--mock all` needs `--env dev`.
 - **Stop.** `lingxia dev stop [SESSION]` ends a session (exit 0 when none).
   `lxdev session` lists live ones.
 - **Version skew.** `dev`, `build`, and `lxdev test` fail fast when the CLI,

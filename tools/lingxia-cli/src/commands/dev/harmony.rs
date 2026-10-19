@@ -10,6 +10,7 @@ pub(super) fn execute_harmony(ctx: DevContext) -> Result<()> {
         &ctx.project_root,
         "127.0.0.1",
         platform_name,
+        ctx.resolved_env.version,
         stop_requested.clone(),
         None,
     )?;

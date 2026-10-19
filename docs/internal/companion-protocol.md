@@ -61,17 +61,30 @@ companion error is passed through unchanged (code, message, data).
 
 ## `session.prepare`
 
-The first request. Its params are sent only when set, so a companion that
-predates them keeps seeing no params:
+The first request, after a companion `hello` with `version` 3
+(`dev_session::DEV_COMPANION_PROTOCOL_VERSION`; runtimes and clients keep
+speaking `DEV_SESSION_PROTOCOL_VERSION`). A companion with any other version
+is stopped at its hello. Params (`DevSessionPrepareParams`):
 
 ```json
-{ "mock": "all" }
+{ "env": "prod", "mock": "all" }
 ```
 
-`mock` (`"all"` or `"none"`, `DevSessionPrepareParams`) is the session's
-mock baseline (`lingxia dev --mock`): it replaces the companion's own
-configured selection as a whole for the session, exactly as the companion's
-own command-line switch would. Absent means the companion's own default.
+`env` (required) is the app env the session runs (`lingxia dev --env`,
+`dev` by default). A companion that serves a local backend for `dev` stays
+out of any other env: it answers `{ "active": false }`, starts nothing, and
+sets no `runtime_env`, so the runtime calls that env's deployed backend.
+LingXia hardcodes no provider: the companion decides. `lingxia dev --mock
+all` needs `--env dev`, since mocked Functions live in the local companion.
+
+`mock` (`"all"` or `"none"`) is the session's mock baseline (`lingxia dev
+--mock`): it replaces the companion's own configured selection as a whole
+for the session, exactly as the companion's own command-line switch would.
+Absent means the companion's own default.
+
+The result is `DevSessionPrepareResult`: `active`, and when active, the
+`runtime_env` LingXia sets for the runtime it starts and restores when the
+session ends. `active: false` sets nothing and stops the companion.
 
 ## Scenario methods (`scenario.function`)
 

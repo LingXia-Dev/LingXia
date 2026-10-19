@@ -596,6 +596,12 @@ pub mod dev_session {
     use std::collections::BTreeMap;
 
     pub const DEV_SESSION_PROTOCOL_VERSION: u32 = 2;
+    /// The `hello` version a companion speaks. Separate from
+    /// [`DEV_SESSION_PROTOCOL_VERSION`], which runtimes and clients speak:
+    /// version 3 requires [`DevSessionPrepareParams::env`], so a companion
+    /// that predates it fails the hello instead of serving a local backend
+    /// to a session in another env.
+    pub const DEV_COMPANION_PROTOCOL_VERSION: u32 = 3;
     /// A test poll can carry 24 MiB of base64 artifacts plus an 8 MiB result.
     pub const DEV_SESSION_MAX_MESSAGE_BYTES: usize = 40 * 1024 * 1024;
 
@@ -700,23 +706,17 @@ pub mod dev_session {
         }
     }
 
-    /// `session.prepare` params a companion receives. Sent only when a
-    /// field is set, so a companion that predates them sees no params.
-    #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+    /// `session.prepare` params a companion receives.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct DevSessionPrepareParams {
         /// The session's mock baseline (`lingxia dev --mock`), over the
         /// companion's own configured selection; absent means its own.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub mock: Option<crate::mock::MockMode>,
-    }
-
-    impl DevSessionPrepareParams {
-        /// The params to send, `None` when nothing is set.
-        pub fn to_params(&self) -> Option<serde_json::Value> {
-            (self != &Self::default())
-                .then(|| serde_json::to_value(self).ok())
-                .flatten()
-        }
+        /// The app env the session runs (`lingxia dev --env`): `dev` or
+        /// `prod`. A companion serving a local backend for `dev` stays out
+        /// of any other env: it answers `active: false`.
+        pub env: String,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -842,18 +842,25 @@ mod tests {
     }
 
     #[test]
-    fn prepare_params_are_sent_only_when_set() {
-        assert_eq!(DevSessionPrepareParams::default().to_params(), None);
+    fn prepare_params_require_the_session_env() {
         let params = DevSessionPrepareParams {
             mock: Some(crate::mock::MockMode::All),
+            env: "prod".to_string(),
         };
         assert_eq!(
-            params.to_params(),
-            Some(serde_json::json!({ "mock": "all" }))
+            serde_json::to_value(&params).unwrap(),
+            serde_json::json!({ "mock": "all", "env": "prod" })
         );
         let parsed: DevSessionPrepareParams =
-            serde_json::from_value(serde_json::json!({ "mock": "none" })).unwrap();
-        assert_eq!(parsed.mock, Some(crate::mock::MockMode::None));
+            serde_json::from_value(serde_json::json!({ "env": "dev" })).unwrap();
+        assert_eq!(parsed.mock, None);
+        assert_eq!(parsed.env, "dev");
+        assert!(
+            serde_json::from_value::<DevSessionPrepareParams>(
+                serde_json::json!({ "mock": "none" })
+            )
+            .is_err()
+        );
     }
 
     #[test]

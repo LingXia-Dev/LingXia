@@ -2,10 +2,11 @@ use anyhow::{Context, Result, anyhow, bail};
 use lingxia_control_protocol::{
     ControlError, ControlRequest, ControlResponse,
     dev_session::{
-        DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionMessage, DevSessionPrepareResult,
-        DevSessionRole, capabilities,
+        DEV_COMPANION_PROTOCOL_VERSION, DevSessionEvent, DevSessionMessage,
+        DevSessionPrepareParams, DevSessionPrepareResult, DevSessionRole, capabilities,
     },
     methods,
+    mock::MockMode,
 };
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsString;
@@ -20,6 +21,7 @@ use sysinfo::{ProcessesToUpdate, System};
 
 use super::server::SessionLogWriter;
 use crate::commands::template_provider;
+use crate::config::AppEnv;
 
 const PREPARE_REQUEST_ID: &str = "session-prepare";
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -126,8 +128,11 @@ pub(super) struct DevCompanion {
 
 impl DevCompanion {
     /// Starts the `companion` lifecycle of the template the project names, if any.
+    /// `app_env` goes to the companion in `session.prepare`, so a companion
+    /// with a local backend for `dev` can stay out of any other env.
     pub(super) fn start(
         project_root: &Path,
+        app_env: AppEnv,
         stop_requested: Arc<AtomicBool>,
         writer: Arc<SessionLogWriter>,
     ) -> Result<Option<Self>> {
@@ -206,10 +211,12 @@ impl DevCompanion {
             stop_child_tree(&mut child);
             bail!("Development companion must begin with a hello frame");
         };
-        if version != DEV_SESSION_PROTOCOL_VERSION {
+        if version != DEV_COMPANION_PROTOCOL_VERSION {
             stop_child_tree(&mut child);
             bail!(
-                "Unsupported development companion protocol version {version}; expected {DEV_SESSION_PROTOCOL_VERSION}"
+                "Unsupported development companion protocol version {version}; expected \
+                 {DEV_COMPANION_PROTOCOL_VERSION}. Upgrade the template's companion with \
+                 `lingxia template update`."
             );
         }
         if role != DevSessionRole::Companion {
@@ -229,12 +236,9 @@ impl DevCompanion {
             &DevSessionMessage::Request(ControlRequest {
                 id: PREPARE_REQUEST_ID.to_string(),
                 method: methods::session::PREPARE.to_string(),
-                // `lingxia dev --mock`, when given; a companion that
-                // predates the params keeps seeing none.
-                params: lingxia_control_protocol::dev_session::DevSessionPrepareParams {
-                    mock: super::mocks::baseline(),
-                }
-                .to_params(),
+                // `lingxia dev --mock`, when given, and the session's env.
+                params: serde_json::to_value(prepare_params(super::mocks::baseline(), app_env))
+                    .ok(),
             }),
         ) {
             stop_child_tree(&mut child);
@@ -486,6 +490,15 @@ fn validate_runtime_env(values: &BTreeMap<String, String>) -> Result<()> {
     Ok(())
 }
 
+/// The `session.prepare` params of a session with this `--mock` baseline
+/// and env.
+fn prepare_params(mock: Option<MockMode>, app_env: AppEnv) -> DevSessionPrepareParams {
+    DevSessionPrepareParams {
+        mock,
+        env: app_env.as_str().to_string(),
+    }
+}
+
 fn apply_runtime_env(values: &BTreeMap<String, String>) -> Vec<(String, Option<OsString>)> {
     let previous = values
         .keys()
@@ -643,7 +656,7 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let _home = template_provider::test_support::use_home(home.path());
         let script = concat!(
-            "printf '%s\\n' '{\"type\":\"hello\",\"version\":2,\"role\":\"companion\",",
+            "printf '%s\\n' '{\"type\":\"hello\",\"version\":3,\"role\":\"companion\",",
             "\"capabilities\":[\"requests\",\"events.log\"]}'; ",
             "IFS= read -r request; ",
             "printf '%s\\n' '{\"type\":\"response\",\"id\":\"session-prepare\",",
@@ -662,7 +675,7 @@ mod tests {
         let session = super::super::log_store::create_session(root.path()).unwrap();
         let writer = Arc::new(SessionLogWriter::new(&session).unwrap());
         let stop_requested = Arc::new(AtomicBool::new(false));
-        let companion = DevCompanion::start(root.path(), stop_requested, writer)
+        let companion = DevCompanion::start(root.path(), AppEnv::Dev, stop_requested, writer)
             .unwrap()
             .unwrap();
 
@@ -679,5 +692,183 @@ mod tests {
         assert_eq!(event.origin, "service.api");
         assert_eq!(event.as_log().unwrap().unwrap().message, "hello");
         drop(companion);
+    }
+
+    #[test]
+    fn prepare_params_name_the_session_env() {
+        assert_eq!(
+            serde_json::to_value(prepare_params(None, AppEnv::Dev)).unwrap(),
+            serde_json::json!({ "env": "dev" })
+        );
+        assert_eq!(
+            serde_json::to_value(prepare_params(Some(MockMode::None), AppEnv::Prod)).unwrap(),
+            serde_json::json!({ "mock": "none", "env": "prod" })
+        );
+    }
+
+    /// Install a companion under `root` that records its `session.prepare`
+    /// request in `root/prepare.json` and answers it with `result`.
+    #[cfg(unix)]
+    fn recording_companion(root: &Path, home: &Path, result: &str) -> std::path::PathBuf {
+        let recorded = root.join("prepare.json");
+        let script = format!(
+            "printf '%s\\n' '{{\"type\":\"hello\",\"version\":3,\"role\":\"companion\",\
+             \"capabilities\":[\"requests\"]}}'; \
+             IFS= read -r request; \
+             printf '%s\\n' \"$request\" > '{}.tmp' && mv '{0}.tmp' '{0}'; \
+             printf '%s\\n' '{{\"type\":\"response\",\"id\":\"session-prepare\",\"result\":{result}}}'; \
+             while IFS= read -r line; do :; done",
+            recorded.display()
+        );
+        template_provider::test_support::install(home, root, &[("companion", &script)]);
+        recorded
+    }
+
+    #[cfg(unix)]
+    fn recorded_prepare(recorded: &Path) -> serde_json::Value {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Ok(text) = fs::read_to_string(recorded) {
+                return serde_json::from_str(text.trim()).unwrap();
+            }
+            assert!(
+                Instant::now() < deadline,
+                "session.prepare was not recorded"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn session_prepare_tells_the_companion_the_env() {
+        for env in [AppEnv::Dev, AppEnv::Prod] {
+            let root = tempfile::tempdir().unwrap();
+            let home = tempfile::tempdir().unwrap();
+            let _home = template_provider::test_support::use_home(home.path());
+            let recorded = recording_companion(root.path(), home.path(), r#"{"active":true}"#);
+            let session = super::super::log_store::create_session(root.path()).unwrap();
+            let writer = Arc::new(SessionLogWriter::new(&session).unwrap());
+            let companion =
+                DevCompanion::start(root.path(), env, Arc::new(AtomicBool::new(false)), writer)
+                    .unwrap()
+                    .unwrap();
+            let request = recorded_prepare(&recorded);
+            assert_eq!(request["method"], "session.prepare");
+            assert_eq!(request["params"]["env"], env.as_str());
+            drop(companion);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_inactive_companion_sets_no_runtime_env() {
+        const NAME: &str = "LINGXIA_TEST_INACTIVE_COMPANION_ENDPOINT";
+        let root = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let _home = template_provider::test_support::use_home(home.path());
+        let recorded = recording_companion(
+            root.path(),
+            home.path(),
+            &format!(r#"{{"active":false,"runtime_env":{{"{NAME}":"http://127.0.0.1:1/x"}}}}"#),
+        );
+        let session = super::super::log_store::create_session(root.path()).unwrap();
+        let writer = Arc::new(SessionLogWriter::new(&session).unwrap());
+        let companion = DevCompanion::start(
+            root.path(),
+            AppEnv::Prod,
+            Arc::new(AtomicBool::new(false)),
+            writer,
+        )
+        .unwrap();
+        assert!(companion.is_none());
+        assert_eq!(recorded_prepare(&recorded)["params"]["env"], "prod");
+        assert!(std::env::var_os(NAME).is_none());
+    }
+
+    /// A companion from before `env` speaks version 2 and is refused at its
+    /// hello, before any `session.prepare` could start a local backend.
+    #[cfg(unix)]
+    #[test]
+    fn a_companion_that_predates_the_env_fails_the_hello() {
+        let root = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let _home = template_provider::test_support::use_home(home.path());
+        let recorded = root.path().join("prepare.json");
+        let script = format!(
+            "printf '%s\\n' '{{\"type\":\"hello\",\"version\":2,\"role\":\"companion\",\
+             \"capabilities\":[\"requests\"]}}'; \
+             IFS= read -r request && printf '%s\\n' \"$request\" > '{}'",
+            recorded.display()
+        );
+        template_provider::test_support::install(
+            home.path(),
+            root.path(),
+            &[("companion", &script)],
+        );
+        let session = super::super::log_store::create_session(root.path()).unwrap();
+        let writer = Arc::new(SessionLogWriter::new(&session).unwrap());
+        let error = DevCompanion::start(
+            root.path(),
+            AppEnv::Prod,
+            Arc::new(AtomicBool::new(false)),
+            writer,
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Unsupported development companion protocol version 2; expected 3"),
+            "{error:#}"
+        );
+        assert!(
+            !recorded.exists(),
+            "no session.prepare reached the old companion"
+        );
+    }
+
+    /// The host platforms (`lingxia dev -p macos --env prod`) and the Runner
+    /// start their server through different entry points; both forward the
+    /// session's env to the companion.
+    #[cfg(unix)]
+    #[test]
+    fn host_and_runner_servers_forward_the_env_to_the_companion() {
+        type Start = fn(&Path, AppEnv) -> Result<super::super::server::DevServerHandle>;
+        let host: Start = |root, env| {
+            super::super::server::start_server_fixed_with_stop(
+                root,
+                "127.0.0.1",
+                "macos",
+                env,
+                Arc::new(AtomicBool::new(false)),
+                None,
+            )
+        };
+        let runner: Start = |root, env| {
+            super::super::server::start_server_fixed_with_roots(
+                root,
+                root,
+                "127.0.0.1",
+                "runner",
+                env,
+                Arc::new(AtomicBool::new(false)),
+                None,
+            )
+        };
+        for (path, start) in [("host", host), ("runner", runner)] {
+            for env in [AppEnv::Dev, AppEnv::Prod] {
+                let root = tempfile::tempdir().unwrap();
+                let home = tempfile::tempdir().unwrap();
+                let _home = template_provider::test_support::use_home(home.path());
+                let recorded = recording_companion(root.path(), home.path(), r#"{"active":true}"#);
+                let server = start(root.path(), env).unwrap();
+                assert_eq!(
+                    recorded_prepare(&recorded)["params"]["env"],
+                    env.as_str(),
+                    "{path} --env {env}"
+                );
+                server.stop().unwrap();
+            }
+        }
     }
 }

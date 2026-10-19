@@ -157,6 +157,30 @@ fn host_only_flag(options: &DevExecuteOptions, runner_requested: bool) -> Option
     .find_map(|(set, flag)| set.then_some(flag))
 }
 
+/// `--mock all` needs `--env dev`. Function mocks run in the local
+/// companion, which stays out of any other env, so the session would mock
+/// some calls and send the rest to that env's real backend. `--mock none`
+/// asks for the real backend and fits every env.
+fn refuse_mock_outside_dev(
+    mock: Option<lingxia_control_protocol::mock::MockMode>,
+    env_version: Option<&str>,
+) -> Result<()> {
+    let env = env_version
+        .map(crate::config::AppEnv::parse_cli)
+        .transpose()?
+        .unwrap_or(crate::config::AppEnv::Dev);
+    if mock == Some(lingxia_control_protocol::mock::MockMode::All)
+        && env != crate::config::AppEnv::Dev
+    {
+        return Err(anyhow!(
+            "`--mock all` needs `--env dev`: mocked Functions run in the local development \
+             companion, which does not start for `--env {env}`. Drop `--mock` to call the \
+             {env} backend, or use `--env dev` to mock."
+        ));
+    }
+    Ok(())
+}
+
 /// Per-user token authenticating a physical iOS device's connection to the
 /// host-side dev server.
 fn persistent_device_token() -> Result<String> {
@@ -338,6 +362,7 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
         Some(DevSessionAction::Listen { port, ref session }) => Some((port, session.clone())),
         None => None,
     };
+    refuse_mock_outside_dev(options.mock, options.env_version.as_deref())?;
     mocks::set_baseline(options.mock);
 
     if options
@@ -1381,6 +1406,19 @@ fn parse_lxapp_framework(value: &str) -> Result<ProjectFramework> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mock_all_needs_the_dev_env() {
+        use lingxia_control_protocol::mock::MockMode;
+        let error = refuse_mock_outside_dev(Some(MockMode::All), Some("prod")).unwrap_err();
+        assert!(error.to_string().contains("`--mock all` needs `--env dev`"));
+        // Dev, explicit or by default, mocks as before.
+        refuse_mock_outside_dev(Some(MockMode::All), Some("dev")).unwrap();
+        refuse_mock_outside_dev(Some(MockMode::All), None).unwrap();
+        // The real backend fits any env.
+        refuse_mock_outside_dev(Some(MockMode::None), Some("prod")).unwrap();
+        refuse_mock_outside_dev(None, Some("prod")).unwrap();
+    }
     use lingxia_control_protocol::dev_session::broker::SessionInfo;
     use std::path::Path;
 
