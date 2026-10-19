@@ -542,6 +542,27 @@ impl WebViewInner {
         })
     }
 
+    /// Queue a scheme change and return without the UI thread's reply.
+    ///
+    /// A host appearance change walks every live WebView from the settings
+    /// call. Waiting out [`UI_COMMAND_TIMEOUT`] on a hidden controller makes
+    /// that call miss the bridge timeout after the preference is already saved.
+    pub(crate) fn post_preferred_color_scheme(&self, scheme: WindowsPreferredColorScheme) {
+        let (resp_tx, _resp_rx) = mpsc::channel();
+        if self
+            .command_tx
+            .send(UiCommand::SetPreferredColorScheme {
+                scheme,
+                resp: resp_tx,
+            })
+            .is_err()
+        {
+            log::warn!("WebView UI thread is unavailable for a color scheme change");
+            return;
+        }
+        self.wake_ui_thread();
+    }
+
     pub(crate) fn set_browser_emulation_profile(
         &self,
         profile: WindowsBrowserEmulationProfile,
@@ -1695,11 +1716,12 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let _ = resp.send(result);
         }
         UiCommand::SetPreferredColorScheme { scheme, resp } => {
-            let _ = resp.send(color_scheme::apply_color_scheme(
-                &state.webview,
-                &state.controller,
-                scheme,
-            ));
+            let result =
+                color_scheme::apply_color_scheme(&state.webview, &state.controller, scheme);
+            if let Err(error) = &result {
+                log::warn!("failed to apply preferred color scheme: {error}");
+            }
+            let _ = resp.send(result);
         }
         UiCommand::SetBrowserEmulationProfile { profile, resp } => {
             if state.browser_emulation_configured {

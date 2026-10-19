@@ -101,6 +101,13 @@ impl WindowsWebViewHandler {
         self.webview.inner.set_preferred_color_scheme(scheme)
     }
 
+    /// Same pin as [`Self::set_preferred_color_scheme`], without waiting for
+    /// the WebView UI thread. A caller that already saved the preference uses
+    /// this so one stalled controller cannot fail the save.
+    pub fn post_preferred_color_scheme(&self, scheme: WindowsPreferredColorScheme) {
+        self.webview.inner.post_preferred_color_scheme(scheme);
+    }
+
     /// Applies a coherent UA + User-Agent Client Hints form factor.
     pub fn set_browser_emulation_profile(
         &self,

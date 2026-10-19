@@ -142,14 +142,8 @@ impl Appearance for Platform {
             if webtag.extract_appid() != appid {
                 continue;
             }
-            if let Some(handler) = find_webview_handler(&webtag)
-                && let Err(error) = handler.set_preferred_color_scheme(scheme)
-            {
-                log::warn!(
-                    "failed to apply lxapp appearance to WebView {}: {}",
-                    webtag,
-                    error
-                );
+            if let Some(handler) = find_webview_handler(&webtag) {
+                handler.post_preferred_color_scheme(scheme);
             }
         }
         Ok(())

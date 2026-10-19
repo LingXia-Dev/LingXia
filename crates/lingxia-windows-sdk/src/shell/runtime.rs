@@ -1063,15 +1063,13 @@ fn apply_windows_host_color_mode() {
         }
     };
     lingxia_webview::platform::windows::set_windows_preferred_color_scheme_for_new_webviews(scheme);
+    // Posted, not awaited. This runs inside `app.setAppearancePreference`,
+    // and a hidden WebView can hold the reply for the whole command timeout
+    // after the preference is already on disk. The settings page then reports
+    // a failed save for a choice that did take effect.
     for webtag in lingxia_webview::runtime::list_webviews() {
-        if let Some(handler) = lingxia_webview::platform::windows::find_webview_handler(&webtag)
-            && let Err(error) = handler.set_preferred_color_scheme(scheme)
-        {
-            log::warn!(
-                "failed to apply host appearance to WebView {}: {}",
-                webtag,
-                error
-            );
+        if let Some(handler) = lingxia_webview::platform::windows::find_webview_handler(&webtag) {
+            handler.post_preferred_color_scheme(scheme);
         }
     }
     crate::window_host::repaint_all_host_chrome();
