@@ -649,7 +649,7 @@ pub(super) fn draw_aside_panel_header(
     // `draw_content_cards` — cap and body split at the header seam so each
     // arc is rasterized once). Here only the controls and tabs go on top;
     // the active tab lifts out as a round-topped shape in the card's fill,
-    // merging seamlessly into the web content below.
+    // merging seamlessly into the web content below (browser slot only).
 
     if panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID {
         let (can_back, can_forward) = crate::shell::runtime::aside_panel_nav_state();
@@ -671,9 +671,24 @@ pub(super) fn draw_aside_panel_header(
         }
     }
 
+    // Only the browser's own toolbar sits flush under the strip in the card's
+    // fill. Below an lxapp tab is its page (or its declared navigation bar
+    // colour), so its active tab stays a chip clear of the seam instead of
+    // pretending to merge into it.
+    let bridges = panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID;
     let rects = aside_panel_tab_rects(panel, tabs);
     for (index, (tab, rect)) in tabs.iter().zip(rects.iter().copied()).enumerate() {
-        if tab.active {
+        if tab.active && !bridges {
+            fill_round_rect_aa(
+                hdc,
+                RECT {
+                    bottom: rect.bottom - px(2),
+                    ..rect
+                },
+                aside_panel_tab_radius(),
+                pal.panel_background,
+            );
+        } else if tab.active {
             // Rounded top, flush bottom: the tab joins the web content.
             fill_round_rect_aa(hdc, rect, aside_panel_tab_radius(), pal.panel_background);
             fill_rect(
