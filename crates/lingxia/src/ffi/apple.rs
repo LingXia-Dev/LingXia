@@ -528,6 +528,11 @@ mod bridge {
         #[swift_bridge(swift_name = "browserTabIdsJson")]
         fn browser_tab_ids_json() -> String;
 
+        // Whether the core still has the tab, aside and standalone tabs
+        // included: a surface hosting a tab closes once the tab is gone.
+        #[swift_bridge(swift_name = "browserTabExists")]
+        fn browser_tab_exists(tab_id: &str) -> bool;
+
         #[swift_bridge(swift_name = "browserCurrentTabId")]
         fn browser_current_tab_id() -> String;
 
@@ -1332,6 +1337,12 @@ pub fn open_aside_browser_tab(appid: &str, session_id: u64, url: &str) -> Option
 pub fn browser_tab_is_aside(tab_id: &str) -> bool {
     ffi_catch_unwind!("browser_tab_is_aside", false, || {
         crate::browser::tab_is_aside(tab_id)
+    })
+}
+
+pub fn browser_tab_exists(tab_id: &str) -> bool {
+    ffi_catch_unwind!("browser_tab_exists", false, || {
+        crate::browser::tab_exists(tab_id)
     })
 }
 

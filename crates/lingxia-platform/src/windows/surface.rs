@@ -699,6 +699,23 @@ pub struct WindowsUrlSurfaceWebTag {
     pub path: String,
     pub session_id: u64,
     pub cleanup: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// The browser tab hosting the URL, when the browser engine shows it; the
+    /// surface closes with that tab.
+    pub browser_tab_id: Option<String>,
+}
+
+/// Close the URL surface hosted in browser tab `tab_id`, after the browser
+/// closed the tab (its chrome, automation, or the owner's handle): the
+/// layout must not keep an aside whose tab is gone. Returns the surface id
+/// that closed.
+pub fn close_windows_url_surface_for_browser_tab(tab_id: &str) -> Option<String> {
+    let id = SURFACES.lock().ok().and_then(|map| {
+        map.iter()
+            .find(|(_, entry)| entry.browser_tab_id.as_deref() == Some(tab_id))
+            .map(|(id, _)| id.clone())
+    })?;
+    let _ = close_surface("", &id, "user");
+    Some(id)
 }
 
 type UrlSurfaceHandler =
@@ -767,6 +784,8 @@ struct SurfaceEntry {
     interaction: SurfaceInteraction,
     /// Window decoration; only `SurfaceKind::Window` reads it.
     chrome: WindowChrome,
+    /// The browser tab a URL surface shows, if the browser engine hosts it.
+    browser_tab_id: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -1334,6 +1353,7 @@ pub(super) fn present_surface(
     product_name: &str,
 ) -> Result<(), PlatformError> {
     let mut cleanup = None;
+    let mut browser_tab_id = None;
     let (webtag, title, is_web) = match &request.content {
         SurfaceContent::Page { webtag } => (
             WebTag::from(webtag.as_str()),
@@ -1345,6 +1365,7 @@ pub(super) fn present_surface(
             // URL itself is the tag's path.
             let webtag = if let Some(resolved) = resolve_url_surface(&request) {
                 cleanup = resolved.cleanup;
+                browser_tab_id = resolved.browser_tab_id;
                 WebTag::new(&resolved.app_id, &resolved.path, Some(resolved.session_id))
             } else {
                 WebTag::new(&request.app_id, url, Some(request.owner_session_id))
@@ -1394,6 +1415,7 @@ pub(super) fn present_surface(
                 is_web,
                 interaction: request.interaction,
                 chrome: request.chrome,
+                browser_tab_id,
             },
         );
     }

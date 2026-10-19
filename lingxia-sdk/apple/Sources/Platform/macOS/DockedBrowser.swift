@@ -173,6 +173,13 @@ final class DockedBrowser: NSObject {
     /// Surface ids of every open tab (front = anchor).
     var tabSurfaceIds: [String] { tabs.map { $0.surfaceId } }
 
+    /// Surface ids of the tabs whose Rust browser tab the core no longer
+    /// has: the browser closed them (its chrome, automation, the owner's
+    /// handle), and their surfaces must go with them.
+    func surfaceIdsWhoseBrowserTabIsGone(tabExists: (String) -> Bool) -> [String] {
+        tabs.filter { !tabExists($0.browserTabId) }.map { $0.surfaceId }
+    }
+
     func setCompactProjection(_ compact: Bool) {
         compactProjection = compact
         guard let compactBrowserBar else { return }

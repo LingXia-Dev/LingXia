@@ -248,6 +248,13 @@ pub fn tab_is_aside(tab_id: &str) -> bool {
     tabs::is_aside_tab(tab_id)
 }
 
+/// Whether the core still has a tab `tab_id`, aside and standalone tabs
+/// included (the id listing a shell syncs its own strip from leaves those
+/// out).
+pub fn tab_exists(tab_id: &str) -> bool {
+    tabs::tab_exists(tab_id)
+}
+
 /// Whether `tab_id` is hosted outside the product browser chrome, such as a
 /// docked aside or URL surface. It remains visible to browser automation.
 pub fn tab_is_standalone(tab_id: &str) -> bool {
@@ -331,6 +338,15 @@ pub fn set_tabs_changed_handler(handler: Arc<dyn Fn() + Send + Sync>) {
 /// automation surfaces call [`present`] to request this handoff.
 pub fn set_tab_present_handler(handler: Arc<dyn Fn(&str) + Send + Sync>) {
     tabs::set_tab_present_handler(handler);
+}
+
+/// Registers a process-wide observer called with the id of every tab the
+/// core removed, whoever closed it (the chrome, automation, the owner's
+/// handle, a session prune). A host that shows a tab inside a surface of its
+/// own (a URL aside) closes that surface from here, so the layout does not
+/// keep a surface whose tab is gone.
+pub fn set_tab_closed_handler(handler: Arc<dyn Fn(&str) + Send + Sync>) {
+    tabs::set_tab_closed_handler(handler);
 }
 
 /// Mark `tab_id` active and ask the host shell to bring it onscreen.

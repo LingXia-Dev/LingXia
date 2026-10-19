@@ -274,6 +274,7 @@ extension macOSLxApp {
     @MainActor
     internal static func browserTabsChanged() {
         activeShell()?.synchronizeBrowserTabsFromCore()
+        LxAppSurface.closeSurfacesWhoseBrowserTabIsGone()
     }
 
     @MainActor

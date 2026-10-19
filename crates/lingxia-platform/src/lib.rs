@@ -227,6 +227,8 @@ pub use apple::apply_staged_macos_update;
 pub use harmony::Platform;
 
 #[cfg(target_os = "windows")]
+pub use windows::close_windows_url_surface_for_browser_tab;
+#[cfg(target_os = "windows")]
 pub use windows::{
     Platform, WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, WindowsUrlSurfaceWebTag,
     WindowsVideoCommandDispatcher, apply_staged_windows_update, ensure_toast_activator,

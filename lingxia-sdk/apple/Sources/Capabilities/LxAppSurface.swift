@@ -999,6 +999,37 @@ enum LxAppSurface {
         }
     }
 
+    /// A URL aside's tab can be closed by the browser itself (its chrome,
+    /// `lxdev browser close`, the owner's handle). The surface that showed it
+    /// closes with the tab, so the layout does not keep an aside with nothing
+    /// in it. Called whenever the core's tab set changes. Mirrors the Windows
+    /// `close_windows_url_surface_for_browser_tab`.
+    static func closeSurfacesWhoseBrowserTabIsGone() {
+        // `browserTabIdsJson` is the shell strip's listing and leaves aside
+        // and standalone tabs out; ask the core per tab instead.
+        let tabExists: (String) -> Bool = { browserTabExists($0) }
+        var closing: [(id: String, appId: String)] = []
+        var seenBrowsers: [ObjectIdentifier] = []
+        for (id, entry) in entries {
+            // A standalone URL surface (window, float) holds its tab itself.
+            if let tabId = entry.browserTabId, !tabExists(tabId) {
+                closing.append((id, entry.appId))
+            }
+            // A docked aside's tabs belong to its DockedBrowser; ask it once.
+            if let browser = entry.dockedBrowser, !seenBrowsers.contains(ObjectIdentifier(browser)) {
+                seenBrowsers.append(ObjectIdentifier(browser))
+                for surfaceId in browser.surfaceIdsWhoseBrowserTabIsGone(tabExists: tabExists) {
+                    if let owner = entries[surfaceId] {
+                        closing.append((surfaceId, owner.appId))
+                    }
+                }
+            }
+        }
+        for (id, appId) in closing where entries[id] != nil {
+            _ = close(id: id, appId: appId, reason: "user")
+        }
+    }
+
     static func close(id: String, appId: String, reason: String) -> Bool {
         guard let entry = entries.removeValue(forKey: id) else {
             _ = onSurfaceClosed(appId, id, closeReason(reason))
