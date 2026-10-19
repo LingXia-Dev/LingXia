@@ -17,7 +17,7 @@ struct AsideSlotTab: Equatable {
 /// strip is the slot's management surface (switch and close both live here).
 @MainActor
 final class AsideSlotTabStripView: NSView {
-    /// Bar + the separator hairline the active tab's feet bridge into.
+    /// Bar + the separator hairline under the tabs.
     static let stripHeight: CGFloat = ChromeTabMetrics.barHeight + 1
 
     var onSelect: ((String) -> Void)?
@@ -215,6 +215,10 @@ private final class AsideSlotTabItemView: NSView {
         closeButton.action = #selector(closeTapped)
         closeButton.setAccessibilityLabel("Close \(tab.title)")
 
+        // The slot below is an lxapp: its page (or its declared navigation
+        // bar colour) meets the strip, so the active tab must not pretend to
+        // merge into it — the hairline stays whole under the selection.
+        row.bridgesIntoContent = false
         row.orientation = .horizontal
         row.spacing = 5
         row.alignment = .centerY
