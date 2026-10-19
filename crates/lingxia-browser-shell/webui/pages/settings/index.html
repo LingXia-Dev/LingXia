@@ -962,6 +962,11 @@
       function applyAppearancePreference(preference) {
         if (preference) configuredAppearance = preference;
         syncAppearanceOptions(configuredAppearance || 'auto', false);
+        // The watch is the saved value. A bridge timeout can land after the
+        // preference is already stored; don't leave the failure copy up once
+        // the host confirms the choice.
+        appearanceStatus.textContent = t('settings.appearanceCopy');
+        appearanceStatus.style.color = '';
       }
       syncAppearanceOptions('auto', false);
       callHost('app.getAppearancePreference').then(applyAppearancePreference, function () {
@@ -982,6 +987,10 @@
           }, function (error) {
             console.error('[Settings] app.setAppearancePreference error:', error);
             syncAppearanceOptions(configuredAppearance || 'auto', false);
+            // The watch can confirm the save before this rejection arrives.
+            // The preference is already stored in that case; don't paint a
+            // failure over a choice the host has accepted.
+            if ((configuredAppearance || 'auto') === next) return;
             appearanceStatus.textContent = t('settings.appearanceSaveFailed');
             appearanceStatus.style.color = 'var(--settings-error, #c01048)';
           });
