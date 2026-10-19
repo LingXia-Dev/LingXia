@@ -4,10 +4,12 @@ import CLingXiaRustAPI
 
 /// The tabBar of an lxapp shown in an aside. A main's tab items live in the
 /// sidebar, which asides never enter, so the framework draws them here as a
-/// compact segmented row under the navigation bar: icon + short label,
-/// scrolling when they overflow, a pop-up of the current tab when the panel is
-/// too narrow for segments. Selection and clicks are the sidebar's own:
-/// `selected_index` from the runtime, `TabBarClick` back to it.
+/// row of page tabs under the navigation bar: icon + short label, the current
+/// one in the selected colour over an underline, scrolling when they
+/// overflow, a pop-up of the current tab when the panel is too narrow. It is
+/// page chrome, not a second slot strip: no fill chips, and colours from the
+/// app's `tabBar.style` as the sidebar maps them. Selection and clicks are the
+/// sidebar's own: `selected_index` from the runtime, `TabBarClick` back to it.
 @MainActor
 final class AsideTabBarView: NSView {
     static let height: CGFloat = 28
@@ -19,10 +21,15 @@ final class AsideTabBarView: NSView {
     private let stack = NSStackView()
     private let popUp = NSPopUpButton(frame: .zero, pullsDown: false)
     private let separator = NSView()
+    private let indicator = NSView()
+    private var indicatorConstraints: [NSLayoutConstraint] = []
     private var heightConstraint: NSLayoutConstraint!
     private var items: [TabBarItem] = []
     private var selectedIndex: Int32 = -1
     private var shown = false
+    /// Declared `tabBar.style` colours; nil keeps the host theme's.
+    private var itemTint: NSColor?
+    private var selectedTint: NSColor?
 
     init(appId: String) {
         self.appId = appId
@@ -35,10 +42,15 @@ final class AsideTabBarView: NSView {
         heightConstraint.isActive = true
 
         stack.orientation = .horizontal
-        stack.spacing = 2
+        stack.spacing = 14
         stack.alignment = .centerY
-        stack.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 8)
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
         stack.translatesAutoresizingMaskIntoConstraints = false
+
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        indicator.wantsLayer = true
+        indicator.layer?.cornerRadius = 1
+        indicator.isHidden = true
 
         scrollView.drawsBackground = false
         scrollView.hasHorizontalScroller = false
@@ -49,6 +61,7 @@ final class AsideTabBarView: NSView {
         let document = FlippedView()
         document.translatesAutoresizingMaskIntoConstraints = false
         document.addSubview(stack)
+        document.addSubview(indicator)
         scrollView.documentView = document
         addSubview(scrollView)
 
@@ -62,7 +75,7 @@ final class AsideTabBarView: NSView {
 
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.wantsLayer = true
-        separator.layer?.backgroundColor = LxAppHostTheme.separator.cgColor
+        separator.layer?.backgroundColor = themeCGColor(LxAppHostTheme.separator)
         addSubview(separator)
 
         NSLayoutConstraint.activate([
@@ -97,7 +110,7 @@ final class AsideTabBarView: NSView {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        separator.layer?.backgroundColor = LxAppHostTheme.separator.cgColor
+        separator.layer?.backgroundColor = themeCGColor(LxAppHostTheme.separator)
         applySelection()
     }
 
@@ -115,6 +128,11 @@ final class AsideTabBarView: NSView {
         let next: [TabBarItem] = (0..<count).compactMap { getTabBarItem(appId, Int32($0)) }
         let visible = tabBar?.is_visible == true && next.count > 1
         let selected = tabBar?.selected_index ?? -1
+        // Only what the app declared (styled_mask), as the sidebar: the
+        // effective values are mobile defaults designed for a light bar.
+        let mask = tabBar?.styled_mask ?? 0
+        itemTint = tabBar.flatMap { mask & 0b0001 != 0 ? PlatformColor(argb: $0.color) : nil }
+        selectedTint = tabBar.flatMap { mask & 0b0010 != 0 ? PlatformColor(argb: $0.selected_color) : nil }
         if next.map(\.index) != items.map(\.index)
             || next.map({ $0.text.toString() }) != items.map({ $0.text.toString() })
             || next.map({ $0.icon_path.toString() }) != items.map({ $0.icon_path.toString() }) {
@@ -145,8 +163,6 @@ final class AsideTabBarView: NSView {
             button.isBordered = false
             button.bezelStyle = .regularSquare
             button.font = .systemFont(ofSize: 12, weight: .medium)
-            button.wantsLayer = true
-            button.layer?.cornerRadius = 6
             button.imagePosition = .imageLeading
             button.imageHugsTitle = true
             let path = item.icon_path.toString()
@@ -196,21 +212,38 @@ final class AsideTabBarView: NSView {
     }
 
     private func applySelection() {
+        let selectedColor = selectedTint ?? LxAppHostTheme.accent
+        let idleColor = itemTint ?? LxAppHostTheme.mutedForeground
+        var selectedButton: NSButton?
         for case let button as NSButton in stack.arrangedSubviews {
             let selected = Int32(button.tag) == selectedIndex
-            button.contentTintColor = selected ? LxAppHostTheme.accent : LxAppHostTheme.mutedForeground
+            let color = selected ? selectedColor : idleColor
+            button.contentTintColor = color
             button.attributedTitle = NSAttributedString(
                 string: button.title,
                 attributes: [
-                    .foregroundColor: selected ? LxAppHostTheme.foreground : LxAppHostTheme.mutedForeground,
+                    .foregroundColor: color,
                     .font: NSFont.systemFont(ofSize: 12, weight: selected ? .semibold : .medium),
                 ]
             )
-            button.layer?.backgroundColor = selected
-                ? LxAppHostTheme.selectionBackground.cgColor
-                : NSColor.clear.cgColor
             button.setAccessibilityValue(selected)
+            if selected { selectedButton = button }
         }
+        NSLayoutConstraint.deactivate(indicatorConstraints)
+        indicatorConstraints = []
+        if let selectedButton, let document = indicator.superview {
+            indicatorConstraints = [
+                indicator.leadingAnchor.constraint(equalTo: selectedButton.leadingAnchor),
+                indicator.trailingAnchor.constraint(equalTo: selectedButton.trailingAnchor),
+                // Clear of the row's bottom edge: a page in the other scheme
+                // starts right below it and would swallow a flush line.
+                indicator.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -3),
+                indicator.heightAnchor.constraint(equalToConstant: 2),
+            ]
+            NSLayoutConstraint.activate(indicatorConstraints)
+            indicator.layer?.backgroundColor = themeCGColor(selectedColor)
+        }
+        indicator.isHidden = selectedButton == nil
         if let index = items.firstIndex(where: { $0.index == selectedIndex }) {
             popUp.selectItem(at: index)
         }

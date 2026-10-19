@@ -69,13 +69,17 @@ pub struct WindowsAsidePanelNavigation {
     pub show_home_button: bool,
 }
 
-/// The tabBar of the lxapp an aside slot shows, drawn as a segmented row
+/// The tabBar of the lxapp an aside slot shows, drawn as a row of page tabs
 /// under its navigation bar: asides never enter the sidebar.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsAsidePanelTabBar {
     /// `(index in lxapp.json, label)` of each item this host shows.
     pub items: Vec<(i32, String)>,
     pub selected_index: i32,
+    /// Declared `tabBar.style` colours (`0xRRGGBB`); `None` keeps the shell
+    /// palette's, as the sidebar maps them.
+    pub color: Option<u32>,
+    pub selected_color: Option<u32>,
 }
 
 /// Chrome events from a docked aside slot, routed back to the owner of the
