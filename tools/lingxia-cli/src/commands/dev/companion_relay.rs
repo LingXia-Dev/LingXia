@@ -311,7 +311,7 @@ mod tests {
     /// response body without the id), echoing the request id.
     fn companion(root: &std::path::Path, capabilities: &str, answer: &str) -> DevCompanion {
         let script = format!(
-            "printf '%s\\n' '{{\"type\":\"hello\",\"version\":2,\"role\":\"companion\",\"capabilities\":{capabilities}}}'; \
+            "printf '%s\\n' '{{\"type\":\"hello\",\"version\":3,\"role\":\"companion\",\"capabilities\":{capabilities}}}'; \
              IFS= read -r request; \
              printf '%s\\n' '{{\"type\":\"response\",\"id\":\"session-prepare\",\"result\":{{\"active\":true}}}}'; \
              while IFS= read -r line; do \
@@ -331,9 +331,14 @@ mod tests {
         );
         let session = crate::commands::dev::log_store::create_session(root).unwrap();
         let writer = Arc::new(SessionLogWriter::new(&session).unwrap());
-        DevCompanion::start(root, Arc::new(AtomicBool::new(false)), writer)
-            .unwrap()
-            .unwrap()
+        DevCompanion::start(
+            root,
+            crate::config::AppEnv::Dev,
+            Arc::new(AtomicBool::new(false)),
+            writer,
+        )
+        .unwrap()
+        .unwrap()
     }
 
     #[test]
