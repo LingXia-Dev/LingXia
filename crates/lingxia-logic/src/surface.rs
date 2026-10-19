@@ -236,7 +236,91 @@ rong::js_api! {
             ts_params = "handler: (context: SurfaceContext) => void",
             ts_return = "() => void"
         ) = surface_on_change;
+        fn bringToFront(
+            ts_params = "options?: BringToFrontOptions",
+            ts_return = "Promise<void>"
+        ) = surface_bring_to_front;
     }
+}
+
+#[derive(rong::FromJSObject)]
+#[ts_skip]
+struct BringToFrontOptions {
+    page: Option<String>,
+    query: Option<JSObject>,
+}
+
+/// `lx.surface.bringToFront(options?)` — bring the product forward on this
+/// lxapp, the way a notification tap with `{ kind: 'app', appId: <self> }`
+/// does: a docked aside comes back where it is, otherwise it opens in main,
+/// and `page` / `query` reach it as a reopen. A guest may do this only right
+/// after the person picked an action on its banner; the Control app may
+/// whenever it likes.
+async fn surface_bring_to_front(
+    ctx: JSContext,
+    options: Optional<BringToFrontOptions>,
+) -> JSResult<()> {
+    use lingxia_service::navigation::{
+        self, NavigationRequest, NavigationSource, NavigationTarget,
+    };
+    const ROUTE: &str = "lx.surface.bringToFront";
+
+    let invocation = authorization::require(&ctx, LogicRoute::SurfaceBringToFront)?;
+    let app = invocation.lxapp();
+    let BringToFrontOptions { page, query } = options.0.unwrap_or(BringToFrontOptions {
+        page: None,
+        query: None,
+    });
+    let query = match query {
+        None => serde_json::Map::new(),
+        Some(object) => {
+            let json = object.to_json_string().map_err(|error| {
+                crate::i18n::js_invalid_parameter_error(format!(
+                    "{ROUTE} query must be a plain object: {error}"
+                ))
+            })?;
+            match serde_json::from_str::<Value>(&json) {
+                Ok(Value::Object(map)) => map,
+                _ => {
+                    return Err(crate::i18n::js_invalid_parameter_error(format!(
+                        "{ROUTE} query must be a plain object"
+                    )));
+                }
+            }
+        }
+    };
+    let target = NavigationTarget::App {
+        appid: app.appid.clone(),
+        page,
+        query,
+    };
+    let navigation_error = |error: navigation::NavigationError| -> rong::RongJSError {
+        match error {
+            navigation::NavigationError::InvalidTarget(message) => {
+                crate::i18n::js_invalid_parameter_error(format!("{ROUTE} {message}"))
+            }
+            navigation::NavigationError::Unavailable(message)
+            | navigation::NavigationError::Internal(message) => {
+                HostError::new(rong::error::E_INTERNAL, message).into()
+            }
+        }
+    };
+    navigation::validate(&target).map_err(navigation_error)?;
+    if authorization::AttentionScope::of(&invocation)
+        .owner()
+        .is_some()
+        && !crate::user_activation::take(&app.appid, app.session_id())
+    {
+        return Err(crate::i18n::js_error_from_business_code_with_detail(
+            3000,
+            format!(
+                "{ROUTE}: a guest lxapp may come forward only right after the person picks an action on its lx.host.banner"
+            ),
+        ));
+    }
+    navigation::activate();
+    navigation::dispatch(NavigationRequest::new(target, NavigationSource::Banner))
+        .map_err(navigation_error)
 }
 
 rong::js_api! {

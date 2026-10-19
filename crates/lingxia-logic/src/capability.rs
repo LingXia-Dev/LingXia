@@ -141,7 +141,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
             Predicate::Terminal => focused,
             Predicate::Autostart => autostart_supported(),
             Predicate::Notifications => lingxia_app_context::capability::notifications(),
-            Predicate::Banner => app.is_control_app() && lingxia_platform::banner_supported(),
+            Predicate::Banner => lingxia_platform::banner_supported(),
             Predicate::Browser => lingxia_app_context::capability::browser(),
             Predicate::Proxy => lingxia_app_context::capability::proxy(),
             Predicate::SelfUpdate => lingxia_app_context::update::self_update_allowed(

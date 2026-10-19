@@ -178,6 +178,23 @@ The same rule applies to `HarmonyDocumentAuthority`: take one generation lock
 at a time. Ingress checks the authority, releases, then enqueues; nesting the
 two put ingress and outbound in opposite lock orders.
 
+## Attention routes
+
+`lx.host.notification.*`, `lx.host.banner.*` and `lx.surface.bringToFront`
+are the direct routes a guest reaches. They are `AppSessionOnly`, and the
+handler then scopes the effect by `AttentionScope`, derived from the session
+class, never from a payload:
+
+- A guest's ids are a digest of its app id and its own id, so it cannot name
+  another app's notification or banner. The product's ids are unchanged.
+- A guest's notification target can only be itself.
+- A guest's banner carries its name, and an action picked on it is the only
+  thing that lets that session call `bringToFront`, once, within 10 seconds
+  (`user_activation`). Nothing the guest sends can mint one.
+
+Widening that list widens what every downloaded lxapp can do;
+`the_attention_routes_are_exactly_these` pins it.
+
 ## Invariants to preserve
 
 - No route audience defaults by omission. `LogicRoute::audience` is an

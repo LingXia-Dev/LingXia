@@ -136,9 +136,9 @@ the tray item declared in [`lingxia.yaml`](../app/project.md#tray-apps).
 
 ## Desktop banner
 
-`lx.host.banner` (Control app, macOS/Windows; present exactly when
+`lx.host.banner` (macOS/Windows; present exactly when
 `lx.supports('app.banner')`) draws a product card in the top-right corner. No
-yaml capability.
+yaml capability. Guests: see [Guest lxapps](#guest-lxapps).
 
 - Without `actions`: informational, auto-dismisses after 5 s unless
   `timeoutMs`; closing resolves `{ status: 'canceled', reason: 'dismissed' }`.
@@ -150,7 +150,8 @@ yaml capability.
 
 ## Local notifications
 
-`lx.host.notification` (Control app, needs `capabilities.notifications`):
+`lx.host.notification` (needs `capabilities.notifications`; guests: see
+[Guest lxapps](#guest-lxapps)):
 
 - An immediate `show` while the product is frontmost resolves
   `status: 'suppressed'` and posts nothing; scheduled ones always present.
@@ -167,6 +168,31 @@ yaml capability.
     [App Link](../app/applinks.md) host, delivered as `scene === 8003`.
 - Android may fire schedules late and drops them on reboot; on HarmonyOS
   `silent` does nothing and `schedule` needs the agent-reminder privilege.
+
+## Guest lxapps
+
+A guest (any lxapp but the Control app) may use `lx.host.notification` and
+`lx.host.banner` for itself. Refusals reject with `E_PERMISSION_DENIED`.
+
+- Ids are the guest's own: it cannot replace, cancel or dismiss another app's,
+  and `cancelAll()` clears only its own.
+- A notification can only open the guest: `{ kind: 'app' }` with its own
+  `appId` (or none), `page`, `query`. Omitting `target` also opens it.
+- At most 32 live notifications and 3 banners (showing or queued) per guest.
+- Permission is the product's. A guest may cause one prompt per launch, only
+  while it is open; ask from a user action. Afterwards it just reads the answer.
+- Its banner shows its name and icon.
+- `lx.surface.bringToFront({ page?, query? })` brings the product forward on
+  the guest, like a tap on its notification (a docked aside comes back in
+  place; `page`/`query` reach App `onShow`, `switch_back`). A guest may call
+  it once within 10 s after the person picks an action on its banner:
+
+```ts
+const result = await lx.host.banner.show({
+  title: 'Run finished', actions: [{ id: 'open', label: 'Open', style: 'primary' }],
+})
+if (result.status === 'ok') await lx.surface.bringToFront({ query: { run: id } })
+```
 
 ## Errors
 

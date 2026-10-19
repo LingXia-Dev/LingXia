@@ -40,8 +40,6 @@ These act on the product, not on the calling lxapp:
 - `lx.host.checkUpdate()`, `lx.host.claimCustomUpdate()`, `lx.host.screenshot()`
   — the host app, not your bundle (that is `lx.getUpdateManager()`)
 - `lx.host.autostart.*`
-- `lx.host.notification.*` ([Notifications](../lxapp/lx-api.md#local-notifications))
-- `lx.host.banner.*`
 - `lx.host.control.displayLanguage` / `.appearance` — the setting writers
   ([Product settings](../lxapp/lx-api.md#product-settings))
 - `lx.shell.*` mutations (sidebar actions, opening declared surfaces)
@@ -49,6 +47,10 @@ These act on the product, not on the calling lxapp:
 
 Reading the resolved settings (`lx.host.displayLanguage.get()`,
 `lx.host.appearance.get()`) is open to every lxapp.
+
+`lx.host.notification`, `lx.host.banner` and `lx.surface.bringToFront` are
+open to every lxapp, scoped to the caller for guests
+([Guest lxapps](../lxapp/lx-api.md#guest-lxapps)).
 
 ## Control-surface-only calls
 

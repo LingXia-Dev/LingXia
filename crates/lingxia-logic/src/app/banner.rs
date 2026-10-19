@@ -1,8 +1,8 @@
-use crate::authorization::{self, LogicRoute};
+use crate::authorization::{self, AttentionScope, LogicRoute};
 use crate::i18n::{js_error_from_platform_error, js_invalid_parameter_error};
 use lingxia_platform::traits::app_runtime::{
     AppRuntime, DesktopBannerAction, DesktopBannerActionStyle, DesktopBannerBackground,
-    DesktopBannerOutcome, DesktopBannerShow,
+    DesktopBannerOutcome, DesktopBannerShow, DesktopBannerSource,
 };
 use rong::{FromJSObject, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue};
 
@@ -29,8 +29,9 @@ struct JSShowOptions {
     background: Option<String>,
 }
 
-/// `lx.host.banner` — Control-app desktop overlay. Absent on guests and
-/// off desktop, so presence and `lx.supports('app.banner')` agree.
+/// `lx.host.banner` — product-drawn desktop overlay. Absent off desktop, so
+/// presence and `lx.supports('app.banner')` agree. A guest's banners are
+/// scoped to it and carry its name and icon.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     if !crate::capability::exposes(ctx, "app.banner") {
         return Ok(());
@@ -47,14 +48,30 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         authorization::require_before_decode(&ctx, LogicRoute::AppBannerShow, || {
             decode_show(options)
         })?;
-    let runtime = invocation.lxapp().runtime.clone();
+    let app = invocation.lxapp();
+    let runtime = app.runtime.clone();
+    let scope = AttentionScope::of(&invocation);
+    let caller_id = request.id.clone();
+    let mut request = request;
+    request.id = scope.platform_id(&caller_id);
+    let source = scope.owner().map(|app_id| DesktopBannerSource {
+        app_id: app_id.to_string(),
+        name: app.listing_name(),
+        icon_path: lxapp::lxapp_display_icon_path(app_id),
+    });
     let turn = call_order::take();
     let outcome = spawn_blocking(move || {
-        let pending = call_order::in_turn(turn, || runtime.banner_enqueue(&request))?;
+        let pending = call_order::in_turn(turn, || match &source {
+            Some(source) => runtime.banner_enqueue_from(&request, source),
+            None => runtime.banner_enqueue(&request),
+        })?;
         pending.wait()
     })
     .await?;
-    encode_outcome(&ctx, outcome)
+    if scope.owner().is_some() && matches!(outcome, DesktopBannerOutcome::Action { .. }) {
+        crate::user_activation::grant(&app.appid, app.session_id());
+    }
+    encode_outcome(&ctx, &caller_id, outcome)
 }
 
 async fn dismiss(ctx: JSContext, id: JSValue) -> JSResult<()> {
@@ -69,6 +86,7 @@ async fn dismiss(ctx: JSContext, id: JSValue) -> JSResult<()> {
             Ok(id)
         })?;
     let runtime = invocation.lxapp().runtime.clone();
+    let id = AttentionScope::of(&invocation).platform_id(&id);
     let turn = call_order::take();
     spawn_blocking(move || call_order::in_turn(turn, || runtime.banner_dismiss(&id))).await
 }
@@ -248,9 +266,10 @@ fn validate_id(id: &str) -> JSResult<String> {
     Ok(id.to_string())
 }
 
-fn encode_outcome(ctx: &JSContext, outcome: DesktopBannerOutcome) -> JSResult<JSObject> {
+/// `id` is the caller's own id, not the namespaced one the platform held.
+fn encode_outcome(ctx: &JSContext, id: &str, outcome: DesktopBannerOutcome) -> JSResult<JSObject> {
     let result = JSObject::new(ctx);
-    result.set("id", outcome.id())?;
+    result.set("id", id)?;
     match outcome {
         DesktopBannerOutcome::Action { action, .. } => {
             result.set("status", "ok")?;

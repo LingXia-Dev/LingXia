@@ -2551,6 +2551,7 @@ dependencies = [
  "rong_storage",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "tokio",
  "urlencoding",
  "uuid",
