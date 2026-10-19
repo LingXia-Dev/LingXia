@@ -409,6 +409,9 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 let appId = notification.object as? String
                 MainActor.assumeIsolated {
                     guard let self, appId == nil || appId == self.appId else { return }
+                    // A scheme change posts this too; the aside's chrome sits on
+                    // the canvas, so it must follow the new scheme.
+                    self.applyPageCanvasBackground()
                     self.asideTabBar?.refresh()
                 }
             }
