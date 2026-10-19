@@ -190,6 +190,7 @@ App({
   onShow(this: ShowcaseAppInstance, options?: AppLaunchOptions) {
     this.globalData.lifecycle.shows++;
     this.globalData.lifecycle.last = "show";
+    this.globalData.lifecycle.lastShow = options;
     routeFromAppLink(options);
     console.log("App.onShow");
   },

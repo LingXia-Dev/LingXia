@@ -1,4 +1,4 @@
-import type { AppInstance } from "@lingxia/types";
+import type { AppInstance, AppLaunchOptions } from "@lingxia/types";
 
 /** What `App({...})` in `lxapp.ts` adds on top of the runtime instance. */
 export interface ShowcaseAppInstance extends AppInstance {
@@ -11,6 +11,8 @@ export interface ShowcaseAppInstance extends AppInstance {
       /** Home page `onHide` / `onShow` counts, for lifecycle probes in specs. */
       pageHides: number;
       pageShows: number;
+      /** The last App `onShow` options, for reopen probes in specs. */
+      lastShow?: AppLaunchOptions;
     };
     greeting: string;
     ipAddr: string;
