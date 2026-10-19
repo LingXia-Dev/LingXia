@@ -80,8 +80,10 @@ previewSpec('present a local image and report it through the handle', {
     };
   }, stateKey);
 
-  // Best effort only: leaving the panel up would sit on the developer's screen,
-  // but failing to take it down is not this case's contract.
+  // Teardown ends this session through its own signal and waits for it to
+  // settle: the macOS panel is shared, so a close still in flight when the
+  // next case opens its preview would complete that one as 'manual'. Closing
+  // a leftover window is only the fallback.
   const appWindows = await t.automation.lxapps.windows();
   const hostWindowId = (appWindows.find((window) => window.main) ?? appWindows[0])?.id;
   const hostPid = (await desktop.windows()).find((window) => window.id === hostWindowId)?.pid;
@@ -91,6 +93,14 @@ previewSpec('present a local image and report it through the handle', {
   const strayPanel = async (): Promise<DesktopWindowInfo | undefined> => (await desktop.windows())
     .find((window) => window.pid === hostPid && window.visible && !before.has(window.id));
   defer(async () => {
+    await app.logic.eval((_, key) => {
+      const s = (globalThis as unknown as Sessions)[key];
+      if (s?.controller && !s.controller.signal.aborted) s.controller.abort();
+    }, stateKey).catch(() => undefined);
+    await eventually(readState, (value) => value.completed !== null, {
+      describe: 'the aborted preview to settle',
+      timeoutMs: 5_000,
+    }).catch(() => undefined);
     const stray = await strayPanel().catch(() => undefined);
     if (stray) await desktop.window.close({ window: stray.id }).catch(() => undefined);
     await app.logic.eval((_, key) => {
@@ -102,12 +112,18 @@ previewSpec('present a local image and report it through the handle', {
 
   const started = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, key, base) => {
     const png = await lx.downloadFile({ url: base + '/media/sample.png' }).result;
-    const handle = lx.previewMedia({ path: png.uri, type: 'image' });
-    const state: PreviewSession = { handle, presented: false, changes: 0, completed: null, off: null };
+    const controller = new AbortController();
+    const handle = lx.previewMedia({ path: png.uri, type: 'image', signal: controller.signal });
+    const state: PreviewSession = {
+      handle, controller, presented: false, changes: 0, completed: null, off: null,
+    };
     (globalThis as unknown as Sessions)[key] = state;
     state.off = handle.onChange(() => { state.changes = (state.changes ?? 0) + 1; });
     handle.presented.then((outcome) => { state.presented = outcome.status === 'presented'; });
-    handle.completed.then((result) => { state.completed = { reason: result.reason, index: result.index }; });
+    handle.completed.then(
+      (result) => { state.completed = { reason: result.reason, index: result.index }; },
+      () => { state.completed = { reason: 'aborted', index: -1 }; },
+    );
     return { path: png.uri, index: handle.current.index, sourcePath: handle.current.source.path };
   }, stateKey, httpBase ?? '');
   // `current` is synchronous and already describes the first source.
