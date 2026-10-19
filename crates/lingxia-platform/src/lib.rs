@@ -262,6 +262,8 @@ pub use unsupported::Platform;
 pub mod error;
 pub use error::*;
 
+pub mod surface_wait;
+
 pub mod i18n;
 
 #[cfg(all(test, not(windows)))]

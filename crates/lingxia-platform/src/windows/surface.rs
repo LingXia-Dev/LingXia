@@ -1593,6 +1593,10 @@ pub(super) fn present_layout(
 }
 
 pub(super) fn close_surface(_app_id: &str, id: &str, reason: &str) -> Result<(), PlatformError> {
+    PENDING_PRESENTS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .cancel(id);
     if let Some(entry) = SURFACES.lock().ok().and_then(|mut map| map.remove(id)) {
         teardown_surface(&entry, id, reason);
     } else {
@@ -1634,6 +1638,17 @@ pub(super) fn hide_surface(_app_id: &str, id: &str) -> Result<(), PlatformError>
     Ok(())
 }
 
+/// Surfaces whose WebView is still being created, with the placement the
+/// latest plan asked for. One poll per surface, however many plans commit
+/// meanwhile.
+static PENDING_PRESENTS: LazyLock<
+    Mutex<crate::surface_wait::SurfaceWaitRegistry<(WebTag, PresentationTarget)>>,
+> = LazyLock::new(|| Mutex::new(crate::surface_wait::SurfaceWaitRegistry::new()));
+
+/// How long a surface's WebView may take to appear before the surface is
+/// given up on.
+const SURFACE_WEBVIEW_TIMEOUT: Duration = Duration::from_secs(5);
+
 fn present_surface_when_ready(webtag: WebTag, id: String, target: PresentationTarget) {
     if find_webview_handler(&webtag).is_some() {
         present_surface_when_painted(webtag, id, target);
@@ -1641,22 +1656,56 @@ fn present_surface_when_ready(webtag: WebTag, id: String, target: PresentationTa
     }
     // The surface's page-instance webview is created asynchronously; poll for
     // it like the lxapp window show path, bailing if the surface is closed
-    // before it appears.
+    // before it appears. A plan committed while the poll runs only updates
+    // the placement; it does not start a second poll.
+    let fresh = PENDING_PRESENTS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .request(&id, (webtag.clone(), target));
+    if !fresh {
+        return;
+    }
     let _ = thread::Builder::new()
         .name(format!("lingxia-surface-{}", webtag.key()))
         .spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(5);
+            let deadline = Instant::now() + SURFACE_WEBVIEW_TIMEOUT;
             while Instant::now() < deadline {
                 if surface_entry(&id).is_none() {
+                    PENDING_PRESENTS
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .cancel(&id);
                     return;
                 }
                 if find_webview_handler(&webtag).is_some() {
-                    present_surface_when_painted(webtag, id, target);
+                    let latest = PENDING_PRESENTS
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .take(&id);
+                    if let Some((webtag, target)) = latest {
+                        present_surface_when_painted(webtag, id, target);
+                    }
                     return;
                 }
                 thread::sleep(Duration::from_millis(50));
             }
-            log::error!("Timed out waiting for surface WebView {}", webtag.key());
+            PENDING_PRESENTS
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .cancel(&id);
+            // A WebView that never came must not leave the record behind:
+            // every later plan would wait on it again, and the owner's handle
+            // would report a surface nobody can see or close.
+            match crate::surface_wait::surface_wait_timeout(surface_entry(&id).is_some()) {
+                crate::surface_wait::SurfaceWaitTimeout::CloseSurface => {
+                    log::error!(
+                        "Timed out waiting for surface WebView {}; closing surface {id}",
+                        webtag.key()
+                    );
+                    let _ = close_surface("", &id, "unavailable");
+                }
+                crate::surface_wait::SurfaceWaitTimeout::AlreadyGone => {}
+            }
         });
 }
 
