@@ -3,9 +3,7 @@
 
 use super::*;
 use std::time::{Duration, Instant};
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_LBUTTON, VK_MBUTTON, VK_RBUTTON, VkKeyScanW,
-};
+use windows::Win32::UI::Input::KeyboardAndMouse::VkKeyScanW;
 
 /// Owner timer: hovering the rail's expand control this long opens the peek.
 const HOVER_TIMER_ID: usize = 0x5A1B;
@@ -120,12 +118,6 @@ fn rail_expand_hit_at(owner: HWND, point: (i32, i32)) -> bool {
     owner_client_rect(owner).is_some_and(|client| {
         crate::shell::rail_expand_hit(client, &current_window_layout(&webtag_key), point)
     })
-}
-
-fn pointer_buttons_down() -> bool {
-    [VK_LBUTTON, VK_RBUTTON, VK_MBUTTON]
-        .into_iter()
-        .any(|key| unsafe { GetAsyncKeyState(i32::from(key.0)) } < 0)
 }
 
 fn rail_page_popup_shown(owner: HWND) -> bool {

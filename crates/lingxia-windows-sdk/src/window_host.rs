@@ -73,8 +73,9 @@ use windows::Win32::UI::Input::Ime::{
     ImmSetCandidateWindow, ImmSetCompositionWindow,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    EnableWindow, GetKeyState, IsWindowEnabled, ReleaseCapture, SetCapture, SetFocus, TME_LEAVE,
-    TME_NONCLIENT, TRACKMOUSEEVENT, TrackMouseEvent, VK_CONTROL, VK_ESCAPE, VK_MENU, VK_SHIFT,
+    EnableWindow, GetAsyncKeyState, GetKeyState, IsWindowEnabled, ReleaseCapture, SetCapture,
+    SetFocus, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, TrackMouseEvent, VK_CONTROL, VK_ESCAPE,
+    VK_LBUTTON, VK_MBUTTON, VK_MENU, VK_RBUTTON, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     self, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
@@ -1716,9 +1717,24 @@ fn dismiss_surface_on_deactivate(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) {
     } else {
         Some(unsafe { WindowsAndMessaging::GetAncestor(activated, WindowsAndMessaging::GA_ROOT) })
     };
-    if activated == owner || activated_root == Some(owner) {
-        invoke_close_handler(&webtag_key);
+    if activated != owner && activated_root != Some(owner) {
+        return;
     }
+    // The owner also takes activation back on its own (a page focusing its
+    // WebView, a present that foregrounds the window) right after the float
+    // shows; only a press in the owner is a tap outside.
+    if !pointer_buttons_down() {
+        log::debug!("surface {webtag_key} lost activation to its owner without a press; kept");
+        return;
+    }
+    log::debug!("surface {webtag_key} dismissed by a press in its owner");
+    invoke_close_handler(&webtag_key);
+}
+
+fn pointer_buttons_down() -> bool {
+    [VK_LBUTTON, VK_RBUTTON, VK_MBUTTON]
+        .into_iter()
+        .any(|key| unsafe { GetAsyncKeyState(i32::from(key.0)) } < 0)
 }
 
 fn floating_overlay_owner(webtag_key: &str) -> Option<HWND> {
