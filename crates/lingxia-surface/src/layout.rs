@@ -298,6 +298,18 @@ pub struct PlanAsideSlot {
     pub maximized: bool,
 }
 
+impl LayoutPresentationPlan {
+    /// Whether a skin that last applied the plan with `last_applied` should
+    /// apply this one. Commits are applied in sequence order: a plan is never
+    /// dropped in favour of an *older* commit, so the plan that first carries
+    /// a newly opened surface is applied, and only a plan that lost the race
+    /// to a newer commit is dropped. A plan without a sequence (built for a
+    /// query, or from an older core) is always applied.
+    pub fn supersedes(&self, last_applied: u64) -> bool {
+        self.sequence == 0 || self.sequence >= last_applied
+    }
+}
+
 /// One float in the [`LayoutPresentationPlan`]: the surface id plus the
 /// render-relevant `FloatSpec` semantics (anchor, dismiss, modal). Floats are
 /// popups above the layout and are never in the tree, so the skin reads this

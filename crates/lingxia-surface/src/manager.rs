@@ -733,6 +733,46 @@ mod tests {
     }
 
     #[test]
+    fn the_plan_that_presents_a_new_surface_is_never_superseded_by_an_older_commit() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        // A plan committed before the open (one a worker thread may still be
+        // delivering) ...
+        let before = m.commit_plan();
+        m.open(aside_s("browser", Edge::Bottom));
+        // ... and the plan committed by the open itself.
+        let opened = m.commit_plan();
+        assert!(
+            opened
+                .aside_slots
+                .iter()
+                .any(|slot| slot.children.contains(&"browser".to_string()))
+        );
+        assert!(
+            !before
+                .aside_slots
+                .iter()
+                .any(|slot| slot.children.contains(&"browser".to_string()))
+        );
+
+        // Delivered in order: both apply.
+        assert!(before.supersedes(0));
+        assert!(opened.supersedes(before.sequence));
+        // Delivered out of order: the stale plan is dropped, the one carrying
+        // the new surface is kept.
+        assert!(!before.supersedes(opened.sequence));
+        assert!(opened.supersedes(opened.sequence));
+        // The same plan re-delivered, or a query plan, still applies.
+        assert!(
+            LayoutPresentationPlan {
+                sequence: 0,
+                ..opened.clone()
+            }
+            .supersedes(opened.sequence)
+        );
+    }
+
+    #[test]
     fn committed_plans_carry_an_increasing_sequence() {
         let mut m = SurfaceManager::new(1200.0);
         m.open(main_s("home"));

@@ -1432,7 +1432,7 @@ pub(super) fn present_layout(
         // must not put the newer state back.
         if last
             .as_ref()
-            .is_some_and(|last| plan.sequence > 0 && plan.sequence < last.sequence)
+            .is_some_and(|last| !plan.supersedes(last.sequence))
         {
             return Ok(());
         }
