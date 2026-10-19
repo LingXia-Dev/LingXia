@@ -276,6 +276,7 @@ final class MacNativeComponentManager {
 
     func detachIslandVideo(id: String) {
         guard islandVideos.removeValue(forKey: id) != nil else { return }
+        LxAppAudio.videoGone(componentId: id)
         MacComponentRouter.shared.unregister(componentId: id, manager: self)
         componentCallbacks.removeValue(forKey: id)
         componentsPendingAutoResume.remove(id)
@@ -320,6 +321,9 @@ final class MacNativeComponentManager {
     }
 
     private func dispatchComponentEvent(componentId: String, event: [String: Any]) {
+        if let name = event["event"] as? String {
+            LxAppAudio.videoEvent(componentId: componentId, event: name, detail: event["detail"] as? [String: Any] ?? [:])
+        }
         var payload = event
         updatePlaybackIntent(componentId: componentId, event: payload["event"] as? String)
         payload["action"] = "component.event"
@@ -503,6 +507,7 @@ final class MacNativeComponentManager {
     }
 
     private func unmountComponent(id: String, pageId: String?) {
+        LxAppAudio.videoGone(componentId: id)
         componentsPendingAutoResume.remove(id)
         componentPlaybackIntent.removeValue(forKey: id)
         readyComponentIds.remove(id)

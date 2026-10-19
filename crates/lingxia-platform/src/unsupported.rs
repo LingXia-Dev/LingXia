@@ -112,6 +112,7 @@ impl Network for Platform {}
 impl SurfacePresenter for Platform {}
 impl UpdateService for Platform {}
 impl Wifi for Platform {}
+impl crate::traits::audio::AudioBackend for Platform {}
 impl AppScreenshot for Platform {}
 impl AppMouse for Platform {}
 impl AppKeyboard for Platform {}

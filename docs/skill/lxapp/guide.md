@@ -621,5 +621,5 @@ capsule, use the CSS variables; never hard-code platform heights:
 - `navigateTo` / `redirectTo` on a tab page.
 - Dropping the function an `lx.on*` call returns.
 - Using `<video>`, `<audio>`, or `new Audio()`: see
-  [LxVideo](./components.md#lxvideo).
+  [LxVideo](./components.md#lxvideo) and [Audio](./lx-api.md#audio).
 - Missing `@lingxia/types`: see [Install typing](./lx-api.md#install-typing).

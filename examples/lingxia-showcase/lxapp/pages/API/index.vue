@@ -591,6 +591,17 @@
           </div>
           <div
             class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
+            @click="navigateToAudioPage()"
+          >
+            <div class="text-sm text-gray-700">Audio</div>
+            <div class="w-4 h-4 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </div>
+          </div>
+          <div
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToMediaPage({ type: 'scanCode' })"
           >
             <div class="text-sm text-gray-700">ScanCode</div>
@@ -718,6 +729,7 @@ type PageActions = {
   navigateToSystemPage(payload: { type: string }): void;
   navigateToLocationPage(): void;
   navigateToMediaPage(payload: { type: string }): void;
+  navigateToAudioPage(): void;
   navigateToOpenFilePage(): void;
   navigateToChooseFilePage(): void;
   navigateToStreamPage(): void;
@@ -746,6 +758,7 @@ const {
   navigateToSystemPage,
   navigateToLocationPage,
   navigateToMediaPage,
+  navigateToAudioPage,
   navigateToOpenFilePage,
   navigateToChooseFilePage,
   navigateToStreamPage,

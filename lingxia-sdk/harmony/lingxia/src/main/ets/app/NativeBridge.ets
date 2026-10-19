@@ -21,6 +21,7 @@ import { LxAppNotification } from '../lxapp/APIs/LxAppNotification';
 import { LxAppWifi } from '../lxapp/APIs/LxAppWifi';
 import { LxAppNetwork } from '../lxapp/APIs/LxAppNetwork';
 import { LxAppCapsule } from '../lxapp/APIs/LxAppCapsule';
+import { LxAppAudio } from '../lxapp/APIs/LxAppAudio';
 import {
   createWebViewController,
   destroyWebViewController,
@@ -559,6 +560,15 @@ class NativeBridge {
 
     this.register('notificationCancelAll', (callbackId: string): void => {
       LxAppNotification.cancelAll(callbackId);
+    });
+
+    // Host audio coordinator backend
+    this.register('audioAttach', (callbackId: string): void => {
+      LxAppAudio.attach(callbackId);
+    });
+
+    this.register('audioSend', (commandJson: string): void => {
+      LxAppAudio.send(commandJson);
     });
 
     // WiFi APIs

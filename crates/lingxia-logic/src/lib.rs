@@ -82,6 +82,7 @@ impl LxLogicExtension for LxLogicRuntime {
 
 pub fn register_logic_runtime() {
     ::lxapp::register_surface_close_observer(notify_surface_closed);
+    ::lxapp::register_logic_visibility_observer(media::audio::on_visibility);
     ::lxapp::register_surface_active_main_observer(surface::notify_active_main_changed);
     ::lxapp::register_surface_visibility_observer(surface::notify_surface_visibility);
     ::lxapp::register_surface_context_observer(surface::notify_surface_context_changed);

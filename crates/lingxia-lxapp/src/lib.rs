@@ -46,8 +46,6 @@ pub(crate) mod view_call;
 /// This is used for update compatibility checks and can be reported to update services.
 pub const SDK_RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-#[cfg(feature = "js-appservice")]
-pub use appservice::PageSvc;
 pub use appservice::event_bus::{
     APPEARANCE_CHANGE_EVENT, BROWSER_TAB_CLOSED_EVENT, DISPLAY_LANGUAGE_CHANGE_EVENT,
     DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, HOST_APPEARANCE_CHANGE_EVENT, publish_app_event,
@@ -58,6 +56,8 @@ pub use appservice::event_bus::{
     AppHandlerUnsub, HandlerToken, app_handler_unsub, register_app_handler, register_page_handler,
     unregister_app_handler, unregister_app_handler_token, unregister_page_handler,
 };
+#[cfg(feature = "js-appservice")]
+pub use appservice::{PageSvc, register_logic_visibility_observer};
 #[doc(hidden)]
 pub use bridge::{
     DeferredRequiredV3Cancellation, PreparedRequiredV3Incoming, RequiredV3DocumentGate,

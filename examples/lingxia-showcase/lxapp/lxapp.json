@@ -1,7 +1,7 @@
 {
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
-  "version": "1.6.14",
+  "version": "1.6.16",
   "minRuntime": "0.25.0",
   "pages": [
     {
@@ -31,6 +31,10 @@
     {
       "name": "media",
       "path": "pages/media/index"
+    },
+    {
+      "name": "audio",
+      "path": "pages/audio/index"
     },
     {
       "name": "ui",

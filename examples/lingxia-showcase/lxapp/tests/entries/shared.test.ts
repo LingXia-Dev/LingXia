@@ -21,6 +21,7 @@ import '../api/host-app.test.js';
 import '../api/argument-contracts.test.js';
 import '../api/clipboard.test.js';
 import '../api/transfer.test.js';
+import '../api/audio.test.js';
 import '../pages/bridge-repro.test.js';
 import '../pages/stream.test.js';
 import '../pages/surface-port.test.js';

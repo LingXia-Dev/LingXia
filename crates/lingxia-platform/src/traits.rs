@@ -9,6 +9,7 @@ use crate::error::PlatformError;
 pub type PlatformFuture = Pin<Box<dyn Future<Output = Result<(), PlatformError>> + Send + 'static>>;
 
 pub mod app_runtime;
+pub mod audio;
 pub mod clipboard;
 pub mod device;
 pub mod file;
@@ -30,6 +31,7 @@ pub mod wifi;
 
 pub mod prelude {
     pub use super::app_runtime::AppRuntime;
+    pub use super::audio::AudioBackend;
     pub use super::clipboard::ClipboardService;
     pub use super::device::{Device, DeviceHardware};
     pub use super::file::FileService;

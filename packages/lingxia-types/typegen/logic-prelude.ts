@@ -364,6 +364,12 @@ declare global {
      */
     readonly terminal?: TerminalApi;
 
+    /**
+     * Audio playback owned by Logic: players, sounds, and the output route.
+     * Present exactly when `lx.supports('audio')`.
+     */
+    readonly audio?: AudioApi;
+
     /** Download to the downloads directory. */
     downloadFile(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
     /** Download to a durable app-owned path. */
