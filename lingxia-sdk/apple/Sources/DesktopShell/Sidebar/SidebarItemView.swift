@@ -238,7 +238,7 @@ class SidebarItemView: NSView {
             let symbolName = String(path.dropFirst(3))
             image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
         } else if path.hasPrefix("/") {
-            image = NSImage(contentsOfFile: path)
+            image = TabBarHelper.chromeIconImage(contentsOfFile: path)
         } else if !path.isEmpty {
             // Try bundle image first, then resources path
             if let bundleImage = NSImage(named: path) {
@@ -246,7 +246,7 @@ class SidebarItemView: NSView {
             } else {
                 let resourcesPath = Bundle.main.resourcePath ?? ""
                 let fullPath = "\(resourcesPath)/\(appId)/\(path)"
-                image = NSImage(contentsOfFile: fullPath)
+                image = TabBarHelper.chromeIconImage(contentsOfFile: fullPath)
             }
         } else {
             image = nil

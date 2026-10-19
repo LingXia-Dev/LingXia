@@ -169,6 +169,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.onMainWillSwitch = { [weak self] in
             self?.collapseExpandedAsides()
         }
+        shell.onRestoreMaximizedAside = { [weak self] in
+            self?.collapseExpandedAsides() ?? false
+        }
         shell.setToolbarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
         }
@@ -296,6 +299,12 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     static func refreshSurfaceSwitcherProjection() {
         active?.refreshChromeActions()
+    }
+
+    /// Mirror the core's slot maximize onto a terminal workspace's own zoom
+    /// button. The panel geometry already follows the plan's `overlay`.
+    static func reflectAsideMaximized(surfaceId: String, maximized: Bool) {
+        active?.terminalWorkspaces[surfaceId]?.setSurfaceZoomEnabled(maximized, notifyRuntime: false)
     }
 
     /// A top-level surface window supersedes transient tray UI. This is also
@@ -854,11 +863,21 @@ final class LxAppMacAppUIRuntime: NSObject {
     /// maximize, not a new main, so it un-maximizes rather than floating over the
     /// newly-shown main. Mirrors the expand teardown in close/hide so the
     /// terminal's own zoom state stays in sync.
-    private func collapseExpandedAsides() {
+    /// Returns whether anything was maximized.
+    @discardableResult
+    private func collapseExpandedAsides() -> Bool {
+        var restored = false
+        if let owner = graphOwnerAppId {
+            for kind in ["lxapp", "browser", "native"] where isAsideSlotMaximized(owner, kind) {
+                restored = setAsideSlotMaximized(owner, kind, false) || restored
+            }
+        }
         for id in visibleSurfaceIDs where shell.isPanelFullscreen(id: id) {
             terminalWorkspaces[id]?.setSurfaceZoomEnabled(false, notifyRuntime: false)
             shell.setPanelFullscreen(id: id, enabled: false)
+            restored = true
         }
+        return restored
     }
 
     private func openSurfaceHandlingError(id: String, sourceActivatorID: String? = nil) {
@@ -1292,10 +1311,19 @@ final class LxAppMacAppUIRuntime: NSObject {
             self?.logTerminal("runtime.workspaceRequestedClose surface=\(id)")
             self?.closeTerminalWorkspaceSurface(id: id)
         }
-        workspace.onToggleSurfaceZoom = { [weak self] zoomed in
+        workspace.onToggleSurfaceZoom = { [weak self, weak workspace] zoomed in
             guard let self else { return }
             self.logTerminal("runtime.toggleSurfaceZoom surface=\(id) enabled=\(zoomed)")
-            self.shell.setPanelFullscreen(id: id, enabled: zoomed)
+            // The core owns maximize, so the next plan keeps it instead of
+            // resetting the panel to its docked size.
+            if let owner = self.graphOwnerAppId {
+                if !setAsideSlotMaximized(owner, "native", zoomed) {
+                    workspace?.setSurfaceZoomEnabled(
+                        isAsideSlotMaximized(owner, "native"), notifyRuntime: false)
+                }
+            } else {
+                self.shell.setPanelFullscreen(id: id, enabled: zoomed)
+            }
         }
         workspace.ensureOpenTab()
         logTerminal(

@@ -11,12 +11,16 @@ export interface SurfaceContext {
   width: number;
   /** The presentation's viewport height in logical pixels; 0 until measured. */
   height: number;
-  /** Whether the host layout currently offers a docked aside. */
-  aside: boolean;
+  /**
+   * Whether the window currently has a dock region, so `as: 'aside'` opens
+   * beside the main instead of being reprojected as an overlay. A capability
+   * of the window, not where this presentation is.
+   */
+  canDock: boolean;
 }
 
 /** What a host that sends nothing — one older than this API — is taken to say. */
-const UNREPORTED: SurfaceContext = { sizeClass: 'compact', width: 0, height: 0, aside: false };
+const UNREPORTED: SurfaceContext = { sizeClass: 'compact', width: 0, height: 0, canDock: false };
 
 interface SurfaceContextStore {
   value: SurfaceContext;
@@ -48,17 +52,17 @@ const fallbackStore: SurfaceContextStore = { value: UNREPORTED, revision: 0, lis
 
 function parse(next: unknown): SurfaceContext | null {
   if (typeof next !== 'object' || next === null) return null;
-  const { sizeClass, width, height, aside } = next as Record<string, unknown>;
+  const { sizeClass, width, height, canDock } = next as Record<string, unknown>;
   if (sizeClass !== 'compact' && sizeClass !== 'regular') return null;
   if (typeof width !== 'number' || typeof height !== 'number') return null;
-  return { sizeClass, width, height, aside: aside === true };
+  return { sizeClass, width, height, canDock: canDock === true };
 }
 
 function same(a: SurfaceContext, b: SurfaceContext): boolean {
   return a.sizeClass === b.sizeClass
     && a.width === b.width
     && a.height === b.height
-    && a.aside === b.aside;
+    && a.canDock === b.canDock;
 }
 
 /**

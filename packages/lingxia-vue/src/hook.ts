@@ -99,7 +99,7 @@ const hostState = reactive<LxHost>({ ...getHost() });
 let hostSubscribed = false;
 
 /**
- * What the host decided for this page: `sizeClass`, `aside`,
+ * What the host decided for this page: `sizeClass`, `canDock`,
  * `displayLanguage`, `formFactor`, `os`, `runner` — a readonly reactive object
  * that changes only when one of them does, never while a window is dragged.
  * Read `host.sizeClass`; destructuring takes a snapshot. Geometry is CSS:

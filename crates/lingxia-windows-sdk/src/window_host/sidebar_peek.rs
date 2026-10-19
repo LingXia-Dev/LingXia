@@ -420,6 +420,66 @@ unsafe extern "system" fn latch_timer_proc(owner: HWND, _msg: u32, _id: usize, _
     }
 }
 
+/// The aside slot's keys on the WebView2 accelerator path: Ctrl+Alt+\
+/// collapses the lxapp aside or brings it back, and Escape inside a
+/// maximized aside restores it. Decided synchronously, acted on the owner's
+/// queue. An auto-repeat is consumed without acting. True when consumed.
+pub(super) fn handle_aside_key_deferred(owner: HWND, virtual_key: u32, webtag_key: &str) -> bool {
+    let handle = hwnd_handle(owner);
+    if virtual_key == u32::from(VK_ESCAPE.0) {
+        if !super::webtag_is_maximized_aside(webtag_key) {
+            return false;
+        }
+        let _ = post_to_window_thread(
+            handle,
+            Box::new(|| {
+                crate::shell::restore_maximized_aside_from_keyboard();
+            }),
+        );
+        return true;
+    }
+    if !is_aside_toggle_shortcut(virtual_key) {
+        return false;
+    }
+    if latch_shortcut(owner, virtual_key) {
+        let _ = post_to_window_thread(
+            handle,
+            Box::new(|| {
+                crate::shell::toggle_lxapp_aside_from_keyboard();
+            }),
+        );
+    }
+    true
+}
+
+/// The same keys on the shell's own path (`WM_KEYDOWN` / `WM_SYSKEYDOWN` on
+/// the host window), with focus in shell chrome or a native panel. Escape is
+/// consumed only while an aside is maximized; the earlier Escape arms (peek,
+/// overflow, search) have had their turn.
+pub(super) fn handle_aside_key(owner: HWND, virtual_key: u32, repeat: bool) -> bool {
+    if virtual_key == u32::from(VK_ESCAPE.0) {
+        return crate::shell::restore_maximized_aside_from_keyboard();
+    }
+    if !is_aside_toggle_shortcut(virtual_key) {
+        return false;
+    }
+    if latch_shortcut(owner, virtual_key) && !repeat {
+        crate::shell::toggle_lxapp_aside_from_keyboard();
+    }
+    true
+}
+
+/// Ctrl+Alt+\ with the modifiers held, on a layout where that is not how a
+/// backslash is typed.
+fn is_aside_toggle_shortcut(virtual_key: u32) -> bool {
+    let down = |key: u16| unsafe { GetKeyState(i32::from(key)) } < 0;
+    virtual_key == backslash_virtual_key()
+        && down(VK_CONTROL.0)
+        && down(VK_MENU.0)
+        && !down(VK_SHIFT.0)
+        && !backslash_needs_alt_gr()
+}
+
 fn shortcut_target(owner: HWND, virtual_key: u32) -> Option<crate::shell::SidebarShortcut> {
     let down = |key: u16| unsafe { GetKeyState(i32::from(key)) } < 0;
     if !is_sidebar_shortcut(
@@ -465,6 +525,15 @@ fn backslash_virtual_key() -> u32 {
         return VK_OEM_5;
     }
     u32::from(scan as u16 & 0xff)
+}
+
+/// Whether this layout types `\` with AltGr (Spanish, German, ...). AltGr
+/// reads as Ctrl+Alt, so Ctrl+Alt+\ would swallow every backslash typed into
+/// a page; the shortcut stands down on such layouts.
+fn backslash_needs_alt_gr() -> bool {
+    const CTRL_ALT: u16 = 0x06;
+    let scan = unsafe { VkKeyScanW(u16::from(b'\\')) };
+    scan != -1 && ((scan as u16) >> 8) & CTRL_ALT == CTRL_ALT
 }
 
 fn is_sidebar_shortcut(

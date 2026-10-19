@@ -25,10 +25,17 @@ final class AsideSlotTabStripView: NSView {
     /// Put the whole slot away. Nothing closes — the tabs come back with the
     /// region, so this is a chevron, never an ✕.
     var onCollapse: (() -> Void)?
+    /// Toggle the slot covering the main area (spec §4.6 Maximize). The role
+    /// never changes, so this sits with collapse as a slot control.
+    var onToggleMaximize: (() -> Void)? {
+        didSet { maximizeButton.isHidden = onToggleMaximize == nil }
+    }
 
     private let stack = NSStackView()
     private let separator = NSView()
     private let collapseButton = NSButton()
+    private let maximizeButton = NSButton()
+    private var maximized = false
     private var tabs: [AsideSlotTab] = []
     private var activeId: String?
     private var itemViews: [AsideSlotTabItemView] = []
@@ -66,9 +73,20 @@ final class AsideSlotTabStripView: NSView {
             named: "icon_aside_collapse", size: CGSize(width: 15, height: 15))
         collapseButton.contentTintColor = LxAppHostTheme.mutedForeground
         collapseButton.toolTip = "Collapse panel"
+        collapseButton.setAccessibilityLabel("Collapse panel")
         collapseButton.target = self
         collapseButton.action = #selector(collapseTapped)
         addSubview(collapseButton)
+
+        maximizeButton.translatesAutoresizingMaskIntoConstraints = false
+        maximizeButton.isBordered = false
+        maximizeButton.imagePosition = .imageOnly
+        maximizeButton.contentTintColor = LxAppHostTheme.mutedForeground
+        maximizeButton.target = self
+        maximizeButton.action = #selector(maximizeTapped)
+        maximizeButton.isHidden = true
+        addSubview(maximizeButton)
+        applyMaximizeState()
 
         NSLayoutConstraint.activate([
             separator.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -82,14 +100,37 @@ final class AsideSlotTabStripView: NSView {
             collapseButton.centerYAnchor.constraint(
                 equalTo: separator.topAnchor,
                 constant: -ChromeTabMetrics.tabHeight / 2),
+            maximizeButton.trailingAnchor.constraint(
+                equalTo: collapseButton.leadingAnchor, constant: -2),
+            maximizeButton.widthAnchor.constraint(equalToConstant: 22),
+            maximizeButton.heightAnchor.constraint(equalToConstant: 22),
+            maximizeButton.centerYAnchor.constraint(equalTo: collapseButton.centerYAnchor),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: ChromeTabMetrics.edge),
             stack.trailingAnchor.constraint(
-                lessThanOrEqualTo: collapseButton.leadingAnchor, constant: -6),
+                lessThanOrEqualTo: maximizeButton.leadingAnchor, constant: -6),
             stack.bottomAnchor.constraint(equalTo: separator.topAnchor),
         ])
     }
 
     @objc private func collapseTapped() { onCollapse?() }
+    @objc private func maximizeTapped() { onToggleMaximize?() }
+
+    func setMaximized(_ maximized: Bool) {
+        guard self.maximized != maximized else { return }
+        self.maximized = maximized
+        applyMaximizeState()
+    }
+
+    private func applyMaximizeState() {
+        let symbol = maximized
+            ? "arrow.down.right.and.arrow.up.left"
+            : "arrow.up.left.and.arrow.down.right"
+        let label = maximized ? "Restore panel" : "Maximize panel"
+        maximizeButton.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .medium))
+        maximizeButton.toolTip = label
+        maximizeButton.setAccessibilityLabel(label)
+    }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
@@ -106,7 +147,7 @@ final class AsideSlotTabStripView: NSView {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         itemViews.removeAll()
         for tab in tabs {
-            let icon = tab.iconPath.flatMap { NSImage(contentsOfFile: $0) } ?? Self.defaultTabIcon
+            let icon = tab.iconPath.flatMap { TabBarHelper.chromeIconImage(contentsOfFile: $0) } ?? Self.defaultTabIcon
             let tiled = icon.map { TabBarHelper.appTileIcon($0, size: ChromeTabMetrics.iconSize) }
             let item = AsideSlotTabItemView(tab: tab, icon: tiled)
             item.onSelect = { [weak self] in self?.onSelect?(tab.id) }
@@ -172,6 +213,7 @@ private final class AsideSlotTabItemView: NSView {
         closeButton.contentTintColor = LxAppHostTheme.mutedForeground
         closeButton.target = self
         closeButton.action = #selector(closeTapped)
+        closeButton.setAccessibilityLabel("Close \(tab.title)")
 
         row.orientation = .horizontal
         row.spacing = 5

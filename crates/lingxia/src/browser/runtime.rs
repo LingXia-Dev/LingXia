@@ -140,6 +140,18 @@ pub(crate) fn tab_is_aside(tab_id: &str) -> bool {
     }
 }
 
+/// Whether the browser core still has the tab, whatever hosts it.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub(crate) fn tab_exists(tab_id: &str) -> bool {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::tab_exists(tab_id);
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = tab_id;
+        false
+    }
+}
+
 /// Open a browser tab hosted outside product browser chrome, such as a docked
 /// aside or URL surface. New-window requests load inline in the same WebView.
 pub(crate) fn open_standalone_for_app(

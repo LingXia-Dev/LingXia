@@ -153,6 +153,7 @@ pub(crate) use runtime::{
     configure_static_settings_source, open_home_app_with_target, open_self_browser,
     prime_lxapp_shell_layout, set_shell_owner_app_id, update_surface_width,
 };
+pub(crate) use runtime::{restore_maximized_aside_from_keyboard, toggle_lxapp_aside_from_keyboard};
 
 pub fn set_windows_default_shell_tabbar_position(position: WindowsShellTabBarPosition) {
     runtime::set_default_tabbar_position(position);

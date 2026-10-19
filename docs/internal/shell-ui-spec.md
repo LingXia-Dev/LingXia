@@ -265,10 +265,11 @@ window and drives sidebar and aside arbitration:
 **Content size class** is computed per surface from its actual viewport width
 and is the only size class exposed on `lx.surface.watchContext`:
 
-`SurfaceContext.aside` separately reports whether the host shell is Medium or
-Expanded (false before a layout is available). It is not inferred from the
-content size class. Host docking changes emit context events even when the
-content viewport dimensions have not changed.
+`canDock` separately reports whether the window has a dock region right now:
+true when the shell size class is Medium or Expanded, false when it is Compact
+or before a layout is available. It is not inferred from the content size
+class, and it does not say where this content is shown. Host docking changes
+emit context events even when the content viewport dimensions have not changed.
 
 | Content size class | Available width |
 |---|---|
@@ -738,6 +739,13 @@ The aside region is fixed at three slots, grouped by rendering engine:
 
 - Slot tab switching performs hide/show and preserves content state; only an
   explicit close destroys the current content.
+- A collapsed slot that still holds content leaves a slim handle at its edge
+  (macOS: a pill in the window gap; Windows: a strip the main gives up);
+  clicking it restores the slot. Opening or focusing a child still restores
+  it too.
+- Collapsing a slot hides it without closing anything. The lxapp child it was
+  showing receives page `onHide`; restoring the slot with that child still
+  active delivers `onShow`. Logic and the WebView stay alive throughout.
 - A terminal Surface is one workspace and may contain multiple provider-owned
   PTY tabs. Multiple keyed terminal Surfaces are separate workspaces and appear
   as separate slot children or main switcher entries; switching Surfaces never
@@ -760,7 +768,44 @@ The aside region is fixed at three slots, grouped by rendering engine:
   open API, sidebar action entries, the sidebar browser "+"; page-level actions live
   in the tab's context menu.
 - Maximizing an aside covers only the main area and toggles back on the next
-  click; it does not change the role.
+  click; it does not change the role. The core owns the state (one maximized
+  slot per window at most; the plan marks it `maximized` and also `overlay`,
+  so skins present it as any overlay). It restores on the second toggle, a
+  main switch, or the slot collapsing or losing its last child, and survives
+  every other plan. The control sits left of the slot's collapse control; a
+  compact overlay, which already covers the main, does not offer it. Content
+  is told only its new size, never that it is maximized. The main and the
+  other docked slots keep their frames under it and fire no lifecycle event;
+  a restore relays nothing out. Keyboard focus moves into the maximized
+  slot's page and back to the main page on restore. The lxapp and browser
+  slots offer the control on macOS and Windows alike.
+- An lxapp aside shows the page navigation bar below its tab strip only while
+  Back or Home has somewhere to go. At the root of its stack the bar takes no
+  height unless Home is offered (a non-initial, non-tab landing page);
+  `navigationStyle: custom` never shows it. The slot tab already names the
+  app. Page titles never move into the tab strip.
+- An lxapp with a tabBar can always be opened as an aside, with no warning and
+  no manifest option: on its tab pages the framework draws the tabBar as a
+  28pt segmented row under the navigation bar (icon + label, scrolling on
+  overflow; the current tab as a pop-up/menu below 240pt). Selection and
+  `lx.tabBar.update()` behave as in the sidebar.
+- Keyboard Back (macOS Backspace) acts on the page stack of the region that
+  has focus: an aside page pops its own stack, never the main's.
+- Cmd+Option+\ (Windows Ctrl+Alt+\) collapses the lxapp aside slot or
+  restores it, wherever focus is (a page, shell chrome, a native panel);
+  focus moves into the aside page when it returns and back to the main when
+  it goes. Escape in a maximized aside's page, or in the shell, takes the
+  aside back to its dock; it never collapses the aside.
+- Keyboard Back (macOS Backspace) is taken only when the page left the key
+  unhandled: an editable element (input, textarea, contenteditable) keeps
+  deleting text. Windows offers no keyboard Back: Backspace is not a Back key
+  on that platform and WebView2 gives the shell no unhandled-key path that
+  would spare typing.
+- A float an aside lxapp opens anchors to that aside's region, not to the main.
+- A tabBar item without `text` is never a blank segment or an empty menu row:
+  macOS shows the item's icon alone (named from its page path for the tooltip,
+  accessibility and the pop-up); Windows, whose row is text only, shows the
+  page's title, else its page name.
 - Browser "open in main browser" promotes and closes only the **current URL
   tab**; other browser-aside tabs stay. Closing the last tab closes the slot.
 - A desktop browser slot offers history navigation, refresh, title tabs, and
@@ -1016,7 +1061,9 @@ Surface, navigation fails with
   opener's handle. Native surfaces support messaging only when the capability
   declares it.
 - Content can subscribe to its surface context (content size class
-  `compact` | `regular` plus viewport dimensions); the subscription fires
+  `compact` | `regular`, viewport dimensions, and `canDock` — whether the
+  window has a dock region right now, never where the content is shown;
+  content is not told its own role or edge); the subscription fires
   once immediately with the current value, then only on actual change.
   Crossing the shell's 840 boundary MUST NOT by itself change content
   `sizeClass`.
@@ -1175,7 +1222,8 @@ lowercase keys). Synonyms are not allowed.
 | sidebar | `sidebar` | — | `Sidebar*` | **tabbar** (reserved for the lxapp tabbar), rail (icon-rail state only) |
 | main area / main tab | `main` | `MainTab` | `MainArea`, `MainTab` | primary, home tab |
 | lxapp tab / web tab | `lxapp_tab / web_tab` | `LxappTab`, `WebTab` | same roots | auxiliary item |
-| aside / slot | `aside / slot` | `AsideSlot` | `AsideSlot`, `SlotKind` | panel, dock (dock is a presentation value only) |
+| aside / slot | `aside / slot` | `AsideSlot` | `AsideSlot`, `SlotKind` | panel (the presentation value is `dock`; the context capability is `canDock`) |
+| dock region | `can_dock` | `canDock` | `can_dock` | aside (that is the role), docked |
 | sidebar action | `sidebar_action` | `lx.shell.sidebarActions`, `ShellSidebarAction`, `ResolvedShellSidebarAction` | `SidebarAction*` | activator, launcher |
 | pin | `pin` | — | `Pin*`, `MAX_SHELL_PINS` | favorite, shortcut |
 | shell size class | `size_class` | automation `sizeClass` (`compact` \| `medium` \| `expanded`) | `SizeClass` | breakpoint (internal boundary values may use it) |

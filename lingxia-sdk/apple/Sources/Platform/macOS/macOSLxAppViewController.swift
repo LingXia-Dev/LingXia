@@ -17,6 +17,18 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     /// page until the runtime names one.
     private var currentPageInstanceId: String?
     private var sessionId: UInt64
+    /// Set when this controller hosts an lxapp presented as an aside. The
+    /// window's navigation toolbar and the core's current page belong to the
+    /// main, so an aside's page changes must not write either.
+    internal var hostsAside = false
+    /// The aside's own navigation bar. The window toolbar shows the main's
+    /// page; an aside page gets the same bar sized to the aside, fed this
+    /// app's navigation state. It collapses for `navigationStyle: custom` and
+    /// at the root of the stack unless Home is offered.
+    private var asideNavigationBar: MacNavigationToolbar?
+    /// The app's tabBar inside the aside (asides never enter the sidebar).
+    private var asideTabBar: AsideTabBarView?
+    nonisolated(unsafe) private var tabBarObserver: NSObjectProtocol?
     private var webViewContainer: NSView!
     private weak var activeWebView: WKWebView?
     /// Covers a freshly swapped-in webview until its document paints:
@@ -43,6 +55,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     deinit {
         closeAppObserver.map(NotificationCenter.default.removeObserver)
+        tabBarObserver.map(NotificationCenter.default.removeObserver)
     }
 
     override func loadView() {
@@ -61,7 +74,9 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     override func viewDidLayout() {
         super.viewDidLayout()
-        let size = view.bounds.size
+        // The page's viewport: in an aside the view also holds the
+        // navigation bar and tabBar above the page.
+        let size = (webViewContainer ?? view).bounds.size
         guard size.width > 0, size.height > 0 else { return }
         _ = setSurfaceViewport(appId, Double(size.width), Double(size.height))
     }
@@ -74,8 +89,41 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
         setupWebViewContainer()
 
+        let contentTop: NSLayoutYAxisAnchor
+        if hostsAside {
+            let bar = MacNavigationToolbar(followsSharedState: false)
+            bar.collapsesWithoutNavigation = true
+            bar.translatesAutoresizingMaskIntoConstraints = false
+            bar.onNavigationAction = { [weak self] action in
+                guard let self else { return }
+                let event = action == "home"
+                    ? LxAppEvent.navigationActionHome
+                    : LxAppEvent.navigationActionBack
+                _ = onLxappEvent(self.appId, LxAppEvent.navigationClick, event)
+            }
+            view.addSubview(bar)
+            NSLayoutConstraint.activate([
+                bar.topAnchor.constraint(equalTo: view.topAnchor),
+                bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            ])
+            asideNavigationBar = bar
+            let tabBar = AsideTabBarView(appId: appId)
+            view.addSubview(tabBar)
+            NSLayoutConstraint.activate([
+                tabBar.topAnchor.constraint(equalTo: bar.bottomAnchor),
+                tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            ])
+            asideTabBar = tabBar
+            contentTop = tabBar.bottomAnchor
+            updateNavigationBar(appId: appId, path: currentPath)
+        } else {
+            contentTop = view.topAnchor
+        }
+
         NSLayoutConstraint.activate([
-            webViewContainer.topAnchor.constraint(equalTo: view.topAnchor),
+            webViewContainer.topAnchor.constraint(equalTo: contentTop),
             webViewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webViewContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             webViewContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
@@ -172,6 +220,13 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             pageTransition.install(animation, on: webViewContainer)
         }
 
+        // Detaching the focused WebView hands first responder back to the
+        // window, which would take the next Backspace or Escape to the main's
+        // path. An aside keeps focus on the page it now shows.
+        let keepsFocus = hostsAside && activeWebView.map { old in
+            old !== webView && responderIsInside(old)
+        } ?? false
+
         if let old = activeWebView, old !== webView {
             WebViewManager.detachLxAppWebView(old)
         }
@@ -186,6 +241,16 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         WebViewManager.attachLxAppWebView(webView, to: webViewContainer)
         activeWebView = webView
         coverUntilContentPaints(webView)
+        if keepsFocus {
+            view.window?.makeFirstResponder(webView)
+        }
+    }
+
+    /// Whether the window's first responder is `webView` or a view inside it.
+    private func responderIsInside(_ webView: WKWebView) -> Bool {
+        guard let responder = view.window?.firstResponder else { return false }
+        if responder === webView { return true }
+        return (responder as? NSView)?.isDescendant(of: webView) ?? false
     }
 
     /// The ground behind the page. Anything that exposes it — a fade, a seam
@@ -337,6 +402,17 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     // MARK: - Notifications
 
     private func setupNotificationObservers() {
+        if hostsAside {
+            tabBarObserver = NotificationCenter.default.addObserver(
+                forName: .tabBarStateChanged, object: nil, queue: .main
+            ) { [weak self] notification in
+                let appId = notification.object as? String
+                MainActor.assumeIsolated {
+                    guard let self, appId == nil || appId == self.appId else { return }
+                    self.asideTabBar?.refresh()
+                }
+            }
+        }
         closeAppObserver = NotificationCenter.default.addObserver(
             forName: NSNotification.Name(ACTION_CLOSE_LXAPP), object: nil, queue: .main
         ) { [weak self] notification in
@@ -378,7 +454,9 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 animationType: animationType
             )
         }
-        LxAppCore.setCurrentPath(path, pageInstanceId: pageInstanceId)
+        if !hostsAside {
+            LxAppCore.setCurrentPath(path, pageInstanceId: pageInstanceId)
+        }
     }
 
     /// The page's WebView does not exist yet: show it when the runtime reports
@@ -431,8 +509,66 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }
     }
 
+    /// Escape the page did not use: an aside that is maximized goes back to
+    /// its dock. It never collapses the aside (too easy to hit by accident).
+    /// WebKit hands an unconsumed Escape up the responder chain as
+    /// `cancelOperation:`; a plain `keyDown` only arrives from native chrome
+    /// inside the controller.
+    override func cancelOperation(_ sender: Any?) {
+        if leaveAsideMaximize() { return }
+        nextResponder?.tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: sender)
+    }
+
+    /// Keys the page did not use. WebKit re-sends an unhandled key event and
+    /// then passes it up the responder chain, so a key arrives here only when
+    /// no input, textarea or contenteditable took it: Backspace keeps deleting
+    /// text in a field, and pops the stack of a plain page. Back follows
+    /// focus: an aside pops its own stack and never the main's. A page with
+    /// nothing to pop still consumes the key, so the window does not act on
+    /// it for the main.
+    override func keyDown(with event: NSEvent) {
+        // Only the four modifier keys matter: special keys carry other bits
+        // (the function flag, device bits on a synthesized Delete).
+        let modifiers = event.modifierFlags.intersection([.shift, .control, .option, .command])
+        if event.keyCode == 53, modifiers.isEmpty, leaveAsideMaximize() {
+            return
+        }
+        if event.keyCode == 51, modifiers.isEmpty {
+            if hostsAside {
+                _ = navigateBackFromKeyboard()
+            } else {
+                _ = LxAppWindow.navigateMainBackFromKeyboard()
+            }
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    private func leaveAsideMaximize() -> Bool {
+        guard hostsAside, isAsideSlotMaximized(appId, "lxapp") else { return false }
+        _ = setAsideSlotMaximized(appId, "lxapp", false)
+        return true
+    }
+
+    /// Keyboard Back for an aside page: pops this app's own stack when its
+    /// page offers Back. Returns whether it navigated.
+    @MainActor
+    func navigateBackFromKeyboard() -> Bool {
+        guard hostsAside, !currentPath.isEmpty,
+              lingxia.getNavigationBarState(appId, currentPath).show_back_button else { return false }
+        _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionBack)
+        return true
+    }
+
     @MainActor
     func updateNavigationBar(appId: String, path: String) {
+        // The window toolbar is the main's; an aside shows its own bar.
+        if hostsAside {
+            guard !path.isEmpty else { return }
+            asideNavigationBar?.apply(lingxia.getNavigationBarState(appId, path))
+            asideTabBar?.refresh()
+            return
+        }
         NavigationBarStateManager.shared.updateState(appId: appId, path: path)
     }
 

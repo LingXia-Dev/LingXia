@@ -426,6 +426,13 @@ fn notify_selected_page_host_visibility(
     Ok(true)
 }
 
+/// Deliver a visibility change to whatever page `appid` currently shows; for
+/// shell changes (an aside slot collapsing) that hide an app without any
+/// WebView detaching.
+pub(crate) fn notify_current_page_host_visibility(appid: &str, visible: bool) -> bool {
+    notify_selected_page_host_visibility(appid, visible, |app| app.current_page()).unwrap_or(false)
+}
+
 /// Check if pull-to-refresh is enabled for a specific page
 /// Returns false if the app or page is not found
 pub fn is_pull_down_refresh_enabled(appid: &str, path: &str) -> bool {

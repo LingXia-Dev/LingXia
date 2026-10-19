@@ -155,6 +155,9 @@ static BROWSER_ACTIVE_TAB_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static BROWSER_AUTOMATION_TAB_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static BROWSER_TABS_CHANGED_HANDLER: OnceLock<Mutex<Option<TabsChangedHandler>>> = OnceLock::new();
 static BROWSER_TAB_PRESENT_HANDLER: OnceLock<Mutex<Option<TabPresentHandler>>> = OnceLock::new();
+/// Called with the id of every tab the core removed, whoever closed it.
+type TabClosedHandler = Arc<dyn Fn(&str) + Send + Sync>;
+static BROWSER_TAB_CLOSED_HANDLER: OnceLock<Mutex<Option<TabClosedHandler>>> = OnceLock::new();
 static BROWSER_NAVIGATION_FINISHED_HANDLER: OnceLock<Mutex<Option<NavigationFinishedHandler>>> =
     OnceLock::new();
 static BROWSER_TITLE_CHANGED_HANDLER: OnceLock<Mutex<Option<TitleChangedHandler>>> =
@@ -178,6 +181,26 @@ pub(crate) fn set_tab_present_handler(handler: TabPresentHandler) {
     let slot = BROWSER_TAB_PRESENT_HANDLER.get_or_init(|| Mutex::new(None));
     if let Ok(mut slot) = slot.lock() {
         *slot = Some(handler);
+    }
+}
+
+pub(crate) fn set_tab_closed_handler(handler: TabClosedHandler) {
+    let slot = BROWSER_TAB_CLOSED_HANDLER.get_or_init(|| Mutex::new(None));
+    if let Ok(mut slot) = slot.lock() {
+        *slot = Some(handler);
+    }
+}
+
+/// Invokes the registered tab-closed handler (if any). Never called while a
+/// browser state lock is held: a handler closes the surface that hosted the
+/// tab, which may try to close the tab again.
+fn notify_tab_closed(tab_id: &str) {
+    let handler = BROWSER_TAB_CLOSED_HANDLER
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| slot.clone());
+    if let Some(handler) = handler {
+        handler(tab_id);
     }
 }
 
@@ -1199,6 +1222,14 @@ pub(crate) fn tab_owner_appid(tab_id: &str) -> Option<String> {
 }
 
 /// Whether `tab_id` belongs to the API-managed aside browser group.
+/// Whether the core still has a tab `tab_id`, whatever hosts it.
+pub(crate) fn tab_exists(tab_id: &str) -> bool {
+    let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
+        return false;
+    };
+    lock_state().tabs.contains_key(&normalized)
+}
+
 pub(crate) fn is_aside_tab(tab_id: &str) -> bool {
     let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
         return false;
@@ -1306,6 +1337,9 @@ fn close_browser_tab_inner(tab_id: &str, remember: bool) -> Result<(), LxAppErro
     }
     if removed_any || active_matches_closed {
         notify_tabs_changed();
+    }
+    if removed_any {
+        notify_tab_closed(&normalized);
     }
     Ok(())
 }

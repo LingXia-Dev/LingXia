@@ -230,6 +230,15 @@ extension macOSLxApp {
         pageInstanceId: String?,
         animationType: LxAppAnimation
     ) {
+        // An aside lxapp navigates inside its own panel: the main (and a
+        // browser covering it) stays as it is.
+        if let s = Self.activeShell(),
+           let viewController = s.asideViewController(for: appId) {
+            viewController.navigate(
+                appId: appId, to: path, pageInstanceId: pageInstanceId, with: animationType)
+            return
+        }
+
         if let s = Self.activeShell() {
            s.browserCoordinator.deactivate()
         }
@@ -265,6 +274,7 @@ extension macOSLxApp {
     @MainActor
     internal static func browserTabsChanged() {
         activeShell()?.synchronizeBrowserTabsFromCore()
+        LxAppSurface.closeSurfacesWhoseBrowserTabIsGone()
     }
 
     @MainActor

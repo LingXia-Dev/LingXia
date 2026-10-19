@@ -8,14 +8,14 @@ const fullChrome: boolean = lx.supports('surface.window.fullChrome');
 const notifications: boolean = lx.supports('app.notification');
 const control: boolean = lx.host.control !== undefined;
 lx.surface.watchContext((context: SurfaceContext) => {
-  const docked: boolean = context.aside;
+  const docked: boolean = context.canDock;
   void docked;
 });
 // @ts-expect-error unknown strings are runtime-compatible but statically checked
 lx.supports('future.feature');
 // @ts-expect-error old objects are no longer accepted
 lx.supports({ capability: 'terminal' });
-// @ts-expect-error layout availability belongs to SurfaceContext
+// @ts-expect-error layout availability is SurfaceContext.canDock, not a feature
 lx.supports('surface.aside');
 // @ts-expect-error control is identity, not a feature
 lx.supports('control');

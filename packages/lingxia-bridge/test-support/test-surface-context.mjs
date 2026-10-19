@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 // The host seeds the context into the document's bridge config.
 globalThis.window = {
   __LX_BRIDGE_CFG: {
-    surfaceContext: { sizeClass: 'regular', width: 800, height: 600, aside: false },
+    surfaceContext: { sizeClass: 'regular', width: 800, height: 600, canDock: false },
     surfaceContextRevision: 5,
   },
 };
@@ -14,7 +14,7 @@ const bundled = await import('../dist/es2020/surface-context.js?copy=bundled');
 
 assert.deepEqual(
   bundled.getSurfaceContext(),
-  { sizeClass: 'regular', width: 800, height: 600, aside: false },
+  { sizeClass: 'regular', width: 800, height: 600, canDock: false },
   'the seed is there from the first frame',
 );
 
@@ -25,17 +25,17 @@ const unsubscribe = bundled.subscribeSurfaceContext(() => {
 const apply = window.__lingxiaApplySurfaceContext;
 assert.equal(typeof apply, 'function', 'the host entry point is installed');
 
-apply({ sizeClass: 'compact', width: 300, height: 600, aside: false }, 4);
+apply({ sizeClass: 'compact', width: 300, height: 600, canDock: false }, 4);
 assert.equal(bundled.getSurfaceContext().width, 800, 'a push older than the seed is stale');
 assert.equal(heard, 0);
 
-apply({ sizeClass: 'regular', width: 900, height: 700, aside: true });
-assert.deepEqual(injected.getSurfaceContext(), { sizeClass: 'regular', width: 900, height: 700, aside: true });
+apply({ sizeClass: 'regular', width: 900, height: 700, canDock: true });
+assert.deepEqual(injected.getSurfaceContext(), { sizeClass: 'regular', width: 900, height: 700, canDock: true });
 assert.equal(bundled.getSurfaceContext(), injected.getSurfaceContext(), 'both copies share one store');
 assert.equal(heard, 1);
 
 const before = bundled.getSurfaceContext();
-apply({ sizeClass: 'regular', width: 900, height: 700, aside: true });
+apply({ sizeClass: 'regular', width: 900, height: 700, canDock: true });
 assert.equal(heard, 1, 'an unchanged context notifies nobody');
 assert.equal(bundled.getSurfaceContext(), before, 'and keeps its identity for useSyncExternalStore');
 
@@ -43,18 +43,18 @@ apply({ sizeClass: 'wide', width: 1, height: 1 });
 apply(null);
 assert.equal(heard, 1, 'a malformed push is ignored');
 
-apply({ sizeClass: 'compact', width: 390, height: 844, aside: false });
+apply({ sizeClass: 'compact', width: 390, height: 844, canDock: false });
 assert.equal(heard, 2);
 assert.notEqual(bundled.getSurfaceContext(), before, 'a change is a new object');
 
 // The host numbers its pushes: one built earlier but run later is stale.
-apply({ sizeClass: 'regular', width: 1200, height: 800, aside: false }, 10);
-apply({ sizeClass: 'compact', width: 390, height: 844, aside: false }, 9);
+apply({ sizeClass: 'regular', width: 1200, height: 800, canDock: false }, 10);
+apply({ sizeClass: 'compact', width: 390, height: 844, canDock: false }, 9);
 assert.equal(bundled.getSurfaceContext().width, 1200, 'an older revision never overwrites a newer one');
 assert.equal(heard, 3);
 
 unsubscribe();
-apply({ sizeClass: 'regular', width: 1000, height: 800, aside: false }, 11);
+apply({ sizeClass: 'regular', width: 1000, height: 800, canDock: false }, 11);
 assert.equal(heard, 3, 'unsubscribed listeners stay quiet');
 
 
@@ -62,7 +62,7 @@ assert.equal(heard, 3, 'unsubscribed listeners stay quiet');
 {
   globalThis.window = {};
   const older = await import('../dist/es2020/surface-context.js?copy=older-host');
-  assert.deepEqual(older.getSurfaceContext(), { sizeClass: 'compact', width: 0, height: 0, aside: false });
+  assert.deepEqual(older.getSurfaceContext(), { sizeClass: 'compact', width: 0, height: 0, canDock: false });
 }
 
 console.log('surface context store: ok');

@@ -29,7 +29,11 @@ import UIKit
 enum LxAppLayoutReconcileriOS {
     private static let log = OSLog(subsystem: "LingXia", category: "LayoutReconciler")
 
+    /// The last committed plan sequence applied per window.
+    private static var lastSequenceByWindow: [String: UInt64] = [:]
+
     private struct LayoutPresentationPlan: Decodable {
+        let sequence: UInt64?
         let sizeClass: String
         let bottomOwner: String
         let switcherForm: String
@@ -56,6 +60,13 @@ enum LxAppLayoutReconcileriOS {
               let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) else {
             LXLog.error("presentLayout: failed to parse layout json window=\(windowId)", category: "LayoutReconciler")
             return false
+        }
+        // Plans hop to the main queue: drop one that arrives after a newer
+        // commit, as the macOS reconciler does.
+        if let sequence = plan.sequence, sequence > 0 {
+            let last = lastSequenceByWindow[windowId] ?? 0
+            if sequence < last { return true }
+            lastSequenceByWindow[windowId] = sequence
         }
 
         // On iOS today every desired main/aside is a full-screen surface. The

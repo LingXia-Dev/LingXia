@@ -170,10 +170,12 @@ Page({
   },
 
   onHide: function () {
+    app.globalData.lifecycle.pageHides++;
     console.log("[Home] Page hidden");
   },
 
   onShow: function () {
+    app.globalData.lifecycle.pageShows++;
     console.log("[Home] Page shown");
     console.log("[Home] App data:", app.globalData);
     this._syncAppearance();

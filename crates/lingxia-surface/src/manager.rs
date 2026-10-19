@@ -28,6 +28,12 @@ pub struct SurfaceManager {
     /// Most recently explicitly shown aside that could not be admitted as a
     /// dock. It remains live and is projected over the main until hidden.
     overlay_fallback_surface_id: Option<SurfaceId>,
+    /// The one aside slot the user maximized over the main, if any. It
+    /// restores on a second toggle, a main switch, or the slot collapsing or
+    /// losing its last child.
+    maximized_slot: Option<crate::SlotKind>,
+    /// Sequence of the last plan handed out by [`Self::commit_plan`].
+    plan_sequence: u64,
 }
 
 impl SurfaceManager {
@@ -47,6 +53,8 @@ impl SurfaceManager {
             hysteresis: DEFAULT_HYSTERESIS,
             size_class: SizeClass::from_width(width),
             overlay_fallback_surface_id: None,
+            maximized_slot: None,
+            plan_sequence: 0,
         }
     }
 
@@ -152,8 +160,20 @@ impl SurfaceManager {
     }
 
     pub fn close(&mut self, id: &str) -> CloseOutcome {
+        let previous_active_main = self.graph.active_main_id.clone();
         let outcome = self.graph.close(id);
         let removed = outcome.removed();
+        if self
+            .maximized_slot
+            .is_some_and(|kind| !self.slot_has_children(kind))
+        {
+            self.maximized_slot = None;
+        }
+        // Closing the active main switches to its successor: a main switch
+        // restores a maximized aside, the same as selecting one.
+        if self.graph.active_main_id != previous_active_main {
+            self.restore_maximized_slot();
+        }
         if self
             .overlay_fallback_surface_id
             .as_ref()
@@ -331,16 +351,39 @@ impl SurfaceManager {
         self.revision = self.revision.wrapping_add(1);
     }
 
+    /// Select `id` as the active main. Every call is a user intent to see
+    /// main, so a maximized aside slot goes back to its dock first, also when
+    /// `id` already is the active main (a click on the selected sidebar row).
     pub fn set_active_main(&mut self, id: &str) -> bool {
         let changed = self.graph.active_main_id.as_deref() != Some(id);
         let active = self.graph.set_active_main(id);
         if active {
             self.overlay_fallback_surface_id = None;
-            if changed {
+            let restored = self.restore_maximized_slot();
+            if changed || restored {
                 self.bump_revision();
             }
         }
         active
+    }
+
+    /// Take a maximized aside slot back to its dock. The slot keeps its size,
+    /// children and collapse state; only the overlay over main goes. Returns
+    /// whether a maximized slot was on screen: a maximize the plan was not
+    /// presenting (the slot lost admission, or every child is hidden) is
+    /// forgotten silently, so the caller's own intent is not swallowed by a
+    /// restore nobody can see.
+    pub fn restore_maximized_slot(&mut self) -> bool {
+        if self.maximized_slot.is_none() {
+            return false;
+        }
+        let presented = self
+            .presentation_plan()
+            .aside_slots
+            .iter()
+            .any(|slot| slot.maximized);
+        self.maximized_slot = None;
+        presented
     }
     pub fn set_focus(&mut self, id: &str) -> bool {
         let focused = self.graph.set_focus(id);
@@ -357,7 +400,9 @@ impl SurfaceManager {
         let shown = self.graph.show(id);
         if shown && role == Some(Role::Main) {
             self.overlay_fallback_surface_id = None;
-            if activates_main {
+            // Showing a main is an intent to see main: see `set_active_main`.
+            let restored = self.restore_maximized_slot();
+            if activates_main || restored {
                 // `SurfaceGraph::show` performs the selection. Mirror
                 // `set_active_main`'s observable switcher revision here.
                 self.bump_revision();
@@ -386,6 +431,9 @@ impl SurfaceManager {
         if !self.graph.set_slot_collapsed(kind, collapsed) {
             return false;
         }
+        if collapsed && self.maximized_slot == Some(kind) {
+            self.maximized_slot = None;
+        }
         if collapsed
             && let Some(id) = self.overlay_fallback_surface_id.clone()
             && self
@@ -396,6 +444,50 @@ impl SurfaceManager {
             self.overlay_fallback_surface_id = None;
         }
         true
+    }
+
+    /// Whether an aside slot of `kind` holds any content.
+    pub fn slot_occupied(&self, kind: crate::SlotKind) -> bool {
+        self.slot_has_children(kind)
+    }
+
+    pub fn slot_maximized(&self, kind: crate::SlotKind) -> bool {
+        self.maximized_slot == Some(kind)
+    }
+
+    /// Maximize an aside slot over the main, or restore it. At most one slot
+    /// is maximized: maximizing another replaces it. A slot with no children,
+    /// one the user collapsed, or one already projected as an overlay (a
+    /// compact window, the overlay fallback) cannot be maximized: there is no
+    /// dock to leave. Returns whether the state changed.
+    pub fn set_slot_maximized(&mut self, kind: crate::SlotKind, maximized: bool) -> bool {
+        if !maximized {
+            if self.maximized_slot != Some(kind) {
+                return false;
+            }
+            self.maximized_slot = None;
+            return true;
+        }
+        if self.maximized_slot == Some(kind)
+            || !self.slot_has_children(kind)
+            || self.graph.slot_collapsed(kind)
+            || self
+                .presentation_plan()
+                .aside_slots
+                .iter()
+                .any(|slot| slot.kind == kind && slot.overlay)
+        {
+            return false;
+        }
+        self.maximized_slot = Some(kind);
+        true
+    }
+
+    fn slot_has_children(&self, kind: crate::SlotKind) -> bool {
+        self.graph
+            .asides()
+            .iter()
+            .any(|aside| aside.content.slot_kind() == kind)
     }
 
     pub fn hide(&mut self, id: &str) -> bool {
@@ -416,6 +508,17 @@ impl SurfaceManager {
     /// Derive the platform-agnostic layout output at the current size.
     pub fn derive(&self) -> DerivedLayout {
         self.graph.derive_layout(self.size_class)
+    }
+
+    /// The plan to present now, stamped with the next commit sequence. Build
+    /// it under the same lock as the state it reflects: a plan built later
+    /// carries a higher sequence, so a skin applying plans asynchronously can
+    /// drop one that arrives out of order.
+    pub fn commit_plan(&mut self) -> LayoutPresentationPlan {
+        self.plan_sequence = self.plan_sequence.wrapping_add(1);
+        let mut plan = self.presentation_plan();
+        plan.sequence = self.plan_sequence;
+        plan
     }
 
     /// Build the stable, skin-bindable [`LayoutPresentationPlan`] at the current
@@ -442,6 +545,20 @@ impl SurfaceManager {
         {
             slot.visible = true;
             slot.active_child = Some(id.to_string());
+            slot.overlay = true;
+        }
+        if let Some(kind) = self.maximized_slot
+            && let Some(slot) = plan
+                .aside_slots
+                .iter_mut()
+                .find(|slot| slot.kind == kind && slot.visible && !slot.collapsed)
+            // A slot the plan already shows as an overlay (a compact window,
+            // the overlay fallback) has no dock to leave: the maximize is kept
+            // for when the dock returns, but the plan does not report it, so
+            // skins never reserve docked room for it.
+            && !slot.overlay
+        {
+            slot.maximized = true;
             slot.overlay = true;
         }
         plan
@@ -542,6 +659,261 @@ mod tests {
 
         m.open(aside_s("notes", Edge::Right));
         assert!(m.presentation_plan().aside_slots[0].visible);
+    }
+
+    #[test]
+    fn a_maximized_slot_overlays_the_main_until_restored() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(aside_s("assistant", Edge::Right));
+        assert!(!m.presentation_plan().aside_slots[0].overlay);
+
+        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+        assert!(!m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert!(slot.maximized && slot.overlay && slot.visible);
+        // Maximize is presentation only: the role and the main are unchanged.
+        assert_eq!(m.graph().role_of("assistant"), Some(Role::Aside));
+        assert_eq!(m.graph().active_main_id.as_deref(), Some("home"));
+
+        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, false));
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert!(!slot.maximized && !slot.overlay);
+    }
+
+    #[test]
+    fn maximize_survives_unrelated_commits_and_is_exclusive() {
+        let mut m = SurfaceManager::new(1400.0);
+        m.open(main_s("home"));
+        m.open(aside_s("assistant", Edge::Right));
+        let mut terminal = Surface::lxapp("term", Role::Aside, "term");
+        terminal.content = SurfaceContent::Native {
+            capability: "terminal".to_string(),
+            instance_key: None,
+        };
+        terminal.placement.edge = Some(Edge::Bottom);
+        m.open(terminal);
+
+        assert!(m.set_slot_maximized(crate::SlotKind::Native, true));
+        // A width change (any re-plan) keeps the user's maximize.
+        m.set_width(1300.0);
+        let plan = m.presentation_plan();
+        let native = plan
+            .aside_slots
+            .iter()
+            .find(|slot| slot.kind == crate::SlotKind::Native)
+            .unwrap();
+        assert!(native.maximized && native.overlay);
+
+        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+        let plan = m.presentation_plan();
+        for slot in &plan.aside_slots {
+            assert_eq!(slot.maximized, slot.kind == crate::SlotKind::Lxapp);
+        }
+    }
+
+    #[test]
+    fn a_maximized_slot_shown_as_a_compact_overlay_does_not_report_maximized() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(aside_s("assistant", Edge::Right));
+        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+
+        // Shrinking to compact shows the slot as an overlay anyway: the plan
+        // marks it overlay, not maximized, and the user's maximize is kept
+        // for when the window is expanded again.
+        m.set_width(500.0);
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert!(slot.overlay && !slot.maximized);
+        assert!(m.slot_maximized(crate::SlotKind::Lxapp));
+
+        m.set_width(1200.0);
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert!(slot.overlay && slot.maximized);
+    }
+
+    #[test]
+    fn the_plan_that_presents_a_new_surface_is_never_superseded_by_an_older_commit() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        // A plan committed before the open (one a worker thread may still be
+        // delivering) ...
+        let before = m.commit_plan();
+        m.open(aside_s("browser", Edge::Bottom));
+        // ... and the plan committed by the open itself.
+        let opened = m.commit_plan();
+        assert!(
+            opened
+                .aside_slots
+                .iter()
+                .any(|slot| slot.children.contains(&"browser".to_string()))
+        );
+        assert!(
+            !before
+                .aside_slots
+                .iter()
+                .any(|slot| slot.children.contains(&"browser".to_string()))
+        );
+
+        // Delivered in order: both apply.
+        assert!(before.supersedes(0));
+        assert!(opened.supersedes(before.sequence));
+        // Delivered out of order: the stale plan is dropped, the one carrying
+        // the new surface is kept.
+        assert!(!before.supersedes(opened.sequence));
+        assert!(opened.supersedes(opened.sequence));
+        // The same plan re-delivered, or a query plan, still applies.
+        assert!(
+            LayoutPresentationPlan {
+                sequence: 0,
+                ..opened.clone()
+            }
+            .supersedes(opened.sequence)
+        );
+    }
+
+    #[test]
+    fn committed_plans_carry_an_increasing_sequence() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        let first = m.commit_plan();
+        let second = m.commit_plan();
+        assert!(first.sequence > 0);
+        assert!(second.sequence > first.sequence);
+        // A plan built for a query is not a commit.
+        assert_eq!(m.presentation_plan().sequence, 0);
+        assert_eq!(m.presentation_plan().size_class, second.size_class);
+    }
+
+    #[test]
+    fn maximize_restores_on_collapse_close_and_main_switch() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(main_s("other"));
+        m.set_active_main("home");
+        m.open(aside_s("assistant", Edge::Right));
+
+        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        m.set_slot_collapsed(crate::SlotKind::Lxapp, true);
+        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(!m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+        m.set_slot_collapsed(crate::SlotKind::Lxapp, false);
+
+        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        m.set_active_main("other");
+        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+
+        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        m.close("assistant");
+        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(!m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+    }
+
+    #[test]
+    fn any_intent_to_see_main_restores_a_maximized_aside_first() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(main_s("other"));
+        m.set_active_main("home");
+        m.open(aside_s("assistant", Edge::Right));
+        let docked = m.presentation_plan().aside_slots[0].clone();
+
+        // Selecting the main that is already selected still restores.
+        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        let revision = m.switcher_snapshot().revision;
+        assert!(m.set_active_main("home"));
+        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+        assert_ne!(m.switcher_snapshot().revision, revision);
+        // The aside keeps its place: same children, still visible and docked.
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert!(slot.visible && !slot.overlay && !slot.collapsed);
+        assert_eq!(slot.children, docked.children);
+        assert_eq!(m.graph().role_of("assistant"), Some(Role::Aside));
+
+        // Showing a main (the selected one included).
+        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        assert!(m.show("home"));
+        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+
+        // Admitting a main in the background is not an intent to see it;
+        // opening it as the main (open, then select) is.
+        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        m.open(main_s("third"));
+        assert!(m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(m.set_active_main("third"));
+        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+
+        // An aside intent leaves the maximize alone.
+        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        m.open(aside_s("notes", Edge::Right));
+        assert!(m.slot_maximized(crate::SlotKind::Lxapp));
+
+        // Nothing maximized: re-selecting the active main is not a change.
+        m.restore_maximized_slot();
+        let revision = m.switcher_snapshot().revision;
+        assert!(m.set_active_main("third"));
+        assert_eq!(m.switcher_snapshot().revision, revision);
+    }
+
+    #[test]
+    fn closing_the_active_main_restores_a_maximized_aside() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(main_s("other"));
+        m.set_active_main("other");
+        m.open(aside_s("assistant", Edge::Right));
+        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+
+        // Closing a background main is not a main switch.
+        m.open(main_s("third"));
+        m.close("third");
+        assert!(m.slot_maximized(crate::SlotKind::Lxapp));
+
+        // Closing the active main is: its successor shows under a docked aside.
+        m.close("other");
+        assert_eq!(m.graph().active_main_id.as_deref(), Some("home"));
+        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(!m.presentation_plan().aside_slots[0].overlay);
+    }
+
+    #[test]
+    fn a_maximize_nobody_sees_is_forgotten_without_claiming_a_restore() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(aside_s("assistant", Edge::Right));
+        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+
+        // Every child hidden: the slot is not presented, so there is no
+        // overlay on screen for a main intent to take down.
+        m.hide("assistant");
+        assert!(!m.presentation_plan().aside_slots[0].visible);
+        assert!(!m.restore_maximized_slot());
+        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+
+        // Shown again, the aside comes back docked.
+        m.show("assistant");
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert!(slot.visible && !slot.maximized && !slot.overlay);
+
+        // A maximize that is on screen reports the restore.
+        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+        assert!(m.restore_maximized_slot());
+    }
+
+    #[test]
+    fn an_aside_already_shown_as_an_overlay_cannot_be_maximized() {
+        // Compact: every visible aside is already an overlay over the main.
+        let mut m = SurfaceManager::new(390.0);
+        m.open(main_s("home"));
+        m.open(aside_s("assistant", Edge::Right));
+        assert!(m.presentation_plan().aside_slots[0].overlay);
+        assert!(!m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+
+        // Docked again, it can.
+        m.set_width(1200.0);
+        assert!(!m.presentation_plan().aside_slots[0].overlay);
+        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
     }
 
     #[test]

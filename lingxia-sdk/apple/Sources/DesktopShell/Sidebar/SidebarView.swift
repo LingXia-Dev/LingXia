@@ -778,7 +778,7 @@ class SidebarView: NSView {
     }
 
     private static func sidebarActionIcon(_ url: URL?, size: CGFloat) -> NSImage? {
-        guard let url, let image = NSImage(contentsOf: url) else { return nil }
+        guard let url, let image = TabBarHelper.chromeIconImage(contentsOf: url) else { return nil }
         return TabBarHelper.appKitIcon(image, path: url.path, size: size)
     }
 
@@ -834,6 +834,10 @@ class SidebarView: NSView {
     /// Called when user clicks an lxapp's name (group header): (appId) — switch
     /// the main to that lxapp even if it has no tabBar pages.
     var onAppSelected: ((String) -> Void)?
+    /// A click on the active group's header. Returns true when it was consumed
+    /// as an intent to see main (a maximized aside went back to its dock), so
+    /// the group does not also collapse.
+    var onActiveGroupHeaderClicked: (() -> Bool)?
     /// Called when user requests to close an app: (appId)
     var onAppCloseRequested: ((String) -> Void)?
     var onManagedMainContextMenuRequested: ((String, NSEvent, NSView) -> Bool)?
@@ -2171,7 +2175,7 @@ class SidebarView: NSView {
         guard let index = renderedPanelItems.firstIndex(where: { $0.id == panelId }),
               index < panelButtons.count,
               let url = URL(string: iconFileUrl),
-              let image = NSImage(contentsOf: url) else { return }
+              let image = TabBarHelper.chromeIconImage(contentsOf: url) else { return }
         panelButtons[index].setIcon(image, path: url.path)
         if let railButton = railButtons["sidebar-action:\(panelId)"] {
             let template = TabBarHelper.isTemplateIcon(url.path)
@@ -2373,6 +2377,9 @@ class SidebarView: NSView {
                 }
                 groupView.onAppSelected = { [weak self] appId in
                     self?.onAppSelected?(appId)
+                }
+                groupView.onActiveHeaderClicked = { [weak self] in
+                    self?.onActiveGroupHeaderClicked?() ?? false
                 }
                 groupView.onCloseRequested = { [weak self] appId in
                     self?.onAppCloseRequested?(appId)
@@ -3286,7 +3293,7 @@ final class SidebarActionRowView: NSView {
         accentView.isHidden = !self.active
         addSubview(accentView)
 
-        let icon = iconURL.flatMap { NSImage(contentsOf: $0) }
+        let icon = iconURL.flatMap { TabBarHelper.chromeIconImage(contentsOf: $0) }
             ?? systemImageName.flatMap {
                 NSImage(systemSymbolName: $0, accessibilityDescription: label)
             }

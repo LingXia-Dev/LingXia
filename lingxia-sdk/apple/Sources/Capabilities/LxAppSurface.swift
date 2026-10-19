@@ -422,7 +422,7 @@ enum LxAppSurface {
             )
         }
 
-        let contentContext = surfaceContext(kind: kind)
+        let contentContext = surfaceContext(kind: kind, appId: appId)
         // A bottom sheet only gains reach, not size: it is still measured
         // against the page's own frame, then its lower edge drops onto the
         // device screen so the card and its backdrop cover the tab bar.
@@ -999,6 +999,37 @@ enum LxAppSurface {
         }
     }
 
+    /// A URL aside's tab can be closed by the browser itself (its chrome,
+    /// `lxdev browser close`, the owner's handle). The surface that showed it
+    /// closes with the tab, so the layout does not keep an aside with nothing
+    /// in it. Called whenever the core's tab set changes. Mirrors the Windows
+    /// `close_windows_url_surface_for_browser_tab`.
+    static func closeSurfacesWhoseBrowserTabIsGone() {
+        // `browserTabIdsJson` is the shell strip's listing and leaves aside
+        // and standalone tabs out; ask the core per tab instead.
+        let tabExists: (String) -> Bool = { browserTabExists($0) }
+        var closing: [(id: String, appId: String)] = []
+        var seenBrowsers: [ObjectIdentifier] = []
+        for (id, entry) in entries {
+            // A standalone URL surface (window, float) holds its tab itself.
+            if let tabId = entry.browserTabId, !tabExists(tabId) {
+                closing.append((id, entry.appId))
+            }
+            // A docked aside's tabs belong to its DockedBrowser; ask it once.
+            if let browser = entry.dockedBrowser, !seenBrowsers.contains(ObjectIdentifier(browser)) {
+                seenBrowsers.append(ObjectIdentifier(browser))
+                for surfaceId in browser.surfaceIdsWhoseBrowserTabIsGone(tabExists: tabExists) {
+                    if let owner = entries[surfaceId] {
+                        closing.append((surfaceId, owner.appId))
+                    }
+                }
+            }
+        }
+        for (id, appId) in closing where entries[id] != nil {
+            _ = close(id: id, appId: appId, reason: "user")
+        }
+    }
+
     static func close(id: String, appId: String, reason: String) -> Bool {
         guard let entry = entries.removeValue(forKey: id) else {
             _ = onSurfaceClosed(appId, id, closeReason(reason))
@@ -1352,14 +1383,17 @@ enum LxAppSurface {
         )
     }
 
-    private static func surfaceContext(kind: Int32) -> SurfaceContext {
+    /// The frame a popup of `appId` is laid out against: the region that
+    /// lxapp occupies (its aside panel when it is an aside, else the main
+    /// content panel), so an aside's float stays over that aside.
+    private static func surfaceContext(kind: Int32, appId: String) -> SurfaceContext {
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
         guard kind != kindWindow else {
             return SurfaceContext(frame: screenFrame, anchorView: nil, parentWindow: nil)
         }
 
         if let shell = LxAppActiveHost.activeShell,
-           let context = contextFrame(for: shell.contentPanelView ?? shell.window?.contentView) {
+           let context = contextFrame(for: shell.presentationRegionView(for: appId)) {
             return context
         }
 

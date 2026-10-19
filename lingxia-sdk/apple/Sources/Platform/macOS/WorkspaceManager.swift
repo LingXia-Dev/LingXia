@@ -183,6 +183,14 @@ private class PanelSlot {
     var isVisible: Bool = false
     var currentSize: CGFloat
     var isFullscreen: Bool = false
+    /// A maximized aside covers the main but keeps reserving its docked room,
+    /// so the main card (and every page webview in it) keeps its real frame
+    /// underneath and restoring it relays out nothing in the main.
+    var keepsDockRoom: Bool = false
+
+    /// Whether the panel pushes the main card in (and takes room in its
+    /// edge's chain): docked, or maximized over a main that keeps its frame.
+    var occupiesDockRoom: Bool { !isFullscreen || keepsDockRoom }
 
     init(config: PanelConfig, cornerRadius: CGFloat) {
         self.config = config
@@ -261,6 +269,76 @@ private class PanelSlot {
     }
 }
 
+/// A collapsed aside slot that still holds content.
+struct CollapsedAsideHandle {
+    let kind: String
+    let position: PanelPosition
+    let title: String
+    /// An lxapp whose window graph owns the slot, for the restore call.
+    let graphAppId: String
+}
+
+/// The slim pill a collapsed aside leaves at its edge; clicking it brings
+/// the region back with everything in it.
+@MainActor
+final class CollapsedAsideHandleView: NSView {
+    var handle: CollapsedAsideHandle { didSet { applyLabel() } }
+    var onRestore: ((CollapsedAsideHandle) -> Void)?
+    private let pill = NSView()
+    private var hovering = false { didSet { applyColors() } }
+
+    init(handle: CollapsedAsideHandle) {
+        self.handle = handle
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        pill.translatesAutoresizingMaskIntoConstraints = false
+        pill.wantsLayer = true
+        pill.layer?.cornerRadius = 2
+        addSubview(pill)
+        NSLayoutConstraint.activate([
+            pill.centerXAnchor.constraint(equalTo: centerXAnchor),
+            pill.centerYAnchor.constraint(equalTo: centerYAnchor),
+            pill.widthAnchor.constraint(equalToConstant: 4),
+            pill.heightAnchor.constraint(equalTo: heightAnchor, constant: -8),
+        ])
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self
+        ))
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        applyLabel()
+        applyColors()
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    private func applyLabel() {
+        let label = "Show \(handle.title)"
+        toolTip = label
+        setAccessibilityLabel(label)
+    }
+
+    private func applyColors() {
+        pill.layer?.backgroundColor = (hovering ? LxAppHostTheme.accent : LxAppHostTheme.separator).cgColor
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyColors()
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseDown(with event: NSEvent) { onRestore?(handle) }
+    override func accessibilityPerformPress() -> Bool {
+        onRestore?(handle)
+        return true
+    }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+}
+
 // MARK: - WorkspaceManager
 
 /// Manages the content area (WebView card interior) and floating panel cards.
@@ -298,7 +376,16 @@ class WorkspaceManager: NSObject {
     private static let log = OSLog(subsystem: "LingXia", category: "Workspace")
     private static let animationDuration: TimeInterval = 0.22
     private static let cornerRadius: CGFloat = 10
-    private static let panelMinSize: CGFloat = 160
+    /// Spec §3.3 minimums: 240 for a left/right aside (the core admits a
+    /// docked slot only when 240 fits), 180 for a top/bottom one.
+    private static let sidePanelMinSize: CGFloat = 240
+    private static let edgePanelMinSize: CGFloat = 180
+    private static func panelMinSize(for position: PanelPosition) -> CGFloat {
+        switch position {
+        case .left, .right: return sidePanelMinSize
+        case .top, .bottom: return edgePanelMinSize
+        }
+    }
     /// Fallback cap used only before the window geometry is known; once laid
     /// out, a panel may grow until the main region hits its minimum.
     private static let panelFallbackMaxSize: CGFloat = 700
@@ -318,6 +405,7 @@ class WorkspaceManager: NSObject {
 
     private weak var overlayParent: NSView?
     private weak var sidebarRef: NSView?
+    private var collapsedHandleViews: [String: CollapsedAsideHandleView] = [:]
     private var padding: CGFloat = 6
 
     /// Called inside an animation block whenever panel state changes.
@@ -371,6 +459,12 @@ class WorkspaceManager: NSObject {
     }
 
     func isPanelRegistered(id: String) -> Bool { panels[id] != nil }
+
+    /// The view a visible panel presents its content in.
+    func panelContentView(id: String) -> NSView? {
+        guard let slot = panels[id], slot.isVisible else { return nil }
+        return slot.containerView
+    }
 
     /// Remove a panel provider after its surface has left the core graph.
     /// A destroyed provider must not remain in the registry because the layout
@@ -442,12 +536,16 @@ class WorkspaceManager: NSObject {
         activeId: String?,
         onSelect: @escaping (String) -> Void,
         onClose: @escaping (String) -> Void,
-        onCollapse: @escaping () -> Void
+        onCollapse: @escaping () -> Void,
+        maximized: Bool = false,
+        onToggleMaximize: (() -> Void)? = nil
     ) {
         guard let slot = panels[panelId] else { return }
         slot.slotTabStrip.onSelect = onSelect
         slot.slotTabStrip.onClose = onClose
         slot.slotTabStrip.onCollapse = onCollapse
+        slot.slotTabStrip.onToggleMaximize = onToggleMaximize
+        slot.slotTabStrip.setMaximized(maximized)
         slot.setSlotTabs(tabs, activeId: activeId)
     }
 
@@ -639,17 +737,63 @@ class WorkspaceManager: NSObject {
         panels.values.contains { $0.isVisible && $0.isFullscreen }
     }
 
-    func setPanelFullscreen(id: String, enabled: Bool) {
+    /// Edge handles of collapsed aside slots: a slim pill in the gap at the
+    /// slot's edge that brings the region back.
+    func setCollapsedAsideHandles(
+        _ handles: [CollapsedAsideHandle],
+        onRestore: @escaping (CollapsedAsideHandle) -> Void
+    ) {
+        guard let parent = overlayParent else { return }
+        let wanted = Dictionary(uniqueKeysWithValues: handles.map { ($0.kind, $0) })
+        for (kind, view) in collapsedHandleViews where wanted[kind]?.position != view.handle.position {
+            view.removeFromSuperview()
+            collapsedHandleViews[kind] = nil
+        }
+        for handle in handles {
+            if let view = collapsedHandleViews[handle.kind] {
+                view.handle = handle
+                view.onRestore = onRestore
+                continue
+            }
+            let view = CollapsedAsideHandleView(handle: handle)
+            view.onRestore = onRestore
+            parent.addSubview(view, positioned: .above, relativeTo: nil)
+            var constraints = [
+                view.widthAnchor.constraint(equalToConstant: max(padding, 6)),
+                view.heightAnchor.constraint(equalToConstant: 56),
+                view.centerYAnchor.constraint(equalTo: parent.centerYAnchor),
+            ]
+            if handle.position == .left, let sidebar = sidebarRef {
+                constraints.append(view.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor))
+            } else {
+                constraints.append(view.trailingAnchor.constraint(equalTo: parent.trailingAnchor))
+            }
+            NSLayoutConstraint.activate(constraints)
+            collapsedHandleViews[handle.kind] = view
+        }
+    }
+
+    /// Cover the main area with `id`'s panel, or dock it again.
+    ///
+    /// `keepsDockRoom` is for a user maximize: the main card keeps the frame it
+    /// has beside the docked panel, so nothing in the main relays out on either
+    /// edge of the maximize. Resizing a page webview the main has hidden (an
+    /// inactive tab) inside the animation can leave WebKit's content view at a
+    /// zero width, which shows as a black main when that page comes back. A
+    /// compact overlay never had a dock, so the main fills the area under it.
+    func setPanelFullscreen(id: String, enabled: Bool, keepsDockRoom: Bool = false) {
         guard let slot = panels[id] else {
             lxWorkspaceStdoutLog("setPanelFullscreen missing id=\(id)")
             return
         }
-        guard slot.isFullscreen != enabled else {
+        let keepsRoom = enabled && keepsDockRoom
+        guard slot.isFullscreen != enabled || slot.keepsDockRoom != keepsRoom else {
             lxWorkspaceStdoutLog("setPanelFullscreen no-op id=\(id) enabled=\(enabled)")
             return
         }
 
         slot.isFullscreen = enabled
+        slot.keepsDockRoom = keepsRoom
         slot.setFullscreenAppearance(enabled)
         lxWorkspaceStdoutLog("setPanelFullscreen id=\(id) enabled=\(enabled) visible=\(slot.isVisible)")
         if slot.config.position == .left || slot.config.position == .right {
@@ -820,8 +964,9 @@ class WorkspaceManager: NSObject {
 
     private func cardInset(for position: PanelPosition) -> CGFloat {
         let p = padding
-        // A fullscreen panel overlays the card instead of pushing it.
-        let slots = visibleSlots(at: position).filter { !$0.isFullscreen }
+        // A fullscreen panel overlays the card instead of pushing it, unless
+        // it is a maximize that keeps the main's frame (`keepsDockRoom`).
+        let slots = visibleSlots(at: position).filter(\.occupiesDockRoom)
         guard !slots.isEmpty else { return p }
         // Every visible panel on the edge pushes the card further in.
         return slots.reduce(p) { $0 + clampedPanelSize($1.currentSize, for: position, excluding: $1.config.id) + p }
@@ -835,7 +980,7 @@ class WorkspaceManager: NSObject {
     /// against the sidebar), and `padding + panels + padding` when some are, so
     /// the card shrinks to exactly clear them.
     private func cardLeadingInset() -> CGFloat {
-        let slots = visibleSlots(at: .left).filter { !$0.isFullscreen }
+        let slots = visibleSlots(at: .left).filter(\.occupiesDockRoom)
         guard !slots.isEmpty else { return 0 }
         return slots.reduce(padding) { $0 + clampedPanelSize($1.currentSize, for: .left, excluding: $1.config.id) + padding }
     }
@@ -848,8 +993,12 @@ class WorkspaceManager: NSObject {
         var offset: CGFloat = p
         for slot in visibleSlots(at: position) {
             // A fullscreen panel covers the pane (its dock constraints are
-            // swapped out) and consumes no chain room.
+            // swapped out); only a maximize that keeps the main's frame still
+            // holds its place in the chain.
             if slot.isFullscreen {
+                if slot.keepsDockRoom {
+                    offset += clampedPanelSize(slot.currentSize, for: position, excluding: slot.config.id) + p
+                }
                 continue
             }
             slot.edgeConstraint?.constant = position == .right ? -offset : offset
@@ -1030,7 +1179,8 @@ class WorkspaceManager: NSObject {
         for position: PanelPosition,
         excluding excludedId: String? = nil
     ) -> CGFloat {
-        let base = max(requested, Self.panelMinSize)
+        let minSize = Self.panelMinSize(for: position)
+        let base = max(requested, minSize)
         guard let parent = overlayParent else {
             return min(base, Self.panelFallbackMaxSize)
         }
@@ -1049,7 +1199,7 @@ class WorkspaceManager: NSObject {
             maxByWindow = parent.bounds.height - p * 3 - Self.minMainRegionHeight
         }
 
-        let result = min(base, max(Self.panelMinSize, maxByWindow))
+        let result = min(base, max(minSize, maxByWindow))
         lxWorkspaceStdoutLog(
             "clampPanel position=\(position.rawValue) requested=\(String(format: "%.1f", requested)) base=\(String(format: "%.1f", base)) maxByWindow=\(String(format: "%.1f", maxByWindow)) result=\(String(format: "%.1f", result)) parentBounds=\(lxWorkspaceFormatRect(parent.bounds))"
         )

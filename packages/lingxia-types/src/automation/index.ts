@@ -694,6 +694,10 @@ export interface SurfaceLayoutAsideSlot {
   activeChild?: string;
   visible: boolean;
   overlay: boolean;
+  /** The user collapsed the region; its children stay open. */
+  collapsed?: boolean;
+  /** The user maximized the region over the main (also `overlay`). */
+  maximized?: boolean;
 }
 
 export type SurfaceLayoutFloatAnchor =

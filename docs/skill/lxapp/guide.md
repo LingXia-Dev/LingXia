@@ -108,7 +108,7 @@ Order across `App` and `Page`, and what each navigation fires: [Lifecycle](./lif
 | `onLoad(options)` | Entering the page, with its query. |
 | `onShow()` | Becoming visible, on entry and every return. |
 | `onReady()` | The document finished rendering, after the first `onShow`. |
-| `onHide()` | Covered by another page, or the lxapp went to the background. |
+| `onHide()` | Covered by another page, the lxapp went to the background, or the desktop aside it is docked in was collapsed. |
 | `onUnload()` | Left the stack (`navigateBack`, `redirectTo`, a `switchTab` that drops it). |
 
 - **Leaving unloads.** Entering again starts a fresh instance: `data` is back
@@ -264,14 +264,14 @@ Read `useLxPage()` during component setup/render; pass its actions into helpers.
 ### Host facts
 
 ```ts
-const { sizeClass, aside, displayLanguage, formFactor, os, runner } = useLxHost();
+const { sizeClass, canDock, displayLanguage, formFactor, os, runner } = useLxHost();
 ```
 
 `getHost()` / `subscribeHost(cb)` in `@lingxia/html`;
 `window.LingXiaBridge.host.get()` / `.subscribe(cb)` in a page that bundles
 nothing. It never changes while a window is dragged.
 
-- `sizeClass` (`compact` | `regular`) and `aside` — how much room:
+- `sizeClass` (`compact` | `regular`) and `canDock` — how much room:
   [Adaptive UI](./adaptive-ui.md).
 - `formFactor` (`mobile` | `desktop`) — which machine. Branch on it for what a
   phone must not show. A narrow desktop window is `desktop`; a tablet or

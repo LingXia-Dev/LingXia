@@ -42,6 +42,8 @@ import AppKit
 enum LxAppLayoutReconciler {
     private static let log = OSLog(subsystem: "LingXia", category: "LayoutReconciler")
     private static var lastRevisionByWindow: [String: UInt64] = [:]
+    /// The last committed plan sequence applied per window.
+    private static var lastSequenceByWindow: [String: UInt64] = [:]
     /// One-shot explicit lxapp activation intent (`lx` API / switcher). A
     /// presented browser tab covers the lxapp main across unrelated layout
     /// commits (resize, aside changes); only this intent may replace it.
@@ -80,6 +82,7 @@ enum LxAppLayoutReconciler {
     /// reconciler acts on `asides` for now, but decodes the complete contract so
     /// any future skin binding has the full typed view.
     private struct LayoutPresentationPlan: Decodable {
+        let sequence: UInt64?
         let sizeClass: String
         let bottomOwner: String
         let switcherForm: String
@@ -121,6 +124,11 @@ enum LxAppLayoutReconciler {
         let activeChild: String?
         let visible: Bool
         let overlay: Bool
+        /// The user maximized the slot over the main. The core also sets
+        /// `overlay`, so placement below needs nothing else; the state lives
+        /// in the core and survives every later plan.
+        let maximized: Bool?
+        let collapsed: Bool?
     }
 
     private struct PlanFloat: Decodable {
@@ -155,6 +163,16 @@ enum LxAppLayoutReconciler {
               let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) else {
             LXLog.error("presentLayout: failed to parse layout json \(label)", category: "LayoutReconciler")
             return false
+        }
+        // Plans hop to the main queue, so one committed earlier from another
+        // thread can land after a newer one committed on the main thread (a
+        // maximize right after an aside opened). Applying it would put the
+        // slot back in its docked state. The core stamps every commit; drop
+        // a plan older than the last one applied.
+        if let sequence = plan.sequence, sequence > 0 {
+            let last = lastSequenceByWindow[windowId] ?? 0
+            if sequence < last { return true }
+            lastSequenceByWindow[windowId] = sequence
         }
         if let revision = plan.mainSwitcher?.revision {
             let last = lastRevisionByWindow[windowId] ?? 0
@@ -192,6 +210,13 @@ enum LxAppLayoutReconciler {
         // registered-but-hidden and switch via the slot's header tab strip.
         var desired: [String: PanelPosition] = [:]
         var overlayIds = Set<String>()
+        // Overlays the user maximized: they keep their docked room so the main
+        // keeps its frame underneath (see `setPanelFullscreen`).
+        var maximizedIds = Set<String>()
+        // A compact window has no dock to keep: there the main fills the area.
+        let keepsDockRoom = { (slot: PlanAsideSlot) in
+            slot.maximized == true && plan.splitForm != "fullScreen"
+        }
         if slots.isEmpty {
             if plan.splitForm != "fullScreen" {
                 for aside in plan.asides {
@@ -212,12 +237,14 @@ enum LxAppLayoutReconciler {
                     if projectedOverlay,
                        let anchor = shell.browserCoordinator.activeDockedBrowser?.anchorSurfaceId {
                         overlayIds.insert(anchor)
+                        if keepsDockRoom(slot) { maximizedIds.insert(anchor) }
                     }
                     continue
                 }
                 guard let active = slot.activeChild ?? slot.children.last else { continue }
                 desired[active] = panelPosition(for: slot.edge)
                 if projectedOverlay { overlayIds.insert(active) }
+                if projectedOverlay && keepsDockRoom(slot) { maximizedIds.insert(active) }
             }
         }
         let desiredIds = Set(desired.keys)
@@ -257,7 +284,10 @@ enum LxAppLayoutReconciler {
 
             let atCorrectEdge = workspace.panelPosition(id: id) == edge
             let visible = workspace.isPanelVisible(id: id)
-            workspace.setPanelFullscreen(id: id, enabled: overlayIds.contains(id))
+            workspace.setPanelFullscreen(
+                id: id,
+                enabled: overlayIds.contains(id),
+                keepsDockRoom: maximizedIds.contains(id))
 
             // Idempotent fast path: already shown at the right edge — leave it
             // exactly as is (no hide/show/re-place → no flicker, no empty paint).
@@ -285,8 +315,16 @@ enum LxAppLayoutReconciler {
         // (the next plan swaps the visible child); closing destroys that child;
         // collapsing puts the region away with every child still open. The strip
         // remains visible for a single child as its close affordance.
+        let previousSlots = lastAsideSlots
         lastAsideSlots = slots
         applyLxappSlotTabs(slots, shell: shell, workspace: workspace)
+        applyBrowserSlotMaximize(slots, shell: shell)
+        applyCollapsedHandles(slots, shell: shell, workspace: workspace)
+        applyMaximizeFocus(from: previousSlots, to: slots, shell: shell)
+        for slot in slots where slot.visible && slot.kind == "native" {
+            guard let active = slot.activeChild ?? slot.children.last else { continue }
+            LxAppMacAppUIRuntime.reflectAsideMaximized(surfaceId: active, maximized: slot.maximized == true)
+        }
 
         // Float pass — popups above the layout. The reconciler is the single
         // authority for float visibility, mirroring the aside pass above: the
@@ -328,6 +366,23 @@ enum LxAppLayoutReconciler {
         LxAppMacAppUIRuntime.refreshSurfaceSwitcherProjection()
 
         return true
+    }
+
+    /// The lxapp the lxapp aside slot shows, from the last plan; nil when the
+    /// slot is absent, collapsed or not admitted.
+    static func activeLxappAsideId() -> String? {
+        guard let slot = lastAsideSlots.first(where: { $0.kind == "lxapp" && $0.visible }) else {
+            return nil
+        }
+        return slot.activeChild ?? slot.children.last
+    }
+
+    /// Any lxapp the lxapp aside slot holds, shown or not. A live lxapp
+    /// reaches the window's graph, which is what a collapsed slot's keyboard
+    /// restore needs when no lxapp main is attached.
+    static func lxappAsideChildId() -> String? {
+        guard let slot = lastAsideSlots.first(where: { $0.kind == "lxapp" }) else { return nil }
+        return slot.activeChild ?? slot.children.last
     }
 
     /// Re-bind visible lxapp aside tabs from the last plan, resolving names
@@ -377,8 +432,90 @@ enum LxAppLayoutReconciler {
                 },
                 onCollapse: {
                     _ = collapseAsideSlot(focusAppId, "lxapp")
+                },
+                maximized: slot.maximized == true,
+                // A compact overlay already covers the main: nothing to toggle.
+                onToggleMaximize: slot.overlay && slot.maximized != true ? nil : {
+                    _ = setAsideSlotMaximized(focusAppId, "lxapp", slot.maximized != true)
                 }
             )
+        }
+    }
+
+    /// Focus follows a maximize, whichever way it was asked for (the control,
+    /// Escape, a sidebar intent, Logic): into the covering page, back to the
+    /// main page on restore. The terminal slot moves focus with its own zoom.
+    private static func applyMaximizeFocus(
+        from previous: [PlanAsideSlot],
+        to slots: [PlanAsideSlot],
+        shell: LxAppShell
+    ) {
+        let shown = { (slot: PlanAsideSlot) in slot.visible && slot.maximized == true }
+        for kind in ["lxapp", "browser"] {
+            let was = previous.first(where: { $0.kind == kind }).map(shown) ?? false
+            let now = slots.first(where: { $0.kind == kind })
+            let isNow = now.map(shown) ?? false
+            guard was != isNow else { continue }
+            var panelId = now.flatMap { $0.activeChild ?? $0.children.last }
+            if kind == "browser" {
+                panelId = shell.browserCoordinator.activeDockedBrowser?.anchorSurfaceId
+            }
+            shell.asideSlotMaximizeDidChange(maximized: isNow, panelId: panelId)
+        }
+    }
+
+    /// The browser slot's Maximize control, on the docked browser's own bar
+    /// (its tabs are its own, not a slot strip). The same core state and
+    /// rules as the lxapp slot: none on a compact overlay.
+    private static func applyBrowserSlotMaximize(_ slots: [PlanAsideSlot], shell: LxAppShell) {
+        guard let docked = shell.browserCoordinator.activeDockedBrowser else { return }
+        guard let slot = slots.first(where: { $0.kind == "browser" && $0.visible }) else {
+            docked.setMaximized(false)
+            docked.onToggleMaximize = nil
+            return
+        }
+        let maximized = slot.maximized == true
+        docked.setMaximized(maximized)
+        // Any live lxapp reaches the window's graph.
+        guard let graphAppId = shell.attachedMainAppId
+            ?? LxAppTabManager.shared.activeTab?.appId
+            ?? lxappAsideChildId(), !(slot.overlay && !maximized) else {
+            docked.onToggleMaximize = nil
+            return
+        }
+        docked.onToggleMaximize = {
+            _ = setAsideSlotMaximized(graphAppId, "browser", !maximized)
+        }
+    }
+
+    /// A collapsed slot that still holds content keeps a handle at its edge,
+    /// so the region can come back without the app opening it again.
+    private static func applyCollapsedHandles(
+        _ slots: [PlanAsideSlot],
+        shell: LxAppShell,
+        workspace: WorkspaceManager
+    ) {
+        let handles = slots.compactMap { slot -> CollapsedAsideHandle? in
+            guard slot.collapsed == true, !slot.children.isEmpty,
+                  slot.kind == "lxapp" || slot.kind == "browser" else { return nil }
+            let position = panelPosition(for: slot.edge)
+            guard position == .left || position == .right else { return nil }
+            // Any live lxapp reaches the window's graph; an lxapp child is one.
+            var title = "Browser"
+            var graphAppId = shell.attachedMainAppId
+                ?? LxAppTabManager.shared.activeTab?.appId
+                ?? lxappAsideChildId()
+                ?? ""
+            if slot.kind == "lxapp", let child = slot.activeChild ?? slot.children.last {
+                let name = getLxAppInfo(child).app_name.toString()
+                title = name.isEmpty ? child : name
+                graphAppId = child
+            }
+            return CollapsedAsideHandle(
+                kind: slot.kind, position: position, title: title, graphAppId: graphAppId)
+        }
+        workspace.setCollapsedAsideHandles(handles) { handle in
+            _ = restoreAsideSlot(handle.graphAppId, handle.kind)
         }
     }
 

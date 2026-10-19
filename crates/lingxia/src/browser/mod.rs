@@ -62,7 +62,7 @@ pub(crate) use runtime::{
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) use runtime::{clear_active, discard, reactivate};
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-pub(crate) use runtime::{download, navigate, update_tab};
+pub(crate) use runtime::{download, navigate, tab_exists, update_tab};
 pub(crate) use runtime::{open_aside_for_app, tab_is_aside};
 #[cfg(any(target_os = "ios", target_os = "macos", target_env = "ohos"))]
 pub(crate) use shell::should_hide_url;

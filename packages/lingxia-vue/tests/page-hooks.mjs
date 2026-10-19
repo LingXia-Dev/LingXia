@@ -7,7 +7,7 @@ globalThis.window = {
     os: 'Android',
     hostClass: 'mobile',
     displayLanguage: 'en-US',
-    surfaceContext: { sizeClass: 'compact', width: 390, height: 844, aside: false },
+    surfaceContext: { sizeClass: 'compact', width: 390, height: 844, canDock: false },
     surfaceContextRevision: 1,
   },
   LingXiaBridge: {
@@ -58,9 +58,9 @@ assert.equal('title' in data, false, 'a key Logic dropped is dropped');
 const host = useLxHost();
 assert.equal(host.sizeClass, 'compact');
 assert.equal(host.formFactor, 'mobile');
-window.__lingxiaApplySurfaceContext({ sizeClass: 'regular', width: 900, height: 700, aside: true }, 2);
+window.__lingxiaApplySurfaceContext({ sizeClass: 'regular', width: 900, height: 700, canDock: true }, 2);
 assert.equal(host.sizeClass, 'regular');
-assert.equal(host.aside, true);
+assert.equal(host.canDock, true);
 window.__lingxiaApplyDisplayLanguage('zh-CN');
 assert.equal(host.displayLanguage, 'zh-CN');
 const warn = console.warn;

@@ -410,6 +410,23 @@ mod bridge {
         #[swift_bridge(swift_name = "collapseAsideSlot")]
         fn collapse_aside_slot(appid: &str, kind: &str) -> bool;
 
+        // Keyboard toggle: collapse an occupied slot, restore a collapsed one.
+        // Returns 0 when the slot holds nothing, 1 collapsed, 2 restored.
+        #[swift_bridge(swift_name = "toggleAsideSlotCollapsed")]
+        fn toggle_aside_slot_collapsed(appid: &str, kind: &str) -> i32;
+
+        // Bring a collapsed aside slot back (its edge handle).
+        #[swift_bridge(swift_name = "restoreAsideSlot")]
+        fn restore_aside_slot(appid: &str, kind: &str) -> bool;
+
+        // Maximize an aside slot over the main area, or restore it. The core
+        // owns the state, so later plans keep it; the role never changes.
+        #[swift_bridge(swift_name = "setAsideSlotMaximized")]
+        fn set_aside_slot_maximized(appid: &str, kind: &str, maximized: bool) -> bool;
+
+        #[swift_bridge(swift_name = "isAsideSlotMaximized")]
+        fn is_aside_slot_maximized(appid: &str, kind: &str) -> bool;
+
         // Runtime sidebar action clicks hand off to the home Logic's registered
         // callback. The callback owns any resulting surface operation.
         #[swift_bridge(swift_name = "shellActivate")]
@@ -510,6 +527,11 @@ mod bridge {
 
         #[swift_bridge(swift_name = "browserTabIdsJson")]
         fn browser_tab_ids_json() -> String;
+
+        // Whether the core still has the tab, aside and standalone tabs
+        // included: a surface hosting a tab closes once the tab is gone.
+        #[swift_bridge(swift_name = "browserTabExists")]
+        fn browser_tab_exists(tab_id: &str) -> bool;
 
         #[swift_bridge(swift_name = "browserCurrentTabId")]
         fn browser_current_tab_id() -> String;
@@ -1318,6 +1340,12 @@ pub fn browser_tab_is_aside(tab_id: &str) -> bool {
     })
 }
 
+pub fn browser_tab_exists(tab_id: &str) -> bool {
+    ffi_catch_unwind!("browser_tab_exists", false, || {
+        crate::browser::tab_exists(tab_id)
+    })
+}
+
 pub fn browser_tab_ids_json() -> String {
     ffi_catch_unwind!("browser_tab_ids_json", "[]".to_string(), || {
         #[cfg(feature = "browser-runtime")]
@@ -1792,6 +1820,34 @@ pub fn collapse_aside_slot(appid: &str, kind: &str) -> bool {
         } else {
             false
         }
+    })
+}
+
+pub fn toggle_aside_slot_collapsed(appid: &str, kind: &str) -> i32 {
+    ffi_catch_unwind!("toggle_aside_slot_collapsed", 0, || {
+        match lxapp::try_get(appid).and_then(|lxapp| lxapp.toggle_shell_slot_collapsed(kind)) {
+            None => 0,
+            Some(true) => 1,
+            Some(false) => 2,
+        }
+    })
+}
+
+pub fn restore_aside_slot(appid: &str, kind: &str) -> bool {
+    ffi_catch_unwind!("restore_aside_slot", false, || {
+        lxapp::try_get(appid).is_some_and(|lxapp| lxapp.set_shell_slot_collapsed(kind, false))
+    })
+}
+
+pub fn set_aside_slot_maximized(appid: &str, kind: &str, maximized: bool) -> bool {
+    ffi_catch_unwind!("set_aside_slot_maximized", false, || {
+        lxapp::try_get(appid).is_some_and(|lxapp| lxapp.set_shell_slot_maximized(kind, maximized))
+    })
+}
+
+pub fn is_aside_slot_maximized(appid: &str, kind: &str) -> bool {
+    ffi_catch_unwind!("is_aside_slot_maximized", false, || {
+        lxapp::try_get(appid).is_some_and(|lxapp| lxapp.shell_slot_maximized(kind))
     })
 }
 

@@ -199,7 +199,7 @@ App({
   },
 
   globalData: {
-    lifecycle: { launches: 0, shows: 0, hides: 0, last: "" },
+    lifecycle: { launches: 0, shows: 0, hides: 0, last: "", pageHides: 0, pageShows: 0 },
     greeting: "This is from App's globalData.data",
     ipAddr: "loading",
   },

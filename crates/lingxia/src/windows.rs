@@ -190,7 +190,16 @@ fn install_url_surface_bridge() {
             path: url.clone(),
             session_id: request.owner_session_id,
             cleanup: None,
+            browser_tab_id: None,
         })
+    }));
+    // A URL aside's tab can be closed by the browser (its chrome, `lxdev
+    // browser close`, the owner's handle): the surface it was shown in
+    // closes with it, so the layout does not keep an aside with nothing in
+    // it. Mirrors `LxAppSurface.closeSurfacesWhoseBrowserTabIsGone` on macOS.
+    #[cfg(feature = "browser-runtime")]
+    lingxia_browser::set_tab_closed_handler(Arc::new(|tab_id| {
+        let _ = lingxia_platform::close_windows_url_surface_for_browser_tab(tab_id);
     }));
 }
 
@@ -245,6 +254,7 @@ fn resolve_url_surface_as_browser_tab(
         cleanup: Some(Arc::new(move || {
             let _ = crate::browser::close(&close_tab_id);
         })),
+        browser_tab_id: Some(tab_id),
     })
 }
 

@@ -440,7 +440,8 @@ impl WindowsWebViewNativeViewHost for PlatformNativeViewHost {
         if let Some(host) = window_handle_for_key(webtag.key()).map(|window| unsafe {
             WindowsAndMessaging::GetAncestor(window, WindowsAndMessaging::GA_ROOT)
         }) && !host.0.is_null()
-            && sidebar_peek::handle_key_deferred(host, virtual_key)
+            && (sidebar_peek::handle_aside_key_deferred(host, virtual_key, webtag.key())
+                || sidebar_peek::handle_key_deferred(host, virtual_key))
         {
             return true;
         }
@@ -580,6 +581,35 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
         position: u8,
     ) -> StdResult<()> {
         present_webview_as_overlay(webtag, width, height, width_ratio, height_ratio, position)
+    }
+
+    fn present_webview_as_overlay_anchored(
+        &self,
+        webtag: &WebTag,
+        width: f64,
+        height: f64,
+        width_ratio: f64,
+        height_ratio: f64,
+        position: u8,
+        anchor: Option<&WebTag>,
+    ) -> StdResult<()> {
+        present_webview_as_overlay_anchored(
+            webtag,
+            width,
+            height,
+            width_ratio,
+            height_ratio,
+            position,
+            anchor.map(|anchor| anchor.key().to_string()),
+        )
+    }
+
+    fn focus_webview_content(&self, webtag: &WebTag) {
+        focus_webview_content(webtag.key());
+    }
+
+    fn focus_active_main_webview(&self) {
+        focus_active_main_webview();
     }
 
     fn configure_webview_surface_interaction(
@@ -855,10 +885,11 @@ fn show_webview_as_attached_panel(
             .and_then(|panels| panels.lock().ok())
             .and_then(|panels| {
                 panels.get(panel_id).map(|panel| {
-                    panel.webtag_key == webtag.key()
-                        && panel.position == position
-                        && panel.requested_size == preferred_size
-                        && panel.overlay == overlay
+                    // Overlay or docked, and the requested size, may differ:
+                    // a maximize and its restore re-present the same panel,
+                    // and the layout pass below moves it without a hide/show
+                    // blink.
+                    panel.webtag_key == webtag.key() && panel.position == position
                 })
             })
             .unwrap_or(false);
@@ -1180,6 +1211,32 @@ pub fn present_webview_as_overlay(
     height_ratio: f64,
     position: u8,
 ) -> StdResult<()> {
+    present_webview_as_overlay_anchored(
+        webtag,
+        width,
+        height,
+        width_ratio,
+        height_ratio,
+        position,
+        None,
+    )
+}
+
+/// A float an aside lxapp opens anchors to that aside: `anchor` is the key of
+/// the aside page's WebView, and the float is placed against the region that
+/// page is shown in (the panel below its chrome) while it is docked. With no
+/// anchor, or when the anchor is not laid out, the main content is the
+/// reference, as before.
+#[allow(clippy::too_many_arguments)]
+pub fn present_webview_as_overlay_anchored(
+    webtag: &WebTag,
+    width: f64,
+    height: f64,
+    width_ratio: f64,
+    height_ratio: f64,
+    position: u8,
+    anchor_webtag_key: Option<String>,
+) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
     let hwnd = hwnd_from_handle(handler.native_view().window);
     // Own the overlay by the active host window so it tracks the host on
@@ -1205,6 +1262,7 @@ pub fn present_webview_as_overlay(
                 width_ratio,
                 height_ratio,
                 position,
+                anchor_webtag_key: anchor_webtag_key.clone(),
             },
         );
     }
@@ -1222,7 +1280,7 @@ pub fn present_webview_as_overlay(
         }
     }
     let bounds = owner
-        .and_then(overlay_reference_rect_for_host)
+        .and_then(|owner| overlay_reference_rect_for_float(owner, anchor_webtag_key.as_deref()))
         .unwrap_or_else(|| overlay_reference_rect(hwnd));
     let scale = window_css_scale(owner.unwrap_or(hwnd));
     let rect = overlay_rect(
@@ -1398,13 +1456,15 @@ fn corner_row_inset(radius: i32, edge_row: i32) -> i32 {
     (radius - horizontal - 0.5).ceil().max(0.0) as i32
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct FloatingOverlayLayout {
     width: f64,
     height: f64,
     width_ratio: f64,
     height_ratio: f64,
     position: u8,
+    /// The aside page this float anchors to, if it was opened from one.
+    anchor_webtag_key: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -1684,10 +1744,6 @@ fn sync_floating_overlays(owner: HWND) {
         .and_then(|floats| floats.lock().ok())
         .and_then(|floats| floats.get(&hwnd_handle(owner)).cloned())
         .unwrap_or_default();
-    let Some(bounds) = overlay_reference_rect_for_host(owner) else {
-        return;
-    };
-
     for overlay in overlays {
         if !webtag_is_visible(&overlay.webtag_key) {
             continue;
@@ -1699,6 +1755,11 @@ fn sync_floating_overlays(owner: HWND) {
             continue;
         }
         let layout = overlay.layout;
+        let Some(bounds) =
+            overlay_reference_rect_for_float(owner, layout.anchor_webtag_key.as_deref())
+        else {
+            continue;
+        };
         let rect = overlay_rect(
             bounds,
             layout.width,
@@ -2368,6 +2429,50 @@ fn overlay_reference_rect(hwnd: HWND) -> RECT {
     }
 }
 
+/// The reference rect of a float: the aside panel region `anchor` is shown
+/// in, while that aside is laid out in `host`; the main content otherwise.
+fn overlay_reference_rect_for_float(host: HWND, anchor_webtag_key: Option<&str>) -> Option<RECT> {
+    anchor_webtag_key
+        .and_then(|anchor| overlay_reference_rect_for_panel(host, anchor))
+        .or_else(|| overlay_reference_rect_for_host(host))
+}
+
+/// Screen rect of the webview area of the attached panel showing `webtag_key`,
+/// if that panel is laid out in `host` with room for a float.
+fn overlay_reference_rect_for_panel(host: HWND, webtag_key: &str) -> Option<RECT> {
+    let host_key = active_webtag_key_for_window(host)?;
+    let mut client = RECT::default();
+    unsafe { WindowsAndMessaging::GetClientRect(host, &mut client) }.ok()?;
+    let attached = attached_layout_for_window(host, &host_key, client)?;
+    let panel = attached
+        .panels
+        .iter()
+        .find(|panel| panel.webtag_key == webtag_key)?;
+    let mut rect = panel.rect;
+    rect.top = panel_webview_top(&panel.panel_id, panel.rect, panel.header_rect);
+    let rect = normalize_rect(rect);
+    if rect.right - rect.left <= 2 * overlay_margin()
+        || rect.bottom - rect.top <= 2 * overlay_margin()
+    {
+        return None;
+    }
+    let mut origin = POINT {
+        x: rect.left,
+        y: rect.top,
+    };
+    unsafe {
+        if !windows::Win32::Graphics::Gdi::ClientToScreen(host, &mut origin).as_bool() {
+            return None;
+        }
+    }
+    Some(RECT {
+        left: origin.x,
+        top: origin.y,
+        right: origin.x + (rect.right - rect.left),
+        bottom: origin.y + (rect.bottom - rect.top),
+    })
+}
+
 fn overlay_reference_rect_for_host(host: HWND) -> Option<RECT> {
     let host_key = active_webtag_key_for_window(host)?;
     let client = content_rect_for_window(host, &host_key);
@@ -2876,12 +2981,10 @@ fn content_rect_for_window(hwnd: HWND, webtag_key: &str) -> RECT {
             .iter()
             .find(|panel| panel.webtag_key == webtag_key)
         {
-            // The browser aside's toolbar occupies the panel's top row; the
-            // webview fills the rest.
+            // The aside's toolbar (and an lxapp aside's navigation bar)
+            // occupy the panel's top rows; the webview fills the rest.
             let mut rect = panel.rect;
-            if let Some(header) = panel.header_rect {
-                rect.top = header.bottom.clamp(rect.top, rect.bottom);
-            }
+            rect.top = panel_webview_top(&panel.panel_id, panel.rect, panel.header_rect);
             return normalize_rect(rect);
         }
     }
@@ -3074,6 +3177,11 @@ fn sync_window_layout(hwnd: HWND) {
     }
     let mut native_panel_takes_focus = focused_input_host_panel().is_some();
     let mut overlay_webtags = Vec::new();
+    // WebViews a maximized docked slot covers. They keep their frame and stay
+    // visible to the lifecycle (nothing fires for the main or the covered
+    // asides, as on macOS); only the controller is hidden under the overlay.
+    let mut covered_webtags = HashSet::new();
+    let mut docked_maximize = false;
     if let Some(attached) = attached_layout_for_window(hwnd, &webtag_key, client) {
         let mut laid_out_panels = HashSet::new();
         for panel in attached
@@ -3086,6 +3194,25 @@ fn sync_window_layout(hwnd: HWND) {
             sync_webtag_content_bounds(hwnd, &panel.webtag_key);
             if panel_is_overlay(&panel.panel_id) {
                 overlay_webtags.push(panel.webtag_key.clone());
+                docked_maximize |= lingxia_windows_contract::aside_panel_maximized(&panel.panel_id);
+            }
+        }
+        // A maximized slot covers the other docked slots as well as the main.
+        // Their WebViews are hidden under it for the same reason the main's
+        // is below: sibling z-order is not something WebView2 guarantees. A
+        // compact overlay replaces them (lifecycle hide); a docked maximize
+        // only covers them.
+        if !overlay_webtags.is_empty() {
+            for panel in attached
+                .panels
+                .iter()
+                .filter(|panel| !panel.webtag_key.is_empty() && !panel_is_overlay(&panel.panel_id))
+            {
+                if docked_maximize {
+                    covered_webtags.insert(panel.webtag_key.clone());
+                } else {
+                    visible_webtags.remove(&panel.webtag_key);
+                }
             }
         }
         if attached_has_maximized_native_panel(&attached) {
@@ -3101,8 +3228,12 @@ fn sync_window_layout(hwnd: HWND) {
     // visibility reconciliation.
     if overlay_webtags.is_empty() {
         visible_webtags.insert(webtag_key.clone());
+    } else if docked_maximize {
+        // The main keeps its frame and its lifecycle under a maximized slot.
+        visible_webtags.insert(webtag_key.clone());
+        covered_webtags.insert(webtag_key.clone());
     }
-    reconcile_host_webview_visibility(hwnd, &visible_webtags);
+    reconcile_host_webview_visibility(hwnd, &visible_webtags, &covered_webtags);
     for overlay_webtag in overlay_webtags {
         if let Some(webtag) = webtag_for_key(&overlay_webtag)
             && let Some(handler) = find_webview_handler(&webtag)
@@ -3114,7 +3245,9 @@ fn sync_window_layout(hwnd: HWND) {
     #[cfg(feature = "device-frame")]
     crate::device_frame::set_device_frame_overlays_visible(
         hwnd_handle(hwnd),
-        visible_webtags.contains(&webtag_key) && !native_panel_takes_focus,
+        visible_webtags.contains(&webtag_key)
+            && !covered_webtags.contains(&webtag_key)
+            && !native_panel_takes_focus,
     );
     #[cfg(not(feature = "device-frame"))]
     let _ = native_panel_takes_focus;
@@ -5077,7 +5210,51 @@ fn collapse_obscured_webview_panels(hwnd: HWND, laid_out: &HashSet<String>) {
     }
 }
 
-fn reconcile_host_webview_visibility(hwnd: HWND, visible_webtags: &HashSet<String>) {
+/// WebViews whose controller is hidden only because a maximized docked slot
+/// covers them. Their lifecycle visibility stays `true`: the page is still
+/// shown, under the overlay, and comes back with its frame untouched.
+static COVERED_WEBTAGS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+fn webtag_is_covered(webtag_key: &str) -> bool {
+    COVERED_WEBTAGS
+        .get()
+        .and_then(|covered| covered.lock().ok())
+        .is_some_and(|covered| covered.contains(webtag_key))
+}
+
+fn set_webtag_covered(webtag_key: &str, covered: bool) {
+    let registry = COVERED_WEBTAGS.get_or_init(|| Mutex::new(HashSet::new()));
+    if let Ok(mut registry) = registry.lock() {
+        if covered {
+            registry.insert(webtag_key.to_string());
+        } else {
+            registry.remove(webtag_key);
+        }
+    }
+}
+
+/// Whether the WebView's content is on screen: visible to the lifecycle and
+/// not covered by a maximized slot.
+pub(crate) fn webtag_content_is_shown(webtag_key: &str) -> bool {
+    webtag_is_visible(webtag_key) && !webtag_is_covered(webtag_key)
+}
+
+/// One WebView's visibility step: what its controller and its lifecycle
+/// should become, and whether the controller is currently shown.
+struct WebtagVisibilityStep {
+    key: String,
+    handler: WindowsWebViewHandler,
+    lifecycle_visible: bool,
+    covered: bool,
+    content_visible: bool,
+    content_was_visible: bool,
+}
+
+fn reconcile_host_webview_visibility(
+    hwnd: HWND,
+    visible_webtags: &HashSet<String>,
+    covered_webtags: &HashSet<String>,
+) {
     let host = hwnd_handle(hwnd);
     // A transiently invisible host (frame-style churn during a present, or a
     // minimize) must not strip its webviews: nothing is on screen anyway, and
@@ -5100,11 +5277,29 @@ fn reconcile_host_webview_visibility(hwnd: HWND, visible_webtags: &HashSet<Strin
         let Some(handler) = find_webview_handler(&webtag) else {
             continue;
         };
-        let should_show = visible_webtags.contains(&key);
-        match (should_show, webtag_is_visible(&key)) {
-            (true, false) => to_show.push((key, handler)),
-            (false, true) => to_hide.push((key, handler)),
-            _ => {}
+        let lifecycle_visible = visible_webtags.contains(&key);
+        let covered = lifecycle_visible && covered_webtags.contains(&key);
+        let content_visible = lifecycle_visible && !covered;
+        let was_covered = webtag_is_covered(&key);
+        let content_was_visible = webtag_is_visible(&key) && !was_covered;
+        if lifecycle_visible == webtag_is_visible(&key)
+            && covered == was_covered
+            && content_visible == content_was_visible
+        {
+            continue;
+        }
+        let step = WebtagVisibilityStep {
+            key,
+            handler,
+            lifecycle_visible,
+            covered,
+            content_visible,
+            content_was_visible,
+        };
+        if content_visible && !content_was_visible {
+            to_show.push(step);
+        } else {
+            to_hide.push(step);
         }
     }
 
@@ -5112,29 +5307,36 @@ fn reconcile_host_webview_visibility(hwnd: HWND, visible_webtags: &HashSet<Strin
     // controllers. Retire outgoing content first: a short shell-background
     // frame is preferable to leaking stale page pixels through the incoming
     // controller's rounded edges or letting the outgoing HWND intercept input.
-    for (key, handler) in to_hide {
-        hide_reconciled_webview(&key, &handler);
-    }
-    for (key, handler) in to_show {
-        show_reconciled_webview(&key, &handler);
+    for step in to_hide.into_iter().chain(to_show) {
+        apply_reconciled_visibility(step);
     }
 }
 
-fn show_reconciled_webview(key: &str, handler: &WindowsWebViewHandler) {
-    if let Err(err) = handler.set_content_visible(true) {
-        log::debug!("failed to show Windows WebView during visibility reconcile for {key}: {err}");
-        return;
+fn apply_reconciled_visibility(step: WebtagVisibilityStep) {
+    let WebtagVisibilityStep {
+        key,
+        handler,
+        lifecycle_visible,
+        covered,
+        content_visible,
+        content_was_visible,
+    } = step;
+    if content_visible != content_was_visible {
+        if let Err(err) = handler.set_content_visible(content_visible) {
+            log::debug!(
+                "failed to {} Windows WebView during visibility reconcile for {key}: {err}",
+                if content_visible { "show" } else { "hide" }
+            );
+            return;
+        }
+        if content_visible {
+            let _ = handler.notify_parent_position_changed();
+        }
     }
-    let _ = handler.notify_parent_position_changed();
-    notify_webtag_visibility(key, true);
-}
-
-fn hide_reconciled_webview(key: &str, handler: &WindowsWebViewHandler) {
-    if let Err(err) = handler.set_content_visible(false) {
-        log::debug!("failed to hide Windows WebView during visibility reconcile for {key}: {err}");
-        return;
-    }
-    notify_webtag_visibility(key, false);
+    set_webtag_covered(&key, covered);
+    // A covered WebView keeps its lifecycle visibility: nothing fires while a
+    // maximized slot is over it, and nothing fires when the slot restores.
+    notify_webtag_visibility(&key, lifecycle_visible);
 }
 
 fn webtag_content_bounds_changed(webtag_key: &str, bounds: ContentBounds) -> bool {
@@ -5190,7 +5392,9 @@ fn attached_layout_for_window(
     let renderer = windows_chrome_renderer()?;
     let layout = current_window_layout(active_webtag_key);
     let panels = visible_panel_layout_inputs();
-    if panels.is_empty() {
+    // A collapsed aside with nothing else docked still has its restore handle
+    // to lay out: the main gives up that strip.
+    if panels.is_empty() && lingxia_windows_contract::collapsed_aside_panels().is_empty() {
         return None;
     }
     renderer
@@ -5265,7 +5469,11 @@ fn visible_panel_layout_inputs() -> Vec<WindowsChromePanelLayoutInput> {
                     requested_size: panel.requested_size,
                     docked: panel.docked,
                     overlay: panel.overlay,
-                    maximized: panel.maximized,
+                    // The core's slot maximize is mirrored per panel id; an
+                    // overlay flagged so is a docked slot covering the main.
+                    maximized: panel.maximized
+                        || (panel.overlay
+                            && lingxia_windows_contract::aside_panel_maximized(panel_id)),
                 });
             }
         }
@@ -5430,16 +5638,67 @@ fn exclude_host_webview_content_from_paint(hdc: HDC, hwnd: HWND, webtag_key: &st
     for panel in &attached.panels {
         // Native (chrome-drawn) panels have no webview; a not-yet-visible
         // webview panel still wants its placeholder card painted.
-        if !panel.webtag_key.is_empty() && webtag_is_visible(&panel.webtag_key) {
-            // The browser aside's toolbar row is chrome; only the webview
-            // area below it leaves the paint clip.
+        if !panel.webtag_key.is_empty() && webtag_content_is_shown(&panel.webtag_key) {
+            // The aside's toolbar and navigation rows are chrome; only the
+            // webview area below them leaves the paint clip.
             let mut rect = panel.rect;
-            if let Some(header) = panel.header_rect {
-                rect.top = header.bottom.clamp(rect.top, rect.bottom);
-            }
+            rect.top = panel_webview_top(&panel.panel_id, panel.rect, panel.header_rect);
             exclude_clip_rect_if_non_empty(hdc, rect);
         }
     }
+}
+
+/// Height of an lxapp aside's navigation bar, matching the main navbar.
+pub(crate) fn aside_panel_navigation_height() -> i32 {
+    crate::dpi::px(38)
+}
+
+/// The navigation bar row of an lxapp aside: directly under the slot
+/// header, while the page its active child shows wants one.
+pub(crate) fn aside_panel_navigation_rect(
+    panel_id: &str,
+    rect: RECT,
+    header: Option<RECT>,
+) -> Option<RECT> {
+    let header = header?;
+    lingxia_windows_contract::aside_panel_navigation(panel_id)?;
+    Some(normalize_rect(RECT {
+        left: header.left,
+        top: header.bottom,
+        right: header.right,
+        bottom: (header.bottom + aside_panel_navigation_height()).min(rect.bottom),
+    }))
+}
+
+/// Height of an lxapp aside's segmented tabBar row.
+pub(crate) fn aside_panel_tabbar_height() -> i32 {
+    crate::dpi::px(28)
+}
+
+/// The tabBar row of an lxapp aside: under its navigation bar (or its header
+/// when the bar takes no height), while its page is a tab page.
+pub(crate) fn aside_panel_tabbar_rect(
+    panel_id: &str,
+    rect: RECT,
+    header: Option<RECT>,
+) -> Option<RECT> {
+    let above = aside_panel_navigation_rect(panel_id, rect, header).or(header)?;
+    lingxia_windows_contract::aside_panel_tabbar(panel_id)?;
+    Some(normalize_rect(RECT {
+        left: above.left,
+        top: above.bottom,
+        right: above.right,
+        bottom: (above.bottom + aside_panel_tabbar_height()).min(rect.bottom),
+    }))
+}
+
+/// Top edge of a panel's webview: below its header, navigation and tabBar rows.
+pub(crate) fn panel_webview_top(panel_id: &str, rect: RECT, header: Option<RECT>) -> i32 {
+    aside_panel_tabbar_rect(panel_id, rect, header)
+        .or_else(|| aside_panel_navigation_rect(panel_id, rect, header))
+        .map(|row| row.bottom)
+        .or(header.map(|header| header.bottom))
+        .map_or(rect.top, |top| top.clamp(rect.top, rect.bottom))
 }
 
 fn exclude_clip_rect_if_non_empty(hdc: HDC, rect: RECT) {
@@ -5760,7 +6019,7 @@ fn flush_active_host_layout_batch() {
     }
 }
 
-fn sync_active_host_layout() {
+pub(crate) fn sync_active_host_layout() {
     let deferred = HOST_LAYOUT_BATCH_DEPTH.with(|depth| {
         if depth.get() == 0 {
             false
@@ -6056,6 +6315,52 @@ fn panel_is_docked(panel_id: &str) -> bool {
         .and_then(|panels| panels.lock().ok())
         .and_then(|panels| panels.get(panel_id).map(|panel| panel.docked))
         .unwrap_or(false)
+}
+
+/// Move keyboard focus into the content of the WebView `webtag_key`, once its
+/// window's thread gets to it (after the layout pass that shows it).
+pub(crate) fn focus_webview_content(webtag_key: &str) {
+    let Some(window) = window_handle_for_key(webtag_key) else {
+        return;
+    };
+    let key = webtag_key.to_string();
+    let _ = post_to_window_thread(
+        hwnd_handle(window),
+        Box::new(move || {
+            if !webtag_content_is_shown(&key) {
+                return;
+            }
+            if let Some(webtag) = webtag_for_key(&key)
+                && let Some(handler) = find_webview_handler(&webtag)
+                && let Err(err) = handler.move_focus()
+            {
+                log::debug!("failed to focus Windows WebView {key}: {err}");
+            }
+        }),
+    );
+}
+
+/// Move keyboard focus into the active host window's main page.
+pub(crate) fn focus_active_main_webview() {
+    if let Some(hwnd) = active_host_window()
+        && let Some(key) = active_webtag_key_for_window(hwnd)
+    {
+        focus_webview_content(&key);
+    }
+}
+
+/// Whether `webtag_key` is the page shown by a maximized aside slot.
+pub(crate) fn webtag_is_maximized_aside(webtag_key: &str) -> bool {
+    WEBVIEW_PANELS
+        .get()
+        .and_then(|panels| panels.lock().ok())
+        .is_some_and(|panels| {
+            panels.iter().any(|(panel_id, panel)| {
+                panel.webtag_key == webtag_key
+                    && panel.overlay
+                    && lingxia_windows_contract::aside_panel_maximized(panel_id)
+            })
+        })
 }
 
 fn panel_is_overlay(panel_id: &str) -> bool {
@@ -8198,6 +8503,8 @@ pub fn webview_window_snapshot(webtag: &WebTag) -> StdResult<WindowsWebViewWindo
         webtag_key: webtag.key().to_string(),
         visible: webtag_is_visible(webtag.key())
             && unsafe { WindowsAndMessaging::IsWindowVisible(hwnd).as_bool() },
+        on_screen: webtag_content_is_shown(webtag.key())
+            && unsafe { WindowsAndMessaging::IsWindowVisible(hwnd).as_bool() },
         window_left: window.left,
         window_top: window.top,
         window_width: (window.right - window.left).max(0),
@@ -10059,9 +10366,31 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     }
                     return LRESULT(0);
                 }
+                // With focus in the shell's own chrome (or a native panel),
+                // Ctrl+Alt+\ and Escape still reach the aside slot. After the
+                // peek: an open peek closes before a maximized aside restores.
+                #[cfg(feature = "shell-chrome")]
+                if sidebar_peek::handle_aside_key(hwnd, wparam.0 as u32, lparam.0 & (1 << 30) != 0)
+                {
+                    if wparam.0 == usize::from(VK_ESCAPE.0) {
+                        suppress_next_escape_char(hwnd);
+                    }
+                    return LRESULT(0);
+                }
                 #[cfg(feature = "shell-chrome")]
                 clear_suppressed_escape_char(hwnd);
                 if handle_host_panel_key_message(msg, wparam) {
+                    return LRESULT(0);
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            // Alt is down for Ctrl+Alt+\, so the shell sees it as a system
+            // key when its own chrome has focus; the WebView path above sees
+            // the same chord through the accelerator callback.
+            WindowsAndMessaging::WM_SYSKEYDOWN => {
+                #[cfg(feature = "shell-chrome")]
+                if sidebar_peek::handle_aside_key(hwnd, wparam.0 as u32, lparam.0 & (1 << 30) != 0)
+                {
                     return LRESULT(0);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }

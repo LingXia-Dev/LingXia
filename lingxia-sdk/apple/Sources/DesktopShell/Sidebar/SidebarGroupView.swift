@@ -220,6 +220,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
     /// Fired when the group header (the lxapp's name) is clicked — switches the
     /// main to this lxapp, so an lxapp with no tabBar items is still switchable.
     var onAppSelected: ((String) -> Void)?
+    var onActiveHeaderClicked: (() -> Bool)?
     var onCloseRequested: ((String) -> Void)?
     var onManagedContextMenuRequested: ((String, NSEvent, NSView) -> Bool)?
     var onManagedRenameCommitted: ((String, String) -> Void)?
@@ -323,6 +324,8 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             // small chevron. A DIFFERENT app's header switches to it; SidebarView
             // then collapses every other group (Windows accordion).
             if self.isActiveGroup && !self.itemViews.isEmpty {
+                // Over a maximized aside the click means "show me main".
+                if self.onActiveHeaderClicked?() == true { return }
                 self.toggleExpanded()
             } else {
                 self.onAppSelected?(self.appId)
@@ -735,8 +738,15 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             return
         }
         pendingReveal = false
-        let userCollapsed = LxAppShellPersistence.groupCollapsed(appId: providerAppId) ?? false
-        setExpanded(!userCollapsed, persist: false)
+        // Switching the main reveals the incoming group (shell-ui-spec §4.3
+        // accordion; Windows resets `items_collapsed` the same way). A stored
+        // user collapse only applies while the group stays active: honoring
+        // it here left the root's tabs folded away on every return, so a
+        // single header click hid them for good. Clear it with the reveal.
+        if LxAppShellPersistence.groupCollapsed(appId: providerAppId) == true {
+            LxAppShellPersistence.setGroupCollapsed(false, appId: providerAppId)
+        }
+        setExpanded(true, persist: false)
     }
 
     /// Switcher / API driven: no height animation, so the sidebar settles in

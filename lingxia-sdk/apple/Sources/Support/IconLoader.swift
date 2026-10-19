@@ -191,7 +191,7 @@ enum LxIcon {
         guard !path.isEmpty else { return nil }
         let key = "\(path)|\(TabBarHelper.fileStamp(path))"
         if let cached = lxappImageCache[key] { return cached }
-        guard let image = NSImage(contentsOfFile: path) else { return nil }
+        guard let image = TabBarHelper.chromeIconImage(contentsOfFile: path) else { return nil }
         lxappImageCache[key] = image
         return image
     }
@@ -258,7 +258,7 @@ enum LxIcon {
     /// Lxapp More-action artwork for `NSMenuItem`: 16pt, template when the
     /// source is an SVG so it tints with the menu instead of sitting oversized.
     static func menuImage(fromPath path: String) -> NSImage? {
-        guard !path.isEmpty, let source = NSImage(contentsOfFile: path) else {
+        guard !path.isEmpty, let source = TabBarHelper.chromeIconImage(contentsOfFile: path) else {
             return nil
         }
         return TabBarHelper.appKitIcon(source, path: path, size: 16)

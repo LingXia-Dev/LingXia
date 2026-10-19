@@ -167,21 +167,53 @@ class LxAppWindow: NSWindow {
             return true
         }
 
-        // Backspace (keyCode 51) for back navigation
-        if event.keyCode == 51 && event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [] {
-            // Don't intercept if typing in a native text field
-            if let responder = firstResponder, responder is NSText {
-                return super.performKeyEquivalent(with: event)
-            }
-            // Only navigate back when back button is available
-            if let state = NavigationBarStateManager.shared.currentState, state.show_back_button {
-                if let appId = LxAppTabManager.shared.activeTab?.appId {
-                    let _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionBack)
-                    return true
-                }
-            }
+        // Cmd+Option+\ collapses the lxapp aside or brings it back.
+        if modifiers == [.command, .option], event.charactersIgnoringModifiers == "\\" || event.keyCode == 42,
+           let controller = windowController as? LxAppShell,
+           controller.toggleLxappAsideFromKeyboard() {
+            return true
         }
+
         return super.performKeyEquivalent(with: event)
+    }
+
+    /// Backspace that no view consumed is Back for the main. It arrives here
+    /// from native chrome (the sidebar, a toolbar): a page WebView gets the
+    /// key first, and its view controller takes an unhandled one before the
+    /// chain reaches the window (see `macOSLxAppViewController.keyDown`), so
+    /// typing into a web text field never reaches this. The window toolbar
+    /// state belongs to the main.
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 51,
+           event.modifierFlags.intersection([.shift, .control, .option, .command]).isEmpty,
+           !(firstResponder is NSText),
+           asideLxAppController(containing: firstResponder) == nil,
+           Self.navigateMainBackFromKeyboard() {
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    /// Keyboard Back for the main page: pops its stack when its page offers
+    /// Back. Returns whether it navigated.
+    static func navigateMainBackFromKeyboard() -> Bool {
+        guard let state = NavigationBarStateManager.shared.currentState, state.show_back_button,
+              let appId = LxAppTabManager.shared.activeTab?.appId else { return false }
+        _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionBack)
+        return true
+    }
+
+    /// The aside lxapp controller whose view holds `responder`, found through
+    /// the responder chain (a view controller follows its view in it).
+    private func asideLxAppController(containing responder: NSResponder?) -> macOSLxAppViewController? {
+        var current = responder
+        while let next = current {
+            if let controller = next as? macOSLxAppViewController {
+                return controller.hostsAside ? controller : nil
+            }
+            current = next.nextResponder
+        }
+        return nil
     }
 }
 

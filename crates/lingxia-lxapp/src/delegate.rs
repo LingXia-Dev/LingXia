@@ -181,7 +181,11 @@ impl LxAppDelegate for LxApp {
                     }
                 });
             }
-            let _ = self.push_to_page_stack(&page);
+            if self.push_to_page_stack(&page).is_ok() {
+                // Launch does not go through navigate_to, which is the other
+                // place a non-initial root is offered Home.
+                page.apply_stack_navigation_chrome(&self);
+            }
             // The landing page is the first entry. Handshake used to auto-boot
             // onLoad for every Idle page, which also fired it on preloaded
             // tabs the user had never opened.
@@ -228,7 +232,9 @@ impl LxAppDelegate for LxApp {
                 .clone()
                 .unwrap_or_else(|| self.state.lock().unwrap().startup_options.query.clone());
             page.set_query(query);
-            let _ = self.push_to_page_stack(&page);
+            if self.push_to_page_stack(&page).is_ok() {
+                page.apply_stack_navigation_chrome(&self);
+            }
             // Entering the page is what starts it. Without this the instance
             // sits `unstarted` behind an attached but empty WebView — onLoad
             // is allowed to repeat for a re-navigation carrying new params.

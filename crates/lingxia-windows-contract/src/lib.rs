@@ -9,7 +9,7 @@
 #![cfg(windows)]
 
 use std::any::Any;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use lingxia_webview::{WebTag, WebViewError};
@@ -38,6 +38,13 @@ static WINDOWS_CHROME_RENDERER: OnceLock<Mutex<Option<Arc<dyn WindowsChromeRende
     OnceLock::new();
 static ASIDE_PANEL_TABS: OnceLock<Mutex<HashMap<String, Vec<WindowsAsidePanelTab>>>> =
     OnceLock::new();
+static ASIDE_PANEL_NAVIGATION: OnceLock<Mutex<HashMap<String, WindowsAsidePanelNavigation>>> =
+    OnceLock::new();
+static ASIDE_PANEL_TABBARS: OnceLock<Mutex<HashMap<String, WindowsAsidePanelTabBar>>> =
+    OnceLock::new();
+static ASIDE_PANEL_COLLAPSED: OnceLock<Mutex<HashMap<String, WindowsPanelPosition>>> =
+    OnceLock::new();
+static ASIDE_PANEL_MAXIMIZED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 static ASIDE_PANEL_EVENT_HANDLER: OnceLock<Mutex<Option<WindowsAsidePanelEventHandler>>> =
     OnceLock::new();
 
@@ -47,6 +54,28 @@ pub struct WindowsAsidePanelTab {
     pub surface_id: String,
     pub title: String,
     pub active: bool,
+}
+
+/// The navigation bar an lxapp aside slot shows under its tab strip, for the
+/// page its active child shows. Absent when that page needs none.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsAsidePanelNavigation {
+    pub title: String,
+    /// 0xRRGGBB.
+    pub background_color: u32,
+    /// 0xRRGGBB.
+    pub text_color: u32,
+    pub show_back_button: bool,
+    pub show_home_button: bool,
+}
+
+/// The tabBar of the lxapp an aside slot shows, drawn as a segmented row
+/// under its navigation bar: asides never enter the sidebar.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsAsidePanelTabBar {
+    /// `(index in lxapp.json, label)` of each item this host shows.
+    pub items: Vec<(i32, String)>,
+    pub selected_index: i32,
 }
 
 /// Chrome events from a docked aside slot, routed back to the owner of the
@@ -64,6 +93,23 @@ pub enum WindowsAsidePanelEvent {
     /// Put the whole slot away without closing anything in it.
     Collapse {
         panel_id: String,
+    },
+    /// Cover the main area with the slot, or restore it. The role is unchanged.
+    ToggleMaximize {
+        panel_id: String,
+    },
+    /// The collapsed slot's edge handle: bring the region back.
+    Restore {
+        panel_id: String,
+    },
+    /// The lxapp slot's navigation bar Home button.
+    NavHome {
+        panel_id: String,
+    },
+    /// A segment of the lxapp slot's tabBar row, by its `lxapp.json` index.
+    TabBarClick {
+        panel_id: String,
+        index: i32,
     },
     NavBack {
         panel_id: String,
@@ -102,6 +148,101 @@ pub fn aside_panel_tabs(panel_id: &str) -> Vec<WindowsAsidePanelTab> {
         .and_then(|registry| registry.lock().ok())
         .and_then(|registry| registry.get(panel_id).cloned())
         .unwrap_or_default()
+}
+
+/// Publishes the navigation bar of an lxapp aside panel; `None` removes it.
+/// Returns whether anything changed, so callers re-layout only then.
+pub fn set_aside_panel_navigation(
+    panel_id: &str,
+    navigation: Option<WindowsAsidePanelNavigation>,
+) -> bool {
+    let registry = ASIDE_PANEL_NAVIGATION.get_or_init(|| Mutex::new(HashMap::new()));
+    let Ok(mut registry) = registry.lock() else {
+        return false;
+    };
+    match navigation {
+        Some(navigation) => {
+            registry.insert(panel_id.to_string(), navigation.clone()) != Some(navigation)
+        }
+        None => registry.remove(panel_id).is_some(),
+    }
+}
+
+/// Publishes the tabBar row of an lxapp aside panel; `None` removes it.
+/// Returns whether anything changed.
+pub fn set_aside_panel_tabbar(panel_id: &str, tabbar: Option<WindowsAsidePanelTabBar>) -> bool {
+    let registry = ASIDE_PANEL_TABBARS.get_or_init(|| Mutex::new(HashMap::new()));
+    let Ok(mut registry) = registry.lock() else {
+        return false;
+    };
+    match tabbar {
+        Some(tabbar) => registry.insert(panel_id.to_string(), tabbar.clone()) != Some(tabbar),
+        None => registry.remove(panel_id).is_some(),
+    }
+}
+
+pub fn aside_panel_tabbar(panel_id: &str) -> Option<WindowsAsidePanelTabBar> {
+    ASIDE_PANEL_TABBARS
+        .get()
+        .and_then(|registry| registry.lock().ok())
+        .and_then(|registry| registry.get(panel_id).cloned())
+}
+
+pub fn aside_panel_navigation(panel_id: &str) -> Option<WindowsAsidePanelNavigation> {
+    ASIDE_PANEL_NAVIGATION
+        .get()
+        .and_then(|registry| registry.lock().ok())
+        .and_then(|registry| registry.get(panel_id).cloned())
+}
+
+/// Mirrors the core's slot maximize onto the aside panel id, so its strip
+/// draws the restore glyph.
+pub fn set_aside_panel_maximized(panel_id: &str, maximized: bool) {
+    let registry = ASIDE_PANEL_MAXIMIZED.get_or_init(|| Mutex::new(HashSet::new()));
+    if let Ok(mut registry) = registry.lock() {
+        if maximized {
+            registry.insert(panel_id.to_string());
+        } else {
+            registry.remove(panel_id);
+        }
+    }
+}
+
+/// Records that an aside slot is collapsed with content still in it, at
+/// `edge`, so the shell keeps a handle there to bring it back; `None` clears
+/// it. Returns whether anything changed.
+pub fn set_aside_panel_collapsed(panel_id: &str, edge: Option<WindowsPanelPosition>) -> bool {
+    let registry = ASIDE_PANEL_COLLAPSED.get_or_init(|| Mutex::new(HashMap::new()));
+    let Ok(mut registry) = registry.lock() else {
+        return false;
+    };
+    match edge {
+        Some(edge) => registry.insert(panel_id.to_string(), edge) != Some(edge),
+        None => registry.remove(panel_id).is_some(),
+    }
+}
+
+/// Collapsed aside slots with content, by panel id, in a stable order.
+pub fn collapsed_aside_panels() -> Vec<(String, WindowsPanelPosition)> {
+    let mut out: Vec<_> = ASIDE_PANEL_COLLAPSED
+        .get()
+        .and_then(|registry| registry.lock().ok())
+        .map(|registry| {
+            registry
+                .iter()
+                .map(|(id, edge)| (id.clone(), *edge))
+                .collect()
+        })
+        .unwrap_or_default();
+    out.sort_by(|left, right| left.0.cmp(&right.0));
+    out
+}
+
+pub fn aside_panel_maximized(panel_id: &str) -> bool {
+    ASIDE_PANEL_MAXIMIZED
+        .get()
+        .and_then(|registry| registry.lock().ok())
+        .is_some_and(|registry| registry.contains(panel_id))
 }
 
 pub fn set_windows_aside_panel_event_handler(handler: WindowsAsidePanelEventHandler) {
@@ -196,6 +337,27 @@ pub trait WindowsHostBackend: Send + Sync {
     ) -> StdResult<()> {
         unsupported_operation("present_webview_as_overlay")
     }
+
+    /// Like `present_webview_as_overlay`, placed against the region `anchor`
+    /// is shown in (an aside panel) instead of the main content.
+    fn present_webview_as_overlay_anchored(
+        &self,
+        webtag: &WebTag,
+        width: f64,
+        height: f64,
+        width_ratio: f64,
+        height_ratio: f64,
+        position: u8,
+        _anchor: Option<&WebTag>,
+    ) -> StdResult<()> {
+        self.present_webview_as_overlay(webtag, width, height, width_ratio, height_ratio, position)
+    }
+
+    /// Move keyboard focus into a shown WebView's content.
+    fn focus_webview_content(&self, _webtag: &WebTag) {}
+
+    /// Move keyboard focus into the active host window's main page.
+    fn focus_active_main_webview(&self) {}
 
     fn configure_webview_surface_interaction(
         &self,
@@ -404,6 +566,10 @@ pub struct WindowsWebViewWindowSnapshot {
     pub window_id: usize,
     pub webtag_key: String,
     pub visible: bool,
+    /// The controller is painted. False when a maximized slot covers this
+    /// WebView: the page stays lifecycle-visible, but a screenshot must not
+    /// paste its CapturePreview over the overlay.
+    pub on_screen: bool,
     pub window_left: i32,
     pub window_top: i32,
     pub window_width: i32,
@@ -911,6 +1077,41 @@ pub fn active_host_window_webtag_key() -> Option<String> {
 
 pub fn present_webview_as_group_main(webtag: &WebTag, group_key: String) -> StdResult<()> {
     backend()?.present_webview_as_group_main(webtag, group_key)
+}
+
+/// A float placed against the aside `anchor` is shown in, when it is; the
+/// main content otherwise.
+#[allow(clippy::too_many_arguments)]
+pub fn present_webview_as_overlay_anchored(
+    webtag: &WebTag,
+    width: f64,
+    height: f64,
+    width_ratio: f64,
+    height_ratio: f64,
+    position: u8,
+    anchor: Option<&WebTag>,
+) -> StdResult<()> {
+    backend()?.present_webview_as_overlay_anchored(
+        webtag,
+        width,
+        height,
+        width_ratio,
+        height_ratio,
+        position,
+        anchor,
+    )
+}
+
+pub fn focus_webview_content(webtag: &WebTag) {
+    if let Ok(backend) = backend() {
+        backend.focus_webview_content(webtag);
+    }
+}
+
+pub fn focus_active_main_webview() {
+    if let Ok(backend) = backend() {
+        backend.focus_active_main_webview();
+    }
 }
 
 pub fn present_webview_as_overlay(

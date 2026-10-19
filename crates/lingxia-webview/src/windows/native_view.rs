@@ -208,6 +208,11 @@ impl WindowsWebViewHandler {
         self.webview.inner.bring_content_to_front()
     }
 
+    /// Move keyboard focus into the WebView's content.
+    pub fn move_focus(&self) -> StdResult<()> {
+        self.webview.inner.move_focus()
+    }
+
     pub fn set_parent_window(&self, window: isize) -> StdResult<()> {
         self.webview.inner.set_parent_window(window)
     }

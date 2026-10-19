@@ -229,6 +229,9 @@ pub(crate) enum UiCommand {
         visible: bool,
         resp: Sender<StdResult<()>>,
     },
+    MoveFocus {
+        resp: Sender<StdResult<()>>,
+    },
     /// Keep an overlapping surface above sibling WebView controllers hosted
     /// by the same parent window.
     BringContentToFront {
@@ -581,6 +584,12 @@ impl WebViewInner {
 
     pub(crate) fn bring_content_to_front(&self) -> StdResult<()> {
         self.dispatch_command_same_thread_safe(|resp| UiCommand::BringContentToFront { resp })
+    }
+
+    /// Give the WebView keyboard focus (`MoveFocus`, programmatic), so the
+    /// page receives key events without a click into it.
+    pub(crate) fn move_focus(&self) -> StdResult<()> {
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::MoveFocus { resp })
     }
 
     pub(crate) fn set_parent_window(&self, window: isize) -> StdResult<()> {
@@ -1836,6 +1845,23 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
         }
         UiCommand::BringContentToFront { resp } => {
             let result = bring_controller_content_to_front(state);
+            let _ = resp.send(result);
+        }
+        UiCommand::MoveFocus { resp } => {
+            // A hidden controller refuses MoveFocus (E_INVALIDARG). Focus
+            // follows a layout the controller may not have reached yet; a
+            // controller that is not shown simply keeps focus where it is.
+            let result = unsafe {
+                let mut visible = windows::core::BOOL::default();
+                match state.controller.IsVisible(&mut visible) {
+                    Ok(()) if !visible.as_bool() => Ok(()),
+                    Ok(()) => state
+                        .controller
+                        .MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC)
+                        .map_err(|err| WebViewError::WebView(format!("MoveFocus failed: {err}"))),
+                    Err(err) => Err(WebViewError::WebView(format!("IsVisible failed: {err}"))),
+                }
+            };
             let _ = resp.send(result);
         }
         UiCommand::SetParentWindow { window, resp } => {

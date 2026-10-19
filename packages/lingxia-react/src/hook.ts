@@ -56,7 +56,7 @@ export function useLxPage<
 }
 
 /**
- * What the host decided for this page: `sizeClass`, `aside`,
+ * What the host decided for this page: `sizeClass`, `canDock`,
  * `displayLanguage`, `formFactor`, `os`, `runner`. Re-renders only when one
  * of them changes — never while a window is dragged. Geometry is CSS:
  * `--lx-page-chrome-*` and container queries.

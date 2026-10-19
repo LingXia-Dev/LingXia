@@ -292,6 +292,22 @@ pub struct PlanAsideSlot {
     /// or focuses a child again.
     #[serde(default)]
     pub collapsed: bool,
+    /// The user maximized this slot over the main (spec §4.6). The role is
+    /// unchanged; skins present it exactly like `overlay`, which is also set.
+    #[serde(default)]
+    pub maximized: bool,
+}
+
+impl LayoutPresentationPlan {
+    /// Whether a skin that last applied the plan with `last_applied` should
+    /// apply this one. Commits are applied in sequence order: a plan is never
+    /// dropped in favour of an *older* commit, so the plan that first carries
+    /// a newly opened surface is applied, and only a plan that lost the race
+    /// to a newer commit is dropped. A plan without a sequence (built for a
+    /// query, or from an older core) is always applied.
+    pub fn supersedes(&self, last_applied: u64) -> bool {
+        self.sequence == 0 || self.sequence >= last_applied
+    }
 }
 
 /// One float in the [`LayoutPresentationPlan`]: the surface id plus the
@@ -321,6 +337,13 @@ pub struct PlanFloat {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LayoutPresentationPlan {
+    /// Commit order, from [`crate::SurfaceManager::commit_plan`]: strictly
+    /// increasing per manager. A skin that applies plans off the committing
+    /// thread (a main-queue hop) uses it to drop a plan that arrives after a
+    /// newer one, which would otherwise undo the newer state (a maximize, a
+    /// collapse). `0` is a plan built for a query, never presented.
+    #[serde(default)]
+    pub sequence: u64,
     pub size_class: SizeClass,
     pub bottom_owner: BottomOwner,
     pub switcher_form: SwitcherForm,

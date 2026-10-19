@@ -291,8 +291,13 @@ pub(super) fn attached_panel_bottom_height() -> i32 {
     crate::dpi::px(280)
 }
 
-pub(super) fn attached_panel_min_size() -> i32 {
-    crate::dpi::px(160)
+/// Spec §3.3 minimums: 240 DIP for a left/right aside (the core admits a
+/// docked slot only when 240 fits), 180 DIP for a top/bottom one.
+pub(super) fn attached_panel_min_size(position: WindowsPanelPosition) -> i32 {
+    match position {
+        WindowsPanelPosition::Left | WindowsPanelPosition::Right => crate::dpi::px(240),
+        WindowsPanelPosition::Top | WindowsPanelPosition::Bottom => crate::dpi::px(180),
+    }
 }
 
 pub(super) fn attached_panel_max_size() -> i32 {
@@ -332,7 +337,12 @@ pub(super) mod command_id {
     pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
     pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
     pub(super) const ASIDE_PANEL_COLLAPSE: &str = "aside-panel.collapse";
+    pub(super) const ASIDE_PANEL_MAXIMIZE: &str = "aside-panel.maximize";
     pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
+    pub(super) const ASIDE_PANEL_NAV_HOME: &str = "aside-panel.nav.home";
+    pub(super) const ASIDE_PANEL_RESTORE: &str = "aside-panel.restore";
+    pub(super) const ASIDE_PANEL_TABBAR_CLICK: &str = "aside-panel.tabbar.click";
+    pub(super) const ASIDE_PANEL_TABBAR_MENU: &str = "aside-panel.tabbar.menu";
     pub(super) const ASIDE_PANEL_NAV_FORWARD: &str = "aside-panel.nav.forward";
     pub(super) const ASIDE_PANEL_NAV_RELOAD: &str = "aside-panel.nav.reload";
     pub(super) const NATIVE_PANEL_TAB_CLICK: &str = "native-panel.tab.click";
@@ -648,17 +658,36 @@ fn chrome_hover_rect(
     // Aside browser toolbar: nav cluster, tab strip (titles + closes), and
     // close-all light up on hover like the top-bar buttons.
     if let Some(attached) = &state.attached {
-        for panel in &attached.panels {
+        if let Some((_, rect)) = collapsed_aside_handle_rects(attached.main_region)
+            .into_iter()
+            .find(|(_, rect)| rect_contains(rect, point))
+        {
+            return Some(rect);
+        }
+        // Overlays are laid out last and drawn on top: hover tests them first,
+        // as `browser_panel_hit_test` does.
+        for panel in attached.panels.iter().rev() {
             if panel.host_content.is_some()
                 && let Some(rect) =
                     super::terminal_panel::pane_hover_rect(&panel.panel_id, point.0, point.1)
             {
                 return Some(rect);
             }
+            if let Some(rect) = aside_panel_navigation_hover_rect(panel, point) {
+                return Some(rect);
+            }
+            if let Some(rect) = aside_panel_tabbar_hover_rect(panel, point) {
+                return Some(rect);
+            }
             if !browser_panel_header_visible(panel)
                 || !rect_contains(&browser_panel_header_rect(panel), point)
             {
                 continue;
+            }
+            if let Some(rect) = aside_panel_maximize_rect(panel)
+                && rect_contains(&rect, point)
+            {
+                return Some(rect);
             }
             for (_, rect) in aside_panel_nav_button_rects(panel) {
                 if rect_contains(&rect, point) {
@@ -1919,12 +1948,16 @@ fn compute_attached_layout(
     layout: &WindowsShellWindowLayout,
     panels: &[WindowsChromePanelLayoutInput],
 ) -> WindowsChromeAttachedLayout {
+    // A docked slot the user maximized (`overlay && maximized`) keeps the
+    // main's chrome and its docked room below: the main keeps its frame under
+    // the overlay, like on macOS, so a restore relays out nothing in it. A
+    // compact overlay never had a dock and still lets the main fill the area.
     let covered_layout = if panels
         .iter()
         .any(|panel| !panel.overlay && panel.docked && panel.maximized)
     {
         Some(layout_for_maximized_native_panel(layout))
-    } else if panels.iter().any(|panel| panel.overlay) {
+    } else if panels.iter().any(|panel| panel.overlay && !panel.maximized) {
         Some(layout_without_covered_main_chrome(layout))
     } else {
         None
@@ -1958,7 +1991,7 @@ fn compute_attached_layout(
     }
 
     for panel in ordered {
-        if panel.overlay {
+        if panel.overlay && !panel.maximized {
             let rect = shell_maximized_panel_rect(workspace);
             let header_rect = (matches!(
                 panel.position,
@@ -2077,16 +2110,33 @@ fn compute_attached_layout(
             || !aside_panel_tabs(&panel.panel_id).is_empty()))
         .then(|| aside_panel_toolbar_rect(rect));
 
+        // A maximized docked slot reserved its room above; it is drawn over
+        // the whole workspace, with no resize handle, until restored.
+        let (rect, resize_handle) = if panel.overlay {
+            (shell_maximized_panel_rect(workspace), None)
+        } else {
+            (normalize_rect(rect), resize_handle)
+        };
+        let header_rect = header_rect.map(|_| aside_panel_toolbar_rect(rect));
         out.push(WindowsChromePanelLayout {
             panel_id: panel.panel_id.clone(),
             webtag_key: panel.webtag_key.clone(),
-            rect: normalize_rect(rect),
+            rect,
             header_rect,
             resize_handle,
             overlay: panel.overlay,
         });
     }
 
+    // A collapsed slot with content keeps a handle at its edge; the main
+    // gives up that strip so the handle is never under the main's WebView.
+    for (_, edge) in lingxia_windows_contract::collapsed_aside_panels() {
+        match edge {
+            WindowsPanelPosition::Right => main_region.right -= collapsed_aside_handle_width(),
+            WindowsPanelPosition::Left => main_region.left += collapsed_aside_handle_width(),
+            WindowsPanelPosition::Top | WindowsPanelPosition::Bottom => {}
+        }
+    }
     let main_region = normalize_rect(main_region);
     let (_, main) = split_main_navigation_bar(main_region, layout);
     WindowsChromeAttachedLayout {
@@ -2096,9 +2146,43 @@ fn compute_attached_layout(
     }
 }
 
+/// Width of the strip a collapsed aside keeps at its edge.
+fn collapsed_aside_handle_width() -> i32 {
+    px(10)
+}
+
+/// The handles of collapsed aside slots, beside `main_region`: a short strip
+/// centred on the edge the slot docks to. Clicking one restores the slot.
+fn collapsed_aside_handle_rects(main_region: RECT) -> Vec<(String, RECT)> {
+    let width = collapsed_aside_handle_width();
+    let center = (main_region.top + main_region.bottom) / 2;
+    let half = px(32).min(rect_height(&main_region) / 2);
+    lingxia_windows_contract::collapsed_aside_panels()
+        .into_iter()
+        .filter_map(|(panel_id, edge)| {
+            let (left, right) = match edge {
+                WindowsPanelPosition::Right => (main_region.right, main_region.right + width),
+                WindowsPanelPosition::Left => (main_region.left - width, main_region.left),
+                WindowsPanelPosition::Top | WindowsPanelPosition::Bottom => return None,
+            };
+            Some((
+                panel_id,
+                normalize_rect(RECT {
+                    left,
+                    top: center - half,
+                    right,
+                    bottom: center + half,
+                }),
+            ))
+        })
+        .collect()
+}
+
 fn attached_panel_order(panel: &WindowsChromePanelLayoutInput) -> (u8, u8, u8, &str) {
     (
-        u8::from(panel.overlay),
+        // A maximized docked slot keeps its place among the docked panels, so
+        // the main's region is the same as before the maximize.
+        u8::from(panel.overlay && !panel.maximized),
         match panel.position {
             WindowsPanelPosition::Left | WindowsPanelPosition::Right => 0,
             WindowsPanelPosition::Top | WindowsPanelPosition::Bottom => 1,
@@ -2143,7 +2227,7 @@ fn attached_panel_size(
     .min(attached_panel_max_size())
     .min(available)
     .max(1);
-    let min_size = attached_panel_min_size().min(max_size);
+    let min_size = attached_panel_min_size(panel.position).min(max_size);
     requested.clamp(min_size, max_size)
 }
 
@@ -2464,6 +2548,16 @@ pub(super) fn chrome_hit_test(
         return Some(WindowsChromeHit::Caption);
     }
 
+    if let Some(attached) = &state.attached {
+        for (panel_id, rect) in collapsed_aside_handle_rects(attached.main_region) {
+            if rect_contains(&rect, point) {
+                return Some(chrome_command(
+                    command_id::ASIDE_PANEL_RESTORE,
+                    json!({ "panel_id": panel_id }),
+                ));
+            }
+        }
+    }
     if let Some(hit) = browser_panel_hit_test(state, point) {
         return Some(hit);
     }
@@ -2829,6 +2923,11 @@ pub(super) fn draw_content_cards(
         // the card shadows carry the split), horizontal terminal splits keep
         // theirs since native panels stay flat.
         draw_content_card(hdc, attached.main_region, desktop_card);
+        for (_, rect) in collapsed_aside_handle_rects(attached.main_region) {
+            let pal = shell_palette();
+            draw_hover_wash(hdc, rect, 4, state.cursor);
+            fill_round_rect_aa(hdc, inset_rect(rect, px(3), px(10)), 2, pal.divider);
+        }
         for panel in &attached.panels {
             if panel.host_content.is_some() {
                 continue;
@@ -2883,6 +2982,8 @@ pub(super) fn draw_content_cards(
             }
             if browser_panel_header_visible(panel) {
                 draw_browser_panel_header(hdc, panel, state.cursor);
+                draw_aside_panel_navigation(hdc, panel, state.cursor);
+                draw_aside_panel_tabbar(hdc, panel, state.cursor);
             }
         }
         for panel in &attached.panels {
@@ -4109,6 +4210,64 @@ mod scroll_tests {
                 .is_none()
         );
         assert!(chrome_rects_for_state(&state, &layout).tab_bar.is_none());
+    }
+
+    #[test]
+    fn a_maximized_docked_aside_keeps_the_main_region_and_covers_the_workspace() {
+        let layout = WindowsShellWindowLayout {
+            navigation_bar: Some(WindowsShellNavigationBarLayout {
+                visible: true,
+                title: "API".to_string(),
+                background_color: 0,
+                text_color: 0,
+                show_back_button: false,
+                show_home_button: false,
+                height: 38,
+            }),
+            ..Default::default()
+        };
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 1200,
+            bottom: 768,
+        };
+        let docked = WindowsChromePanelLayoutInput {
+            panel_id: "lxapp-aside".to_string(),
+            webtag_key: "lingxia-chat:pages/chat/index".to_string(),
+            position: WindowsPanelPosition::Right,
+            requested_size: Some(320),
+            docked: true,
+            overlay: false,
+            maximized: false,
+        };
+        let before = compute_attached_layout(client, &layout, std::slice::from_ref(&docked));
+
+        // The core marks a maximized docked slot `overlay` and `maximized`.
+        let maximized = WindowsChromePanelLayoutInput {
+            docked: false,
+            overlay: true,
+            maximized: true,
+            ..docked
+        };
+        let during = compute_attached_layout(client, &layout, &[maximized]);
+
+        // The main keeps its frame under the overlay: no relayout, and no
+        // lifecycle for it when the slot restores.
+        assert_eq!(during.main_region, before.main_region);
+        assert_eq!(during.main, before.main);
+        assert!(during.main.right < client.right);
+        // The slot itself covers the whole workspace, with no resize handle.
+        let workspace = compute_chrome_rects(client, &layout).workspace;
+        assert_eq!(during.panels[0].rect, workspace);
+        assert_eq!(during.panels[0].resize_handle, None);
+        assert!(during.panels[0].overlay);
+        assert_eq!(
+            during.panels[0].header_rect,
+            before.panels[0]
+                .header_rect
+                .map(|_| super::aside_panel_toolbar_rect(workspace))
+        );
     }
 
     #[test]
