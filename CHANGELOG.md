@@ -19,6 +19,115 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.26.0 — 2026-10-19
+
+### Breaking
+
+- **Breaking** — **dev**: tell the companion the session env (0a9868420)
+- **Breaking** — **surface**: rename SurfaceContext.aside to canDock (441e1cd74)
+- **Breaking** — **lxdev**: capture network traffic as JSON and HAR (172ce7ef2)
+- **Breaking** — **cli**: remove --skip-native (f8962e6c8)
+- **Breaking** — **automation**: record real network traffic from Rong's network observer (61fc1b789)
+
+### Writing an lxapp
+
+- **surface**: apply the plan that first presents a surface even when commits race (573b65589)
+- **surface**: drop a layout plan that arrives after a newer commit (f2a458fa7)
+- **surface**: report a maximized slot only while it has a dock to leave (ccf60503f)
+- **surface**: restore a maximized aside when the active main closes or nothing shows it (9814655d5)
+- **lxapp**: offer Home when a launch lands off the initial page (7fffec486)
+- **surface**: own aside slot maximize in the core (bfb505207)
+- **surface**: fire page onHide/onShow when the lxapp aside collapses and restores (86b67320c)
+- **lxapp**: sync dev-served bundles into a running host (55ad3b247)
+- **lxapp**: scope view-call cancellation to the owning page (17676ad66)
+- **lxapp**: clear page history on native close (403faf703)
+- **lxapp**: replay onShow only for an opened app and on device switch (e9a0a5144)
+- **lxapp**: replay onShow after in-place restart (2ef22c805)
+- **webview**: dispatch clicks to DOM custom elements (1c494d430)
+- **test**: retain last mismatch when a retry read times out (80ff68969)
+
+### Embedding a host app
+
+- **browser**: close the URL aside whose tab the browser closed (6e060e016)
+- **windows**: move focus only into a WebView2 controller that is shown (00ccb3416)
+- **windows**: give up on a surface whose WebView never comes, and wait once per surface (963f1ee17)
+- **windows**: leave covered WebViews out of host screenshots (c522dfb0e)
+- **macos**: read only the modifier keys when Backspace or Escape reaches the page controller (e2f3bcc9a)
+- **windows**: move focus with the aside, take its keys in the shell, anchor its floats (f1fc9feb7)
+- **windows**: label icon-only tabBar items in the aside row and menu (bbd9ffedb)
+- **windows**: keep the main's frame and lifecycle under a maximized aside (6e069129e)
+- **macos**: offer Maximize on the browser aside slot (6f4fc96e5)
+- **macos**: move focus into a maximized aside and back to the main on restore (3f531e465)
+- **macos**: pause an aside page's native components while its slot is collapsed (4d070e1d7)
+- **macos**: name an aside tabBar item that has no text (467d72cd9)
+- **macos**: let a web text field keep Backspace and take Back only from an unhandled key (d8500b598)
+- **windows**: hit-test a maximized aside above docked slots and keep AltGr typing (06adbf126)
+- **macos**: keep focus on an aside page across its page swap (3e2b4af16)
+- **shell**: restore a maximized aside on any intent to see main (55c76b73f)
+- **macos**: reveal the incoming main's sidebar group on every switch (254a5e836)
+- **shell**: add the aside collapse shortcut and let Escape leave Maximize (4626827f2)
+- **shell**: leave a restore handle for a collapsed aside and size asides to the spec minimum (fced81f31)
+- **shell**: give aside lxapps their navigation bar, tabBar and Maximize control (4f6b6853a)
+- **macos**: give an aside lxapp page its own navigation bar (0bb79fcb9)
+- **macos**: decode chrome icon artwork downsampled (0fba906d9)
+- **windows**: keep an aside lxapp's page stack inside its aside (0e83d22be)
+- **macos**: anchor a float an aside lxapp opens to that aside (085794dde)
+- **macos**: keep an aside lxapp's page stack inside its aside (d9638c886)
+- **shell**: show the dev-session port on the touch-through mark (3057dc94f)
+- **android**: remeasure preview player attached during layout (0c3a36533)
+- **browser**: keep the opening load as the only trusted navigation (9767a574a)
+- **shell**: raise the host only for the explicit openApp activation (ac4066e49)
+- **shell**: focus the lxapp opened from lx.shell.openApp (a3a7c511c)
+- **windows**: keep the installer message loop alive while a host runs (a5f762b70)
+- **browser**: follow native selection for product tabs (bac42a800)
+- **android**: dispatch app show when returning to the caller (c8a16ea36)
+- **android**: preserve and normalize native picker selections (03afdd150)
+- **android**: settle native overlays on dismissal and replacement (bcc5c5e8a)
+
+### Rust native extensions
+
+- **automation**: drop the unread start time from a stopped capture (797feab4a)
+- **automation**: mask secrets in every observed body and keep evicted streams (29f9c98ec)
+- **automation**: mask proxy credentials and redirect targets in observed requests (ea045c8ba)
+- **automation**: prepare Android location permissions before tests (05072d0b5)
+
+### CLI and CI
+
+- **cli**: ship the iOS launch storyboards precompiled (9fb6294f2)
+- **cli**: leave the asset catalog sources out of the app bundle (bcec743f7)
+- **cli**: compile iOS asset catalogs without the simulator runtime (f1e9b4261)
+- **cli**: show what each Apple team can sign, upload, and read (0435efaae)
+- **cli**: an App Store IPA requires its compiled app icon (9220a0487)
+- **cli**: upload to App Store Connect with an App-specific password (ce94326ac)
+- **cli**: submit a dev Apple package to its dev app (6f3f15a61)
+- **cli**: drop the needless return in the Mac anisette path (67a777fe1)
+- **cli**: sign App Store IPAs with an Apple ID session (14e8b860c)
+- **cli**: make `lingxia auth status` say which team signs and why (710bb762e)
+- **cli**: publish a host project's bundles even with a root lxapp.json (04d8563f5)
+- **cli**: drop the verbatim path prefix before a Windows listen build (d225ebc21)
+- **cli**: `lingxia dev stop` reaches a named session from any directory (095940001)
+- **cli**: develop an lxapp on a device with `lingxia dev listen` (49544dd9c)
+- **cli**: match saves under a sibling bundle root on macOS (1caffd1b4)
+- **lxdev**: report only the capture from a dev network stop and fill HAR gaps (62adcc802)
+- **lxdev**: refuse to write a requests file the host did not return (38ee24358)
+- **runner**: install whichever bundle the macOS build produced (86a1adc14)
+- **lxdev**: preserve test preset entries with session selectors (c50828fce)
+- **cli**: offer both upgrade paths when minRuntime is below the floor (5260a78bf)
+- **cli**: treat minRuntime as a major.minor build target (97d369df5)
+
+### Docs and examples
+
+- **examples**: add a pushed About page to lingxia-chat (e55b62343)
+- **showcase**: bind Vue picker values and custom trigger (cc810a1ba)
+- **showcase**: make navigator redirect work on Android (df91e166b)
+- **showcase**: constrain home result layout (c31e4c29e)
+
+### Other
+
+- **dev**: reach the Mac by its Bonjour name from iOS (6999382d8)
+- **ios,harmony**: back out of a guest lxapp with one edge swipe (46af29ce9)
+- **transfer**: attribute requests to their owner for Rong's network observer (020687e67)
+
 ## 0.25.1 — 2026-10-12
 
 ### Breaking
