@@ -22,7 +22,9 @@ final class DesktopBannerController {
         body: String,
         actionsJSON: String,
         background: String,
-        dismissible: Bool
+        dismissible: Bool,
+        sourceName: String = "",
+        sourceIconPath: String = ""
     ) {
         hide()
         currentId = id
@@ -34,6 +36,8 @@ final class DesktopBannerController {
             actions: actions,
             background: BannerBackground.parse(background),
             dismissible: dismissible,
+            sourceName: sourceName,
+            sourceIcon: sourceIconPath.isEmpty ? nil : NSImage(contentsOfFile: sourceIconPath),
             onAction: { [weak self] actionId in
                 self?.finish(kind: 0, action: actionId)
             },
@@ -172,6 +176,8 @@ private final class BannerView: NSView {
         actions: [DesktopBannerController.Action],
         background: BannerBackground,
         dismissible: Bool,
+        sourceName: String,
+        sourceIcon: NSImage?,
         onAction: @escaping (String) -> Void,
         onDismiss: @escaping () -> Void
     ) {
@@ -203,7 +209,7 @@ private final class BannerView: NSView {
         layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.55).cgColor
 
         let icon = NSImageView()
-        icon.image = NSApp.applicationIconImage
+        icon.image = sourceIcon ?? NSApp.applicationIconImage
         icon.imageScaling = .scaleProportionallyUpOrDown
         icon.wantsLayer = true
         icon.layer?.cornerRadius = 8
@@ -226,9 +232,27 @@ private final class BannerView: NSView {
         bodyField.translatesAutoresizingMaskIntoConstraints = false
         bodyField.isHidden = body.isEmpty
 
+        // A guest lxapp's banner names it, so it cannot pass as the product's.
+        let sourceField = NSTextField(labelWithString: sourceName)
+        sourceField.font = .systemFont(ofSize: 11, weight: .medium)
+        sourceField.textColor = .secondaryLabelColor
+        sourceField.lineBreakMode = .byTruncatingTail
+        sourceField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        sourceField.translatesAutoresizingMaskIntoConstraints = false
+        let attributed = !sourceName.isEmpty
+
         addSubview(icon)
         addSubview(titleField)
         addSubview(bodyField)
+        if attributed {
+            addSubview(sourceField)
+            NSLayoutConstraint.activate([
+                sourceField.leadingAnchor.constraint(equalTo: titleField.leadingAnchor),
+                sourceField.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+                sourceField.trailingAnchor.constraint(
+                    lessThanOrEqualTo: trailingAnchor, constant: dismissible ? -34 : -12),
+            ])
+        }
 
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
@@ -238,9 +262,11 @@ private final class BannerView: NSView {
 
             titleField.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
             // A lone title sits on the icon's midline instead of hugging the top.
-            body.isEmpty && actions.isEmpty
-                ? titleField.centerYAnchor.constraint(equalTo: icon.centerYAnchor)
-                : titleField.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            attributed
+                ? titleField.topAnchor.constraint(equalTo: sourceField.bottomAnchor, constant: 1)
+                : body.isEmpty && actions.isEmpty
+                    ? titleField.centerYAnchor.constraint(equalTo: icon.centerYAnchor)
+                    : titleField.topAnchor.constraint(equalTo: topAnchor, constant: 12),
             titleField.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: dismissible ? -34 : -12),
 
             bodyField.leadingAnchor.constraint(equalTo: titleField.leadingAnchor),

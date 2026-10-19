@@ -6,6 +6,7 @@
 
 use crate::traits::app_runtime::{
     DesktopBannerActionStyle, DesktopBannerBackground, DesktopBannerOutcome, DesktopBannerShow,
+    DesktopBannerSource,
 };
 use std::sync::Mutex;
 use std::time::Instant;
@@ -103,12 +104,13 @@ fn supersede() -> u64 {
     slot.generation
 }
 
-pub(crate) fn present(request: &DesktopBannerShow) -> bool {
+pub(crate) fn present(request: &DesktopBannerShow, source: Option<&DesktopBannerSource>) -> bool {
     let generation = supersede();
     let request = request.clone();
+    let source = source.cloned();
     std::thread::Builder::new()
         .name("lingxia-desktop-banner".into())
-        .spawn(move || run_banner_thread(request, generation))
+        .spawn(move || run_banner_thread(request, source, generation))
         .is_ok()
 }
 
@@ -232,6 +234,11 @@ impl Drop for Surface {
 
 struct Card {
     id: String,
+    /// The guest lxapp's name, drawn above the title; empty for the product.
+    source: String,
+    source_icon_path: Option<String>,
+    /// The guest lxapp's icon at the drawn size; replaces the product icon.
+    source_icon: Option<image::RgbaImage>,
     title: String,
     body: String,
     actions: Vec<(String, String, DesktopBannerActionStyle)>,
@@ -256,6 +263,7 @@ struct Layout {
     window: (i32, i32),
     card: RECT,
     icon: RECT,
+    source: Option<RECT>,
     title: RECT,
     body: Option<RECT>,
     close: Option<RECT>,
@@ -268,6 +276,7 @@ fn px(value: f32, scale: f32) -> i32 {
 
 fn compute_layout(
     scale: f32,
+    source_height: i32,
     title_height: i32,
     body_height: i32,
     button_widths: &[i32],
@@ -277,7 +286,13 @@ fn compute_layout(
     let inset = px(SHADOW);
     let pad = px(PAD);
     let icon = px(ICON);
-    let column = title_height
+    let source_gap = if source_height > 0 {
+        source_height + px(1.0)
+    } else {
+        0
+    };
+    let column = source_gap
+        + title_height
         + if body_height > 0 {
             px(2.0) + body_height
         } else {
@@ -308,11 +323,18 @@ fn compute_layout(
     // A text column shorter than the icon rides its midline.
     let text_top = card.top + pad + ((icon - column) / 2).max(0);
     let text_left = icon_rect.right + px(GAP);
-    let title = RECT {
+    let text_right = close.map_or(card.right - pad, |close| close.left - px(4.0));
+    let source = (source_height > 0).then(|| RECT {
         left: text_left,
         top: text_top,
-        right: close.map_or(card.right - pad, |close| close.left - px(4.0)),
-        bottom: text_top + title_height,
+        right: text_right,
+        bottom: text_top + source_height,
+    });
+    let title = RECT {
+        left: text_left,
+        top: text_top + source_gap,
+        right: text_right,
+        bottom: text_top + source_gap + title_height,
     };
     let body = (body_height > 0).then(|| RECT {
         left: text_left,
@@ -335,6 +357,7 @@ fn compute_layout(
         window: (card.right + inset, card.bottom + inset),
         card,
         icon: icon_rect,
+        source,
         title,
         body,
         close,
@@ -350,6 +373,11 @@ fn body_lines(measured_height: i32, line_height: i32) -> i32 {
 
 fn measure_layout(hdc: HDC, fonts: &Fonts, request: &Card, scale: f32) -> Layout {
     let px = |value: f32| px(value, scale);
+    let source_height = if request.source.is_empty() {
+        0
+    } else {
+        line_height(hdc, fonts.body)
+    };
     let title_height = line_height(hdc, fonts.title);
     let body_height = if request.body.is_empty() {
         0
@@ -369,6 +397,7 @@ fn measure_layout(hdc: HDC, fonts: &Fonts, request: &Card, scale: f32) -> Layout
         .collect::<Vec<_>>();
     compute_layout(
         scale,
+        source_height,
         title_height,
         body_height,
         &button_widths,
@@ -376,7 +405,11 @@ fn measure_layout(hdc: HDC, fonts: &Fonts, request: &Card, scale: f32) -> Layout
     )
 }
 
-fn run_banner_thread(request: DesktopBannerShow, generation: u64) {
+fn run_banner_thread(
+    request: DesktopBannerShow,
+    source: Option<DesktopBannerSource>,
+    generation: u64,
+) {
     unsafe {
         let hinstance = GetModuleHandleW(None).unwrap_or_default();
         let class_name = w!("LxDesktopBannerClass");
@@ -416,6 +449,12 @@ fn run_banner_thread(request: DesktopBannerShow, generation: u64) {
 
         let mut card = Box::new(Card {
             id: request.id.clone(),
+            source: source
+                .as_ref()
+                .map(|source| source.name.clone())
+                .unwrap_or_default(),
+            source_icon_path: source.and_then(|source| source.icon_path),
+            source_icon: None,
             title: request.title.clone(),
             body: request.body.clone(),
             actions: request
@@ -434,7 +473,7 @@ fn run_banner_thread(request: DesktopBannerShow, generation: u64) {
                 glyph: None,
             },
             icon: None,
-            layout: compute_layout(scale, 0, 0, &[], false),
+            layout: compute_layout(scale, 0, 0, 0, &[], false),
             surface: None,
             hover: Hit::None,
             pressed: Hit::None,
@@ -495,7 +534,15 @@ fn rebuild(card: &mut Card, scale: f32) {
         card.layout = measure_layout(dc, &card.fonts, card, scale);
         let _ = DeleteDC(dc);
     }
-    card.icon = load_app_icon(px(ICON, scale));
+    card.source_icon = card
+        .source_icon_path
+        .as_deref()
+        .and_then(|path| load_source_icon(path, px(ICON, scale)));
+    card.icon = if card.source_icon.is_some() {
+        None
+    } else {
+        load_app_icon(px(ICON, scale))
+    };
     card.surface = Surface::new(card.layout.window.0, card.layout.window.1);
 }
 
@@ -740,6 +787,40 @@ fn resolve_font(hdc: HDC, scale: f32, size: f32, semibold: bool, faces: &[&str])
 
 /// The exe icon at the drawn size; `ExtractIconExW` alone yields a 32px icon
 /// that blurs when stretched at high DPI.
+fn load_source_icon(path: &str, size: i32) -> Option<image::RgbaImage> {
+    let size = u32::try_from(size).ok().filter(|size| *size > 0)?;
+    let decoded = image::open(path).ok()?.into_rgba8();
+    Some(image::imageops::resize(
+        &decoded,
+        size,
+        size,
+        image::imageops::FilterType::Lanczos3,
+    ))
+}
+
+/// Blend a straight-alpha icon over opaque pixels, clipped to the icon's
+/// rounded corners.
+fn blend_icon(pixels: &mut [u32], stride: i32, rect: &RECT, radius: f32, icon: &image::RgbaImage) {
+    for (dx, dy, pixel) in icon.enumerate_pixels() {
+        let (x, y) = (rect.left + dx as i32, rect.top + dy as i32);
+        if x >= rect.right || y >= rect.bottom {
+            continue;
+        }
+        let cover = coverage(rounded_distance(x, y, rect, radius)) * pixel[3] as f32 / 255.0;
+        if cover <= 0.0 {
+            continue;
+        }
+        let index = (y * stride + x) as usize;
+        let under = pixels[index];
+        let under = (
+            ((under >> 16) & 0xff) as u8,
+            ((under >> 8) & 0xff) as u8,
+            (under & 0xff) as u8,
+        );
+        pixels[index] = opaque(mix(under, (pixel[0], pixel[1], pixel[2]), cover));
+    }
+}
+
 fn load_app_icon(size: i32) -> Option<HICON> {
     let exe = std::env::current_exe().ok()?;
     let wide = to_wide(&exe.to_string_lossy());
@@ -948,7 +1029,9 @@ fn draw(card: &mut Card) {
 
     let pixels = surface.pixels();
     pixels.fill(opaque(palette.background));
-    if card.icon.is_none() {
+    if let Some(icon) = card.source_icon.as_ref() {
+        blend_icon(pixels, stride, &layout.icon, ICON_RADIUS * scale, icon);
+    } else if card.icon.is_none() {
         fill_rounded(
             pixels,
             stride,
@@ -998,6 +1081,16 @@ fn draw(card: &mut Card) {
             let _ = DeleteObject(region.into());
         }
         let single = DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX;
+        if let Some(source) = layout.source {
+            draw_text(
+                dc,
+                card.fonts.body,
+                &card.source,
+                source,
+                palette.body,
+                DT_LEFT | DT_END_ELLIPSIS | single,
+            );
+        }
         draw_text(
             dc,
             card.fonts.title,
@@ -1296,7 +1389,7 @@ mod tests {
 
     #[test]
     fn title_only_toast_is_icon_high_with_a_centred_title() {
-        let layout = compute_layout(1.0, 18, 0, &[], true);
+        let layout = compute_layout(1.0, 0, 18, 0, &[], true);
         let card = layout.card;
         assert_eq!(card.bottom - card.top, 60);
         assert_eq!(
@@ -1308,8 +1401,18 @@ mod tests {
     }
 
     #[test]
+    fn a_guest_banner_names_its_lxapp_above_the_title() {
+        let layout = compute_layout(1.0, 15, 18, 0, &[], true);
+        let source = layout.source.expect("source line");
+        assert_eq!(source.left, layout.title.left);
+        assert_eq!(layout.title.top, source.bottom + 1);
+        assert!(source.right <= layout.close.unwrap().left);
+        assert!(compute_layout(1.0, 0, 18, 0, &[], true).source.is_none());
+    }
+
+    #[test]
     fn buttons_are_right_aligned_in_request_order() {
-        let layout = compute_layout(1.0, 18, 34, &[56, 70], false);
+        let layout = compute_layout(1.0, 0, 18, 34, &[56, 70], false);
         let card = layout.card;
         assert_eq!(layout.buttons[1].right, card.right - 12);
         assert_eq!(layout.buttons[0].right, layout.buttons[1].left - 8);

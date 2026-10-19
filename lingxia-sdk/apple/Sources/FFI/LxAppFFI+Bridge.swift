@@ -788,13 +788,17 @@ extension LxApp {
         body: RustStr,
         actions_json: RustStr,
         background: RustStr,
-        dismissible: Bool
+        dismissible: Bool,
+        source_name: RustStr,
+        source_icon_path: RustStr
     ) -> Bool {
         let id = id.toString()
         let title = title.toString()
         let body = body.toString()
         let actionsJSON = actions_json.toString()
         let background = background.toString()
+        let sourceName = source_name.toString()
+        let sourceIconPath = source_icon_path.toString()
         return executeOnMain {
             #if os(macOS)
             DesktopBannerController.shared.show(
@@ -803,11 +807,13 @@ extension LxApp {
                 body: body,
                 actionsJSON: actionsJSON,
                 background: background,
-                dismissible: dismissible
+                dismissible: dismissible,
+                sourceName: sourceName,
+                sourceIconPath: sourceIconPath
             )
             return true
             #else
-            _ = (id, title, body, actionsJSON, background, dismissible)
+            _ = (id, title, body, actionsJSON, background, dismissible, sourceName, sourceIconPath)
             return false
             #endif
         }
