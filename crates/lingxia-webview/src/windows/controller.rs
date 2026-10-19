@@ -1848,11 +1848,19 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let _ = resp.send(result);
         }
         UiCommand::MoveFocus { resp } => {
+            // A hidden controller refuses MoveFocus (E_INVALIDARG). Focus
+            // follows a layout the controller may not have reached yet; a
+            // controller that is not shown simply keeps focus where it is.
             let result = unsafe {
-                state
-                    .controller
-                    .MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC)
-                    .map_err(|err| WebViewError::WebView(format!("MoveFocus failed: {err}")))
+                let mut visible = windows::core::BOOL::default();
+                match state.controller.IsVisible(&mut visible) {
+                    Ok(()) if !visible.as_bool() => Ok(()),
+                    Ok(()) => state
+                        .controller
+                        .MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC)
+                        .map_err(|err| WebViewError::WebView(format!("MoveFocus failed: {err}"))),
+                    Err(err) => Err(WebViewError::WebView(format!("IsVisible failed: {err}"))),
+                }
             };
             let _ = resp.send(result);
         }
