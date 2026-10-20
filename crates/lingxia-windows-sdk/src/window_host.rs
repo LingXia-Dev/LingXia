@@ -650,6 +650,10 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
         hide_host_panel(panel_id)
     }
 
+    fn release_webview_panel(&self, webtag: &WebTag) -> bool {
+        release_webview_panel(webtag)
+    }
+
     fn hide_exclusive_tray_popover(&self) -> bool {
         let handle = TRAY_POPOVER_HWND.load(Ordering::Relaxed);
         if handle == 0 {
@@ -2791,6 +2795,17 @@ pub fn hide_host_panel(panel_id: &str) -> StdResult<()> {
     clear_focused_host_panel(panel_id);
     sync_active_host_layout();
     Ok(())
+}
+
+pub fn release_webview_panel(webtag: &WebTag) -> bool {
+    let key = find_webview_handler(webtag)
+        .map(|handler| handler.webtag().key().to_string())
+        .unwrap_or_else(|| webtag.key().to_string());
+    let Some(panel_id) = panel_id_for_webtag(&key) else {
+        return false;
+    };
+    clear_focused_host_panel(&panel_id);
+    cleanup_webview_panel(&key)
 }
 
 #[cfg(feature = "terminal-runtime")]
@@ -7853,6 +7868,89 @@ const PANE_DRAG_THRESHOLD: i32 = 4;
 #[cfg(feature = "shell-chrome")]
 static SUPPRESS_ESCAPE_CHAR: OnceLock<Mutex<HashSet<isize>>> = OnceLock::new();
 
+/// A press on an aside tab. Past the threshold it drags the tab, and a drop
+/// on the sidebar promotes it to a main; otherwise the release is a click.
+#[cfg(feature = "shell-chrome")]
+#[derive(Clone)]
+struct AsideTabDrag {
+    panel_id: String,
+    surface_id: String,
+    start: (i32, i32),
+    dragging: bool,
+}
+#[cfg(feature = "shell-chrome")]
+static ASIDE_TAB_DRAGS: OnceLock<Mutex<HashMap<isize, AsideTabDrag>>> = OnceLock::new();
+
+#[cfg(feature = "shell-chrome")]
+fn aside_tab_drags() -> std::sync::MutexGuard<'static, HashMap<isize, AsideTabDrag>> {
+    ASIDE_TAB_DRAGS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[cfg(feature = "shell-chrome")]
+fn point_over_sidebar(hwnd: HWND, point: (i32, i32)) -> bool {
+    chrome_state_for_window(hwnd)
+        .and_then(|state| crate::shell::sidebar_drop_rect(&state))
+        .is_some_and(|rect| point_in_rect(&rect, point))
+}
+
+#[cfg(feature = "shell-chrome")]
+fn set_aside_tab_drop_target(hwnd: HWND, targeted: bool) {
+    if crate::shell::set_aside_tab_drop_targeted(targeted) {
+        invalidate_window_chrome(hwnd);
+    }
+}
+
+/// Track a pressed aside tab. Returns whether the move belongs to it.
+#[cfg(feature = "shell-chrome")]
+fn update_aside_tab_drag(hwnd: HWND, point: (i32, i32)) -> bool {
+    let dragging = {
+        let mut drags = aside_tab_drags();
+        let Some(drag) = drags.get_mut(&hwnd_handle(hwnd)) else {
+            return false;
+        };
+        if !drag.dragging
+            && ((point.0 - drag.start.0).abs() >= PANE_DRAG_THRESHOLD
+                || (point.1 - drag.start.1).abs() >= PANE_DRAG_THRESHOLD)
+        {
+            drag.dragging = true;
+        }
+        drag.dragging
+    };
+    if dragging {
+        let over = point_over_sidebar(hwnd, point);
+        set_aside_tab_drop_target(hwnd, over);
+        if over {
+            set_pane_handle_cursor();
+        } else {
+            set_pane_drag_cursor();
+        }
+    }
+    true
+}
+
+/// End a pressed aside tab. `Some(true)` when it was dragged and handled
+/// here; `Some(false)` when the press never moved and is still a click.
+#[cfg(feature = "shell-chrome")]
+fn finish_aside_tab_drag(hwnd: HWND, point: Option<(i32, i32)>) -> Option<bool> {
+    let drag = aside_tab_drags().remove(&hwnd_handle(hwnd))?;
+    set_aside_tab_drop_target(hwnd, false);
+    if !drag.dragging {
+        return Some(false);
+    }
+    unsafe {
+        let _ = ReleaseCapture();
+    }
+    if let Some(point) = point
+        && point_over_sidebar(hwnd, point)
+    {
+        let _ = crate::shell::promote_aside_tab(&drag.panel_id, &drag.surface_id);
+    }
+    Some(true)
+}
+
 /// Sets the east-west / north-south resize cursor for a divider.
 fn set_divider_cursor(vertical: bool) {
     let id = if vertical {
@@ -7963,6 +8061,10 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
     if PANE_DRAG.load(Ordering::Acquire) {
         crate::shell::update_pane_drag(point.0, point.1);
         set_pane_drag_cursor();
+        return true;
+    }
+    #[cfg(feature = "shell-chrome")]
+    if update_aside_tab_drag(hwnd, point) {
         return true;
     }
     #[cfg(feature = "shell-chrome")]
@@ -8288,13 +8390,36 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
             }
             true
         }
-        WindowsChromeHit::Chrome
-        | WindowsChromeHit::Command(_)
-        | WindowsChromeHit::CommandWithContext { .. } => true,
+        WindowsChromeHit::Command(command)
+        | WindowsChromeHit::CommandWithContext { command, .. } => {
+            #[cfg(feature = "shell-chrome")]
+            if let Some((panel_id, surface_id)) = crate::shell::aside_tab_drag_source(&command) {
+                aside_tab_drags().insert(
+                    hwnd_handle(hwnd),
+                    AsideTabDrag {
+                        panel_id,
+                        surface_id,
+                        start: point,
+                        dragging: false,
+                    },
+                );
+                unsafe {
+                    let _ = SetCapture(hwnd);
+                }
+            }
+            #[cfg(not(feature = "shell-chrome"))]
+            let _ = command;
+            true
+        }
+        WindowsChromeHit::Chrome => true,
     }
 }
 
 fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
+    #[cfg(feature = "shell-chrome")]
+    if finish_aside_tab_drag(hwnd, Some(point)) == Some(true) {
+        return true;
+    }
     #[cfg(feature = "shell-chrome")]
     if PANE_DRAG.swap(false, Ordering::AcqRel) {
         crate::shell::update_pane_drag(point.0, point.1);
@@ -10163,6 +10288,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 {
                     let _ = finish_terminal_selection_drag(hwnd, None);
                     let _ = cancel_pane_drag(hwnd, false);
+                    let _ = finish_aside_tab_drag(hwnd, None);
                     if DIVIDER_DRAG.swap(false, Ordering::AcqRel) {
                         crate::shell::end_divider_drag();
                     }

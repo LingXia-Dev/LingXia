@@ -1256,8 +1256,8 @@ pub(crate) fn is_standalone_tab(tab_id: &str) -> bool {
 }
 
 /// Re-home a docked (standalone) tab as an ordinary main-browser tab and make
-/// it active. The tab keeps its id, WebView and history. URL-callback tabs
-/// stay docked: their result belongs to the flow that opened them.
+/// it active. The tab keeps its id, WebView and history. URL-callback and
+/// ephemeral tabs stay docked: they belong to the flow that opened them.
 pub(crate) fn promote_standalone_tab(tab_id: &str) -> Result<(), LxAppError> {
     let normalized = normalize_runtime_tab_id(tab_id)
         .ok_or_else(|| LxAppError::InvalidParameter(format!("invalid tab id: {tab_id}")))?;
@@ -1275,6 +1275,11 @@ pub(crate) fn promote_standalone_tab(tab_id: &str) -> Result<(), LxAppError> {
         if tab.url_callback.load(Ordering::Acquire) {
             return Err(LxAppError::UnsupportedOperation(
                 "a URL-callback tab cannot move into the main browser".to_string(),
+            ));
+        }
+        if tab.data_mode == WebViewDataMode::Ephemeral {
+            return Err(LxAppError::UnsupportedOperation(
+                "an ephemeral tab cannot move into the main browser".to_string(),
             ));
         }
         tab.standalone = false;
@@ -2216,7 +2221,8 @@ mod tests {
     fn promoting_a_docked_tab_makes_it_the_active_product_tab() {
         let docked_tab_id = generate_tab_id();
         let callback_tab_id = generate_tab_id();
-        let make_tab = |url_callback| BrowserTabState {
+        let ephemeral_tab_id = generate_tab_id();
+        let make_tab = |url_callback, data_mode| BrowserTabState {
             session_id: 7,
             created_order: next_browser_created_order(),
             create_token: 1,
@@ -2230,19 +2236,25 @@ mod tests {
             can_go_back: true,
             can_go_forward: false,
             discarded: false,
-            data_mode: WebViewDataMode::ProfileDefault,
+            data_mode,
             url_callback: Arc::new(AtomicBool::new(url_callback)),
             standalone: true,
             aside: false,
             owner_appid: Some("app.demo".to_string()),
             owner_session_id: Some(3),
         };
-        lock_state()
-            .tabs
-            .insert(docked_tab_id.clone(), make_tab(false));
-        lock_state()
-            .tabs
-            .insert(callback_tab_id.clone(), make_tab(true));
+        lock_state().tabs.insert(
+            docked_tab_id.clone(),
+            make_tab(false, WebViewDataMode::ProfileDefault),
+        );
+        lock_state().tabs.insert(
+            callback_tab_id.clone(),
+            make_tab(true, WebViewDataMode::ProfileDefault),
+        );
+        lock_state().tabs.insert(
+            ephemeral_tab_id.clone(),
+            make_tab(false, WebViewDataMode::Ephemeral),
+        );
 
         promote_standalone_tab(&docked_tab_id).unwrap();
 
@@ -2261,9 +2273,12 @@ mod tests {
         assert!(promote_standalone_tab(&docked_tab_id).is_err());
         assert!(promote_standalone_tab(&callback_tab_id).is_err());
         assert!(is_standalone_tab(&callback_tab_id));
+        assert!(promote_standalone_tab(&ephemeral_tab_id).is_err());
+        assert!(is_standalone_tab(&ephemeral_tab_id));
 
         lock_state().tabs.remove(&docked_tab_id);
         lock_state().tabs.remove(&callback_tab_id);
+        lock_state().tabs.remove(&ephemeral_tab_id);
         lock_active_tab().take();
     }
 }

@@ -4015,6 +4015,72 @@ fn close_managed_aside_child(surface_id: &str) {
     }
 }
 
+/// An aside tab dropped on the sidebar (spec §4.2): its live content becomes
+/// a main. Returns whether it moved.
+pub(crate) fn promote_aside_tab(panel_id: &str, surface_id: &str) -> bool {
+    match panel_id {
+        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID => promote_lxapp_aside(surface_id),
+        #[cfg(feature = "browser-runtime")]
+        lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID => promote_browser_aside(surface_id),
+        _ => false,
+    }
+}
+
+/// Re-host a live lxapp aside as the active main: Logic, the page stack and
+/// the current page's WebView are kept.
+fn promote_lxapp_aside(surface_id: &str) -> bool {
+    let appid = match panel_target_for_id(surface_id) {
+        Some(PanelTarget::LxApp { appid, .. }) => appid,
+        Some(PanelTarget::Terminal(_)) => return false,
+        // Runtime (undeclared) lxapp asides use appId as their surface id.
+        None => surface_id.to_string(),
+    };
+    let Some(app) = lxapp::try_get(&appid) else {
+        return false;
+    };
+    if lxapp::open_region(&appid) != Some(lxapp::LxAppOpenRegion::Aside) {
+        return false;
+    }
+    // Before the commit: its plan sync would otherwise hide the page as a
+    // dropped aside child, and later navigations would go to the aside.
+    let released = lingxia_platform::windows::release_windows_lxapp_aside(surface_id);
+    if let Err(err) = app.promote_aside_to_main() {
+        log::warn!("aside promotion refused for {appid}: {err}");
+        if let Some((webtag, title)) = released {
+            lingxia_platform::windows::restore_windows_lxapp_aside(surface_id, webtag, title);
+        }
+        return false;
+    }
+    crate::window_host::set_panel_position_override(surface_id, None);
+    clear_browser_presentation();
+    if !present_current_lxapp_main(&app) {
+        log::warn!("failed to present promoted lxapp main {appid}");
+    }
+    if let Some(owner_appid) = shell_owner_appid() {
+        reveal_and_sync_sidebar(&owner_appid, &appid);
+    }
+    true
+}
+
+/// Move a URL aside's browser tab into the main browser, keeping its tab id
+/// and document.
+#[cfg(feature = "browser-runtime")]
+fn promote_browser_aside(surface_id: &str) -> bool {
+    let Some(tab_id) = lingxia_platform::windows::windows_aside_browser_tab_id(surface_id) else {
+        return false;
+    };
+    if let Err(err) = lingxia_browser::promote_standalone_tab(&tab_id) {
+        log::warn!("browser aside promotion refused for {surface_id}: {err}");
+        return false;
+    }
+    lingxia_platform::windows::release_windows_aside_browser_surface(surface_id);
+    if let Some(owner_appid) = shell_owner_appid() {
+        present_browser_tab_when_ready(&owner_appid, tab_id);
+        sync_shell_layout(&owner_appid);
+    }
+    true
+}
+
 fn dispatch_aside_panel_event(event: WindowsAsidePanelEvent) {
     if !dispatch_windows_aside_panel_event(event) {
         log::warn!("aside panel event dropped: no handler installed");
@@ -5857,9 +5923,15 @@ fn focus_or_open_lxapp(_owner_appid: &str, target_appid: &str) {
             open_pinned_lxapp_main(target_appid);
         }
         LxappShortcutAction::PromoteAside => {
-            let surface_id = panel_item_for_lxapp(target_appid)
-                .map(|(panel_id, _, _)| panel_id)
+            let surface_id = lxapp::try_get(target_appid)
+                .and_then(|app| app.open_panel_id())
+                .or_else(|| panel_item_for_lxapp(target_appid).map(|(panel_id, _, _)| panel_id))
                 .unwrap_or_else(|| target_appid.to_string());
+            if promote_lxapp_aside(&surface_id) {
+                return;
+            }
+            // A refused in-place move still opens the Pin's main, at the cost
+            // of a restart.
             close_managed_aside_child(&surface_id);
             if lxapp::open_region(target_appid).is_some() {
                 log::warn!("failed to close pinned lxapp aside before promotion: {target_appid}");
