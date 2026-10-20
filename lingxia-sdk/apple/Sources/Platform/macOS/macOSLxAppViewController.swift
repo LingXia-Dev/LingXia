@@ -399,6 +399,10 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         activeWebView
     }
 
+    var presentedPage: (path: String, pageInstanceId: String?) {
+        (currentPath, currentPageInstanceId)
+    }
+
     // MARK: - Notifications
 
     private func setupNotificationObservers() {

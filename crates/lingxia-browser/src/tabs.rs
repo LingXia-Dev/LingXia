@@ -1255,6 +1255,34 @@ pub(crate) fn is_standalone_tab(tab_id: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Re-home a docked (standalone) tab as an ordinary main-browser tab and make
+/// it active. The tab keeps its id, WebView and history. URL-callback tabs
+/// stay docked: their result belongs to the flow that opened them.
+pub(crate) fn promote_standalone_tab(tab_id: &str) -> Result<(), LxAppError> {
+    let normalized = normalize_runtime_tab_id(tab_id)
+        .ok_or_else(|| LxAppError::InvalidParameter(format!("invalid tab id: {tab_id}")))?;
+    {
+        let mut state = lock_state();
+        let tab = state
+            .tabs
+            .get_mut(&normalized)
+            .ok_or_else(|| LxAppError::ResourceNotFound(format!("browser tab {normalized}")))?;
+        if !tab.standalone {
+            return Err(LxAppError::InvalidParameter(format!(
+                "browser tab {normalized} is not docked"
+            )));
+        }
+        if tab.url_callback.load(Ordering::Acquire) {
+            return Err(LxAppError::UnsupportedOperation(
+                "a URL-callback tab cannot move into the main browser".to_string(),
+            ));
+        }
+        tab.standalone = false;
+    }
+    set_active_browser_tab(&normalized);
+    Ok(())
+}
+
 pub fn browser_tab_exists(tab_id: &str) -> bool {
     let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
         return false;
@@ -2182,5 +2210,60 @@ mod tests {
         lock_state().tabs.remove(&product_tab_id);
         lock_active_tab().take();
         lock_automation_tab().take();
+    }
+
+    #[test]
+    fn promoting_a_docked_tab_makes_it_the_active_product_tab() {
+        let docked_tab_id = generate_tab_id();
+        let callback_tab_id = generate_tab_id();
+        let make_tab = |url_callback| BrowserTabState {
+            session_id: 7,
+            created_order: next_browser_created_order(),
+            create_token: 1,
+            create_in_flight: false,
+            pending_url: None,
+            initial_url: Some("https://example.test/".to_string()),
+            current_url: Some("https://example.test/next".to_string()),
+            title: None,
+            title_url: None,
+            favicon_png: None,
+            can_go_back: true,
+            can_go_forward: false,
+            discarded: false,
+            data_mode: WebViewDataMode::ProfileDefault,
+            url_callback: Arc::new(AtomicBool::new(url_callback)),
+            standalone: true,
+            aside: false,
+            owner_appid: Some("app.demo".to_string()),
+            owner_session_id: Some(3),
+        };
+        lock_state()
+            .tabs
+            .insert(docked_tab_id.clone(), make_tab(false));
+        lock_state()
+            .tabs
+            .insert(callback_tab_id.clone(), make_tab(true));
+
+        promote_standalone_tab(&docked_tab_id).unwrap();
+
+        assert!(!is_standalone_tab(&docked_tab_id));
+        assert_eq!(
+            browser_current_tab().map(|tab| tab.tab_id),
+            Some(docked_tab_id.clone())
+        );
+        assert_eq!(
+            browser_tabs()
+                .into_iter()
+                .find(|tab| tab.tab_id == docked_tab_id)
+                .and_then(|tab| tab.current_url),
+            Some("https://example.test/next".to_string())
+        );
+        assert!(promote_standalone_tab(&docked_tab_id).is_err());
+        assert!(promote_standalone_tab(&callback_tab_id).is_err());
+        assert!(is_standalone_tab(&callback_tab_id));
+
+        lock_state().tabs.remove(&docked_tab_id);
+        lock_state().tabs.remove(&callback_tab_id);
+        lock_active_tab().take();
     }
 }

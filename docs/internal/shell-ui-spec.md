@@ -405,6 +405,14 @@ crammed in the moment the window crosses 840.
   switching belongs to its slot's header tabs (§4.6), structurally identical to
   the browser aside's title tabs. A sidebar list of "open asides" is abolished
   behavior.
+- **Dropping an aside tab on the sidebar promotes it to a main.** The same live
+  content moves: an lxapp keeps its Logic, page stack, and WebViews (one
+  `onHide`/`onShow` pair, no restart); a URL tab becomes a main-browser tab with
+  the same tab id and document. The new main is appended to the switcher and
+  selected; the aside slot loses that child. Only a main can be pinned, so an
+  aside reaches the Pins through this step. URL-callback and ephemeral tabs
+  belong to their opener and are not draggable. There is no reverse drag.
+  Implemented on macOS; other platforms do not offer the drag yet.
 - While the main window has tabs, exactly one tab MUST be selected.
 - lxapp, browser, and native mains interleave in stable graph order; pins and
   sidebar actions stay fixed, outside the main navigation scroll region.
@@ -566,8 +574,9 @@ Pins are the user's quick entries for lxapps and websites.
   explicit ellipsis that opens the same provider-backed context menu available
   from right-click; lifecycle controls must not be discoverable only by a hidden
   gesture. Removing the Pin MUST NOT remove a live workspace row. If the same lxapp is live as an aside,
-  the host closes that one-region presentation and reopens it as main; the Pin
-  does not inherit the app's declared aside default. Sidebar actions and
+  the host promotes that instance to main in place, exactly as a sidebar drop
+  does (§4.2; Windows still closes and reopens it); the Pin does not inherit
+  the app's declared aside default. Sidebar actions and
   `lx.surface.openDeclared(id)` continue to honor the declared role.
 - A main opened from a Pin MUST occupy the exact same host content rectangle as
   the stable root main. No edge or pixel of the previously active main may
@@ -750,7 +759,8 @@ The aside region is fixed at three slots, grouped by rendering engine:
   PTY tabs. Multiple keyed terminal Surfaces are separate workspaces and appear
   as separate slot children or main switcher entries; switching Surfaces never
   stops their PTYs.
-- Header tabs order by open time, no drag reorder; under pressure they drop
+- Header tabs order by open time, no drag reorder (dragging a tab onto the
+  sidebar promotes it, §4.2); under pressure they drop
   text before icons, then become a scrollable strip — tabs never shrink into
   unrecognizable slivers.
 - **A docked slot always shows its tab strip, including at one content.** The
@@ -1008,8 +1018,9 @@ semantics every language surface MUST share.
   as App `onShow` (`reason: 'switch_back'`, `path`, `query`). A notification or
   menu `app` target that names an lxapp docked as an aside brings that aside
   back and delivers the same way, instead of failing to take main. A live
-  main/aside role change currently
-  fails with `E_SURFACE_CONFLICT`; close it before reopening in the other role.
+  main/aside role change through the API fails with `E_SURFACE_CONFLICT`;
+  close it before reopening in the other role. Only the user promotes a live
+  aside to main (sidebar drop or Pin, §4.2).
   It returns a lifecycle handle and, when main, owns an independent switcher item.
 - `lx.surface.openPage(page, options?)` opens the caller's own page as a float
   or standalone window. `lx.surface.openUrl(url, options?)` opens browser

@@ -181,13 +181,16 @@ private final class AsideSlotTabItemView: NSView {
 
     let row = ChromeTabRowView()
     private let iconView = NSImageView()
-    private let titleButton = NSButton()
+    private let titleButton = AsideTabTitleButton()
     private let closeButton = NSButton()
 
     init(tab: AsideSlotTab, icon: NSImage?) {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
 
+        // Dragging a tab onto the sidebar promotes the lxapp to a main.
+        titleButton.dragPayload = AsideTabDragPayload(kind: .lxapp, surfaceId: tab.id)
+        titleButton.dragImageSource = row
         titleButton.translatesAutoresizingMaskIntoConstraints = false
         titleButton.isBordered = false
         titleButton.bezelStyle = .regularSquare

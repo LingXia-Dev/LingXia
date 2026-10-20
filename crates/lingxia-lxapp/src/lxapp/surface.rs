@@ -788,6 +788,42 @@ impl WindowSurfaceController {
         self.commit();
     }
 
+    /// Move a live lxapp aside into the main switcher as the active main, in
+    /// one commit. The main node is keyed by app id, like every lxapp main.
+    fn promote_aside_to_main(
+        &self,
+        surface_id: &str,
+        title: &str,
+        main: lingxia_surface::Surface,
+    ) -> bool {
+        let main_id = main.id.clone();
+        let promoted = {
+            let mut manager = self.manager.lock().unwrap();
+            if manager.graph().role_of(surface_id) != Some(lingxia_surface::Role::Aside) {
+                return false;
+            }
+            let mut presentation = lxapp_workspace_presentation(&main.content);
+            presentation.automatic_title = Some(title.to_string());
+            if surface_id == main_id {
+                manager.promote_aside_to_main(surface_id, presentation)
+            } else {
+                matches!(
+                    manager.close(surface_id),
+                    lingxia_surface::CloseOutcome::Closed { .. }
+                ) && manager.open_main(main, presentation).is_ok()
+            }
+        };
+        if !promoted {
+            return false;
+        }
+        if surface_id != main_id {
+            notify_surface_close_observer(surface_id, "user");
+        }
+        *self.active_main_publication_blocked.lock().unwrap() = false;
+        self.commit();
+        true
+    }
+
     fn replace_host_mains(
         &self,
         registrations: Vec<HostMainSurfaceRegistration>,
@@ -2302,6 +2338,72 @@ impl LxApp {
         self.set_active_main();
     }
 
+    /// Move this lxapp's live aside presentation into the main region without
+    /// restarting it: Logic, the page stack and every WebView stay as they
+    /// are, and the platform re-hosts the current page in the main area.
+    pub fn promote_aside_to_main(&self) -> Result<(), LxAppError> {
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        let surface_id = self
+            .open_panel_id()
+            .filter(|id| controller.managed_surface_role(id) == Some(SurfaceRole::Aside))
+            .ok_or_else(|| {
+                LxAppError::InvalidParameter(format!(
+                    "lxapp '{}' is not open as an aside",
+                    self.appid
+                ))
+            })?;
+        let previous_startup = {
+            let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+            let previous = (
+                state.startup_options.open_mode,
+                std::mem::take(&mut state.startup_options.panel_id),
+            );
+            state.open_region = Some(LxAppOpenRegion::Main);
+            state.startup_options.open_mode =
+                lingxia_platform::traits::app_runtime::LxAppOpenMode::Normal;
+            previous
+        };
+
+        let previous_appid = get_current_lxapp().0;
+        if let Some(manager) = get_lxapps_manager() {
+            manager.remove_from_stack(&self.appid);
+            manager.push_lxapp_stack(self.appid.clone());
+        }
+
+        self.runtime.request_lxapp_main_activation(&self.appid);
+        if !controller.promote_aside_to_main(
+            &surface_id,
+            &self.listing_name(),
+            self.root_main_node(),
+        ) {
+            if let Some(manager) = get_lxapps_manager() {
+                manager.remove_from_stack(&self.appid);
+            }
+            let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+            state.open_region = Some(LxAppOpenRegion::Aside);
+            (
+                state.startup_options.open_mode,
+                state.startup_options.panel_id,
+            ) = previous_startup;
+            return Err(LxAppError::InvalidParameter(format!(
+                "surface '{surface_id}' is no longer an aside"
+            )));
+        }
+
+        if !previous_appid.is_empty()
+            && previous_appid != self.appid
+            && let Some(previous) = try_get(&previous_appid)
+        {
+            let args = crate::lifecycle::AppServiceEventArgs {
+                source: crate::lifecycle::AppServiceEventSource::Lxapp,
+                reason: crate::lifecycle::AppServiceEventReason::SwitchAway,
+            }
+            .to_json_string();
+            let _ = previous.appservice_notify(AppServiceEvent::OnHide, Some(args));
+        }
+        Ok(())
+    }
+
     pub fn replace_host_mains(
         &self,
         registrations: Vec<HostMainSurfaceRegistration>,
@@ -3396,6 +3498,28 @@ mod tests {
         assert!(!snapshot.items[1].root);
         assert!(snapshot.items[1].closable);
         assert!(!snapshot.items[1].renameable);
+    }
+
+    #[test]
+    fn a_promoted_lxapp_aside_is_a_closable_workspace_row() {
+        let home = lingxia_surface::Surface::lxapp("home", lingxia_surface::Role::Main, "home");
+        let mut manager = lingxia_surface::SurfaceManager::new(1200.0);
+        manager
+            .open_main(home.clone(), lxapp_workspace_presentation(&home.content))
+            .unwrap();
+        let mut chat =
+            lingxia_surface::Surface::lxapp("chat", lingxia_surface::Role::Aside, "chat");
+        chat.placement.edge = Some(lingxia_surface::Edge::Right);
+        manager.open(chat.clone());
+
+        assert!(manager.promote_aside_to_main("chat", lxapp_workspace_presentation(&chat.content)));
+
+        let snapshot = manager.switcher_snapshot();
+        assert_eq!(snapshot.items.len(), 2);
+        assert_eq!(snapshot.items[1].surface_id, "chat");
+        assert!(!snapshot.items[1].root);
+        assert!(snapshot.items[1].closable);
+        assert_eq!(snapshot.active_surface_id.as_deref(), Some("chat"));
     }
 
     #[test]

@@ -731,6 +731,14 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.onActiveGroupHeaderClicked = { [weak self] in
             self?.restoreMaximizedAsideForMainIntent() ?? false
         }
+        sidebar.onAsideTabDropped = { payload in
+            switch payload.kind {
+            case .lxapp:
+                return promoteAsideLxappToMain(payload.surfaceId)
+            case .browser:
+                return LxAppSurface.promoteBrowserAsideTab(surfaceId: payload.surfaceId)
+            }
+        }
         sidebar.onBrowserTabSelected = { [weak self] id in
             self?.restoreMaximizedAsideForMainIntent()
             self?.browserCoordinator.selectTab(id: id)
@@ -1702,7 +1710,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         // (and its page instance) before driving setActiveMain, so the common
         // case finds it ready; fall back to ensureViewController for any
         // reconcile that reaches an appId whose VC was not yet created.
-        if let viewController = viewControllers[appId] {
+        if let viewController = viewControllers[appId] ?? adoptPromotedAsideLxApp(appId: appId) {
             presentMain(.lxapp(viewController))
         } else if let page = resolveMainProviderPage(for: appId) {
             _ = ensureViewController(
@@ -2900,6 +2908,41 @@ extension LxAppShell {
         // Loading the view mounts the page, waiting for its WebView when a
         // cold Logic worker has not created it yet.
         attachPanelContentView(viewController.view, container: container)
+    }
+
+    /// The core made `appId` a main while its aside controller still exists:
+    /// the aside was promoted. Re-host its current page in a main controller
+    /// and drop the panel. The page's WebView moves without reloading.
+    private func adoptPromotedAsideLxApp(appId: String) -> macOSLxAppViewController? {
+        let liveSessionId = getLxAppSessionId(appId)
+        guard let aside = asideViewControllers[appId],
+              let sessionId = liveSessionId > 0 ? liveSessionId : resolvedSessionId(for: appId)
+        else { return nil }
+        let page = aside.presentedPage
+        let panelId = asidePanelIdByAppId[appId]
+        aside.pauseNativeComponents()
+        detachAsideLxApp(appId: appId)
+        if let panelId {
+            LxAppMacAppUIRuntime.asideLxAppDidPromote(surfaceId: panelId)
+            unregisterPanel(id: panelId)
+        }
+        let viewController = macOSLxAppViewController(
+            appId: appId,
+            path: page.path,
+            pageInstanceId: page.pageInstanceId,
+            sessionId: sessionId
+        )
+        viewControllers[appId] = viewController
+        // Closing the main acks this session to the core; without it the close
+        // is dropped and the lxapp stays alive.
+        storeSession(sessionId, for: appId)
+        LxAppCore.setCurrentApp(appId: appId, path: page.path, pageInstanceId: page.pageInstanceId)
+        // Main chrome (Back, Home, keyboard Back) acts on the active tab. Select
+        // it without `onTabChanged`: the graph already made this app the main,
+        // and switching again from inside its reconcile would re-enter the core.
+        tabManager.addTab(appId: appId, activate: false)
+        tabManager.activeTab = tabManager.tabs.first { $0.appId == appId }
+        return viewController
     }
 
     /// Take `appId` out of its aside panel without ending the session.

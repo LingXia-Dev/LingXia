@@ -1030,6 +1030,23 @@ enum LxAppSurface {
         }
     }
 
+    /// Move a URL aside's tab into the main browser without reloading it: the
+    /// docked panel lets go of the tab, its surface closes, and the main
+    /// browser presents the same tab and webview.
+    static func promoteBrowserAsideTab(surfaceId: String) -> Bool {
+        guard let entry = entries[surfaceId],
+              let browser = entry.dockedBrowser,
+              let shell = LxAppActiveHost.activeShell,
+              let tabId = browser.releaseTab(surfaceId: surfaceId) else { return false }
+        guard promoteDockedBrowserTab(tabId) else {
+            browser.unreleaseTab(surfaceId: surfaceId)
+            return false
+        }
+        _ = close(id: surfaceId, appId: entry.appId, reason: "user")
+        shell.browserCoordinator.presentInternalBrowserTab(id: tabId)
+        return true
+    }
+
     static func close(id: String, appId: String, reason: String) -> Bool {
         guard let entry = entries.removeValue(forKey: id) else {
             _ = onSurfaceClosed(appId, id, closeReason(reason))

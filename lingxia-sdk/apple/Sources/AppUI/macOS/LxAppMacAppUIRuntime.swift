@@ -301,6 +301,33 @@ final class LxAppMacAppUIRuntime: NSObject {
         active?.refreshChromeActions()
     }
 
+    /// An lxapp aside became a main without closing. A declared surface keeps
+    /// its id with a main override, so its switcher row activates and closes
+    /// as a main; a runtime panel stops being a panel.
+    static func asideLxAppDidPromote(surfaceId: String) {
+        active?.forgetPromotedAside(surfaceId: surfaceId)
+    }
+
+    private func forgetPromotedAside(surfaceId: String) {
+        managedEdgeOverrides.removeValue(forKey: surfaceId)
+        if runtimeLxAppPanels.removeValue(forKey: surfaceId) != nil {
+            openedSurfaceIDs.remove(surfaceId)
+            visibleSurfaceIDs.remove(surfaceId)
+            return
+        }
+        guard let surface = surfaceById[surfaceId], surface.content.kind == .lxapp else { return }
+        if surface.role == .main {
+            managedRoleOverrides.removeValue(forKey: surfaceId)
+        } else {
+            managedRoleOverrides[surfaceId] = .main
+        }
+        for main in surfaceById.values where effectiveRole(for: main) == .main {
+            visibleSurfaceIDs.remove(main.id)
+        }
+        openedSurfaceIDs.insert(surfaceId)
+        visibleSurfaceIDs.insert(surfaceId)
+    }
+
     /// Mirror the core's slot maximize onto a terminal workspace's own zoom
     /// button. The panel geometry already follows the plan's `overlay`.
     static func reflectAsideMaximized(surfaceId: String, maximized: Bool) {
