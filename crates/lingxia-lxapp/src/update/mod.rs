@@ -14,7 +14,6 @@ use crate::publish_app_event;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_update::{LxAppUpdateQuery, SemanticVersion, UpdatePackageInfo, UpdateTarget};
-use rong_rt::download as service_executor;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -48,11 +47,13 @@ pub enum OtaUpdateTarget {
     LxApp { target_appid: String },
 }
 
+/// The download dir is shared by every lxapp, so the URL hash keeps two apps'
+/// same-named packages from resuming each other's `.part` file.
 fn filename_from_url_or_hash(url: &str) -> String {
     let main = url.split(&['?', '#'][..]).next().unwrap_or(url);
     let seg = main.rsplit('/').next().unwrap_or(main);
     if !seg.is_empty() && seg.contains('.') {
-        seg.to_string()
+        format!("{}_{}", UpdateManager::hash_url(url), seg)
     } else {
         format!("{}.tar.zst", UpdateManager::hash_url(url))
     }
@@ -500,54 +501,34 @@ impl UpdateManager {
         }
 
         // Keep any pre-existing `.part` file so an interrupted prior attempt
-        // (typically on weak networks) resumes from where it stopped.
-        let options = service_executor::DownloadOptions::new(url.to_string(), dest.clone())
-            .with_resume()
-            .with_connect_timeout(std::time::Duration::from_secs(10));
-        let receiver = service_executor::spawn_download(options, None)
-            .map_err(|e| LxAppError::IoError(format!("failed to start download: {}", e)))?;
-
-        match receiver
+        // resumes from where it stopped.
+        lingxia_service::package_download::download_package(url, &dest, checksum_sha256, |_| None)
             .await
-            .map_err(|_| LxAppError::IoError("download task cancelled".to_string()))?
-        {
-            Ok(()) => {
-                if !checksum_sha256.is_empty()
-                    && let Err(e) = archive::verify_sha256(&dest, checksum_sha256)
-                {
-                    let _ = fs::remove_file(&dest);
-                    return Err(e);
-                }
+            .map_err(|e| LxAppError::IoError(e.to_string()))?;
 
-                if let Err(e) = metadata::downloaded_upsert(
-                    lxappid,
-                    release_type,
-                    version,
-                    &dest,
-                    Some(checksum_sha256),
-                ) {
-                    let _ = fs::remove_file(&dest);
-                    return Err(LxAppError::IoError(format!(
-                        "failed to record downloaded update: {}",
-                        e
-                    )));
-                }
-
-                crate::info!(
-                    "Recorded downloaded update: appid={}, release_type={}, version={}, archive={}",
-                    lxappid,
-                    release_type,
-                    version,
-                    dest.display()
-                )
-                .with_appid(lxappid);
-                Ok(dest)
-            }
-            Err(err) => {
-                let _ = fs::remove_file(&dest);
-                Err(LxAppError::IoError(format!("download failed: {}", err)))
-            }
+        if let Err(e) = metadata::downloaded_upsert(
+            lxappid,
+            release_type,
+            version,
+            &dest,
+            Some(checksum_sha256),
+        ) {
+            let _ = fs::remove_file(&dest);
+            return Err(LxAppError::IoError(format!(
+                "failed to record downloaded update: {}",
+                e
+            )));
         }
+
+        crate::info!(
+            "Recorded downloaded update: appid={}, release_type={}, version={}, archive={}",
+            lxappid,
+            release_type,
+            version,
+            dest.display()
+        )
+        .with_appid(lxappid);
+        Ok(dest)
     }
 
     /// Compute a destination path for the provided URL inside the downloads directory.

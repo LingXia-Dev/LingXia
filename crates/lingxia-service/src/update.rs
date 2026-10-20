@@ -2,6 +2,7 @@
 // handle is intentionally dropped (fire-and-forget).
 #![allow(clippy::let_underscore_future)]
 
+use crate::package_download::{self, partial_download_len};
 use bytes::Bytes;
 use http::Request;
 use http_body_util::{BodyExt, Empty};
@@ -10,10 +11,10 @@ use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::update::UpdateService;
 use lingxia_provider::BoxFuture;
 use lingxia_update::AppUpdateHost;
-use rong_rt::download::{self as service_executor, BodySink};
+use rong_rt::download::BodySink;
 use rong_rt::http as host_http;
 use std::fs;
-use std::io::{Error as IoError, Read};
+use std::io::Error as IoError;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
@@ -323,29 +324,39 @@ struct ProgressSink {
 }
 
 impl ProgressSink {
-    fn new(total_bytes: Option<u64>, reporter: AppUpdateProgressReporter) -> Self {
+    fn new(
+        total_bytes: Option<u64>,
+        downloaded_bytes: u64,
+        reporter: AppUpdateProgressReporter,
+    ) -> Self {
         Self {
             total_bytes,
-            downloaded_bytes: 0,
+            downloaded_bytes,
             reporter,
         }
+    }
+
+    /// A server that ignores `Range` resends the whole body after the resumed
+    /// bytes were counted, so never report past the total.
+    fn shown_bytes(&self) -> u64 {
+        self.total_bytes.map_or(self.downloaded_bytes, |total| {
+            self.downloaded_bytes.min(total)
+        })
     }
 }
 
 impl BodySink for ProgressSink {
     fn write(&mut self, chunk: &[u8]) -> Result<(), String> {
         self.downloaded_bytes += chunk.len() as u64;
-        self.reporter
-            .report(self.downloaded_bytes, self.total_bytes);
+        self.reporter.report(self.shown_bytes(), self.total_bytes);
         Ok(())
     }
 
     fn close(&mut self, result: &Result<(), String>) {
         if result.is_ok() {
-            self.reporter.report(
-                self.downloaded_bytes,
-                self.total_bytes.or(Some(self.downloaded_bytes)),
-            );
+            let shown = self.shown_bytes();
+            self.reporter
+                .report(shown, self.total_bytes.or(Some(shown)));
         }
     }
 }
@@ -422,46 +433,17 @@ async fn download_host_app_update_package(
         },
     };
 
-    progress.report(0, file_size);
-    let sink: Box<dyn BodySink> = Box::new(ProgressSink::new(file_size, progress));
-
-    // Resume on the existing `.part` file when possible. The 10s connect timeout
-    // is a sensible cap for weak networks — without it rong_rt falls back to the
-    // OS default which can hang far longer.
-    let options = service_executor::DownloadOptions::new(url.to_string(), dest.clone())
-        .with_sink(sink)
-        .with_resume()
-        .with_connect_timeout(Duration::from_secs(10));
-    let receiver = match service_executor::spawn_download(options, None) {
-        Ok(receiver) => receiver,
-        Err(error) => {
-            return Err(UpdateError::runtime(format!(
-                "failed to start download: {error}"
-            )));
-        }
-    };
-
-    match receiver
-        .await
-        .map_err(|_| UpdateError::runtime("download task cancelled"))?
-    {
-        Ok(()) => {
-            if !checksum_sha256.is_empty() {
-                if let Err(error) = verify_sha256(&dest, checksum_sha256) {
-                    let _ = fs::remove_file(&dest);
-                    Err(error)
-                } else {
-                    Ok(dest)
-                }
-            } else {
-                Ok(dest)
-            }
-        }
-        Err(error) => {
-            let _ = fs::remove_file(&dest);
-            Err(UpdateError::runtime(format!("download failed: {error}")))
-        }
-    }
+    progress.report(partial_download_len(&dest), file_size);
+    package_download::download_package(url, &dest, checksum_sha256, |resumed| {
+        Some(Box::new(ProgressSink::new(
+            file_size,
+            resumed,
+            progress.clone(),
+        )))
+    })
+    .await
+    .map_err(|error| UpdateError::runtime(error.to_string()))?;
+    Ok(dest)
 }
 
 fn app_update_filename(url: &str, version: &str) -> String {
@@ -533,7 +515,7 @@ fn verify_sha256(path: &Path, expected_hex: &str) -> Result<(), UpdateError> {
     if expected_hex.is_empty() {
         return Ok(());
     }
-    let actual = compute_sha256_hex(path)?;
+    let actual = package_download::sha256_hex(path)?;
     if actual.eq_ignore_ascii_case(expected_hex) {
         Ok(())
     } else {
@@ -541,28 +523,6 @@ fn verify_sha256(path: &Path, expected_hex: &str) -> Result<(), UpdateError> {
             "checksum mismatch: expected {expected_hex}, got {actual}"
         )))
     }
-}
-
-fn compute_sha256_hex(path: &Path) -> Result<String, UpdateError> {
-    use sha2::{Digest, Sha256};
-    use std::fmt::Write;
-
-    let mut file = fs::File::open(path)?;
-    let mut hasher = Sha256::new();
-    let mut buf = vec![0u8; 256 * 1024];
-    loop {
-        let n = file.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    let digest = hasher.finalize();
-    let mut hex = String::with_capacity(digest.len() * 2);
-    for b in digest {
-        let _ = write!(hex, "{b:02x}");
-    }
-    Ok(hex)
 }
 
 fn hash_url(url: &str) -> String {
