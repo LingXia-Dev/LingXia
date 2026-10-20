@@ -538,7 +538,8 @@ fn rebuild(card: &mut Card, scale: f32) {
         .source_icon_path
         .as_deref()
         .and_then(|path| load_source_icon(path, px(ICON, scale)));
-    card.icon = if card.source_icon.is_some() {
+    // A guest card never borrows the product icon; the placeholder stands in.
+    card.icon = if !card.source.is_empty() {
         None
     } else {
         load_app_icon(px(ICON, scale))

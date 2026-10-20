@@ -209,7 +209,10 @@ private final class BannerView: NSView {
         layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.55).cgColor
 
         let icon = NSImageView()
-        icon.image = sourceIcon ?? NSApp.applicationIconImage
+        // A guest card never borrows the product icon.
+        icon.image = sourceName.isEmpty
+            ? NSApp.applicationIconImage
+            : sourceIcon ?? NSImage(systemSymbolName: "app.dashed", accessibilityDescription: nil)
         icon.imageScaling = .scaleProportionallyUpOrDown
         icon.wantsLayer = true
         icon.layer?.cornerRadius = 8
