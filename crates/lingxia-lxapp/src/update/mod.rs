@@ -583,7 +583,17 @@ impl UpdateManager {
 
 #[cfg(test)]
 mod tests {
-    use super::UpdateManager;
+    use super::{UpdateManager, filename_from_url_or_hash};
+
+    #[test]
+    fn archive_names_differ_for_same_named_packages_from_different_urls() {
+        let shop = filename_from_url_or_hash("https://cdn.example/shop/app.tar.zst?v=1");
+        let chat = filename_from_url_or_hash("https://cdn.example/chat/app.tar.zst?v=1");
+        assert!(shop.ends_with("_app.tar.zst"), "{shop}");
+        assert!(chat.ends_with("_app.tar.zst"), "{chat}");
+        assert_ne!(shop, chat);
+        assert!(filename_from_url_or_hash("https://cdn.example/download").ends_with(".tar.zst"));
+    }
 
     fn install_dir(manifest: &str) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();

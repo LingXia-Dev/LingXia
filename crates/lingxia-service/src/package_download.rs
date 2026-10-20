@@ -37,6 +37,10 @@ impl std::error::Error for PackageDownloadError {}
 /// Download `url` to `dest`, resuming from `dest.part`, and verify `checksum_sha256`
 /// when non-empty. On failure `dest` is removed; `.part` survives only when it can
 /// still be resumed. `make_sink` receives the byte count already on disk.
+///
+/// Dropping the returned future aborts the transfer. Otherwise a cancelled open
+/// could leave a task appending to `.part` for up to an hour while a retry
+/// appends to the same file.
 pub async fn download_package(
     url: &str,
     dest: &Path,
@@ -57,7 +61,10 @@ pub async fn download_package(
         if let Some(sink) = make_sink(resumed) {
             options = options.with_sink(sink);
         }
-        let result = service_executor::spawn_download(options, None)
+        // rong_rt aborts when the sender is dropped, so holding it here ties the
+        // transfer to this future.
+        let (_abort_tx, abort_rx) = tokio::sync::oneshot::channel::<()>();
+        let result = service_executor::spawn_download(options, Some(abort_rx))
             .map_err(|error| {
                 PackageDownloadError::Transfer(format!("failed to start download: {error}"))
             })?
@@ -263,6 +270,36 @@ mod tests {
         assert_eq!(resumed_from, [0, start as u64]);
         assert_eq!(fs::read(&dest).unwrap(), body());
         assert!(!dest.with_extension("part").exists());
+    }
+
+    #[tokio::test]
+    async fn dropping_the_future_aborts_the_transfer() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/pkg.zip", listener.local_addr().unwrap());
+        let (closed_tx, closed_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            read_request(&mut stream);
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {LEN}\r\n\r\n").unwrap();
+            let _ = stream.write_all(&body()[..64 * 1024]);
+            // The client closes the socket once the download future is dropped.
+            let mut probe = [0u8; 1];
+            let closed = stream.read(&mut probe).map_or(true, |n| n == 0);
+            let _ = closed_tx.send(closed);
+        });
+
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("pkg.zip");
+        let download = download_package(&url, &dest, "", |_| None);
+        let aborted = tokio::time::timeout(Duration::from_millis(500), download).await;
+        assert!(aborted.is_err(), "the transfer must still be in flight");
+
+        // Well under rong_rt's 120s idle read timeout, which would also close it.
+        let closed = closed_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("server socket should close promptly after the drop");
+        assert!(closed);
+        assert!(!dest.exists());
     }
 
     #[test]
