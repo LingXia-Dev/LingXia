@@ -247,9 +247,11 @@ import WebKit
 
         /// Tell the runtime which machine it is standing in for, so a tab item
         /// declared `showOn: ["mobile"]` appears in a phone shape and not in a
-        /// desktop one. A tablet stays mobile for `showOn` and sets `pad` so
-        /// the compact strip uses the ten-item declaration cap. Only the
-        /// runner simulates a host it was not built for.
+        /// desktop one, and pull-to-refresh slides the page over a spinner as
+        /// on a device instead of showing the desktop refresh bar. A tablet
+        /// stays mobile and sets `pad` so the compact strip uses the ten-item
+        /// declaration cap. Only the runner simulates a host it was not built
+        /// for.
         public static func setSimulatedHostClass(mobile: Bool, pad: Bool = false) {
             RunnerBridge.setSimulatedHostClass(mobile: mobile, pad: pad)
         }
@@ -260,6 +262,16 @@ import WebKit
             notifyListener: Bool
         ) {
             RunnerBridge.setTabBarSelectedIndex(view, index: index, notifyListener: notifyListener)
+        }
+    }
+
+    @MainActor
+    public enum PullToRefresh {
+        /// Height of runner chrome (a simulated status bar) covering the top
+        /// of a page container, so a mobile pull-to-refresh spinner and hold
+        /// clear it the way a device's safe area does.
+        public static func setTopInsetProvider(_ provider: ((NSView) -> CGFloat)?) {
+            RunnerBridge.setPullToRefreshTopInsetProvider(provider)
         }
     }
 
