@@ -159,7 +159,8 @@ enum LxIcon {
     @MainActor
     private static var cachedHostAppImage: NSImage?
 
-    /// Bundled LingXia mark for guest lxapps that have no registry artwork.
+    /// Bundled LingXia mark: the last resort, when neither the registry nor
+    /// the host product has artwork.
     static func defaultLxappMark() -> NSImage? {
         defaultLxappMarkImage
     }
@@ -170,15 +171,17 @@ enum LxIcon {
         subdirectory: "icons"
     ).flatMap { NSImage(contentsOf: $0) }
 
-    /// Sidebar / pin artwork for an lxapp. Home is the product itself, so it
-    /// always uses the host icon. Other apps use the registry file, then the
-    /// SDK default mark.
+    /// Artwork for an lxapp anywhere the shell lists one (sidebar, pins, tab
+    /// strips). Home is the product itself, so it always uses the host icon.
+    /// Other apps use the registry file, then the host icon — inside a
+    /// branded product an lxapp without artwork still reads as that product
+    /// (as on Windows) — and the SDK mark only when the host has none.
     @MainActor
     static func lxappImage(appId: String, path: String) -> NSImage? {
         if LxAppCore.isHomeLxApp(appId) {
             return hostAppImage() ?? image(at: path) ?? defaultLxappMark()
         }
-        return image(at: path) ?? defaultLxappMark()
+        return image(at: path) ?? hostAppImage() ?? defaultLxappMark()
     }
 
     /// Decoded lxapp artwork by path + file stamp. Sidebar rows, pins, and the
