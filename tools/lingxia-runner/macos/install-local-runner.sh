@@ -125,9 +125,16 @@ echo "==> Installing $APP_NAME to $TARGET_DIR"
 rm -rf "$TMP_TARGET_DIR" "$BACKUP_TARGET_DIR"
 mkdir -p "$TMP_TARGET_DIR"
 cp -R "$APP_SRC" "$TMP_TARGET_DIR/"
-# What this Runner is: `lingxia dev` runs it only for a CLI of the same commit.
+# What this Runner is. `lingxia dev` matches it on dev-session protocol, and
+# records the commit so a later checkout can see whether Runner sources moved.
 RUNNER_COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true)"
-if [[ -n "$RUNNER_COMMIT" ]]; then
+PROTOCOL_FILE="$ROOT_DIR/crates/lingxia-control-protocol/src/lib.rs"
+RUNNER_PROTOCOL="$(awk -F= '/DEV_SESSION_PROTOCOL_VERSION: u32/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$PROTOCOL_FILE")"
+if [[ -n "$RUNNER_COMMIT" && -n "$RUNNER_PROTOCOL" ]]; then
+  printf '{"version":"%s","commit":"%s","protocol":%s}\n' \
+    "$RUNNER_VERSION" "$RUNNER_COMMIT" "$RUNNER_PROTOCOL" \
+    > "$TMP_TARGET_DIR/runner-build.json"
+elif [[ -n "$RUNNER_COMMIT" ]]; then
   printf '{"version":"%s","commit":"%s"}\n' "$RUNNER_VERSION" "$RUNNER_COMMIT" \
     > "$TMP_TARGET_DIR/runner-build.json"
 else

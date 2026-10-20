@@ -245,14 +245,17 @@ Development machine: lxdev receives progress, results, and artifacts
   with `phase: "recovery_failed"`; lxdev sets `Outcome.app_not_live` from it
   and prints the `Recover:` line, as it does for a `timed_out` or
   `internal_error` run that was not interrupted.
-- Version check: `lingxia_control_protocol::dev_session::compat`. Components
-  are the CLI (`LXDEV_BUILD_VERSION` / `LINGXIA_BUILD_VERSION`: version plus
-  `(sha[-dirty] date)`), the session owner (`SessionInfo.build`), the runtime
-  (`PeerBuild` from the runtime `hello`, surfaced by `echo` as
-  `runtimeBuild`), and `node_modules/@lingxia/*/package.json` of the project
-  (and, for a host, each local lxapp bundle). Skew is a different major.minor,
-  or — only when both sides name one — a different commit: a package's
-  `+<sha>` build metadata or `"lingxia": { "commit" }`.
+- Version check: `lingxia_control_protocol::dev_session::compat` (pure);
+  reading a project from disk is its `project` feature, which only the CLI
+  binaries enable. The tool
+  builds lines in `[BUILD_TARGET_FLOOR, its base line]`. A host's SDK pins
+  (Cargo `lingxia*`, the Android gradle fallback, a Windows SDK tag) must
+  agree and sit in that window. Each path-bundle lxapp's `minRuntime` must
+  sit in the window and not above the host line; its installed `@lingxia/*`
+  packages must be on that `minRuntime` line. A live peer
+  (`PeerBuild.protocol` from the runtime `hello`) must speak a dev protocol
+  in `[MIN_DEV_SESSION_PROTOCOL_VERSION, DEV_SESSION_PROTOCOL_VERSION]`.
+  Commits are printed by doctor and are not a gate.
 - Session selection: `dev_session::select` (broker feature) is the one
   resolver; `hint_selector` returns the shortest selector that resolves back
   to the same session from the same directory (none, name, target,
@@ -261,18 +264,22 @@ Development machine: lxdev receives progress, results, and artifacts
   fields a build does not know, so a broker passes newer fields through; a
   broker built before `extra` still drops them, which is why a session with a
   `--name` verifies its registration (below).
-- Runner build identity: the version alone does not name a build, so every
-  Runner install writes `runner-build.json` beside the app — `{version,
-  commit}` from `install-local-runner.sh`/`.ps1`, `{version, release: true}`
-  when `runner_cache::ensure_runner` unpacks a release asset.
-  `ensure_matching_runner` compares it with `CliBuild::current()`
-  (`LINGXIA_COMMIT_HASH`, and `LINGXIA_RELEASE_BUILD`, which
-  `scripts/release/cli.sh` sets): a checkout build needs the same commit; a
-  release build accepts its release asset or its commit, and otherwise
-  re-downloads. A CLI without a commit checks the version only.
-  `LINGXIA_ALLOW_SKEW=1` warns instead. `doctor --project` shows the same
-  verdict for a standalone lxapp. In `compat::check` a host that reports a
-  commit (the session's `lingxia`) must match the checking CLI's commit.
+- Runner identity: every install writes `runner-build.json` beside the app —
+  `{version, commit, protocol}` from `install-local-runner.sh`/`.ps1`,
+  `{version, release: true, protocol}` when a release CLI's
+  `runner_cache::ensure_runner` unpacks a release asset (a checkout download
+  leaves `protocol` empty). `ensure_matching_runner` runs a Runner of this
+  CLI's version whose protocol is in range, including the release asset. A
+  stamp without `protocol` is read as the constant committed at its commit or
+  `lingxia-cli-v<version>` tag (`git show` in the CLI's checkout — the object,
+  not the working tree). Out of range: a release CLI re-downloads, a checkout
+  CLI must rebuild. A checkout CLI running a Runner not built from its commit
+  prints a one-line note, once per CLI/Runner pair (`.foreign-build-noted`
+  beside the Runner); other source drift is not a gate.
+  `LINGXIA_SKIP_COMPAT=1` (`compat::SKIP_ENV`) turns the project, Runner and
+  `lxdev` session pre-checks into warnings; no check error names it, and the
+  dev-session handshake (`speaks_dev_protocol`) still refuses. `doctor --project`
+  shows the same verdict for a standalone lxapp.
 - Session lifecycle: `lingxia dev` starts and stops sessions; `lxdev` never
   starts one. `lingxia dev --background` runs `run_background_owner`: it
   spawns the owner (`lingxia dev …` minus `--background`/`--json`, its own

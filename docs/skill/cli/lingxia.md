@@ -103,10 +103,14 @@ lingxia dev --background --mock all        # answer from mocks/ (CI against mock
   Worker. `--mock all` needs `--env dev`.
 - **Stop.** `lingxia dev stop [SESSION]` ends a session (exit 0 when none).
   `lxdev session` lists live ones.
-- **Version skew.** `dev`, `build`, and `lxdev test` fail fast when the CLI,
-  the host or Runner, and the project's `@lingxia/*` packages are on different
-  major.minor lines; the message names the fix. `LINGXIA_ALLOW_SKEW=1` turns
-  it into a warning; `lingxia doctor --project` prints every version.
+- **Compatibility.** `dev`, `build`, and `lxdev test` build any project from
+  the oldest supported line (0.25) up to this CLI's line. Each lxapp's `@lingxia/*`
+  packages follow that lxapp's `minRuntime`; a host's SDK pins must agree and
+  sit in the same window, and no embedded lxapp may be newer than the host.
+  A live session must speak a dev protocol this tool still speaks. The message
+  names the fix; `lingxia doctor --project` prints the window and the pins.
+  If a check misreads the project, `LINGXIA_SKIP_COMPAT=1` turns it into a
+  warning; the session handshake still refuses an unknown protocol.
 - **Home lxapp.** Inside a host app whose `homeAppId` is this lxapp, the Runner
   draws no capsule on it, as the host does; other lxapps it opens keep theirs.
 - **Devices.** Android and Harmony get reverse port forwarding. iOS devices
@@ -182,7 +186,7 @@ background colour matched to the source, or pass a transparent foreground.
 ```bash
 lingxia doctor
 lingxia doctor --platform harmony
-lingxia doctor --project   # this CLI vs the project's @lingxia/* packages
+lingxia doctor --project   # build window vs this project's pins
 ```
 
 ## `lingxia skill install`

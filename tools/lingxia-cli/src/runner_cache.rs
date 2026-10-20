@@ -8,11 +8,11 @@
 //! it into the cache. The unpacked app's existence marks the version installed,
 //! so repeat launches short-circuit with no network (mirrors `sdk_cache.rs`).
 //!
-//! The version alone does not name a build: every commit between two releases
-//! reports the same one. So each install records what it is in
-//! [`BUILD_STAMP`] beside the app — a release asset of its version, or a local
-//! build of a commit (`install-local-runner.sh` / `.ps1`) — and
-//! [`ensure_matching_runner`] runs only a Runner of this CLI's own build.
+//! The version directory is the cache key. A Runner of this CLI's version runs
+//! when it speaks a dev protocol this CLI still speaks — a release asset of
+//! that version included. The protocol is the one its [`BUILD_STAMP`] records,
+//! or, for a stamp without one, the constant committed at its commit or
+//! release tag.
 
 use crate::github;
 use crate::sdk_cache::{sha256_hex, shasum_for};
@@ -20,6 +20,9 @@ use anyhow::{Context, Result, anyhow, bail};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use lingxia_control_protocol::dev_session::compat;
 
 /// macOS app bundle name as it was before `lingxia package` began naming
 /// artifacts from the project. Only a fallback for reporting a path that does
@@ -103,6 +106,10 @@ pub struct RunnerBuild {
     /// The published release asset of `version`.
     #[serde(default)]
     pub release: bool,
+    /// Dev-session protocol this Runner speaks. Absent on installs from before
+    /// the field existed; a same-version install without it still runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protocol: Option<u32>,
 }
 
 impl RunnerBuild {
@@ -135,33 +142,6 @@ impl CliBuild {
             release: !env!("LINGXIA_RELEASE_BUILD").is_empty(),
         }
     }
-
-    /// Whether `runner` (its stamp; `None` when it has none) is this build's.
-    pub fn matches(&self, runner: Option<&RunnerBuild>) -> bool {
-        let Some(commit) = &self.commit else {
-            // Nothing to tell builds apart by: the version dir decides.
-            return true;
-        };
-        let Some(runner) = runner.filter(|runner| runner.version == self.version) else {
-            return false;
-        };
-        match &runner.commit {
-            Some(theirs) => same_commit(theirs, commit),
-            None => runner.release && self.release,
-        }
-    }
-
-    fn describe(&self) -> String {
-        match &self.commit {
-            Some(commit) => format!("{} ({})", self.version, short(commit)),
-            None => self.version.clone(),
-        }
-    }
-}
-
-fn same_commit(a: &str, b: &str) -> bool {
-    let (a, b) = (a.trim().to_ascii_lowercase(), b.trim().to_ascii_lowercase());
-    !a.is_empty() && !b.is_empty() && (a.starts_with(&b) || b.starts_with(&a))
 }
 
 fn short(commit: &str) -> &str {
@@ -194,60 +174,198 @@ fn local_install_command() -> String {
     }
 }
 
-/// Why `found` (the stamp; `None` if there is none) is not `cli`'s Runner,
-/// and the fix — one line.
-fn mismatch_message(cli: &CliBuild, found: Option<&RunnerBuild>) -> String {
-    let what = match found {
-        Some(build) => format!("the installed Runner is {}, not", build.describe()),
-        None => {
-            "the installed Runner does not record its build, so it cannot be matched to".to_string()
-        }
-    };
+/// Why `found` is not a Runner this CLI can drive, and the fix — one line.
+fn mismatch_message(cli: &CliBuild, found: &RunnerBuild, protocol: Option<u32>) -> String {
+    let script = local_install_command();
+    if found.version != cli.version {
+        return format!(
+            "the installed Runner is {}, which is not this CLI's version {}: rebuild it from \
+             this checkout with {script}",
+            found.describe(),
+            cli.version
+        );
+    }
     format!(
-        "{what} this CLI's build {}: rebuild it from this checkout with {} (or {}=1)",
-        cli.describe(),
-        local_install_command(),
-        lingxia_control_protocol::dev_session::compat::ALLOW_SKEW_ENV
+        "the installed Runner ({}) speaks dev protocol {}; this CLI speaks {}. Rebuild it from \
+         this checkout with {script}",
+        found.describe(),
+        protocol.map_or_else(|| "(unrecorded)".to_string(), |p| p.to_string()),
+        compat::protocol_span()
     )
 }
 
-/// The Runner of this CLI's build, installed if it can be: a release CLI
-/// fetches its release asset (replacing a cached Runner of another build,
-/// and saying so); a CLI built from a checkout needs a Runner built from the
-/// same commit, and fails naming the script that builds one.
-/// `LINGXIA_ALLOW_SKEW=1` runs the installed Runner anyway, with a warning.
+/// This CLI's checkout, when it is still where it was built.
+fn checkout_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// The dev protocol a Runner speaks. A stamp without one (an older install,
+/// or a checkout's download of the release asset) is looked up at the
+/// Runner's commit, or its version's release tag, in this CLI's checkout.
+/// `None` when nothing says; the Runner's `hello` still decides at runtime.
+fn runner_protocol(cli: &CliBuild, runner: &RunnerBuild) -> Option<u32> {
+    if runner.protocol.is_some() || cli.release {
+        return runner.protocol;
+    }
+    let rev = match &runner.commit {
+        Some(commit) => commit.clone(),
+        None if runner.release => format!("lingxia-cli-v{}", runner.version),
+        None => return None,
+    };
+    protocol_at(&checkout_dir(), &rev)
+}
+
+/// `DEV_SESSION_PROTOCOL_VERSION` as committed at `rev`. Reads the object, not
+/// the working tree, so a checkout that moved since this CLI was built does
+/// not change the answer.
+fn protocol_at(repo: &Path, rev: &str) -> Option<u32> {
+    let output = Command::new("git")
+        .arg("show")
+        .arg(format!("{rev}:crates/lingxia-control-protocol/src/lib.rs"))
+        .current_dir(repo)
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_protocol_constant(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn parse_protocol_constant(source: &str) -> Option<u32> {
+    source
+        .lines()
+        .find(|line| {
+            line.trim_start()
+                .starts_with("pub const DEV_SESSION_PROTOCOL_VERSION: u32")
+        })?
+        .split_once('=')?
+        .1
+        .trim()
+        .trim_end_matches(';')
+        .trim()
+        .parse()
+        .ok()
+}
+
+/// A checkout CLI may run a Runner of its version built elsewhere, but its
+/// own runtime changes are not in it. Say so, without failing.
+fn foreign_build_note(cli: &CliBuild, runner: Option<&RunnerBuild>) -> Option<String> {
+    let ours = cli.commit.as_deref().filter(|_| !cli.release)?;
+    let theirs = runner.and_then(|runner| runner.commit.as_deref());
+    if theirs.is_some_and(|theirs| same_commit(theirs, ours)) {
+        return None;
+    }
+    let what = runner.map_or_else(|| cli.version.clone(), RunnerBuild::describe);
+    Some(format!(
+        "note: running Runner {what}, not this checkout ({}); runtime changes since are not in \
+         it — rebuild with {} to test them",
+        short(ours),
+        local_install_command()
+    ))
+}
+
+/// Beside the Runner: the CLI/Runner pair [`foreign_build_note`] last named.
+const NOTED: &str = ".foreign-build-noted";
+
+fn note_key(cli: &CliBuild, runner: Option<&RunnerBuild>) -> String {
+    let runner = runner.map_or_else(
+        || "unrecorded".to_string(),
+        |runner| {
+            runner
+                .commit
+                .clone()
+                .unwrap_or_else(|| format!("release {}", runner.version))
+        },
+    );
+    format!("{} {runner}", cli.commit.as_deref().unwrap_or(""))
+}
+
+/// Whether `key` is new for this Runner; records it. The note is for the
+/// first launch of a pair, not every one.
+fn claim_note(dir: &Path, key: &str) -> bool {
+    let path = dir.join(NOTED);
+    if fs::read_to_string(&path).is_ok_and(|seen| seen.trim() == key) {
+        return false;
+    }
+    let _ = fs::write(&path, key);
+    true
+}
+
+fn same_commit(a: &str, b: &str) -> bool {
+    let (a, b) = (a.trim().to_ascii_lowercase(), b.trim().to_ascii_lowercase());
+    !a.is_empty() && !b.is_empty() && (a.starts_with(&b) || b.starts_with(&a))
+}
+
+/// What `lingxia dev` does with the installed Runner.
+enum Verdict {
+    Run,
+    /// A release CLI fetches its own release Runner over this one.
+    Replace,
+    /// A checkout CLI needs a Runner built from the checkout.
+    Rebuild(String),
+}
+
+fn verdict(cli: &CliBuild, stamp: Option<&RunnerBuild>) -> Verdict {
+    let Some(build) = stamp else {
+        return Verdict::Run;
+    };
+    let protocol = runner_protocol(cli, build);
+    let fits = build.version == cli.version && protocol.is_none_or(compat::speaks_dev_protocol);
+    match (fits, cli.release) {
+        (true, _) => Verdict::Run,
+        (false, true) => Verdict::Replace,
+        (false, false) => Verdict::Rebuild(mismatch_message(cli, build, protocol)),
+    }
+}
+
+/// `LINGXIA_SKIP_COMPAT=1` runs the Runner anyway; its `hello` still decides.
+fn refuse_or_warn(message: String, path: PathBuf) -> Result<PathBuf> {
+    if compat::skip_requested() {
+        crate::compat::warn_skipped(&[message]);
+        Ok(path)
+    } else {
+        Err(anyhow!("{message}"))
+    }
+}
+
+/// The Runner of this CLI's version: any build of that version whose dev
+/// protocol this CLI speaks, the release asset included. A release CLI
+/// replaces one it cannot drive; a checkout CLI names the script that builds
+/// one from the checkout.
 pub fn ensure_matching_runner() -> Result<PathBuf> {
     let cli = CliBuild::current();
     let dir = runner_root()?.join(&cli.version);
-    let path = runner_path(&dir);
-    let installed = path.exists().then(|| read_stamp(&dir));
-    match &installed {
-        Some(stamp) if cli.matches(stamp.as_ref()) => return Ok(path),
-        Some(stamp) if !cli.release => {
-            let message = mismatch_message(&cli, stamp.as_ref());
-            if lingxia_control_protocol::dev_session::compat::skew_allowed() {
-                eprintln!("warning: {message}");
-                return Ok(path);
+    let path = if runner_path(&dir).exists() {
+        let stamp = read_stamp(&dir);
+        match verdict(&cli, stamp.as_ref()) {
+            Verdict::Run => runner_path(&dir),
+            Verdict::Replace => {
+                eprintln!(
+                    "Replacing the cached Runner ({}) with this CLI's release Runner {}...",
+                    stamp
+                        .as_ref()
+                        .map_or_else(|| "build not recorded".to_string(), RunnerBuild::describe),
+                    cli.version
+                );
+                ensure_runner(&cli.version, true)?
             }
-            bail!("{message}");
+            Verdict::Rebuild(message) => refuse_or_warn(message, runner_path(&dir))?,
         }
-        Some(stamp) => eprintln!(
-            "Replacing the cached Runner ({}) with this CLI's release Runner {}...",
-            stamp
-                .as_ref()
-                .map_or_else(|| "build not recorded".to_string(), RunnerBuild::describe),
-            cli.version
-        ),
-        None if cli.commit.is_some() && !cli.release => bail!(
-            "LingXia Runner {} is not installed for this CLI build {}: build it from this \
-             checkout with {}",
-            cli.version,
-            cli.describe(),
-            local_install_command()
-        ),
-        None => {}
+    } else {
+        let path = ensure_runner(&cli.version, false)?;
+        match verdict(&cli, read_stamp(&dir).as_ref()) {
+            Verdict::Rebuild(message) => refuse_or_warn(message, path)?,
+            _ => path,
+        }
+    };
+    let stamp = read_stamp(&dir);
+    if let Some(note) = foreign_build_note(&cli, stamp.as_ref())
+        && claim_note(&dir, &note_key(&cli, stamp.as_ref()))
+    {
+        eprintln!("{note}");
     }
-    ensure_runner(&cli.version, installed.is_some())
+    Ok(path)
 }
 
 /// `lingxia doctor --project`: the installed Runner of this CLI's version, and
@@ -259,29 +377,17 @@ pub fn installed_report() -> (String, std::result::Result<(), String>) {
     };
     let dir = root.join(&cli.version);
     if !runner_path(&dir).exists() {
-        return if cli.commit.is_some() && !cli.release {
-            (
-                "not installed".into(),
-                Err(format!(
-                    "no Runner for this CLI build {}: build it from this checkout with {}",
-                    cli.describe(),
-                    local_install_command()
-                )),
-            )
-        } else {
-            ("not installed (`lingxia dev` fetches it)".into(), Ok(()))
-        };
+        return ("not installed (`lingxia dev` fetches it)".into(), Ok(()));
     }
     let stamp = read_stamp(&dir);
     let label = stamp.as_ref().map_or_else(
         || format!("{} (build not recorded)", cli.version),
         RunnerBuild::describe,
     );
-    // A release CLI replaces another build by itself on the next `lingxia dev`.
-    if cli.matches(stamp.as_ref()) || cli.release {
-        (label, Ok(()))
-    } else {
-        (label, Err(mismatch_message(&cli, stamp.as_ref())))
+    match verdict(&cli, stamp.as_ref()) {
+        Verdict::Run => (label, Ok(())),
+        Verdict::Replace => (format!("{label} (`lingxia dev` replaces it)"), Ok(())),
+        Verdict::Rebuild(message) => (label, Err(message)),
     }
 }
 
@@ -356,12 +462,17 @@ pub fn ensure_runner(version: &str, force: bool) -> Result<PathBuf> {
     if !path.exists() {
         bail!("Runner install incomplete (missing {})", path.display());
     }
+    let release_cli = CliBuild::current().release;
     write_stamp(
         &dir,
         &RunnerBuild {
             version: version.to_string(),
             commit: None,
             release: true,
+            // A checkout CLI's own constant need not be the asset's; it leaves
+            // the field empty and reads the release tag instead.
+            protocol: release_cli
+                .then_some(lingxia_control_protocol::dev_session::DEV_SESSION_PROTOCOL_VERSION),
         },
     )?;
 
@@ -478,6 +589,7 @@ mod tests {
             version: "0.19.0".into(),
             commit: Some(commit.into()),
             release: false,
+            protocol: None,
         }
     }
 
@@ -486,53 +598,93 @@ mod tests {
             version: "0.19.0".into(),
             commit: None,
             release: true,
+            protocol: None,
         }
     }
 
+    fn speaking(mut build: RunnerBuild, protocol: u32) -> RunnerBuild {
+        build.protocol = Some(protocol);
+        build
+    }
+
+    const CURRENT: u32 = lingxia_control_protocol::dev_session::DEV_SESSION_PROTOCOL_VERSION;
+
     #[test]
-    fn a_checkout_build_runs_only_a_runner_of_its_commit() {
+    fn a_checkout_build_runs_any_runner_of_its_version_and_protocol() {
         let dev = cli(Some("abcdef0123456789"), false);
-        assert!(dev.matches(Some(&local("abcdef0"))));
-        assert!(!dev.matches(Some(&local("1234567"))));
-        // Same version, older commit: the stale Runner this check exists for.
-        assert!(!dev.matches(None));
-        assert!(!dev.matches(Some(&release())));
+        for runner in [
+            speaking(release(), CURRENT),
+            speaking(local("1234567"), CURRENT),
+        ] {
+            assert!(matches!(verdict(&dev, Some(&runner)), Verdict::Run));
+        }
+        assert!(matches!(verdict(&dev, None), Verdict::Run));
+        let Verdict::Rebuild(message) = verdict(&dev, Some(&speaking(release(), 1))) else {
+            panic!("an old protocol must be rebuilt");
+        };
+        assert!(message.contains("dev protocol 1"), "{message}");
+        assert!(message.contains("install-local-runner"), "{message}");
+        assert!(!message.contains('\n'), "{message}");
         let other_version = RunnerBuild {
             version: "0.18.0".into(),
-            ..local("abcdef0")
+            ..speaking(local("abcdef0"), CURRENT)
         };
-        assert!(!dev.matches(Some(&other_version)));
-    }
-
-    #[test]
-    fn a_release_build_runs_its_release_runner() {
-        let shipped = cli(Some("abcdef0123456789"), true);
-        assert!(shipped.matches(Some(&release())));
-        assert!(shipped.matches(Some(&local("abcdef0"))));
-        assert!(!shipped.matches(None));
-        assert!(!shipped.matches(Some(&local("1234567"))));
-        // Without a commit only the version dir tells.
-        assert!(cli(None, false).matches(None));
-    }
-
-    #[test]
-    fn a_mismatch_is_one_line_with_the_fix() {
-        let dev = cli(Some("abcdef0123456789"), false);
-        let message = mismatch_message(&dev, Some(&local("1234567890")));
-        assert!(!message.contains('\n'), "{message}");
-        assert!(
-            message.starts_with(
-                "the installed Runner is 0.19.0 built from 123456789, not this CLI's build \
-                 0.19.0 (abcdef012): rebuild it from this checkout with "
-            ),
-            "{message}"
-        );
-        assert!(message.contains("install-local-runner"), "{message}");
-        assert!(message.ends_with("(or LINGXIA_ALLOW_SKEW=1)"), "{message}");
-        assert!(mismatch_message(&dev, None).starts_with(
-            "the installed Runner does not record its build, so it cannot be matched to this \
-                 CLI's build 0.19.0 (abcdef012)"
+        assert!(matches!(
+            verdict(&dev, Some(&other_version)),
+            Verdict::Rebuild(_)
         ));
+    }
+
+    #[test]
+    fn a_release_build_replaces_what_it_cannot_drive() {
+        let shipped = cli(Some("abcdef0123456789"), true);
+        assert!(matches!(
+            verdict(&shipped, Some(&speaking(release(), CURRENT))),
+            Verdict::Run
+        ));
+        // No checkout to look an unrecorded protocol up in: the hello decides.
+        assert!(matches!(verdict(&shipped, Some(&release())), Verdict::Run));
+        assert!(matches!(
+            verdict(&shipped, Some(&speaking(local("1234567"), 1))),
+            Verdict::Replace
+        ));
+    }
+
+    #[test]
+    fn an_unrecorded_protocol_is_read_from_the_runner_commit() {
+        assert_eq!(
+            parse_protocol_constant("    pub const DEV_SESSION_PROTOCOL_VERSION: u32 = 3;\n"),
+            Some(3)
+        );
+        assert_eq!(parse_protocol_constant("const X: u32 = 1;"), None);
+        // This checkout's HEAD; the test runs from a git checkout.
+        if let Some(protocol) = protocol_at(&checkout_dir(), "HEAD") {
+            assert!(protocol >= 1);
+        }
+        assert_eq!(protocol_at(&checkout_dir(), "no-such-rev-xyz"), None);
+    }
+
+    #[test]
+    fn a_runner_from_elsewhere_is_named_not_refused() {
+        let dev = cli(Some("abcdef0123456789"), false);
+        assert!(foreign_build_note(&dev, Some(&local("abcdef0"))).is_none());
+        let note = foreign_build_note(&dev, Some(&release())).unwrap();
+        assert!(note.contains("not this checkout (abcdef012)"), "{note}");
+        assert!(foreign_build_note(&dev, Some(&local("1234567"))).is_some());
+        assert!(foreign_build_note(&cli(Some("abcdef0"), true), Some(&release())).is_none());
+        assert!(foreign_build_note(&cli(None, false), Some(&release())).is_none());
+    }
+
+    #[test]
+    fn the_foreign_build_note_is_shown_once_per_pair() {
+        let dir = tempfile::tempdir().unwrap();
+        let dev = cli(Some("abcdef0123456789"), false);
+        let key = note_key(&dev, Some(&release()));
+        assert!(claim_note(dir.path(), &key));
+        assert!(!claim_note(dir.path(), &key));
+        let other = note_key(&cli(Some("1234567890"), false), Some(&release()));
+        assert!(claim_note(dir.path(), &other));
+        assert_ne!(key, note_key(&dev, Some(&local("1234567"))));
     }
 
     #[test]

@@ -5,9 +5,7 @@
 use crate::client::CommandError;
 use crate::client::{CommandTimeout, execute_command, execute_command_until, max_poll_wait};
 use crate::project::SessionInfo;
-use crate::test_bundle::{
-    MappedPosition, Purpose, TestBundle, bundle_test_files, find_project_root,
-};
+use crate::test_bundle::{MappedPosition, Purpose, TestBundle, bundle_test_files};
 use crate::test_secrets::{ArgSources, RunSecrets, SECRET_ARGS_KEY};
 use crate::test_select::Selection;
 use anyhow::{Context, Result, anyhow, bail};
@@ -481,7 +479,7 @@ fn execute_inner(
         .map(|run| resolve_report_path(run, &results_root))
         .transpose()?;
     let sources = ArgSources::gather(std::env::vars(), options.secrets_file.as_deref())?;
-    check_versions(info, &selection.root, machine)?;
+    check_versions(info, &selection.root)?;
     // Held until the run ends: a save during the run neither rebuilds the
     // app's output nor reloads the app under a spec.
     let watch_pause = WatchPause::acquire(&info.ws_url)?;
@@ -831,7 +829,7 @@ fn list(info: &SessionInfo, options: &TestOptions, selection: &Selection) -> Res
         .as_deref()
         .map(|run| resolve_report_path(run, &options.results_root()?))
         .transpose()?;
-    check_versions(info, &selection.root, machine)?;
+    check_versions(info, &selection.root)?;
     // Listing loads every module, so it holds the watcher like a run: a save
     // meanwhile must not reload the app under the modules' top-level code.
     let watch_pause = WatchPause::acquire(&info.ws_url)?;
@@ -1056,43 +1054,44 @@ fn needs_recovery(outcome: &Outcome, interrupted: bool) -> bool {
             ))
 }
 
-/// Refuse to run across a version skew between lxdev, the session's host and
-/// the project's `@lingxia/*` packages (see `lingxia doctor --project`). A
-/// `lingxia dev` or a connected host that reports no version predates the
-/// check, and is too old for this lxdev.
-pub(crate) fn check_versions(info: &SessionInfo, entry: &Path, machine: bool) -> Result<()> {
+/// Refuse a session whose dev protocol this lxdev does not speak, and a
+/// project outside the build window or inconsistent with itself. See
+/// `lingxia doctor --project`.
+pub(crate) fn check_versions(info: &SessionInfo, entry: &Path) -> Result<()> {
     use crate::project::SessionState;
     use lingxia_control_protocol::dev_session::compat;
-    let cli = compat::Component::new("lxdev", env!("LXDEV_BUILD_VERSION"));
-    let mut hosts = Vec::new();
-    hosts.push(match &info.build {
-        Some(build) => compat::Component::new("lingxia", build.as_str()),
-        None => compat::Component::unreported("lingxia"),
-    });
     let name = if info.target == "lxapp" {
         "Runner"
     } else {
         "host"
     };
+    let mut errors = Vec::new();
     let probe = crate::project::probe_session(info);
-    match probe.runtime_build {
-        Some(build) => hosts.push(compat::Component::new(name, build.version)),
-        None if probe.state == SessionState::Ready => {
-            hosts.push(compat::Component::unreported(name));
-        }
-        None => {}
+    let session = match probe.runtime_build {
+        Some(build) => compat::check_session("lxdev", name, Some(build.protocol)),
+        None if probe.state == SessionState::Ready => compat::check_session("lxdev", name, None),
+        None => Ok(()),
+    };
+    if let Err(skew) = session {
+        errors.push(skew.to_string());
     }
-    let packages = compat::installed_packages(&find_project_root(entry));
-    match compat::check(&cli, &hosts, &packages) {
-        Ok(()) => Ok(()),
-        Err(skew) if compat::skew_allowed() => {
-            if !machine {
-                eprintln!("{} {skew}", "warning".yellow());
-            }
-            Ok(())
-        }
-        Err(skew) => Err(anyhow!("{skew}")),
+    if let Some(tool) = compat::line(env!("LXDEV_BUILD_VERSION")) {
+        errors.extend(compat::project_errors(
+            &compat::owning_project_root(entry),
+            tool,
+        ));
     }
+    if errors.is_empty() {
+        return Ok(());
+    }
+    if compat::skip_requested() {
+        // stderr: `--json` output stays clean.
+        for error in &errors {
+            eprintln!("{} {error} ({}=1)", "warning:".yellow(), compat::SKIP_ENV);
+        }
+        return Ok(());
+    }
+    Err(anyhow!("{}", errors.join("\n")))
 }
 
 /// Pauses the dev session's source watcher for this run (see
@@ -1682,7 +1681,7 @@ fn on_interrupt(target: InterruptTarget) -> Result<()> {
 /// the session, and cancel it unless a live client is still polling it.
 fn cancel_active_only(info: &SessionInfo, options: &TestOptions) -> Result<()> {
     let machine = options.machine();
-    check_versions(info, &std::env::current_dir()?, machine)?;
+    check_versions(info, &std::env::current_dir()?)?;
     let active: TestActiveResponse =
         execute_typed(&info.ws_url, methods::session::test::ACTIVE, &json!({}))?;
     let held = active.run.map(HeldRun::new);
