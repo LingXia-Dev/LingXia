@@ -82,6 +82,16 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
         webView.lxMacNativeComponentBridge = bridge
     }
 
+    /// Offset the overlay the same way the page is offset, so native
+    /// components stay on the content they sit on while a mobile pull-to-refresh
+    /// holds the page open. Nothing to do for a container without components.
+    static func setOverlayOffset(_ offset: CGFloat, in container: NSView) {
+        guard let host = container.subviews
+            .compactMap({ $0 as? MacNativeComponentOverlayHost }).first
+        else { return }
+        host.verticalOffset = offset
+    }
+
     private static func ensureOverlayHostOnTop(in container: NSView) {
         guard container.subviews.contains(where: { $0 is MacNativeComponentOverlayHost }) else { return }
         container.sortSubviews({ (a, b, _) -> ComparisonResult in
@@ -283,11 +293,15 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
 
         container.addSubview(host, positioned: .above, relativeTo: container.subviews.last)
 
+        let top = host.topAnchor.constraint(equalTo: container.topAnchor)
+        let bottom = host.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        host.top = top
+        host.bottom = bottom
         NSLayoutConstraint.activate([
-            host.topAnchor.constraint(equalTo: container.topAnchor),
+            top,
             host.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             host.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            host.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+            bottom
         ])
 
         return host
@@ -427,6 +441,19 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
 
 private final class MacNativeComponentOverlayHost: NSView {
     nonisolated override var isFlipped: Bool { true }
+
+    /// Kept with the page while a mobile pull-to-refresh holds it open.
+    /// Constraints rather than a layer transform, so hit-testing follows the
+    /// pixels.
+    var top: NSLayoutConstraint?
+    var bottom: NSLayoutConstraint?
+    var verticalOffset: CGFloat = 0 {
+        didSet {
+            guard verticalOffset != oldValue else { return }
+            top?.constant = verticalOffset
+            bottom?.constant = verticalOffset
+        }
+    }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         let hit = super.hitTest(point)

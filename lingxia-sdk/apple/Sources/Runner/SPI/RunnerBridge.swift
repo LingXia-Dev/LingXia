@@ -228,6 +228,11 @@ enum RunnerBridge {
     static func setSimulatedHostClass(mobile: Bool, pad: Bool = false) {
         set_simulated_host_class(mobile)
         set_pad(pad)
+        MacPullToRefreshController.presentsMobile = mobile
+    }
+
+    static func setPullToRefreshTopInsetProvider(_ provider: ((NSView) -> CGFloat)?) {
+        MacPullToRefreshController.mobileTopInsetProvider = provider
     }
 
     static func setTabBarSelectedIndex(

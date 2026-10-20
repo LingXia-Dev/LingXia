@@ -522,6 +522,20 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         applyInitialNavigationConfiguration()
     }
 
+    /// How much of `container`'s top edge the simulated status bar covers, in
+    /// the container's own points: zero below a navigation bar, the status bar
+    /// height for a page drawn under it.
+    func statusBarOverlap(of container: NSView) -> CGFloat {
+        guard let statusBar = systemStatusBar, !statusBar.isHidden,
+              statusBar.window != nil, statusBar.window === container.window
+        else { return 0 }
+        let bar = container.convert(statusBar.bounds, from: statusBar)
+        let overlap = container.isFlipped
+            ? bar.maxY - container.bounds.minY
+            : container.bounds.maxY - bar.minY
+        return min(max(0, overlap), container.bounds.height)
+    }
+
     private func setupWebStatusBar() {
         guard let phoneContent = phoneContentView, systemStatusBar == nil else { return }
         let statusBar = createSystemStatusBar()

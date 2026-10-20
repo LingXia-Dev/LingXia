@@ -330,8 +330,12 @@ final class WebViewManager {
                 detachLxAppWebView(existing)
             }
         }
-        MacPullToRefreshController.attachIfNeeded(to: webView, in: container)
-        attachWebViewToContainer(webView, container: container)
+        // Pull-to-refresh owns the page's vertical constraints: a mobile
+        // presentation (runner phone frame) slides the page over its spinner.
+        let pullToRefresh = MacPullToRefreshController.attachIfNeeded(to: webView, in: container)
+        attachWebViewToContainer(
+            webView, container: container, constraints: pullToRefresh.pageConstraints(in: container))
+        pullToRefresh.didAttachPage()
         MacNativeBridge.attachIfNeeded(to: webView, in: container)
         #else
         attachWebViewToContainer(webView, container: container)

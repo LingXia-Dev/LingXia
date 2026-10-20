@@ -80,6 +80,12 @@ public class RunnerApp {
         RunnerSupport.PageChrome.setCapsuleRectProvider { [weak self] appId in
             self?.windowController?.capsuleRect(for: appId)
         }
+        // A page under the simulated status bar refreshes below it, as on a
+        // device; the SDK cannot see runner chrome on its own.
+        RunnerSupport.PullToRefresh.setTopInsetProvider { container in
+            (container.window?.windowController as? SimulatorWindowController)?
+                .statusBarOverlap(of: container) ?? 0
+        }
     }
 
     /// Pads and desktops read most naturally in landscape; phones in portrait.

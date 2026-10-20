@@ -176,6 +176,13 @@ enum RunnerSupport {
     }
 
     @MainActor
+    enum PullToRefresh {
+        static func setTopInsetProvider(_ provider: ((NSView) -> CGFloat)?) {
+            LingxiaRunnerSPI.PullToRefresh.setTopInsetProvider(provider)
+        }
+    }
+
+    @MainActor
     enum TabBar {
         static let stateChangedNotification = LingxiaRunnerSPI.Tabs.stateChangedNotification
 
