@@ -161,7 +161,7 @@ before retrying a mutation.
 |---|---|
 | `No running app session for this project` | Start one with `lingxia dev` in the project. |
 | `Several dev sessions could be meant` | Add `--session <name\|target\|target@dir\|#>` from the printed table. |
-| `version skew: … — fix: …` | Run the printed fix; see [version skew](./lingxia.md#lingxia-dev). |
+| `minRuntime` / `host SDK` / `dev protocol` outside what this lxdev speaks | Run the printed fix; if the check is wrong, `LINGXIA_SKIP_COMPAT=1`. See [compatibility](./lingxia.md#lingxia-dev). |
 | `eval` returns nothing / wrong scope | Wrong JS context — see [JS contexts](#js-contexts). |
 | Commands connect but hang | `lingxia dev stop` from the project, then `lingxia dev` again. |
 | `lxdev desktop window focus` asks for Accessibility again after `lxdev` was rebuilt | For the session's own window use `lxdev host focus`, which needs no grant. |

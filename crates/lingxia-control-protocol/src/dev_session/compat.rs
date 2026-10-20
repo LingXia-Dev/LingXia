@@ -1,15 +1,65 @@
-//! One version check for the pieces a dev session combines: the CLI, the
-//! host (app or Runner) it drives, and the project's installed `@lingxia/*`
-//! packages. They must share a major.minor line; a piece that records the
-//! commit it was built from — a locally built package (`0.19.0+abc1234`, or
-//! `"lingxia": { "commit": … }` in its package.json), or the session's
-//! `lingxia` — must also match the CLI's commit. Offline and cheap: it reads a few package.json files.
+//! Compatibility for the pieces a dev session combines. A newer CLI builds
+//! and drives anything inside its window; git commits are not a gate.
 //!
-//! `LINGXIA_ALLOW_SKEW=1` turns the failure into a warning.
+//! The window is `[BUILD_TARGET_FLOOR, tool line]`. A host project's SDK pins
+//! must sit in that window and agree with each other. Each lxapp's
+//! `minRuntime` must sit in the window and not above the host SDK, and its
+//! installed `@lingxia/*` packages must be on that `minRuntime` line. A live
+//! session peer must speak a dev protocol this tool still speaks.
+//!
+//! This module is pure. Reading a project from disk is the `project` feature
+//! ([`project`]), which only the CLI binaries enable.
 
-use std::path::Path;
+#[cfg(feature = "project")]
+mod project;
+#[cfg(feature = "project")]
+pub use project::*;
 
-pub const ALLOW_SKEW_ENV: &str = "LINGXIA_ALLOW_SKEW";
+/// Oldest host line this tool can still build. Raise it in the same change
+/// that stops emitting output that line can read, and say so in the release
+/// notes. Patch never matters.
+pub const BUILD_TARGET_FLOOR: (u64, u64) = (0, 25);
+
+/// Oldest [`super::DEV_SESSION_PROTOCOL_VERSION`] this build still speaks.
+/// Raise it together with [`BUILD_TARGET_FLOOR`] when the dropped host line
+/// was the last one on that protocol.
+pub const MIN_DEV_SESSION_PROTOCOL_VERSION: u32 = 2;
+
+/// Whether a peer `hello` version is one this build still speaks.
+pub fn speaks_dev_protocol(version: u32) -> bool {
+    (MIN_DEV_SESSION_PROTOCOL_VERSION..=super::DEV_SESSION_PROTOCOL_VERSION).contains(&version)
+}
+
+/// Set to `1` to turn the pre-flight checks into warnings when one misreads a
+/// project. Not named in check errors: the supported window never needs it.
+/// The dev-session handshake still refuses a protocol it does not speak.
+pub const SKIP_ENV: &str = "LINGXIA_SKIP_COMPAT";
+
+/// Whether [`SKIP_ENV`] asks to warn instead of fail.
+pub fn skip_requested() -> bool {
+    std::env::var(SKIP_ENV).is_ok_and(|value| is_truthy(&value))
+}
+
+fn is_truthy(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
+}
+
+/// The protocol versions this build speaks, for messages: `2` or `2..=3`.
+pub fn protocol_span() -> String {
+    if MIN_DEV_SESSION_PROTOCOL_VERSION == super::DEV_SESSION_PROTOCOL_VERSION {
+        super::DEV_SESSION_PROTOCOL_VERSION.to_string()
+    } else {
+        format!(
+            "{}..={}",
+            MIN_DEV_SESSION_PROTOCOL_VERSION,
+            super::DEV_SESSION_PROTOCOL_VERSION
+        )
+    }
+}
+
+/// A `major.minor` release line.
+pub type Line = (u64, u64);
 
 /// One versioned piece of the session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,20 +82,6 @@ impl Component {
         }
     }
 
-    /// A peer that answered without its version: a build from before peers
-    /// reported one, so older than any line that checks.
-    pub fn unreported(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            version: String::new(),
-            commit: None,
-        }
-    }
-
-    fn is_unreported(&self) -> bool {
-        self.version.is_empty()
-    }
-
     pub fn with_commit(mut self, commit: Option<&str>) -> Self {
         if let Some(commit) = commit.map(str::trim).filter(|commit| is_commit(commit)) {
             self.commit = Some(commit.to_string());
@@ -53,10 +89,7 @@ impl Component {
         self
     }
 
-    fn label(&self) -> String {
-        if self.is_unreported() {
-            return format!("{} (too old to report its version)", self.name);
-        }
+    pub fn label(&self) -> String {
         match &self.commit {
             Some(commit) => format!("{} {} ({})", self.name, self.version, short(commit)),
             None => format!("{} {}", self.name, self.version),
@@ -96,42 +129,33 @@ fn short(commit: &str) -> &str {
     &commit[..commit.len().min(9)]
 }
 
-/// `major.minor` of a version, if it parses.
+/// `major.minor` of a version or a lower-bound Cargo/npm requirement, if it
+/// parses. Leading `~`, `^`, `=`, `>`, and `v` are ignored; an upper bound
+/// (`<0.27`) names no line and does not parse.
 pub fn line(version: &str) -> Option<(u64, u64)> {
-    let mut parts = version
+    let version = version
         .trim()
-        .trim_start_matches('v')
-        .split(['.', '-', '+']);
+        .trim_start_matches(['^', '~', '=', '>', 'v', 'V']);
+    let mut parts = version.split(['.', '-', '+']);
     let major = parts.next()?.parse().ok()?;
     let minor = parts.next()?.parse().ok()?;
     Some((major, minor))
 }
 
-/// The `@lingxia/*` packages installed in `project_root/node_modules`.
-pub fn installed_packages(project_root: &Path) -> Vec<Component> {
-    let scope = project_root.join("node_modules").join("@lingxia");
-    let Ok(entries) = std::fs::read_dir(&scope) else {
-        return Vec::new();
-    };
-    let mut packages: Vec<Component> = entries
-        .flatten()
-        .filter_map(|entry| {
-            let text = std::fs::read_to_string(entry.path().join("package.json")).ok()?;
-            let manifest: serde_json::Value = serde_json::from_str(&text).ok()?;
-            let name = manifest.get("name")?.as_str()?.to_string();
-            let version = manifest.get("version")?.as_str()?;
-            let commit = manifest
-                .get("lingxia")
-                .and_then(|lingxia| lingxia.get("commit"))
-                .and_then(serde_json::Value::as_str);
-            Some(Component::new(name, version).with_commit(commit))
-        })
-        .collect();
-    packages.sort_by(|a, b| a.name.cmp(&b.name));
-    packages
+/// `major.minor` of an exact `major.minor.patch` version, as `minRuntime`
+/// requires: no range marker, no prerelease/build suffix, no extra dot parts.
+pub fn patch_line(version: &str) -> Option<(u64, u64)> {
+    let mut parts = version.trim().split('.');
+    let major = parts.next()?.parse::<u64>().ok()?;
+    let minor = parts.next()?.parse::<u64>().ok()?;
+    let _patch: u64 = parts.next()?.parse().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor))
 }
 
-/// What the check found.
+/// What a compatibility check found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Skew {
     /// One line: what disagrees, and the fix.
@@ -144,115 +168,202 @@ impl std::fmt::Display for Skew {
     }
 }
 
-/// Compare `cli` with the binaries it drives (`hosts`: the Runner, the app
-/// host, the session's `lingxia`) and the project's `packages`.
-pub fn check(cli: &Component, hosts: &[Component], packages: &[Component]) -> Result<(), Skew> {
-    let Some(cli_line) = line(&cli.version) else {
-        return Ok(());
-    };
-    let off_line = |component: &Component| line(&component.version).is_some_and(|l| l != cli_line);
-    let off_commit = |component: &Component| match (&component.commit, &cli.commit) {
-        (Some(theirs), Some(ours)) => {
-            let (a, b) = (theirs.to_ascii_lowercase(), ours.to_ascii_lowercase());
-            !(a.starts_with(&b) || b.starts_with(&a))
-        }
-        _ => false,
-    };
-    let old_packages: Vec<&Component> = packages
-        .iter()
-        .filter(|package| line(&package.version).is_some_and(|l| l < cli_line))
-        .collect();
-    let new_packages: Vec<&Component> = packages
-        .iter()
-        .filter(|package| line(&package.version).is_some_and(|l| l > cli_line))
-        .collect();
-    let commit_packages: Vec<&Component> = packages
-        .iter()
-        .filter(|package| !off_line(package) && off_commit(package))
-        .collect();
-    let older_host = |host: &Component| {
-        host.is_unreported() || line(&host.version).is_some_and(|l| l < cli_line)
-    };
-    let off_hosts: Vec<&Component> = hosts
-        .iter()
-        .filter(|host| host.is_unreported() || off_line(host) || off_commit(host))
-        .collect();
-    if old_packages.is_empty()
-        && new_packages.is_empty()
-        && commit_packages.is_empty()
-        && off_hosts.is_empty()
-    {
-        return Ok(());
-    }
+impl std::error::Error for Skew {}
 
-    let skewed: Vec<String> = old_packages
-        .iter()
-        .chain(&new_packages)
-        .chain(&commit_packages)
-        .map(|package| package.label())
-        .collect();
-    let mut reference = vec![cli.label()];
-    reference.extend(hosts.iter().map(Component::label));
+/// One host SDK pin read from the project (`native/Cargo.toml (lingxia)`, …).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SdkPin {
+    pub source: String,
+    pub spec: String,
+}
 
-    let mut fixes = Vec::new();
-    let (major, minor) = cli_line;
-    let reinstall: Vec<String> = old_packages
+/// An lxapp this tool is about to build or load.
+#[derive(Debug, Clone)]
+pub struct LxappCheck<'a> {
+    /// Path or app id, shown in the error.
+    pub name: &'a str,
+    pub min_runtime: &'a str,
+    pub packages: &'a [Component],
+}
+
+/// The single major.minor the pins name, with the first pin's text for
+/// messages. `Ok(None)` when none of them is a version (path dependencies).
+/// Different lines are an error.
+pub fn agreed_host_line(pins: &[SdkPin]) -> Result<Option<(Line, &str)>, Skew> {
+    let parsed: Vec<_> = pins
         .iter()
-        .chain(&commit_packages)
-        .map(|package| format!("{}@~{major}.{minor}.0", package.name))
+        .filter_map(|pin| line(&pin.spec).map(|parsed| (pin, parsed)))
         .collect();
-    if !reinstall.is_empty() {
-        fixes.push(format!("npm install {}", reinstall.join(" ")));
-    }
-    if !new_packages.is_empty()
-        || off_hosts
+    let Some((first_pin, first)) = parsed.first() else {
+        return Ok(None);
+    };
+    if parsed.iter().any(|(_, parsed)| parsed != first) {
+        let listed = parsed
             .iter()
-            .any(|host| line(&host.version).is_some_and(|l| l > cli_line))
-    {
-        fixes.push("lingxia upgrade".to_string());
-    }
-    if off_hosts.iter().any(|host| older_host(host)) {
-        fixes.push("restart the session with this CLI (`lingxia dev`)".to_string());
-    }
-    if off_hosts
-        .iter()
-        .any(|host| !host.is_unreported() && !off_line(host) && off_commit(host))
-    {
-        fixes.push(format!(
-            "use {} and `lingxia` from one build (`lingxia upgrade`, or build both from one \
-             checkout), then restart `lingxia dev`",
-            cli.name
-        ));
-    }
-
-    let what = if skewed.is_empty() {
-        off_hosts
-            .iter()
-            .map(|host| host.label())
+            .map(|(pin, _)| format!("{} {}", pin.source, pin.spec))
             .collect::<Vec<_>>()
-            .join(", ")
-    } else {
-        let mut all = skewed;
-        all.extend(off_hosts.iter().map(|host| host.label()));
-        all.join(", ")
+            .join(", ");
+        return Err(Skew {
+            message: format!(
+                "host SDK pins differ: {listed} — align them or run `lingxia upgrade`"
+            ),
+        });
+    }
+    Ok(Some((*first, first_pin.spec.as_str())))
+}
+
+/// `target` must lie in `[floor, tool]`. `what` is "host SDK" or an lxapp's
+/// `minRuntime`; `version` is the text to print.
+pub fn check_target_line(
+    floor: (u64, u64),
+    tool: (u64, u64),
+    target: (u64, u64),
+    what: &str,
+    version: &str,
+) -> Result<(), Skew> {
+    if target > tool {
+        return Err(Skew {
+            message: format!(
+                "{what} {version} is newer than this CLI ({}.{}); run `lingxia upgrade`",
+                tool.0, tool.1
+            ),
+        });
+    }
+    if target < floor {
+        return Err(Skew {
+            message: format!(
+                "{what} {version} is older than this CLI supports (>= {}.{}). \
+                 To keep targeting {}.{}, run `lingxia upgrade --version {}.{}.0`; \
+                 to move the project onto this CLI, run `lingxia upgrade`",
+                floor.0, floor.1, target.0, target.1, target.0, target.1
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// `minRuntime` against the tool window and the host line, then the lxapp's
+/// packages against that `minRuntime` line. A different commit on the same
+/// line is fine.
+pub fn check_lxapp(
+    floor: (u64, u64),
+    tool: (u64, u64),
+    host_line: Option<(u64, u64)>,
+    lxapp: &LxappCheck<'_>,
+) -> Result<(), Skew> {
+    let Some(target) = patch_line(lxapp.min_runtime) else {
+        return Err(Skew {
+            message: format!(
+                "{} minRuntime must be major.minor.patch, got \"{}\"",
+                lxapp.name, lxapp.min_runtime
+            ),
+        });
     };
-    let reference: Vec<String> = reference
-        .into_iter()
-        .filter(|label| !what.contains(label.as_str()))
-        .collect();
+    check_target_line(
+        floor,
+        tool,
+        target,
+        &format!("{} minRuntime", lxapp.name),
+        lxapp.min_runtime,
+    )?;
+    if let Some(host) = host_line
+        && target > host
+    {
+        return Err(Skew {
+            message: format!(
+                "{} minRuntime {} is newer than the host SDK {}.{}; \
+                 run `lingxia upgrade` to move the host, or lower this lxapp",
+                lxapp.name, lxapp.min_runtime, host.0, host.1
+            ),
+        });
+    }
+    let ceiling = host_line.map_or(tool, |host| host.min(tool));
+    check_packages(lxapp, target, ceiling)
+}
+
+/// A live Runner or host must speak a protocol this tool still speaks.
+/// `protocol` is `None` when the peer never reported one.
+pub fn check_session(tool: &str, peer: &str, protocol: Option<u32>) -> Result<(), Skew> {
+    let Some(protocol) = protocol else {
+        return Err(Skew {
+            message: format!(
+                "{peer} did not report a dev protocol — restart the session with this CLI \
+                 (`lingxia dev`)"
+            ),
+        });
+    };
+    if speaks_dev_protocol(protocol) {
+        return Ok(());
+    }
+    let spoken = protocol_span();
+    let fix = if protocol > super::DEV_SESSION_PROTOCOL_VERSION {
+        "run `lingxia upgrade`"
+    } else {
+        "restart the session with this CLI (`lingxia dev`)"
+    };
     Err(Skew {
         message: format!(
-            "version skew: {what} vs {} — fix: {} (or {ALLOW_SKEW_ENV}=1)",
-            reference.join(", "),
-            fixes.join("; ")
+            "{peer} speaks dev protocol {protocol}; this {tool} speaks {spoken} — {fix}"
         ),
     })
 }
 
-/// Whether `LINGXIA_ALLOW_SKEW` asks to warn instead of fail.
-pub fn skew_allowed() -> bool {
-    std::env::var(ALLOW_SKEW_ENV).is_ok_and(|value| {
-        !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
+/// Packages newer than `minRuntime` may call APIs a `minRuntime` host lacks;
+/// older ones miss what that line's build output expects.
+/// `ceiling` is the highest `minRuntime` the host and this tool accept.
+fn check_packages(lxapp: &LxappCheck<'_>, target: Line, ceiling: Line) -> Result<(), Skew> {
+    let LxappCheck {
+        name,
+        min_runtime,
+        packages,
+    } = *lxapp;
+    let behind: Vec<_> = packages
+        .iter()
+        .filter(|package| line(&package.version).is_some_and(|parsed| parsed < target))
+        .collect();
+    let ahead: Vec<_> = packages
+        .iter()
+        .filter(|package| line(&package.version).is_some_and(|parsed| parsed > target))
+        .collect();
+    if behind.is_empty() && ahead.is_empty() {
+        return Ok(());
+    }
+    let mut fixes = Vec::new();
+    let install = |list: &[&Component]| {
+        let specs: Vec<_> = list
+            .iter()
+            .map(|package| format!("{}@~{}.{}.0", package.name, target.0, target.1))
+            .collect();
+        format!("npm install {}", specs.join(" "))
+    };
+    if !behind.is_empty() {
+        fixes.push(install(&behind));
+    }
+    match ahead
+        .iter()
+        .filter_map(|package| line(&package.version))
+        .max()
+    {
+        Some(newest) if newest <= ceiling => fixes.push(format!(
+            "raise lxapp.json minRuntime to {}.{}.0 (its hosts need that line too), or {}",
+            newest.0,
+            newest.1,
+            install(&ahead)
+        )),
+        Some(_) => fixes.push(install(&ahead)),
+        None => {}
+    }
+    let what = behind
+        .iter()
+        .chain(&ahead)
+        .map(|package| package.label())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(Skew {
+        message: format!(
+            "{name}: {what} vs minRuntime {min_runtime} — fix: {}",
+            fixes.join("; ")
+        ),
     })
 }
 
@@ -260,138 +371,170 @@ pub fn skew_allowed() -> bool {
 mod tests {
     use super::*;
 
-    fn cli() -> Component {
-        Component::new("CLI", "0.18.0 (ae2f993ab 2026-09-20)")
+    const FLOOR: (u64, u64) = (0, 25);
+    const TOOL: (u64, u64) = (0, 26);
+
+    fn lxapp<'a>(name: &'a str, min_runtime: &'a str, packages: &'a [Component]) -> LxappCheck<'a> {
+        LxappCheck {
+            name,
+            min_runtime,
+            packages,
+        }
     }
 
     #[test]
-    fn versions_and_build_stamps_parse() {
+    fn versions_and_requirements_parse() {
         assert_eq!(line("0.18.3"), Some((0, 18)));
         assert_eq!(line("v1.2.0-beta.1"), Some((1, 2)));
+        assert_eq!(line("~0.25.2"), Some((0, 25)));
+        assert_eq!(line("^0.25.0"), Some((0, 25)));
+        assert_eq!(line(">=0.25.0"), Some((0, 25)));
+        assert_eq!(line("<0.27"), None);
         assert_eq!(line("x"), None);
-        let stamped = cli();
+        let stamped = Component::new("CLI", "0.18.0 (ae2f993ab 2026-09-20)");
         assert_eq!(stamped.version, "0.18.0");
         assert_eq!(stamped.commit.as_deref(), Some("ae2f993ab"));
-        let dirty = Component::new("CLI", "0.18.0 (ae2f993ab-dirty 2026-09-20)");
-        assert_eq!(dirty.commit.as_deref(), Some("ae2f993ab"));
         let packed = Component::new("@lingxia/test", "0.18.0+ae2f993");
-        assert_eq!(packed.version, "0.18.0");
         assert_eq!(packed.commit.as_deref(), Some("ae2f993"));
-        assert_eq!(Component::new("x", "0.18.0+build.1").commit, None);
     }
 
     #[test]
-    fn one_line_passes_whatever_the_patch() {
-        let packages = [
-            Component::new("@lingxia/react", "0.18.4"),
-            Component::new("@lingxia/test", "0.18.0"),
-        ];
-        let hosts = [Component::new("Runner", "0.18.1")];
-        assert_eq!(check(&cli(), &hosts, &packages), Ok(()));
-        assert_eq!(check(&cli(), &[], &[]), Ok(()));
+    fn an_older_lxapp_inside_the_window_builds() {
+        let packages = [Component::new("@lingxia/react", "0.25.4")];
+        assert!(check_lxapp(FLOOR, TOOL, None, &lxapp("app", "0.25.0", &packages)).is_ok());
+        // Same line, another commit: not a gate.
+        let local = [Component::new("@lingxia/react", "0.25.0").with_commit(Some("1234567"))];
+        assert!(check_lxapp(FLOOR, TOOL, None, &lxapp("app", "0.25.0", &local)).is_ok());
     }
 
     #[test]
-    fn an_older_package_names_the_install_that_fixes_it() {
-        let packages = [
-            Component::new("@lingxia/react", "0.17.2"),
-            Component::new("@lingxia/test", "0.18.0"),
-        ];
-        let hosts = [Component::new("Runner", "0.18.0")];
-        let skew = check(&cli(), &hosts, &packages).unwrap_err().message;
-        assert_eq!(
-            skew,
-            "version skew: @lingxia/react 0.17.2 vs CLI 0.18.0 (ae2f993ab), Runner 0.18.0 — \
-             fix: npm install @lingxia/react@~0.18.0 (or LINGXIA_ALLOW_SKEW=1)"
-        );
-        assert!(!skew.contains('\n'));
-    }
-
-    #[test]
-    fn a_newer_package_or_host_asks_for_a_newer_cli() {
-        let skew = check(&cli(), &[], &[Component::new("@lingxia/test", "0.19.0")])
-            .unwrap_err()
-            .message;
-        assert!(skew.contains("fix: lingxia upgrade"), "{skew}");
-        let skew = check(&cli(), &[Component::new("host", "0.17.0")], &[])
-            .unwrap_err()
-            .message;
-        assert!(
-            skew.starts_with("version skew: host 0.17.0 vs CLI"),
-            "{skew}"
-        );
-        assert!(skew.contains("restart the session"), "{skew}");
-    }
-
-    #[test]
-    fn a_host_that_reports_no_version_is_too_old() {
-        let skew = check(&cli(), &[Component::unreported("Runner")], &[])
-            .unwrap_err()
-            .message;
-        assert!(
-            skew.starts_with("version skew: Runner (too old to report its version) vs CLI"),
-            "{skew}"
-        );
-        assert!(skew.contains("restart the session with this CLI"), "{skew}");
-    }
-
-    #[test]
-    fn a_session_of_another_commit_is_skew() {
-        let lxdev = Component::new("lxdev", "0.18.0 (ae2f993ab 2026-09-20)");
-        let same = Component::new("lingxia", "0.18.0 (ae2f993ab-dirty 2026-09-21)");
-        assert_eq!(check(&lxdev, &[same], &[]), Ok(()));
-        let other = Component::new("lingxia", "0.18.0 (1234567ab 2026-09-19)");
-        let skew = check(&lxdev, &[other], &[]).unwrap_err().message;
-        assert!(
-            skew.starts_with(
-                "version skew: lingxia 0.18.0 (1234567ab) vs lxdev 0.18.0 (ae2f993ab)"
-            ),
-            "{skew}"
-        );
-        assert!(
-            skew.contains("use lxdev and `lingxia` from one build"),
-            "{skew}"
-        );
-        // A runtime reports no commit: only its line counts.
-        assert_eq!(
-            check(&lxdev, &[Component::new("host", "0.18.2")], &[]),
-            Ok(())
-        );
-    }
-
-    #[test]
-    fn a_locally_built_package_must_match_the_cli_commit() {
-        let same = Component::new("@lingxia/test", "0.18.0+ae2f993");
-        assert_eq!(check(&cli(), &[], &[same]), Ok(()));
-        let other = Component::new("@lingxia/test", "0.18.0").with_commit(Some("1234567"));
-        let skew = check(&cli(), &[], &[other]).unwrap_err().message;
-        assert!(skew.contains("@lingxia/test 0.18.0 (1234567)"), "{skew}");
-        // A CLI without a commit cannot tell; the line decides.
-        let bare = Component::new("CLI", "0.18.0");
-        let other = Component::new("@lingxia/test", "0.18.0+1234567");
-        assert_eq!(check(&bare, &[], &[other]), Ok(()));
-    }
-
-    #[test]
-    fn installed_packages_are_read_from_node_modules() {
-        let dir = std::env::temp_dir().join(format!("lx-compat-{}", std::process::id()));
-        let scope = dir.join("node_modules/@lingxia");
-        for (name, manifest) in [
-            ("test", r#"{"name":"@lingxia/test","version":"0.18.0"}"#),
-            (
-                "react",
-                r#"{"name":"@lingxia/react","version":"0.17.2","lingxia":{"commit":"abcdef1"}}"#,
-            ),
-            ("broken", "not json"),
-        ] {
-            std::fs::create_dir_all(scope.join(name)).unwrap();
-            std::fs::write(scope.join(name).join("package.json"), manifest).unwrap();
+    fn min_runtime_must_be_exact_major_minor_patch() {
+        for min_runtime in ["0.25", "0.25.0-beta", "0.25.0.1", "v0.25.0"] {
+            let err = check_lxapp(FLOOR, TOOL, None, &lxapp("app", min_runtime, &[]))
+                .unwrap_err()
+                .message;
+            assert!(
+                err.contains("must be major.minor.patch"),
+                "{min_runtime:?}: {err}"
+            );
         }
-        let packages = installed_packages(&dir);
-        let _ = std::fs::remove_dir_all(&dir);
-        assert_eq!(packages.len(), 2);
-        assert_eq!(packages[0].name, "@lingxia/react");
-        assert_eq!(packages[0].commit.as_deref(), Some("abcdef1"));
-        assert!(installed_packages(Path::new("/nonexistent")).is_empty());
+        assert!(check_lxapp(FLOOR, TOOL, None, &lxapp("app", "0.25.0", &[])).is_ok());
+    }
+
+    #[test]
+    fn packages_must_match_min_runtime_not_the_tool() {
+        let behind = [Component::new("@lingxia/react", "0.24.2")];
+        let err = check_lxapp(FLOOR, TOOL, None, &lxapp("app", "0.25.0", &behind))
+            .unwrap_err()
+            .message;
+        assert!(err.contains("npm install @lingxia/react@~0.25.0"), "{err}");
+        let ahead = [Component::new("@lingxia/react", "0.26.0")];
+        let err = check_lxapp(FLOOR, TOOL, None, &lxapp("app", "0.25.0", &ahead))
+            .unwrap_err()
+            .message;
+        assert!(
+            err.contains("raise lxapp.json minRuntime to 0.26.0")
+                && err.contains("npm install @lingxia/react@~0.25.0"),
+            "{err}"
+        );
+        // A 0.25 host cannot take a 0.26 lxapp: only the install is offered.
+        let err = check_lxapp(FLOOR, TOOL, Some((0, 25)), &lxapp("app", "0.25.0", &ahead))
+            .unwrap_err()
+            .message;
+        assert!(!err.contains("raise"), "{err}");
+        assert!(err.contains("npm install @lingxia/react@~0.25.0"), "{err}");
+    }
+
+    #[test]
+    fn a_line_outside_the_window_names_the_fix() {
+        let err = check_lxapp(FLOOR, TOOL, None, &lxapp("app", "0.24.0", &[]))
+            .unwrap_err()
+            .message;
+        assert!(err.contains("lingxia upgrade --version 0.24.0"), "{err}");
+        let err = check_lxapp(FLOOR, TOOL, None, &lxapp("app", "0.27.0", &[]))
+            .unwrap_err()
+            .message;
+        assert!(err.contains("newer than this CLI (0.26)"), "{err}");
+    }
+
+    #[test]
+    fn a_host_loads_an_older_lxapp_and_refuses_a_newer_one() {
+        let packages = [Component::new("@lingxia/react", "0.25.1")];
+        assert!(
+            check_lxapp(
+                FLOOR,
+                TOOL,
+                Some((0, 26)),
+                &lxapp("lxapp", "0.25.0", &packages)
+            )
+            .is_ok()
+        );
+        let err = check_lxapp(FLOOR, TOOL, Some((0, 25)), &lxapp("lxapp", "0.26.0", &[]))
+            .unwrap_err()
+            .message;
+        assert!(err.contains("newer than the host SDK 0.25"), "{err}");
+    }
+
+    #[test]
+    fn host_pins_agree_or_are_named() {
+        let pins = [
+            SdkPin {
+                source: "native/Cargo.toml (lingxia)".into(),
+                spec: "~0.25.2".into(),
+            },
+            SdkPin {
+                source: "android/app/build.gradle.kts".into(),
+                spec: "0.25.0".into(),
+            },
+        ];
+        assert_eq!(agreed_host_line(&pins).unwrap(), Some(((0, 25), "~0.25.2")));
+        assert_eq!(agreed_host_line(&[]).unwrap(), None);
+        let mixed = [
+            pins[0].clone(),
+            SdkPin {
+                source: "windows/Cargo.toml (lingxia-windows-sdk)".into(),
+                spec: "~0.26.0".into(),
+            },
+        ];
+        let err = agreed_host_line(&mixed).unwrap_err().message;
+        assert!(err.contains("host SDK pins differ"), "{err}");
+        assert!(err.contains("0.26.0"), "{err}");
+        let err = check_target_line(FLOOR, TOOL, (0, 24), "host SDK", "0.24.0")
+            .unwrap_err()
+            .message;
+        assert!(err.contains("host SDK 0.24.0"), "{err}");
+    }
+
+    #[test]
+    fn the_skip_switch_reads_like_a_flag() {
+        for on in ["1", "true", "yes"] {
+            assert!(is_truthy(on), "{on}");
+        }
+        for off in ["", " ", "0", "false", "FALSE"] {
+            assert!(!is_truthy(off), "{off:?}");
+        }
+    }
+
+    #[test]
+    fn a_session_speaks_protocol_not_a_commit() {
+        assert!(
+            check_session(
+                "lxdev",
+                "Runner",
+                Some(super::super::DEV_SESSION_PROTOCOL_VERSION)
+            )
+            .is_ok()
+        );
+        let missing = check_session("lxdev", "Runner", None).unwrap_err().message;
+        assert!(
+            missing.contains("did not report a dev protocol"),
+            "{missing}"
+        );
+        let newer = check_session("lxdev", "host", Some(99))
+            .unwrap_err()
+            .message;
+        assert!(newer.contains("lingxia upgrade"), "{newer}");
+        let older = check_session("CLI", "host", Some(1)).unwrap_err().message;
+        assert!(older.contains("lingxia dev"), "{older}");
     }
 }

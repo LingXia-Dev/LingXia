@@ -386,8 +386,9 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
         log_store::ensure_current_broker(true)?;
     }
 
-    // Fail fast on a CLI / package version skew, before minutes of build.
-    crate::compat::ensure_project(&project_root, &[])?;
+    // Fail before minutes of build when the project is outside this CLI's
+    // window, or its SDK pins and lxapps disagree.
+    crate::compat::ensure_project(&project_root)?;
 
     if options.background
         && env::var_os(BACKGROUND_CHILD_ENV).is_none()

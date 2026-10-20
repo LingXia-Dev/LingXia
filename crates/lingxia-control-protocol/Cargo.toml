@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_yaml_ng = { version = "0.10", optional = true }
 interprocess = { version = "2", optional = true }
 regex = { version = "1", optional = true }
 
@@ -26,6 +27,9 @@ windows = { workspace = true, optional = true, features = [
 broker = ["dep:interprocess", "dep:windows"]
 # `scenario::Matcher`: the `match` semantics of scenario rules.
 scenario-match = ["dep:regex"]
+# `dev_session::compat` project reading (manifests, pins, node_modules). Only
+# the CLI binaries enable this; the app runtime checks nothing on disk.
+project = ["dep:serde_yaml_ng"]
 
 [dev-dependencies]
 tempfile = "3"

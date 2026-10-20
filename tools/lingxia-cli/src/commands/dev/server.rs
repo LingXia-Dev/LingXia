@@ -4,8 +4,7 @@ use anyhow::{Context, Result, anyhow};
 use lingxia_control_protocol::{
     ControlRequest,
     dev_session::{
-        DEV_SESSION_MAX_MESSAGE_BYTES, DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent,
-        DevSessionMessage, DevSessionRole,
+        DEV_SESSION_MAX_MESSAGE_BYTES, DevSessionEvent, DevSessionMessage, DevSessionRole,
     },
 };
 use std::io::{Read, Write};
@@ -1552,10 +1551,11 @@ fn handle_connection(
     else {
         return Err(anyhow!("First websocket message must be hello"));
     };
-    if version != DEV_SESSION_PROTOCOL_VERSION {
+    if !lingxia_control_protocol::dev_session::compat::speaks_dev_protocol(version) {
         let _ = websocket.close(None);
         return Err(anyhow!(
-            "Unsupported dev session protocol version {version}; expected {DEV_SESSION_PROTOCOL_VERSION}"
+            "Unsupported dev session protocol version {version}; this CLI speaks {}",
+            lingxia_control_protocol::dev_session::compat::protocol_span()
         ));
     }
     if !state.authorizes(handshake_token.as_deref()) {

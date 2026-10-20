@@ -75,44 +75,23 @@ pub fn lxapp_min_runtime(manifest: &serde_json::Value) -> anyhow::Result<String>
     Ok(raw.to_string())
 }
 
-/// Oldest host line this CLI builds for. Raise it in the same change that
-/// makes build output unreadable to that line; otherwise gate the new output
-/// on `minRuntime`.
-pub const BUILD_TARGET_FLOOR: (u32, u32) = (0, 25);
-
-/// Refuses a `minRuntime` outside the host lines this CLI can build for: below
-/// [`BUILD_TARGET_FLOOR`] or above the CLI's own line. Patch never matters.
+/// Refuses a `minRuntime` outside the host lines this CLI can build for:
+/// below `compat::BUILD_TARGET_FLOOR` or above the CLI's own line.
 pub fn ensure_build_target(min_runtime: &str) -> anyhow::Result<()> {
-    let Some(target) = numeric_line(min_runtime) else {
+    use lingxia_control_protocol::dev_session::compat;
+    let Some(target) = compat::patch_line(min_runtime) else {
         anyhow::bail!("lxapp.json minRuntime must be major.minor.patch, got \"{min_runtime}\"");
     };
-    let (floor_major, floor_minor) = BUILD_TARGET_FLOOR;
-    if target < BUILD_TARGET_FLOOR {
-        anyhow::bail!(
-            "lxapp.json minRuntime {min_runtime} is older than this CLI supports \
-             (>= {floor_major}.{floor_minor}). To keep targeting {0}.{1} hosts, build with \
-             `lingxia upgrade --version {0}.{1}.0`; to move the project to this line, \
-             run `lingxia upgrade`",
-            target.0,
-            target.1
-        );
-    }
-    let cli = numeric_line(env!("LINGXIA_RUST_CRATE_VERSION"))
+    let cli = compat::line(env!("LINGXIA_RUST_CRATE_VERSION"))
         .expect("the CLI's base version is major.minor.patch");
-    if target > cli {
-        anyhow::bail!(
-            "lxapp.json minRuntime {min_runtime} is newer than this CLI ({}.{}); \
-             run `lingxia upgrade`",
-            cli.0,
-            cli.1
-        );
-    }
+    compat::check_target_line(
+        compat::BUILD_TARGET_FLOOR,
+        cli,
+        target,
+        "lxapp.json minRuntime",
+        min_runtime,
+    )?;
     Ok(())
-}
-
-fn numeric_line(version: &str) -> Option<(u32, u32)> {
-    let mut parts = version.trim().split('.');
-    Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
 }
 
 fn major_minor(version: &str) -> (&str, &str) {
@@ -161,8 +140,11 @@ mod tests {
 
     #[test]
     fn build_target_window_spans_floor_to_cli_line() {
-        let (floor_major, floor_minor) = BUILD_TARGET_FLOOR;
-        let (major, minor) = numeric_line(env!("LINGXIA_RUST_CRATE_VERSION")).unwrap();
+        let (floor_major, floor_minor) =
+            lingxia_control_protocol::dev_session::compat::BUILD_TARGET_FLOOR;
+        let (major, minor) =
+            lingxia_control_protocol::dev_session::compat::line(env!("LINGXIA_RUST_CRATE_VERSION"))
+                .unwrap();
         assert!(ensure_build_target(&format!("{floor_major}.{floor_minor}.0")).is_ok());
         assert!(ensure_build_target(&format!("{floor_major}.{floor_minor}.9")).is_ok());
         assert!(ensure_build_target(&format!("{major}.{minor}.99")).is_ok());

@@ -43,8 +43,13 @@ version all npm packages together; there is no `npm:<package>` component.
 
 `minRuntime` gates on major.minor everywhere; patches never gate. The host
 refuses a package whose line is above its own. The CLI builds only for lines in
-`[BUILD_TARGET_FLOOR, CLI line]` (`tools/lingxia-cli/src/versions.rs`) and
-refuses others with the CLI to use instead.
+`[BUILD_TARGET_FLOOR, CLI line]` (`lingxia_control_protocol::dev_session::compat`)
+and refuses others with the CLI to use instead. `lingxia dev` and `lingxia build` use that window for a
+standalone lxapp and for a host project: SDK pins must agree and sit in the
+window, each embedded lxapp's `minRuntime` must not exceed the host, and
+`@lingxia/*` packages sit on the lxapp's `minRuntime` line — neither older nor
+newer, since a newer package may call APIs that line's host lacks. A newer CLI compiles an
+older project inside the window without an environment variable.
 
 A change to CLI-generated output that a host line inside the window cannot read
 must either emit the old form for that `minRuntime` or raise

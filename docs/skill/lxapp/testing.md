@@ -462,7 +462,7 @@ lxdev test report --failures      # reprint the last run, no session needed
 - `--cancel-active` cancels a run left behind by a client that exited.
 - A run pauses [auto-reload](../cli/dev-reload.md). Keep files that setup
   generates outside the watched project.
-- The run fails fast on [version skew](../cli/lingxia.md#lingxia-dev).
+- The run fails fast when the project or the session is outside this tool's [compatibility window](../cli/lingxia.md#lingxia-dev).
 - Rejections carry stable `TestErrorCode`s (`E_TIMEOUT`, `E_ELEMENT_NOT_FOUND`,
   `E_EVAL_SCRIPT`, `E_OPENAPI_CONTRACT`, …) for `t.reject` and `expected.code`.
   Declare the app's own codes once to expect them too:

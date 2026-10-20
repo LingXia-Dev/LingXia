@@ -24,35 +24,20 @@ use crate::sdk_cache::{self, SdkPlatform};
 use anyhow::{Context, Result};
 use colored::Colorize;
 use dialoguer::{Confirm, theme::ColorfulTheme};
-use std::collections::HashSet;
 use std::fs;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Mutex, OnceLock};
+
+use lingxia_control_protocol::dev_session::compat::{
+    SDK_CRATES, cargo_dependency_req, cargo_table_name, gradle_sdk_fallback, is_cargo_crate_table,
+    is_cargo_dependency_table, walk_named, windows_sdk_tag,
+};
 
 /// Exit code for `--check` when the project is behind (mirrors the CLI
 /// self-upgrade `--check` convention).
 const EXIT_UPGRADE_AVAILABLE: i32 = 10;
 const EXIT_CONFIRMATION_REQUIRED: i32 = 1;
-
-const NATIVE_LINGXIA_CRATES: &[&str] = &[
-    "lingxia",
-    "lingxia-control-runtime",
-    "lingxia-device-io",
-    "lingxia-native-codegen",
-];
-
-/// Directories never walked when looking for embedded package.json files.
-const SKIP_DIRS: &[&str] = &[
-    "node_modules",
-    "dist",
-    "target",
-    ".lingxia",
-    ".git",
-    ".claude",
-    ".build",
-];
 
 /// The project root for upgrade purposes. A host ancestor owns any embedded
 /// lxapp below it; `lxapp.json` is only the fallback for a standalone lxapp.
@@ -665,7 +650,7 @@ fn apply_sdk_steps(root: &Path, steps: &[SdkStep], sdk_version: &str) -> Vec<Str
 
 fn find_lxapp_jsons(root: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
-    walk_named_files(root, "lxapp.json", 0, &mut found);
+    walk_named(root, "lxapp.json", &mut found);
     found.sort();
     found
 }
@@ -750,48 +735,20 @@ fn should_raise_min_runtime(current: &str, floor: &str) -> bool {
 /// lxapps in a host project), skipping build/output directories.
 fn find_package_jsons(root: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
-    walk_named_files(root, "package.json", 0, &mut found);
+    walk_named(root, "package.json", &mut found);
     found.sort();
     found
 }
 
 fn find_cargo_manifests(root: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
-    walk_named_files(root, "Cargo.toml", 0, &mut found);
+    walk_named(root, "Cargo.toml", &mut found);
     found.sort();
     found
 }
 
 fn project_lingxia_crates() -> impl Iterator<Item = &'static str> {
-    ["lingxia-windows-sdk", "lingxia-windows-build"]
-        .into_iter()
-        .chain(NATIVE_LINGXIA_CRATES.iter().copied())
-        .chain(["lingxia-control-commands"])
-}
-
-fn walk_named_files(dir: &Path, file_name: &str, depth: usize, found: &mut Vec<PathBuf>) {
-    if depth > 3 {
-        return;
-    }
-    let candidate = dir.join(file_name);
-    if candidate.is_file() {
-        found.push(candidate);
-    }
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if SKIP_DIRS.contains(&name.as_ref()) {
-            continue;
-        }
-        walk_named_files(&path, file_name, depth + 1, found);
-    }
+    SDK_CRATES.iter().copied()
 }
 
 /// Rewrite every `"@lingxia/…": "<range>"` entry to `range`, leaving
@@ -858,37 +815,6 @@ fn is_version_range(spec: &str) -> bool {
     spec.chars()
         .next()
         .is_some_and(|c| c.is_ascii_digit() || matches!(c, '^' | '~' | '>' | '<' | '='))
-}
-
-fn cargo_table_name(line: &str) -> Option<&str> {
-    let trimmed = line.trim_start();
-    if !trimmed.starts_with('[') {
-        return None;
-    }
-    if let Some(rest) = trimmed.strip_prefix("[[") {
-        let end = rest.find("]]")?;
-        return Some(rest[..end].trim());
-    }
-    let rest = &trimmed[1..];
-    let end = rest.find(']')?;
-    Some(rest[..end].trim())
-}
-
-fn is_cargo_dependency_table(table: &str) -> bool {
-    matches!(
-        table,
-        "dependencies" | "dev-dependencies" | "build-dependencies"
-    ) || table == "workspace.dependencies"
-        || (table.starts_with("target.")
-            && (table.ends_with(".dependencies")
-                || table.ends_with(".dev-dependencies")
-                || table.ends_with(".build-dependencies")))
-}
-
-fn is_cargo_crate_table(table: &str, crate_name: &str) -> bool {
-    table.rsplit_once('.').is_some_and(|(parent, name)| {
-        is_cargo_dependency_table(parent) && name.trim_matches('"') == crate_name
-    })
 }
 
 /// Rewrite `crate_name = "req"` / `{ version = "req", … }` in a Cargo.toml.
@@ -1082,7 +1008,7 @@ fn collect_project_versions(root: &Path) -> Vec<String> {
         }
     }
     versions.extend(pinned_native_crate_reqs(root));
-    if let Some(version) = pinned_gradle_sdk(root) {
+    if let Some(version) = gradle_sdk_fallback(root) {
         versions.push(version);
     }
     if let Some(version) = pinned_windows_sdk_version(root) {
@@ -1108,113 +1034,14 @@ fn npm_range_specs(content: &str) -> Vec<String> {
     specs
 }
 
-fn pinned_gradle_sdk(root: &Path) -> Option<String> {
-    let content =
-        fs::read_to_string(root.join("android").join("app").join("build.gradle.kts")).ok()?;
-    for line in content.lines() {
-        if line.contains("lingxia.sdkVersion")
-            && line.contains("?:")
-            && let Some((_, old)) = rewrite_quoted_after(line, "?: ", "")
-        {
-            return Some(old);
-        }
-    }
-    None
-}
-
 fn pinned_windows_sdk_version(root: &Path) -> Option<String> {
     let content = fs::read_to_string(root.join("windows").join("Cargo.toml")).ok()?;
-    if let Some(req) = cargo_dependency_req(&content, "lingxia-windows-sdk") {
-        return Some(req);
-    }
-    let mut in_dependencies = false;
-    for line in content.lines() {
-        if let Some(table) = cargo_table_name(line) {
-            in_dependencies = is_cargo_dependency_table(table);
-            continue;
-        }
-        if !in_dependencies || !line.trim_start().starts_with("lingxia-windows-sdk") {
-            continue;
-        }
-        for prefix in ["tag = \"lingxia-crates-v", "tag=\"lingxia-crates-v"] {
-            if let Some(start) = line.find(prefix).map(|index| index + prefix.len()) {
-                let end = line[start..].find('"')? + start;
-                return Some(line[start..end].to_string());
-            }
-        }
-    }
-    None
+    cargo_dependency_req(&content, "lingxia-windows-sdk").or_else(|| windows_sdk_tag(&content))
 }
 
 fn pinned_windows_build_req(root: &Path) -> Option<String> {
     let content = fs::read_to_string(root.join("windows").join("Cargo.toml")).ok()?;
     cargo_dependency_req(&content, "lingxia-windows-build")
-}
-
-fn cargo_dependency_req(content: &str, crate_name: &str) -> Option<String> {
-    let prefix = format!("{crate_name} =");
-    let prefix_nospace = format!("{crate_name}=");
-    let mut in_dependencies = false;
-    let mut in_crate_table = false;
-    for line in content.lines() {
-        if let Some(table) = cargo_table_name(line) {
-            in_dependencies = is_cargo_dependency_table(table);
-            in_crate_table = is_cargo_crate_table(table, crate_name);
-            continue;
-        }
-        let trimmed = line.trim_start();
-        if !((in_dependencies
-            && (trimmed.starts_with(&prefix) || trimmed.starts_with(&prefix_nospace)))
-            || (in_crate_table
-                && (trimmed.starts_with("version =") || trimmed.starts_with("version="))))
-        {
-            continue;
-        }
-        let markers = if in_crate_table || trimmed.contains('{') {
-            ["version = ", "version="]
-        } else {
-            [prefix.as_str(), prefix_nospace.as_str()]
-        };
-        if let Some(old) = markers
-            .iter()
-            .find_map(|marker| rewrite_quoted_after(line, marker, "").map(|(_, old)| old))
-        {
-            return Some(old);
-        }
-    }
-    None
-}
-
-/// One-line drift warning at build time: the project's installed/pinned
-/// LingXia line is older than this CLI's. Never fails the build; silent when
-/// nothing is resolvable.
-pub fn warn_if_behind(start: &Path) {
-    let project_root = find_project_root_from(start).unwrap_or_else(|| start.to_path_buf());
-    if let (Some(cli), Some(project)) = (cli_compat_line(), project_compat_line(&project_root))
-        && project < cli
-        && claim_drift_warning(&project_root)
-    {
-        eprintln!(
-            "{} This project is on the LingXia {}.{} line, the CLI on {}.{} — run `lingxia upgrade` in the project to align.",
-            "!".yellow(),
-            project.0,
-            project.1,
-            cli.0,
-            cli.1
-        );
-    }
-}
-
-fn claim_drift_warning(project_root: &Path) -> bool {
-    static WARNED_PROJECT_ROOTS: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
-    let root = project_root
-        .canonicalize()
-        .unwrap_or_else(|_| project_root.to_path_buf());
-    WARNED_PROJECT_ROOTS
-        .get_or_init(|| Mutex::new(HashSet::new()))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(root)
 }
 
 /// Requirements shared with planning, including local host support crates.
@@ -1233,6 +1060,14 @@ fn pinned_native_crate_reqs(project_root: &Path) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The crates `lingxia new` scaffolds into `native/Cargo.toml`.
+    const NATIVE_LINGXIA_CRATES: &[&str] = &[
+        "lingxia",
+        "lingxia-control-runtime",
+        "lingxia-device-io",
+        "lingxia-native-codegen",
+    ];
 
     #[test]
     fn npm_ranges_are_rewritten_and_paths_kept() {
@@ -1531,13 +1366,6 @@ version = "metadata"
             find_project_root_from(&standalone_nested).as_deref(),
             Some(standalone.as_path())
         );
-    }
-
-    #[test]
-    fn build_drift_warning_is_claimed_once_per_project_root() {
-        let tmp = tempfile::tempdir().unwrap();
-        assert!(claim_drift_warning(tmp.path()));
-        assert!(!claim_drift_warning(tmp.path()));
     }
 
     #[test]

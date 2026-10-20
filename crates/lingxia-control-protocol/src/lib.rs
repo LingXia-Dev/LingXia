@@ -595,6 +595,8 @@ pub mod dev_session {
     use serde::{Deserialize, Serialize};
     use std::collections::BTreeMap;
 
+    /// Newest dev-session protocol this build speaks. A peer may still speak
+    /// an older one, down to [`compat::MIN_DEV_SESSION_PROTOCOL_VERSION`].
     pub const DEV_SESSION_PROTOCOL_VERSION: u32 = 2;
     /// The `hello` version a companion speaks. Separate from
     /// [`DEV_SESSION_PROTOCOL_VERSION`], which runtimes and clients speak:

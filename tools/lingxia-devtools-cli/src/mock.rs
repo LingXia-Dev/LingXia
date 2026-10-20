@@ -1221,7 +1221,7 @@ pub fn execute(info: Option<&SessionInfo>, options: MockOptions) -> Result<()> {
             json,
         } => {
             let target = resolve(&scenario, &roots, &cwd)?;
-            crate::test::check_versions(info, &target.path, json)?;
+            crate::test::check_versions(info, &target.path)?;
             let initial = std::fs::read_to_string(&target.path).ok();
             let installed = read_file(&target.path)
                 .and_then(|loaded| install(&session, &loaded, &target, appid.as_deref()));

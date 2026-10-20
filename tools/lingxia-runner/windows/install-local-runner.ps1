@@ -277,7 +277,8 @@ Write-Host "==> Installing Windows Runner to $TargetDir"
 Remove-Item -LiteralPath $TmpTargetDir, $BackupTargetDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $TmpTargetDir | Out-Null
 Copy-Item -LiteralPath $RunnerExe -Destination (Join-Path $TmpTargetDir "lingxia-runner.exe") -Force
-# What this Runner is: `lingxia dev` runs it only for a CLI of the same commit.
+# What this Runner is. `lingxia dev` matches it on dev-session protocol, and
+# records the commit so a later checkout can see whether Runner sources moved.
 $RunnerStamp = [ordered]@{ version = $RunnerVersion }
 try {
     $RunnerCommit = (& git -C "$RootDir" rev-parse HEAD 2>$null)
@@ -286,6 +287,13 @@ try {
     }
 } catch {
     Write-Host "    (no git commit recorded for this Runner: $_)"
+}
+$ProtocolFile = Join-Path $RootDir "crates/lingxia-control-protocol/src/lib.rs"
+if (Test-Path $ProtocolFile) {
+    $ProtocolLine = Select-String -Path $ProtocolFile -Pattern "DEV_SESSION_PROTOCOL_VERSION: u32" | Select-Object -First 1
+    if ($ProtocolLine -and $ProtocolLine.Line -match "=\s*(\d+)") {
+        $RunnerStamp.protocol = [int]$Matches[1]
+    }
 }
 [IO.File]::WriteAllText(
     (Join-Path $TmpTargetDir "runner-build.json"),
