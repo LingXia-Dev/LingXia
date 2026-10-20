@@ -26,8 +26,10 @@ transfer: rong_rt's 60 second default would also bound the body and fail slow
 links mid-transfer. A socket that delivers nothing for 120 seconds still
 aborts. Network failures, 408/429, and 5xx retry twice with backoff. A
 permanent failure or checksum mismatch after resuming retries once without the
-`.part`; on a fresh transfer it fails immediately. HEAD probes and the
-foreground check keep their short deadlines.
+`.part`; on a fresh transfer it fails immediately. Dropping the download
+future aborts the socket, so a cancelled open cannot leave a writer on the
+`.part` that a retry would append to. HEAD probes and the foreground check
+keep their short deadlines.
 
 ## Trust and installation
 
