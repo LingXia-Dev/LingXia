@@ -4,6 +4,7 @@ pub mod favicon;
 pub mod file;
 pub mod media;
 pub mod navigation;
+pub mod package_download;
 pub mod settings;
 pub mod storage;
 pub mod update;

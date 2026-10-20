@@ -19,6 +19,16 @@ channel are independent; see [env-version.md](env-version.md). Update policy
 must remain separate from disk, network, and UI so ordering can be tested
 without platform services.
 
+Package downloads (host and lxapp) share
+[`package_download`](../../crates/lingxia-service/src/package_download.rs).
+They resume from `.part`, cap connect at 20 seconds, and allow 60 minutes per
+transfer: rong_rt's 60 second default would also bound the body and fail slow
+links mid-transfer. A socket that delivers nothing for 120 seconds still
+aborts. Network failures, 408/429, and 5xx retry twice with backoff. A
+permanent failure or checksum mismatch after resuming retries once without the
+`.part`; on a fresh transfer it fails immediately. HEAD probes and the
+foreground check keep their short deadlines.
+
 ## Trust and installation
 
 - **The host build decides whether signatures are required, with one
@@ -160,8 +170,9 @@ failure directly; package visibility makes availability preflight unreliable.
 
 ## Lxapp updates
 
-- **First install blocks opening; updates do not.** First install has a
-  15-second ceiling. Bundled apps register without network access; missing both
+- **First install blocks opening; updates do not.** The first-install check
+  has a 15-second ceiling; the package transfer does not, so a slow but live
+  link still installs. Bundled apps register without network access; missing both
   bundle and provider fails the open.
 - Explicit channel changes retire the old session and create one with the target
   channel and its storage scope, including the home lxapp. Wait for the old
