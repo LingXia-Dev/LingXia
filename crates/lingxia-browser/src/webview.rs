@@ -1131,11 +1131,60 @@ pub(crate) fn browser_destroy_webview_if_matches(
 #[cfg(test)]
 mod tests {
     use super::{
-        BrowserTabNavigationState, callback_blocks_file_navigation,
+        BrowserTabDelegate, BrowserTabNavigationState, callback_blocks_file_navigation,
         callback_policy_blocks_file_navigation, url_callback_opens_new_window_externally,
     };
-    use lingxia_webview::{NavigationEvent, NavigationId};
+    use crate::tabs;
+    use lingxia_webview::{NavigationEvent, NavigationId, WebViewDataMode};
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn promoted_docked_tab_records_history() {
+        let tab_id = "promoted-history-tab".to_string();
+        tabs::lock_state().tabs.insert(
+            tab_id.clone(),
+            tabs::BrowserTabState {
+                session_id: 7,
+                created_order: 1,
+                create_token: 1,
+                create_in_flight: false,
+                pending_url: None,
+                initial_url: None,
+                current_url: None,
+                title: None,
+                title_url: None,
+                favicon_png: None,
+                can_go_back: false,
+                can_go_forward: false,
+                discarded: false,
+                data_mode: WebViewDataMode::ProfileDefault,
+                url_callback: Arc::new(AtomicBool::new(false)),
+                standalone: true,
+                aside: false,
+                owner_appid: None,
+                owner_session_id: None,
+            },
+        );
+        let delegate = BrowserTabDelegate {
+            tab_id: tab_id.clone(),
+            page_path: "/tabs/promoted".to_string(),
+            session_id: 7,
+            create_token: 1,
+            data_mode: WebViewDataMode::ProfileDefault,
+            url_callback: Arc::new(AtomicBool::new(false)),
+            documents: crate::document_session::browser_document_sessions(),
+            native_view: Mutex::new(None),
+            navigation: Mutex::new(BrowserTabNavigationState::default()),
+            inbound_diagnostics: Default::default(),
+            console_rate_limiter: Mutex::new(Default::default()),
+        };
+        assert!(!delegate.records_browser_history());
+        tabs::promote_standalone_tab(&tab_id).unwrap();
+        assert!(delegate.records_browser_history());
+        tabs::lock_state().tabs.remove(&tab_id);
+        tabs::clear_active_browser_tab();
+    }
 
     #[test]
     fn recreated_tab_has_a_distinct_native_tag_with_the_same_route_and_session() {
