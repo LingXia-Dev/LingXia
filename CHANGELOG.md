@@ -19,6 +19,63 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.27.0 — 2026-10-22
+
+### Breaking
+
+- **Breaking** — **test**: lxdev test subcommands and direct spec calls only (8f039580b)
+- **Breaking** — **shell**: give sidebar actions a value and draw footer actions as icons (2de674e0b)
+- **Breaking** — **cli**: build older projects inside the support window (5669a13b7)
+
+### Writing an lxapp
+
+- **update**: re-check the host app and home lxapp on an optional interval (2cd33e5b5)
+- **lxapp**: reload a page that was hidden when Logic cold-restarted (e2d10b8a6)
+- **update**: abort a package download when its future is dropped (9ebddbdc8)
+- **update**: let slow package downloads finish and retry dropped ones (09399978b)
+- **logic**: spend a guest's prompt only when the OS is asked (e898ed67f)
+- **logic**: let guest lxapps get attention for themselves (a2a7f103d)
+- **surface**: deliver page and query when reopening a live lxapp (fa424f1a7)
+
+### Embedding a host app
+
+- **shell**: give a sidebar value its own footer row (86211f5dc)
+- **shell**: use a vertical row menu with circular hover and themed popup (2bcc78683)
+- **windows**: keep a promoted lxapp main across its page navigation (3813fab95)
+- **macos**: show the host icon for an lxapp without registry artwork (feccc308d)
+- **browser**: record history after a docked tab is promoted (16a8cb8b7)
+- **windows**: promote a dragged aside tab to a main (e20c71ac9)
+- **macos**: promote a dragged aside tab to a main (f541862b8)
+- **platform**: keep guest banners from holding the desktop slot (77ffd76f4)
+- **platform**: name the guest lxapp on its desktop banner (3dee38ccc)
+- **windows**: return appearance saves before WebViews apply them (5cfaa5956)
+- **shell**: draw the aside tabBar as page tabs with an underline (aea2afea2)
+- **macos**: repaint the aside canvas when the lxapp's scheme changes (2cc43f8b7)
+- **shell**: draw lxapp aside tabs as centred selection chips (73bcb6e76)
+- **windows**: dismiss a tap-outside float only on a press in its owner (ee6913e69)
+- **shell**: keep the aside separator whole under an lxapp tab (01e076c04)
+
+### Rust native extensions
+
+- **automation**: time event-stream frames in captures (352589b90)
+- **automation**: stream a live network feed over the dev session (461b23705)
+- **control**: run dev session requests off the bridge thread (47cf6bb85)
+
+### CLI and CI
+
+- **lxdev**: select `--changed` by spec module, and miss no spec (992861e1e)
+- **lxdev**: run only the specs a change can affect with `lxdev test --changed` (1a728bbac)
+- **lxdev**: show test/mock long help; one error for a refused mock switch (90d654d4a)
+- **runner**: show how to open the Web Inspector from the toolbar gear (607f8c6e1)
+- **lxdev**: show live network traffic in Chrome DevTools (98c3b08cd)
+- **lxdev**: pick the network capture format by file extension (820e990d5)
+- **runner**: refresh a macOS phone frame the way iOS does (b456de9f2)
+
+### Other
+
+- **mock**: refuse a mock switch before either half changes (7289a615a)
+- **dev**: keep the dev mark above surface webviews (bc76301ab)
+
 ## 0.26.0 — 2026-10-19
 
 ### Breaking

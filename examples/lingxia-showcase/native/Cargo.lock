@@ -1285,7 +1285,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1888,7 +1888,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "tokio",
  "tower-service",
  "tracing",
@@ -2311,7 +2311,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "android_logger",
  "base64 0.23.1",
@@ -2356,7 +2356,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-app-context"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "language-tags",
  "semver",
@@ -2367,7 +2367,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-automation"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "base64 0.23.1",
  "futures",
@@ -2394,7 +2394,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-browser"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "http",
  "lingxia-log",
@@ -2416,7 +2416,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-browser-shell"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "futures",
  "html5ever",
@@ -2441,7 +2441,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-control-commands"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2458,7 +2458,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-control-protocol"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "regex",
  "serde",
@@ -2467,7 +2467,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-control-runtime"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "base64 0.23.1",
  "libc",
@@ -2492,7 +2492,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-device-io"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "base64 0.23.1",
  "dispatch2",
@@ -2513,7 +2513,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-log"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "lingxia-provider",
  "serde",
@@ -2525,7 +2525,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-logic"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "base64 0.23.1",
  "futures",
@@ -2556,7 +2556,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-lxapp"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "base64 0.23.1",
  "bytes",
@@ -2601,7 +2601,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-media"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "lingxia-platform",
  "log",
@@ -2610,14 +2610,14 @@ dependencies = [
 
 [[package]]
 name = "lingxia-messaging"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "tokio",
 ]
 
 [[package]]
 name = "lingxia-native-macros"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2626,7 +2626,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-network-dev"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "base64 0.23.1",
  "flate2",
@@ -2646,7 +2646,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-platform"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "android_logger",
  "async-trait",
@@ -2695,11 +2695,11 @@ dependencies = [
 
 [[package]]
 name = "lingxia-provider"
-version = "0.26.0"
+version = "0.27.0"
 
 [[package]]
 name = "lingxia-proxy"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "base64 0.23.1",
  "fast-socks5",
@@ -2714,7 +2714,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-service"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "bytes",
  "http",
@@ -2735,7 +2735,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-settings"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "dashmap 6.2.1",
  "lingxia-app-context",
@@ -2748,7 +2748,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-shell"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "log",
  "serde",
@@ -2758,7 +2758,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-surface"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "serde",
  "thiserror 2.0.20",
@@ -2766,7 +2766,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-terminal"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "alacritty_terminal",
  "base64 0.23.1",
@@ -2782,7 +2782,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-terminal-config"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "lingxia-app-context",
  "lingxia-terminal",
@@ -2796,7 +2796,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-transfer"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "bytes",
  "dashmap 6.2.1",
@@ -2820,7 +2820,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-update"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "base64 0.23.1",
  "ed25519-dalek",
@@ -2835,7 +2835,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-webview"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "android_logger",
  "async-trait",
@@ -2870,7 +2870,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-windows-contract"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "lingxia-webview",
  "log",
@@ -3242,7 +3242,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4067,7 +4067,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
@@ -4105,9 +4105,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5021,7 +5021,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5656,10 +5656,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6382,7 +6382,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6920,4 +6920,4 @@ dependencies = [
 
 [[patch.unused]]
 name = "lingxia-windows-sdk"
-version = "0.26.0"
+version = "0.27.0"
