@@ -62,7 +62,6 @@ struct BrowserTabDelegate {
     create_token: u64,
     data_mode: WebViewDataMode,
     url_callback: Arc<AtomicBool>,
-    standalone: bool,
     documents: Arc<BrowserDocumentSessions>,
     native_view: std::sync::Mutex<Option<NativeWebViewId>>,
     navigation: std::sync::Mutex<BrowserTabNavigationState>,
@@ -123,9 +122,11 @@ impl BrowserTabDelegate {
     }
 
     fn records_browser_history(&self) -> bool {
+        // Read live: a docked tab promoted into the main browser records
+        // history from then on.
         self.data_mode != WebViewDataMode::Ephemeral
             && !self.url_callback.load(Ordering::Acquire)
-            && !self.standalone
+            && !crate::tabs::is_standalone_tab(&self.tab_id)
     }
 
     /// The registry has already invalidated this authority's execution gate.
@@ -696,7 +697,6 @@ pub(crate) fn browser_create_webview(
     create_token: u64,
     data_mode: WebViewDataMode,
     url_callback: Arc<AtomicBool>,
-    standalone: bool,
 ) -> Result<(), LxAppError> {
     let webtag = browser_webtag(path, session_id, create_token);
     let browser_owner = ensure_browser_lxapp()?;
@@ -737,7 +737,6 @@ pub(crate) fn browser_create_webview(
         create_token,
         data_mode,
         url_callback: url_callback.clone(),
-        standalone,
         documents: documents.clone(),
         native_view: std::sync::Mutex::new(None),
         navigation: std::sync::Mutex::new(BrowserTabNavigationState::default()),

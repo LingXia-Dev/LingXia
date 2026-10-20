@@ -1040,7 +1040,6 @@ fn open_internal_browser_tab_with_scope(
             token,
             data_mode,
             url_callback_policy.clone(),
-            standalone,
         ) {
             lock_state().tabs.remove(&tab_id);
             return Err(e);
@@ -1105,7 +1104,6 @@ fn open_internal_browser_tab_with_scope(
                         token,
                         data_mode,
                         url_callback_policy.clone(),
-                        standalone,
                     )
                 {
                     lock_state().tabs.remove(&tab_id);
@@ -1285,6 +1283,8 @@ pub(crate) fn promote_standalone_tab(tab_id: &str) -> Result<(), LxAppError> {
         tab.standalone = false;
     }
     set_active_browser_tab(&normalized);
+    // It now appears in the product listing, which excludes standalone tabs.
+    notify_tabs_changed();
     Ok(())
 }
 
@@ -1525,14 +1525,13 @@ pub(crate) fn reactivate_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
                 token,
                 tab.data_mode,
                 tab.url_callback.clone(),
-                tab.standalone,
             ))
         } else {
             None
         }
     };
 
-    if let Some((session_id, token, data_mode, url_callback, standalone)) = recreate {
+    if let Some((session_id, token, data_mode, url_callback)) = recreate {
         let path = browser_tab_path_for_runtime_id(&normalized);
         if let Err(error) = browser_create_webview(
             &path,
@@ -1541,7 +1540,6 @@ pub(crate) fn reactivate_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
             token,
             data_mode,
             url_callback,
-            standalone,
         ) {
             if let Some(tab) = lock_state().tabs.get_mut(&normalized) {
                 tab.discarded = true;
