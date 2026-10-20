@@ -114,6 +114,15 @@ mod guest_prompt {
         Ok(())
     }
 
+    /// Hand the claim back when the platform answered without asking the OS,
+    /// e.g. a show suppressed because the product is frontmost.
+    pub(super) fn release(app: &Arc<LxApp>) {
+        prompted()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(&(app.appid.clone(), app.session_id()));
+    }
+
     fn refused(detail: String) -> RongJSError {
         js_error_from_business_code_with_detail(3006, detail)
     }
@@ -133,12 +142,14 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     navigation::validate(&target).map_err(navigation_error)?;
     let app = invocation.lxapp();
     let runtime = app.runtime.clone();
+    let mut claimed = false;
     if scope.owner().is_some() {
         // A post the OS has no answer for yet prompts on some platforms; for
         // a guest that is its one prompt, under the same rule.
         let probe = runtime.clone();
         if spawn_blocking(move || probe.notification_permission()).await? == "default" {
             guest_prompt::claim(&app, "lx.host.notification.show")?;
+            claimed = true;
         }
     }
     let id = request.id.clone();
@@ -162,6 +173,9 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
             {
                 // Nothing was posted, so nothing may resolve this token later.
                 intent::rollback(&staged);
+                if claimed {
+                    guest_prompt::release(&app);
+                }
             } else {
                 intent::commit(&staged);
             }

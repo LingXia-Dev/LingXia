@@ -228,7 +228,9 @@ pub fn stage_owned(
         && store
             .records
             .iter()
-            .filter(|record| record.owner.as_deref() == Some(owner))
+            .filter(|record| {
+                record.owner.as_deref() == Some(owner) && record.status != Status::Consumed
+            })
             .count()
             >= MAX_RECORDS_PER_OWNER
     {
@@ -604,6 +606,11 @@ mod tests {
             // Another guest and the product are not affected by that cap.
             assert!(stage_owned("o:1", &target(), Some("com.example.other")).is_ok());
             assert!(stage("p:2", &target()).is_ok());
+            // A tapped notification no longer counts, though its record stays.
+            let tapped = stage_owned("g:1", &target(), Some("com.example.guest")).unwrap();
+            commit(&tapped);
+            assert!(resolve(&tapped.token).unwrap().is_some());
+            assert!(stage_owned("g:fresh", &target(), Some("com.example.guest")).is_ok());
         });
     }
 

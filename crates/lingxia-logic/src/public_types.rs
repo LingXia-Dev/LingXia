@@ -137,28 +137,6 @@ rong::js_api! {
     height?: number;
 }"###;
 
-        /// Launch-at-startup control for the host app.
-        ///
-        /// Absent (`undefined`) wherever the host cannot register a startup item.
-        /// `lx.supports('app.autostart')` and the member's presence always
-        /// agree, so either gate works:
-        ///
-        /// ```ts
-        /// if (lx.supports('app.autostart')) {
-        ///   // render the "Launch at startup" toggle
-        /// }
-        /// ```
-        ///
-        /// Requires `capabilities.autostart: true` in `lingxia.yaml`; without it the
-        /// member is absent on all platforms. Declaring the capability never enables
-        /// autostart by itself — the SDK registers the app only when `setEnabled(true)`
-        /// is called, so the decision stays with the user (typically a settings-page
-        /// toggle, default off).
-        ///
-        /// Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
-        /// are available only to the native-assigned Control app; other lxapps receive
-        /// a permission error.
-        ///
         /// Local notifications as a resume affordance.
         ///
         /// Absent unless the host declared `capabilities.notifications` and the
@@ -274,8 +252,9 @@ rong::js_api! {
         ///
         /// A guest lxapp's banner carries its name and icon, so
         /// it cannot pass as the product's. Its ids are its own, it may have
-        /// three banners showing or waiting, and picking one of its actions
-        /// lets it call `lx.surface.bringToFront` once.
+        /// three banners showing or waiting, each closes after 60s at most
+        /// (`timeoutMs` is capped), the product's banners go first, and picking
+        /// one of its actions lets it call `lx.surface.bringToFront` once.
         ///
         /// No buttons: an informational card that auto-dismisses (5s unless
         /// `timeoutMs` is set). With buttons: a gate that waits for a choice,
@@ -302,6 +281,27 @@ rong::js_api! {
     dismiss(id: string): Promise<void>;
 }"###;
 
+        /// Launch-at-startup control for the host app.
+        ///
+        /// Absent (`undefined`) wherever the host cannot register a startup item.
+        /// `lx.supports('app.autostart')` and the member's presence always
+        /// agree, so either gate works:
+        ///
+        /// ```ts
+        /// if (lx.supports('app.autostart')) {
+        ///   // render the "Launch at startup" toggle
+        /// }
+        /// ```
+        ///
+        /// Requires `capabilities.autostart: true` in `lingxia.yaml`; without it the
+        /// member is absent on all platforms. Declaring the capability never enables
+        /// autostart by itself — the SDK registers the app only when `setEnabled(true)`
+        /// is called, so the decision stays with the user (typically a settings-page
+        /// toggle, default off).
+        ///
+        /// Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
+        /// are available only to the native-assigned Control app; other lxapps receive
+        /// a permission error.
         type AutostartApi = r###"{
     /**
      * Whether the app is currently registered to launch at startup, read from

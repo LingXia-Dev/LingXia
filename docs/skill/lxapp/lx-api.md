@@ -181,7 +181,7 @@ A guest (any lxapp but the Control app) may use `lx.host.notification` and
 - At most 32 live notifications and 3 banners (showing or queued) per guest.
 - Permission is the product's. A guest may cause one prompt per launch, only
   while it is open; ask from a user action. Afterwards it just reads the answer.
-- Its banner shows its name and icon.
+- Its banner shows its name and icon, closes after 60s at most (`canceled`, `timeout`), and waits behind the product's.
 - `lx.surface.bringToFront({ page?, query? })` brings the product forward on
   the guest, like a tap on its notification (a docked aside comes back in
   place; `page`/`query` reach App `onShow`, `switch_back`). A guest may call
