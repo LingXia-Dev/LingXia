@@ -46,7 +46,7 @@
             android:name="com.lingxia.lxapp.LxAppActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
-            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar" />
+            android:theme="@style/Theme.LingXia.LxApp" />
         <activity
             android:name="com.lingxia.lxapp.APIs.document.PdfViewerActivity"
             android:exported="false"

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- OEM force-dark modes (Pixel/Android 17 included) recolour a light
+         window whenever the system is dark, even when the activity is pinned
+         to light. The runtime's view-level opt-out runs after the window
+         exists; this theme attribute is what the window reads before that.
+         The resolved scheme then owns the canvas and the page. -->
+    <style name="Theme.LingXia.LxApp" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+</resources>
