@@ -56,7 +56,9 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     request.id = scope.platform_id(&caller_id);
     let source = scope.owner().map(|app_id| DesktopBannerSource {
         app_id: app_id.to_string(),
-        name: app.listing_name(),
+        name: Some(app.listing_name())
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| app_id.to_string()),
         icon_path: lxapp::lxapp_display_icon_path(app_id),
     });
     let turn = call_order::take();

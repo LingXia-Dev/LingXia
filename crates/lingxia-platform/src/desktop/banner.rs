@@ -18,6 +18,9 @@ const MAX_ID_CHARS: usize = 64;
 /// Banners one guest lxapp may have visible or waiting, so it cannot bury
 /// the product's own behind a queue of its own.
 pub const MAX_PER_SOURCE: usize = 3;
+/// Longest a guest banner stays up, actions or not, so it cannot hold the
+/// one slot while the product's wait.
+pub const GUEST_MAX_MS: u64 = 60_000;
 
 type Reply = Sender<Result<DesktopBannerOutcome, PlatformError>>;
 
@@ -127,7 +130,7 @@ fn finish(id: &str, result: Result<DesktopBannerOutcome, PlatformError>) {
             let waiter = state.visible.take().expect("visible checked");
             hide_ui();
             let _ = waiter.tx.send(result);
-            take_next(&mut state)
+            state.queue.pop_front().map(|next| occupy(&mut state, next))
         } else if let Some(index) = state
             .queue
             .iter()
@@ -200,12 +203,12 @@ fn enqueue(
             let _ = previous
                 .tx
                 .send(Ok(DesktopBannerOutcome::Replaced { id: id.clone() }));
-            Some(incoming)
+            Some(occupy(&mut state, incoming))
         } else if state.visible.is_some() {
-            state.queue.push_back(incoming);
+            wait_in_line(&mut state.queue, incoming);
             None
         } else {
-            Some(incoming)
+            Some(occupy(&mut state, incoming))
         }
     };
     if let Some(next) = next {
@@ -214,23 +217,52 @@ fn enqueue(
     Ok(())
 }
 
-fn take_next(state: &mut State) -> Option<Waiter> {
-    state.queue.pop_front()
+/// The product's banners wait ahead of every guest's.
+fn wait_in_line(queue: &mut VecDeque<Waiter>, waiter: Waiter) {
+    let index = if waiter.source.is_none() {
+        queue
+            .iter()
+            .position(|queued| queued.source.is_some())
+            .unwrap_or(queue.len())
+    } else {
+        queue.len()
+    };
+    queue.insert(index, waiter);
 }
 
-fn present_waiter(waiter: Waiter) {
-    let request = waiter.request.clone();
-    let source = waiter.source.clone();
-    let generation = waiter.generation;
-    {
-        let mut state = lock();
-        state.visible = Some(waiter);
+/// What to draw for the waiter that now holds the slot.
+struct Shown {
+    request: DesktopBannerShow,
+    source: Option<DesktopBannerSource>,
+    generation: u64,
+}
+
+/// Take the slot under the same lock that found it free, so two callers can
+/// never both present and overwrite each other's waiter.
+fn occupy(state: &mut State, waiter: Waiter) -> Shown {
+    let shown = Shown {
+        request: waiter.request.clone(),
+        source: waiter.source.clone(),
+        generation: waiter.generation,
+    };
+    state.visible = Some(waiter);
+    shown
+}
+
+fn present_waiter(shown: Shown) {
+    let Shown {
+        request,
+        source,
+        generation,
+    } = shown;
+    if !visible_generation_is(generation) {
+        return;
     }
     if !present_ui(&request, source.as_ref()) {
         fail(&request.id, "failed to present banner");
         return;
     }
-    if let Some(timeout_ms) = effective_timeout(&request) {
+    if let Some(timeout_ms) = effective_timeout(&request, source.is_some()) {
         std::thread::Builder::new()
             .name("lingxia-desktop-banner-timeout".into())
             .spawn(move || {
@@ -248,12 +280,17 @@ fn present_waiter(waiter: Waiter) {
     }
 }
 
-fn effective_timeout(request: &DesktopBannerShow) -> Option<u64> {
-    match request.timeout_ms {
+fn effective_timeout(request: &DesktopBannerShow, guest: bool) -> Option<u64> {
+    let requested = match request.timeout_ms {
         Some(0) => None,
         Some(ms) => Some(ms),
         None if request.actions.is_empty() => Some(DEFAULT_TOAST_MS),
         None => None,
+    };
+    if guest {
+        Some(requested.map_or(GUEST_MAX_MS, |ms| ms.min(GUEST_MAX_MS)))
+    } else {
+        requested
     }
 }
 
@@ -380,19 +417,53 @@ mod tests {
     }
 
     #[test]
+    fn a_guest_banner_never_outstays_the_cap() {
+        let mut request = prompt("t");
+        request.timeout_ms = None;
+        assert_eq!(effective_timeout(&request, false), None);
+        assert_eq!(effective_timeout(&request, true), Some(GUEST_MAX_MS));
+        request.timeout_ms = Some(0);
+        assert_eq!(effective_timeout(&request, true), Some(GUEST_MAX_MS));
+        request.timeout_ms = Some(GUEST_MAX_MS * 10);
+        assert_eq!(effective_timeout(&request, true), Some(GUEST_MAX_MS));
+        request.timeout_ms = Some(2_000);
+        assert_eq!(effective_timeout(&request, true), Some(2_000));
+    }
+
+    #[test]
+    fn the_product_waits_ahead_of_guests() {
+        let waiter = |id: &str, guest: bool| Waiter {
+            request: toast(id, "Hi"),
+            source: guest.then(|| DesktopBannerSource {
+                app_id: "g".into(),
+                name: "Guest".into(),
+                icon_path: None,
+            }),
+            tx: mpsc::channel().0,
+            generation: 0,
+        };
+        let mut queue = VecDeque::new();
+        wait_in_line(&mut queue, waiter("p1", false));
+        wait_in_line(&mut queue, waiter("g1", true));
+        wait_in_line(&mut queue, waiter("g2", true));
+        wait_in_line(&mut queue, waiter("p2", false));
+        let order: Vec<_> = queue.iter().map(|w| w.request.id.as_str()).collect();
+        assert_eq!(order, ["p1", "p2", "g1", "g2"]);
+    }
+
+    #[test]
     fn dismiss_unknown_id_is_fine() {
         dismiss("missing");
     }
 
     #[test]
     fn present_failure_unblocks_the_waiter() {
-        let handle = std::thread::spawn(|| show(toast("fail-me", "Hi")));
         // present_ui succeeds in unit tests; the presenter thread reports the
         // window/panel failure through fail().
-        std::thread::sleep(Duration::from_millis(20));
+        let pending = enqueue_show(toast("fail-me", "Hi")).unwrap();
         fail("fail-me", "no hwnd");
-        let error = handle.join().expect("banner thread").unwrap_err();
-        assert!(error.to_string().contains("no hwnd"));
+        let error = pending.wait().unwrap_err();
+        assert!(error.to_string().contains("no hwnd"), "{error}");
     }
 
     #[test]
