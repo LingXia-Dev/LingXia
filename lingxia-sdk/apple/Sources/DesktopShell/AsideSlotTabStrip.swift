@@ -5,8 +5,8 @@ import AppKit
 struct AsideSlotTab: Equatable {
     let id: String
     let title: String
-    /// Resolved icon file path (an lxapp's declared icon); nil falls back to
-    /// the bundled default mark.
+    /// The lxapp's registry icon file; nil falls back like every other lxapp
+    /// row (`LxIcon.lxappImage`): the host icon, then the SDK mark.
     var iconPath: String? = nil
 }
 
@@ -39,14 +39,6 @@ final class AsideSlotTabStripView: NSView {
     private var tabs: [AsideSlotTab] = []
     private var activeId: String?
     private var itemViews: [AsideSlotTabItemView] = []
-
-    /// The bundled default LingXia mark, for lxapps that declare no icon.
-    private static let defaultTabIcon: NSImage? = {
-        guard let url = Bundle.lingxiaResources.url(
-            forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")
-        else { return nil }
-        return NSImage(contentsOf: url)
-    }()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -147,7 +139,8 @@ final class AsideSlotTabStripView: NSView {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         itemViews.removeAll()
         for tab in tabs {
-            let icon = tab.iconPath.flatMap { TabBarHelper.chromeIconImage(contentsOfFile: $0) } ?? Self.defaultTabIcon
+            // An lxapp slot tab's id is its app id.
+            let icon = LxIcon.lxappImage(appId: tab.id, path: tab.iconPath ?? "")
             let tiled = icon.map { TabBarHelper.appTileIcon($0, size: ChromeTabMetrics.iconSize) }
             let item = AsideSlotTabItemView(tab: tab, icon: tiled)
             item.onSelect = { [weak self] in self?.onSelect?(tab.id) }
