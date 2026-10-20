@@ -188,6 +188,11 @@ class, never from a payload:
 - A guest's ids are a digest of its app id and its own id, so it cannot name
   another app's notification or banner. The product's ids are unchanged.
 - A guest's notification target can only be itself.
+- A guest may hold 32 notifications and 3 banners; a banner is up 60 s at
+  most and waits behind the product's, so a guest cannot hold the one slot.
+- A guest spends the product's notification permission at most once per
+  session, only while open; a show the platform suppressed without asking
+  returns the claim.
 - A guest's banner carries its name, and an action picked on it is the only
   thing that lets that session call `bringToFront`, once, within 10 seconds
   (`user_activation`). Nothing the guest sends can mint one.

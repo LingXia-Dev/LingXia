@@ -46,7 +46,7 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
 | What happened | Hook | `source` | `reason` |
 | --- | --- | --- | --- |
 | First open of this session | `onLaunch(options)`, then `onShow` | `lxapp` | `open` |
-| Reopened while still alive (a link, a notification tap, `navigateToApp`, `lx.shell.openApp` on its live surface, `lx.surface.bringToFront`) | `onShow` with path/query | `lxapp` | `switch_back` |
+| Reopened while alive (link, notification tap, `navigateToApp`, `openApp`, `bringToFront`) | `onShow` with path/query | `lxapp` | `switch_back` |
 | Another lxapp opened as the main | `onHide` | `lxapp` | `switch_away` |
 | Closed | `onHide` | `lxapp` | `close` |
 | Host app went to background / came back | `onHide` / `onShow` | `host` | `background` / `foreground` |
@@ -55,10 +55,8 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
 - **An aside does not hide the main.** `lx.shell.openApp(id, { as: 'aside' })`
   opens beside the main, which gets no `onHide`. Collapsing a docked aside is
   a page event, not an App event: the aside lxapp's App hooks stay quiet (see
-  Navigation below). Opening it again while it is docked (`lx.shell.openApp`
-  with the same role, or a notification tap with an `app` target) brings the
-  aside back and hands the new `page` / `query` to App `onShow`
-  (`switch_back`); route from there.
+  Navigation below). Reopening it while docked brings it back in place; route
+  from the `page` / `query` in App `onShow`.
 - **AppLink arrives once.** A cold AppLink is in `onLaunch` options
   (`scene: 8003`, `url`); the `onShow` that follows carries no link. A warm
   AppLink is in `onShow` with `reason: 'switch_back'`.

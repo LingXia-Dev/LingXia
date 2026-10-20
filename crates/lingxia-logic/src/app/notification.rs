@@ -124,7 +124,7 @@ mod guest_prompt {
     }
 
     fn refused(detail: String) -> RongJSError {
-        js_error_from_business_code_with_detail(3006, detail)
+        js_error_from_business_code_with_detail(3000, detail)
     }
 }
 
