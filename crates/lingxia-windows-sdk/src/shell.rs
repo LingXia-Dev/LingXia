@@ -94,6 +94,7 @@ pub(crate) use chrome::{
     TabbarOverflowHit, TabbarOverflowLayout, paint_tabbar_overflow, tabbar_overflow_hit,
     tabbar_overflow_layout, tabbar_overflow_panel_radius,
 };
+pub(crate) use chrome::{aside_tab_drag_source, set_aside_tab_drop_targeted, sidebar_drop_rect};
 pub(crate) use chrome::{
     bottom_tabbar_rect, collapsed_sidebar_tabbar_click_command, collapsed_sidebar_tabbar_popup,
     collapsed_sidebar_tabbar_popup_hit, paint_collapsed_sidebar_tabbar_popup,
@@ -101,6 +102,7 @@ pub(crate) use chrome::{
     sidebar_rail_tooltip_radius, sidebar_tabbar_popup_radius, sidebar_tooltip,
     transparent_tabbar_overlay_rect,
 };
+pub(crate) use runtime::promote_aside_tab;
 
 pub(crate) use chrome::{workspace_corner_radii, workspace_silhouette_rect};
 

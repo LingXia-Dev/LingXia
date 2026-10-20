@@ -2404,12 +2404,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
         ? candidate
         : undefined;
     };
-    let promotedLayout = await waitForValue(chatPromotedMain, 'pinned Chat promoted main workspace', 6_000)
-      .catch(() => undefined);
-    if (!promotedLayout) {
-      await openChatAsMainWorkspace(t, app);
-      promotedLayout = await waitForValue(chatPromotedMain, 'pinned Chat promoted main workspace after openApp');
-    }
+    const promotedLayout = await waitForValue(chatPromotedMain, 'pinned Chat promoted main workspace');
     expect(promotedLayout.mainSwitcher.activeSurfaceId).toBe('lingxia-chat');
 
     const promotedMain = await waitForDesktopWindow(
@@ -4192,39 +4187,116 @@ desktopTest('opens a browser aside beside a docked, maximized and collapsed Chat
   }
 });
 
-/** A point inside the macOS sidebar, rail or expanded: an aside tab dropped here becomes a main. */
-function sidebarDropPoint(host: DesktopWindowInfo): [number, number] {
+/** A point inside the sidebar, rail or expanded: an aside tab dropped here becomes a main. */
+function sidebarDropPoint(platform: string, host: DesktopWindowInfo): [number, number] {
   return [
-    host.bounds.x + nativeWindowExtent('macos', host, 28),
+    host.bounds.x + nativeWindowExtent(platform, host, 28),
     host.bounds.y + Math.round(host.bounds.h / 2),
   ];
 }
 
-/** Drag the aside tab chip labelled `title` onto the sidebar. */
-async function dragAsideTabToSidebar(
+/** The visible WebView window docked in the right aside (Windows). */
+async function windowsRightAsideWebView(
   desktop: DesktopDriver,
   host: DesktopWindowInfo,
-  title: string,
-): Promise<void> {
-  const chip = await waitForValue(async () => {
-    const node = await exactHostAxNode(desktop, host, 'button', title);
-    return node && inRightAside(host, node.rect) ? node : undefined;
-  }, `aside tab "${title}"`);
-  await desktop.window.focus({ window: host.id });
-  await desktop.pointer.drag({
-    from: regionCenter([chip.rect.x, chip.rect.y, chip.rect.w, chip.rect.h]),
-    to: sidebarDropPoint(host),
-  });
+): Promise<DesktopWindowInfo> {
+  return waitForDesktopWindow(
+    () => desktop.windows(),
+    (windows) => visibleHostWebViews(host, windows).find((window) => (
+      window.bounds.x > host.bounds.x + host.bounds.w * 0.5
+    )),
+    'right aside WebView',
+  );
 }
 
-macosHostTest('promotes a dragged lxapp aside to a main without reloading it', {
+/**
+ * The WebView window showing `anchor` (Windows). Hidden mains keep their
+ * windows "visible", so geometry alone does not pick the presented one.
+ */
+async function windowsWebViewShowing(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+  anchor: string,
+): Promise<DesktopWindowInfo> {
+  const node = await waitForValue(
+    () => visibleHostAxNode(desktop, host, anchor),
+    `"${anchor}" on screen`,
+  );
+  const [x, y] = regionCenter([node.rect.x, node.rect.y, node.rect.w, node.rect.h]);
+  return waitForDesktopWindow(
+    () => desktop.windows(),
+    (windows) => visibleHostWebViews(host, windows).find((window) => (
+      x >= window.bounds.x && x < window.bounds.x + window.bounds.w
+      && y >= window.bounds.y && y < window.bounds.y + window.bounds.h
+    )),
+    `WebView showing "${anchor}"`,
+  );
+}
+
+/**
+ * Drag the first aside tab chip onto the sidebar. macOS finds the chip, titled
+ * `title`, by AX. Windows paints the strip without UIA: its first chip sits in
+ * the 38 DIP header above the aside WebView, past the 8 DIP padding, and past
+ * a browser slot's back/forward/reload cluster.
+ */
+async function dragAsideTabToSidebar(
+  desktop: DesktopDriver,
+  platform: string,
+  host: DesktopWindowInfo,
+  tab: { title: string; browser: boolean },
+): Promise<void> {
+  let from: [number, number];
+  if (platform === 'windows') {
+    const aside = await windowsRightAsideWebView(desktop, host);
+    from = [
+      aside.bounds.x + nativeWindowExtent(platform, host, tab.browser ? 130 : 30),
+      aside.bounds.y - nativeWindowExtent(platform, host, 19),
+    ];
+  } else {
+    const chip = await waitForValue(async () => {
+      const node = await exactHostAxNode(desktop, host, 'button', tab.title);
+      return node && inRightAside(host, node.rect) ? node : undefined;
+    }, `aside tab "${tab.title}"`);
+    from = regionCenter([chip.rect.x, chip.rect.y, chip.rect.w, chip.rect.h]);
+  }
+  await desktop.window.focus({ window: host.id });
+  await desktop.pointer.drag({ from, to: sidebarDropPoint(platform, host) });
+}
+
+/** Press the main navigation bar's Back button above the page showing `anchor`. */
+async function pressMainBack(
+  desktop: DesktopDriver,
+  platform: string,
+  host: DesktopWindowInfo,
+  anchor: string,
+): Promise<void> {
+  if (platform === 'windows') {
+    // The bar is painted above the main WebView; Back leads it, 8 DIP in.
+    const main = await windowsWebViewShowing(desktop, host, anchor);
+    await desktop.pointer.click({
+      at: [
+        main.bounds.x + nativeWindowExtent(platform, host, 8) + 20,
+        main.bounds.y - nativeWindowExtent(platform, host, 12),
+      ],
+    });
+    return;
+  }
+  const back = await waitForValue(async () => {
+    const node = await exactHostAxNode(desktop, host, 'button', 'Back');
+    return node && !inRightAside(host, node.rect) ? node : undefined;
+  }, 'main navigation Back button');
+  await desktop.ax.invoke({ window: host.id, match: `id:${back.id}` });
+}
+
+desktopTest('promotes a dragged lxapp aside to a main without reloading it', {
   id: 'DESKTOP-ASIDE-PROMOTE-001',
   timeout: DESKTOP_CASE_MS,
   covers: ['lx.shell.openApp'],
 }, async (t) => {
   const app = await desktopApp(t);
   const desktop = t.automation.desktop;
-  let host = desktopShowcaseHost('macos', await desktop.windows());
+  const platform = await runtimePlatform(app);
+  let host = desktopShowcaseHost(platform, await desktop.windows());
   if (!host) throw new Error('visible LingXia host window was not found');
   const originalBounds = { ...host.bounds };
   const draft = `promote-draft-${Date.now().toString(36)}`;
@@ -4233,8 +4305,8 @@ macosHostTest('promotes a dragged lxapp aside to a main without reloading it', {
     host = await resizeHostOnScreen(
       desktop,
       host,
-      nativeWindowExtent('macos', host, 1_000),
-      nativeWindowExtent('macos', host, 640),
+      nativeWindowExtent(platform, host, 1_000),
+      nativeWindowExtent(platform, host, 640),
     );
     await app.nav.switchTab({ page: 'home' });
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
@@ -4256,7 +4328,7 @@ macosHostTest('promotes a dragged lxapp aside to a main without reloading it', {
     await asideChat.view.css('textarea[placeholder="Message..."]').fill(draft);
 
     host = await ensureHostForeground(desktop, host);
-    await dragAsideTabToSidebar(desktop, host, 'LingXia Chat');
+    await dragAsideTabToSidebar(desktop, platform, host, { title: 'LingXia Chat', browser: false });
 
     const after = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
@@ -4286,19 +4358,17 @@ macosHostTest('promotes a dragged lxapp aside to a main without reloading it', {
       const current = await chat.nav.current();
       return current.name === 'about' && current.ready ? current : undefined;
     }, 'Chat About page ready in the main');
-    const back = await waitForValue(async () => {
-      const node = await exactHostAxNode(desktop, host!, 'button', 'Back');
-      return node && !inRightAside(host!, node.rect) ? node : undefined;
-    }, 'main navigation Back button');
-    await desktop.ax.invoke({ window: host.id, match: `id:${back.id}` });
+    await pressMainBack(desktop, platform, host, 'Back returns to the chat');
     await waitForValue(async () => (
       (await chat.nav.current()).name === 'chat' ? true : undefined
     ), 'main Back popped Chat to its chat page');
     await expect(mainChat.view.css('textarea[placeholder="Message..."]'))
       .toHaveValue(draft, { timeout: 30_000 });
 
-    // Closing the promoted main releases it from the main area; the live lxapp
-    // can then dock as an aside again.
+    // Closing the promoted main releases it from the main area; Chat can then
+    // dock as an aside again. Whether the page outlives the close differs per
+    // platform, so the draft goes first and the bare input is what returns.
+    await mainChat.view.css('textarea[placeholder="Message..."]').fill('');
     await closeChatSurface(t, app);
     const closed = await app.surfaceLayout();
     expect({
@@ -4314,10 +4384,8 @@ macosHostTest('promotes a dragged lxapp aside to a main without reloading it', {
         ? layout
         : undefined;
     }, 'Chat docked as an aside again');
-    await waitForValue(async () => {
-      const node = await visibleHostAxNode(desktop, host!, draft);
-      return node && inRightAside(host!, node.rect) ? node : undefined;
-    }, 'Chat input back in the right aside');
+    const docked = await waitForChatInput(desktop, host, 'Chat input back in the right aside');
+    expect(inRightAside(host, docked.rect)).toBeTruthy();
   } catch (error) {
     await attachDesktopFailure(t, 'aside-promote', desktop, host);
     throw error;
@@ -4332,7 +4400,7 @@ macosHostTest('promotes a dragged lxapp aside to a main without reloading it', {
   }
 });
 
-macosHostTest('moves a dragged URL aside tab into the main browser without reloading it', {
+desktopTest('moves a dragged URL aside tab into the main browser without reloading it', {
   id: 'DESKTOP-BROWSER-ASIDE-PROMOTE-001',
   timeout: DESKTOP_CASE_MS,
   covers: ['lx.surface.openUrl', 'BrowserDriver.tabs', 'BrowserDriver.current'],
@@ -4340,7 +4408,8 @@ macosHostTest('moves a dragged URL aside tab into the main browser without reloa
   const app = await desktopApp(t);
   const desktop = t.automation.desktop;
   const browser = t.automation.browser;
-  let host = desktopShowcaseHost('macos', await desktop.windows());
+  const platform = await runtimePlatform(app);
+  let host = desktopShowcaseHost(platform, await desktop.windows());
   if (!host) throw new Error('visible LingXia host window was not found');
   const originalBounds = { ...host.bounds };
   const namespace = `aside-promote-${Date.now().toString(36)}`;
@@ -4351,8 +4420,8 @@ macosHostTest('moves a dragged URL aside tab into the main browser without reloa
     host = await resizeHostOnScreen(
       desktop,
       host,
-      nativeWindowExtent('macos', host, 1_000),
-      nativeWindowExtent('macos', host, 640),
+      nativeWindowExtent(platform, host, 1_000),
+      nativeWindowExtent(platform, host, 640),
     );
     await app.nav.switchTab({ page: 'home' });
     const url = await writeBrowserAsideFixture(app, namespace, key);
@@ -4375,7 +4444,7 @@ macosHostTest('moves a dragged URL aside tab into the main browser without reloa
     await browser.eval({ tab: tab.tab_id, js: `(globalThis.__asidePromoteProbe = '${key}')` });
 
     host = await ensureHostForeground(desktop, host);
-    await dragAsideTabToSidebar(desktop, host, key);
+    await dragAsideTabToSidebar(desktop, platform, host, { title: key, browser: true });
 
     await waitForValue(async () => (
       layoutHoldsSurface(await app.surfaceLayout(), opened.id) ? undefined : true
@@ -4387,10 +4456,13 @@ macosHostTest('moves a dragged URL aside tab into the main browser without reloa
     }, 'promoted tab active in the main browser');
     expect((current.current_url ?? '').includes(key)).toBeTruthy();
     expect(await browser.eval({ tab: tab.tab_id, js: 'globalThis.__asidePromoteProbe' })).toBe(key);
-    await waitForValue(
-      () => sidebarTabItem(desktop, host!, [key]),
-      'promoted tab listed in the sidebar',
-    );
+    // The Windows sidebar is painted without UIA nodes.
+    if (platform === 'macos') {
+      await waitForValue(
+        () => sidebarTabItem(desktop, host!, [key]),
+        'promoted tab listed in the sidebar',
+      );
+    }
     // The aside handle is gone; the page is the browser's now.
     const handle = await app.logic.eval(({ lx }, key) => {
       const held = lx.surface.getByKey(key);

@@ -412,7 +412,7 @@ crammed in the moment the window crosses 840.
   selected; the aside slot loses that child. Only a main can be pinned, so an
   aside reaches the Pins through this step. URL-callback and ephemeral tabs
   belong to their opener and are not draggable. There is no reverse drag.
-  Implemented on macOS; other platforms do not offer the drag yet.
+  Implemented on macOS and Windows; other platforms have no sidebar.
 - While the main window has tabs, exactly one tab MUST be selected.
 - lxapp, browser, and native mains interleave in stable graph order; pins and
   sidebar actions stay fixed, outside the main navigation scroll region.
@@ -575,7 +575,7 @@ Pins are the user's quick entries for lxapps and websites.
   from right-click; lifecycle controls must not be discoverable only by a hidden
   gesture. Removing the Pin MUST NOT remove a live workspace row. If the same lxapp is live as an aside,
   the host promotes that instance to main in place, exactly as a sidebar drop
-  does (§4.2; Windows still closes and reopens it); the Pin does not inherit
+  does (§4.2); the Pin does not inherit
   the app's declared aside default. Sidebar actions and
   `lx.surface.openDeclared(id)` continue to honor the declared role.
 - A main opened from a Pin MUST occupy the exact same host content rectangle as

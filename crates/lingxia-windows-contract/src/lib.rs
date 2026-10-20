@@ -400,6 +400,12 @@ pub trait WindowsHostBackend: Send + Sync {
         unsupported_operation("hide_host_panel")
     }
 
+    /// Drop the panel registration of `webtag` without hiding or destroying
+    /// its WebView, which is about to be presented as a main.
+    fn release_webview_panel(&self, _webtag: &WebTag) -> bool {
+        false
+    }
+
     /// Hide the exclusive-tray flyout if it is showing.
     fn hide_exclusive_tray_popover(&self) -> bool {
         false
@@ -1169,6 +1175,12 @@ pub fn show_interactive_host_panel(
 
 pub fn hide_host_panel(panel_id: &str) -> StdResult<()> {
     backend()?.hide_host_panel(panel_id)
+}
+
+pub fn release_webview_panel(webtag: &WebTag) -> bool {
+    backend()
+        .map(|backend| backend.release_webview_panel(webtag))
+        .unwrap_or(false)
 }
 
 pub fn hide_exclusive_tray_popover() -> bool {

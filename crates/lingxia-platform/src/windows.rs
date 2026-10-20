@@ -49,7 +49,6 @@ pub use notification::{
     ensure_toast_activator, remove_toast_registration, set_toast_activate_handler,
 };
 pub use pull_to_refresh::set_windows_pull_to_refresh_handler;
-pub use surface::close_windows_url_surface_for_browser_tab;
 pub use surface::{
     WindowsUrlSurfaceWebTag, install_windows_aside_panel_bridge, set_windows_layout_plan_handler,
     set_windows_managed_aside_event_handler, set_windows_managed_native_surface_open_handler,
@@ -57,6 +56,10 @@ pub use surface::{
     set_windows_page_visibility_handler, set_windows_page_webview_awaiter,
     set_windows_surface_closed_handler, set_windows_surface_dispose_handler,
     set_windows_url_surface_handler,
+};
+pub use surface::{
+    close_windows_url_surface_for_browser_tab, release_windows_aside_browser_surface,
+    release_windows_lxapp_aside, restore_windows_lxapp_aside, windows_aside_browser_tab_id,
 };
 pub use ui_update::{
     set_windows_capsule_rect_provider, set_windows_home_first_ready_handler,

@@ -14,9 +14,10 @@ use lingxia_windows_contract::{
     configure_webview_surface_interaction, focus_active_main_webview, focus_webview_content,
     hide_host_panel, hide_webview_window, navigate_webview_window,
     present_webview_as_overlay_anchored, present_webview_in_active_group, refresh_aside_panel,
-    set_aside_panel_tabs, set_webview_close_handler, set_windows_aside_panel_event_handler,
-    show_webview_as_adaptive_panel, show_webview_as_overlay_panel, show_webview_as_panel,
-    show_webview_window, show_webview_window_with_chrome,
+    release_webview_panel, set_aside_panel_tabs, set_webview_close_handler,
+    set_windows_aside_panel_event_handler, show_webview_as_adaptive_panel,
+    show_webview_as_overlay_panel, show_webview_as_panel, show_webview_window,
+    show_webview_window_with_chrome,
 };
 
 use super::request_windows_app_exit;
@@ -327,6 +328,22 @@ fn show_webview_handler_for_mode(
             err
         );
     }
+}
+
+/// Stop hosting the lxapp aside `panel_id` without hiding its page, which is
+/// becoming a main. Later navigations of that lxapp then go to the main.
+/// Returns the page webtag and tab title, for `restore_windows_lxapp_aside`.
+pub fn release_windows_lxapp_aside(panel_id: &str) -> Option<(WebTag, String)> {
+    let entry = RUNTIME_LXAPP_ASIDES.lock().ok()?.remove(panel_id)?;
+    invalidate_show_request(&format!("panel:{panel_id}"));
+    release_webview_panel(&entry.webtag);
+    Some((entry.webtag, entry.title))
+}
+
+/// Undo `release_windows_lxapp_aside` when the promotion was refused.
+pub fn restore_windows_lxapp_aside(panel_id: &str, webtag: WebTag, title: String) {
+    remember_runtime_lxapp_aside(panel_id, webtag, title);
+    let _ = sync_runtime_lxapp_asides_from_last_plan(panel_id);
 }
 
 fn remember_runtime_lxapp_aside(panel_id: &str, webtag: WebTag, title: String) {
@@ -716,6 +733,37 @@ pub fn close_windows_url_surface_for_browser_tab(tab_id: &str) -> Option<String>
     })?;
     let _ = close_surface("", &id, "user");
     Some(id)
+}
+
+/// The browser tab a URL aside shows, if it can move into the main browser.
+pub fn windows_aside_browser_tab_id(surface_id: &str) -> Option<String> {
+    let entry = surface_entry(surface_id)?;
+    (entry.is_web && matches!(entry.role, SurfaceRole::Aside))
+        .then_some(entry.browser_tab_id)
+        .flatten()
+}
+
+/// End the URL aside `surface_id` while leaving its browser tab and WebView
+/// alive: the tab has moved into the main browser.
+pub fn release_windows_aside_browser_surface(surface_id: &str) -> bool {
+    let Some(entry) = SURFACES
+        .lock()
+        .ok()
+        .and_then(|mut map| map.remove(surface_id))
+    else {
+        return false;
+    };
+    release_webview_panel(&entry.webtag);
+    {
+        let mut group = aside_browser_group();
+        group.order.retain(|existing| existing != surface_id);
+        if group.active.as_deref() == Some(surface_id) {
+            group.active = group.order.last().cloned();
+        }
+    }
+    notify_surface_closed(surface_id, "user");
+    sync_aside_browser_group();
+    true
 }
 
 type UrlSurfaceHandler =

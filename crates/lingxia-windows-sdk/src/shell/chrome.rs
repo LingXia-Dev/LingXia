@@ -42,6 +42,7 @@ mod sidebar;
 mod sidebar_peek;
 mod tabbar_overflow;
 mod top_bar;
+pub(crate) use aside_panel::aside_tab_drag_source;
 use aside_panel::*;
 pub(super) use drawing::*;
 pub use layout::*;
@@ -2263,6 +2264,30 @@ pub(super) fn chrome_rects_for_state(
     rects
 }
 
+static ASIDE_TAB_DROP_TARGETED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// The sidebar column an aside tab can be dropped on, while it shows.
+pub(crate) fn sidebar_drop_rect(state: &WindowsChromeState) -> Option<RECT> {
+    let layout = shell_layout(&state.layout)?;
+    let tabbar = layout.tab_bar.as_ref()?;
+    if !tabbar.visible
+        || !matches!(
+            tabbar.position,
+            WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+        )
+    {
+        return None;
+    }
+    chrome_rects_for_state(state, layout).tab_bar
+}
+
+/// Outline the sidebar while a dragged aside tab is over it. Returns whether
+/// the outline changed.
+pub(crate) fn set_aside_tab_drop_targeted(targeted: bool) -> bool {
+    ASIDE_TAB_DROP_TARGETED.swap(targeted, std::sync::atomic::Ordering::AcqRel) != targeted
+}
+
 pub(super) fn draw_window_chrome(
     hdc: HDC,
     state: &WindowsChromeState,
@@ -2341,6 +2366,16 @@ pub(super) fn draw_window_chrome(
             scroll_offset,
             viewport_bottom,
         );
+        if ASIDE_TAB_DROP_TARGETED.load(std::sync::atomic::Ordering::Acquire)
+            && sidebar_scroll_metrics(tabbar_rect, layout).is_some()
+        {
+            stroke_round_rect_aa(
+                hdc,
+                inset_rect(tabbar_rect, px(4), px(4)),
+                px(8),
+                shell_palette().accent,
+            );
+        }
     }
     // Global window/address controls remain in the shell-owned top strip;
     // the lxapp navigation bar above is confined to the main region below it.

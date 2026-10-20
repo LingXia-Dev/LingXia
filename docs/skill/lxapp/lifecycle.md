@@ -57,7 +57,7 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
   a page event, not an App event: the aside lxapp's App hooks stay quiet (see
   Navigation below). Reopening it while docked brings it back in place; route
   from the `page` / `query` in App `onShow`.
-- **An aside the user promotes to main does not restart.** On macOS, dragging
+- **An aside the user promotes to main does not restart.** On desktop, dragging
   its tab onto the sidebar (or clicking its Pin) moves the live lxapp: no
   `onLaunch`, page stack and state kept; the previous main gets `onHide`
   (`switch_away`). Code cannot do this: `openApp` with the other role fails.

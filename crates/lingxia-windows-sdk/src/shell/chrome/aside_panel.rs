@@ -121,6 +121,22 @@ pub(super) fn aside_panel_header_hit(
     WindowsChromeHit::Chrome
 }
 
+/// The `(panel_id, surface_id)` of the aside tab a press on `command` lands
+/// on: what dragging it onto the sidebar promotes (spec §4.2).
+pub(crate) fn aside_tab_drag_source(command: &WindowsChromeCommand) -> Option<(String, String)> {
+    if command.id != command_id::ASIDE_PANEL_TAB_CLICK {
+        return None;
+    }
+    let panel_id = command.payload.get("panel_id")?.as_str()?;
+    let surface_id = command.payload.get("surface_id")?.as_str()?;
+    matches!(
+        panel_id,
+        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID
+            | lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID
+    )
+    .then(|| (panel_id.to_string(), surface_id.to_string()))
+}
+
 /// Maximize control left of the collapse control (spec §4.6). A compact
 /// overlay already covers the main, so it has nothing to toggle there.
 pub(super) fn aside_panel_maximize_rect(panel: &WindowsChromePanel) -> Option<RECT> {

@@ -132,18 +132,23 @@ pub fn pointer_drag(
     button: MouseButton,
     target: Option<u32>,
 ) -> Result<Ack> {
+    const STEPS: i32 = 12;
+    const STEP_DELAY: std::time::Duration = std::time::Duration::from_millis(16);
     ensure_target_supported(target)?;
     let (down, up) = button_flags(button);
     set_cursor(fx, fy)?;
     send(&[mouse_event(down, 0)])?;
     // Once the button is down, always release it — even if a step fails — so a
-    // failure can't leave the mouse button stuck down.
+    // failure can't leave the mouse button stuck down. The steps are paced:
+    // the target coalesces instantaneous moves and could see only the release.
     let result = (|| {
-        for i in 1..=4 {
-            let x = fx + (tx - fx) * i / 4;
-            let y = fy + (ty - fy) * i / 4;
+        for i in 1..=STEPS {
+            std::thread::sleep(STEP_DELAY);
+            let x = fx + (tx - fx) * i / STEPS;
+            let y = fy + (ty - fy) * i / STEPS;
             set_cursor(x, y)?;
         }
+        std::thread::sleep(STEP_DELAY * 3);
         Ok(())
     })();
     let up_result = send(&[mouse_event(up, 0)]);
