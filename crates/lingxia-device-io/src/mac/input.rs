@@ -204,16 +204,28 @@ pub fn pointer_drag(
     button: MouseButton,
     target: Option<u32>,
 ) -> Result<Ack> {
+    const STEPS: i32 = 12;
+    const STEP_DELAY: std::time::Duration = std::time::Duration::from_millis(16);
     ensure_can_post()?;
+    if target.is_none() {
+        let _ = CGWarpMouseCursorPosition(point(fx, fy));
+    }
     mouse_event(down_type(button), fx, fy, button, target)?;
     // Once the button is down, always release it — even on a mid-drag failure —
-    // so a stuck button can never strand the pointer.
+    // so a stuck button can never strand the pointer. The steps are paced and
+    // the cursor follows them: AppKit drag sessions track the real cursor and
+    // drop a burst of instantaneous drag events.
     let steps = (|| {
-        for i in 1..=4 {
-            let x = fx + (tx - fx) * i / 4;
-            let y = fy + (ty - fy) * i / 4;
+        for i in 1..=STEPS {
+            std::thread::sleep(STEP_DELAY);
+            let x = fx + (tx - fx) * i / STEPS;
+            let y = fy + (ty - fy) * i / STEPS;
+            if target.is_none() {
+                let _ = CGWarpMouseCursorPosition(point(x, y));
+            }
             mouse_event(drag_type(button), x, y, button, target)?;
         }
+        std::thread::sleep(STEP_DELAY * 3);
         Ok(())
     })();
     let up = mouse_event(up_type(button), tx, ty, button, target);

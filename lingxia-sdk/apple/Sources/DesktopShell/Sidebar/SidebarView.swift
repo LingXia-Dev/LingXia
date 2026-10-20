@@ -854,6 +854,9 @@ class SidebarView: NSView {
     var onWidthChanged: ((CGFloat, Bool) -> Void)?
     /// Called when the global "+" button requests content for the active main.
     var onAddRequested: (() -> Void)?
+    /// An aside tab was dropped on the sidebar. Returns whether it became a main.
+    var onAsideTabDropped: ((AsideTabDragPayload) -> Bool)?
+    private let asideDropHighlight = SidebarAsideDropHighlightView()
     /// Called when a browser tab is selected
     var onBrowserTabSelected: ((String) -> Void)?
     /// Called when a browser tab close is requested
@@ -1210,6 +1213,49 @@ class SidebarView: NSView {
         resizeHandle.onDragEnd = { [weak self] newWidth in
             self?.handleDragEnd(proposedWidth: newWidth)
         }
+
+        asideDropHighlight.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(asideDropHighlight)
+        NSLayoutConstraint.activate([
+            asideDropHighlight.topAnchor.constraint(equalTo: topAnchor),
+            asideDropHighlight.leadingAnchor.constraint(equalTo: leadingAnchor),
+            asideDropHighlight.trailingAnchor.constraint(equalTo: trailingAnchor),
+            asideDropHighlight.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        registerForDraggedTypes([.lxAsideTab])
+    }
+
+    // MARK: - Aside Tab Drop
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        updateAsideDropTarget(sender)
+    }
+
+    override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        updateAsideDropTarget(sender)
+    }
+
+    override func draggingExited(_ sender: (any NSDraggingInfo)?) {
+        asideDropHighlight.targeted = false
+    }
+
+    override func draggingEnded(_ sender: any NSDraggingInfo) {
+        asideDropHighlight.targeted = false
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        asideDropHighlight.targeted = false
+        guard let payload = AsideTabDragPayload.read(from: sender.draggingPasteboard) else {
+            return false
+        }
+        return onAsideTabDropped?(payload) ?? false
+    }
+
+    private func updateAsideDropTarget(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        let accepts = onAsideTabDropped != nil && !isFullyHidden
+            && AsideTabDragPayload.read(from: sender.draggingPasteboard) != nil
+        asideDropHighlight.targeted = accepts
+        return accepts ? .move : []
     }
 
     // MARK: - Drag Handling

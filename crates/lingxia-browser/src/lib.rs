@@ -261,6 +261,12 @@ pub fn tab_is_standalone(tab_id: &str) -> bool {
     tabs::is_standalone_tab(tab_id)
 }
 
+/// Move a docked aside tab into the product browser as its active tab,
+/// keeping the same tab id and WebView. The shell re-hosts the WebView.
+pub fn promote_standalone_tab(tab_id: &str) -> Result<(), LxAppError> {
+    tabs::promote_standalone_tab(tab_id)
+}
+
 pub fn close(tab_id: &str) -> Result<(), LxAppError> {
     let owner_appid = tabs::tab_owner_appid(tab_id);
     tabs::close_browser_tab(tab_id)?;

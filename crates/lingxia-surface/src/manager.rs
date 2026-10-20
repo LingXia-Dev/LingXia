@@ -257,6 +257,28 @@ impl SurfaceManager {
         Ok(self.switcher_snapshot())
     }
 
+    /// Turn a live aside into the active main in one graph change. The
+    /// surface keeps its id and content and joins the end of the switcher;
+    /// returns `false` unless `id` is an aside.
+    pub fn promote_aside_to_main(&mut self, id: &str, presentation: SurfacePresentation) -> bool {
+        let Some(mut surface) = self
+            .graph
+            .get(id)
+            .filter(|surface| surface.role == Role::Aside)
+            .cloned()
+        else {
+            return false;
+        };
+        if !matches!(self.close(id), CloseOutcome::Closed { .. }) {
+            return false;
+        }
+        surface.role = Role::Main;
+        surface.placement = Default::default();
+        surface.state = crate::model::SurfaceState::Mounted;
+        surface.float = None;
+        self.open_main(surface, presentation).is_ok()
+    }
+
     pub fn close_other_mains(&mut self, keeping: &str) -> Vec<SurfaceId> {
         if self.graph.role_of(keeping) != Some(Role::Main) {
             return Vec::new();
@@ -1123,5 +1145,62 @@ mod tests {
         assert_eq!(m.graph().role_of("assistant"), Some(Role::Aside));
         m.set_width(1200.0);
         assert_eq!(m.derive().split_form, SplitForm::Split);
+    }
+
+    fn workspace() -> SurfacePresentation {
+        SurfacePresentation::for_content(&SurfaceContent::Lxapp {
+            app_id: "assistant".into(),
+            path: None,
+        })
+    }
+
+    #[test]
+    fn promoting_an_aside_appends_it_as_the_active_main() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(aside_s("assistant", Edge::Right));
+        m.open(aside_s("notes", Edge::Right));
+
+        assert!(m.promote_aside_to_main("assistant", workspace()));
+
+        assert_eq!(m.graph().role_of("assistant"), Some(Role::Main));
+        assert_eq!(m.graph().active_main_id.as_deref(), Some("assistant"));
+        let switcher: Vec<_> = m
+            .switcher_snapshot()
+            .items
+            .into_iter()
+            .map(|item| item.surface_id)
+            .collect();
+        assert_eq!(switcher, ["home", "assistant"]);
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert_eq!(slot.children, ["notes"]);
+        assert!(m.graph().get("assistant").unwrap().placement.edge.is_none());
+        assert!(m.graph().is_valid());
+    }
+
+    #[test]
+    fn promoting_the_last_aside_child_removes_its_slot_and_maximize() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(aside_s("assistant", Edge::Right));
+        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+
+        assert!(m.promote_aside_to_main("assistant", workspace()));
+
+        assert!(m.presentation_plan().aside_slots.is_empty());
+        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+    }
+
+    #[test]
+    fn only_an_aside_can_be_promoted() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        let revision = m.switcher_snapshot().revision;
+
+        assert!(!m.promote_aside_to_main("home", workspace()));
+        assert!(!m.promote_aside_to_main("missing", workspace()));
+
+        assert_eq!(m.switcher_snapshot().revision, revision);
+        assert_eq!(m.graph().role_of("home"), Some(Role::Main));
     }
 }

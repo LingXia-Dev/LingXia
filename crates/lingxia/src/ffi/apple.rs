@@ -439,8 +439,19 @@ mod bridge {
         fn shell_reapply_chrome() -> bool;
 
         // Open (or focus) an lxapp as a MAIN — the pinned-lxapp tile's click.
+        // A live aside of that lxapp is promoted in place.
         #[swift_bridge(swift_name = "shellOpenLxappMain")]
         fn shell_open_lxapp_main(app_id: &str) -> bool;
+
+        // Move a live lxapp aside into the main switcher without restarting
+        // it. The committed plan makes it the active main.
+        #[swift_bridge(swift_name = "promoteAsideLxappToMain")]
+        fn promote_aside_lxapp_to_main(app_id: &str) -> bool;
+
+        // Re-home a docked aside browser tab as the active main-browser tab,
+        // keeping its tab id and WebView.
+        #[swift_bridge(swift_name = "promoteDockedBrowserTab")]
+        fn promote_docked_browser_tab(tab_id: &str) -> bool;
 
         #[swift_bridge(swift_name = "shellPins")]
         fn shell_pins() -> String;
@@ -1681,10 +1692,8 @@ pub fn shell_open_lxapp_main(app_id: &str) -> bool {
         if app_id.is_empty() {
             return false;
         }
-        // One lxapp, one region: refuse to pull an aside into the main.
         if lxapp::open_region(&app_id) == Some(lxapp::LxAppOpenRegion::Aside) {
-            log::warn!("pin open refused: {app_id} is open as an aside");
-            return false;
+            return promote_aside_lxapp_to_main(&app_id);
         }
         std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
             let channel = lxapp::resolve_open_channel(&app_id, None);
@@ -1702,6 +1711,41 @@ pub fn shell_open_lxapp_main(app_id: &str) -> bool {
             lxapp::schedule_lxapp_update_check(&app_id, channel);
         }));
         true
+    })
+}
+
+pub fn promote_aside_lxapp_to_main(app_id: &str) -> bool {
+    ffi_catch_unwind!("promote_aside_lxapp_to_main", false, || {
+        let Some(app) = lxapp::try_get(app_id.trim()) else {
+            return false;
+        };
+        match app.promote_aside_to_main() {
+            Ok(()) => true,
+            Err(err) => {
+                log::warn!("aside promotion refused for {app_id}: {err}");
+                false
+            }
+        }
+    })
+}
+
+pub fn promote_docked_browser_tab(tab_id: &str) -> bool {
+    ffi_catch_unwind!("promote_docked_browser_tab", false, || {
+        #[cfg(feature = "browser-runtime")]
+        {
+            match lingxia_browser::promote_standalone_tab(tab_id) {
+                Ok(()) => true,
+                Err(err) => {
+                    log::warn!("browser tab promotion refused for {tab_id}: {err}");
+                    false
+                }
+            }
+        }
+        #[cfg(not(feature = "browser-runtime"))]
+        {
+            let _ = tab_id;
+            false
+        }
     })
 }
 

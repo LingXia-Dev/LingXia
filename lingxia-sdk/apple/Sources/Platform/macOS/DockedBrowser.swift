@@ -53,7 +53,10 @@ final class DockedBrowser: NSObject {
         /// the page, auto-created history (SPA pushState redirects) must not
         /// light up back/forward.
         var userInteracted = false
-        let button = NSButton()
+        /// The browser tab moved to the main browser; teardown must leave it
+        /// and its webview alive.
+        var released = false
+        let button = AsideTabTitleButton()
         let closeButton = NSButton()
         let iconView = NSImageView()
         let row = ChromeTabRowView()
@@ -278,6 +281,21 @@ final class DockedBrowser: NSObject {
         activeSurfaceId = nil
     }
 
+    /// Hand the browser tab behind `surfaceId` over to the main browser: the
+    /// surface's later removal keeps the tab and its webview alive. Returns
+    /// the browser tab id, or nil when the tab cannot leave the aside.
+    func releaseTab(surfaceId: String) -> String? {
+        guard let tab = tabs.first(where: { $0.surfaceId == surfaceId }),
+              !tab.urlCallback, !tab.ephemeralWebData else { return nil }
+        tab.released = true
+        return tab.browserTabId
+    }
+
+    /// Undo `releaseTab` when the handover failed.
+    func unreleaseTab(surfaceId: String) {
+        tabs.first { $0.surfaceId == surfaceId }?.released = false
+    }
+
     func containsBrowserTab(_ browserTabId: String) -> Bool {
         tabs.contains { $0.browserTabId == browserTabId }
     }
@@ -320,7 +338,7 @@ final class DockedBrowser: NSObject {
 
     private func teardownTab(_ tab: Tab) {
         tab.invalidate()
-        tab.webView?.stopLoading()
+        if !tab.released { tab.webView?.stopLoading() }
         tab.webView?.removeFromSuperview()
         tab.webView = nil
         // removeArrangedSubview FIRST: removeFromSuperview already detaches
@@ -328,7 +346,7 @@ final class DockedBrowser: NSObject {
         // view raises an NSStackView assertion.
         tabStrip.removeArrangedSubview(tab.row)
         tab.row.removeFromSuperview()
-        _ = browserTabClose(tab.browserTabId)
+        if !tab.released { _ = browserTabClose(tab.browserTabId) }
     }
 
     // MARK: - WebView wiring
@@ -595,6 +613,12 @@ final class DockedBrowser: NSObject {
         title.target = self
         title.action = #selector(tabButtonClicked(_:))
         objc_setAssociatedObject(title, &AssociatedKeys.surfaceId, tab.surfaceId, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        // Dragging the chip onto the sidebar moves the page into the main
+        // browser. Callback and ephemeral tabs belong to their opener.
+        if !tab.urlCallback && !tab.ephemeralWebData {
+            title.dragPayload = AsideTabDragPayload(kind: .browser, surfaceId: tab.surfaceId)
+            title.dragImageSource = tab.row
+        }
 
         let icon = tab.iconView
         icon.translatesAutoresizingMaskIntoConstraints = false
