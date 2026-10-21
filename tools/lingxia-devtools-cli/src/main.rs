@@ -489,14 +489,20 @@ mod tests {
             vec![
                 "lxdev", "network", "capture", "stop", "r.json", "--redact", "x",
             ],
+            vec!["lxdev", "network", "capture", "stop", "r.har"],
+            vec!["lxdev", "network", "capture", "stop", "r.json", "r.har"],
+            // Deprecated, hidden.
             vec!["lxdev", "network", "capture", "stop", "--har", "r.har"],
-            vec![
-                "lxdev", "network", "capture", "stop", "r.json", "--har", "r.har",
-            ],
         ] {
             assert!(Cli::try_parse_from(&argv).is_ok(), "{argv:?}");
         }
         assert!(Cli::try_parse_from(["lxdev", "network", "capture", "stop"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "lxdev", "network", "capture", "stop", "a.json", "b.har", "c"
+            ])
+            .is_err()
+        );
         assert!(Cli::try_parse_from(["lxdev", "network", "record", "start"]).is_err());
         assert!(
             Cli::try_parse_from(["lxdev", "network", "capture", "stop", "--out", "x.json"])
