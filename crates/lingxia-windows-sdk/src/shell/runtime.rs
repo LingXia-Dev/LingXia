@@ -3567,7 +3567,14 @@ fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
         }
     }
     if let Some(owner_appid) = shell_owner_appid() {
-        sync_shell_layout(&owner_appid);
+        // `sync_shell_layout` re-enters the surface commit (its width sync
+        // calls `set_layout_metrics` -> `commit`). Re-applying a plan from
+        // inside its own application re-derives the graph before this pass
+        // has finished reconciling it, and after an aside-to-main promotion
+        // that nested commit re-seeds the shell owner as the active main and
+        // tears the promoted lxapp down. Sync only the layouts here; the
+        // width is already published by the resize/presentation path.
+        sync_related_shell_layouts(&owner_appid);
     }
 }
 
