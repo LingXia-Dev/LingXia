@@ -27,6 +27,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, Mutex, MutexGuard, Once, OnceLock};
 use std::time::{Duration, Instant, UNIX_EPOCH};
+use watch::Watch;
+
+mod watch;
 
 /// Events waiting for the record builder; past it they are counted, not kept.
 const QUEUE: usize = 16_384;
@@ -38,9 +41,13 @@ const MAX_IN_FLIGHT: usize = 1_024;
 const MAX_CHUNK_LOG: usize = 1_000;
 const MAX_FRAMES: usize = 1_000;
 const FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
+/// Finished requests a new live feed starts with.
+const WATCH_BACKLOG: usize = 50;
 
-/// A recording is active: body chunks are worth queueing.
+/// A recording or a live feed is active: body chunks are worth queueing.
 static BODIES: AtomicBool = AtomicBool::new(false);
+/// A live feed is active: the bridge has something to drain.
+static WATCHING: AtomicBool = AtomicBool::new(false);
 /// Events the full queue refused.
 static DROPPED: AtomicU64 = AtomicU64::new(0);
 static QUEUE_TX: OnceLock<SyncSender<Message>> = OnceLock::new();
@@ -214,14 +221,29 @@ pub(crate) struct Record {
     /// Queue overflow lost events while this request was in flight.
     pub incomplete: bool,
     recorder: Option<String>,
+    /// Bodies are kept: the request is recorded or a live feed shows it.
+    keep_bodies: bool,
+    /// How far the response body was read as event-stream frames for the
+    /// live feed; `None` when it is not read live.
+    sse_read: Option<usize>,
+    /// Frames the live feed got as they arrived.
+    sse_sent: usize,
     body_limit: usize,
     at: Instant,
     dropped_at_start: u64,
 }
 
 impl Record {
-    fn new(start: NetworkRequestStart, recorder: Option<String>, dropped: u64) -> Self {
+    fn new(
+        start: NetworkRequestStart,
+        recorder: Option<String>,
+        watched: bool,
+        dropped: u64,
+    ) -> Self {
         Self {
+            keep_bodies: recorder.is_some() || watched,
+            sse_read: None,
+            sse_sent: 0,
             id: start.id.as_u64(),
             owner: start.owner.map(|owner| owner.as_str().to_string()),
             kind: kind_name(start.kind),
@@ -268,7 +290,7 @@ impl Record {
 
     fn request_chunk(&mut self, chunk: &[u8]) {
         self.request_bytes += chunk.len() as u64;
-        if self.recorder.is_some() {
+        if self.keep_bodies {
             let room = registry::MAX_REQUEST_BODY_BYTES.saturating_sub(self.request_body.len());
             self.request_body
                 .extend_from_slice(&chunk[..chunk.len().min(room)]);
@@ -285,12 +307,22 @@ impl Record {
         } else {
             capture::MAX_BINARY_BODY_BYTES
         };
+        // Frames can be read off the wire as they come unless encoded.
+        let event_stream = self
+            .content_type()
+            .is_some_and(|kind| kind.to_ascii_lowercase().starts_with("text/event-stream"));
+        if self.keep_bodies
+            && event_stream
+            && Self::header(&self.response_headers, "content-encoding").is_none()
+        {
+            self.sse_read = Some(0);
+        }
     }
 
     fn response_chunk(&mut self, chunk: &[u8], at: Instant) {
         self.response_bytes += chunk.len() as u64;
         self.chunks += 1;
-        if self.recorder.is_none() {
+        if !self.keep_bodies {
             return;
         }
         if self.chunk_log.len() < MAX_CHUNK_LOG {
@@ -355,7 +387,7 @@ impl Record {
         if let Some(note) = &self.body_note {
             out["bodyNote"] = json!(note);
         }
-        if self.recorder.is_some() || !self.request_body.is_empty() {
+        if self.keep_bodies || !self.request_body.is_empty() {
             let content_type = Self::header(&self.request_headers, "content-type");
             if !self.request_body.is_empty() {
                 out["requestBody"] = body_json(&self.request_body, content_type);
@@ -433,6 +465,58 @@ impl Record {
             out["incomplete"] = json!(true);
         }
         out
+    }
+
+    /// A live feed's `request` event: what was sent, before any answer.
+    fn watch_request_json(&self) -> Value {
+        let mut out = json!({
+            "type": "request",
+            "id": self.id,
+            "owner": self.owner,
+            "kind": self.kind,
+            "method": self.method,
+            "url": capture::redact_url(&self.url, REDACTED),
+            "time": self.started_ms,
+            "requestHeaders": headers_json(&self.request_headers),
+            "requestBytes": self.request_size,
+        });
+        if let Some(from) = self.redirected_from {
+            out["redirectedFrom"] = json!(from);
+        }
+        out
+    }
+
+    /// The event-stream frames completed since the last call, for the live
+    /// feed. Reading stops at the body cap and at [`MAX_FRAMES`].
+    fn take_sse_frames(&mut self) -> Vec<Value> {
+        let Some(read) = self.sse_read else {
+            return Vec::new();
+        };
+        let mut frames = Vec::new();
+        let mut at = read;
+        while self.sse_sent + frames.len() < MAX_FRAMES
+            && let Some((end, blank)) = sse_block_end(&self.response_body[at..])
+        {
+            let block = String::from_utf8_lossy(&self.response_body[at..at + end]);
+            frames.extend(sse_event(&block));
+            at += end + blank;
+        }
+        self.sse_sent += frames.len();
+        let capped = self.response_body.len() >= self.body_limit || self.sse_sent >= MAX_FRAMES;
+        self.sse_read = (!capped).then_some(at);
+        frames
+    }
+
+    /// A live feed's `response` event: the head, as it arrived.
+    fn watch_response_json(&self) -> Value {
+        json!({
+            "type": "response",
+            "id": self.id,
+            "status": self.status,
+            "httpVersion": self.version,
+            "responseHeaders": headers_json(&self.response_headers),
+            "ttfbMs": self.ttfb.map(millis),
+        })
     }
 
     /// The scenario answer for a request (or redirect chain) starting at
@@ -610,34 +694,54 @@ fn frame_json(text: &str) -> Value {
 fn sse_events(text: &str) -> Vec<Value> {
     let text = text.replace("\r\n", "\n");
     text.split("\n\n")
-        .filter_map(|block| {
-            let mut event = None;
-            let mut id = None;
-            let mut data: Vec<&str> = Vec::new();
-            for line in block.lines() {
-                let (field, value) = line.split_once(':').unwrap_or((line, ""));
-                let value = value.strip_prefix(' ').unwrap_or(value);
-                match field {
-                    "event" => event = Some(value),
-                    "data" => data.push(value),
-                    "id" => id = Some(value),
-                    _ => {}
-                }
-            }
-            if data.is_empty() && event.is_none() {
-                return None;
-            }
-            let mut out = json!({ "data": frame_json(&data.join("\n")) });
-            if let Some(event) = event {
-                out["event"] = json!(event);
-            }
-            if let Some(id) = id {
-                out["id"] = json!(id);
-            }
-            Some(out)
-        })
+        .filter_map(sse_event)
         .take(MAX_FRAMES)
         .collect()
+}
+
+/// One `text/event-stream` block; `None` for a comment or keep-alive.
+fn sse_event(block: &str) -> Option<Value> {
+    let mut event = None;
+    let mut id = None;
+    let mut data: Vec<&str> = Vec::new();
+    for line in block.lines() {
+        let (field, value) = line.split_once(':').unwrap_or((line, ""));
+        let value = value.strip_prefix(' ').unwrap_or(value);
+        match field {
+            "event" => event = Some(value),
+            "data" => data.push(value),
+            "id" => id = Some(value),
+            _ => {}
+        }
+    }
+    if data.is_empty() && event.is_none() {
+        return None;
+    }
+    let mut out = json!({ "data": frame_json(&data.join("\n")) });
+    if let Some(event) = event {
+        out["event"] = json!(event);
+    }
+    if let Some(id) = id {
+        out["id"] = json!(id);
+    }
+    Some(out)
+}
+
+/// Where the first complete event-stream block in `bytes` ends, and the
+/// length of the blank line that ends it.
+fn sse_block_end(bytes: &[u8]) -> Option<(usize, usize)> {
+    let lf = bytes
+        .windows(2)
+        .position(|pair| pair == b"\n\n")
+        .map(|at| (at, 2));
+    let crlf = bytes
+        .windows(4)
+        .position(|quad| quad == b"\r\n\r\n")
+        .map(|at| (at, 4));
+    match (lf, crlf) {
+        (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
+        (a, b) => a.or(b),
+    }
 }
 
 // ------------------------------- recordings -------------------------------
@@ -759,6 +863,8 @@ pub(crate) struct State {
     dev: Option<Recording>,
     /// A run's recording (`--record-network`).
     run: Option<Recording>,
+    /// The live feed `lxdev network devtools` shows.
+    watch: Option<Watch>,
 }
 
 impl State {
@@ -768,6 +874,7 @@ impl State {
             recent: VecDeque::new(),
             dev: None,
             run: None,
+            watch: None,
         }
     }
 
@@ -821,14 +928,18 @@ impl State {
 
     pub(crate) fn apply(&mut self, event: NetworkEvent, runs_active: bool, dropped: u64) {
         let id = event.id().as_u64();
+        self.expire_watch(Instant::now());
         match event {
             NetworkEvent::RequestStart(start) => {
                 let recorder = self.recorder_for(&start, runs_active);
                 if self.in_flight.len() >= MAX_IN_FLIGHT {
                     self.evict();
                 }
-                self.in_flight
-                    .insert(id, Record::new(start, recorder, dropped));
+                let record = Record::new(start, recorder, self.watch.is_some(), dropped);
+                if let Some(watch) = self.watch.as_mut() {
+                    watch.push(record.watch_request_json());
+                }
+                self.in_flight.insert(id, record);
             }
             NetworkEvent::RequestBodyChunk(chunk) => {
                 if let Some(record) = self.in_flight.get_mut(&id) {
@@ -838,11 +949,25 @@ impl State {
             NetworkEvent::ResponseHead(head) => {
                 if let Some(record) = self.in_flight.get_mut(&id) {
                     record.head(head);
+                    if let Some(watch) = self.watch.as_mut() {
+                        watch.push(record.watch_response_json());
+                    }
                 }
             }
             NetworkEvent::ResponseBodyChunk(chunk) => {
                 if let Some(record) = self.in_flight.get_mut(&id) {
                     record.response_chunk(&chunk.chunk, chunk.at);
+                    if let Some(watch) = self.watch.as_mut() {
+                        let offset = chunk.at.saturating_duration_since(record.at).as_millis();
+                        let time = record.started_ms + offset as u64;
+                        watch.push_data(id, chunk.chunk.len(), time);
+                        for mut frame in record.take_sse_frames() {
+                            frame["type"] = json!("sse");
+                            frame["requestId"] = json!(id);
+                            frame["time"] = json!(time);
+                            watch.push(frame);
+                        }
+                    }
                 }
             }
             NetworkEvent::RequestEnd(end) => {
@@ -853,6 +978,13 @@ impl State {
                         end.duration,
                         dropped,
                     );
+                    if let Some(watch) = self.watch.as_mut() {
+                        let report = record.to_json();
+                        watch.push(live_end(&report, record.sse_sent > 0));
+                        if record.keep_bodies {
+                            watch.keep_body(id, report);
+                        }
+                    }
                     self.finish(record);
                 }
             }
@@ -924,12 +1056,16 @@ impl State {
             .slot(owner)
             .take_if(|recording| recording.owner == owner)?;
         let mut in_flight = Vec::new();
+        let watched = self.watch.is_some();
         for record in self.in_flight.values_mut() {
             if record.recorder.as_deref() == Some(owner) {
                 in_flight.push(record.clone());
                 record.recorder = None;
-                record.drop_bodies("");
-                record.body_note = None;
+                if !watched {
+                    record.keep_bodies = false;
+                    record.drop_bodies("");
+                    record.body_note = None;
+                }
             }
         }
         Some(recording.finish(in_flight))
@@ -938,12 +1074,58 @@ impl State {
     fn recording(&self) -> bool {
         self.dev.is_some() || self.run.is_some()
     }
+
+    fn wants_bodies(&self) -> bool {
+        self.recording() || self.watch.is_some()
+    }
+
+    fn expire_watch(&mut self, now: Instant) {
+        if self.watch.as_ref().is_some_and(|watch| watch.expired(now)) {
+            self.watch = None;
+            sync_bodies(self);
+        }
+    }
+
+    /// Start or renew the live feed. `backlog` queues the newest finished
+    /// requests first (without bodies: nothing kept them), for a viewer
+    /// that just opened.
+    fn watch(&mut self, backlog: bool, now: Instant) {
+        self.expire_watch(now);
+        let watch = self.watch.get_or_insert_with(|| Watch::new(now));
+        watch.renew(now);
+        if backlog {
+            let skip = self.recent.len().saturating_sub(WATCH_BACKLOG);
+            for record in self.recent.iter().skip(skip) {
+                let mut event = live_end(&record.to_json(), false);
+                event["past"] = json!(true);
+                watch.push(event);
+            }
+        }
+        sync_bodies(self);
+    }
 }
 
 // ------------------------------ the module API ------------------------------
 
 fn sync_bodies(state: &State) {
-    BODIES.store(state.recording(), Ordering::Relaxed);
+    BODIES.store(state.wants_bodies(), Ordering::Relaxed);
+    WATCHING.store(state.watch.is_some(), Ordering::Relaxed);
+}
+
+/// A finished request for the live feed: its report form without bodies
+/// (DevTools asks for those), and without the frames it already streamed.
+fn live_end(report: &Value, streamed: bool) -> Value {
+    let mut event = report.clone();
+    if let Some(fields) = event.as_object_mut() {
+        for key in ["requestBody", "responseBody", "lines", "chunkLog"] {
+            fields.remove(key);
+        }
+        if streamed {
+            fields.remove("events");
+        }
+    }
+    event["type"] = json!("end");
+    event
 }
 
 /// Start recording real traffic for `owner` (a run id or the dev session):
@@ -980,6 +1162,39 @@ pub(crate) fn drop_recording(owner: &str) -> bool {
         .is_some();
     sync_bodies(&state);
     dropped
+}
+
+/// Start or renew the live feed `lxdev network devtools` shows; `backlog`
+/// queues the newest finished requests first. It ends a lease after the
+/// last renewal, on [`unwatch`], or with the session.
+pub(crate) fn watch(backlog: bool) -> Value {
+    install();
+    state().watch(backlog, Instant::now());
+    json!({ "leaseMs": watch::WATCH_LEASE.as_millis() as u64 })
+}
+
+/// The live events queued since the last call, for the dev session bridge
+/// to stream. Cheap while no feed runs.
+pub(crate) fn drain_live() -> Vec<Value> {
+    if !WATCHING.load(Ordering::Relaxed) {
+        return Vec::new();
+    }
+    let mut state = state();
+    state.expire_watch(Instant::now());
+    state.watch.as_mut().map(Watch::drain).unwrap_or_default()
+}
+
+/// A finished request the live feed showed, bodies included.
+pub(crate) fn live_body(id: u64) -> Option<Value> {
+    state().watch.as_ref()?.body(id).cloned()
+}
+
+/// End the live feed. Returns whether one ran.
+pub(crate) fn unwatch() -> bool {
+    let mut state = state();
+    let had = state.watch.take().is_some();
+    sync_bodies(&state);
+    had
 }
 
 /// The active recording for `lxdev network status`.
