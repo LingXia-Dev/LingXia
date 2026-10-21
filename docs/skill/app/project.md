@@ -411,18 +411,32 @@ tab-bar [`iconPath`](../lxapp/guide.md#icons); download remote art first.
 const { uri } = await lx.downloadFile({ url: activeBrand.logoUrl }).result;
 lx.shell.sidebarActions.replace([
   {
+    id: 'agent',
+    placement: 'footer',
+    icon: 'public/sidebar-agent.png',
+    label: 'Agent',             // tooltip/a11y only — never drawn
+    onActivate: () => void openAgent(),
+  },
+  {
     id: 'brand',
-    placement: 'footer',        // header: icon-only, max two
+    placement: 'footer',
     icon: uri,
-    label: activeBrand.shortName,
+    label: 'Brand',
+    value: activeBrand.shortName, // drawn beside the icon; footer only
     onActivate: () => void openBrandPanel(),
   },
 ]);
 ```
 
-Use `update(id, { icon })` for presentation changes. Pins are the user's; there
-is no API to write them. Open a declared aside with
-`lx.surface.openDeclared(id)`.
+Footer actions without `value` are icon buttons, so give each a distinct icon.
+`value` is for a fact that changes with the scene (current brand, store,
+account); at most two footer actions carry one, and a header `value` is a type
+error. Header actions are icon-only, max two.
+
+`update(id, patch)` sets every key the patch carries:
+`update('brand', { value: brand?.shortName })` clears the value when there is
+no brand. Pins are the user's; there is no API to write them. Open a declared
+aside with `lx.surface.openDeclared(id)`.
 
 ### Tray apps
 

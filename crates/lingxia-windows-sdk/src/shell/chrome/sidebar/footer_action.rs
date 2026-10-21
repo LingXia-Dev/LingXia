@@ -17,89 +17,51 @@ fn footer_action_separator_height() -> i32 {
     crate::dpi::px(1)
 }
 
-fn preferred_cell_width(label: &str, available: i32) -> i32 {
-    let text = measure_chrome_text_width(label);
-    (2 * footer_action_cell_padding()
-        + footer_action_icon_size()
-        + footer_action_icon_text_gap()
-        + text)
-        .clamp(
-            footer_action_cell_min_width().min(available),
-            available.max(1),
-        )
+/// Icon buttons are square; a value cell needs room for its icon and some text.
+fn footer_action_cell_width(item: &WindowsShellFooterActionLayout, available: i32) -> i32 {
+    if item.value.is_some() {
+        footer_action_cell_min_width()
+    } else {
+        footer_action_size()
+    }
+    .min(available)
 }
 
+/// Declaration order is visual order. Icon buttons pack left to right; a value
+/// cell joins the icons before it when its minimum width still fits, takes the
+/// rest of that row, and ends it — whatever follows starts the next row.
 fn footer_action_rows(
     width: i32,
     footer_actions: &[WindowsShellFooterActionLayout],
 ) -> Vec<Range<usize>> {
     let available = (width - 2 * footer_action_margin()).max(1);
-    let minimum = footer_action_cell_min_width().min(available);
     let mut rows = Vec::new();
     let mut row_start = 0;
     let mut used = 0;
-    for index in 0..footer_actions.len() {
+    for (index, item) in footer_actions.iter().enumerate() {
+        let cell = footer_action_cell_width(item, available);
         let next = if index == row_start {
-            minimum
+            cell
         } else {
-            used + footer_action_gap() + minimum
+            used + footer_action_gap() + cell
         };
         if index > row_start && next > available {
             rows.push(row_start..index);
             row_start = index;
-            used = minimum;
+            used = cell;
         } else {
             used = next;
+        }
+        if item.value.is_some() {
+            rows.push(row_start..index + 1);
+            row_start = index + 1;
+            used = 0;
         }
     }
     if row_start < footer_actions.len() {
         rows.push(row_start..footer_actions.len());
     }
     rows
-}
-
-fn fitted_cell_widths(preferred: &[i32], available: i32) -> Vec<i32> {
-    if preferred.is_empty() {
-        return Vec::new();
-    }
-
-    let count = preferred.len() as i32;
-    let gaps = (count - 1) * footer_action_gap();
-    let target = (available - gaps).max(count);
-    let minimum = footer_action_cell_min_width().min(target / count).max(1);
-    let mut widths = preferred
-        .iter()
-        .map(|width| (*width).clamp(minimum, target))
-        .collect::<Vec<_>>();
-    let mut delta = target - widths.iter().sum::<i32>();
-
-    while delta < 0 {
-        let shrinkable = widths.iter().filter(|width| **width > minimum).count() as i32;
-        debug_assert!(shrinkable > 0, "row minimums must fit the available width");
-        if shrinkable == 0 {
-            break;
-        }
-        let share = ((-delta) + shrinkable - 1) / shrinkable;
-        for width in &mut widths {
-            let shrink = (*width - minimum).max(0).min(share).min(-delta);
-            *width -= shrink;
-            delta += shrink;
-            if delta == 0 {
-                break;
-            }
-        }
-    }
-
-    if delta > 0 {
-        let share = delta / count;
-        let remainder = delta % count;
-        for (index, width) in widths.iter_mut().enumerate() {
-            *width += share + i32::from((index as i32) < remainder);
-        }
-    }
-
-    debug_assert_eq!(widths.iter().sum::<i32>(), target);
-    widths
 }
 
 fn capped_row_window(total: usize, requested_start: usize) -> Range<usize> {
@@ -140,19 +102,13 @@ fn expanded_footer_action_rects(
     let visible_rows = capped_row_window(rows.len(), footer_action_scroll_row);
     for row in &rows[visible_rows] {
         let items = &footer_actions[row.clone()];
-        let preferred = items
-            .iter()
-            .map(|item| preferred_cell_width(&item.label, available))
-            .collect::<Vec<_>>();
-        let widths = fitted_cell_widths(&preferred, available);
         let mut left = tabbar_rect.left + footer_action_margin();
         let row_right = tabbar_rect.right - footer_action_margin();
-        for (offset, item) in items.iter().enumerate() {
-            let is_last = offset + 1 == items.len();
-            let right = if is_last {
+        for item in items {
+            let right = if item.value.is_some() {
                 row_right
             } else {
-                (left + widths[offset]).min(row_right)
+                (left + footer_action_cell_width(item, available)).min(row_right)
             };
             out.push((
                 item.id.clone(),
@@ -289,7 +245,7 @@ pub(in crate::shell::chrome) fn draw_footer_actions(
     cursor: Option<(i32, i32)>,
 ) {
     let palette = shell_palette();
-    let icon_only = layout.tab_bar.as_ref().is_some_and(|tabbar| {
+    let rail = layout.tab_bar.as_ref().is_some_and(|tabbar| {
         matches!(
             tabbar.position,
             WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
@@ -301,9 +257,10 @@ pub(in crate::shell::chrome) fn draw_footer_actions(
             .iter()
             .find(|item| item.id == panel_id);
         let disabled = footer_action.is_some_and(|item| item.disabled);
-        let label = footer_action
-            .map(|item| item.label.as_str())
-            .unwrap_or(panel_id.as_str());
+        let value = footer_action
+            .and_then(|item| item.value.as_deref())
+            .filter(|_| !rail);
+        let icon_only = value.is_none();
         let text_color = palette.text_muted;
 
         if !disabled {
@@ -325,10 +282,10 @@ pub(in crate::shell::chrome) fn draw_footer_actions(
             .map(|item| item.icon_path.as_str())
             .unwrap_or_default();
         let _ = draw_icon_from_path(hdc, icon_path, icon_rect, footer_action_icon_size() as u32);
-        if !icon_only {
+        if let Some(value) = value {
             draw_text(
                 hdc,
-                label,
+                value,
                 RECT {
                     left: icon_rect.right + footer_action_icon_text_gap(),
                     top: rect.top,
@@ -346,85 +303,104 @@ pub(in crate::shell::chrome) fn draw_footer_actions(
 mod tests {
     use super::*;
 
-    fn item(id: &str, label: &str) -> WindowsShellFooterActionLayout {
+    fn item(id: &str) -> WindowsShellFooterActionLayout {
         WindowsShellFooterActionLayout {
             generation: 1,
             id: id.to_string(),
-            label: label.to_string(),
+            label: id.to_string(),
+            value: None,
             icon_path: String::new(),
             disabled: false,
             source: WindowsShellSidebarActionSource::Runtime,
         }
     }
 
-    #[test]
-    fn short_footer_actions_share_a_standard_sidebar_row() {
-        let items = vec![item("api", "API"), item("chat", "Chat")];
-        assert_eq!(footer_action_rows(184, &items), vec![0..2]);
+    fn valued(id: &str, value: &str) -> WindowsShellFooterActionLayout {
+        WindowsShellFooterActionLayout {
+            value: Some(value.to_string()),
+            ..item(id)
+        }
     }
 
-    #[test]
-    fn label_metrics_do_not_change_row_topology() {
-        let items = vec![
-            item("first", "A deliberately long footer_action"),
-            item("second", "这是一个会被截断的很长标签"),
-        ];
-        assert_eq!(footer_action_rows(184, &items), vec![0..2]);
-    }
-
-    #[test]
-    fn fitted_widths_preserve_minimums_across_font_metric_ranges() {
-        let available = 184 - 2 * footer_action_margin();
-        for preferred in [vec![72, 86], vec![92, 126], vec![available, available]] {
-            let widths = fitted_cell_widths(&preferred, available);
-            assert_eq!(widths.len(), 2);
-            assert!(widths.iter().all(|width| *width >= 72));
-            assert_eq!(widths.iter().sum::<i32>() + footer_action_gap(), available);
+    fn sidebar(width: i32) -> RECT {
+        RECT {
+            left: 0,
+            top: 0,
+            right: width,
+            bottom: 600,
         }
     }
 
     #[test]
-    fn showcase_footer_fixture_gates_render_and_hit_test_rects() {
+    fn icon_buttons_share_a_row() {
+        let items = vec![item("chat"), item("terminal"), item("ping")];
+        assert_eq!(footer_action_rows(184, &items), vec![0..3]);
+    }
+
+    #[test]
+    fn icon_buttons_wrap_only_when_the_next_does_not_fit() {
+        let available = 184 - 2 * footer_action_margin();
+        let per_row = ((available + footer_action_gap())
+            / (footer_action_size() + footer_action_gap())) as usize;
+        let items: Vec<_> = (0..=per_row).map(|i| item(&format!("a{i}"))).collect();
+        assert_eq!(
+            footer_action_rows(184, &items),
+            vec![0..per_row, per_row..per_row + 1]
+        );
+    }
+
+    #[test]
+    fn a_value_cell_joins_preceding_icons_and_ends_its_row() {
+        // [a, B, c, d, E] where capitals carry a value.
         let items = vec![
-            item("chat", "chat"),
-            item("terminal", "Terminal"),
-            item("ping", "Ping"),
+            item("a"),
+            valued("b", "Acme"),
+            item("c"),
+            item("d"),
+            valued("e", "Downtown"),
         ];
-        let tabbar_rect = RECT {
-            left: 0,
-            top: 0,
-            right: 184,
-            bottom: 600,
-        };
+        assert_eq!(footer_action_rows(184, &items), vec![0..2, 2..5]);
+    }
+
+    #[test]
+    fn a_value_cell_wraps_when_its_minimum_does_not_fit() {
+        let available = 184 - 2 * footer_action_margin();
+        let fit = ((available - footer_action_cell_min_width())
+            / (footer_action_size() + footer_action_gap())) as usize;
+        let mut items: Vec<_> = (0..=fit).map(|i| item(&format!("a{i}"))).collect();
+        items.push(valued("brand", "Acme"));
+        assert_eq!(
+            footer_action_rows(184, &items),
+            vec![0..fit + 1, fit + 1..fit + 2]
+        );
+    }
+
+    #[test]
+    fn value_cell_rects_fill_the_row_and_icons_stay_square() {
+        let items = vec![item("agent"), valued("brand", "Acme")];
+        let tabbar_rect = sidebar(184);
         let height = panel_footer_action_height_for_width(184, &items);
         let rects = expanded_footer_action_rects(tabbar_rect, height, 0, &items);
 
-        assert_eq!(footer_action_rows(184, &items), vec![0..2, 2..3]);
         assert_eq!(
             height,
-            footer_action_separator_height()
-                + 2 * footer_action_margin()
-                + 2 * footer_action_size()
-                + footer_action_gap()
+            footer_action_separator_height() + 2 * footer_action_margin() + footer_action_size()
         );
-        assert_eq!(
-            rects.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
-            vec!["chat", "terminal", "ping"]
-        );
+        let agent = rects[0].1;
+        let brand = rects[1].1;
+        assert_eq!(rect_width(&agent), footer_action_size());
+        assert_eq!(agent.left, tabbar_rect.left + footer_action_margin());
+        assert_eq!(agent.top, brand.top);
+        assert_eq!(agent.right + footer_action_gap(), brand.left);
+        assert_eq!(brand.right, tabbar_rect.right - footer_action_margin());
+        assert_eq!(brand.bottom, tabbar_rect.bottom - footer_action_margin());
+    }
 
-        let chat = rects[0].1;
-        let terminal = rects[1].1;
-        let ping = rects[2].1;
-        assert_eq!(chat.top, terminal.top);
-        assert_eq!(chat.right + footer_action_gap(), terminal.left);
-        assert!(rect_width(&chat) >= footer_action_cell_min_width());
-        assert!(rect_width(&terminal) >= footer_action_cell_min_width());
-        assert_eq!(chat.left, tabbar_rect.left + footer_action_margin());
-        assert_eq!(terminal.right, tabbar_rect.right - footer_action_margin());
-        assert_eq!(ping.top, chat.bottom + footer_action_gap());
-        assert_eq!(ping.left, tabbar_rect.left + footer_action_margin());
-        assert_eq!(ping.right, tabbar_rect.right - footer_action_margin());
-        assert_eq!(ping.bottom, tabbar_rect.bottom - footer_action_margin());
+    #[test]
+    fn tooltip_joins_label_and_value() {
+        assert_eq!(item("agent").tooltip_text(), "agent");
+        let joined = valued("brand", "Acme").tooltip_text();
+        assert!(joined.starts_with("brand") && joined.ends_with("Acme"));
     }
 
     #[test]

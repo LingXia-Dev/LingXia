@@ -25,8 +25,8 @@ pub use runtime::{
     window_frame,
 };
 pub use sidebar_action::{
-    MAX_HEADER_SIDEBAR_ACTIONS, ResolvedShellSidebarAction, ShellSidebarAction,
-    ShellSidebarActionUpdate, SidebarActionCollection, SidebarActionPlacement,
+    MAX_HEADER_SIDEBAR_ACTIONS, MAX_SIDEBAR_ACTION_VALUES, ResolvedShellSidebarAction,
+    ShellSidebarAction, ShellSidebarActionUpdate, SidebarActionCollection, SidebarActionPlacement,
 };
 pub use sidebar_chrome::{
     DEFAULT_EXPANDED_SIDEBAR_WIDTH, DEFAULT_MAIN_WINDOW_SIZE, MIN_MAIN_WINDOW_SIZE,

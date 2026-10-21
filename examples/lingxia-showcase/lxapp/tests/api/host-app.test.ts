@@ -733,6 +733,42 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
     expect(survivor.ok).toBeTruthy();
   });
 
+  await t.step('set, clear, and reject footer values', async () => {
+    const result = await app.logic.eval(async ({ lx }) => {
+      const attempt = (run: () => void) => {
+        try {
+          run();
+          return { ok: true, code: '', message: '' };
+        } catch (error) {
+          const { code, message } = error as { code?: string; message?: string };
+          return { ok: false, code: code ?? '', message: String(message ?? error) };
+        }
+      };
+      const missing: { name: string } | undefined = undefined as { name: string } | undefined;
+      return {
+        set: attempt(() => lx.shell.sidebarActions.update('probe-footer', { value: 'Acme' })),
+        // A present key clears even when its value is undefined.
+        clearUndefined: attempt(() => lx.shell.sidebarActions.update('probe-footer', { value: missing?.name })),
+        clearNull: attempt(() => lx.shell.sidebarActions.update('probe-footer', { value: null })),
+        header: attempt(() => lx.shell.sidebarActions.update('probe-header', { value: 'Acme' })),
+        third: attempt(() => lx.shell.sidebarActions.replace([
+          { id: 'v1', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'One', value: 'a', onActivate() {} },
+          { id: 'v2', placement: 'footer', icon: 'public/showcase-icon.png', label: 'Two', value: 'b', onActivate() {} },
+          { id: 'v3', placement: 'footer', icon: 'public/sidebar-chat.svg', label: 'Three', value: 'c', onActivate() {} },
+        ])),
+      };
+    });
+    expect(result.set.ok).toBeTruthy();
+    expect(result.clearUndefined.ok).toBeTruthy();
+    expect(result.clearNull.ok).toBeTruthy();
+    expect(result.header.ok).toBeFalsy();
+    expect(result.header.code).toBe('E_INVALID_ARG');
+    expect(result.header.message).toContain('footer-only');
+    expect(result.third.ok).toBeFalsy();
+    expect(result.third.code).toBe('E_INVALID_ARG');
+    expect(result.third.message).toContain('v1, v2, v3');
+  });
+
   await t.step('remove one id, then clear the rest idempotently', async () => {
     const removed = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {

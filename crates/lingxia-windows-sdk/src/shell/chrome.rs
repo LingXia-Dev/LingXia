@@ -1549,27 +1549,51 @@ pub(crate) fn sidebar_tooltip(
             }
         }
     }
-    if hovered.is_none() {
-        for (action_id, anchor) in footer_action_rects(client, &rects, layout) {
-            if rect_contains(&anchor, point)
-                && let Some(action) = layout
-                    .footer_actions
-                    .iter()
-                    .find(|action| action.id == action_id)
-            {
-                hovered = Some((anchor, action.label.as_str()));
-                break;
-            }
-        }
+    let footer_text;
+    if hovered.is_none()
+        && let Some((anchor, text)) = hovered_footer_action(client, &rects, layout, point)
+    {
+        footer_text = text;
+        hovered = Some((anchor, footer_text.as_str()));
     }
 
     let (anchor, text) = hovered?;
+    beside_sidebar_tooltip(anchor, text, tabbar_rect, tabbar.position, client)
+}
+
+/// The footer action under `point` and its tooltip text.
+fn hovered_footer_action(
+    client: RECT,
+    rects: &ChromeRects,
+    layout: &WindowsShellWindowLayout,
+    point: (i32, i32),
+) -> Option<(RECT, String)> {
+    footer_action_rects(client, rects, layout)
+        .into_iter()
+        .find(|(_, anchor)| rect_contains(anchor, point))
+        .and_then(|(id, anchor)| {
+            let action = layout
+                .footer_actions
+                .iter()
+                .find(|action| action.id == id)?;
+            Some((anchor, action.tooltip_text()))
+        })
+}
+
+/// A hover label beside the sidebar, vertically centered on `anchor`.
+fn beside_sidebar_tooltip(
+    anchor: RECT,
+    text: &str,
+    tabbar_rect: RECT,
+    position: WindowsShellTabBarPosition,
+    client: RECT,
+) -> Option<CollapsedSidebarTooltip> {
     let text = text.trim();
     if text.is_empty() {
         return None;
     }
     let (width, height) = sidebar_rail_tooltip_size(text, client);
-    let desired_left = match tabbar.position {
+    let desired_left = match position {
         WindowsShellTabBarPosition::Left => tabbar_rect.right + sidebar_rail_tooltip_gap(),
         WindowsShellTabBarPosition::Right => tabbar_rect.left - sidebar_rail_tooltip_gap() - width,
         WindowsShellTabBarPosition::Bottom => return None,
@@ -1606,6 +1630,16 @@ fn expanded_header_tooltip(
     let tabbar = layout.tab_bar.as_ref()?;
     let rects = chrome_rects_for_state(state, layout);
     let tabbar_rect = rects.tab_bar?;
+    // Footer actions draw no label, so their name lives in a tooltip beside
+    // the sidebar, like the rail's.
+    if let Some((anchor, text)) = hovered_footer_action(client, &rects, layout, point) {
+        return beside_sidebar_tooltip(anchor, &text, tabbar_rect, tabbar.position, client).map(
+            |tooltip| CollapsedSidebarTooltip {
+                delayed: true,
+                ..tooltip
+            },
+        );
+    }
     let header_action = sidebar_header_action_rects(tabbar_rect, tabbar)
         .into_iter()
         .find(|(_, anchor)| rect_contains(anchor, point))
@@ -3349,6 +3383,7 @@ mod scroll_tests {
                 generation: 1,
                 id: "terminal".to_string(),
                 label: "Terminal".to_string(),
+                value: None,
                 icon_path: String::new(),
                 disabled: false,
                 source: WindowsShellSidebarActionSource::Runtime,
@@ -3453,6 +3488,7 @@ mod scroll_tests {
                         generation: 1,
                         id: "action".into(),
                         label: "Action".into(),
+                        value: None,
                         icon_path: String::new(),
                         disabled: false,
                         source: super::WindowsShellSidebarActionSource::Runtime,
@@ -3527,6 +3563,7 @@ mod scroll_tests {
             generation: 1,
             id: "terminal".to_string(),
             label: "Terminal".to_string(),
+            value: None,
             icon_path: String::new(),
             disabled: false,
             source: WindowsShellSidebarActionSource::Runtime,

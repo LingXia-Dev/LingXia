@@ -2194,6 +2194,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         let id: String
         let placement: String
         let label: String
+        let value: String?
         let iconPath: String?
         let disabled: Bool
     }
@@ -2254,7 +2255,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                     iconURL: item.iconPath.flatMap { icon in
                         icon.isEmpty ? nil : URL(fileURLWithPath: icon)
                     },
-                    disabled: item.disabled
+                    disabled: item.disabled,
+                    value: item.value
                 )
             }
     }
@@ -2267,6 +2269,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 id: item.id,
                 iconURL: item.iconURL,
                 label: item.label,
+                value: item.value,
                 active: item.active,
                 disabled: item.disabled,
                 source: item.sidebarActionSource,

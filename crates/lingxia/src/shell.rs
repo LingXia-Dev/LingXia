@@ -42,6 +42,7 @@ impl ShellHost for HostShell {
                     id: item.id.clone(),
                     placement: item.placement,
                     label: item.label.clone(),
+                    value: item.value.clone(),
                     icon_path: Some(resolve_declared_icon(owner.as_deref(), &item.icon)?),
                     disabled: item.disabled,
                 })

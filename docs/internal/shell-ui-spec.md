@@ -621,6 +621,12 @@ Declaration model (owned by the single runtime writer, §7.2):
   `label`, local lxapp-accessible `icon`, and `onActivate` callback. Stable ids share
   one namespace across placements and route updates and activation; callbacks
   decide what activation does.
+- `label` is the stable name (tooltip and accessibility name); the shell never
+  draws it. A footer entry may also carry a `value`: the changing fact it
+  shows, such as the working brand, store, or account. The presence of `value`
+  is the only signal; there is no presentation flag. Empty normalizes to
+  absent. A header `value`, or more than **2** value-bearing footer entries,
+  rejects the generation with `E_INVALID_ARG`; the message names the ids.
 - `icon` accepts bundled resources and runtime-managed `lx://temp`,
   `lx://usercache`, or `lx://userdata` files, including icons downloaded before
   registration. Shell core resolves them through the app's standard sandboxed
@@ -636,7 +642,10 @@ Declaration model (owned by the single runtime writer, §7.2):
 - The declaration is a **full-generation atomic replace**: the shell validates
   the complete generation before touching handlers or chrome — a
   bad item leaves the previous generation intact. Single-item patches may
-  update label/icon/disabled state. Removing or clearing entries are atomic
+  update label/icon/value/disabled state and are validated against the whole
+  patched generation. A `value` key present in a patch sets it; `undefined`,
+  `null`, or `''` clears it (presence is the own key, since `{ value:
+  brand?.name }` must clear). Removing or clearing entries are atomic
   transformations of the same generation, not separate mutation protocols.
 - Callback registration is generation-scoped: replacing or removing an item
   unregisters its previous callback.
@@ -670,20 +679,41 @@ Header geometry:
   footer actions. They do not render in the compact size class. Their `label`
   is still the tooltip and accessibility text.
 
+Tooltip and accessibility:
+
+- Tooltip text is `label`, or `label`, the localized shell separator
+  (`sidebar.action_value_separator`), and `value`, so the rail and a truncated
+  cell still carry the full value.
+- macOS sets `accessibilityLabel` to `label` and `accessibilityValue` to
+  `value`. Windows custom chrome has no UIA tree yet; the tooltip carries both.
+- The host logs a warning when two icon-only footer entries share an icon:
+  they are indistinguishable on screen.
+
 Expanded footer geometry:
 
 - Outer horizontal inset aligns with top-level sidebar rows: **8**.
-- Cell height **30**; cell and row gap **4**; minimum cell width **72**.
-- Entries flow left-to-right in declaration order, wrapping only when the next
-  cell cannot get its minimum width — two short labels share a row rather than
-  stacking as two full-width rows.
+- Cell height **30**; cell and row gap **4**.
+- An entry without `value` is a square **30** icon button. An entry with
+  `value` is a value cell: icon and `value` on one line, tail-truncated, with
+  minimum width **72**.
+- Declaration order is visual order. Icon buttons pack left to right and wrap
+  only when the next one does not fit. A value cell joins the icon buttons
+  before it when its minimum still fits (otherwise it starts the next row),
+  takes the rest of the row, and ends it: whatever follows starts a new row.
+  The rules do not change with sidebar width; `label` is never drawn.
+
+  ```
+  [a, B, c, d, E]   (capitals carry a value)
+  │ a │ B value…          │
+  │ c │ d │ E value…      │
+  ```
+
 - At most **5** visible rows; overflow scrolls inside the footer rather than
-  squeezing the tab list.
-- Titles are single-line, tail-truncated, with the full label as tooltip and
-  accessibility text. Each platform measures text with native font metrics —
-  no ASCII/wide-character width heuristics. Row breaks MAY differ where native
-  fonts genuinely differ; padding, minimums, state treatment, overflow, and
-  order MUST NOT.
+  squeezing the tab list. The shell does not reorder to keep value cells
+  visible; declare them before long runs of icon buttons.
+- Value text uses native font metrics — no ASCII/wide-character width
+  heuristics. Padding, minimums, state treatment, overflow, and order MUST
+  match across platforms.
 - Background is transparent; hover uses a quiet shell-owned wash (radius 6);
   disabled items mute icon/text with no hover wash.
 
@@ -704,7 +734,7 @@ Desktop sidebar controls:
 
 Compact rail:
 
-- Footer actions become icon-only, with label as tooltip/accessibility text,
+- Footer actions become icon-only, with the tooltip text below,
   the same bounded scrolling and disabled treatment. The rail reserves the
   expand control; actions
   MUST NOT overlap it or run off-window. Rail width MAY stay platform-specific

@@ -536,11 +536,21 @@ struct PanelIconItem {
     var generation: UInt64 = 0
     let id: String
     let iconURL: URL?
+    /// Stable name: tooltip and accessibility label, never drawn.
     let label: String
+    /// The changing fact drawn beside the icon in the expanded footer.
+    var value: String? = nil
     let active: Bool
     let disabled: Bool
     var source: SidebarActionSource = .runtime
     var systemImageName: String? = nil
+
+    /// `label`, or `label` and `value` joined, so an icon-only or truncated
+    /// cell still carries the full value.
+    var tooltipText: String {
+        guard let value else { return label }
+        return label + L10n.string("lx_sidebar_action_value_separator") + value
+    }
 }
 
 private struct SidebarActionIdentity {
@@ -606,7 +616,7 @@ private struct SidebarModel {
 extension PanelIconItem: Equatable {
     static func == (lhs: PanelIconItem, rhs: PanelIconItem) -> Bool {
         lhs.id == rhs.id && lhs.iconURL == rhs.iconURL && lhs.label == rhs.label
-            && lhs.active == rhs.active && lhs.disabled == rhs.disabled
+            && lhs.value == rhs.value && lhs.active == rhs.active && lhs.disabled == rhs.disabled
             && lhs.source == rhs.source && lhs.systemImageName == rhs.systemImageName
     }
 }
@@ -1556,7 +1566,7 @@ class SidebarView: NSView {
             let isTemplate = TabBarHelper.isTemplateIcon(iconPath)
             let button = makeRailButton(
                 key: key,
-                tooltip: item.label,
+                tooltip: item.tooltipText,
                 image: image,
                 isTemplate: isTemplate,
                 // Brand/PNG tiles match switcher rounding; SVG glyphs stay
@@ -1564,6 +1574,8 @@ class SidebarView: NSView {
                 roundRaster: !isTemplate
             )
             button.action = #selector(railSidebarActionClicked(_:))
+            button.setAccessibilityLabel(item.label)
+            button.setAccessibilityValue(item.value)
             button.isEnabled = !item.disabled
             railFooterStack.addArrangedSubview(button)
             railButtons[key] = button
@@ -2141,6 +2153,8 @@ class SidebarView: NSView {
         for item in items {
             let row = SidebarActionRowView(
                 label: item.label,
+                value: item.value,
+                tooltip: item.tooltipText,
                 iconURL: item.iconURL,
                 systemImageName: item.systemImageName,
                 active: item.active,
@@ -3137,12 +3151,14 @@ private final class FlippedClipView: NSView {
     nonisolated override var isFlipped: Bool { true }
 }
 
-/// Wraps whole icon+title cells while keeping each title single-line.
+/// Packs footer actions in declaration order. Icon buttons share rows; a
+/// value cell joins the icons before it when its minimum width still fits,
+/// takes the rest of that row, and ends it.
 @MainActor
 private final class SidebarActionFlowView: NSView {
     static let gap: CGFloat = 4
     private static let rowHeight: CGFloat = 30
-    private static let minimumCellWidth: CGFloat = 72
+    private static let minimumValueCellWidth: CGFloat = 72
 
     private var entries: [SidebarActionRowView] = []
     private var lastLayoutWidth: CGFloat = 0
@@ -3181,16 +3197,12 @@ private final class SidebarActionFlowView: NSView {
         }
         var y: CGFloat = 0
         for range in rowRanges(for: width) {
-            let row = Array(entries[range])
-            let preferred = row.map {
-                min(width, max(Self.minimumCellWidth, $0.preferredCellWidth))
-            }
-            let widths = fittedCellWidths(preferred, available: width)
             var x: CGFloat = 0
-            for index in row.indices {
-                let isLast = index == row.count - 1
-                let cellWidth = isLast ? width - x : widths[index]
-                row[index].frame = NSRect(
+            for entry in entries[range] {
+                let cellWidth = entry.isValueCell
+                    ? width - x
+                    : min(Self.cellWidth(entry, available: width), width - x)
+                entry.frame = NSRect(
                     x: x,
                     y: y,
                     width: max(1, cellWidth),
@@ -3202,6 +3214,11 @@ private final class SidebarActionFlowView: NSView {
         }
     }
 
+    /// Icon buttons are square; a value cell needs room for its icon and text.
+    private static func cellWidth(_ entry: SidebarActionRowView, available: CGFloat) -> CGFloat {
+        min(available, entry.isValueCell ? minimumValueCellWidth : rowHeight)
+    }
+
     private func rowRanges(for width: CGFloat) -> [Range<Int>] {
         guard !entries.isEmpty else { return [] }
         let available = max(1, width)
@@ -3209,45 +3226,25 @@ private final class SidebarActionFlowView: NSView {
         var start = 0
         var used: CGFloat = 0
         for index in entries.indices {
-            let minimum = min(available, Self.minimumCellWidth)
-            let next = index == start ? minimum : used + Self.gap + minimum
+            let cell = Self.cellWidth(entries[index], available: available)
+            let next = index == start ? cell : used + Self.gap + cell
             if index > start && next > available {
                 rows.append(start..<index)
                 start = index
-                used = minimum
+                used = cell
             } else {
                 used = next
             }
-        }
-        rows.append(start..<entries.count)
-        return rows
-    }
-
-    private func fittedCellWidths(_ preferred: [CGFloat], available: CGFloat) -> [CGFloat] {
-        guard !preferred.isEmpty else { return [] }
-        let count = CGFloat(preferred.count)
-        let target = max(count, available - CGFloat(preferred.count - 1) * Self.gap)
-        let minimum = max(1, min(Self.minimumCellWidth, target / count))
-        var widths = preferred.map { min(target, max(minimum, $0)) }
-        var delta = target - widths.reduce(0, +)
-
-        while delta < -0.5 {
-            let shrinkable = widths.indices.filter { widths[$0] > minimum + 0.5 }
-            guard !shrinkable.isEmpty else { break }
-            let share = -delta / CGFloat(shrinkable.count)
-            for index in shrinkable {
-                let shrink = min(widths[index] - minimum, share, -delta)
-                widths[index] -= shrink
-                delta += shrink
-                if delta >= -0.5 { break }
+            if entries[index].isValueCell {
+                rows.append(start..<(index + 1))
+                start = index + 1
+                used = 0
             }
         }
-
-        if delta > 0 {
-            let share = delta / count
-            widths = widths.map { $0 + share }
+        if start < entries.count {
+            rows.append(start..<entries.count)
         }
-        return widths
+        return rows
     }
 }
 
@@ -3282,14 +3279,17 @@ private enum SidebarActionChromePalette {
     }
 }
 
-/// One sidebar action entry: a left-aligned icon + title row sharing the tabbar
-/// items' rhythm (30pt, hover wash). A custom view because a borderless
-/// NSButton centers its image+title block and cannot left-align it.
+/// One footer action: a square icon button, or — when it carries a value — a
+/// left-aligned icon + value row sharing the tabbar items' rhythm (30pt, hover
+/// wash). A custom view because a borderless NSButton centers its image+title
+/// block and cannot left-align it.
 @MainActor
 final class SidebarActionRowView: NSView {
     private static let iconSize: CGFloat = 18
 
     var onClick: (() -> Void)?
+    /// Whether this cell draws a value and so takes the rest of its row.
+    let isValueCell: Bool
 
     private let iconView = NSImageView()
     private let titleLabel: NSTextField
@@ -3303,26 +3303,26 @@ final class SidebarActionRowView: NSView {
     private let washView = NSView()
     private let accentView = NSView()
 
-    var preferredCellWidth: CGFloat {
-        8 + Self.iconSize + 8 + titleLabel.intrinsicContentSize.width + 8
-    }
-
     init(
         label: String,
+        value: String?,
+        tooltip: String,
         iconURL: URL?,
         systemImageName: String? = nil,
         active: Bool,
         disabled: Bool
     ) {
-        titleLabel = NSTextField(labelWithString: label)
+        titleLabel = NSTextField(labelWithString: value ?? "")
+        isValueCell = value != nil
         self.active = active && !disabled
         self.disabled = disabled
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        toolTip = label
+        toolTip = tooltip
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel(label)
+        setAccessibilityValue(value)
 
         // sidebar action entries are TOP-LEVEL rows: hover rect and icon axis copy
         // the web-tab rows (full-row wash, radius 6, icon inset 8), not the
@@ -3361,8 +3361,12 @@ final class SidebarActionRowView: NSView {
             : (self.active ? LxAppHostTheme.accent : SidebarActionChromePalette.mutedText)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.isHidden = !isValueCell
         addSubview(titleLabel)
 
+        let iconPlacement = isValueCell
+            ? iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8)
+            : iconView.centerXAnchor.constraint(equalTo: centerXAnchor)
         NSLayoutConstraint.activate([
             washView.leadingAnchor.constraint(equalTo: leadingAnchor),
             washView.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -3372,7 +3376,7 @@ final class SidebarActionRowView: NSView {
             accentView.centerYAnchor.constraint(equalTo: centerYAnchor),
             accentView.widthAnchor.constraint(equalToConstant: 2),
             accentView.heightAnchor.constraint(equalToConstant: 18),
-            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            iconPlacement,
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: Self.iconSize),
             iconView.heightAnchor.constraint(equalToConstant: Self.iconSize),

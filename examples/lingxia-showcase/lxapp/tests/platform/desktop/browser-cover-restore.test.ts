@@ -156,15 +156,15 @@ async function restoreShowcaseSidebarActions(app: TestApp): Promise<void> {
         onActivate() { void lx.shell.openBuiltin('downloads'); },
       },
       {
-        id: 'chat', placement: 'footer', icon: 'public/activator.svg', label: 'chat',
+        id: 'chat', placement: 'footer', icon: 'public/sidebar-chat.svg', label: 'chat',
         onActivate() { void lx.surface.openDeclared('lingxia-chat'); },
       },
       {
-        id: 'terminal-settings', placement: 'footer', icon: 'public/sidebar-terminal.svg', label: 'Terminal Settings',
+        id: 'terminal-settings', placement: 'footer', icon: 'public/sidebar-terminal-settings.svg', label: 'Terminal Settings',
         onActivate() { void lx.shell.openApp('app.lingxia.terminal-settings', { as: 'aside', edge: 'right' }); },
       },
       {
-        id: 'terminal', placement: 'footer', icon: 'public/activator.svg', label: 'Terminal',
+        id: 'terminal', placement: 'footer', icon: 'public/sidebar-terminal.svg', label: 'Terminal',
         onActivate() { void lx.surface.openDeclared('terminal'); },
       },
       {

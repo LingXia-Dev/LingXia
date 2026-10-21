@@ -2261,36 +2261,46 @@ true
     reconfigure(id: string, patch: ShellSurfacePatch): Promise<void>;
 }"###;
 
-        /// Where the host renders a sidebar action on desktop.
+        /// Where an action lives in the desktop sidebar.
         ///
-        /// - `header`: icon-only, at most two actions; `label` supplies tooltip
-        ///   and accessibility text. Hidden in the compact/collapsed shell.
-        /// - `footer`: icon and label in the expanded sidebar, icon-only in the
-        ///   compact rail. The host wraps cells and scrolls after five visible
+        /// - `header`: the caption row beside the window controls. At most two
+        ///   icon-only actions; declaring a third rejects the whole `replace`.
+        /// - `footer`: always reachable. Icon buttons, plus a `value` drawn
+        ///   beside the icon when the action carries one. Scrolls after five
         ///   rows.
         ///
-        /// Apps cannot configure cell size, row, weight, color, or selected state.
-        /// Where an action lives in the sidebar.
-        ///
-        /// `header` is the caption row beside the window controls: at most two
-        /// actions, for the ones a person reaches for constantly. Declaring a
-        /// third rejects the whole `replace` call rather than hiding one.
-        ///
-        /// `footer` is unbounded and scrolls, and every entry stays visible at
-        /// any window size. Anything that must be findable belongs here.
+        /// In the collapsed rail every action is an icon button. Apps cannot
+        /// configure cell size, row, weight, color, or selected state.
         type ShellSidebarActionPlacement = r###"'header' | 'footer'"###;
 
         /// One app-declared shell sidebar action. It is a stateless command, not a
         /// selectable navigation item: the shell invokes `onActivate` once and
         /// does not infer a target or active state.
-        type ShellSidebarAction = r###"{
+        ///
+        /// `value` is footer-only, so a header action with one does not type-check.
+        type ShellSidebarAction = r###"ShellSidebarActionBase & (
+    | {
+        /** Caption row: at most two, icon-only. */
+        placement: 'header';
+        value?: never;
+      }
+    | {
+        /** Always reachable; scrolls after five rows. */
+        placement: 'footer';
+        /**
+         * The action's current value: a fact that changes with the scene,
+         * such as the working brand, store, or account. Drawn beside the icon,
+         * tail-truncated, on the rest of its row. Absent or empty, the action
+         * is an icon button. At most two footer actions may carry one.
+         */
+        value?: string;
+      }
+)"###;
+
+        /// Fields shared by both sidebar action placements.
+        type ShellSidebarActionBase = r###"{
     /** Stable, non-empty id; unique across both header and footer actions. */
     id: string;
-    /**
-     * Initial host-owned region. Use `replace` to move an action. The header
-     * takes at most two; everything else belongs in the footer.
-     */
-    placement: ShellSidebarActionPlacement;
     /**
      * Local lxapp-accessible icon. Use a bundled relative path such as
      * `public/settings.svg`, or an `lx://temp`, `lx://usercache`, or
@@ -2303,11 +2313,14 @@ true
      * for a brand logo; provide square artwork when the crop matters. A path in
      * `lx://temp` is temporary, so download and register it again after the next
      * Logic launch rather than persisting it.
+     *
+     * Icon-only actions are told apart by their icon alone: give each one a
+     * distinct icon.
      */
     icon: string;
     /**
-     * Visible footer title and the tooltip/accessibility text for every
-     * placement. Long footer labels are kept on one line and tail-truncated.
+     * Stable name, such as "Brand". The tooltip and accessibility name; it is
+     * never drawn in the sidebar. Put a changing fact in `value` instead.
      */
     label: string;
     /** Visible but non-activatable when true. Defaults to false. */
@@ -2320,13 +2333,19 @@ true
 }"###;
 
         /// Mutable presentation fields for an existing sidebar action. The patch
-        /// must contain at least one field. Use `replace` to change `placement` or
-        /// `onActivate`.
+        /// must contain at least one field. A key that is present is set; a key
+        /// that is absent is left unchanged. Use `replace` to change `placement`
+        /// or `onActivate`.
         type ShellSidebarActionUpdate = r###"{
     /** Replacement local icon, with the same path rules as registration. */
     icon?: string;
-    /** Replacement non-empty visible/accessibility label. */
+    /** Replacement non-empty tooltip/accessibility name. */
     label?: string;
+    /**
+     * Replacement footer value. `undefined`, `null`, or `''` clears it, so
+     * `{ value: brand?.name }` clears the value when there is no brand.
+     */
+    value?: string | null;
     /** Whether the action remains visible but rejects activation. */
     disabled?: boolean;
 }"###;
