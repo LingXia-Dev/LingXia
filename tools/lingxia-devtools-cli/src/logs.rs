@@ -107,7 +107,15 @@ pub fn execute(session: &SessionInfo, options: LogsOptions) -> Result<()> {
         if render.pretty {
             println!("{}", "── live (Ctrl+C to exit) ──".dimmed());
         }
-        tail_loop(session, log_file, start, &filters, render)?;
+        let mut print = |line: &str| -> Result<()> {
+            if let Some(entry) = parse_and_filter(line, &filters)? {
+                println!("{}", render_entry(&entry, render)?);
+            }
+            Ok(())
+        };
+        if follow_session_log(session, start, &mut print, &mut || true)? {
+            eprintln!("Dev session ended.");
+        }
     }
     Ok(())
 }
@@ -151,7 +159,7 @@ fn existing_log_files(log_file: &Path) -> Result<Vec<PathBuf>> {
 }
 
 /// Where following starts: the current file's end, and which file that is.
-struct Position {
+pub(crate) struct Position {
     offset: u64,
     identity: Option<FileIdentity>,
 }
@@ -164,21 +172,7 @@ fn drain_backlog(
     follow: bool,
 ) -> Result<Position> {
     let files = existing_log_files(log_file)?;
-    let end = || -> Result<Position> {
-        match File::open(log_file) {
-            Ok(file) => {
-                let metadata = file.metadata()?;
-                Ok(Position {
-                    offset: metadata.len(),
-                    identity: file_identity(&metadata),
-                })
-            }
-            Err(_) => Ok(Position {
-                offset: 0,
-                identity: None,
-            }),
-        }
-    };
+    let end = || log_end(log_file);
     if follow && limit == 0 {
         return end();
     }
@@ -206,6 +200,24 @@ fn drain_backlog(
     end()
 }
 
+/// The session log's current end: following from here sees only what is
+/// written next.
+pub(crate) fn log_end(log_file: &Path) -> Result<Position> {
+    match File::open(log_file) {
+        Ok(file) => {
+            let metadata = file.metadata()?;
+            Ok(Position {
+                offset: metadata.len(),
+                identity: file_identity(&metadata),
+            })
+        }
+        Err(_) => Ok(Position {
+            offset: 0,
+            identity: None,
+        }),
+    }
+}
+
 /// Tell a rotated-away file from its replacement at the same path.
 #[cfg(unix)]
 type FileIdentity = (u64, u64);
@@ -223,14 +235,13 @@ fn file_identity(_metadata: &std::fs::Metadata) -> Option<FileIdentity> {
     None
 }
 
-/// Print the complete lines of `file` from `offset`, keeping a trailing
-/// half line in `pending` until the rest arrives.
+/// Hand the complete lines of `file` from `offset` to `on_line`, keeping a
+/// trailing half line in `pending` until the rest arrives.
 fn read_new_lines(
     file: &File,
     offset: &mut u64,
     pending: &mut String,
-    filters: &Filters,
-    render: RenderOpts,
+    on_line: &mut dyn FnMut(&str) -> Result<()>,
 ) -> Result<()> {
     let mut file = file;
     file.seek(SeekFrom::Start(*offset))?;
@@ -248,19 +259,20 @@ fn read_new_lines(
             return Ok(());
         }
         let line = std::mem::take(pending);
-        if let Some(entry) = parse_and_filter(line.trim_end_matches('\n'), filters)? {
-            println!("{}", render_entry(&entry, render)?);
-        }
+        on_line(line.trim_end_matches('\n'))?;
     }
 }
 
-fn tail_loop(
+/// Follow the session log from `start` across rotations, handing each new
+/// line to `on_line`, until `keep_going` says stop (`Ok(false)`) or the
+/// session ends (`Ok(true)`).
+pub(crate) fn follow_session_log(
     session: &SessionInfo,
-    log_file: &Path,
     start: Position,
-    filters: &Filters,
-    render: RenderOpts,
-) -> Result<()> {
+    on_line: &mut dyn FnMut(&str) -> Result<()>,
+    keep_going: &mut dyn FnMut() -> bool,
+) -> Result<bool> {
+    let log_file = Path::new(&session.log_file);
     let Position {
         mut offset,
         mut identity,
@@ -272,8 +284,10 @@ fn tail_loop(
             Ok(f) => f,
             Err(_) => {
                 if !session_owner_alive(session) {
-                    eprintln!("Dev session ended.");
-                    return Ok(());
+                    return Ok(true);
+                }
+                if !keep_going() {
+                    return Ok(false);
                 }
                 thread::sleep(MISSING_FILE_BACKOFF);
                 continue;
@@ -291,7 +305,7 @@ fn tail_loop(
                 && identity.is_some()
                 && rotated.metadata().ok().as_ref().and_then(file_identity) == identity
             {
-                read_new_lines(&rotated, &mut offset, &mut pending, filters, render)?;
+                read_new_lines(&rotated, &mut offset, &mut pending, on_line)?;
             }
             offset = 0;
             pending.clear();
@@ -299,13 +313,15 @@ fn tail_loop(
         identity = current;
 
         if metadata.len() > offset {
-            read_new_lines(&file, &mut offset, &mut pending, filters, render)?;
+            read_new_lines(&file, &mut offset, &mut pending, on_line)?;
         }
 
         polls = polls.wrapping_add(1);
         if polls.is_multiple_of(10) && !session_owner_alive(session) {
-            eprintln!("Dev session ended.");
-            return Ok(());
+            return Ok(true);
+        }
+        if !keep_going() {
+            return Ok(false);
         }
 
         thread::sleep(POLL_INTERVAL);
