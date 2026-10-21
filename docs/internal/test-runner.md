@@ -978,8 +978,9 @@ redaction live in `capture.rs`.
   `<dir>/<spec id>.json` after the run, suffixing `-2`, `-3`… when two spec
   ids sanitize to one name. An unconfirmed start fails the case and attempts
   a stop, since the recording may have started before its acknowledgement
-  failed; the run goes on. `lxdev network capture stop [JSON] [--har FILE]`
-  writes the captured requests and, with `--har`, that same capture as HAR 1.2.
+  failed; the run goes on. `lxdev network capture stop FILE [FILE]` writes
+  the captured requests, as HAR 1.2 to a `.har` path and as the request JSON
+  to any other (at most one of each; `--har FILE` is a hidden deprecated alias).
   It does not write a scenario. Placeholders are created before `RECORD_STOP`
   and renamed after writing; on a write failure it prints the JSON to stdout
   and fails.

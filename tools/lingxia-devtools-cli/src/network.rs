@@ -1,6 +1,6 @@
 //! `lxdev network`: who answered the running app's calls, and a capture of
-//! the traffic that reached the network. A capture is a JSON request list
-//! for an agent, and optionally the same capture as HAR for a viewer.
+//! the traffic that reached the network. A capture is written as a JSON
+//! request list for an agent or as HAR for a viewer, chosen by file extension.
 //!
 //! Only hosts built with the automation test runtime (development hosts, the
 //! Runner) can do this.
@@ -8,7 +8,7 @@
 use crate::client::{self, CommandError};
 use crate::project::SessionInfo;
 use anyhow::{Context, Result, anyhow, bail};
-use clap::{ArgGroup, Args, Subcommand};
+use clap::{Args, Subcommand};
 use lingxia_control_protocol::methods::session::companion as companion_method;
 use lingxia_control_protocol::methods::session::network as method;
 use lingxia_control_protocol::scenario::{DEV_OWNER, companion};
@@ -24,7 +24,7 @@ pub struct NetworkOptions {
 
 #[derive(Subcommand, Clone)]
 enum NetworkCommand {
-    /// Capture real network traffic to a JSON file and an optional HAR
+    /// Capture real network traffic to request JSON or HAR
     #[command(subcommand)]
     Capture(CaptureCommand),
     /// Show who answered each recent call (route, scenario rule, mock or
@@ -54,18 +54,13 @@ enum CaptureCommand {
         json: bool,
     },
     /// Stop and write the capture
-    #[command(group(
-        ArgGroup::new("output")
-            .required(true)
-            .multiple(true)
-            .args(["json_file", "har"])
-    ))]
     Stop {
-        /// Request JSON for an agent
-        #[arg(value_name = "JSON", id = "json_file")]
-        json_file: Option<PathBuf>,
-        /// HAR 1.2 of the same capture, for a network viewer
-        #[arg(long, value_name = "FILE", id = "har")]
+        /// `*.har` gets HAR 1.2 for a network viewer; any other name gets the
+        /// request JSON for an agent. Give one of each to write both
+        #[arg(value_name = "FILE", num_args = 1..=2, required_unless_present = "har")]
+        files: Vec<PathBuf>,
+        /// Deprecated: pass the `.har` file as FILE
+        #[arg(long, value_name = "FILE", hide = true)]
         har: Option<PathBuf>,
         /// Replace this value with `***` wherever it appears (repeatable)
         #[arg(long = "redact", value_name = "VALUE")]
@@ -112,7 +107,7 @@ pub fn execute(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
             print(&status, json, |status| {
                 print_warning(status);
                 println!(
-                    "capturing network traffic{}; stop with `lxdev network capture stop <file.json> [--har <file.har>]`",
+                    "capturing network traffic{}; stop with `lxdev network capture stop <file.json|file.har>`",
                     matcher
                         .as_deref()
                         .map(|m| format!(" matching {m}"))
@@ -121,11 +116,21 @@ pub fn execute(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
             })
         }
         NetworkCommand::Capture(CaptureCommand::Stop {
-            json_file,
-            har,
+            files,
+            har: har_flag,
             redact,
             json,
         }) => {
+            if har_flag.is_some() {
+                eprintln!(
+                    "{} `--har FILE` is deprecated; pass the `.har` file as FILE",
+                    "warning".yellow().bold()
+                );
+            }
+            let CaptureOutputs {
+                json: json_file,
+                har,
+            } = CaptureOutputs::from_args(files, har_flag)?;
             // Make sure the files can be written before the capture is taken
             // from the host: stopping it is not undoable.
             let json_sink = json_file
@@ -134,7 +139,7 @@ pub fn execute(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
                 .transpose()?;
             let har_sink = har
                 .as_deref()
-                .map(|path| ScenarioSink::prepare(path, "--har"))
+                .map(|path| ScenarioSink::prepare(path, "HAR file"))
                 .transpose()?;
             let mut result = call(ws, method::RECORD_STOP, None)?;
             mask_values(&mut result["requests"], &redact);
@@ -204,6 +209,47 @@ pub(crate) fn call(ws: &str, handler: &str, args: Option<Value>) -> Result<Value
             Err(err)
         }
     }
+}
+
+/// The files `capture stop` writes, sorted by extension.
+#[derive(Debug, PartialEq)]
+struct CaptureOutputs {
+    json: Option<PathBuf>,
+    har: Option<PathBuf>,
+}
+
+impl CaptureOutputs {
+    fn from_args(files: Vec<PathBuf>, har_flag: Option<PathBuf>) -> Result<Self> {
+        let mut out = Self {
+            json: None,
+            har: None,
+        };
+        let tagged = files
+            .into_iter()
+            .map(|path| (is_har(&path), path))
+            .chain(har_flag.map(|path| (true, path)));
+        for (har, path) in tagged {
+            let (slot, kind) = if har {
+                (&mut out.har, "HAR")
+            } else {
+                (&mut out.json, "JSON")
+            };
+            if let Some(first) = slot {
+                bail!(
+                    "{} and {} are both {kind} outputs; give at most one `.json` and one `.har`",
+                    first.display(),
+                    path.display()
+                );
+            }
+            *slot = Some(path);
+        }
+        Ok(out)
+    }
+}
+
+fn is_har(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("har"))
 }
 
 /// Where `capture stop` puts a file: a placeholder created next to the path
@@ -972,6 +1018,42 @@ mod tests {
             lines[3],
             "function orders.status → default  answered by: companion default\n    rule 0 match.args.id: missing"
         );
+    }
+
+    #[test]
+    fn capture_outputs_are_sorted_by_extension() {
+        fn p(path: &str) -> PathBuf {
+            PathBuf::from(path)
+        }
+        let outputs = |files: &[&str], flag: Option<&str>| {
+            CaptureOutputs::from_args(files.iter().map(|f| p(f)).collect(), flag.map(p))
+        };
+        assert_eq!(
+            outputs(&["r.HAR", "r.json"], None).unwrap(),
+            CaptureOutputs {
+                json: Some(p("r.json")),
+                har: Some(p("r.HAR")),
+            }
+        );
+        // Anything that is not `.har` is the request JSON.
+        assert_eq!(
+            outputs(&["requests"], None).unwrap(),
+            CaptureOutputs {
+                json: Some(p("requests")),
+                har: None,
+            }
+        );
+        // The deprecated flag is HAR whatever its extension.
+        assert_eq!(
+            outputs(&["r.json"], Some("r.txt")).unwrap(),
+            CaptureOutputs {
+                json: Some(p("r.json")),
+                har: Some(p("r.txt")),
+            }
+        );
+        assert!(outputs(&["a.json", "b.json"], None).is_err());
+        assert!(outputs(&["a.har", "b.har"], None).is_err());
+        assert!(outputs(&["a.har"], Some("b.har")).is_err());
     }
 
     #[test]
