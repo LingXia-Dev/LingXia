@@ -24,19 +24,9 @@ final class RunnerSurfaceShellHost {
         let bar = SimulatorToolbar()
         bar.onDeviceSelected = { device in RunnerApp.shared.setDeviceSize(device) }
         bar.onRotateClicked = { RunnerApp.shared.toggleDeviceOrientation() }
-        bar.onInspectClicked = { [weak self] in self?.openInspector() }
         return bar
     }()
 
-    /// WebKit has no public API that opens the Web Inspector; the pages are
-    /// inspectable, so point at the context menu (same as the phone
-    /// simulator's Inspect action).
-    private func openInspector() {
-        DevToolsLogger.shared.log(
-            "Web Inspector: right-click the page and choose Inspect Element",
-            level: .info
-        )
-    }
     nonisolated(unsafe) private var closeObserver: NSObjectProtocol?
     private var isHiddenForHostSwitch = false
     var onClose: ((RunnerSurfaceShellHost) -> Void)?

@@ -996,10 +996,12 @@ name is still in the binary. What that rules out, and what replaces it:
 
 - Web Inspector: every LingXia WebView sets the public `isInspectable`
   (macOS 13.3 / iOS 16.4). WebKit offers no public call that opens or docks
-  the inspector, so there is no programmatic toggle: users open it from the
-  page's context menu (Inspect Element) or Safari's Develop menu, and the
-  Runner's Inspect button says so. On macOS 12 to 13.2 there is no public
-  switch at all, so WebViews there are not inspectable.
+  the inspector, so there is no programmatic toggle: users open it from
+  Safari's Develop menu, and the Runner's inspector button shows how and
+  opens Safari. WebKit adds Inspect Element to the context menu only with
+  the private `developerExtrasEnabled`, so no build has it. On macOS 12 to
+  13.2 there is no public switch at all, so WebViews there are not
+  inspectable.
 - File chooser (macOS): WebKit's public `WKOpenPanelParameters` does not
   expose the input's `accept` list. An injected page script reports the
   activated file input's `accept` (click, label click, key press or

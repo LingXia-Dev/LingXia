@@ -309,10 +309,6 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         toolbar.onRotateClicked = {
             RunnerApp.shared.toggleDeviceOrientation()
         }
-
-        toolbar.onInspectClicked = { [weak self] in
-            self?.openInspector()
-        }
         
         contentView.addSubview(toolbar)
         
@@ -404,15 +400,6 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             devToolsPanel?.updateInfo(device: Self.currentDeviceSize, path: currentPath)
             DevToolsLogger.shared.log("DevTools opened", level: .debug)
         }
-    }
-
-    /// WebKit has no public API that opens the Web Inspector. Every page is
-    /// inspectable, so the inspector opens from the page's context menu.
-    private func openInspector() {
-        DevToolsLogger.shared.log(
-            "Web Inspector: right-click the page and choose Inspect Element",
-            level: .info
-        )
     }
 
     // MARK: - Phone Content Setup

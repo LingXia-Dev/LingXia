@@ -616,9 +616,10 @@ final class BrowserTabCoordinator: NSObject {
 
     // MARK: - DevTools
 
-    /// WebKit has no public API that opens the Web Inspector. Every page is
-    /// `isInspectable`, so the inspector opens from the context menu
-    /// (Inspect Element) or Safari's Develop menu; there is nothing to toggle.
+    /// WebKit has no public API that opens the Web Inspector, and adds
+    /// Inspect Element to the context menu only through private API. Every
+    /// page is `isInspectable`, so Safari's Develop menu opens it; there is
+    /// nothing to toggle.
     func toggleActiveDevTools() -> Bool {
         false
     }
