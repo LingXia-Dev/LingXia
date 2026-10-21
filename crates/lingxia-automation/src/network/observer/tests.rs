@@ -1,3 +1,4 @@
+use super::watch::{MAX_QUEUED_EVENTS, WATCH_LEASE};
 use super::*;
 use bytes::Bytes;
 use rong_rt::http::{NetworkBodyChunk, NetworkOwner, NetworkRequestEnd, NetworkRequestId};
@@ -615,4 +616,101 @@ fn a_chain_whose_last_hop_is_unknown_is_not_replayed_as_a_redirect() {
         0,
         "{scenario}"
     );
+}
+
+#[test]
+fn a_live_feed_streams_events_and_keeps_bodies_without_a_recording() {
+    let mut state = State::new();
+    // A request finished before the feed starts is its backlog, bodiless.
+    fetch(&mut state, 1, "https://api.test/old");
+    head(&mut state, 1, 200, &[("content-type", "text/plain")]);
+    chunk(&mut state, 1, b"old");
+    end(&mut state, 1, NetworkOutcome::Completed);
+
+    let now = Instant::now();
+    state.watch(true, now);
+    assert!(state.wants_bodies());
+    assert!(state.dev.is_none(), "watching never starts a recording");
+    let backlog = state.watch.as_mut().unwrap().drain();
+    assert_eq!(backlog[0]["type"], "end");
+    assert_eq!(backlog[0]["past"], true);
+
+    fetch(&mut state, 2, "https://api.test/me?token=abc");
+    head(&mut state, 2, 200, &[("content-type", "application/json")]);
+    chunk(&mut state, 2, br#"{"user":"#);
+    chunk(&mut state, 2, br#""ada"}"#);
+    end(&mut state, 2, NetworkOutcome::Completed);
+
+    let events = state.watch.as_mut().unwrap().drain();
+    let types: Vec<&str> = events.iter().map(|e| e["type"].as_str().unwrap()).collect();
+    // Queued chunks of one request coalesce into one `data` event.
+    assert_eq!(types, ["request", "response", "data", "end"]);
+    assert_eq!(events[0]["url"], "https://api.test/me?token=***");
+    assert_eq!(events[0]["requestHeaders"][1][1], "***");
+    assert_eq!(events[2]["bytes"], 14);
+    // Bodies stay out of the stream and are kept for DevTools to ask for.
+    assert!(events[3].get("responseBody").is_none());
+    let kept = state.watch.as_ref().unwrap().body(2).unwrap();
+    assert_eq!(kept["responseBody"]["user"], "ada");
+    assert!(state.watch.as_ref().unwrap().body(1).is_none());
+    assert!(state.watch.as_mut().unwrap().drain().is_empty());
+}
+
+#[test]
+fn an_event_stream_reaches_the_live_feed_frame_by_frame() {
+    let mut state = State::new();
+    state.watch(false, Instant::now());
+    state.apply(
+        start_event(1, Some(APP), "sse", "https://api.test/s"),
+        false,
+        0,
+    );
+    head(&mut state, 1, 200, &[("content-type", "text/event-stream")]);
+    chunk(
+        &mut state,
+        1,
+        b"event: delta\ndata: {\"t\":\"he\",\"api_key\":\"k\"}\n\nda",
+    );
+    let first = state.watch.as_mut().unwrap().drain();
+    let frames: Vec<&Value> = first.iter().filter(|e| e["type"] == "sse").collect();
+    assert_eq!(frames.len(), 1, "a half frame waits for the rest");
+    assert_eq!(frames[0]["event"], "delta");
+    assert_eq!(frames[0]["data"]["t"], "he");
+    assert_eq!(frames[0]["data"]["api_key"], "***");
+    assert_eq!(frames[0]["requestId"], 1);
+
+    chunk(&mut state, 1, b"ta: done\r\n\r\n: keep-alive\n\n");
+    end(&mut state, 1, NetworkOutcome::Completed);
+    let rest = state.watch.as_mut().unwrap().drain();
+    let frames: Vec<&Value> = rest.iter().filter(|e| e["type"] == "sse").collect();
+    assert_eq!(frames.len(), 1, "a comment is no frame");
+    assert_eq!(frames[0]["data"], "done");
+    // Streamed frames are not repeated at the end; the kept body has all.
+    let end = rest.iter().find(|e| e["type"] == "end").unwrap();
+    assert!(end.get("events").is_none());
+    let kept = state.watch.as_ref().unwrap().body(1).unwrap();
+    assert_eq!(kept["events"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn a_live_feed_ends_when_nobody_renews_it() {
+    let mut state = State::new();
+    let now = Instant::now();
+    state.watch(false, now);
+    assert!(state.wants_bodies());
+    state.expire_watch(now + WATCH_LEASE + Duration::from_millis(1));
+    assert!(state.watch.is_none());
+    assert!(!state.wants_bodies());
+}
+
+#[test]
+fn a_full_live_queue_says_how_much_it_dropped() {
+    let mut watch = Watch::new(Instant::now());
+    for id in 0..(MAX_QUEUED_EVENTS as u64 + 10) {
+        watch.push(json!({ "type": "request", "id": id }));
+    }
+    let events = watch.drain();
+    assert_eq!(events[0], json!({ "type": "lost", "events": 10 }));
+    assert_eq!(events[1]["id"], 10);
+    assert!(watch.drain().is_empty());
 }

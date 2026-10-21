@@ -217,6 +217,21 @@ pub mod methods {
             pub const RECORD_START: &str = "session.network.record.start";
             /// Stop the capture. Returns `{ dropped, requests }`.
             pub const RECORD_STOP: &str = "session.network.record.stop";
+            /// Start or renew the live network feed (`lxdev network
+            /// devtools`). Args: `{ backlog? }`, queue the newest finished
+            /// requests first. Returns `{ leaseMs }`; the feed ends a lease
+            /// after the last renewal or on [`UNWATCH`]. Its events stream
+            /// as `network` session events, not in the reply.
+            pub const WATCH: &str = "session.network.watch";
+            /// A finished request the live feed showed, bodies included.
+            /// Args: `{ id }`.
+            pub const BODY: &str = "session.network.body";
+            /// End the live network feed. Returns `{ stopped }`.
+            pub const UNWATCH: &str = "session.network.unwatch";
+            /// Answered from memory without touching the app: neither the dev
+            /// server nor the host queues them behind another command, so a
+            /// long `eval` never ends the live feed's lease or stalls a body.
+            pub const IMMEDIATE: &[&str] = &[WATCH, UNWATCH, BODY];
             /// Load an lxapp's mock handlers and its `mocks/config.json`
             /// selection. Args: `{ appid, source, keys, config?: { mock,
             /// overrides }, baseline?: "all" | "none" }` — `source` is the
@@ -621,6 +636,8 @@ pub mod dev_session {
 
     pub mod event_kinds {
         pub const LOG: &str = "log";
+        /// One live network feed event (`session.network.watch`).
+        pub const NETWORK: &str = "network";
     }
 
     /// Extract the session auth token from a dev websocket URL's `?token=` query.
@@ -698,6 +715,16 @@ pub mod dev_session {
                 kind: event_kinds::LOG.to_string(),
                 data: serde_json::to_value(log)?,
             })
+        }
+
+        /// A live network feed event; `data` is the event.
+        pub fn network(timestamp_ms: u64, data: serde_json::Value) -> Self {
+            Self {
+                timestamp_ms,
+                origin: event_kinds::NETWORK.to_string(),
+                kind: event_kinds::NETWORK.to_string(),
+                data,
+            }
         }
 
         pub fn as_log(&self) -> Result<Option<DevSessionLog>, serde_json::Error> {

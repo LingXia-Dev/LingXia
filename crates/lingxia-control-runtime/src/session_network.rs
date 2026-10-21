@@ -82,6 +82,14 @@ pub(crate) fn handle(handler: &str, args: Option<Value>) -> Result<Option<Value>
             }
             Ok(Some(status))
         }
+        method::WATCH => Ok(Some(network::watch(args["backlog"] == true))),
+        method::BODY => {
+            let id = args["id"].as_u64().ok_or("(usage): id is required")?;
+            network::live_body(id)
+                .map(Some)
+                .ok_or_else(|| format!("(not_found): request {id} has no kept body"))
+        }
+        method::UNWATCH => Ok(Some(json!({ "stopped": network::unwatch() }))),
         method::RECORD_STOP => network::record_stop()
             .map(Some)
             .map_err(|err| format!("(usage): {err}")),

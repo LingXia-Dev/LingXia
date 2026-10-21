@@ -800,18 +800,22 @@ impl DevServerState {
     }
 
     /// The locks relaying `method` holds until its response: every request
-    /// takes the command lock; a test start first waits out a rebuild in
-    /// progress (see `build_lock`). Always build lock, then command lock.
+    /// but the immediate ones (`network::IMMEDIATE`) takes the command lock;
+    /// a test start first waits out a rebuild in progress (see
+    /// `build_lock`). Always build lock, then command lock.
     fn lock_for_relay(
         &self,
         method: &str,
     ) -> (
         Option<std::sync::MutexGuard<'_, ()>>,
-        std::sync::MutexGuard<'_, ()>,
+        Option<std::sync::MutexGuard<'_, ()>>,
     ) {
+        if lingxia_control_protocol::methods::session::network::IMMEDIATE.contains(&method) {
+            return (None, None);
+        }
         let build = (method == lingxia_control_protocol::methods::session::test::START)
             .then(|| self.lock_build());
-        (build, self.lock_command_forwarding())
+        (build, Some(self.lock_command_forwarding()))
     }
 
     fn request_shutdown(&self) {
@@ -2651,6 +2655,33 @@ mod tests {
         start
             .recv_timeout(Duration::from_secs(5))
             .expect("the start is relayed once the rebuild ends");
+    }
+
+    #[test]
+    fn the_live_network_feed_never_waits_behind_a_command() {
+        use lingxia_control_protocol::methods::{lxapp, session::network};
+        let state = Arc::new(authenticated_state());
+        let busy = state.lock_command_forwarding();
+        let relay = |method: &'static str| {
+            let state = Arc::clone(&state);
+            let (tx, rx) = mpsc::channel();
+            std::thread::spawn(move || {
+                let _guards = state.lock_for_relay(method);
+                tx.send(()).unwrap();
+            });
+            rx
+        };
+        for method in network::IMMEDIATE {
+            relay(method)
+                .recv_timeout(Duration::from_secs(5))
+                .expect("an immediate request is relayed while a command runs");
+        }
+        let other = relay(lxapp::EVAL);
+        assert!(other.recv_timeout(Duration::from_millis(200)).is_err());
+        drop(busy);
+        other
+            .recv_timeout(Duration::from_secs(5))
+            .expect("other commands still take turns");
     }
 
     fn pause(lease: &str, ttl_ms: u64, run_id: Option<&str>) -> WatchPauseArgs {

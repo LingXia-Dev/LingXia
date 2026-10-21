@@ -338,11 +338,32 @@ pub fn record_stop() -> Result<Value, String> {
     }))
 }
 
+/// Start or renew the live feed `lxdev network devtools` shows.
+pub fn watch(backlog: bool) -> Value {
+    observer::watch(backlog)
+}
+
+/// Live events for the dev session bridge to stream.
+pub fn drain_live() -> Vec<Value> {
+    observer::drain_live()
+}
+
+/// A finished request the live feed showed, bodies included.
+pub fn live_body(id: u64) -> Option<Value> {
+    observer::live_body(id)
+}
+
+/// End the live feed. Returns whether one ran.
+pub fn unwatch() -> bool {
+    observer::unwatch()
+}
+
 /// The dev session that owned the scenario went away: its scenario,
 /// recording and mocks go with it (the next session loads its own).
 pub fn session_ended() {
     let had_scenario = end_scenario(DevClearReason::SessionEnded);
     let had_recording = observer::drop_recording(DEV_SESSION_OWNER);
+    observer::unwatch();
     let had_mocks = registry::with_registry(|routes| {
         let had = !routes.mocks.sets.is_empty();
         routes.mocks.clear();

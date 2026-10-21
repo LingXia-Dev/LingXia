@@ -297,6 +297,11 @@ fn bridge_loop(
             send_log_batch(websocket, &batch)?;
         }
 
+        // The live network feed rides the same stream as logs, so lxdev
+        // follows it from the session log without a command per update.
+        #[cfg(feature = "test-runtime")]
+        send_network_events(websocket)?;
+
         while let Some(response) = dispatcher.answered() {
             send_wire_message(websocket, &DevSessionMessage::Response(response))?;
         }
@@ -363,12 +368,14 @@ fn is_retryable_read_error(err: &std::io::Error) -> bool {
 
 /// Runs requests off the bridge thread, one at a time in arrival order, so
 /// a long one (an `eval` that awaits) does not hold logs, the live network
-/// feed, companion replies and heartbeats behind it.
+/// feed, companion replies and heartbeats behind it. The immediate ones
+/// (`network::IMMEDIATE`) are answered on the bridge thread, ahead of it.
 struct Dispatcher {
     dispatch: fn(ControlRequest) -> ControlResponse,
     requests: Option<std::sync::mpsc::Sender<ControlRequest>>,
     answers: std::sync::mpsc::Receiver<ControlResponse>,
-    /// Answers made on the bridge thread when the worker could not start.
+    /// Answers made on the bridge thread: immediate requests, and all of
+    /// them when the worker could not start.
     inline: std::cell::RefCell<std::collections::VecDeque<ControlResponse>>,
 }
 
@@ -401,7 +408,10 @@ impl Dispatcher {
     }
 
     fn submit(&self, request: ControlRequest) {
+        let immediate = lingxia_control_protocol::methods::session::network::IMMEDIATE
+            .contains(&request.method.as_str());
         let request = match &self.requests {
+            Some(_) if immediate => request,
             Some(requests) => match requests.send(request) {
                 Ok(()) => return,
                 Err(std::sync::mpsc::SendError(request)) => request,
@@ -456,6 +466,31 @@ fn send_log_batch(
             events: logs.iter().map(dev_session_log_event).collect(),
         },
     )
+}
+
+#[cfg(feature = "test-runtime")]
+fn send_network_events(
+    websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
+) -> Result<(), String> {
+    let events = lingxia_automation::runtime::network::drain_live();
+    if events.is_empty() {
+        return Ok(());
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_millis() as u64);
+    for chunk in events.chunks(128) {
+        send_wire_message(
+            websocket,
+            &DevSessionMessage::EventBatch {
+                events: chunk
+                    .iter()
+                    .map(|event| DevSessionEvent::network(now, event.clone()))
+                    .collect(),
+            },
+        )?;
+    }
+    Ok(())
 }
 
 fn dev_session_log_event(value: &LogMessage) -> DevSessionEvent {
@@ -570,6 +605,15 @@ mod tests {
             answered.extend(ids(&dispatcher));
         }
         assert_eq!(answered, ["slow", "b"]);
+    }
+
+    #[test]
+    fn the_live_feed_is_answered_while_a_slow_request_runs() {
+        use lingxia_control_protocol::methods::session::network;
+        let dispatcher = Dispatcher::with(stand_in);
+        dispatcher.submit(request("slow", "slow"));
+        dispatcher.submit(request("watch", network::WATCH));
+        assert_eq!(ids(&dispatcher), ["watch"]);
     }
 
     #[test]

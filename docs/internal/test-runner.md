@@ -983,6 +983,22 @@ redaction live in `capture.rs`.
   It does not write a scenario. Placeholders are created before `RECORD_STOP`
   and renamed after writing; on a write failure it prints the JSON to stdout
   and fails.
+- Live feed (`observer/watch.rs`, `session.network.watch { backlog? }`):
+  request/response/data/`sse`/end events queued on the host, independent
+  of recordings — watching never starts, stops or fills one. The dev bridge
+  drains the queue every turn into `EventBatch` events of kind `network`,
+  which `lingxia dev` persists to the session log; `lxdev network devtools`
+  follows that log like `logs -f` and serves the CDP `Network` domain on
+  loopback for Chrome's bundled DevTools. The host opens no port. Events
+  carry no bodies: finished requests keep theirs on the host (bounded) for
+  `session.network.body { id }`. Event-stream frames go out as they complete
+  unless the stream is encoded. The feed ends 30s after the last renewal,
+  on `UNWATCH`, or with the session.
+- `network::IMMEDIATE` (watch, unwatch, body) never queues: the dev server
+  relays them without the command lock and the host bridge answers them on
+  its own thread. Every other request runs on the bridge's dispatch worker,
+  one at a time in arrival order, so a long command holds back neither
+  these nor the event stream (logs included).
 - A pass-through `Rong.SSE` (no route, or `patchJson`) is the native client;
   its call-log entry settles on the first `next()` (200) or its rejection
   (`settleOnOpen`), so reports never show a null status for it.
