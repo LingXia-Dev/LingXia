@@ -2484,6 +2484,7 @@ dependencies = [
  "lingxia-device-io",
  "lingxia-log",
  "lingxia-lxapp",
+ "lingxia-platform",
  "log",
  "rustls",
  "serde",

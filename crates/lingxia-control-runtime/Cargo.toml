@@ -34,7 +34,9 @@ lingxia-app-context = { workspace = true }
 lingxia-browser = { workspace = true, optional = true }
 lingxia-device-io = { workspace = true, optional = true }
 lingxia-log = { workspace = true }
-lxapp = { workspace = true, default-features = false }
+lingxia-platform = { workspace = true }
+# `automation`: the lower half the devtool commands share with lx.automation.
+lxapp = { workspace = true, default-features = false, features = ["automation"] }
 log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

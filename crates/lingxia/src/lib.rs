@@ -173,29 +173,17 @@ mod bootstrap;
 mod capabilities;
 mod display_language_host;
 pub mod splash;
-/// LxApp devtool helpers for host-side inspection and automation.
+/// What a development host calls: the dev session's bundles, and the
+/// simulated device. The devtool commands themselves are implemented in
+/// `lingxia-control-runtime`.
 #[cfg(feature = "devtool")]
 pub mod dev {
     pub use crate::applink::inject as inject_applink;
     pub use crate::devtool::{
         Appearance, DeviceController, DeviceEntry, DeviceState, LxAppDevConfig, LxAppDevIdentity,
-        LxAppDevPageInfo, LxAppDevPageWaitResult, LxAppDevPageWaitState, connect_dev_server,
-        dev_session_connected, device_get, device_list, device_set, focus_app_window,
-        install_lxapp_dev_config, install_lxapp_dev_config_from_env, list_app_windows,
-        lxapp_dev_nav_back, lxapp_dev_nav_redirect, lxapp_dev_nav_relaunch,
-        lxapp_dev_nav_switch_tab, lxapp_dev_nav_to, lxapp_dev_page_back, lxapp_dev_page_click,
-        lxapp_dev_page_current, lxapp_dev_page_eval, lxapp_dev_page_fill, lxapp_dev_page_info,
-        lxapp_dev_page_input_supported, lxapp_dev_page_list, lxapp_dev_page_press,
-        lxapp_dev_page_query, lxapp_dev_page_screenshot, lxapp_dev_page_screenshot_with_info,
-        lxapp_dev_page_scroll, lxapp_dev_page_scroll_to, lxapp_dev_page_type, lxapp_dev_page_wait,
-        lxapp_dev_restart, perform_app_keyboard, perform_app_mouse, register_device_controller,
-        take_app_screenshot, take_app_screenshot_with_info,
-    };
-    pub use lingxia_platform::traits::keyboard::{
-        AppKeyboardAction, AppKeyboardModifier, AppKeyboardRequest, AppKeyboardResult,
-    };
-    pub use lingxia_platform::traits::mouse::{
-        AppMouseAction, AppMouseButton, AppMouseRequest, AppMouseResult,
+        connect_dev_server, dev_session_connected, device_get, device_list, device_set,
+        install_lxapp_dev_config, install_lxapp_dev_config_from_env,
+        lxapp_dev_page_input_supported, register_device_controller, sync_dev_bundle,
     };
     pub use lxapp::device::request_device_set;
 }
