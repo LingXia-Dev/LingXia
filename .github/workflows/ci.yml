@@ -547,6 +547,13 @@ jobs:
       - name: Verify the showcase native lockfile matches its manifest
         run: cargo metadata --locked --format-version 1 --manifest-path examples/lingxia-showcase/native/Cargo.toml > /dev/null
 
+      # docs/internal/crate-layout.md: a crate depends only on its own layer
+      # or below, and every crate under crates/ has a layer.
+      - name: Verify crate layers
+        run: |
+          node --test scripts/ci/check-crate-layers.test.mjs
+          cargo metadata --format-version 1 --no-deps | node scripts/ci/check-crate-layers.mjs
+
       # Byte-compares the committed Rust + TS outputs against a fresh
       # regeneration and fails on drift — catches "edited yaml but forgot to
       # run `gen i18n`". The native resource bundles are gitignored, so

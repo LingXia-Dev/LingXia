@@ -22,6 +22,7 @@ recoverable from the code alone.
 - [`bridge-protocol.md`](docs/internal/bridge-protocol.md) — normative wire contract for `LegacyV2` / `RequiredV3`.
 - [`webview-lifecycle.md`](docs/internal/webview-lifecycle.md) — WebView creation, presentation, and teardown across platforms.
 - [`lingxia-facade-boundary.md`](docs/internal/lingxia-facade-boundary.md) — what stays behind the `lingxia` crate facade.
+- [`crate-layout.md`](docs/internal/crate-layout.md) — crate layers, dependency rules, and which crate owns what. Read before adding a crate or moving code between crates.
 - [`shell-ui-spec.md`](docs/internal/shell-ui-spec.md) · [`view-environment-spec.md`](docs/internal/view-environment-spec.md) — surface layout and View environment contracts.
 - [`test-runner.md`](docs/internal/test-runner.md) — test isolation, deadlines, result schema, and interrupted-run reporting.
 - [`companion-protocol.md`](docs/internal/companion-protocol.md) — how scenario `function` rules and the Function half of mocks reach the dev session's companion: capabilities, `scenario.*` and `mock.*` messages, owners and their lifetime. Read before changing the relay or implementing a companion.
