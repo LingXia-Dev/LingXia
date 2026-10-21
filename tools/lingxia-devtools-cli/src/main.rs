@@ -6,6 +6,7 @@ mod logs;
 mod lxapp;
 mod mock;
 mod network;
+mod network_devtools;
 mod project;
 mod runner;
 mod screenshot;
