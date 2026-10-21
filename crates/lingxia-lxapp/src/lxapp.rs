@@ -3566,7 +3566,7 @@ impl LxApp {
             }
             {
                 let _transition = page.reset_transition_guard();
-                page.prepare_for_service_restart();
+                page.prepare_for_cold_restart();
             }
             let (ack_tx, ack_rx) = oneshot::channel::<Result<(), String>>();
             self.executor.create_page_svc_with_ack(

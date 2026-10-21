@@ -711,7 +711,10 @@ pub async fn lxapp_dev_restart(
                 let load = *page.subscribe_loaded().borrow();
                 let reload_finished =
                     page.instance_id_string() != previous_page_id || load != previous_load;
-                if reload_finished && state.ready {
+                // A page hidden at restart (covered by a tab, window
+                // inactive) is reloaded once its new onLoad lands; its
+                // onReady belongs to the next show.
+                if reload_finished && (state.ready || page.loaded_while_hidden()) {
                     if let Some(device) = &simulated_device {
                         device_set(
                             Some(&device.id),
