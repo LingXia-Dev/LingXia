@@ -984,11 +984,36 @@ impl PageInstance {
     pub(crate) fn prepare_for_service_restart(&self) {
         self.cancel_bridge_work();
         if let Ok(mut state) = self.inner.state.lock() {
-            // reset_webview_lifecycle_state clears the flag, but a parked view
-            // stays parked across the restart.
-            let parked = state.parked;
-            Self::reset_webview_lifecycle_state(&mut state);
-            state.parked = parked;
+            Self::reset_for_service_restart(&mut state);
+        }
+    }
+
+    /// A cold restart replaces Logic under a page that stays where it is.
+    pub(crate) fn prepare_for_cold_restart(&self) {
+        self.cancel_bridge_work();
+        if let Ok(mut state) = self.inner.state.lock() {
+            Self::reset_for_cold_restart(&mut state);
+        }
+    }
+
+    fn reset_for_service_restart(state: &mut PageState) {
+        // reset_webview_lifecycle_state clears the flag, but a parked view
+        // stays parked across the restart.
+        let parked = state.parked;
+        Self::reset_webview_lifecycle_state(state);
+        state.parked = parked;
+    }
+
+    /// An entered page keeps its entry: the new Logic owes it `onLoad` even
+    /// while it is hidden (a covering tab, an inactive window, a page below
+    /// the top). Rewound to Idle, a hidden page reads as a preloaded tab that
+    /// was never entered — the handshake will not boot it and a later show
+    /// cannot either, so it never loads again.
+    fn reset_for_cold_restart(state: &mut PageState) {
+        let entered = Self::has_open_entry(state);
+        Self::reset_for_service_restart(state);
+        if entered {
+            state.entry = EntryPhase::LoadOwed;
         }
     }
 
@@ -1153,12 +1178,25 @@ impl PageInstance {
         self.inner
             .state
             .lock()
-            .map(|state| {
-                state.entry != EntryPhase::Idle
-                    && state.reset == PageReset::None
-                    && state.event != Some(PageLifecycleEvent::OnUnload)
-            })
+            .map(|state| Self::has_open_entry(&state))
             .unwrap_or(true)
+    }
+
+    fn has_open_entry(state: &PageState) -> bool {
+        state.entry != EntryPhase::Idle
+            && state.reset == PageReset::None
+            && state.event != Some(PageLifecycleEvent::OnUnload)
+    }
+
+    /// The document finished and `onLoad` was delivered, but the page is not
+    /// on screen, so `onReady` is owed to its next show. A reload of such a
+    /// page is complete; waiting for ready would wait for the user.
+    pub fn loaded_while_hidden(&self) -> bool {
+        self.inner.state.lock().is_ok_and(|state| {
+            state.entry == EntryPhase::Loaded
+                && state.visibility == Visibility::Hidden
+                && state.render_status == PageRenderStatus::Finished
+        })
     }
 
     pub(crate) fn switch_tab_owes_on_load(&self) -> bool {
@@ -2991,6 +3029,68 @@ mod tests {
         assert_ne!(state.visibility, Visibility::Shown);
         assert!(!state.ready_dispatched);
         assert_eq!(state.render_status, PageRenderStatus::Unstarted);
+    }
+
+    /// Cold restart while the entered page is hidden — a covering tab, an
+    /// inactive window. The new Logic loads it at once and shows it, with
+    /// `onReady`, when the page is next shown.
+    #[test]
+    fn cold_restart_reloads_a_hidden_entered_page_and_readies_it_on_show() {
+        let mut state = test_page_state();
+        state.entry = EntryPhase::Loaded;
+        state.event = Some(PageLifecycleEvent::OnHide);
+        state.bridge_ready = true;
+        state.ready_dispatched = true;
+        state.render_status = PageRenderStatus::Finished;
+
+        PageInstance::reset_for_cold_restart(&mut state);
+        assert_eq!(state.entry, EntryPhase::LoadOwed);
+        assert_eq!(state.visibility, Visibility::Hidden);
+
+        // The reloaded document comes up while still hidden.
+        let mut events = Vec::new();
+        state.bridge_ready = true;
+        state.render_status = PageRenderStatus::Finished;
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+        assert_eq!(
+            events,
+            vec![(PageLifecycleEvent::OnLoad, Some("{}".to_string()))]
+        );
+
+        // Shown again: the cascade a dispatched OnShow runs.
+        let mut events = Vec::new();
+        state.visibility = Visibility::ShowOwed;
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+        assert_eq!(
+            events,
+            vec![
+                (PageLifecycleEvent::OnShow, None),
+                (PageLifecycleEvent::OnReady, None)
+            ]
+        );
+        assert!(state.ready_dispatched);
+    }
+
+    #[test]
+    fn cold_restart_leaves_unentered_and_unloaded_pages_idle() {
+        // A preloaded tab never entered.
+        let mut preloaded = test_page_state();
+        PageInstance::reset_for_cold_restart(&mut preloaded);
+        assert_eq!(preloaded.entry, EntryPhase::Idle);
+
+        // A page that left keeps its delivered entry but owes nothing.
+        let mut unloaded = test_page_state();
+        unloaded.entry = EntryPhase::Loaded;
+        unloaded.event = Some(PageLifecycleEvent::OnUnload);
+        PageInstance::reset_for_cold_restart(&mut unloaded);
+        assert_eq!(unloaded.entry, EntryPhase::Idle);
+
+        // A page awaiting its reset is rebuilt by its next entry.
+        let mut resetting = test_page_state();
+        resetting.entry = EntryPhase::Loaded;
+        resetting.reset = PageReset::Pending;
+        PageInstance::reset_for_cold_restart(&mut resetting);
+        assert_eq!(resetting.entry, EntryPhase::Idle);
     }
 
     #[test]
