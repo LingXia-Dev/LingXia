@@ -21,6 +21,7 @@ mod bridge_upstream;
 mod browser;
 #[cfg(feature = "computer-use")]
 mod desktop;
+mod devtool;
 mod extra;
 #[cfg(feature = "local-control")]
 pub mod local_control;

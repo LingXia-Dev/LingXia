@@ -191,12 +191,12 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
                     timeout,
                 )
                 .await?;
-                lingxia::dev::lxapp_dev_page_wait(
+                crate::devtool::lxapp_dev_page_wait(
                     Some(&app.appid),
                     Some(&instance_id),
                     None,
                     None,
-                    lingxia::dev::LxAppDevPageWaitState::Ready,
+                    crate::devtool::LxAppDevPageWaitState::Ready,
                     deadline.saturating_duration_since(tokio::time::Instant::now()),
                 )
                 .await
@@ -219,7 +219,7 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
         methods::lxapp::RESTART => {
             let args: AppArgs = parse_args(handler, args)?;
             let appid = resolve_appid(&args.appid)?;
-            let page = run_async(lingxia::dev::lxapp_dev_restart(
+            let page = run_async(crate::devtool::lxapp_dev_restart(
                 &appid,
                 Duration::from_secs(15),
             ))?;

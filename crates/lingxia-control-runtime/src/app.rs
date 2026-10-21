@@ -29,7 +29,7 @@ fn handle_app_command_impl(handler: &str, args: Option<Value>) -> Result<Option<
                 None => AppScreenshotArgs::default(),
             };
             let window_id = parsed.window_id;
-            let (window, bytes) = run_async(lingxia::dev::take_app_screenshot_with_info(
+            let (window, bytes) = run_async(crate::devtool::take_app_screenshot_with_info(
                 window_id.as_deref(),
             ))?;
             let (pixel_width, pixel_height) = png_dimensions(&bytes).unwrap_or_default();
@@ -52,29 +52,29 @@ fn handle_app_command_impl(handler: &str, args: Option<Value>) -> Result<Option<
             )))
         }
         methods::app::WINDOWS => {
-            let windows = run_async(lingxia::dev::list_app_windows())?;
+            let windows = run_async(crate::devtool::list_app_windows())?;
             serde_json::to_value(windows)
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
         methods::app::MOUSE => {
-            let request: lingxia::dev::AppMouseRequest = match args {
+            let request: lingxia_platform::traits::mouse::AppMouseRequest = match args {
                 Some(value) => serde_json::from_value(value)
                     .map_err(|e| format!("invalid args for {}: {}", handler, e))?,
                 None => return Err(format!("missing args for {}", handler)),
             };
-            let result = run_async(lingxia::dev::perform_app_mouse(request))?;
+            let result = run_async(crate::devtool::perform_app_mouse(request))?;
             serde_json::to_value(result)
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
         methods::app::KEYBOARD => {
-            let request: lingxia::dev::AppKeyboardRequest = match args {
+            let request: lingxia_platform::traits::keyboard::AppKeyboardRequest = match args {
                 Some(value) => serde_json::from_value(value)
                     .map_err(|e| format!("invalid args for {}: {}", handler, e))?,
                 None => return Err(format!("missing args for {}", handler)),
             };
-            let result = run_async(lingxia::dev::perform_app_keyboard(request))?;
+            let result = run_async(crate::devtool::perform_app_keyboard(request))?;
             serde_json::to_value(result)
                 .map(Some)
                 .map_err(|err| err.to_string())
@@ -85,7 +85,9 @@ fn handle_app_command_impl(handler: &str, args: Option<Value>) -> Result<Option<
                     .map_err(|e| format!("invalid args for {}: {}", handler, e))?,
                 None => AppScreenshotArgs::default(),
             };
-            let window = run_async(lingxia::dev::focus_app_window(parsed.window_id.as_deref()))?;
+            let window = run_async(crate::devtool::focus_app_window(
+                parsed.window_id.as_deref(),
+            ))?;
             serde_json::to_value(window)
                 .map(Some)
                 .map_err(|err| err.to_string())

@@ -21,7 +21,7 @@ fn handle_lxapp_nav_command_impl(
     match handler {
         methods::lxapp_nav::TO => {
             let args: PageNavArgs = parse_args(handler, args)?;
-            let info = run_async(lingxia::dev::lxapp_dev_nav_to(
+            let info = run_async(crate::devtool::lxapp_dev_nav_to(
                 args.appid.as_deref(),
                 &args.page,
                 args.query,
@@ -32,7 +32,7 @@ fn handle_lxapp_nav_command_impl(
         }
         methods::lxapp_nav::REDIRECT => {
             let args: PageNavArgs = parse_args(handler, args)?;
-            let info = run_async(lingxia::dev::lxapp_dev_nav_redirect(
+            let info = run_async(crate::devtool::lxapp_dev_nav_redirect(
                 args.appid.as_deref(),
                 &args.page,
                 args.query,
@@ -43,7 +43,7 @@ fn handle_lxapp_nav_command_impl(
         }
         methods::lxapp_nav::SWITCH_TAB => {
             let args: PageNavArgs = parse_args(handler, args)?;
-            let info = run_async(lingxia::dev::lxapp_dev_nav_switch_tab(
+            let info = run_async(crate::devtool::lxapp_dev_nav_switch_tab(
                 args.appid.as_deref(),
                 &args.page,
                 args.query,
@@ -54,7 +54,7 @@ fn handle_lxapp_nav_command_impl(
         }
         methods::lxapp_nav::RELAUNCH => {
             let args: PageNavArgs = parse_args(handler, args)?;
-            let info = run_async(lingxia::dev::lxapp_dev_nav_relaunch(
+            let info = run_async(crate::devtool::lxapp_dev_nav_relaunch(
                 args.appid.as_deref(),
                 &args.page,
                 args.query,
@@ -65,7 +65,7 @@ fn handle_lxapp_nav_command_impl(
         }
         methods::lxapp_nav::BACK => {
             let args: BackArgs = parse_args(handler, args)?;
-            let info = run_async(lingxia::dev::lxapp_dev_nav_back(
+            let info = run_async(crate::devtool::lxapp_dev_nav_back(
                 args.appid.as_deref(),
                 args.delta.unwrap_or(1),
             ))?;
