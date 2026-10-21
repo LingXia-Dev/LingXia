@@ -571,9 +571,10 @@ Pins are the user's quick entries for lxapps and websites.
   MUST appear as its own row in the sidebar main switcher. The Pin tile remains
   a launch shortcut; the workspace row is a separate, durable control entry for
   selecting and closing the lxapp. On pointer hover, the row MUST expose an
-  explicit ellipsis that opens the same provider-backed context menu available
-  from right-click; lifecycle controls must not be discoverable only by a hidden
-  gesture. Removing the Pin MUST NOT remove a live workspace row. If the same lxapp is live as an aside,
+  explicit vertical ellipsis that opens the same provider-backed context menu
+  available from right-click; lifecycle controls must not be discoverable only
+  by a hidden gesture. Row controls (ellipsis, close, disclosure) show a
+  circular hover wash, and the menu follows the chrome light/dark scheme. Removing the Pin MUST NOT remove a live workspace row. If the same lxapp is live as an aside,
   the host promotes that instance to main in place, exactly as a sidebar drop
   does (§4.2); the Pin does not inherit
   the app's declared aside default. Sidebar actions and

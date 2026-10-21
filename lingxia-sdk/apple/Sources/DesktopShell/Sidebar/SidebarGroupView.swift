@@ -212,6 +212,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
     private var itemsHeightConstraint: NSLayoutConstraint?
     private var headerTrackingArea: NSTrackingArea?
     private var closeButtonTrackingArea: NSTrackingArea?
+    private var menuButtonTrackingArea: NSTrackingArea?
     private var isHeaderHovered = false
     private var isCloseHovered = false
     private var isRenaming = false
@@ -280,6 +281,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         appNameLabel.textColor = LxAppHostTheme.foreground
         chevronIndicator.contentTintColor = LxAppHostTheme.mutedForeground
         closeButton.contentTintColor = LxAppHostTheme.mutedForeground.withAlphaComponent(0.9)
+        menuButton.contentTintColor = LxAppHostTheme.mutedForeground.withAlphaComponent(0.9)
         // Desktop never applies tabBar.style.backgroundColor; yaml theme wins.
         itemsBackground.layer?.backgroundColor = themeCGColor((itemsAreaColor ?? NSColor.clear))
     }
@@ -388,10 +390,13 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         headerView.closeButton = closeButton
 
         menuButton.translatesAutoresizingMaskIntoConstraints = false
-        menuButton.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "More actions")
+        menuButton.image = Self.verticalEllipsisImage()
         menuButton.isBordered = false
         menuButton.bezelStyle = .regularSquare
         menuButton.imagePosition = .imageOnly
+        menuButton.imageScaling = .scaleProportionallyDown
+        menuButton.wantsLayer = true
+        menuButton.layer?.cornerRadius = Layout.closeButtonSize / 2
         menuButton.target = self
         menuButton.action = #selector(menuClicked)
         menuButton.isHidden = true
@@ -835,6 +840,31 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         onCloseRequested?(appId)
     }
 
+    /// SF Symbols has no vertical ellipsis on macOS 12+, so turn `ellipsis`
+    /// a quarter. Stays a template so the button tints it.
+    private static func verticalEllipsisImage() -> NSImage? {
+        guard let base = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "More actions")?
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .bold))
+        else {
+            return nil
+        }
+        let image = NSImage(size: NSSize(width: base.size.height, height: base.size.width), flipped: false) { rect in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            context.translateBy(x: rect.midX, y: rect.midY)
+            context.rotate(by: .pi / 2)
+            base.draw(in: NSRect(
+                x: -base.size.width / 2,
+                y: -base.size.height / 2,
+                width: base.size.width,
+                height: base.size.height
+            ))
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = base.accessibilityDescription
+        return image
+    }
+
     @objc private func menuClicked() {
         guard let event = NSApp.currentEvent else { return }
         requestContextMenu(with: event)
@@ -877,6 +907,24 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         )
         closeButton.addTrackingArea(closeArea)
         closeButtonTrackingArea = closeArea
+
+        if let existing = menuButtonTrackingArea {
+            menuButton.removeTrackingArea(existing)
+        }
+        let menuArea = NSTrackingArea(
+            rect: menuButton.bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: ["zone": "menu"]
+        )
+        menuButton.addTrackingArea(menuArea)
+        menuButtonTrackingArea = menuArea
+    }
+
+    /// The group palette's header colors are fixed dark tints, which vanish on
+    /// a dark sidebar; the host foreground flips with the scheme.
+    private func controlHoverColor() -> CGColor {
+        themeCGColor(LxAppHostTheme.foreground.withAlphaComponent(0.15))
     }
 
     override func mouseEntered(with event: NSEvent) {
@@ -890,7 +938,9 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             }
         } else if zone == "close" {
             isCloseHovered = true
-            closeButton.layer?.backgroundColor = themeCGColor(palette.headerText.withAlphaComponent(0.15))
+            closeButton.layer?.backgroundColor = controlHoverColor()
+        } else if zone == "menu" {
+            menuButton.layer?.backgroundColor = controlHoverColor()
         }
     }
 
@@ -902,9 +952,12 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             closeButton.isHidden = true
             menuButton.isHidden = true
             closeButton.layer?.backgroundColor = nil
+            menuButton.layer?.backgroundColor = nil
         } else if zone == "close" {
             isCloseHovered = false
             closeButton.layer?.backgroundColor = nil
+        } else if zone == "menu" {
+            menuButton.layer?.backgroundColor = nil
         }
     }
 

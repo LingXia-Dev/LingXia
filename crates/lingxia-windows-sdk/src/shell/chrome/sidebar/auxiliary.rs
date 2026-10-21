@@ -252,7 +252,7 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_menu_rect(
         item_rect.right
     };
     normalize_rect(RECT {
-        left: trailing - sidebar_browser_close_size(),
+        left: trailing - sidebar_row_menu_width(),
         top: item_rect.top,
         right: trailing,
         bottom: item_rect.bottom,
@@ -356,17 +356,17 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         };
         draw_text(hdc, &item.title, label_rect, text_color, DT_LEFT);
         if rect_contains(&item_rect, cursor.unwrap_or((-1, -1))) {
-            draw_hover_wash(hdc, menu_rect, 4, cursor);
+            draw_hover_circle(hdc, menu_rect, cursor);
             draw_design_icon_button(
                 hdc,
                 menu_rect,
-                WindowsDesignIcon::PageMenu,
+                WindowsDesignIcon::MoreVertical,
                 shell_palette().text_muted,
-                16,
+                px(16),
             );
         }
         if item.closable && rect_contains(&item_rect, cursor.unwrap_or((-1, -1))) {
-            draw_hover_wash(hdc, close_rect, 4, cursor);
+            draw_hover_circle(hdc, close_rect, cursor);
             draw_text(
                 hdc,
                 GLYPH_TAB_CLOSE,
@@ -473,7 +473,7 @@ mod tests {
         let title = sidebar_auxiliary_title_rect(item_rect, &item, 40);
         assert_eq!(menu.right, close.left);
         assert_eq!(title.right, menu.left - 2);
-        assert_eq!(menu.right - menu.left, sidebar_browser_close_size());
+        assert_eq!(menu.right - menu.left, sidebar_row_menu_width());
         assert_eq!(close.right - close.left, sidebar_browser_close_size());
     }
 

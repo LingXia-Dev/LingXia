@@ -73,12 +73,6 @@ pub(in crate::shell) fn panel_footer_action_height(
 /// than as a clashing full-color app icon.
 pub(super) const GLYPH_APP_MENU: &str = "\u{e712}";
 
-/// ChevronDown: sidebar group header while the group is expanded.
-pub(super) const GLYPH_CHEVRON_DOWN: &str = "\u{e70d}";
-
-/// ChevronRight: sidebar group header while the group is collapsed.
-pub(super) const GLYPH_CHEVRON_RIGHT: &str = "\u{e76c}";
-
 /// Side length of the square top-bar buttons (sidebar toggle, back/
 /// forward/reload).
 pub(super) fn top_bar_button_size() -> i32 {
@@ -189,6 +183,12 @@ pub(super) fn sidebar_child_indent() -> i32 {
 /// Width of the close-glyph hit area at the trailing edge of a browser row.
 pub(super) fn sidebar_browser_close_size() -> i32 {
     crate::dpi::px(22)
+}
+
+/// Width of a row's vertical-ellipsis menu button; narrower than the close
+/// cell so the title keeps the difference.
+pub(super) fn sidebar_row_menu_width() -> i32 {
+    crate::dpi::px(16)
 }
 
 /// Close glyph for browser tab rows (multiplication X).
@@ -798,9 +798,20 @@ pub(super) fn sidebar_hover_rect(
     if point.1 < tabbar_rect.top + sidebar_header_height() || point.1 >= viewport_bottom {
         return None;
     }
-    let chevron = sidebar_group_chevron_rect(tabbar_rect, tabbar, scroll_offset);
-    if rect_contains(&chevron, point) {
-        return Some(chevron);
+    // Row controls are their own hover targets so moving onto one from its
+    // row repaints the circle behind it.
+    let mut group_controls = vec![
+        sidebar_group_chevron_rect(tabbar_rect, tabbar, scroll_offset),
+        sidebar_group_menu_rect(tabbar_rect, tabbar, scroll_offset),
+    ];
+    if tabbar.group_closable {
+        group_controls.push(sidebar_group_close_rect(tabbar_rect, tabbar, scroll_offset));
+    }
+    if let Some(control) = group_controls
+        .into_iter()
+        .find(|control| rect_contains(control, point))
+    {
+        return Some(row_control_hover_rect(control));
     }
     let group = sidebar_group_rect(tabbar_rect, tabbar, scroll_offset);
     if rect_contains(&group, point) {
@@ -817,10 +828,25 @@ pub(super) fn sidebar_hover_rect(
     if let Some(auxiliary) =
         sidebar_auxiliary_rects(tabbar_rect, tabbar, scroll_offset, viewport_bottom)
     {
-        for (_, rect) in &auxiliary.items {
-            if rect_contains(rect, point) {
-                return Some(*rect);
+        for (index, rect) in &auxiliary.items {
+            if !rect_contains(rect, point) {
+                continue;
             }
+            if let Some(item) = tabbar
+                .auxiliary_items
+                .get(*index)
+                .filter(|item| !item.pinned)
+            {
+                let menu = sidebar_auxiliary_menu_rect(*rect, item);
+                if rect_contains(&menu, point) {
+                    return Some(row_control_hover_rect(menu));
+                }
+                let close = sidebar_auxiliary_close_rect(*rect);
+                if item.closable && rect_contains(&close, point) {
+                    return Some(row_control_hover_rect(close));
+                }
+            }
+            return Some(*rect);
         }
         if let Some(add) = auxiliary.add
             && rect_contains(&add, point)
@@ -3772,6 +3798,72 @@ mod scroll_tests {
 
         rail.auxiliary_items.remove(0);
         assert!(sidebar_rail_pinned_divider_rect(rail_rect, &rail, 0).is_none());
+    }
+
+    #[test]
+    fn switcher_row_controls_are_their_own_hover_targets() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 480,
+            bottom: 737,
+        };
+        let mut sidebar = bottom_tabbar(true, false);
+        sidebar.position = WindowsShellTabBarPosition::Left;
+        sidebar.dimension = 184;
+        sidebar.group_closable = true;
+        sidebar
+            .auxiliary_items
+            .push(WindowsShellAuxiliaryItemLayout {
+                id: "surface:docs".to_string(),
+                title: "Documentation".to_string(),
+                active: false,
+                pinned: false,
+                closable: true,
+                icon_png: None,
+                icon_path: String::new(),
+                tabs: None,
+            });
+        let layout = WindowsShellWindowLayout {
+            tab_bar: Some(sidebar.clone()),
+            ..Default::default()
+        };
+        let rects = compute_chrome_rects(client, &layout);
+        let tabbar_rect = rects.tab_bar.unwrap();
+        let center = |rect: RECT| ((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+        let hover = |point| super::sidebar_hover_rect(client, &rects, &layout, point);
+
+        // Moving from the row body onto a control must change the hover rect,
+        // or the circle behind the control is never repainted.
+        let group = sidebar_group_rect(tabbar_rect, &sidebar, 0);
+        let group_menu = super::sidebar_group_menu_rect(tabbar_rect, &sidebar, 0);
+        let group_close = super::sidebar_group_close_rect(tabbar_rect, &sidebar, 0);
+        assert_eq!(hover((group.left + 4, center(group).1)), Some(group));
+        for control in [group_menu, group_close] {
+            let rect = hover(center(control)).unwrap();
+            assert_ne!(rect, group);
+            assert!(super::rect_contains_rect(
+                &rect,
+                &super::hover_circle_rect(control)
+            ));
+        }
+
+        let row = sidebar_auxiliary_rects(tabbar_rect, &sidebar, 0, tabbar_rect.bottom)
+            .unwrap()
+            .items[0]
+            .1;
+        let item = &sidebar.auxiliary_items[0];
+        let row_menu = super::sidebar_auxiliary_menu_rect(row, item);
+        let row_close = super::sidebar_auxiliary_close_rect(row);
+        assert_eq!(hover((row.left + 4, center(row).1)), Some(row));
+        for control in [row_menu, row_close] {
+            let rect = hover(center(control)).unwrap();
+            assert_ne!(rect, row);
+            assert!(super::rect_contains_rect(
+                &rect,
+                &super::hover_circle_rect(control)
+            ));
+        }
     }
 
     #[test]
