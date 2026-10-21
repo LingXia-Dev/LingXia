@@ -2,7 +2,7 @@
 //! (e.g. the terminal panel's right-click menu).
 #![cfg_attr(not(feature = "terminal-runtime"), allow(dead_code))]
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use crate::{WindowsDesignIcon, design_icons::design_icon_argb_premultiplied};
 use lingxia_windows_contract::post_to_window_thread;
@@ -11,12 +11,13 @@ use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateDIBSection, DIB_RGB_COLORS, DeleteObject, HBITMAP,
     HGDIOBJ,
 };
+use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, DestroyMenu, MENUITEMINFOW, MF_CHECKED, MF_DISABLED, MF_GRAYED,
     MF_SEPARATOR, MF_STRING, MIIM_BITMAP, SetForegroundWindow, SetMenuItemInfoW, TPM_NONOTIFY,
     TPM_RETURNCMD, TPM_TOPALIGN, TrackPopupMenu,
 };
-use windows::core::PCWSTR;
+use windows::core::{PCSTR, PCWSTR, w};
 
 /// Shows a popup menu at `screen` (screen coordinates) owned by `window`
 /// (an HWND handle as returned through the webview layer). Marshalled onto
@@ -89,6 +90,8 @@ pub fn show_context_menu_entries(
         window,
         Box::new(move || {
             let hwnd = HWND(window as *mut core::ffi::c_void);
+            apply_menu_appearance();
+            let icon_tint = super::style::shell_palette().text_primary;
             unsafe {
                 let Ok(menu) = CreatePopupMenu() else {
                     return;
@@ -114,7 +117,10 @@ pub fn show_context_menu_entries(
                     // Command ids are 1-based: TrackPopupMenu returns 0 for
                     // "dismissed without a choice".
                     let _ = AppendMenuW(menu, flags, index + 1, PCWSTR(text.as_ptr()));
-                    if let Some(bitmap) = entry.icon.and_then(create_menu_icon_bitmap) {
+                    if let Some(bitmap) = entry
+                        .icon
+                        .and_then(|icon| create_menu_icon_bitmap(icon, icon_tint))
+                    {
                         let info = MENUITEMINFOW {
                             cbSize: std::mem::size_of::<MENUITEMINFOW>() as u32,
                             fMask: MIIM_BITMAP,
@@ -156,9 +162,47 @@ fn literal_menu_label(label: &str) -> String {
     label.replace('&', "&&")
 }
 
-fn create_menu_icon_bitmap(icon: WindowsDesignIcon) -> Option<HBITMAP> {
+/// Win32 popup menus paint light regardless of the system theme unless the
+/// process opts in through uxtheme's unexported `SetPreferredAppMode`
+/// (ordinal 135, Windows 10 1903+) and flushes the cached menu theme
+/// (ordinal 136). Forcing the mode per popup makes menus follow the chrome
+/// scheme, which a product can pin against the system's.
+fn apply_menu_appearance() {
+    type ProcAddress = unsafe extern "system" fn() -> isize;
+    type SetPreferredAppMode = unsafe extern "system" fn(i32) -> i32;
+    type FlushMenuThemes = unsafe extern "system" fn();
+    const DEFAULT: i32 = 0;
+    const FORCE_DARK: i32 = 2;
+    const FORCE_LIGHT: i32 = 3;
+    static UXTHEME: OnceLock<Option<(SetPreferredAppMode, FlushMenuThemes)>> = OnceLock::new();
+    let Some((set_mode, flush)) = *UXTHEME.get_or_init(|| unsafe {
+        let module = LoadLibraryW(w!("uxtheme.dll")).ok()?;
+        let set_mode = GetProcAddress(module, PCSTR(135 as *const u8))?;
+        let flush = GetProcAddress(module, PCSTR(136 as *const u8))?;
+        Some((
+            std::mem::transmute::<ProcAddress, SetPreferredAppMode>(set_mode),
+            std::mem::transmute::<ProcAddress, FlushMenuThemes>(flush),
+        ))
+    }) else {
+        return;
+    };
+    // High contrast draws menus from system colors; leave it to the OS.
+    let mode = if super::theme::is_high_contrast() {
+        DEFAULT
+    } else if super::theme::chrome_is_dark() {
+        FORCE_DARK
+    } else {
+        FORCE_LIGHT
+    };
+    unsafe {
+        set_mode(mode);
+        flush();
+    }
+}
+
+fn create_menu_icon_bitmap(icon: WindowsDesignIcon, tint: u32) -> Option<HBITMAP> {
     const SIZE: i32 = 16;
-    let pixels = design_icon_argb_premultiplied(icon, SIZE as u32, Some(0x333333))?;
+    let pixels = design_icon_argb_premultiplied(icon, SIZE as u32, Some(tint))?;
     unsafe {
         let info = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {

@@ -315,20 +315,21 @@ pub(super) fn draw_sidebar_tab_bar(
     );
     if show_chevron {
         let chevron = if tabbar.items_collapsed {
-            GLYPH_CHEVRON_RIGHT
+            WindowsDesignIcon::DisclosureRight
         } else {
-            GLYPH_CHEVRON_DOWN
+            WindowsDesignIcon::DisclosureDown
         };
-        draw_hover_wash(hdc, chevron_rect, 4, cursor);
-        draw_frame_button_glyph(
+        draw_hover_circle(hdc, chevron_rect, cursor);
+        draw_design_icon_button(
             hdc,
-            chevron,
             chevron_rect,
+            chevron,
             shell_palette().sidebar_header_text,
+            px(14),
         );
     }
     if tabbar.group_closable && rect_contains(&group_rect, cursor.unwrap_or((-1, -1))) {
-        draw_hover_wash(hdc, close_rect, 4, cursor);
+        draw_hover_circle(hdc, close_rect, cursor);
         draw_text(
             hdc,
             GLYPH_TAB_CLOSE,
@@ -338,13 +339,13 @@ pub(super) fn draw_sidebar_tab_bar(
         );
     }
     if rect_contains(&group_rect, cursor.unwrap_or((-1, -1))) {
-        draw_hover_wash(hdc, menu_rect, 4, cursor);
+        draw_hover_circle(hdc, menu_rect, cursor);
         draw_design_icon_button(
             hdc,
             menu_rect,
-            WindowsDesignIcon::PageMenu,
+            WindowsDesignIcon::MoreVertical,
             shell_palette().text_muted,
-            16,
+            px(16),
         );
     }
     if !tabbar.items_collapsed {
@@ -752,14 +753,8 @@ pub(in crate::shell::chrome) fn sidebar_group_title_rect(
 ) -> RECT {
     let group_rect = sidebar_group_rect(rect, tabbar, scroll_offset);
     let icon_rect = sidebar_top_level_icon_rect(group_rect, sidebar_icon_size());
-    let show_chevron = !tabbar.items_api_hidden && !tabbar.items.is_empty();
-    let right = if tabbar.group_closable {
-        sidebar_group_close_rect(rect, tabbar, scroll_offset).left - px(4)
-    } else if show_chevron {
-        sidebar_group_chevron_rect(rect, tabbar, scroll_offset).left - px(4)
-    } else {
-        rect.right - sidebar_item_inset()
-    };
+    // The hover ellipsis always sits here, so the title never runs under it.
+    let right = sidebar_group_menu_rect(rect, tabbar, scroll_offset).left - px(2);
     normalize_rect(RECT {
         left: icon_rect.right + px(8),
         top: group_rect.top,
@@ -809,7 +804,7 @@ pub(super) fn sidebar_group_menu_rect(
         sidebar_group_chevron_rect(rect, tabbar, scroll_offset).left
     };
     normalize_rect(RECT {
-        left: trailing - sidebar_browser_close_size(),
+        left: trailing - sidebar_row_menu_width(),
         top: sidebar_group_top(rect, tabbar, scroll_offset),
         right: trailing,
         bottom: sidebar_group_bottom(rect, tabbar, scroll_offset),

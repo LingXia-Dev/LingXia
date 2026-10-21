@@ -514,6 +514,41 @@ pub(in crate::shell) fn draw_hover_wash(
     }
 }
 
+/// Circle drawn behind a hovered row control, centered on its hit rect, which
+/// may be narrower than the circle.
+pub(in crate::shell) fn hover_circle_rect(rect: RECT) -> RECT {
+    let diameter = crate::dpi::px(20);
+    let left = rect.left + (rect_width(&rect) - diameter) / 2;
+    let top = rect.top + (rect_height(&rect) - diameter) / 2;
+    RECT {
+        left,
+        top,
+        right: left + diameter,
+        bottom: top + diameter,
+    }
+}
+
+/// What a hovered row control repaints: its hit rect plus the overhanging
+/// circle, so entering it invalidates everything the circle covers.
+pub(in crate::shell) fn row_control_hover_rect(rect: RECT) -> RECT {
+    let circle = hover_circle_rect(rect);
+    RECT {
+        left: rect.left.min(circle.left),
+        top: rect.top.min(circle.top),
+        right: rect.right.max(circle.right),
+        bottom: rect.bottom.max(circle.bottom),
+    }
+}
+
+/// Circular hover behind a small row control (menu, close, disclosure).
+pub(in crate::shell) fn draw_hover_circle(hdc: HDC, rect: RECT, cursor: Option<(i32, i32)>) {
+    if !cursor.is_some_and(|point| rect_contains(&rect, point)) {
+        return;
+    }
+    let circle = hover_circle_rect(rect);
+    fill_round_rect_overlay(hdc, circle, rect_width(&circle) / 2, hover_overlay());
+}
+
 fn fill_round_rect_path(hdc: HDC, rect: RECT, radius: i32, argb: u32) {
     round_rect_path_op(hdc, rect, radius, |graphics, path| unsafe {
         let mut brush: *mut GdiPlus::GpSolidFill = std::ptr::null_mut();
