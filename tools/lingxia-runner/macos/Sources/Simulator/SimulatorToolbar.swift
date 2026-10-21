@@ -30,7 +30,8 @@ public class SimulatorToolbar: NSView {
 
     public var onDeviceSelected: ((MobileDeviceSize) -> Void)?
     public var onRotateClicked: (() -> Void)?
-    public var onInspectClicked: (() -> Void)?
+
+    private var inspectorHelp: NSPopover?
 
     private var currentDevice: MobileDeviceSize = .defaultDevice
 
@@ -128,7 +129,7 @@ public class SimulatorToolbar: NSView {
     private func setupInspectButton() {
         inspectButton = NSButton()
         let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
-        let image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "DevTools")?
+        let image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Web Inspector")?
             .withSymbolConfiguration(config)
         inspectButton.image = image
         inspectButton.imagePosition = .imageOnly
@@ -138,7 +139,7 @@ public class SimulatorToolbar: NSView {
         inspectButton.target = self
         inspectButton.action = #selector(inspectClicked)
         inspectButton.contentTintColor = NSColor.white.withAlphaComponent(0.7)
-        inspectButton.toolTip = "Toggle DevTools"
+        inspectButton.toolTip = "Web Inspector"
         inspectButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(inspectButton)
 
@@ -240,10 +241,20 @@ public class SimulatorToolbar: NSView {
         RunnerApp.shared.setAppearance(effectiveDark() ? .light : .dark)
     }
 
+    /// How to open the Web Inspector. Lxapp lifecycle lives on the capsule
+    /// sheet; Restart Runner lives in the device selector.
     @objc private func inspectClicked() {
-        // The gear is just DevTools. Lxapp lifecycle lives on the capsule sheet;
-        // Restart Runner lives in the device selector.
-        onInspectClicked?()
+        if let shown = inspectorHelp, shown.isShown {
+            shown.close()
+            return
+        }
+        let popover = NSPopover()
+        popover.behavior = .transient
+        let help = InspectorHelpViewController()
+        help.onOpenSafari = { [weak popover] in popover?.close() }
+        popover.contentViewController = help
+        popover.show(relativeTo: inspectButton.bounds, of: inspectButton, preferredEdge: .minY)
+        inspectorHelp = popover
     }
 
     @objc private func rotateClicked() {
