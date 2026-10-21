@@ -585,7 +585,8 @@ pub(crate) fn print_status(status: &Value) {
 /// HAR 1.2 of recorded requests. `timings.wait` is time to the first byte and
 /// `timings.receive` is the rest of `durationMs`. DNS, connect and TLS are
 /// not in the recording, so those timings are -1. Owner, kind, outcome,
-/// redirect and chunk log have no HAR field, so they sit on `_lingxia`.
+/// redirect, chunk log and event-stream frame times have no HAR field, so
+/// they sit on `_lingxia`.
 fn requests_to_har(requests: &[Value]) -> Value {
     let entries: Vec<Value> = requests.iter().map(har_entry).collect();
     let started = entries
@@ -793,6 +794,13 @@ fn lingxia_fields(request: &Value) -> Value {
     }
     if let Some(log) = request.get("chunkLog").filter(|log| log.is_array()) {
         out["chunkLog"] = log.clone();
+    }
+    // When each frame of `content.text` arrived (ms since start), in order.
+    if let Some(events) = request["events"].as_array() {
+        let times: Vec<Value> = events.iter().map(|event| event["t"].clone()).collect();
+        if times.iter().any(|t| !t.is_null()) {
+            out["eventTimes"] = json!(times);
+        }
     }
     if let Some(error) = request.get("error").filter(|error| error.is_string()) {
         out["error"] = error.clone();
@@ -1197,9 +1205,9 @@ mod tests {
                 "responseHeaders": [["content-type", "text/event-stream"]],
                 "responseBytes": 24,
                 "events": [
-                    { "event": "tick", "data": "1", "id": "e1" },
-                    { "data": { "token": "***" } },
-                    { "data": "a\nb" },
+                    { "event": "tick", "data": "1", "id": "e1", "t": 2 },
+                    { "data": { "token": "***" }, "t": 102 },
+                    { "data": "a\nb", "t": 202 },
                 ],
             }),
             json!({
@@ -1233,6 +1241,7 @@ mod tests {
             second["_lingxia"]["chunkLog"],
             json!([[2, 10], [102, 10], [202, 4]])
         );
+        assert_eq!(second["_lingxia"]["eventTimes"], json!([2, 102, 202]));
         assert_eq!(second["timings"]["wait"], 2.0);
         assert_eq!(second["timings"]["receive"], 200.0);
         assert_eq!(

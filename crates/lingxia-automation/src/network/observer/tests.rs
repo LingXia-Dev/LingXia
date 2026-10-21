@@ -330,9 +330,10 @@ fn an_event_stream_keeps_its_frames_and_shows_in_flight() {
     assert_eq!(record["chunkLog"], json!([[100, 21], [250, 28]]));
     assert_eq!(
         record["events"],
+        // Each event says when its last byte arrived.
         json!([
-            { "event": "tick", "data": "1" },
-            { "data": "Bearer ***", "id": "e2" }
+            { "event": "tick", "data": "1", "t": 100 },
+            { "data": "Bearer ***", "id": "e2", "t": 250 }
         ])
     );
     // Not finished, so not an exchange; still listed, so not dropped.
@@ -713,4 +714,50 @@ fn a_full_live_queue_says_how_much_it_dropped() {
     assert_eq!(events[0], json!({ "type": "lost", "events": 10 }));
     assert_eq!(events[1]["id"], 10);
     assert!(watch.drain().is_empty());
+}
+
+#[test]
+fn an_event_split_across_chunks_is_timed_by_its_last_byte() {
+    let mut state = recording(Some(APP));
+    let start = start_event(6, Some(APP), "sse", "https://a.test/e");
+    let NetworkEvent::RequestStart(started) = &start else {
+        unreachable!()
+    };
+    let t0 = started.started_at;
+    state.apply(start, false, 0);
+    head(&mut state, 6, 200, &[("content-type", "text/event-stream")]);
+    chunk_at(
+        &mut state,
+        6,
+        b"data: a\n\ndata: b",
+        t0 + Duration::from_millis(10),
+    );
+    chunk_at(&mut state, 6, b"c\n\n", t0 + Duration::from_millis(70));
+    end(&mut state, 6, NetworkOutcome::Completed);
+    let record = &state.stop(DEV_SESSION_OWNER).unwrap().requests[0];
+    assert_eq!(
+        record["events"],
+        json!([{ "data": "a", "t": 10 }, { "data": "bc", "t": 70 }])
+    );
+
+    // An encoded stream's wire bytes do not line up with its frames.
+    let mut state = recording(Some(APP));
+    state.apply(
+        start_event(7, Some(APP), "sse", "https://a.test/z"),
+        false,
+        0,
+    );
+    head(
+        &mut state,
+        7,
+        200,
+        &[
+            ("content-type", "text/event-stream"),
+            ("content-encoding", "gzip"),
+        ],
+    );
+    chunk(&mut state, 7, &gzip(b"data: z\n\n"));
+    end(&mut state, 7, NetworkOutcome::Completed);
+    let record = &state.stop(DEV_SESSION_OWNER).unwrap().requests[0];
+    assert_eq!(record["events"], json!([{ "data": "z" }]));
 }
