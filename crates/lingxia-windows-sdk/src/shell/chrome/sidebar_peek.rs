@@ -278,8 +278,21 @@ impl SidebarPeekLayout {
     }
 
     /// Hover label in peek-window coordinates for the expand control (absent
-    /// in compact, which has nothing to pin) or a header action.
+    /// in compact, which has nothing to pin), a header action, or a footer
+    /// action — which draws no label of its own.
     pub(crate) fn tooltip(&self, point: (i32, i32)) -> Option<CollapsedSidebarTooltip> {
+        let local_client = offset_rect(self.client, -self.frame.left, -self.frame.top);
+        let body = self.local_body();
+        if let Some((anchor, text)) =
+            hovered_footer_action(body, &self.local_rects(), &self.layout, point)
+        {
+            return beside_sidebar_tooltip(anchor, &text, body, self.position, local_client).map(
+                |tooltip| CollapsedSidebarTooltip {
+                    delayed: true,
+                    ..tooltip
+                },
+            );
+        }
         let expand = self.expand_rect();
         let (anchor, text) = if rect_contains(&expand, point) {
             if self.compact {
@@ -296,11 +309,7 @@ impl SidebarPeekLayout {
                 .find(|(_, rect)| rect_contains(rect, point))?;
             (anchor, self.header_actions[index].label.clone())
         };
-        tooltip_below(
-            anchor,
-            &text,
-            offset_rect(self.client, -self.frame.left, -self.frame.top),
-        )
+        tooltip_below(anchor, &text, local_client)
     }
 
     /// Horizontal offset of the content beyond the rail column at `progress`
@@ -578,6 +587,38 @@ mod tests {
             compute_chrome_rects(client(), &layout).content,
             before.content
         );
+    }
+
+    /// The peek draws footer actions without labels, so each one names itself
+    /// — with its value — in a tooltip beside the peek.
+    #[test]
+    fn peek_footer_actions_name_themselves() {
+        for position in [
+            WindowsShellTabBarPosition::Left,
+            WindowsShellTabBarPosition::Right,
+        ] {
+            let mut layout = rail_layout(position);
+            layout.footer_actions.push(WindowsShellFooterActionLayout {
+                id: "language".to_string(),
+                label: "Language".to_string(),
+                value: Some("English".to_string()),
+                ..layout.footer_actions[0].clone()
+            });
+            let peek = peek_layout_for(client(), &layout).unwrap();
+            let body = peek.local_body();
+            let cells = footer_action_rects(body, &peek.local_rects(), &peek.layout);
+            assert_eq!(cells.len(), 2, "{position:?}");
+            for ((_, rect), action) in cells.into_iter().zip(&layout.footer_actions) {
+                let tooltip = peek.tooltip(center(rect)).unwrap();
+                assert_eq!(tooltip.text, action.tooltip_text(), "{position:?}");
+                assert_eq!(tooltip.anchor, rect);
+                assert!(tooltip.delayed);
+                match position {
+                    WindowsShellTabBarPosition::Right => assert!(tooltip.popup.right <= body.left),
+                    _ => assert!(tooltip.popup.left >= body.right),
+                }
+            }
+        }
     }
 
     #[test]

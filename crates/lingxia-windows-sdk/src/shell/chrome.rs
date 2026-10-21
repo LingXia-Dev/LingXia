@@ -3664,6 +3664,52 @@ mod scroll_tests {
         }
     }
 
+    /// Footer actions draw no label, so the expanded footer names each one in
+    /// a tooltip beside the sidebar; a value-bearing one carries its value too.
+    #[test]
+    fn expanded_footer_actions_name_themselves_beside_the_sidebar() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 1100,
+            bottom: 737,
+        };
+        let action = |id: &str, value: Option<&str>| WindowsShellFooterActionLayout {
+            generation: 1,
+            id: id.to_string(),
+            label: id.to_string(),
+            value: value.map(str::to_string),
+            icon_path: String::new(),
+            disabled: false,
+            source: WindowsShellSidebarActionSource::Runtime,
+        };
+        let footer_actions = vec![action("Chat", None), action("Language", Some("English"))];
+        let mut tabbar = bottom_tabbar(true, false);
+        tabbar.position = WindowsShellTabBarPosition::Left;
+        tabbar.dimension = 184;
+        tabbar.footer_action_height = super::panel_footer_action_height(184, &footer_actions);
+        let layout = WindowsShellWindowLayout {
+            tab_bar: Some(tabbar),
+            footer_actions: footer_actions.clone(),
+            ..Default::default()
+        };
+        let window_layout = WindowsWindowLayout::new(layout.clone());
+        let rects = compute_chrome_rects(client, &layout);
+        let sidebar = rects.tab_bar.unwrap();
+        let center = |rect: RECT| ((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+
+        let cells = footer_action_rects(client, &rects, &layout);
+        assert_eq!(cells.len(), 2);
+        for ((_, rect), action) in cells.into_iter().zip(&footer_actions) {
+            let tooltip =
+                sidebar_tooltip(&tooltip_state(client, &window_layout), center(rect)).unwrap();
+            assert_eq!(tooltip.text, action.tooltip_text());
+            assert_eq!(tooltip.anchor, rect);
+            assert!(tooltip.popup.left >= sidebar.right);
+        }
+        assert!(footer_actions[1].tooltip_text().ends_with("English"));
+    }
+
     #[test]
     fn compact_rail_expand_peeks_instead_of_pinning() {
         let client = RECT {

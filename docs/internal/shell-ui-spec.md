@@ -691,28 +691,32 @@ Tooltip and accessibility:
 Expanded footer geometry:
 
 - Outer horizontal inset aligns with top-level sidebar rows: **8**.
-- Cell height **30**; cell and row gap **4**.
-- An entry without `value` is a square **30** icon button. An entry with
-  `value` is a value cell: icon and `value` on one line, tail-truncated, with
-  minimum width **72**.
-- Declaration order is visual order. Icon buttons pack left to right and wrap
-  only when the next one does not fit. A value cell joins the icon buttons
-  before it when its minimum still fits (otherwise it starts the next row),
-  takes the rest of the row, and ends it: whatever follows starts a new row.
-  The rules do not change with sidebar width; `label` is never drawn.
+- Row height **30**; rows are **4** apart.
+- An entry without `value` is a square **30** icon button; icon buttons in a
+  row are **2** apart (the header's action spacing), so the standard width
+  fits four on macOS and five on Windows. An entry with `value` is a value
+  cell: icon and `value` on one line, tail-truncated, spanning the full row.
+  Its icon sits on the icon buttons' column.
+- Declaration order is visual order. Runs of icon buttons share rows and wrap
+  only when the next one does not fit. A value cell is a row of its own: its
+  text is the thing to read, and sharing a row left about three characters at
+  the macOS standard width. The rules do not change with sidebar width;
+  `label` is never drawn.
 
   ```
   [a, B, c, d, E]   (capitals carry a value)
-  │ a │ B value…          │
-  │ c │ d │ E value…      │
+  │ a                     │
+  │ B value…              │
+  │ c d                   │
+  │ E value…              │
   ```
 
 - At most **5** visible rows; overflow scrolls inside the footer rather than
   squeezing the tab list. The shell does not reorder to keep value cells
   visible; declare them before long runs of icon buttons.
 - Value text uses native font metrics — no ASCII/wide-character width
-  heuristics. Padding, minimums, state treatment, overflow, and order MUST
-  match across platforms.
+  heuristics. Spacing, state treatment, overflow, and order MUST match across
+  platforms.
 - Background is transparent; hover uses a quiet shell-owned wash (radius 6);
   disabled items mute icon/text with no hover wash.
 

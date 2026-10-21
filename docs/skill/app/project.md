@@ -428,10 +428,11 @@ lx.shell.sidebarActions.replace([
 ]);
 ```
 
-Footer actions without `value` are icon buttons, so give each a distinct icon.
-`value` is for a fact that changes with the scene (current brand, store,
-account); at most two footer actions carry one, and a header `value` is a type
-error. Header actions are icon-only, max two.
+Footer actions without `value` are icon buttons sharing rows, so give each a
+distinct icon. `value` is for a fact that changes with the scene (current
+brand, store, account) and gets a full row; at most two footer actions carry
+one, and a header `value` is a type error. Header actions are icon-only, max
+two.
 
 `update(id, patch)` sets every key the patch carries:
 `update('brand', { value: brand?.shortName })` clears the value when there is

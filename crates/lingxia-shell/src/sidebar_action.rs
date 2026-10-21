@@ -119,6 +119,7 @@ impl SidebarActionCollection {
 
     pub fn replace(&mut self, items: Vec<ShellSidebarAction>) -> ShellResult<()> {
         let items = validate_generation(items)?;
+        warn_on_indistinguishable_icons(&items);
         self.items = items;
         self.declared = true;
         self.generation = self.generation.wrapping_add(1);
@@ -131,6 +132,9 @@ impl SidebarActionCollection {
             return Err(ShellError::EmptySidebarActionId);
         }
         let patch = patch.validate(id)?;
+        // Only an icon or value change can make two footer icons collide; a
+        // label or disabled patch must not repeat the warning on every call.
+        let changes_icons = patch.icon.is_some() || patch.value.is_some();
         let mut items = self.items.clone();
         let Some(item) = items.iter_mut().find(|item| item.id == id) else {
             return Err(ShellError::SidebarActionNotFound { id: id.to_string() });
@@ -150,6 +154,9 @@ impl SidebarActionCollection {
         // A patch can break a generation-wide rule (a header value, a third
         // value), so the patched generation is validated as a whole.
         self.items = validate_generation(items)?;
+        if changes_icons {
+            warn_on_indistinguishable_icons(&self.items);
+        }
         self.declared = true;
         self.generation = self.generation.wrapping_add(1);
         Ok(())
@@ -240,7 +247,6 @@ fn validate_generation(items: Vec<ShellSidebarAction>) -> ShellResult<Vec<ShellS
             count: valued.len(),
         });
     }
-    warn_on_indistinguishable_icons(&items);
     Ok(items)
 }
 

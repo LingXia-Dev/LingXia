@@ -3151,14 +3151,15 @@ private final class FlippedClipView: NSView {
     nonisolated override var isFlipped: Bool { true }
 }
 
-/// Packs footer actions in declaration order. Icon buttons share rows; a
-/// value cell joins the icons before it when its minimum width still fits,
-/// takes the rest of that row, and ends it.
+/// Packs footer actions in declaration order. Runs of icon buttons share rows;
+/// a value cell is a row of its own, because its text is the thing to read.
 @MainActor
 private final class SidebarActionFlowView: NSView {
+    /// Between rows.
     static let gap: CGFloat = 4
+    /// Between icon buttons in a row; the header's action spacing.
+    private static let iconGap: CGFloat = 2
     private static let rowHeight: CGFloat = 30
-    private static let minimumValueCellWidth: CGFloat = 72
 
     private var entries: [SidebarActionRowView] = []
     private var lastLayoutWidth: CGFloat = 0
@@ -3199,24 +3200,17 @@ private final class SidebarActionFlowView: NSView {
         for range in rowRanges(for: width) {
             var x: CGFloat = 0
             for entry in entries[range] {
-                let cellWidth = entry.isValueCell
-                    ? width - x
-                    : min(Self.cellWidth(entry, available: width), width - x)
+                let cellWidth = entry.isValueCell ? width : min(Self.rowHeight, width - x)
                 entry.frame = NSRect(
                     x: x,
                     y: y,
                     width: max(1, cellWidth),
                     height: Self.rowHeight
                 )
-                x += cellWidth + Self.gap
+                x += cellWidth + Self.iconGap
             }
             y += Self.rowHeight + Self.gap
         }
-    }
-
-    /// Icon buttons are square; a value cell needs room for its icon and text.
-    private static func cellWidth(_ entry: SidebarActionRowView, available: CGFloat) -> CGFloat {
-        min(available, entry.isValueCell ? minimumValueCellWidth : rowHeight)
     }
 
     private func rowRanges(for width: CGFloat) -> [Range<Int>] {
@@ -3226,19 +3220,21 @@ private final class SidebarActionFlowView: NSView {
         var start = 0
         var used: CGFloat = 0
         for index in entries.indices {
-            let cell = Self.cellWidth(entries[index], available: available)
-            let next = index == start ? cell : used + Self.gap + cell
+            if entries[index].isValueCell {
+                if start < index { rows.append(start..<index) }
+                rows.append(index..<(index + 1))
+                start = index + 1
+                used = 0
+                continue
+            }
+            let cell = min(Self.rowHeight, available)
+            let next = index == start ? cell : used + Self.iconGap + cell
             if index > start && next > available {
                 rows.append(start..<index)
                 start = index
                 used = cell
             } else {
                 used = next
-            }
-            if entries[index].isValueCell {
-                rows.append(start..<(index + 1))
-                start = index + 1
-                used = 0
             }
         }
         if start < entries.count {
@@ -3280,12 +3276,13 @@ private enum SidebarActionChromePalette {
 }
 
 /// One footer action: a square icon button, or — when it carries a value — a
-/// left-aligned icon + value row sharing the tabbar items' rhythm (30pt, hover
+/// full-width icon + value row sharing the tabbar items' rhythm (30pt, hover
 /// wash). A custom view because a borderless NSButton centers its image+title
 /// block and cannot left-align it.
 @MainActor
 final class SidebarActionRowView: NSView {
     private static let iconSize: CGFloat = 18
+    private static let cellHeight: CGFloat = 30
 
     var onClick: (() -> Void)?
     /// Whether this cell draws a value and so takes the rest of its row.
@@ -3364,8 +3361,13 @@ final class SidebarActionRowView: NSView {
         titleLabel.isHidden = !isValueCell
         addSubview(titleLabel)
 
+        // A value cell's icon sits where an icon button's would, so icons
+        // stay on one column across rows.
         let iconPlacement = isValueCell
-            ? iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8)
+            ? iconView.leadingAnchor.constraint(
+                equalTo: leadingAnchor,
+                constant: (Self.cellHeight - Self.iconSize) / 2
+            )
             : iconView.centerXAnchor.constraint(equalTo: centerXAnchor)
         NSLayoutConstraint.activate([
             washView.leadingAnchor.constraint(equalTo: leadingAnchor),

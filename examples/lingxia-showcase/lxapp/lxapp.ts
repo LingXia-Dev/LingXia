@@ -37,7 +37,8 @@ function routeFromAppLink(options?: AppLaunchOptions) {
 }
 
 async function applyHostChrome(os: string, tag: string) {
-  const { t } = getAppMessages(resolveDisplayLanguage(tag));
+  const language = resolveDisplayLanguage(tag);
+  const { t } = getAppMessages(language);
   type SidebarAction = Parameters<typeof lx.shell.sidebarActions.replace>[0][number];
   const sidebarActions: SidebarAction[] = [
     {
@@ -96,6 +97,22 @@ async function applyHostChrome(os: string, tag: string) {
     label: t("sidebarPing"),
     onActivate: () => {
       lx.showToast({ title: t("pingToast"), icon: "success" });
+    },
+  });
+  // The one footer action with a `value`: the display language is a fact that
+  // changes, so it is drawn beside the icon. Every action above is a command
+  // and shows only its icon. A language change re-runs this whole declaration.
+  sidebarActions.push({
+    id: "language",
+    placement: "footer",
+    icon: "public/sidebar-language.svg",
+    label: t("sidebarLanguage"),
+    value: t("languageName"),
+    onActivate: () => {
+      const next = language === "zh-CN" ? "en-US" : "zh-CN";
+      void lx.host.control?.displayLanguage
+        .setPreference(next)
+        .catch((error) => console.warn("language action failed", error));
     },
   });
   lx.shell.sidebarActions.replace(sidebarActions);
