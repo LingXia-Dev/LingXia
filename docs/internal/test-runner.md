@@ -959,7 +959,8 @@ redaction live in `capture.rs`.
   Stop returns every record in its report form (`requests`: headers with
   secret-named values `***`, TTFB, duration, outcome incl. `blocked`,
   `redirectedFrom`, body decoded from gzip/deflate for display and redacted,
-  SSE `events` / NDJSON `lines` and a `chunkLog`, in-flight ones as
+  SSE `events` (each with `t`, when its last byte arrived, if unencoded) /
+  NDJSON `lines` and a `chunkLog`, in-flight ones as
   `inFlight`) and the scenario of its finished lxapp `fetch` records
   (`capture::Recording`): a redirect chain is one exchange (first request,
   last answer), the app's own abort is skipped, a failure or block becomes

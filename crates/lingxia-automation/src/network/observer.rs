@@ -423,7 +423,13 @@ impl Record {
                 .as_deref()
                 .is_some_and(|kind| kind.starts_with("text/event-stream"))
             {
-                out["events"] = Value::Array(sse_events(&text));
+                // Wire bytes line up with the chunk log only when unencoded.
+                let events = if Self::header(&self.response_headers, "content-encoding").is_some() {
+                    sse_events(&text)
+                } else {
+                    sse_events_timed(&body, &self.chunk_log)
+                };
+                out["events"] = Value::Array(events);
             } else if streamed {
                 out["lines"] = Value::Array(
                     text.lines()
@@ -697,6 +703,36 @@ fn sse_events(text: &str) -> Vec<Value> {
         .filter_map(sse_event)
         .take(MAX_FRAMES)
         .collect()
+}
+
+/// [`sse_events`] over the wire bytes, each event with `t`: when its last
+/// byte arrived, in ms since the request started (while the chunk log
+/// covers it).
+fn sse_events_timed(bytes: &[u8], chunk_log: &[(u64, usize)]) -> Vec<Value> {
+    let arrival = |end: usize| {
+        let mut seen = 0;
+        chunk_log.iter().find_map(|(at, len)| {
+            seen += len;
+            (seen >= end).then_some(*at)
+        })
+    };
+    let mut events = Vec::new();
+    let mut at = 0;
+    while events.len() < MAX_FRAMES && at < bytes.len() {
+        let (end, next) = match sse_block_end(&bytes[at..]) {
+            Some((end, blank)) => (at + end, at + end + blank),
+            // The last block of a stream cut off before its blank line.
+            None => (bytes.len(), bytes.len()),
+        };
+        if let Some(mut event) = sse_event(&String::from_utf8_lossy(&bytes[at..end])) {
+            if let Some(t) = arrival(end) {
+                event["t"] = json!(t);
+            }
+            events.push(event);
+        }
+        at = next;
+    }
+    events
 }
 
 /// One `text/event-stream` block; `None` for a comment or keep-alive.
