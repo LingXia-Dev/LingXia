@@ -254,6 +254,7 @@ mod tests {
                     placement: item.placement,
                     label: item.label.clone(),
                     icon_path: Some(item.icon.clone()),
+                    value: item.value.clone(),
                     disabled: item.disabled,
                 })
                 .collect())
@@ -292,6 +293,7 @@ mod tests {
                 placement: crate::SidebarActionPlacement::Footer,
                 label: "Sync".to_string(),
                 icon: "icons/sync.svg".to_string(),
+                value: None,
                 disabled: false,
             }])
             .unwrap();
@@ -326,6 +328,7 @@ mod tests {
                 placement: crate::SidebarActionPlacement::Footer,
                 label: "Settings".to_string(),
                 icon: "settings".to_string(),
+                value: None,
                 disabled: false,
             }])
             .unwrap();
@@ -359,6 +362,7 @@ mod tests {
                 placement: crate::SidebarActionPlacement::Footer,
                 label: "Chat".to_string(),
                 icon: "icons/chat.svg".to_string(),
+                value: None,
                 disabled: true,
             }])
             .unwrap();
@@ -389,6 +393,7 @@ mod tests {
                 placement: crate::SidebarActionPlacement::Footer,
                 label: "Brand".to_string(),
                 icon: "icons/brand.svg".to_string(),
+                value: None,
                 disabled: false,
             }])
             .unwrap();
@@ -398,6 +403,7 @@ mod tests {
                 placement: crate::SidebarActionPlacement::Footer,
                 label: "Brand 2".to_string(),
                 icon: "icons/brand.svg".to_string(),
+                value: None,
                 disabled: false,
             }])
             .unwrap();
@@ -431,6 +437,7 @@ mod tests {
                 placement: crate::SidebarActionPlacement::Header,
                 label: "Settings".to_string(),
                 icon: "icons/settings.svg".to_string(),
+                value: None,
                 disabled: false,
             }])
             .unwrap();

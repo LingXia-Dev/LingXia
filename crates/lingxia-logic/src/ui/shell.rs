@@ -132,6 +132,31 @@ fn optional_string(item: &JSObject, field: &'static str) -> JSResult<Option<Stri
         .transpose()
 }
 
+/// A missing or empty `value` means "no value", so absent, `undefined`,
+/// `null`, and `''` are all `None`.
+fn optional_value(item: &JSObject) -> JSResult<Option<String>> {
+    if !has_property(item, "value") {
+        return Ok(None);
+    }
+    item.get::<_, String>("value")
+        .map(|value| Some(value.trim().to_string()).filter(|value| !value.is_empty()))
+        .map_err(|_| {
+            rong::HostError::new(
+                rong::error::E_INVALID_ARG,
+                "shell sidebar action value must be a string",
+            )
+            .into()
+        })
+}
+
+/// An update sets every key it carries. `{ value: brand?.name }` must clear the
+/// value when `brand` is missing, so presence is the own key, not whether its
+/// value is defined.
+fn value_patch(patch: &JSObject) -> JSResult<Option<Option<String>>> {
+    let present = patch.keys_as::<String>()?.iter().any(|key| key == "value");
+    present.then(|| optional_value(patch)).transpose()
+}
+
 fn optional_bool(item: &JSObject, field: &'static str) -> JSResult<Option<bool>> {
     if !has_property(item, field) {
         return Ok(None);
@@ -148,7 +173,15 @@ fn optional_bool(item: &JSObject, field: &'static str) -> JSResult<Option<bool>>
 fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
     reject_unknown_keys(
         item,
-        &["id", "placement", "label", "icon", "disabled", "onActivate"],
+        &[
+            "id",
+            "placement",
+            "label",
+            "icon",
+            "value",
+            "disabled",
+            "onActivate",
+        ],
     )?;
     let id = required_string(item, "id")?;
     let placement = match required_string(item, "placement")?.as_str() {
@@ -164,6 +197,7 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
     };
     let label = required_string(item, "label")?;
     let icon = required_string(item, "icon")?;
+    let value = optional_value(item)?;
     let disabled = optional_bool(item, "disabled")?.unwrap_or(false);
     let handler = item.get::<_, JSFunc>("onActivate").map_err(|_| {
         rong::HostError::new(
@@ -177,6 +211,7 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
         placement,
         label,
         icon,
+        value,
         disabled,
     }
     .validate()
@@ -186,7 +221,8 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
 
 /// Atomically replaces the complete desktop sidebar action declaration. Only the
 /// Control app may call this API. Ids must be non-empty and unique across both
-/// placements; header accepts at most two entries. Icons must be bundled relative
+/// placements; header accepts at most two entries. `value` is footer-only and at
+/// most two footer entries may carry one. Icons must be bundled relative
 /// paths or runtime-managed `lx://` paths accessible to the Control app.
 ///
 /// Every entry is bound to its generation-scoped callback. The shell invokes that
@@ -211,9 +247,10 @@ fn sidebar_actions_replace(ctx: JSContext, items: JSValue) -> JSResult<()> {
     commit_generation(&ctx, |next| next.replace(next_items), next_handlers)
 }
 
-/// Atomically updates the icon, label, and/or disabled state of one stable id.
-/// Only the Control app may call this API. The patch must be non-empty; unknown
-/// fields are rejected. The callback and placement stay unchanged. Throws
+/// Atomically updates the icon, label, value, and/or disabled state of one stable
+/// id. Only the Control app may call this API. The patch must be non-empty;
+/// unknown fields are rejected. A `value` key that is present sets the value, and
+/// `undefined`, `null`, or `''` clears it. The callback and placement stay unchanged. Throws
 /// `E_NOT_FOUND` when `id` is not in the current declaration.
 fn sidebar_actions_update(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResult<()> {
     let (_, (id, patch)) =
@@ -227,10 +264,11 @@ fn sidebar_actions_update(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResu
             })?;
             Ok((id, patch))
         })?;
-    reject_unknown_keys(&patch, &["label", "icon", "disabled"])?;
+    reject_unknown_keys(&patch, &["label", "icon", "value", "disabled"])?;
     let patch = ShellSidebarActionUpdate {
         label: optional_string(&patch, "label")?,
         icon: optional_string(&patch, "icon")?,
+        value: value_patch(&patch)?,
         disabled: optional_bool(&patch, "disabled")?,
     };
     let handlers = retained_handlers(&ctx);

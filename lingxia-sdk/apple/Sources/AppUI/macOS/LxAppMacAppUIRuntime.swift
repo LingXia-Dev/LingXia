@@ -36,6 +36,8 @@ struct LxAppUIActionItem: Sendable {
     var renameable: Bool = false
     var titleOverridden: Bool = false
     var disabled: Bool = false
+    /// Footer-only changing fact, drawn beside the icon.
+    var value: String? = nil
     var sidebarActionSource: SidebarActionSource = .runtime
 }
 

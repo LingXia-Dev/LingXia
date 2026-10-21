@@ -193,6 +193,7 @@ mod tests {
                 placement: crate::SidebarActionPlacement::Footer,
                 label: "Chat".to_string(),
                 icon: "icons/chat.svg".to_string(),
+                value: None,
                 disabled: false,
             }])
             .unwrap();
@@ -203,6 +204,7 @@ mod tests {
             placement: crate::SidebarActionPlacement::Footer,
             label: "Broken".to_string(),
             icon: "icons/broken.svg".to_string(),
+            value: None,
             disabled: false,
         }]);
 
@@ -220,6 +222,7 @@ mod tests {
                 placement: crate::SidebarActionPlacement::Footer,
                 label: "Chat".to_string(),
                 icon: "icons/chat.svg".to_string(),
+                value: None,
                 disabled: false,
             }])
             .unwrap();

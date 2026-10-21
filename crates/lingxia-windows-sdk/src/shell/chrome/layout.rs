@@ -253,10 +253,28 @@ pub enum WindowsShellSidebarActionSource {
 pub struct WindowsShellFooterActionLayout {
     pub generation: u64,
     pub id: String,
+    /// Stable name: tooltip only, never drawn.
     pub label: String,
+    /// The changing fact drawn beside the icon in the expanded footer.
+    pub value: Option<String>,
     pub icon_path: String,
     pub disabled: bool,
     pub source: WindowsShellSidebarActionSource,
+}
+
+impl WindowsShellFooterActionLayout {
+    /// `label`, or `label` and `value` joined, so a truncated or icon-only
+    /// cell still carries the full value.
+    pub fn tooltip_text(&self) -> String {
+        match self.value.as_deref() {
+            Some(value) => format!(
+                "{}{}{value}",
+                self.label,
+                lingxia_logic::i18n::t(lingxia_logic::I18nKey::SidebarActionValueSeparator)
+            ),
+            None => self.label.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

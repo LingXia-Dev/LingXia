@@ -54,7 +54,7 @@ async function applyHostChrome(os: string, tag: string) {
     {
       id: "chat",
       placement: "footer",
-      icon: "public/activator.svg",
+      icon: "public/sidebar-chat.svg",
       label: t("sidebarChat"),
       onActivate: () => {
         void lx.surface
@@ -68,7 +68,7 @@ async function applyHostChrome(os: string, tag: string) {
     sidebarActions.push({
       id: "terminal-settings",
       placement: "footer",
-      icon: "public/sidebar-terminal.svg",
+      icon: "public/sidebar-terminal-settings.svg",
       label: t("sidebarTerminalSettings"),
       onActivate: () => {
         void lx.shell
@@ -79,7 +79,7 @@ async function applyHostChrome(os: string, tag: string) {
     sidebarActions.push({
       id: "terminal",
       placement: "footer",
-      icon: "public/activator.svg",
+      icon: "public/sidebar-terminal.svg",
       label: t("sidebarTerminal"),
       onActivate: () => {
         void lx.surface

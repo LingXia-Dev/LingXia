@@ -43,3 +43,5 @@ terminal:
 sidebar:
   expand: "Expand sidebar"
   collapse: "Collapse sidebar"
+  # Joins a sidebar action's name and its value in tooltips ("Brand: Acme").
+  action_value_separator: ": "

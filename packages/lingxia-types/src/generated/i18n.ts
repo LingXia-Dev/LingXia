@@ -145,6 +145,7 @@ export const I18N_KEYS = [
   "pull_refresh_refreshing",
   "shell_pin_limit_message",
   "shell_pin_limit_title",
+  "sidebar_action_value_separator",
   "sidebar_collapse",
   "sidebar_expand",
   "splash_skip",

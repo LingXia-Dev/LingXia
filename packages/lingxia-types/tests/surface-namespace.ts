@@ -185,4 +185,25 @@ function sidebarActionsAreReachableThroughLxShell(): void {
   lx.shell.sidebarActions.clear();
 }
 
-export type ShellSidebarGate = [typeof sidebarActionsAreReachableThroughLxShell];
+// `value` is the footer's changing fact; a header action has none, and that is a
+// compile error rather than a runtime rejection.
+function sidebarActionValueIsFooterOnly(): void {
+  const onActivate = () => {};
+  lx.shell.sidebarActions.replace([
+    { id: "brand", placement: "footer", icon: "public/brand.svg", label: "Brand", value: "Acme", onActivate },
+    { id: "agent", placement: "footer", icon: "public/agent.svg", label: "Agent", onActivate },
+    { id: "downloads", placement: "header", icon: "public/dl.svg", label: "Downloads", onActivate },
+  ]);
+  lx.shell.sidebarActions.replace([
+    // @ts-expect-error a header action cannot carry a value
+    { id: "brand", placement: "header", icon: "public/brand.svg", label: "Brand", value: "Acme", onActivate },
+  ]);
+  const brand = Math.random() > 0.5 ? { name: "Acme" } : undefined;
+  lx.shell.sidebarActions.update("brand", { value: brand?.name });
+  lx.shell.sidebarActions.update("brand", { value: null });
+}
+
+export type ShellSidebarGate = [
+  typeof sidebarActionsAreReachableThroughLxShell,
+  typeof sidebarActionValueIsFooterOnly,
+];

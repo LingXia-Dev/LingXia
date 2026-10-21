@@ -16,6 +16,14 @@ pub enum ShellError {
     EmptySidebarActionUpdate { id: String },
     #[error("shell sidebar action header accepts at most {max} items")]
     SidebarActionHeaderLimit { max: usize },
+    #[error("\"value\" is footer-only; move action \"{id}\" to placement: \"footer\"")]
+    SidebarActionValueInHeader { id: String },
+    #[error("at most {max} footer actions may carry a value; got {count} ({ids})")]
+    SidebarActionValueLimit {
+        max: usize,
+        count: usize,
+        ids: String,
+    },
     #[error("shell sidebar action icon '{icon}' must be an lxapp-accessible local resource path")]
     InvalidSidebarActionIcon { icon: String },
     #[error("shell runtime is not initialized")]

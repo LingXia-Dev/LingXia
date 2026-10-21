@@ -534,6 +534,7 @@ mod tests {
                 generation: 1,
                 id: "terminal".to_string(),
                 label: "Terminal".to_string(),
+                value: None,
                 icon_path: String::new(),
                 disabled: false,
                 source: WindowsShellSidebarActionSource::Runtime,

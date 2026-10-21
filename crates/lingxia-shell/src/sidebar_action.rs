@@ -18,6 +18,11 @@ use std::collections::HashSet;
 /// which is unbounded and scrolls.
 pub const MAX_HEADER_SIDEBAR_ACTIONS: usize = 2;
 
+/// A `value` names the context the person is working in (brand, store,
+/// account). Its point is being read at a glance, so the footer carries only a
+/// couple; more would turn shared chrome into a status panel.
+pub const MAX_SIDEBAR_ACTION_VALUES: usize = 2;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SidebarActionPlacement {
@@ -32,6 +37,10 @@ pub struct ShellSidebarAction {
     pub placement: SidebarActionPlacement,
     pub label: String,
     pub icon: String,
+    /// The changing fact the action shows (the working brand, store, account).
+    /// Footer only; empty normalizes to `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
     #[serde(default)]
     pub disabled: bool,
 }
@@ -41,6 +50,10 @@ impl ShellSidebarAction {
         self.id = required(self.id, ShellError::EmptySidebarActionId)?;
         self.label = required_field(self.label, "label")?;
         self.icon = required_field(self.icon, "icon")?;
+        self.value = normalized_value(self.value);
+        if self.value.is_some() && self.placement == SidebarActionPlacement::Header {
+            return Err(ShellError::SidebarActionValueInHeader { id: self.id });
+        }
         Ok(self)
     }
 }
@@ -49,16 +62,23 @@ impl ShellSidebarAction {
 pub struct ShellSidebarActionUpdate {
     pub label: Option<String>,
     pub icon: Option<String>,
+    /// `Some(None)` clears the value; `None` leaves it unchanged.
+    pub value: Option<Option<String>>,
     pub disabled: Option<bool>,
 }
 
 impl ShellSidebarActionUpdate {
     fn validate(mut self, id: &str) -> ShellResult<Self> {
-        if self.label.is_none() && self.icon.is_none() && self.disabled.is_none() {
+        if self.label.is_none()
+            && self.icon.is_none()
+            && self.value.is_none()
+            && self.disabled.is_none()
+        {
             return Err(ShellError::EmptySidebarActionUpdate { id: id.to_string() });
         }
         self.label = optional(self.label, "label")?;
         self.icon = optional(self.icon, "icon")?;
+        self.value = self.value.map(normalized_value);
         Ok(self)
     }
 }
@@ -70,6 +90,8 @@ pub struct ResolvedShellSidebarAction {
     pub id: String,
     pub placement: SidebarActionPlacement,
     pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon_path: Option<String>,
     pub disabled: bool,
@@ -109,7 +131,8 @@ impl SidebarActionCollection {
             return Err(ShellError::EmptySidebarActionId);
         }
         let patch = patch.validate(id)?;
-        let Some(item) = self.items.iter_mut().find(|item| item.id == id) else {
+        let mut items = self.items.clone();
+        let Some(item) = items.iter_mut().find(|item| item.id == id) else {
             return Err(ShellError::SidebarActionNotFound { id: id.to_string() });
         };
         if let Some(label) = patch.label {
@@ -118,9 +141,15 @@ impl SidebarActionCollection {
         if let Some(icon) = patch.icon {
             item.icon = icon;
         }
+        if let Some(value) = patch.value {
+            item.value = value;
+        }
         if let Some(disabled) = patch.disabled {
             item.disabled = disabled;
         }
+        // A patch can break a generation-wide rule (a header value, a third
+        // value), so the patched generation is validated as a whole.
+        self.items = validate_generation(items)?;
         self.declared = true;
         self.generation = self.generation.wrapping_add(1);
         Ok(())
@@ -170,6 +199,12 @@ fn optional(value: Option<String>, field: &'static str) -> ShellResult<Option<St
     value.map(|value| required_field(value, field)).transpose()
 }
 
+fn normalized_value(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 fn validate_generation(items: Vec<ShellSidebarAction>) -> ShellResult<Vec<ShellSidebarAction>> {
     let mut ids = HashSet::with_capacity(items.len());
     let items = items
@@ -193,7 +228,41 @@ fn validate_generation(items: Vec<ShellSidebarAction>) -> ShellResult<Vec<ShellS
             max: MAX_HEADER_SIDEBAR_ACTIONS,
         });
     }
+    let valued: Vec<String> = items
+        .iter()
+        .filter(|item| item.value.is_some())
+        .map(|item| item.id.clone())
+        .collect();
+    if valued.len() > MAX_SIDEBAR_ACTION_VALUES {
+        return Err(ShellError::SidebarActionValueLimit {
+            max: MAX_SIDEBAR_ACTION_VALUES,
+            ids: valued.join(", "),
+            count: valued.len(),
+        });
+    }
+    warn_on_indistinguishable_icons(&items);
     Ok(items)
+}
+
+/// Icon-only footer actions are told apart by their icon alone; two with the
+/// same icon look identical. Not an error — the label still reaches the
+/// tooltip — but almost always a mistake.
+fn warn_on_indistinguishable_icons(items: &[ShellSidebarAction]) {
+    let mut seen: Vec<(&str, &str)> = Vec::new();
+    for item in items
+        .iter()
+        .filter(|item| item.placement == SidebarActionPlacement::Footer && item.value.is_none())
+    {
+        if let Some((other, _)) = seen.iter().find(|(_, icon)| *icon == item.icon) {
+            log::warn!(
+                "sidebar actions '{other}' and '{}' share icon '{}' and look identical in the footer; give each a distinct icon",
+                item.id,
+                item.icon
+            );
+        } else {
+            seen.push((item.id.as_str(), item.icon.as_str()));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -206,8 +275,119 @@ mod tests {
             placement: SidebarActionPlacement::Footer,
             label: format!("Label {id}"),
             icon: "icons/action.svg".to_string(),
+            value: None,
             disabled: false,
         }
+    }
+
+    fn valued(id: &str, value: &str) -> ShellSidebarAction {
+        ShellSidebarAction {
+            value: Some(value.to_string()),
+            ..action(id)
+        }
+    }
+
+    #[test]
+    fn empty_value_normalizes_to_none() {
+        let item = ShellSidebarAction {
+            value: Some("  ".to_string()),
+            ..action("brand")
+        };
+        assert_eq!(item.validate().unwrap().value, None);
+    }
+
+    #[test]
+    fn header_value_rejects_the_generation() {
+        let mut state = SidebarActionCollection::default();
+        let mut header = valued("brand", "Acme");
+        header.placement = SidebarActionPlacement::Header;
+
+        assert_eq!(
+            state.replace(vec![header]),
+            Err(ShellError::SidebarActionValueInHeader {
+                id: "brand".to_string()
+            })
+        );
+        assert_eq!(state.generation(), 0);
+    }
+
+    #[test]
+    fn a_third_value_rejects_the_generation() {
+        let mut state = SidebarActionCollection::default();
+        let result = state.replace(vec![
+            valued("brand", "Acme"),
+            valued("store", "Downtown"),
+            valued("account", "Ada"),
+        ]);
+
+        assert_eq!(
+            result,
+            Err(ShellError::SidebarActionValueLimit {
+                max: MAX_SIDEBAR_ACTION_VALUES,
+                ids: "brand, store, account".to_string(),
+                count: 3,
+            })
+        );
+    }
+
+    #[test]
+    fn update_sets_and_clears_a_value() {
+        let mut state = SidebarActionCollection::default();
+        state.replace(vec![action("brand")]).unwrap();
+
+        state
+            .update(
+                "brand",
+                ShellSidebarActionUpdate {
+                    value: Some(Some("Acme".to_string())),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(state.items()[0].value.as_deref(), Some("Acme"));
+
+        state
+            .update(
+                "brand",
+                ShellSidebarActionUpdate {
+                    value: Some(None),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(state.items()[0].value, None);
+    }
+
+    #[test]
+    fn update_cannot_break_the_value_rules() {
+        let mut state = SidebarActionCollection::default();
+        let mut header = action("downloads");
+        header.placement = SidebarActionPlacement::Header;
+        state
+            .replace(vec![
+                header,
+                valued("brand", "Acme"),
+                valued("store", "Downtown"),
+                action("account"),
+            ])
+            .unwrap();
+        let before = state.clone();
+
+        let set = |value: &str| ShellSidebarActionUpdate {
+            value: Some(Some(value.to_string())),
+            ..Default::default()
+        };
+        assert_eq!(
+            state.update("downloads", set("x")),
+            Err(ShellError::SidebarActionValueInHeader {
+                id: "downloads".to_string()
+            })
+        );
+        assert!(matches!(
+            state.update("account", set("Ada")),
+            Err(ShellError::SidebarActionValueLimit { .. })
+        ));
+        assert_eq!(state, before);
     }
 
     #[test]
