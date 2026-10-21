@@ -4210,8 +4210,11 @@ async function windowsRightAsideWebView(
 }
 
 /**
- * The WebView window showing `anchor` (Windows). Hidden mains keep their
- * windows "visible", so geometry alone does not pick the presented one.
+ * The WebView window showing `anchor` (Windows). A main retired by the last
+ * presentation keeps its window listed as visible for up to ~2s — the home
+ * WebView, full-card with no navigation bar, sits over the anchor ahead of
+ * the page that shows it. Wait until exactly one WebView covers the anchor
+ * rather than take whichever the window list returns first.
  */
 async function windowsWebViewShowing(
   desktop: DesktopDriver,
@@ -4225,11 +4228,14 @@ async function windowsWebViewShowing(
   const [x, y] = regionCenter([node.rect.x, node.rect.y, node.rect.w, node.rect.h]);
   return waitForDesktopWindow(
     () => desktop.windows(),
-    (windows) => visibleHostWebViews(host, windows).find((window) => (
-      x >= window.bounds.x && x < window.bounds.x + window.bounds.w
-      && y >= window.bounds.y && y < window.bounds.y + window.bounds.h
-    )),
-    `WebView showing "${anchor}"`,
+    (windows) => {
+      const covering = visibleHostWebViews(host, windows).filter((window) => (
+        x >= window.bounds.x && x < window.bounds.x + window.bounds.w
+        && y >= window.bounds.y && y < window.bounds.y + window.bounds.h
+      ));
+      return covering.length === 1 ? covering[0] : undefined;
+    },
+    `the only WebView showing "${anchor}"`,
   );
 }
 
