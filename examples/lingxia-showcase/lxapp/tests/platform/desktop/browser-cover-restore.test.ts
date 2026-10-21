@@ -7,8 +7,8 @@ import type { DesktopDriver, DesktopWindowInfo } from '@lingxia/types/automation
 import type { TestApp } from '@lingxia/test';
 
 /// Showcase sidebar actions besides the host's typed Settings: Downloads in
-/// the header, four footer actions.
-const SHOWCASE_SIDEBAR_ACTIONS: SidebarActionCounts = { header: 1, footer: 4 };
+/// the header, five footer actions.
+const SHOWCASE_SIDEBAR_ACTIONS: SidebarActionCounts = { header: 1, footer: 5 };
 
 interface SidebarActionCounts {
   /** Runtime header actions; the typed Settings leads them. */
@@ -170,6 +170,10 @@ async function restoreShowcaseSidebarActions(app: TestApp): Promise<void> {
       {
         id: 'ping', placement: 'footer', icon: 'public/activator.svg', label: 'Ping',
         onActivate() { lx.showToast({ title: 'sidebar action clicked', icon: 'success' }); },
+      },
+      {
+        id: 'language', placement: 'footer', icon: 'public/sidebar-language.svg', label: 'Language', value: 'English',
+        onActivate() {},
       },
     ]);
     delete (globalThis as SpoofGlobals).__staticSettingsSpoofCalls;
