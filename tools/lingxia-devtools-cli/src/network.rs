@@ -27,6 +27,9 @@ enum NetworkCommand {
     /// Capture real network traffic to request JSON or HAR
     #[command(subcommand)]
     Capture(CaptureCommand),
+    /// Show the traffic live in Chrome DevTools, for people; runs until
+    /// Ctrl-C (agents: use `capture`)
+    Devtools,
     /// Show who answered each recent call (route, scenario rule, mock or
     /// real, and the selection layer), the scenario and the recording
     Status {
@@ -93,6 +96,7 @@ pub fn execute(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
             }
             print(&status, json, print_status)
         }
+        NetworkCommand::Devtools => crate::network_devtools::run(info),
         NetworkCommand::Capture(CaptureCommand::Start {
             matcher,
             appid,
