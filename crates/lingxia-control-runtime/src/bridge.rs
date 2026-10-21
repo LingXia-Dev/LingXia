@@ -5,11 +5,11 @@
 //! [`crate::local_control`] instead, which reaches the same [`crate::dispatch`]
 //! without any of the network stack below.
 
-use lingxia_control_protocol::ControlRequest;
 use lingxia_control_protocol::dev_session::{
     DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionLog, DevSessionLogLevel,
     DevSessionMessage, DevSessionRole, PeerBuild, capabilities,
 };
+use lingxia_control_protocol::{ControlRequest, ControlResponse};
 use lingxia_log::{AttachedLogStream, LogLevel, LogMessage, LogTag, attach_log_stream_default};
 use std::sync::OnceLock;
 use std::thread;
@@ -23,6 +23,9 @@ use crate::dispatch;
 const DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
+/// How long the bridge waits for a request's answer before moving on, so a
+/// quick one answers on the turn it arrived, as when it ran inline.
+const QUICK_ANSWER: Duration = Duration::from_millis(150);
 const SESSION_STALE_AFTER: Duration = Duration::from_secs(15);
 
 struct RunnerDisplayLanguageLease(Option<lxapp::DisplayLanguageSessionOwner>);
@@ -267,6 +270,7 @@ fn bridge_loop(
     outbox: Option<&std::sync::mpsc::Receiver<ControlRequest>>,
 ) -> Result<(), String> {
     let (recent, mut receiver) = attached.into_parts();
+    let dispatcher = Dispatcher::start();
     let mut last_received = Instant::now();
     let mut last_ping = Instant::now();
     for chunk in recent.chunks(128) {
@@ -293,6 +297,10 @@ fn bridge_loop(
             send_log_batch(websocket, &batch)?;
         }
 
+        while let Some(response) = dispatcher.answered() {
+            send_wire_message(websocket, &DevSessionMessage::Response(response))?;
+        }
+
         // Requests this runtime sends up (a run's companion calls).
         if let Some(outbox) = outbox {
             while let Ok(request) = outbox.try_recv() {
@@ -304,13 +312,14 @@ fn bridge_loop(
 
         match websocket.read() {
             Ok(message) => {
-                if let Some(wire) = parse_wire_message(message)? {
-                    handle_incoming_message(websocket, wire)?;
+                if let Some(wire) = parse_wire_message(message)?
+                    && handle_incoming_message(&dispatcher, wire)
+                {
+                    dispatcher.settle(QUICK_ANSWER);
+                    while let Some(response) = dispatcher.answered() {
+                        send_wire_message(websocket, &DevSessionMessage::Response(response))?;
+                    }
                 }
-                // Dispatch can synchronously reopen a test profile or load a
-                // large bundle. That local work is not transport inactivity;
-                // otherwise a healthy peer is dropped before its queued pong
-                // can be read, clearing the run's companion and mock state.
                 last_received = Instant::now();
             }
             Err(WsError::Io(err)) if is_retryable_read_error(&err) => {}
@@ -352,20 +361,88 @@ fn is_retryable_read_error(err: &std::io::Error) -> bool {
     false
 }
 
-fn handle_incoming_message(
-    websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
-    message: DevSessionMessage,
-) -> Result<(), String> {
+/// Runs requests off the bridge thread, one at a time in arrival order, so
+/// a long one (an `eval` that awaits) does not hold logs, the live network
+/// feed, companion replies and heartbeats behind it.
+struct Dispatcher {
+    dispatch: fn(ControlRequest) -> ControlResponse,
+    requests: Option<std::sync::mpsc::Sender<ControlRequest>>,
+    answers: std::sync::mpsc::Receiver<ControlResponse>,
+    /// Answers made on the bridge thread when the worker could not start.
+    inline: std::cell::RefCell<std::collections::VecDeque<ControlResponse>>,
+}
+
+impl Dispatcher {
+    fn start() -> Self {
+        Self::with(dispatch)
+    }
+
+    fn with(dispatch: fn(ControlRequest) -> ControlResponse) -> Self {
+        let (requests, queue) = std::sync::mpsc::channel::<ControlRequest>();
+        let (answer, answers) = std::sync::mpsc::channel();
+        let worker = thread::Builder::new()
+            .name("lx-dev-dispatch".into())
+            .spawn(move || {
+                for request in queue {
+                    if answer.send(dispatch(request)).is_err() {
+                        break;
+                    }
+                }
+            });
+        if let Err(err) = &worker {
+            log::warn!("dev dispatch worker unavailable; dispatching inline: {err}");
+        }
+        Self {
+            dispatch,
+            requests: worker.is_ok().then_some(requests),
+            answers,
+            inline: Default::default(),
+        }
+    }
+
+    fn submit(&self, request: ControlRequest) {
+        let request = match &self.requests {
+            Some(requests) => match requests.send(request) {
+                Ok(()) => return,
+                Err(std::sync::mpsc::SendError(request)) => request,
+            },
+            None => request,
+        };
+        self.inline.borrow_mut().push_back((self.dispatch)(request));
+    }
+
+    /// Wait up to `timeout` for an answer, so a quick request's goes out on
+    /// this turn; a slow one is sent on a later turn.
+    fn settle(&self, timeout: Duration) {
+        if !self.inline.borrow().is_empty() {
+            return;
+        }
+        if let Ok(answer) = self.answers.recv_timeout(timeout) {
+            self.inline.borrow_mut().push_back(answer);
+        }
+    }
+
+    fn answered(&self) -> Option<ControlResponse> {
+        self.inline
+            .borrow_mut()
+            .pop_front()
+            .or_else(|| self.answers.try_recv().ok())
+    }
+}
+
+/// `true` when it was a request, now with the dispatcher.
+fn handle_incoming_message(dispatcher: &Dispatcher, message: DevSessionMessage) -> bool {
     match message {
         DevSessionMessage::Request(request) => {
-            send_wire_message(websocket, &DevSessionMessage::Response(dispatch(request)))
+            dispatcher.submit(request);
+            true
         }
         #[cfg(feature = "test-runtime")]
         DevSessionMessage::Response(response) => {
             crate::bridge_upstream::resolve(response);
-            Ok(())
+            false
         }
-        _ => Ok(()),
+        _ => false,
     }
 }
 
@@ -445,7 +522,55 @@ fn configure_read_timeout(websocket: &mut WebSocket<MaybeTlsStream<std::net::Tcp
 
 #[cfg(test)]
 mod tests {
-    use super::is_retryable_read_error;
+    use super::{Dispatcher, is_retryable_read_error};
+    use lingxia_control_protocol::{ControlRequest, ControlResponse};
+    use std::time::Duration;
+
+    fn request(id: &str, method: &str) -> ControlRequest {
+        ControlRequest {
+            id: id.into(),
+            method: method.into(),
+            params: None,
+        }
+    }
+
+    /// Answers at once, except `slow`, which takes 400ms.
+    fn stand_in(request: ControlRequest) -> ControlResponse {
+        if request.method == "slow" {
+            std::thread::sleep(Duration::from_millis(400));
+        }
+        ControlResponse::success(request.id, None)
+    }
+
+    fn ids(dispatcher: &Dispatcher) -> Vec<String> {
+        std::iter::from_fn(|| dispatcher.answered())
+            .map(|answer| answer.id)
+            .collect()
+    }
+
+    #[test]
+    fn a_quick_request_answers_on_the_turn_it_arrived() {
+        let dispatcher = Dispatcher::with(stand_in);
+        dispatcher.submit(request("a", "lxapp.info"));
+        dispatcher.settle(Duration::from_secs(2));
+        assert_eq!(ids(&dispatcher), ["a"]);
+    }
+
+    #[test]
+    fn a_slow_request_does_not_hold_back_the_turn() {
+        let dispatcher = Dispatcher::with(stand_in);
+        dispatcher.submit(request("slow", "slow"));
+        dispatcher.settle(Duration::from_millis(50));
+        assert!(ids(&dispatcher).is_empty(), "the turn moved on");
+        // Others queue behind it and answer in arrival order.
+        dispatcher.submit(request("b", "lxapp.info"));
+        let mut answered = Vec::new();
+        while answered.len() < 2 {
+            dispatcher.settle(Duration::from_secs(2));
+            answered.extend(ids(&dispatcher));
+        }
+        assert_eq!(answered, ["slow", "b"]);
+    }
 
     #[test]
     fn retries_nonblocking_socket_reads() {
