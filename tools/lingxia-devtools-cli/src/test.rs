@@ -34,7 +34,7 @@ const MAX_ARTIFACT_BASE64_BYTES: usize = MAX_ARTIFACT_BYTES.div_ceil(3) * 4;
 
 pub use lingxia_control_protocol::dev_session::select::NO_SESSION_HINT;
 
-const TEST_LONG_ABOUT: &str = "\
+pub(crate) const TEST_LONG_ABOUT: &str = "\
 Run the project's tests/*.test.ts in the app started with `lingxia dev`.
 
 With no path, the run is lxdev.json `test.entry`, else `tests/`. Specs import
@@ -94,7 +94,7 @@ impl OutputFormat {
 // it, and the last one wins.
 #[command(args_override_self = true)]
 #[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
-#[command(long_about = TEST_LONG_ABOUT, after_long_help = TEST_AFTER_HELP)]
+#[command(after_long_help = TEST_AFTER_HELP)]
 pub struct TestOptions {
     #[command(subcommand)]
     pub command: Option<TestCommand>,

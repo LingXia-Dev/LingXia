@@ -57,8 +57,11 @@ enum Commands {
     /// Read and follow the running app's logs
     Logs(logs::LogsOptions),
     /// Run the project's tests/*.test.ts in the running app
+    // A variant's doc comment would override the struct's long_about.
+    #[command(long_about = test::TEST_LONG_ABOUT)]
     Test(Box<test::TestOptions>),
     /// Choose who answers the running app's calls
+    #[command(long_about = mock::LONG_ABOUT)]
     Mock(mock::MockOptions),
     /// See the running app's Logic network calls (fetch, SSE) and who
     /// answered them; not system packet capture (development hosts only)
@@ -439,6 +442,14 @@ mod tests {
         );
         assert_eq!(about("session"), "List sessions");
         assert_eq!(about("mock"), "Choose who answers the running app's calls");
+        let long_help = |name: &str| {
+            Cli::command()
+                .find_subcommand_mut(name)
+                .map(|command| command.render_long_help().to_string())
+                .unwrap_or_default()
+        };
+        assert!(long_help("test").contains("With no path, the run is lxdev.json"));
+        assert!(long_help("mock").contains("The session has one scenario"));
         assert!(about("network").starts_with(
             "See the running app's Logic network calls (fetch, SSE) and who answered them; not \
              system packet capture"

@@ -52,8 +52,8 @@ pub(crate) const IDLE_HINT: &str = "no request reached this scenario yet — the
 pub(crate) const RELOAD_HINT: &str =
     "pages already loaded keep their data; `lxdev lxapp restart` reloads them";
 
-#[derive(Args, Clone)]
-#[command(long_about = "\
+/// `lxdev mock --help`.
+pub(crate) const LONG_ABOUT: &str = "\
 Who answers the running app's calls: mocks/ handlers, the real backend, or a scenario \
 state on top (development hosts only).
 
@@ -64,7 +64,9 @@ state on top (development hosts only).
   lxdev mock reset                   startup selection, no scenario, fresh handlers
 
 The session has one scenario. `use --app` chooses which lxapp's HTTP calls it \
-answers; another use replaces it.")]
+answers; another use replaces it.";
+
+#[derive(Args, Clone)]
 pub struct MockOptions {
     #[command(subcommand)]
     command: Option<MockCommand>,
@@ -1175,6 +1177,16 @@ fn run_select(
         _ => PathBuf::from(&info.project_root),
     };
     let result = select(session, mode, targets, &content_root)?;
+    let refused = result["functionsRequired"] == true && result["functions"]["applied"] == false;
+    if refused && !json {
+        // Nothing switched: the reason is the whole answer.
+        let line = result["functionsLine"].as_str().unwrap_or_default();
+        bail!(
+            "nothing switched: {}",
+            line.strip_prefix("functions: not switched — ")
+                .unwrap_or(line)
+        );
+    }
     network::print(&result, json, |result| {
         if result.get("status").is_some() {
             for line in selection_lines(&result["status"]) {
@@ -1188,13 +1200,8 @@ fn run_select(
             hint();
         }
     })?;
-    if result["functionsRequired"] == true && result["functions"]["applied"] == false {
-        bail!(
-            "{}; the Function targets were not applied",
-            result["functionsLine"]
-                .as_str()
-                .unwrap_or("functions: not switched")
-        );
+    if refused {
+        bail!("nothing switched: the Function targets were refused");
     }
     Ok(())
 }
