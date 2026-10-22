@@ -78,7 +78,7 @@ impl NetworkObserver for Forwarder {
 }
 
 /// Install the process observer. Idempotent.
-pub(crate) fn install() {
+pub fn install() {
     static INSTALL: Once = Once::new();
     INSTALL.call_once(|| {
         let (tx, rx) = sync_channel(QUEUE);

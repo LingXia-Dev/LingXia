@@ -274,7 +274,7 @@ mod interceptor {
                     })?;
                     ctx.global().set("__beginRun", begin)?;
                     let calls = JSFunc::new(&ctx, move |ctx: JSContext| -> JSResult<JSValue> {
-                        crate::resolve::json_to_js(&ctx, &dev::run_calls(0, Some(200), &[]))
+                        crate::json_to_js(&ctx, &dev::run_calls(0, Some(200), &[]))
                     })?;
                     ctx.global().set("__calls", calls)?;
                     let record = JSFunc::new(
@@ -282,7 +282,7 @@ mod interceptor {
                         move |ctx: JSContext, command: String| -> JSResult<JSValue> {
                             let value = dev::run_record(run, &command, Some("rec"), &[])
                                 .map_err(auto_err)?;
-                            crate::resolve::json_to_js(&ctx, &value)
+                            crate::json_to_js(&ctx, &value)
                         },
                     )?;
                     ctx.global().set("__record", record)?;

@@ -4,9 +4,9 @@
 //! here, sent on the bridge's next turn, and resolved when the matching
 //! response arrives, the connection drops, or it times out.
 
-use lingxia_automation::runtime::network::{UpstreamError, UpstreamFuture, set_upstream};
 use lingxia_control_protocol::methods::session::companion::NOT_SENT;
 use lingxia_control_protocol::{ControlRequest, ControlResponse};
+use lingxia_network_dev::companion::{UpstreamError, UpstreamFuture, set_upstream};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};

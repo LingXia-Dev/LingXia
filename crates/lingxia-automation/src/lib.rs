@@ -29,7 +29,7 @@ mod nav;
 // Test network routes need a host run to own them; without the runtime the
 // driver exists but every call rejects.
 #[cfg(feature = "runtime")]
-mod network;
+use lingxia_network_dev as network;
 #[cfg(not(feature = "runtime"))]
 #[path = "network/unavailable.rs"]
 mod network;
@@ -306,6 +306,12 @@ fn make_automation(ctx: JSContext, options: Optional<JSValue>) -> JSResult<JSObj
 /// context. Used by the lxapp logic extension below and by isolated host
 /// automation programs, whose contexts are not lxapp logic contexts.
 pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
+    // The network drivers answer to this crate's privileges and error codes.
+    #[cfg(feature = "runtime")]
+    network::set_policy(network::Policy {
+        error: |msg| auto_err(msg),
+        authorize: require_target_context,
+    });
     ctx.register_hidden_class::<JSAutomation>()?;
     ctx.register_hidden_class::<page::JSPageDriver>()?;
     ctx.register_hidden_class::<input::JSPagePointer>()?;

@@ -35,6 +35,7 @@ export const LAYERS = {
   "browser-shell": 4,
   proxy: 4,
   "control-commands": 4,
+  "network-dev": 4,
   automation: 4,
   lingxia: 5,
   "control-runtime": 6,

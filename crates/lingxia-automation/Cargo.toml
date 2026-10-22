@@ -2,7 +2,7 @@
 name = "lingxia-automation"
 version.workspace = true
 edition.workspace = true
-description = "In-process UI/runtime automation JS API (lx.automation) for LingXia lxapps"
+description = "In-process automation JS API (lx.automation) and host test runtime for LingXia lxapps"
 license = "MIT"
 repository.workspace = true
 keywords = ["lingxia", "automation", "javascript"]
@@ -25,19 +25,12 @@ desktop = [
 # `lx.automation()` alone does not pull the worker/profile dependencies.
 runtime = [
     "dep:uuid",
-    "dep:http",
-    "dep:regex",
     "dep:lingxia-log",
-    "dep:lingxia-control-protocol",
-    "lingxia-control-protocol/scenario-match",
+    "dep:lingxia-network-dev",
     "dep:rong_modules",
     "dep:rong_console",
     "dep:rong_timer",
-    "dep:rong_rt",
-    "dep:flate2",
-    "dep:lingxia-transfer",
     "rong_modules/network-observer",
-    "lxapp/network-observer",
 ]
 
 [dependencies]
@@ -54,22 +47,12 @@ lingxia-device-io = { workspace = true, optional = true }
 futures = { workspace = true }
 tokio = { workspace = true }
 base64 = { workspace = true }
-http = { workspace = true, optional = true }
-regex = { version = "1", optional = true }
 uuid = { version = "1.26", features = ["v4"], optional = true }
 lingxia-log = { workspace = true, optional = true }
-lingxia-control-protocol = { workspace = true, optional = true }
 rong_modules = { workspace = true, optional = true, default-features = false, features = ["timer", "http", "encoding", "event", "exception", "abort", "url", "buffer", "stream", "compression"] }
 rong_console = { workspace = true, optional = true }
 rong_timer = { workspace = true, optional = true }
-rong_rt = { workspace = true, optional = true, default-features = false, features = ["network-observer"] }
-flate2 = { version = "1", optional = true }
-lingxia-transfer = { workspace = true, optional = true }
-
-[dev-dependencies]
-# Tests attribute their context's `fetch` like lxapp does for Logic.
-rong_http = { workspace = true, default-features = false, features = ["network-observer"] }
-bytes = { workspace = true }
+lingxia-network-dev = { workspace = true, optional = true }
 
 # Target-specific JavaScript engine selection (mirrors lingxia-logic).
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]

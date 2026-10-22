@@ -1,5 +1,11 @@
-//! `NetworkDriver` — test-only interception of an lxapp's Logic `fetch` and
-//! `Rong.SSE`.
+//! The development and test network layer: interception of an lxapp's
+//! Logic `fetch` and `Rong.SSE` (`NetworkDriver`, mocks, scenarios), and the
+//! traffic observer behind `lxdev network`. Development hosts and host
+//! automation runs only; a shipped product never links it.
+//!
+//! `lingxia-automation` exposes the JS drivers through `lx.automation()`
+//! and supplies their [`Policy`]; `lingxia-control-runtime` drives the dev
+//! session half (`dev`).
 //!
 //! Routes live in a process table keyed by run and appid. Only a host
 //! automation run can install them, and the run's finalization clears them,
@@ -14,19 +20,80 @@
 //! that reaches the network whatever sent it; routes and mocks never do.
 
 mod capture;
-pub(crate) mod companion;
-pub(crate) mod dev;
+pub mod companion;
+pub mod dev;
 mod mocks;
-pub(crate) mod observer;
+pub mod observer;
 mod registry;
 mod scenario;
 mod test_scenario;
 
-pub(crate) use test_scenario::{JSMockDriver, JSScenario};
+pub use test_scenario::{JSMockDriver, JSScenario};
+
+/// What the automation front-end decides for the JS drivers: how a message
+/// becomes its coded error, and whether the calling context may drive an
+/// lxapp. Installed once by `lingxia-automation`; until then every driver
+/// call is refused.
+pub struct Policy {
+    pub error: fn(&str) -> rong::RongJSError,
+    pub authorize: fn(&JSContext, &Arc<LxApp>) -> JSResult<()>,
+}
+
+static POLICY: std::sync::OnceLock<Policy> = std::sync::OnceLock::new();
+
+/// Install the drivers' [`Policy`]; a second install is ignored.
+pub fn set_policy(policy: Policy) {
+    let _ = POLICY.set(policy);
+}
+
+pub(crate) fn auto_err(msg: impl AsRef<str>) -> rong::RongJSError {
+    let msg = msg.as_ref();
+    match POLICY.get() {
+        Some(policy) => (policy.error)(msg),
+        None => HostError::new(rong::error::E_INTERNAL, msg).into(),
+    }
+}
+
+/// The driver's lxapp, once the caller may drive it.
+pub(crate) fn upgrade_authorized(ctx: &JSContext, weak: &Weak<LxApp>) -> JSResult<Arc<LxApp>> {
+    let app = weak
+        .upgrade()
+        .ok_or_else(|| auto_err("automation owner LxApp has been released"))?;
+    let policy = POLICY
+        .get()
+        .ok_or_else(|| auto_err("network automation is not installed in this host"))?;
+    (policy.authorize)(ctx, &app)?;
+    Ok(app)
+}
+
+/// A serde value as a JS value.
+pub(crate) fn json_to_js(ctx: &JSContext, value: &Value) -> JSResult<JSValue> {
+    use rong::{IntoJSValue, JSArray};
+    Ok(match value {
+        Value::Null => JSValue::null(ctx),
+        Value::Bool(b) => (*b).into_js_value(ctx),
+        Value::Number(n) => n.as_f64().unwrap_or(0.0).into_js_value(ctx),
+        Value::String(s) => s.as_str().into_js_value(ctx),
+        Value::Array(items) => {
+            let arr = JSArray::new(ctx)?;
+            for item in items {
+                arr.push_value(json_to_js(ctx, item)?)?;
+            }
+            arr.into_js_value(ctx)
+        }
+        Value::Object(map) => {
+            let obj = JSObject::new(ctx);
+            for (k, v) in map {
+                obj.set(k.as_str(), json_to_js(ctx, v)?)?;
+            }
+            obj.into_js_value()
+        }
+    })
+}
 
 /// Establish the test owner before its first line of JavaScript runs. An
 /// empty owner keeps dev Function rules from answering during the run.
-pub(crate) async fn prepare_test_owner(run_id: &str) -> Result<(), String> {
+pub async fn prepare_test_owner(run_id: &str) -> Result<(), String> {
     let owner = lingxia_control_protocol::scenario::test_owner(run_id);
     test_scenario::clear_functions_checked(&owner)
         .await
@@ -45,7 +112,7 @@ pub(crate) async fn prepare_test_owner(run_id: &str) -> Result<(), String> {
 
 /// Clear both companion overlays at run end. The host owns this transition;
 /// CLI terminal observation is only an idempotent fallback.
-pub(crate) async fn clear_test_owner(run_id: &str) -> Result<(), String> {
+pub async fn clear_test_owner(run_id: &str) -> Result<(), String> {
     use lingxia_control_protocol::methods::session::companion as method;
     let owner = lingxia_control_protocol::scenario::test_owner(run_id);
     let (scenario, mock) = tokio::join!(
@@ -67,8 +134,6 @@ pub(crate) async fn clear_test_owner(run_id: &str) -> Result<(), String> {
     confirmed("mock owner drop", mock)
 }
 
-use crate::auto_err;
-use crate::resolve::{json_to_js, upgrade_authorized};
 use lxapp::LxApp;
 use mocks::MockDecision;
 use registry::{
@@ -100,7 +165,7 @@ pub(crate) struct NetworkRunScope {
 /// Bind a host automation context to its run. Routes and scenarios
 /// installed from this context belong to `run_id` and to the attempt `admit`
 /// names, and are refused when it refuses; captures need `live`.
-pub(crate) fn attach_run_scope(
+pub fn attach_run_scope(
     ctx: &JSContext,
     run_id: String,
     admit: impl Fn() -> Result<Option<u64>, String> + Send + Sync + 'static,
@@ -130,13 +195,13 @@ pub(crate) fn attach_run_scope(
 
 /// Remove every route and request record a run owns. Called on every
 /// terminal transition of the run.
-pub(crate) fn clear_run(run_id: &str) {
+pub fn clear_run(run_id: &str) {
     registry::with_registry(|routes| routes.clear_run(run_id));
     observer::drop_recording(run_id);
 }
 
 /// The run's scenario lock, when `ctx` is a host automation context.
-pub(crate) fn scenario_lock(ctx: &JSContext) -> Option<Arc<tokio::sync::Mutex<()>>> {
+pub fn scenario_lock(ctx: &JSContext) -> Option<Arc<tokio::sync::Mutex<()>>> {
     ctx.get_state::<NetworkRunScope>()
         .map(|scope| scope.scenario_lock.clone())
 }
@@ -146,7 +211,7 @@ pub(crate) fn scenario_lock(ctx: &JSContext) -> Option<Arc<tokio::sync::Mutex<()
 /// many of each; a scenario the companion could not clear is an error.
 /// `lock` is the run's scenario lock: a late install from the abandoned spec
 /// settles before this touches the scenario or its admission.
-pub(crate) async fn reclaim_attempt(
+pub async fn reclaim_attempt(
     lock: Option<Arc<tokio::sync::Mutex<()>>>,
     run_id: &str,
     attempt: u64,
@@ -185,7 +250,7 @@ pub(crate) async fn reclaim_attempt(
 /// test framework uses: `networkLog(sinceMs, limit?)` (the Logic `fetch`
 /// calls a failed spec reports) and `networkRecord('start' | 'stop', name?)`
 /// (`lxdev test --record-network`). `secrets` are masked in both.
-pub(crate) fn attach_host_functions(
+pub fn attach_host_functions(
     ctx: &JSContext,
     host: &JSObject,
     run_id: &str,
@@ -246,13 +311,13 @@ fn fetch_failed_with(detail: String) -> rong::RongJSError {
 // ----------------------------- driver side -----------------------------
 
 #[js_class(clone)]
-pub(crate) struct JSNetworkDriver {
+pub struct JSNetworkDriver {
     lxapp: Weak<LxApp>,
 }
 
 impl JSNetworkDriver {
     /// Authorization is checked per call, so reading `.network` never throws.
-    pub(crate) fn new(lxapp: Weak<LxApp>) -> Self {
+    pub fn new(lxapp: Weak<LxApp>) -> Self {
         Self { lxapp }
     }
 }
@@ -413,7 +478,7 @@ impl JSNetworkDriver {
 
 /// Handle returned by `route()`.
 #[js_class(clone)]
-pub(crate) struct JSNetworkRoute {
+pub struct JSNetworkRoute {
     id: u64,
     run_id: String,
     appid: String,
@@ -2275,7 +2340,7 @@ fn logic_target(ctx: &JSContext) -> Option<LogicTarget> {
 }
 
 /// Logic-context hook: route an lxapp's `fetch` by its appid and policy.
-pub(crate) fn install_logic_fetch_interceptor(ctx: &JSContext) -> JSResult<()> {
+pub fn install_logic_fetch_interceptor(ctx: &JSContext) -> JSResult<()> {
     // Read-only bootstrap gate, bound to this context's app. It grants no
     // authority to install handlers or alter another app's selection.
     ctx.global().set(
@@ -2294,7 +2359,7 @@ pub(crate) fn install_logic_fetch_interceptor(ctx: &JSContext) -> JSResult<()> {
 /// `Rong.SSE` wrapper registered with lxapp, applied to every Logic context
 /// before `Rong` is frozen: route an lxapp's SSE connections like its
 /// `fetch`.
-pub(crate) fn wrap_logic_sse(ctx: &JSContext, original: JSValue) -> JSResult<JSValue> {
+pub fn wrap_logic_sse(ctx: &JSContext, original: JSValue) -> JSResult<JSValue> {
     wrap_sse(ctx, original, logic_target)
 }
 

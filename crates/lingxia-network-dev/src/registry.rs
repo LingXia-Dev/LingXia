@@ -2427,12 +2427,12 @@ mod tests {
     fn replacing_a_scenario_on_another_app_removes_the_old_http_half() {
         let mut routes = Registry::default();
         let install = |routes: &mut Registry, app: &str| {
-            let parsed = crate::network::scenario::parse_scenario(
+            let parsed = crate::scenario::parse_scenario(
                 &serde_json::json!({ "rules": [{ "http": "GET **", "status": 200 }] }),
                 None,
             )
             .unwrap();
-            let slot = crate::network::dev::installed(&parsed, None);
+            let slot = crate::dev::installed(&parsed, None);
             routes
                 .install_scenario("run", app, slot, parsed.http, || true)
                 .unwrap()

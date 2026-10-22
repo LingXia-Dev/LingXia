@@ -25,6 +25,7 @@ members = [
     "crates/lingxia-surface",
     "crates/lingxia-logic",
     "crates/lingxia-automation",
+    "crates/lingxia-network-dev",
     "crates/lingxia-messaging",
     "crates/lingxia",
     "crates/lingxia-proxy",
@@ -94,6 +95,7 @@ lingxia-app-context = { path = "crates/lingxia-app-context", version = "0.26.0" 
 lingxia-media = { path = "crates/lingxia-media", version = "0.26.0" }
 lingxia-webview = { path = "crates/lingxia-webview", version = "0.26.0" }
 lingxia-automation = { path = "crates/lingxia-automation", version = "0.26.0" }
+lingxia-network-dev = { path = "crates/lingxia-network-dev", version = "0.26.0" }
 lingxia-windows-contract = { path = "crates/lingxia-windows-contract", version = "0.26.0" }
 lingxia-windows-sdk = { path = "crates/lingxia-windows-sdk", version = "0.26.0", default-features = false }
 lingxia-windows-build = { path = "crates/lingxia-windows-build", version = "0.26.0" }
