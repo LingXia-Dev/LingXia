@@ -10161,6 +10161,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 if is_window_visible(hwnd) && !is_minimized(hwnd) {
                     apply_pending_restore_maximize(hwnd);
                 }
+                // Last, so a surface webview brought to the top in this
+                // position change cannot stay above the dev mark.
+                #[cfg(feature = "runtime")]
+                crate::dev_service_mark::raise_owner(hwnd);
                 result
             }
             WindowsAndMessaging::WM_ERASEBKGND => {

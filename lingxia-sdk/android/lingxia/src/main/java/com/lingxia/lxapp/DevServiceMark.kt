@@ -73,6 +73,26 @@ internal object DevServiceMark {
         Log.i(TAG, "dev service mark shown")
     }
 
+    /** Re-stack the chip above a surface webview added since it was attached. */
+    fun bringToFront(activity: Activity) {
+        val chip = shown[activity] ?: return
+        val params = chip.layoutParams as? WindowManager.LayoutParams ?: return
+        if (!chip.isAttachedToWindow || activity.isFinishing || activity.isDestroyed) return
+        val wm = activity.getSystemService(Activity.WINDOW_SERVICE) as? WindowManager ?: return
+        try {
+            // removeView is posted. addView then throws because the view is still
+            // attached, and the pending removal leaves the chip gone.
+            wm.removeViewImmediate(chip)
+            wm.addView(chip, params)
+        } catch (error: RuntimeException) {
+            LxLog.e(TAG, "raise failed: $error")
+            if (!chip.isAttachedToWindow) {
+                shown.remove(activity)
+                attach(activity)
+            }
+        }
+    }
+
     fun detach(activity: Activity) {
         val chip = shown.remove(activity) ?: return
         val wm = activity.getSystemService(Activity.WINDOW_SERVICE) as? WindowManager ?: return

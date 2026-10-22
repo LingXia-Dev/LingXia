@@ -212,7 +212,12 @@ enum DevServiceMarkWindow {
 
     private static func raise(on window: NSWindow) {
         guard let panel = marks[ObjectIdentifier(window)] else { return }
-        window.addChildWindow(panel, ordered: .above)
+        // Re-adding an existing child does not reorder it above siblings
+        // added later, such as a float. Remove it first.
+        if window.childWindows?.last !== panel {
+            window.removeChildWindow(panel)
+            window.addChildWindow(panel, ordered: .above)
+        }
         place(panel, on: window)
     }
 

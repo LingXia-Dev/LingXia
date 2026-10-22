@@ -121,6 +121,27 @@ pub(crate) fn sync(hwnd: HWND) {
     }
 }
 
+/// A surface window was restacked. Walk to the top-level host — a child
+/// webview's parent, or the owner set with `GWLP_HWNDPARENT` — and put that
+/// host's chip back above the group. The webview is inside the surface
+/// window, so it stays under the chip.
+pub(crate) fn raise_owner(hwnd: HWND) {
+    let mut top = hwnd;
+    for _ in 0..8 {
+        let parent = unsafe { WindowsAndMessaging::GetParent(top).unwrap_or_default() };
+        if parent.0.is_null() || parent == top {
+            break;
+        }
+        top = parent;
+    }
+    let owner = unsafe { GetWindow(top, WindowsAndMessaging::GW_OWNER).unwrap_or_default() };
+    let host = if owner.0.is_null() { top } else { owner };
+    if host == hwnd {
+        return;
+    }
+    raise(host);
+}
+
 /// After a float is brought to the top, put the chip back above it.
 pub(crate) fn raise(owner: HWND) {
     let Some(window) = marks()

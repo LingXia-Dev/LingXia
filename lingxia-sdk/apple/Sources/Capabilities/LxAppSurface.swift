@@ -371,9 +371,9 @@ enum LxAppSurface {
             } else if existing.isFloat {
                 // A float's visibility is owned by the layout plan reconciler;
                 // present only re-asserts that content exists.
-            } else {
+            } else if let window = existing.window {
                 LxAppMacAppUIRuntime.dismissIndependentPanelsForSurfaceWindow()
-                existing.window?.makeKeyAndOrderFront(nil)
+                orderSurface(window, parent: window.parent)
             }
             return true
         }
@@ -622,12 +622,11 @@ enum LxAppSurface {
             return true
         }
 
-        if kind != kindWindow, let parentWindow = context.parentWindow, let window {
-            parentWindow.addChildWindow(window, ordered: .above)
-            DevServiceMarkWindow.noteChildWindow(of: parentWindow)
-        }
         LxAppMacAppUIRuntime.dismissIndependentPanelsForSurfaceWindow()
-        window?.makeKeyAndOrderFront(nil)
+        if let window {
+            let parent = kind == kindWindow ? nil : context.parentWindow
+            orderSurface(window, parent: parent)
+        }
         return true
     }
 
@@ -726,11 +725,7 @@ enum LxAppSurface {
             delegate: delegate,
             isFullScreen: true
         )
-        if let parentWindow = context.parentWindow {
-            parentWindow.addChildWindow(window, ordered: .above)
-            DevServiceMarkWindow.noteChildWindow(of: parentWindow)
-        }
-        window.makeKeyAndOrderFront(nil)
+        orderSurface(window, parent: context.parentWindow)
         return true
     }
 
@@ -1155,11 +1150,7 @@ enum LxAppSurface {
         LxAppMacAppUIRuntime.dismissIndependentPanelsForSurfaceWindow()
         // Defense in depth — JS-side already short-circuits on no-op.
         if window.isVisible { return true }
-        if let parentWindow = entry.parentWindow, window.parent == nil {
-            parentWindow.addChildWindow(window, ordered: .above)
-            DevServiceMarkWindow.noteChildWindow(of: parentWindow)
-        }
-        window.makeKeyAndOrderFront(nil)
+        orderSurface(window, parent: entry.parentWindow)
         // Wake any native overlay components on this page (video player,
         // media swiper, ...) — their views were hidden and playback paused
         // when hide() ran; this routes the active lifecycle so they re-show
@@ -1212,6 +1203,24 @@ enum LxAppSurface {
         return true
     }
 
+    /// Bring a surface window forward, then put the dev mark above it.
+    /// A float is an `NSPanel` with `isFloatingPanel`, which would paint over
+    /// the host's normal-level chip. A child surface stays at the host's
+    /// level, and the chip is ordered after this window.
+    private static func orderSurface(_ window: NSWindow, parent: NSWindow?) {
+        if let parent {
+            if let panel = window as? NSPanel {
+                panel.isFloatingPanel = false
+            }
+            window.level = .normal
+            if window.parent == nil {
+                parent.addChildWindow(window, ordered: .above)
+            }
+        }
+        window.makeKeyAndOrderFront(nil)
+        DevServiceMarkWindow.noteChildWindow(of: parent ?? window)
+    }
+
     /// Float popups currently shown. A float is created + registered hidden by
     /// `present`; this is the set the reconciler already brought on-screen, so it
     /// can leave them untouched (idempotent) and dismiss any no longer desired.
@@ -1232,11 +1241,7 @@ enum LxAppSurface {
             return false
         }
         if window.isVisible { return true }
-        if let parentWindow = entry.parentWindow, window.parent == nil {
-            parentWindow.addChildWindow(window, ordered: .above)
-            DevServiceMarkWindow.noteChildWindow(of: parentWindow)
-        }
-        window.makeKeyAndOrderFront(nil)
+        orderSurface(window, parent: entry.parentWindow)
         return true
     }
 
