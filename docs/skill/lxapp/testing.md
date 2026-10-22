@@ -447,6 +447,7 @@ lxdev test                        # everything (lxdev.json test.entry; else test
 lxdev test tests/cart.test.ts:42  # the one spec at (or enclosing) line 42
 lxdev test --grep "empty cart"    # by title (or --id ID)
 lxdev test --last-failed          # what failed last time
+lxdev test --changed              # specs the uncommitted work can affect (--changed main: since branching)
 lxdev test list                   # list specs; no spec bodies or hooks run (no session needed)
 lxdev test presets                # presets in lxdev.json
 lxdev test args --preset ci       # the arguments a run would use
@@ -461,6 +462,10 @@ lxdev test report --failures      # reprint the last run, no session needed
   and is listed as a run error in every report. A full disk still leaves a
   minimal `report.json` saying why.
 - A failed spec prints a `Rerun:` line.
+- `--changed` picks the spec files that import a changed file or name a
+  page (`'home'`, `pages/home/index`) whose files changed, and says why;
+  lxdev.json, lxapp.json, the app entry, package files, root tsconfigs or an
+  OpenAPI document changing selects all. Iterate with it; CI runs everything.
 - `lxdev test list` with a session loads every spec module in the app — their
   top-level code runs — but runs no spec bodies or hooks; it holds the
   session like a run (Ctrl-C cancels it) and writes no results.
