@@ -314,6 +314,30 @@ impl UpdateManager {
         );
     }
 
+    /// `update.checkInterval`: re-check whichever home lxapp is live after
+    /// each interval, so a long-running process still picks up new versions
+    /// and retries a failed check. Started once, by the first home check.
+    pub(crate) fn start_home_update_poll() {
+        static STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        let Some(interval) = lingxia_app_context::update::check_interval() else {
+            return;
+        };
+        if STARTED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        std::mem::drop(crate::executor::spawn(lingxia_update::run_periodic_checks(
+            interval,
+            || async {
+                // Looked up each time: a channel switch replaces the instance.
+                let home = lingxia_app_context::home_app_id().and_then(lxapp_runtime::try_get);
+                if let Some(home) = home {
+                    UpdateManager::spawn_background_update_check(home);
+                }
+                std::ops::ControlFlow::Continue(())
+            },
+        )));
+    }
+
     /// Spawn a background check to download newer packages for the given app.
     pub fn spawn_background_update_check(lxapp: Arc<lxapp_runtime::LxApp>) {
         if !lxapp.is_ota_managed() {

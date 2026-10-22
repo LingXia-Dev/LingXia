@@ -215,6 +215,7 @@ fn build_default_host_app_config(
         update_trusted_public_keys: Vec::new(),
         update_channel: None,
         update_channels: Default::default(),
+        update_check_interval_secs: None,
         store_listing_ids: Default::default(),
     }
 }

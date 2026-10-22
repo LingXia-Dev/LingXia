@@ -167,6 +167,7 @@ theme:
 update:
   trustedPublicKeys: [ ... ]   # 1–2 keys (two = rotation); direct prod updates only
   channel: direct              # default for platforms not listed
+  checkInterval: 6h            # optional; re-check while running (m, h or d; min 15m)
   platforms:
     ios: store
     harmony: store
@@ -184,6 +185,12 @@ update:
   after the listing is live.
 - Defaults: iOS and Harmony `store`; Android, macOS, Windows `direct`. The value
   is baked into the build; a store-installed process is always `store`.
+- Without `checkInterval`, the host app and the home lxapp are checked once per
+  process. With it, both are checked again after each interval, also after a
+  failed check. Use it for always-on devices such as signage; a phone app does
+  not need it. A downloaded home lxapp update still applies only on
+  `updateManager.applyUpdate()` or the next cold start, and `onUpdateReady`
+  fires again on each interval until it does, so don't show a dialog per event.
 - Minting keys and publishing: [Distribution](../cli/distribution.md#update-signing-keys).
 
 ## Environment

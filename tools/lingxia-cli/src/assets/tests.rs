@@ -169,6 +169,8 @@ fn generated_app_json_embeds_update_trusted_public_keys() {
     );
     assert!(parsed.update_channel.is_none());
     assert!(parsed.update_channels.is_empty());
+    assert!(value.get("updateCheckIntervalSecs").is_none());
+    assert!(parsed.update_check_interval_secs.is_none());
 }
 
 #[test]
@@ -184,15 +186,18 @@ fn generated_app_json_embeds_update_channels() {
         trusted_public_keys: vec!["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw".into()],
         channel: Some(UpdateChannel::Direct),
         platforms,
+        check_interval: Some("6h".into()),
     });
     let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
+    assert_eq!(value["updateCheckIntervalSecs"], 21_600);
     assert_eq!(value["updateChannel"], "direct");
     assert_eq!(value["updateChannels"]["android"], "direct");
     assert_eq!(value["updateChannels"]["ios"], "store");
     let parsed = lingxia_app_context::AppConfig::parse_and_validate(&app_json)
         .expect("runtime app.json parse");
     assert_eq!(parsed.update_channel, Some(UpdateChannel::Direct));
+    assert_eq!(parsed.update_check_interval_secs, Some(21_600));
     assert_eq!(
         parsed.update_channels.get("ios").copied(),
         Some(UpdateChannel::Store)
@@ -266,6 +271,7 @@ fn store_channel_without_listing_id_is_reported() {
         trusted_public_keys: vec!["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw".into()],
         channel: None,
         platforms,
+        check_interval: None,
     };
     let app_platforms = vec![
         "ios".to_string(),

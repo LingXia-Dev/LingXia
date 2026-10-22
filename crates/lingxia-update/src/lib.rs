@@ -1,6 +1,7 @@
 mod app;
 mod error;
 mod lxapp;
+mod periodic;
 mod signing;
 
 use lingxia_provider::{BoxFuture, ProviderError};
@@ -21,6 +22,7 @@ pub use lxapp::{
     ensure_target_version_ready as ensure_lxapp_target_version_ready, lxapp_update_scope_key,
     spawn_background_update_check as spawn_lxapp_background_update_check,
 };
+pub use periodic::run_periodic_checks;
 pub use signing::{
     SignRequest, UpdateAuthentication, UpdateVerifyTarget, archive_sha256_hex,
     check_package_update_enabled, check_update_enabled, compact_manifest, decode_base64url,

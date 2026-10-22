@@ -143,6 +143,13 @@ missing one warns at build time.
 - Automatic updates start on the first connected-network event. Failure permits
   retry on the next connection; completion prevents another automatic attempt
   in that process.
+- `update.checkInterval` (baked as `updateCheckIntervalSecs`, at least 15m)
+  adds one periodic loop per process, for always-on devices. It checks again
+  after each interval, plus up to 10% jitter so a fleet powered on together
+  does not hit the feed together, whatever the last result was. It stops once
+  an install is handed off or Control claims the flow. Keep the network
+  trigger: it makes the first check as soon as the device is online, and is
+  the only trigger without an interval.
 - A successful `lx.host.checkUpdate()` transfers update ownership to JS for the
   rest of the process. Automatic prompting and downloading stop; an already
   running download is not canceled. A failed check claims nothing.
@@ -191,6 +198,10 @@ failure directly; package visibility makes availability preflight unreliable.
 - If applying a pending update fails, the same open/restart must rebuild from
   the previous installed or bundled package. Do not leave a retired session
   without a replacement. With no usable package, the open still fails.
+- With `update.checkInterval`, the home lxapp is re-checked after each
+  interval through the same background check, looked up each time because a
+  channel switch replaces the instance. Guest lxapps are still checked on
+  open only. A downloaded update still applies only under the rule above.
 - Permit one background check per app id and channel at a time. Drop duplicate
   requests instead of queuing them, and ignore checks whose channel differs
   from the running instance.

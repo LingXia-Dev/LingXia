@@ -18,13 +18,15 @@
 /// ```
 ///
 /// LingXia also fires [`check`] once per process on its own, as soon as the
-/// platform reports network connectivity.
+/// platform reports network connectivity, and again every
+/// `update.checkInterval` when the host configures one.
 pub mod host_app {
     use lingxia_platform::traits::app_runtime::AppRuntime;
     use lingxia_platform::traits::network::Network;
     use lingxia_service::update::{
         AppUpdateEvent, AppUpdateStage, HostAppUpdateService, UpdateError, UpdatePackageInfo,
     };
+    use std::ops::ControlFlow;
     use std::path::Path;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::{Arc, OnceLock, RwLock};
@@ -152,41 +154,9 @@ pub mod host_app {
             {
                 return;
             }
-            // Another attempt is already running. Skip; if it fails it will
-            // leave the listener subscribed and the next event will retry.
-            if AUTO_RUNNING.swap(true, Ordering::SeqCst) {
-                return;
-            }
-
             let runtime_for_task = runtime_for_handler.clone();
             std::mem::drop(lingxia::task::spawn(async move {
-                let outcome = check().await;
-                AUTO_RUNNING.store(false, Ordering::SeqCst);
-                match outcome {
-                    Ok(Outcome::UpToDate) => {
-                        log::info!("[lingxia] host app auto update: up to date");
-                        unsubscribe_auto_listener(&runtime_for_task);
-                    }
-                    Ok(Outcome::Installed { version }) => {
-                        log::info!(
-                            "[lingxia] host app auto update: installation handed off for version {version}"
-                        );
-                        unsubscribe_auto_listener(&runtime_for_task);
-                    }
-                    Ok(Outcome::Deferred { version }) => {
-                        // User chose "Later"; the shell shows a quiet reminder.
-                        // Stop polling so we don't re-prompt on every reconnect.
-                        log::info!("[lingxia] host app auto update: deferred {version}");
-                        unsubscribe_auto_listener(&runtime_for_task);
-                    }
-                    Err(error) => {
-                        // Keep the listener subscribed so the next connected
-                        // event retries — typical weak-network recovery.
-                        log::warn!(
-                            "[lingxia] host app auto update failed (will retry on next connect): {error}"
-                        );
-                    }
-                }
+                auto_attempt(&runtime_for_task).await;
             }));
         });
 
@@ -199,6 +169,94 @@ pub mod host_app {
             let _ = lingxia_messaging::remove_callback(callback_id);
             AUTO_LISTENER_ID.store(0, Ordering::SeqCst);
             AUTO_FIRED.store(false, Ordering::SeqCst);
+            return;
+        }
+
+        if let Some(interval) = lingxia_app_context::update::check_interval() {
+            std::mem::drop(lingxia::task::spawn(poll_loop(runtime, interval)));
+        }
+    }
+
+    /// `update.checkInterval`: check again after each interval, including
+    /// after an up-to-date result or a failure. The network listener still
+    /// makes the first check as soon as the device is online.
+    async fn poll_loop(runtime: Arc<lingxia_platform::Platform>, interval: std::time::Duration) {
+        lingxia_update::run_periodic_checks(interval, move || {
+            let runtime = runtime.clone();
+            async move {
+                if !polling_continues(
+                    AUTO_HANDED_OFF.load(Ordering::SeqCst),
+                    lingxia_service::update::custom_host_update_claimed(),
+                ) {
+                    return ControlFlow::Break(());
+                }
+                auto_attempt(&runtime).await;
+                ControlFlow::Continue(())
+            }
+        })
+        .await;
+    }
+
+    /// The periodic check stops once the installer owns the update (the next
+    /// cold start confirms it) or Control has claimed the flow.
+    fn polling_continues(handed_off: bool, claimed: bool) -> bool {
+        !handed_off && !claimed
+    }
+
+    /// What an automatic attempt's result does to the triggers.
+    #[derive(Debug, PartialEq, Eq)]
+    struct AutoEffect {
+        /// Stop retrying on reconnect.
+        unsubscribe: bool,
+        /// Stop the periodic check.
+        handed_off: bool,
+    }
+
+    fn auto_effect(outcome: &crate::Result<Outcome>) -> AutoEffect {
+        match outcome {
+            Ok(Outcome::UpToDate | Outcome::Deferred { .. }) => AutoEffect {
+                unsubscribe: true,
+                handed_off: false,
+            },
+            Ok(Outcome::Installed { .. }) => AutoEffect {
+                unsubscribe: true,
+                handed_off: true,
+            },
+            // Keep the listener so the next connected event retries; with
+            // `checkInterval` the next tick retries too.
+            Err(_) => AutoEffect {
+                unsubscribe: false,
+                handed_off: false,
+            },
+        }
+    }
+
+    /// One automatic check + install. Skipped while another is running.
+    async fn auto_attempt(runtime: &Arc<lingxia_platform::Platform>) {
+        if AUTO_RUNNING.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let outcome = check().await;
+        AUTO_RUNNING.store(false, Ordering::SeqCst);
+        match &outcome {
+            Ok(Outcome::UpToDate) => log::info!("[lingxia] host app auto update: up to date"),
+            Ok(Outcome::Installed { version }) => log::info!(
+                "[lingxia] host app auto update: installation handed off for version {version}"
+            ),
+            // Store prompt shown or snoozed, or Control owns the flow.
+            Ok(Outcome::Deferred { version }) => {
+                log::info!("[lingxia] host app auto update: deferred {version}")
+            }
+            Err(error) => {
+                log::warn!("[lingxia] host app auto update failed (will retry): {error}")
+            }
+        }
+        let effect = auto_effect(&outcome);
+        if effect.handed_off {
+            AUTO_HANDED_OFF.store(true, Ordering::SeqCst);
+        }
+        if effect.unsubscribe {
+            unsubscribe_auto_listener(runtime);
         }
     }
 
@@ -446,10 +504,55 @@ pub mod host_app {
     /// failed attempts and may receive multiple `isConnected: true` events.
     static AUTO_RUNNING: AtomicBool = AtomicBool::new(false);
     static AUTO_LISTENER_ID: AtomicU64 = AtomicU64::new(0);
+    /// Set once an automatic attempt hands the install to the platform; the
+    /// periodic check stops then.
+    static AUTO_HANDED_OFF: AtomicBool = AtomicBool::new(false);
 
     #[cfg(test)]
     mod tests {
-        use super::{STORE_PROMPT_SNOOZE_SECS, StorePromptRecord, should_prompt_store_update};
+        use super::{
+            AutoEffect, Outcome, STORE_PROMPT_SNOOZE_SECS, StorePromptRecord, auto_effect,
+            polling_continues, should_prompt_store_update,
+        };
+
+        #[test]
+        fn auto_attempt_results_drive_the_triggers() {
+            let up_to_date = auto_effect(&Ok(Outcome::UpToDate));
+            assert_eq!(
+                up_to_date,
+                AutoEffect {
+                    unsubscribe: true,
+                    handed_off: false
+                }
+            );
+            let deferred = auto_effect(&Ok(Outcome::Deferred {
+                version: "1.2.0".into(),
+            }));
+            assert_eq!(deferred, up_to_date);
+            assert_eq!(
+                auto_effect(&Ok(Outcome::Installed {
+                    version: "1.2.0".into(),
+                })),
+                AutoEffect {
+                    unsubscribe: true,
+                    handed_off: true
+                }
+            );
+            assert_eq!(
+                auto_effect(&Err(crate::Error::internal("offline"))),
+                AutoEffect {
+                    unsubscribe: false,
+                    handed_off: false
+                }
+            );
+        }
+
+        #[test]
+        fn polling_stops_on_hand_off_or_claim() {
+            assert!(polling_continues(false, false));
+            assert!(!polling_continues(true, false));
+            assert!(!polling_continues(false, true));
+        }
 
         const NOW: u64 = 1_800_000_000;
 
