@@ -10,7 +10,11 @@ const selectedGate = testArgs.gate?.toLocaleLowerCase();
 // Windows rejects `requestFullScreen` with an internal error, so the contract
 // is proven where the host implements it; PEND-VIDEO-FS-WINDOWS-001 owns the gap.
 const targetPlatform = testArgs.platform?.toLowerCase();
-const fullscreenSpec = httpBase && !selectedGate && targetPlatform !== 'windows' ? spec : spec.skip;
+spec.configure({
+  skip: httpBase && !selectedGate && targetPlatform !== 'windows'
+    ? undefined
+    : 'needs --arg httpBase; not on Windows or in a gate run',
+});
 const VIDEO_ID = 'lx-video-source-fixture';
 
 function showcaseHost(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefined {
@@ -28,7 +32,7 @@ function showcaseHost(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefin
     ))[0];
 }
 
-fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
+spec('enter and leave native video fullscreen from VideoContext', {
   id: 'DESKTOP-VIDEO-FULLSCREEN-001',
   covers: ['lx.createVideoContext', 'VideoContext.requestFullScreen', 'VideoContext.exitFullScreen', 'DesktopDriver.windows', 'DesktopDriver.displays'],
   app: SHOWCASE_APP_ID,

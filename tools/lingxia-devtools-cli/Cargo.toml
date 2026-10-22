@@ -27,7 +27,7 @@ ctrlc = { version = "3.5", features = ["termination"] }
 sha2 = "0.11"
 # `--openapi` / `--covers-manifest` files may be YAML.
 serde_yaml_ng = "0.10"
-# `lxdev test --list --grep` without a session.
+# `lxdev test list --grep` without a session.
 regex = "1"
 
 # `lxdev test` bundler — the same Oxc components as lingxia-cli's Logic

@@ -34,25 +34,28 @@ const MAX_ARTIFACT_BASE64_BYTES: usize = MAX_ARTIFACT_BYTES.div_ceil(3) * 4;
 
 pub use lingxia_control_protocol::dev_session::select::NO_SESSION_HINT;
 
+const TEST_LONG_ABOUT: &str = "\
+Run the project's tests/*.test.ts in the app started with `lingxia dev`.
+
+With no path, the run is lxdev.json `test.entry`, else `tests/`. Specs import
+`spec` from @lingxia/test. `LXDEV_ARG_<KEY>` and `LXDEV_SECRET_<KEY>` add
+--arg / --secret-arg values.";
+
 const TEST_AFTER_HELP: &str = "\
 Examples:
-  lxdev test                        everything (lxdev.json test.entry; else tests/)
+  lxdev test                        everything
   lxdev test tests/cart.test.ts     one file; several paths allowed
   lxdev test tests/cart.test.ts:42  the one spec at (or enclosing) line 42
   lxdev test --grep \"empty cart\"    by title (or --id ID)
   lxdev test --last-failed          what failed last time
-  lxdev test --list                 list specs (loads modules; no bodies or hooks)
   lxdev test --preset ci            arguments from lxdev.json (test.presets)
-  lxdev test --profile auth --profile-save   run on a saved sign-in, refresh it on pass
-  lxdev test --secrets-file .env.test        secret args from a gitignored dotenv file
+  lxdev test list                   list specs without running them
+  lxdev test presets                the presets in lxdev.json
+  lxdev test args --preset ci       the arguments a run would use
+  lxdev test cancel                 release a run left by a dead client
   lxdev test report --failures      show the last run's failures again
-  lxdev test --cancel-active        release a run left by a dead client
 
-Specs import `spec` from @lingxia/test. `LXDEV_ARG_<KEY>` and
-`LXDEV_SECRET_<KEY>` environment variables add --arg / --secret-arg values.
-
-The app must be running: start it with `lingxia dev` (in scripts and CI,
-`lingxia dev --background` before and `lingxia dev stop` after).
+In scripts and CI: `lingxia dev --background` before, `lingxia dev stop` after.
 
 Exit codes:
   0    every selected spec passed and the run finished its own work
@@ -91,7 +94,7 @@ impl OutputFormat {
 // it, and the last one wins.
 #[command(args_override_self = true)]
 #[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
-#[command(after_long_help = TEST_AFTER_HELP)]
+#[command(long_about = TEST_LONG_ABOUT, after_long_help = TEST_AFTER_HELP)]
 pub struct TestOptions {
     #[command(subcommand)]
     pub command: Option<TestCommand>,
@@ -100,12 +103,6 @@ pub struct TestOptions {
     /// at that line. Default: lxdev.json `test.entry`, else `tests/`
     #[arg(value_name = "PATH[:LINE]", value_parser = crate::test_select::parse_test_path, help_heading = "Selection")]
     pub paths: Vec<crate::test_select::TestPath>,
-
-    /// List the selected specs (file:line, id, title, tags) without running
-    /// them; `--format json` for JSON. Without a session, read from the
-    /// source (computed values marked `~`)
-    #[arg(long, conflicts_with = "cancel_active", help_heading = "Selection")]
-    pub list: bool,
 
     /// Run only specs whose title or id matches this regex
     #[arg(long, value_name = "PATTERN", help_heading = "Selection")]
@@ -158,9 +155,8 @@ pub struct TestOptions {
     #[arg(long, help_heading = "Execution")]
     pass_with_no_tests: bool,
 
-    /// Cancel an automation run left active by an earlier `lxdev test`, then
-    /// start. Only needed when a previous run's client died mid-run. Without
-    /// a path, only cancel the active run
+    /// Cancel an automation run left by a dead client, then start this one.
+    /// `lxdev test cancel` releases the run and does not start another
     #[arg(long, help_heading = "Execution")]
     cancel_active: bool,
 
@@ -183,18 +179,10 @@ pub struct TestOptions {
 
     /// Put this preset's arguments from lxdev.json (`test.presets`) in the
     /// project root before the command line's: repeatable flags add up, a
-    /// flag given on the command line wins
+    /// flag given on the command line wins. `lxdev test presets` lists them;
+    /// `lxdev test args` prints the arguments that would run
     #[arg(long, value_name = "NAME", help_heading = "Inputs")]
     pub preset: Option<String>,
-
-    /// List the presets of lxdev.json and exit
-    #[arg(long, help_heading = "Inputs")]
-    pub list_presets: bool,
-
-    /// Print the effective arguments (lxdev.json defaults, preset, then
-    /// command line) with secret values masked, and exit
-    #[arg(long, help_heading = "Inputs")]
-    pub print_args: bool,
 
     #[command(flatten)]
     state: crate::test_state::StateOptions,
@@ -210,14 +198,14 @@ pub struct TestOptions {
     #[arg(long, value_name = "FILE", help_heading = "Contract")]
     covers_manifest: Option<PathBuf>,
 
-    /// Results root: each run writes DIR/<run-id>/ and DIR/latest points at
-    /// the last run. Default: lxdev.json's `test.outputDir`, else
-    /// test-results beside lxdev.json, else ./test-results
+    /// Results root: each run is DIR/<run-id>/, and DIR/latest points at the
+    /// last one. Default: lxdev.json's `test.outputDir`, else test-results
+    /// beside lxdev.json, else ./test-results
     #[arg(long, value_name = "DIR", help_heading = "Output")]
     pub output_root: Option<PathBuf>,
 
-    /// This run's own directory, used as is (no <run-id> inside it) — for a
-    /// fixed path in CI. `latest` in the results root still points at it
+    /// This run's own directory, with no <run-id> inside it — a fixed path
+    /// in CI. `latest` in the results root still points at it
     #[arg(long, value_name = "PATH", help_heading = "Output")]
     output_dir: Option<PathBuf>,
 
@@ -244,8 +232,135 @@ pub struct TestOptions {
 /// `lxdev test <subcommand>`.
 #[derive(clap::Subcommand)]
 pub enum TestCommand {
+    /// List the selected specs (file:line, id, title, tags) without running
+    /// them. Without a session, read them from the source
+    List(Box<ListOptions>),
+    /// List the presets in lxdev.json
+    Presets(MachineOutput),
+    /// Print the effective arguments and exit
+    Args(ArgsOptions),
+    /// Cancel an automation run left by a dead client
+    Cancel(MachineOutput),
     /// Print an earlier run's summary, failures and Rerun lines again
     Report(ReportOptions),
+}
+
+/// Flags `lxdev test list` shares with a run: what to list, and how to print it.
+#[derive(Args)]
+#[command(args_override_self = true)]
+pub struct ListOptions {
+    /// Test files and directories of `*.test.ts`; `FILE:LINE` lists the spec
+    /// at that line. Default: lxdev.json `test.entry`, else `tests/`
+    #[arg(value_name = "PATH[:LINE]", value_parser = crate::test_select::parse_test_path)]
+    pub paths: Vec<crate::test_select::TestPath>,
+
+    /// List only specs whose title or id matches this regex
+    #[arg(long, value_name = "PATTERN")]
+    pub grep: Option<String>,
+
+    /// Select one exact stable spec id
+    #[arg(long)]
+    pub id: Option<String>,
+
+    /// List only specs whose tags match (repeatable: every --tag must hold).
+    /// `a,b` is a or b; `!a` is without a
+    #[arg(long = "tag", value_name = "EXPR", value_parser = crate::test_contract::parse_tag_expr)]
+    pub tags: Vec<String>,
+
+    /// The failed specs of an earlier run: its report.json or run directory.
+    /// Without a value, the last run
+    #[arg(long, value_name = "REPORT", num_args = 0..=1, default_missing_value = LATEST)]
+    pub last_failed: Option<PathBuf>,
+
+    /// Partition stable spec ids across independent sessions (INDEX/TOTAL)
+    #[arg(long)]
+    pub shard: Option<String>,
+
+    /// Fail if any spec.only is registered
+    #[arg(long)]
+    pub forbid_only: bool,
+
+    /// Cancel an automation run left by a dead client, then list
+    #[arg(long)]
+    pub cancel_active: bool,
+
+    /// Key=value string exposed as test.args (repeatable)
+    #[arg(long = "arg", value_name = "KEY=VALUE", value_parser = parse_key_value)]
+    pub args: Vec<(String, String)>,
+
+    /// Like `--arg`, for a secret
+    #[arg(long = "secret-arg", value_name = "KEY=VALUE", value_parser = parse_key_value)]
+    pub secret_args: Vec<(String, String)>,
+
+    /// Read secret args from a dotenv file
+    #[arg(long, value_name = "PATH")]
+    pub secrets_file: Option<PathBuf>,
+
+    /// Apply this preset's selection from lxdev.json before these flags
+    #[arg(long, value_name = "NAME")]
+    pub preset: Option<String>,
+
+    /// Read the specs from the source without asking a session (computed
+    /// values marked `~`). The default when no session is running
+    #[arg(long, conflicts_with = "cancel_active")]
+    pub offline: bool,
+
+    /// Results root `latest` is in, for `--last-failed` (default: as for a run)
+    #[arg(long, value_name = "DIR")]
+    pub output_root: Option<PathBuf>,
+
+    /// `text` or `json`
+    #[arg(long, value_enum, value_name = "FORMAT")]
+    pub format: Option<OutputFormat>,
+
+    /// Indent `--format json`
+    #[arg(long, requires = "format")]
+    pub pretty: bool,
+}
+
+/// `--format` / `--pretty` for a command that only prints.
+#[derive(Args, Clone, Default)]
+pub struct MachineOutput {
+    /// `text` or `json`
+    #[arg(long, value_enum, value_name = "FORMAT")]
+    pub format: Option<OutputFormat>,
+
+    /// Indent `--format json`
+    #[arg(long, requires = "format")]
+    pub pretty: bool,
+}
+
+impl MachineOutput {
+    pub fn prepare(&self) -> Result<OutputFormat> {
+        check_pretty(self.format, self.pretty)?;
+        Ok(self.format.unwrap_or(OutputFormat::Text))
+    }
+}
+
+/// `--pretty` indents the one JSON result; it means nothing for the other
+/// formats.
+fn check_pretty(format: Option<OutputFormat>, pretty: bool) -> Result<()> {
+    let format = format.unwrap_or(OutputFormat::Text);
+    if pretty && format != OutputFormat::Json {
+        bail!(
+            "--pretty indents --format json; it does not apply to --format {}",
+            format.name()
+        );
+    }
+    Ok(())
+}
+
+/// `lxdev test args`: the run's own flags, printed rather than executed.
+/// Preset expansion has already spliced lxdev.json in front of them.
+#[derive(Args)]
+pub struct ArgsOptions {
+    /// The same flags and paths as `lxdev test`
+    #[arg(
+        trailing_var_arg = true,
+        allow_hyphen_values = true,
+        value_name = "ARG"
+    )]
+    pub tokens: Vec<std::ffi::OsString>,
 }
 
 #[derive(Args)]
@@ -282,11 +397,6 @@ impl TestOptions {
     /// The output format (`text` unless `--format` says otherwise).
     pub fn output(&self) -> OutputFormat {
         self.format.unwrap_or(OutputFormat::Text)
-    }
-
-    /// `--cancel-active`: without a path, it only cancels.
-    pub fn cancel_active(&self) -> bool {
-        self.cancel_active
     }
 
     /// Whether the output is for a machine (no live text on stderr).
@@ -330,16 +440,8 @@ impl TestOptions {
         })
     }
 
-    /// `--pretty` indents the one JSON result; it means nothing for the
-    /// other formats.
-    fn check_output(&self) -> Result<()> {
-        if self.pretty && self.output() != OutputFormat::Json {
-            bail!(
-                "--pretty indents --format json; it does not apply to --format {}",
-                self.output().name()
-            );
-        }
-        Ok(())
+    pub fn check_output(&self) -> Result<()> {
+        check_pretty(self.format, self.pretty)
     }
 }
 
@@ -425,11 +527,7 @@ where
 }
 
 /// Owns process exit: the run state is the exit code, not an `Err`.
-pub fn execute(
-    info: &SessionInfo,
-    options: TestOptions,
-    selection: Option<Selection>,
-) -> Result<()> {
+pub fn execute(info: &SessionInfo, options: TestOptions, selection: Selection) -> Result<()> {
     execute_inner(info, options, selection).map_err(|err| {
         if looks_unreachable(&err) {
             anyhow!(NO_SESSION_HINT)
@@ -437,6 +535,56 @@ pub fn execute(
             err
         }
     })
+}
+
+/// `lxdev test list` against a live session.
+pub fn execute_list(
+    info: &SessionInfo,
+    options: &TestOptions,
+    selection: &Selection,
+) -> Result<()> {
+    list(info, options, selection).map_err(|err| {
+        if looks_unreachable(&err) {
+            anyhow!(NO_SESSION_HINT)
+        } else {
+            err
+        }
+    })
+}
+
+impl ListOptions {
+    /// The listing, as the run path's options, with the flags a list does not take left off.
+    pub fn into_run(self: Box<Self>) -> TestOptions {
+        TestOptions {
+            command: None,
+            paths: self.paths,
+            grep: self.grep,
+            id: self.id,
+            tags: self.tags,
+            last_failed: self.last_failed,
+            shard: self.shard,
+            retries: 0,
+            repeat_each: 1,
+            shuffle: None,
+            timeout_secs: None,
+            forbid_only: self.forbid_only,
+            pass_with_no_tests: false,
+            cancel_active: self.cancel_active,
+            args: self.args,
+            secret_args: self.secret_args,
+            secrets_file: self.secrets_file,
+            preset: self.preset,
+            state: crate::test_state::StateOptions::default(),
+            openapi: Vec::new(),
+            covers_manifest: None,
+            output_root: self.output_root,
+            output_dir: None,
+            format: self.format,
+            pretty: self.pretty,
+            verbose: false,
+            record_network: None,
+        }
+    }
 }
 
 pub fn looks_unreachable(err: &anyhow::Error) -> bool {
@@ -452,19 +600,9 @@ pub fn looks_unreachable(err: &anyhow::Error) -> bool {
         || text.contains("broken pipe")
 }
 
-fn execute_inner(
-    info: &SessionInfo,
-    options: TestOptions,
-    selection: Option<Selection>,
-) -> Result<()> {
+fn execute_inner(info: &SessionInfo, options: TestOptions, selection: Selection) -> Result<()> {
     let machine = options.machine();
     options.check_output()?;
-    let Some(selection) = selection else {
-        return cancel_active_only(info, &options);
-    };
-    if options.list {
-        return list(info, &options, &selection);
-    }
     let started_at = chrono::Utc::now().to_rfc3339();
     // A bad output path must fail before the run exists: afterwards the
     // Runner would keep it active with nobody polling.
@@ -811,17 +949,17 @@ fn write_minimal_report(run: &FinishedRun, outcome: &Outcome, write: WriteFile) 
         .with_context(|| format!("failed to write {}", path.display()))
 }
 
-/// How long a `--list` run may take: it only loads the specs.
+/// How long a `lxdev test list` run may take: it only loads the specs.
 const LIST_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// `lxdev test --list`: the runtime loads the specs and selects them as for
+/// `lxdev test list`: the runtime loads the specs and selects them as for
 /// a run, then returns the selection without running it. No results are
 /// written and `latest` stays.
 fn list(info: &SessionInfo, options: &TestOptions, selection: &Selection) -> Result<()> {
     let machine = options.machine();
     if options.output() == OutputFormat::Jsonl {
         return Err(crate::test_select::usage(
-            "--list prints text or --format json",
+            "`lxdev test list` prints text or --format json",
         ));
     }
     let last_failed = options
@@ -963,16 +1101,16 @@ fn list(info: &SessionInfo, options: &TestOptions, selection: &Selection) -> Res
     Ok(())
 }
 
-/// `lxdev test --list` with no session running: bundle the files (which
+/// `lxdev test list` with no session running: bundle the files (which
 /// runs the bundle-time checks), then list the spec calls as the source
 /// states them. Says so, because a computed title, id or tag, or a spec
 /// registered in a loop, is only known to a run.
-pub fn list_offline(options: &TestOptions, selection: &Selection) -> Result<()> {
+pub fn list_offline(options: &TestOptions, selection: &Selection, asked: bool) -> Result<()> {
     options.check_output()?;
     let machine = options.machine();
     if options.output() == OutputFormat::Jsonl {
         return Err(crate::test_select::usage(
-            "--list prints text or --format json",
+            "`lxdev test list` prints text or --format json",
         ));
     }
     let ids = options
@@ -982,7 +1120,8 @@ pub fn list_offline(options: &TestOptions, selection: &Selection) -> Result<()> 
         .transpose()?
         .map(|report| failed_ids(&report))
         .transpose()?;
-    bundle_test_files(&selection.files, &selection.identity, Purpose::List)?;
+    // Specs register from every module the entries import, not only the entries.
+    let bundle = bundle_test_files(&selection.files, &selection.identity, Purpose::List)?;
     let filters = crate::test_offline::Filters::new(
         options.grep.as_deref(),
         options.id.as_deref(),
@@ -993,7 +1132,7 @@ pub fn list_offline(options: &TestOptions, selection: &Selection) -> Result<()> 
         options.forbid_only,
     )?;
     let cwd = std::env::current_dir()?;
-    let specs = crate::test_offline::list(&selection.files, &selection.root, &cwd, &filters)?;
+    let specs = crate::test_offline::list(&bundle.sources, &selection.root, &cwd, &filters)?;
     let inexact = specs.iter().filter(|spec| !spec.exact).count();
     if machine {
         let value = json!({
@@ -1021,13 +1160,18 @@ pub fn list_offline(options: &TestOptions, selection: &Selection) -> Result<()> 
         n => format!("{n} specs"),
     };
     eprintln!(
-        "{} {count}, listed offline from the source (no session is running)",
-        "test".cyan()
+        "{} {count}, listed offline from the source{}",
+        "test".cyan(),
+        if asked {
+            ""
+        } else {
+            " (no session is running)"
+        }
     );
     if inexact > 0 {
         eprintln!(
             "{} {inexact} marked ~: a computed title, id or tag, or registered in a loop; a run \
-             may list them differently. With `lingxia dev` running, --list is exact",
+             may list them differently. With `lingxia dev` running, `lxdev test list` is exact",
             "test".cyan()
         );
     }
@@ -1460,7 +1604,8 @@ fn start_run(
         return Err(anyhow!(
             "{} holds this session. A run stays active until it ends or its budget expires, \
              so an earlier `lxdev test` whose client died can still hold it. Re-run with \
-             `--cancel-active` to cancel it and start, or restart the dev session.",
+             `--cancel-active` to cancel it and start, or `lxdev test cancel` to only \
+             release it.",
             held.describe()
         ));
     }
@@ -1579,7 +1724,7 @@ impl Drop for ActiveRun {
 }
 
 /// One run on the session, from the watch lease to its end — what `lxdev
-/// test` and `--list` share, so they differ only in what they start and
+/// test` and `lxdev test list` share, so they differ only in what they start and
 /// what they make of the result. The watcher is paused before the bundle is
 /// built and stays paused until the caller lets go; the run is cancelled on
 /// any way out that did not see it end; the first Ctrl-C asks the caller's
@@ -1677,10 +1822,9 @@ fn on_interrupt(target: InterruptTarget) -> Result<()> {
     Ok(())
 }
 
-/// `lxdev test --cancel-active` with no entry: ask the host which run holds
-/// the session, and cancel it unless a live client is still polling it.
-fn cancel_active_only(info: &SessionInfo, options: &TestOptions) -> Result<()> {
-    let machine = options.machine();
+/// `lxdev test cancel`: ask the host which run holds the session, and cancel
+/// it unless a live client is still polling it.
+pub fn cancel(info: &SessionInfo, machine: bool, pretty: bool) -> Result<()> {
     check_versions(info, &std::env::current_dir()?)?;
     let active: TestActiveResponse =
         execute_typed(&info.ws_url, methods::session::test::ACTIVE, &json!({}))?;
@@ -1700,13 +1844,18 @@ fn cancel_active_only(info: &SessionInfo, options: &TestOptions) -> Result<()> {
         let detail = held.as_ref().map(|held| &held.detail);
         let value = json!({
             "schema_version": 1,
-            "kind": "cancel_active",
+            "kind": "cancel",
             "cancelled_run_id": held.as_ref().map(|held| held.run_id.as_str()),
             "age_ms": detail.map(|detail| detail.age_ms),
             "since_last_poll_ms": detail.and_then(|detail| detail.since_last_poll_ms),
             "state": state.map(TestRunState::as_str),
         });
-        println!("{value}");
+        let encoded = if pretty {
+            serde_json::to_string_pretty(&value)?
+        } else {
+            value.to_string()
+        };
+        println!("{encoded}");
         return Ok(());
     }
     match (&held, state) {
@@ -4669,7 +4818,7 @@ mod lifecycle_tests {
         let error = execute_inner(
             &session,
             options(&["--output-dir", target.to_str().unwrap()]),
-            Some(selection),
+            selection,
         )
         .unwrap_err();
         assert!(

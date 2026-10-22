@@ -1,4 +1,4 @@
-//! `lxdev test --list` without a session: the specs as the source states
+//! `lxdev test list` without a session: the specs as the source states
 //! them.
 //!
 //! The exact listing needs the runtime, which runs the files: a title built
@@ -16,7 +16,7 @@ use std::path::Path;
 /// One spec call, with what the source says about it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StaticSpec {
-    /// As `--list` shows files.
+    /// As `lxdev test list` shows files.
     pub file: String,
     pub line: u32,
     pub title: Option<String>,

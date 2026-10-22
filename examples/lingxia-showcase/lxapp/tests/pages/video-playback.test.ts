@@ -4,7 +4,7 @@ import { currentPageOrNull, waitForCurrentPage, waitForCurrentPageVisible, waitF
 import { bindFixture, eventually } from '../helpers/poll.js';
 
 const httpBase = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {}).httpBase;
-const playbackSpec = httpBase ? spec : spec.skip;
+spec.configure({ skip: httpBase ? undefined : 'needs --arg httpBase' });
 const VIDEO_ID = 'lx-video-source-fixture';
 
 interface PlaybackState {
@@ -13,7 +13,7 @@ interface PlaybackState {
   duration: number;
 }
 
-playbackSpec('drive native playback through VideoContext against a local clip', {
+spec('drive native playback through VideoContext against a local clip', {
   id: 'NATIVE-VIDEO-PLAYBACK-001',
   covers: ['lx.createVideoContext', 'VideoContext.play', 'VideoContext.seek', 'VideoContext.stop'],
   app: SHOWCASE_APP_ID,

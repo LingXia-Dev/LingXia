@@ -111,6 +111,15 @@ pub fn is_no_session(err: &anyhow::Error) -> bool {
     )
 }
 
+/// Whether `err` is "several sessions fit; pick one".
+pub fn is_ambiguous(err: &anyhow::Error) -> bool {
+    use lingxia_control_protocol::dev_session::select::SelectError;
+    matches!(
+        err.downcast_ref::<SelectError>(),
+        Some(SelectError::Ambiguous { .. })
+    )
+}
+
 /// What to pass as `--session` in a printed hint to reach `info` again from
 /// this directory; `None` when no selector is needed.
 pub fn hint_selector(info: &SessionInfo) -> Option<String> {

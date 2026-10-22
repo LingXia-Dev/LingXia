@@ -8,13 +8,13 @@ const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args
 // The published API intentionally omits autostart on mobile hosts. Keep the
 // behavioral case for desktop hosts, where the login-item contract exists.
 const MOBILE_HOSTS = new Set(['android', 'ios']);
-const autostartSpec = MOBILE_HOSTS.has(testArgs.platform?.toLocaleLowerCase() ?? '')
-  ? spec.skip
-  : spec;
+const autostartSkip = MOBILE_HOSTS.has(testArgs.platform?.toLocaleLowerCase() ?? '')
+  ? 'autostart is desktop only'
+  : undefined;
 const DESKTOP_HOSTS = new Set(['macos', 'windows']);
-const bannerSpec = DESKTOP_HOSTS.has(testArgs.platform?.toLocaleLowerCase() ?? '')
-  ? spec
-  : spec.skip;
+const bannerSkip = DESKTOP_HOSTS.has(testArgs.platform?.toLocaleLowerCase() ?? '')
+  ? undefined
+  : 'host banners are desktop only';
 
 spec('publish the lxapp sandbox roots through lx.env', {
   id: 'ENV-001',
@@ -383,7 +383,8 @@ spec('request permission and replace local notifications by id', {
   expect(result.rejected).toEqual({ http: true, page: true, title: true, both: true, emptyId: true });
 });
 
-bannerSpec('show a toast, dismiss a prompt, and reject bad banner options', {
+spec('show a toast, dismiss a prompt, and reject bad banner options', {
+  skip: bannerSkip,
   id: 'HOSTAPP-BANNER-001',
   covers: [
     'lx.host.banner',
@@ -467,7 +468,8 @@ bannerSpec('show a toast, dismiss a prompt, and reject bad banner options', {
   expect(result.rejected).toEqual({ title: true, emptyId: true, tooMany: true, background: true });
 });
 
-autostartSpec('report autostart state and accept an idempotent write', {
+spec('report autostart state and accept an idempotent write', {
+  skip: autostartSkip,
   id: 'HOSTAPP-AUTOSTART-001',
   covers: ['lx.host.autostart', 'lx.host.autostart.isEnabled', 'lx.host.autostart.setEnabled'],
   app: SHOWCASE_APP_ID,

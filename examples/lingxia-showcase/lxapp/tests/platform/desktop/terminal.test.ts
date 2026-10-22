@@ -10,10 +10,11 @@ import type { ProbeDocument, ProbeElement } from '../../helpers/view.js';
 const SETTINGS_APP_ID = 'app.lingxia.terminal-settings';
 
 const targetPlatform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLocaleLowerCase();
-const desktopTerminalTest =
-  !targetPlatform || targetPlatform === 'macos' || targetPlatform === 'windows'
-    ? spec
-    : spec.skip;
+spec.configure({
+  skip: !targetPlatform || targetPlatform === 'macos' || targetPlatform === 'windows'
+    ? undefined
+    : 'macOS and Windows only',
+});
 
 function leaves(tree: TerminalPaneTree | undefined): TerminalPaneSnapshot[] {
   if (!tree) return [];
@@ -54,7 +55,7 @@ async function closeHandles(app: TestApp, key: string): Promise<void> {
   }, key);
 }
 
-desktopTerminalTest('publishes and mutates the native nested pane tree without deferred layout', {
+spec('publishes and mutates the native nested pane tree without deferred layout', {
   id: 'DESKTOP-TERMINAL-001',
   timeout: 90_000,
   covers: ['lx.shell.openDeclared', 'lx.terminal'],
@@ -108,7 +109,7 @@ desktopTerminalTest('publishes and mutates the native nested pane tree without d
   }
 });
 
-desktopTerminalTest('keeps a maximized terminal maximized when a tab opens', {
+spec('keeps a maximized terminal maximized when a tab opens', {
   id: 'DESKTOP-TERMINAL-002',
   timeout: 90_000,
   covers: ['lx.shell.openDeclared'],
@@ -145,7 +146,7 @@ desktopTerminalTest('keeps a maximized terminal maximized when a tab opens', {
   }
 });
 
-desktopTerminalTest('applies a selected color scheme to native chrome before Apply', {
+spec('applies a selected color scheme to native chrome before Apply', {
   id: 'DESKTOP-TERMINAL-003',
   timeout: 90_000,
   covers: ['lx.shell.openDeclared', 'lx.shell.openApp'],

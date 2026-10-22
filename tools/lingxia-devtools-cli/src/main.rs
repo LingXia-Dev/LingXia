@@ -21,6 +21,7 @@ mod test_preset;
 mod test_report;
 mod test_secrets;
 mod test_select;
+mod test_spec_check;
 mod test_state;
 
 use project::SessionSelector;
@@ -55,10 +56,9 @@ enum Commands {
     Session(SessionOptions),
     /// Read and follow the running app's logs
     Logs(logs::LogsOptions),
-    /// Run specs against the running app
+    /// Run the project's tests/*.test.ts in the running app
     Test(Box<test::TestOptions>),
-    /// Who answers the running app's calls: mocks/ handlers, the real
-    /// backend, or a scenario state on top (development hosts only)
+    /// Choose who answers the running app's calls
     Mock(mock::MockOptions),
     /// See the running app's Logic network calls (fetch, SSE) and who
     /// answered them; not system packet capture (development hosts only)
@@ -229,50 +229,101 @@ fn run() -> Result<()> {
         }
         // Session test runner: the handler owns process exit (run state
         // becomes the exit code).
-        Commands::Test(options) => {
-            if let Some(test::TestCommand::Report(report)) = &options.command {
-                return test_report::execute(report);
+        Commands::Test(options) => dispatch_test(*options, &argv, &cwd, &selector),
+    }
+}
+
+fn dispatch_test(
+    mut options: test::TestOptions,
+    argv: &[std::ffi::OsString],
+    cwd: &std::path::Path,
+    selector: &SessionSelector,
+) -> Result<()> {
+    match options.command.take() {
+        Some(test::TestCommand::Report(report)) => test_report::execute(&report),
+        Some(test::TestCommand::Presets(output)) => {
+            let format = output.prepare()?;
+            test_preset::list(
+                cwd,
+                format != test::OutputFormat::Text,
+                output.pretty && format == test::OutputFormat::Json,
+            )
+        }
+        Some(test::TestCommand::Args(args)) => {
+            let run = parse_run_flags(&args.tokens)?;
+            run.check_output()?;
+            let sources = test_secrets::ArgSources::gather(std::env::vars(), run.secrets_file())?;
+            test_preset::print_args(argv, run.machine(), run.pretty, &sources)
+        }
+        Some(test::TestCommand::Cancel(output)) => {
+            let format = output.prepare()?;
+            let info = project::resolve_session(selector)?;
+            test::cancel(
+                &info,
+                format != test::OutputFormat::Text,
+                output.pretty && format == test::OutputFormat::Json,
+            )
+        }
+        Some(test::TestCommand::List(list)) => {
+            let offline = list.offline;
+            let run = list.into_run();
+            run.check_output()?;
+            let selection = test_select::select(&run.paths, cwd)?;
+            if test::nothing_to_rerun(&run)? {
+                return Ok(());
             }
-            if options.list_presets {
-                return test_preset::list(&cwd, options.machine());
+            if offline {
+                return test::list_offline(&run, &selection, true);
             }
-            if options.print_args {
-                let sources =
-                    test_secrets::ArgSources::gather(std::env::vars(), options.secrets_file())?;
-                return test_preset::print_args(&argv, options.machine(), &sources);
+            match project::resolve_session(selector) {
+                Ok(info) => test::execute_list(&info, &run, &selection),
+                Err(err) if selector.query.is_none() && project::is_no_session(&err) => {
+                    test::list_offline(&run, &selection, false)
+                }
+                Err(err) if project::is_no_session(&err) => Err(err),
+                Err(err) if test::looks_unreachable(&err) => {
+                    Err(anyhow::anyhow!(test::NO_SESSION_HINT))
+                }
+                Err(err) if project::is_ambiguous(&err) => Err(anyhow::anyhow!(
+                    "{err}\nOr read the specs from the source: `lxdev test list --offline`."
+                )),
+                Err(err) => Err(err),
             }
-            // Before a session is even needed.
-            let selection = if options.paths.is_empty() && options.cancel_active() {
-                None
-            } else {
-                Some(test_select::select(&options.paths, &cwd)?)
-            };
+        }
+        None => {
+            let selection = test_select::select(&options.paths, cwd)?;
             if test::nothing_to_rerun(&options)? {
                 return Ok(());
             }
-            let info = match resolve(&selector) {
+            let info = match project::resolve_session(selector) {
                 Ok(info) => info,
-                // Listing needs only the files: without any session it
-                // reads them instead of asking a run.
-                Err(err)
-                    if options.list
-                        && selector.query.is_none()
-                        && project::is_no_session(&err)
-                        && let Some(selection) = &selection =>
-                {
-                    return test::list_offline(&options, selection);
-                }
-                // Already the no-session message, with any other project's
-                // sessions named.
                 Err(err) if project::is_no_session(&err) => return Err(err),
                 Err(err) if test::looks_unreachable(&err) => {
                     return Err(anyhow::anyhow!(test::NO_SESSION_HINT));
                 }
                 Err(err) => return Err(err),
             };
-            test::execute(&info, *options, selection)
+            test::execute(&info, options, selection)
         }
     }
+}
+
+/// `lxdev test args [flags]` — clap already took the word `args`; parse the
+/// rest as a run so secret files and `--format` are known.
+fn parse_run_flags(tokens: &[std::ffi::OsString]) -> Result<test::TestOptions> {
+    let mut argv = vec![
+        std::ffi::OsString::from("lxdev"),
+        std::ffi::OsString::from("test"),
+    ];
+    argv.extend(tokens.iter().cloned());
+    let cli = Cli::try_parse_from(&argv)?;
+    let Commands::Test(options) = cli.command else {
+        anyhow::bail!("lxdev test args takes the flags of a run");
+    };
+    if options.command.is_some() {
+        anyhow::bail!("lxdev test args takes the flags of a run, not another subcommand");
+    }
+    Ok(*options)
 }
 
 fn command_error_domain(error: &anyhow::Error) -> Option<serde_json::Value> {
@@ -382,12 +433,12 @@ mod tests {
                 .map(ToString::to_string)
                 .unwrap_or_default()
         };
-        assert_eq!(about("test"), "Run specs against the running app");
+        assert_eq!(
+            about("test"),
+            "Run the project's tests/*.test.ts in the running app"
+        );
         assert_eq!(about("session"), "List sessions");
-        assert!(about("mock").starts_with(
-            "Who answers the running app's calls: mocks/ handlers, the real backend, or a \
-             scenario state on top"
-        ));
+        assert_eq!(about("mock"), "Choose who answers the running app's calls");
         assert!(about("network").starts_with(
             "See the running app's Logic network calls (fetch, SSE) and who answered them; not \
              system packet capture"
@@ -572,22 +623,29 @@ mod tests {
         assert_eq!(options.preset.as_deref(), Some("ci"));
         assert_eq!(options.grep.as_deref(), Some("checkout"));
         // Neither needs an entry.
-        assert!(parse(&["lxdev", "test", "--list-presets"]).list_presets);
-        assert!(parse(&["lxdev", "test", "--preset", "ci", "--print-args"]).print_args);
+        assert!(matches!(
+            parse(&["lxdev", "test", "presets"]).command,
+            Some(test::TestCommand::Presets(_))
+        ));
+        assert!(matches!(
+            parse(&["lxdev", "test", "args", "--preset", "ci"]).command,
+            Some(test::TestCommand::Args(_))
+        ));
         // Nor does a run: it has a default.
         assert!(parse(&["lxdev", "test"]).paths.is_empty());
         let options = parse(&[
             "lxdev",
             "test",
+            "list",
             "a.test.ts:3",
             r"C:\x\b.test.ts:42",
             "dir/",
-            "--list",
         ]);
-        assert!(options.list);
+        let Some(test::TestCommand::List(list)) = options.command else {
+            panic!("expected list");
+        };
         assert_eq!(
-            options
-                .paths
+            list.paths
                 .iter()
                 .map(|p| (p.path.to_string_lossy().into_owned(), p.line))
                 .collect::<Vec<_>>(),
@@ -598,7 +656,12 @@ mod tests {
             ]
         );
         assert!(Cli::try_parse_from(["lxdev", "test", "a.test.ts:0"]).is_err());
-        assert!(Cli::try_parse_from(["lxdev", "test", "--list", "--cancel-active"]).is_err());
+        assert!(Cli::try_parse_from(["lxdev", "test", "list", "--offline"]).is_ok());
+        assert!(
+            Cli::try_parse_from(["lxdev", "test", "list", "--offline", "--cancel-active"]).is_err()
+        );
+        assert!(Cli::try_parse_from(["lxdev", "test", "cancel"]).is_ok());
+        assert!(Cli::try_parse_from(["lxdev", "test", "--cancel-active"]).is_ok());
     }
 
     #[test]

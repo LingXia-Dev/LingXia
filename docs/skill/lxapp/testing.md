@@ -4,7 +4,7 @@
 test worker separate from Logic and WebViews. Specs drive the UI through
 `t.app.view` (the current page) and `t.app.page()` (one fixed page), and reach
 into Logic with `t.app.logic.eval` only for what the UI cannot show. Flags and
-exit codes: `lxdev test --help`.
+exit codes: `lxdev test --help`. `lxdev test list` lists specs without running them.
 
 ## First spec
 
@@ -38,6 +38,11 @@ lxdev test tests/pages/notes.test.ts
   body)`). Await every action: a body that returns while one still runs fails,
   and so does one whose `fetch` call does not settle soon after it returns.
 - Text matchers compare whitespace-normalised text.
+- Import `spec` by that name and call it directly — `spec(…)`, `spec.skip(…)`.
+  The bundle refuses an alias (`const s = cond ? spec.skip : spec`), a
+  rename, or a re-export, because `FILE:LINE`, `lxdev test list` and `Rerun:`
+  lines read spec calls from the source. Skip on a condition with
+  `{ skip: cond ? 'why' : undefined }`.
 - Setup: `@lingxia/test` on the project's LingXia line and a test tsconfig
   with `lib: ["ES2020"]` (`lingxia new` writes `tsconfig.tests.json`). The test
   context has `console`, timers, and `fetch`; no app `lx.*`, DOM, filesystem,
@@ -62,14 +67,15 @@ lxdev test tests/pages/notes.test.ts
 | Fake Logic `fetch` / `Rong.SSE` | `t.app.network.route(pattern, handler)`; [Faking the network](#faking-the-network) |
 | Load a scenario file | `t.scenario.use`; [Scenarios in specs](#scenarios-in-specs) |
 | Check responses against OpenAPI | `--openapi`, `toMatchSchema`; [Contract checks](#contract-checks) |
-| Tag specs, file defaults | `spec(title, { tags }, body)`, `spec.configure({ timeout, start, tags, requires, … })` |
+| Tag specs, file defaults | `spec(title, { tags }, body)`, `spec.configure({ timeout, start, tags, requires, skip, … })` |
 | Skip without an input | `spec(title, { requires: { args: ['PASSWORD'], openapi: true } }, body)` |
 | Fast-forward Logic time | `t.app.clock`; [Test clock](#test-clock) |
 | Toasts, confirm dialogs, action sheets | `t.app.dialogs`; [Dialogs](#dialogs) |
 | Inputs | `t.arg('k')` from `--arg` / `--secret-arg`; [Secrets](#secrets) |
 | Cleanup | `t.defer(fn)` (LIFO, always runs); `spec.afterEach` |
 | Restore state before each attempt | `spec.reset(async (t) => { ... })` (required by `--retries`) |
-| Skip or expect failure | `t.skip(reason)`, `spec.skip`, `spec.fixme`, `spec.fail(title, { expected: { code, message } }, body)` |
+| Skip on a condition | `spec(title, { skip: platform === 'ios' ? undefined : 'iOS only' }, body)`; a whole file: `spec.configure({ skip })`; found mid-spec: `t.skip(reason)` |
+| Skip or expect failure | `spec.skip`, `spec.fixme`, `spec.fail(title, { expected: { code, message } }, body)` |
 | Group trace, add evidence | `t.step(name, fn)`, `t.attach(name, data)` |
 | Another running lxapp | `t.automation.lxapp(appId)` |
 | App lifecycle, inbound links | `t.automation.lxapps` (`applink({ url })`) |
@@ -441,7 +447,10 @@ lxdev test                        # everything (lxdev.json test.entry; else test
 lxdev test tests/cart.test.ts:42  # the one spec at (or enclosing) line 42
 lxdev test --grep "empty cart"    # by title (or --id ID)
 lxdev test --last-failed          # what failed last time
-lxdev test --list                 # list specs; no spec bodies or hooks run (no session needed)
+lxdev test list                   # list specs; no spec bodies or hooks run (no session needed)
+lxdev test presets                # presets in lxdev.json
+lxdev test args --preset ci       # the arguments a run would use
+lxdev test cancel                 # release a run left by a dead client
 lxdev test report --failures      # reprint the last run, no session needed
 ```
 
@@ -452,14 +461,15 @@ lxdev test report --failures      # reprint the last run, no session needed
   and is listed as a run error in every report. A full disk still leaves a
   minimal `report.json` saying why.
 - A failed spec prints a `Rerun:` line.
-- `--list` with a session loads every spec module in the app — their
+- `lxdev test list` with a session loads every spec module in the app — their
   top-level code runs — but runs no spec bodies or hooks; it holds the
   session like a run (Ctrl-C cancels it) and writes no results.
-- `--list` without a session bundles the files (the same checks as a run)
-  and reads the specs from the source; `~` marks a computed title, id or
+- `lxdev test list` without a session, or with `--offline`, bundles the files
+  (the same checks as a run) and reads the specs from the source; `~` marks a computed title, id or
   tag, or a spec registered in a loop, which a run may list differently.
 - `--retries N` needs `spec.reset`; `--shard 1/3` needs separate sessions.
-- `--cancel-active` cancels a run left behind by a client that exited.
+- `lxdev test cancel` releases a run left behind by a client that exited.
+  `--cancel-active` does that and then starts this run.
 - A run pauses [auto-reload](../cli/dev-reload.md). Keep files that setup
   generates outside the watched project.
 - The run fails fast when the project or the session is outside this tool's [compatibility window](../cli/lingxia.md#lingxia-dev).
@@ -482,7 +492,7 @@ LXDEV_ARG_REGION=eu lxdev test tests/          # a plain --arg REGION=eu
   shown as `***` in reports.
 - Keys keep their case: `LXDEV_SECRET_PASSWORD` is `t.arg('PASSWORD')`.
 - The command line wins over the file, the file over the environment.
-  `--print-args` shows each value's source.
+  `lxdev test args` shows each value's source.
 
 ### Presets
 
@@ -502,7 +512,7 @@ LXDEV_ARG_REGION=eu lxdev test tests/          # a plain --arg REGION=eu
 
 ```bash
 lxdev test --preset ci --grep checkout      # preset args, then the command line's
-lxdev test --preset ci --print-args         # show the effective arguments
+lxdev test args --preset ci                 # show the effective arguments
 ```
 
 - `lxdev.json` sits in the project root. A preset's arguments come first;

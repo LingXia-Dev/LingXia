@@ -6,8 +6,8 @@ import { bindFixture, type Caught } from '../../helpers/poll.js';
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const httpBase = testArgs.httpBase;
 const platform = testArgs.platform?.toLowerCase();
-const androidSpec = platform === 'android' ? spec : spec.skip;
-const androidMediaSpec = platform === 'android' && httpBase ? spec : spec.skip;
+const androidSkip = platform === 'android' ? undefined : 'Android only';
+const androidMediaSkip = platform === 'android' && httpBase ? undefined : 'Android only, with --arg httpBase';
 
 /**
  * The capabilities a phone really has and a desktop does not. Each one settles
@@ -27,7 +27,8 @@ interface WifiRoundTrip {
   stopped: boolean;
 }
 
-androidSpec('scan, read, and observe Wi-Fi on a real radio', {
+spec('scan, read, and observe Wi-Fi on a real radio', {
+  skip: androidSkip,
   id: 'ANDROID-WIFI-001',
   covers: ['lx.startWifi', 'lx.getWifiList', 'lx.getConnectedWifi', 'lx.onWifiConnected', 'lx.stopWifi'],
   app: SHOWCASE_APP_ID,
@@ -87,7 +88,8 @@ androidSpec('scan, read, and observe Wi-Fi on a real radio', {
   expect(result.stopped).toBe(true);
 });
 
-androidMediaSpec('save an image and a video into the photo library', {
+spec('save an image and a video into the photo library', {
+  skip: androidMediaSkip,
   id: 'ANDROID-PHOTOS-001',
   covers: ['lx.saveImageToPhotosAlbum', 'lx.saveVideoToPhotosAlbum', 'lx.downloadFile'],
   app: SHOWCASE_APP_ID,
@@ -124,7 +126,8 @@ androidMediaSpec('save an image and a video into the photo library', {
   });
 });
 
-androidSpec('fire both haptics without a dialog', {
+spec('fire both haptics without a dialog', {
+  skip: androidSkip,
   id: 'ANDROID-HAPTICS-001',
   covers: ['lx.vibrateShort', 'lx.vibrateLong'],
   app: SHOWCASE_APP_ID,

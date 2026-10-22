@@ -77,10 +77,10 @@ async function allowLocation(
 }
 
 const targetPlatform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLocaleLowerCase();
-const locationTest = targetPlatform && targetPlatform !== 'macos' ? spec.skip : spec;
+spec.configure({ skip: targetPlatform && targetPlatform !== 'macos' ? 'macOS only' : undefined });
 const promptAppearanceGraceMs = 5_000;
 
-locationTest('handles the macOS location permission sheet when it appears', {
+spec('handles the macOS location permission sheet when it appears', {
   id: 'MACOS-LOCATION-001',
   covers: ['lx.getLocation', 'DesktopDriver.windows', 'DesktopAx.query', 'DesktopAx.invoke'],
 }, async (t) => {

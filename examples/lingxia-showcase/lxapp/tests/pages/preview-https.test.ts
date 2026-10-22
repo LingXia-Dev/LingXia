@@ -5,7 +5,7 @@ import type { PreviewMediaHandle } from '@lingxia/types';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
-const httpsPreviewSpec = selectedGate ? spec.skip : spec;
+spec.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
 
 /** Public samples the Showcase already loads; scheme is `https://` (not the HTTP fixture). */
 const HTTPS_IMAGE =
@@ -108,7 +108,7 @@ async function presentHttpsPreview(
   );
 }
 
-httpsPreviewSpec('present an https image without downloading first', {
+spec('present an https image without downloading first', {
   id: 'DESKTOP-PREVIEW-HTTPS-IMAGE-001',
   covers: [
     'lx.previewMedia',
@@ -121,7 +121,7 @@ httpsPreviewSpec('present an https image without downloading first', {
   await presentHttpsPreview(t, 'DESKTOP-PREVIEW-HTTPS-IMAGE-001', HTTPS_IMAGE, 'image');
 });
 
-httpsPreviewSpec('present an https video without downloading first', {
+spec('present an https video without downloading first', {
   id: 'DESKTOP-PREVIEW-HTTPS-VIDEO-001',
   covers: [
     'lx.previewMedia',

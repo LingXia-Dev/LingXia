@@ -19,8 +19,8 @@ type Sessions = Record<string, PreviewSession | undefined>;
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const httpBase = testArgs.httpBase;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
-const previewSpec = httpBase && !selectedGate ? spec : spec.skip;
-const httpsPreviewSpec = selectedGate ? spec.skip : spec;
+const previewSkip = httpBase && !selectedGate ? undefined : 'needs --arg httpBase; not in a gate run';
+const httpsPreviewSkip = selectedGate ? 'a --arg gate run selects only its gate' : undefined;
 
 /** Public samples the Showcase already loads; scheme is `https://` (not the HTTP fixture). */
 const HTTPS_IMAGE =
@@ -50,7 +50,8 @@ interface HandleState {
  * on a desktop where another app may hold focus. PEND-PREVIEW-DISMISS-001
  * owns the dismissal contract.
  */
-previewSpec('present a local image and report it through the handle', {
+spec('present a local image and report it through the handle', {
+  skip: previewSkip,
   id: 'DESKTOP-PREVIEW-MEDIA-001',
   covers: [
     'lx.previewMedia',
@@ -154,7 +155,8 @@ previewSpec('present a local image and report it through the handle', {
   });
 });
 
-httpsPreviewSpec('skip an unreachable https item and keep request indexes', {
+spec('skip an unreachable https item and keep request indexes', {
+  skip: httpsPreviewSkip,
   id: 'DESKTOP-PREVIEW-HTTPS-SKIP-001',
   covers: [
     'lx.previewMedia',

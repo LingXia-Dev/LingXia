@@ -3,7 +3,7 @@ import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { bindFixture } from '../../helpers/poll.js';
 
 const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.args?.platform?.toLowerCase();
-const androidSpec = platform === 'android' ? spec : spec.skip;
+spec.configure({ skip: platform === 'android' ? undefined : 'Android only' });
 
 type Orientation = 'portrait' | 'landscape';
 interface OrientationProbe {
@@ -13,7 +13,7 @@ interface OrientationProbe {
   offLive: () => void;
 }
 
-androidSpec('rotate the Android viewport and deliver events only to live listeners', {
+spec('rotate the Android viewport and deliver events only to live listeners', {
   id: 'ANDROID-ORIENTATION-001',
   app: SHOWCASE_APP_ID,
   covers: ['lx.setDeviceOrientation', 'lx.onDeviceOrientationChange'],

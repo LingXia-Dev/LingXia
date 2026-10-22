@@ -100,6 +100,12 @@ export interface SpecOptions {
   /** Why a skip/fixme spec is registered. Shown in the HTML/JSON report; `t.skip(reason)` overrides it. */
   reason?: string;
   /**
+   * Skip with this reason. For a condition known when the file loads
+   * (`skip: platform === 'ios' ? 'desktop only' : undefined`); `t.skip()`
+   * for one found while the spec runs.
+   */
+  skip?: string;
+  /**
    * What the spec needs from the run. Unmet, it is reported `skipped` with a
    * reason naming what to pass, and its body never runs. Merged with the
    * file's `spec.configure({ requires })`.

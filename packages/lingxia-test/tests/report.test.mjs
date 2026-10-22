@@ -556,6 +556,27 @@ test("attaches a CI-ingestible junit.xml alongside the HTML report", async () =>
   assert.doesNotMatch(xml, /message="[^"]*\n/);
 });
 
+test("the skip option skips with its reason and never runs the body", async () => {
+  const world = createWorld();
+  installFakeHost(world);
+  let ran = 0;
+
+  spec("runs", { id: "SKIP-RUN", skip: undefined }, async () => {
+    ran += 1;
+  });
+  spec("skipped", { id: "SKIP-OWN", skip: "Android only" }, async () => {
+    ran += 100;
+  });
+  assert.throws(() => spec("blank", { skip: " " }, async () => {}), /skip must be a non-empty reason/);
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(ran, 1);
+  assert.deepEqual(protocol.cases.map((c) => [c.id, c.status, c.reason]), [
+    ["SKIP-RUN", "passed", undefined],
+    ["SKIP-OWN", "skipped", "Android only"],
+  ]);
+});
+
 test("an app that declares no coverage gets no coverage panel", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);

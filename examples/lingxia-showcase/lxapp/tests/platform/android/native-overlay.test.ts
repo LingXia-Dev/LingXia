@@ -6,11 +6,11 @@ import { androidDevice, androidCancelLabels } from '../../helpers/android-device
 import { bindFixture } from '../../helpers/poll.js';
 
 const args = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
-const androidSpec = args.platform === 'android' ? spec : spec.skip;
+spec.configure({ skip: args.platform === 'android' ? undefined : 'Android only' });
 
 for (const kind of ['modal', 'actionsheet'] as const) {
   const id = `ANDROID-${kind.toUpperCase()}-REPLACE-001`;
-  androidSpec(`replacing a native ${kind} settles the old request and keeps the new one usable`, {
+  spec(`replacing a native ${kind} settles the old request and keeps the new one usable`, {
     id, app: SHOWCASE_APP_ID, covers: [kind === 'modal' ? 'lx.showModal' : 'lx.showActionSheet'], timeout: 60000,
     requires: { args: ['androidDevice'] }, reason: 'requires Android OS input fixture',
     start: { page: 'home' },
@@ -52,7 +52,7 @@ for (const kind of ['modal', 'actionsheet'] as const) {
 
 for (const action of ['confirm', 'cancel', 'back', 'outside'] as const) {
   const id = `ANDROID-MODAL-${action.toUpperCase()}-001`;
-  androidSpec(`settle a native modal by ${action} without navigating the page`, {
+  spec(`settle a native modal by ${action} without navigating the page`, {
     id, app: SHOWCASE_APP_ID, covers: ['lx.showModal'], timeout: 60000,
     requires: { args: ['androidDevice'] }, reason: 'requires Android OS input fixture',
   }, async (t) => {
@@ -88,7 +88,7 @@ for (const action of ['confirm', 'cancel', 'back', 'outside'] as const) {
   });
 }
 
-androidSpec('a confirm-only modal consumes Back and outside taps until confirmed', {
+spec('a confirm-only modal consumes Back and outside taps until confirmed', {
   id: 'ANDROID-MODAL-CONFIRM-ONLY-001', app: SHOWCASE_APP_ID, covers: ['lx.showModal'], timeout: 60000,
   requires: { args: ['androidDevice'] }, reason: 'requires Android OS input fixture',
 }, async (t) => {
@@ -119,7 +119,7 @@ androidSpec('a confirm-only modal consumes Back and outside taps until confirmed
 
 for (const action of ['select', 'cancel', 'back', 'outside'] as const) {
   const id = `ANDROID-ACTIONSHEET-${action.toUpperCase()}-001`;
-  androidSpec(`settle a native action sheet by ${action} without navigating the page`, {
+  spec(`settle a native action sheet by ${action} without navigating the page`, {
     id, app: SHOWCASE_APP_ID, covers: ['lx.showActionSheet'], timeout: 60000,
     requires: { args: ['androidDevice'] }, reason: 'requires Android OS input fixture',
   }, async (t) => {
