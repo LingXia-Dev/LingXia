@@ -466,6 +466,8 @@ const LIST_FLAGS: &[&str] = &[
     "--id",
     "--tag",
     "--last-failed",
+    "--changed",
+    "--changed-since",
     "--shard",
     "--forbid-only",
     "--cancel-active",

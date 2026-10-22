@@ -48,8 +48,8 @@ Examples:
   lxdev test tests/cart.test.ts:42  the one spec at (or enclosing) line 42
   lxdev test --grep \"empty cart\"    by title (or --id ID)
   lxdev test --last-failed          what failed last time
-  lxdev test --changed              specs the uncommitted work can affect
-  lxdev test --changed main         ... or everything since branching from main
+  lxdev test --changed              only specs the uncommitted work can affect
+  lxdev test --changed-since main   ... or everything since branching from main
   lxdev test --preset ci            arguments from lxdev.json (test.presets)
   lxdev test list                   list specs without running them
   lxdev test presets                the presets in lxdev.json
@@ -127,12 +127,22 @@ pub struct TestOptions {
     #[arg(long, value_name = "REPORT", num_args = 0..=1, default_missing_value = LATEST, help_heading = "Selection")]
     last_failed: Option<PathBuf>,
 
-    /// Run only the spec files a change can affect: those importing a
-    /// changed file or naming a page with one. Changes are against BASE
-    /// (its merge base with HEAD), uncommitted and untracked files
-    /// included; without BASE, the uncommitted work
-    #[arg(long, value_name = "BASE", num_args = 0..=1, default_missing_value = "HEAD", help_heading = "Selection")]
-    pub changed: Option<String>,
+    /// Run only the specs the uncommitted work (staged, unstaged,
+    /// untracked) can affect: whose spec files import a changed file or
+    /// name a page with one. A project-wide or unattributable change runs
+    /// everything
+    #[arg(long, help_heading = "Selection")]
+    pub changed: bool,
+
+    /// --changed, against REF's merge base with HEAD instead: everything
+    /// since branching from REF, uncommitted work included
+    #[arg(
+        long,
+        value_name = "REF",
+        conflicts_with = "changed",
+        help_heading = "Selection"
+    )]
+    pub changed_since: Option<String>,
 
     /// Partition stable spec ids across independent sessions (INDEX/TOTAL)
     #[arg(long, help_heading = "Selection")]
@@ -281,10 +291,13 @@ pub struct ListOptions {
     #[arg(long, value_name = "REPORT", num_args = 0..=1, default_missing_value = LATEST)]
     pub last_failed: Option<PathBuf>,
 
-    /// Only the spec files a change can affect, against BASE (default: the
-    /// uncommitted work)
-    #[arg(long, value_name = "BASE", num_args = 0..=1, default_missing_value = "HEAD")]
-    pub changed: Option<String>,
+    /// Only the specs the uncommitted work can affect
+    #[arg(long)]
+    pub changed: bool,
+
+    /// Only the specs the changes since branching from REF can affect
+    #[arg(long, value_name = "REF", conflicts_with = "changed")]
+    pub changed_since: Option<String>,
 
     /// Partition stable spec ids across independent sessions (INDEX/TOTAL)
     #[arg(long)]
@@ -577,6 +590,7 @@ impl ListOptions {
             tags: self.tags,
             last_failed: self.last_failed,
             changed: self.changed,
+            changed_since: self.changed_since,
             shard: self.shard,
             retries: 0,
             repeat_each: 1,
@@ -1368,26 +1382,38 @@ pub fn nothing_to_rerun(options: &TestOptions) -> Result<bool> {
     Ok(true)
 }
 
-/// `--changed`: narrow the selection and say why. `true` when no spec is
-/// left, which is said instead and starts nothing.
+/// `--changed` / `--changed-since`: narrow the selection and say why.
+/// `true` when no spec is affected, which is said instead and starts
+/// nothing.
 pub fn nothing_changed(
     options: &TestOptions,
     selection: &mut Selection,
     cwd: &Path,
 ) -> Result<bool> {
-    let Some(base) = &options.changed else {
+    if !options.changed && options.changed_since.is_none() {
         return Ok(false);
-    };
-    let found = crate::test_changed::narrow(selection, base, &options.openapi, cwd)?;
-    let empty = found.selected.is_empty();
+    }
+    let found = crate::test_changed::narrow(
+        selection,
+        options.changed_since.as_deref(),
+        &options.openapi,
+    )?;
+    let empty = found.is_empty();
     if options.machine() {
         if empty {
+            let show = |files: &[PathBuf]| {
+                files
+                    .iter()
+                    .map(|file| crate::test_select::display_path(file, cwd))
+                    .collect::<Vec<_>>()
+            };
             let envelope = json!({
                 "schema_version": 1,
                 "kind": "result",
                 "state": "nothing_changed",
                 "partial": false,
-                "changed": found.changed.iter().map(|file| crate::test_select::display_path(file, cwd)).collect::<Vec<_>>(),
+                "changed": show(&found.changes.files),
+                "unaffected": show(&found.unaffected),
             });
             println!("{envelope}");
         }
@@ -1395,13 +1421,10 @@ pub fn nothing_changed(
         eprintln!(
             "{} {}",
             "test".cyan(),
-            crate::test_changed::describe(&found, base, cwd)
+            crate::test_changed::describe(&found, cwd)
         );
         if empty {
-            eprintln!(
-                "{} No spec depends on the changes; nothing to run",
-                "test".cyan()
-            );
+            eprintln!("{} No spec is affected; nothing to run", "test".cyan());
         }
     }
     Ok(empty)
