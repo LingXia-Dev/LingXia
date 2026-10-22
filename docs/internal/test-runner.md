@@ -604,7 +604,7 @@ Development machine: lxdev receives progress, results, and artifacts
   companion read files the same way. `check_rule` checks every rule of every
   variant at parse time (targets, `match` keys per target, `times`, `note`,
   the shape of `function` answers); the host checks `http` answers with the
-  route handler parser. `network/scenario.rs::parse_scenario(file, variant)`
+  route handler parser. `lingxia-network-dev`'s `scenario.rs::parse_scenario(file, variant)`
   compiles `http` rules into `RouteSpec`s carrying `body_match`
   (`scenario::Matcher`, feature `scenario-match`; object keys are checked in
   sorted order so the first difference reported is stable) and returns
@@ -628,7 +628,7 @@ Development machine: lxdev receives progress, results, and artifacts
   logs it as a warning for the dev owner, and it lands on the call-log entry
   (`Call::no_match`). `Call::to_json` adds `answeredBy` (`rule k
   (name:variant)`, `route <pattern>`, `real`).
-- The run API (`network/test_scenario.rs`): `lxapp().mock.use(file, variant?)`
+- The run API (`lingxia-network-dev`, `test_scenario.rs`): `lxapp().mock.use(file, variant?)`
   parses, removes the run's previous scenario for the app, sends `function`
   rules upstream (below), then installs `http` rules; a failure after the
   companion accepted clears it again. `JSScenario` keeps the resolved rules
@@ -712,7 +712,7 @@ Development machine: lxdev receives progress, results, and artifacts
   parsed in JS. `requestTimeoutMs` is not emulated.
 - Watching without routes (call log, recording, contract capture): see
   [Network observation](#network-observation).
-- Dev-session scenarios (`network/dev.rs`, `session.network.*` in
+- Dev-session scenarios (`lingxia-network-dev`'s `dev.rs`, `session.network.*` in
   `lingxia-control-runtime`) install under the owner `@dev-session`. The
   host receives the whole file plus `variant` (`dryRun` only validates) and
   installs its `http` rules; `function` rules are listed in the status for
@@ -753,7 +753,7 @@ Development machine: lxdev receives progress, results, and artifacts
   Rust decides, JS executes. `Registry::decide_call` runs `decide_route`,
   then, when no route or rule answered (or one passed the call on with
   `continue` / `patchJson`) and the app's policy admits the URL,
-  `decide_mock` → `Mocks::decide` (`network/mocks.rs`): `Real`,
+  `decide_mock` → `Mocks::decide` (`lingxia-network-dev`'s `mocks.rs`): `Real`,
   `Mock { key }` (hits counted) or `Unhandled { detail }` (recorded per
   method and URL, warned about once). The interceptor's `decide` returns
   `{ mock: key }` / `{ unhandled }`, merged into a `{ patch }` object when a
@@ -824,7 +824,11 @@ Development machine: lxdev receives progress, results, and artifacts
   call. The same holds for every driver property (`lxapps`, `browser`,
   `desktop`, `page`, `nav`, `cookies`, desktop sub-drivers, …): each method
   re-checks the calling context (`require_host_context` /
-  `upgrade_authorized`) and rejects with `E_AUTOMATION_PRIVILEGE`. Builds without the `runtime` feature compile `network/unavailable.rs`,
+  `upgrade_authorized`) and rejects with `E_AUTOMATION_PRIVILEGE`. The
+  network drivers live in `lingxia-network-dev` and take that check and
+  the error codes from the `Policy` automation installs (`set_policy`);
+  without one every call is refused. Builds without the `runtime` feature
+  compile automation's `network/unavailable.rs`,
   a driver whose calls all reject; from app Logic, calls reject for lack of a
   run scope.
 - Dev session: a runtime disconnect while `lingxia dev` relays an active run
@@ -882,8 +886,9 @@ Two sources. The Logic `fetch`/`Rong.SSE` wrapper sees every call an lxapp
 makes, routed or not, and feeds the call log a failed spec reports and the
 contract capture `--openapi` reads (`NetworkDriver.captureResponses()` /
 `responses()`); its state lives in the route table (`Registry`) under its one
-lock. Rong's network observer (`network/observer.rs`, feature
-`network-observer`, enabled only by the `runtime` feature) sees every request
+lock. Rong's network observer (`lingxia-network-dev`'s `observer.rs`,
+feature `network-observer`, reached only through automation's `runtime`
+feature) sees every request
 that reaches the network, whoever sent it, and feeds recordings
 (`--record-network`, `lxdev network capture`) and the `observed` list of
 `session.network.status`. Routes and mocks never reach the network, so only
