@@ -17,6 +17,20 @@ const WINDOW_NAME = 'lx_dev_service_mark';
  */
 export class DevServiceMarkWindow {
   private static opened: boolean = false;
+  private static markWindow: window.Window | null = null;
+
+  /** Put the chip back above a surface sub-window that was just shown. */
+  static async raise(): Promise<void> {
+    const win = DevServiceMarkWindow.markWindow;
+    if (!win) {
+      return;
+    }
+    try {
+      await win.showWindow();
+    } catch (error) {
+      LxLog.e(TAG, `raise failed: ${error}`);
+    }
+  }
 
   static async open(): Promise<void> {
     if (DevServiceMarkWindow.opened) {
@@ -43,8 +57,10 @@ export class DevServiceMarkWindow {
         title: 'DEV',
         decorEnabled: false,
         isModal: false,
+        // Above lx.surface float sub-windows, which use zLevel 1.
         zLevel: 10,
       });
+      DevServiceMarkWindow.markWindow = win;
       await win.loadContentByName(ROUTE);
       const info = display.getDefaultDisplaySync();
       await win.resize(info.width, info.height);
@@ -56,6 +72,7 @@ export class DevServiceMarkWindow {
       hilog.info(DOMAIN, TAG, 'dev service mark window shown');
     } catch (error) {
       DevServiceMarkWindow.opened = false;
+      DevServiceMarkWindow.markWindow = null;
       LxLog.e(TAG, `open failed: ${error}`);
     }
   }

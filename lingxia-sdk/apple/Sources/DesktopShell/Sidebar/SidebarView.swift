@@ -333,9 +333,9 @@ private final class SidebarRailFloatWindow: NSPanel {
         setFrame(frame, display: false)
         if parent == nil {
             host.addChildWindow(self, ordered: .above)
-            DevServiceMarkWindow.noteChildWindow(of: host)
         }
         orderFront(nil)
+        DevServiceMarkWindow.noteChildWindow(of: host)
     }
 
     func dismiss() {

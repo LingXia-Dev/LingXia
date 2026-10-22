@@ -24,6 +24,7 @@ import { notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispat
 import type { SurfaceLayoutConfig } from './SurfaceModel';
 import { isExternalWindowUrl, isFileUrl, isHttpUrl } from './SurfaceUrlPolicy';
 import { SurfaceCloseButton } from './SurfaceChrome';
+import { DevServiceMarkWindow } from '../../DevServiceMarkWindow';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.FloatSurfaceWindow';
@@ -114,7 +115,14 @@ export class FloatSurfaceWindowManager {
       return false;
     }
     try {
-      const win = await stage.createSubWindow(FloatSurfaceWindowManager.windowName(key));
+      // zLevel 1 stays under the dev mark (zLevel 10). A plain createSubWindow
+      // stacks by show order and paints its ArkWeb over that chip.
+      const win = await stage.createSubWindowWithOptions(FloatSurfaceWindowManager.windowName(key), {
+        title: 'LingXia',
+        decorEnabled: false,
+        isModal: false,
+        zLevel: 1,
+      });
       FloatSurfaceWindowManager.entries.set(key, { win, layout });
       FloatSurfaceWindowManager.pendingKey = key;
       await win.loadContentByName(FLOAT_ROUTE);
@@ -126,6 +134,7 @@ export class FloatSurfaceWindowManager {
       await win.moveWindowTo(0, 0);
       await win.setWindowBackgroundColor('#00000000');
       await win.showWindow();
+      await DevServiceMarkWindow.raise();
       hilog.info(DOMAIN, TAG, `float window shown key=${key}`);
       return true;
     } catch (error) {
@@ -144,6 +153,7 @@ export class FloatSurfaceWindowManager {
     }
     try {
       await entry.win.showWindow();
+      await DevServiceMarkWindow.raise();
       return true;
     } catch (error) {
       LxLog.e(TAG, `show failed key=${key}: ${error}`);

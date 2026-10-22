@@ -25,6 +25,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import com.lingxia.app.Lingxia
 import com.lingxia.app.LxLog
+import com.lingxia.lxapp.DevServiceMark
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.R
@@ -485,6 +486,7 @@ internal object LxAppSurface {
             backButton.bringToFront()
         }
         rootView.addView(overlay)
+        DevServiceMark.bringToFront(activity)
         ViewCompat.requestApplyInsets(overlay)
 
         if (webView is com.lingxia.lxapp.WebView) {
@@ -767,6 +769,7 @@ internal object LxAppSurface {
         if (entry.overlay.visibility == target) return
         entry.overlay.visibility = target
         entry.webView.visibility = target
+        if (visible) DevServiceMark.bringToFront(activity)
         if (entry.immersive) {
             if (visible) {
                 if (entry.windowSnapshot == null) {
