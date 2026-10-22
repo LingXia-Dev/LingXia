@@ -6,6 +6,7 @@
 //! gets replaced by Play flips channel without a yaml lock-in.
 
 use std::collections::BTreeMap;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -70,6 +71,38 @@ pub fn configured_update_channel() -> UpdateChannel {
         }
         None => default_update_channel(platform),
     }
+}
+
+/// `update.checkInterval` from `app.json`. `None` checks once per process.
+pub fn check_interval() -> Option<Duration> {
+    app_config()?.update_check_interval()
+}
+
+impl crate::AppConfig {
+    /// `updateCheckIntervalSecs`; zero counts as omitted.
+    pub fn update_check_interval(&self) -> Option<Duration> {
+        self.update_check_interval_secs
+            .filter(|secs| *secs > 0)
+            .map(Duration::from_secs)
+    }
+}
+
+/// Wait before the next periodic check: the interval plus up to a tenth more,
+/// so screens powered on together do not all hit the feed at once.
+pub fn next_check_delay(interval: Duration) -> Duration {
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.subsec_nanos() as u64)
+        .unwrap_or(0);
+    jittered_delay(interval, seed)
+}
+
+fn jittered_delay(interval: Duration, seed: u64) -> Duration {
+    let spread_ms = (interval.as_millis() / 10) as u64;
+    if spread_ms == 0 {
+        return interval;
+    }
+    interval + Duration::from_millis(seed % spread_ms)
 }
 
 /// Effective channel: a store-installed process is always `store`.
@@ -217,6 +250,18 @@ mod tests {
         );
         assert_eq!(store_update_url_for("ios", Some("not-a-id"), None), None);
         assert_eq!(store_update_url_for("ios", None, None), None);
+    }
+
+    #[test]
+    fn periodic_check_delay_adds_at_most_a_tenth() {
+        let hour = Duration::from_secs(3600);
+        assert_eq!(jittered_delay(hour, 0), hour);
+        assert_eq!(
+            jittered_delay(hour, 359_999),
+            hour + Duration::from_millis(359_999)
+        );
+        assert_eq!(jittered_delay(hour, 360_000), hour);
+        assert_eq!(jittered_delay(Duration::ZERO, 7), Duration::ZERO);
     }
 
     #[test]

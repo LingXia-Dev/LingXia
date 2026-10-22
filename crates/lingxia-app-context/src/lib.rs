@@ -430,6 +430,15 @@ pub struct AppConfig {
     )]
     pub update_channels: BTreeMap<String, UpdateChannel>,
 
+    /// `update.checkInterval` in seconds: how often a running process
+    /// re-checks the host app and home lxapp. `None` checks once per process.
+    #[serde(
+        rename = "updateCheckIntervalSecs",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub update_check_interval_secs: Option<u64>,
+
     /// Numeric / store listing ids from `ios.store.appId`, `macos.store.appId`,
     /// `windows.store.appId`, and `harmony.store.appId`. Used to open the
     /// store page on a `store` update channel. Android Play uses the package
@@ -1402,6 +1411,7 @@ mod tests {
             update_trusted_public_keys: Vec::new(),
             update_channel: None,
             update_channels: BTreeMap::new(),
+            update_check_interval_secs: None,
             store_listing_ids: BTreeMap::new(),
         }
     }
@@ -1458,6 +1468,25 @@ mod tests {
         assert_eq!(
             config.update_trusted_public_keys,
             vec!["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_and_validate_reads_update_check_interval() {
+        let parse = |extra: &str| {
+            AppConfig::parse_and_validate(&format!(
+                r#"{{ "productName": "Demo", "productVersion": "1.0.0"{extra} }}"#
+            ))
+            .expect("app.json")
+        };
+        assert_eq!(parse("").update_check_interval(), None);
+        assert_eq!(
+            parse(r#", "updateCheckIntervalSecs": 21600"#).update_check_interval(),
+            Some(std::time::Duration::from_secs(21_600))
+        );
+        assert_eq!(
+            parse(r#", "updateCheckIntervalSecs": 0"#).update_check_interval(),
+            None
         );
     }
 

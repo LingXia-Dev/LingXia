@@ -1947,6 +1947,7 @@ impl LxApp {
             .is_ok()
         {
             UpdateManager::spawn_lxapp_update_check(self.appid.clone(), self.release_type);
+            UpdateManager::start_home_update_poll();
         }
     }
 

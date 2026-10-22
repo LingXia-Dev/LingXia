@@ -143,6 +143,12 @@ pub(super) fn build_app_json_from_config(
                 serde_json::to_value(&update.platforms)?,
             );
         }
+        if let Some(secs) = update.check_interval_secs()? {
+            obj.insert(
+                "updateCheckIntervalSecs".to_string(),
+                serde_json::json!(secs),
+            );
+        }
     }
 
     let store_listing_ids = store_listing_ids_from_config(config);

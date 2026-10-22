@@ -88,10 +88,47 @@ pub struct UpdateSigningConfig {
     /// flip Android to `store` on the Play-signed package after listing.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub platforms: BTreeMap<String, lingxia_app_context::UpdateChannel>,
+    /// How often a running process re-checks the host app and home lxapp,
+    /// such as `30m`, `6h` or `1d`. A failed check also waits this long.
+    /// Omit to check once per process.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_interval: Option<String>,
 }
 
+/// Shortest `update.checkInterval`, so a fleet cannot poll the feed every minute.
+const MIN_UPDATE_CHECK_INTERVAL_SECS: u64 = 15 * 60;
+
 impl UpdateSigningConfig {
+    /// `checkInterval` in seconds, or `None` when omitted.
+    pub fn check_interval_secs(&self) -> Result<Option<u64>> {
+        let Some(raw) = self.check_interval.as_deref() else {
+            return Ok(None);
+        };
+        let invalid = || {
+            anyhow!(
+                "update.checkInterval `{raw}` must be a number with m, h or d, such as 30m, 6h or 1d"
+            )
+        };
+        let text = raw.trim();
+        let unit = text.chars().last().ok_or_else(invalid)?;
+        let scale = match unit {
+            'm' => 60,
+            'h' => 60 * 60,
+            'd' => 24 * 60 * 60,
+            _ => return Err(invalid()),
+        };
+        let count: u64 = text[..text.len() - 1].parse().map_err(|_| invalid())?;
+        let secs = count.checked_mul(scale).ok_or_else(invalid)?;
+        if secs < MIN_UPDATE_CHECK_INTERVAL_SECS {
+            return Err(anyhow!(
+                "update.checkInterval `{raw}` is below the 15m minimum"
+            ));
+        }
+        Ok(Some(secs))
+    }
+
     pub fn validate(&self) -> Result<()> {
+        self.check_interval_secs()?;
         for platform in self.platforms.keys() {
             if !AUTHORING_PLATFORMS.contains(&platform.as_str()) {
                 return Err(anyhow!(
@@ -3046,6 +3083,7 @@ resources:
 update:
   trustedPublicKeys: ["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw"]
   channel: direct
+  checkInterval: 6h
   platforms:
     ios: store
     android: direct
@@ -3053,6 +3091,7 @@ update:
         )
         .unwrap();
         let update = config.update.unwrap();
+        assert_eq!(update.check_interval_secs().unwrap(), Some(21_600));
         assert_eq!(
             update.channel,
             Some(lingxia_app_context::UpdateChannel::Direct)
@@ -3089,6 +3128,56 @@ update:
         .unwrap_err()
         .to_string();
         assert!(err.contains("update.platforms.linux"), "{err}");
+    }
+
+    #[test]
+    fn update_yaml_rejects_a_bad_check_interval() {
+        let err = load_config_yaml(
+            r#"
+app:
+  projectName: my-app
+  packageId: com.example.myapp
+  productName: My App
+  productVersion: 0.0.1
+  platforms: [android]
+  homeAppId: my-app
+android: {}
+resources:
+  bundles:
+    - type: lxapp
+      appId: my-app
+      path: my-app
+update:
+  trustedPublicKeys: ["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw"]
+  checkInterval: 2w
+"#,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("update.checkInterval `2w`"), "{err}");
+    }
+
+    #[test]
+    fn update_check_interval_parses_units_and_enforces_minimum() {
+        let interval = |raw: &str| UpdateSigningConfig {
+            check_interval: Some(raw.to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            UpdateSigningConfig::default()
+                .check_interval_secs()
+                .unwrap(),
+            None
+        );
+        assert_eq!(interval("15m").check_interval_secs().unwrap(), Some(900));
+        assert_eq!(interval("6h").check_interval_secs().unwrap(), Some(21_600));
+        assert_eq!(interval("1d").check_interval_secs().unwrap(), Some(86_400));
+        for bad in ["", "1", "h", "1.5h", "-1h", "1w", "1 h", "一h"] {
+            let error = interval(bad).validate().unwrap_err().to_string();
+            assert!(error.contains("update.checkInterval"), "{bad}: {error}");
+        }
+        let error = interval("10m").validate().unwrap_err().to_string();
+        assert!(error.contains("15m minimum"), "{error}");
     }
 
     #[test]

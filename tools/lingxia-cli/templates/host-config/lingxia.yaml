@@ -92,6 +92,7 @@ capabilities:
 # but prod then never checks for updates.
 # update:
 #   trustedPublicKeys: [ ... ]
+#   checkInterval: 6h   # re-check while running, for always-on screens
 #   platforms:
 {{UPDATE_PLATFORM_CHANNELS}}
 
