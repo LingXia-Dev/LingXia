@@ -4,7 +4,7 @@
 test worker separate from Logic and WebViews. Specs drive the UI through
 `t.app.view` (the current page) and `t.app.page()` (one fixed page), and reach
 into Logic with `t.app.logic.eval` only for what the UI cannot show. Flags and
-exit codes: `lxdev test --help`. `lxdev test list` lists specs without running them.
+exit codes: `lxdev test --help`.
 
 ## First spec
 
@@ -41,18 +41,59 @@ lxdev test tests/pages/notes.test.ts
 - Import `spec` by that name and call it directly — `spec(…)`, `spec.skip(…)`.
   The bundle refuses an alias (`const s = cond ? spec.skip : spec`), a
   rename, or a re-export, because `FILE:LINE`, `lxdev test list` and `Rerun:`
-  lines read spec calls from the source. Skip on a condition with
-  `{ skip: cond ? 'why' : undefined }`.
+  lines read spec calls from the source.
 - Setup: `@lingxia/test` on the project's LingXia line and a test tsconfig
   with `lib: ["ES2020"]` (`lingxia new` writes `tsconfig.tests.json`). The test
   context has `console`, timers, and `fetch`; no app `lx.*`, DOM, filesystem,
   Node built-ins, or dynamic `import()`.
 
+## Running
+
+```bash
+lxdev test                        # everything (lxdev.json test.entry; else tests/ if it exists)
+lxdev test tests/cart.test.ts:42  # the one spec at (or enclosing) line 42
+lxdev test --grep "empty cart"    # by title (or --id ID)
+lxdev test --last-failed          # what failed last time
+lxdev test --changed              # specs the uncommitted work can affect (--changed main: since branching)
+lxdev test list                   # list specs; no spec bodies or hooks run
+lxdev test presets                # presets in lxdev.json
+lxdev test args --preset ci       # the arguments a run would use
+lxdev test cancel                 # release a run left by a dead client (--cancel-active: then run)
+lxdev test report --failures      # reprint the last run, no session needed
+```
+
+Iterate with `--changed` or a file path; run everything at handoff and in CI.
+
+- Reports go to `test-results/<run-id>/` (`report.html`, `report.json`,
+  `junit.xml`); `test-results/latest` is the last run, set after its reports.
+- A failure after the cases (`--profile-save`, `--record-network`, a failed
+  return of the app to its own data) keeps each case's verdict but exits 1
+  and is listed as a run error in every report.
+- A failed spec prints a `Rerun:` line.
+- `--changed` picks the spec files that import a changed file or name a page
+  (`'home'`, `pages/home/index`) whose files changed, and prints why. A change
+  to lxdev.json, lxapp.json, the app entry, package files, a root tsconfig or
+  an OpenAPI document selects all.
+- `lxdev test list` with a session loads the spec modules in the app (their
+  top-level code runs) and holds the session like a run. Without one, or with
+  `--offline`, it reads the specs from the source; `~` marks a computed title,
+  id or tag, or a spec registered in a loop, which a run may list differently.
+- `--retries N` needs `spec.reset`; `--shard 1/3` needs separate sessions.
+- A run pauses [auto-reload](../cli/dev-reload.md). Keep files that setup
+  generates outside the watched project.
+- The run fails fast when the project or the session is outside this tool's [compatibility window](../cli/lingxia.md#lingxia-dev).
+- Rejections carry stable `TestErrorCode`s (`E_TIMEOUT`, `E_ELEMENT_NOT_FOUND`,
+  `E_EVAL_SCRIPT`, `E_OPENAPI_CONTRACT`, …) for `t.reject` and `expected.code`.
+  Declare the app's own codes once to expect them too:
+  `declare module '@lingxia/test' { interface AppErrorCodes { E_QUOTA: true } }`.
+- For unattended runs, start with `lingxia dev --background`, run, and always
+  `lingxia dev stop`; name sessions (`--name`) when several share a checkout.
+
 ## Common tasks
 
 | Task | API |
 |---|---|
-| Start on a known page | `spec(title, { start: { page, query? } }, body)`; mid-spec `t.app.nav.relaunch({ page })` |
+| Relaunch mid-spec | `t.app.nav.relaunch({ page, query? })` |
 | Navigate | `t.app.nav.to` / `.redirect` / `.switchTab` / `.back`; `.press('back' \| 'home')` presses the navigation bar button (leave guard included) |
 | Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })` |
 | Another page (below the current one, on a surface) | `(await t.app.page({ name })).view`; [Pages](#pages) |
@@ -68,15 +109,14 @@ lxdev test tests/pages/notes.test.ts
 | Load a scenario file | `t.scenario.use`; [Scenarios in specs](#scenarios-in-specs) |
 | Check responses against OpenAPI | `--openapi`, `toMatchSchema`; [Contract checks](#contract-checks) |
 | Tag specs, file defaults | `spec(title, { tags }, body)`, `spec.configure({ timeout, start, tags, requires, skip, … })` |
-| Skip without an input | `spec(title, { requires: { args: ['PASSWORD'], openapi: true } }, body)` |
 | Fast-forward Logic time | `t.app.clock`; [Test clock](#test-clock) |
 | Toasts, confirm dialogs, action sheets | `t.app.dialogs`; [Dialogs](#dialogs) |
 | Inputs | `t.arg('k')` from `--arg` / `--secret-arg`; [Secrets](#secrets) |
 | Cleanup | `t.defer(fn)` (LIFO, always runs); `spec.afterEach` |
 | Restore state before each attempt | `spec.reset(async (t) => { ... })` (required by `--retries`) |
-| Skip on a condition | `spec(title, { skip: platform === 'ios' ? undefined : 'iOS only' }, body)`; a whole file: `spec.configure({ skip })`; found mid-spec: `t.skip(reason)` |
-| Skip or expect failure | `spec.skip`, `spec.fixme`, `spec.fail(title, { expected: { code, message } }, body)` |
-| Group trace, add evidence | `t.step(name, fn)`, `t.attach(name, data)` |
+| Skip | `spec.skip`, `spec.fixme`; on a condition `{ skip: cond ? 'why' : undefined }` (whole file: `spec.configure({ skip })`); found mid-spec `t.skip(reason)`; without an input `{ requires: { args: ['PASSWORD'], openapi: true } }` |
+| Expect a failure | `spec.fail(title, { expected: { code, message } }, body)` |
+| Group trace, add evidence | `t.step(name, fn)` (await one at a time; nest through the callback's `step`), `t.attach(name, data)` |
 | Another running lxapp | `t.automation.lxapp(appId)` |
 | App lifecycle, inbound links | `t.automation.lxapps` (`applink({ url })`) |
 | External web pages, auth/payment callbacks | `t.automation.browser` |
@@ -84,16 +124,10 @@ lxdev test tests/pages/notes.test.ts
 | Host shell, terminal, desktop | `t.automation.shell`, `.terminal`, `.desktop` where the host has them |
 | External fixtures and service results | test-context `fetch` |
 
-Await `t.step` calls one at a time, and nest through the callback's scope:
-`await t.step('outer', async (step) => { await step.step('inner', async () => { /* checks */ }); });`.
-Overlapping steps fail the spec, even if the rejection is caught.
-
 Trigger the behaviour under test through the UI; setup, eval, and backend
 calls do not replace it. Automation types come from `@lingxia/types/automation`.
 Read runtime info and element snapshots with camelCase fields (`appId`,
 `currentPage`, `navigationBar`, `rect.centerX`); CLI JSON keeps its wire names.
-`rawAutomation()` from `@lingxia/test/runner` bypasses tracing and fixture
-guards; keep it for a setup module that waits for the app before any spec.
 Restore shell pins or device settings a spec changes. Routes, `t.scenario.use`
 scenarios, test clocks and dialog answers a spec installs are removed when it
 ends; its leftover timers are cancelled.
@@ -166,7 +200,6 @@ const slow = await t.app.logic.eval({ timeout: 30_000 }, async ({ lx }, key: str
   `TypeError` (the DOM not rendered yet) and nested locator timeouts. A Logic
   `TypeError`, other programming errors and invalid JSON fail immediately
   (override with `retryIf`); timeout reports `E_TIMEOUT` and the last observation.
-- Error-code matching also checks a preserved cause: a timeout's driver error, or the app error behind `E_EVAL_SCRIPT` or a page action.
 - Type shared helpers against `TestApp`, `TestPage<C>` or `TestView`.
 
 ## Faking the network
@@ -206,9 +239,7 @@ spec('rename shows the not-implemented error', async (t) => {
 - `route()` returns `{ id, pattern, remove(), calls(), waitForCall() }`. Call
   records are `{ seq, time, kind, method, url, status, body, headers,
   answeredBy, rule? }`. `waitForCall({ timeout? })` resolves with the next
-  call not yet returned, including one made before the wait. Call logs are
-  bounded (the host's: 1000 requests across apps); if calls were dropped
-  before a wait read them, it fails naming the gap instead of skipping them.
+  call not yet returned, including one made before the wait.
 - Routes last one spec. A failed spec's report lists the app's last 20 Logic
   network calls.
 
@@ -291,9 +322,8 @@ lxdev test tests/ --tag routed --openapi api/openapi.yaml
 - A routed (or `patchJson`-patched) response that breaks its OpenAPI 3.x schema
   fails the spec with `E_OPENAPI_CONTRACT`; a real server's break is a warning.
 - Only JSON responses are checked; `$ref`s must be local.
-- A JSON response too large to capture is skipped, not checked. A response
-  that cannot be attributed to the spec (still in flight, or from an earlier
-  one) fails that spec.
+- A response that cannot be attributed to the spec (still in flight, or from
+  an earlier one) fails that spec.
 
 ```ts
 const { devices } = await (await t.app.page<DevicesPage>()).data();
@@ -408,84 +438,7 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
 spec('edits a device', { restoreProfile: { keep: ['auth.*'] } }, async (t) => { /* ... */ });
 ```
 
-## Gotchas
-
-- **Visible is not in the viewport.** `toBeVisible` passes below the fold;
-  use `toBeInViewport()`. Actions scroll their target into view.
-- **`force` is a last resort.** `click({ force: true })` / `fill(text, {
-  force: true })` dispatch DOM events directly; use only after
-  `element is obscured`. A run raises the host window when it starts, and
-  actions and waits keep their original deadline without raising it again;
-  keep the window uncovered (`lxdev host focus`).
-- **A locked screen stops the run** on macOS: pages are hidden, so the rest
-  are reported as not run. Unlock it and run again.
-- **`fill` updates framework state**; assert the state, not only the DOM.
-- **Nav waits for `onReady`** and rejects if the app replaces the page first;
-  pass `waitUntil: 'commit'`, then assert the landing page.
-- **Specs share app state.** Nothing resets storage or backend between specs;
-  seed and clean up with `t.defer` / `spec.reset`, or use `restoreProfile`.
-- **Hooks are file-scoped**: `spec.reset`, `beforeEach`, `afterEach` apply to
-  the file that registers them.
-- **Specs run on the device.** `fetch('http://127.0.0.1:…')` reaches the
-  device's loopback; pass reachable fixture URLs with `--arg`.
-- **`t.arg('k')` throws** when missing; pass `{ default }` or
-  `{ required: false }`.
-- **Timeouts never outlive the spec**; a longer one is clamped.
-- **An abandoned spec stops the run.** Its timers and automation grants are
-  revoked, owned resources reclaimed, and remaining specs skipped. Untracked
-  promises could otherwise resume inside the next spec's shared JS context.
-  App recovery is for inspection; await all work or raise `timeout`.
-- **Dialog observation is required.** Setup, observation, or teardown errors
-  fail the spec instead of disabling dialog checks.
-- **Live `lxdev mock` changes** (scenarios and selections) stand aside
-  during a run; specs see `mocks/config.json` and `lingxia dev --mock`.
-
-## Running
-
-```bash
-lxdev test                        # everything (lxdev.json test.entry; else tests/ if it exists)
-lxdev test tests/cart.test.ts:42  # the one spec at (or enclosing) line 42
-lxdev test --grep "empty cart"    # by title (or --id ID)
-lxdev test --last-failed          # what failed last time
-lxdev test --changed              # specs the uncommitted work can affect (--changed main: since branching)
-lxdev test list                   # list specs; no spec bodies or hooks run (no session needed)
-lxdev test presets                # presets in lxdev.json
-lxdev test args --preset ci       # the arguments a run would use
-lxdev test cancel                 # release a run left by a dead client
-lxdev test report --failures      # reprint the last run, no session needed
-```
-
-- Reports go to `test-results/<run-id>/` (`report.html`, `report.json`,
-  `junit.xml`); `test-results/latest` is the last run, set after its reports.
-- A failure after the cases (`--profile-save`, `--record-network`, a failed
-  return of the app to its own data) keeps each case's verdict but exits 1
-  and is listed as a run error in every report. A full disk still leaves a
-  minimal `report.json` saying why.
-- A failed spec prints a `Rerun:` line.
-- `--changed` picks the spec files that import a changed file or name a
-  page (`'home'`, `pages/home/index`) whose files changed, and says why;
-  lxdev.json, lxapp.json, the app entry, package files, root tsconfigs or an
-  OpenAPI document changing selects all. Iterate with it; CI runs everything.
-- `lxdev test list` with a session loads every spec module in the app — their
-  top-level code runs — but runs no spec bodies or hooks; it holds the
-  session like a run (Ctrl-C cancels it) and writes no results.
-- `lxdev test list` without a session, or with `--offline`, bundles the files
-  (the same checks as a run) and reads the specs from the source; `~` marks a computed title, id or
-  tag, or a spec registered in a loop, which a run may list differently.
-- `--retries N` needs `spec.reset`; `--shard 1/3` needs separate sessions.
-- `lxdev test cancel` releases a run left behind by a client that exited.
-  `--cancel-active` does that and then starts this run.
-- A run pauses [auto-reload](../cli/dev-reload.md). Keep files that setup
-  generates outside the watched project.
-- The run fails fast when the project or the session is outside this tool's [compatibility window](../cli/lingxia.md#lingxia-dev).
-- Rejections carry stable `TestErrorCode`s (`E_TIMEOUT`, `E_ELEMENT_NOT_FOUND`,
-  `E_EVAL_SCRIPT`, `E_OPENAPI_CONTRACT`, …) for `t.reject` and `expected.code`.
-  Declare the app's own codes once to expect them too:
-  `declare module '@lingxia/test' { interface AppErrorCodes { E_QUOTA: true } }`.
-- For unattended runs, start with `lingxia dev --background`, run, and always
-  `lingxia dev stop`; name sessions (`--name`) when several share a checkout.
-
-### Secrets
+## Secrets
 
 ```bash
 lxdev test tests/ --secrets-file .env.test     # dotenv, kept out of git
@@ -499,7 +452,7 @@ LXDEV_ARG_REGION=eu lxdev test tests/          # a plain --arg REGION=eu
 - The command line wins over the file, the file over the environment.
   `lxdev test args` shows each value's source.
 
-### Presets
+## Presets
 
 ```json
 {
@@ -526,10 +479,36 @@ lxdev test args --preset ci                 # show the effective arguments
 - Presets are committed, so they may not hold `--secret-arg` or credential
   args; name a gitignored `--secrets-file` instead.
 
+## Gotchas
+
+- **Visible is not in the viewport.** `toBeVisible` passes below the fold;
+  use `toBeInViewport()`. Actions scroll their target into view.
+- **`force` is a last resort.** `click({ force: true })` / `fill(text, {
+  force: true })` dispatch DOM events directly; use only after
+  `element is obscured`. A run raises the host window when it starts, and
+  actions and waits keep their original deadline without raising it again;
+  keep the window uncovered (`lxdev host focus`).
+- **A locked screen stops the run** on macOS: pages are hidden, so the rest
+  are reported as not run. Unlock it and run again.
+- **`fill` updates framework state**; assert the state, not only the DOM.
+- **Nav waits for `onReady`** and rejects if the app replaces the page first;
+  pass `waitUntil: 'commit'`, then assert the landing page.
+- **Specs share app state.** Nothing resets storage or backend between specs;
+  seed and clean up with `t.defer` / `spec.reset`, or use `restoreProfile`.
+- **Hooks are file-scoped**: `spec.reset`, `beforeEach`, `afterEach` apply to
+  the file that registers them.
+- **Specs run on the device.** `fetch('http://127.0.0.1:…')` reaches the
+  device's loopback; pass reachable fixture URLs with `--arg`.
+- **`t.arg('k')` throws** when missing; pass `{ default }` or
+  `{ required: false }`.
+- **An abandoned spec stops the run**: the rest are skipped, since its
+  leftover promises could resume inside the next spec. Await all work, or
+  raise `timeout`.
+- **Live `lxdev mock` changes** (scenarios and selections) stand aside
+  during a run; specs see `mocks/config.json` and `lingxia dev --mock`.
+
 ## Layout
 
 - `tests/pages/` — one page's behaviour and states.
 - `tests/flows/` — cross-page, cross-app, and external journeys.
 - `tests/api/` — deliberate `lx.*` contract checks.
-
-Run focused specs while iterating and the suite at handoff.
