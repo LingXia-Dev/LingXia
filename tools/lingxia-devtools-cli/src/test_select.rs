@@ -6,8 +6,7 @@ use anyhow::{Context, Result, anyhow};
 use oxc_allocator::Allocator;
 use oxc_ast::AstKind;
 use oxc_ast::ast::{
-    Argument, ArrayExpressionElement, Expression, ImportDeclarationSpecifier, ObjectExpression,
-    ObjectPropertyKind,
+    Argument, ArrayExpressionElement, Expression, ObjectExpression, ObjectPropertyKind,
 };
 use oxc_ast_visit::Visit;
 use oxc_parser::Parser;
@@ -194,7 +193,7 @@ pub fn display_path(path: &Path, cwd: &Path) -> String {
     }
 }
 
-/// `--list` text: one `file:line  id  title  [tags]` line per spec, the
+/// `lxdev test list` text: one `file:line  id  title  [tags]` line per spec, the
 /// first two columns aligned.
 pub fn format_listing(specs: &[serde_json::Value]) -> String {
     let rows: Vec<(String, &str, &str, String)> = specs
@@ -280,21 +279,8 @@ impl SpecMap {
                 path.display()
             ));
         }
-        let mut names = vec!["spec".to_string()];
-        for statement in &parsed.program.body {
-            if let oxc_ast::ast::Statement::ImportDeclaration(import) = statement {
-                for specifier in import.specifiers.iter().flatten() {
-                    if let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier
-                        && crate::test_bundle::module_export_name(&specifier.imported).as_deref()
-                            == Some("spec")
-                    {
-                        names.push(specifier.local.name.as_str().to_string());
-                    }
-                }
-            }
-        }
+        // The bundle refuses any other way to reach `spec` (test_spec_check).
         let mut finder = SpecFinder {
-            names,
             lines: LineIndex::new(source),
             calls: Vec::new(),
             nodes: Vec::new(),
@@ -404,7 +390,6 @@ impl LineIndex {
 }
 
 struct SpecFinder {
-    names: Vec<String>,
     lines: LineIndex,
     calls: Vec<SpecCall>,
     nodes: Vec<(u32, u32)>,
@@ -422,7 +407,7 @@ enum SpecCallee {
 
 impl SpecFinder {
     fn spec_callee(&self, callee: &Expression<'_>) -> Option<SpecCallee> {
-        let named = |expression: &Expression<'_>| matches!(expression, Expression::Identifier(id) if self.names.iter().any(|name| name == id.name.as_str()));
+        let named = |expression: &Expression<'_>| matches!(expression, Expression::Identifier(id) if id.name == "spec");
         match callee {
             Expression::StaticMemberExpression(member) if named(&member.object) => {
                 let property = member.property.name.as_str();
@@ -638,16 +623,16 @@ mod tests {
         assert!(parse_test_path("").is_err());
     }
 
-    const SOURCE: &str = r#"import { spec as it } from "@lingxia/test";
+    const SOURCE: &str = r#"import { spec } from "@lingxia/test";
 
-it("first", async () => {
+spec("first", async () => {
   await 1;
 });
 
-it.skip(`second`, { id: "S-2" }, async () => {});
+spec.skip(`second`, { id: "S-2" }, async () => {});
 
 for (const name of ["a", "b"]) {
-  it(name, async () => {});
+  spec(name, async () => {});
 }
 
 spec.beforeEach(async () => {});

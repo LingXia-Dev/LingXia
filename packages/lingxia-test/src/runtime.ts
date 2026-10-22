@@ -76,6 +76,8 @@ interface RegisteredSpec {
   app?: string;
   forensics: boolean;
   reason?: string;
+  /** The `skip` option: skipped with this reason. */
+  skip?: string;
   /** Run inputs the spec needs; unmet, it is skipped. */
   requires: { args: string[]; openapi: boolean };
   /**
@@ -177,6 +179,9 @@ function validateOptions(options: FileOptions, where: string): void {
   for (const [name, value] of Object.entries({ timeout: options.timeout, timeoutCleanup: options.timeoutCleanup })) {
     if (value !== undefined && (!Number.isFinite(value) || value <= 0)) throw new TypeError(`${where} ${name} must be a positive finite number`);
   }
+  if (options.skip !== undefined && (typeof options.skip !== "string" || options.skip.trim().length === 0)) {
+    throw new TypeError(`${where} skip must be a non-empty reason, or undefined to run`);
+  }
   validateTags(options.tags, where);
   validateRequires(options.requires, where);
   if (options.covers !== undefined && (!Array.isArray(options.covers) || options.covers.some((id) => typeof id !== "string"))) {
@@ -204,11 +209,17 @@ function settle(item: RegisteredSpec, file: FileOptions | undefined): void {
   item.restoreKeep = restoreKeep;
   item.app = pick("app");
   item.forensics = pick("forensics") !== false;
-  item.reason = pick("reason");
+  item.skip = pick("skip");
+  item.reason = item.skip ?? pick("reason");
   item.requires = {
     args: [...new Set([...fileRequires.args, ...ownRequires.args])],
     openapi: fileRequires.openapi || ownRequires.openapi,
   };
+}
+
+/** `spec.skip`, `spec.fixme`, or the `skip` option: registered, never run. */
+function notRun(item: RegisteredSpec): boolean {
+  return item.annotation === "skip" || item.annotation === "fixme" || item.skip !== undefined;
 }
 
 /** Why the run cannot give the spec what it `requires`, or `undefined`. */
@@ -576,7 +587,7 @@ function run(): Promise<ProtocolReport> {
   return runSpecs(false);
 }
 
-/** `lxdev test --list`: the selected specs, in `listed`; nothing runs. */
+/** `lxdev test list`: the selected specs, in `listed`; nothing runs. */
 function list(): Promise<ProtocolReport> {
   return runSpecs(true);
 }
@@ -702,7 +713,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     }
   }
   if (retries > 0) {
-    for (const item of selected.filter(item => !["skip", "fixme"].includes(item.annotation))) {
+    for (const item of selected.filter(item => !notRun(item))) {
       if (!resetHooks.some(hook => hookFiles.get(hook) === sourceOf(item).file)) {
         throw new Error(`Retries require spec.reset() in ${sourceOf(item).file}; relaunching a page does not reset app state.`);
       }
@@ -780,10 +791,8 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     });
 
     const caseStarted = Date.now();
-    const unmet = item.annotation === "skip" || item.annotation === "fixme"
-      ? undefined
-      : unmetRequirements(item, args, openapi !== undefined);
-    if (budgetExhausted || contaminated || screenLocked || unmet !== undefined || item.annotation === "skip" || item.annotation === "fixme") {
+    const unmet = notRun(item) ? undefined : unmetRequirements(item, args, openapi !== undefined);
+    if (budgetExhausted || contaminated || screenLocked || unmet !== undefined || notRun(item)) {
       if (contaminated) record.reason = contaminationReason ?? `Not run: an earlier spec left the run unable to continue. Recover: ${RECOVER_COMMAND}`;
       else if (budgetExhausted && budget) record.reason = `Not run: the run budget of ${Math.round(budget.ms / 1000)}s was exhausted after ${budgetExhausted.after}/${plan.length} specs.`;
       else if (screenLocked) record.reason = `Not run: ${SCREEN_LOCKED_NOTE}.`;
@@ -1893,7 +1902,7 @@ function atLocation(source: { file: string; line: number }, locations: Locations
   return ranges === null || ranges!.some(([from, to]) => source.line >= from && source.line <= to);
 }
 
-/** `lxdev test --list`: the selection, with nothing run. */
+/** `lxdev test list`: the selection, with nothing run. */
 function listing(listed: ListedSpec[]): ProtocolReport {
   return {
     schema_version: 1,

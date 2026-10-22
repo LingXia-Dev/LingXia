@@ -5,9 +5,9 @@ import { androidDevice } from '../../helpers/android-device.js';
 import { bindFixture } from '../../helpers/poll.js';
 
 const args = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
-const androidSpec = args.platform === 'android' ? spec : spec.skip;
+spec.configure({ skip: args.platform === 'android' ? undefined : 'Android only' });
 
-androidSpec('pull down from the screen to refresh, then refresh again', {
+spec('pull down from the screen to refresh, then refresh again', {
   id: 'ANDROID-PULL-GESTURE-001', app: SHOWCASE_APP_ID,
   covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'],
   requires: { args: ['androidDevice'] },

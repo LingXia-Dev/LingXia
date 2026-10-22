@@ -10,9 +10,10 @@ import { bindFixture } from '../helpers/poll.js';
  */
 const platform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLowerCase();
 const DESKTOP = ['macos', 'windows'];
-const desktopSpec = platform && DESKTOP.includes(platform) ? spec : spec.skip;
+const desktopSkip = platform && DESKTOP.includes(platform) ? undefined : 'desktop hosts only';
 
-desktopSpec('reject haptics and the dialer with E_NOT_SUPPORTED on a desktop', {
+spec('reject haptics and the dialer with E_NOT_SUPPORTED on a desktop', {
+  skip: desktopSkip,
   id: 'DEVICE-ABSENT-001',
   covers: ['lx.vibrateShort', 'lx.vibrateLong', 'lx.makePhoneCall'],
   app: SHOWCASE_APP_ID,

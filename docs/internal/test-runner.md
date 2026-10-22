@@ -346,15 +346,20 @@ Development machine: lxdev receives progress, results, and artifacts
   `[repeat k/N]` in `full_name`, attachment path `…/repeat-k/attempt-n`), and
   retries key attempts by id and repeat. `run_started` lists every planned
   execution, and lxdev fills the next unstarted entry with a matching name.
+- Spec calls are found by name: the bundler (`test_spec_check.rs`) refuses
+  any project module that reaches `@lingxia/test`'s `spec` other than by a
+  direct call under that name — a value use (alias, ternary, argument), a
+  rename, `export { spec }` / `export * from`, a value namespace import. This
+  is what makes `FILE:LINE`, offline listing and `Rerun:` lines exact;
+  conditional skipping is the `skip` spec/file option instead.
 - `FILE:LINE`: lxdev parses the file (Oxc) for spec calls — `spec(…)` and
-  `spec.skip|only|fixme|fail(…)`, under any local name `spec` is imported as
-  — and takes the one whose call spans the line, else every call inside the
+  `spec.skip|only|fixme|fail(…)` — and takes the one whose call spans the line, else every call inside the
   smallest node around the line that holds any (a loop, a helper). It sends
   `control.locations`: each bundled file's source name → those calls' line
   ranges, `null` for a file given whole. The runtime keeps a spec only when
   its registration frame (source-mapped) is in its file's ranges; a spec
   registered from a file that is not a key is dropped.
-- `--list` bundles with `Purpose::List`: the bundle calls the framework's
+- `lxdev test list` bundles with `Purpose::List`: the bundle calls the framework's
   `list()` instead of `run()`, and throws when there is none, so an older
   `@lingxia/test` fails rather than running the suite. `list()` selects as
   `run()` does, then returns a zero-case report with `listed`. lxdev writes
@@ -363,9 +368,11 @@ Development machine: lxdev receives progress, results, and artifacts
   `SessionRun` as a run: watch lease before bundling, `session.test.start`,
   the run cancelled on any exit that did not see it end, Ctrl-C (first:
   cancel and wait `CANCEL_GRACE`, exit 130; second: cancel, resume, exit).
-- `--list` with no session at all (and no `--session`) is offline
+- `lxdev test list --offline`, or with no session at all (and no
+  `--session`), is offline
   (`test_offline.rs`): lxdev bundles as for a list, so the bundle-time checks
-  still run, then reads each file's spec calls with Oxc — title, `id` and
+  still run, then reads the spec calls of every project module the bundle
+  executes (`TestBundle::sources`, dependencies first) with Oxc — title, `id` and
   `tags` when they are literals, `spec.configure({ tags })`, the modifier,
   and whether the call sits in a function or loop. It applies `.only`,
   locations, `--id`, `--last-failed` ids, `--shard` (the runtime's FNV-1a
@@ -849,7 +856,8 @@ Development machine: lxdev receives progress, results, and artifacts
   (`preset`, `profile` — a PATH made absolute — and `profile_save`) into
   report.json. Before preset expansion, `test_preset::carry_last_failed`
   reads them from the report `--last-failed` names and splices `--preset`,
-  `--profile`, `--profile-save=` right after `test`, each only when the
+  `--profile`, `--profile-save=` right after `test` (after `args`, so it
+  shows them; after `list`, the preset only), each only when the
   command line (`scan`) lacks it (profile also not when it gives
   `--preset`, or when the carried preset sets the same profile), and a
   preset only if it would not add a second entry. It does
@@ -857,7 +865,7 @@ Development machine: lxdev receives progress, results, and artifacts
   parsing, `test::nothing_to_rerun` (before a session is resolved) prints
   `No failed specs in <run>; nothing to rerun` — `kind: "result"`,
   `state: "nothing_to_rerun"` for `--format json|jsonl` — and exits 0.
-- `--print-args` also prints `ArgSources` (environment and
+- `lxdev test args` also prints `ArgSources` (environment and
   `--secrets-file`) as `# --flag KEY=VALUE  (from SOURCE)` lines, secret
   values `***` and credential-named `LXDEV_ARG_` values masked; JSON has
   them under `external`.
@@ -1277,22 +1285,24 @@ automation context, page WebViews and native code keep real time.
 is expanded before clap sees the command line: `main` calls `expand` on
 `argv`, which finds the `test` subcommand (skipping the global `--session`),
 reads the `--preset` value before any `--`, and splices the preset's
-strings right after `test`. clap then parses the result once; `TestOptions`
+strings right after `test` (after the word `list` or `args` for those
+commands). clap then parses the result once; `TestOptions`
 sets `args_override_self`, so a scalar the command line repeats replaces the
 preset's, and `Vec` flags append. `--preset` stays in `argv` (clap records
 it, and a second one is a clap error). `lxdev.json` is read from
 `find_project_root(cwd)`; `parse` rejects unknown keys, bad names, non-string
 items, the flags in `FORBIDDEN` and `--arg` keys `looks_secret_key` flags
-(the Rust port of `@lingxia/test`'s `looksSecretKey`). `--list-presets` and
-`--print-args` run before a session is resolved; `effective_args` drops
-`--preset`/`--print-args` and masks `--secret-arg` values and credential-named
+(the Rust port of `@lingxia/test`'s `looksSecretKey`). `lxdev test presets` and
+`lxdev test args` run before a session is resolved; `effective_args` drops the
+`args` word and `--preset`, and masks `--secret-arg` values and credential-named
 `--arg` values. Before splicing, `anchor_paths` makes the preset's relative
 paths absolute against the directory of `lxdev.json`: the positional entry,
 the values of `PATH_FLAGS`, and a `--profile` value that names a PATH
 (`test_state::names_a_path`). `lxdev.json`'s `test.entry|outputDir|openapi|
 tags` defaults (`outputDir` as `--output-root`) are spliced in first, each only when the preset and the
 command line (`scan`) leave that flag — or the entry — unset, and not for
-`report`, `--cancel-active` or `--list-presets`. Which tokens are values comes from clap's
+`report`, `presets` or `cancel`. `list` and `args` are spliced after that word;
+`list` keeps selection flags and drops the rest of a preset. Which tokens are values comes from clap's
 own `TestOptions` definition (`takes_values`, optional values only when the
 next token is not a flag), so a new flag cannot be misparsed; a new path flag
 must be added to `PATH_FLAGS`. The command line's own tokens are untouched.

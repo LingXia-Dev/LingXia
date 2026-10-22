@@ -26,7 +26,7 @@ const FILE_KEYS: [&str; 2] = ["$schema", "test"];
 const TEST_KEYS: [&str; 5] = ["presets", "entry", "outputDir", "openapi", "tags"];
 
 /// Flags a preset may not contain, and why.
-const FORBIDDEN: [(&str, &str); 5] = [
+const FORBIDDEN: [(&str, &str); 3] = [
     (
         "--secret-arg",
         "secrets stay on the command line or in the environment",
@@ -36,8 +36,6 @@ const FORBIDDEN: [(&str, &str); 5] = [
         "--cancel-active",
         "cancelling another client's run must be asked for explicitly",
     ),
-    ("--list-presets", "it only lists presets"),
-    ("--print-args", "it only prints arguments"),
 ];
 
 #[derive(Debug)]
@@ -107,13 +105,19 @@ pub fn carry_last_failed(argv: Vec<OsString>, cwd: &Path) -> Vec<OsString> {
     let Some(index) = test_subcommand_index(&argv) else {
         return argv;
     };
-    let rest: Vec<String> = argv[index + 1..]
+    let mut rest: Vec<String> = argv[index + 1..]
         .iter()
         .map(|token| token.to_string_lossy().into_owned())
         .take_while(|token| token != "--")
         .collect();
-    if rest.first().is_some_and(|first| first == "report") {
+    let mode = rest.first().and_then(|first| test_mode(first));
+    if matches!(mode, Some("report" | "presets" | "cancel")) {
         return argv;
+    }
+    // `list` and `args` take the run's flags after their word.
+    let at = index + 1 + usize::from(mode.is_some());
+    if mode.is_some() {
+        rest.remove(0);
     }
     let Some(last) = flag_value(&rest, "--last-failed", crate::test::LATEST) else {
         return argv;
@@ -152,7 +156,9 @@ pub fn carry_last_failed(argv: Vec<OsString>, cwd: &Path) -> Vec<OsString> {
     // The carried preset may set the same profile already.
     let preset_sets_it = flag_value(&preset_args, "--profile", "").as_deref() == text("profile")
         && flag_value(&preset_args, "--profile-save", "pass").as_deref() == text("profile_save");
+    // A listing signs nothing in.
     if let Some(profile) = text("profile")
+        .filter(|_| mode != Some("list"))
         .filter(|_| !given.contains("--profile") && !given.contains("--preset") && !preset_sets_it)
     {
         carried.extend(["--profile".to_string(), profile.to_string()]);
@@ -173,9 +179,9 @@ pub fn carry_last_failed(argv: Vec<OsString>, cwd: &Path) -> Vec<OsString> {
             .join(" "),
         run_dir.display()
     );
-    let mut out = argv[..=index].to_vec();
+    let mut out = argv[..at].to_vec();
     out.extend(carried.into_iter().map(OsString::from));
-    out.extend(argv[index + 1..].iter().cloned());
+    out.extend(argv[at..].iter().cloned());
     out
 }
 
@@ -441,10 +447,80 @@ fn preset_name(test_args: &[OsString]) -> Option<String> {
     None
 }
 
+/// A `lxdev test` word that is a subcommand, not a test path.
+fn test_mode(token: &str) -> Option<&'static str> {
+    match token {
+        "report" => Some("report"),
+        "presets" => Some("presets"),
+        "cancel" => Some("cancel"),
+        "list" => Some("list"),
+        "args" => Some("args"),
+        _ => None,
+    }
+}
+
+/// Flags a listing understands. A preset's other flags (a profile, retries)
+/// are dropped when they are spliced onto `lxdev test list`.
+const LIST_FLAGS: &[&str] = &[
+    "--grep",
+    "--id",
+    "--tag",
+    "--last-failed",
+    "--shard",
+    "--forbid-only",
+    "--cancel-active",
+    "--arg",
+    "--secret-arg",
+    "--secrets-file",
+    "--output-root",
+    "--format",
+    "--pretty",
+    "--preset",
+];
+
+fn retain_for_list(args: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut tokens = args.iter().peekable();
+    while let Some(token) = tokens.next() {
+        if token == "--" {
+            break;
+        }
+        if !token.starts_with('-') || token == "-" {
+            out.push(token.clone());
+            continue;
+        }
+        let name = flag_name(token);
+        let keep = LIST_FLAGS.contains(&name);
+        if token.contains('=') {
+            if keep {
+                out.push(token.clone());
+            }
+            continue;
+        }
+        let consumes = match takes_value(token) {
+            Some(true) => true,
+            Some(false) => tokens.peek().is_some_and(|next| !next.starts_with('-')),
+            None => false,
+        };
+        let value = if consumes {
+            tokens.next().cloned()
+        } else {
+            None
+        };
+        if keep {
+            out.push(token.clone());
+            if let Some(value) = value {
+                out.push(value);
+            }
+        }
+    }
+    out
+}
+
 /// `argv` with the file's defaults and the named preset's arguments inserted
-/// right after `test`, so the command line's own arguments come later and
-/// win. Unchanged without `lxdev.json`, or for `lxdev test report`,
-/// `--cancel-active` and `--list-presets`, which start no run.
+/// right after `test` (or after `list` / `args`), so the command line's own
+/// arguments come later and win. Unchanged without `lxdev.json`, or for
+/// `report`, `presets` and `cancel`, which start no run.
 pub fn expand(argv: Vec<OsString>, cwd: &Path) -> Result<Vec<OsString>> {
     let Some(index) = test_subcommand_index(&argv) else {
         return Ok(argv);
@@ -453,10 +529,22 @@ pub fn expand(argv: Vec<OsString>, cwd: &Path) -> Result<Vec<OsString>> {
         .iter()
         .map(|token| token.to_string_lossy().into_owned())
         .collect();
-    if rest.first().is_some_and(|first| first == "report") {
+    let mode = rest.first().and_then(|first| test_mode(first));
+    if matches!(mode, Some("report" | "presets" | "cancel")) {
         return Ok(argv);
     }
-    let preset = preset_name(&argv[index + 1..]);
+    let forwarded = matches!(mode, Some("list" | "args"));
+    let body: Vec<String> = if forwarded {
+        rest[1..].to_vec()
+    } else {
+        rest.clone()
+    };
+    let preset = preset_name(
+        &body
+            .iter()
+            .map(|token| OsString::from(token.as_str()))
+            .collect::<Vec<_>>(),
+    );
     let Some(presets) = (match &preset {
         Some(name) => Some(load(cwd)?.ok_or_else(|| {
             anyhow!(
@@ -485,26 +573,26 @@ pub fn expand(argv: Vec<OsString>, cwd: &Path) -> Result<Vec<OsString>> {
         })?,
     };
     // Paths on the command line replace the preset's, like a flag does.
-    let preset_args = if scan(&rest).0 {
+    let preset_args = if scan(&body).0 {
         without_paths(&preset_args)
     } else {
         preset_args
     };
-    let starts_no_run = rest
-        .iter()
-        .take_while(|token| *token != "--")
-        .any(|token| token == "--cancel-active" || token == "--list-presets");
     let mut given = preset_args.clone();
-    given.extend(rest.iter().take_while(|token| *token != "--").cloned());
-    let defaults = if starts_no_run {
-        Vec::new()
-    } else {
-        presets.default_args(&given)
-    };
+    given.extend(body.iter().take_while(|token| *token != "--").cloned());
+    let mut defaults = presets.default_args(&given);
+    let mut preset_args = preset_args;
+    if mode == Some("list") {
+        defaults = retain_for_list(&defaults);
+        preset_args = retain_for_list(&preset_args);
+    }
     if defaults.is_empty() && preset_args.is_empty() {
         return Ok(argv);
     }
     let mut expanded = argv[..=index].to_vec();
+    if forwarded {
+        expanded.push(OsString::from(mode.unwrap()));
+    }
     expanded.extend(
         anchor_paths(&defaults, base)
             .into_iter()
@@ -515,7 +603,8 @@ pub fn expand(argv: Vec<OsString>, cwd: &Path) -> Result<Vec<OsString>> {
             .into_iter()
             .map(OsString::from),
     );
-    expanded.extend(argv[index + 1..].iter().cloned());
+    let skip = if forwarded { 1 } else { 0 };
+    expanded.extend(argv[index + 1 + skip..].iter().cloned());
     Ok(expanded)
 }
 
@@ -688,8 +777,8 @@ fn normalize(path: &Path) -> PathBuf {
     out
 }
 
-/// The effective `lxdev test` arguments of an expanded `argv`, without
-/// `--preset`/`--print-args`, and with secret values masked.
+/// The effective `lxdev test` arguments of an expanded `argv`, without the
+/// `args` subcommand or `--preset`, and with secret values masked.
 pub fn effective_args(argv: &[OsString]) -> Vec<String> {
     let Some(index) = test_subcommand_index(argv) else {
         return Vec::new();
@@ -697,7 +786,11 @@ pub fn effective_args(argv: &[OsString]) -> Vec<String> {
     let mut out = Vec::new();
     let mut tokens = argv[index + 1..]
         .iter()
-        .map(|token| token.to_string_lossy().into_owned());
+        .map(|token| token.to_string_lossy().into_owned())
+        .peekable();
+    if tokens.peek().is_some_and(|token| token == "args") {
+        tokens.next();
+    }
     let mut passthrough = false;
     while let Some(token) = tokens.next() {
         if passthrough {
@@ -710,7 +803,6 @@ pub fn effective_args(argv: &[OsString]) -> Vec<String> {
                 passthrough = true;
                 out.push(token);
             }
-            "--print-args" => {}
             "--preset" => {
                 if !token.contains('=') {
                     tokens.next();
@@ -750,12 +842,13 @@ fn quote(token: &str) -> String {
     }
 }
 
-/// `lxdev test --print-args`: the command line, then — as `#` lines, so the
+/// `lxdev test args`: the command line, then — as `#` lines, so the
 /// output still pastes — the args the environment and `--secrets-file` add,
 /// each with where it comes from and secret values masked.
 pub fn print_args(
     argv: &[OsString],
     json: bool,
+    pretty: bool,
     sources: &crate::test_secrets::ArgSources,
 ) -> Result<()> {
     let args = effective_args(argv);
@@ -767,7 +860,12 @@ pub fn print_args(
                 json!({ "flag": arg.flag, "key": arg.key, "value": arg.value, "source": arg.source })
             })
             .collect::<Vec<_>>();
-        println!("{}", json!({ "args": args, "external": external }));
+        let value = json!({ "args": args, "external": external });
+        if pretty {
+            println!("{}", serde_json::to_string_pretty(&value)?);
+        } else {
+            println!("{value}");
+        }
     } else {
         let line = args.iter().map(|arg| quote(arg)).collect::<Vec<_>>();
         println!("lxdev test {}", line.join(" "));
@@ -783,7 +881,7 @@ pub fn print_args(
     Ok(())
 }
 
-/// An arg from outside the command line, as `--print-args` shows it.
+/// An arg from outside the command line, as `lxdev test args` shows it.
 struct ExternalArg {
     flag: &'static str,
     key: String,
@@ -828,15 +926,20 @@ fn external_args(sources: &crate::test_secrets::ArgSources) -> Vec<ExternalArg> 
     out
 }
 
-/// `lxdev test --list-presets`.
-pub fn list(cwd: &Path, json: bool) -> Result<()> {
+/// `lxdev test presets`.
+pub fn list(cwd: &Path, json: bool, pretty: bool) -> Result<()> {
     let presets = load(cwd)?;
     if json {
         let value = match &presets {
             Some(presets) => json!({ "file": presets.path, "presets": presets.presets }),
             None => json!({ "file": null, "presets": {} }),
         };
-        println!("{value}");
+        let text = if pretty {
+            serde_json::to_string_pretty(&value)?
+        } else {
+            value.to_string()
+        };
+        println!("{text}");
         return Ok(());
     }
     let Some(presets) = presets else {
@@ -1080,14 +1183,21 @@ mod tests {
         let fixed =
             strings(expand(os(&["lxdev", "test", "a.test.ts", "--output-dir=o"]), root).unwrap());
         assert!(fixed.contains(&at("results")), "{fixed:?}");
-        // Commands that start no run take no defaults.
+        // Commands that start no run take no defaults. `--cancel-active`
+        // still starts a run, so the defaults apply and it comes last.
         for argv in [
-            &["lxdev", "test", "--cancel-active"][..],
+            &["lxdev", "test", "cancel"][..],
             &["lxdev", "test", "report", "latest"],
-            &["lxdev", "test", "--list-presets"],
+            &["lxdev", "test", "presets"],
         ] {
             assert_eq!(expand(os(argv), root).unwrap(), os(argv));
         }
+        let cancel_run = strings(expand(os(&["lxdev", "test", "--cancel-active"]), root).unwrap());
+        assert!(cancel_run.contains(&at("tests")), "{cancel_run:?}");
+        assert_eq!(
+            cancel_run.last().map(String::as_str),
+            Some("--cancel-active")
+        );
         // Bad defaults are refused with the field named.
         for (text, expected) in [
             (
@@ -1131,7 +1241,6 @@ mod tests {
             (r#"["--secret-arg=token=x"]"#, "--secret-arg is not allowed"),
             (r#"["--preset", "ci"]"#, "another preset"),
             (r#"["--cancel-active"]"#, "--cancel-active is not allowed"),
-            (r#"["--print-args"]"#, "--print-args is not allowed"),
             (
                 r#"["--arg", "DB_PASSWORD=x"]"#,
                 "--arg DB_PASSWORD=… is named like a credential",
@@ -1205,12 +1314,12 @@ mod tests {
         let argv = os(&[
             "lxdev",
             "test",
+            "args",
             "--tag",
             "unit",
             "tests/",
             "--preset",
             "ci",
-            "--print-args",
             "--secret-arg",
             "token=abc123",
             "--secret-arg=pin=1234",
@@ -1344,6 +1453,42 @@ mod tests {
         );
         let other = os(&["lxdev", "test", "t/", "--last-failed", "--preset", "ci"]);
         assert_eq!(carry_last_failed(other.clone(), root), other);
+        // `args` shows what the run would carry; `list` takes only the preset.
+        let args = strings(carry_last_failed(
+            os(&["lxdev", "test", "args", "--last-failed"]),
+            root,
+        ));
+        assert_eq!(
+            args,
+            [
+                "lxdev",
+                "test",
+                "args",
+                "--preset",
+                "nightly",
+                "--profile",
+                "auth",
+                "--profile-save=pass",
+                "--last-failed"
+            ]
+        );
+        let list = strings(carry_last_failed(
+            os(&["lxdev", "test", "list", "--last-failed"]),
+            root,
+        ));
+        assert_eq!(
+            list,
+            [
+                "lxdev",
+                "test",
+                "list",
+                "--preset",
+                "nightly",
+                "--last-failed"
+            ]
+        );
+        let report = os(&["lxdev", "test", "report", "--last-failed"]);
+        assert_eq!(carry_last_failed(report.clone(), root), report);
         // Not a --last-failed run, or one naming another report: unchanged.
         let plain = os(&["lxdev", "test", "t/"]);
         assert_eq!(carry_last_failed(plain.clone(), root), plain);

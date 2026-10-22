@@ -7,11 +7,11 @@ import type { ProbeElement } from '../helpers/view.js';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args
   ?? {} as Record<string, string>;
-const bannerPageSpec = new Set(['macos', 'windows']).has(
+const bannerPageSkip = new Set(['macos', 'windows']).has(
   testArgs.platform?.toLocaleLowerCase() ?? '',
 )
-  ? spec
-  : spec.skip;
+  ? undefined
+  : 'host banners are macOS and Windows only';
 
 interface SystemPageState {
   appBaseInfo: { os?: string; productName?: string } | null;
@@ -110,7 +110,8 @@ async function bannerPageState(app: TestApp): Promise<BannerPageState> {
   });
 }
 
-bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page', {
+spec('drive banner re-read, prompt, and dismiss from the system page', {
+  skip: bannerPageSkip,
   id: 'SYSTEM-BANNER-001',
   covers: ['lx.host.banner', 'lx.host.banner.show', 'lx.host.banner.dismiss'],
   app: SHOWCASE_APP_ID,

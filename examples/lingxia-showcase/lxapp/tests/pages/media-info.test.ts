@@ -9,7 +9,7 @@ import { bindFixture, type Caught } from '../helpers/poll.js';
  * `--arg httpBase=…` these register as pending rather than passing silently.
  */
 const httpBase = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {}).httpBase;
-const mediaSpec = httpBase ? spec : spec.skip;
+spec.configure({ skip: httpBase ? undefined : 'needs --arg httpBase' });
 const pending = { reason: 'needs the HTTP fixture: node tests/harness/http-fixture.mjs, then --arg httpBase=<url>' };
 
 interface MediaResult {
@@ -25,7 +25,7 @@ interface MediaResult {
   compressedVideo: { uri: string; size: number };
 }
 
-mediaSpec('read info, thumbnail, and compress local media', {
+spec('read info, thumbnail, and compress local media', {
   id: 'MEDIA-PROCESS-001',
   covers: [
     'lx.getVideoInfo',
@@ -126,7 +126,7 @@ mediaSpec('read info, thumbnail, and compress local media', {
   expect(sizes.thumb).toBeGreaterThan(0);
 });
 
-mediaSpec('cancel an in-flight compressVideo and reject with E_ABORT', {
+spec('cancel an in-flight compressVideo and reject with E_ABORT', {
   id: 'MEDIA-PROCESS-CANCEL-001',
   covers: ['lx.compressVideo', 'CompressVideoTask.cancel'],
   app: SHOWCASE_APP_ID,

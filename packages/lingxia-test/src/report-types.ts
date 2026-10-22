@@ -372,11 +372,11 @@ export interface JsonReport {
   coverage?: CoverageSummary;
   /** `--openapi` contract summary. */
   openapi?: OpenApiSummary;
-  /** `lxdev test --list`: the selected specs; nothing ran. */
+  /** `lxdev test list`: the selected specs; nothing ran. */
   listed?: ListedSpec[];
 }
 
-/** A spec `lxdev test --list` shows. */
+/** A spec `lxdev test list` shows. */
 export interface ListedSpec {
   id: string;
   title: string;

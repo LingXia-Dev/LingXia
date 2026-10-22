@@ -24,7 +24,7 @@ themselves.
 
 `lxapp/lxdev.json` names each entry's arguments as a preset:
 `lxdev test --preset macos --arg framework=react` (the npm
-`test:automation:*` scripts use them; `--list-presets` shows them).
+`test:automation:*` scripts use them; `lxdev test presets` shows them).
 `scenarios/` holds dev-time product states for `lxdev mock use`, which
 specs may import too (`route/status`, with its `online` and `offline`
 variants, is `AUT-NET-007`'s: `lxdev mock use route/status:offline`).

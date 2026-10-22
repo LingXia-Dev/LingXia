@@ -106,8 +106,9 @@ lxdev network status              # who answered each call; what reached the net
 lxdev network capture start       # then: capture stop r.json | r.har
 ```
 
-Mock selection, clear, and reset affect the whole session; an app target does
-not narrow that scope. A partial reset fails and reports the unfinished phases.
+Mock selection, clear, and reset affect the whole session. `use --app` chooses
+which lxapp's HTTP calls the one session scenario answers; another `use`
+replaces it. A partial reset fails and reports the unfinished phases.
 
 `capture stop` writes HAR to a `.har` path and the request JSON to any other.
 Read the JSON: bodies are parsed and secrets redacted. Page WebViews do not
@@ -117,8 +118,10 @@ Everything else: [Mocks](../lxapp/mock.md).
 
 ## `lxdev test`
 
-Runs `@lingxia/test` specs against the session. Writing, running, presets,
-profiles, secrets, reports, and exit codes: [Testing](../lxapp/testing.md).
+Runs the project's `tests/*.test.ts` in the session (`lingxia dev` starts it).
+`lxdev test list` lists specs, `presets` and `args` show `lxdev.json`, `cancel`
+releases a run left behind, `report` reprints one. Writing specs, presets,
+profiles, secrets, and exit codes: [Testing](../lxapp/testing.md).
 
 ## `lxdev logs`
 

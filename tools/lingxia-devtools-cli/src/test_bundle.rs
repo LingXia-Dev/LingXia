@@ -27,6 +27,7 @@ use oxc_ast::ast::{
 use oxc_ast_visit::Visit;
 
 use crate::test_eval_check::check_eval_functions;
+use crate::test_spec_check::check_spec_usage;
 use oxc_codegen::{Codegen, CodegenOptions};
 use oxc_parser::Parser;
 use oxc_resolver::{ModuleType, ResolveError, ResolveOptions, Resolver};
@@ -47,6 +48,8 @@ pub struct TestBundle {
     /// Stable bundle name used as the engine source name; stack frames
     /// referencing it are remapped through the source map.
     pub bundle_name: String,
+    /// The project's own script modules, in the order they execute.
+    pub sources: Vec<PathBuf>,
     map: SourceMap<'static>,
 }
 
@@ -194,7 +197,7 @@ fn bundle_test_entry(entry: &Path) -> Result<TestBundle> {
 pub enum Purpose {
     /// Run the selected specs.
     Run,
-    /// List the selected specs (`lxdev test --list`).
+    /// List the selected specs (`lxdev test list`).
     List,
 }
 
@@ -212,6 +215,7 @@ pub fn bundle_test_files(
         modules: Vec::new(),
         module_vars: HashMap::new(),
         visiting: HashSet::new(),
+        sources: Vec::new(),
     };
     // Share one graph so dependencies execute once across all directory entries.
     for entry in entries {
@@ -219,7 +223,8 @@ pub fn bundle_test_files(
     }
 
     let bundle_name = format!("lxdev-test://{}", source_name(identity, &bundler.root));
-    let bundle = assemble(bundler.modules, bundle_name, purpose);
+    let mut bundle = assemble(bundler.modules, bundle_name, purpose);
+    bundle.sources = bundler.sources;
     if bundle.code.len() > MAX_BUNDLE_BYTES {
         bail!(
             "bundled test is {} bytes; the limit is {MAX_BUNDLE_BYTES}",
@@ -241,6 +246,7 @@ struct TestBundler {
     modules: Vec<CompiledModule>,
     module_vars: HashMap<PathBuf, String>,
     visiting: HashSet<PathBuf>,
+    sources: Vec<PathBuf>,
 }
 
 impl TestBundler {
@@ -273,7 +279,9 @@ impl TestBundler {
 
         reject_dynamic_imports(&program, &source, &path, &self.root)?;
         if !is_dependency(&path) {
-            check_eval_functions(&program, &source, &relative_display(&path, &self.root))?;
+            let display = relative_display(&path, &self.root);
+            check_spec_usage(&program, &source, &display)?;
+            check_eval_functions(&program, &source, &display)?;
         }
 
         let imports = collect_imports(&program, &path, &self.root)?;
@@ -297,6 +305,9 @@ impl TestBundler {
         )?;
         let (code, map) = transpile_module(&path, &rewritten, &source, &self.root)?;
 
+        if !is_dependency(&path) {
+            self.sources.push(path.clone());
+        }
         let module_var = format!("__lx_mod_{}", self.modules.len());
         self.module_vars.insert(path.clone(), module_var.clone());
         self.modules.push(CompiledModule {
@@ -496,6 +507,7 @@ return await __lx_test_framework.list();\n"
     TestBundle {
         code,
         bundle_name,
+        sources: Vec::new(),
         map,
     }
 }
@@ -1601,6 +1613,30 @@ mod tests {
         );
         let bundle = bundle_test_entry(&entry).expect("bundle must resolve .js -> .ts");
         assert!(bundle.map.get_sources().any(|s| s.contains("helper.ts")));
+    }
+
+    #[test]
+    fn sources_are_the_project_modules_in_execution_order() {
+        let dir = project();
+        write(&dir, "helper.ts", "export const value = 7;\n");
+        write(
+            &dir,
+            "a.test.ts",
+            "import { value } from './helper.js';\nexport const a = value;\n",
+        );
+        write(&dir, "data.json", "{}\n");
+        let entry = write(
+            &dir,
+            "all.test.ts",
+            "import './a.test.js';\nimport data from './data.json';\nvoid data;\n",
+        );
+        let bundle = bundle_test_entry(&entry).expect("bundle");
+        let names: Vec<_> = bundle
+            .sources
+            .iter()
+            .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["helper.ts", "a.test.ts", "all.test.ts"]);
     }
 
     #[test]

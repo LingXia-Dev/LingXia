@@ -21,9 +21,9 @@ const isOpen = (list: LxAppRuntimeInfo[], appid: string): boolean => (
  * PEND-NAVAPP-DESKTOP-001.
  */
 const platform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLowerCase();
-const hopSpec = platform === 'android' ? spec : spec.skip;
+spec.configure({ skip: platform === 'android' ? undefined : 'Android only' });
 
-hopSpec('hop to the bundled chat lxapp and back', {
+spec('hop to the bundled chat lxapp and back', {
   id: 'NAV-APP-001',
   covers: ['App.onLaunch', 'App.onShow', 'App.onHide', 'lx.navigateToApp', 'lx.navigateBackApp', 'LxAppManager.list', 'LxAppManager.current'],
   app: SHOWCASE_APP_ID,
