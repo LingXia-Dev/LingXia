@@ -684,6 +684,10 @@ Tooltip and accessibility:
 - Tooltip text is `label`, or `label`, the localized shell separator
   (`sidebar.action_value_separator`), and `value`, so the rail and a truncated
   cell still carry the full value.
+- Expanded footer tooltips open above the entry, horizontally centered on it
+  and kept inside the window, after the system tooltip delay. Below would
+  leave the window; beside the column would detach the label from an icon
+  mid-row. The rail keeps its side tooltip.
 - macOS sets `accessibilityLabel` to `label` and `accessibilityValue` to
   `value`. Windows custom chrome has no UIA tree yet; the tooltip carries both.
 - The host logs a warning when two icon-only footer entries share an icon:
@@ -696,19 +700,18 @@ Expanded footer geometry:
 - An entry without `value` is a square **30** icon button; icon buttons in a
   row are **2** apart (the header's action spacing), so the standard width
   fits four on macOS and five on Windows. An entry with `value` is a value
-  cell: icon and `value` on one line, tail-truncated, spanning the full row.
-  Its icon sits on the icon buttons' column.
-- Declaration order is visual order. Runs of icon buttons share rows and wrap
-  only when the next one does not fit. A value cell is a row of its own: its
-  text is the thing to read, and sharing a row left about three characters at
-  the macOS standard width. The rules do not change with sidebar width;
-  `label` is never drawn.
+  cell: icon and `value` on one line, tail-truncated, minimum width **118**
+  (icon and padding plus about six CJK characters). Its icon sits on the icon
+  buttons' column.
+- Declaration order is visual order. Icon buttons wrap only when the next one
+  does not fit. A value cell joins the icon buttons before it when its minimum
+  still fits (otherwise it starts the next row), takes the rest of the row, and
+  ends it: whatever follows starts a new row. `label` is never drawn.
 
   ```
-  [a, B, c, d, E]   (capitals carry a value)
-  │ a                     │
-  │ B value…              │
-  │ c d                   │
+  [a, B, c, d, E]   (capitals carry a value; a width where one icon + B fits)
+  │ a │ B value…          │
+  │ c │ d                 │
   │ E value…              │
   ```
 

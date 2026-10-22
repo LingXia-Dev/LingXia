@@ -268,6 +268,9 @@ private final class SidebarRailFloatWindow: NSPanel {
         case centeredOnAnchor
         /// Top edges flush, so a list reads as pulled out of the icon.
         case topWithAnchor
+        /// Centered over the icon; for the footer, which sits on the window's
+        /// bottom edge and whose icons are not on the column's edge.
+        case aboveAnchor
     }
 
     private enum Layout {
@@ -318,17 +321,21 @@ private final class SidebarRailFloatWindow: NSPanel {
     func present(size: NSSize, anchor: NSView, railFrame: NSRect, alignment: Alignment) {
         guard let host = anchor.window else { return }
         let anchorFrame = host.convertToScreen(anchor.convert(anchor.bounds, to: nil))
-        var frame = NSRect(
-            x: railFrame.maxX + Layout.gap,
-            y: alignment == .topWithAnchor
-                ? anchorFrame.maxY - size.height
-                : anchorFrame.midY - size.height / 2,
-            width: size.width,
-            height: size.height
-        )
-        if let visible = host.screen?.visibleFrame {
-            frame.origin.x = min(frame.origin.x, visible.maxX - size.width)
-            frame.origin.y = min(max(frame.origin.y, visible.minY), visible.maxY - size.height)
+        let origin: NSPoint
+        switch alignment {
+        case .centeredOnAnchor:
+            origin = NSPoint(x: railFrame.maxX + Layout.gap, y: anchorFrame.midY - size.height / 2)
+        case .topWithAnchor:
+            origin = NSPoint(x: railFrame.maxX + Layout.gap, y: anchorFrame.maxY - size.height)
+        case .aboveAnchor:
+            origin = NSPoint(x: anchorFrame.midX - size.width / 2, y: anchorFrame.maxY + Layout.gap)
+        }
+        var frame = NSRect(origin: origin, size: size)
+        // Keep inside the window when it fits, then inside the screen.
+        for bounds in [host.frame, host.screen?.visibleFrame].compactMap({ $0 })
+        where bounds.width >= size.width && bounds.height >= size.height {
+            frame.origin.x = min(max(frame.origin.x, bounds.minX), bounds.maxX - size.width)
+            frame.origin.y = min(max(frame.origin.y, bounds.minY), bounds.maxY - size.height)
         }
         setFrame(frame, display: false)
         if parent == nil {
@@ -359,10 +366,28 @@ private final class SidebarRailTooltip {
 
     private var float: SidebarRailFloatWindow?
     private let label = NSTextField(labelWithString: "")
+    private var resignObserver: NSObjectProtocol?
 
     var isVisible: Bool { float?.isVisible == true }
 
-    func show(text: String, anchor: NSView, railFrame: NSRect) {
+    init() {
+        // A hint dismissed on deactivate would otherwise come back with the
+        // app (`hidesOnDeactivate`), wherever the cursor is by then.
+        resignObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.hide() }
+        }
+    }
+
+    func show(
+        text: String,
+        anchor: NSView,
+        railFrame: NSRect,
+        alignment: SidebarRailFloatWindow.Alignment = .centeredOnAnchor
+    ) {
         guard !text.isEmpty else {
             hide()
             return
@@ -379,7 +404,7 @@ private final class SidebarRailTooltip {
             size: NSSize(width: width, height: Layout.height),
             anchor: anchor,
             railFrame: railFrame,
-            alignment: .centeredOnAnchor
+            alignment: alignment
         )
     }
 
@@ -768,6 +793,9 @@ class SidebarView: NSView {
     /// Rail buttons keyed by a composite id ("app:<appId>" / "web:<tabId>").
     private var railButtons: [String: NSButton] = [:]
     private let railTooltip = SidebarRailTooltip()
+    /// Names the hovered footer action above it.
+    private let footerTooltip = SidebarRailTooltip()
+    private var footerTooltipTask: Task<Void, Never>?
     private var railPagePanel: SidebarRailPagePanel?
     private weak var railHoverButton: NSButton?
     /// Identifies which rail icon the hover float belongs to, so re-entering the
@@ -1048,6 +1076,7 @@ class SidebarView: NSView {
         footerView.addSubview(footerSeparator)
 
         panelFlow.translatesAutoresizingMaskIntoConstraints = false
+        panelFlow.onWidthChanged = { [weak self] in self?.updateSidebarActionFooterHeight() }
         // Short icon+title cells share a visual row; cells wrap as a whole only
         // when the next minimum width no longer fits. The document remains
         // taller than the capped footer so overflow scrolls internally.
@@ -1983,6 +2012,10 @@ class SidebarView: NSView {
             : model.panelItems.isEmpty)
         // A peek is transient: dragging it would commit a width.
         resizeHandle.isHidden = hidden || isPeeking
+        // Hidden rows get no mouseExited.
+        if panelScroll.isHiddenOrHasHiddenAncestor {
+            footerHoverChanged(nil, hovering: false)
+        }
     }
 
     func setAppUIOnlyMode(_ enabled: Bool) {
@@ -2141,6 +2174,7 @@ class SidebarView: NSView {
         renderedPanelItems = items
 
         // Remove existing panel buttons.
+        footerHoverChanged(nil, hovering: false)
         panelFlow.setEntries([])
         panelButtons.removeAll()
 
@@ -2163,11 +2197,34 @@ class SidebarView: NSView {
             row.onClick = { [weak self] in
                 self?.onPanelItemToggled?(item.generation, item.id, item.source)
             }
+            row.onHoverChanged = { [weak self, weak row] hovering in
+                self?.footerHoverChanged(row, hovering: hovering)
+            }
             entries.append(row)
             panelButtons.append(row)
         }
         panelFlow.setEntries(entries)
         updateSidebarActionFooterHeight()
+    }
+
+    /// Shown after the system tooltip delay, like Windows' pinned footer.
+    private func footerHoverChanged(_ row: SidebarActionRowView?, hovering: Bool) {
+        footerTooltipTask?.cancel()
+        guard hovering, let row else {
+            footerTooltip.hide()
+            return
+        }
+        footerTooltipTask = Task { @MainActor [weak self, weak row] in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled, let self, let row, row.window != nil,
+                  !row.isHiddenOrHasHiddenAncestor else { return }
+            self.footerTooltip.show(
+                text: row.tooltip,
+                anchor: row,
+                railFrame: .zero,
+                alignment: .aboveAnchor
+            )
+        }
     }
 
     private func updateSidebarActionFooterHeight() {
@@ -2188,8 +2245,8 @@ class SidebarView: NSView {
         }
         let width = max(
             1,
-            panelScroll.contentView.bounds.width > 1
-                ? panelScroll.contentView.bounds.width
+            panelFlow.bounds.width > 1
+                ? panelFlow.bounds.width
                 : bounds.width - 2 * Layout.footerHInset
         )
         let rows = min(CGFloat(panelFlow.visualRowCount(for: width)), Layout.footerMaxRows)
@@ -3151,8 +3208,9 @@ private final class FlippedClipView: NSView {
     nonisolated override var isFlipped: Bool { true }
 }
 
-/// Packs footer actions in declaration order. Runs of icon buttons share rows;
-/// a value cell is a row of its own, because its text is the thing to read.
+/// Packs footer actions in declaration order. Icon buttons share rows; a value
+/// cell joins the icons before it when its minimum still fits, takes the rest
+/// of that row, and ends it.
 @MainActor
 private final class SidebarActionFlowView: NSView {
     /// Between rows.
@@ -3160,9 +3218,14 @@ private final class SidebarActionFlowView: NSView {
     /// Between icon buttons in a row; the header's action spacing.
     private static let iconGap: CGFloat = 2
     private static let rowHeight: CGFloat = 30
+    /// Icon and padding (40) plus about six CJK characters of 13pt value text.
+    private static let minimumValueCellWidth: CGFloat = 118
 
     private var entries: [SidebarActionRowView] = []
     private var lastLayoutWidth: CGFloat = 0
+    /// The row count follows the width, and the flow learns its width after
+    /// the sidebar's own layout pass has sized the footer.
+    var onWidthChanged: (() -> Void)?
 
     nonisolated override var isFlipped: Bool { true }
 
@@ -3195,12 +3258,13 @@ private final class SidebarActionFlowView: NSView {
         if abs(width - lastLayoutWidth) > 0.5 {
             lastLayoutWidth = width
             invalidateIntrinsicContentSize()
+            onWidthChanged?()
         }
         var y: CGFloat = 0
         for range in rowRanges(for: width) {
             var x: CGFloat = 0
             for entry in entries[range] {
-                let cellWidth = entry.isValueCell ? width : min(Self.rowHeight, width - x)
+                let cellWidth = entry.isValueCell ? width - x : min(Self.rowHeight, width - x)
                 entry.frame = NSRect(
                     x: x,
                     y: y,
@@ -3220,14 +3284,10 @@ private final class SidebarActionFlowView: NSView {
         var start = 0
         var used: CGFloat = 0
         for index in entries.indices {
-            if entries[index].isValueCell {
-                if start < index { rows.append(start..<index) }
-                rows.append(index..<(index + 1))
-                start = index + 1
-                used = 0
-                continue
-            }
-            let cell = min(Self.rowHeight, available)
+            let cell = min(
+                entries[index].isValueCell ? Self.minimumValueCellWidth : Self.rowHeight,
+                available
+            )
             let next = index == start ? cell : used + Self.iconGap + cell
             if index > start && next > available {
                 rows.append(start..<index)
@@ -3235,6 +3295,11 @@ private final class SidebarActionFlowView: NSView {
                 used = cell
             } else {
                 used = next
+            }
+            if entries[index].isValueCell {
+                rows.append(start..<(index + 1))
+                start = index + 1
+                used = 0
             }
         }
         if start < entries.count {
@@ -3276,7 +3341,7 @@ private enum SidebarActionChromePalette {
 }
 
 /// One footer action: a square icon button, or — when it carries a value — a
-/// full-width icon + value row sharing the tabbar items' rhythm (30pt, hover
+/// left-aligned icon + value cell sharing the tabbar items' rhythm (30pt, hover
 /// wash). A custom view because a borderless NSButton centers its image+title
 /// block and cannot left-align it.
 @MainActor
@@ -3285,6 +3350,9 @@ final class SidebarActionRowView: NSView {
     private static let cellHeight: CGFloat = 30
 
     var onClick: (() -> Void)?
+    /// The sidebar draws the name above the cell; the system tooltip opens
+    /// below the cursor, past the window's bottom edge.
+    var onHoverChanged: ((Bool) -> Void)?
     /// Whether this cell draws a value and so takes the rest of its row.
     let isValueCell: Bool
 
@@ -3292,6 +3360,7 @@ final class SidebarActionRowView: NSView {
     private let titleLabel: NSTextField
     private let active: Bool
     private let disabled: Bool
+    let tooltip: String
     private var iconIsTemplate = true
     private var isHovered = false { didSet { updateAppearance() } }
     private var isPressed = false { didSet { updateAppearance() } }
@@ -3313,9 +3382,9 @@ final class SidebarActionRowView: NSView {
         isValueCell = value != nil
         self.active = active && !disabled
         self.disabled = disabled
+        self.tooltip = tooltip
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        toolTip = tooltip
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel(label)
@@ -3440,12 +3509,17 @@ final class SidebarActionRowView: NSView {
         tracking = area
     }
 
-    override func mouseEntered(with event: NSEvent) { if !disabled { isHovered = true } }
+    override func mouseEntered(with event: NSEvent) {
+        if !disabled { isHovered = true }
+        onHoverChanged?(true)
+    }
     override func mouseExited(with event: NSEvent) {
         isHovered = false
         isPressed = false
+        onHoverChanged?(false)
     }
     override func mouseDown(with event: NSEvent) {
+        onHoverChanged?(false)
         if !disabled { isPressed = true }
     }
     override func mouseDragged(with event: NSEvent) {

@@ -1630,15 +1630,10 @@ fn expanded_header_tooltip(
     let tabbar = layout.tab_bar.as_ref()?;
     let rects = chrome_rects_for_state(state, layout);
     let tabbar_rect = rects.tab_bar?;
-    // Footer actions draw no label, so their name lives in a tooltip beside
-    // the sidebar, like the rail's.
+    // Footer actions draw no label, so their name opens above the entry: the
+    // footer sits on the window's bottom edge.
     if let Some((anchor, text)) = hovered_footer_action(client, &rects, layout, point) {
-        return beside_sidebar_tooltip(anchor, &text, tabbar_rect, tabbar.position, client).map(
-            |tooltip| CollapsedSidebarTooltip {
-                delayed: true,
-                ..tooltip
-            },
-        );
+        return tooltip_above(anchor, &text, client);
     }
     let header_action = sidebar_header_action_rects(tabbar_rect, tabbar)
         .into_iter()
@@ -1668,6 +1663,28 @@ pub(super) fn tooltip_below(
     text: &str,
     client: RECT,
 ) -> Option<CollapsedSidebarTooltip> {
+    centered_tooltip(anchor, text, client, |_| {
+        anchor.bottom + sidebar_rail_tooltip_gap()
+    })
+}
+
+/// A hover label centered over a footer action, kept inside `client`.
+pub(super) fn tooltip_above(
+    anchor: RECT,
+    text: &str,
+    client: RECT,
+) -> Option<CollapsedSidebarTooltip> {
+    centered_tooltip(anchor, text, client, |height| {
+        anchor.top - sidebar_rail_tooltip_gap() - height
+    })
+}
+
+fn centered_tooltip(
+    anchor: RECT,
+    text: &str,
+    client: RECT,
+    top: impl Fn(i32) -> i32,
+) -> Option<CollapsedSidebarTooltip> {
     let text = text.trim();
     if text.is_empty() {
         return None;
@@ -1675,8 +1692,7 @@ pub(super) fn tooltip_below(
     let (width, height) = sidebar_rail_tooltip_size(text, client);
     let left = ((anchor.left + anchor.right - width) / 2)
         .clamp(client.left, (client.right - width).max(client.left));
-    let top = (anchor.bottom + sidebar_rail_tooltip_gap())
-        .clamp(client.top, (client.bottom - height).max(client.top));
+    let top = top(height).clamp(client.top, (client.bottom - height).max(client.top));
     Some(CollapsedSidebarTooltip {
         anchor,
         popup: RECT {
@@ -3691,9 +3707,9 @@ mod scroll_tests {
     }
 
     /// Footer actions draw no label, so the expanded footer names each one in
-    /// a tooltip beside the sidebar; a value-bearing one carries its value too.
+    /// a tooltip above it; a value-bearing one carries its value too.
     #[test]
-    fn expanded_footer_actions_name_themselves_beside_the_sidebar() {
+    fn expanded_footer_actions_name_themselves_above_the_entry() {
         let client = RECT {
             left: 0,
             top: 0,
@@ -3721,7 +3737,6 @@ mod scroll_tests {
         };
         let window_layout = WindowsWindowLayout::new(layout.clone());
         let rects = compute_chrome_rects(client, &layout);
-        let sidebar = rects.tab_bar.unwrap();
         let center = |rect: RECT| ((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
 
         let cells = footer_action_rects(client, &rects, &layout);
@@ -3731,7 +3746,8 @@ mod scroll_tests {
                 sidebar_tooltip(&tooltip_state(client, &window_layout), center(rect)).unwrap();
             assert_eq!(tooltip.text, action.tooltip_text());
             assert_eq!(tooltip.anchor, rect);
-            assert!(tooltip.popup.left >= sidebar.right);
+            assert!(tooltip.popup.bottom <= rect.top, "opens above the entry");
+            assert!(tooltip.popup.left >= client.left && tooltip.popup.right <= client.right);
         }
         assert!(footer_actions[1].tooltip_text().ends_with("English"));
     }

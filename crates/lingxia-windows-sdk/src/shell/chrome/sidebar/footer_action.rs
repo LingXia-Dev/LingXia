@@ -14,33 +14,34 @@ fn footer_action_separator_height() -> i32 {
     crate::dpi::px(1)
 }
 
+/// Icon and padding plus about six CJK characters of value text; matches macOS.
+fn footer_action_value_cell_min_width() -> i32 {
+    crate::dpi::px(118)
+}
+
 /// Between icon buttons in a row; rows stay `footer_action_gap()` apart.
 fn footer_action_icon_gap() -> i32 {
     crate::dpi::px(2)
 }
 
-/// Declaration order is visual order. Runs of icon buttons share rows and wrap
-/// only when the next one does not fit; a value cell is a row of its own,
-/// because its text is the thing to read.
+/// Declaration order is visual order. Icon buttons pack left to right; a value
+/// cell joins the icons before it when its minimum width still fits, takes the
+/// rest of that row, and ends it — whatever follows starts the next row.
 fn footer_action_rows(
     width: i32,
     footer_actions: &[WindowsShellFooterActionLayout],
 ) -> Vec<Range<usize>> {
     let available = (width - 2 * footer_action_margin()).max(1);
-    let cell = footer_action_size().min(available);
     let mut rows = Vec::new();
     let mut row_start = 0;
     let mut used = 0;
     for (index, item) in footer_actions.iter().enumerate() {
-        if item.value.is_some() {
-            if row_start < index {
-                rows.push(row_start..index);
-            }
-            rows.push(index..index + 1);
-            row_start = index + 1;
-            used = 0;
-            continue;
+        let cell = if item.value.is_some() {
+            footer_action_value_cell_min_width()
+        } else {
+            footer_action_size()
         }
+        .min(available);
         let next = if index == row_start {
             cell
         } else {
@@ -52,6 +53,11 @@ fn footer_action_rows(
             used = cell;
         } else {
             used = next;
+        }
+        if item.value.is_some() {
+            rows.push(row_start..index + 1);
+            row_start = index + 1;
+            used = 0;
         }
     }
     if row_start < footer_actions.len() {
@@ -349,7 +355,7 @@ mod tests {
     }
 
     #[test]
-    fn a_value_cell_is_a_row_of_its_own() {
+    fn a_value_cell_joins_preceding_icons_when_its_minimum_fits() {
         // [a, B, c, d, E] where capitals carry a value.
         let items = vec![
             item("a"),
@@ -358,35 +364,27 @@ mod tests {
             item("d"),
             valued("e", "Downtown"),
         ];
-        assert_eq!(
-            footer_action_rows(184, &items),
-            vec![0..1, 1..2, 2..4, 4..5]
-        );
+        assert_eq!(footer_action_rows(184, &items), vec![0..2, 2..4, 4..5]);
     }
 
     #[test]
-    fn value_cells_span_the_row_and_icons_stay_square() {
-        let items = vec![item("agent"), item("chat"), valued("brand", "Acme")];
+    fn value_cell_rects_fill_the_row_and_icons_stay_square() {
+        let items = vec![item("agent"), valued("brand", "Acme")];
         let tabbar_rect = sidebar(184);
         let height = panel_footer_action_height_for_width(184, &items);
         let rects = expanded_footer_action_rects(tabbar_rect, height, 0, &items);
 
         assert_eq!(
             height,
-            footer_action_separator_height()
-                + 2 * footer_action_margin()
-                + 2 * footer_action_size()
-                + footer_action_gap()
+            footer_action_separator_height() + 2 * footer_action_margin() + footer_action_size()
         );
         let agent = rects[0].1;
-        let chat = rects[1].1;
-        let brand = rects[2].1;
+        let brand = rects[1].1;
         assert_eq!(rect_width(&agent), footer_action_size());
-        assert_eq!(agent.right + footer_action_icon_gap(), chat.left);
-        assert_eq!(brand.top, agent.bottom + footer_action_gap());
-        assert_eq!(brand.left, tabbar_rect.left + footer_action_margin());
+        assert_eq!(agent.top, brand.top);
+        assert_eq!(agent.right + footer_action_icon_gap(), brand.left);
         assert_eq!(brand.right, tabbar_rect.right - footer_action_margin());
-        assert_eq!(brand.bottom, tabbar_rect.bottom - footer_action_margin());
+        assert!(rect_width(&brand) >= footer_action_value_cell_min_width());
     }
 
     #[test]
