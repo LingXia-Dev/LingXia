@@ -286,12 +286,7 @@ impl SidebarPeekLayout {
         if let Some((anchor, text)) =
             hovered_footer_action(body, &self.local_rects(), &self.layout, point)
         {
-            return beside_sidebar_tooltip(anchor, &text, body, self.position, local_client).map(
-                |tooltip| CollapsedSidebarTooltip {
-                    delayed: true,
-                    ..tooltip
-                },
-            );
+            return tooltip_above(anchor, &text, local_client);
         }
         let expand = self.expand_rect();
         let (anchor, text) = if rect_contains(&expand, point) {
@@ -590,7 +585,7 @@ mod tests {
     }
 
     /// The peek draws footer actions without labels, so each one names itself
-    /// — with its value — in a tooltip beside the peek.
+    /// — with its value — in a tooltip above it.
     #[test]
     fn peek_footer_actions_name_themselves() {
         for position in [
@@ -613,10 +608,7 @@ mod tests {
                 assert_eq!(tooltip.text, action.tooltip_text(), "{position:?}");
                 assert_eq!(tooltip.anchor, rect);
                 assert!(tooltip.delayed);
-                match position {
-                    WindowsShellTabBarPosition::Right => assert!(tooltip.popup.right <= body.left),
-                    _ => assert!(tooltip.popup.left >= body.right),
-                }
+                assert!(tooltip.popup.bottom <= rect.top, "{position:?}");
             }
         }
     }
