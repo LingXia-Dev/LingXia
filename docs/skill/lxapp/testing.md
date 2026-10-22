@@ -54,7 +54,7 @@ lxdev test                        # everything (lxdev.json test.entry; else test
 lxdev test tests/cart.test.ts:42  # the one spec at (or enclosing) line 42
 lxdev test --grep "empty cart"    # by title (or --id ID)
 lxdev test --last-failed          # what failed last time
-lxdev test --changed              # specs the uncommitted work can affect (--changed main: since branching)
+lxdev test --changed              # specs the uncommitted work can affect (--changed-since main: since branching)
 lxdev test list                   # list specs; no spec bodies or hooks run
 lxdev test presets                # presets in lxdev.json
 lxdev test args --preset ci       # the arguments a run would use
@@ -70,10 +70,8 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
   return of the app to its own data) keeps each case's verdict but exits 1
   and is listed as a run error in every report.
 - A failed spec prints a `Rerun:` line.
-- `--changed` picks the spec files that import a changed file or name a page
-  (`'home'`, `pages/home/index`) whose files changed, and prints why. A change
-  to lxdev.json, lxapp.json, the app entry, package files, a root tsconfig or
-  an OpenAPI document selects all.
+- `--changed` picks specs that import a changed file or name its page
+  (`'home'`); it prints why. A page reached only by tapping is missed: name it.
 - `lxdev test list` with a session loads the spec modules in the app (their
   top-level code runs) and holds the session like a run. Without one, or with
   `--offline`, it reads the specs from the source; `~` marks a computed title,
