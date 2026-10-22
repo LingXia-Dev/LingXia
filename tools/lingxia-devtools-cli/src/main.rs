@@ -13,6 +13,7 @@ mod screenshot;
 mod sessions;
 mod test;
 mod test_bundle;
+mod test_changed;
 mod test_contract;
 mod test_eval_check;
 mod test_network;
@@ -271,8 +272,8 @@ fn dispatch_test(
             let offline = list.offline;
             let run = list.into_run();
             run.check_output()?;
-            let selection = test_select::select(&run.paths, cwd)?;
-            if test::nothing_to_rerun(&run)? {
+            let mut selection = test_select::select(&run.paths, cwd)?;
+            if test::nothing_to_rerun(&run)? || test::nothing_changed(&run, &mut selection, cwd)? {
                 return Ok(());
             }
             if offline {
@@ -294,8 +295,10 @@ fn dispatch_test(
             }
         }
         None => {
-            let selection = test_select::select(&options.paths, cwd)?;
-            if test::nothing_to_rerun(&options)? {
+            let mut selection = test_select::select(&options.paths, cwd)?;
+            if test::nothing_to_rerun(&options)?
+                || test::nothing_changed(&options, &mut selection, cwd)?
+            {
                 return Ok(());
             }
             let info = match project::resolve_session(selector) {

@@ -48,6 +48,8 @@ Examples:
   lxdev test tests/cart.test.ts:42  the one spec at (or enclosing) line 42
   lxdev test --grep \"empty cart\"    by title (or --id ID)
   lxdev test --last-failed          what failed last time
+  lxdev test --changed              specs the uncommitted work can affect
+  lxdev test --changed main         ... or everything since branching from main
   lxdev test --preset ci            arguments from lxdev.json (test.presets)
   lxdev test list                   list specs without running them
   lxdev test presets                the presets in lxdev.json
@@ -124,6 +126,13 @@ pub struct TestOptions {
     /// unless given; with nothing failed, nothing runs
     #[arg(long, value_name = "REPORT", num_args = 0..=1, default_missing_value = LATEST, help_heading = "Selection")]
     last_failed: Option<PathBuf>,
+
+    /// Run only the spec files a change can affect: those importing a
+    /// changed file or naming a page with one. Changes are against BASE
+    /// (its merge base with HEAD), uncommitted and untracked files
+    /// included; without BASE, the uncommitted work
+    #[arg(long, value_name = "BASE", num_args = 0..=1, default_missing_value = "HEAD", help_heading = "Selection")]
+    pub changed: Option<String>,
 
     /// Partition stable spec ids across independent sessions (INDEX/TOTAL)
     #[arg(long, help_heading = "Selection")]
@@ -271,6 +280,11 @@ pub struct ListOptions {
     /// Without a value, the last run
     #[arg(long, value_name = "REPORT", num_args = 0..=1, default_missing_value = LATEST)]
     pub last_failed: Option<PathBuf>,
+
+    /// Only the spec files a change can affect, against BASE (default: the
+    /// uncommitted work)
+    #[arg(long, value_name = "BASE", num_args = 0..=1, default_missing_value = "HEAD")]
+    pub changed: Option<String>,
 
     /// Partition stable spec ids across independent sessions (INDEX/TOTAL)
     #[arg(long)]
@@ -562,6 +576,7 @@ impl ListOptions {
             id: self.id,
             tags: self.tags,
             last_failed: self.last_failed,
+            changed: self.changed,
             shard: self.shard,
             retries: 0,
             repeat_each: 1,
@@ -1351,6 +1366,45 @@ pub fn nothing_to_rerun(options: &TestOptions) -> Result<bool> {
         );
     }
     Ok(true)
+}
+
+/// `--changed`: narrow the selection and say why. `true` when no spec is
+/// left, which is said instead and starts nothing.
+pub fn nothing_changed(
+    options: &TestOptions,
+    selection: &mut Selection,
+    cwd: &Path,
+) -> Result<bool> {
+    let Some(base) = &options.changed else {
+        return Ok(false);
+    };
+    let found = crate::test_changed::narrow(selection, base, &options.openapi, cwd)?;
+    let empty = found.selected.is_empty();
+    if options.machine() {
+        if empty {
+            let envelope = json!({
+                "schema_version": 1,
+                "kind": "result",
+                "state": "nothing_changed",
+                "partial": false,
+                "changed": found.changed.iter().map(|file| crate::test_select::display_path(file, cwd)).collect::<Vec<_>>(),
+            });
+            println!("{envelope}");
+        }
+    } else {
+        eprintln!(
+            "{} {}",
+            "test".cyan(),
+            crate::test_changed::describe(&found, base, cwd)
+        );
+        if empty {
+            eprintln!(
+                "{} No spec depends on the changes; nothing to run",
+                "test".cyan()
+            );
+        }
+    }
+    Ok(empty)
 }
 
 /// `--last-failed` / `lxdev test report` input: `latest` (in `results_root`),
