@@ -35,15 +35,12 @@ use lingxia_control_protocol::scenario::{
 use owo_colors::OwoColorize;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use std::io::IsTerminal;
 use std::path::{Component, Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Where named scenarios live, relative to a project directory.
 pub const SCENARIO_DIR: &str = "tests/scenarios";
 
-/// How long `use` waits for a first request before it hints at app caches.
-const FIRST_REQUEST_WAIT: Duration = Duration::from_secs(4);
 /// How often `--watch` looks at the file.
 const WATCH_INTERVAL: Duration = Duration::from_millis(300);
 
@@ -56,6 +53,18 @@ pub(crate) const RELOAD_HINT: &str =
     "pages already loaded keep their data; `lxdev lxapp restart` reloads them";
 
 #[derive(Args, Clone)]
+#[command(long_about = "\
+Who answers the running app's calls: mocks/ handlers, the real backend, or a scenario \
+state on top (development hosts only).
+
+  lxdev mock                         the selection, the scenario, hits and errors
+  lxdev mock all | none [TARGET…]    live, until lxdev mock reset
+  lxdev mock use NAME[:VARIANT]      a scenario state on top
+  lxdev mock clear                   drop the scenario
+  lxdev mock reset                   startup selection, no scenario, fresh handlers
+
+The session has one scenario. `use --app` chooses which lxapp's HTTP calls it \
+answers; another use replaces it.")]
 pub struct MockOptions {
     #[command(subcommand)]
     command: Option<MockCommand>,
@@ -96,7 +105,9 @@ enum MockCommand {
         /// `name` or `name:variant` under tests/scenarios/ (without
         /// `.json`), or a file (`path.json:variant`)
         scenario: String,
-        /// Target lxapp id, home, or current (default: home, then current)
+        /// Which lxapp's HTTP calls this scenario answers (default: home,
+        /// then current). The session has one scenario; another `use`
+        /// replaces it
         #[arg(long = "app")]
         appid: Option<String>,
         /// Keep running and reinstall the scenario whenever the file is
@@ -803,9 +814,11 @@ pub(crate) fn split_targets(targets: &[String]) -> Result<(Vec<String>, Vec<Stri
 }
 
 /// `lxdev mock all|none [TARGET…]`: the HTTP half through the host, the
-/// Function half through the companion, one line each. Fails when a
-/// Function target was named and not applied, so nothing is partially
-/// claimed.
+/// Function half through the companion, one line each. A missing
+/// mocks/index.ts and a rejected Function target both fail before
+/// anything switches. A whole selection (`all` / `none`
+/// with no targets) still switches HTTP when the companion has no `mock`
+/// capability, and says so.
 pub(crate) fn select(
     session: &dyn Session,
     mode: MockMode,
@@ -816,27 +829,38 @@ pub(crate) fn select(
     let (http, functions) = split_targets(targets)?;
     let whole = targets.is_empty();
     let mut out = json!({ "scope": "session" });
-    if whole || !http.is_empty() {
-        if mode == MockMode::All {
-            let status = session.host(method::MOCK_STATUS, None)?;
-            if status["apps"].as_array().is_none_or(Vec::is_empty) {
-                bail!(
-                    "no mocks/index.ts in {}; nothing can answer with mocks",
-                    content_root.display()
-                );
-            }
+    let switches_http = whole || !http.is_empty();
+    // Refuse before either half changes.
+    if switches_http && mode == MockMode::All {
+        let status = session.host(method::MOCK_STATUS, None)?;
+        if status["apps"].as_array().is_none_or(Vec::is_empty) {
+            bail!(
+                "no mocks/index.ts in {}; nothing can answer with mocks",
+                content_root.display()
+            );
         }
+    }
+    if !functions.is_empty() {
+        let half = function_half(session, mode, &functions);
+        out["functions"] = half.result.clone();
+        out["functionsLine"] = json!(half.line);
+        out["functionsRequired"] = json!(true);
+        if !half.applied {
+            return Ok(out);
+        }
+    }
+    if switches_http {
         out["http"] = session.host(
             method::MOCK_SET,
             Some(json!({ "owner": mock::DEV_OWNER, "mode": mode, "targets": http })),
         )?;
         out["status"] = session.host(method::MOCK_STATUS, None)?;
     }
-    if whole || !functions.is_empty() {
-        let half = function_half(session, mode, &functions);
+    if whole {
+        let half = function_half(session, mode, &[]);
         out["functions"] = half.result.clone();
         out["functionsLine"] = json!(half.line);
-        out["functionsRequired"] = json!(!functions.is_empty());
+        out["functionsRequired"] = json!(false);
     }
     Ok(out)
 }
@@ -1251,9 +1275,6 @@ pub fn execute(info: Option<&SessionInfo>, options: MockOptions) -> Result<()> {
                     );
                     hint();
                 })?;
-                if !json && !watching && std::io::stderr().is_terminal() {
-                    wait_for_first_request(&session);
-                }
             }
             if watching {
                 eprintln!(
@@ -1321,20 +1342,6 @@ pub fn execute(info: Option<&SessionInfo>, options: MockOptions) -> Result<()> {
 
 fn plural(n: usize) -> &'static str {
     if n == 1 { "" } else { "s" }
-}
-
-/// Wait briefly for a first request; say why none may come.
-fn wait_for_first_request(session: &dyn Session) {
-    let deadline = Instant::now() + FIRST_REQUEST_WAIT;
-    while Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(250));
-        match status(session) {
-            Ok(status) if status["active"] != true || reached(&status) > 0 => return,
-            Ok(_) => {}
-            Err(_) => return,
-        }
-    }
-    eprintln!("{} {IDLE_HINT}", "hint".cyan().bold());
 }
 
 pub(crate) fn print_status(status: &Value) {
@@ -2120,9 +2127,9 @@ mod tests {
         assert_eq!(
             capable.log(),
             [
+                "companion session.companion.mock.set \"none\" [\"orders.submit\"]",
                 "host session.network.mock.set [\"GET **/qoe/*\"]",
                 "host session.network.mock.status",
-                "companion session.companion.mock.set \"none\" [\"orders.submit\"]"
             ]
         );
         // Only Function names: the host is not touched.
@@ -2181,6 +2188,45 @@ mod tests {
             result["functionsLine"],
             "functions: not switched — unknown Function orders.submitt"
         );
+
+        // Mixed targets: a refused Function is not applied, and neither is HTTP.
+        let mut mixed = Fake::new(Some(vec![MOCK]));
+        mixed.companion_error = Some(CallError {
+            code: mock_protocol::INVALID_TARGETS.into(),
+            message: "unknown".into(),
+            data: Some(json!({ "unknown": ["orders.submitt"] })),
+        });
+        let result = select(
+            &mixed,
+            MockMode::All,
+            &["GET **/qoe/*".into(), "orders.submitt".into()],
+            root,
+        )
+        .unwrap();
+        assert_eq!(result["functionsRequired"], true);
+        assert_eq!(result["functions"]["applied"], false);
+        assert!(result.get("http").is_none());
+        assert!(
+            mixed
+                .log()
+                .iter()
+                .all(|line| !line.contains("session.network.mock.set")),
+            "{:?}",
+            mixed.log()
+        );
+
+        // No mocks/index.ts: `all` fails before the companion switches.
+        let mut bare = Fake::new(Some(vec![MOCK]));
+        bare.mock_status = json!({ "apps": [] });
+        let err = select(
+            &bare,
+            MockMode::All,
+            &["GET **/qoe/*".into(), "orders.submit".into()],
+            root,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("no mocks/index.ts"), "{err}");
+        assert_eq!(bare.log(), ["host session.network.mock.status"]);
     }
 
     #[test]
