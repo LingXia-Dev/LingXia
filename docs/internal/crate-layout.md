@@ -15,7 +15,7 @@ it has no layer for: give a new crate one there and a line below.
 | 1. Contracts | `app-context`, `provider`, `log`, `messaging`, `settings`, `surface`, `shell`, `update`, `control-protocol` | Types, policy, wire formats. No runtime. |
 | 2. Platform | `webview`, `platform`, `windows-contract`, `device-io` | OS and WebView hosting. Knows nothing of lxapps. |
 | 3. Runtime | `lxapp`, `logic`, `service`, `transfer`, `media`, `browser`, `terminal`, `terminal-config` | What a shipped app runs. |
-| 4. Products and dev features | `browser-shell`, `proxy`, `control-commands`, `automation` | Built on the runtime; pulled in by facade features. |
+| 4. Products and dev features | `browser-shell`, `proxy`, `control-commands`, `network-dev`, `automation` | Built on the runtime; pulled in by facade features. |
 | 5. Facade | `lingxia` | The app-author API, the platform entry surface, init. |
 | 6. Host integrations | `control-runtime`, `windows-sdk` | Linked by host apps beside the facade. |
 
@@ -33,7 +33,7 @@ Build tooling sits outside the layers: `native-macros`, `native-codegen`,
 3. **A shipped product does not carry dev code.** Development-only code
    sits behind a feature a product build leaves off (`devtool`,
    `test-runtime`, `dev-bridge`), or in a crate only those features pull in
-   (`automation`). A lower crate may expose a hook for it behind such a
+   (`automation`, `network-dev`). A lower crate may expose a hook for it behind such a
    feature (`lxapp`'s `automation` lower half, `dev-bundles`), not the
    feature itself.
 4. **A description is a claim.** Each crate's `description` says what it
@@ -67,8 +67,11 @@ Names omit the `lingxia-` prefix.
 - `browser-shell`: the browser shell product and its host registrations.
 - `proxy`: local CONNECT proxy with PAC routing and capture.
 - `control-commands`: the command surface `lxdev` and shipped products share.
-- `automation`: `lx.automation()`, the host test runtime, and dev and test
-  network interception and observation.
+- `network-dev`: dev and test network layer: Logic `fetch`/SSE
+  interception, mocks and scenarios, and the traffic observer behind
+  `lxdev network`, with its `lx.automation()` drivers (authorized through
+  the `Policy` automation installs).
+- `automation`: `lx.automation()` and the host test runtime.
 - `lingxia`: the facade.
 - `control-runtime`: control dispatch, local IPC, the dev-session bridge,
   and the devtool commands' implementations.
