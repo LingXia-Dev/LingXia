@@ -33,7 +33,7 @@ pub fn set_upstream(upstream: Option<Upstream>) {
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = upstream;
 }
 
-pub(crate) fn upstream() -> Option<Upstream> {
+pub fn upstream() -> Option<Upstream> {
     UPSTREAM
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())

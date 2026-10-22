@@ -2,9 +2,9 @@
 //! recordings (the HTTP half of `lxdev mock …`, and `lxdev network …`) over
 //! the automation runtime's route table.
 
-use lingxia_automation::runtime::network;
 use lingxia_control_protocol::methods::session::network as method;
 use lingxia_control_protocol::mock::{DEV_OWNER, MockMode};
+use lingxia_network_dev::dev as network;
 use serde_json::{Value, json};
 
 pub(crate) fn handle(handler: &str, args: Option<Value>) -> Result<Option<Value>, String> {

@@ -18,17 +18,6 @@ mod run;
 
 pub use manager::AutomationRuntime;
 
-/// Mocks, network scenarios and recordings a dev session drives outside
-/// test runs (`lxdev mock …`, `lxdev network …`).
-pub mod network {
-    pub use crate::network::companion::{Upstream, UpstreamError, UpstreamFuture, set_upstream};
-    pub use crate::network::dev::{
-        clear_scenario, drain_live, live_body, mock_baseline, mock_load, mock_reset, mock_set,
-        mock_status, mock_unload, mocks_ready, pause_scenario, record_start, record_stop,
-        resume_scenario, session_ended, session_starting, status, unwatch, use_scenario,
-        use_scenario_generation, watch,
-    };
-}
 pub use profile::{AutomationProfile, ProfileExport, discard_retained, export_retained};
 pub use protocol::{
     AutomationActiveRun, AutomationCancelArgs, AutomationCancelResponse, AutomationEvent,

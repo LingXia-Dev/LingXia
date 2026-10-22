@@ -1,0 +1,51 @@
+[package]
+name = "lingxia-network-dev"
+version.workspace = true
+edition.workspace = true
+description = "Development and test network layer for LingXia: Logic fetch and SSE interception, mocks and scenarios, and traffic observation for lxdev and host automation runs"
+license = "MIT"
+repository.workspace = true
+keywords = ["lingxia", "automation", "network"]
+categories = ["development-tools::testing"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+# `standard`: Logic contexts (`LxApp::from_ctx`). `network-observer`: Logic
+# and transfer traffic carries its lxapp owner.
+lxapp = { workspace = true, default-features = false, features = ["standard", "network-observer"] }
+tokio = { workspace = true }
+base64 = { workspace = true }
+http = { workspace = true }
+regex = "1"
+flate2 = "1"
+lingxia-log = { workspace = true }
+lingxia-control-protocol = { workspace = true, features = ["scenario-match"] }
+lingxia-transfer = { workspace = true }
+rong_rt = { workspace = true, default-features = false, features = ["network-observer"] }
+
+[dev-dependencies]
+# Tests attribute their context's `fetch` like lxapp does for Logic.
+rong_http = { workspace = true, default-features = false, features = ["network-observer"] }
+bytes = { workspace = true }
+
+# JavaScript engine selection mirrors lingxia-logic.
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+rong = { workspace = true, features = ["jscore"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+rong = { workspace = true, features = ["quickjs"] }
+
+[target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
+rong = { workspace = true, features = ["arkjs"] }
+
+[target.'cfg(not(any(target_os = "ios", target_os = "macos", target_os = "android", all(target_os = "linux", target_env = "ohos"))))'.dependencies]
+rong = { workspace = true, features = ["quickjs"] }
+
+# Tests run Logic contexts with these modules.
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dev-dependencies]
+rong_modules = { workspace = true, default-features = false, features = ["jscore", "timer", "event", "exception", "abort", "encoding", "url", "buffer", "stream", "http", "network-observer"] }
+
+[target.'cfg(not(any(target_os = "ios", target_os = "macos")))'.dev-dependencies]
+rong_modules = { workspace = true, default-features = false, features = ["quickjs", "timer", "event", "exception", "abort", "encoding", "url", "buffer", "stream", "http", "network-observer"] }

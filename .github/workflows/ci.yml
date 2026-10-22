@@ -172,6 +172,7 @@ jobs:
               - 'crates/lingxia-app-context/**'
               - 'crates/lingxia-automation/**'
               - 'crates/lingxia-automation-runtime/**'
+              - 'crates/lingxia-network-dev/**'
               - 'crates/lingxia-browser/**'
               - 'crates/lingxia-browser-shell/**'
               - 'crates/lingxia-device-io/**'

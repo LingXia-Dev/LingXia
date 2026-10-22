@@ -27,6 +27,7 @@ CRATES=(
   "lingxia-messaging"
   "lingxia-native-codegen"
   "lingxia-native-macros"
+  "lingxia-network-dev"
   "lingxia-platform"
   "lingxia-provider"
   "lingxia-proxy"

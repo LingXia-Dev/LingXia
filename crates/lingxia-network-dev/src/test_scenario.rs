@@ -13,7 +13,7 @@
 use super::companion::{self, UpstreamError};
 use super::registry::{self, InstalledScenario, ScenarioCall};
 use super::{auto_err, run_scope, scenario};
-use crate::resolve::{json_to_js, upgrade_authorized};
+use crate::{json_to_js, upgrade_authorized};
 use lingxia_control_protocol::methods::session::companion as method;
 use lingxia_control_protocol::scenario::{self as format, Resolved, Target, companion as protocol};
 use lxapp::LxApp;
@@ -24,13 +24,13 @@ use std::sync::Weak;
 
 /// `lx.automation().lxapp().mock`.
 #[js_class(clone)]
-pub(crate) struct JSMockDriver {
+pub struct JSMockDriver {
     lxapp: Weak<LxApp>,
 }
 
 impl JSMockDriver {
     /// Authorization is checked per call, so reading `.mock` never throws.
-    pub(crate) fn new(lxapp: Weak<LxApp>) -> Self {
+    pub fn new(lxapp: Weak<LxApp>) -> Self {
         Self { lxapp }
     }
 }
@@ -274,7 +274,7 @@ fn clear_outcome(outcome: Result<Value, UpstreamError>) -> Result<(), FunctionCh
 
 /// Handle returned by `mock.use()`.
 #[js_class(clone)]
-pub(crate) struct JSScenario {
+pub struct JSScenario {
     id: u64,
     run_id: String,
     appid: String,

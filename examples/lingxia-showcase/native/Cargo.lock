@@ -2370,26 +2370,21 @@ name = "lingxia-automation"
 version = "0.26.0"
 dependencies = [
  "base64 0.23.1",
- "flate2",
  "futures",
- "http",
  "lingxia-browser",
- "lingxia-control-protocol",
  "lingxia-device-io",
  "lingxia-log",
  "lingxia-lxapp",
+ "lingxia-network-dev",
  "lingxia-platform",
  "lingxia-service",
  "lingxia-shell",
- "lingxia-transfer",
  "lingxia-webview",
  "lingxia-windows-contract",
  "log",
- "regex",
  "rong",
  "rong_console",
  "rong_modules",
- "rong_rt",
  "rong_timer",
  "serde",
  "serde_json",
@@ -2484,6 +2479,7 @@ dependencies = [
  "lingxia-device-io",
  "lingxia-log",
  "lingxia-lxapp",
+ "lingxia-network-dev",
  "lingxia-platform",
  "log",
  "rustls",
@@ -2626,6 +2622,26 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "lingxia-network-dev"
+version = "0.26.0"
+dependencies = [
+ "base64 0.23.1",
+ "flate2",
+ "http",
+ "lingxia-control-protocol",
+ "lingxia-log",
+ "lingxia-lxapp",
+ "lingxia-transfer",
+ "log",
+ "regex",
+ "rong",
+ "rong_rt",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

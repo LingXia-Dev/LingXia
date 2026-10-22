@@ -76,7 +76,7 @@ pub fn start_dev_session_bridge_from_env() {
     // covered: keep its pages and timers running meanwhile.
     lxapp::keep_responsive_for_development();
     #[cfg(feature = "test-runtime")]
-    lingxia_automation::runtime::network::session_starting();
+    lingxia_network_dev::dev::session_starting();
     thread::spawn(move || run_dev_bridge(ws_url));
 }
 
@@ -157,7 +157,7 @@ fn run_dev_bridge(ws_url: String) {
         match connect_with_timeout(ws_url.as_str()) {
             Ok(mut websocket) => {
                 #[cfg(feature = "test-runtime")]
-                lingxia_automation::runtime::network::session_starting();
+                lingxia_network_dev::dev::session_starting();
                 if connect_failures > 0 {
                     log::info!(
                         "Connected devtool websocket after {} failed attempts",
@@ -472,7 +472,7 @@ fn send_log_batch(
 fn send_network_events(
     websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
 ) -> Result<(), String> {
-    let events = lingxia_automation::runtime::network::drain_live();
+    let events = lingxia_network_dev::dev::drain_live();
     if events.is_empty() {
         return Ok(());
     }
