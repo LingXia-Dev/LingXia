@@ -50,7 +50,7 @@ function refOf(snap: string, role: string, name: string): string {
   return match[1];
 }
 
-/** form.html in a fresh tab, after its 700 ms late elements, with a first snapshot. */
+/** form.html in a fresh tab, after its 700 ms late elements and the srcdoc iframe, with a first snapshot. */
 async function openForm(t: Fixture) {
   const browser = t.automation.browser;
   const { tab } = await browser.open({ url: FORM_URL });
@@ -58,7 +58,8 @@ async function openForm(t: Fixture) {
   await browser.wait({ tab, loaded: true });
   await browser.wait({
     tab,
-    js: "!!document.getElementById('late') && !document.getElementById('late-enabled').disabled",
+    js: "!!document.getElementById('late') && !document.getElementById('late-enabled').disabled"
+      + " && !!document.getElementById('same').contentDocument.getElementById('inner-btn')",
   });
   const snap = await snapshotText(browser, tab);
   return {
