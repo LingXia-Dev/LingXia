@@ -85,11 +85,10 @@ fn source_checks(root: &std::path::Path, platforms: &[PlatformType]) -> Vec<Chec
         Ok(Some(source)) => checks.push(CheckResult::warn(
             "Source",
             format!(
-                "{}={} (overrides lingxia.lock)",
-                crate::pin::overrides::ENV,
+                "local LingXia {} (overrides lingxia.lock)",
                 source.display()
             ),
-            Some("Unset it to build the pinned commit; release builds refuse it."),
+            Some("`lingxia pin --no-local` builds the pinned commit; `package` refuses it."),
         )),
         Err(err) => checks.push(CheckResult::fail("Source", err.to_string(), None::<String>)),
         Ok(None) => {}

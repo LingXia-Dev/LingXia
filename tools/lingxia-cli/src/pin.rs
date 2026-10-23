@@ -297,7 +297,7 @@ pub fn ensure_source(git_url: &str, commit: &str, reference: Option<&str>) -> Re
 
 /// `remove_dir_all` that also takes git's read-only pack files, which
 /// Windows refuses to delete as they are.
-fn remove_tree(path: &Path) -> std::io::Result<()> {
+pub(crate) fn remove_tree(path: &Path) -> std::io::Result<()> {
     if fs::remove_dir_all(path).is_ok() {
         return Ok(());
     }

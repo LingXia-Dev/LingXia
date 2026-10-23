@@ -11,6 +11,9 @@
 //!   the requirement — otherwise cargo ignores it without a word.
 //! - `--check` changes nothing and fails when the project has drifted from
 //!   the lock (moved tag, edited patches or requirements).
+//! - A path instead of a ref builds that local checkout, recorded only in
+//!   the untracked `.lingxia/source.local`; `--no-local` or pinning a ref
+//!   goes back to the lock.
 
 use crate::pin::{self, Pin, cargo as pin_cargo};
 use anyhow::{Context, Result, bail};
@@ -23,6 +26,42 @@ pub struct PinArgs {
     pub reference: Option<String>,
     pub git: Option<String>,
     pub check: bool,
+    pub no_local: bool,
+}
+
+/// A path, not a ref: branch names may hold `/` but never start like this.
+fn local_path(reference: &str) -> Option<std::path::PathBuf> {
+    if let Some(rest) = reference.strip_prefix("~/") {
+        return dirs::home_dir().map(|home| home.join(rest));
+    }
+    let path = Path::new(reference);
+    (reference.starts_with('.') || path.is_absolute() || reference.contains('\\'))
+        .then(|| path.to_path_buf())
+}
+
+fn pin_local(root: &Path, path: &Path) -> Result<i32> {
+    let source = pin::overrides::checkout(path)?;
+    if crate::embedded_js_digest::digest(&source.join("packages"))
+        .ok()
+        .as_deref()
+        != Some(env!("LINGXIA_EMBEDDED_JS_DIGEST"))
+    {
+        println!(
+            "  {} its page bridge/polyfills differ from this CLI's; builds will refuse it until you build lingxia from that checkout",
+            "warning".yellow()
+        );
+    }
+    pin::overrides::set(root, &source)?;
+    let lock = pin::read(root)?
+        .map(|lock| format!("; lingxia.lock stays at {}", lock.lingxia.short_commit()))
+        .unwrap_or_default();
+    println!(
+        "{} builds use the local LingXia {}{lock}",
+        "Pinned".green(),
+        source.display()
+    );
+    println!("Nothing tracked changed. `lingxia pin --no-local` goes back to the lock.");
+    Ok(0)
 }
 
 pub fn execute(args: PinArgs) -> Result<i32> {
@@ -31,6 +70,23 @@ pub fn execute(args: PinArgs) -> Result<i32> {
     )?;
     if args.check {
         return check(&root);
+    }
+    if args.no_local {
+        if pin::overrides::clear(&root)? {
+            println!("{} builds use lingxia.lock again", "Unpinned".green());
+        } else {
+            println!("No local LingXia source was set");
+        }
+        return Ok(0);
+    }
+    if let Some(path) = args.reference.as_deref().and_then(local_path) {
+        if args.git.is_some() {
+            bail!("--git applies to a ref, not a local path");
+        }
+        return pin_local(&root, &path);
+    }
+    if pin::overrides::clear(&root)? {
+        println!("  dropped the local LingXia source; builds follow the lock");
     }
     let previous = pin::read(&root)?.map(|lock| lock.lingxia);
     let git = args

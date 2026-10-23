@@ -1,7 +1,8 @@
-//! `LINGXIA_SOURCE=<checkout>`: build against a local LingXia working tree
-//! instead of the pinned commit, for developing LingXia and an app together.
+//! `lingxia pin <path>`: build against a local LingXia working tree instead
+//! of the pinned commit, for developing LingXia and an app together.
 //!
-//! Nothing tracked changes. Cargo gets path patches from a generated
+//! The path lives in the untracked `.lingxia/source.local`; the lock does not
+//! change. Cargo gets path patches from a generated
 //! `.lingxia/cargo-override.toml` passed with `--config` (which wins over the
 //! lock's git patches); native SDKs are built from the working tree and
 //! cached by its HEAD and uncommitted changes. Moving the lock to that work
@@ -14,26 +15,54 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Once;
 
-pub const ENV: &str = "LINGXIA_SOURCE";
+fn file(project_root: &Path) -> PathBuf {
+    project_root.join(".lingxia").join("source.local")
+}
 
 /// The override working tree, when set. Projects inside the LingXia
 /// monorepo already build from their own checkout and ignore it.
 pub fn source(project_root: &Path) -> Result<Option<PathBuf>> {
-    let Some(raw) = std::env::var_os(ENV).filter(|v| !v.is_empty()) else {
+    let Ok(raw) = fs::read_to_string(file(project_root)) else {
         return Ok(None);
     };
-    if crate::platform::is_inside_lingxia_workspace(project_root) {
+    let raw = raw.trim();
+    if raw.is_empty() || crate::platform::is_inside_lingxia_workspace(project_root) {
         return Ok(None);
     }
-    let path = PathBuf::from(raw);
-    // dunce: no `\\?\` prefix on Windows, so paths compare with cargo's.
-    let source = dunce::canonicalize(&path)
-        .with_context(|| format!("{ENV}={} does not exist", path.display()))?;
-    if !source.join("Cargo.toml").is_file() || !source.join("crates").is_dir() {
-        bail!("{ENV}={} is not a LingXia checkout", source.display());
-    }
+    let source = checkout(Path::new(raw)).context(
+        "the local LingXia source (.lingxia/source.local) is gone; `lingxia pin --no-local` builds the lock again",
+    )?;
     announce(project_root, &source);
     Ok(Some(source))
+}
+
+/// `path` as a LingXia checkout, canonical.
+pub fn checkout(path: &Path) -> Result<PathBuf> {
+    // dunce: no `\\?\` prefix on Windows, so paths compare with cargo's.
+    let source =
+        dunce::canonicalize(path).with_context(|| format!("{} does not exist", path.display()))?;
+    if !source.join("Cargo.toml").is_file() || !source.join("crates").is_dir() {
+        bail!("{} is not a LingXia checkout", source.display());
+    }
+    Ok(source)
+}
+
+/// Build `project_root` against `source` (already checked) until cleared.
+pub fn set(project_root: &Path, source: &Path) -> Result<()> {
+    let path = file(project_root);
+    fs::create_dir_all(path.parent().unwrap_or(project_root))?;
+    fs::write(&path, format!("{}\n", source.display()))
+        .with_context(|| format!("write {}", path.display()))
+}
+
+/// Back to the lock; whether an override was set.
+pub fn clear(project_root: &Path) -> Result<bool> {
+    let _ = fs::remove_file(project_root.join(".lingxia").join("cargo-override.toml"));
+    match fs::remove_file(file(project_root)) {
+        Ok(()) => Ok(true),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(err) => Err(err).with_context(|| format!("remove {}", file(project_root).display())),
+    }
 }
 
 /// One line per run saying what is built instead of the lock.
@@ -50,7 +79,7 @@ fn announce(project_root: &Path, source: &Path) {
             .map(|lock| format!(", lock at {}", lock.lingxia.short_commit()))
             .unwrap_or_default();
         eprintln!(
-            "{ENV}={} (HEAD {}{}{lock})",
+            "Building against local LingXia {} (HEAD {}{}{lock}; `lingxia pin --no-local` to stop)",
             source.display(),
             head.trim(),
             if dirty { ", uncommitted changes" } else { "" }
@@ -103,7 +132,7 @@ pub fn cargo_config(project_root: &Path) -> Result<Option<PathBuf>> {
         .map(|text| super::cargo::locked_crates(&text))
         .unwrap_or_default();
     let mut text = format!(
-        "# Generated for {ENV}={}; not tracked.\n[patch.crates-io]\n",
+        "# Generated for the local LingXia source {}; not tracked.\n[patch.crates-io]\n",
         source.display()
     );
     for (name, dir) in crates {
@@ -170,13 +199,13 @@ mod tests {
         )
         .unwrap();
 
-        // SAFETY: no other test reads or writes LINGXIA_SOURCE.
-        unsafe { std::env::set_var(ENV, src) };
+        set(project.path(), &checkout(src).unwrap()).unwrap();
         let config = cargo_config(project.path());
-        unsafe { std::env::remove_var(ENV) };
 
         let path = config.unwrap().unwrap();
-        let text = fs::read_to_string(path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(clear(project.path()).unwrap());
+        assert!(super::source(project.path()).unwrap().is_none() && !path.exists());
         let src = dunce::canonicalize(src).unwrap();
         assert!(text.contains(&format!(
             "foo = {{ path = {} }}",

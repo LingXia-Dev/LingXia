@@ -88,6 +88,15 @@ pub struct PackageExecuteOptions {
 }
 
 pub fn execute(options: PackageExecuteOptions) -> Result<()> {
+    // A shipped artifact comes from a commit someone can find again.
+    if let Some(root) = crate::commands::project_upgrade::find_project_root()
+        && let Some(source) = crate::pin::overrides::source(&root)?
+    {
+        anyhow::bail!(
+            "packaging refuses the local LingXia source {}; `lingxia pin --no-local`, or pin a pushed commit",
+            source.display()
+        );
+    }
     // `package` produces shippable artifacts; default to prod when --env is
     // omitted. `build`/`dev` keep their `dev` default for day-to-day work.
     // Explicit --env on `package` always wins.
