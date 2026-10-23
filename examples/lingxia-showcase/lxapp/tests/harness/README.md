@@ -12,6 +12,10 @@ node tests/harness/http-fixture.mjs --port 0   # prints the base URL
 lxdev test tests/ --arg httpBase=http://127.0.0.1:<port>
 ```
 
+It also serves `fixtures/browser/*.html` under `/browser/` for the host-browser
+page-driver specs (`platform/desktop/browser-page.test.ts`), and `/browser/files`
+writes two temp files and returns their absolute paths for `setInputFiles`.
+
 ## Reaching it from an lxapp
 
 `is_domain_allowed` and the rebinding guard in

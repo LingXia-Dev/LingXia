@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { createFixtureServer, digest } from './http-fixture.mjs';
 
@@ -137,4 +138,16 @@ test('survives malformed route parameters', async () => {
 
   assert.ok(server.listening, 'a malformed request killed the fixture');
   assert.equal((await fetch(`${base}/health`)).status, 200);
+});
+
+test('serves the browser fixture pages and host files for uploads', async () => {
+  const form = await fetch(`${base}/browser/form.html`);
+  assert.equal(form.status, 200);
+  assert.match(await form.text(), /<title>Browser page fixture<\/title>/);
+  assert.equal((await fetch(`${base}/browser/nav.html`)).status, 200);
+  assert.equal((await fetch(`${base}/browser/missing.html`)).status, 404);
+
+  const { files } = await (await fetch(`${base}/browser/files`)).json();
+  assert.deepEqual(files.map((path) => path.split(/[\\/]/).pop()), ['a.txt', 'b.png']);
+  assert.equal(readFileSync(files[0], 'utf8'), 'hello');
 });
