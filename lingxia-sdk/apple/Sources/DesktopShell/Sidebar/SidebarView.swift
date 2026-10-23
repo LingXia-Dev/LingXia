@@ -694,8 +694,8 @@ class SidebarView: NSView {
         static let footerButtonSize: CGFloat = 30
         /// Rendered glyph size inside footer icon buttons.
         static let footerIconSize: CGFloat = 16
-        /// Shared outer inset for the sidebar action flow. Windows uses the same
-        /// 6pt margin, leaving 136pt of flow width in the standard 148pt rail.
+        /// Vertical inset of the sidebar action flow. Horizontally it is
+        /// `footerHInset`, leaving 130pt of flow width in the standard 148pt rail.
         static let footerInset: CGFloat = 6
         /// iconAxis − row internal padding (7) − half icon (9): footer button
         /// icons center on the shared first-column axis. Horizontal only —
@@ -3209,8 +3209,9 @@ private final class FlippedClipView: NSView {
 }
 
 /// Packs footer actions in declaration order. Icon buttons share rows; a value
-/// cell joins the icons before it when its minimum still fits, takes the rest
-/// of that row, and ends it.
+/// cell joins the icons before it when its minimum fits (or when a single icon
+/// precedes it, which never stands alone), takes the rest of that row, and
+/// ends it.
 @MainActor
 private final class SidebarActionFlowView: NSView {
     /// Between rows.
@@ -3218,8 +3219,6 @@ private final class SidebarActionFlowView: NSView {
     /// Between icon buttons in a row; the header's action spacing.
     private static let iconGap: CGFloat = 2
     private static let rowHeight: CGFloat = 30
-    /// Icon and padding (40) plus about six CJK characters of 13pt value text.
-    private static let minimumValueCellWidth: CGFloat = 118
 
     private var entries: [SidebarActionRowView] = []
     private var lastLayoutWidth: CGFloat = 0
@@ -3285,11 +3284,12 @@ private final class SidebarActionFlowView: NSView {
         var used: CGFloat = 0
         for index in entries.indices {
             let cell = min(
-                entries[index].isValueCell ? Self.minimumValueCellWidth : Self.rowHeight,
+                entries[index].isValueCell ? entries[index].minimumWidth : Self.rowHeight,
                 available
             )
             let next = index == start ? cell : used + Self.iconGap + cell
-            if index > start && next > available {
+            let keepsLoneIcon = entries[index].isValueCell && index - start == 1
+            if index > start && next > available && !keepsLoneIcon {
                 rows.append(start..<index)
                 start = index
                 used = cell
@@ -3355,6 +3355,16 @@ final class SidebarActionRowView: NSView {
     var onHoverChanged: ((Bool) -> Void)?
     /// Whether this cell draws a value and so takes the rest of its row.
     let isValueCell: Bool
+    /// Icon, padding and the whole value, or about two CJK characters and
+    /// the ellipsis of a longer one.
+    private(set) lazy var minimumWidth: CGFloat = {
+        guard isValueCell else { return Self.cellHeight }
+        let whole = titleLabel.intrinsicContentSize.width
+        let shortest = NSTextField(labelWithString: "\u{4E00}\u{4E00}\u{2026}")
+        shortest.font = titleLabel.font
+        let chrome = (Self.cellHeight - Self.iconSize) / 2 + Self.iconSize + 8 + 8
+        return chrome + ceil(min(whole, shortest.intrinsicContentSize.width))
+    }()
 
     private let iconView = NSImageView()
     private let titleLabel: NSTextField
