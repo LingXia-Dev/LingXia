@@ -869,7 +869,8 @@ fn rewrite_npm_line(line: &str, range: &str, changes: &mut Vec<String>) -> Strin
     let mut copied_through = 0;
     let mut search_from = 0;
     while let Some((name, spec, value_start, value_end)) = next_npm_entry(line, search_from) {
-        if is_version_range(spec) && spec != range {
+        // An open lower bound (`>=0.27.0`) already admits the new line.
+        if is_version_range(spec) && !spec.starts_with('>') && spec != range {
             out.push_str(&line[copied_through..value_start]);
             out.push_str(range);
             copied_through = value_end;
@@ -1182,6 +1183,9 @@ mod tests {
   },
   "devDependencies": {
     "@lingxia/test": "~0.11.0"
+  },
+  "peerDependencies": {
+    "@lingxia/bridge": ">=0.11.0"
   }
 }
 "#;
@@ -1193,6 +1197,7 @@ mod tests {
         // Path specs and third-party deps stay untouched.
         assert!(out.contains("file:../../../packages/lingxia-bridge"));
         assert!(out.contains(r#""react": "^19.0.0""#));
+        assert!(out.contains(r#""@lingxia/bridge": ">=0.11.0""#));
 
         // Idempotent: a second pass changes nothing.
         let (again, changes) = rewrite_npm_ranges(&out, "~0.12.0");
@@ -1380,7 +1385,7 @@ version = "metadata"
         );
         assert_eq!(
             prepared.edits[0].cargo_update,
-            vec!["lingxia-control-runtime", "lingxia-control-commands"]
+            vec!["lingxia-control-commands", "lingxia-control-runtime"]
         );
         write_edits(&prepared.edits).unwrap();
         assert_eq!(project_compat_line(root), cli_compat_line());
@@ -1401,7 +1406,7 @@ version = "metadata"
         assert_eq!(edits.len(), 1);
         assert_eq!(
             edits[0].cargo_update,
-            vec!["lingxia-windows-sdk", "lingxia-windows-build", "lingxia"]
+            vec!["lingxia-windows-sdk", "lingxia", "lingxia-windows-build"]
         );
         write_edits(&edits).unwrap();
         assert_eq!(project_compat_line(root), cli_compat_line());
@@ -1423,7 +1428,7 @@ version = "metadata"
         assert_eq!(prepared.edits[0].path, root.join("Cargo.toml"));
         assert_eq!(
             prepared.edits[0].cargo_update,
-            vec!["lingxia-windows-sdk", "lingxia-windows-build"]
+            vec!["lingxia-windows-build", "lingxia-windows-sdk"]
         );
         write_edits(&prepared.edits).unwrap();
         assert_eq!(

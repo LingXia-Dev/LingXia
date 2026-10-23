@@ -5,15 +5,42 @@
 use super::{BUILD_TARGET_FLOOR, Component, LxappCheck, SdkPin};
 use std::path::{Path, PathBuf};
 
-/// Host SDK crates this repo ships, as a project pins them in Cargo.toml.
+/// Every crate this repo publishes, all on the workspace version. A project
+/// may depend on any of them, and an upgrade that misses one locks two
+/// copies of the runtime.
 pub const SDK_CRATES: &[&str] = &[
-    "lingxia-windows-sdk",
-    "lingxia-windows-build",
     "lingxia",
+    "lingxia-app-context",
+    "lingxia-automation",
+    "lingxia-browser",
+    "lingxia-browser-shell",
+    "lingxia-control-commands",
+    "lingxia-control-protocol",
     "lingxia-control-runtime",
     "lingxia-device-io",
+    "lingxia-log",
+    "lingxia-logic",
+    "lingxia-lxapp",
+    "lingxia-media",
+    "lingxia-messaging",
     "lingxia-native-codegen",
-    "lingxia-control-commands",
+    "lingxia-native-macros",
+    "lingxia-network-dev",
+    "lingxia-platform",
+    "lingxia-provider",
+    "lingxia-proxy",
+    "lingxia-service",
+    "lingxia-settings",
+    "lingxia-shell",
+    "lingxia-surface",
+    "lingxia-terminal",
+    "lingxia-terminal-config",
+    "lingxia-transfer",
+    "lingxia-update",
+    "lingxia-webview",
+    "lingxia-windows-build",
+    "lingxia-windows-contract",
+    "lingxia-windows-sdk",
 ];
 
 /// Directories a project walk never enters: dependencies, build output, and
@@ -375,6 +402,24 @@ pub fn is_cargo_crate_table(table: &str, crate_name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sdk_crates_are_the_workspace_crates() {
+        let crates_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut names: Vec<String> = std::fs::read_dir(&crates_dir)
+            .unwrap()
+            .filter_map(|entry| {
+                let manifest =
+                    std::fs::read_to_string(entry.ok()?.path().join("Cargo.toml")).ok()?;
+                let line = manifest.lines().find(|line| line.starts_with("name"))?;
+                Some(line.split('"').nth(1)?.to_string())
+            })
+            .collect();
+        names.sort();
+        let mut listed: Vec<&str> = SDK_CRATES.to_vec();
+        listed.sort();
+        assert_eq!(names, listed);
+    }
 
     #[test]
     fn host_pins_are_read_from_cargo_and_gradle() {
