@@ -1,3 +1,4 @@
+pub mod agent;
 #[cfg(all(test, target_vendor = "apple"))]
 #[path = "../../lingxia-platform/tests/support/apple_host_stubs.rs"]
 mod apple_host_stubs;
@@ -14,8 +15,8 @@ mod types;
 mod webview;
 
 pub use lingxia_webview::{
-    NetworkBody, NetworkCaptureSnapshot, NetworkEntry, WebViewCookie, WebViewCookieSameSite,
-    WebViewCookieSetRequest,
+    NetworkBody, NetworkCaptureSnapshot, NetworkEntry, PointerButton, WebViewCookie,
+    WebViewCookieSameSite, WebViewCookieSetRequest, WebViewError, WebViewInputError,
 };
 pub use policy::{extract_url_scheme, is_lingxia_startup_url, normalize_url_for_wait_compare};
 use std::sync::Arc;

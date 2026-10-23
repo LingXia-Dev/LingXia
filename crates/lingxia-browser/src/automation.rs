@@ -29,7 +29,9 @@ fn native_input_host() -> Option<&'static Arc<dyn BrowserNativeInputHost>> {
     BROWSER_NATIVE_INPUT_HOST.get()
 }
 
-async fn prepare_browser_tab_for_input(tab_id: &str) -> Result<(), BrowserAutomationError> {
+pub(crate) async fn prepare_browser_tab_for_input(
+    tab_id: &str,
+) -> Result<(), BrowserAutomationError> {
     // Surface-hosted tabs are already visible in their owning overlay. Native
     // preparation is only for tabs that product browser chrome must present.
     if crate::tabs::is_standalone_tab(tab_id) {
@@ -51,7 +53,7 @@ async fn prepare_browser_tab_for_input(tab_id: &str) -> Result<(), BrowserAutoma
     Ok(())
 }
 
-fn browser_tab_webview(tab_id: &str) -> Result<Arc<WebView>, BrowserAutomationError> {
+pub(crate) fn browser_tab_webview(tab_id: &str) -> Result<Arc<WebView>, BrowserAutomationError> {
     let normalized_tab_id = normalize_runtime_tab_id(tab_id)
         .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
     let (session_id, create_token) = {

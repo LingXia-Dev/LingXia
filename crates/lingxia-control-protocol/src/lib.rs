@@ -296,6 +296,16 @@ pub mod methods {
         pub const PRESS: &str = "browser.press";
         pub const SCROLL: &str = "browser.scroll";
         pub const SCROLL_TO: &str = "browser.scroll_to";
+        pub const HOVER: &str = "browser.hover";
+        pub const DRAG: &str = "browser.drag";
+        pub const SELECT_OPTION: &str = "browser.select_option";
+        pub const CHECK: &str = "browser.check";
+        pub const UNCHECK: &str = "browser.uncheck";
+        pub const SET_INPUT_FILES: &str = "browser.set_input_files";
+        pub const SNAPSHOT: &str = "browser.snapshot";
+        pub const TEXT: &str = "browser.text";
+        pub const CONSOLE_LIST: &str = "browser.console.list";
+        pub const CONSOLE_CLEAR: &str = "browser.console.clear";
         pub const COOKIES_LIST: &str = "browser.cookies.list";
         pub const COOKIES_SET: &str = "browser.cookies.set";
         pub const COOKIES_DELETE: &str = "browser.cookies.delete";

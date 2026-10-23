@@ -27,6 +27,8 @@ fn effect(command: &BrowserCommand) -> Effect {
         BrowserCommand::Tabs { .. }
         | BrowserCommand::Current { .. }
         | BrowserCommand::Query { .. }
+        | BrowserCommand::Snapshot { .. }
+        | BrowserCommand::Text { .. }
         | BrowserCommand::Wait { .. }
         | BrowserCommand::WaitUrl { .. }
         | BrowserCommand::WaitNavigation { .. }
@@ -34,6 +36,13 @@ fn effect(command: &BrowserCommand) -> Effect {
 
         // Loses something that cannot be got back by repeating the command.
         BrowserCommand::Close { .. } => Effect::Destroys,
+        BrowserCommand::Console { clear, .. } => {
+            if *clear {
+                Effect::Changes
+            } else {
+                Effect::Reads
+            }
+        }
         BrowserCommand::Cookies(options) => match options.command {
             CookiesCommand::List { .. } => Effect::Reads,
             CookiesCommand::Delete { .. } | CookiesCommand::Clear { .. } => Effect::Destroys,
@@ -49,6 +58,12 @@ fn effect(command: &BrowserCommand) -> Effect {
         | BrowserCommand::UserAgent(_)
         | BrowserCommand::Eval { .. }
         | BrowserCommand::Click { .. }
+        | BrowserCommand::Hover { .. }
+        | BrowserCommand::Drag { .. }
+        | BrowserCommand::SelectOption { .. }
+        | BrowserCommand::Check { .. }
+        | BrowserCommand::Uncheck { .. }
+        | BrowserCommand::SetInputFiles { .. }
         | BrowserCommand::Type { .. }
         | BrowserCommand::Fill { .. }
         | BrowserCommand::Press { .. }
@@ -228,67 +243,159 @@ pub enum BrowserCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Click an element in a browser tab
+    /// Outline the page for an agent: roles, names, states and a ref for
+    /// every element it can act on
+    Snapshot {
+        #[arg(long, default_value = "current")]
+        tab: String,
+        /// Snapshot only this subtree
+        #[command(flatten)]
+        root: OptionalTarget,
+        /// text (default), json, or both
+        #[arg(long, value_parser = ["text", "json", "both"])]
+        format: Option<String>,
+        #[arg(long)]
+        max_nodes: Option<u32>,
+        #[arg(long)]
+        max_chars: Option<u32>,
+        /// Print only what changed since the previous snapshot
+        #[arg(long)]
+        since_last: bool,
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
+    /// Click an element (waits until it is visible, enabled, stable, and not covered)
     Click {
         #[arg(long, default_value = "current")]
         tab: String,
-        #[arg(long = "css")]
-        selector: String,
+        #[command(flatten)]
+        target: Target,
+        /// left, right, or middle
+        #[arg(long, value_parser = ["left", "right", "middle"], default_value = "left")]
+        button: String,
+        /// 2 for a double click
+        #[arg(long, default_value_t = 1)]
+        click_count: u32,
+        #[command(flatten)]
+        action: ActionFlags,
         /// Wait for navigation caused by this click
         #[arg(long)]
         wait_navigation: bool,
         /// Wait for document.readyState after navigation
         #[arg(long)]
         complete: bool,
-        /// Navigation wait timeout in milliseconds
-        #[arg(long, default_value_t = 5000)]
-        timeout_ms: u64,
-        /// Print JSON output
-        #[arg(long)]
-        json: bool,
     },
-    /// Type text into an element in a browser tab
+    /// Move the pointer over an element
+    Hover {
+        #[arg(long, default_value = "current")]
+        tab: String,
+        #[command(flatten)]
+        target: Target,
+        #[command(flatten)]
+        action: ActionFlags,
+    },
+    /// Drag an element onto another
+    Drag {
+        #[arg(long, default_value = "current")]
+        tab: String,
+        #[command(flatten)]
+        target: Target,
+        /// Drop target ref
+        #[arg(long, conflicts_with = "to_css")]
+        to_ref: Option<String>,
+        /// Drop target CSS selector
+        #[arg(long)]
+        to_css: Option<String>,
+        #[command(flatten)]
+        action: ActionFlags,
+    },
+    /// Type text at the end of an element's content, key by key (IME
+    /// composition for non-ASCII text)
     Type {
         #[arg(long, default_value = "current")]
         tab: String,
-        #[arg(long = "css")]
-        selector: String,
+        #[command(flatten)]
+        target: Target,
         #[arg(long, allow_hyphen_values = true)]
         text: String,
-        /// Print JSON output
+        /// Clear the current content first
         #[arg(long)]
-        json: bool,
+        clear: bool,
+        #[command(flatten)]
+        action: ActionFlags,
     },
-    /// Replace an element's current text value
+    /// Replace an element's value (inputs, textareas, date/number/range, contenteditable)
     Fill {
         #[arg(long, default_value = "current")]
         tab: String,
-        #[arg(long = "css")]
-        selector: String,
+        #[command(flatten)]
+        target: Target,
         #[arg(long, allow_hyphen_values = true)]
         text: String,
-        /// Print JSON output
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        action: ActionFlags,
     },
-    /// Press a key in a browser tab
+    /// Choose options of a <select>
+    SelectOption {
+        #[arg(long, default_value = "current")]
+        tab: String,
+        #[command(flatten)]
+        target: Target,
+        /// Option value or visible label; repeat for a multiple select
+        #[arg(long = "option", required_unless_present = "option_index")]
+        options: Vec<String>,
+        /// Option position (0-based); repeat for a multiple select
+        #[arg(long)]
+        option_index: Vec<u32>,
+        #[command(flatten)]
+        action: ActionFlags,
+    },
+    /// Check a checkbox, radio, or switch (no-op when already checked)
+    Check {
+        #[arg(long, default_value = "current")]
+        tab: String,
+        #[command(flatten)]
+        target: Target,
+        #[command(flatten)]
+        action: ActionFlags,
+    },
+    /// Uncheck a checkbox or switch (no-op when already unchecked)
+    Uncheck {
+        #[arg(long, default_value = "current")]
+        tab: String,
+        #[command(flatten)]
+        target: Target,
+        #[command(flatten)]
+        action: ActionFlags,
+    },
+    /// Put files on an <input type=file> without the file chooser
+    SetInputFiles {
+        #[arg(long, default_value = "current")]
+        tab: String,
+        #[command(flatten)]
+        target: Target,
+        /// Files to attach (none clears the input)
+        files: Vec<std::path::PathBuf>,
+        #[command(flatten)]
+        action: ActionFlags,
+    },
+    /// Press a key on an element, or on whatever has focus
     Press {
         #[arg(long, default_value = "current")]
         tab: String,
+        #[command(flatten)]
+        target: OptionalTarget,
         #[arg(long)]
         key: String,
+        #[command(flatten)]
+        action: ActionFlags,
         /// Wait for navigation caused by this key press
         #[arg(long)]
         wait_navigation: bool,
         /// Wait for document.readyState after navigation
         #[arg(long)]
         complete: bool,
-        /// Navigation wait timeout in milliseconds
-        #[arg(long, default_value_t = 5000)]
-        timeout_ms: u64,
-        /// Print JSON output
-        #[arg(long)]
-        json: bool,
     },
     /// Scroll a browser tab by a delta
     Scroll {
@@ -302,12 +409,44 @@ pub enum BrowserCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Scroll an element into view in a browser tab
+    /// Scroll an element into view
     ScrollTo {
         #[arg(long, default_value = "current")]
         tab: String,
-        #[arg(long = "css")]
-        selector: String,
+        #[command(flatten)]
+        target: Target,
+        #[command(flatten)]
+        action: ActionFlags,
+    },
+    /// The page's main readable content as Markdown
+    Text {
+        #[arg(long, default_value = "current")]
+        tab: String,
+        /// Only this element's content
+        #[command(flatten)]
+        target: OptionalTarget,
+        #[arg(long)]
+        max_chars: Option<u32>,
+        /// Include navigation, header, footer and sidebars
+        #[arg(long)]
+        all: bool,
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
+    /// What the page logged: console messages and uncaught errors
+    Console {
+        #[arg(long, default_value = "current")]
+        tab: String,
+        /// Only entries after this seq (from a previous listing's next_seq)
+        #[arg(long)]
+        since: Option<u64>,
+        /// error, warn, info, debug; repeatable
+        #[arg(long = "level")]
+        levels: Vec<String>,
+        /// Clear the captured entries instead of listing them
+        #[arg(long, conflicts_with_all = ["since", "levels"])]
+        clear: bool,
         /// Print JSON output
         #[arg(long)]
         json: bool,
@@ -317,10 +456,20 @@ pub enum BrowserCommand {
     /// Inspect network traffic (request/response payloads). Windows sessions
     /// only — requires the WebView2 DevTools protocol.
     Network(NetworkOptions),
-    /// Capture a PNG screenshot of the current/specified tab
+    /// Capture a PNG screenshot of the viewport, the full page, or one element
     Screenshot {
         #[arg(long, default_value = "current")]
         tab: String,
+        /// Capture this element
+        #[command(flatten)]
+        target: OptionalTarget,
+        /// Capture the whole page, not just the viewport
+        #[arg(long)]
+        full_page: bool,
+        /// Draw each snapshot ref's box and label (viewport only) and print
+        /// the ref → box map
+        #[arg(long, conflicts_with = "full_page")]
+        annotate: bool,
         /// Output path. Use `-` to write the PNG bytes to stdout.
         /// Defaults to `.lingxia/screenshots/<tab>-<ts>.png` under the project root.
         #[arg(long, short = 'o')]
@@ -329,6 +478,113 @@ pub enum BrowserCommand {
         #[arg(long)]
         json: bool,
     },
+}
+
+/// The element a command acts on.
+#[derive(Args, Clone)]
+#[group(required = true, multiple = false)]
+pub struct Target {
+    /// Element ref from `browser snapshot` (e.g. e12)
+    #[arg(long = "ref")]
+    pub reference: Option<String>,
+    /// CSS selector
+    #[arg(long = "css")]
+    pub selector: Option<String>,
+}
+
+#[derive(Args, Clone)]
+pub struct OptionalTarget {
+    /// Element ref from `browser snapshot` (e.g. e12)
+    #[arg(long = "ref", conflicts_with = "selector")]
+    pub reference: Option<String>,
+    /// CSS selector
+    #[arg(long = "css")]
+    pub selector: Option<String>,
+}
+
+#[derive(Args, Clone)]
+pub struct ActionFlags {
+    /// Index among the selector's matches
+    #[arg(long)]
+    pub index: Option<usize>,
+    /// How long to wait for the element to become actionable, in milliseconds
+    #[arg(long, default_value_t = 5000)]
+    pub timeout_ms: u64,
+    /// After acting, print what changed (`diff`) or the whole page (`full`)
+    #[arg(long, value_parser = ["diff", "full"])]
+    pub snapshot: Option<String>,
+    /// Print JSON output
+    #[arg(long)]
+    pub json: bool,
+}
+
+fn target_json(
+    reference: &Option<String>,
+    selector: &Option<String>,
+    index: Option<usize>,
+) -> Value {
+    let mut object = serde_json::Map::new();
+    if let Some(reference) = reference {
+        object.insert("ref".to_string(), json!(reference));
+    }
+    if let Some(selector) = selector {
+        object.insert("selector".to_string(), json!(selector));
+        if let Some(index) = index {
+            object.insert("index".to_string(), json!(index));
+        }
+    }
+    Value::Object(object)
+}
+
+/// Args for an action: tab, target, and the shared flags.
+fn action_args(tab: &str, target: Value, action: &ActionFlags, extra: Value) -> Value {
+    let mut object = match target {
+        Value::Object(object) => object,
+        _ => serde_json::Map::new(),
+    };
+    if action.index.is_some() && object.contains_key("selector") {
+        object.insert("index".to_string(), json!(action.index));
+    }
+    object.insert("tab_id".to_string(), json!(tab));
+    object.insert("timeout_ms".to_string(), json!(action.timeout_ms));
+    if let Some(snapshot) = &action.snapshot {
+        object.insert("snapshot".to_string(), json!(snapshot));
+    }
+    if let Value::Object(extra) = extra {
+        object.extend(extra);
+    }
+    Value::Object(object)
+}
+
+/// Without --json an action prints nothing, or the page change it was asked for.
+fn print_action(data: Option<Value>, json: bool) -> Result<()> {
+    if json {
+        return print_json(data.as_ref().unwrap_or(&json!({})), false);
+    }
+    let Some(snapshot) = data.as_ref().and_then(|d| d.get("snapshot")) else {
+        return Ok(());
+    };
+    print_snapshot_text(snapshot);
+    Ok(())
+}
+
+fn print_snapshot_text(snapshot: &Value) {
+    if snapshot.get("navigated").and_then(Value::as_bool) == Some(true) {
+        println!(
+            "# navigated to {}",
+            snapshot.get("url").and_then(Value::as_str).unwrap_or("")
+        );
+    }
+    if let Some(diff) = snapshot.get("diff").filter(|d| !d.is_null()) {
+        if diff.get("unchanged").and_then(Value::as_bool) == Some(true) {
+            println!("# no changes");
+        } else if let Some(text) = diff.get("text").and_then(Value::as_str) {
+            println!("{text}");
+        }
+    }
+    if let Some(text) = snapshot.get("text").and_then(Value::as_str) {
+        println!("{text}");
+    }
 }
 
 #[derive(Args, Clone)]
@@ -679,77 +935,231 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
                 .unwrap_or(Value::Null);
             print_wait_result(data, json)?;
         }
-        BrowserCommand::Click {
+        BrowserCommand::Snapshot {
             tab,
-            selector,
-            wait_navigation,
-            complete,
-            timeout_ms,
+            root,
+            format,
+            max_nodes,
+            max_chars,
+            since_last,
             json,
         } => {
-            let data = transport.request(
-                methods::browser::CLICK,
-                Some(json!({
-                    "tab_id": tab,
-                    "selector": selector,
+            let mut args = match target_json(&root.reference, &root.selector, None) {
+                Value::Object(object) => object,
+                _ => serde_json::Map::new(),
+            };
+            args.insert("tab_id".to_string(), json!(tab));
+            if let Some(format) = &format {
+                args.insert("format".to_string(), json!(format));
+            }
+            if let Some(max_nodes) = max_nodes {
+                args.insert("max_nodes".to_string(), json!(max_nodes));
+            }
+            if let Some(max_chars) = max_chars {
+                args.insert("max_chars".to_string(), json!(max_chars));
+            }
+            if since_last {
+                args.insert("since".to_string(), json!("last"));
+            }
+            let data = transport
+                .request(methods::browser::SNAPSHOT, Some(Value::Object(args)))?
+                .unwrap_or(Value::Null);
+            if json || format.as_deref() == Some("json") {
+                print_json(&data, false)?;
+            } else {
+                print_snapshot_text(&data);
+                if data.get("truncated").and_then(Value::as_bool) == Some(true) {
+                    eprintln!(
+                        "snapshot truncated; pass --ref/--css to snapshot a subtree or raise --max-nodes/--max-chars"
+                    );
+                }
+            }
+        }
+        BrowserCommand::Click {
+            tab,
+            target,
+            button,
+            click_count,
+            action,
+            wait_navigation,
+            complete,
+        } => {
+            let args = action_args(
+                &tab,
+                target_json(&target.reference, &target.selector, None),
+                &action,
+                json!({
+                    "button": button,
+                    "click_count": click_count,
                     "wait_navigation": wait_navigation,
                     "complete": complete,
-                    "timeout_ms": timeout_ms,
-                })),
-            )?;
-            print_optional_json(data, json)?;
+                }),
+            );
+            let data = transport.request(methods::browser::CLICK, Some(args))?;
+            print_action(data, action.json)?;
+        }
+        BrowserCommand::Hover {
+            tab,
+            target,
+            action,
+        } => {
+            let args = action_args(
+                &tab,
+                target_json(&target.reference, &target.selector, None),
+                &action,
+                json!({}),
+            );
+            let data = transport.request(methods::browser::HOVER, Some(args))?;
+            print_action(data, action.json)?;
+        }
+        BrowserCommand::Drag {
+            tab,
+            target,
+            to_ref,
+            to_css,
+            action,
+        } => {
+            if to_ref.is_none() == to_css.is_none() {
+                return Err(anyhow!("pass exactly one of --to-ref or --to-css"));
+            }
+            let args = action_args(
+                &tab,
+                target_json(&target.reference, &target.selector, None),
+                &action,
+                json!({ "to": target_json(&to_ref, &to_css, None) }),
+            );
+            let data = transport.request(methods::browser::DRAG, Some(args))?;
+            print_action(data, action.json)?;
         }
         BrowserCommand::Type {
             tab,
-            selector,
+            target,
             text,
-            json,
+            clear,
+            action,
         } => {
-            let data = transport.request(
-                methods::browser::TYPE,
-                Some(json!({
-                    "tab_id": tab,
-                    "selector": selector,
-                    "text": text,
-                })),
-            )?;
-            print_optional_json(data, json)?;
+            let args = action_args(
+                &tab,
+                target_json(&target.reference, &target.selector, None),
+                &action,
+                json!({ "text": text, "clear": clear }),
+            );
+            let data = transport.request(methods::browser::TYPE, Some(args))?;
+            print_action(data, action.json)?;
         }
         BrowserCommand::Fill {
             tab,
-            selector,
+            target,
             text,
-            json,
+            action,
         } => {
-            let data = transport.request(
-                methods::browser::FILL,
-                Some(json!({
-                    "tab_id": tab,
-                    "selector": selector,
-                    "text": text,
-                })),
-            )?;
-            print_optional_json(data, json)?;
+            let args = action_args(
+                &tab,
+                target_json(&target.reference, &target.selector, None),
+                &action,
+                json!({ "text": text }),
+            );
+            let data = transport.request(methods::browser::FILL, Some(args))?;
+            print_action(data, action.json)?;
+        }
+        BrowserCommand::SelectOption {
+            tab,
+            target,
+            options,
+            option_index,
+            action,
+        } => {
+            let mut choices: Vec<Value> = options.into_iter().map(Value::String).collect();
+            choices.extend(
+                option_index
+                    .into_iter()
+                    .map(|index| json!({ "index": index })),
+            );
+            let args = action_args(
+                &tab,
+                target_json(&target.reference, &target.selector, None),
+                &action,
+                json!({ "options": choices }),
+            );
+            let data = transport.request(methods::browser::SELECT_OPTION, Some(args))?;
+            print_action(data, action.json)?;
+        }
+        BrowserCommand::Check {
+            tab,
+            target,
+            action,
+        } => {
+            let args = action_args(
+                &tab,
+                target_json(&target.reference, &target.selector, None),
+                &action,
+                json!({}),
+            );
+            let data = transport.request(methods::browser::CHECK, Some(args))?;
+            print_action(data, action.json)?;
+        }
+        BrowserCommand::Uncheck {
+            tab,
+            target,
+            action,
+        } => {
+            let method = methods::browser::UNCHECK;
+            let args = action_args(
+                &tab,
+                target_json(&target.reference, &target.selector, None),
+                &action,
+                json!({}),
+            );
+            let data = transport.request(method, Some(args))?;
+            print_action(data, action.json)?;
+        }
+        BrowserCommand::SetInputFiles {
+            tab,
+            target,
+            files,
+            action,
+        } => {
+            let cwd = std::env::current_dir()?;
+            let files: Vec<String> = files
+                .into_iter()
+                .map(|path| {
+                    let path = if path.is_absolute() {
+                        path
+                    } else {
+                        cwd.join(path)
+                    };
+                    path.to_string_lossy().into_owned()
+                })
+                .collect();
+            let args = action_args(
+                &tab,
+                target_json(&target.reference, &target.selector, None),
+                &action,
+                json!({ "files": files }),
+            );
+            let data = transport.request(methods::browser::SET_INPUT_FILES, Some(args))?;
+            print_action(data, action.json)?;
         }
         BrowserCommand::Press {
             tab,
+            target,
             key,
+            action,
             wait_navigation,
             complete,
-            timeout_ms,
-            json,
         } => {
-            let data = transport.request(
-                methods::browser::PRESS,
-                Some(json!({
-                    "tab_id": tab,
+            let args = action_args(
+                &tab,
+                target_json(&target.reference, &target.selector, None),
+                &action,
+                json!({
                     "key": key,
                     "wait_navigation": wait_navigation,
                     "complete": complete,
-                    "timeout_ms": timeout_ms,
-                })),
-            )?;
-            print_optional_json(data, json)?;
+                }),
+            );
+            let data = transport.request(methods::browser::PRESS, Some(args))?;
+            print_action(data, action.json)?;
         }
         BrowserCommand::Scroll { tab, dx, dy, json } => {
             let data = transport.request(
@@ -764,22 +1174,91 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
         }
         BrowserCommand::ScrollTo {
             tab,
-            selector,
+            target,
+            action,
+        } => {
+            let args = action_args(
+                &tab,
+                target_json(&target.reference, &target.selector, None),
+                &action,
+                json!({}),
+            );
+            let data = transport.request(methods::browser::SCROLL_TO, Some(args))?;
+            print_action(data, action.json)?;
+        }
+        BrowserCommand::Text {
+            tab,
+            target,
+            max_chars,
+            all,
             json,
         } => {
-            let data = transport.request(
-                methods::browser::SCROLL_TO,
-                Some(json!({
-                    "tab_id": tab,
-                    "selector": selector,
-                })),
-            )?;
-            print_optional_json(data, json)?;
+            let mut args = match target_json(&target.reference, &target.selector, None) {
+                Value::Object(object) => object,
+                _ => serde_json::Map::new(),
+            };
+            args.insert("tab_id".to_string(), json!(tab));
+            args.insert("all".to_string(), json!(all));
+            if let Some(max_chars) = max_chars {
+                args.insert("max_chars".to_string(), json!(max_chars));
+            }
+            let data = transport
+                .request(methods::browser::TEXT, Some(Value::Object(args)))?
+                .unwrap_or(Value::Null);
+            if json {
+                print_json(&data, false)?;
+            } else {
+                println!(
+                    "{}",
+                    terminal_safe(data.get("markdown").and_then(Value::as_str).unwrap_or(""))
+                );
+            }
+        }
+        BrowserCommand::Console {
+            tab,
+            since,
+            levels,
+            clear,
+            json,
+        } => {
+            if clear {
+                let data = transport.request(
+                    methods::browser::CONSOLE_CLEAR,
+                    Some(json!({ "tab_id": tab })),
+                )?;
+                print_optional_json(data, json)?;
+            } else {
+                let data = transport
+                    .request(
+                        methods::browser::CONSOLE_LIST,
+                        Some(json!({ "tab_id": tab, "since": since, "levels": levels })),
+                    )?
+                    .unwrap_or(Value::Null);
+                if json {
+                    print_json(&data, false)?;
+                } else {
+                    print_console(&data);
+                }
+            }
         }
         BrowserCommand::Cookies(options) => execute_cookies(transport, options)?,
         BrowserCommand::Network(options) => execute_network(context, options)?,
-        BrowserCommand::Screenshot { tab, output, json } => {
-            execute_screenshot(transport, tab, output, json)?
+        BrowserCommand::Screenshot {
+            tab,
+            target,
+            full_page,
+            annotate,
+            output,
+            json,
+        } => {
+            let mut args = match target_json(&target.reference, &target.selector, None) {
+                Value::Object(object) => object,
+                _ => serde_json::Map::new(),
+            };
+            args.insert("tab_id".to_string(), json!(tab));
+            args.insert("full_page".to_string(), json!(full_page));
+            args.insert("annotate".to_string(), json!(annotate));
+            execute_screenshot(transport, tab, Value::Object(args), output, json)?
         }
     }
 
@@ -1072,11 +1551,12 @@ fn network_body_label(body: Option<&Value>) -> String {
 fn execute_screenshot(
     transport: &dyn Transport,
     tab: String,
+    args: Value,
     output: Option<String>,
     json: bool,
 ) -> Result<()> {
     let data = transport
-        .request(methods::browser::SCREENSHOT, Some(json!({ "tab_id": tab })))?
+        .request(methods::browser::SCREENSHOT, Some(args))?
         .unwrap_or(Value::Null);
 
     if json {
@@ -1091,7 +1571,67 @@ fn execute_screenshot(
         .to_string();
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
     let tab = output::safe_component(&resolved_tab);
-    output::write_png(output, format!("{tab}-{ts}.png"), &bytes)
+    let to_stdout = matches!(output.as_deref(), Some("-"));
+    output::write_png(output, format!("{tab}-{ts}.png"), &bytes)?;
+    // The marks go to stderr when the PNG itself is on stdout.
+    if let Some(marks) = data.get("marks").and_then(Value::as_array) {
+        for mark in marks {
+            let line = format!(
+                "{} {}{} @ {:.0},{:.0} {:.0}x{:.0}",
+                mark.get("ref").and_then(Value::as_str).unwrap_or(""),
+                mark.get("role").and_then(Value::as_str).unwrap_or(""),
+                mark.get("name")
+                    .and_then(Value::as_str)
+                    .map(|name| format!(" {}", serde_json::to_string(name).unwrap_or_default()))
+                    .unwrap_or_default(),
+                mark["box"]["x"].as_f64().unwrap_or(0.0),
+                mark["box"]["y"].as_f64().unwrap_or(0.0),
+                mark["box"]["width"].as_f64().unwrap_or(0.0),
+                mark["box"]["height"].as_f64().unwrap_or(0.0),
+            );
+            if to_stdout {
+                eprintln!("{line}");
+            } else {
+                println!("{line}");
+            }
+        }
+    }
+    if data.get("clipped").and_then(Value::as_bool) == Some(true) {
+        eprintln!("element is larger than the viewport; the capture is cut at its edges");
+    }
+    Ok(())
+}
+
+/// Page text without terminal control sequences: a page must not be able to
+/// drive the terminal it is printed to.
+fn terminal_safe(text: &str) -> String {
+    text.chars()
+        .filter(|c| !c.is_control() || matches!(c, '\n' | '\t'))
+        .collect()
+}
+
+fn print_console(data: &Value) {
+    let Some(entries) = data.get("entries").and_then(Value::as_array) else {
+        return;
+    };
+    if entries.is_empty() {
+        println!("No console entries.");
+    }
+    for entry in entries {
+        println!(
+            "[{}] {}: {}",
+            entry.get("seq").and_then(Value::as_u64).unwrap_or(0),
+            entry.get("level").and_then(Value::as_str).unwrap_or(""),
+            terminal_safe(entry.get("text").and_then(Value::as_str).unwrap_or("")),
+        );
+    }
+    if let Some(dropped) = data
+        .get("dropped")
+        .and_then(Value::as_u64)
+        .filter(|d| *d > 0)
+    {
+        println!("({dropped} older entries were dropped)");
+    }
 }
 
 fn execute_cookies(transport: &dyn Transport, options: CookiesOptions) -> Result<()> {
@@ -1582,6 +2122,14 @@ mod tests {
         assert!(network_capture_may_be_supported("lxapp"));
         assert!(network_capture_may_be_supported("runner"));
         assert!(!network_capture_may_be_supported("macos"));
+    }
+
+    #[test]
+    fn page_text_cannot_drive_the_terminal() {
+        assert_eq!(
+            crate::browser::terminal_safe("a\u{1b}[2Jb\nc\td\r"),
+            "a[2Jb\nc\td"
+        );
     }
 
     #[test]

@@ -1,5 +1,5 @@
 #[cfg(feature = "browser")]
-use crate::util::{png_response, run_async};
+use crate::util::run_async;
 #[cfg(feature = "browser")]
 use lingxia_control_protocol::methods;
 #[cfg(feature = "browser")]
@@ -28,6 +28,21 @@ pub(crate) fn handle_browser_command(
     }
 
     Some(handle_browser_command_impl(handler, args))
+}
+
+/// Agent commands, whose failures carry a typed kind and details.
+pub(crate) fn handle_typed_browser_command(
+    handler: &str,
+    args: Option<Value>,
+) -> Option<Result<Option<Value>, lingxia_control_protocol::ControlError>> {
+    #[cfg(feature = "browser")]
+    {
+        if crate::browser_agent::is_agent_handler(handler) {
+            return Some(crate::browser_agent::handle(handler, args));
+        }
+    }
+    let _ = (handler, args);
+    None
 }
 
 fn is_browser_handler(handler: &str) -> bool {
@@ -223,77 +238,11 @@ fn handle_browser_command_impl(
                 .and_then(|result| serde_json::to_value(result).map_err(|err| err.to_string()))
                 .map(Some)
         }
-        methods::browser::CLICK => {
-            let args: SelectorArgs = parse_args(handler, args)?;
-            let tab_id = resolve_tab_id(&args.tab_id)?;
-            let timeout = wait_timeout(args.timeout_ms);
-            run_async(async move {
-                let initial_url = if args.wait_navigation {
-                    Some(
-                        lingxia_browser::current_url(&tab_id)
-                            .await
-                            .map_err(|err| err.to_string())?,
-                    )
-                } else {
-                    None
-                };
-                lingxia_browser::click(&tab_id, &args.selector)
-                    .await
-                    .map_err(|err| err.to_string())?;
-                let result =
-                    wait_after_action(&tab_id, initial_url, args.complete, timeout).await?;
-                Ok::<Option<Value>, String>(Some(browser_action_response("click", &tab_id, result)))
-            })
-        }
-        methods::browser::TYPE => {
-            let args: TypeArgs = parse_args(handler, args)?;
-            let tab_id = resolve_tab_id(&args.tab_id)?;
-            run_async(lingxia_browser::type_text(
-                &tab_id,
-                &args.selector,
-                &args.text,
-            ))?;
-            Ok(Some(browser_action_response("type", &tab_id, None)))
-        }
-        methods::browser::FILL => {
-            let args: TypeArgs = parse_args(handler, args)?;
-            let tab_id = resolve_tab_id(&args.tab_id)?;
-            run_async(lingxia_browser::fill(&tab_id, &args.selector, &args.text))?;
-            Ok(Some(browser_action_response("fill", &tab_id, None)))
-        }
-        methods::browser::PRESS => {
-            let args: PressArgs = parse_args(handler, args)?;
-            let tab_id = resolve_tab_id(&args.tab_id)?;
-            let timeout = wait_timeout(args.timeout_ms);
-            run_async(async move {
-                let initial_url = if args.wait_navigation {
-                    Some(
-                        lingxia_browser::current_url(&tab_id)
-                            .await
-                            .map_err(|err| err.to_string())?,
-                    )
-                } else {
-                    None
-                };
-                lingxia_browser::press(&tab_id, &args.key)
-                    .await
-                    .map_err(|err| err.to_string())?;
-                let result =
-                    wait_after_action(&tab_id, initial_url, args.complete, timeout).await?;
-                Ok::<Option<Value>, String>(Some(browser_action_response("press", &tab_id, result)))
-            })
-        }
         methods::browser::SCROLL => {
             let args: ScrollArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             run_async(lingxia_browser::scroll(&tab_id, args.dx, args.dy))?;
             Ok(Some(browser_action_response("scroll", &tab_id, None)))
-        }
-        methods::browser::SCROLL_TO => {
-            let args: SelectorArgs = parse_args(handler, args)?;
-            let tab_id = resolve_tab_id(&args.tab_id)?;
-            run_async(lingxia_browser::scroll_to(&tab_id, &args.selector))?;
-            Ok(Some(browser_action_response("scroll_to", &tab_id, None)))
         }
         methods::browser::COOKIES_LIST => {
             let args: CookieListArgs = parse_args(handler, args)?;
@@ -336,17 +285,6 @@ fn handle_browser_command_impl(
                 "cookies_clear",
                 &tab_id,
                 None,
-            )))
-        }
-        methods::browser::SCREENSHOT => {
-            let args: TabArgs = parse_args(handler, args)?;
-            let tab_id = resolve_tab_id(&args.tab_id)?;
-            let bytes = run_async(lingxia_browser::take_screenshot(&tab_id))?;
-            Ok(Some(png_response(
-                "browser",
-                "css_pixels",
-                &bytes,
-                [("tab_id", json!(tab_id))],
             )))
         }
         // Network capture is WebView2/CDP-only; on other runners these fall
@@ -486,7 +424,7 @@ fn reload_live_browser_tabs() -> Result<(), String> {
 }
 
 #[cfg(feature = "browser")]
-fn resolve_tab_id(raw: &str) -> Result<String, String> {
+pub(crate) fn resolve_tab_id(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim();
     if trimmed.eq_ignore_ascii_case("current") {
         return lingxia_browser::automation_current_tab()
@@ -503,31 +441,6 @@ where
 {
     serde_json::from_value(args.unwrap_or_else(|| json!({})))
         .map_err(|err| format!("invalid args for {}: {}", handler, err))
-}
-
-#[cfg(feature = "browser")]
-async fn wait_after_action(
-    tab_id: &str,
-    initial_url: Option<Option<String>>,
-    complete: bool,
-    timeout: Duration,
-) -> Result<Option<Value>, String> {
-    let Some(initial_url) = initial_url else {
-        return Ok(None);
-    };
-    let result = lingxia_browser::wait(
-        tab_id,
-        lingxia_browser::BrowserWaitCondition::Navigation {
-            initial_url,
-            wait_until_complete: complete,
-        },
-        timeout,
-    )
-    .await
-    .map_err(|err| err.to_string())?;
-    serde_json::to_value(result)
-        .map(Some)
-        .map_err(|err| err.to_string())
 }
 
 #[cfg(all(feature = "browser", target_os = "macos"))]
@@ -682,33 +595,6 @@ struct SelectorArgs {
     max_text: Option<usize>,
     #[serde(default)]
     full: bool,
-    #[serde(default)]
-    wait_navigation: bool,
-    #[serde(default)]
-    complete: bool,
-    #[serde(default)]
-    timeout_ms: Option<u64>,
-}
-
-#[cfg(feature = "browser")]
-#[derive(Deserialize)]
-struct TypeArgs {
-    tab_id: String,
-    selector: String,
-    text: String,
-}
-
-#[cfg(feature = "browser")]
-#[derive(Deserialize)]
-struct PressArgs {
-    tab_id: String,
-    key: String,
-    #[serde(default)]
-    wait_navigation: bool,
-    #[serde(default)]
-    complete: bool,
-    #[serde(default)]
-    timeout_ms: Option<u64>,
 }
 
 #[cfg(feature = "browser")]

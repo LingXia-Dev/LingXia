@@ -247,6 +247,10 @@ pub enum BrowserAutomationError {
     NativeInput(String),
     #[error("timed out after {timeout_ms}ms waiting for {condition}")]
     WaitTimeout { condition: String, timeout_ms: u64 },
+    /// A typed page-action failure (`not_found`, `stale_ref`, `covered`, …)
+    /// whose details callers branch on.
+    #[error("{0}")]
+    Action(crate::agent::BrowserActionError),
 }
 
 fn default_true() -> bool {

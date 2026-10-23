@@ -19,6 +19,8 @@ mod bridge;
 #[cfg(all(feature = "dev-bridge", feature = "test-runtime"))]
 mod bridge_upstream;
 mod browser;
+#[cfg(feature = "browser")]
+mod browser_agent;
 #[cfg(feature = "computer-use")]
 mod desktop;
 mod devtool;
@@ -69,6 +71,8 @@ pub fn dispatch(request: ControlRequest) -> ControlResponse {
 
     if let Some(result) = app::handle_app_command(&method, params.clone()) {
         command_result(id, result)
+    } else if let Some(result) = browser::handle_typed_browser_command(&method, params.clone()) {
+        typed_result(id, result)
     } else if let Some(result) = browser::handle_browser_command(&method, params.clone()) {
         command_result(id, result)
     } else if let Some(result) = lxapp_nav::handle_lxapp_nav_command(&method, params.clone()) {
@@ -108,6 +112,20 @@ fn command_result(
             let (code, message) = tagged_handler_error(&error);
             ControlResponse::error(command_id, code, message)
         }
+    }
+}
+
+fn typed_result(
+    command_id: String,
+    result: Result<Option<serde_json::Value>, ControlError>,
+) -> ControlResponse {
+    match result {
+        Ok(data) => ControlResponse::success(command_id, data),
+        Err(error) => ControlResponse {
+            id: command_id,
+            result: None,
+            error: Some(error),
+        },
     }
 }
 
