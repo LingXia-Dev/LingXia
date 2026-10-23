@@ -8,8 +8,10 @@
 // Start it before `lxdev test` and pass the base URL through:
 //   node tests/harness/http-fixture.mjs --port 0 --print-base
 //   lxdev test tests/ --arg httpBase=http://127.0.0.1:<port>
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 
@@ -67,7 +69,18 @@ function parseMultipart(buffer, contentType) {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export function createFixtureServer() {
-  return createServer(async (request, response) => {
+  // Host files for `t.automation.browser.setInputFiles`, which takes
+  // absolute paths the spec runtime cannot create itself.
+  let uploadDir;
+  const uploadFiles = () => {
+    uploadDir ??= mkdtempSync(join(tmpdir(), 'lx-browser-files-'));
+    const text = join(uploadDir, 'a.txt');
+    const png = join(uploadDir, 'b.png');
+    writeFileSync(text, 'hello');
+    writeFileSync(png, Buffer.from('89504e470d0a1a0a', 'hex'));
+    return [text, png];
+  };
+  const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1');
     const route = url.pathname;
     const json = (status, value) => {
@@ -275,6 +288,30 @@ export function createFixtureServer() {
         return;
       }
 
+      if (route === '/browser/files') {
+        json(200, { files: uploadFiles() });
+        return;
+      }
+
+      // Pages for the browser page-driver specs. `localhost` and `127.0.0.1`
+      // are different origins, which gives form.html a cross-origin iframe.
+      const browserPage = /^\/browser\/([a-z0-9-]+\.html)$/i.exec(route)?.[1];
+      if (browserPage) {
+        let html;
+        try {
+          html = readFileSync(new URL(`../fixtures/browser/${browserPage}`, import.meta.url));
+        } catch {
+          json(404, { error: `no browser fixture ${browserPage}` });
+          return;
+        }
+        response.writeHead(200, {
+          'content-type': 'text/html; charset=utf-8',
+          'content-length': html.length,
+        });
+        response.end(html);
+        return;
+      }
+
       if (route === '/health') {
         json(200, { ok: true });
         return;
@@ -292,6 +329,10 @@ export function createFixtureServer() {
       json(500, { error: String(error) });
     }
   });
+  server.on('close', () => {
+    if (uploadDir) rmSync(uploadDir, { recursive: true, force: true });
+  });
+  return server;
 }
 
 // argv[1] is a raw path; import.meta.url is percent-encoded.

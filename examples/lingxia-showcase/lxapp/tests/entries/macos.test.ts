@@ -14,4 +14,5 @@ import '../platform/desktop/guest-attention.test.js';
 import '../platform/desktop/terminal.test.js';
 import '../platform/desktop/clipboard-interop.test.js';
 import '../platform/macos/location-permission.test.js';
+import '../platform/desktop/browser-page.test.js';
 

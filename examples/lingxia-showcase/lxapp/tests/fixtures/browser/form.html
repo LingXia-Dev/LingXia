@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agent conformance</title>
+<title>Browser page fixture</title>
 <style>
   body { font: 15px/1.4 -apple-system, "Segoe UI", sans-serif; margin: 0; }
   header, footer { background: #eef; padding: 8px 16px; }
@@ -22,7 +22,7 @@
 <body>
 <header><nav aria-label="Primary"><a href="nav.html">Next page</a> <a href="#tall">Bottom</a></nav></header>
 <main>
-  <h1>Agent conformance</h1>
+  <h1>Browser page fixture</h1>
 
   <form id="profile" aria-label="Profile">
     <label>Full name <input id="name" name="name" required></label>
@@ -133,7 +133,7 @@
 
   // The other loopback name is another origin.
   const otherHost = location.hostname === 'localhost' ? '127.0.0.1' : 'localhost';
-  $('cross').src = `${location.protocol}//${otherHost}:${location.port}/nav.html`;
+  $('cross').src = `${location.protocol}//${otherHost}:${location.port}${location.pathname.replace(/[^/]*$/, 'nav.html')}`;
   setTimeout(() => { $('late-enabled').disabled = false; }, 700);
   setTimeout(() => {
     const b = document.createElement('button');

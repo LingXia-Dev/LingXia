@@ -13,4 +13,5 @@ import '../platform/desktop/guest-attention.test.js';
 import '../platform/desktop/terminal.test.js';
 import '../platform/desktop/clipboard-interop.test.js';
 import '../platform/windows/navigation-overlay.test.js';
+import '../platform/desktop/browser-page.test.js';
 
