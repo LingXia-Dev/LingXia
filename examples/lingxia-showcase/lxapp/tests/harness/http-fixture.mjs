@@ -297,6 +297,8 @@ export function createFixtureServer() {
       // are different origins, which gives form.html a cross-origin iframe.
       const browserPage = /^\/browser\/([a-z0-9-]+\.html)$/i.exec(route)?.[1];
       if (browserPage) {
+        // `?delayMs=` holds the response, so the new document commits late.
+        await sleep(size(url, 'delayMs', 0));
         let html;
         try {
           html = readFileSync(new URL(`../fixtures/browser/${browserPage}`, import.meta.url));

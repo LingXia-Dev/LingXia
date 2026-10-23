@@ -396,6 +396,28 @@ spec('a navigating action reports the page it led to', {
   expect(r.snapshot?.text).toContain('heading "Second page"');
 });
 
+spec('a wait that sees the new URL means the new document', {
+  id: 'BROWSER-PAGE-022',
+  covers: ['BrowserDriver.wait', 'BrowserDriver.snapshot'],
+}, async (t) => {
+  const browser = t.automation.browser;
+  // The WebView reports the target URL as soon as the navigation starts; the
+  // late response keeps the previous document in place meanwhile.
+  const { tab } = await browser.open({ url: `${FORM_URL}?delayMs=800` });
+  t.defer(() => browser.close({ tab }));
+  await browser.wait({ tab, urlContains: 'form.html' });
+  expect(await snapshotText(browser, tab)).toContain('heading "Browser page fixture"');
+
+  await browser.eval({ tab, js: `location.href = ${JSON.stringify(`${FORM_URL}?delayMs=800&again`)}` });
+  await browser.wait({ tab, urlContains: 'again' });
+  expect(await browser.eval<string>({ tab, js: 'document.readyState' })).not.toBe('loading');
+
+  await browser.eval({ tab, js: `location.href = ${JSON.stringify(`${FORM_URL}?delayMs=800&loaded`)}` });
+  await new Promise<void>((resolve) => setTimeout(() => resolve(), 100));
+  await browser.wait({ tab, loaded: true });
+  expect(await browser.eval<string>({ tab, js: 'location.search' })).toContain('loaded');
+});
+
 spec('text returns readable Markdown', {
   id: 'BROWSER-PAGE-019',
   covers: ['BrowserDriver.text'],
