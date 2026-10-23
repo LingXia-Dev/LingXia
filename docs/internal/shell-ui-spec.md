@@ -683,13 +683,13 @@ Tooltip and accessibility:
 
 - Tooltip text is `label`, or `label`, the localized shell separator
   (`sidebar.action_value_separator`), and `value`, so the rail and a truncated
-  cell still carry the full value.
+  cell still carry the full value. A value equal to its label is shown once.
 - Expanded footer tooltips open above the entry, horizontally centered on it
   and kept inside the window, after the system tooltip delay. Below would
   leave the window; beside the column would detach the label from an icon
   mid-row. The rail keeps its side tooltip.
 - macOS sets `accessibilityLabel` to `label` and `accessibilityValue` to
-  `value`. Windows custom chrome has no UIA tree yet; the tooltip carries both.
+  `value` (none when it equals `label`). Windows custom chrome has no UIA tree yet; the tooltip carries both.
 - The host logs a warning when two icon-only footer entries share an icon:
   they are indistinguishable on screen.
 

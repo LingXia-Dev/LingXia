@@ -266,7 +266,7 @@ impl WindowsShellFooterActionLayout {
     /// `label`, or `label` and `value` joined, so a truncated or icon-only
     /// cell still carries the full value.
     pub fn tooltip_text(&self) -> String {
-        match self.value.as_deref() {
+        match self.value.as_deref().filter(|value| *value != self.label) {
             Some(value) => format!(
                 "{}{}{value}",
                 self.label,

@@ -443,6 +443,11 @@ mod tests {
         assert_eq!(item("agent").tooltip_text(), "agent");
         let joined = valued("brand", "Acme").tooltip_text();
         assert!(joined.starts_with("brand") && joined.ends_with("Acme"));
+        let brand = WindowsShellFooterActionLayout {
+            label: "Tamkoko".to_string(),
+            ..valued("brand", "Tamkoko")
+        };
+        assert_eq!(brand.tooltip_text(), "Tamkoko");
     }
 
     #[test]
