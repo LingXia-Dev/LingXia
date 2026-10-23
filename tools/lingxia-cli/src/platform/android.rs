@@ -1386,8 +1386,8 @@ fn adb_uninstall_package(device_id: Option<&str>, package_id: &str) -> Result<()
     Err(anyhow!("adb uninstall failed: {}", output.trim()))
 }
 
-const APPLINKS_BEGIN: &str = "            <!-- LingXia AppLinks BEGIN -->";
-const APPLINKS_END: &str = "            <!-- LingXia AppLinks END -->";
+const APPLINKS_BEGIN: &str = "<!-- LingXia AppLinks BEGIN -->";
+const APPLINKS_END: &str = "<!-- LingXia AppLinks END -->";
 
 fn sync_android_app_links(android_root: &Path, hosts: &[String]) -> Result<bool> {
     let manifest_path = android_root.join("app/src/main/AndroidManifest.xml");
@@ -1396,14 +1396,7 @@ fn sync_android_app_links(android_root: &Path, hosts: &[String]) -> Result<bool>
     }
     let content = fs::read_to_string(&manifest_path)
         .with_context(|| format!("Failed to read {}", manifest_path.display()))?;
-    let block = render_android_applinks_block(hosts);
-    let updated = if content.contains(APPLINKS_BEGIN) && content.contains(APPLINKS_END) {
-        replace_managed_applink_block(&content, &block)?
-    } else if block.is_empty() {
-        content.clone()
-    } else {
-        insert_applink_block(&content, &block)?
-    };
+    let updated = apply_applinks(&content, hosts)?;
     if updated == content {
         return Ok(false);
     }
@@ -1412,57 +1405,89 @@ fn sync_android_app_links(android_root: &Path, hosts: &[String]) -> Result<bool>
     Ok(true)
 }
 
-fn render_android_applinks_block(hosts: &[String]) -> String {
+/// The manifest with the managed block for `hosts` (none when empty) as the
+/// launcher activity's last children, indented one level inside it, and its
+/// `</activity>` back at the activity's own indentation.
+fn apply_applinks(content: &str, hosts: &[String]) -> Result<String> {
+    let mut content = remove_applink_block(content);
     if hosts.is_empty() {
-        return String::new();
+        return Ok(content);
     }
+    let (open, close) = find_launcher_activity(&content).ok_or_else(|| {
+        anyhow!("AndroidManifest.xml missing launcher activity for AppLinks insertion")
+    })?;
+    let indent = line_indent(&content, open).to_string();
+    let close_line = line_start(&content, close);
+    let block = render_android_applinks_block(hosts, &format!("{indent}    "));
+    // Text before `</activity>` on its own line stays; only a bare indent is
+    // replaced with the activity's.
+    let (insert_at, keep) = if content[close_line..close].trim().is_empty() {
+        (close_line, String::new())
+    } else {
+        (close, "\n".to_string())
+    };
+    content = format!(
+        "{}{keep}{block}{indent}{}",
+        &content[..insert_at],
+        &content[close..]
+    );
+    Ok(content)
+}
+
+fn render_android_applinks_block(hosts: &[String], indent: &str) -> String {
     let filters = hosts
         .iter()
         .map(|host| {
             format!(
-                r#"            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="{host}" />
-            </intent-filter>"#
+                "<intent-filter android:autoVerify=\"true\">
+    <action android:name=\"android.intent.action.VIEW\" />
+    <category android:name=\"android.intent.category.DEFAULT\" />
+    <category android:name=\"android.intent.category.BROWSABLE\" />
+    <data android:scheme=\"https\" android:host=\"{host}\" />
+</intent-filter>"
             )
         })
         .collect::<Vec<_>>()
         .join("\n\n");
     format!("{APPLINKS_BEGIN}\n{filters}\n{APPLINKS_END}")
+        .lines()
+        .map(|line| {
+            if line.is_empty() {
+                "\n".to_string()
+            } else {
+                format!("{indent}{line}\n")
+            }
+        })
+        .collect()
 }
 
-fn replace_managed_applink_block(content: &str, block: &str) -> Result<String> {
-    let start = content
-        .find(APPLINKS_BEGIN)
-        .ok_or_else(|| anyhow!("AndroidManifest.xml AppLinks begin marker not found"))?;
-    let end = content
-        .find(APPLINKS_END)
-        .ok_or_else(|| anyhow!("AndroidManifest.xml AppLinks end marker not found"))?
-        + APPLINKS_END.len();
-    let mut updated = String::new();
-    updated.push_str(&content[..start]);
-    if !block.is_empty() {
-        updated.push_str(block);
-    }
-    updated.push_str(&content[end..]);
-    Ok(updated)
+/// The manifest without the managed block's lines.
+fn remove_applink_block(content: &str) -> String {
+    let (Some(begin), Some(end)) = (content.find(APPLINKS_BEGIN), content.find(APPLINKS_END))
+    else {
+        return content.to_string();
+    };
+    let from = line_start(content, begin);
+    let end = end + APPLINKS_END.len();
+    let to = content[end..]
+        .find('\n')
+        .map_or(content.len(), |n| end + n + 1);
+    format!("{}{}", &content[..from], &content[to..])
 }
 
-fn insert_applink_block(content: &str, block: &str) -> Result<String> {
-    let insert_at = find_launcher_activity_end(content).ok_or_else(|| {
-        anyhow!("AndroidManifest.xml missing launcher activity for AppLinks insertion")
-    })?;
-    let mut updated = String::new();
-    updated.push_str(&content[..insert_at]);
-    updated.push_str(block);
-    updated.push('\n');
-    updated.push_str(&content[insert_at..]);
-    Ok(updated)
+fn line_start(content: &str, at: usize) -> usize {
+    content[..at].rfind('\n').map_or(0, |n| n + 1)
 }
 
-fn find_launcher_activity_end(content: &str) -> Option<usize> {
+/// The whitespace a line begins with.
+fn line_indent(content: &str, at: usize) -> &str {
+    let start = line_start(content, at);
+    let line = &content[start..];
+    &line[..line.len() - line.trim_start_matches([' ', '\t']).len()]
+}
+
+/// `<activity` and `</activity>` offsets of the launcher activity.
+fn find_launcher_activity(content: &str) -> Option<(usize, usize)> {
     let mut offset = 0;
     while let Some(relative_start) = content[offset..].find("<activity") {
         let start = offset + relative_start;
@@ -1477,7 +1502,7 @@ fn find_launcher_activity_end(content: &str) -> Option<usize> {
         if block.contains("android.intent.action.MAIN")
             && block.contains("android.intent.category.LAUNCHER")
         {
-            return Some(end);
+            return Some((start, end));
         }
         offset = end + "</activity>".len();
     }
@@ -1530,10 +1555,43 @@ fn resolve_android_assets_dir(project_root: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    use super::apply_applinks;
     use super::{
         android_env_adaptive_icon_xml, android_env_icon_foreground_xml,
         extract_adaptive_icon_background, extract_adaptive_icon_foreground,
     };
+
+    const MANIFEST: &str = "<manifest>\n    <application>\n        <activity\n            android:name=\".MainActivity\">\n            <intent-filter>\n                <action android:name=\"android.intent.action.MAIN\" />\n                <category android:name=\"android.intent.category.LAUNCHER\" />\n            </intent-filter>\n        </activity>\n    </application>\n</manifest>\n";
+
+    #[test]
+    fn applinks_sit_one_level_inside_the_launcher_activity() {
+        let hosts = vec!["applink.example.com".to_string()];
+        let out = apply_applinks(MANIFEST, &hosts).unwrap();
+        assert!(out.contains(
+            "            </intent-filter>\n            <!-- LingXia AppLinks BEGIN -->\n            <intent-filter android:autoVerify=\"true\">\n                <action android:name=\"android.intent.action.VIEW\" />"
+        ), "{out}");
+        assert!(
+            out.contains("            <!-- LingXia AppLinks END -->\n        </activity>\n"),
+            "{out}"
+        );
+        assert_eq!(apply_applinks(&out, &hosts).unwrap(), out);
+        assert_eq!(apply_applinks(&out, &[]).unwrap(), MANIFEST);
+    }
+
+    #[test]
+    fn a_misindented_block_is_repaired() {
+        let hosts = vec!["applink.example.com".to_string()];
+        let good = apply_applinks(MANIFEST, &hosts).unwrap();
+        // What the CLI used to write: the marker on top of the closing tag's
+        // indent, and `</activity>` at column 0.
+        let broken = good
+            .replace(
+                "            <!-- LingXia AppLinks BEGIN -->",
+                "                    <!-- LingXia AppLinks BEGIN -->",
+            )
+            .replace("END -->\n        </activity>", "END -->\n</activity>");
+        assert_eq!(apply_applinks(&broken, &hosts).unwrap(), good);
+    }
 
     #[test]
     fn env_overlay_extracts_adaptive_icon_foreground() {
