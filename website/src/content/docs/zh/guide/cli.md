@@ -10,7 +10,7 @@ LingXia 有两条命令。先记住分工；具体 flags 以 `--help` 为准。
 | 命令 | 负责 | 常用子命令 |
 |---|---|---|
 | `lingxia` | 项目生命周期 | `new`、`doctor`、`dev`、`build`、`package`、`publish`、`upgrade` |
-| `lxdev` | 已经运行的 `lingxia dev` 会话 | `lxapp`、`app`、`desktop`、`browser`、`test`、`logs`、`runner`、`session` |
+| `lxdev` | 已经运行的 `lingxia dev` 会话 | `lxapp`、`host`、`browser`、`desktop`、`test`、`logs`、`mock`、`network`、`runner`、`session` |
 
 `lingxia` 负责脚手架、构建、安装或启动，并维持经过认证的开发 WebSocket。`lxdev` 从不启动会话。它连上、执行一条命令、打印结果然后退出（`logs -f` 除外）。
 

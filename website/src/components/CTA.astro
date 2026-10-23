@@ -1,7 +1,7 @@
 ---
 import CopyCommand from './CopyCommand.astro';
 import Icon from './Icon.astro';
-import { INSTALL_CMD, GITHUB_URL, guideUrl } from '~/lib/url';
+import { INSTALL_CMD, INSTALL_CMD_WINDOWS, GITHUB_URL, guideUrl } from '~/lib/url';
 import type { Lang, T } from '~/i18n/ui';
 
 interface Props {
@@ -44,6 +44,7 @@ const { t, lang } = Astro.props;
 
         <div class="mx-auto mt-8 max-w-md">
           <CopyCommand command={INSTALL_CMD} copyLabel={t.hero.copy} copiedLabel={t.hero.copied} />
+          <CopyCommand command={INSTALL_CMD_WINDOWS} prompt="PS>" class="mt-2" copyLabel={t.hero.copy} copiedLabel={t.hero.copied} />
         </div>
 
         <div class="mt-7 flex flex-wrap items-center justify-center gap-3">

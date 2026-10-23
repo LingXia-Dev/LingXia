@@ -1,10 +1,10 @@
 // Build-time Logic JS API reference generator.
 //
-// Reads the pinned `@lingxia/types` declarations and emits one Starlight page
-// per capability group into src/content/docs/reference/api/. Run before
+// Reads `packages/lingxia-types` in this repository and emits one Starlight
+// page per capability group into src/content/docs/reference/api/. Run before
 // `astro build`/`astro dev` (wired in package.json). Output is a build artifact
-// (gitignored) so the reference always tracks the published package version —
-// never hand-edited.
+// (gitignored) so the reference always tracks the repository — never
+// hand-edited.
 //
 // GROUPS is the only curated part: it decides which capability a member belongs
 // to. A member the runtime adds or drops fails this script instead of silently
@@ -13,29 +13,19 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { Project } from 'ts-morph';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..');
-const require = createRequire(import.meta.url);
 
 function resolveTypesPackage() {
   const sibling = join(projectRoot, '../packages/lingxia-types');
-  const siblingLogic = join(sibling, 'src/generated/logic.ts');
-  const siblingPkg = join(sibling, 'package.json');
-  if (existsSync(siblingLogic) && existsSync(siblingPkg)) {
-    return {
-      entry: siblingLogic,
-      version: JSON.parse(readFileSync(siblingPkg, 'utf8')).version,
-    };
+  const entry = join(sibling, 'src/generated/logic.ts');
+  const pkg = join(sibling, 'package.json');
+  if (!existsSync(entry) || !existsSync(pkg)) {
+    throw new Error(`${entry} not found; build the website from the LingXia repository.`);
   }
-  const typesEntry = require.resolve('@lingxia/types');
-  return {
-    entry: typesEntry.replace(/\.js$/, '.d.ts'),
-    version: JSON.parse(readFileSync(join(dirname(typesEntry), '../package.json'), 'utf8'))
-      .version,
-  };
+  return { entry, version: JSON.parse(readFileSync(pkg, 'utf8')).version };
 }
 
 const { entry: typesDts, version: typesVersion } = resolveTypesPackage();
@@ -193,13 +183,16 @@ if (ungrouped.length || missing.length) {
   throw new Error(lines.join('\n'));
 }
 
-function frontmatter(title, order, description) {
+function frontmatter(title, order, description, label) {
   return [
     '---',
     `title: ${title}`,
     `description: ${JSON.stringify(description)}`,
     'sidebar:',
     `  order: ${order}`,
+    ...(label ? [`  label: ${label}`] : []),
+    // Generated, gitignored output has no source file to edit.
+    'editUrl: false',
     '---',
     '',
   ].join('\n');
@@ -300,13 +293,14 @@ let index = frontmatter(
   'Logic JS API',
   0,
   `The lx.* surface published by @lingxia/types ${typesVersion}, grouped by capability.`,
+  'Overview',
 );
-index += `Everything an lxapp's Logic context can call on the global \`lx\`, grouped by capability. Generated from \`@lingxia/types\` **${typesVersion}** — the version a project on the current CLI installs.\n\n`;
+index += `Everything an lxapp's Logic context can call on the global \`lx\`, grouped by capability. Generated from \`@lingxia/types\` **${typesVersion}** in this repository.\n\n`;
 index += `| Capability | What it covers |\n| --- | --- |\n`;
 for (const group of written) {
   index += `| [${group.title}](./${group.slug}/) | ${group.summary} |\n`;
 }
-index += `\n:::note\nSignatures are reproduced from the published declarations; option and result shapes are types in the same package. In an editor, type \`lx.\` and hover a member to read the same information against the exact version your project installs.\n:::\n`;
+index += `\n:::note\nSignatures are reproduced from the declarations; option and result shapes are types in the same package. In an editor, type \`lx.\` and hover a member to read the same information against the exact version your project installs.\n:::\n`;
 index += `\nThe \`Page({})\` and \`App({})\` contracts, error codes, and handle types ship in the same package — see [About the Logic JS API](../logic-api/).\n`;
 writeFileSync(join(outDir, 'index.md'), index, 'utf8');
 

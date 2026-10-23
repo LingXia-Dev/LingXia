@@ -12,10 +12,10 @@ LingXia 的测试跑在**真正运行的应用上**，而不是模拟环境里�
 ## 安装
 
 ```bash
-npm install --save-dev @lingxia/test
+npm install --save-dev @lingxia/test@<lingxia-version>
 ```
 
-保持它与 CLI 同版本。两者协议共享，版本漂移时 `lxdev` 会告警。
+`lingxia new` 已经添加了它。保持它与 CLI 在同一版本线：两者共享协议，跨版本线时 `lxdev test` 会拒绝运行。可用 `lingxia doctor --project` 检查。
 
 ## 写一个用例
 

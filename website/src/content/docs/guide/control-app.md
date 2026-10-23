@@ -31,7 +31,7 @@ await control.appearance.setPreference('dark')
 
 These act on the product, not on the calling lxapp:
 
-- `lx.host.exit()`, `lx.host.setBadge()`, `lx.host.cache`, `lx.host.checkUpdate()`, `lx.host.claimCustomUpdate()`, `lx.host.screenshot()`, `lx.host.autostart.*`
+- `lx.host.exit()`, `lx.host.setBadge()`, `lx.host.cache`, `lx.host.checkUpdate()`, `lx.host.claimCustomUpdate()`, `lx.host.screenshot()`, `lx.host.autostart.*`, `lx.host.notification.*`, `lx.host.banner.*`, `lx.tray.*`
 - `lx.host.control.displayLanguage` / `lx.host.control.appearance` (writers)
 - `lx.shell.*` mutations — `sidebarActions`, opening or reconfiguring declared surfaces
 

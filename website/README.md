@@ -17,7 +17,7 @@ npm run dev      # http://localhost:4321/LingXia/
 | `npm run build`   | Build the static site to `dist/`            |
 | `npm run preview` | Serve the production build locally          |
 
-`dev` / `build` run `scripts/gen-components.mjs` and `scripts/gen-logic-api.mjs` first. Those generators prefer the sibling packages in this repository (`packages/lingxia-types`, `packages/lingxia-elements`) so the reference tracks HEAD. If those trees are missing, they fall back to the pinned npm installs in `package.json`.
+`dev` / `build` run `scripts/gen-components.mjs` and `scripts/gen-logic-api.mjs` first. Those generators read `packages/lingxia-types` and `packages/lingxia-elements` in this repository, so the reference tracks HEAD and the site only builds inside the monorepo.
 
 ## Structure
 
@@ -74,9 +74,8 @@ three faces echoing the View / Logic / Bridge layers, with a luminous core (灵)
 | Logo (vector) | `src/components/Logo.astro` | nav / footer mark + wordmark |
 | Favicon | `public/favicon.svg` | browser tab |
 | Social card | `public/og.png` (1200×630) | OpenGraph / Twitter |
-| App icon (source) | `design/app-icon-{dark,light}.svg` | full-bleed 1024² for iOS/macOS/Android/Harmony icon sets |
+| App icon (source) | `design/app-icon/icon-vessel-*.svg` (repo root) | full-bleed 1024² for iOS/macOS/Android/Harmony icon sets |
 | App icon (raster) | `public/app-icon.png` (1024²) | quick reference |
-| Logo design rationale | `design/logo-concepts.html` | full brand-mark write-up (concept, construction, color, usage, explored directions) — `open` it in a browser |
 
 App-icon SVGs are full-bleed squares; each platform applies its own corner mask,
 so keep the cube within the centered safe area (already accounted for).

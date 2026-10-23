@@ -10,7 +10,7 @@ LingXia ships two binaries. Memorize the split; flags belong to `--help`.
 | Binary | Owns | Typical commands |
 |---|---|---|
 | `lingxia` | Project lifecycle | `new`, `doctor`, `dev`, `build`, `package`, `publish`, `upgrade` |
-| `lxdev` | A live `lingxia dev` session | `lxapp`, `app`, `desktop`, `browser`, `test`, `logs`, `runner`, `session` |
+| `lxdev` | A live `lingxia dev` session | `lxapp`, `host`, `browser`, `desktop`, `test`, `logs`, `mock`, `network`, `runner`, `session` |
 
 `lingxia` scaffolds, builds, installs or launches, and keeps the authenticated development websocket alive. `lxdev` never starts a session. It connects, runs one command, prints the result, and exits (`logs -f` is the exception).
 

@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
-    # The site is built and deployed on its own; it links to no workspace code.
+    # The site has its own workflow (website.yml).
     paths-ignore: ['website/**']
   pull_request:
     branches: [main]

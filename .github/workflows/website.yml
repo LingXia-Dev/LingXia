@@ -1,17 +1,17 @@
 name: Website
 
 # The workspace pipeline ignores `website/**`, so the site gets its own check.
-# Building it is the check that matters: the Logic API reference is generated
-# from the pinned `@lingxia/types`, and that generator fails when the published
-# surface no longer matches its capability grouping.
+# Building it is the check that matters: the references are generated from
+# `packages/lingxia-types` and `packages/lingxia-elements`, and the Logic API
+# generator fails when the `lx.*` surface no longer matches its grouping.
 
 on:
   push:
     branches: [main]
-    paths: ['website/**', '.github/workflows/website.yml']
+    paths: ['website/**', 'packages/lingxia-types/**', 'packages/lingxia-elements/**', '.github/workflows/website.yml']
   pull_request:
     branches: [main]
-    paths: ['website/**', '.github/workflows/website.yml']
+    paths: ['website/**', 'packages/lingxia-types/**', 'packages/lingxia-elements/**', '.github/workflows/website.yml']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

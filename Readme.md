@@ -127,4 +127,4 @@ scripts/release/         Release automation
 
 ## License
 
-MIT
+[MIT](LICENSE)

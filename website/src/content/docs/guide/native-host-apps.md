@@ -48,7 +48,7 @@ Most hosts keep `features.appService: true` and embed a normal lxapp with JS Log
 - `features.appService: false` in `lingxia.yaml`
 - `"logic": false` in the home `lxapp.json` — or omit the control lxapp entirely for a desktop `native: terminal|browser` main
 
-That shape uses an HTML-only View (when a control lxapp remains) and Rust for Logic. A logic-enabled lxapp under an appService-disabled host is rejected at startup.
+That shape keeps a View in HTML, React, or Vue (when a control lxapp remains) and moves Logic to Rust. A logic-enabled lxapp under an appService-disabled host is rejected at startup.
 
 ## Add host-specific Rust APIs
 

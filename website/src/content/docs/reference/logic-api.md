@@ -5,9 +5,9 @@ sidebar:
   order: 0
 ---
 
-Yes—the **Logic JS API** is the JavaScript/TypeScript surface available in an lxapp's Logic context. Its main entry point is the global `lx` object. The generated reference also includes the `Page({})` and `App({})` contracts, lifecycle types, errors, handles, options, and results that describe that environment.
+The **Logic JS API** is the JavaScript/TypeScript surface available in an lxapp's Logic context. Its main entry point is the global `lx` object. The generated reference also includes the `Page({})` and `App({})` contracts, lifecycle types, errors, handles, options, and results that describe that environment.
 
-The generated [Logic JS API](../api/) reference groups every `lx.*` member by capability — navigation, surfaces, files, media, device, network, and the host app — with its published signature and option shape. For the architecture and practical usage pattern, read [LxApp pages](../../guide/lxapp-pages/).
+The generated [Logic JS API](../api/) reference groups every `lx.*` member by capability — navigation, surfaces, files, media, device, network, and the host app — with its published signature and option shape. For the architecture and practical usage pattern, read [lxapp pages](../../guide/lxapp-pages/).
 
 ## Where the types come from
 
@@ -17,7 +17,7 @@ The public declarations are not maintained as a second handwritten API tree:
 2. TypeScript-only contracts—such as semantic unions, callbacks, handles, and lifecycle metadata—are declared alongside those bindings.
 3. `rong-typegen` generates `packages/lingxia-types/src/generated/logic.ts` and the DOM-free Logic Web declarations.
 4. The generated outputs are committed and published as `@lingxia/types`, so consumers do not need Rust or the generator.
-5. This website reads `@lingxia/types` at build time — the sibling package in this repository when present, otherwise the pinned install — and emits one **Logic JS API** page per capability group.
+5. This website reads `packages/lingxia-types` in this repository at build time and emits one **Logic JS API** page per capability group.
 
 :::note
 The generated pages keep identifiers and type signatures in their source language. When browsing them in Chinese, the information notice means “shared generated reference,” not “this content is unsupported.”
