@@ -1391,7 +1391,7 @@
   }
 
   // Composition events around native text insertion, so frameworks that
-  // buffer IME input (React onCompositionEnd, Vue v-model) see CJK text
+  // buffer IME input (React onCompositionEnd) see CJK text
   // arrive the way a real IME delivers it.
   function composition(args) {
     const doc = document;

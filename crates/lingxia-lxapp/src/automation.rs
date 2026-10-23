@@ -804,16 +804,16 @@ mod tests {
     #[test]
     fn active_page_resolution_ignores_stale_same_path_instances() {
         let pages = vec![
-            runtime_page("disposed", "pages/device/index.vue", false, None),
+            runtime_page("disposed", "pages/device/index.tsx", false, None),
             runtime_page(
                 "current",
-                "pages/device/index.vue?type=screen",
+                "pages/device/index.tsx?type=screen",
                 true,
                 Some(0),
             ),
         ];
 
-        let selected = active_runtime_page_by_path(&pages, "pages/device/index.vue").unwrap();
+        let selected = active_runtime_page_by_path(&pages, "pages/device/index.tsx").unwrap();
 
         assert_eq!(selected.instance_id, "current");
     }
@@ -821,11 +821,11 @@ mod tests {
     #[test]
     fn active_page_resolution_prefers_topmost_stack_instance() {
         let pages = vec![
-            runtime_page("lower", "pages/device/index.vue", false, Some(1)),
-            runtime_page("upper", "pages/device/index.vue", false, Some(3)),
+            runtime_page("lower", "pages/device/index.tsx", false, Some(1)),
+            runtime_page("upper", "pages/device/index.tsx", false, Some(3)),
         ];
 
-        let selected = active_runtime_page_by_path(&pages, "pages/device/index.vue").unwrap();
+        let selected = active_runtime_page_by_path(&pages, "pages/device/index.tsx").unwrap();
 
         assert_eq!(selected.instance_id, "upper");
     }

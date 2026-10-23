@@ -2,8 +2,8 @@ name: Build web packages
 description: >
   Install and build the @lingxia npm packages the example lxapps import: types,
   embedded runtime (bridge, polyfills — also needed by lingxia-cli's build.rs)
-  plus the frontend libs (elements, page-runtime, react, vue) and the test SDK
-  the example lxapps' specs import. The react/vue
+  plus the frontend libs (elements, page-runtime, react) and the test SDK
+  the example lxapps' specs import. The react
   build scripts cascade to elements + page-runtime, so a clean checkout ends up
   with dist/ for all of them and `lingxia build`'s lxapp bundling can resolve
   the @lingxia/* imports. Superset of build-web-runtime.
@@ -26,9 +26,9 @@ runs:
       run: |
         set -euo pipefail
         npm ci --prefix packages
-        # react/vue cascade to elements + page-runtime + bridge:types.
+        # react cascades to elements + page-runtime + bridge:types.
         # lingxia-test builds against lingxia-types' declarations, so it follows it.
-        for pkg in lingxia-types lingxia-bridge lingxia-polyfills lingxia-react lingxia-vue lingxia-test; do
+        for pkg in lingxia-types lingxia-bridge lingxia-polyfills lingxia-react lingxia-test; do
           echo "::group::npm run build ($pkg)"
           (cd "packages/$pkg" && npm run build)
           echo "::endgroup::"

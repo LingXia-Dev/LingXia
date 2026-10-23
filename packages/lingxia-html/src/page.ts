@@ -12,7 +12,7 @@ import {
 
 /**
  * Resolves once the first state arrives. By default a delayed startup shows
- * a fault panel and keeps waiting, just like React/Vue. An explicit timeout
+ * a fault panel and keeps waiting, just like React. An explicit timeout
  * rejects instead; `null` waits without the panel. Await before `getPage()`.
  */
 export function pageReady(options?: { timeoutMs?: number | null }): Promise<void> {

@@ -1,5 +1,5 @@
 /**
- * Payload-first unwrap used by React/Vue wrappers. HTML keeps CustomEvent.
+ * Payload-first unwrap used by React wrappers. HTML keeps CustomEvent.
  *
  * A real DOM Event (or an event-like `{ type, detail }` used by unit tests)
  * yields `detail`. A bare payload object is returned as-is so wrappers can

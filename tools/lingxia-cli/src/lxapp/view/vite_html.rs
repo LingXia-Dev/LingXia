@@ -411,7 +411,7 @@ fn collect_html_documents_inner(path: &Path, files: &mut Vec<PathBuf>) -> Result
             .and_then(|value| value.to_str())
             .map(str::to_ascii_lowercase)
         {
-            Some(ext) if matches!(ext.as_str(), "html" | "htm" | "ts" | "tsx" | "vue") => {}
+            Some(ext) if matches!(ext.as_str(), "html" | "htm" | "ts" | "tsx") => {}
             _ => continue,
         }
         let Ok(source) = fs::read_to_string(&path) else {

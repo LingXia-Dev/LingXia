@@ -1,7 +1,7 @@
 //! Recognizing a built lxapp bundle. `lingxia dev` may be run inside a dist
 //! directory; the build output identifies itself: page entries in the
 //! transformed `lxapp.json` resolve to compiled HTML documents (a source
-//! `.tsx`/`.vue` page can never be one), and an explicitly named logic
+//! `.tsx` page can never be one), and an explicitly named logic
 //! bundle is present. No extra state files are involved.
 
 use serde_json::Value;

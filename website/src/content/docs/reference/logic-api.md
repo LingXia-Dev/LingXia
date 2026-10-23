@@ -27,6 +27,6 @@ The generated index names the types package version it built against. A member a
 
 ## What it does not cover
 
-- View framework bindings and hooks live in `@lingxia/react`, `@lingxia/vue`, and `@lingxia/html`.
+- View framework bindings and hooks live in `@lingxia/react` and `@lingxia/html`.
 - Native-backed elements are listed under [Components](../components/).
 - A native host's custom Rust routes use the CLI-generated `@lingxia/native` client; they are app-specific and are not part of the global `lx.*` reference.

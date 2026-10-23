@@ -32,7 +32,7 @@ pub(crate) fn audit_output_media(output_dir: &Path) -> Result<()> {
                     .with_context(|| format!("Failed to read {}", path.display()))?;
                 scan_javascript(&rel, &source, 0, &source, &mut findings, &mut unscannable);
             }
-            Some("tsx" | "vue" | "ts") => {
+            Some("tsx" | "ts") => {
                 let source = fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read {}", path.display()))?;
                 if is_html_document(&source) {
@@ -529,12 +529,10 @@ fn is_factory_module(source: &str) -> bool {
         "react-runtime",
         "preact/jsx-runtime",
         "preact/compat",
-        "vue-runtime",
-        "@vue/runtime",
         "solid-js/jsx-runtime",
     ];
     MARKERS.iter().any(|marker| source.contains(marker))
-        || matches!(source.as_str(), "react" | "vue" | "preact" | "solid-js")
+        || matches!(source.as_str(), "react" | "preact" | "solid-js")
 }
 
 #[derive(Clone, Copy)]
@@ -549,9 +547,6 @@ fn element_factory_kind(name: &str) -> Option<ElementFactory> {
         return Some(ElementFactory::TagSecond);
     }
     if trimmed.eq_ignore_ascii_case("createElement")
-        || trimmed.eq_ignore_ascii_case("createElementVNode")
-        || trimmed.eq_ignore_ascii_case("createElementBlock")
-        || trimmed.eq_ignore_ascii_case("createVNode")
         || trimmed.eq_ignore_ascii_case("jsx")
         || trimmed.eq_ignore_ascii_case("jsxs")
         || trimmed.eq_ignore_ascii_case("jsxDEV")
@@ -953,28 +948,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_jsx_and_vue_factories() {
+    fn rejects_jsx_factories() {
         let jsx = audit_one("view.js", "import { jsx as _jsx } from 'react/jsx-runtime';\n_jsx(\"video\", { src: \"./a.mp4\" });\n")
             .unwrap_err()
             .to_string();
         assert!(jsx.contains("`<video>`"), "{jsx}");
-
-        let vue = audit_one(
-            "chunk.js",
-            "import { createElementVNode as _createElementVNode } from 'vue';\n_createElementVNode(\"audio\", null);\n",
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(vue.contains("`<audio>`"), "{vue}");
-
-        let block = audit_one(
-            "block.js",
-            "import { createElementBlock as _createElementBlock } from 'vue';\n_createElementBlock(\"video\", { src: \"./a.mp4\" });\n",
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(block.contains("`<video>`"), "{block}");
-        assert!(block.contains("<lx-video>"), "{block}");
+        assert!(jsx.contains("<lx-video>"), "{jsx}");
     }
 
     #[test]

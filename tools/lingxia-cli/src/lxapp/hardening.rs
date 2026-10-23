@@ -127,7 +127,7 @@ fn harden_text_artifacts(project: &Project, preserve_view_js: bool) -> Result<()
                 fs::write(&path, minify_html(&source, preserve_view_js))
                     .with_context(|| format!("Failed to write {}", path.display()))?;
             }
-            Some("ts") | Some("tsx") | Some("vue") => {
+            Some("ts") | Some("tsx") => {
                 let source = fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read {}", path.display()))?;
                 if is_html_document(&source) {
@@ -157,7 +157,7 @@ fn audit_release_output(project: &Project) -> Result<()> {
                 violations.push(format!("{rel}: sourcemap files are not allowed in release"));
                 continue;
             }
-            Some("ts") | Some("tsx") | Some("vue") => {
+            Some("ts") | Some("tsx") => {
                 let Ok(source) = fs::read_to_string(&path) else {
                     violations.push(format!("{rel}: source files are not allowed in release"));
                     continue;
@@ -170,7 +170,7 @@ fn audit_release_output(project: &Project) -> Result<()> {
             _ => {}
         }
 
-        if matches!(extension(&path).as_deref(), Some("ts" | "tsx" | "vue")) {
+        if matches!(extension(&path).as_deref(), Some("ts" | "tsx")) {
             if let Ok(source) = fs::read_to_string(&path) {
                 audit_text_artifact(&rel, &source, &project_root, &mut violations);
             }
@@ -591,11 +591,7 @@ mod tests {
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(path, LEGACY_VIEW).unwrap();
         }
-        for rel in [
-            "pages/home/index.html",
-            "pages/home/index.tsx",
-            "pages/home/index.vue",
-        ] {
+        for rel in ["pages/home/index.html", "pages/home/index.tsx"] {
             fs::write(
                 project.output_dir.join(rel),
                 format!("<!doctype html><html><body><script>{LEGACY_VIEW}</script></body></html>"),
@@ -605,11 +601,11 @@ mod tests {
 
         harden_release_output(&project).unwrap();
 
-        for rel in scripts.iter().copied().chain([
-            "pages/home/index.html",
-            "pages/home/index.tsx",
-            "pages/home/index.vue",
-        ]) {
+        for rel in scripts
+            .iter()
+            .copied()
+            .chain(["pages/home/index.html", "pages/home/index.tsx"])
+        {
             assert_legacy_view(&fs::read_to_string(project.output_dir.join(rel)).unwrap());
         }
         for rel in scripts {
@@ -741,26 +737,6 @@ mod tests {
     }
 
     #[test]
-    fn release_allows_generated_vue_page_documents() {
-        let temp = tempdir().unwrap();
-        let project = project(temp.path());
-        fs::create_dir_all(project.output_dir.join("pages/home")).unwrap();
-        fs::write(
-            project.output_dir.join("pages/home/index.vue"),
-            "<html>\n  <head></head>\n  <body><div id=\"root\"></div></body>\n</html>\n",
-        )
-        .unwrap();
-
-        harden_release_output(&project).unwrap();
-
-        let page = fs::read_to_string(project.output_dir.join("pages/home/index.vue")).unwrap();
-        assert_eq!(
-            page,
-            "<html><head></head><body><div id=\"root\"></div></body></html>"
-        );
-    }
-
-    #[test]
     fn release_rejects_real_tsx_source_files() {
         let temp = tempdir().unwrap();
         let project = project(temp.path());
@@ -768,21 +744,6 @@ mod tests {
         fs::write(
             project.output_dir.join("pages/home/index.tsx"),
             "export default function Home() { return <div />; }",
-        )
-        .unwrap();
-
-        let err = harden_release_output(&project).unwrap_err().to_string();
-        assert!(err.contains("source files are not allowed in release"));
-    }
-
-    #[test]
-    fn release_rejects_real_vue_source_files() {
-        let temp = tempdir().unwrap();
-        let project = project(temp.path());
-        fs::create_dir_all(project.output_dir.join("pages/home")).unwrap();
-        fs::write(
-            project.output_dir.join("pages/home/index.vue"),
-            "<template><div /></template><script setup>console.log('debug')</script>",
         )
         .unwrap();
 

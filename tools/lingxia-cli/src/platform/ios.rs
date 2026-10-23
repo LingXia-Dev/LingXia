@@ -66,8 +66,7 @@ impl IosPlatform {
             .ok_or_else(|| anyhow!("app.projectName is required in lingxia.config.json"))?;
 
         let rust_lib_dir = project_root.join(&rust_lib_name);
-        let native_client_out =
-            native_client_out_for_host_project(project_root, lingxia_config, config.framework)?;
+        let native_client_out = native_client_out_for_host_project(project_root, lingxia_config)?;
 
         // Get deployment target from config
         let deployment_target = ios_config.and_then(|c| c.deployment_target.as_deref());

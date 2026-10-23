@@ -26,7 +26,7 @@ An lxapp is a page-based mini-app with a strict split between:
 
 | Layer | Runs in | Owns |
 |---|---|---|
-| **View** | WebView | React, Vue, or HTML rendering |
+| **View** | WebView | React or HTML rendering |
 | **Logic** | Native JavaScript runtime or Rust host code | state, business logic, platform API calls |
 | **Bridge** | Rust runtime | `setData`, streams, channels, and native calls |
 
@@ -107,7 +107,6 @@ Browse the source directly at [docs/skill/SKILL.md](docs/skill/SKILL.md) — tha
 | Package | Purpose |
 |---|---|
 | `@lingxia/react` | React bindings and native component wrappers for lxapp Views |
-| `@lingxia/vue` | Vue bindings and native component wrappers for lxapp Views |
 | `@lingxia/html` | HTML-only View helpers |
 | `@lingxia/types` | TypeScript declarations for Logic-side `Page({})`, `App({})`, and `lx.*` |
 | `@lingxia/bridge` | Low-level bridge runtime |

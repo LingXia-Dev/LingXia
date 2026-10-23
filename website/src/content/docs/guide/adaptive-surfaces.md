@@ -90,7 +90,7 @@ const unsubscribe = lx.surface.watchContext(({ sizeClass }) => { /* … */ })
 ```
 
 A View reads the same size class with `useLxHost().sizeClass` from
-`@lingxia/react` / `@lingxia/vue` — no subscription, no `setData`. It changes
+`@lingxia/react` — no subscription, no `setData`. It changes
 only when the size class does; exact widths are CSS and container queries.
 
 - `openDeclared(id)` opens content declared in `lingxia.yaml`; `id` is the declaration's content identity.

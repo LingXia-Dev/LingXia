@@ -21,7 +21,7 @@ Saves under `mocks/` reload that lxapp's mocks only.
 
 ## What a save does
 
-The session rebuilds that lxapp with its `--framework` and `--release`, then
+The session rebuilds that lxapp with its `--release`, then
 restarts that app id. The instance has to still be in the runtime. It does
 not have to be the one on screen.
 
@@ -77,7 +77,7 @@ companion, and build output appears in the host session's terminal. Only
 `lingxia dev listen` run as the same user can attach: it reads the session's
 attach token from a file only that user can read.
 
-The session builds with this command's `--framework` and `--release`.
+The session builds with this command's `--release`.
 Without `--port`, an omitted one uses the host session's. Ctrl+C drops this
 lxapp's watch only. The open lxapp stays, and so does a host session this
 command did not start. Do not pass `--background`.

@@ -6,7 +6,7 @@ The globals every Logic file (`pages/*/index.ts`) runs against: `lx`, `Page`,
 **`@lingxia/types` is the API reference.** Its declarations and JSDoc are
 generated from the runtime and are authoritative for signatures, options,
 results, defaults, and platform support. The skill docs do not copy them; read
-the declarations (and `@lingxia/react` / `@lingxia/vue` / `@lingxia/bridge` for
+the declarations (and `@lingxia/react` / `@lingxia/bridge` for
 View types). This page covers only what the declarations cannot say.
 
 ## Install typing

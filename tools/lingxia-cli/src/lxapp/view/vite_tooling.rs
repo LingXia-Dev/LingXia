@@ -111,15 +111,6 @@ pub(super) fn ensure_component_view_tooling(
                 .join("plugin-react")
                 .join("package.json"),
         )),
-        ProjectFramework::Vue => Some((
-            "@vitejs/plugin-vue",
-            project
-                .root
-                .join("node_modules")
-                .join("@vitejs")
-                .join("plugin-vue")
-                .join("package.json"),
-        )),
         ProjectFramework::Html => None,
     };
 
@@ -381,7 +372,6 @@ mod tests {
             dev_session: false,
             release: false,
             package: false,
-            framework: None,
             progress: crate::lxapp::options::ProgressMode::Task,
         }
     }
@@ -433,30 +423,6 @@ mod tests {
         .to_string();
 
         assert!(error.contains("Missing project Vite dependency"));
-    }
-
-    #[test]
-    fn vue_view_tooling_requires_framework_plugin() {
-        let temp = tempdir().unwrap();
-        write_file(temp.path(), "package.json", r#"{ "name": "demo" }"#);
-        write_file(
-            temp.path(),
-            "node_modules/vite/bin/vite.js",
-            "console.log('vite');",
-        );
-
-        let error = ensure_component_view_tooling(
-            &make_project(temp.path(), ProjectFramework::Vue),
-            ProjectFramework::Vue,
-            &build_options(),
-            None,
-            None,
-        )
-        .unwrap_err()
-        .to_string();
-
-        assert!(error.contains("Missing project framework plugin"));
-        assert!(error.contains("@vitejs/plugin-vue"));
     }
 
     #[test]

@@ -1,6 +1,5 @@
 mod html;
 mod react;
-mod vue;
 
 use anyhow::{Result, anyhow};
 use serde_json::Value;
@@ -10,7 +9,6 @@ use std::path::Path;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectFramework {
     React,
-    Vue,
     Html,
 }
 
@@ -47,14 +45,13 @@ impl ProjectFramework {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::React => "react",
-            Self::Vue => "vue",
             Self::Html => "html",
         }
     }
 }
 
 /// `wait_for_state`: the page has Logic, so its View mounts only once the
-/// page's first state has arrived (`mountPage` in `@lingxia/react|vue/entry`).
+/// page's first state has arrived (`mountPage` in `@lingxia/react/entry`).
 pub fn scaffold(
     framework: ProjectFramework,
     page_title: &str,
@@ -65,9 +62,6 @@ pub fn scaffold(
     match framework {
         ProjectFramework::React => {
             react::scaffold(page_title, app_import, page_bridge_import, wait_for_state)
-        }
-        ProjectFramework::Vue => {
-            vue::scaffold(page_title, app_import, page_bridge_import, wait_for_state)
         }
         ProjectFramework::Html => html::scaffold(page_title, app_import, page_bridge_import),
     }
@@ -92,7 +86,7 @@ pub fn resolve_page_path(
     }
 
     let mut extensions = preferred_extensions(framework).to_vec();
-    for ext in ["tsx", "jsx", "vue", "html"] {
+    for ext in ["tsx", "jsx", "html"] {
         if !extensions.contains(&ext) {
             extensions.push(ext);
         }
@@ -137,8 +131,10 @@ fn detect_framework_from_manifest(project_root: &Path) -> Result<Option<ProjectF
 fn parse_framework(value: &str) -> Result<ProjectFramework> {
     match value {
         "react" => Ok(ProjectFramework::React),
-        "vue" => Ok(ProjectFramework::Vue),
         "html" => Ok(ProjectFramework::Html),
+        "vue" => Err(anyhow!(
+            "Vue is no longer a LingXia view framework. Use react or html."
+        )),
         _ => Err(anyhow!("Unsupported LingXia framework: {value}")),
     }
 }
@@ -176,7 +172,6 @@ fn detect_framework_for_page_path(
     let mut candidates = Vec::new();
     for (framework, extensions) in [
         (ProjectFramework::React, &["tsx", "jsx"][..]),
-        (ProjectFramework::Vue, &["vue"][..]),
         (ProjectFramework::Html, &["html"][..]),
     ] {
         if extensions
@@ -197,8 +192,8 @@ fn detect_framework_for_page_path(
                 .collect::<Vec<_>>()
                 .join("|");
             Err(anyhow!(
-                "Multiple framework implementations found for {}. Pass --framework {options}, \
-                 or set \"framework\": \"...\" in lxapp.json to pin it permanently.",
+                "Multiple framework implementations found for {}. \
+                 Set \"framework\" to one of {options} in lxapp.json.",
                 normalize_relative_path(page_path)
             ))
         }
@@ -208,7 +203,6 @@ fn detect_framework_for_page_path(
 fn framework_for_extension(extension: &str) -> Option<ProjectFramework> {
     match extension {
         "tsx" | "jsx" => Some(ProjectFramework::React),
-        "vue" => Some(ProjectFramework::Vue),
         "html" => Some(ProjectFramework::Html),
         _ => None,
     }
@@ -217,7 +211,6 @@ fn framework_for_extension(extension: &str) -> Option<ProjectFramework> {
 fn preferred_extensions(framework: ProjectFramework) -> &'static [&'static str] {
     match framework {
         ProjectFramework::React => &["tsx", "jsx"],
-        ProjectFramework::Vue => &["vue"],
         ProjectFramework::Html => &["html"],
     }
 }
@@ -236,13 +229,13 @@ mod tests {
         let page_dir = dir.join("pages/home");
         std::fs::create_dir_all(&page_dir).unwrap();
         std::fs::write(page_dir.join("index.tsx"), "").unwrap();
-        std::fs::write(page_dir.join("index.vue"), "").unwrap();
+        std::fs::write(page_dir.join("index.html"), "").unwrap();
 
         let err = detect_framework_for_page_path(&dir, "pages/home/index").unwrap_err();
         let message = err.to_string();
-        assert!(message.contains("react|vue"), "{message}");
-        assert!(!message.contains("html"), "{message}");
+        assert!(message.contains("react|html"), "{message}");
         assert!(message.contains("lxapp.json"), "{message}");
+        assert!(!message.contains("--framework"), "{message}");
 
         std::fs::remove_dir_all(&dir).ok();
     }

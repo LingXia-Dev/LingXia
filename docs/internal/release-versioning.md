@@ -30,7 +30,7 @@ workspace version with the Rust crates and SDKs.
 
 ### Tier 2 — framework libraries
 
-`@lingxia/page-runtime`, `@lingxia/elements`, `@lingxia/react`, `@lingxia/vue`,
+`@lingxia/page-runtime`, `@lingxia/elements`, `@lingxia/react`,
 and `@lingxia/html` are bundled into the lxapp. Their major.minor must match
 its base runtime; patches may differ.
 

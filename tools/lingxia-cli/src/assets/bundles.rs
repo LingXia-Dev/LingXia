@@ -9,7 +9,6 @@ use crate::config::{
     ResourceBundleConfig,
 };
 use crate::lxapp;
-use crate::lxapp::ProjectFramework;
 use crate::platform::BuildProfile;
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
@@ -32,7 +31,6 @@ struct ResourceBundlePlan {
     asset_name: String,
     output_dir: PathBuf,
     version: String,
-    framework_override: Option<ProjectFramework>,
     dev: bool,
     build: bool,
 }
@@ -41,7 +39,6 @@ pub(super) fn prepare_home_app_bundle(
     project_root: &Path,
     config: &LingXiaConfig,
     build_profile: BuildProfile,
-    framework_override: Option<ProjectFramework>,
     progress_override: Option<&str>,
     dev: bool,
     cache: &mut HostAssetsCache,
@@ -62,7 +59,6 @@ pub(super) fn prepare_home_app_bundle(
             bundle,
             "home-lxapp",
             build_profile,
-            framework_override,
             progress_override,
             dev,
             cache,
@@ -80,7 +76,6 @@ pub(super) fn prepare_resource_lxapp_bundles(
     project_root: &Path,
     config: &LingXiaConfig,
     build_profile: BuildProfile,
-    framework_override: Option<ProjectFramework>,
     progress_override: Option<&str>,
     dev: bool,
     cache: &mut HostAssetsCache,
@@ -113,7 +108,6 @@ pub(super) fn prepare_resource_lxapp_bundles(
             bundle,
             "resource-lxapp",
             build_profile,
-            framework_override,
             progress_override,
             dev,
             cache,
@@ -176,7 +170,6 @@ fn prepare_resource_bundle(
     bundle: &ResourceBundleConfig,
     cache_kind: &str,
     build_profile: BuildProfile,
-    framework_override: Option<ProjectFramework>,
     progress_override: Option<&str>,
     dev: bool,
     cache: &mut HostAssetsCache,
@@ -188,7 +181,6 @@ fn prepare_resource_bundle(
         &format!("resources.bundles[{}]", bundle.app_id),
         cache_kind,
         build_profile,
-        framework_override,
         progress_override,
         dev,
         source.build,
@@ -253,7 +245,6 @@ fn prepare_lxapp_bundle_dir(
     config_key: &str,
     cache_kind: &str,
     build_profile: BuildProfile,
-    framework_override: Option<ProjectFramework>,
     progress_override: Option<&str>,
     dev: bool,
     build: bool,
@@ -295,7 +286,6 @@ fn prepare_lxapp_bundle_dir(
         asset_name: metadata.app_id,
         output_dir: bundle_dir.join("dist"),
         version: metadata.version,
-        framework_override,
         dev,
         build,
     };
@@ -330,7 +320,6 @@ pub(super) fn prepare_browser_shell_webui_bundle(
             .expect("lxapp.json has parent")
             .join("dist"),
         version: metadata.version,
-        framework_override: None,
         dev,
         build: source.build,
     };
@@ -361,13 +350,10 @@ fn prepare_lxapp_plan(
         crate::build_prepare::prepare(&plan.bundle_dir)?;
     }
     let cache_key = format!(
-        "{}|{}|{}|framework={}|dev={}",
+        "{}|{}|{}|dev={}",
         path_key(&plan.bundle_dir),
         build_profile.as_str(),
         kind,
-        plan.framework_override
-            .map(|framework| framework.as_str())
-            .unwrap_or("auto"),
         plan.dev
     );
     let inputs_hash = hash_resource_bundle_inputs(&plan)?;
@@ -390,10 +376,6 @@ fn prepare_lxapp_plan(
         let mut args = vec!["build".to_string()];
         if matches!(build_profile, BuildProfile::Release) {
             args.push("--release".to_string());
-        }
-        if let Some(framework) = plan.framework_override {
-            args.push("--framework".to_string());
-            args.push(framework.as_str().to_string());
         }
         if let Some(progress) = progress_override {
             args.push("--progress".to_string());
@@ -780,12 +762,11 @@ mod tests {
             asset_name: "app".into(),
             output_dir: root.join("dist"),
             version: "1.0.0".into(),
-            framework_override: None,
             dev: false,
             build: true,
         };
         let mut cache = HostAssetsCache::default();
-        let key = format!("{}|debug|test|framework=auto|dev=false", path_key(root));
+        let key = format!("{}|debug|test|dev=false", path_key(root));
         cache.lxapp_builds.insert(
             key.clone(),
             LxAppBuildStamp {
@@ -828,13 +809,12 @@ mod tests {
             asset_name: "app".into(),
             output_dir: root.join("dist"),
             version: "1.0.0".into(),
-            framework_override: None,
             dev: false,
             build: true,
         };
         let mut cache = HostAssetsCache::default();
         cache.lxapp_builds.insert(
-            format!("{}|debug|test|framework=auto|dev=false", path_key(root)),
+            format!("{}|debug|test|dev=false", path_key(root)),
             LxAppBuildStamp {
                 inputs_hash: hash_resource_bundle_inputs(&plan).unwrap(),
                 dist_hash: hash_tree(&root.join("dist"), &[]).unwrap(),
@@ -866,13 +846,12 @@ mod tests {
             asset_name: "app".into(),
             output_dir: root.join("dist"),
             version: "1.0.0".into(),
-            framework_override: None,
             dev: true,
             build: true,
         };
         let mut cache = HostAssetsCache::default();
         cache.lxapp_builds.insert(
-            format!("{}|debug|test|framework=auto|dev=true", path_key(root)),
+            format!("{}|debug|test|dev=true", path_key(root)),
             LxAppBuildStamp {
                 inputs_hash: hash_resource_bundle_inputs(&plan).unwrap(),
                 dist_hash: hash_tree(&root.join("dist"), &[]).unwrap(),
@@ -891,7 +870,6 @@ mod tests {
             asset_name: "app".into(),
             output_dir: temp.path().join("dist"),
             version: "1.0.0".into(),
-            framework_override: None,
             dev: false,
             build: true,
         };
@@ -922,7 +900,6 @@ mod tests {
             "resources.bundles[pkg-app]",
             "resource-lxapp",
             BuildProfile::Debug,
-            None,
             None,
             false,
             false,
@@ -957,7 +934,6 @@ mod tests {
             "resources.bundles[pkg-app]",
             "resource-lxapp",
             BuildProfile::Debug,
-            None,
             None,
             false,
             false,

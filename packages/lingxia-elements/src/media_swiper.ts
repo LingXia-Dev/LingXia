@@ -79,7 +79,7 @@ export type LxMediaSwiperEventHandlers = {
   [K in keyof LxMediaSwiperEventPayloads]?: (payload: LxMediaSwiperEventPayloads[K]) => void;
 };
 
-/** Imperative control of a mounted swiper (React ref, Vue template ref). */
+/** Imperative control of a mounted swiper (React ref). */
 export interface LxMediaSwiperHandle {
   next(): void;
   previous(): void;

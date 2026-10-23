@@ -26,7 +26,7 @@ spec('keep App identity across pages and merge setData into the correct View', {
     const current = pages[pages.length - 1];
     return { route: current.route, surfaceAbsent: current.surface === undefined, tag: current.data.instanceTag };
   }, namespace);
-  expect(first.route.replace(/\.(tsx|vue)$/, '')).toBe('pages/ui/index');
+  expect(first.route.replace(/\.tsx$/, '')).toBe('pages/ui/index');
   expect(first.surfaceAbsent).toBe(true);
   expect(first.tag.length > 0).toBe(true);
   await page.view.testId('lifecycle-bump-logic').click();
@@ -51,7 +51,7 @@ spec('keep App identity across pages and merge setData into the correct View', {
     };
   }, namespace);
   expect(next.sameApp).toBe(true);
-  expect(next.routes.map(route => route.replace(/\.(tsx|vue)$/, ''))).toEqual(['pages/ui/index', 'pages/feedback/index']);
+  expect(next.routes.map(route => route.replace(/\.tsx$/, ''))).toEqual(['pages/ui/index', 'pages/feedback/index']);
   await app.nav.back();
   await expect(page.view.testId('lifecycle-logic-counter')).toHaveText('8');
 });
@@ -80,7 +80,7 @@ spec('inject the owning surface into a page opened as a float', {
     if (!page?.surface) throw new Error('Page surface missing');
     return { route: page.route, id: page.surface.id, key: page.surface.key ?? null, alive: page.surface.alive };
   }, page.instanceId);
-  expect({ ...owner, route: owner.route.replace(/\.(tsx|vue)$/, '') }).toEqual({ route: 'pages/surface/index', id: opened.id, key: namespace, alive: true });
+  expect({ ...owner, route: owner.route.replace(/\.tsx$/, '') }).toEqual({ route: 'pages/surface/index', id: opened.id, key: namespace, alive: true });
   expect(opened.key).toBe(namespace);
   await app.logic.eval(async ({ getPage }, id) => {
     const surface = getPage<UiPage>(id)?.surface;

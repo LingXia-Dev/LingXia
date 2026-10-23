@@ -11,7 +11,7 @@ Rust tests use `scripts/ci/cargo-test-required.sh` so zero executed tests fail.
 
 CI Rust dependency caches are written on `main` only; PRs restore them without
 uploading multi-GB branch copies. Jobs that split one build across a matrix
-(the Windows suites, the Windows showcase react/vue runs) share a single
+(the Windows suites, the Windows showcase run) share a single
 `shared-key` cache that exactly one matrix entry saves, keeping the repository
 under its 10 GB cache budget. Dev-profile builds carry `line-tables-only`
 debuginfo workflow-wide to keep those archives and link times small. CLI binary caches remain fingerprinted by

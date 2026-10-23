@@ -3,7 +3,6 @@ mod vite_assets;
 mod vite_html;
 mod vite_pipeline;
 mod vite_tooling;
-mod vue;
 
 pub(crate) use vite_assets::native_client_output_path;
 pub(crate) use vite_html::{read_view_build_config, stamp_output_html, view_target_from_dir};
@@ -375,7 +374,6 @@ pub(crate) fn validate_component_view_bindings(
 ) -> Result<ViewUsageAudit> {
     match project.framework {
         ProjectFramework::React => react::validate_react_bindings(project, page_path, actions),
-        ProjectFramework::Vue => vue::validate_vue_bindings(project, page_path, actions),
         ProjectFramework::Html => Ok(ViewUsageAudit {
             used_actions: BTreeSet::new(),
             // HTML pages bind through the bridge, so this audit sees no actions.
@@ -426,7 +424,7 @@ fn local_import_specifiers(source: &str, source_type: SourceType) -> Vec<String>
 /// to find a view source inside the project. Non-script imports (CSS, assets)
 /// resolve to nothing — they hold no action bindings.
 fn resolve_local_import(project: &Project, importer: &Path, specifier: &str) -> Option<PathBuf> {
-    const EXTENSIONS: [&str; 5] = ["tsx", "ts", "jsx", "js", "vue"];
+    const EXTENSIONS: [&str; 4] = ["tsx", "ts", "jsx", "js"];
     let base = importer.parent()?.join(specifier);
     let candidates = std::iter::once(base.clone())
         .chain(EXTENSIONS.iter().map(|ext| base.with_extension(ext)))
@@ -467,18 +465,11 @@ fn downstream_action_usage(project: &Project, entry: &Path) -> (BTreeSet<String>
             complete = false;
             continue;
         };
-        let is_vue = path.extension().is_some_and(|extension| extension == "vue");
-        let (script, script_source_type) = if is_vue {
-            let sections = vue::sfc_sections(&source);
-            used_actions.extend(vue::template_action_names(&sections.template));
-            (sections.script, sections.script_source_type)
-        } else {
-            let Ok(source_type) = SourceType::from_path(&path) else {
-                complete = false;
-                continue;
-            };
-            (source, source_type)
+        let Ok(script_source_type) = SourceType::from_path(&path) else {
+            complete = false;
+            continue;
         };
+        let script = source;
 
         if path != entry {
             let seed = HashSet::from(["actions".to_string()]);
@@ -614,10 +605,6 @@ fn line_col_for_offset(source: &str, offset: usize) -> (usize, usize) {
         }
     }
     (line, column)
-}
-
-fn line_number_for_offset(source: &str, offset: usize) -> usize {
-    line_col_for_offset(source, offset).0
 }
 
 fn collect_binding_names(pattern: &BindingPattern<'_>, output: &mut Vec<String>) {
@@ -1317,64 +1304,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn vue_template_marks_bare_action_identifiers() {
-        let temp = tempdir().unwrap();
-        let page_path = "pages/api/index.vue";
-        let full_path = temp.path().join(page_path);
-        fs::create_dir_all(full_path.parent().unwrap()).unwrap();
-        fs::write(
-            &full_path,
-            r#"
-            <template>
-              <template v-if="enabled">
-                <button
-                  @click="primaryAction"
-                  class="sm:hover:text-blue-500 primary"
-                >
-                  primary
-                </button>
-              </template>
-              <button
-                @click="secondaryAction"
-                :class="enabled ? 'sm:text-green-500' : 'text-gray-500'"
-              >
-                secondary
-              </button>
-              <button @click="primaryAction(); secondaryAction()">both</button>
-            </template>
-            <script setup lang="ts">
-            import { useLxPage } from "@lingxia/vue";
-            const { actions } = useLxPage();
-            const { primaryAction, secondaryAction } = actions;
-            </script>
-            "#,
-        )
-        .unwrap();
-
-        let project = create_project(temp.path(), ProjectFramework::Vue, page_path);
-        let audit = validate_component_view_bindings(
-            &project,
-            page_path,
-            &[
-                PageAction {
-                    name: "primaryAction".to_string(),
-                    mode: PageActionMode::Call,
-                },
-                PageAction {
-                    name: "secondaryAction".to_string(),
-                    mode: PageActionMode::Call,
-                },
-            ],
-        )
-        .unwrap();
-
-        assert_eq!(
-            audit.used_actions,
-            BTreeSet::from(["primaryAction".to_string(), "secondaryAction".to_string()])
-        );
-    }
-
     fn write_file(root: &Path, relative: &str, contents: &str) {
         let path = root.join(relative);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1516,44 +1445,5 @@ mod tests {
 
         assert!(audit.unused_reportable);
         assert_eq!(audit.used_actions, BTreeSet::from(["run".to_string()]));
-    }
-
-    #[test]
-    fn vue_composition_root_credits_child_template_bindings() {
-        let temp = tempdir().unwrap();
-        let page_path = "pages/speedtest/index.vue";
-        write_file(
-            temp.path(),
-            page_path,
-            r#"
-            <template>
-              <CompactView :actions="actions" />
-            </template>
-            <script setup lang="ts">
-            import { useLxPage } from "@lingxia/vue";
-            import CompactView from "./views/compact-view.vue";
-            const { actions } = useLxPage();
-            </script>
-            "#,
-        );
-        write_file(
-            temp.path(),
-            "pages/speedtest/views/compact-view.vue",
-            r#"
-            <template>
-              <button @click="actions.start()">start</button>
-            </template>
-            <script setup lang="ts">
-            defineProps<{ actions: unknown }>();
-            </script>
-            "#,
-        );
-
-        let project = create_project(temp.path(), ProjectFramework::Vue, page_path);
-        let audit =
-            validate_component_view_bindings(&project, page_path, &[action("start")]).unwrap();
-
-        assert!(audit.unused_reportable);
-        assert_eq!(audit.used_actions, BTreeSet::from(["start".to_string()]));
     }
 }

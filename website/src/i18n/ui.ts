@@ -35,7 +35,7 @@ export const ui = {
       installLabel: 'Install the CLI',
       ctaPrimary: 'Get started',
       ctaSecondary: 'Star on GitHub',
-      runtimeNote: 'MIT licensed · Rust runtime · React, Vue, or HTML views',
+      runtimeNote: 'MIT licensed · Rust runtime · React or HTML views',
       copy: 'Copy',
       copied: 'Copied',
     },
@@ -52,7 +52,7 @@ export const ui = {
           tag: 'View',
           runs: 'Runs in WebView',
           owns: 'Owns rendering',
-          desc: 'React, Vue, or plain HTML. Renders replicated data and dispatches typed actions.',
+          desc: 'React or plain HTML. Renders replicated data and dispatches typed actions.',
         },
         {
           tag: 'Bridge',
@@ -86,7 +86,7 @@ export const ui = {
         },
         {
           title: 'Bring your framework',
-          desc: 'Write Views in React, Vue, or HTML. Typed bindings and native components for each.',
+          desc: 'Write Views in React or HTML. Typed bindings and native components for each.',
           icon: 'framework',
         },
         {
@@ -198,7 +198,6 @@ export const ui = {
       subtitle: 'Use the framework binding for your View, global types for Logic, and the generated client for host routes.',
       items: [
         { name: '@lingxia/react', desc: 'React hooks + native component wrappers for Views' },
-        { name: '@lingxia/vue', desc: 'Vue composables + native components, same surface' },
         { name: '@lingxia/html', desc: 'DOM helpers for HTML-only Views' },
         { name: '@lingxia/types', desc: 'TypeScript declarations for Page({}), App({}), lx.*' },
         { name: '@lingxia/bridge', desc: 'Low-level bridge runtime and invocation helpers' },
@@ -263,7 +262,7 @@ export const ui = {
       installLabel: '安装命令行工具',
       ctaPrimary: '开始使用',
       ctaSecondary: '在 GitHub 加星',
-      runtimeNote: 'MIT 许可 · Rust 运行时 · React / Vue / HTML 视图',
+      runtimeNote: 'MIT 许可 · Rust 运行时 · React / HTML 视图',
       copy: '复制',
       copied: '已复制',
     },
@@ -280,7 +279,7 @@ export const ui = {
           tag: 'View 视图',
           runs: '运行于 WebView',
           owns: '负责渲染',
-          desc: 'React、Vue 或纯 HTML。渲染复制而来的数据，并派发类型化 action。',
+          desc: 'React 或纯 HTML。渲染复制而来的数据，并派发类型化 action。',
         },
         {
           tag: 'Bridge 桥',
@@ -314,7 +313,7 @@ export const ui = {
         },
         {
           title: '沿用你的框架',
-          desc: '用 React、Vue 或 HTML 写视图。每种都配有类型化绑定与原生组件。',
+          desc: '用 React 或 HTML 写视图。每种都配有类型化绑定与原生组件。',
           icon: 'framework',
         },
         {
@@ -426,7 +425,6 @@ export const ui = {
       subtitle: 'View 使用框架绑定，Logic 使用全局类型，宿主路由使用 CLI 生成的客户端。',
       items: [
         { name: '@lingxia/react', desc: 'React Hooks + 视图用原生组件封装' },
-        { name: '@lingxia/vue', desc: 'Vue 组合式 API + 原生组件，接口一致' },
         { name: '@lingxia/html', desc: '纯 HTML 视图的 DOM 辅助函数' },
         { name: '@lingxia/types', desc: 'Page({})、App({})、lx.* 的 TypeScript 声明' },
         { name: '@lingxia/bridge', desc: '底层桥运行时与调用辅助' },

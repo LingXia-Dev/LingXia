@@ -129,7 +129,7 @@ pub(super) fn build_framework_vars(
         lingxia_bridge_version.to_string(),
     );
     // One range for every @lingxia/* the scaffold writes. The CLI does not
-    // pin react/vue/html/types individually; npm install takes the latest
+    // pin react/html/types individually; npm install takes the latest
     // published patch on this major.minor.
     vars.insert(
         "LINGXIA_FRAMEWORK_RANGE".to_string(),
@@ -162,17 +162,6 @@ pub(super) fn build_framework_vars(
             "\"@types/react\": \"^19.0.0\",\n    \"@types/react-dom\": \"^19.0.0\",\n    ",
             "\"@vitejs/plugin-react\": \"^6.0.2\",\n    \"rolldown\": \"^1.0.0-rc.15\",\n    \"vite\": \"^8.0.0\",\n    ",
         ),
-        "vue" => (
-            "Vue",
-            "@lingxia/vue",
-            "vue",
-            "preserve",
-            r#""pages/**/*.vue", "pages/**/*.tsx", "pages/**/contract.ts""#,
-            "#app",
-            "\"vue\": \"^3.5.0\"",
-            "\"vue-tsc\": \"^3.2.4\",\n    ",
-            "\"@vitejs/plugin-vue\": \"^6.0.7\",\n    \"rolldown\": \"^1.0.0-rc.15\",\n    \"vite\": \"^8.0.0\",\n    ",
-        ),
         "html" => (
             "HTML",
             "@lingxia/html",
@@ -186,7 +175,7 @@ pub(super) fn build_framework_vars(
         ),
         other => {
             return Err(anyhow!(
-                "Unsupported framework: {other}. Use 'react', 'vue', or 'html'."
+                "Unsupported framework: {other}. Use 'react' or 'html'."
             ));
         }
     };
@@ -337,7 +326,7 @@ mod tests {
 
     #[test]
     fn built_in_scaffolds_keep_tests_in_their_own_project() {
-        for framework in ["react", "vue", "html"] {
+        for framework in ["react", "html"] {
             for mode in [AppServiceMode::Enabled, AppServiceMode::Disabled] {
                 let output = tempdir().unwrap();
                 let app = output.path().join("myapp");
@@ -479,7 +468,6 @@ mod tests {
             "export default function Page() {}",
         )
         .unwrap();
-        fs::write(pages_home.join("index.vue"), "<template></template>").unwrap();
         fs::write(lxapp.join("shared").join(".gitkeep"), "").unwrap();
         fs::write(
             lxapp_html.join("package.json"),
@@ -574,34 +562,9 @@ mod tests {
         assert_eq!(vars["JSX_MODE"], "react-jsx");
         assert_eq!(vars["APP_ROOT_SELECTOR"], "#root");
         assert!(vars["VIEW_INCLUDE"].contains("pages/**/*.tsx"));
-        assert!(!vars["VIEW_INCLUDE"].contains("**/*.vue"));
         assert!(vars["FRAMEWORK_RUNTIME_DEPS"].contains("react-dom"));
         assert!(vars["FRAMEWORK_DEV_DEPS_PREFIX"].contains("@types/react"));
         assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("@vitejs/plugin-react"));
-        assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"rolldown\""));
-        assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"vite\""));
-    }
-
-    #[test]
-    fn vue_vars_are_correct() {
-        let vars = build_framework_vars(
-            "vue",
-            "my-app",
-            "my-app",
-            "My App",
-            &dummy_versions(),
-            "0.4.0",
-        )
-        .unwrap();
-        assert_eq!(vars["FRAMEWORK"], "vue");
-        assert_eq!(vars["FRAMEWORK_PKG"], "@lingxia/vue");
-        assert_eq!(vars["PAGE_EXT"], "vue");
-        assert_eq!(vars["JSX_MODE"], "preserve");
-        assert_eq!(vars["APP_ROOT_SELECTOR"], "#app");
-        assert!(vars["VIEW_INCLUDE"].contains("pages/**/*.vue"));
-        assert!(vars["FRAMEWORK_RUNTIME_DEPS"].contains("\"vue\""));
-        assert!(vars["FRAMEWORK_DEV_DEPS_PREFIX"].contains("vue-tsc"));
-        assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("@vitejs/plugin-vue"));
         assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"rolldown\""));
         assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"vite\""));
     }
@@ -748,59 +711,6 @@ mod tests {
         assert!(!s.contains("#app"), "app.css must not use #app");
     }
 
-    // --- scaffold output: Vue ---
-
-    #[test]
-    fn vue_scaffold_creates_vue_not_tsx() {
-        let (_tmpl, out) = scaffold("vue");
-        let app = out.path().join("myapp");
-        assert!(
-            app.join("pages/home/index.vue").exists(),
-            "index.vue must exist"
-        );
-        assert!(
-            !app.join("pages/home/index.tsx").exists(),
-            "index.tsx must not exist"
-        );
-    }
-
-    #[test]
-    fn vue_scaffold_package_json_framework() {
-        let (_tmpl, out) = scaffold("vue");
-        let s = fs::read_to_string(out.path().join("myapp/package.json")).unwrap();
-        assert!(s.contains("@lingxia/vue"), "must reference @lingxia/vue");
-        assert!(
-            !s.contains("@lingxia/react"),
-            "must not reference @lingxia/react"
-        );
-        assert!(
-            !s.contains("@lingxia/page-runtime"),
-            "must not reference @lingxia/page-runtime"
-        );
-        assert!(s.contains("\"vite\""), "must include vite");
-        assert!(s.contains("\"rolldown\""), "must include rolldown");
-        assert!(
-            s.contains("@vitejs/plugin-vue"),
-            "must include vue vite plugin"
-        );
-    }
-
-    #[test]
-    fn vue_scaffold_tsconfig_jsx_mode() {
-        let (_tmpl, out) = scaffold("vue");
-        let s = fs::read_to_string(out.path().join("myapp/tsconfig.view.json")).unwrap();
-        assert!(s.contains("preserve"), "jsx must be preserve");
-        assert!(!s.contains("react-jsx"), "jsx must not be react-jsx");
-    }
-
-    #[test]
-    fn vue_scaffold_lxapp_json_page_ext() {
-        let (_tmpl, out) = scaffold("vue");
-        let s = fs::read_to_string(out.path().join("myapp/lxapp.json")).unwrap();
-        assert!(s.contains("index.vue"), "page must be index.vue");
-        assert!(!s.contains("index.tsx"), "page must not be index.tsx");
-    }
-
     #[test]
     fn scaffold_lxapp_json_omits_empty_security() {
         let (_tmpl, out) = scaffold("react");
@@ -820,14 +730,6 @@ mod tests {
             )),
             "new lxapps declare the project-line minRuntime: {s}"
         );
-    }
-
-    #[test]
-    fn vue_scaffold_app_css_root_selector() {
-        let (_tmpl, out) = scaffold("vue");
-        let s = fs::read_to_string(out.path().join("myapp/app.css")).unwrap();
-        assert!(s.contains("#app"), "app.css must use #app");
-        assert!(!s.contains("#root"), "app.css must not use #root");
     }
 
     // --- shared scaffold behaviour ---

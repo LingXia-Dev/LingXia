@@ -267,7 +267,7 @@ scans `#[lingxia::native]` handlers and their DTOs; `cargo build` fails if the
 client drifts. A hand-rolled crate copies the template's `build.rs` and its
 build-dependency. Lxapps configure no Rust paths.
 
-The CLI passes the output path as `LINGXIA_NATIVE_CLIENT_OUT`: React/Vue get
+The CLI passes the output path as `LINGXIA_NATIVE_CLIENT_OUT`: React gets
 `.lingxia/native.ts` (imported as `@lingxia/native`), HTML gets
 `.lingxia/native.js` (copied into `dist/.lingxia/`). `lingxia build` generates
 it when `lxapp.config.ts` declares `native`.

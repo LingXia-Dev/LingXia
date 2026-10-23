@@ -4,23 +4,19 @@ The kitchen-sink LingXia example: one host app (Android / iOS / macOS /
 HarmonyOS / Windows) embedding the `lingxia-showcase` lxapp, which demos pages, the
 `lx.*` API surface, native components, media, file transfer, and the terminal.
 
-> Unlike a real product, the home pages ship React **and** Vue
-> implementations side by side — that's why every build needs an explicit
-> `--framework`.
+The showcase pages are React. A project is one view framework, React or HTML,
+taken from its page files or the `framework` field in `lxapp.json`.
 
 ## Run
 
 ```bash
-# From this directory; pick one platform and one of react | vue
-lingxia dev --platform macos   --framework react
-lingxia dev --platform windows --framework react
-lingxia dev --platform android --framework vue
-lingxia dev --platform ios     --framework react
-lingxia dev --platform harmony --framework vue
+# From this directory; pick a platform
+lingxia dev --platform macos
+lingxia dev --platform windows
+lingxia dev --platform android
+lingxia dev --platform ios
+lingxia dev --platform harmony
 ```
-
-Any platform works with either framework — the pairings above are just to
-show both views exist.
 
 > **Tip:** add `--release` if disk space is tight — debug Rust artifacts are
 > several times larger than release ones, and skipping the debug profile
@@ -33,15 +29,14 @@ it with `lxdev` (tabs, eval, screenshots, logs) — see the skill's
 ## Build
 
 ```bash
-# From this directory; pick react | vue
-lingxia build --platform windows --framework react --release
+lingxia build --platform windows --release
 ```
 
 When working inside the monorepo without an installed `lingxia` CLI, run the
 same build through Cargo:
 
 ```bash
-cargo run -p lingxia-cli -- build --platform windows --framework react --release
+cargo run -p lingxia-cli -- build --platform windows --release
 ```
 
 The Windows executable is written to `../../target/release/LingXiaDemo.exe`.

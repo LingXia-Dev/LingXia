@@ -17,10 +17,6 @@ pub struct PackageOptions {
     #[arg(long, value_parser = ["arm64", "x86_64"])]
     pub macos_arch: Option<String>,
 
-    /// Override LxApp view framework detection
-    #[arg(long, value_parser = ["react", "vue", "html"])]
-    pub framework: Option<String>,
-
     /// LxApp progress output mode
     #[arg(long, value_parser = ["task", "plain"])]
     pub progress: Option<String>,
@@ -73,7 +69,6 @@ pub struct PackageOptions {
 pub struct PackageExecuteOptions {
     pub android_abis: Vec<String>,
     pub macos_arch: Option<String>,
-    pub framework: Option<String>,
     pub progress: Option<String>,
     pub platforms: Vec<String>,
     pub all_platforms: bool,
@@ -105,7 +100,6 @@ pub fn execute(options: PackageExecuteOptions) -> Result<()> {
         release: true,
         android_abis: options.android_abis,
         macos_arch: options.macos_arch,
-        framework: options.framework,
         progress: options.progress,
         platforms: options.platforms,
         all_platforms: options.all_platforms,

@@ -15,7 +15,7 @@ A page-based mini-app that runs inside any LingXia host. Perfect for pure UI and
 lingxia new my-lxapp -t lxapp -y
 ```
 
-Write Views in React, Vue, or HTML; keep state and platform calls in Logic. Runs in any LingXia Runner or host app.
+Write Views in React or HTML; keep state and platform calls in Logic. Runs in any LingXia Runner or host app.
 
 ## 02 · Native host app
 

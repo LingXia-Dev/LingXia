@@ -2,8 +2,7 @@
 
 set -euo pipefail
 
-framework=${1:-all}
-timeout_seconds=${2:-600}
+timeout_seconds=${1:-600}
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 showcase_root="$repo_root/examples/lingxia-showcase"
 lxapp_root="$showcase_root/lxapp"
@@ -12,12 +11,6 @@ source "$repo_root/scripts/lib/cargo-target-dir.sh"
 cargo_target_dir=$(resolve_cargo_target_dir "$repo_root")
 lingxia="$cargo_target_dir/debug/lingxia"
 lxdev="$cargo_target_dir/debug/lxdev"
-
-case "$framework" in
-  react|vue) frameworks=("$framework") ;;
-  all) frameworks=(react vue) ;;
-  *) echo "Unsupported framework: $framework" >&2; exit 2 ;;
-esac
 
 fixture_pid=""
 cleanup() {
@@ -48,30 +41,27 @@ else
 fi
 (cd "$showcase_root" && "$lingxia" doctor --platform macos)
 
-for current_framework in "${frameworks[@]}"; do
-  session_name="showcase-macos-$current_framework"
-  dev_args=(dev --background --platform macos --framework "$current_framework"
-    --name "$session_name")
+session_name="showcase-macos"
+dev_args=(dev --background --platform macos --name "$session_name")
 
-  result_dir="$lxapp_root/test-results/automation/macos-$current_framework"
-  mkdir -p "$result_dir"
-  echo "Starting macOS Showcase ($current_framework)..."
-  # Returns once the session is ready; a failed or timed-out start has
-  # already stopped what it started and exits non-zero with its log.
-  (cd "$showcase_root" && "$lingxia" "${dev_args[@]}")
+result_dir="$lxapp_root/test-results/automation/macos"
+mkdir -p "$result_dir"
+echo "Starting macOS Showcase..."
+# Returns once the session is ready; a failed or timed-out start has
+# already stopped what it started and exits non-zero with its log.
+(cd "$showcase_root" && "$lingxia" "${dev_args[@]}")
 
-  echo "Running macOS Showcase automation ($current_framework)..."
-  set +e
-  (
-    cd "$lxapp_root"
-    # The macos preset of lxapp/lxdev.json: the entry, --forbid-only and the
-    # platform arg.
-    "$lxdev" --session "$session_name" test --preset macos \
-      --timeout-secs "$timeout_seconds" \
-      --arg "framework=$current_framework" \
-      ${fixture_base:+--arg "httpBase=$fixture_base"} \
-      --output-dir "test-results/automation/macos-$current_framework"
-  )
+echo "Running macOS Showcase automation..."
+set +e
+(
+  cd "$lxapp_root"
+  # The macos preset of lxapp/lxdev.json: the entry, --forbid-only and the
+  # platform arg.
+  "$lxdev" --session "$session_name" test --preset macos \
+    --timeout-secs "$timeout_seconds" \
+    ${fixture_base:+--arg "httpBase=$fixture_base"} \
+    --output-dir "test-results/automation/macos"
+)
   test_status=$?
   set -e
   "$lxdev" session || true
@@ -96,9 +86,8 @@ for current_framework in "${frameworks[@]}"; do
     exit "$test_status"
   fi
 
-  echo "Stopping macOS Showcase ($current_framework)..."
-  (cd "$showcase_root" && "$lingxia" dev stop "$session_name")
-done
+echo "Stopping macOS Showcase..."
+(cd "$showcase_root" && "$lingxia" dev stop "$session_name")
 
 trap - EXIT
 echo 'macOS Showcase automation passed.'

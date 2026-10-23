@@ -10,7 +10,7 @@ LingXia（灵匣，意为"承光之器"）是一个**由 Rust 驱动的跨平台
 
 它的核心理念是**渲染**与**逻辑**的干净分离：
 
-- **视图（View）** 负责渲染——React、Vue 或纯 HTML，运行于 WebView。
+- **视图（View）** 负责渲染——React 或纯 HTML，运行于 WebView。
 - **逻辑（Logic）** 掌管状态与平台 API——运行于 JS 运行时，或用 Rust 获得原生能力。
 - **Rust 桥** 在两者之间传递数据与事件。
 

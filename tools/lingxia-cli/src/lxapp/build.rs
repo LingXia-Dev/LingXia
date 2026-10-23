@@ -24,7 +24,7 @@ fn run_with_context(args: &[String], cwd: &Path, dev_session: bool) -> Result<()
     let build_started = Instant::now();
     let mut options = BuildOptions::parse(args)?;
     options.dev_session = dev_session;
-    let project = Project::discover(cwd, options.framework)?;
+    let project = Project::discover(cwd)?;
 
     if options.package && !options.release {
         return Err(anyhow!("--package requires --release"));

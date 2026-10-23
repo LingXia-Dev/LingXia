@@ -193,7 +193,7 @@ pub(crate) fn native_client_output_path(
 fn native_client_output_relative_path(framework: ProjectFramework) -> &'static str {
     match framework {
         ProjectFramework::Html => ".lingxia/native.js",
-        ProjectFramework::React | ProjectFramework::Vue => ".lingxia/native.ts",
+        ProjectFramework::React => ".lingxia/native.ts",
     }
 }
 
@@ -452,7 +452,6 @@ mod tests {
             dev_session,
             release: false,
             package: false,
-            framework: None,
             progress: crate::lxapp::options::ProgressMode::Task,
         }
     }

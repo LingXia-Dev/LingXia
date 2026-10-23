@@ -16,7 +16,6 @@ pub struct BuildExecuteOptions {
     pub release: bool,
     pub android_abis: Vec<String>,
     pub macos_arch: Option<String>,
-    pub framework: Option<String>,
     pub progress: Option<String>,
     pub platforms: Vec<String>,
     pub all_platforms: bool,
@@ -72,7 +71,6 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         release,
         android_abis,
         macos_arch,
-        framework,
         progress,
         platforms,
         all_platforms,
@@ -123,10 +121,6 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         }
         if package {
             args.push("--package".to_string());
-        }
-        if let Some(framework) = framework.as_deref() {
-            args.push("--framework".to_string());
-            args.push(framework.to_string());
         }
         if let Some(progress) = progress.as_deref() {
             args.push("--progress".to_string());
@@ -391,7 +385,6 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         Vec::new()
     };
 
-    let framework_override = lxapp::parse_framework_override(framework.as_deref())?;
     validate_extra_native_features(
         &project_root,
         &config,
@@ -460,7 +453,6 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             } else {
                 None
             },
-            framework: framework_override,
             native_features: config.native_features_for_platform_with_extra(
                 platform_type.as_str(),
                 &extra_native_features,
@@ -497,7 +489,6 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         &project_root,
         &config,
         build_profile,
-        framework_override,
         progress.as_deref(),
         false,
         &platforms_to_build,
@@ -1004,7 +995,6 @@ fn build_standalone_apple_swift_package(
             } else {
                 None
             },
-            framework: None,
             // The standalone SPM's native crate (e.g. native) only exposes
             // injected provider features; webview-input etc. live on its lingxia
             // dependency, not as crate features.

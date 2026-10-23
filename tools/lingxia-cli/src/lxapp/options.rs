@@ -1,4 +1,3 @@
-use crate::lxapp::framework::ProjectFramework;
 use anyhow::{Result, anyhow};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,7 +11,6 @@ pub struct BuildOptions {
     pub dev_session: bool,
     pub release: bool,
     pub package: bool,
-    pub framework: Option<ProjectFramework>,
     pub progress: ProgressMode,
 }
 
@@ -30,43 +28,22 @@ impl BuildOptions {
 
         let release = args.iter().any(|arg| arg == "--release");
         let package = args.iter().any(|arg| arg == "--package");
-        let framework = parse_framework_arg(args)?;
+        if args
+            .iter()
+            .any(|arg| arg == "--framework" || arg.starts_with("--framework="))
+        {
+            return Err(anyhow!(
+                "`--framework` was removed. A project is React or HTML, from its page files or the \"framework\" field in lxapp.json."
+            ));
+        }
         let progress = parse_progress_arg(args)?;
 
         Ok(Self {
             dev_session: false,
             release,
             package,
-            framework,
             progress,
         })
-    }
-}
-
-fn parse_framework_arg(args: &[String]) -> Result<Option<ProjectFramework>> {
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        if arg == "--framework" {
-            let value = iter
-                .next()
-                .ok_or_else(|| anyhow!("--framework requires a value"))?;
-            return Ok(Some(parse_framework_value(value)?));
-        }
-        if let Some(value) = arg.strip_prefix("--framework=") {
-            return Ok(Some(parse_framework_value(value)?));
-        }
-    }
-    Ok(None)
-}
-
-fn parse_framework_value(value: &str) -> Result<ProjectFramework> {
-    match value {
-        "react" => Ok(ProjectFramework::React),
-        "vue" => Ok(ProjectFramework::Vue),
-        "html" => Ok(ProjectFramework::Html),
-        _ => Err(anyhow!(
-            "Unsupported framework {value:?}; expected react, vue, or html"
-        )),
     }
 }
 
@@ -110,17 +87,15 @@ mod tests {
         assert!(!options.dev_session);
         assert!(!options.release);
         assert!(!options.package);
-        assert_eq!(options.framework, None);
         assert_eq!(options.progress, ProgressMode::Task);
     }
 
     #[test]
-    fn parses_framework_and_progress_flags() {
+    fn parses_release_package_and_progress_flags() {
         let options = BuildOptions::parse(&args(&[
             "build",
             "--release",
             "--package",
-            "--framework=vue",
             "--progress",
             "plain",
         ]))
@@ -129,8 +104,15 @@ mod tests {
         assert!(!options.dev_session);
         assert!(options.release);
         assert!(options.package);
-        assert_eq!(options.framework, Some(ProjectFramework::Vue));
         assert_eq!(options.progress, ProgressMode::Plain);
+    }
+
+    #[test]
+    fn rejects_removed_framework_flag() {
+        let error = BuildOptions::parse(&args(&["build", "--framework", "react"]))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("`--framework` was removed"));
     }
 
     #[test]
@@ -139,13 +121,5 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("expected task or plain"));
-    }
-
-    #[test]
-    fn rejects_missing_framework_value() {
-        let error = BuildOptions::parse(&args(&["build", "--framework"]))
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("--framework requires a value"));
     }
 }

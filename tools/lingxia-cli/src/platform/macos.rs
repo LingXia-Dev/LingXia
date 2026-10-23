@@ -124,8 +124,7 @@ impl MacosPlatform {
             .ok_or_else(|| anyhow!("app.projectName is required in lingxia.config.json"))?;
 
         let rust_lib_dir = project_root.join(&rust_lib_name);
-        let native_client_out =
-            native_client_out_for_host_project(project_root, lingxia_config, config.framework)?;
+        let native_client_out = native_client_out_for_host_project(project_root, lingxia_config)?;
 
         apple::build_rust_staticlib(
             project_root,

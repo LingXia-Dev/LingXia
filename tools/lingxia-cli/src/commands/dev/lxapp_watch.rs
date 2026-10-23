@@ -51,7 +51,6 @@ pub(super) enum WatchCmd {
 }
 
 pub(super) struct LxAppWatchOptions {
-    pub framework: Option<String>,
     pub release: bool,
 }
 
@@ -81,7 +80,7 @@ impl LxAppWatch {
             );
         }
 
-        state.set_watch_build(options.framework.clone(), options.release);
+        state.set_watch_build(options.release);
         let (cmd_tx, cmd_rx) = mpsc::channel();
         state.set_watch_commands(cmd_tx);
         let stop_flag = state.stop_flag.clone();
@@ -433,7 +432,7 @@ enum Reload {
 
 fn reload_one(state: &DevServerState, app_id: &str, options: &LxAppWatchOptions) -> Reload {
     println!("  {} rebuilding {}...", "↻".cyan(), app_id.cyan());
-    if let Err(err) = state.rebuild_lxapp(app_id, options.framework.as_deref(), options.release) {
+    if let Err(err) = state.rebuild_lxapp(app_id, options.release) {
         eprintln!("  {} auto-reload {app_id} failed: {err:#}", "✗".red());
         return Reload::Done;
     }

@@ -93,7 +93,6 @@ jobs:
             web_frontend:
               - 'packages/lingxia-elements/**'
               - 'packages/lingxia-react/**'
-              - 'packages/lingxia-vue/**'
               - 'packages/lingxia-page-runtime/**'
             apple_sdk:
               - 'lingxia-sdk/apple/**'
@@ -227,10 +226,7 @@ jobs:
               - 'packages/lingxia-page-runtime/**'
             automation_react:
               - 'packages/lingxia-react/**'
-            automation_vue:
-              - 'packages/lingxia-vue/**'
-            # Windows covers both frontend adapters; macOS covers the React
-            # view plus its platform-specific native behavior.
+            # Windows and macOS both run the React showcase.
             automation_showcase:
               - 'examples/lingxia-showcase/lingxia.yaml'
               - 'examples/lingxia-showcase/lxapp/**'
@@ -312,7 +308,6 @@ jobs:
           AUTOMATION_WINDOWS: ${{ steps.filter.outputs.automation_windows }}
           AUTOMATION_FRONTEND_SHARED: ${{ steps.filter.outputs.automation_frontend_shared }}
           AUTOMATION_REACT: ${{ steps.filter.outputs.automation_react }}
-          AUTOMATION_VUE: ${{ steps.filter.outputs.automation_vue }}
           AUTOMATION_SHOWCASE: ${{ steps.filter.outputs.automation_showcase }}
           AUTOMATION_CI: ${{ steps.filter.outputs.automation_ci }}
           RUNNER_SRC: ${{ steps.filter.outputs.runner_src }}
@@ -369,7 +364,6 @@ jobs:
           automation_windows="$AUTOMATION_WINDOWS"
           automation_frontend_shared="$AUTOMATION_FRONTEND_SHARED"
           automation_react="$AUTOMATION_REACT"
-          automation_vue="$AUTOMATION_VUE"
           automation_macos_all=false
           automation_windows_all=false
 
@@ -402,7 +396,6 @@ jobs:
             automation_windows=false
             automation_frontend_shared=false
             automation_react=false
-            automation_vue=false
           fi
 
           matrix_outputs=$(FULL="$automation_full" \
@@ -413,7 +406,6 @@ jobs:
             WINDOWS_ALL="$automation_windows_all" \
             FRONTEND_SHARED="$automation_frontend_shared" \
             REACT="$automation_react" \
-            VUE="$automation_vue" \
             bash scripts/ci/automation-matrix.sh)
           automation=$(sed -n 's/^automation=//p' <<<"$matrix_outputs")
           automation_matrix=$(sed -n 's/^automation_matrix=//p' <<<"$matrix_outputs")
@@ -1059,7 +1051,7 @@ jobs:
           ref: ${{ secrets.LINGXIA_CLOUD_CLIENT_REF }}
       - name: Build macOS example app
         working-directory: examples/lingxia-showcase
-        run: ../../target/debug/lingxia build --platform macos --framework react
+        run: ../../target/debug/lingxia build --platform macos
       - name: Upload macOS app
         uses: actions/upload-artifact@v6
         with:
@@ -1218,7 +1210,6 @@ jobs:
         shell: pwsh
         run: >-
           ../../scripts/automation/run-windows-showcase.ps1
-          -Framework '${{ matrix.framework }}'
           -TimeoutSeconds 900
           -BuildJobs 4
 
@@ -1228,11 +1219,10 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          framework='${{ matrix.framework }}'
-          result_dir="examples/lingxia-showcase/lxapp/test-results/automation/macos-$framework"
+          result_dir="examples/lingxia-showcase/lxapp/test-results/automation/macos"
 
           for attempt in 1 2; do
-            if bash scripts/automation/run-macos-showcase.sh "$framework" 600; then
+            if bash scripts/automation/run-macos-showcase.sh 600; then
               exit 0
             fi
 
@@ -1340,7 +1330,7 @@ jobs:
           cli: ./target/debug/lingxia
       - name: Build iOS example app
         working-directory: examples/lingxia-showcase
-        run: ../../target/debug/lingxia build --platform ios --framework react
+        run: ../../target/debug/lingxia build --platform ios
       - name: Upload iOS app
         uses: actions/upload-artifact@v6
         with:
@@ -1387,7 +1377,7 @@ jobs:
         # to debug-signing here since no keystore is configured — see the
         # build.gradle.kts signing block). Use --env release --release locally
         # with a keystore for a Play-ready artifact.
-        run: ../../target/debug/lingxia build --platform android --framework react --release
+        run: ../../target/debug/lingxia build --platform android --release
       - name: Upload APK
         uses: actions/upload-artifact@v6
         with:
@@ -1588,7 +1578,7 @@ jobs:
 
       - name: Build Harmony example (native only)
         working-directory: examples/lingxia-showcase
-        run: ../../target/debug/lingxia build --platform harmony --framework react --native-only
+        run: ../../target/debug/lingxia build --platform harmony --native-only
 
       - name: Upload native library
         if: always()
@@ -1668,11 +1658,9 @@ jobs:
         working-directory: packages
         run: npm test --workspace @lingxia/test
 
-      - name: Test native component types and Vue compilation
+      - name: Test native component types
         working-directory: packages
-        run: |
-          npm run test:types --workspace @lingxia/react
-          npm run test:components --workspace @lingxia/vue
+        run: npm run test:types --workspace @lingxia/react
 
       # Its lxapp bundle builds through the CLI (`build:lxapp`), which the
       # showcase host build covers; only its JS checks run here.
@@ -1687,7 +1675,6 @@ jobs:
         working-directory: packages
         run: |
           npm test --workspace @lingxia/page-runtime
-          npm run test:hooks --workspace @lingxia/vue
 
       - name: Test inline native protocol (@lingxia/elements)
         working-directory: packages

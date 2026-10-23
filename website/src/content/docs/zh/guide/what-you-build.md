@@ -15,7 +15,7 @@ LingXia 有**两种项目形态**。Rust 原生代码是宿主应用内的扩展
 lingxia new my-lxapp -t lxapp -y
 ```
 
-用 React、Vue 或 HTML 写视图；把状态与平台调用留在逻辑层。可在任意 LingXia Runner 或宿主应用中运行。
+用 React 或 HTML 写视图；把状态与平台调用留在逻辑层。可在任意 LingXia Runner 或宿主应用中运行。
 
 ## 02 · 原生宿主应用
 

@@ -37,7 +37,7 @@ pub fn build(
 ) -> Result<ViewBuildReport> {
     super::vite_tooling::cleanup_legacy_view_artifacts(project.root.as_path())?;
     match project.framework {
-        ProjectFramework::React | ProjectFramework::Vue => {
+        ProjectFramework::React => {
             let install_duration = super::vite_tooling::ensure_component_view_tooling(
                 project,
                 project.framework,
@@ -95,7 +95,7 @@ pub fn prepare_tooling(
     progress: Option<ViewProgress>,
 ) -> Result<Option<Duration>> {
     match project.framework {
-        ProjectFramework::React | ProjectFramework::Vue => {
+        ProjectFramework::React => {
             super::vite_tooling::ensure_project_tooling(project, options, progress.as_ref())
         }
         ProjectFramework::Html => {
@@ -678,17 +678,6 @@ fn framework_plugin_import(framework: ProjectFramework) -> &'static str {
         ProjectFramework::React => {
             "import react from '@vitejs/plugin-react';\nconst frameworkPlugins = [react()];"
         }
-        ProjectFramework::Vue => {
-            "import vue from '@vitejs/plugin-vue';\n\
-             const vueTypeFs = {\n\
-               fileExists: fs.existsSync,\n\
-               readFile: (file) => {\n\
-                 try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; }\n\
-               },\n\
-               realpath: fs.realpathSync,\n\
-             };\n\
-             const frameworkPlugins = [vue({ script: { fs: vueTypeFs } })];"
-        }
         ProjectFramework::Html => "const frameworkPlugins = [];",
     }
 }
@@ -748,97 +737,84 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn vue_plugin_can_resolve_imported_types_without_typescript_sys() {
-        let plugin = framework_plugin_import(ProjectFramework::Vue);
-
-        assert!(plugin.contains("fileExists: fs.existsSync"));
-        assert!(plugin.contains("readFile: (file)"));
-        assert!(plugin.contains("vue({ script: { fs: vueTypeFs } })"));
-    }
-
-    #[test]
     fn component_finalize_preserves_canonical_vite_entry_for_lazy_chunks() {
-        for (framework, extension) in [
-            (ProjectFramework::React, ".tsx"),
-            (ProjectFramework::Vue, ".vue"),
-        ] {
-            let temp = tempdir().unwrap();
-            let root = temp.path().join("project");
-            let vite_dist = temp.path().join("vite-dist");
-            let page_id = "pages_home_index";
-            let vite_page = vite_dist.join("pages").join(page_id);
-            fs::create_dir_all(&vite_page).unwrap();
-            fs::create_dir_all(&root).unwrap();
-            fs::write(
-                root.join("lxapp.config.ts"),
-                "export default { view: { target: 'es5' } };",
-            )
-            .unwrap();
-            fs::write(
-                vite_page.join(format!("{page_id}.js")),
-                "export const shared = true;",
-            )
-            .unwrap();
-            fs::write(
-            vite_page.join("index.html"),
-            format!(
-                "<div id=\"root\"></div><script type=\"module\" src=\"/pages/{page_id}/{page_id}.js\"></script>"
-            ),
+        let (framework, extension) = (ProjectFramework::React, ".tsx");
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("project");
+        let vite_dist = temp.path().join("vite-dist");
+        let page_id = "pages_home_index";
+        let vite_page = vite_dist.join("pages").join(page_id);
+        fs::create_dir_all(&vite_page).unwrap();
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("lxapp.config.ts"),
+            "export default { view: { target: 'es5' } };",
         )
         .unwrap();
+        fs::write(
+            vite_page.join(format!("{page_id}.js")),
+            "export const shared = true;",
+        )
+        .unwrap();
+        fs::write(
+        vite_page.join("index.html"),
+        format!(
+            "<div id=\"root\"></div><script type=\"module\" src=\"/pages/{page_id}/{page_id}.js\"></script>"
+        ),
+    )
+    .unwrap();
 
-            let project = Project {
-                root: root.clone(),
-                kind: ProjectKind::LxApp,
-                framework,
-                output_dir: root.join("dist"),
-                pages: vec![format!("pages/home/index{extension}")],
-                page_names: Vec::new(),
-                logic_entry: None,
-                plugin_id: None,
-                package_name: Some("test-app".to_string()),
-                version: "0.0.1".to_string(),
-            };
-            let page = ComponentPageBuild {
-                page_path: format!("pages/home/index{extension}"),
-                page_id: page_id.to_string(),
-                output_extension: extension,
-                actions: Vec::new(),
-            };
+        let project = Project {
+            root: root.clone(),
+            kind: ProjectKind::LxApp,
+            framework,
+            output_dir: root.join("dist"),
+            pages: vec![format!("pages/home/index{extension}")],
+            page_names: Vec::new(),
+            logic_entry: None,
+            plugin_id: None,
+            package_name: Some("test-app".to_string()),
+            version: "0.0.1".to_string(),
+        };
+        let page = ComponentPageBuild {
+            page_path: format!("pages/home/index{extension}"),
+            page_id: page_id.to_string(),
+            output_extension: extension,
+            actions: Vec::new(),
+        };
 
-            finalize_component_pages(&project, &vite_dist, &[page]).unwrap();
+        finalize_component_pages(&project, &vite_dist, &[page]).unwrap();
 
-            let built = fs::read_to_string(
-                project
-                    .output_dir
-                    .join(format!("pages/home/index{extension}")),
-            )
-            .unwrap();
-            assert!(!built.contains("polyfills.es5.js"));
-            assert!(
-                !project
-                    .output_dir
-                    .join("pages")
-                    .join(page_id)
-                    .join("index.html")
-                    .exists()
-            );
-            assert!(
-                built.contains("data-lx-chrome=\"no-scrollbar\""),
-                "React/Vue finalize must stamp CSS scrollbar hiding: {built}"
-            );
-            assert!(built.contains("scrollbar-width:none!important"), "{built}");
+        let built = fs::read_to_string(
+            project
+                .output_dir
+                .join(format!("pages/home/index{extension}")),
+        )
+        .unwrap();
+        assert!(!built.contains("polyfills.es5.js"));
+        assert!(
+            !project
+                .output_dir
+                .join("pages")
+                .join(page_id)
+                .join("index.html")
+                .exists()
+        );
+        assert!(
+            built.contains("data-lx-chrome=\"no-scrollbar\""),
+            "React finalize must stamp CSS scrollbar hiding: {built}"
+        );
+        assert!(built.contains("scrollbar-width:none!important"), "{built}");
 
-            assert!(project.output_dir.join("pages/home/view.js").is_file());
-            assert!(
-                project
-                    .output_dir
-                    .join("pages")
-                    .join(page_id)
-                    .join(format!("{page_id}.js"))
-                    .is_file()
-            );
-        }
+        assert!(project.output_dir.join("pages/home/view.js").is_file());
+        assert!(
+            project
+                .output_dir
+                .join("pages")
+                .join(page_id)
+                .join(format!("{page_id}.js"))
+                .is_file()
+        );
     }
 
     #[test]

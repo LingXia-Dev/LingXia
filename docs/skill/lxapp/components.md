@@ -21,8 +21,6 @@ import {
   LxPicker, LxMediaSwiper, LxNavigator,
 } from '@lingxia/react';
 
-// Vue — same names from '@lingxia/vue'
-
 // HTML — register once, then use the raw tags:
 // <lx-native-root>, <lx-video>, <lx-native-cover>, …
 import { registerInlineNativeComponents } from '@lingxia/html';
@@ -37,9 +35,9 @@ View event.
 
 | Component | What the handler receives | Example |
 |---|---|---|
-| Island nodes (`LxNativeButton`, `LxVideo`, Root) | **Payload first** in React/Vue; HTML still reads `CustomEvent.detail` | `onPress(({ source }) => …)`, `onTimeUpdate(({ currentTime }) => …)` |
+| Island nodes (`LxNativeButton`, `LxVideo`, Root) | **Payload first** in React; HTML still reads `CustomEvent.detail` | `onPress(({ source }) => …)`, `onTimeUpdate(({ currentTime }) => …)` |
 | `LxPicker` | **Resolved value directly** — `string \| string[]` | `onConfirm(value)`, `onColumnChange(value)` |
-| `LxMediaSwiper` | **Payload first** in React/Vue; HTML reads `CustomEvent.detail` | `onChange(({ index }) => …)` |
+| `LxMediaSwiper` | **Payload first** in React; HTML reads `CustomEvent.detail` | `onChange(({ index }) => …)` |
 | `LxNavigator` | Raw DOM `CustomEvent` | `onSuccess(event)` → `event.detail.success` |
 
 ## Text inputs
@@ -100,13 +98,13 @@ One native composition tree laid out by CSS, inside the page's single WebView:
   `NATIVE_ROOT_INVALID_STRUCTURE`.
 - Use the island for UI on native surfaces (a video menu); ordinary page UI
   stays HTML. Web component libraries cannot go inside a Root.
-- `LxNativeButton` fires `onPress` (`@press` in Vue). `icon` is one of `close`,
+- `LxNativeButton` fires `onPress`. `icon` is one of `close`,
   `play`, `pause`, `mute`, `unmute`, `fullscreen`, `more`: a symbol, not a
   command. Other values reject with `NATIVE_COMPONENT_INVALID_PROPS`.
 - Give nodes stable `id`s to keep identity across a parent change. React Root
   refs expose `{ retry, getLayout }`.
 - Root `onReady` fires once, when the Root becomes active. The React `fallback`
-  prop / Vue `#fallback` slot shows DOM during setup or failure.
+  prop shows DOM during setup or failure. HTML uses the element's fallback slot.
 - Fullscreen belongs to `LxVideo`; Root siblings do not follow it into the
   fullscreen window.
 
@@ -137,7 +135,7 @@ inside `LxNativeRoot`.
 - Remote URLs (`src`, `poster`, quality/watermark URLs, stream sources) follow
   the host [network grant](../native/permissions.md); protocol-relative URLs
   are rejected.
-- React/Vue handlers get payloads: `onTimeUpdate` → `{ currentTime }`,
+- React handlers get payloads: `onTimeUpdate` → `{ currentTime }`,
   `onError` → `{ code, message, recoverable? }`, `onLoadedMetadata` →
   `{ duration, width?, height? }`, `onVolumeChange` → `{ volume, muted? }`,
   `onFullscreenChange` → `{ fullscreen }`. `onPlayRequest`, `onPlay`,
@@ -183,7 +181,7 @@ type LxMediaSwiperItem =
 Handlers get the payload: `onChange` / `onTransitionEnd` →
 `{ index, previousIndex, item, source }`; `onTap` / `onVideoEnded` →
 `{ index, item }`; `onEndReached` at the last item; `onError` → `{ code }`.
-The ref (React `LxMediaSwiperRef`, Vue `LxMediaSwiperHandle`) has `next()`,
+The ref (`LxMediaSwiperRef`) has `next()`,
 `previous()` and `goToIndex(index)`.
 
 ```tsx
@@ -228,7 +226,7 @@ and `tel` work for any target:
 | `exit` | Exit the current lxapp |
 | `tel` | Trigger a phone call (use with `phone-number`) |
 
-`size` and `interaction` are objects in React/Vue (JSON strings on the raw
+`size` and `interaction` are objects in React (JSON strings on the raw
 tag). No handle comes back; use `lx.surface.*` from Logic to message or close
 a surface. Events `onSuccess` / `onFail` / `onComplete` carry
 `{ success?, errMsg? }`.

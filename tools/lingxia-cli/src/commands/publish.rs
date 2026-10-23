@@ -16,7 +16,6 @@ pub struct PublishOptions {
     pub package: Option<String>,
     pub env: Option<String>,
     pub channel: Option<String>,
-    pub framework: Option<String>,
     pub progress: Option<String>,
     pub update_signing_key: Option<String>,
     pub dry_run: bool,
@@ -417,31 +416,23 @@ fn resolve_publish_target(
         bail!("--dry-run takes a host package: lingxia publish <PACKAGE|DIR> --dry-run");
     }
     let mut meta = resolve_meta(cwd, opts.env.as_deref(), opts.channel.as_deref())?;
-    let package = package_current_project(cwd, opts.framework.clone(), opts.progress.clone())?;
+    let package = package_current_project(cwd, opts.progress.clone())?;
     apply_packaged_manifest(&mut meta, &package.path)?;
     Ok((meta, package))
 }
 
-fn package_current_project(
-    cwd: &Path,
-    framework: Option<String>,
-    progress: Option<String>,
-) -> Result<ResolvedPackage> {
-    let args = publish_build_args(framework.as_deref(), progress.as_deref());
+fn package_current_project(cwd: &Path, progress: Option<String>) -> Result<ResolvedPackage> {
+    let args = publish_build_args(progress.as_deref());
     lxapp::run_in_dir(&args, cwd)?;
     Ok(ResolvedPackage {
-        path: lxapp::package_in_dir(cwd, framework.as_deref())?,
+        path: lxapp::package_in_dir(cwd)?,
         platform: None,
         cleanup_after_publish: true,
     })
 }
 
-fn publish_build_args(framework: Option<&str>, progress: Option<&str>) -> Vec<String> {
+fn publish_build_args(progress: Option<&str>) -> Vec<String> {
     let mut args = vec!["build".to_string(), "--release".to_string()];
-    if let Some(framework) = framework {
-        args.push("--framework".to_string());
-        args.push(framework.to_string());
-    }
     if let Some(progress) = progress {
         args.push("--progress".to_string());
         args.push(progress.to_string());
@@ -1181,19 +1172,9 @@ mod tests {
 
     #[test]
     fn publish_build_does_not_pass_env_or_channel() {
-        let args = publish_build_args(Some("react"), Some("plain"));
+        let args = publish_build_args(Some("plain"));
 
-        assert_eq!(
-            args,
-            vec![
-                "build",
-                "--release",
-                "--framework",
-                "react",
-                "--progress",
-                "plain"
-            ]
-        );
+        assert_eq!(args, vec!["build", "--release", "--progress", "plain"]);
     }
 
     #[test]
@@ -1213,7 +1194,6 @@ mod tests {
             package,
             env: None,
             channel: None,
-            framework: None,
             progress: None,
             update_signing_key: None,
             dry_run: false,
