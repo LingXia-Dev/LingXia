@@ -89,6 +89,10 @@ struct SessionOptions {
 }
 
 fn main() {
+    lingxia_control_commands::with_cli_stack(main_here);
+}
+
+fn main_here() {
     let args = std::env::args_os().collect::<Vec<_>>();
     let json_errors = args.iter().enumerate().any(|(index, arg)| {
         arg == "--json"

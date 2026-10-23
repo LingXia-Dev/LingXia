@@ -23,6 +23,24 @@ pub mod guard;
 pub mod output;
 pub mod transport;
 
+/// Parse and run a command line on a thread with room for it.
+///
+/// The clap tree here is deep enough that an unoptimized build overflows
+/// Windows' 1 MiB main-thread stack while building it; 8 MiB is the main
+/// stack Linux and macOS give a process.
+pub fn with_cli_stack<T: Send + 'static>(run: impl FnOnce() -> T + Send + 'static) -> T {
+    const CLI_STACK_BYTES: usize = 8 * 1024 * 1024;
+    let worker = std::thread::Builder::new()
+        .name("cli".to_string())
+        .stack_size(CLI_STACK_BYTES)
+        .spawn(run)
+        .expect("spawn the command-line thread");
+    match worker.join() {
+        Ok(value) => value,
+        Err(panic) => std::panic::resume_unwind(panic),
+    }
+}
+
 #[doc(hidden)]
 pub use extra::{ExtraProductCommand, register_extra_product_command};
 
