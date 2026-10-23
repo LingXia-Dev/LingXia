@@ -288,6 +288,12 @@ pub(crate) fn handle_browser_navigation_policy(
         );
     };
 
+    // The engine's own empty and inline documents: an `about:blank` or
+    // `srcdoc` iframe is page content, not a navigation to deny.
+    if scheme == "about" && matches!(trimmed, "about:blank" | "about:srcdoc") {
+        return browser_policy_response(BrowserNavigationPolicyDecision::InWebview, None);
+    }
+
     if !request.is_main_frame && matches!(scheme.as_str(), "lx" | "lingxia") {
         return browser_policy_response(
             BrowserNavigationPolicyDecision::Deny,
@@ -331,6 +337,32 @@ pub(crate) fn handle_browser_navigation_policy_json(request_json: &str) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn engine_blank_and_srcdoc_documents_load_in_any_frame() {
+        for (url, is_main_frame) in [
+            ("about:srcdoc", false),
+            ("about:blank", false),
+            ("about:blank", true),
+        ] {
+            let response = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
+                raw_url: url.to_string(),
+                has_user_gesture: false,
+                is_main_frame,
+            });
+            assert_eq!(
+                response.decision,
+                BrowserNavigationPolicyDecision::InWebview,
+                "{url}"
+            );
+        }
+        let other = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
+            raw_url: "about:config".to_string(),
+            has_user_gesture: true,
+            is_main_frame: true,
+        });
+        assert_eq!(other.decision, BrowserNavigationPolicyDecision::Deny);
+    }
 
     #[test]
     fn normalize_browser_target_url_upgrades_http_case_insensitively() {
