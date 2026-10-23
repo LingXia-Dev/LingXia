@@ -19,6 +19,48 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.28.0 — 2026-10-23
+
+### Breaking
+
+- **Breaking** — remove the process capability (ddba2adfe)
+
+### Writing an lxapp
+
+- **test**: forward fetch arguments to the runtime as given (1dabb409f)
+- **test**: expose the browser page primitives on t.automation.browser (898aedd56)
+- **webview**: region screenshots, trusted pointer and text input, page console recorder (cceef0d12)
+
+### Embedding a host app
+
+- **sdk**: build SDK artifacts with `cargo xtask sdk` (c8a0b3e07)
+- **ios**: sign App Links domains under a wildcard Associated Domains grant (0069dbde6)
+- **shell**: show a footer value once when it equals its label (21a650518)
+- **shell**: keep a footer value on the row of the icons before it (5fe8ee2b2)
+- **browser**: wait for the document at the URL, not the WebView's URL (59d90346f)
+- **browser**: let about:blank and srcdoc frames load (d89dad5ad)
+- **browser**: agent-grade snapshots, ref actions with auto-wait, and form input (abc8d78be)
+- **shell**: let a sidebar value share a footer row, and open footer tooltips above the entry (8ebecc48d)
+
+### CLI and CI
+
+- **cli**: indent the Android App Links block inside the launcher activity (504c440e9)
+- **cli**: address the review of the pinned-source follow-ups (97a0b2aef)
+- **cli**: let `lingxia upgrade` drop a pin its release supersedes (10d747e67)
+- **cli**: pin only the patches the project's graph uses (1355fc5db)
+- **cli**: build pinned crates from the project's checkout, not git (b2c6be300)
+- **cli**: keep a re-pinned source's generated Swift bridges (841c304a2)
+- **cli**: run on an 8 MiB stack thread (c60e574f2)
+- **cli**: keep a pinned source and its SDKs in the project's .lingxia (2b0a535cc)
+- **cli**: pin a local LingXia checkout by path instead of LINGXIA_SOURCE (a963865f3)
+- **cli**: reuse the running CLI when building a pinned SDK from source (0579e282e)
+- **cli**: pin the LingXia source a project builds against (3547b8b8d)
+- **lxdev**: parse and run the command line on an 8 MiB stack (3a0129e5a)
+
+### Other
+
+- **xtask**: run gradlew by absolute path and keep Windows paths plain (6d867da01)
+
 ## 0.27.0 — 2026-10-22
 
 ### Breaking
