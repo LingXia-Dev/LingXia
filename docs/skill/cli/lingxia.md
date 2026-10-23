@@ -208,6 +208,14 @@ to the CLI's major.minor line, after a prompt.
 - `--check` reports drift without writing.
 - Exit 10 means something is still behind; re-run `lingxia upgrade`.
 
+## `lingxia pin`
+
+`lingxia pin <ref>` builds the project against that LingXia commit; commit the
+`lingxia.lock`, `Cargo.toml` and `Cargo.lock` it writes. It covers crates and
+SDKs only: a commit that changes the page bridge is refused at build, since JS
+changes ship in a release. `LINGXIA_SOURCE=<checkout>` builds a local tree
+instead.
+
 ## Environment variables
 
 | Variable | Used by | Description |
