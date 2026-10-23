@@ -150,7 +150,7 @@ pub fn cargo_config(project_root: &Path) -> Result<Option<PathBuf>> {
             toml::Value::String(dir.to_string_lossy().into_owned())
         ));
     }
-    let (carried, _) = super::cargo::transcribed_patches_with_paths(&source)?;
+    let carried = super::cargo::transcribed_patches(&source, &source.to_string_lossy())?;
     for patch in carried {
         text.push_str(&format!("{} = {}\n", patch.name, patch.value));
     }
@@ -168,6 +168,8 @@ pub fn apply(command: &mut Command, dir: &Path) -> Result<()> {
     let Some(root) = crate::commands::project_upgrade::find_project_root_from(dir) else {
         return Ok(());
     };
+    // The manifest's path patches need the pinned checkout in place first.
+    crate::pin::prepare_source(&root)?;
     if let Some(config) = cargo_config(&root)? {
         command.arg("--config").arg(config);
     }

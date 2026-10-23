@@ -210,13 +210,10 @@ to the CLI's major.minor line, after a prompt.
 
 ## `lingxia pin`
 
-`lingxia pin <ref>` builds the project against that LingXia commit; commit the
-`lingxia.lock`, `Cargo.toml` and `Cargo.lock` it writes. It covers crates and
-SDKs only: a commit that changes the page bridge is refused at build, since JS
-changes ship in a release. A commit's SDKs build once into the project's
-`.lingxia/`; in CI, cache `.lingxia/` keyed on `lingxia.lock`. `lingxia pin <path>`
-builds a local checkout instead without touching the lock, until
-`lingxia pin --no-local`; `package` refuses it.
+`lingxia.lock` pins the LingXia commit a project's native code builds against.
+Change it only with `lingxia pin <ref>` (or `<path>` for a local checkout; never
+edit the `# lingxia.lock` lines). In a fresh clone, run `lingxia pin` before
+plain `cargo`.
 
 ## Environment variables
 

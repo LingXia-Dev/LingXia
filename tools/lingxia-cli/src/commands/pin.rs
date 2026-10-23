@@ -138,14 +138,19 @@ pub fn execute(args: PinArgs) -> Result<i32> {
         pinned_at,
     };
 
-    let (patches, notes) = desired_patches(&root, &pinned, &checkout)?;
+    let patches = desired_patches(&root, &pinned, &checkout)?;
     let manifest = root.join("Cargo.toml");
     let mut changed = Vec::new();
     if manifest.is_file() {
         let content = fs::read_to_string(&manifest)
             .with_context(|| format!("read {}", manifest.display()))?;
-        ensure_git_fetch_with_cli(&root, &pinned)?;
         let (rewritten, kept) = pin_cargo::rewrite(&content, &patches);
+        if !patches.is_empty() && pin_cargo::exclude_needs_lingxia(&rewritten) {
+            println!(
+                "  {} add \".lingxia\" to `[workspace] exclude` in Cargo.toml: cargo would otherwise take the pinned crates for members of this workspace",
+                "note".yellow()
+            );
+        }
         for name in kept {
             println!(
                 "  {} {name}: the project patches it itself; that patch stays",
@@ -157,9 +162,6 @@ pub fn execute(args: PinArgs) -> Result<i32> {
                 .with_context(|| format!("write {}", manifest.display()))?;
             changed.push(format!("Cargo.toml: {} managed patch(es)", patches.len()));
         }
-    }
-    for note in notes {
-        println!("  {} {note}", "note".yellow());
     }
     changed.extend(crate::commands::project_upgrade::set_native_pins(
         &root,
@@ -194,54 +196,31 @@ pub fn execute(args: PinArgs) -> Result<i32> {
     Ok(0)
 }
 
-/// Managed patches for `pinned`, plus notes about patches that cannot follow.
-fn desired_patches(
-    root: &Path,
-    pinned: &Pin,
-    checkout: &Path,
-) -> Result<(Vec<pin_cargo::Patch>, Vec<String>)> {
+/// Managed patches for `pinned`: each LingXia crate the project uses from
+/// the checkout in `.lingxia/`, plus the commit's own patches.
+fn desired_patches(root: &Path, pinned: &Pin, checkout: &Path) -> Result<Vec<pin_cargo::Patch>> {
     if pinned.is_official_release() {
         // crates.io serves the release; requirements alone select it.
-        return Ok((Vec::new(), Vec::new()));
+        return Ok(Vec::new());
     }
-    let available = pin_cargo::workspace_crates(checkout)?;
+    let dirs: std::collections::BTreeMap<String, std::path::PathBuf> =
+        pin_cargo::workspace_crate_dirs(checkout)?
+            .into_iter()
+            .collect();
+    let available = dirs.keys().cloned().collect();
     let lock_text = fs::read_to_string(root.join("Cargo.lock")).unwrap_or_default();
     let manifest = fs::read_to_string(root.join("Cargo.toml")).unwrap_or_default();
-    let names = pin_cargo::patch_names(&available, &lock_text, &manifest);
-    let mut patches: Vec<_> = names
-        .iter()
-        .map(|name| pin_cargo::git_patch(name, &pinned.git, &pinned.commit))
-        .collect();
-    let (carried, skipped) = pin_cargo::transcribed_patches(checkout)?;
-    patches.extend(carried);
-    let notes = skipped
-        .into_iter()
-        .map(|name| {
-            format!("{name}: the pinned source patches it to a local path, which cannot be carried")
-        })
-        .collect();
-    Ok((patches, notes))
-}
-
-/// git dependencies on a private fork need git's own credential helpers.
-fn ensure_git_fetch_with_cli(root: &Path, pinned: &Pin) -> Result<()> {
-    if pinned.is_official_release() {
-        return Ok(());
+    let mut patches = Vec::new();
+    for name in pin_cargo::patch_names(&available, &lock_text, &manifest) {
+        let dir = pin_cargo::relative_dir(checkout, &dirs[&name])
+            .with_context(|| format!("{name} is outside the pinned checkout"))?;
+        patches.push(pin_cargo::path_patch(&name, pin_cargo::SOURCE_PATH, &dir));
     }
-    let config = root.join(".cargo").join("config.toml");
-    let text = fs::read_to_string(&config).unwrap_or_default();
-    let set = text
-        .parse::<toml::Table>()
-        .ok()
-        .and_then(|t| t.get("net")?.get("git-fetch-with-cli")?.as_bool())
-        .unwrap_or(false);
-    if !set {
-        println!(
-            "  {} add `[net] git-fetch-with-cli = true` to .cargo/config.toml so cargo fetches the pinned git source with your git credentials",
-            "hint".cyan()
-        );
-    }
-    Ok(())
+    patches.extend(pin_cargo::transcribed_patches(
+        checkout,
+        pin_cargo::SOURCE_PATH,
+    )?);
+    Ok(patches)
 }
 
 /// Resolve the graph once so Cargo.lock records the pinned source.
@@ -285,11 +264,7 @@ fn check(root: &Path) -> Result<i32> {
     if manifest.is_file() {
         let content = fs::read_to_string(&manifest)?;
         let managed = pin_cargo::managed(&content);
-        let expected_git = |patch: &pin_cargo::Patch| {
-            patch
-                .value
-                .contains(&format!("rev = \"{}\"", pinned.commit))
-        };
+        let checkout = format!("path = \"{}/", pin_cargo::SOURCE_PATH);
         if pinned.is_official_release() {
             if !managed.is_empty() {
                 problems.push(
@@ -298,12 +273,15 @@ fn check(root: &Path) -> Result<i32> {
             }
         } else if managed.is_empty() {
             problems.push("Cargo.toml has no managed patches; run `lingxia pin`".into());
-        } else if !managed
-            .iter()
-            .filter(|p| p.value.contains(&format!("git = \"{}\"", pinned.git)))
-            .all(expected_git)
+        } else if !managed.iter().any(|p| p.value.contains(&checkout))
+            || managed
+                .iter()
+                .any(|p| p.value.contains(&format!("git = \"{}\"", pinned.git)))
         {
-            problems.push("Cargo.toml patches name another commit; run `lingxia pin`".into());
+            problems.push(format!(
+                "Cargo.toml does not patch LingXia from {}; run `lingxia pin`",
+                pin_cargo::SOURCE_PATH
+            ));
         }
     }
     for change in

@@ -1,7 +1,8 @@
 //! The pin's half of the root `Cargo.toml`: `[patch.crates-io]` entries that
-//! point LingXia crates at the pinned commit, each marked `# lingxia.lock`
-//! so a later pin replaces exactly these lines and nothing the project
-//! wrote itself.
+//! point LingXia crates at the pinned commit's checkout in `.lingxia/`, each
+//! marked `# lingxia.lock` so a later pin replaces exactly these lines and
+//! nothing the project wrote itself. The checkout is already there for the
+//! SDKs, so cargo never fetches LingXia a second time.
 
 use anyhow::{Context, Result, bail};
 use std::collections::BTreeSet;
@@ -10,6 +11,11 @@ use std::process::Command;
 
 pub const MARKER: &str = "# lingxia.lock";
 const PATCH_HEADER: &str = "[patch.crates-io]";
+const WORKSPACE_HEADER: &str = "[workspace]";
+/// Cargo makes a path dependency inside the workspace's directory a member,
+/// so LingXia's crates in `.lingxia/` would inherit the project's
+/// `[workspace.package]` instead of their own; excluded, they find theirs.
+const EXCLUDE_LINE: &str = "exclude = [\".lingxia\"]";
 
 /// One managed patch: crate name and its inline TOML value.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,15 +24,27 @@ pub struct Patch {
     pub value: String,
 }
 
-pub fn git_patch(name: &str, git_url: &str, commit: &str) -> Patch {
+/// The pinned checkout as the project's `Cargo.toml` names it: relative, so
+/// the manifest builds on any machine once the CLI has prepared it.
+pub const SOURCE_PATH: &str = ".lingxia/lingxia-src";
+
+/// `name` from `dir` (relative to `base`, forward slashes).
+pub fn path_patch(name: &str, base: &str, dir: &str) -> Patch {
     Patch {
         name: name.to_string(),
-        value: format!(
-            "{{ git = {}, rev = {} }}",
-            toml_string(git_url),
-            toml_string(commit)
-        ),
+        value: format!("{{ path = {} }}", toml_string(&format!("{base}/{dir}"))),
     }
+}
+
+/// `path` under `root` with forward slashes, as Cargo.toml spells paths.
+pub fn relative_dir(root: &Path, path: &Path) -> Option<String> {
+    let rel = path.strip_prefix(root).ok()?;
+    Some(
+        rel.components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join("/"),
+    )
 }
 
 fn toml_string(value: &str) -> String {
@@ -89,6 +107,8 @@ pub fn rewrite(content: &str, patches: &[Patch]) -> (String, Vec<String>) {
         .map(|patch| format!("{} = {} {MARKER}\n", patch.name, patch.value))
         .collect();
 
+    let mut exclude =
+        lines.iter().any(|line| line.contains(SOURCE_PATH)) && workspace_exclude(content).is_none();
     let mut out = String::with_capacity(content.len());
     let mut inserted = lines.is_empty();
     for line in content.split_inclusive('\n') {
@@ -96,6 +116,13 @@ pub fn rewrite(content: &str, patches: &[Patch]) -> (String, Vec<String>) {
             continue;
         }
         out.push_str(line);
+        if exclude && line.trim() == WORKSPACE_HEADER {
+            if !line.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str(&format!("{EXCLUDE_LINE} {MARKER}\n"));
+            exclude = false;
+        }
         if !inserted && line.trim() == PATCH_HEADER {
             if !line.ends_with('\n') {
                 out.push('\n');
@@ -120,11 +147,50 @@ pub fn rewrite(content: &str, patches: &[Patch]) -> (String, Vec<String>) {
     (out, skipped)
 }
 
+/// The project's own `[workspace] exclude` value, when it writes one (the
+/// pin then leaves it to the project).
+fn workspace_exclude(content: &str) -> Option<String> {
+    let mut in_workspace = false;
+    let mut value: Option<String> = None;
+    for line in content.lines() {
+        if is_header(line) {
+            if value.is_some() {
+                break;
+            }
+            in_workspace = line.trim() == WORKSPACE_HEADER;
+            continue;
+        }
+        if let Some(value) = value.as_mut() {
+            value.push_str(line);
+            if line.contains(']') {
+                break;
+            }
+            continue;
+        }
+        if in_workspace
+            && !line.trim_end().ends_with(MARKER)
+            && entry_name(line).as_deref() == Some("exclude")
+        {
+            value = Some(line.to_string());
+            if line.contains(']') {
+                break;
+            }
+        }
+    }
+    value
+}
+
+/// Whether the project's own `exclude` leaves `.lingxia/` a workspace member.
+pub fn exclude_needs_lingxia(content: &str) -> bool {
+    workspace_exclude(content).is_some_and(|value| !value.contains(".lingxia"))
+}
+
 /// The managed entries a manifest currently has.
 pub fn managed(content: &str) -> Vec<Patch> {
     content
         .lines()
         .filter(|line| line.trim_end().ends_with(MARKER))
+        .filter(|line| entry_name(line).as_deref() != Some("exclude"))
         .filter_map(|line| {
             let body = line.trim_end().strip_suffix(MARKER)?.trim_end();
             let (name, value) = body.split_once('=')?;
@@ -134,14 +200,6 @@ pub fn managed(content: &str) -> Vec<Patch> {
             })
         })
         .collect()
-}
-
-/// Packages under `crates/` in the pinned checkout's workspace.
-pub fn workspace_crates(checkout: &Path) -> Result<BTreeSet<String>> {
-    Ok(workspace_crate_dirs(checkout)?
-        .into_iter()
-        .map(|(name, _)| name)
-        .collect())
 }
 
 /// Packages under `crates/` with their directories.
@@ -214,19 +272,10 @@ pub fn patch_names(available: &BTreeSet<String>, lock_text: &str, manifest: &str
 }
 
 /// The pinned commit's own `[patch.crates-io]`: cargo applies patches only
-/// from the root workspace, so a git dependency's patches are lost unless
-/// the project carries them. Path patches cannot travel and come back as
-/// skipped.
-pub fn transcribed_patches(checkout: &Path) -> Result<(Vec<Patch>, Vec<String>)> {
-    transcribed(checkout, false)
-}
-
-/// The same, with path patches made absolute: a local override can use them.
-pub fn transcribed_patches_with_paths(checkout: &Path) -> Result<(Vec<Patch>, Vec<String>)> {
-    transcribed(checkout, true)
-}
-
-fn transcribed(checkout: &Path, absolute_paths: bool) -> Result<(Vec<Patch>, Vec<String>)> {
+/// from the root workspace, so a dependency's patches are lost unless the
+/// project carries them. Its path patches are rebased onto `base`, the
+/// checkout as the caller names it.
+pub fn transcribed_patches(checkout: &Path, base: &str) -> Result<Vec<Patch>> {
     let manifest = checkout.join("Cargo.toml");
     let text = std::fs::read_to_string(&manifest)
         .with_context(|| format!("read {}", manifest.display()))?;
@@ -234,7 +283,6 @@ fn transcribed(checkout: &Path, absolute_paths: bool) -> Result<(Vec<Patch>, Vec
         .parse()
         .with_context(|| format!("parse {}", manifest.display()))?;
     let mut patches = Vec::new();
-    let mut skipped = Vec::new();
     let entries = table
         .get("patch")
         .and_then(|p| p.get("crates-io"))
@@ -243,16 +291,12 @@ fn transcribed(checkout: &Path, absolute_paths: bool) -> Result<(Vec<Patch>, Vec
         let Some(spec) = value.as_table() else {
             continue;
         };
-        if spec.contains_key("path") && !absolute_paths {
-            skipped.push(name.clone());
-            continue;
-        }
         let fields: Vec<String> = spec
             .iter()
             .map(|(key, value)| match (key.as_str(), value.as_str()) {
                 ("path", Some(path)) => format!(
                     "path = {}",
-                    toml::Value::String(checkout.join(path).to_string_lossy().into_owned())
+                    toml_string(&format!("{base}/{}", path.trim_start_matches("./")))
                 ),
                 _ => format!("{key} = {value}"),
             })
@@ -262,7 +306,7 @@ fn transcribed(checkout: &Path, absolute_paths: bool) -> Result<(Vec<Patch>, Vec
             value: format!("{{ {} }}", fields.join(", ")),
         });
     }
-    Ok((patches, skipped))
+    Ok(patches)
 }
 
 #[cfg(test)]
@@ -283,25 +327,22 @@ lto = true
     #[test]
     fn rewrite_inserts_replaces_and_removes_managed_entries() {
         let patches = vec![
-            git_patch("lingxia", "https://g/LingXia.git", "1111"),
-            git_patch("portable-pty", "https://g/pty.git", "2222"),
+            path_patch("lingxia", "s1", "crates/lingxia"),
+            path_patch("portable-pty", "s1", "vendor/pty"),
         ];
         let (first, skipped) = rewrite(MANIFEST, &patches);
         assert_eq!(skipped, vec!["portable-pty"]);
         assert!(first.contains(
-            "[patch.crates-io]\nlingxia = { git = \"https://g/LingXia.git\", rev = \"1111\" } # lingxia.lock\nportable-pty = { git = \"https://example.com/pty.git\""
+            "[patch.crates-io]\nlingxia = { path = \"s1/crates/lingxia\" } # lingxia.lock\nportable-pty = { git = \"https://example.com/pty.git\""
         ));
         assert_eq!(
             managed(&first),
-            vec![git_patch("lingxia", "https://g/LingXia.git", "1111")]
+            vec![path_patch("lingxia", "s1", "crates/lingxia")]
         );
 
-        let (second, _) = rewrite(
-            &first,
-            &[git_patch("lingxia", "https://g/LingXia.git", "3333")],
-        );
-        assert!(second.contains("rev = \"3333\""));
-        assert!(!second.contains("1111"));
+        let (second, _) = rewrite(&first, &[path_patch("lingxia", "s2", "crates/lingxia")]);
+        assert!(second.contains("\"s2/crates/lingxia\""));
+        assert!(!second.contains("s1/"));
         assert_eq!(second.matches(PATCH_HEADER).count(), 1);
 
         let (cleared, _) = rewrite(&second, &[]);
@@ -312,10 +353,29 @@ lto = true
     fn rewrite_adds_the_table_when_missing() {
         let (out, _) = rewrite(
             "[workspace]\nmembers = []\n",
-            &[git_patch("lingxia", "u", "c")],
+            &[path_patch("lingxia", SOURCE_PATH, "crates/lingxia")],
         );
         assert!(out.ends_with(
-            "\n[patch.crates-io]\nlingxia = { git = \"u\", rev = \"c\" } # lingxia.lock\n"
+            "\n[patch.crates-io]\nlingxia = { path = \".lingxia/lingxia-src/crates/lingxia\" } # lingxia.lock\n"
+        ));
+    }
+
+    #[test]
+    fn path_patches_exclude_the_checkout_from_the_workspace() {
+        let patches = [path_patch("lingxia", SOURCE_PATH, "crates/lingxia")];
+        let (out, _) = rewrite(MANIFEST, &patches);
+        assert!(out.starts_with("[workspace]\nexclude = [\".lingxia\"] # lingxia.lock\nmembers"));
+        assert_eq!(managed(&out), patches.to_vec());
+        let (again, _) = rewrite(&out, &patches);
+        assert_eq!(again, out);
+        assert_eq!(rewrite(&out, &[]).0, MANIFEST);
+
+        let own = "[workspace]\nmembers = []\nexclude = [\n  \"tools\",\n]\n";
+        let (kept, _) = rewrite(own, &patches);
+        assert_eq!(kept.matches("exclude").count(), 1);
+        assert!(exclude_needs_lingxia(own));
+        assert!(!exclude_needs_lingxia(
+            "[workspace]\nexclude = [\".lingxia\"]\n"
         ));
     }
 
@@ -353,17 +413,19 @@ source = \"registry+https://github.com/rust-lang/crates.io-index\"
     }
 
     #[test]
-    fn transcribed_patches_keep_git_and_skip_path() {
+    fn transcribed_patches_keep_git_and_rebase_path() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("Cargo.toml"),
-            "[patch.crates-io]\npty = { git = \"https://g/pty.git\", rev = \"59d0\", package = \"portable-pty\" }\nlocal = { path = \"../x\" }\n",
+            "[patch.crates-io]\npty = { git = \"https://g/pty.git\", rev = \"59d0\", package = \"portable-pty\" }\nlocal = { path = \"./vendor/x\" }\n",
         )
         .unwrap();
-        let (patches, skipped) = transcribed_patches(dir.path()).unwrap();
-        assert_eq!(skipped, vec!["local"]);
-        assert_eq!(patches.len(), 1);
-        assert!(patches[0].value.contains("git = \"https://g/pty.git\""));
-        assert!(patches[0].value.contains("package = \"portable-pty\""));
+        let patches = transcribed_patches(dir.path(), SOURCE_PATH).unwrap();
+        assert_eq!(patches.len(), 2);
+        let local = patches.iter().find(|p| p.name == "local").unwrap();
+        assert_eq!(local.value, "{ path = \".lingxia/lingxia-src/vendor/x\" }");
+        let pty = patches.iter().find(|p| p.name == "pty").unwrap();
+        assert!(pty.value.contains("git = \"https://g/pty.git\""));
+        assert!(pty.value.contains("package = \"portable-pty\""));
     }
 }
