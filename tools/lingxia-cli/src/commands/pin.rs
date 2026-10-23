@@ -138,7 +138,7 @@ pub fn execute(args: PinArgs) -> Result<i32> {
         pinned_at,
     };
 
-    let patches = desired_patches(&root, &pinned, &checkout)?;
+    let mut patches = desired_patches(&pinned, &checkout)?;
     let manifest = root.join("Cargo.toml");
     let mut changed = Vec::new();
     if manifest.is_file() {
@@ -178,7 +178,24 @@ pub fn execute(args: PinArgs) -> Result<i32> {
     }
 
     if manifest.is_file() {
+        println!("{} Cargo.lock", "Updating".cyan());
         refresh_cargo_lock(&root)?;
+        // Keep only what the project's graph uses: an unused patch warns on
+        // every build and stays in Cargo.lock as `[[patch.unused]]`.
+        let unused = pin_cargo::unused_patches(
+            &fs::read_to_string(root.join("Cargo.lock")).unwrap_or_default(),
+        );
+        if patches.iter().any(|p| unused.contains(p.crate_name())) {
+            patches.retain(|p| !unused.contains(p.crate_name()));
+            let content = fs::read_to_string(&manifest)?;
+            let (rewritten, _) = pin_cargo::rewrite(&content, &patches);
+            fs::write(&manifest, rewritten)
+                .with_context(|| format!("write {}", manifest.display()))?;
+            refresh_cargo_lock(&root)?;
+        }
+        if let Some(line) = changed.iter_mut().find(|c| c.starts_with("Cargo.toml:")) {
+            *line = format!("Cargo.toml: {} managed patch(es)", patches.len());
+        }
     }
 
     println!(
@@ -196,9 +213,10 @@ pub fn execute(args: PinArgs) -> Result<i32> {
     Ok(0)
 }
 
-/// Managed patches for `pinned`: each LingXia crate the project uses from
-/// the checkout in `.lingxia/`, plus the commit's own patches.
-fn desired_patches(root: &Path, pinned: &Pin, checkout: &Path) -> Result<Vec<pin_cargo::Patch>> {
+/// Candidate patches for `pinned`: every LingXia crate from the checkout in
+/// `.lingxia/`, plus the commit's own patches. Cargo then says which the
+/// project's graph leaves unused, and those are dropped.
+fn desired_patches(pinned: &Pin, checkout: &Path) -> Result<Vec<pin_cargo::Patch>> {
     if pinned.is_official_release() {
         // crates.io serves the release; requirements alone select it.
         return Ok(Vec::new());
@@ -207,14 +225,11 @@ fn desired_patches(root: &Path, pinned: &Pin, checkout: &Path) -> Result<Vec<pin
         pin_cargo::workspace_crate_dirs(checkout)?
             .into_iter()
             .collect();
-    let available = dirs.keys().cloned().collect();
-    let lock_text = fs::read_to_string(root.join("Cargo.lock")).unwrap_or_default();
-    let manifest = fs::read_to_string(root.join("Cargo.toml")).unwrap_or_default();
     let mut patches = Vec::new();
-    for name in pin_cargo::patch_names(&available, &lock_text, &manifest) {
-        let dir = pin_cargo::relative_dir(checkout, &dirs[&name])
+    for (name, dir) in &dirs {
+        let dir = pin_cargo::relative_dir(checkout, dir)
             .with_context(|| format!("{name} is outside the pinned checkout"))?;
-        patches.push(pin_cargo::path_patch(&name, pin_cargo::SOURCE_PATH, &dir));
+        patches.push(pin_cargo::path_patch(name, pin_cargo::SOURCE_PATH, &dir));
     }
     patches.extend(pin_cargo::transcribed_patches(
         checkout,
@@ -223,16 +238,17 @@ fn desired_patches(root: &Path, pinned: &Pin, checkout: &Path) -> Result<Vec<pin
     Ok(patches)
 }
 
-/// Resolve the graph once so Cargo.lock records the pinned source.
+/// Resolve the graph once so Cargo.lock records the pinned source. Cargo's
+/// output shows only on failure: the first pass warns about the very patches
+/// the pin then drops.
 fn refresh_cargo_lock(root: &Path) -> Result<()> {
-    println!("{} Cargo.lock", "Updating".cyan());
-    let status = Command::new("cargo")
+    let output = Command::new("cargo")
         .args(["metadata", "--format-version", "1", "--manifest-path"])
         .arg(root.join("Cargo.toml"))
-        .stdout(std::process::Stdio::null())
-        .status()
+        .output()
         .context("run cargo metadata")?;
-    if !status.success() {
+    if !output.status.success() {
+        eprint!("{}", String::from_utf8_lossy(&output.stderr));
         bail!("cargo could not resolve the pinned crates; see the error above");
     }
     Ok(())

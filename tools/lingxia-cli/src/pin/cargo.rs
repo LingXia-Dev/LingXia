@@ -282,21 +282,30 @@ pub fn locked_crates(lock_text: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// Which of the pinned workspace's crates get a patch: those the project's
-/// `Cargo.lock` holds from any source (a previous pin left them as git
-/// sources) and those the manifest already manages, else the SDK crates.
-pub fn patch_names(available: &BTreeSet<String>, lock_text: &str, manifest: &str) -> Vec<String> {
-    let mut used = locked_crates(lock_text);
-    used.extend(managed(manifest).into_iter().map(|patch| patch.name));
-    let names: BTreeSet<String> = if used.is_empty() {
-        lingxia_control_protocol::dev_session::compat::SDK_CRATES
-            .iter()
-            .map(|name| name.to_string())
-            .collect()
-    } else {
-        used
+/// Patches cargo resolved without using, from `Cargo.lock`'s
+/// `[[patch.unused]]`.
+pub fn unused_patches(lock_text: &str) -> BTreeSet<String> {
+    let Ok(lock) = lock_text.parse::<toml::Table>() else {
+        return BTreeSet::new();
     };
-    available.intersection(&names).cloned().collect()
+    lock.get("patch")
+        .and_then(|patch| patch.get("unused"))
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|package| package.get("name").and_then(toml::Value::as_str))
+        .map(str::to_string)
+        .collect()
+}
+
+impl Patch {
+    /// The crate this entry replaces: its `package` when it renames one.
+    pub fn crate_name(&self) -> &str {
+        self.value
+            .split_once("package = \"")
+            .and_then(|(_, rest)| rest.split_once('"'))
+            .map_or(self.name.as_str(), |(package, _)| package)
+    }
 }
 
 /// The pinned commit's own `[patch.crates-io]`: cargo applies patches only
@@ -429,28 +438,18 @@ lto = true
     }
 
     #[test]
-    fn a_second_pin_keeps_patching_crates_the_first_moved_to_git() {
-        let available: BTreeSet<String> = ["lingxia", "lingxia-shell", "lingxia-unused"]
-            .into_iter()
-            .map(String::from)
-            .collect();
-        let lock = "\
-[[package]]
-name = \"lingxia\"
-version = \"0.27.0\"
-source = \"git+https://g/LingXia.git?rev=aaa#aaa\"
-
-[[package]]
-name = \"serde\"
-version = \"1.0.0\"
-source = \"registry+https://github.com/rust-lang/crates.io-index\"
-";
-        let manifest =
-            "[patch.crates-io]\nlingxia-shell = { git = \"u\", rev = \"aaa\" } # lingxia.lock\n";
+    fn unused_patches_come_from_the_lock() {
+        let lock = "version = 4\n\n[[package]]\nname = \"lingxia\"\nversion = \"0.27.0\"\n\n[[patch.unused]]\nname = \"portable-pty\"\nversion = \"0.9.0\"\n\n[[patch.unused]]\nname = \"lingxia-terminal\"\nversion = \"0.27.0\"\n";
         assert_eq!(
-            patch_names(&available, lock, manifest),
-            vec!["lingxia".to_string(), "lingxia-shell".to_string()]
+            unused_patches(lock).into_iter().collect::<Vec<_>>(),
+            vec!["lingxia-terminal", "portable-pty"]
         );
+        let renamed = Patch {
+            name: "pty".into(),
+            value: "{ git = \"u\", package = \"portable-pty\" }".into(),
+        };
+        assert_eq!(renamed.crate_name(), "portable-pty");
+        assert_eq!(path_patch("lingxia", "s", "c").crate_name(), "lingxia");
     }
 
     #[test]
