@@ -228,13 +228,17 @@ async fn check_wait_condition(
 ) -> Result<BrowserWaitCheck, BrowserAutomationError> {
     match condition {
         BrowserWaitCondition::Loaded => {
-            let value = browser_evaluate_javascript(tab_id, "document.readyState").await?;
-            let matched = value.as_str() == Some("complete");
+            let document = browser_document(tab_id).await?;
+            // The old document stays `complete` until the new one commits.
+            let committed = match browser_live_current_url(tab_id).await? {
+                Some(live) => document.is_at(|url| url == normalize_url_for_wait_compare(&live)),
+                None => true,
+            };
             Ok(BrowserWaitCheck {
-                matched,
-                current_url: browser_live_current_url(tab_id).await?,
+                matched: committed && document.ready_state == "complete",
+                value: Some(document.ready_state.clone().into()),
+                current_url: document.url,
                 element: None,
-                value: Some(value),
             })
         }
         BrowserWaitCondition::SelectorExists { selector } => {
@@ -283,24 +287,24 @@ async fn check_wait_condition(
             })
         }
         BrowserWaitCondition::UrlEquals { url } => {
-            let current_url = browser_live_current_url(tab_id).await?;
+            let document = browser_document(tab_id).await?;
             let expected = normalize_url_for_wait_compare(url);
             Ok(BrowserWaitCheck {
-                matched: current_url
-                    .as_deref()
-                    .is_some_and(|url| normalize_url_for_wait_compare(url) == expected),
-                current_url,
+                matched: document.parsed() && document.is_at(|url| url == expected),
+                current_url: document.url,
                 element: None,
                 value: None,
             })
         }
         BrowserWaitCondition::UrlContains { text } => {
-            let current_url = browser_live_current_url(tab_id).await?;
+            let document = browser_document(tab_id).await?;
             Ok(BrowserWaitCheck {
-                matched: current_url
-                    .as_deref()
-                    .is_some_and(|url| url.contains(text.as_str())),
-                current_url,
+                matched: document.parsed()
+                    && document
+                        .url
+                        .as_deref()
+                        .is_some_and(|url| url.contains(text.as_str())),
+                current_url: document.url,
                 element: None,
                 value: None,
             })
@@ -309,25 +313,57 @@ async fn check_wait_condition(
             initial_url,
             wait_until_complete,
         } => {
-            let current_url = browser_live_current_url(tab_id).await?;
-            let changed = current_url.as_deref().map(normalize_url_for_wait_compare)
-                != initial_url.as_deref().map(normalize_url_for_wait_compare);
-            let loaded = if changed && *wait_until_complete {
-                browser_evaluate_javascript(tab_id, "document.readyState")
-                    .await?
-                    .as_str()
-                    == Some("complete")
+            let document = browser_document(tab_id).await?;
+            let initial = initial_url.as_deref().map(normalize_url_for_wait_compare);
+            let changed = !document.is_at(|url| Some(url) == initial.as_deref());
+            let ready = if *wait_until_complete {
+                document.ready_state == "complete"
             } else {
-                true
+                document.parsed()
             };
             Ok(BrowserWaitCheck {
-                matched: changed && loaded,
-                current_url,
+                matched: changed && ready,
+                current_url: document.url,
                 element: None,
                 value: None,
             })
         }
     }
+}
+
+/// The document page commands run against. The WebView's URL moves to a
+/// navigation's target before that document commits, so waits match this.
+struct BrowserDocument {
+    url: Option<String>,
+    ready_state: String,
+}
+
+impl BrowserDocument {
+    fn is_at(&self, matches: impl Fn(&str) -> bool) -> bool {
+        self.url
+            .as_deref()
+            .is_some_and(|url| matches(&normalize_url_for_wait_compare(url)))
+    }
+
+    /// Past `loading`: the body a snapshot reads is all there.
+    fn parsed(&self) -> bool {
+        matches!(self.ready_state.as_str(), "interactive" | "complete")
+    }
+}
+
+async fn browser_document(tab_id: &str) -> Result<BrowserDocument, BrowserAutomationError> {
+    let value =
+        browser_evaluate_javascript(tab_id, "[String(location.href), document.readyState]").await?;
+    let field = |index: usize| {
+        value
+            .get(index)
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    };
+    Ok(BrowserDocument {
+        url: field(0),
+        ready_state: field(1).unwrap_or_default(),
+    })
 }
 
 pub async fn browser_evaluate_javascript(
@@ -730,7 +766,7 @@ pub async fn browser_wait_for_navigation(
     timeout: Duration,
     wait_until_complete: bool,
 ) -> Result<BrowserWaitResult, BrowserAutomationError> {
-    let initial_url = browser_live_current_url(tab_id).await?;
+    let initial_url = browser_document(tab_id).await?.url;
     browser_wait(
         tab_id,
         BrowserWaitCondition::Navigation {
