@@ -431,6 +431,9 @@ fn build_in_checkout(
             "--no-shasums",
         ])
         .current_dir(checkout)
+        // Its resource generation uses this CLI instead of compiling the
+        // checkout's (minutes, every new commit).
+        .envs(std::env::current_exe().ok().map(|cli| ("LINGXIA_CLI", cli)))
         .status()
         .with_context(|| format!("run {}", script.display()))?;
     if !status.success() {
