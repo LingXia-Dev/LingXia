@@ -29,3 +29,6 @@ lingxia-sdk/harmony/oh-package-lock.json5
 # lxdev test artifact output
 test-results/
 *.tsbuildinfo
+# Left by a project build of this tree as a local LingXia source
+/.lingxia-build.lock
+/dist-sdk-pin/

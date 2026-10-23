@@ -875,7 +875,15 @@ pub(crate) fn prepare_sdk_package_link(package_dir: &Path, sdk_dir: &Path) -> Re
             ));
         }
         Ok(_) if link.canonicalize().ok().as_ref() == Some(&sdk_dir) => return Ok(()),
-        Ok(_) => {}
+        Ok(_) => {
+            // SwiftPM keeps the old SDK's source list under the same path
+            // and fails on files the new one does not have.
+            let build = package_dir.join(".build");
+            if build.exists() {
+                fs::remove_dir_all(&build)
+                    .with_context(|| format!("Clear {} for the new SDK", build.display()))?;
+            }
+        }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error.into()),
     }
@@ -1189,10 +1197,15 @@ mod tests {
                 .modified()
                 .unwrap()
         );
+        // The same SDK keeps SwiftPM's build; another one clears it.
+        fs::create_dir_all(package.join(".build/debug")).unwrap();
+        prepare_sdk_package_link(&package, a.path()).unwrap();
+        assert!(package.join(".build/debug").is_dir());
         let b = sdk_fixture();
         prepare_sdk_package_link(&package, b.path()).unwrap();
         assert!(sdk_package_points_at(&package, b.path()));
         assert!(!sdk_package_points_at(&package, a.path()));
+        assert!(!package.join(".build").exists());
         assert_eq!(fs::read(package.join("Package.swift")).unwrap(), original);
         assert!(!sdk_package_is_hand_wired(&package));
     }

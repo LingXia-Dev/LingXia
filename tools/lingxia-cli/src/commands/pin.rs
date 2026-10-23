@@ -110,7 +110,7 @@ pub fn execute(args: PinArgs) -> Result<i32> {
         }
         None => reference,
     };
-    let checkout = pin::ensure_source(&git, &commit, Some(&reference))?;
+    let checkout = pin::ensure_source(&root, &git, &commit, Some(&reference))?;
     let workspace_version = pin::manifest_version(&checkout.join("Cargo.toml"))?;
     if crate::embedded_js_digest::digest(&checkout.join("packages"))
         .ok()

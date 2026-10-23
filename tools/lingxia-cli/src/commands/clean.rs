@@ -363,7 +363,11 @@ fn clean_lingxia_state(project_root: &Path, removed: &mut Vec<PathBuf>) -> Resul
     }
     for entry in fs::read_dir(&directory)? {
         let entry = entry?;
-        if entry.file_name() != crate::commands::template_provider::PROJECT_LOCK_FILE {
+        // The template lock and a local LingXia source are settings, not state.
+        let name = entry.file_name();
+        if name != crate::commands::template_provider::PROJECT_LOCK_FILE
+            && name != crate::pin::overrides::LOCAL_FILE
+        {
             remove_path(&entry.path(), removed)?;
         }
     }
@@ -470,11 +474,16 @@ mod tests {
             .join(".lingxia")
             .join(crate::commands::template_provider::PROJECT_LOCK_FILE);
         write(&lock, "persistent");
+        let local = temp.path().join(".lingxia/source.local");
+        write(&local, "/src/LingXia");
         write(&temp.path().join(".lingxia/cache/deep/file"), "cache");
+        write(&temp.path().join(".lingxia/lingxia-src/target/x"), "build");
         let mut removed = Vec::new();
         clean_lingxia_state(temp.path(), &mut removed).unwrap();
         assert_eq!(fs::read_to_string(&lock).unwrap(), "persistent");
+        assert_eq!(fs::read_to_string(&local).unwrap(), "/src/LingXia");
         assert!(!temp.path().join(".lingxia/cache").exists());
+        assert!(!temp.path().join(".lingxia/lingxia-src").exists());
     }
 
     #[test]

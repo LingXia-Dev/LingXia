@@ -15,8 +15,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Once;
 
+pub const LOCAL_FILE: &str = "source.local";
+
 fn file(project_root: &Path) -> PathBuf {
-    project_root.join(".lingxia").join("source.local")
+    project_root.join(".lingxia").join(LOCAL_FILE)
 }
 
 /// The override working tree, when set. Projects inside the LingXia
@@ -111,6 +113,10 @@ pub fn tree_key(source: &Path) -> String {
     for path in git_text(source, &["ls-files", "--others", "--exclude-standard"])
         .unwrap_or_default()
         .lines()
+        // What an SDK build itself leaves behind.
+        .filter(|path| {
+            *path != super::SOURCE_LOCK && !path.starts_with(crate::sdk_cache::SOURCE_BUILD_OUT)
+        })
     {
         hasher.update(path);
         hasher.update(fs::read(source.join(path)).unwrap_or_default());

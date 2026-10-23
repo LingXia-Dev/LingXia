@@ -270,8 +270,18 @@ pub fn ensure_project_sdk(project_root: &Path, platform: SdkPlatform) -> Result<
     if pinned.is_official_release() {
         ensure_sdk(platform, &pinned.workspace_version)
     } else {
-        ensure_pinned_sdk(&pinned, platform)
+        ensure_pinned_sdk(project_root, &pinned, platform)
     }
+}
+
+/// `<project>/.lingxia/source-sdk/<platform>/<key>`: SDKs built from source
+/// (a pinned commit, or a local tree), beside the checkout CI caches with it.
+fn source_sdk_dir(project_root: &Path, platform: SdkPlatform, key: &str) -> PathBuf {
+    project_root
+        .join(".lingxia")
+        .join("source-sdk")
+        .join(platform.cache_subdir())
+        .join(key)
 }
 
 /// Where the project's SDK for `platform` stands, without fetching it.
@@ -279,10 +289,7 @@ pub fn project_sdk_status(project_root: &Path, platform: SdkPlatform) -> String 
     let ready = |dir: Option<PathBuf>| dir.is_some_and(|d| d.join(READY_SENTINEL).exists());
     if let Ok(Some(source)) = crate::pin::overrides::source(project_root) {
         let key = crate::pin::overrides::tree_key(&source);
-        let dir = project_root
-            .join(".lingxia/override-sdk")
-            .join(platform.cache_subdir())
-            .join(&key);
+        let dir = source_sdk_dir(project_root, platform, &key);
         return if ready(Some(dir)) {
             format!("built from the working tree ({key})")
         } else {
@@ -292,9 +299,8 @@ pub fn project_sdk_status(project_root: &Path, platform: SdkPlatform) -> String 
     match crate::pin::read(project_root) {
         Ok(Some(lock)) if !lock.lingxia.is_official_release() => {
             let pinned = lock.lingxia;
-            let dir =
-                sdk_cache_root().map(|r| r.join(platform.cache_subdir()).join(&pinned.commit));
-            if ready(dir) {
+            let dir = source_sdk_dir(project_root, platform, &pinned.commit);
+            if ready(Some(dir)) {
                 format!("cached for {}", pinned.short_commit())
             } else {
                 format!(
@@ -332,59 +338,61 @@ pub fn project_sdk_version(project_root: &Path) -> String {
     }
 }
 
-/// `~/.lingxia/sdk/<platform>/<commit>`: a fork's 0.27.0 is not the
-/// official 0.27.0, so pinned SDKs are keyed by commit, not version.
-fn ensure_pinned_sdk(pinned: &crate::pin::Pin, platform: SdkPlatform) -> Result<PathBuf> {
-    let root = sdk_cache_root()
-        .ok_or_else(|| anyhow!("Could not resolve home directory for SDK cache"))?;
-    let dest = root.join(platform.cache_subdir()).join(&pinned.commit);
+/// Keyed by commit, not version: a fork's 0.27.0 is not the official 0.27.0.
+fn ensure_pinned_sdk(
+    project_root: &Path,
+    pinned: &crate::pin::Pin,
+    platform: SdkPlatform,
+) -> Result<PathBuf> {
+    let dest = source_sdk_dir(project_root, platform, &pinned.commit);
     if dest.join(READY_SENTINEL).exists() {
         return resolve_cached_path(platform, &dest);
     }
     let asset_name = platform.asset_name(&pinned.workspace_version);
-    let bytes = build_from_source(pinned, platform, &asset_name)?;
+    let bytes = build_from_source(project_root, pinned, platform, &asset_name)?;
     install_asset(platform, &dest, &pinned.commit, &bytes)
 }
 
-/// An SDK built from the local LingXia working tree, cached in the
-/// project by the tree's HEAD and uncommitted changes.
+/// An SDK built from the local LingXia working tree, keyed by the tree's
+/// HEAD and uncommitted changes.
 fn ensure_override_sdk(
     project_root: &Path,
     source: &Path,
     platform: SdkPlatform,
 ) -> Result<PathBuf> {
     let key = crate::pin::overrides::tree_key(source);
-    let dest = project_root
-        .join(".lingxia")
-        .join("override-sdk")
-        .join(platform.cache_subdir())
-        .join(&key);
+    let dest = source_sdk_dir(project_root, platform, &key);
     if dest.join(READY_SENTINEL).exists() {
         return resolve_cached_path(platform, &dest);
     }
     require_build_tools(platform, &key)?;
     let version = crate::pin::manifest_version(&source.join("Cargo.toml"))?;
-    let bytes = build_in_checkout(
-        source,
-        &key,
-        platform,
-        &platform.asset_name(&version),
-        false,
-    )?;
+    let bytes = build_in_checkout(source, &key, None, platform, &platform.asset_name(&version))?;
     install_asset(platform, &dest, &key, &bytes)
 }
 
 /// Build the platform's SDK artifact from the pinned commit's checkout with
 /// the release script. The tools that platform needs must be installed.
 fn build_from_source(
+    project_root: &Path,
     pinned: &crate::pin::Pin,
     platform: SdkPlatform,
     asset_name: &str,
 ) -> Result<Vec<u8>> {
     require_build_tools(platform, pinned.short_commit())?;
-    let checkout = crate::pin::ensure_source(&pinned.git, &pinned.commit, Some(&pinned.reference))?;
-    let bytes = build_in_checkout(&checkout, pinned.short_commit(), platform, asset_name, true)?;
-    Ok(bytes)
+    let checkout = crate::pin::ensure_source(
+        project_root,
+        &pinned.git,
+        &pinned.commit,
+        Some(&pinned.reference),
+    )?;
+    build_in_checkout(
+        &checkout,
+        pinned.short_commit(),
+        Some(&pinned.commit),
+        platform,
+        asset_name,
+    )
 }
 
 fn require_build_tools(platform: SdkPlatform, label: &str) -> Result<()> {
@@ -403,25 +411,35 @@ fn require_build_tools(platform: SdkPlatform, label: &str) -> Result<()> {
     Ok(())
 }
 
+/// Where a source build writes its artifact, inside the checkout.
+pub(crate) const SOURCE_BUILD_OUT: &str = "dist-sdk-pin";
+
 /// Run the release script for one platform in a LingXia checkout.
 fn build_in_checkout(
     checkout: &Path,
     label: &str,
+    commit: Option<&str>,
     platform: SdkPlatform,
     asset_name: &str,
-    discard_target: bool,
 ) -> Result<Vec<u8>> {
     // One build at a time per checkout: two platforms or two projects would
     // otherwise share its node_modules and output directories.
-    let lock = fs::File::create(checkout.join(".lingxia-build.lock"))
-        .with_context(|| format!("lock {}", checkout.display()))?;
-    lock.lock()
-        .with_context(|| format!("lock {}", checkout.display()))?;
+    let _lock = crate::pin::lock_source(checkout)?;
+    // A re-pin may have moved the tree since it was prepared; what is built
+    // here is cached under `commit`.
+    if let Some(commit) = commit
+        && !crate::pin::source_at(checkout, commit)
+    {
+        bail!(
+            "{} moved off {label} while preparing this build; run it again",
+            checkout.display()
+        );
+    }
     let packages = checkout.join("packages");
     if !packages.join("node_modules").is_dir() {
         run_in(&packages, "npm", &["ci", "--no-audit", "--no-fund"])?;
     }
-    let out = checkout.join("dist-sdk-pin");
+    let out = checkout.join(SOURCE_BUILD_OUT);
     let _ = fs::remove_dir_all(&out);
     let out_arg = out.to_string_lossy().into_owned();
     let script = checkout.join("scripts/release/sdk.sh");
@@ -439,6 +457,9 @@ fn build_in_checkout(
             "--no-shasums",
         ])
         .current_dir(checkout)
+        // The script reads its own `target/`; a project's `.cargo/config.toml`
+        // above a checkout inside it could move that.
+        .env("CARGO_TARGET_DIR", checkout.join("target"))
         // Its resource generation uses this CLI instead of compiling the
         // checkout's (minutes, every new commit).
         .envs(std::env::current_exe().ok().map(|cli| ("LINGXIA_CLI", cli)))
@@ -454,12 +475,7 @@ fn build_in_checkout(
     let built = find_file(&out, asset_name)
         .ok_or_else(|| anyhow!("{} did not produce {asset_name}", script.display()))?;
     let bytes = fs::read(&built).with_context(|| format!("read {}", built.display()))?;
-    if discard_target {
-        // A pinned commit's build output is gigabytes and the SDK is now
-        // cached; still under the lock, so no other build is using it.
-        let _ = crate::pin::remove_tree(&checkout.join("target"));
-        let _ = fs::remove_dir_all(&out);
-    }
+    let _ = fs::remove_dir_all(&out);
     Ok(bytes)
 }
 
