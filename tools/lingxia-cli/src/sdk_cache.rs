@@ -478,8 +478,8 @@ fn build_in_checkout(
     // them fails every app build after this one.
     if platform == SdkPlatform::Apple {
         let generated = checkout.join("lingxia-sdk/apple/Sources/generated");
-        for target in ["LingXiaRustAPI", "LingXiaSwiftAPI"] {
-            if !generated.join(target).is_dir() {
+        for target in ["LingXiaRustAPI", "LingXiaSwiftAPI", "SwiftBridgeCore.h"] {
+            if !generated.join(target).exists() {
                 bail!(
                     "the Apple SDK built from {label} has no Sources/generated/{target}; not caching it"
                 );

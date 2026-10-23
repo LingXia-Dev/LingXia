@@ -4,7 +4,7 @@
 //! The path lives in the untracked `.lingxia/source.local`; the lock does not
 //! change. Cargo gets path patches from a generated
 //! `.lingxia/cargo-override.toml` passed with `--config` (which wins over the
-//! lock's git patches); native SDKs are built from the working tree and
+//! manifest's patches into `.lingxia/lingxia-src`); native SDKs are built from the working tree and
 //! cached by its HEAD and uncommitted changes. Moving the lock to that work
 //! is `lingxia pin <sha>` once it is pushed.
 

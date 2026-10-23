@@ -385,7 +385,8 @@ refresh_ios_generated() {
   else
     local needs=false
 
-    if [[ -d "$LINGXIA_CORE_CRATE_DIR/src" ]] && find "$LINGXIA_CORE_CRATE_DIR/src" -type f -newer "$sentinel" | head -n 1 | grep -q .; then
+    # `-print -quit`, not `| head`: under pipefail a find cut off by head fails.
+    if [[ -d "$LINGXIA_CORE_CRATE_DIR/src" ]] && [[ -n "$(find "$LINGXIA_CORE_CRATE_DIR/src" -type f -newer "$sentinel" -print -quit)" ]]; then
       needs=true
     fi
     if [[ -f "$LINGXIA_CORE_CRATE_DIR/Cargo.toml" ]] && [[ "$LINGXIA_CORE_CRATE_DIR/Cargo.toml" -nt "$sentinel" ]]; then
@@ -396,7 +397,7 @@ refresh_ios_generated() {
     fi
     # lingxia-platform's build script generates LingXiaSwiftAPI.
     local platform_dir="$ROOT_DIR/crates/lingxia-platform"
-    if [[ -d "$platform_dir/src" ]] && find "$platform_dir/src" "$platform_dir/build.rs" "$platform_dir/Cargo.toml" -newer "$sentinel" 2>/dev/null | head -n 1 | grep -q .; then
+    if [[ -d "$platform_dir/src" ]] && [[ -n "$(find "$platform_dir/src" "$platform_dir/build.rs" "$platform_dir/Cargo.toml" -newer "$sentinel" -print -quit 2>/dev/null)" ]]; then
       needs=true
     fi
     if [[ -f "$ROOT_DIR/Cargo.lock" ]] && [[ "$ROOT_DIR/Cargo.lock" -nt "$sentinel" ]]; then
