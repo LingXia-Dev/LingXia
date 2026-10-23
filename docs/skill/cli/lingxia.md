@@ -212,7 +212,7 @@ to the CLI's major.minor line, after a prompt.
 
 `lingxia.lock` pins the LingXia commit a project's native code builds against.
 Change it only with `lingxia pin <ref>` (or `<path>` for a local checkout; never
-edit the `# lingxia.lock` lines). In a fresh clone, run `lingxia pin` before
+edit the `# lingxia.lock` block). In a fresh clone, run `lingxia pin` before
 plain `cargo`.
 
 ## Environment variables

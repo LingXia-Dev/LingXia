@@ -10,6 +10,32 @@ use std::path::Path;
 use std::process::Command;
 
 pub const MARKER: &str = "# lingxia.lock";
+/// The patch block opens and closes with these, so its entries stay plain.
+const BLOCK_BEGIN: &str = "# lingxia.lock: managed by `lingxia pin`, which rewrites this block";
+const BLOCK_END: &str = "# end lingxia.lock";
+
+/// Each line with whether the pin manages it: one ending in the marker, or
+/// any line of the patch block.
+fn classify(content: &str) -> Vec<(bool, &str)> {
+    let mut in_block = false;
+    content
+        .split_inclusive('\n')
+        .map(|line| {
+            let trimmed = line.trim();
+            if trimmed.starts_with("# lingxia.lock:") {
+                in_block = true;
+                return (true, line);
+            }
+            if in_block {
+                if trimmed == BLOCK_END {
+                    in_block = false;
+                }
+                return (true, line);
+            }
+            (line.trim_end().ends_with(MARKER), line)
+        })
+        .collect()
+}
 const PATCH_HEADER: &str = "[patch.crates-io]";
 const WORKSPACE_HEADER: &str = "[workspace]";
 /// Cargo makes a path dependency inside the workspace's directory a member,
@@ -68,7 +94,10 @@ fn entry_name(line: &str) -> Option<String> {
 pub fn project_patches(content: &str) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     let mut in_table = false;
-    for line in content.lines() {
+    for (managed, line) in classify(content) {
+        if managed {
+            continue;
+        }
         if is_header(line) {
             let header = line.trim();
             in_table = header == PATCH_HEADER;
@@ -80,10 +109,7 @@ pub fn project_patches(content: &str) -> BTreeSet<String> {
             }
             continue;
         }
-        if in_table
-            && !line.trim_end().ends_with(MARKER)
-            && let Some(name) = entry_name(line)
-        {
+        if in_table && let Some(name) = entry_name(line) {
             names.insert(name);
         }
     }
@@ -104,15 +130,20 @@ pub fn rewrite(content: &str, patches: &[Patch]) -> (String, Vec<String>) {
             }
             keep
         })
-        .map(|patch| format!("{} = {} {MARKER}\n", patch.name, patch.value))
+        .map(|patch| format!("{} = {}\n", patch.name, patch.value))
         .collect();
+    let block = if lines.is_empty() {
+        String::new()
+    } else {
+        format!("{BLOCK_BEGIN}\n{}{BLOCK_END}\n", lines.concat())
+    };
 
     let mut exclude =
         lines.iter().any(|line| line.contains(SOURCE_PATH)) && workspace_exclude(content).is_none();
     let mut out = String::with_capacity(content.len());
     let mut inserted = lines.is_empty();
-    for line in content.split_inclusive('\n') {
-        if line.trim_end().ends_with(MARKER) {
+    for (managed, line) in classify(content) {
+        if managed {
             continue;
         }
         out.push_str(line);
@@ -127,9 +158,7 @@ pub fn rewrite(content: &str, patches: &[Patch]) -> (String, Vec<String>) {
             if !line.ends_with('\n') {
                 out.push('\n');
             }
-            for managed in &lines {
-                out.push_str(managed);
-            }
+            out.push_str(&block);
             inserted = true;
         }
     }
@@ -140,9 +169,7 @@ pub fn rewrite(content: &str, patches: &[Patch]) -> (String, Vec<String>) {
         out.push('\n');
         out.push_str(PATCH_HEADER);
         out.push('\n');
-        for managed in &lines {
-            out.push_str(managed);
-        }
+        out.push_str(&block);
     }
     (out, skipped)
 }
@@ -187,12 +214,13 @@ pub fn exclude_needs_lingxia(content: &str) -> bool {
 
 /// The managed entries a manifest currently has.
 pub fn managed(content: &str) -> Vec<Patch> {
-    content
-        .lines()
-        .filter(|line| line.trim_end().ends_with(MARKER))
-        .filter(|line| entry_name(line).as_deref() != Some("exclude"))
+    classify(content)
+        .into_iter()
+        .filter(|(managed, _)| *managed)
+        .map(|(_, line)| line.trim())
+        .filter(|line| !line.starts_with('#') && entry_name(line).as_deref() != Some("exclude"))
         .filter_map(|line| {
-            let body = line.trim_end().strip_suffix(MARKER)?.trim_end();
+            let body = line.strip_suffix(MARKER).unwrap_or(line).trim_end();
             let (name, value) = body.split_once('=')?;
             Some(Patch {
                 name: name.trim().to_string(),
@@ -332,9 +360,9 @@ lto = true
         ];
         let (first, skipped) = rewrite(MANIFEST, &patches);
         assert_eq!(skipped, vec!["portable-pty"]);
-        assert!(first.contains(
-            "[patch.crates-io]\nlingxia = { path = \"s1/crates/lingxia\" } # lingxia.lock\nportable-pty = { git = \"https://example.com/pty.git\""
-        ));
+        assert!(first.contains(&format!(
+            "[patch.crates-io]\n{BLOCK_BEGIN}\nlingxia = {{ path = \"s1/crates/lingxia\" }}\n{BLOCK_END}\nportable-pty = {{ git = \"https://example.com/pty.git\""
+        )));
         assert_eq!(
             managed(&first),
             vec![path_patch("lingxia", "s1", "crates/lingxia")]
@@ -355,9 +383,9 @@ lto = true
             "[workspace]\nmembers = []\n",
             &[path_patch("lingxia", SOURCE_PATH, "crates/lingxia")],
         );
-        assert!(out.ends_with(
-            "\n[patch.crates-io]\nlingxia = { path = \".lingxia/lingxia-src/crates/lingxia\" } # lingxia.lock\n"
-        ));
+        assert!(out.ends_with(&format!(
+            "\n[patch.crates-io]\n{BLOCK_BEGIN}\nlingxia = {{ path = \".lingxia/lingxia-src/crates/lingxia\" }}\n{BLOCK_END}\n"
+        )));
     }
 
     #[test]
@@ -377,6 +405,19 @@ lto = true
         assert!(!exclude_needs_lingxia(
             "[workspace]\nexclude = [\".lingxia\"]\n"
         ));
+    }
+
+    #[test]
+    fn per_line_markers_give_way_to_the_block() {
+        let old = "[patch.crates-io]\nlingxia = { git = \"u\", rev = \"c\" } # lingxia.lock\nmine = { path = \"x\" }\n";
+        let (out, _) = rewrite(old, &[path_patch("lingxia", SOURCE_PATH, "crates/lingxia")]);
+        assert!(!out.contains("rev = \"c\""));
+        assert_eq!(out.matches("lingxia = ").count(), 1);
+        assert!(out.contains("mine = { path = \"x\" }"));
+        assert_eq!(
+            project_patches(&out).into_iter().collect::<Vec<_>>(),
+            vec!["mine"]
+        );
     }
 
     #[test]
