@@ -86,11 +86,22 @@ Retina screenshot positions by the scale.
 The host app's browser tabs, including URL surfaces:
 
 - `open` / `tabs` / `current` / `activate` / `close` / `reload` / `back` / `forward`
-- `eval` / `query`
-- `wait` / `wait-url` / `wait-away`
-- `click` / `type` / `fill` / `press` / `scroll` / `scroll-to`
-- `ua show|set|reset`, `cookies list|set|delete|clear`
-- `screenshot` — the tab's web content
+- `snapshot` — roles, names, states, and a ref (`e12`) per element; `--since-last` prints only changes
+- `click` / `hover` / `drag` / `type` / `fill` / `press` / `scroll-to` / `select-option` / `check` / `uncheck` / `set-input-files` — take `--ref` or `--css`
+- `text` (main content as Markdown), `console`, `screenshot [--full-page | --ref | --annotate]`
+- `eval` / `query`, `wait` / `wait-url` / `wait-navigation`, `scroll`, `ua`, `cookies`
+
+```bash
+lxdev browser snapshot
+lxdev browser fill --ref e3 --text ada@example.com
+lxdev browser click --ref e9 --snapshot diff   # prints what the click changed
+```
+
+Actions wait until the element is visible, enabled, stable and uncovered
+(`--timeout-ms`). Failures carry a `code`: `not_found`, `stale_ref`,
+`not_visible`, `disabled`, `covered` (names the cover's ref), `not_editable`,
+`timeout`. A ref dies with its document: snapshot again after navigating.
+On macOS, `hover` fires the events but cannot apply `:hover` styles.
 
 ## `lxdev mock` and `lxdev network`
 

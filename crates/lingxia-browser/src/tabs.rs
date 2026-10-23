@@ -1333,6 +1333,9 @@ fn close_browser_tab_inner(tab_id: &str, remember: bool) -> Result<(), LxAppErro
         removed
     };
     let removed_any = removed.is_some();
+    if removed_any {
+        crate::agent::forget_tab(&normalized);
+    }
     if let Some(tab) = removed {
         // Detach only when this tab currently backs the startup page bridge.
         // Closing a background tab must not break the active tab bridge.

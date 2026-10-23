@@ -3357,6 +3357,7 @@ dependencies = [
 name = "lingxia-browser"
 version = "0.27.0"
 dependencies = [
+ "base64 0.23.1",
  "http",
  "lingxia-log",
  "lingxia-lxapp",
