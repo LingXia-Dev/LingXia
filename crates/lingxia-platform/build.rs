@@ -29,6 +29,13 @@ fn main() {
             .join("Sources");
         let generated_dir = sources_dir.join("generated");
         let platform_dir = generated_dir.join("LingXiaSwiftAPI");
+        // The output lives in the (ignored) source tree; rerun when it is gone.
+        println!(
+            "cargo:rerun-if-changed={}",
+            platform_dir
+                .join("LingXiaSwiftAPI/LingXiaSwiftAPI.swift")
+                .display()
+        );
         let generated_tmp_dir = out_dir.join("swift-bridge-generated");
 
         // Create destination directories
