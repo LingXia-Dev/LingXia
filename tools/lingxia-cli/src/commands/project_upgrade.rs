@@ -114,13 +114,51 @@ pub fn execute(root: &Path, check: bool, yes: bool) -> Result<i32> {
     // would quietly go back to crates.io.
     if let Some(lock) = crate::pin::read(root)? {
         let pinned = lock.lingxia;
+        let release = match crate::pin::against_release(&pinned) {
+            Ok(crate::pin::AgainstRelease::Superseded { release }) => release,
+            Ok(crate::pin::AgainstRelease::Kept { reason }) => {
+                println!(
+                    "  lingxia.lock: kept at {} ({reason}); `lingxia pin <ref>` moves it",
+                    pinned.short_commit()
+                );
+                return Ok(0);
+            }
+            Err(err) => {
+                println!(
+                    "  lingxia.lock: kept at {}; could not check it against this release: {err}",
+                    pinned.short_commit()
+                );
+                return Ok(0);
+            }
+        };
         println!(
-            "  pinned by lingxia.lock to {} at {} (line {}); move it with `lingxia pin <ref>`",
-            pinned.reference,
-            pinned.short_commit(),
-            pinned.workspace_version
+            "  lingxia.lock: {} is in {release}; the pin is no longer needed",
+            pinned.short_commit()
         );
-        return Ok(0);
+        if check {
+            println!(
+                "{} Run `lingxia upgrade` to drop the pin and follow the release.",
+                "!".yellow()
+            );
+            return Ok(EXIT_UPGRADE_AVAILABLE);
+        }
+        // Declining keeps the pin: the project's own line may predate the
+        // pinned commit, and dropping it alone would lose what it pinned.
+        match confirm_project_upgrade(
+            major_minor(&pinned.workspace_version),
+            cli_compat_line(),
+            yes,
+        ) {
+            ProjectConfirmation::Accepted => {}
+            ProjectConfirmation::Declined => {
+                println!("  Kept the pin.");
+                return Ok(0);
+            }
+            ProjectConfirmation::Required => return Ok(EXIT_CONFIRMATION_REQUIRED),
+        }
+        crate::pin::clear(root)?;
+        println!("  removed lingxia.lock, its Cargo.toml patches and .lingxia/lingxia-src");
+        return execute(root, check, true);
     }
     let prepared = build_plan(root)?;
     report_plan(root, &prepared);
