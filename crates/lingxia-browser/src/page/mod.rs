@@ -1,8 +1,8 @@
-//! Agent-grade page primitives: snapshots with element refs, auto-waiting
+//! Page primitives: snapshots with element refs, auto-waiting
 //! actions with typed failures, complete form input, readable text,
 //! annotated screenshots and console capture.
 //!
-//! The page side is `agent.js`, installed lazily into each document; this
+//! The page side is `page.js`, installed lazily into each document; this
 //! module owns waiting (actionability is polled until it holds or the
 //! deadline passes), the choice between trusted browser input and DOM
 //! synthesis, and everything that needs the host (files, screenshots).
@@ -12,7 +12,7 @@ mod console;
 use crate::automation::{
     browser_evaluate_javascript, browser_tab_webview, prepare_browser_tab_for_input,
 };
-use crate::types::BrowserAutomationError;
+use crate::types::{BrowserAutomationError, BrowserWaitCondition, BrowserWaitResult};
 use lingxia_webview::{PointerButton, PointerInput, ScreenshotRegion, WebViewInputError};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -24,23 +24,25 @@ use std::time::{Duration, Instant};
 use console::forget_tab as forget_console;
 pub use console::{ConsoleEntry, ConsoleList, clear as console_clear};
 
-const AGENT_SOURCE: &str = include_str!("agent.js");
-const VERSION_PLACEHOLDER: &str = "__LX_AGENT_VERSION__";
+const PAGE_SOURCE: &str = include_str!("page.js");
+const VERSION_PLACEHOLDER: &str = "__LX_PAGE_VERSION__";
 
-/// The agent's version is a hash of its source, so a page still holding an
-/// agent from another build gets this one installed over it.
-static AGENT: LazyLock<(String, String)> = LazyLock::new(|| {
+/// The script.s version is a hash of its source, so a page still holding
+/// the script from another build gets this one installed over it.
+static PAGE: LazyLock<(String, String)> = LazyLock::new(|| {
     // FNV-1a: stable across builds and platforms, unlike `DefaultHasher`.
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in AGENT_SOURCE.bytes() {
+    for byte in PAGE_SOURCE.bytes() {
         hash ^= u64::from(byte);
         hash = hash.wrapping_mul(0x0100_0000_01b3);
     }
     let version = format!("{hash:016x}");
-    let source = AGENT_SOURCE.replace(VERSION_PLACEHOLDER, &version);
+    let source = PAGE_SOURCE.replace(VERSION_PLACEHOLDER, &version);
     (version, source)
 });
 
+/// How long an action waits for its target to become actionable by default.
+pub const DEFAULT_ACTION_TIMEOUT: Duration = Duration::from_secs(5);
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 /// Upper bound on files handed to one file input: they travel base64-encoded
 /// inside one script evaluation.
@@ -51,9 +53,9 @@ const MAX_FULL_PAGE_HEIGHT: f64 = 16384.0;
 type InputFilePolicy = dyn Fn(&Path) -> bool + Send + Sync;
 static INPUT_FILE_POLICY: OnceLock<Box<InputFilePolicy>> = OnceLock::new();
 
-/// Decide which host files `set_input_files` may read; without one every
-/// absolute path is allowed. A host that lets an AI agent drive its browser
-/// sets this: page text can talk an agent into uploading any file it names.
+/// Decide which host files `set_input_files` may read. Without a policy every
+/// path is refused: page text can talk whoever drives the browser into
+/// uploading any file it names.
 pub fn set_input_file_policy(policy: impl Fn(&Path) -> bool + Send + Sync + 'static) -> bool {
     INPUT_FILE_POLICY.set(Box::new(policy)).is_ok()
 }
@@ -76,6 +78,39 @@ impl ElementTarget {
             reference: Some(reference.to_string()),
             ..Self::default()
         }
+    }
+
+    /// A target from a caller's fields: a `ref`, or a `selector` with an
+    /// optional `index`; `None` when neither is given.
+    pub fn from_parts(
+        reference: Option<String>,
+        selector: Option<String>,
+        index: Option<usize>,
+    ) -> Result<Option<Self>, BrowserAutomationError> {
+        match (reference, selector) {
+            (None, None) if index.is_some() => Err(usage("index needs a selector")),
+            (None, None) => Ok(None),
+            (Some(_), Some(_)) => Err(usage("pass either a ref or a selector, not both")),
+            (Some(_), None) if index.is_some() => {
+                Err(usage("index applies to a selector, not a ref"))
+            }
+            (Some(reference), None) => Ok(Some(Self::by_ref(&reference))),
+            (None, Some(selector)) => Ok(Some(Self {
+                reference: None,
+                selector: Some(selector),
+                index,
+            })),
+        }
+    }
+
+    /// [`Self::from_parts`] for an action that needs an element.
+    pub fn required(
+        reference: Option<String>,
+        selector: Option<String>,
+        index: Option<usize>,
+    ) -> Result<Self, BrowserAutomationError> {
+        Self::from_parts(reference, selector, index)?
+            .ok_or_else(|| usage("pass a ref (from a snapshot) or a selector"))
     }
 }
 
@@ -120,8 +155,58 @@ fn action_error(kind: &str, message: impl Into<String>, details: Value) -> Brows
     })
 }
 
-fn usage(message: impl Into<String>) -> BrowserAutomationError {
+/// A usage failure: the call itself is wrong, waiting cannot fix it.
+pub fn usage(message: impl Into<String>) -> BrowserAutomationError {
     action_error(kinds::USAGE, message, Value::Null)
+}
+
+/// Any browser failure as a typed one, so every caller reports the same
+/// kinds: a missing tab is `not_found` with `reason: "tab_not_found"`.
+/// A covered element's message names what covers it.
+pub fn typed_failure(error: BrowserAutomationError) -> BrowserActionError {
+    if let BrowserAutomationError::Action(mut error) = error {
+        if let Some(cover) = error.details.get("covered_by") {
+            let selector = cover
+                .get("selector")
+                .and_then(Value::as_str)
+                .unwrap_or("element");
+            let reference = cover
+                .get("ref")
+                .and_then(Value::as_str)
+                .map(|r| format!(", ref {r}"))
+                .unwrap_or_default();
+            error.message = format!("{} ({selector}{reference})", error.message);
+        }
+        return error;
+    }
+    let (kind, details) = match &error {
+        BrowserAutomationError::TabNotFound(_) | BrowserAutomationError::WebViewNotFound(_) => {
+            (kinds::NOT_FOUND, json!({ "reason": "tab_not_found" }))
+        }
+        BrowserAutomationError::WaitTimeout { timeout_ms, .. } => (
+            kinds::TIMEOUT,
+            json!({ "timed_out": true, "timeout_ms": timeout_ms }),
+        ),
+        BrowserAutomationError::Input(WebViewInputError::Unsupported(_))
+        | BrowserAutomationError::WebView(lingxia_webview::WebViewError::Unsupported(_)) => {
+            (kinds::UNSUPPORTED, Value::Null)
+        }
+        _ => (kinds::FAILED, Value::Null),
+    };
+    let message = match &error {
+        BrowserAutomationError::Input(WebViewInputError::Unsupported(what)) => {
+            format!("{what} is not supported in this WebView")
+        }
+        other => other.to_string(),
+    };
+    BrowserActionError {
+        kind: kind.to_string(),
+        message,
+        details: match details {
+            Value::Object(map) => map,
+            _ => Map::new(),
+        },
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -190,20 +275,20 @@ pub(crate) fn forget_tab(tab_id: &str) {
     forget_console(tab_id);
 }
 
-/// Run one agent op in the tab's current document, installing the agent
-/// first when the document has none (or an older one).
-async fn agent_call(tab_id: &str, op: &str, args: Value) -> Result<Value, BrowserAutomationError> {
+/// Run one page-script op in the tab's current document, installing the
+/// script first when the document has none (or an older one).
+async fn page_call(tab_id: &str, op: &str, args: Value) -> Result<Value, BrowserAutomationError> {
     let op_json = serde_json::to_string(op).unwrap_or_default();
     let args_json = serde_json::to_string(&args).unwrap_or_else(|_| "{}".to_string());
-    let (version, source) = &*AGENT;
+    let (version, source) = &*PAGE;
     let probe = format!(
-        "((a) => (a && a.version === '{version}') ? a.call({op_json}, {args_json}) : {{ __lx_agent_missing: true }})(window.__LingXiaAgent)"
+        "((a) => (a && a.version === '{version}') ? a.call({op_json}, {args_json}) : {{ __lx_page_missing: true }})(window.__LingXiaPage)"
     );
     let mut value = browser_evaluate_javascript(tab_id, &probe).await?;
-    if value.get("__lx_agent_missing").and_then(Value::as_bool) == Some(true) {
+    if value.get("__lx_page_missing").and_then(Value::as_bool) == Some(true) {
         let ref_start = next_ref_number(tab_id);
         let install = format!(
-            "(() => {{\nwindow.__LingXiaAgentRefStart = {ref_start};\n{source}\nreturn window.__LingXiaAgent.call({op_json}, {args_json});\n}})()"
+            "(() => {{\nwindow.__LingXiaPageRefStart = {ref_start};\n{source}\nreturn window.__LingXiaPage.call({op_json}, {args_json});\n}})()"
         );
         value = browser_evaluate_javascript(tab_id, &install).await?;
     }
@@ -226,7 +311,7 @@ fn interpret(tab_id: &str, mut value: Value) -> Result<Value, BrowserAutomationE
     let Some(object) = value.as_object_mut() else {
         return Err(action_error(
             kinds::FAILED,
-            "the page agent returned no result",
+            "the page script returned no result",
             Value::Null,
         ));
     };
@@ -256,7 +341,7 @@ fn interpret(tab_id: &str, mut value: Value) -> Result<Value, BrowserAutomationE
     let mut error: BrowserActionError =
         serde_json::from_value(error).unwrap_or(BrowserActionError {
             kind: kinds::FAILED.to_string(),
-            message: "the page agent failed".to_string(),
+            message: "the page script failed".to_string(),
             details: Map::new(),
         });
     if error.kind == kinds::STALE_REF
@@ -322,7 +407,7 @@ pub async fn snapshot(
         return Err(usage("since must be \"last\""));
     }
     let args = serde_json::to_value(options).unwrap_or_default();
-    agent_call(tab_id, "snapshot", args).await
+    page_call(tab_id, "snapshot", args).await
 }
 
 // ---------------------------------------------------------------------------
@@ -406,7 +491,7 @@ async fn wait_actionable(
     let mut last_error: Option<BrowserActionError>;
     loop {
         let args = json!({ "target": target, "action": check.as_str() });
-        match agent_call(tab_id, "probe", args).await {
+        match page_call(tab_id, "probe", args).await {
             Ok(value) => {
                 let probe: Probe = serde_json::from_value(value).map_err(|err| {
                     action_error(
@@ -434,7 +519,7 @@ async fn wait_actionable(
         if elapsed >= timeout && previous.is_some() {
             // Actionable at the deadline: one immediate re-probe settles
             // stability rather than failing a ready element.
-            if let Ok(value) = agent_call(
+            if let Ok(value) = page_call(
                 tab_id,
                 "probe",
                 json!({ "target": target, "action": check.as_str() }),
@@ -484,7 +569,7 @@ async fn wait_resolved(
 ) -> Result<Value, BrowserAutomationError> {
     let started = Instant::now();
     loop {
-        match agent_call(tab_id, op, args.clone()).await {
+        match page_call(tab_id, op, args.clone()).await {
             Err(BrowserAutomationError::Action(error))
                 if error.kind == kinds::NOT_FOUND && started.elapsed() < timeout =>
             {
@@ -523,15 +608,15 @@ async fn finish(
     after: AfterAction,
 ) -> Result<Value, BrowserAutomationError> {
     // The document the action ran in; `with_page_change` compares against it.
-    result.insert("generation".to_string(), json!(generation_before));
+    if !generation_before.is_empty() {
+        result.insert("generation".to_string(), json!(generation_before));
+    }
     with_page_change(tab_id, Value::Object(result), after).await
 }
 
 /// Add what the action changed on the page to its `result` (which names the
-/// document it ran in as `generation`). Callers that also wait for a
-/// navigation call this after that wait, so the snapshot is of the page the
-/// action led to.
-pub async fn with_page_change(
+/// document it ran in as `generation`).
+async fn with_page_change(
     tab_id: &str,
     mut result: Value,
     after: AfterAction,
@@ -547,8 +632,8 @@ pub async fn with_page_change(
     // A navigating document cannot answer; the next one will.
     let mut generation = None;
     for _ in 0..20 {
-        let _ = agent_call(tab_id, "settle", json!({ "quiet_ms": 150, "max_ms": 2000 })).await;
-        if let Ok(metrics) = agent_call(tab_id, "metrics", json!({})).await {
+        let _ = page_call(tab_id, "settle", json!({ "quiet_ms": 150, "max_ms": 2000 })).await;
+        if let Ok(metrics) = page_call(tab_id, "metrics", json!({})).await {
             generation = metrics
                 .get("generation")
                 .and_then(Value::as_str)
@@ -570,6 +655,119 @@ pub async fn with_page_change(
         object.insert("snapshot".to_string(), snap);
     }
     Ok(result)
+}
+
+/// One page action, as [`perform`] runs it.
+#[derive(Debug, Clone)]
+pub enum PageAction {
+    Click {
+        target: ElementTarget,
+        click: ClickOptions,
+    },
+    Hover(ElementTarget),
+    Drag {
+        source: ElementTarget,
+        to: ElementTarget,
+    },
+    Fill {
+        target: ElementTarget,
+        text: String,
+    },
+    Type {
+        target: ElementTarget,
+        text: String,
+        clear: bool,
+    },
+    /// Without a target the key goes to whatever has focus.
+    Press {
+        target: Option<ElementTarget>,
+        key: String,
+    },
+    ScrollTo(ElementTarget),
+    SelectOption {
+        target: ElementTarget,
+        options: Vec<OptionChoice>,
+    },
+    SetChecked {
+        target: ElementTarget,
+        checked: bool,
+    },
+    SetInputFiles {
+        target: ElementTarget,
+        files: Vec<String>,
+    },
+}
+
+/// Wait for the navigation an action starts; `complete` waits for its load.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NavigationWait {
+    pub complete: bool,
+}
+
+/// An action's result (with the page change `options.after` asked for) and
+/// the navigation it was asked to wait for.
+#[derive(Debug, Clone)]
+pub struct ActionOutcome {
+    pub result: Value,
+    pub navigation: Option<BrowserWaitResult>,
+}
+
+/// Run `action` with auto-wait. With `navigation`, wait for the navigation
+/// it starts (within `options.timeout`) before reading the page change, so
+/// the snapshot is of the page the action led to.
+pub async fn perform(
+    tab_id: &str,
+    action: &PageAction,
+    options: &ActionOptions,
+    navigation: Option<NavigationWait>,
+) -> Result<ActionOutcome, BrowserAutomationError> {
+    let initial_url = match navigation {
+        Some(_) => Some(crate::current_url(tab_id).await?),
+        None => None,
+    };
+    let inner = ActionOptions {
+        timeout: options.timeout,
+        after: AfterAction::None,
+    };
+    let result = match action {
+        PageAction::Click { target, click: c } => click(tab_id, target, *c, &inner).await,
+        PageAction::Hover(target) => hover(tab_id, target, &inner).await,
+        PageAction::Drag { source, to } => drag(tab_id, source, to, &inner).await,
+        PageAction::Fill { target, text } => fill(tab_id, target, text, &inner).await,
+        PageAction::Type {
+            target,
+            text,
+            clear,
+        } => type_text(tab_id, target, text, *clear, &inner).await,
+        PageAction::Press { target, key } => press(tab_id, target.as_ref(), key, &inner).await,
+        PageAction::ScrollTo(target) => scroll_to(tab_id, target, &inner).await,
+        PageAction::SelectOption {
+            target,
+            options: choices,
+        } => select_option(tab_id, target, choices, &inner).await,
+        PageAction::SetChecked { target, checked } => {
+            set_checked(tab_id, target, *checked, &inner).await
+        }
+        PageAction::SetInputFiles { target, files } => {
+            set_input_files(tab_id, target, files, &inner).await
+        }
+    }?;
+    let navigation = match (navigation, initial_url) {
+        (Some(wait), Some(initial_url)) => Some(
+            crate::wait(
+                tab_id,
+                BrowserWaitCondition::Navigation {
+                    initial_url,
+                    wait_until_complete: wait.complete,
+                },
+                options.timeout,
+            )
+            .await?,
+        ),
+        _ => None,
+    };
+    let result = with_page_change(tab_id, result, options.after).await?;
+    Ok(ActionOutcome { result, navigation })
 }
 
 fn base_result(probe: &Probe) -> Map<String, Value> {
@@ -623,7 +821,7 @@ pub async fn click(
                 .await,
         )?;
     if !trusted {
-        agent_call(
+        page_call(
             tab_id,
             "click",
             json!({
@@ -657,7 +855,7 @@ pub async fn hover(
             .await,
     )?;
     if !trusted {
-        agent_call(
+        page_call(
             tab_id,
             "hover",
             json!({ "target": ElementTarget::by_ref(&probe.reference) }),
@@ -703,7 +901,7 @@ pub async fn drag(
         )?
     };
     if !trusted {
-        agent_call(
+        page_call(
             tab_id,
             "drag",
             json!({
@@ -727,7 +925,7 @@ pub async fn fill(
 ) -> Result<Value, BrowserAutomationError> {
     prepare_browser_tab_for_input(tab_id).await?;
     let probe = wait_actionable(tab_id, target, Check::Fill, options.timeout).await?;
-    let filled = agent_call(
+    let filled = page_call(
         tab_id,
         "fill",
         json!({ "target": ElementTarget::by_ref(&probe.reference), "value": value }),
@@ -753,7 +951,7 @@ pub async fn type_text(
     prepare_browser_tab_for_input(tab_id).await?;
     let probe = wait_actionable(tab_id, target, Check::Type, options.timeout).await?;
     let by_ref = ElementTarget::by_ref(&probe.reference);
-    agent_call(
+    page_call(
         tab_id,
         "focus_for_typing",
         json!({ "target": by_ref, "clear": clear }),
@@ -763,7 +961,7 @@ pub async fn type_text(
     let trusted = trusted_or_fallback(webview.trusted_insert_text(text).await)?;
     let mut result = base_result(&probe);
     if !trusted {
-        let typed = agent_call(
+        let typed = page_call(
             tab_id,
             "type",
             json!({ "target": by_ref, "text": text, "clear": false }),
@@ -790,7 +988,7 @@ pub async fn press(
     let mut generation = String::new();
     if let Some(target) = target {
         let probe = wait_actionable(tab_id, target, Check::Press, options.timeout).await?;
-        agent_call(
+        page_call(
             tab_id,
             "focus",
             json!({ "target": ElementTarget::by_ref(&probe.reference) }),
@@ -799,7 +997,7 @@ pub async fn press(
         generation = probe.generation.clone();
         result = base_result(&probe);
     } else if options.after != AfterAction::None {
-        generation = agent_call(tab_id, "metrics", json!({}))
+        generation = page_call(tab_id, "metrics", json!({}))
             .await?
             .get("generation")
             .and_then(Value::as_str)
@@ -846,7 +1044,7 @@ pub async fn select_option(
     }
     prepare_browser_tab_for_input(tab_id).await?;
     let probe = wait_actionable(tab_id, target, Check::Select, options.timeout).await?;
-    let selected = agent_call(
+    let selected = page_call(
         tab_id,
         "select_option",
         json!({ "target": ElementTarget::by_ref(&probe.reference), "options": choices }),
@@ -872,7 +1070,7 @@ async fn check_state(
     tab_id: &str,
     target: &ElementTarget,
 ) -> Result<CheckState, BrowserAutomationError> {
-    let value = agent_call(tab_id, "check_target", json!({ "target": target })).await?;
+    let value = page_call(tab_id, "check_target", json!({ "target": target })).await?;
     serde_json::from_value(value).map_err(|err| {
         action_error(
             kinds::FAILED,
@@ -924,11 +1122,11 @@ pub async fn set_checked(
     // A styled control hides its input and draws a label: decide which to
     // click from one look now, not after the input's wait times out.
     let hidden = matches!(
-        agent_call(tab_id, "probe", json!({ "target": control, "action": "click" })).await,
+        page_call(tab_id, "probe", json!({ "target": control, "action": "click" })).await,
         Err(BrowserAutomationError::Action(ref error)) if error.kind == kinds::NOT_VISIBLE
     );
     let label = if hidden {
-        agent_call(tab_id, "label_for", json!({ "target": control }))
+        page_call(tab_id, "label_for", json!({ "target": control }))
             .await
             .ok()
             .and_then(|v| v.get("label").and_then(Value::as_str).map(str::to_string))
@@ -958,7 +1156,7 @@ pub async fn set_checked(
     if let Some(trusted) = clicked.get("trusted") {
         result.insert("trusted".to_string(), trusted.clone());
     }
-    let generation = agent_call(tab_id, "metrics", json!({}))
+    let generation = page_call(tab_id, "metrics", json!({}))
         .await?
         .get("generation")
         .and_then(Value::as_str)
@@ -976,6 +1174,13 @@ pub async fn set_input_files(
     options: &ActionOptions,
 ) -> Result<Value, BrowserAutomationError> {
     use base64::Engine as _;
+    let Some(policy) = INPUT_FILE_POLICY.get() else {
+        return Err(action_error(
+            kinds::PERMISSION,
+            "the host has not allowed file uploads",
+            json!({ "paths": paths }),
+        ));
+    };
     let mut files = Vec::with_capacity(paths.len());
     let mut total = 0u64;
     for raw in paths {
@@ -993,15 +1198,13 @@ pub async fn set_input_files(
         if !metadata.is_file() {
             return Err(usage(format!("not a file: {raw}")));
         }
-        if let Some(policy) = INPUT_FILE_POLICY.get() {
-            let resolved = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-            if !policy(&resolved) {
-                return Err(action_error(
-                    kinds::PERMISSION,
-                    format!("the host does not allow uploading {raw}"),
-                    json!({ "path": raw }),
-                ));
-            }
+        let resolved = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        if !policy(&resolved) {
+            return Err(action_error(
+                kinds::PERMISSION,
+                format!("the host does not allow uploading {raw}"),
+                json!({ "path": raw }),
+            ));
         }
         total += metadata.len();
         if total > MAX_INPUT_FILES_BYTES {
@@ -1087,7 +1290,7 @@ fn mime_for(path: &Path) -> &'static str {
 /// first; a page that cannot be reached right now still lists what was
 /// collected before.
 pub async fn console_list(tab_id: &str, since: Option<u64>, levels: &[String]) -> ConsoleList {
-    let _ = agent_call(tab_id, "console", json!({})).await;
+    let _ = page_call(tab_id, "console", json!({})).await;
     console::list(tab_id, since, levels)
 }
 
@@ -1106,7 +1309,7 @@ pub struct TextOptions {
 /// The page's main readable content as Markdown.
 pub async fn text(tab_id: &str, options: &TextOptions) -> Result<Value, BrowserAutomationError> {
     let args = serde_json::to_value(options).unwrap_or_default();
-    agent_call(tab_id, "text", args).await
+    page_call(tab_id, "text", args).await
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1140,14 +1343,18 @@ pub async fn screenshot(
                 let png = webview.take_screenshot().await?;
                 return Ok(Screenshot { png, meta });
             }
-            let marks = agent_call(tab_id, "marks", json!({})).await?;
-            let _ = agent_call(tab_id, "frame", json!({})).await;
+            let marks = page_call(tab_id, "marks", json!({})).await?;
+            let _ = page_call(tab_id, "frame", json!({})).await;
             let captured = webview.take_screenshot().await;
-            let _ = agent_call(tab_id, "clear_marks", json!({})).await;
+            let _ = page_call(tab_id, "clear_marks", json!({})).await;
             let png = captured?;
-            for key in ["marks", "truncated", "viewport"] {
+            for (key, name) in [
+                ("marks", "marks"),
+                ("truncated", "marks_truncated"),
+                ("viewport", "viewport"),
+            ] {
                 if let Some(value) = marks.get(key) {
-                    meta.insert(key.to_string(), value.clone());
+                    meta.insert(name.to_string(), value.clone());
                 }
             }
             Ok(Screenshot { png, meta })
@@ -1158,7 +1365,7 @@ pub async fn screenshot(
                     "annotated screenshots cover the viewport; drop full_page",
                 ));
             }
-            let metrics = agent_call(tab_id, "metrics", json!({})).await?;
+            let metrics = page_call(tab_id, "metrics", json!({})).await?;
             let width = metrics.get("width").and_then(Value::as_f64).unwrap_or(0.0);
             let height = metrics.get("height").and_then(Value::as_f64).unwrap_or(0.0);
             if width <= 0.0 || height <= 0.0 {
@@ -1193,13 +1400,13 @@ pub async fn screenshot(
                 ));
             }
             let probe = wait_actionable(tab_id, target, Check::ScrollTo, timeout).await?;
-            let boxed = agent_call(
+            let boxed = page_call(
                 tab_id,
                 "element_box",
                 json!({ "target": ElementTarget::by_ref(&probe.reference) }),
             )
             .await?;
-            let metrics = agent_call(tab_id, "metrics", json!({})).await?;
+            let metrics = page_call(tab_id, "metrics", json!({})).await?;
             let get = |v: &Value, k: &str| v.get(k).and_then(Value::as_f64).unwrap_or(0.0);
             let document = boxed.get("document").cloned().unwrap_or_default();
             let region = ScreenshotRegion::Clip {
@@ -1236,9 +1443,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn agent_version_is_stamped_into_the_script() {
-        let (version, source) = &*AGENT;
-        assert_eq!(AGENT_SOURCE.matches(VERSION_PLACEHOLDER).count(), 1);
+    fn page_version_is_stamped_into_the_script() {
+        let (version, source) = &*PAGE;
+        assert_eq!(PAGE_SOURCE.matches(VERSION_PLACEHOLDER).count(), 1);
         assert!(source.contains(&format!("const VERSION = '{version}';")));
     }
 
@@ -1273,7 +1480,7 @@ mod tests {
 
     #[test]
     fn unknown_ref_from_a_replaced_document_reads_as_navigated() {
-        let tab = "agent-test-tab";
+        let tab = "page-test-tab";
         note_generation(tab, "doc-a", 12);
         let value = json!({
             "ok": false,
@@ -1292,23 +1499,62 @@ mod tests {
     #[test]
     fn ok_results_drop_internal_fields() {
         let value = interpret(
-            "agent-test-ok",
+            "page-test-ok",
             json!({ "ok": true, "generation": "g", "refs_issued": 3, "text": "- button" }),
         )
         .unwrap();
         assert_eq!(value, json!({ "generation": "g", "text": "- button" }));
-        forget_tab("agent-test-ok");
+        forget_tab("page-test-ok");
     }
 
     #[test]
     fn script_failures_surface_as_failed() {
         let value = json!({ "ok": false, "generation": "g", "error": { "kind": "script", "message": "boom" } });
-        let Err(BrowserAutomationError::Action(error)) = interpret("agent-test-script", value)
+        let Err(BrowserAutomationError::Action(error)) = interpret("page-test-script", value)
         else {
             panic!("expected an action error");
         };
         assert_eq!(error.kind, kinds::FAILED);
-        forget_tab("agent-test-script");
+        forget_tab("page-test-script");
+    }
+
+    #[test]
+    fn targets_take_a_ref_or_a_selector() {
+        assert_eq!(ElementTarget::from_parts(None, None, None).unwrap(), None);
+        let target = ElementTarget::required(None, Some("li".into()), Some(2)).unwrap();
+        assert_eq!(
+            (target.selector.as_deref(), target.index),
+            (Some("li"), Some(2))
+        );
+        for (reference, selector, index) in [
+            (Some("e1"), Some("li"), None),
+            (Some("e1"), None, Some(1)),
+            (None, None, Some(1)),
+        ] {
+            let Err(BrowserAutomationError::Action(error)) = ElementTarget::from_parts(
+                reference.map(str::to_string),
+                selector.map(str::to_string),
+                index,
+            ) else {
+                panic!("expected a usage failure");
+            };
+            assert_eq!(error.kind, kinds::USAGE);
+        }
+    }
+
+    #[test]
+    fn typed_failures_name_the_cover_and_the_missing_tab() {
+        let covered = action_error(
+            kinds::COVERED,
+            "element is covered",
+            json!({ "covered_by": { "ref": "e9", "selector": "div.modal" } }),
+        );
+        let failure = typed_failure(covered);
+        assert_eq!(failure.kind, kinds::COVERED);
+        assert_eq!(failure.message, "element is covered (div.modal, ref e9)");
+        let missing = typed_failure(BrowserAutomationError::TabNotFound("t1".into()));
+        assert_eq!(missing.kind, kinds::NOT_FOUND);
+        assert_eq!(missing.details["reason"], "tab_not_found");
     }
 
     #[test]

@@ -236,6 +236,8 @@ pub enum BrowserAutomationError {
     #[error("browser tab webview not found: {0}")]
     WebViewNotFound(String),
     #[error(transparent)]
+    Open(#[from] lxapp::LxAppError),
+    #[error(transparent)]
     Script(#[from] WebViewScriptError),
     #[error(transparent)]
     Input(#[from] WebViewInputError),
@@ -250,7 +252,7 @@ pub enum BrowserAutomationError {
     /// A typed page-action failure (`not_found`, `stale_ref`, `covered`, …)
     /// whose details callers branch on.
     #[error("{0}")]
-    Action(crate::agent::BrowserActionError),
+    Action(crate::page::BrowserActionError),
 }
 
 fn default_true() -> bool {

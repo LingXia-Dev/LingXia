@@ -87,6 +87,11 @@ mod error_page;
 /// snapshots, and the canonical derived-state folds.
 pub mod events;
 mod input_helper;
+#[cfg(all(
+    feature = "webview-input",
+    any(target_os = "macos", target_os = "windows")
+))]
+mod page_console;
 mod traits;
 /// Process-local URL callback channels for navigation handoff.
 pub mod url_callback;

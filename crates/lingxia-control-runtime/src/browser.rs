@@ -8,12 +8,7 @@ use serde_json::Value;
 #[cfg(feature = "browser")]
 use serde_json::json;
 #[cfg(feature = "browser")]
-use std::time::{Duration, Instant};
-
-#[cfg(feature = "browser")]
-const OPEN_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
-#[cfg(feature = "browser")]
-const OPEN_WAIT_INTERVAL: Duration = Duration::from_millis(50);
+use std::time::Duration;
 #[cfg(feature = "browser")]
 const DEFAULT_BROWSER_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 #[cfg(feature = "browser")]
@@ -30,15 +25,15 @@ pub(crate) fn handle_browser_command(
     Some(handle_browser_command_impl(handler, args))
 }
 
-/// Agent commands, whose failures carry a typed kind and details.
+/// Page commands (snapshot, ref actions), whose failures carry a typed kind and details.
 pub(crate) fn handle_typed_browser_command(
     handler: &str,
     args: Option<Value>,
 ) -> Option<Result<Option<Value>, lingxia_control_protocol::ControlError>> {
     #[cfg(feature = "browser")]
     {
-        if crate::browser_agent::is_agent_handler(handler) {
-            return Some(crate::browser_agent::handle(handler, args));
+        if crate::browser_page::is_page_handler(handler) {
+            return Some(crate::browser_page::handle(handler, args));
         }
     }
     let _ = (handler, args);
@@ -57,10 +52,10 @@ fn handle_browser_command_impl(
     match handler {
         methods::browser::OPEN => {
             let args: OpenArgs = parse_args(handler, args)?;
-            let tab_id = lingxia_browser::open(&args.url, args.tab_id.as_deref())
-                .map_err(|err| err.to_string())?;
-            present_browser_tab(&tab_id);
-            wait_for_tab_navigation(&tab_id, &args.url)?;
+            let tab_id = run_async(lingxia_browser::open_and_present(
+                &args.url,
+                args.tab_id.as_deref(),
+            ))?;
             Ok(Some(json!({ "tab_id": tab_id })))
         }
         methods::browser::TABS => {
@@ -78,8 +73,7 @@ fn handle_browser_command_impl(
         methods::browser::ACTIVATE => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
-            let info = lingxia_browser::activate(&tab_id).map_err(|err| err.to_string())?;
-            present_browser_tab(&tab_id);
+            let info = lingxia_browser::present(&tab_id).map_err(|err| err.to_string())?;
             serde_json::to_value(info)
                 .map(Some)
                 .map_err(|err| err.to_string())
@@ -441,62 +435,6 @@ where
 {
     serde_json::from_value(args.unwrap_or_else(|| json!({})))
         .map_err(|err| format!("invalid args for {}: {}", handler, err))
-}
-
-#[cfg(all(feature = "browser", target_os = "macos"))]
-fn present_browser_tab(tab_id: &str) {
-    if lingxia_browser::tab_is_standalone(tab_id) {
-        return;
-    }
-    let _ = lingxia::apple::present_internal_browser_tab(tab_id);
-}
-
-#[cfg(all(feature = "browser", target_os = "windows"))]
-fn present_browser_tab(tab_id: &str) {
-    if lingxia_browser::tab_is_standalone(tab_id) {
-        return;
-    }
-    let _ = lingxia_browser::present(tab_id);
-}
-
-#[cfg(all(
-    feature = "browser",
-    not(any(target_os = "macos", target_os = "windows"))
-))]
-fn present_browser_tab(_tab_id: &str) {}
-
-#[cfg(feature = "browser")]
-fn wait_for_tab_navigation(tab_id: &str, requested_url: &str) -> Result<(), String> {
-    // Compare via the runtime's own canonicalizer so the wait target matches
-    // what the tab actually loads (e.g. loopback http is not force-upgraded).
-    let expected_url = lingxia_browser::normalize_url_for_wait_compare(requested_url);
-    if expected_url.is_empty() {
-        return Ok(());
-    }
-
-    let deadline = Instant::now() + OPEN_WAIT_TIMEOUT;
-    loop {
-        let current_url = lingxia_browser::tabs()
-            .into_iter()
-            .find(|tab| tab.tab_id == tab_id)
-            .and_then(|tab| tab.current_url)
-            .map(|url| lingxia_browser::normalize_url_for_wait_compare(&url));
-
-        if current_url.as_deref() == Some(expected_url.as_str()) {
-            return Ok(());
-        }
-
-        if Instant::now() >= deadline {
-            return Err(format!(
-                "browser tab {} did not load {} within {}ms",
-                tab_id,
-                expected_url,
-                OPEN_WAIT_TIMEOUT.as_millis()
-            ));
-        }
-
-        std::thread::sleep(OPEN_WAIT_INTERVAL);
-    }
 }
 
 #[cfg(feature = "browser")]

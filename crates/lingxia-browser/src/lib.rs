@@ -1,7 +1,7 @@
-pub mod agent;
 #[cfg(all(test, target_vendor = "apple"))]
 #[path = "../../lingxia-platform/tests/support/apple_host_stubs.rs"]
 mod apple_host_stubs;
+pub mod page;
 
 mod automation;
 mod chooser;
@@ -98,6 +98,18 @@ pub fn register_internal_page(
 pub fn open(url: &str, tab_id: Option<&str>) -> Result<String, LxAppError> {
     reject_trusted_control_url(url)?;
     tabs::open_internal_browser_tab(url, tab_id)
+}
+
+/// [`open`] for automation: also brings the tab onscreen and resolves once
+/// the tab reports `url`, so the caller's next action has a live page.
+pub async fn open_and_present(
+    url: &str,
+    tab_id: Option<&str>,
+) -> Result<String, BrowserAutomationError> {
+    let tab_id = open(url, tab_id)?;
+    present(&tab_id)?;
+    automation::browser_wait_for_tab_url(&tab_id, url).await?;
+    Ok(tab_id)
 }
 
 /// Block downloads while a required browser proxy is disconnected.
@@ -357,6 +369,7 @@ pub fn set_tab_closed_handler(handler: Arc<dyn Fn(&str) + Send + Sync>) {
 }
 
 /// Mark `tab_id` active and ask the host shell to bring it onscreen.
+/// Standalone tabs are only activated: their owner already shows them.
 pub fn present(tab_id: &str) -> Result<BrowserTabInfo, BrowserAutomationError> {
     tabs::browser_present_tab(tab_id)
 }
@@ -513,32 +526,8 @@ pub async fn wait_for_navigation(
     automation::browser_wait_for_navigation(tab_id, timeout, wait_until_complete).await
 }
 
-pub async fn click(tab_id: &str, selector: &str) -> Result<(), BrowserAutomationError> {
-    automation::browser_click(tab_id, selector).await
-}
-
-pub async fn type_text(
-    tab_id: &str,
-    selector: &str,
-    text: &str,
-) -> Result<(), BrowserAutomationError> {
-    automation::browser_type_text(tab_id, selector, text).await
-}
-
-pub async fn fill(tab_id: &str, selector: &str, text: &str) -> Result<(), BrowserAutomationError> {
-    automation::browser_fill(tab_id, selector, text).await
-}
-
-pub async fn press(tab_id: &str, key: &str) -> Result<(), BrowserAutomationError> {
-    automation::browser_press(tab_id, key).await
-}
-
 pub async fn scroll(tab_id: &str, dx: f64, dy: f64) -> Result<(), BrowserAutomationError> {
     automation::browser_scroll(tab_id, dx, dy).await
-}
-
-pub async fn scroll_to(tab_id: &str, selector: &str) -> Result<(), BrowserAutomationError> {
-    automation::browser_scroll_to(tab_id, selector).await
 }
 
 pub fn tab_path(tab_id: &str) -> String {

@@ -144,7 +144,7 @@ pub(crate) fn install_document_scripts(
         // Browser tabs keep their page console in the page for automation;
         // CDP console capture stays off for them (see console.rs).
         #[cfg(feature = "webview-input")]
-        let script = format!("{script}{}", crate::input_helper::PAGE_CONSOLE_RECORDER);
+        let script = format!("{script}{}", crate::page_console::PAGE_CONSOLE_RECORDER);
         script.to_string()
     };
     AddScriptToExecuteOnDocumentCreatedCompletedHandler::wait_for_async_operation(

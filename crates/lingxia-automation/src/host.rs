@@ -3,6 +3,7 @@
 //! unforgeable drivers.
 //! macOS is the reference platform where every capability is live.
 
+use crate::browser::{self, resolve_tab_id};
 use crate::page::png_dimensions;
 use crate::resolve::{json_to_js, resolve_lxapp_by_id};
 use crate::{auto_err, require_host_context};
@@ -361,42 +362,6 @@ struct BrowserWaitOpt {
 }
 
 #[derive(FromJSObject)]
-struct BrowserSelectorOpt {
-    css: String,
-    tab: Option<String>,
-}
-
-/// `click` / `press` also carry the navigation-sync flags.
-#[derive(FromJSObject)]
-struct BrowserClickOpt {
-    css: String,
-    tab: Option<String>,
-    #[js_name = "waitNavigation"]
-    wait_navigation: Option<bool>,
-    complete: Option<bool>,
-    #[js_name = "timeoutMs"]
-    timeout_ms: Option<u64>,
-}
-
-#[derive(FromJSObject)]
-struct BrowserTextOpt {
-    css: String,
-    text: String,
-    tab: Option<String>,
-}
-
-#[derive(FromJSObject)]
-struct BrowserPressOpt {
-    key: String,
-    tab: Option<String>,
-    #[js_name = "waitNavigation"]
-    wait_navigation: Option<bool>,
-    complete: Option<bool>,
-    #[js_name = "timeoutMs"]
-    timeout_ms: Option<u64>,
-}
-
-#[derive(FromJSObject)]
 struct BrowserScrollOpt {
     dx: Option<f64>,
     dy: Option<f64>,
@@ -411,19 +376,6 @@ struct JSTabResult {
 const BROWSER_EVAL_DEFAULT_MS: u64 = 5_000;
 const BROWSER_WAIT_DEFAULT_MS: u64 = 10_000;
 const BROWSER_WAIT_MAX_MS: u64 = 60_000;
-
-/// Resolve "current" (or omitted) to the actual current tab id, mirroring the
-/// devtool handler; `lingxia_browser` ops need a concrete id.
-fn resolve_tab_id(tab: &Option<String>) -> JSResult<String> {
-    let raw = tab.as_deref().unwrap_or("current");
-    if raw.trim().eq_ignore_ascii_case("current") {
-        lingxia_browser::automation_current_tab()
-            .map(|tab| tab.tab_id)
-            .ok_or_else(|| auto_err("no current browser tab"))
-    } else {
-        Ok(raw.trim().to_string())
-    }
-}
 
 fn browser_wait_condition(o: &BrowserWaitOpt) -> JSResult<lingxia_browser::BrowserWaitCondition> {
     use lingxia_browser::BrowserWaitCondition as C;
@@ -510,14 +462,6 @@ async fn browser_wait_after_action(
         .map_err(|err| auto_err(err.to_string()))
 }
 
-fn browser_wait_duration(timeout_ms: Option<u64>) -> Duration {
-    Duration::from_millis(
-        timeout_ms
-            .unwrap_or(BROWSER_WAIT_DEFAULT_MS)
-            .min(BROWSER_WAIT_MAX_MS),
-    )
-}
-
 #[js_class(rename = "BrowserDriver")]
 impl JSBrowserDriver {
     #[js_method(constructor)]
@@ -528,7 +472,8 @@ impl JSBrowserDriver {
     #[js_method]
     async fn open(&self, ctx: JSContext, options: BrowserOpenOpt) -> JSResult<JSTabResult> {
         require_host_context(&ctx)?;
-        let tab = lingxia_browser::open(&options.url, options.tab.as_deref())
+        let tab = lingxia_browser::open_and_present(&options.url, options.tab.as_deref())
+            .await
             .map_err(|err| auto_err(err.to_string()))?;
         Ok(JSTabResult { tab })
     }
@@ -549,7 +494,7 @@ impl JSBrowserDriver {
     async fn activate(&self, ctx: JSContext, options: Optional<TabOpt>) -> JSResult<JSValue> {
         require_host_context(&ctx)?;
         let options = options.0.unwrap_or_default();
-        let info = lingxia_browser::activate(&resolve_tab_id(&options.tab)?)
+        let info = lingxia_browser::present(&resolve_tab_id(&options.tab)?)
             .map_err(|err| auto_err(err.to_string()))?;
         to_js(&ctx, &info)
     }
@@ -658,58 +603,47 @@ impl JSBrowserDriver {
         json_to_js(&ctx, &value)
     }
 
-    /// Click an element. With `waitNavigation`, awaits a navigation the click
-    /// triggers and resolves to the navigation payload (else `null`).
+    /// Snapshot of the page's accessibility tree with element refs.
     #[js_method]
-    async fn click(&self, ctx: JSContext, options: BrowserClickOpt) -> JSResult<JSValue> {
+    async fn snapshot(&self, ctx: JSContext, options: Optional<JSObject>) -> JSResult<JSValue> {
         require_host_context(&ctx)?;
-        let tab = resolve_tab_id(&options.tab)?;
-        let wait_navigation = options.wait_navigation.unwrap_or(false);
-        let timeout = browser_wait_duration(options.timeout_ms);
-        let armed = browser_arm_navigation(&tab, wait_navigation).await?;
-        lingxia_browser::click(&tab, &options.css)
-            .await
-            .map_err(|err| auto_err(err.to_string()))?;
-        let navigation =
-            browser_wait_after_action(&tab, armed, options.complete.unwrap_or(false), timeout)
-                .await?;
-        json_to_js(&ctx, &navigation.unwrap_or(serde_json::Value::Null))
+        browser::snapshot(&ctx, options.0).await
+    }
+
+    #[js_method]
+    async fn click(&self, ctx: JSContext, options: JSObject) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
+        browser::act(&ctx, "click", Some(options)).await
+    }
+
+    #[js_method]
+    async fn hover(&self, ctx: JSContext, options: JSObject) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
+        browser::act(&ctx, "hover", Some(options)).await
+    }
+
+    #[js_method]
+    async fn drag(&self, ctx: JSContext, options: JSObject) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
+        browser::act(&ctx, "drag", Some(options)).await
+    }
+
+    #[js_method]
+    async fn fill(&self, ctx: JSContext, options: JSObject) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
+        browser::act(&ctx, "fill", Some(options)).await
     }
 
     #[js_method(rename = "type")]
-    async fn type_text(&self, ctx: JSContext, options: BrowserTextOpt) -> JSResult<()> {
+    async fn type_text(&self, ctx: JSContext, options: JSObject) -> JSResult<JSValue> {
         require_host_context(&ctx)?;
-        let tab = resolve_tab_id(&options.tab)?;
-        lingxia_browser::type_text(&tab, &options.css, &options.text)
-            .await
-            .map_err(|err| auto_err(err.to_string()))
+        browser::act(&ctx, "type", Some(options)).await
     }
 
     #[js_method]
-    async fn fill(&self, ctx: JSContext, options: BrowserTextOpt) -> JSResult<()> {
+    async fn press(&self, ctx: JSContext, options: JSObject) -> JSResult<JSValue> {
         require_host_context(&ctx)?;
-        let tab = resolve_tab_id(&options.tab)?;
-        lingxia_browser::fill(&tab, &options.css, &options.text)
-            .await
-            .map_err(|err| auto_err(err.to_string()))
-    }
-
-    /// Press a key. With `waitNavigation`, awaits a navigation it triggers and
-    /// resolves to the navigation payload (else `null`).
-    #[js_method]
-    async fn press(&self, ctx: JSContext, options: BrowserPressOpt) -> JSResult<JSValue> {
-        require_host_context(&ctx)?;
-        let tab = resolve_tab_id(&options.tab)?;
-        let wait_navigation = options.wait_navigation.unwrap_or(false);
-        let timeout = browser_wait_duration(options.timeout_ms);
-        let armed = browser_arm_navigation(&tab, wait_navigation).await?;
-        lingxia_browser::press(&tab, &options.key)
-            .await
-            .map_err(|err| auto_err(err.to_string()))?;
-        let navigation =
-            browser_wait_after_action(&tab, armed, options.complete.unwrap_or(false), timeout)
-                .await?;
-        json_to_js(&ctx, &navigation.unwrap_or(serde_json::Value::Null))
+        browser::act(&ctx, "press", Some(options)).await
     }
 
     #[js_method]
@@ -721,41 +655,89 @@ impl JSBrowserDriver {
             .map_err(|err| auto_err(err.to_string()))
     }
 
-    /// Scroll the matching element into view (same verb as `page.scrollTo`).
     #[js_method(rename = "scrollTo")]
-    async fn scroll_to(&self, ctx: JSContext, options: BrowserSelectorOpt) -> JSResult<()> {
+    async fn scroll_to(&self, ctx: JSContext, options: JSObject) -> JSResult<JSValue> {
         require_host_context(&ctx)?;
-        let tab = resolve_tab_id(&options.tab)?;
-        lingxia_browser::scroll_to(&tab, &options.css)
-            .await
-            .map_err(|err| auto_err(err.to_string()))
+        browser::act(&ctx, "scrollTo", Some(options)).await
     }
 
-    /// PNG screenshot of the tab's web content.
-    #[js_method]
-    async fn screenshot(
-        &self,
-        ctx: JSContext,
-        options: Optional<TabOpt>,
-    ) -> JSResult<JSAppScreenshot> {
+    #[js_method(rename = "selectOption")]
+    async fn select_option(&self, ctx: JSContext, options: JSObject) -> JSResult<JSValue> {
         require_host_context(&ctx)?;
-        let options = options.0.unwrap_or_default();
-        let tab = resolve_tab_id(&options.tab)?;
-        let bytes = lingxia_browser::take_screenshot(&tab)
-            .await
-            .map_err(|err| auto_err(err.to_string()))?;
-        let (width, height) = png_dimensions(&bytes).unwrap_or((0, 0));
-        Ok(JSAppScreenshot {
-            format: "png".to_string(),
-            base64: general_purpose::STANDARD.encode(&bytes),
-            width,
-            height,
-        })
+        browser::act(&ctx, "selectOption", Some(options)).await
+    }
+
+    #[js_method]
+    async fn check(&self, ctx: JSContext, options: JSObject) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
+        browser::act(&ctx, "check", Some(options)).await
+    }
+
+    #[js_method]
+    async fn uncheck(&self, ctx: JSContext, options: JSObject) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
+        browser::act(&ctx, "uncheck", Some(options)).await
+    }
+
+    #[js_method(rename = "setInputFiles")]
+    async fn set_input_files(&self, ctx: JSContext, options: JSObject) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
+        browser::act(&ctx, "setInputFiles", Some(options)).await
+    }
+
+    /// The page's (or an element's) readable content as Markdown.
+    #[js_method]
+    async fn text(&self, ctx: JSContext, options: Optional<JSObject>) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
+        browser::text(&ctx, options.0).await
+    }
+
+    #[js_method]
+    async fn screenshot(&self, ctx: JSContext, options: Optional<JSObject>) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
+        browser::screenshot(&ctx, options.0).await
+    }
+
+    #[js_method(getter, enumerable)]
+    fn console(&self, ctx: JSContext) -> JSResult<JSObject> {
+        Ok(Class::lookup::<JSBrowserConsole>(&ctx)?.instance(JSBrowserConsole::new()))
     }
 
     #[js_method(getter, enumerable)]
     fn cookies(&self, ctx: JSContext) -> JSResult<JSObject> {
         Ok(Class::lookup::<JSBrowserCookies>(&ctx)?.instance(JSBrowserCookies::new()))
+    }
+}
+
+// ---- browser.console.* ----
+
+#[js_class(clone)]
+pub(crate) struct JSBrowserConsole {}
+
+impl JSBrowserConsole {
+    pub(crate) fn new() -> Self {
+        Self {}
+    }
+}
+
+#[js_class(rename = "BrowserConsole")]
+impl JSBrowserConsole {
+    #[js_method(constructor)]
+    fn _ctor() -> JSResult<()> {
+        Err(illegal_ctor())
+    }
+
+    /// What the page logged, kept across navigations.
+    #[js_method]
+    async fn list(&self, ctx: JSContext, options: Optional<JSObject>) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
+        browser::console_list(&ctx, options.0).await
+    }
+
+    #[js_method]
+    async fn clear(&self, ctx: JSContext, options: Optional<JSObject>) -> JSResult<()> {
+        require_host_context(&ctx)?;
+        browser::console_clear(options.0)
     }
 }
 

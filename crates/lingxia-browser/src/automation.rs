@@ -18,6 +18,8 @@ use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 const DEFAULT_QUERY_TEXT_LIMIT: usize = 4096;
+const OPEN_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+const OPEN_WAIT_INTERVAL: Duration = Duration::from_millis(50);
 
 static BROWSER_NATIVE_INPUT_HOST: OnceLock<Arc<dyn BrowserNativeInputHost>> = OnceLock::new();
 
@@ -663,6 +665,36 @@ pub async fn browser_wait(
     }
 }
 
+pub(crate) async fn browser_wait_for_tab_url(
+    tab_id: &str,
+    requested_url: &str,
+) -> Result<(), BrowserAutomationError> {
+    // The runtime's own canonicalizer, so the target matches what the tab
+    // actually loads (e.g. loopback http is not force-upgraded).
+    let expected_url = normalize_url_for_wait_compare(requested_url);
+    if expected_url.is_empty() {
+        return Ok(());
+    }
+    let started = Instant::now();
+    loop {
+        let current_url = crate::tabs::browser_tabs()
+            .into_iter()
+            .find(|tab| tab.tab_id == tab_id)
+            .and_then(|tab| tab.current_url)
+            .map(|url| normalize_url_for_wait_compare(&url));
+        if current_url.as_deref() == Some(expected_url.as_str()) {
+            return Ok(());
+        }
+        if started.elapsed() >= OPEN_WAIT_TIMEOUT {
+            return Err(BrowserAutomationError::WaitTimeout {
+                condition: format!("browser tab {tab_id} to load {expected_url}"),
+                timeout_ms: duration_ms_u64(OPEN_WAIT_TIMEOUT),
+            });
+        }
+        tokio::time::sleep(OPEN_WAIT_INTERVAL).await;
+    }
+}
+
 pub async fn browser_wait_for_url(
     tab_id: &str,
     url: &str,
@@ -710,39 +742,7 @@ pub async fn browser_wait_for_navigation(
     .await
 }
 
-pub async fn browser_click(tab_id: &str, selector: &str) -> Result<(), BrowserAutomationError> {
-    prepare_browser_tab_for_input(tab_id).await?;
-    browser_tab_webview(tab_id)?
-        .click(selector, lingxia_webview::ClickOptions::default())
-        .await
-        .map_err(BrowserAutomationError::from)
-}
-
-pub async fn browser_fill(
-    tab_id: &str,
-    selector: &str,
-    text: &str,
-) -> Result<(), BrowserAutomationError> {
-    prepare_browser_tab_for_input(tab_id).await?;
-    browser_tab_webview(tab_id)?
-        .fill(selector, text, lingxia_webview::FillOptions::default())
-        .await
-        .map_err(BrowserAutomationError::from)
-}
-
-pub async fn browser_type_text(
-    tab_id: &str,
-    selector: &str,
-    text: &str,
-) -> Result<(), BrowserAutomationError> {
-    prepare_browser_tab_for_input(tab_id).await?;
-    browser_tab_webview(tab_id)?
-        .type_text(selector, text, lingxia_webview::TypeOptions::default())
-        .await
-        .map_err(BrowserAutomationError::from)
-}
-
-pub async fn browser_press(tab_id: &str, key: &str) -> Result<(), BrowserAutomationError> {
+pub(crate) async fn browser_press(tab_id: &str, key: &str) -> Result<(), BrowserAutomationError> {
     prepare_browser_tab_for_input(tab_id).await?;
     browser_tab_webview(tab_id)?
         .press(key, lingxia_webview::PressOptions::default())
@@ -754,14 +754,6 @@ pub async fn browser_scroll(tab_id: &str, dx: f64, dy: f64) -> Result<(), Browse
     prepare_browser_tab_for_input(tab_id).await?;
     browser_tab_webview(tab_id)?
         .scroll(dx, dy, lingxia_webview::ScrollOptions)
-        .await
-        .map_err(BrowserAutomationError::from)
-}
-
-pub async fn browser_scroll_to(tab_id: &str, selector: &str) -> Result<(), BrowserAutomationError> {
-    prepare_browser_tab_for_input(tab_id).await?;
-    browser_tab_webview(tab_id)?
-        .scroll_to(selector, lingxia_webview::ScrollOptions)
         .await
         .map_err(BrowserAutomationError::from)
 }

@@ -2699,7 +2699,11 @@ impl WebViewInner {
             let injection_time: objc2::ffi::NSInteger = 0; // WKUserScriptInjectionTimeAtDocumentStart
 
             if inject_platform_baseline {
-                let console_script = r#"
+                // The outer scope keeps the shared formatter off `window`.
+                let console_script = concat!(
+                    "(function () {\n",
+                    include_str!("../console_format.js"),
+                    r#"
                 (function() {
                     const originalLog = console.log;
                     const originalError = console.error;
@@ -2707,18 +2711,7 @@ impl WebViewInner {
                     const originalInfo = console.info;
 
                     function sendConsoleMessage(level, args) {
-                        // Logging must never throw into the page (circular
-                        // objects, errors, revoked proxies).
-                        const message = args.map(arg => {
-                            try {
-                                if (arg instanceof Error) return arg.stack || String(arg);
-                                if (arg !== null && typeof arg === 'object') return JSON.stringify(arg);
-                                return String(arg);
-                            } catch (e) {
-                                try { return String(arg); } catch (_) { return '[unprintable]'; }
-                            }
-                        }).join(' ');
-
+                        const message = formatConsoleArgs(args);
                         try {
                             // Use dedicated console handler (like Swift version)
                             window.webkit.messageHandlers.LingXiaConsole.postMessage(JSON.stringify({
@@ -2750,7 +2743,9 @@ impl WebViewInner {
                         originalInfo.apply(console, args);
                     };
                 })();
-            "#;
+            "#,
+                    "})();\n"
+                );
                 // Inject console interceptor script
                 let console_js_string = NSString::from_str(console_script);
                 let console_user_script: *mut AnyObject = msg_send![user_script_class, alloc];
@@ -2804,7 +2799,7 @@ impl WebViewInner {
 
             #[cfg(all(feature = "webview-input", target_os = "macos"))]
             if !inject_platform_baseline {
-                let recorder = NSString::from_str(crate::input_helper::PAGE_CONSOLE_RECORDER);
+                let recorder = NSString::from_str(crate::page_console::PAGE_CONSOLE_RECORDER);
                 let recorder_script: *mut AnyObject = msg_send![user_script_class, alloc];
                 let recorder_script: *mut AnyObject = msg_send![recorder_script,
                     initWithSource: &*recorder,

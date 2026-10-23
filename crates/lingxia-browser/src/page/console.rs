@@ -1,5 +1,5 @@
 //! Per-tab console capture: what the page logged and threw, collected from
-//! the page's own recorder whenever the agent runs, and kept across
+//! the page's own recorder whenever the page script runs, and kept across
 //! navigations in a bounded ring. It is page data, never the trusted log.
 
 use serde::Serialize;
