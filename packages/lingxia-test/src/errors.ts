@@ -27,6 +27,16 @@ export const TEST_ERROR_CODES = [
   "E_DESKTOP_UNAVAILABLE",
   "E_DESKTOP_STALE",
   "E_DESKTOP_FAILED",
+  "not_found",
+  "stale_ref",
+  "not_visible",
+  "disabled",
+  "covered",
+  "not_editable",
+  "usage",
+  "unsupported",
+  "permission",
+  "failed",
   /** A routed response broke the run's OpenAPI contract (`lxdev test --openapi`). */
   "E_OPENAPI_CONTRACT",
   /** A fixture call ran out of time (a wait, an action budget, an eval, a nav), or the spec did. */

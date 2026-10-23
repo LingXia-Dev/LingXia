@@ -1908,7 +1908,7 @@ function summarise(input: unknown): string {
   if (typeof input === "string") return truncate(input, 80);
   if (typeof input !== "object") return String(input);
   const record = input as Record<string, unknown>;
-  for (const key of ["css", "page", "script", "url", "text", "id", "name"]) {
+  for (const key of ["ref", "css", "page", "script", "url", "text", "key", "id", "name"]) {
     const value = record[key];
     if (typeof value === "string" && value.length > 0) {
       return truncate(key === "script" ? value.replace(/\s+/g, " ").trim() : value, 80);

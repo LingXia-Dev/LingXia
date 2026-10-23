@@ -12,7 +12,7 @@ export class TimeoutError extends Error {
 }
 
 /** The driver codes a fixture call reports as `E_TIMEOUT`. */
-const DRIVER_TIMEOUT_CODES = new Set(["E_AUTOMATION_TIMEOUT", "E_EVAL_TIMEOUT", "E_DESKTOP_TIMEOUT"]);
+const DRIVER_TIMEOUT_CODES = new Set(["E_AUTOMATION_TIMEOUT", "E_EVAL_TIMEOUT", "E_DESKTOP_TIMEOUT", "timeout"]);
 
 /**
  * One timeout code at the fixture boundary: a driver rejection that timed

@@ -1,5 +1,6 @@
 import type {
   Automation,
+  BrowserConsole,
   BrowserCookies,
   BrowserDriver,
   ClockDriver,
@@ -309,13 +310,17 @@ const DEVICE_DRIVER_API = ['get', 'list', 'set'] as const;
 const BROWSER_DRIVER_API = [
   'activate',
   'back',
+  'check',
   'click',
   'close',
+  'console',
   'cookies',
   'current',
+  'drag',
   'eval',
   'fill',
   'forward',
+  'hover',
   'open',
   'press',
   'query',
@@ -323,11 +328,17 @@ const BROWSER_DRIVER_API = [
   'screenshot',
   'scroll',
   'scrollTo',
+  'selectOption',
+  'setInputFiles',
+  'snapshot',
   'tabs',
+  'text',
   'type',
+  'uncheck',
   'wait',
 ] as const;
 const BROWSER_COOKIES_API = ['clear', 'delete', 'list', 'set'] as const;
+const BROWSER_CONSOLE_API = ['clear', 'list'] as const;
 const DESKTOP_DRIVER_API = [
   'app',
   'ax',
@@ -628,8 +639,9 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'automation',
     expression: 'lx.automation().browser',
     members: BROWSER_DRIVER_API,
-    properties: ['cookies'],
+    properties: ['console', 'cookies'],
   },
+  { name: 'BrowserConsole', layer: 'automation', expression: 'lx.automation().browser.console', members: BROWSER_CONSOLE_API },
   { name: 'BrowserCookies', layer: 'automation', expression: 'lx.automation().browser.cookies', members: BROWSER_COOKIES_API },
   {
     name: 'DesktopDriver',
@@ -872,6 +884,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<DeviceDriver, typeof DEVICE_DRIVER_API>>,
   AssertTrue<Exact<BrowserDriver, typeof BROWSER_DRIVER_API>>,
   AssertTrue<Exact<BrowserCookies, typeof BROWSER_COOKIES_API>>,
+  AssertTrue<Exact<BrowserConsole, typeof BROWSER_CONSOLE_API>>,
   AssertTrue<Exact<DesktopDriver, typeof DESKTOP_DRIVER_API>>,
   AssertTrue<Exact<DesktopPointer, typeof DESKTOP_POINTER_API>>,
   AssertTrue<Exact<DesktopKey, typeof DESKTOP_KEY_API>>,

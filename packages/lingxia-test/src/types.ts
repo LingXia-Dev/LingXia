@@ -41,7 +41,7 @@ import type {
  * `E_TIMEOUT`, with the driver's own code in `error.cause.code`.
  */
 export type TestErrorCode =
-  | Exclude<AutomationErrorCode, "E_AUTOMATION_TIMEOUT" | "E_EVAL_TIMEOUT" | "E_DESKTOP_TIMEOUT">
+  | Exclude<AutomationErrorCode, "E_AUTOMATION_TIMEOUT" | "E_EVAL_TIMEOUT" | "E_DESKTOP_TIMEOUT" | "timeout">
   | "E_OPENAPI_CONTRACT"
   | "E_TIMEOUT"
   | "E_SKIPPED";

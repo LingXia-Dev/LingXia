@@ -108,6 +108,29 @@ async function browserElement() {
 }
 void browserElement;
 
+async function browserPage() {
+  const snap = await raw.browser.snapshot({ sinceLast: true });
+  snap.refCount.toFixed();
+  const clicked = await raw.browser.click({ ref: 'e3', snapshot: 'diff', waitNavigation: true });
+  clicked.snapshot?.navigated;
+  clicked.navigation?.elapsed_ms.toFixed();
+  await raw.browser.fill({ css: 'input', index: 1, text: 'hi' });
+  await raw.browser.press({ key: 'Enter' });
+  await raw.browser.drag({ ref: 'e1', to: { css: '#drop' } });
+  await raw.browser.selectOption({ ref: 'e4', options: ['cn', { label: 'Japan' }, { index: 2 }] });
+  const shot = await raw.browser.screenshot({ annotate: true });
+  shot.marks?.[0]?.box.width.toFixed();
+  (await raw.browser.text()).totalChars.toFixed();
+  (await raw.browser.console.list({ since: 3 })).nextSeq.toFixed();
+  // @ts-expect-error A target is a ref or a css selector, not both.
+  await raw.browser.click({ ref: 'e3', css: 'button' });
+  // @ts-expect-error `index` picks among css matches.
+  await raw.browser.hover({ ref: 'e3', index: 1 });
+  // @ts-expect-error An action needs a target.
+  await raw.browser.check({});
+}
+void browserPage;
+
 spec.fail('known quota failure', { expected: { message: /quota/ } }, async () => {});
 // @ts-expect-error `expected` belongs to spec.fail only.
 spec('plain spec', { expected: { code: 'E_TIMEOUT' } }, async () => {});

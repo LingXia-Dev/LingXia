@@ -69,6 +69,18 @@ export const AUTOMATION_ERROR_CODES = [
   'E_DESKTOP_UNAVAILABLE',
   'E_DESKTOP_STALE',
   'E_DESKTOP_FAILED',
+  /** Browser page actions reject with their failure kind, as `lxdev browser` reports it; see `BrowserDriver`. */
+  'not_found',
+  'stale_ref',
+  'not_visible',
+  'disabled',
+  'covered',
+  'not_editable',
+  'timeout',
+  'usage',
+  'unsupported',
+  'permission',
+  'failed',
 ] as const;
 
 export type AutomationErrorCode = (typeof AUTOMATION_ERROR_CODES)[number];
@@ -1646,29 +1658,199 @@ export interface BrowserQueryOptions extends BrowserTabRef {
   full?: boolean;
 }
 
-export interface BrowserSelectorOptions extends BrowserTabRef {
-  css: string;
-}
+/** An element: a `ref` from `snapshot`, or a CSS selector with `index` among its matches (default 0). */
+export type BrowserTarget = { ref: string; css?: never; index?: never } | { css: string; index?: number; ref?: never };
 
-/** `click` / `press` also carry the navigation-sync flags. */
-export interface BrowserClickOptions extends BrowserTabRef {
-  css: string;
-  /** After the click, wait for a navigation it triggers. */
+/** A target where the element is optional (the whole page when omitted). */
+export type BrowserOptionalTarget = BrowserTarget | { ref?: never; css?: never; index?: never };
+
+/**
+ * Options every page action takes. Actions auto-wait up to `timeoutMs`
+ * (default 5000, max 60000) for the target to be attached, visible, enabled,
+ * editable (text input), uncovered (pointer input) and stable.
+ */
+export type BrowserActionOptions = BrowserTabRef & BrowserTarget & {
+  timeoutMs?: number;
+  /** Add a snapshot of the page after the action: what changed (`diff`) or all of it (`full`). */
+  snapshot?: 'diff' | 'full';
+};
+
+/** After the action, wait for the navigation it starts (within `timeoutMs`); `complete` waits for its load. */
+export interface BrowserNavigationOptions {
   waitNavigation?: boolean;
   complete?: boolean;
-  timeoutMs?: number;
 }
 
-export interface BrowserTypeOptions extends BrowserSelectorOptions {
-  text: string;
-}
+export type BrowserClickOptions = BrowserActionOptions & BrowserNavigationOptions & {
+  button?: 'left' | 'right' | 'middle';
+  clickCount?: number;
+};
 
-export interface BrowserPressOptions extends BrowserTabRef {
+export type BrowserDragOptions = BrowserActionOptions & { to: BrowserTarget };
+
+export type BrowserFillOptions = BrowserActionOptions & { text: string };
+
+/** Types key by key into the element; `clear` empties it first. */
+export type BrowserTypeOptions = BrowserActionOptions & { text: string; clear?: boolean };
+
+/** Without a target the key goes to the focused element. */
+export type BrowserPressOptions = BrowserTabRef & BrowserOptionalTarget & BrowserNavigationOptions & {
+  /** A key name (`Enter`, `ArrowDown`) or a chord (`Control+a`). */
   key: string;
-  /** After the press, wait for a navigation it triggers. */
-  waitNavigation?: boolean;
-  complete?: boolean;
   timeoutMs?: number;
+  snapshot?: 'diff' | 'full';
+};
+
+/** One `<option>`: a bare string matches a value first, then a label. */
+export type BrowserOptionChoice = string | { value: string } | { label: string } | { index: number };
+
+export type BrowserSelectOptionOptions = BrowserActionOptions & { options: BrowserOptionChoice[] };
+
+/** Host file paths for a file input; the host decides which paths it may read. */
+export type BrowserSetInputFilesOptions = BrowserActionOptions & { files: string[] };
+
+export type BrowserSnapshotOptions = BrowserTabRef & BrowserOptionalTarget & {
+  /** `text` (default) is the indented outline; `json` the node tree; `both`. */
+  format?: 'text' | 'json' | 'both';
+  maxNodes?: number;
+  maxChars?: number;
+  /** Report only what changed since the previous snapshot of the same scope in this document. */
+  sinceLast?: boolean;
+};
+
+/** One snapshot node (`format: 'json'`). */
+export interface BrowserSnapshotNode {
+  role: string;
+  name?: string;
+  ref?: string;
+  level?: number;
+  value?: string;
+  url?: string;
+  offscreen?: boolean;
+  frame?: string;
+  states?: Record<string, boolean | 'mixed'>;
+  options?: Array<{ label: string; value?: string; selected?: boolean; disabled?: boolean }>;
+  optionsTruncated?: boolean;
+  children?: BrowserSnapshotNode[];
+}
+
+export interface BrowserSnapshot {
+  url: string;
+  title: string;
+  /** The outline (`format: 'text' | 'both'`), one `- role "name" [ref=e3]` line per node. */
+  text?: string;
+  nodes?: BrowserSnapshotNode[];
+  truncated: boolean;
+  nodeCount: number;
+  refCount: number;
+  /** The document that issued the refs; a navigation starts a new one. */
+  generation: string;
+  viewport: { width: number; height: number; scrollX: number; scrollY: number; devicePixelRatio: number };
+  /** With `sinceLast`: `null` when there was no previous snapshot (`diffReason` says why). */
+  diff?: { unchanged: boolean; added: string[]; removed: string[]; text: string } | null;
+  diffReason?: string;
+}
+
+/** A rect in viewport CSS pixels. */
+export interface BrowserRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** What an action did; each action sets the fields that apply to it. */
+export interface BrowserActionResult {
+  /** The element acted on. */
+  ref?: string;
+  /** Delivered as real browser input rather than synthesized DOM events. */
+  trusted?: boolean;
+  /** The field's value after `fill`/`type` (omitted for passwords). */
+  value?: string;
+  /** `selectOption`: the options now selected. */
+  selected?: Array<{ label: string; value: string; index: number }>;
+  /** `check`/`uncheck`: the state after, and whether the action changed it. */
+  checked?: boolean;
+  changed?: boolean;
+  /** `setInputFiles`: what the input now holds. */
+  files?: Array<{ name: string; size: number; type: string }>;
+  /** `drag`: the drop target's ref. */
+  to?: string;
+  /** `scrollTo`: the element's rect after scrolling. */
+  rect?: BrowserRect;
+  /** The document the action ran in. */
+  generation?: string;
+  /** With `snapshot`; `navigated` when the action led to another document (then a full snapshot). */
+  snapshot?: BrowserSnapshot & { navigated?: boolean };
+  /** With `waitNavigation`. */
+  navigation?: BrowserWaitResult;
+}
+
+export type BrowserTextOptions = BrowserTabRef & BrowserOptionalTarget & {
+  maxChars?: number;
+  /** Include navigation, header, footer and sidebars, not just the main content. */
+  all?: boolean;
+};
+
+export interface BrowserText {
+  markdown: string;
+  truncated: boolean;
+  totalChars: number;
+  url: string;
+  title: string;
+}
+
+export interface BrowserConsoleEntry {
+  /** Increases per tab; pass the last one seen as `since`. */
+  seq: number;
+  level: string;
+  text: string;
+  /** The page that logged it. */
+  url?: string;
+  timestampMs: number;
+}
+
+export interface BrowserConsoleListOptions extends BrowserTabRef {
+  /** Only entries after this `seq`. */
+  since?: number;
+  levels?: string[];
+}
+
+export interface BrowserConsoleList {
+  entries: BrowserConsoleEntry[];
+  /** Entries pushed out of the per-tab ring before they were read. */
+  dropped: number;
+  nextSeq: number;
+}
+
+/** What the tab's pages logged and threw, kept across navigations. */
+export interface BrowserConsole {
+  list(options?: BrowserConsoleListOptions): Promise<BrowserConsoleList>;
+  clear(options?: BrowserTabRef): Promise<void>;
+}
+
+export type BrowserScreenshotOptions = BrowserTabRef & BrowserOptionalTarget & {
+  /** The whole scrollable page, not just the viewport. */
+  fullPage?: boolean;
+  /** Draw each visible ref's box and label over a viewport capture and return them as `marks`. */
+  annotate?: boolean;
+  /** For an element target: how long to wait for it. */
+  timeoutMs?: number;
+};
+
+export interface BrowserScreenshot extends Screenshot {
+  scope: 'viewport' | 'full_page' | 'element';
+  /** `annotate`: the boxes drawn. */
+  marks?: Array<{ ref: string; role: string; name?: string; box: BrowserRect }>;
+  marksTruncated?: boolean;
+  viewport?: { width: number; height: number; devicePixelRatio: number };
+  /** `fullPage`: the page size. */
+  page?: { width: number; height: number };
+  /** Element target: its ref and rect. */
+  ref?: string;
+  rect?: BrowserRect;
+  /** Cut at a platform limit (very tall pages, elements larger than the viewport on Apple). */
+  clipped?: boolean;
 }
 
 export interface BrowserScrollOptions extends BrowserTabRef {
@@ -1803,7 +1985,23 @@ export interface BrowserCookies {
   clear(options?: BrowserTabRef): Promise<void>;
 }
 
-/** The host app's browser tabs (Playwright-like WebView automation). */
+/**
+ * The host app's browser tabs: the same page primitives as `lxdev browser`.
+ * Take a `snapshot`, then act on its refs (or on a CSS selector).
+ *
+ * A failed page action rejects with `code` set to its kind and `data` saying
+ * how to recover:
+ * - `not_found`: nothing matched (`data.reason: 'tab_not_found'` for a missing tab).
+ * - `stale_ref`: the ref is gone; `data.reason: 'navigated'` when the document was replaced. Take a new snapshot.
+ * - `not_visible`, `disabled`, `not_editable`: the element never became actionable.
+ * - `covered`: another element takes the pointer; `data.coveredBy` names it.
+ * - `timeout`: the element never stopped moving, or a navigation never came.
+ * - `usage`, `unsupported`, `permission`, `failed`.
+ *
+ * `data` may carry `target` (the element), `available` (`selectOption`'s
+ * choices), `hint` (an input's expected format), and `timedOut` +
+ * `timeoutMs` when the action waited its whole budget.
+ */
 export interface BrowserDriver {
   open(options: BrowserOpenOptions): Promise<BrowserOpenResult>;
   tabs(): Promise<BrowserTab[]>;
@@ -1820,19 +2018,27 @@ export interface BrowserDriver {
   query(options: BrowserQueryOptions): Promise<BrowserElementInfo>;
   /** Wait for a condition (pass exactly one condition field). */
   wait(options: BrowserWaitOptions): Promise<BrowserWaitResult>;
-  /** Click; with `waitNavigation` resolves to the navigation payload else `null`. */
-  click(options: BrowserClickOptions & { waitNavigation: true }): Promise<BrowserWaitResult>;
-  click(options: BrowserClickOptions & { waitNavigation?: false }): Promise<null>;
-  click(options: BrowserClickOptions): Promise<BrowserWaitResult | null>;
-  type(options: BrowserTypeOptions): Promise<void>;
-  fill(options: BrowserTypeOptions): Promise<void>;
-  /** Press; with `waitNavigation` resolves to the navigation payload else `null`. */
-  press(options: BrowserPressOptions & { waitNavigation: true }): Promise<BrowserWaitResult>;
-  press(options: BrowserPressOptions & { waitNavigation?: false }): Promise<null>;
-  press(options: BrowserPressOptions): Promise<BrowserWaitResult | null>;
+  /** The page's (or a subtree's) accessibility outline with element refs. */
+  snapshot(options?: BrowserSnapshotOptions): Promise<BrowserSnapshot>;
+  click(options: BrowserClickOptions): Promise<BrowserActionResult>;
+  hover(options: BrowserActionOptions): Promise<BrowserActionResult>;
+  drag(options: BrowserDragOptions): Promise<BrowserActionResult>;
+  /** Set the field's value in one step. */
+  fill(options: BrowserFillOptions): Promise<BrowserActionResult>;
+  type(options: BrowserTypeOptions): Promise<BrowserActionResult>;
+  press(options: BrowserPressOptions): Promise<BrowserActionResult>;
+  /** Scroll the viewport by `dx`/`dy` CSS pixels. */
   scroll(options: BrowserScrollOptions): Promise<void>;
-  scrollTo(options: BrowserSelectorOptions): Promise<void>;
-  screenshot(options?: BrowserTabRef): Promise<Screenshot>;
+  scrollTo(options: BrowserActionOptions): Promise<BrowserActionResult>;
+  selectOption(options: BrowserSelectOptionOptions): Promise<BrowserActionResult>;
+  /** Check a checkbox, radio or switch (or the one a label controls); a no-op when already checked. */
+  check(options: BrowserActionOptions): Promise<BrowserActionResult>;
+  uncheck(options: BrowserActionOptions): Promise<BrowserActionResult>;
+  setInputFiles(options: BrowserSetInputFilesOptions): Promise<BrowserActionResult>;
+  /** The page's main readable content (or an element's) as Markdown. */
+  text(options?: BrowserTextOptions): Promise<BrowserText>;
+  screenshot(options?: BrowserScreenshotOptions): Promise<BrowserScreenshot>;
+  readonly console: BrowserConsole;
   readonly cookies: BrowserCookies;
 }
 
