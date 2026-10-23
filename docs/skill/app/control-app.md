@@ -16,7 +16,7 @@ The classes are disjoint: a control surface reaches none of the Control app's
 calls, and vice versa. The home lxapp opened as a guest elsewhere is a Standard
 app, with the same id and code.
 
-Network and privilege grants (`process`, `downloads`, `automation`, `host`) are
+Network and privilege grants (`downloads`, `automation`, `host`) are
 separate from class: see [Permissions](../native/permissions.md).
 
 ## Am I the Control app?
@@ -43,7 +43,6 @@ These act on the product, not on the calling lxapp:
 - `lx.host.control.displayLanguage` / `.appearance` — the setting writers
   ([Product settings](../lxapp/lx-api.md#product-settings))
 - `lx.shell.*` mutations (sidebar actions, opening declared surfaces)
-- `Rong.spawn` / `Rong.$` under `capabilities.process`
 
 Reading the resolved settings (`lx.host.displayLanguage.get()`,
 `lx.host.appearance.get()`) is open to every lxapp.

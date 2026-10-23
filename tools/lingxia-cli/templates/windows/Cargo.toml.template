@@ -12,7 +12,6 @@ default = ["standard"]
 standard = ["host/standard", "lingxia-windows-sdk/standard"]
 browser-shell = ["host/browser-shell", "lingxia-windows-sdk/browser-shell"]
 terminal-runtime = ["host/terminal-runtime", "lingxia-windows-sdk/terminal-runtime"]
-process = ["host/process"]
 # Derived from `capabilities.*Use`. The executable is also the product's
 # command line, so these have to reach the host crate that implements it.
 control = ["host/control"]

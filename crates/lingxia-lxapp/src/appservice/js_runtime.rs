@@ -1,15 +1,11 @@
 use super::WorkerTermination;
 use crate::bridge::{self, AppServiceCommand};
 use crate::error::LxAppError;
-#[cfg(feature = "process")]
-use crate::host::ProcessSessionAuthority;
 use crate::lx;
 use crate::lxapp::LxApp;
 use crate::{debug, error, info};
 
 use rong::{JSContext, JSResult, JSRuntime, JSValue, RongJSError, Source, error::HostError};
-#[cfg(feature = "process")]
-use rong_command::ProcessAuthority;
 use rong_console as console;
 use rong_http as http;
 
@@ -797,21 +793,6 @@ pub(crate) async fn lxapp_service_handler(
                 )
                 .with_appid(lxapp.appid.clone());
                 return;
-            }
-            #[cfg(feature = "process")]
-            if lxapp.process_supported() {
-                // Namespace presence is stable. ProcessSessionAuthority still
-                // checks the current grant for every operation.
-                let authority: Arc<dyn ProcessAuthority> =
-                    Arc::new(ProcessSessionAuthority::for_lxapp(&lxapp));
-                if let Err(e) = rong_command::init_with_authority(&ctx, authority) {
-                    error!(
-                        "[Worker {}] Failed to initialize process capability: {}",
-                        worker_id, e
-                    )
-                    .with_appid(lxapp.appid.clone());
-                    return;
-                }
             }
             let _ = lx::init(&ctx);
             for (member, err) in crate::lx::extension::apply_rong_member_wrappers(&ctx) {

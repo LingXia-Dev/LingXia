@@ -9,7 +9,7 @@ stay on platform flows. Session classes (Control app vs guest) are separate:
 ## Model
 
 - **Default allow.** Without a grant an lxapp has the public network and every
-  privilege class (`downloads`, `process`, `automation`, `host`, …). That
+  privilege class (`downloads`, `automation`, `host`, …). That
   covers no provider, an unknown app, an unreachable registry, and a record
   without `permissions`.
 - **A grant restricts.** Each half (`network`, `privileges`) is independent:
@@ -20,8 +20,7 @@ stay on platform flows. Session classes (Control app vs guest) are separate:
 - **Some privileges need more.** `destination: "downloads"` also needs the
   native `AppResourceGrant::Downloads`
   ([`issue_app_resource_grants`](./development.md#host-addon)); app-owned
-  downloads need only the network. `process` also needs the Control app,
-  `capabilities.process`, and a native Process grant.
+  downloads need only the network.
 - Non-public addresses stay blocked either way (local fixtures need an active
   dev session).
 

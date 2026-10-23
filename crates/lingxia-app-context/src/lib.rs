@@ -502,10 +502,6 @@ pub struct CapabilitiesConfig {
     /// Opt-in HTTP proxy for the in-app browser (desktop). Requires browser.
     #[serde(default)]
     pub proxy: bool,
-    /// Allows the trusted home lxapp to launch and manage OS processes. The
-    /// lxapp must also declare the `process` security privilege.
-    #[serde(default)]
-    pub process: bool,
     /// Unlocks `lx.host.autostart` (launch at system startup). macOS/Windows
     /// only; enabling is always a runtime user decision, never automatic.
     #[serde(default)]
@@ -1223,14 +1219,6 @@ pub mod capability {
     pub fn proxy() -> bool {
         build::proxy() && super::proxy_enabled() && super::browser_enabled()
     }
-}
-
-pub fn process_enabled() -> bool {
-    APP_CONFIG
-        .get()
-        .and_then(|c| c.capabilities.as_ref())
-        .map(|capabilities| capabilities.process)
-        .unwrap_or(false)
 }
 
 pub fn temp_max_size_bytes() -> u64 {

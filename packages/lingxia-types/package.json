@@ -19,9 +19,6 @@
     "./logic-globals": {
       "types": "./dist/logic-globals.d.ts"
     },
-    "./process": {
-      "types": "./dist/process.d.ts"
-    },
     "./mocks": {
       "types": "./dist/mocks.d.ts"
     },

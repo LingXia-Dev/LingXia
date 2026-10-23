@@ -39,6 +39,6 @@ Every lxapp may still **read** `lx.host.displayLanguage.get()` and `lx.host.appe
 
 A refusal is `E_PERMISSION_DENIED` and names the class that would have been admitted. Treat it as a design signal: ask the Control app to do the product work; do not impersonate it. It is not the user dismissing a dialog, and it is not a missing capability (`lx.supports()` answers that).
 
-Privileges such as `process`, `downloads`, and `automation` are host grants sealed to that exact session. `capabilities.process` is granted only to the Control app, and every spawn rechecks the live grant.
+Privileges such as `downloads` and `automation` are host grants sealed to that exact session, and every use rechecks the live grant.
 
 See [Native host apps](../native-host-apps/) for how `homeAppId` is sealed, and [Adaptive surfaces](../adaptive-surfaces/) for `lx.shell.sidebarActions`.

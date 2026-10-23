@@ -1,7 +1,7 @@
+use crate::LxApp;
 #[cfg(feature = "devtool")]
 use crate::host::NativeDevtoolsAuthority;
-use crate::host::{AppResourceGrant, NativeHostRuntimeAuthority};
-use crate::{AppSessionClass, LxApp};
+use crate::host::NativeHostRuntimeAuthority;
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// Host lifecycle extension points that can register additional runtime behavior.
@@ -176,11 +176,6 @@ pub(crate) fn resolve_app_resource_grants(
     _app: &Arc<LxApp>,
     authority: &mut NativeHostRuntimeAuthority<'_>,
 ) {
-    // `capabilities.process` is native-authored bootstrap policy, but it
-    // applies only to the native-assigned ControlApp and still needs the
-    // permission grant (or the default allow).
-    issue_builtin_host_grants(authority, lingxia_app_context::process_enabled());
-
     for addon in snapshot_host_addons() {
         addon.issue_app_resource_grants(authority);
     }
@@ -195,49 +190,6 @@ pub(crate) fn resolve_devtools_resource_grants(
     // websocket/env signal alone never grants host automation.
     for addon in snapshot_host_addons() {
         addon.issue_devtools_app_resource_grants(authority);
-    }
-}
-
-fn issue_builtin_host_grants(
-    authority: &mut NativeHostRuntimeAuthority<'_>,
-    process_enabled: bool,
-) {
-    if should_issue_builtin_process(
-        authority.session_class(),
-        process_enabled,
-        authority.requested(AppResourceGrant::Process),
-    ) {
-        authority.grant(AppResourceGrant::Process);
-    }
-}
-
-const fn should_issue_builtin_process(
-    class: AppSessionClass,
-    process_enabled: bool,
-    requested: bool,
-) -> bool {
-    matches!(class, AppSessionClass::ControlApp) && process_enabled && requested
-}
-
-#[cfg(test)]
-#[allow(clippy::items_after_test_module)]
-mod resource_grant_tests {
-    use super::*;
-
-    #[test]
-    fn process_bootstrap_grant_requires_control_class_host_policy_and_manifest_request() {
-        for (class, enabled, requested, expected) in [
-            (AppSessionClass::StandardApp, true, true, false),
-            (AppSessionClass::ControlSurface, true, true, false),
-            (AppSessionClass::ControlApp, false, true, false),
-            (AppSessionClass::ControlApp, true, false, false),
-            (AppSessionClass::ControlApp, true, true, true),
-        ] {
-            assert_eq!(
-                should_issue_builtin_process(class, enabled, requested),
-                expected
-            );
-        }
     }
 }
 

@@ -1,6 +1,5 @@
 import type { FsWriteOptions, PageInstance, SystemDownloadsPath, LxFile, DirEntry } from '../src/index.js';
 import type { LxAppDriver, PageDriver, PageQueryOptions, DesktopWindowSel, DesktopAppQuitOptions } from '../src/automation/index.js';
-import type { RongSpawnSyncOptions } from '../src/process.js';
 
 interface State { count: number }
 Page({ data: { count: 0 } as State, onLoad() { this.setData({ count: 1 }); } });
@@ -35,10 +34,6 @@ async function tracedEval() {
 const noTarget: DesktopWindowSel = {};
 // @ts-expect-error cannot select multiple quit targets
 const twoTargets: DesktopAppQuitOptions = { pid: 1, match: 'app' };
-// @ts-expect-error sync spawning cannot observe asynchronous exit callbacks
-const sync: RongSpawnSyncOptions = { onExit() {} };
-Rong.$.cwd('/tmp').quiet();
-Rong.$.env({ MODE: 'test' }).quiet();
 
 new ReadableStream<Uint8Array>({ start(controller) {
   controller.enqueue(new Uint8Array([1]));

@@ -10,7 +10,6 @@ publish = false
 default = []
 all-lxapp-features = [
     "lxapp/automation",
-    "lxapp/process",
     "lxapp/standard",
     "lxapp/test-utils",
 ]

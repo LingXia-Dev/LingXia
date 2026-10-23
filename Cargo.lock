@@ -3675,7 +3675,6 @@ dependencies = [
  "redb",
  "ring",
  "rong",
- "rong_command",
  "rong_console",
  "rong_event",
  "rong_http",

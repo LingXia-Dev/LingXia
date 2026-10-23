@@ -9,7 +9,6 @@
   {"key":"app.computerUse","predicate":"ComputerUse"},
   {"key":"app.browserUse","predicate":"BrowserUse"},
   {"key":"app.mediaCapture","predicate":"MediaCapture"},
-  {"key":"process","predicate":"Process"},
   {"key":"terminal","predicate":"Terminal"},
   {"key":"surface.tab","requires":["app.browser"],"predicate":"Always"},
   {"key":"surface.window","predicate":"Window"},

@@ -18,7 +18,6 @@ default = {{HOST_DEFAULT_FEATURES}}
 standard = ["lingxia/standard"]
 browser-shell = ["lingxia/browser-shell", "webview-input", "standard"]
 terminal-runtime = ["lingxia/terminal-runtime"]
-process = ["lingxia/process", "standard"]
 # The local control endpoint, derived from appUse/computerUse/browserUse. Separate
 # from devtools so a shipped product gets the handlers without the dev websocket
 # and its TLS stack.

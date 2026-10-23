@@ -245,9 +245,6 @@ permission when called and need no entry here.
 - `browser` — the in-app browser; see [`browser`](#browser).
 - `terminal` — the built-in terminal (desktop); required by `native: terminal`.
 - `proxy` — the in-app browser's HTTP proxy (desktop); requires `browser`.
-- `process` — `Rong.spawn`, `Rong.spawnSync`, `Rong.$` and the
-  `@lingxia/types/process` declarations for the [Control app](./control-app.md)
-  (macOS/Windows), with a host grant.
 - `autostart` — `lx.host.autostart` (macOS/Windows, Control app). Declaring
   never registers the app.
 - `appUse`, `computerUse`, `browserUse` — agent control; see

@@ -116,7 +116,6 @@ pub enum RouteAudience {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum AppResourceGrant {
-    Process,
     Downloads,
     Automation,
     AutomationHost,
@@ -125,7 +124,6 @@ pub enum AppResourceGrant {
 impl AppResourceGrant {
     pub const fn manifest_privilege(self) -> &'static str {
         match self {
-            Self::Process => "process",
             Self::Downloads => "downloads",
             Self::Automation => "automation",
             Self::AutomationHost => "host",
@@ -161,11 +159,6 @@ impl NativeHostRuntimeAuthority<'_> {
     }
 
     pub fn grant(&mut self, grant: AppResourceGrant) -> bool {
-        // Process execution stays ControlApp-only even when a host addon
-        // vouches for another session that requested it.
-        if grant == AppResourceGrant::Process && self.session_class != AppSessionClass::ControlApp {
-            return false;
-        }
         if !self.requested(grant) {
             return false;
         }
@@ -192,7 +185,7 @@ impl NativeHostRuntimeAuthority<'_> {
 }
 
 /// One-shot authority reserved for native devtools bootstrap. It cannot grant
-/// process execution or Downloads access.
+/// Downloads access.
 pub struct NativeDevtoolsAuthority<'a> {
     app_id: &'a str,
     session_id: u64,
@@ -299,7 +292,6 @@ pub(crate) fn seal_app_resource_grants(app: &Arc<LxApp>) {
         return;
     }
     let requested: HashSet<_> = [
-        AppResourceGrant::Process,
         AppResourceGrant::Downloads,
         AppResourceGrant::Automation,
         AppResourceGrant::AutomationHost,
@@ -531,46 +523,6 @@ impl AppScope {
                 owner: Weak::new(),
             },
         }
-    }
-}
-
-#[cfg(feature = "process")]
-pub(crate) struct ProcessSessionAuthority {
-    scope: AppScope,
-}
-
-#[cfg(feature = "process")]
-impl ProcessSessionAuthority {
-    pub(crate) fn for_lxapp(app: &Arc<LxApp>) -> Self {
-        Self {
-            scope: AppScope::from_lxapp(app),
-        }
-    }
-}
-
-#[cfg(feature = "process")]
-impl ProcessSessionAuthority {
-    pub(crate) fn authorize(&self) -> Result<(), String> {
-        if self
-            .scope
-            .resource_grants()
-            .contains(AppResourceGrant::Process)
-        {
-            Ok(())
-        } else {
-            Err(format!(
-                "process execution requires a live native Process grant for app session {}:{}",
-                self.scope.identity().app_id(),
-                self.scope.identity().session_id()
-            ))
-        }
-    }
-}
-
-#[cfg(feature = "process")]
-impl rong_command::ProcessAuthority for ProcessSessionAuthority {
-    fn authorize(&self) -> Result<(), String> {
-        ProcessSessionAuthority::authorize(self)
     }
 }
 
@@ -1619,39 +1571,9 @@ mod tests {
             &mut grants,
         );
         assert!(authority.requested(AppResourceGrant::Downloads));
-        assert!(!authority.grant(AppResourceGrant::Process));
+        assert!(!authority.grant(AppResourceGrant::Automation));
         assert!(authority.grant(AppResourceGrant::Downloads));
         assert_eq!(grants, HashSet::from([AppResourceGrant::Downloads]));
-    }
-
-    #[test]
-    fn process_grant_is_refused_outside_the_control_app_class() {
-        for class in [
-            AppSessionClass::StandardApp,
-            AppSessionClass::ControlSurface,
-        ] {
-            let mut grants = HashSet::new();
-            let mut authority = NativeHostRuntimeAuthority::for_test(
-                "same.app",
-                8,
-                class,
-                [AppResourceGrant::Process, AppResourceGrant::Downloads],
-                &mut grants,
-            );
-            assert!(authority.requested(AppResourceGrant::Process));
-            assert!(!authority.grant(AppResourceGrant::Process));
-            assert!(authority.grant(AppResourceGrant::Downloads));
-            assert_eq!(grants, HashSet::from([AppResourceGrant::Downloads]));
-        }
-        let mut grants = HashSet::new();
-        let mut authority = NativeHostRuntimeAuthority::for_test(
-            "same.app",
-            9,
-            AppSessionClass::ControlApp,
-            [AppResourceGrant::Process],
-            &mut grants,
-        );
-        assert!(authority.grant(AppResourceGrant::Process));
     }
 
     #[test]
@@ -1660,7 +1582,7 @@ mod tests {
             Vec::new(),
             vec![AppResourceGrant::Automation],
             vec![AppResourceGrant::AutomationHost],
-            vec![AppResourceGrant::Process, AppResourceGrant::Downloads],
+            vec![AppResourceGrant::Downloads],
         ] {
             let mut grants = HashSet::new();
             let mut authority = NativeDevtoolsAuthority::for_test(
@@ -1671,7 +1593,6 @@ mod tests {
                 &mut grants,
             );
             authority.grant_automation();
-            assert!(!authority.grant(AppResourceGrant::Process));
             assert!(!authority.grant(AppResourceGrant::Downloads));
             assert_eq!(
                 grants,
@@ -2053,36 +1974,6 @@ mod tests {
         );
 
         crate::terminal_automation::remove_workspace(&native, &surface_id);
-    }
-
-    #[cfg(feature = "process")]
-    #[test]
-    fn process_authority_rejects_manifest_only_and_stale_same_app_id_sessions() {
-        let (_root, original, successor) = same_app_id_with_different_classes();
-        let original_authority = ProcessSessionAuthority::for_lxapp(&original);
-
-        assert!(
-            original
-                .has_security_privilege(&crate::LxAppSecurityPrivilege::new("process").unwrap())
-        );
-        assert!(original_authority.authorize().is_err());
-
-        original.seal_resource_grants(HashSet::from([AppResourceGrant::Process]));
-        assert!(original_authority.authorize().is_ok());
-
-        for status in [
-            LxAppSessionStatus::Closing,
-            LxAppSessionStatus::Restarting,
-            LxAppSessionStatus::Closed,
-        ] {
-            original.set_status(status);
-            assert!(original_authority.authorize().is_err());
-        }
-
-        successor.seal_resource_grants(HashSet::from([AppResourceGrant::Process]));
-        let successor_authority = ProcessSessionAuthority::for_lxapp(&successor);
-        assert!(successor_authority.authorize().is_ok());
-        assert!(original_authority.authorize().is_err());
     }
 
     #[test]

@@ -17,7 +17,6 @@ automation = ["dep:lingxia-automation"]
 desktop-automation = ["automation", "lingxia-automation/desktop"]
 automation-runtime = ["automation", "lingxia-automation/runtime"]
 devtool = ["lxapp/automation", "lxapp/dev-bundles"]
-process = ["lxapp/process"]
 # Low-level managed browser tabs. Advanced hosts may provide their own native
 # browser UI/chrome on top of this.
 browser-runtime = ["dep:lingxia-browser"]

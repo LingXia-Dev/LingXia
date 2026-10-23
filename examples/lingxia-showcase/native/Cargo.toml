@@ -26,7 +26,6 @@ standard = ["lingxia/standard"]
 browser-shell = ["lingxia/browser-shell", "webview-input", "standard"]
 proxy = ["lingxia/proxy", "browser-shell"]
 terminal-runtime = ["lingxia/terminal-runtime"]
-process = ["lingxia/process", "standard"]
 # Dev builds always enable `devtools`; ride automation in so `lingxia dev`
 # sessions get lx.automation() by default (still privilege-gated per lxapp.json).
 control = ["dep:lingxia-control-runtime", "lingxia/devtool", "lingxia-control-runtime/local-control", "lingxia/product-cli"]

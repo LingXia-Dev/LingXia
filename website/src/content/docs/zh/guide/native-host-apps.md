@@ -37,7 +37,7 @@ lingxia new my-browser -t native-app -p windows --main browser --control lxapp -
 
 ## Capabilities 与 surfaces
 
-需要预先启用的宿主集成放进 capabilities。`capabilities.browser` 启用应用内浏览器，`terminal` 启用原生终端 surface，`process` 解锁受信任的桌面进程 API，`autostart` 暴露由用户控制的开机启动注册。camera 等普通 API 在调用时请求权限，不放在这里。
+需要预先启用的宿主集成放进 capabilities。`capabilities.browser` 启用应用内浏览器，`terminal` 启用原生终端 surface，`autostart` 暴露由用户控制的开机启动注册。camera 等普通 API 在调用时请求权限，不放在这里。
 
 用顶层 `surfaces:` 列表描述 main、aside 与 tray 内容。当前 schema 见[自适应 surfaces](../adaptive-surfaces/)。
 

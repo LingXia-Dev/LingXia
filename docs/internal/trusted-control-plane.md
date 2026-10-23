@@ -79,20 +79,15 @@ entry.
 
 ## Grants are separate from class
 
-A manifest privilege (`process`, `downloads`, `automation`, `host`) is a
+A manifest privilege (`downloads`, `automation`, `host`) is a
 *request*. `NativeHostRuntimeAuthority` is handed to
 `HostAddon::issue_app_resource_grants` at session creation and sealed when it
 returns; the devtools build gets the narrower `NativeDevtoolsAuthority`, which
 can issue automation grants only, and only for privileges the manifest
 requested.
 
-Two independent gates therefore apply, and both are rechecked live:
-
-- `AppResourceGrant::Process` is refused to any class but `ControlApp`, at the
-  authority, regardless of what an addon tries to grant.
-- Loading a privileged namespace is not the grant. `spawn`, shell commands,
-  and retained child handles recheck the session's live grant, so closing or
-  replacing a session revokes its handles.
+Loading a privileged namespace is not the grant: each use rechecks the
+session's live grant, so closing or replacing a session revokes it.
 
 `issue_app_resource_grants` runs exactly once per session — the seal is claimed
 with a compare-exchange, because both the creation path and every waiter on the
