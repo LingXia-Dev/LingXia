@@ -9,6 +9,7 @@ pub mod icon;
 pub mod install;
 pub mod new;
 pub mod package;
+pub mod pin;
 pub mod project_upgrade;
 pub mod provider;
 pub mod publish;

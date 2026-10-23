@@ -364,6 +364,7 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
     };
     refuse_mock_outside_dev(options.mock, options.env_version.as_deref())?;
     mocks::set_baseline(options.mock);
+    crate::pin::ensure_js_matches_cli(&project_root)?;
 
     if options
         .runner_device

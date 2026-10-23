@@ -51,6 +51,7 @@ where
         package,
         profile,
     );
+    crate::pin::overrides::apply(&mut cmd, working_dir)?;
     configure(&mut cmd);
 
     let status = cmd.status().context("Failed to execute cargo rustc")?;

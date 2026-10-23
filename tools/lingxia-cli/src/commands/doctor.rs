@@ -26,6 +26,16 @@ pub fn execute(platforms: Vec<String>) -> Result<()> {
     println!();
 
     let target_platforms = resolve_target_platforms(platforms)?;
+
+    if let Some(root) = crate::commands::project_upgrade::find_project_root() {
+        println!("{}", "[source]".bold().cyan());
+        for check in source_checks(&root, &target_platforms) {
+            print_check(&check);
+            all_checks.push(check);
+        }
+        println!();
+    }
+
     for platform in target_platforms {
         println!("{}", format!("[{}]", platform.as_str()).bold().cyan());
         let checks = platform_checks(&platform);
@@ -65,6 +75,82 @@ pub fn execute(platforms: Vec<String>) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Which LingXia source the project builds against, and whether each
+/// platform's SDK for it is ready or still to fetch or build.
+fn source_checks(root: &std::path::Path, platforms: &[PlatformType]) -> Vec<CheckResult> {
+    let mut checks = Vec::new();
+    match crate::pin::overrides::source(root) {
+        Ok(Some(source)) => checks.push(CheckResult::warn(
+            "Source",
+            format!(
+                "{}={} (overrides lingxia.lock)",
+                crate::pin::overrides::ENV,
+                source.display()
+            ),
+            Some("Unset it to build the pinned commit; release builds refuse it."),
+        )),
+        Err(err) => checks.push(CheckResult::fail("Source", err.to_string(), None::<String>)),
+        Ok(None) => {}
+    }
+    let pinned = match crate::pin::read(root) {
+        Ok(Some(lock)) => Some(lock.lingxia),
+        Ok(None) => {
+            checks.push(CheckResult::pass(
+                "Lock",
+                format!(
+                    "none: this CLI's release line ({})",
+                    crate::sdk_cache::sdk_version()
+                ),
+            ));
+            None
+        }
+        Err(err) => {
+            checks.push(CheckResult::fail(
+                "Lock",
+                err.to_string(),
+                Some("Run `lingxia pin`."),
+            ));
+            None
+        }
+    };
+    if let Some(pinned) = &pinned {
+        let kind = if pinned.is_official_release() {
+            "release"
+        } else {
+            "source"
+        };
+        checks.push(CheckResult::pass(
+            "Lock",
+            format!(
+                "{} at {} ({}, {kind}, line {})",
+                pinned.git,
+                pinned.short_commit(),
+                pinned.reference,
+                pinned.workspace_version
+            ),
+        ));
+        if which::which("git").is_err() {
+            checks.push(CheckResult::fail(
+                "git",
+                "not found in PATH".to_string(),
+                Some("Pinned sources are fetched with git."),
+            ));
+        }
+    }
+    for platform in platforms {
+        let sdk = match platform {
+            PlatformType::Android => crate::sdk_cache::SdkPlatform::Android,
+            PlatformType::Ios | PlatformType::MacOs => crate::sdk_cache::SdkPlatform::Apple,
+            PlatformType::Harmony => crate::sdk_cache::SdkPlatform::Harmony,
+            PlatformType::Windows => continue,
+        };
+        let name = format!("{} SDK", platform.as_str());
+        let detail = crate::sdk_cache::project_sdk_status(root, sdk);
+        checks.push(CheckResult::pass(&name, detail));
+    }
+    checks
 }
 
 fn common_checks() -> Vec<CheckResult> {

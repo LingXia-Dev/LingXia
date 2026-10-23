@@ -68,9 +68,10 @@ impl HarmonyPlatform {
             // External user projects don't have the SDK in their tree: wire in
             // the published HAR, whose rawfile icons were generated at release.
             None => {
-                let version = crate::sdk_cache::sdk_version();
-                let har =
-                    crate::sdk_cache::ensure_sdk(crate::sdk_cache::SdkPlatform::Harmony, &version)?;
+                let har = crate::sdk_cache::ensure_project_sdk(
+                    &config.project_root,
+                    crate::sdk_cache::SdkPlatform::Harmony,
+                )?;
                 inject_harmony_har_dependency(&staging, &har)?;
             }
             // In-workspace builds compile the SDK source module in place. Its

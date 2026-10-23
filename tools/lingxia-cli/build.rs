@@ -25,6 +25,9 @@ fn main() {
     }
 }
 
+#[path = "src/embedded_js_digest.rs"]
+mod embedded_js_digest;
+
 fn run() -> Result<(), String> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").map_err(|e| e.to_string())?);
     let repo_root = manifest_dir
@@ -43,6 +46,9 @@ fn run() -> Result<(), String> {
     emit_rerun_markers(&manifest_dir, repo_root, &bridge_dir, &polyfills_dir)?;
     emit_component_version_env(&component_versions);
     emit_build_metadata_env(repo_root);
+    let js_digest = embedded_js_digest::digest(&repo_root.join("packages"))
+        .map_err(|e| format!("failed to digest the embedded page JS: {e}"))?;
+    println!("cargo:rustc-env=LINGXIA_EMBEDDED_JS_DIGEST={js_digest}");
 
     let actual_bridge_version = read_npm_package_version(&bridge_package_json)?;
     if actual_bridge_version != component_versions.bridge {
