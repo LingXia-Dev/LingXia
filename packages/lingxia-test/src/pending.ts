@@ -174,7 +174,9 @@ export function installPendingTracker(): void {
   if (base.fetch) {
     const nativeFetch = base.fetch;
     scope.fetch = function (input: unknown, init?: { method?: string }) {
-      const call = nativeFetch.call(globalThis, input, init);
+      // Forward exactly the arguments given: an explicit `undefined` init is
+      // not an omitted one to the runtime's fetch.
+      const call = init === undefined ? nativeFetch.call(globalThis, input) : nativeFetch.call(globalThis, input, init);
       const work = entry("fetch", describeRequest(input, init));
       if (work) {
         const done = () => { fetches.delete(work); };
