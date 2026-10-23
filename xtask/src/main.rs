@@ -64,7 +64,9 @@ fn run() -> Result<()> {
         .context("xtask lives in the workspace root")?
         .to_path_buf();
     fs::create_dir_all(&args.out)?;
-    let out = args.out.canonicalize()?;
+    // `absolute`, not `canonicalize`: no `\\?\` prefix on Windows for the
+    // paths handed to Gradle and printed for callers.
+    let out = std::path::absolute(&args.out)?;
     let version = workspace_version(&root)?;
 
     let mut artifacts = Vec::new();
@@ -303,17 +305,19 @@ fn build_android(root: &Path, out: &Path, version: &str, args: &Args) -> Result<
         .clone()
         .unwrap_or_else(|| out.join("android/maven"));
     fs::create_dir_all(&maven)?;
-    let maven = maven.canonicalize()?;
-    let gradlew = if cfg!(windows) {
+    let maven = std::path::absolute(&maven)?;
+    // Absolute: Windows resolves a relative program against this process's
+    // directory and PATH, not the child's working directory.
+    let gradlew = sdk.join(if cfg!(windows) {
         "gradlew.bat"
     } else {
-        "./gradlew"
-    };
+        "gradlew"
+    });
     // Only the local directory repository; Maven Central publishing runs in
     // CI with credentials and a signing key.
     run_in(
         &sdk,
-        gradlew,
+        &gradlew.to_string_lossy(),
         &[
             "publishAllPublicationsToLocalExampleRepository",
             &format!("-PLOCAL_MAVEN_REPO_DIR={}", maven.display()),
