@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent conformance</title>
+<style>
+  body { font: 15px/1.4 -apple-system, "Segoe UI", sans-serif; margin: 0; }
+  header, footer { background: #eef; padding: 8px 16px; }
+  main { padding: 16px; max-width: 720px; }
+  label { display: block; margin: 6px 0; }
+  .custom-check input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .custom-check span { display: inline-block; padding: 4px 8px; border: 1px solid #888; cursor: pointer; }
+  #overlay-host { position: relative; height: 40px; }
+  #overlay { position: absolute; inset: 0; background: rgba(0,0,0,.4); }
+  #mover { position: relative; transition: left 600ms linear; left: 0; }
+  #mover.moved { left: 200px; }
+  #tall { height: 1600px; background: linear-gradient(#fff, #ccd); }
+  [role=switch] { display: inline-block; padding: 4px 10px; border: 1px solid #888; cursor: pointer; }
+</style>
+</head>
+<body>
+<header><nav aria-label="Primary"><a href="nav.html">Next page</a> <a href="#tall">Bottom</a></nav></header>
+<main>
+  <h1>Agent conformance</h1>
+
+  <form id="profile" aria-label="Profile">
+    <label>Full name <input id="name" name="name" required></label>
+    <label>Email <input id="email" type="email" placeholder="you@example.com"></label>
+    <label>Password <input id="password" type="password"></label>
+    <label>Bio <textarea id="bio"></textarea></label>
+    <label>Read only <input id="ro" value="fixed" readonly></label>
+    <label>Country
+      <select id="country">
+        <option value="">Choose…</option>
+        <option value="cn">China</option>
+        <option value="jp">Japan</option>
+        <option value="kr" disabled>Korea</option>
+      </select>
+    </label>
+    <label>Languages
+      <select id="langs" multiple size="3">
+        <option value="zh">Chinese</option>
+        <option value="en">English</option>
+        <option value="fr">French</option>
+      </select>
+    </label>
+    <label><input id="agree" type="checkbox"> I agree</label>
+    <fieldset><legend>Plan</legend>
+      <label><input type="radio" name="plan" value="free" checked> Free</label>
+      <label><input id="plan-pro" type="radio" name="plan" value="pro"> Pro</label>
+    </fieldset>
+    <label class="custom-check"><input id="styled" type="checkbox"><span>Styled box</span></label>
+    <span id="switch" role="switch" aria-checked="false" tabindex="0" aria-label="Dark mode">Dark mode</span>
+    <label>Date <input id="date" type="date"></label>
+    <label>Time <input id="time" type="time"></label>
+    <label>Count <input id="count" type="number"></label>
+    <label>Volume <input id="volume" type="range" min="0" max="10"></label>
+    <label>Color <input id="color" type="color"></label>
+    <label>Attachments <input id="files" type="file" multiple></label>
+    <label>Hidden upload <input id="hidden-file" type="file" style="display:none"></label>
+    <div id="editor" contenteditable="true" aria-label="Editor" style="border:1px solid #888;min-height:40px"></div>
+    <label>Controlled <input id="controlled"></label>
+    <label>IME <input id="ime"></label>
+    <button type="button" id="disabled-btn" disabled>Disabled</button>
+    <button type="button" id="late-enabled" disabled>Enabled later</button>
+    <div id="overlay-host"><button type="button" id="covered">Covered</button><div id="overlay"></div></div>
+    <button type="button" id="mover">Moving</button>
+    <button type="button" id="hidden-btn" style="display:none">Hidden</button>
+    <button type="button" id="log-btn">Log</button>
+    <button type="button" id="throw-btn">Throw</button>
+    <button type="button" id="hover-target">Hover me</button>
+    <div id="drag-src" draggable="true" style="display:inline-block;padding:6px;border:1px dashed">Drag me</div>
+    <div id="drop-zone" style="display:inline-block;padding:6px;border:1px solid">Drop here</div>
+  </form>
+
+  <p id="late-host"></p>
+
+  <x-card id="card"></x-card>
+
+  <iframe id="same" title="Same origin" srcdoc="<button id='inner-btn' onclick='parent.record(&quot;inner&quot;)'>Inner button</button><input id='inner-input' aria-label='Inner input'>"></iframe>
+  <iframe id="cross" title="Cross origin"></iframe>
+
+  <section><p>An unnamed section.</p></section>
+  <section aria-label="Named section"><p>Inside a region.</p></section>
+
+  <article>
+    <h2>Readable content</h2>
+    <p>A paragraph with a <a href="https://example.com/doc">link</a> and <strong>bold</strong> text.</p>
+    <ul><li>First</li><li>Second<ul><li>Nested</li></ul></li></ul>
+    <ol><li>One</li><li>Two</li></ol>
+    <table><tr><th>Key</th><th>Value</th></tr><tr><td>a</td><td>1</td></tr></table>
+    <pre>code block</pre>
+  </article>
+
+  <div id="tall"></div>
+  <p id="bottom">Bottom of page</p>
+</main>
+<footer>Footer text</footer>
+
+<pre id="state" aria-hidden="true"></pre>
+<script>
+  const state = { events: [], composition: [], controlled: '', clicks: {}, hover: 0, dropped: false };
+  window.state = state;
+  window.record = (what) => { state.clicks[what] = (state.clicks[what] || 0) + 1; };
+  const $ = (id) => document.getElementById(id);
+
+  for (const el of document.querySelectorAll('input, select, textarea')) {
+    el.addEventListener('input', () => state.events.push('input:' + el.id));
+    el.addEventListener('change', () => state.events.push('change:' + el.id));
+  }
+  // A framework-controlled input: the rendered value always comes from
+  // state, which only an input event updates.
+  $('controlled').addEventListener('input', (e) => { state.controlled = e.target.value; });
+  $('controlled').addEventListener('blur', (e) => { e.target.value = state.controlled; });
+
+  for (const type of ['compositionstart', 'compositionupdate', 'compositionend']) {
+    $('ime').addEventListener(type, (e) => state.composition.push(type + ':' + e.data));
+  }
+
+  $('switch').addEventListener('click', () => {
+    const on = $('switch').getAttribute('aria-checked') === 'true';
+    $('switch').setAttribute('aria-checked', String(!on));
+  });
+  for (const id of ['covered', 'mover', 'late-enabled']) {
+    $(id).addEventListener('click', () => record(id));
+  }
+  $('log-btn').addEventListener('click', () => { console.log('hello from page'); console.error('page error', { code: 7 }); });
+  $('throw-btn').addEventListener('click', () => { setTimeout(() => { throw new Error('boom'); }, 0); });
+  $('hover-target').addEventListener('mouseenter', () => { state.hover++; });
+  $('drop-zone').addEventListener('dragover', (e) => e.preventDefault());
+  $('drop-zone').addEventListener('drop', (e) => { e.preventDefault(); state.dropped = true; });
+
+  // The other loopback name is another origin.
+  const otherHost = location.hostname === 'localhost' ? '127.0.0.1' : 'localhost';
+  $('cross').src = `${location.protocol}//${otherHost}:${location.port}/nav.html`;
+  setTimeout(() => { $('late-enabled').disabled = false; }, 700);
+  setTimeout(() => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.id = 'late'; b.textContent = 'Arrived late';
+    b.addEventListener('click', () => record('late'));
+    $('late-host').appendChild(b);
+  }, 700);
+  requestAnimationFrame(() => $('mover').classList.add('moved'));
+
+  customElements.define('x-card', class extends HTMLElement {
+    constructor() {
+      super();
+      const root = this.attachShadow({ mode: 'open' });
+      root.innerHTML = '<h3>Shadow card</h3><input id="shadow-input" aria-label="Shadow input"><button id="shadow-btn">Shadow button</button>';
+      root.getElementById('shadow-btn').addEventListener('click', () => record('shadow'));
+    }
+  });
+</script>
+</body>
+</html>
