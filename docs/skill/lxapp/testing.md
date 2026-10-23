@@ -117,7 +117,7 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
 | Group trace, add evidence | `t.step(name, fn)` (await one at a time; nest through the callback's `step`), `t.attach(name, data)` |
 | Another running lxapp | `t.automation.lxapp(appId)` |
 | App lifecycle, inbound links | `t.automation.lxapps` (`applink({ url })`) |
-| External web pages, auth/payment callbacks | `t.automation.browser` |
+| External web pages, auth/payment callbacks | `t.automation.browser`: `snapshot()` then act on its refs (`click({ ref })`, `fill`, `selectOption`, …) or `{ css }`; same auto-wait and failure codes (`covered`, `stale_ref`, …) as `lxdev browser` |
 | Runner device and appearance | `t.automation.device` ([example](./adaptive-ui.md#test-runtime-switching)) |
 | Host shell, terminal, desktop | `t.automation.shell`, `.terminal`, `.desktop` where the host has them |
 | External fixtures and service results | test-context `fetch` |
