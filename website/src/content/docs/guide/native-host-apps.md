@@ -37,7 +37,7 @@ The launch main surface's `lxapp:` value must point at the same home app. Misali
 
 ## Capabilities and surfaces
 
-Declare host integrations before using them. `capabilities.browser` enables the in-app browser, `terminal` enables the native terminal surface, `process` unlocks trusted desktop process APIs, and `autostart` exposes user-controlled startup registration. Ordinary APIs such as camera are requested when called and do not belong in this list.
+Declare host integrations before using them. `capabilities.browser` enables the in-app browser, `terminal` enables the native terminal surface, and `autostart` exposes user-controlled startup registration. Ordinary APIs such as camera are requested when called and do not belong in this list.
 
 Use the top-level `surfaces:` list to describe main, aside, and tray content. See [Adaptive surfaces](../adaptive-surfaces/) for the current schema.
 

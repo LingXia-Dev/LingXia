@@ -39,6 +39,6 @@ await control.appearance.setPreference('dark')
 
 拒绝结果是 `E_PERMISSION_DENIED`，并会点名本该被允许的 class。把它当成设计信号：让 Control app 去做产品级工作，不要冒充它。这不是用户关掉对话框，也不是缺少 capability（那个由 `lx.supports()` 回答）。
 
-`process`、`downloads`、`automation` 等特权是宿主按 session 封存的 grant。`capabilities.process` 只授予 Control app，每一次 spawn 都会再检查当前 grant。
+`downloads`、`automation` 等特权是宿主按 session 封存的 grant，每次使用都会再检查当前 grant。
 
 `homeAppId` 如何封进构建见[原生宿主应用](../native-host-apps/)；`lx.shell.sidebarActions` 见[自适应 surfaces](../adaptive-surfaces/)。

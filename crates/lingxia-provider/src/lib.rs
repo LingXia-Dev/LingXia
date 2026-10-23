@@ -291,7 +291,7 @@ impl LxAppNetworkPermission {
     }
 }
 
-/// Approved privilege ids (`downloads`, `process`, `automation`, `host`, …).
+/// Approved privilege ids (`downloads`, `automation`, `host`, …).
 /// `*` allows every class.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]

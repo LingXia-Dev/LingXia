@@ -1690,24 +1690,6 @@ impl LxApp {
         )
     }
 
-    /// Whether `lx.process` is actually reachable from this lxapp — the answer
-    /// `lx.supports` reports, so the query and the module's presence cannot
-    /// disagree. False wherever the feature is not compiled in.
-    pub fn process_supported(&self) -> bool {
-        #[cfg(feature = "process")]
-        {
-            let privilege = LxAppSecurityPrivilege::new("process")
-                .expect("process is a valid security privilege id");
-            self.is_control_app()
-                && lingxia_app_context::process_enabled()
-                && self.has_security_privilege(&privilege)
-        }
-        #[cfg(not(feature = "process"))]
-        {
-            false
-        }
-    }
-
     /// Diagnostic copy only; the authoritative set is private to the JS context.
     #[doc(hidden)]
     pub fn record_logic_feature_snapshot(&self, context: String, features: Vec<String>) {
@@ -2468,8 +2450,8 @@ impl LxApp {
     }
 
     /// Create a host-bundled control surface. Unlike `new_as_home` the home flag
-    /// stays false, so capsule close, LRU eviction, the home OTA check, and
-    /// `lx.process` all treat it as an ordinary guest.
+    /// stays false, so capsule close, LRU eviction, and the home OTA check all
+    /// treat it as an ordinary guest.
     fn new_control_surface(
         appid: String,
         runtime: Arc<Platform>,

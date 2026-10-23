@@ -251,7 +251,7 @@ mod tests {
                 .network
                 .is_domain_allowed_in("other.example.com", false)
         );
-        assert!(named.allows_privilege("process"));
+        assert!(named.allows_privilege("automation"));
     }
 
     #[test]
@@ -263,7 +263,7 @@ mod tests {
                 .is_domain_allowed_in("api.example.com", false)
         );
         assert!(network_only.allows_privilege("downloads"));
-        assert!(network_only.allows_privilege("process"));
+        assert!(network_only.allows_privilege("automation"));
 
         let privileges_only = approve(LxAppPermissions::privileges(["downloads"])).unwrap();
         assert!(
@@ -272,7 +272,7 @@ mod tests {
                 .is_domain_allowed_in("api.example.com", false)
         );
         assert!(privileges_only.allows_privilege("downloads"));
-        assert!(!privileges_only.allows_privilege("process"));
+        assert!(!privileges_only.allows_privilege("automation"));
 
         let none = approve(
             LxAppPermissions::network(std::iter::empty::<String>())

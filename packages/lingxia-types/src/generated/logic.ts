@@ -3530,4 +3530,4 @@ declare global {
 export {};
 
 /** Feature contracts generated from the runtime registry. */
-export type LxFeature = 'app.appUse' | 'app.autostart' | 'app.banner' | 'app.browser' | 'app.browserUse' | 'app.computerUse' | 'app.mediaCapture' | 'app.notification' | 'app.proxy' | 'app.selfUpdate' | 'process' | 'surface.tab' | 'surface.window' | 'surface.window.fullChrome' | 'terminal';
+export type LxFeature = 'app.appUse' | 'app.autostart' | 'app.banner' | 'app.browser' | 'app.browserUse' | 'app.computerUse' | 'app.mediaCapture' | 'app.notification' | 'app.proxy' | 'app.selfUpdate' | 'surface.tab' | 'surface.window' | 'surface.window.fullChrome' | 'terminal';

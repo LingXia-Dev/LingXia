@@ -48,8 +48,7 @@ library, and the root `tsconfig.json` references both.
 Logic runs in Rong, not a browser. `@lingxia/types/logic-globals` declares what
 exists: `fetch`, timers, `URL`, streams, abort signals, `console`. No DOM, no
 Node globals, no `WebSocket`. `fetch` follows the host
-[network grant](../native/permissions.md). Process APIs are opt-in:
-[`capabilities.process`](../app/project.md#capabilities).
+[network grant](../native/permissions.md).
 
 Consume server-sent events with `Rong.SSE`, not `fetch` (Logic `fetch` hands a
 streamed body over in large chunks):
@@ -104,9 +103,7 @@ if (lx.supports('surface.window.fullChrome')) {
 
 - The set is frozen per Logic context. Unknown strings return false;
   non-strings throw `TypeError`.
-- `true` is not permission: grants and failures surface at the call. With
-  `capabilities.process`, `lx.supports('process')` is true yet every call throws
-  until the host grants the process resource.
+- `true` is not permission: grants and failures surface at the call.
 - Optional namespaces share it: `terminal`, `app.autostart`,
   `app.notification`, `app.banner`.
 - Required features need a matching `minRuntime`; optional ones need a

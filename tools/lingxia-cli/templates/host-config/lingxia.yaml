@@ -63,7 +63,6 @@ capabilities:
   browser: {{BROWSER_CAPABILITY}}
   terminal: {{TERMINAL_CAPABILITY}}
   proxy: false          # desktop; requires browser
-  process: false        # desktop; home lxapp may launch OS processes
   autostart: false      # unlocks lx.host.autostart; does not register by itself
   # appUse: true
   # computerUse: true   # implies appUse
