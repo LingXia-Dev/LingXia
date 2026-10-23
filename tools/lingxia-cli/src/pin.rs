@@ -340,6 +340,100 @@ pub fn ensure_source(
     Ok(dest)
 }
 
+/// What `lingxia upgrade` makes of a pin, against this CLI's release.
+pub enum AgainstRelease {
+    /// The release already carries the pinned commit: the pin has done its job.
+    Superseded {
+        release: String,
+    },
+    Kept {
+        reason: String,
+    },
+}
+
+pub fn against_release(pinned: &Pin) -> Result<AgainstRelease> {
+    let release = default_release_ref();
+    if !same_git(&pinned.git, OFFICIAL_GIT) {
+        return Ok(AgainstRelease::Kept {
+            reason: format!("it comes from {}, not the official repository", pinned.git),
+        });
+    }
+    if pinned.is_official_release() {
+        let cli = semver::Version::parse(env!("LINGXIA_RUST_CRATE_VERSION"))?;
+        let pinned_version = semver::Version::parse(&pinned.workspace_version)?;
+        return Ok(if pinned_version <= cli {
+            AgainstRelease::Superseded { release }
+        } else {
+            AgainstRelease::Kept {
+                reason: format!("{} is newer than {release}", pinned.reference),
+            }
+        });
+    }
+    Ok(if commit_in_release(&pinned.commit, &release)? {
+        AgainstRelease::Superseded { release }
+    } else {
+        AgainstRelease::Kept {
+            reason: format!("not in {release} yet"),
+        }
+    })
+}
+
+/// Whether the release tag's history holds `commit`. Fetches commits only
+/// (no trees or files) into a scratch repository.
+fn commit_in_release(commit: &str, release: &str) -> Result<bool> {
+    let scratch = tempfile::tempdir()?;
+    let dir = scratch.path().to_string_lossy().into_owned();
+    git_output(git(&["init", "-q", "--bare", &dir]), "git init")?;
+    let tag = format!("refs/tags/{release}");
+    git_output(
+        git(&[
+            "-C",
+            &dir,
+            "fetch",
+            "-q",
+            "--filter=tree:0",
+            OFFICIAL_GIT,
+            &format!("{tag}:{tag}"),
+        ]),
+        &format!("fetch {release}"),
+    )?;
+    let status = git(&["-C", &dir, "merge-base", "--is-ancestor", commit, &tag])
+        .status()
+        .context("run git merge-base")?;
+    Ok(status.success())
+}
+
+/// Undo a pin: the lock, the manifest's managed lines, the checkout and its
+/// SDKs, a local source, and the pinned skill. The project then follows the
+/// CLI's release line like one never pinned.
+pub fn clear(project_root: &Path) -> Result<()> {
+    let lock = project_root.join(LOCK_FILE);
+    if lock.exists() {
+        fs::remove_file(&lock).with_context(|| format!("remove {}", lock.display()))?;
+    }
+    let manifest = project_root.join("Cargo.toml");
+    if let Ok(content) = fs::read_to_string(&manifest) {
+        let (rewritten, _) = cargo::rewrite(&content, &[]);
+        if rewritten != content {
+            fs::write(&manifest, rewritten)
+                .with_context(|| format!("write {}", manifest.display()))?;
+        }
+    }
+    overrides::clear(project_root)?;
+    for dir in [
+        source_dir(project_root),
+        project_root.join(".lingxia").join("source-sdk"),
+        project_root.join(".agents").join("skills").join("lingxia"),
+    ] {
+        if dir.exists() {
+            fs::remove_dir_all(&dir).with_context(|| format!("remove {}", dir.display()))?;
+        }
+    }
+    // The Claude link into the skill above.
+    let _ = fs::remove_file(project_root.join(".claude").join("skills").join("lingxia"));
+    Ok(())
+}
+
 /// Put the lock's commit at `.lingxia/lingxia-src`, where the manifest's
 /// managed path patches point, unless a local source stands in for it.
 pub fn prepare_source(project_root: &Path) -> Result<()> {
@@ -507,5 +601,79 @@ mod tests {
         fs::write(lock_path(dir.path()), text.replace(&"b".repeat(40), "bbbb")).unwrap();
         assert!(read(dir.path()).is_err());
         assert!(read(&dir.path().join("missing")).unwrap().is_none());
+    }
+
+    fn pinned(git: &str, reference: &str, version: &str) -> Pin {
+        Pin {
+            git: git.to_string(),
+            reference: reference.to_string(),
+            commit: "c".repeat(40),
+            workspace_version: version.to_string(),
+            cli_version: "0.27.0".to_string(),
+            pinned_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_fork_or_a_newer_release_keeps_its_pin() {
+        let fork = pinned("https://github.com/someone/LingXia.git", "main", "0.27.0");
+        assert!(matches!(
+            against_release(&fork).unwrap(),
+            AgainstRelease::Kept { .. }
+        ));
+        let older = pinned(OFFICIAL_GIT, "lingxia-crates-v0.0.1", "0.0.1");
+        assert!(matches!(
+            against_release(&older).unwrap(),
+            AgainstRelease::Superseded { .. }
+        ));
+        let newer = pinned(OFFICIAL_GIT, "lingxia-crates-v99.0.0", "99.0.0");
+        assert!(matches!(
+            against_release(&newer).unwrap(),
+            AgainstRelease::Kept { .. }
+        ));
+    }
+
+    #[test]
+    fn clear_leaves_a_project_that_never_pinned() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, pinned(OFFICIAL_GIT, "main", "0.27.0")).unwrap();
+        let original =
+            "[workspace]\nmembers = [\"native\"]\n\n[patch.crates-io]\nmine = { path = \"x\" }\n";
+        let (pinned_manifest, _) = cargo::rewrite(
+            original,
+            &[cargo::path_patch(
+                "lingxia",
+                cargo::SOURCE_PATH,
+                "crates/lingxia",
+            )],
+        );
+        fs::write(root.join("Cargo.toml"), pinned_manifest).unwrap();
+        for dir in [
+            ".lingxia/lingxia-src/target",
+            ".lingxia/source-sdk/apple/x",
+            ".agents/skills/lingxia",
+        ] {
+            fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        fs::write(root.join(".lingxia/source.local"), "/src").unwrap();
+        fs::write(root.join(".lingxia/template.json"), "{}").unwrap();
+
+        clear(root).unwrap();
+
+        assert!(read(root).unwrap().is_none());
+        assert_eq!(
+            fs::read_to_string(root.join("Cargo.toml")).unwrap(),
+            original
+        );
+        for gone in [
+            ".lingxia/lingxia-src",
+            ".lingxia/source-sdk",
+            ".lingxia/source.local",
+            ".agents/skills/lingxia",
+        ] {
+            assert!(!root.join(gone).exists(), "{gone}");
+        }
+        assert!(root.join(".lingxia/template.json").exists());
     }
 }
