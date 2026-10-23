@@ -908,6 +908,21 @@ enum AuthLogoutProvider {
 }
 
 fn main() -> Result<()> {
+    // clap's derived command tree alone overflows Windows' 1 MiB main-thread
+    // stack in a debug build.
+    const CLI_STACK_BYTES: usize = 8 * 1024 * 1024;
+    let worker = std::thread::Builder::new()
+        .name("cli".to_string())
+        .stack_size(CLI_STACK_BYTES)
+        .spawn(run)
+        .map_err(|err| anyhow::anyhow!("spawn the command-line thread: {err}"))?;
+    match worker.join() {
+        Ok(result) => result,
+        Err(panic) => std::panic::resume_unwind(panic),
+    }
+}
+
+fn run() -> Result<()> {
     let raw_args: Vec<String> = std::env::args().collect();
     let cli = match Cli::try_parse_from(&raw_args) {
         Ok(cli) => cli,
