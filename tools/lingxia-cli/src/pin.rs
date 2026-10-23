@@ -225,33 +225,65 @@ pub fn release_tag_for(git_url: &str, commit: &str) -> Option<String> {
 // ---------------------------------------------------------------------------
 // Source checkouts
 
-/// `~/.lingxia/src/<commit>`: a read-only checkout of the pinned commit,
-/// where its versions are read and its SDKs built.
-pub fn source_dir(commit: &str) -> Result<PathBuf> {
-    Ok(crate::state_root::lingxia_dir()?.join("src").join(commit))
+/// `<project>/.lingxia/lingxia-src`: one shallow checkout of the pinned
+/// commit, where its versions are read and its SDKs built. A new pin moves it
+/// in place and keeps `target/`, so the next SDK build is incremental; it
+/// lives in the project so CI caches it with `.lingxia/`.
+pub fn source_dir(project_root: &Path) -> PathBuf {
+    project_root.join(".lingxia").join("lingxia-src")
 }
 
 const SOURCE_READY: &str = ".lingxia-source-ready";
+/// Held by whoever moves or builds the checkout.
+pub(crate) const SOURCE_LOCK: &str = ".lingxia-build.lock";
+
+/// Exclusive hold on a checkout. Opened without truncating: Windows refuses
+/// to truncate a file another process holds locked, instead of waiting.
+pub(crate) fn lock_source(checkout: &Path) -> Result<fs::File> {
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(checkout.join(SOURCE_LOCK))
+        .with_context(|| format!("lock {}", checkout.display()))?;
+    file.lock()
+        .with_context(|| format!("lock {}", checkout.display()))?;
+    Ok(file)
+}
+
+pub(crate) fn source_at(dest: &Path, commit: &str) -> bool {
+    fs::read_to_string(dest.join(SOURCE_READY)).is_ok_and(|ready| ready.trim() == commit)
+}
 
 /// `reference` (the lock's tag or branch) is the fallback for servers that
 /// will not serve an unadvertised commit by sha.
-pub fn ensure_source(git_url: &str, commit: &str, reference: Option<&str>) -> Result<PathBuf> {
-    let dest = source_dir(commit)?;
-    if dest.join(SOURCE_READY).is_file() {
+pub fn ensure_source(
+    project_root: &Path,
+    git_url: &str,
+    commit: &str,
+    reference: Option<&str>,
+) -> Result<PathBuf> {
+    let dest = source_dir(project_root);
+    if source_at(&dest, commit) {
         return Ok(dest);
     }
-    let tmp = dest.with_extension("tmp");
-    if tmp.exists() {
-        remove_tree(&tmp).with_context(|| format!("clean {}", tmp.display()))?;
+    fs::create_dir_all(&dest).with_context(|| format!("create {}", dest.display()))?;
+    let _lock = lock_source(&dest)?;
+    if source_at(&dest, commit) {
+        return Ok(dest);
     }
-    fs::create_dir_all(&tmp).with_context(|| format!("create {}", tmp.display()))?;
-    let dir = tmp.to_string_lossy().into_owned();
+    let _ = fs::remove_file(dest.join(SOURCE_READY));
+    let dir = dest.to_string_lossy().into_owned();
     let run = |args: &[&str], what: &str| -> Result<()> {
         let mut command = git(&["-C", &dir]);
         command.args(args);
         git_output(command, what).map(|_| ())
     };
-    run(&["init", "-q"], "git init")?;
+    if !dest.join(".git").exists() {
+        run(&["init", "-q"], "git init")?;
+    }
+    // A re-pin may name another fork.
+    let _ = run(&["remote", "remove", "origin"], "git remote remove");
     run(&["remote", "add", "origin", git_url], "git remote add")?;
     let fetch = |what: &str| {
         run(
@@ -284,40 +316,24 @@ pub fn ensure_source(git_url: &str, commit: &str, reference: Option<&str>) -> Re
         }
     }
     run(
-        &["checkout", "-q", "--detach", "FETCH_HEAD"],
+        &["checkout", "-q", "--force", "--detach", "FETCH_HEAD"],
         "git checkout",
     )?;
-    fs::write(tmp.join(SOURCE_READY), commit)?;
-    if dest.exists() {
-        remove_tree(&dest).with_context(|| format!("clean {}", dest.display()))?;
-    }
-    fs::rename(&tmp, &dest).with_context(|| format!("install {}", dest.display()))?;
+    // The last commit's generated files go; its build output stays for an
+    // incremental build. `node_modules` goes too: the lockfile may differ.
+    run(
+        &[
+            "clean",
+            "-ffdxq",
+            "-e",
+            "/target/",
+            "-e",
+            &format!("/{SOURCE_LOCK}"),
+        ],
+        "git clean",
+    )?;
+    fs::write(dest.join(SOURCE_READY), commit)?;
     Ok(dest)
-}
-
-/// `remove_dir_all` that also takes git's read-only pack files, which
-/// Windows refuses to delete as they are.
-pub(crate) fn remove_tree(path: &Path) -> std::io::Result<()> {
-    if fs::remove_dir_all(path).is_ok() {
-        return Ok(());
-    }
-    fn writable(path: &Path) {
-        if let Ok(meta) = fs::symlink_metadata(path) {
-            let mut perms = meta.permissions();
-            #[allow(clippy::permissions_set_readonly_false)]
-            perms.set_readonly(false);
-            let _ = fs::set_permissions(path, perms);
-            if meta.is_dir()
-                && let Ok(entries) = fs::read_dir(path)
-            {
-                for entry in entries.flatten() {
-                    writable(&entry.path());
-                }
-            }
-        }
-    }
-    writable(path);
-    fs::remove_dir_all(path)
 }
 
 /// The pin covers native code only: crates and platform SDKs. Page JS
@@ -339,7 +355,8 @@ pub fn ensure_js_matches_cli(project_root: &Path) -> Result<()> {
                 return Ok(());
             }
             let pinned = lock.lingxia;
-            ensure_source(&pinned.git, &pinned.commit, Some(&pinned.reference))?.join("packages")
+            ensure_source(&root, &pinned.git, &pinned.commit, Some(&pinned.reference))?
+                .join("packages")
         }
     };
     let pinned = crate::embedded_js_digest::digest(&packages)
@@ -362,10 +379,8 @@ pub fn sync_project_skill_if_pinned() {
     let Ok(Some(lock)) = read(&root) else {
         return;
     };
-    let Ok(checkout) = source_dir(&lock.lingxia.commit) else {
-        return;
-    };
-    if !checkout.join(SOURCE_READY).is_file() {
+    let checkout = source_dir(&root);
+    if !source_at(&checkout, &lock.lingxia.commit) {
         return;
     }
     match crate::commands::skill::sync_project_skill(

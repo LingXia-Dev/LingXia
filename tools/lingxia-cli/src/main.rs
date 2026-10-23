@@ -927,12 +927,17 @@ fn main() -> Result<()> {
     // the one job it was started for, and a detached worker must never replace
     // the binary out from under the command that spawned it. JSON commands
     // must not emit updater output before their machine-readable result.
-    let replaced = !raw_args.iter().any(|arg| {
-        matches!(
-            arg.as_str(),
-            "upgrade" | "__sync-skill" | "__refresh-templates" | "--json"
-        )
-    }) && update::maybe_auto_update();
+    // `gen` runs inside builds too (an SDK built from source calls it), where
+    // replacing the binary or rewriting a project's skill mid-build is wrong.
+    let is_gen = matches!(cli.command, Commands::Gen { .. });
+    let replaced = !is_gen
+        && !raw_args.iter().any(|arg| {
+            matches!(
+                arg.as_str(),
+                "upgrade" | "__sync-skill" | "__refresh-templates" | "--json"
+            )
+        })
+        && update::maybe_auto_update();
 
     // Every run reconciles the installed skill with the one this binary
     // carries, so the two cannot drift. `upgrade` and `__sync-skill` do it
@@ -944,6 +949,7 @@ fn main() -> Result<()> {
             | Commands::Skill { .. }
             | Commands::RefreshTemplates { .. }
             | Commands::Upgrade { .. }
+            | Commands::Gen { .. }
     ) {
         // The new binary already wrote its skill; this one would roll it back.
         if !replaced {
