@@ -87,7 +87,7 @@ cp "$BRIDGE_RUNTIME" "$SCRIPT_DIR/Sources/Resources/bridge-runtime.js"
 cp "$ROOT_DIR/tools/lingxia-runner/devices.json" "$SCRIPT_DIR/Sources/Resources/devices.json"
 
 echo "==> Generating apple SDK resources (i18n + icons)"
-# Same step bootstrap-apple-sdk / scripts/release/sdk.sh run: without it a new or
+# Same step bootstrap-apple-sdk / `cargo xtask sdk` run: without it a new or
 # changed design/icons/svg or i18n YAML never reaches the runner bundle.
 (
   cd "$ROOT_DIR"

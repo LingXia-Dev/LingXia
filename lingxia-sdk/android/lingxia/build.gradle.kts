@@ -103,7 +103,7 @@ if (rootProject.name == "lingxia-sdk") {
     }
 }
 
-// Keep a local-directory Maven repository so scripts/release/sdk.sh can publish
+// Keep a local-directory Maven repository so `cargo xtask sdk` can publish
 // the AAR + POM to a workspace dir (and zip it as a release artifact) without
 // touching Maven Central. The vanniktech plugin adds the publication; this only
 // adds an extra destination repository named "localExample".

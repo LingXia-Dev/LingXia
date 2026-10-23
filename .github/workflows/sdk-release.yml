@@ -162,7 +162,7 @@ jobs:
 
       - name: Build Android SDK artifact
         run: |
-          bash scripts/release/sdk.sh --platform android
+          cargo xtask sdk --platform android --out dist/sdk-release --checksums
 
       - name: Upload Android SDK artifact
         uses: actions/upload-artifact@v6
@@ -206,7 +206,7 @@ jobs:
 
       - name: Build Apple source SDK artifact
         run: |
-          bash scripts/release/sdk.sh --platform apple
+          cargo xtask sdk --platform apple --out dist/sdk-release --checksums
 
       - name: Upload Apple SDK artifact
         uses: actions/upload-artifact@v6
@@ -244,7 +244,7 @@ jobs:
 
       - name: Build HarmonyOS SDK artifact
         run: |
-          bash scripts/release/sdk.sh --platform harmony
+          cargo xtask sdk --platform harmony --out dist/sdk-release --checksums
 
       - name: Upload HarmonyOS SDK artifact
         uses: actions/upload-artifact@v6

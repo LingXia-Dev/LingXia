@@ -129,8 +129,8 @@ jobs:
             webview_harmony:
               - 'crates/lingxia-webview/src/harmony/**'
             sdk_release:
-              - 'scripts/release/sdk.sh'
               - 'xtask/**'
+              - '.cargo/config.toml'
             examples_common:
               - 'examples/lingxia-showcase/lingxia.yaml'
               - 'examples/lingxia-showcase/AppIcon.png'
@@ -1467,7 +1467,7 @@ jobs:
       - name: Build Android SDK release artifact
         env:
           LINGXIA_CLI: ${{ github.workspace }}/target/debug/lingxia
-        run: bash scripts/release/sdk.sh --platform android --out dist/sdk-ci --no-shasums
+        run: cargo xtask sdk --platform android --out dist/sdk-ci --cli "$LINGXIA_CLI"
 
       - name: Verify API 21 core and complete Android module packaging
         working-directory: lingxia-sdk/android
@@ -1505,7 +1505,7 @@ jobs:
       - name: Build Apple SDK release artifact
         env:
           LINGXIA_CLI: ${{ github.workspace }}/target/debug/lingxia
-        run: bash scripts/release/sdk.sh --platform apple --out dist/sdk-ci --no-shasums
+        run: cargo xtask sdk --platform apple --out dist/sdk-ci --cli "$LINGXIA_CLI"
 
       - name: Test linkable Apple admission and Settings contracts
         run: bash scripts/ci/control-security-gates.sh apple

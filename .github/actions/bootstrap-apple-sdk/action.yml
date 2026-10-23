@@ -16,7 +16,7 @@ inputs:
 runs:
   using: composite
   steps:
-    # Localized strings (.lproj) and PDF icons — same step scripts/release/sdk.sh
+    # Localized strings (.lproj) and PDF icons — same step `cargo xtask sdk`
     # runs when packaging the apple SDK.
     - name: Generate apple SDK resources (i18n + icons)
       shell: bash

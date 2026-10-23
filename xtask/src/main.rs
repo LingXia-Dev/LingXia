@@ -1,11 +1,11 @@
-//! `cargo xtask sdk`: build one platform SDK artifact from this checkout.
+//! `cargo xtask sdk`: build platform SDK artifacts from this checkout.
 //!
-//! The one build path for both the release (scripts/release/sdk.sh adds
-//! checksums and the upload) and `lingxia pin`, which builds a pinned
-//! commit's SDKs with that commit's own steps. It only orchestrates: cargo,
+//! The one build path for the release workflow (which uploads what this
+//! writes), CI, and `lingxia pin`, which builds a pinned commit's SDKs with
+//! that commit's own steps. It only orchestrates: cargo,
 //! Gradle and hvigor decide what is stale, and nothing here touches the
 //! network beyond what those tools do or publishes anything. Tool output goes
-//! to stderr; stdout carries only the artifact path.
+//! to stderr; stdout carries only the artifact paths.
 
 use anyhow::{Context, Result, bail};
 use std::fs;
@@ -13,8 +13,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-const USAGE: &str = "usage: cargo xtask sdk --platform <apple|android|harmony> --out <dir> \
-[--cli <lingxia>] [--android-maven-dir <dir>] [--no-zip]";
+const USAGE: &str = "usage: cargo xtask sdk --platform <apple|android|harmony|all> --out <dir> \
+[--cli <lingxia>] [--checksums] [--android-maven-dir <dir>] [--no-zip]";
 
 #[derive(Clone, Copy, PartialEq)]
 enum Platform {
@@ -23,8 +23,20 @@ enum Platform {
     Harmony,
 }
 
+impl Platform {
+    fn name(self) -> &'static str {
+        match self {
+            Platform::Apple => "apple",
+            Platform::Android => "android",
+            Platform::Harmony => "harmony",
+        }
+    }
+}
+
 struct Args {
-    platform: Platform,
+    platforms: Vec<Platform>,
+    /// `SHASUMS256-<version>-<platforms>.txt` beside the artifacts.
+    checksums: bool,
     out: PathBuf,
     /// The `lingxia` that generates i18n and icons; compiled from this
     /// checkout when absent.
@@ -55,18 +67,50 @@ fn run() -> Result<()> {
     let out = args.out.canonicalize()?;
     let version = workspace_version(&root)?;
 
-    generate_resources(&root, &args)?;
-    let artifact = match args.platform {
-        Platform::Apple => build_apple(&root, &out, &version, args.zip)?,
-        Platform::Android => build_android(&root, &out, &version, &args)?,
-        Platform::Harmony => build_harmony(&root, &out, &version)?,
-    };
-    println!("{}", artifact.display());
+    let mut artifacts = Vec::new();
+    for &platform in &args.platforms {
+        eprintln!("==> Building the {} SDK", platform.name());
+        generate_resources(&root, platform, args.cli.as_deref())?;
+        let artifact = match platform {
+            Platform::Apple => build_apple(&root, &out, &version, args.zip)?,
+            Platform::Android => build_android(&root, &out, &version, &args)?,
+            Platform::Harmony => build_harmony(&root, &out, &version)?,
+        };
+        println!("{}", artifact.display());
+        artifacts.push(artifact);
+    }
+    if args.checksums {
+        let names: Vec<_> = args.platforms.iter().map(|p| p.name()).collect();
+        let sums = out.join(format!("SHASUMS256-{version}-{}.txt", names.join("-")));
+        write_checksums(&sums, &artifacts)?;
+        println!("{}", sums.display());
+    }
+    Ok(())
+}
+
+/// `<sha256>  <file name>` per artifact, as `sha256sum` writes it.
+fn write_checksums(path: &Path, artifacts: &[PathBuf]) -> Result<()> {
+    use sha2::Digest;
+    let mut text = String::new();
+    for artifact in artifacts {
+        if !artifact.is_file() {
+            bail!(
+                "--checksums needs files, but {} is not one (--no-zip?)",
+                artifact.display()
+            );
+        }
+        let digest = sha2::Sha256::digest(fs::read(artifact)?);
+        let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+        let name = artifact.file_name().unwrap_or_default().to_string_lossy();
+        text.push_str(&format!("{hex}  {name}\n"));
+    }
+    fs::write(path, text)?;
     Ok(())
 }
 
 fn parse(mut argv: impl Iterator<Item = String>) -> Result<Args> {
-    let mut platform = None;
+    let mut platforms = None;
+    let mut checksums = false;
     let mut out = None;
     let mut cli = None;
     let mut android_maven_dir = None;
@@ -75,13 +119,15 @@ fn parse(mut argv: impl Iterator<Item = String>) -> Result<Args> {
         let mut value = || argv.next().with_context(|| format!("{arg} needs a value"));
         match arg.as_str() {
             "--platform" => {
-                platform = Some(match value()?.to_ascii_lowercase().as_str() {
-                    "apple" | "ios" => Platform::Apple,
-                    "android" => Platform::Android,
-                    "harmony" => Platform::Harmony,
+                platforms = Some(match value()?.to_ascii_lowercase().as_str() {
+                    "apple" | "ios" => vec![Platform::Apple],
+                    "android" => vec![Platform::Android],
+                    "harmony" => vec![Platform::Harmony],
+                    "all" => vec![Platform::Apple, Platform::Android, Platform::Harmony],
                     other => bail!("unknown platform {other}\n{USAGE}"),
                 })
             }
+            "--checksums" => checksums = true,
             "--out" => out = Some(PathBuf::from(value()?)),
             "--cli" => cli = Some(PathBuf::from(value()?)),
             "--android-maven-dir" => android_maven_dir = Some(PathBuf::from(value()?)),
@@ -90,7 +136,8 @@ fn parse(mut argv: impl Iterator<Item = String>) -> Result<Args> {
         }
     }
     Ok(Args {
-        platform: platform.context(USAGE)?,
+        platforms: platforms.context(USAGE)?,
+        checksums,
         out: out.context(USAGE)?,
         cli,
         android_maven_dir,
@@ -148,11 +195,11 @@ fn tool(name: &str) -> String {
     name.to_string()
 }
 
-fn generate_resources(root: &Path, args: &Args) -> Result<()> {
+fn generate_resources(root: &Path, platform: Platform, cli: Option<&Path>) -> Result<()> {
     eprintln!("==> Generating SDK resources");
     let i18n = root.join("i18n");
     let icons = root.join("design/icons/svg");
-    let (i18n_out, icons_out) = match args.platform {
+    let (i18n_out, icons_out) = match platform {
         Platform::Apple => (
             vec!["--no-android", "--no-harmony", "--ios-out"],
             "--ios-out",
@@ -166,7 +213,7 @@ fn generate_resources(root: &Path, args: &Args) -> Result<()> {
             "--harmony-out",
         ),
     };
-    let (res_dir, icons_dir) = match args.platform {
+    let (res_dir, icons_dir) = match platform {
         Platform::Apple => (
             root.join("lingxia-sdk/apple/Sources/Resources"),
             root.join("lingxia-sdk/apple/Sources/Resources/icons"),
@@ -188,7 +235,7 @@ fn generate_resources(root: &Path, args: &Args) -> Result<()> {
     i18n_args.extend(i18n_out);
     i18n_args.push(&res_dir);
     let icons_args = ["gen", "icons", "--input", &icons, icons_out, &icons_dir];
-    match &args.cli {
+    match cli {
         Some(cli) => {
             let cli = cli.to_string_lossy();
             run_in(root, &cli, &i18n_args, &[])?;
