@@ -14,9 +14,15 @@ fn footer_action_separator_height() -> i32 {
     crate::dpi::px(1)
 }
 
-/// Icon and padding plus about six CJK characters of value text; matches macOS.
-fn footer_action_value_cell_min_width() -> i32 {
-    crate::dpi::px(118)
+/// Icon, padding and the whole value, or about two CJK characters and the
+/// ellipsis of a longer one (`DT_END_ELLIPSIS` draws three dots); matches macOS.
+fn footer_action_value_cell_min_width(value: &str, measure: &dyn Fn(&str) -> i32) -> i32 {
+    let inset = (footer_action_size() - footer_action_icon_size()) / 2;
+    let chrome = inset
+        + footer_action_icon_size()
+        + footer_action_icon_text_gap()
+        + footer_action_cell_padding();
+    chrome + measure(value).min(measure("\u{4E00}\u{4E00}..."))
 }
 
 /// Between icon buttons in a row; rows stay `footer_action_gap()` apart.
@@ -25,19 +31,28 @@ fn footer_action_icon_gap() -> i32 {
 }
 
 /// Declaration order is visual order. Icon buttons pack left to right; a value
-/// cell joins the icons before it when its minimum width still fits, takes the
-/// rest of that row, and ends it — whatever follows starts the next row.
+/// cell joins the icons before it when its minimum width fits (or when a single
+/// icon precedes it, which never stands alone), takes the rest of that row, and
+/// ends it — whatever follows starts the next row.
 fn footer_action_rows(
     width: i32,
     footer_actions: &[WindowsShellFooterActionLayout],
+) -> Vec<Range<usize>> {
+    footer_action_rows_measured(width, footer_actions, &measure_chrome_text_width)
+}
+
+fn footer_action_rows_measured(
+    width: i32,
+    footer_actions: &[WindowsShellFooterActionLayout],
+    measure: &dyn Fn(&str) -> i32,
 ) -> Vec<Range<usize>> {
     let available = (width - 2 * footer_action_margin()).max(1);
     let mut rows = Vec::new();
     let mut row_start = 0;
     let mut used = 0;
     for (index, item) in footer_actions.iter().enumerate() {
-        let cell = if item.value.is_some() {
-            footer_action_value_cell_min_width()
+        let cell = if let Some(value) = &item.value {
+            footer_action_value_cell_min_width(value, measure)
         } else {
             footer_action_size()
         }
@@ -47,7 +62,8 @@ fn footer_action_rows(
         } else {
             used + footer_action_icon_gap() + cell
         };
-        if index > row_start && next > available {
+        let keeps_lone_icon = item.value.is_some() && index - row_start == 1;
+        if index > row_start && next > available && !keeps_lone_icon {
             rows.push(row_start..index);
             row_start = index;
             used = cell;
@@ -354,6 +370,17 @@ mod tests {
         );
     }
 
+    /// Ten pixels a character, so minimums do not depend on installed fonts.
+    fn rows(width: i32, items: &[WindowsShellFooterActionLayout]) -> Vec<Range<usize>> {
+        footer_action_rows_measured(width, items, &|text| text.chars().count() as i32 * 10)
+    }
+
+    #[test]
+    fn one_icon_and_a_long_value_share_the_standard_row() {
+        let items = vec![item("agent"), valued("brand", "浮生若梦品牌店长名称测试")];
+        assert_eq!(rows(184, &items), vec![0..2]);
+    }
+
     #[test]
     fn a_value_cell_joins_preceding_icons_when_its_minimum_fits() {
         // [a, B, c, d, E] where capitals carry a value.
@@ -364,7 +391,28 @@ mod tests {
             item("d"),
             valued("e", "Downtown"),
         ];
-        assert_eq!(footer_action_rows(184, &items), vec![0..2, 2..4, 4..5]);
+        assert_eq!(rows(184, &items), vec![0..2, 2..5]);
+    }
+
+    #[test]
+    fn a_value_after_a_full_row_of_icons_starts_its_own_row() {
+        let mut items: Vec<_> = (0..5).map(|i| item(&format!("a{i}"))).collect();
+        items.push(valued("brand", "Tamkoko"));
+        assert_eq!(rows(184, &items), vec![0..5, 5..6]);
+    }
+
+    #[test]
+    fn a_single_icon_stays_beside_a_value_that_does_not_fit() {
+        // Too narrow for one icon and the value's minimum.
+        let width = 2 * footer_action_margin() + 100;
+        assert_eq!(
+            rows(width, &[item("a"), valued("b", "Tamkoko")]),
+            vec![0..2]
+        );
+        assert_eq!(
+            rows(width, &[item("a"), item("b"), valued("c", "Tamkoko")]),
+            vec![0..2, 2..3]
+        );
     }
 
     #[test]
@@ -384,7 +432,10 @@ mod tests {
         assert_eq!(agent.top, brand.top);
         assert_eq!(agent.right + footer_action_icon_gap(), brand.left);
         assert_eq!(brand.right, tabbar_rect.right - footer_action_margin());
-        assert!(rect_width(&brand) >= footer_action_value_cell_min_width());
+        assert!(
+            rect_width(&brand)
+                >= footer_action_value_cell_min_width("Acme", &measure_chrome_text_width)
+        );
     }
 
     #[test]

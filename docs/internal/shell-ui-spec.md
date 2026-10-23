@@ -700,16 +700,20 @@ Expanded footer geometry:
 - An entry without `value` is a square **30** icon button; icon buttons in a
   row are **2** apart (the header's action spacing), so the standard width
   fits four on macOS and five on Windows. An entry with `value` is a value
-  cell: icon and `value` on one line, tail-truncated, minimum width **118**
-  (icon and padding plus about six CJK characters). Its icon sits on the icon
-  buttons' column.
+  cell: icon and `value` on one line, tail-truncated. Its minimum width is
+  measured: icon and padding plus the whole value, or plus about two CJK
+  characters and the ellipsis when the value is longer. Its icon sits on the
+  icon buttons' column.
 - Declaration order is visual order. Icon buttons wrap only when the next one
   does not fit. A value cell joins the icon buttons before it when its minimum
-  still fits (otherwise it starts the next row), takes the rest of the row, and
-  ends it: whatever follows starts a new row. `label` is never drawn.
+  fits, takes the rest of the row (the whole value once it fits), and ends it:
+  whatever follows starts a new row. When the minimum does not fit, the value
+  starts the next row, except after a single icon button, which it keeps
+  beside it, truncating further: one icon never stands alone above a value.
+  So one icon and one value always share a row. `label` is never drawn.
 
   ```
-  [a, B, c, d, E]   (capitals carry a value; a width where one icon + B fits)
+  [a, B, c, d, E]   (capitals carry a value; c, d and E's minimum overflow)
   │ a │ B value…          │
   │ c │ d                 │
   │ E value…              │
