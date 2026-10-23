@@ -71,6 +71,13 @@ fn generate_swift_bridge() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let generated_dir = workspace_root(&manifest_dir).join("lingxia-sdk/apple/Sources/generated");
     let lib_dir = generated_dir.join("LingXiaRustAPI");
+    // The output lives in the (ignored) source tree; rerun when it is gone.
+    println!(
+        "cargo:rerun-if-changed={}",
+        lib_dir
+            .join("LingXiaRustAPI/LingXiaRustAPI.swift")
+            .display()
+    );
     let temp_dir = PathBuf::from(env::var("OUT_DIR").unwrap()).join("swift-bridge-generated");
 
     fs::create_dir_all(&lib_dir).expect("Failed to create directory");

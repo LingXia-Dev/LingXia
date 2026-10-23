@@ -474,6 +474,18 @@ fn build_in_checkout(
     }
     let built = find_file(&out, asset_name)
         .ok_or_else(|| anyhow!("{} did not produce {asset_name}", script.display()))?;
+    // The Swift package names these generated targets; an SDK cached without
+    // them fails every app build after this one.
+    if platform == SdkPlatform::Apple {
+        let generated = checkout.join("lingxia-sdk/apple/Sources/generated");
+        for target in ["LingXiaRustAPI", "LingXiaSwiftAPI"] {
+            if !generated.join(target).is_dir() {
+                bail!(
+                    "the Apple SDK built from {label} has no Sources/generated/{target}; not caching it"
+                );
+            }
+        }
+    }
     let bytes = fs::read(&built).with_context(|| format!("read {}", built.display()))?;
     let _ = fs::remove_dir_all(&out);
     Ok(bytes)

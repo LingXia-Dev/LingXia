@@ -380,7 +380,7 @@ refresh_ios_generated() {
   local gen_dir="$APPLE_SDK_DIR/Sources/generated"
   local sentinel="$gen_dir/SwiftBridgeCore.h"
 
-  if [[ ! -f "$sentinel" ]]; then
+  if [[ ! -f "$sentinel" ]] || [[ ! -d "$gen_dir/LingXiaSwiftAPI" ]] || [[ ! -d "$gen_dir/LingXiaRustAPI" ]]; then
     log "==> Refreshing iOS Sources/generated (missing)"
   else
     local needs=false
@@ -392,6 +392,11 @@ refresh_ios_generated() {
       needs=true
     fi
     if [[ -f "$LINGXIA_CORE_CRATE_DIR/build.rs" ]] && [[ "$LINGXIA_CORE_CRATE_DIR/build.rs" -nt "$sentinel" ]]; then
+      needs=true
+    fi
+    # lingxia-platform's build script generates LingXiaSwiftAPI.
+    local platform_dir="$ROOT_DIR/crates/lingxia-platform"
+    if [[ -d "$platform_dir/src" ]] && find "$platform_dir/src" "$platform_dir/build.rs" "$platform_dir/Cargo.toml" -newer "$sentinel" 2>/dev/null | head -n 1 | grep -q .; then
       needs=true
     fi
     if [[ -f "$ROOT_DIR/Cargo.lock" ]] && [[ "$ROOT_DIR/Cargo.lock" -nt "$sentinel" ]]; then

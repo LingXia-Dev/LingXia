@@ -319,19 +319,23 @@ pub fn ensure_source(
         &["checkout", "-q", "--force", "--detach", "FETCH_HEAD"],
         "git checkout",
     )?;
-    // The last commit's generated files go; its build output stays for an
-    // incremental build. `node_modules` goes too: the lockfile may differ.
+    // Untracked files of the last commit go; ignored ones stay, as in any
+    // checkout switched with git: build scripts write generated sources
+    // there (`lingxia-sdk/apple/Sources/generated`) and rerun only when
+    // their inputs change, so deleting them under a kept `target/` loses
+    // them. `node_modules` goes: the lockfile may differ.
     run(
-        &[
-            "clean",
-            "-ffdxq",
-            "-e",
-            "/target/",
-            "-e",
-            &format!("/{SOURCE_LOCK}"),
-        ],
+        &["clean", "-ffdq", "-e", &format!("/{SOURCE_LOCK}")],
         "git clean",
     )?;
+    // The release script skips regenerating Swift bridges while this file
+    // is newer than the core crate, which a switch does not guarantee (it
+    // never looks at lingxia-platform). Without it, cargo decides.
+    let _ = fs::remove_file(dest.join("lingxia-sdk/apple/Sources/generated/SwiftBridgeCore.h"));
+    let modules = dest.join("packages").join("node_modules");
+    if modules.exists() {
+        fs::remove_dir_all(&modules).with_context(|| format!("remove {}", modules.display()))?;
+    }
     fs::write(dest.join(SOURCE_READY), commit)?;
     Ok(dest)
 }
