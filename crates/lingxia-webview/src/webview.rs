@@ -46,9 +46,9 @@ pub(crate) struct WebViewInner {
 use crate::traits::{
     AsyncSchemeHandler, ClickOptions, ContextualSchemeRequest, DownloadHandler, DownloadRequest,
     FileChooserRequest, FileChooserResponse, FillOptions, NativeWebViewId, NavigationHandler,
-    NavigationPolicy, NavigationRequest, NewWindowHandler, NewWindowPolicy, PressOptions,
-    SchemeOutcome, SchemeRequestFrame, ScrollOptions, TypeOptions, UserAgentOverride,
-    WebMessageContext, WebMessageFrame, WebMessageSource, WebMessageTransport,
+    NavigationPolicy, NavigationRequest, NewWindowHandler, NewWindowPolicy, PointerInput,
+    PressOptions, SchemeOutcome, SchemeRequestFrame, ScreenshotRegion, ScrollOptions, TypeOptions,
+    UserAgentOverride, WebMessageContext, WebMessageFrame, WebMessageSource, WebMessageTransport,
     WebViewInputController,
 };
 use crate::{
@@ -2142,6 +2142,37 @@ impl WebView {
         self.inner.take_screenshot().await
     }
 
+    pub async fn take_screenshot_region(
+        &self,
+        region: ScreenshotRegion,
+    ) -> Result<Vec<u8>, WebViewError> {
+        self.inner.take_screenshot_region(region).await
+    }
+
+    /// Browser-level pointer input at viewport coordinates, which the page
+    /// cannot tell from a real mouse (`isTrusted`, `:hover`, default
+    /// actions). `Unsupported` where the WebView offers no such channel;
+    /// callers then synthesize DOM events instead.
+    pub async fn trusted_pointer(&self, _input: PointerInput) -> Result<(), WebViewInputError> {
+        #[cfg(all(feature = "webview-input", target_os = "windows"))]
+        {
+            return self.inner.trusted_pointer(_input).await;
+        }
+        #[allow(unreachable_code)]
+        Err(WebViewInputError::Unsupported("trusted pointer input"))
+    }
+
+    /// Browser-level text input into the focused element, committed the way
+    /// an IME commits it (composition events for non-ASCII text).
+    pub async fn trusted_insert_text(&self, _text: &str) -> Result<(), WebViewInputError> {
+        #[cfg(all(feature = "webview-input", target_os = "windows"))]
+        {
+            return self.inner.trusted_insert_text(_text).await;
+        }
+        #[allow(unreachable_code)]
+        Err(WebViewInputError::Unsupported("trusted text input"))
+    }
+
     pub async fn click(
         &self,
         selector: &str,
@@ -2282,6 +2313,13 @@ impl WebViewController for WebView {
     // shipped broken).
     async fn take_screenshot(&self) -> Result<Vec<u8>, WebViewError> {
         self.inner.take_screenshot().await
+    }
+
+    async fn take_screenshot_region(
+        &self,
+        region: ScreenshotRegion,
+    ) -> Result<Vec<u8>, WebViewError> {
+        self.inner.take_screenshot_region(region).await
     }
 
     async fn start_network_capture(&self) -> Result<(), WebViewError> {

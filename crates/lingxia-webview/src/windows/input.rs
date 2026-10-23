@@ -10,7 +10,10 @@
 
 use super::*;
 use crate::input_helper::build_helper_invocation;
-use crate::{ClickOptions, PressOptions, ScrollOptions, TypeOptions, WebViewInputError};
+use crate::{
+    ClickOptions, PointerButton, PointerInput, PressOptions, ScrollOptions, TypeOptions,
+    WebViewInputError,
+};
 use serde::Deserialize;
 use std::time::Duration;
 
@@ -321,9 +324,163 @@ impl WebViewInner {
     }
 }
 
+/// `code` and Windows virtual-key for a printable ASCII character, which
+/// sites read for shortcuts; punctuation keeps an empty code (layout-specific).
+fn ascii_key_code(ch: char) -> (String, u32) {
+    match ch {
+        'a'..='z' | 'A'..='Z' => {
+            let upper = ch.to_ascii_uppercase();
+            (format!("Key{upper}"), u32::from(upper))
+        }
+        '0'..='9' => (format!("Digit{ch}"), u32::from(ch)),
+        ' ' => ("Space".to_string(), 0x20),
+        _ => (String::new(), 0),
+    }
+}
+
+fn cdp_button(button: PointerButton) -> (&'static str, u8) {
+    match button {
+        PointerButton::Left => ("left", 1),
+        PointerButton::Right => ("right", 2),
+        PointerButton::Middle => ("middle", 4),
+    }
+}
+
+impl WebViewInner {
+    fn mouse_event(
+        &self,
+        kind: &str,
+        x: f64,
+        y: f64,
+        button: &str,
+        buttons: u8,
+        click_count: u32,
+    ) -> std::result::Result<(), WebViewInputError> {
+        self.cdp(
+            "Input.dispatchMouseEvent",
+            serde_json::json!({
+                "type": kind,
+                "x": x,
+                "y": y,
+                "button": button,
+                "buttons": buttons,
+                "clickCount": click_count,
+            }),
+        )
+    }
+
+    pub(crate) async fn trusted_pointer(
+        &self,
+        input: PointerInput,
+    ) -> std::result::Result<(), WebViewInputError> {
+        match input {
+            PointerInput::Click {
+                x,
+                y,
+                button,
+                count,
+            } => {
+                let (name, mask) = cdp_button(button);
+                self.mouse_event("mouseMoved", x, y, "none", 0, 0)?;
+                for click in 1..=count.max(1) {
+                    self.mouse_event("mousePressed", x, y, name, mask, click)?;
+                    self.mouse_event("mouseReleased", x, y, name, 0, click)?;
+                }
+                Ok(())
+            }
+            PointerInput::Move { x, y } => self.mouse_event("mouseMoved", x, y, "none", 0, 0),
+            PointerInput::Drag { from, to } => {
+                self.mouse_event("mouseMoved", from.0, from.1, "none", 0, 0)?;
+                self.mouse_event("mousePressed", from.0, from.1, "left", 1, 1)?;
+                // Intermediate moves let drag thresholds and dragover fire.
+                const STEPS: u32 = 8;
+                for step in 1..=STEPS {
+                    let t = f64::from(step) / f64::from(STEPS);
+                    let x = from.0 + (to.0 - from.0) * t;
+                    let y = from.1 + (to.1 - from.1) * t;
+                    self.mouse_event("mouseMoved", x, y, "left", 1, 0)?;
+                    tokio::time::sleep(Duration::from_millis(16)).await;
+                }
+                self.mouse_event("mouseReleased", to.0, to.1, "left", 0, 1)
+            }
+        }
+    }
+
+    /// Printable ASCII goes key by key (keydown/keypress/input/keyup); any
+    /// other run is committed through an IME composition, as a CJK input
+    /// method delivers it.
+    pub(crate) async fn trusted_insert_text(
+        &self,
+        text: &str,
+    ) -> std::result::Result<(), WebViewInputError> {
+        let mut composed = String::new();
+        let flush = |run: &mut String| -> std::result::Result<(), WebViewInputError> {
+            if run.is_empty() {
+                return Ok(());
+            }
+            let len = run.encode_utf16().count();
+            self.cdp(
+                "Input.imeSetComposition",
+                serde_json::json!({ "text": run, "selectionStart": len, "selectionEnd": len }),
+            )?;
+            self.cdp("Input.insertText", serde_json::json!({ "text": run }))?;
+            run.clear();
+            Ok(())
+        };
+        for ch in text.chars() {
+            if ch.is_ascii_graphic() || ch == ' ' {
+                flush(&mut composed)?;
+                let key = ch.to_string();
+                let (code, virtual_key) = ascii_key_code(ch);
+                self.cdp(
+                    "Input.dispatchKeyEvent",
+                    serde_json::json!({
+                        "type": "keyDown",
+                        "key": key,
+                        "code": code,
+                        "text": key,
+                        "unmodifiedText": key,
+                        "windowsVirtualKeyCode": virtual_key,
+                        "nativeVirtualKeyCode": virtual_key,
+                    }),
+                )?;
+                self.cdp(
+                    "Input.dispatchKeyEvent",
+                    serde_json::json!({
+                        "type": "keyUp",
+                        "key": key,
+                        "code": code,
+                        "windowsVirtualKeyCode": virtual_key,
+                        "nativeVirtualKeyCode": virtual_key,
+                    }),
+                )?;
+            } else if ch == '\n' {
+                flush(&mut composed)?;
+                self.press_inner("enter", PressOptions::default()).await?;
+            } else if ch == '\t' {
+                flush(&mut composed)?;
+                self.press_inner("tab", PressOptions::default()).await?;
+            } else if ch == '\r' {
+                // Part of a CRLF; the LF presses Enter.
+            } else {
+                composed.push(ch);
+            }
+        }
+        flush(&mut composed)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::LEFT_CLICK_SEQUENCE;
+    use super::{LEFT_CLICK_SEQUENCE, ascii_key_code};
+
+    #[test]
+    fn ascii_keys_carry_code_and_virtual_key() {
+        assert_eq!(ascii_key_code('a'), ("KeyA".to_string(), 0x41));
+        assert_eq!(ascii_key_code('7'), ("Digit7".to_string(), 0x37));
+        assert_eq!(ascii_key_code(' '), ("Space".to_string(), 0x20));
+        assert_eq!(ascii_key_code('@'), (String::new(), 0));
+    }
 
     #[test]
     fn click_release_clears_button_mask() {
