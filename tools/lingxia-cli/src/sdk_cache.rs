@@ -346,7 +346,7 @@ fn ensure_pinned_sdk(pinned: &crate::pin::Pin, platform: SdkPlatform) -> Result<
     install_asset(platform, &dest, &pinned.commit, &bytes)
 }
 
-/// An SDK built from the `LINGXIA_SOURCE` working tree, cached in the
+/// An SDK built from the local LingXia working tree, cached in the
 /// project by the tree's HEAD and uncommitted changes.
 fn ensure_override_sdk(
     project_root: &Path,
@@ -364,7 +364,13 @@ fn ensure_override_sdk(
     }
     require_build_tools(platform, &key)?;
     let version = crate::pin::manifest_version(&source.join("Cargo.toml"))?;
-    let bytes = build_in_checkout(source, &key, platform, &platform.asset_name(&version))?;
+    let bytes = build_in_checkout(
+        source,
+        &key,
+        platform,
+        &platform.asset_name(&version),
+        false,
+    )?;
     install_asset(platform, &dest, &key, &bytes)
 }
 
@@ -377,7 +383,8 @@ fn build_from_source(
 ) -> Result<Vec<u8>> {
     require_build_tools(platform, pinned.short_commit())?;
     let checkout = crate::pin::ensure_source(&pinned.git, &pinned.commit, Some(&pinned.reference))?;
-    build_in_checkout(&checkout, pinned.short_commit(), platform, asset_name)
+    let bytes = build_in_checkout(&checkout, pinned.short_commit(), platform, asset_name, true)?;
+    Ok(bytes)
 }
 
 fn require_build_tools(platform: SdkPlatform, label: &str) -> Result<()> {
@@ -402,6 +409,7 @@ fn build_in_checkout(
     label: &str,
     platform: SdkPlatform,
     asset_name: &str,
+    discard_target: bool,
 ) -> Result<Vec<u8>> {
     // One build at a time per checkout: two platforms or two projects would
     // otherwise share its node_modules and output directories.
@@ -445,7 +453,14 @@ fn build_in_checkout(
     }
     let built = find_file(&out, asset_name)
         .ok_or_else(|| anyhow!("{} did not produce {asset_name}", script.display()))?;
-    fs::read(&built).with_context(|| format!("read {}", built.display()))
+    let bytes = fs::read(&built).with_context(|| format!("read {}", built.display()))?;
+    if discard_target {
+        // A pinned commit's build output is gigabytes and the SDK is now
+        // cached; still under the lock, so no other build is using it.
+        let _ = crate::pin::remove_tree(&checkout.join("target"));
+        let _ = fs::remove_dir_all(&out);
+    }
+    Ok(bytes)
 }
 
 fn source_build_tools(platform: SdkPlatform) -> &'static [&'static str] {

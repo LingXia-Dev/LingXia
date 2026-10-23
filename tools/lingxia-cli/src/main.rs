@@ -568,11 +568,13 @@ session per project and target: starting another takes over the old one.
     },
 
     /// Record the LingXia source this project builds against (lingxia.lock):
-    /// a release tag, a branch, or a commit of the official repo or a fork
+    /// a release tag, a branch, or a commit of the official repo or a fork;
+    /// or build a local checkout without touching the lock
     Pin {
         /// Tag, branch, or full commit (default: the lock's ref, else this
-        /// CLI's release)
-        #[arg(value_name = "REF")]
+        /// CLI's release); or a path (./, ../, /, ~) to a local LingXia
+        /// checkout, kept in the untracked .lingxia/source.local
+        #[arg(value_name = "REF|PATH")]
         reference: Option<String>,
         /// Git URL of the LingXia source, e.g. a fork (default: the lock's,
         /// else the official repository)
@@ -581,6 +583,9 @@ session per project and target: starting another takes over the old one.
         /// Change nothing; exit 1 when the project drifted from the lock
         #[arg(long, conflicts_with_all = ["reference", "git"])]
         check: bool,
+        /// Stop building the local checkout; builds use the lock again
+        #[arg(long, conflicts_with_all = ["reference", "git", "check"])]
+        no_local: bool,
     },
 
     /// Show LingXia CLI version information
@@ -1168,11 +1173,13 @@ fn main() -> Result<()> {
             reference,
             git,
             check,
+            no_local,
         } => {
             let code = commands::pin::execute(commands::pin::PinArgs {
                 reference,
                 git,
                 check,
+                no_local,
             })?;
             if code != 0 {
                 std::process::exit(code);
