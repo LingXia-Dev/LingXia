@@ -1,7 +1,7 @@
 //! The pin's half of the root `Cargo.toml`: `[patch.crates-io]` entries that
-//! point LingXia crates at the pinned commit's checkout in `.lingxia/`, each
-//! marked `# lingxia.lock` so a later pin replaces exactly these lines and
-//! nothing the project wrote itself. The checkout is already there for the
+//! point LingXia crates at the pinned commit's checkout in `.lingxia/`, in
+//! one block between `# lingxia.lock` comments, so a later pin replaces
+//! exactly these lines and nothing the project wrote itself. The checkout is already there for the
 //! SDKs, so cargo never fetches LingXia a second time.
 
 use anyhow::{Context, Result, bail};
@@ -15,7 +15,8 @@ const BLOCK_BEGIN: &str = "# lingxia.lock: managed by `lingxia pin`, which rewri
 const BLOCK_END: &str = "# end lingxia.lock";
 
 /// Each line with whether the pin manages it: one ending in the marker, or
-/// any line of the patch block.
+/// any line of the patch block. A block whose end line was lost stops at the
+/// next table, so the rest of the manifest is never taken for it.
 fn classify(content: &str) -> Vec<(bool, &str)> {
     let mut in_block = false;
     content
@@ -25,6 +26,9 @@ fn classify(content: &str) -> Vec<(bool, &str)> {
             if trimmed.starts_with("# lingxia.lock:") {
                 in_block = true;
                 return (true, line);
+            }
+            if in_block && is_header(line) {
+                in_block = false;
             }
             if in_block {
                 if trimmed == BLOCK_END {
@@ -38,6 +42,12 @@ fn classify(content: &str) -> Vec<(bool, &str)> {
 }
 const PATCH_HEADER: &str = "[patch.crates-io]";
 const WORKSPACE_HEADER: &str = "[workspace]";
+
+/// A table header as written, without a trailing comment or key quotes.
+fn header_is(line: &str, header: &str) -> bool {
+    let bare = line.split('#').next().unwrap_or("").trim().replace('"', "");
+    bare == header
+}
 /// Cargo makes a path dependency inside the workspace's directory a member,
 /// so LingXia's crates in `.lingxia/` would inherit the project's
 /// `[workspace.package]` instead of their own; excluded, they find theirs.
@@ -100,7 +110,7 @@ pub fn project_patches(content: &str) -> BTreeSet<String> {
         }
         if is_header(line) {
             let header = line.trim();
-            in_table = header == PATCH_HEADER;
+            in_table = header_is(header, PATCH_HEADER);
             if let Some(name) = header
                 .strip_prefix("[patch.crates-io.")
                 .and_then(|rest| rest.strip_suffix(']'))
@@ -147,14 +157,14 @@ pub fn rewrite(content: &str, patches: &[Patch]) -> (String, Vec<String>) {
             continue;
         }
         out.push_str(line);
-        if exclude && line.trim() == WORKSPACE_HEADER {
+        if exclude && header_is(line, WORKSPACE_HEADER) {
             if !line.ends_with('\n') {
                 out.push('\n');
             }
             out.push_str(&format!("{EXCLUDE_LINE} {MARKER}\n"));
             exclude = false;
         }
-        if !inserted && line.trim() == PATCH_HEADER {
+        if !inserted && header_is(line, PATCH_HEADER) {
             if !line.ends_with('\n') {
                 out.push('\n');
             }
@@ -171,7 +181,37 @@ pub fn rewrite(content: &str, patches: &[Patch]) -> (String, Vec<String>) {
         out.push('\n');
         out.push_str(&block);
     }
+    if lines.is_empty() {
+        out = drop_empty_patch_table(&out);
+    }
     (out, skipped)
+}
+
+/// The manifest without a `[patch.crates-io]` table that has no entries left
+/// (the pin added it), nor the blank line before it.
+fn drop_empty_patch_table(content: &str) -> String {
+    let lines: Vec<&str> = content.split_inclusive('\n').collect();
+    let Some(start) = lines.iter().position(|line| header_is(line, PATCH_HEADER)) else {
+        return content.to_string();
+    };
+    let end = lines[start + 1..]
+        .iter()
+        .position(|line| is_header(line))
+        .map_or(lines.len(), |offset| start + 1 + offset);
+    if lines[start + 1..end]
+        .iter()
+        .any(|line| entry_name(line).is_some())
+    {
+        return content.to_string();
+    }
+    let from = if start > 0 && lines[start - 1].trim().is_empty() {
+        start - 1
+    } else {
+        start
+    };
+    let mut out: String = lines[..from].concat();
+    out.push_str(&lines[end..].concat());
+    out
 }
 
 /// The project's own `[workspace] exclude` value, when it writes one (the
@@ -184,7 +224,7 @@ fn workspace_exclude(content: &str) -> Option<String> {
             if value.is_some() {
                 break;
             }
-            in_workspace = line.trim() == WORKSPACE_HEADER;
+            in_workspace = header_is(line, WORKSPACE_HEADER);
             continue;
         }
         if let Some(value) = value.as_mut() {
@@ -427,6 +467,32 @@ lto = true
             project_patches(&out).into_iter().collect::<Vec<_>>(),
             vec!["mine"]
         );
+    }
+
+    #[test]
+    fn clearing_removes_a_patch_table_the_pin_added_and_survives_a_lost_end() {
+        let plain = "[workspace]\nmembers = []\n\n[profile.release]\nlto = true\n";
+        let patches = [path_patch("lingxia", SOURCE_PATH, "crates/lingxia")];
+        let (pinned, _) = rewrite(plain, &patches);
+        assert_eq!(rewrite(&pinned, &[]).0, plain);
+
+        let lost_end = pinned.replace(&format!("{BLOCK_END}\n"), "");
+        let lost_end = lost_end.replace(
+            "[profile.release]",
+            "[patch.other]\nx = 1\n\n[profile.release]",
+        );
+        let (cleared, _) = rewrite(&lost_end, &[]);
+        assert!(
+            cleared.contains("[profile.release]\nlto = true"),
+            "{cleared}"
+        );
+        assert!(cleared.contains("[patch.other]"));
+
+        let commented =
+            "[workspace]\nmembers = []\n\n[patch.\"crates-io\"] # ours\nmine = { path = \"x\" }\n";
+        let (out, _) = rewrite(commented, &patches);
+        assert_eq!(out.matches("crates-io").count(), 1, "{out}");
+        assert!(out.contains("mine = { path = \"x\" }"));
     }
 
     #[test]

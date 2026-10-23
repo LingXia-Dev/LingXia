@@ -328,10 +328,16 @@ pub fn ensure_source(
         &["clean", "-ffdq", "-e", &format!("/{SOURCE_LOCK}")],
         "git clean",
     )?;
-    // The release script skips regenerating Swift bridges while this file
-    // is newer than the core crate, which a switch does not guarantee (it
-    // never looks at lingxia-platform). Without it, cargo decides.
-    let _ = fs::remove_file(dest.join("lingxia-sdk/apple/Sources/generated/SwiftBridgeCore.h"));
+    // The release script skips cargo while this file is newer than the core
+    // crate's sources, which a switch does not change, and it never looks at
+    // lingxia-platform. Aged, it hands the decision to cargo; deleted, it
+    // would not come back (the core build script does not rerun for it).
+    if let Ok(sentinel) = fs::File::options()
+        .write(true)
+        .open(dest.join("lingxia-sdk/apple/Sources/generated/SwiftBridgeCore.h"))
+    {
+        let _ = sentinel.set_modified(std::time::UNIX_EPOCH);
+    }
     let modules = dest.join("packages").join("node_modules");
     if modules.exists() {
         fs::remove_dir_all(&modules).with_context(|| format!("remove {}", modules.display()))?;
@@ -397,10 +403,11 @@ fn commit_in_release(commit: &str, release: &str) -> Result<bool> {
         ]),
         &format!("fetch {release}"),
     )?;
-    let status = git(&["-C", &dir, "merge-base", "--is-ancestor", commit, &tag])
-        .status()
+    // Quiet: a commit the release lacks is the expected answer, not an error.
+    let output = git(&["-C", &dir, "merge-base", "--is-ancestor", commit, &tag])
+        .output()
         .context("run git merge-base")?;
-    Ok(status.success())
+    Ok(output.status.success())
 }
 
 /// Undo a pin: the lock, the manifest's managed lines, the checkout and its
@@ -431,6 +438,21 @@ pub fn clear(project_root: &Path) -> Result<()> {
     }
     // The Claude link into the skill above.
     let _ = fs::remove_file(project_root.join(".claude").join("skills").join("lingxia"));
+    // Cargo.lock still names the checkout's crates; `--locked` builds refuse it.
+    if manifest.is_file() {
+        let output = Command::new("cargo")
+            .args(["metadata", "--format-version", "1", "--manifest-path"])
+            .arg(&manifest)
+            .output()
+            .context("run cargo metadata")?;
+        if !output.status.success() {
+            // The pin is gone either way; the next cargo build resolves again.
+            eprintln!(
+                "warning: Cargo.lock was not refreshed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+    }
     Ok(())
 }
 

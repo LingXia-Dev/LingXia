@@ -144,11 +144,7 @@ pub fn execute(root: &Path, check: bool, yes: bool) -> Result<i32> {
         }
         // Declining keeps the pin: the project's own line may predate the
         // pinned commit, and dropping it alone would lose what it pinned.
-        match confirm_project_upgrade(
-            major_minor(&pinned.workspace_version),
-            cli_compat_line(),
-            yes,
-        ) {
+        match confirm_drop_pin(&release, yes) {
             ProjectConfirmation::Accepted => {}
             ProjectConfirmation::Declined => {
                 println!("  Kept the pin.");
@@ -276,6 +272,28 @@ fn report_plan(root: &Path, prepared: &UpgradePlan) {
             }
             print_sdk_step(root, step, &prepared.sdk_version);
         }
+    }
+}
+
+fn confirm_drop_pin(release: &str, yes: bool) -> ProjectConfirmation {
+    if let Some(confirmation) = confirmation_without_prompt(yes, std::io::stdin().is_terminal()) {
+        if confirmation == ProjectConfirmation::Required {
+            println!(
+                "  {} Re-run in a terminal or pass --yes to drop the pin and follow {release}.",
+                "!".yellow()
+            );
+        }
+        return confirmation;
+    }
+    if Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!("Drop the pin and follow {release}?"))
+        .default(true)
+        .interact()
+        .unwrap_or(false)
+    {
+        ProjectConfirmation::Accepted
+    } else {
+        ProjectConfirmation::Declined
     }
 }
 

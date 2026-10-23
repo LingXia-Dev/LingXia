@@ -182,9 +182,20 @@ pub fn execute(args: PinArgs) -> Result<i32> {
         refresh_cargo_lock(&root)?;
         // Keep only what the project's graph uses: an unused patch warns on
         // every build and stays in Cargo.lock as `[[patch.unused]]`.
-        let unused = pin_cargo::unused_patches(
-            &fs::read_to_string(root.join("Cargo.lock")).unwrap_or_default(),
-        );
+        let lock_text = fs::read_to_string(root.join("Cargo.lock")).unwrap_or_default();
+        let unused = pin_cargo::unused_patches(&lock_text);
+        // Cargo also leaves a patch unused when the project's requirement does
+        // not take the pinned version, and resolves that crate from crates.io:
+        // that is a mismatch to fix, not a patch to drop.
+        let resolved = pin_cargo::locked_crates(&lock_text);
+        let mismatched: Vec<_> = unused.intersection(&resolved).cloned().collect();
+        if !mismatched.is_empty() {
+            bail!(
+                "{} resolved from crates.io, not the pinned source: the project requires a version off the pinned line {}; update the requirement and run `lingxia pin` again",
+                mismatched.join(", "),
+                pinned.workspace_version
+            );
+        }
         if patches.iter().any(|p| unused.contains(p.crate_name())) {
             patches.retain(|p| !unused.contains(p.crate_name()));
             let content = fs::read_to_string(&manifest)?;
