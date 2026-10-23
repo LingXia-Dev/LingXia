@@ -570,10 +570,15 @@ struct PanelIconItem {
     var source: SidebarActionSource = .runtime
     var systemImageName: String? = nil
 
+    /// `value` unless it repeats `label`, which is then shown once.
+    var distinctValue: String? {
+        value == label ? nil : value
+    }
+
     /// `label`, or `label` and `value` joined, so an icon-only or truncated
     /// cell still carries the full value.
     var tooltipText: String {
-        guard let value else { return label }
+        guard let value = distinctValue else { return label }
         return label + L10n.string("lx_sidebar_action_value_separator") + value
     }
 }
@@ -1604,7 +1609,7 @@ class SidebarView: NSView {
             )
             button.action = #selector(railSidebarActionClicked(_:))
             button.setAccessibilityLabel(item.label)
-            button.setAccessibilityValue(item.value)
+            button.setAccessibilityValue(item.distinctValue)
             button.isEnabled = !item.disabled
             railFooterStack.addArrangedSubview(button)
             railButtons[key] = button
@@ -3398,7 +3403,7 @@ final class SidebarActionRowView: NSView {
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel(label)
-        setAccessibilityValue(value)
+        setAccessibilityValue(value == label ? nil : value)
 
         // sidebar action entries are TOP-LEVEL rows: hover rect and icon axis copy
         // the web-tab rows (full-row wash, radius 6, icon inset 8), not the
