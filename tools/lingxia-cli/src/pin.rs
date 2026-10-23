@@ -340,6 +340,28 @@ pub fn ensure_source(
     Ok(dest)
 }
 
+/// Put the lock's commit at `.lingxia/lingxia-src`, where the manifest's
+/// managed path patches point, unless a local source stands in for it.
+pub fn prepare_source(project_root: &Path) -> Result<()> {
+    if overrides::source(project_root)?.is_some() {
+        return Ok(());
+    }
+    let Some(lock) = read(project_root)? else {
+        return Ok(());
+    };
+    let pinned = lock.lingxia;
+    if pinned.is_official_release() {
+        return Ok(());
+    }
+    ensure_source(
+        project_root,
+        &pinned.git,
+        &pinned.commit,
+        Some(&pinned.reference),
+    )
+    .map(|_| ())
+}
+
 /// The pin covers native code only: crates and platform SDKs. Page JS
 /// (`@lingxia/bridge`, `@lingxia/polyfills`) is embedded in the CLI and npm
 /// packages come from the registry, both on the release line. A pinned
