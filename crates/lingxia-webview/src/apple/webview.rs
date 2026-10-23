@@ -2707,9 +2707,17 @@ impl WebViewInner {
                     const originalInfo = console.info;
 
                     function sendConsoleMessage(level, args) {
-                        const message = args.map(arg =>
-                            typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-                        ).join(' ');
+                        // Logging must never throw into the page (circular
+                        // objects, errors, revoked proxies).
+                        const message = args.map(arg => {
+                            try {
+                                if (arg instanceof Error) return arg.stack || String(arg);
+                                if (arg !== null && typeof arg === 'object') return JSON.stringify(arg);
+                                return String(arg);
+                            } catch (e) {
+                                try { return String(arg); } catch (_) { return '[unprintable]'; }
+                            }
+                        }).join(' ');
 
                         try {
                             // Use dedicated console handler (like Swift version)
@@ -2743,7 +2751,6 @@ impl WebViewInner {
                     };
                 })();
             "#;
-
                 // Inject console interceptor script
                 let console_js_string = NSString::from_str(console_script);
                 let console_user_script: *mut AnyObject = msg_send![user_script_class, alloc];
@@ -2793,6 +2800,19 @@ impl WebViewInner {
                 let _: () = msg_send![user_content_controller, addUserScript: hint_script];
                 // The controller retains the script; release the `alloc` reference.
                 let _ = Retained::from_raw(hint_script);
+            }
+
+            #[cfg(all(feature = "webview-input", target_os = "macos"))]
+            if !inject_platform_baseline {
+                let recorder = NSString::from_str(crate::input_helper::PAGE_CONSOLE_RECORDER);
+                let recorder_script: *mut AnyObject = msg_send![user_script_class, alloc];
+                let recorder_script: *mut AnyObject = msg_send![recorder_script,
+                    initWithSource: &*recorder,
+                    injectionTime: injection_time,
+                    forMainFrameOnly: true];
+                let _: () = msg_send![user_content_controller, addUserScript: recorder_script];
+                // The controller retains the script; release the `alloc` reference.
+                let _ = Retained::from_raw(recorder_script);
             }
 
             #[cfg(all(feature = "webview-input", target_os = "macos"))]
@@ -3100,6 +3120,138 @@ impl WebViewInner {
     /// which we round-trip through `TIFFRepresentation` → `NSBitmapImageRep` to get PNG bytes.
     #[cfg(target_os = "macos")]
     async fn take_screenshot_macos(&self) -> Result<Vec<u8>, WebViewError> {
+        self.take_snapshot_macos(None).await
+    }
+
+    /// The whole document: WebKit renders it as a single-page PDF, which is
+    /// rasterized here at the window's backing scale (capped so a very long
+    /// page stays within bitmap limits).
+    #[cfg(target_os = "macos")]
+    async fn take_full_page_macos(&self) -> Result<Vec<u8>, WebViewError> {
+        const PDF_TIMEOUT: Duration = Duration::from_secs(15);
+        const NS_BITMAP_PNG: u64 = 4;
+        const MAX_PIXELS: f64 = 16384.0;
+
+        let (tx, rx) = oneshot::channel::<Result<Vec<u8>, String>>();
+        let webview_retained_addr = self.retain_webview_for_dispatch();
+
+        DispatchQueue::main().exec_async(move || unsafe {
+            let (_webview_retained, webview_ptr) = dispatched_webview(webview_retained_addr);
+            let window: *mut AnyObject = msg_send![webview_ptr, window];
+            let backing: f64 = if window.is_null() {
+                1.0
+            } else {
+                msg_send![window, backingScaleFactor]
+            };
+            let tx_state = Arc::new(Mutex::new(Some(tx)));
+            let completion = StackBlock::new(move |data: *mut AnyObject, error: *mut NSError| {
+                let Some(sender) = tx_state.lock().ok().and_then(|mut guard| guard.take()) else {
+                    return;
+                };
+                if !error.is_null() || data.is_null() {
+                    let description = if error.is_null() {
+                        "createPDF returned no data".to_string()
+                    } else {
+                        let d: *mut NSString = msg_send![error, localizedDescription];
+                        if d.is_null() {
+                            "createPDF failed".to_string()
+                        } else {
+                            (&*d).to_string()
+                        }
+                    };
+                    let _ = sender.send(Err(description));
+                    return;
+                }
+                let image: *mut AnyObject = msg_send![class!(NSImage), alloc];
+                let image: *mut AnyObject = msg_send![image, initWithData: data];
+                if image.is_null() {
+                    let _ = sender.send(Err("could not read the page PDF".to_string()));
+                    return;
+                }
+                let image = Retained::from_raw(image).unwrap();
+                let size: NSSize = msg_send![&*image, size];
+                if size.width <= 0.0 || size.height <= 0.0 {
+                    let _ = sender.send(Err("page PDF is empty".to_string()));
+                    return;
+                }
+                let scale = backing
+                    .min(MAX_PIXELS / size.width)
+                    .min(MAX_PIXELS / size.height)
+                    .max(0.1);
+                let pixels_wide = (size.width * scale).round() as isize;
+                let pixels_high = (size.height * scale).round() as isize;
+                let color_space = NSString::from_str("NSDeviceRGBColorSpace");
+                let rep: *mut AnyObject = msg_send![class!(NSBitmapImageRep), alloc];
+                let rep: *mut AnyObject = msg_send![rep,
+                    initWithBitmapDataPlanes: std::ptr::null_mut::<*mut u8>(),
+                    pixelsWide: pixels_wide,
+                    pixelsHigh: pixels_high,
+                    bitsPerSample: 8isize,
+                    samplesPerPixel: 4isize,
+                    hasAlpha: true,
+                    isPlanar: false,
+                    colorSpaceName: &*color_space,
+                    bytesPerRow: 0isize,
+                    bitsPerPixel: 0isize];
+                if rep.is_null() {
+                    let _ = sender.send(Err("could not allocate the page bitmap".to_string()));
+                    return;
+                }
+                let rep = Retained::from_raw(rep).unwrap();
+                let _: () = msg_send![&*rep, setSize: size];
+                let context: *mut AnyObject =
+                    msg_send![class!(NSGraphicsContext), graphicsContextWithBitmapImageRep: &*rep];
+                let _: () = msg_send![class!(NSGraphicsContext), saveGraphicsState];
+                let _: () = msg_send![class!(NSGraphicsContext), setCurrentContext: context];
+                let white: *mut AnyObject = msg_send![class!(NSColor), whiteColor];
+                let _: () = msg_send![white, setFill];
+                let bounds = NSRect {
+                    origin: NSPoint { x: 0.0, y: 0.0 },
+                    size,
+                };
+                let _: () = msg_send![class!(NSBezierPath), fillRect: bounds];
+                let _: () = msg_send![&*image, drawInRect: bounds];
+                let _: () = msg_send![class!(NSGraphicsContext), restoreGraphicsState];
+
+                let props: Retained<NSDictionary<NSObject, NSObject>> = NSDictionary::dictionary();
+                let png: *mut AnyObject =
+                    msg_send![&*rep, representationUsingType: NS_BITMAP_PNG, properties: &*props];
+                if png.is_null() {
+                    let _ = sender.send(Err("could not encode the page PNG".to_string()));
+                    return;
+                }
+                let length: usize = msg_send![png, length];
+                let bytes: *const c_void = msg_send![png, bytes];
+                if bytes.is_null() || length == 0 {
+                    let _ = sender.send(Err("page PNG is empty".to_string()));
+                    return;
+                }
+                let bytes = std::slice::from_raw_parts(bytes.cast::<u8>(), length).to_vec();
+                let _ = sender.send(Ok(bytes));
+            })
+            .copy();
+            let _: () = msg_send![
+                webview_ptr,
+                createPDFWithConfiguration: std::ptr::null::<AnyObject>(),
+                completionHandler: &*completion
+            ];
+        });
+
+        match timeout(PDF_TIMEOUT, rx).await {
+            Ok(Ok(Ok(bytes))) => Ok(bytes),
+            Ok(Ok(Err(err))) => Err(WebViewError::WebView(err)),
+            Ok(Err(_)) => Err(WebViewError::WebView(
+                "full-page screenshot was canceled".to_string(),
+            )),
+            Err(_) => Err(WebViewError::WebView(
+                "full-page screenshot timed out".to_string(),
+            )),
+        }
+    }
+
+    /// `rect` is in the web view's (flipped, top-left origin) coordinates.
+    #[cfg(target_os = "macos")]
+    async fn take_snapshot_macos(&self, rect: Option<NSRect>) -> Result<Vec<u8>, WebViewError> {
         const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(5);
         // NSBitmapImageFileType raw value for NSBitmapImageFileTypePNG.
         const NS_BITMAP_PNG: u64 = 4;
@@ -3183,11 +3335,23 @@ impl WebViewInner {
             })
             .copy();
 
+            let configuration: *mut AnyObject = match rect {
+                Some(rect) => {
+                    let config: *mut AnyObject = msg_send![class!(WKSnapshotConfiguration), alloc];
+                    let config: *mut AnyObject = msg_send![config, init];
+                    let _: () = msg_send![config, setRect: rect];
+                    config
+                }
+                None => std::ptr::null_mut(),
+            };
             let _: () = msg_send![
                 webview_ptr,
-                takeSnapshotWithConfiguration: std::ptr::null::<AnyObject>(),
+                takeSnapshotWithConfiguration: configuration,
                 completionHandler: Some(&*completion)
             ];
+            if !configuration.is_null() {
+                let _ = Retained::from_raw(configuration);
+            }
         });
 
         match timeout(SNAPSHOT_TIMEOUT, rx).await {
@@ -3729,6 +3893,33 @@ impl WebViewController for WebViewInner {
         });
         rx.await
             .map_err(|_| WebViewError::WebView("cookie delete request was canceled".to_string()))?
+    }
+
+    #[cfg(target_os = "macos")]
+    async fn take_screenshot_region(
+        &self,
+        region: crate::ScreenshotRegion,
+    ) -> Result<Vec<u8>, WebViewError> {
+        match region {
+            crate::ScreenshotRegion::FullPage { .. } => self.take_full_page_macos().await,
+            crate::ScreenshotRegion::Clip {
+                x,
+                y,
+                width,
+                height,
+                scroll_x,
+                scroll_y,
+            } => {
+                let rect = NSRect {
+                    origin: NSPoint {
+                        x: x - scroll_x,
+                        y: y - scroll_y,
+                    },
+                    size: NSSize { width, height },
+                };
+                self.take_snapshot_macos(Some(rect)).await
+            }
+        }
     }
 
     async fn take_screenshot(&self) -> Result<Vec<u8>, WebViewError> {

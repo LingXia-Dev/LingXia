@@ -776,6 +776,14 @@ pub trait WebViewController: Send + Sync {
         ))
     }
 
+    /// Capture a PNG of a document region or the whole page.
+    async fn take_screenshot_region(
+        &self,
+        _region: ScreenshotRegion,
+    ) -> Result<Vec<u8>, WebViewError> {
+        Err(WebViewError::Unsupported("region screenshots".to_string()))
+    }
+
     /// Begin recording network requests/responses into a bounded per-webview
     /// buffer, retrievable via [`Self::network_entries`]. Dev-tooling only;
     /// implemented on platforms whose WebView exposes an inspection protocol
@@ -891,6 +899,52 @@ pub struct NetworkCaptureSnapshot {
     /// Entries evicted from the ring buffer since the last clear (buffer
     /// full). Surfaced so truncation is never silent.
     pub dropped: u64,
+}
+
+/// Part of the page a screenshot covers, in CSS pixels.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ScreenshotRegion {
+    /// The whole document, `width` x `height` from its origin.
+    FullPage { width: f64, height: f64 },
+    /// A rectangle in document coordinates. `scroll_x`/`scroll_y` are the
+    /// document's scroll offset when it was measured, for platforms that
+    /// capture in viewport coordinates.
+    Clip {
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        scroll_x: f64,
+        scroll_y: f64,
+    },
+}
+
+/// Trusted pointer input at viewport coordinates (CSS pixels).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PointerInput {
+    Click {
+        x: f64,
+        y: f64,
+        button: PointerButton,
+        count: u32,
+    },
+    Move {
+        x: f64,
+        y: f64,
+    },
+    Drag {
+        from: (f64, f64),
+        to: (f64, f64),
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PointerButton {
+    #[default]
+    Left,
+    Right,
+    Middle,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -30,6 +30,13 @@ use std::hash::{BuildHasher, Hash, Hasher};
 ))]
 pub(crate) const INPUT_HELPER_BOOTSTRAP: &str = include_str!("input_helper.js");
 
+/// Records a browser page's console in the page; see `page_console.js`.
+#[cfg(all(
+    feature = "webview-input",
+    any(target_os = "macos", target_os = "windows")
+))]
+pub(crate) const PAGE_CONSOLE_RECORDER: &str = include_str!("page_console.js");
+
 #[derive(Debug, Deserialize)]
 struct EvalEnvelope {
     ok: bool,

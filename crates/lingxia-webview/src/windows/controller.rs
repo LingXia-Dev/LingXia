@@ -915,6 +915,40 @@ impl WebViewController for WebViewInner {
         self.dispatch_screenshot_command()
     }
 
+    async fn take_screenshot_region(&self, region: crate::ScreenshotRegion) -> StdResult<Vec<u8>> {
+        use base64::Engine as _;
+        // CDP clips are in document coordinates; beyond-viewport capture
+        // renders what is scrolled away.
+        let (x, y, width, height) = match region {
+            crate::ScreenshotRegion::FullPage { width, height } => (0.0, 0.0, width, height),
+            crate::ScreenshotRegion::Clip {
+                x,
+                y,
+                width,
+                height,
+                ..
+            } => (x, y, width, height),
+        };
+        let reply = self.dispatch_cdp_command(
+            "Page.captureScreenshot",
+            serde_json::json!({
+                "format": "png",
+                "captureBeyondViewport": true,
+                "fromSurface": true,
+                "clip": { "x": x, "y": y, "width": width, "height": height, "scale": 1 },
+            }),
+        )?;
+        let value: serde_json::Value = serde_json::from_str(&reply)
+            .map_err(|err| WebViewError::WebView(format!("bad screenshot reply: {err}")))?;
+        let data = value
+            .get("data")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| WebViewError::WebView("screenshot reply has no data".to_string()))?;
+        base64::engine::general_purpose::STANDARD
+            .decode(data)
+            .map_err(|err| WebViewError::WebView(format!("bad screenshot data: {err}")))
+    }
+
     async fn list_cookies(&self) -> StdResult<Vec<WebViewCookie>> {
         self.dispatch_list_cookies()
     }
