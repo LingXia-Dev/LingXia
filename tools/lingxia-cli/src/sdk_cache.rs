@@ -411,6 +411,21 @@ fn require_build_tools(platform: SdkPlatform, label: &str) -> Result<()> {
     Ok(())
 }
 
+/// The `cargo xtask sdk` interface this CLI calls; see xtask/Cargo.toml.
+const XTASK_SDK_INTERFACE: i64 = 1;
+
+/// The pinned commit's `cargo xtask sdk` interface, if it has one.
+fn xtask_sdk_interface(checkout: &Path) -> Option<i64> {
+    let manifest = fs::read_to_string(checkout.join("xtask/Cargo.toml")).ok()?;
+    let table: toml::Table = manifest.parse().ok()?;
+    table
+        .get("package")?
+        .get("metadata")?
+        .get("lingxia")?
+        .get("sdk-interface")?
+        .as_integer()
+}
+
 /// Where a source build writes its artifact, inside the checkout.
 pub(crate) const SOURCE_BUILD_OUT: &str = "dist-sdk-pin";
 
@@ -442,38 +457,53 @@ fn build_in_checkout(
     let out = checkout.join(SOURCE_BUILD_OUT);
     let _ = fs::remove_dir_all(&out);
     let out_arg = out.to_string_lossy().into_owned();
-    let script = checkout.join("scripts/release/sdk.sh");
     println!(
         "Building the {} SDK from {label} (first build of this source)…",
         platform.shasums_slug(),
     );
-    let status = std::process::Command::new("bash")
-        .arg(&script)
-        .args([
-            "--platform",
-            platform.shasums_slug(),
-            "--out",
-            &out_arg,
-            "--no-shasums",
-        ])
+    let cli = std::env::current_exe().ok();
+    let (mut command, what) = match xtask_sdk_interface(checkout) {
+        Some(XTASK_SDK_INTERFACE) => {
+            let mut command = std::process::Command::new("cargo");
+            command.args(["run", "-q", "-p", "xtask", "--", "sdk"]);
+            command.args(["--platform", platform.shasums_slug(), "--out", &out_arg]);
+            // Resource generation uses this CLI instead of compiling the
+            // checkout's (minutes, every new commit).
+            if let Some(cli) = &cli {
+                command.arg("--cli").arg(cli);
+            }
+            (command, "cargo xtask sdk".to_string())
+        }
+        Some(newer) => bail!(
+            "{label} builds its SDKs through interface {newer}, newer than this CLI's {XTASK_SDK_INTERFACE}; run `lingxia upgrade`"
+        ),
+        // Commits from before `cargo xtask sdk` build through the release script.
+        None => {
+            let script = checkout.join("scripts/release/sdk.sh");
+            let mut command = std::process::Command::new("bash");
+            command.arg(&script).args([
+                "--platform",
+                platform.shasums_slug(),
+                "--out",
+                &out_arg,
+                "--no-shasums",
+            ]);
+            command.envs(cli.as_ref().map(|cli| ("LINGXIA_CLI", cli)));
+            (command, script.display().to_string())
+        }
+    };
+    let status = command
         .current_dir(checkout)
-        // The script reads its own `target/`; a project's `.cargo/config.toml`
+        // The build reads its own `target/`; a project's `.cargo/config.toml`
         // above a checkout inside it could move that.
         .env("CARGO_TARGET_DIR", checkout.join("target"))
-        // Its resource generation uses this CLI instead of compiling the
-        // checkout's (minutes, every new commit).
-        .envs(std::env::current_exe().ok().map(|cli| ("LINGXIA_CLI", cli)))
         .status()
-        .with_context(|| format!("run {}", script.display()))?;
+        .with_context(|| format!("run {what}"))?;
     if !status.success() {
-        bail!(
-            "{} failed for {}",
-            script.display(),
-            platform.shasums_slug()
-        );
+        bail!("{what} failed for {}", platform.shasums_slug());
     }
     let built = find_file(&out, asset_name)
-        .ok_or_else(|| anyhow!("{} did not produce {asset_name}", script.display()))?;
+        .ok_or_else(|| anyhow!("{what} did not produce {asset_name}"))?;
     // The Swift package names these generated targets; an SDK cached without
     // them fails every app build after this one.
     if platform == SdkPlatform::Apple {
@@ -603,6 +633,14 @@ fn extract_zip_strip_top(bytes: &[u8], out_dir: &Path, top: &str) -> Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn this_workspace_speaks_the_xtask_interface_this_cli_calls() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        assert_eq!(xtask_sdk_interface(&root), Some(XTASK_SDK_INTERFACE));
+        let older = tempfile::tempdir().unwrap();
+        assert_eq!(xtask_sdk_interface(older.path()), None);
+    }
 
     #[test]
     fn asset_names_match_sdk_sh_exactly() {
