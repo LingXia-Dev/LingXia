@@ -75,10 +75,6 @@ struct BuildOptions {
     #[arg(long, global = true)]
     release: bool,
 
-    /// LxApp view framework, for a project that ships pages in more than one
-    #[arg(long, global = true, value_parser = ["react", "vue", "html"])]
-    framework: Option<String>,
-
     /// LxApp progress output mode
     #[arg(long, value_parser = ["task", "plain"])]
     progress: Option<String>,
@@ -663,11 +659,6 @@ struct PublishArgs {
     #[arg(long = "channel", value_parser = ["release", "draft"])]
     channel: Option<String>,
 
-    /// Override lxapp view framework detection (multi-framework demo projects
-    /// only — a real project has exactly one; hidden from help)
-    #[arg(long, hide = true, value_parser = ["react", "vue", "html"])]
-    framework: Option<String>,
-
     /// LxApp progress output mode
     #[arg(long, value_parser = ["task", "plain"])]
     progress: Option<String>,
@@ -1059,7 +1050,6 @@ fn run() -> Result<()> {
                 release: build_options.release,
                 android_abis: platform_options.android_abis,
                 macos_arch: platform_options.macos_arch,
-                framework: build_options.framework,
                 progress: build_options.progress,
                 platforms: platform,
                 all_platforms,
@@ -1088,7 +1078,6 @@ fn run() -> Result<()> {
             commands::package::execute(commands::package::PackageExecuteOptions {
                 android_abis: package_options.android_abis,
                 macos_arch: package_options.macos_arch,
-                framework: package_options.framework,
                 progress: package_options.progress,
                 platforms: platform,
                 all_platforms,
@@ -1133,7 +1122,6 @@ fn run() -> Result<()> {
             commands::dev::execute(commands::dev::DevExecuteOptions {
                 target: dev_options.target,
                 release: dev_options.build_options.release,
-                framework: dev_options.build_options.framework,
                 progress: dev_options.build_options.progress,
                 device: dev_options.device,
                 platform_arg: dev_options.platform,
@@ -1399,7 +1387,6 @@ fn run() -> Result<()> {
                 package: args.package,
                 env: args.env,
                 channel: args.channel,
-                framework: args.framework,
                 progress: args.progress,
                 update_signing_key: args.update_signing_key,
                 dry_run: args.dry_run,
@@ -1732,8 +1719,6 @@ mod cli_tests {
             "android",
             "--port",
             "39447",
-            "--framework",
-            "react",
             "--release",
         ])
         .unwrap();
@@ -1742,10 +1727,7 @@ mod cli_tests {
         };
         assert_eq!(dev_options.platform.as_deref(), Some("android"));
         assert!(dev_options.build_options.release);
-        assert_eq!(
-            dev_options.build_options.framework.as_deref(),
-            Some("react")
-        );
+        assert!(Cli::try_parse_from(["lingxia", "dev", "--framework", "react"]).is_err());
         assert!(matches!(
             dev_options.action,
             Some(DevAction::Listen {
@@ -1757,16 +1739,8 @@ mod cli_tests {
 
     #[test]
     fn attach_listen_parses_session() {
-        let cli = Cli::try_parse_from([
-            "lingxia",
-            "dev",
-            "listen",
-            "--session",
-            "mark-win",
-            "--framework",
-            "react",
-        ])
-        .unwrap();
+        let cli =
+            Cli::try_parse_from(["lingxia", "dev", "listen", "--session", "mark-win"]).unwrap();
         let Commands::Dev { dev_options } = cli.command else {
             panic!("expected dev command");
         };

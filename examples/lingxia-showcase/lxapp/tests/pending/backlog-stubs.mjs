@@ -223,13 +223,6 @@ export default [
     reason: "used as helpers in workspace tests, not first-class specs",
   },
   {
-    id: "PEND-VUE-MATRIX-001",
-    title: "desktop contracts marked for Vue or macos-react-only",
-    mode: "planned",
-    covers: ["lx.surface.openDeclared"],
-    reason: "desktop files never run under Vue in CI",
-  },
-  {
     id: "PEND-ANDROID-001",
     title: "wave-1 chrome cases on the Android shared entry",
     mode: "planned",
@@ -241,7 +234,7 @@ export default [
     title: "Android DeviceDriver, wifi landscape, and PTR gesture",
     mode: "planned",
     covers: ["lx.startWifi"],
-    reason: "out of the Windows Showcase react run",
+    reason: "out of the Windows Showcase run",
   },
   {
     id: "PEND-TRUSTED-001",

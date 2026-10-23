@@ -19,6 +19,6 @@
       "@lingxia/page-types/*": ["./.lingxia/types/*"]
     }
   },
-  "include": ["pages/**/*.tsx", "pages/**/*.vue", "shared/**/*.ts", ".lingxia/types/**/*.d.ts", "global.d.ts"],
+  "include": ["pages/**/*.tsx", "shared/**/*.ts", ".lingxia/types/**/*.d.ts", "global.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

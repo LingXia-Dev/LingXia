@@ -462,7 +462,6 @@ mod native_main_scaffold_tests {
             &host_config,
             BuildProfile::Debug,
             None,
-            None,
             false,
             &[PlatformType::Windows],
             &[],

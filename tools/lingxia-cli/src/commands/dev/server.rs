@@ -76,13 +76,8 @@ impl DevServerHandle {
     }
 
     /// Build `app_id` once and publish it, before anything is watched.
-    pub fn rebuild_lxapp(
-        &self,
-        app_id: &str,
-        framework: Option<&str>,
-        release: bool,
-    ) -> Result<()> {
-        self.state.rebuild_lxapp(app_id, framework, release)
+    pub fn rebuild_lxapp(&self, app_id: &str, release: bool) -> Result<()> {
+        self.state.rebuild_lxapp(app_id, release)
     }
 
     /// Keep `app_id` open in the app; see [`DevServerState::present`].
@@ -94,16 +89,13 @@ impl DevServerHandle {
     /// The watcher thread starts even when nothing is watchable yet, so a
     /// standalone lxapp can attach later. A watcher failure is reported and
     /// ignored so the session still runs.
-    pub fn watch_lxapps(&mut self, framework: Option<&str>, release: bool) {
+    pub fn watch_lxapps(&mut self, release: bool) {
         if self.watch.is_some() {
             return;
         }
         match super::lxapp_watch::LxAppWatch::spawn(
             self.state.clone(),
-            super::lxapp_watch::LxAppWatchOptions {
-                framework: framework.map(ToOwned::to_owned),
-                release,
-            },
+            super::lxapp_watch::LxAppWatchOptions { release },
         ) {
             Ok(watch) => self.watch = watch,
             Err(err) => eprintln!("⚠ lxapp auto-reload not started ({err:#})"),
@@ -212,9 +204,6 @@ pub(crate) struct DevServerState {
     attached: Mutex<Vec<AttachedLxapp>>,
     /// Commands into the watcher thread. `None` until it is running.
     watch_commands: Mutex<Option<mpsc::Sender<super::lxapp_watch::WatchCmd>>>,
-    /// `--framework` this session was started with. An attach that omits one
-    /// builds with it.
-    watch_framework: Mutex<Option<String>>,
     /// `--release` this session was started with; an attach inherits it.
     watch_release: AtomicBool,
     /// Secret an attach must present. It is in a file only this user can
@@ -243,7 +232,6 @@ struct Presented {
 struct AttachedLxapp {
     app_id: String,
     source: PathBuf,
-    framework: Option<String>,
     release: bool,
 }
 
@@ -305,7 +293,6 @@ impl DevServerState {
             mocks_gated: AtomicBool::new(false),
             attached: Mutex::new(Vec::new()),
             watch_commands: Mutex::new(None),
-            watch_framework: Mutex::new(None),
             watch_release: AtomicBool::new(false),
             attach_token: Mutex::new(None),
             presented: Mutex::new(Vec::new()),
@@ -341,11 +328,7 @@ impl DevServerState {
             .clone()
     }
 
-    pub(super) fn set_watch_build(&self, framework: Option<String>, release: bool) {
-        *self
-            .watch_framework
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = framework;
+    pub(super) fn set_watch_build(&self, release: bool) {
         self.watch_release.store(release, Ordering::Release);
     }
 
@@ -355,13 +338,6 @@ impl DevServerState {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         expected.is_some() && expected.as_deref() == presented
-    }
-
-    fn watch_framework(&self) -> Option<String> {
-        self.watch_framework
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone()
     }
 
     fn attached_spec(&self, app_id: &str) -> Option<AttachedLxapp> {
@@ -958,28 +934,20 @@ impl DevServerState {
             .is_some_and(|(_, last_seen)| last_seen.elapsed() < TEST_RUN_LEASE)
     }
 
-    pub(crate) fn rebuild_lxapp(
-        &self,
-        appid: &str,
-        framework: Option<&str>,
-        release: bool,
-    ) -> Result<()> {
+    pub(crate) fn rebuild_lxapp(&self, appid: &str, release: bool) -> Result<()> {
         if self.attached_spec(appid).is_some() {
             return self.build_attached(appid);
         }
-        let mut args = serde_json::json!({
+        let args = serde_json::json!({
             "release": release,
             "appid": appid,
         });
-        if let Some(framework) = framework {
-            args["framework"] = serde_json::json!(framework);
-        }
         let _build = self.lock_build();
         run_lxapp_build(&self.project_root, Some(&args))
     }
 
-    /// Build an attached lxapp with the framework and release it was attached
-    /// with, then publish its dist on this host's dev HTTP server.
+    /// Build an attached lxapp with the release it was attached with, then
+    /// publish its dist on this host's dev HTTP server.
     fn build_attached(&self, app_id: &str) -> Result<()> {
         if self.attached_spec(app_id).is_none() {
             return Err(anyhow!("{app_id} is not attached"));
@@ -988,7 +956,7 @@ impl DevServerState {
         let Some(spec) = self.attached_spec(app_id) else {
             return Ok(());
         };
-        build_lxapp_dir(&spec.source, spec.framework.as_deref(), spec.release)?;
+        build_lxapp_dir(&spec.source, spec.release)?;
         if self.attached_spec(app_id).is_none() {
             return Ok(());
         }
@@ -2034,13 +2002,6 @@ fn validate_attach(
     if state.watch_sender().is_none() {
         return Err(anyhow!("this session is not watching lxapps"));
     }
-    let framework = params
-        .and_then(|value| value.get("framework"))
-        .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-        .or_else(|| state.watch_framework());
     let release = params
         .and_then(|value| value.get("release"))
         .and_then(serde_json::Value::as_bool)
@@ -2048,7 +2009,6 @@ fn validate_attach(
     Ok(AttachedLxapp {
         app_id,
         source,
-        framework,
         release,
     })
 }
@@ -2293,14 +2253,10 @@ fn command_timeout(args: Option<&serde_json::Value>) -> Duration {
 /// project + build pipeline; this mirrors `lingxia build` run in a standalone
 /// lxapp dir. Output streams to the `lingxia dev` terminal; the client receives
 /// only ok/error.
-fn build_lxapp_dir(dir: &Path, framework: Option<&str>, release: bool) -> Result<()> {
+fn build_lxapp_dir(dir: &Path, release: bool) -> Result<()> {
     let mut build_args = vec!["build".to_string()];
     if release {
         build_args.push("--release".to_string());
-    }
-    if let Some(framework) = framework {
-        build_args.push("--framework".to_string());
-        build_args.push(framework.to_string());
     }
     crate::lxapp::run_in_dir_for_dev(&build_args, dir)
 }
@@ -2310,13 +2266,10 @@ fn run_lxapp_build(project_root: &Path, args: Option<&serde_json::Value>) -> Res
         .and_then(|value| value.get("release"))
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false);
-    let framework = args
-        .and_then(|value| value.get("framework"))
-        .and_then(serde_json::Value::as_str);
     let appid = args
         .and_then(|value| value.get("appid"))
         .and_then(serde_json::Value::as_str);
-    build_lxapp_dir(&resolve_lxapp_dir(project_root, appid)?, framework, release)?;
+    build_lxapp_dir(&resolve_lxapp_dir(project_root, appid)?, release)?;
 
     // Host dev sessions serve bundles through the generated manifest. Without
     // refreshing it here, the runtime sees the previous dist hash and a

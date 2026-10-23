@@ -103,7 +103,7 @@ fn clean_lxapp_project(project_root: &Path) -> Result<()> {
     println!("  {} {}", "Project".dimmed(), project_root.display());
 
     let mut removed = Vec::new();
-    if let Ok(project) = Project::discover(project_root, None) {
+    if let Ok(project) = Project::discover(project_root) {
         remove_path(&project.output_dir, &mut removed)?;
     } else {
         if project_root.join("lxapp.json").exists() {

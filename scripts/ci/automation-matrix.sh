@@ -6,27 +6,19 @@ is_true() {
   [[ "${1:-false}" == "true" ]]
 }
 
-windows_react=false
-windows_vue=false
-macos_react=false
+windows=false
+macos=false
 
 if is_true "${FULL:-false}"; then
-  windows_react=true
-  windows_vue=true
-  macos_react=true
+  windows=true
+  macos=true
 else
   if is_true "${CROSS_PLATFORM:-false}" \
     || is_true "${WINDOWS:-false}" \
+    || is_true "${WINDOWS_ALL:-false}" \
+    || is_true "${FRONTEND_SHARED:-false}" \
     || is_true "${REACT:-false}"; then
-    windows_react=true
-  fi
-  if is_true "${WINDOWS_ALL:-false}" \
-    || is_true "${FRONTEND_SHARED:-false}"; then
-    windows_react=true
-    windows_vue=true
-  fi
-  if is_true "${VUE:-false}"; then
-    windows_vue=true
+    windows=true
   fi
 
   if is_true "${CROSS_PLATFORM:-false}" \
@@ -34,29 +26,24 @@ else
     || is_true "${MACOS_ALL:-false}" \
     || is_true "${FRONTEND_SHARED:-false}" \
     || is_true "${REACT:-false}"; then
-    macos_react=true
+    macos=true
   fi
 fi
 
 entries=()
 
-append_framework() {
+append_job() {
   local platform="$1"
   local os="$2"
   local exe="$3"
-  local framework="$4"
-  local enabled="$5"
+  local enabled="$4"
   is_true "$enabled" || return 0
 
-  entries+=("{\"platform\":\"$platform\",\"os\":\"$os\",\"exe\":\"$exe\",\"framework\":\"$framework\",\"profile\":\"$framework\"}")
+  entries+=("{\"platform\":\"$platform\",\"os\":\"$os\",\"exe\":\"$exe\",\"profile\":\"showcase\"}")
 }
 
-# react and vue run as separate jobs: each is ~19 minutes on Windows, and a
-# combined "all" run serialised them into ~30.
-append_framework windows windows-latest .exe react "$windows_react"
-append_framework windows windows-latest .exe vue "$windows_vue"
-
-append_framework macos macos-latest '' react "$macos_react"
+append_job windows windows-latest .exe "$windows"
+append_job macos macos-latest '' "$macos"
 
 if [[ "${#entries[@]}" -gt 0 ]]; then
   echo "automation=true"
@@ -65,6 +52,6 @@ if [[ "${#entries[@]}" -gt 0 ]]; then
 else
   echo "automation=false"
   # GitHub expands the matrix before evaluating the job condition.
-  matrix='{"include":[{"platform":"windows","os":"windows-latest","exe":".exe","framework":"react","profile":"skipped"}]}'
+  matrix='{"include":[{"platform":"windows","os":"windows-latest","exe":".exe","profile":"skipped"}]}'
 fi
 echo "automation_matrix=$matrix"

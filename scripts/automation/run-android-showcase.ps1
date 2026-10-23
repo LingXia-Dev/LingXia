@@ -1,7 +1,5 @@
 [CmdletBinding()]
 param(
-  [ValidateSet('react', 'vue', 'all')]
-  [string]$Framework = 'all',
   [string]$Device,
   [string]$PackageId = 'com.lingxia.example.lxapp.dev',
   [int]$TimeoutSeconds = 600
@@ -367,23 +365,19 @@ try {
     throw 'An Android dev session already exists for this project. Stop it explicitly before running automation.'
   }
 
-  $frameworks = if ($Framework -eq 'all') { @('react', 'vue') } else { @($Framework) }
   $httpFixture = Start-AndroidFixture 'http-fixture' @('--port', '0', '--print-base')
   $fixtureSerial = (& $adb @adbTarget get-serialno | Out-String).Trim()
   if ($LASTEXITCODE -ne 0 -or -not $fixtureSerial) { throw 'Could not identify the Android fixture device.' }
   $deviceFixture = Start-AndroidFixture 'android-device-fixture' @('--adb', $adb, '--device', $fixtureSerial)
   $nativeVideoProbeRan = $false
-  foreach ($currentFramework in $frameworks) {
-    $started = $false
-    try {
-      $devArguments = @(
-        'dev',
-        '--background',
-        '--platform',
-        'android',
-        '--framework',
-        $currentFramework
-      )
+  $started = $false
+  try {
+    $devArguments = @(
+      'dev',
+      '--background',
+      '--platform',
+      'android'
+    )
       if (-not [string]::IsNullOrWhiteSpace($Device)) { $devArguments += @('--device', $Device) }
       # Returns once the session is ready, or fails having stopped it.
       Invoke-Checked $lingxia $devArguments
@@ -396,12 +390,11 @@ try {
 
       Push-Location $lxappRoot
       try {
-        $resultDirectory = "test-results/automation/android-$currentFramework"
+        $resultDirectory = "test-results/automation/android"
         # The android preset of lxapp/lxdev.json: the entry, --forbid-only
         # and the platform arg.
         & $lxdev test --preset android `
           --timeout-secs $($TimeoutSeconds.ToString()) `
-          --arg "framework=$currentFramework" `
           --arg "httpBase=$($httpFixture.Base)" `
           --secret-arg "androidDevice=$($deviceFixture.Base)" `
           --output-dir $resultDirectory
@@ -424,7 +417,7 @@ try {
           throw "Unexpected error-level Android session logs:`n$unexpected"
         }
         if ($testExitCode -ne 0) {
-          throw "Android $currentFramework automation exited with code $testExitCode"
+          throw "Android automation exited with code $testExitCode"
         }
       } finally {
         Pop-Location
@@ -435,7 +428,6 @@ try {
         $started = $false
       }
     }
-  }
 } finally {
   Stop-AndroidFixture $deviceFixture
   Stop-AndroidFixture $httpFixture
@@ -445,5 +437,5 @@ try {
 if ($nativeVideoProbeRan) {
   Write-Host 'Portable Android automation and the OS-level native video lifecycle probe passed.'
 } else {
-  Write-Host 'Portable Android automation passed. The OS-level native video lifecycle probe is not published for the selected framework.'
+  Write-Host 'Portable Android automation passed without the OS-level native video lifecycle probe.'
 }

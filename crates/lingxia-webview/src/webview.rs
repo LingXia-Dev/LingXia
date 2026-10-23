@@ -2432,7 +2432,7 @@ impl WebViewInputController for WebView {
         {
             // `fill` is a framework-aware replacement operation. WebKit's
             // native InsertText command can report success before a controlled
-            // React/Vue input observes the edit, leaving dependent controls in
+            // React input observes the edit, leaving dependent controls in
             // their old state. `type` retains the native keyboard path.
             return self
                 .type_via_js(_selector, _options.index, _text, true)

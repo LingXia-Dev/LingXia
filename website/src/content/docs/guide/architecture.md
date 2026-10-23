@@ -11,7 +11,7 @@ An lxapp is a page-based mini-app with a strict boundary. The **View** renders. 
 
 ### View — runs in WebView, owns rendering
 
-React, Vue, or plain HTML. It renders replicated data, owns transient interaction state, and dispatches typed actions. Host-specific `#[lingxia::native]` routes are the exception: the View calls them through the CLI-generated `@lingxia/native` client.
+React or plain HTML. It renders replicated data, owns transient interaction state, and dispatches typed actions. Host-specific `#[lingxia::native]` routes are the exception: the View calls them through the CLI-generated `@lingxia/native` client.
 
 ### Bridge — Rust runtime, moves data & events
 

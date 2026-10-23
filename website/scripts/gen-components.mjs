@@ -78,7 +78,7 @@ const ISLAND = [
     summary: 'Island root. Every LxVideo must be a direct child of an explicit Root.',
     body: `There is no implicit root. Nested Root, DOM inside Root, a bare \`<lx-video>\`, or Video inside View/Cover is \`NATIVE_ROOT_INVALID_STRUCTURE\`.
 
-React/Vue: import \`LxNativeRoot\` from \`@lingxia/react\` or \`@lingxia/vue\`. HTML: \`<lx-native-root>\` after \`registerInlineNativeComponents()\`.
+React: import \`LxNativeRoot\` from \`@lingxia/react\`. HTML: \`<lx-native-root>\` after \`registerInlineNativeComponents()\`.
 `,
   },
   {
@@ -113,7 +113,7 @@ React/Vue: import \`LxNativeRoot\` from \`@lingxia/react\` or \`@lingxia/vue\`. 
     title: 'Native Button',
     tag: 'lx-native-button',
     order: 5.5,
-    summary: 'Native tappable on the island. React/Vue \`onPress\` is payload-first.',
+    summary: 'Native tappable on the island. React \`onPress\` is payload-first.',
     body: `Cannot wrap interactive or native children. Use \`label\` / \`icon\`; an icon-only button needs a non-empty \`aria-label\`. Seek stays on \`LxVideo\` controls — do not invent an island slider.
 `,
   },
@@ -182,7 +182,7 @@ for (const { name, alias } of found) {
   if (meta.summary) body += `${meta.summary}\n\n`;
   body += `Custom element: \`<${meta.tag}>\`\n\n`;
   body += `Attributes interface: \`${name}\` (from \`@lingxia/elements\`).\n\n`;
-  body += `React and Vue apps should import the framework wrapper from \`@lingxia/react\` or \`@lingxia/vue\`; HTML views use the custom element directly. See [LxApp pages](../../../guide/lxapp-pages/) for framework and callback guidance.\n\n`;
+  body += `React apps should import the framework wrapper from \`@lingxia/react\`; HTML views use the custom element directly. See [LxApp pages](../../../guide/lxapp-pages/) for framework and callback guidance.\n\n`;
 
   body += `## Properties\n\n`;
   if (props.length) {
@@ -231,7 +231,7 @@ overviewRows.sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || a.title.localeC
 
 // Overview index page.
 let index = frontmatter('Components', 0, 'Native-backed custom elements provided by @lingxia/elements.');
-index += `Native-backed custom elements provided by the \`@lingxia/elements\` package. React and Vue apps normally import their wrappers from \`@lingxia/react\` or \`@lingxia/vue\`; HTML views use these custom elements directly.\n\n`;
+index += `Native-backed custom elements provided by the \`@lingxia/elements\` package. React apps normally import their wrappers from \`@lingxia/react\`; HTML views use these custom elements directly.\n\n`;
 index += `Two families: the **inline native island** (\`LxNativeRoot\` wraps \`LxVideo\`, plus Cover / View / Text / Button) and **presenters** (\`LxPicker\`, \`LxMediaSwiper\`, \`LxNavigator\`). Text entry stays on the web platform with \`<input>\` and \`<textarea>\`—there is no \`LxInput\`.\n\n`;
 index += `| Component | Element | Description |\n`;
 index += `| --- | --- | --- |\n`;

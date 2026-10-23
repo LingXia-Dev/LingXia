@@ -36,7 +36,6 @@ pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
             dmg: false,
             android_aab: false,
             macos_arch: None,
-            framework: ctx.framework,
             native_features: dev_native_features(
                 &ctx.config,
                 "windows",

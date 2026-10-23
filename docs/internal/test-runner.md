@@ -1192,9 +1192,9 @@ HOME so no other session is touched:
 ```bash
 export HOME=/tmp/lxsoak PATH=/tmp/lxsoak/bin:$PATH   # CLI + Runner built from this tree
 cd examples/lingxia-showcase/lxapp
-lingxia dev --background --framework react
+lingxia dev --background
 for i in 1 2 3; do
-  lxdev test --preset macos --arg framework=react --output-dir /tmp/lxsoak/run$i
+  lxdev test --preset macos --output-dir /tmp/lxsoak/run$i
   footprint -p "$(pgrep -f /tmp/lxsoak/.lingxia/runner)" | head -3
 done
 ```

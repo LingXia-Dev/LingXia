@@ -27,6 +27,6 @@ sidebar:
 
 ## 不属于这里的内容
 
-- View 侧框架绑定与 hooks 分别属于 `@lingxia/react`、`@lingxia/vue` 和 `@lingxia/html`。
+- View 侧框架绑定与 hooks 分别属于 `@lingxia/react` 和 `@lingxia/html`。
 - 原生组件集中在 [Components](../../reference/components/) 中。
 - 原生宿主自定义 Rust route 使用 CLI 为具体项目生成的 `@lingxia/native` client，不属于全局 `lx.*` API。

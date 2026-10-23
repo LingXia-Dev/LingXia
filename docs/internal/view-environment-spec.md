@@ -52,7 +52,7 @@ Bridge control plane: environment.snapshot
 @lingxia/page-runtime
        |              |                 |
        v              v                 v
- CSS variables   React/Vue hooks   HTML subscription
+ CSS variables   React hooks   HTML subscription
 ```
 
 The public tabbar layout vocabulary is:
@@ -76,7 +76,7 @@ MUST NOT select the layout mode.
 This redesign MUST:
 
 1. put pixel geometry in the View/host boundary rather than the Logic API;
-2. give React, Vue, and HTML Views the same synchronous environment snapshot;
+2. give React and HTML Views the same synchronous environment snapshot;
 3. support bottom, left, right, floating, and future host chrome without adding
    one `getXxxRect()` API per control;
 4. make transparent styling independent from WebView layout;
@@ -110,7 +110,7 @@ This specification does not define:
 | Term | Definition |
 |---|---|
 | **Logic** | The native JS runtime that owns `Page({})`, business state, navigation intent, and `lx.*` calls. |
-| **View** | The React, Vue, or HTML document rendered by a page WebView. |
+| **View** | The React or HTML document rendered by a page WebView. |
 | **host chrome** | Native host UI sharing the page surface, such as a capsule, tabbar, navigation bar, or future floating host control. |
 | **layout viewport** | The WebView coordinate space used by CSS layout and `getBoundingClientRect()`. |
 | **resize mode** | A layout where visible tabbar space is removed from the WebView bounds. |
@@ -578,7 +578,6 @@ latest revision.
 | `@lingxia/bridge` | control-frame types, ordered environment receiver, low-level snapshot subscription |
 | `@lingxia/page-runtime` | framework-neutral external store and CSS-variable projection |
 | `@lingxia/react` | `useLxViewEnvironment()` |
-| `@lingxia/vue` | `useLxViewEnvironment()` composable |
 | `@lingxia/html` | synchronous getter and subscription |
 
 `@lingxia/page-runtime` remains internal. Application code imports only its
@@ -598,14 +597,6 @@ function PageHeader() {
   const environment = useLxViewEnvironment()
   // ...
 }
-```
-
-Vue:
-
-```ts
-import { useLxViewEnvironment } from '@lingxia/vue'
-
-const environment = useLxViewEnvironment()
 ```
 
 HTML:
@@ -865,7 +856,7 @@ kept. `CapsuleRect` is not moved to another Logic namespace.
 
 1. Implement the framework-neutral store in page-runtime.
 2. Project CSS variables atomically.
-3. Add React and Vue `useLxViewEnvironment()` bindings.
+3. Add the React `useLxViewEnvironment()` binding.
 4. Add HTML getter and subscription exports.
 5. Add unit tests for first snapshot, updates, unsubscribe, and CSS values.
 
@@ -906,7 +897,7 @@ branch exposes only the new model.
 - the initial environment is synchronously available;
 - snapshots are monotonic and stale revisions are ignored;
 - CSS variables update before subscribers run;
-- React, Vue, and HTML consumers receive the same data;
+- React and HTML consumers receive the same data;
 - capsule occlusions do not inflate the top content inset;
 - system and chrome insets combine with `max`, not addition; and
 - unsubscribe and WebView teardown release listeners.
@@ -1003,7 +994,7 @@ The redesign is complete when all of the following are true:
   and mobile Runner projections;
 - every attached page WebView has one synchronous, revisioned View Environment
   snapshot;
-- React, Vue, and HTML expose equivalent View Environment APIs;
+- React and HTML expose equivalent View Environment APIs;
 - CSS content inset variables are present before application mount;
 - ordinary page popups remain outside interactive host-chrome occlusions;
 - custom modal sessions block host chrome without mutating tabbar state;

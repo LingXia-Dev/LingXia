@@ -35,7 +35,6 @@ use tungstenite::{Error as WsError, WebSocket};
 pub(super) struct AttachRequest {
     pub project_root: PathBuf,
     pub session: Option<String>,
-    pub framework: Option<String>,
     pub release: bool,
     pub stop_requested: Arc<AtomicBool>,
     pub platform_arg: Option<String>,
@@ -102,7 +101,6 @@ pub(super) fn execute(request: AttachRequest) -> Result<()> {
         &session.ws_url,
         &source,
         &attach_token,
-        request.framework.as_deref(),
         request.release,
         &request.stop_requested,
     )
@@ -187,8 +185,8 @@ fn host_and_attach(request: AttachRequest, port: u16) -> Result<()> {
             .cyan()
     );
     let result = (|| -> Result<()> {
-        server.rebuild_lxapp(&app_id, request.framework.as_deref(), request.release)?;
-        server.watch_lxapps(request.framework.as_deref(), request.release);
+        server.rebuild_lxapp(&app_id, request.release)?;
+        server.watch_lxapps(request.release);
         // A failed open is retried on the next connect; the session stays.
         if let Err(err) = server.present(&app_id) {
             eprintln!("  {} open {app_id} failed: {err:#}", "✗".red());
@@ -255,7 +253,6 @@ fn attach_and_hold(
     ws_url: &str,
     source: &Path,
     attach_token: &str,
-    framework: Option<&str>,
     release: bool,
     stop_requested: &AtomicBool,
 ) -> Result<()> {
@@ -277,9 +274,6 @@ fn attach_and_hold(
     // Omitted, the host session's own `--release` applies.
     if release {
         params["release"] = serde_json::Value::Bool(true);
-    }
-    if let Some(framework) = framework {
-        params["framework"] = serde_json::Value::String(framework.to_string());
     }
     send_message(
         &mut websocket,

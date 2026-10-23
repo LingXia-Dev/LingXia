@@ -1,7 +1,6 @@
 use crate::commands::rust::resolve_build_profile;
 use crate::config::{LingXiaConfig, append_native_features};
 use crate::host_assets::{prepare_configured_host_assets, prepare_windows_design_icon_assets};
-use crate::lxapp::ProjectFramework;
 use crate::platform::detector::PlatformType;
 use crate::platform::{self, BuildConfig, BuildProfile, InstallConfig, Platform, RunConfig};
 use anyhow::{Context, Result, anyhow};
@@ -71,7 +70,6 @@ fn dev_native_features(
 pub struct DevExecuteOptions {
     pub target: Option<String>,
     pub release: bool,
-    pub framework: Option<String>,
     pub progress: Option<String>,
     pub device: Option<String>,
     pub platform_arg: Option<String>,
@@ -120,7 +118,6 @@ struct DevContext {
     project_root: std::path::PathBuf,
     config: LingXiaConfig,
     build_profile: BuildProfile,
-    framework: Option<ProjectFramework>,
     progress: Option<String>,
     device: Option<String>,
     reinstall: bool,
@@ -131,10 +128,7 @@ struct DevContext {
 
 impl DevContext {
     fn watch_embedded_lxapps(&self, server: &mut server::DevServerHandle) {
-        server.watch_lxapps(
-            self.framework.map(ProjectFramework::as_str),
-            matches!(self.build_profile, BuildProfile::Release),
-        );
+        server.watch_lxapps(matches!(self.build_profile, BuildProfile::Release));
     }
 }
 
@@ -214,7 +208,6 @@ fn prepare_dev_host_assets(
         &ctx.project_root,
         &ctx.config,
         ctx.build_profile,
-        ctx.framework,
         ctx.progress.as_deref(),
         true,
         platforms_to_build,
@@ -345,7 +338,6 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
     let listen = match options.action {
         Some(DevSessionAction::Stop { session }) => {
             let ignored = options.release
-                || options.framework.is_some()
                 || options.platform_arg.is_some()
                 || runner_requested
                 || options.device.is_some()
@@ -444,7 +436,6 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
         return attach::execute(attach::AttachRequest {
             project_root,
             session,
-            framework: options.framework,
             release: options.release,
             stop_requested,
             platform_arg: options.platform_arg,
@@ -583,11 +574,6 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
         project_root,
         config,
         build_profile,
-        framework: options
-            .framework
-            .as_deref()
-            .map(parse_lxapp_framework)
-            .transpose()?,
         progress: options.progress,
         device: options.device,
         reinstall: options.reinstall,
@@ -1393,16 +1379,6 @@ fn canonical_path_or_self(path: &Path) -> PathBuf {
 
 fn process_executable_matches(process_exe: &Path, executable_path: &Path) -> bool {
     canonical_path_or_self(process_exe) == canonical_path_or_self(executable_path)
-}
-fn parse_lxapp_framework(value: &str) -> Result<ProjectFramework> {
-    match value {
-        "react" => Ok(ProjectFramework::React),
-        "vue" => Ok(ProjectFramework::Vue),
-        "html" => Ok(ProjectFramework::Html),
-        _ => Err(anyhow!(
-            "Unsupported framework {value:?}; expected react, vue, or html"
-        )),
-    }
 }
 
 #[cfg(test)]

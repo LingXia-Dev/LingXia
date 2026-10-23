@@ -20,7 +20,6 @@ assert_case() {
     WINDOWS_ALL=false \
     FRONTEND_SHARED=false \
     REACT=false \
-    VUE=false \
     "$@" \
     bash "$script_dir/automation-matrix.sh")
 
@@ -37,29 +36,26 @@ assert_case() {
   fi
 }
 
-windows_react='{"platform":"windows","os":"windows-latest","exe":".exe","framework":"react","profile":"react"}'
-windows_vue='{"platform":"windows","os":"windows-latest","exe":".exe","framework":"vue","profile":"vue"}'
-macos_react='{"platform":"macos","os":"macos-latest","exe":"","framework":"react","profile":"react"}'
+windows='{"platform":"windows","os":"windows-latest","exe":".exe","profile":"showcase"}'
+macos='{"platform":"macos","os":"macos-latest","exe":"","profile":"showcase"}'
 
 assert_case none false \
-  '{"include":[{"platform":"windows","os":"windows-latest","exe":".exe","framework":"react","profile":"skipped"}]}'
+  '{"include":[{"platform":"windows","os":"windows-latest","exe":".exe","profile":"skipped"}]}'
 assert_case cross-platform true \
-  "{\"include\":[$windows_react,$macos_react]}" CROSS_PLATFORM=true
+  "{\"include\":[$windows,$macos]}" CROSS_PLATFORM=true
 assert_case macos-contract-change true \
-  "{\"include\":[$macos_react]}" MACOS=true
+  "{\"include\":[$macos]}" MACOS=true
 assert_case macos-all true \
-  "{\"include\":[$macos_react]}" MACOS_ALL=true
+  "{\"include\":[$macos]}" MACOS_ALL=true
 assert_case windows-contract-change true \
-  "{\"include\":[$windows_react]}" WINDOWS=true
+  "{\"include\":[$windows]}" WINDOWS=true
 assert_case windows-all true \
-  "{\"include\":[$windows_react,$windows_vue]}" WINDOWS_ALL=true
+  "{\"include\":[$windows]}" WINDOWS_ALL=true
 assert_case shared-frontend true \
-  "{\"include\":[$windows_react,$windows_vue,$macos_react]}" FRONTEND_SHARED=true
-assert_case vue true \
-  "{\"include\":[$windows_vue]}" VUE=true
+  "{\"include\":[$windows,$macos]}" FRONTEND_SHARED=true
 assert_case react true \
-  "{\"include\":[$windows_react,$macos_react]}" REACT=true
+  "{\"include\":[$windows,$macos]}" REACT=true
 assert_case full true \
-  "{\"include\":[$windows_react,$windows_vue,$macos_react]}" FULL=true
+  "{\"include\":[$windows,$macos]}" FULL=true
 
 echo "automation matrix cases passed"

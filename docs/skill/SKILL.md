@@ -38,7 +38,7 @@ so and stop. Scaffolding writes pages, config, and dependencies.
 2. Host app: which platforms (`android`, `ios`, `macos`, `windows`, `harmony`)?
 3. Host app: lxapp or native terminal/browser as the main experience; lxapp or
    Rust as host control? (B vs C)
-4. View framework: React, Vue, or HTML — one per project.
+4. View framework: React or HTML — one per project.
 
 ### 0c. Scaffold and read the result
 
@@ -48,7 +48,7 @@ lingxia new hello -t native-app -p macos --package-id com.example.hello -y   # S
 ```
 
 The generated tree is the authoritative layout for your CLI version. In
-`pages/home/`, `index.ts` is Logic, `index.tsx` (or `.vue` / `.html`) is the
+`pages/home/`, `index.ts` is Logic, `index.tsx` (or `.html`) is the
 View, `index.json` is page config. More forms: [`lingxia new`](./cli/lingxia.md#lingxia-new).
 `lingxia doctor` checks toolchains.
 
@@ -83,7 +83,7 @@ do. Keep regressions as `lxdev test` specs: [Testing](./lxapp/testing.md).
 ```
 ┌─────────────────────┐                          ┌──────────────────────┐
 │ View (WebView)      │ ◄── setData(patch) ───── │ Logic (JS runtime)   │
-│ React / Vue / HTML  │                          │ Page({}) instance    │
+│ React / HTML        │                          │ Page({}) instance    │
 │ renders `data`      │ ──── actions.foo() ────► │ owns state + `lx.*`  │
 └─────────────────────┘                          └──────────────────────┘
 ```
@@ -106,14 +106,13 @@ A JS-Logic lxapp that calls Rust routes is still B. B's id rule:
 | Package | What it is | Imported by | Typical import |
 |---|---|---|---|
 | `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxHost`, `useLxStream`, `LxNativeRoot`, `LxVideo`, … |
-| `@lingxia/vue` | Vue composables + framework-wrapped native components | lxapp View (Vue) | same surface as React, Vue-flavored |
 | `@lingxia/html` | DOM helpers for HTML-only views | lxapp View (HTML) | `pageReady`, `getPage`, `subscribePage`, `getHost`, `subscribeHost` |
-| `@lingxia/elements` | Pure-JS custom elements (`<lx-video>`, …) | rarely direct — react/vue re-export wrappers | `registerVideoComponent`, `LxVideoElement` |
+| `@lingxia/elements` | Pure-JS custom elements (`<lx-video>`, …) | rarely direct — react re-exports wrappers | `registerVideoComponent`, `LxVideoElement` |
 | `@lingxia/types` | Declarations for Logic `lx.*`, `Page({})`, `App({})` | lxapp Logic (devDependency, global) | [Install typing](./lxapp/lx-api.md#install-typing) |
 | `@lingxia/test` | Spec authoring SDK for `lxdev test` | lxapp tests | `import { spec } from '@lingxia/test'` |
 | `@lingxia/bridge` | Bridge runtime + low-level helpers | rarely direct | types such as `LxStream`, `LxChannel` |
 | `@lingxia/native` | Virtual module for the CLI-generated native client | lxapp View | `import { native } from '@lingxia/native'` |
-| `@lingxia/page-runtime` | Internal — shared impl behind react/vue/html | **don't import directly** | — |
+| `@lingxia/page-runtime` | Internal — shared impl behind react/html | **don't import directly** | — |
 
 The CLI and host ship `@lingxia/polyfills` and `@lingxia/terminal-settings`;
 never add them to a project.
@@ -154,7 +153,7 @@ never add them to a project.
 
 | Job | Lives in | Surface |
 |---|---|---|
-| UI rendering, page state | lxapp `pages/index.{tsx,vue,html}` | View |
+| UI rendering, page state | lxapp `pages/index.{tsx,html}` | View |
 | Page lifecycle, `setData`, action handlers (JS) | lxapp `pages/index.ts` | `Page({})` Logic |
 | Cross-page business helpers callable as `lx.X(...)` | host Rust crate | `lingxia::js` extension (needs `standard` feature) |
 | Page-scoped native UI (file/media picker, native browser) | host Rust crate | `#[lingxia::native]` route |

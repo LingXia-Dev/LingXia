@@ -739,8 +739,8 @@ fn load_manifest(root: &Path) -> Result<TemplateManifest> {
 
 fn validate_manifest(root: &Path, manifest: &TemplateManifest) -> Result<()> {
     slug_for_name(&manifest.name)?;
-    if !matches!(manifest.framework.as_str(), "react" | "vue" | "html") {
-        bail!("Template framework must be react, vue, or html");
+    if !matches!(manifest.framework.as_str(), "react" | "html") {
+        bail!("Template framework must be react or html");
     }
     let template = resolve_owned_path(root, &manifest.template, "template directory")?;
     if !template.is_dir() {

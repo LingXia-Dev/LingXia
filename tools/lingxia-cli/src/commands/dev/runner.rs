@@ -253,7 +253,6 @@ pub(super) fn execute_runner_dev(
                 println!("{}", "Step 1/2: Building lxapp...".bold());
                 let build_args = lxapp_runner_build_args(
                     options.release,
-                    options.framework.as_deref(),
                     options.progress.as_deref(),
                     runner_env,
                 );
@@ -324,7 +323,7 @@ pub(super) fn execute_runner_dev(
 
         print_dev_banner("LxApp Runner", "Ctrl+C or close Runner", &[]);
         if matches!(&target, RunnerDevTarget::LxApp(_)) {
-            server.watch_lxapps(options.framework.as_deref(), options.release);
+            server.watch_lxapps(options.release);
         }
 
         wait_for_runner_or_interrupt(&mut runner, stop_requested)?;
@@ -345,7 +344,6 @@ pub(super) fn execute_runner_dev(
 
 fn lxapp_runner_build_args(
     release: bool,
-    framework: Option<&str>,
     progress: Option<&str>,
     runner_env: crate::config::AppEnv,
 ) -> Vec<String> {
@@ -356,10 +354,6 @@ fn lxapp_runner_build_args(
     ];
     if release {
         args.push("--release".to_string());
-    }
-    if let Some(framework) = framework {
-        args.push("--framework".to_string());
-        args.push(framework.to_string());
     }
     if let Some(progress) = progress {
         args.push("--progress".to_string());
@@ -1600,25 +1594,11 @@ mod tests {
 
     #[test]
     fn lxapp_runner_build_args_include_selected_env() {
-        let args = lxapp_runner_build_args(
-            true,
-            Some("react"),
-            Some("plain"),
-            crate::config::AppEnv::Prod,
-        );
+        let args = lxapp_runner_build_args(true, Some("plain"), crate::config::AppEnv::Prod);
 
         assert_eq!(
             args,
-            vec![
-                "build",
-                "--env",
-                "prod",
-                "--release",
-                "--framework",
-                "react",
-                "--progress",
-                "plain"
-            ]
+            vec!["build", "--env", "prod", "--release", "--progress", "plain"]
         );
     }
 

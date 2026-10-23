@@ -18,7 +18,7 @@ pages/home/
 └── index.json    # 页面配置
 ```
 
-Vue 使用 `index.vue`，HTML 项目使用 `index.html`。一个项目只选择一种 View framework；不要为同一路由同时创建三种实现。
+HTML 项目使用 `index.html`。项目是 React 或 HTML；同一路由同时有两种页面文件时，在 `lxapp.json` 里设置 `"framework"`。
 
 ## Logic 掌管状态与 actions
 
@@ -71,7 +71,7 @@ LingXia 提供两类原生组件：
 - **Inline native island** — `LxNativeRoot` 包裹 `LxVideo`，以及 `LxNativeCover` / `LxNativeView` / `LxNativeText` / `LxNativeButton`。`LxVideo` 必须是显式 `LxNativeRoot` 的**直接子节点**。裸写 `<LxVideo>` 会得到 `NATIVE_ROOT_INVALID_STRUCTURE`。
 - **Presenters** — `LxPicker`、`LxMediaSwiper`、`LxNavigator`（不在 island 上）。
 
-React 与 Vue 会重新导出这两类。HTML View 注册对应 custom element（`<lx-native-root>`、`<lx-video>` 等）。文本输入直接使用普通 `<input>` / `<textarea>`，不存在 `LxInput`。
+React 会重新导出这两类。HTML View 注册对应 custom element（`<lx-native-root>`、`<lx-video>` 等）。文本输入直接使用普通 `<input>` / `<textarea>`，不存在 `LxInput`。
 
 ```tsx
 import { LxNativeRoot, LxVideo, LxPicker } from '@lingxia/react'
@@ -83,7 +83,7 @@ import { LxNativeRoot, LxVideo, LxPicker } from '@lingxia/react'
 
 组件 callback 并不统一：
 
-| 组件 | React/Vue handler 收到的值 |
+| 组件 | React handler 收到的值 |
 |---|---|
 | Island 节点（`LxNativeButton`、`LxVideo`、Root） | **先给 payload** — `onPress(({ source }) => …)`、`onTimeUpdate(({ currentTime }) => …)`。HTML 仍读 `CustomEvent.detail`。 |
 | `LxPicker` | **解析后的 value** — `string \| string[]` |

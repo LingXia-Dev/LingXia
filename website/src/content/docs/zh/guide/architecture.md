@@ -11,7 +11,7 @@ lxapp 是页面式小应用，边界严格：**视图**负责渲染，**逻辑**
 
 ### 视图 View —— 运行于 WebView，负责渲染
 
-React、Vue 或纯 HTML。它渲染复制而来的数据，掌管临时交互状态，并派发类型化 action。宿主专属的 `#[lingxia::native]` 路由是例外：View 通过 CLI 生成的 `@lingxia/native` 客户端调用它们。
+React 或纯 HTML。它渲染复制而来的数据，掌管临时交互状态，并派发类型化 action。宿主专属的 `#[lingxia::native]` 路由是例外：View 通过 CLI 生成的 `@lingxia/native` 客户端调用它们。
 
 ### 桥 Bridge —— Rust 运行时，传递数据与事件
 

@@ -35,14 +35,14 @@ recoverable from the code alone.
 Two examples under `examples/`, one per project shape:
 
 - [examples/lingxia-chat](examples/lingxia-chat) — **standalone lxapp** only: `lxapp.json` + `pages/`, no native host. The minimal reference for lxapp structure.
-- [examples/lingxia-showcase](examples/lingxia-showcase) — **native host app + embedded lxapp**: one host app for Android/iOS/macOS/HarmonyOS/Windows embedding the showcase lxapp; kitchen-sink demo of pages, the `lx.*` surface, native components, media, and the terminal. Builds need an explicit `--framework react|vue` (its home pages ship both implementations).
+- [examples/lingxia-showcase](examples/lingxia-showcase) — **native host app + embedded lxapp**: one host app for Android/iOS/macOS/HarmonyOS/Windows embedding the showcase lxapp; kitchen-sink demo of pages, the `lx.*` surface, native components, media, and the terminal. Its pages are React.
 
 ## Build & verify
 
 - Rust gate: `cargo check --workspace --all-targets` (CI runs clippy on the same scope). The workspace default feature set skips the Windows browser shell — cover it with `cargo clippy -p lingxia-windows-sdk --features browser-shell`.
 - JS deps live in the `packages/` npm workspace (repo root is not a workspace). `lingxia-cli`'s `build.rs` embeds JS from `packages/lingxia-bridge` and `packages/lingxia-polyfills`, so `npm install` there before the first cargo build; each example project also needs its own `npm install`.
 - CLIs: `cargo build -p lingxia-cli -p lingxia-devtools-cli` → `target/debug/lingxia(.exe)` and `lxdev(.exe)`; neither is on PATH. For day-to-day use, copy both into `~/.local/bin` (ensure it's on PATH) so they survive `target/` churn and work from any directory. Re-copy after changing CLI code — a stale copy silently mismatches the repo.
-- Run the showcase on desktop: from `examples/lingxia-showcase`, `lingxia dev -p windows|macos --release --framework react`, then drive it with `lxdev` (`lxdev browser …`, `lxdev lxapp eval …`, `lxdev logs --grep X`). A plain `cargo build` of the host produces an app without the dev websocket — always launch via `lingxia dev`.
+- Run the showcase on desktop: from `examples/lingxia-showcase`, `lingxia dev -p windows|macos --release`, then drive it with `lxdev` (`lxdev browser …`, `lxdev lxapp eval …`, `lxdev logs --grep X`). A plain `cargo build` of the host produces an app without the dev websocket — always launch via `lingxia dev`.
 - Verify platform behavior on real devices. Simulator and emulator runs don't count as verification for device features (audio, Bluetooth, sensors, permission prompts, orientation); if no device is available, say the change is compile-only.
 
 ## Conventions

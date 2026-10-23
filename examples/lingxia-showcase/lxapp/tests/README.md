@@ -9,7 +9,7 @@ behind.
 
 | Entry | Purpose | Run on |
 |---|---|---|
-| `shared.test.ts` | All cross-platform API, Logic, Bridge, page, component, and render contracts | every platform and framework |
+| `shared.test.ts` | All cross-platform API, Logic, Bridge, page, component, and render contracts | every platform |
 | `windows.test.ts` | Shared suite plus physical desktop and Windows-only behavior | Windows |
 | `macos.test.ts` | Shared suite plus physical desktop and macOS-only behavior | macOS |
 | `android.test.ts` | Shared suite, https `previewMedia`, and Android device capabilities | Android, local |
@@ -23,7 +23,7 @@ them, and without `--openapi` (for example `lxdev test tests/`) they skip
 themselves.
 
 `lxapp/lxdev.json` names each entry's arguments as a preset:
-`lxdev test --preset macos --arg framework=react` (the npm
+`lxdev test --preset macos` (the npm
 `test:automation:*` scripts use them; `lxdev test presets` shows them).
 `scenarios/` holds dev-time product states for `lxdev mock use`, which
 specs may import too (`route/status`, with its `online` and `offline`
@@ -31,16 +31,15 @@ variants, is `AUT-NET-007`'s: `lxdev mock use route/status:offline`).
 `../mocks/` holds the Showcase's mock handlers, answered in development
 for the calls `mocks/config.json` selects (`AUT-NET-008`).
 
-React and Vue use the same platform entry. The framework is a build argument,
-not a separate test definition. `all.test.ts` remains a shared compatibility
-entry and deliberately excludes physical platform tests.
+`all.test.ts` remains a shared compatibility entry and deliberately excludes
+physical platform tests.
 
-CI runs both frameworks on Windows and React on macOS. Android uses its matching
-thin platform entry locally. Shared cases must never be copied into a platform
+CI runs the showcase on Windows and macOS. Android uses its matching thin
+platform entry locally. Shared cases must never be copied into a platform
 entry.
 
 From the repository root, `scripts/automation/run-android-showcase.ps1 -Device
-<serial>` builds and checks both Android frameworks. It starts the HTTP and
+<serial>` builds and checks the Android showcase. It starts the HTTP and
 Android system-input fixtures and reverses their ports through adb. Direct
 `lxdev test` runs need `--secret-arg androidDevice=...` to include OS-input
 cases; see [harness setup](harness/README.md#android-system-input).
@@ -120,24 +119,21 @@ coordinate units and native window topology genuinely differ there.
 From the repository root:
 
 ```powershell
-./scripts/automation/run-windows-showcase.ps1 -Framework all
+./scripts/automation/run-windows-showcase.ps1
 ```
 
 The runner builds `lingxia` and `lxdev` from the current checkout, installs
-both executables into `~/.local/bin`, then starts and tests React and Vue in
-separate Windows dev sessions. Pass `-Framework react` or `-Framework vue` to
-run one renderer. Artifacts and session logs are retained under
-`lxapp/test-results/automation/windows-<framework>`.
+both executables into `~/.local/bin`, then starts and tests the showcase.
+Artifacts and session logs are retained under
+`lxapp/test-results/automation/windows`.
 
 ## Running on macOS
 
 From the repository root:
 
 ```bash
-bash scripts/automation/run-macos-showcase.sh all
+bash scripts/automation/run-macos-showcase.sh
 ```
-
-Pass `react` or `vue` as the first argument to run one renderer.
 
 ## Running on Android locally
 
@@ -150,15 +146,15 @@ From the repository root:
 
 ```powershell
 cargo build -p lingxia-cli -p lingxia-devtools-cli
-./scripts/automation/run-android-showcase.ps1 -Framework all
+./scripts/automation/run-android-showcase.ps1
 ```
 
 Pass `-Device <adb-serial>` when more than one device is connected. The script
 runs `lingxia doctor`, checks the selected ABI, then starts Android dev mode.
 `lingxia dev` builds and installs the APK, configures `adb reverse`, launches
-the host, and waits for the runtime websocket before `lxdev test` starts. The
-default `all` mode runs React and Vue in separate sessions and retains test
-artifacts plus session logs for both.
+the host, and waits for the runtime websocket before `lxdev test` starts.
+Test artifacts and session logs are retained under
+`lxapp/test-results/automation/android`.
 
 After installation the script grants coarse/fine location to the test host
 (`-PackageId`, default `com.lingxia.example.lxapp.dev`) and requires Location

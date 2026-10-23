@@ -1256,7 +1256,7 @@ fn normalize_page_path(path: &str) -> &str {
 
 /// Strip view extensions from path for comparison
 fn strip_extension(path: &str) -> &str {
-    for ext in [".tsx", ".jsx", ".vue"] {
+    for ext in [".tsx", ".jsx"] {
         if let Some(p) = path.strip_suffix(ext) {
             return p;
         }

@@ -18,7 +18,7 @@ pages/home/
 └── index.json    # page configuration
 ```
 
-Vue uses `index.vue`; HTML projects use `index.html`. A project selects one View framework—do not create all three variants for a route.
+HTML projects use `index.html`. A project is React or HTML — set `"framework"` in `lxapp.json` when both page files exist.
 
 ## Logic owns state and actions
 
@@ -71,7 +71,7 @@ LingXia ships two families:
 - **Inline native island** — `LxNativeRoot` wraps `LxVideo`, plus `LxNativeCover` / `LxNativeView` / `LxNativeText` / `LxNativeButton`. `LxVideo` must be a **direct child** of an explicit `LxNativeRoot`. A bare `<LxVideo>` is `NATIVE_ROOT_INVALID_STRUCTURE`.
 - **Presenters** — `LxPicker`, `LxMediaSwiper`, `LxNavigator` (not on the island).
 
-React and Vue re-export both families. HTML Views register the custom elements (`<lx-native-root>`, `<lx-video>`, …). Text input is normal web `<input>` / `<textarea>`—there is no `LxInput`.
+React re-exports both families. HTML Views register the custom elements (`<lx-native-root>`, `<lx-video>`, …). Text input is normal web `<input>` / `<textarea>`—there is no `LxInput`.
 
 ```tsx
 import { LxNativeRoot, LxVideo, LxPicker } from '@lingxia/react'
@@ -83,7 +83,7 @@ import { LxNativeRoot, LxVideo, LxPicker } from '@lingxia/react'
 
 Component callbacks are not uniform:
 
-| Component | What the React/Vue handler receives |
+| Component | What the React handler receives |
 |---|---|
 | Island nodes (`LxNativeButton`, `LxVideo`, Root) | **Payload first** — `onPress(({ source }) => …)`, `onTimeUpdate(({ currentTime }) => …)`. HTML still reads `CustomEvent.detail`. |
 | `LxPicker` | **Resolved value** — `string \| string[]` |

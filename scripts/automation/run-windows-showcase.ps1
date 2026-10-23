@@ -1,7 +1,5 @@
 [CmdletBinding()]
 param(
-  [ValidateSet('react', 'vue', 'all')]
-  [string]$Framework = 'all',
   [int]$TimeoutSeconds = 900,
   [ValidateRange(1, 64)]
   [int]$BuildJobs = 2,
@@ -246,11 +244,8 @@ function Get-UnexpectedWindowsSessionErrors {
 }
 
 function Start-ShowcaseSession {
-  param(
-    [string]$Framework
-  )
   $devArguments = @(
-    'dev', '--background', '--platform', 'windows', '--framework', $Framework
+    'dev', '--background', '--platform', 'windows'
   )
   # Returns once the session is ready; a failed or timed-out start has
   # already stopped what it started and exits non-zero with its log.
@@ -263,10 +258,9 @@ function Stop-ShowcaseSession {
 
 function Invoke-ShowcaseSuite {
   param(
-    [string]$Framework,
     [string]$ResultDirectory
   )
-  Write-Host "Running Windows Showcase automation ($Framework)..."
+  Write-Host "Running Windows Showcase automation..."
   # A function returns its whole output stream, so anything lxdev writes to
   # stdout would come back joined to the exit code -- one warning line was
   # enough to fail a suite that had passed. Send the output to the host.
@@ -275,7 +269,6 @@ function Invoke-ShowcaseSuite {
   $testArguments = Get-LxdevArguments @(
     'test', '--preset', 'windows',
     '--timeout-secs', $TimeoutSeconds.ToString(),
-    '--arg', "framework=$Framework",
     '--arg', "httpBase=$fixtureBase",
     '--output-dir', $ResultDirectory
   )
@@ -326,39 +319,36 @@ try {
       throw 'A Windows dev session already exists for this project. Stop it explicitly before running automation.'
     }
 
-    $frameworks = if ($Framework -eq 'all') { @('react', 'vue') } else { @($Framework) }
-    $frameworks = @($frameworks)
-    foreach ($currentFramework in $frameworks) {
-      Write-Host "Starting Windows Showcase ($currentFramework)..."
-      $started = $false
+    Write-Host "Starting Windows Showcase..."
+    $started = $false
+    try {
+      Start-ShowcaseSession
+      $started = $true
+
+      Push-Location $lxappRoot
       try {
-        Start-ShowcaseSession -Framework $currentFramework
-        $started = $true
+        $resultDirectory = "test-results/automation/windows"
+        $testExitCode = Invoke-ShowcaseSuite -ResultDirectory $resultDirectory
+        if ($testExitCode -ne 0) {
+          # A wedged WebView UI thread surfaces as `request timed out` and
+          # kills the suite. Recycle the session once before failing the job.
+          Write-Host "Retrying Windows Showcase automation after recycling the session..."
+          Set-Location $showcaseRoot
+          Write-Host "Stopping Windows Showcase..."
+          Stop-ShowcaseSession
+          $started = $false
+          Start-ShowcaseSession
+          $started = $true
+          Set-Location $lxappRoot
+          $testExitCode = Invoke-ShowcaseSuite -ResultDirectory $resultDirectory
+        }
 
-        Push-Location $lxappRoot
-        try {
-          $resultDirectory = "test-results/automation/windows-$currentFramework"
-          $testExitCode = Invoke-ShowcaseSuite -Framework $currentFramework -ResultDirectory $resultDirectory
-          if ($testExitCode -ne 0) {
-            # A wedged WebView UI thread surfaces as `request timed out` and
-            # kills the suite. Recycle the session once before failing the job.
-            Write-Host "Retrying Windows Showcase automation ($currentFramework) after recycling the session..."
-            Set-Location $showcaseRoot
-            Write-Host "Stopping Windows Showcase ($currentFramework)..."
-            Stop-ShowcaseSession
-            $started = $false
-            Start-ShowcaseSession -Framework $currentFramework
-            $started = $true
-            Set-Location $lxappRoot
-            $testExitCode = Invoke-ShowcaseSuite -Framework $currentFramework -ResultDirectory $resultDirectory
-          }
-
-          New-Item -ItemType Directory -Force -Path $resultDirectory | Out-Null
-          if ($testExitCode -eq 0 -and [string]::IsNullOrWhiteSpace($Grep)) {
-            Write-Host "Running same-route relaunch stress ($currentFramework)..."
-            Invoke-SameRouteRelaunchStress
-          }
-          Write-Host "Collecting Windows session logs ($currentFramework)..."
+        New-Item -ItemType Directory -Force -Path $resultDirectory | Out-Null
+        if ($testExitCode -eq 0 -and [string]::IsNullOrWhiteSpace($Grep)) {
+          Write-Host "Running same-route relaunch stress..."
+          Invoke-SameRouteRelaunchStress
+        }
+        Write-Host "Collecting Windows session logs..."
           & $lxdev @(Get-LxdevArguments @('logs', '--jsonl', '--limit', '5000')) |
             Set-Content -LiteralPath (Join-Path $resultDirectory 'session.jsonl') -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw 'Failed to collect Windows session logs.' }
@@ -369,19 +359,18 @@ try {
             throw "Unexpected error-level Windows session logs:`n$unexpected"
           }
           if ($testExitCode -ne 0) {
-            throw "Windows $currentFramework automation exited with code $testExitCode"
+            throw "Windows automation exited with code $testExitCode"
           }
         } finally {
           Pop-Location
         }
       } finally {
         if ($started) {
-          Write-Host "Stopping Windows Showcase ($currentFramework)..."
+          Write-Host "Stopping Windows Showcase..."
           Stop-ShowcaseSession
           $started = $false
         }
       }
-    }
   } finally {
     Pop-Location
   }

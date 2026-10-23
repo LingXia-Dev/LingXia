@@ -157,7 +157,7 @@ pub mod methods {
         /// A standalone lxapp's `lingxia dev listen` asks this host session to
         /// prepare, build, and watch that directory, and keep it open.
         ///
-        /// Args `{ path, attachToken, framework?, release? }`; the token is
+        /// Args `{ path, attachToken, release? }`; the token is
         /// the session's, from a file only its user can read. The reply is
         /// `{ appId, opened }`. The connection stays open: closing it drops
         /// that watch and leaves the lxapp running. An app id already in the

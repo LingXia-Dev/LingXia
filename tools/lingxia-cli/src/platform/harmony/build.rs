@@ -173,8 +173,7 @@ impl HarmonyPlatform {
         );
 
         let target_dir = resolve_cargo_target_dir(project_root);
-        let native_client_out =
-            native_client_out_for_host_project(project_root, lingxia_config, config.framework)?;
+        let native_client_out = native_client_out_for_host_project(project_root, lingxia_config)?;
         run_cargo_rustc_for_target(
             &rust_manifest,
             &rust_lib_dir,

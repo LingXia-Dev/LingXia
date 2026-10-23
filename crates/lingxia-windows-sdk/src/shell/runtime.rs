@@ -2337,7 +2337,7 @@ fn contrasting_text_color(background: u32) -> u32 {
 /// (`pages/home/index`). The manifest names the page; this is the catalog path.
 fn normalize_tab_path(path: &str) -> &str {
     let path = path.strip_prefix('/').unwrap_or(path);
-    for ext in [".tsx", ".ts", ".jsx", ".js", ".vue", ".html"] {
+    for ext in [".tsx", ".ts", ".jsx", ".js", ".html"] {
         if let Some(stripped) = path.strip_suffix(ext) {
             return stripped;
         }

@@ -9,7 +9,7 @@ usage() {
 Release LingXia npm packages.
 
 Usage:
-  scripts/release/npm.sh [--package bridge|elements|react|vue|html|page-runtime|polyfills|terminal-settings|types|test|all] [--publish] [--dry-run]
+  scripts/release/npm.sh [--package bridge|elements|react|html|page-runtime|polyfills|terminal-settings|types|test|all] [--publish] [--dry-run]
 
 Options:
   --package <name>  Package set to process (default: all)
@@ -45,15 +45,14 @@ if [[ "$PUBLISH" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
   DRY_RUN=1
 fi
 
-# Tier 1, then framework in dep order (bridge → elements/page-runtime → html/react/vue),
+# Tier 1, then framework in dep order (bridge → elements/page-runtime → html/react),
 # then prebuilt lxapps.
-ALL_TARGETS=("bridge" "polyfills" "types" "test" "elements" "page-runtime" "html" "react" "vue" "terminal-settings")
+ALL_TARGETS=("bridge" "polyfills" "types" "test" "elements" "page-runtime" "html" "react" "terminal-settings")
 
 case "$PACKAGE_SET" in
   bridge) targets=("bridge") ;;
   elements) targets=("elements") ;;
   react) targets=("react") ;;
-  vue) targets=("vue") ;;
   html) targets=("html") ;;
   page-runtime) targets=("page-runtime") ;;
   polyfills) targets=("polyfills") ;;
@@ -69,7 +68,6 @@ pkg_dir() {
     bridge) echo "$ROOT_DIR/packages/lingxia-bridge" ;;
     elements) echo "$ROOT_DIR/packages/lingxia-elements" ;;
     react) echo "$ROOT_DIR/packages/lingxia-react" ;;
-    vue) echo "$ROOT_DIR/packages/lingxia-vue" ;;
     html) echo "$ROOT_DIR/packages/lingxia-html" ;;
     page-runtime) echo "$ROOT_DIR/packages/lingxia-page-runtime" ;;
     polyfills) echo "$ROOT_DIR/packages/lingxia-polyfills" ;;
@@ -136,7 +134,6 @@ pkg_target_for_name() {
     @lingxia/page-runtime) echo "page-runtime" ;;
     @lingxia/html) echo "html" ;;
     @lingxia/react) echo "react" ;;
-    @lingxia/vue) echo "vue" ;;
     @lingxia/terminal-settings) echo "terminal-settings" ;;
     *) return 1 ;;
   esac
@@ -157,7 +154,6 @@ const dirOf = {
   "page-runtime": "packages/lingxia-page-runtime",
   html: "packages/lingxia-html",
   react: "packages/lingxia-react",
-  vue: "packages/lingxia-vue",
   "terminal-settings": "packages/lingxia-terminal-settings",
 };
 const nameOf = {};

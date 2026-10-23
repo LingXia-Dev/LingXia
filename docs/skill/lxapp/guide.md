@@ -18,7 +18,7 @@ my-lxapp/
 ├── package.json
 ├── pages/
 │   └── home/
-│       ├── index.tsx   # View  — runs in WebView (React or Vue)
+│       ├── index.tsx   # View  — runs in WebView (React; HTML projects use index.html)
 │       ├── index.ts    # Logic — runs in native JS runtime
 │       └── index.json  # Page config (navigation bar, style)
 ├── public/
@@ -171,7 +171,7 @@ Page({
 
 ## View
 
-A View is a React or Vue component, or an HTML module entry. It renders `data`
+A View is a React component or an HTML module entry. It renders `data`
 and calls `actions`; it never mutates `data`.
 
 The page mounts once its first state (the `Page({ data })` defaults) has
@@ -189,13 +189,13 @@ a panel naming itself.
 Any component may call either. Geometry is CSS, not a hook:
 [page chrome CSS](#page-chrome-css).
 
-`data` is typed `DeepReadonly<PageData>` (Vue hands out a readonly proxy; in a
-dev session a write throws). Keep what the user edits as View state and submit
-it with an action; Logic's `setData` brings the result back:
+`data` is typed `DeepReadonly<PageData>`. In a dev session a write throws.
+Keep what the user edits as View state and submit it with an action; Logic's
+`setData` brings the result back:
 
 ```tsx
 const { data, actions } = useLxPage<PageData, PageActions>();
-const [draft, setDraft] = useState(data.message);   // Vue: ref(data.message)
+const [draft, setDraft] = useState(data.message);
 <input value={draft} onChange={(e) => setDraft(e.target.value)} />
 <button onClick={() => actions.updateMessage({ text: draft })}>Save</button>
 ```
@@ -232,14 +232,6 @@ export default function HomePage() {
   );
 }
 ```
-
-### Vue
-
-The same with `@lingxia/vue` in `<script setup lang="ts">`: `const { data,
-actions } = useLxPage<PageData, PageActions>()`, `const host = useLxHost()`,
-then `{{ data.count }}`, `host.sizeClass`, `@click="actions.increment()"`.
-`data` is deep-reactive, so destructuring it stays live; never `v-model` it —
-bind a `ref` draft instead. Read `host.sizeClass` rather than destructuring `host`.
 
 ### HTML
 
@@ -287,7 +279,7 @@ re-serves the page. Logic reads the OS with `lx.device.getDeviceInfo()`.
 
 ## Events
 
-Use framework syntax (`onX` in React, `@event` in Vue). A handler can be an
+Use framework syntax (`onX` in React). A handler can be an
 `actions.*` function or a local View function; either receives what the
 component reports, and an `actions.*` handler forwards it to Logic as its
 payload. Native component callbacks and their payload shapes:
@@ -526,7 +518,7 @@ back, the edge swipe — the page stays and your handler is asked. Return
 stay. Works without Logic.
 
 ```tsx
-import { useLxLeaveGuard } from '@lingxia/react'; // also @lingxia/vue
+import { useLxLeaveGuard } from '@lingxia/react';
 
 useLxLeaveGuard(dirty, () => confirmDiscard()); // boolean | Promise<boolean>
 ```

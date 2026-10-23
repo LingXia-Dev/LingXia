@@ -43,17 +43,13 @@ pub fn process_template_dir(
             continue;
         }
 
-        // Skip framework-specific files that don't match the selected framework.
-        // .vue files → Vue only; .tsx files → React only.
+        // .tsx files belong to React projects only.
         if let Some(framework) = vars.get("FRAMEWORK").map(|s| s.as_str())
             && let Some(ext) = path.extension().and_then(|e| e.to_str())
+            && ext == "tsx"
+            && framework != "react"
         {
-            if ext == "vue" && framework != "vue" {
-                continue;
-            }
-            if ext == "tsx" && framework != "react" {
-                continue;
-            }
+            continue;
         }
 
         if path.is_dir() {
@@ -295,50 +291,22 @@ mod tests {
     // --- process_template_dir: framework file filtering ---
 
     #[test]
-    fn react_framework_skips_vue_files() {
+    fn html_framework_skips_tsx_files() {
         let src = tempdir().unwrap();
         let dst = tempdir().unwrap();
         let pages = src.path().join("pages");
         fs::create_dir_all(&pages).unwrap();
         fs::write(pages.join("index.tsx"), "react page").unwrap();
-        fs::write(pages.join("index.vue"), "vue page").unwrap();
+        fs::write(pages.join("index.html"), "html page").unwrap();
         fs::write(src.path().join("util.ts"), "shared").unwrap();
 
         let mut vars = HashMap::new();
-        vars.insert("FRAMEWORK".to_string(), "react".to_string());
+        vars.insert("FRAMEWORK".to_string(), "html".to_string());
         process_template_dir(src.path(), dst.path(), &vars).unwrap();
 
         assert!(
-            dst.path().join("pages/index.tsx").exists(),
-            "tsx must be copied"
-        );
-        assert!(
-            !dst.path().join("pages/index.vue").exists(),
-            "vue must be skipped"
-        );
-        assert!(
-            dst.path().join("util.ts").exists(),
-            "shared .ts must be copied"
-        );
-    }
-
-    #[test]
-    fn vue_framework_skips_tsx_files() {
-        let src = tempdir().unwrap();
-        let dst = tempdir().unwrap();
-        let pages = src.path().join("pages");
-        fs::create_dir_all(&pages).unwrap();
-        fs::write(pages.join("index.tsx"), "react page").unwrap();
-        fs::write(pages.join("index.vue"), "vue page").unwrap();
-        fs::write(src.path().join("util.ts"), "shared").unwrap();
-
-        let mut vars = HashMap::new();
-        vars.insert("FRAMEWORK".to_string(), "vue".to_string());
-        process_template_dir(src.path(), dst.path(), &vars).unwrap();
-
-        assert!(
-            dst.path().join("pages/index.vue").exists(),
-            "vue must be copied"
+            dst.path().join("pages/index.html").exists(),
+            "html must be copied"
         );
         assert!(
             !dst.path().join("pages/index.tsx").exists(),
@@ -355,10 +323,10 @@ mod tests {
         let src = tempdir().unwrap();
         let dst = tempdir().unwrap();
         fs::write(src.path().join("index.tsx"), "react").unwrap();
-        fs::write(src.path().join("index.vue"), "vue").unwrap();
+        fs::write(src.path().join("index.html"), "html").unwrap();
         process_template_dir(src.path(), dst.path(), &HashMap::new()).unwrap();
         assert!(dst.path().join("index.tsx").exists());
-        assert!(dst.path().join("index.vue").exists());
+        assert!(dst.path().join("index.html").exists());
     }
 
     // --- process_template_dir: subdirectory recursion ---

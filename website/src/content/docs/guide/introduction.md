@@ -10,7 +10,7 @@ LingXia (灵匣, "luminous vessel") is a **Rust-powered cross-platform app runti
 
 The defining idea is a clean split between **rendering** and **logic**:
 
-- The **View** renders — React, Vue, or plain HTML, running in a WebView.
+- The **View** renders — React or plain HTML, running in a WebView.
 - The **Logic** owns state and platform APIs — in a JS runtime, or in Rust for native power.
 - A **Rust bridge** moves data and events between them.
 

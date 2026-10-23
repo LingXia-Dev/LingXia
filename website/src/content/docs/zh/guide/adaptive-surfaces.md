@@ -89,7 +89,7 @@ lx.surface.openPage('editor', { as: 'window', chrome: 'full' })
 const unsubscribe = lx.surface.watchContext(({ sizeClass }) => { /* … */ })
 ```
 
-View 直接用 `@lingxia/react` / `@lingxia/vue` 的 `useLxHost().sizeClass` 读取同一个尺寸类别，
+View 直接用 `@lingxia/react` 的 `useLxHost().sizeClass` 读取同一个尺寸类别，
 无需订阅，也无需 `setData`。它只在尺寸类别变化时才变；精确宽度交给 CSS 与容器查询。
 
 - `openDeclared(id)` 打开 `lingxia.yaml` 声明的内容；`id` 是该声明的内容 identity。

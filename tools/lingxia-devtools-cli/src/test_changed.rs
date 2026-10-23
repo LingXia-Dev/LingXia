@@ -47,7 +47,7 @@ const PROJECT_WIDE: &[&str] = &[
 /// `*.config.*` files beside those that only lint or format.
 const INERT_CONFIGS: &[&str] = &["eslint", "prettier", "stylelint", "commitlint"];
 
-const SCRIPT_EXTENSIONS: &[&str] = &["js", "mjs", "cjs", "ts", "mts", "cts", "jsx", "tsx", "vue"];
+const SCRIPT_EXTENSIONS: &[&str] = &["js", "mjs", "cjs", "ts", "mts", "cts", "jsx", "tsx"];
 
 /// Why a spec module is affected.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -603,7 +603,7 @@ impl Graph {
         let mut options =
             ResolveOptions::default().with_condition_names(&["import", "module", "default"]);
         options.extensions = [
-            ".ts", ".tsx", ".mts", ".js", ".jsx", ".mjs", ".cjs", ".json", ".vue",
+            ".ts", ".tsx", ".mts", ".js", ".jsx", ".mjs", ".cjs", ".json",
         ]
         .iter()
         .map(|ext| ext.to_string())
@@ -663,11 +663,8 @@ impl Graph {
     }
 
     fn read(&self, file: &Path) -> Option<Node> {
-        let extension = file.extension()?.to_str()?;
         let text = std::fs::read_to_string(file).ok()?;
-        let scripts: Vec<(String, SourceType)> = if extension == "vue" {
-            vue_scripts(&text)
-        } else if is_script(file) {
+        let scripts: Vec<(String, SourceType)> = if is_script(file) {
             vec![(text, SourceType::from_path(file).ok()?)]
         } else {
             return None;
@@ -741,25 +738,6 @@ fn normalize(path: &Path) -> PathBuf {
         }
     }
     out
-}
-
-/// The `<script>` blocks of a Vue single-file component, as TypeScript.
-fn vue_scripts(text: &str) -> Vec<(String, SourceType)> {
-    let mut scripts = Vec::new();
-    let mut rest = text;
-    while let Some(open) = rest.find("<script") {
-        let after = &rest[open..];
-        let Some(tag_end) = after.find('>') else {
-            break;
-        };
-        let body = &after[tag_end + 1..];
-        let Some(close) = body.find("</script>") else {
-            break;
-        };
-        scripts.push((body[..close].to_string(), SourceType::tsx()));
-        rest = &body[close..];
-    }
-    scripts
 }
 
 #[derive(Default)]

@@ -1,5 +1,4 @@
 use crate::config::LingXiaConfig;
-use crate::lxapp::ProjectFramework;
 use crate::platform::{self, BuildProfile};
 use crate::runtime;
 use anyhow::{Result, anyhow};
@@ -156,7 +155,6 @@ pub(crate) fn prepare_configured_host_assets(
     project_root: &Path,
     config: &LingXiaConfig,
     build_profile: BuildProfile,
-    framework_override: Option<ProjectFramework>,
     progress_override: Option<&str>,
     dev: bool,
     platforms: &[platform::detector::PlatformType],
@@ -189,7 +187,6 @@ pub(crate) fn prepare_configured_host_assets(
         project_root,
         config,
         build_profile,
-        framework_override,
         progress_override,
         dev,
         &mut cache,
@@ -202,7 +199,6 @@ pub(crate) fn prepare_configured_host_assets(
         project_root,
         config,
         build_profile,
-        framework_override,
         progress_override,
         dev,
         &mut cache,

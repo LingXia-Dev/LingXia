@@ -22,7 +22,6 @@ on:
           - lingxia-terminal-settings
           - lingxia-test
           - lingxia-types
-          - lingxia-vue
       version:
         description: "Version to publish (e.g. 0.1.0)"
         required: true
@@ -53,7 +52,6 @@ env:
     lingxia-page-runtime
     lingxia-html
     lingxia-react
-    lingxia-vue
     lingxia-terminal-settings
     lingxia-types
     lingxia-test
@@ -116,7 +114,6 @@ jobs:
               lingxia-terminal-settings-v*) package="lingxia-terminal-settings"; version="${tag#lingxia-terminal-settings-v}" ;;
               lingxia-test-v*) package="lingxia-test"; version="${tag#lingxia-test-v}" ;;
               lingxia-types-v*) package="lingxia-types"; version="${tag#lingxia-types-v}" ;;
-              lingxia-vue-v*) package="lingxia-vue"; version="${tag#lingxia-vue-v}" ;;
               *) echo "Unknown tag format: $tag" >&2; exit 1 ;;
             esac
           fi
@@ -127,7 +124,7 @@ jobs:
               directory="packages"
               package_set="all"
               ;;
-            lingxia-bridge|lingxia-elements|lingxia-html|lingxia-page-runtime|lingxia-polyfills|lingxia-react|lingxia-terminal-settings|lingxia-test|lingxia-types|lingxia-vue)
+            lingxia-bridge|lingxia-elements|lingxia-html|lingxia-page-runtime|lingxia-polyfills|lingxia-react|lingxia-terminal-settings|lingxia-test|lingxia-types)
               directory="packages/$package"
               package_set="${package#lingxia-}"
               ;;

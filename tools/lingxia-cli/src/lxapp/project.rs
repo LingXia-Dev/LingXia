@@ -32,17 +32,14 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn discover(
-        project_root: &Path,
-        framework_override: Option<ProjectFramework>,
-    ) -> Result<Self> {
+    pub fn discover(project_root: &Path) -> Result<Self> {
         let lxapp_path = project_root.join("lxapp.json");
         let lxplugin_path = project_root.join("lxplugin.json");
 
         if lxapp_path.exists() {
             let manifest = read_json(&lxapp_path)?;
             validate_lxapp_manifest(&manifest)?;
-            let framework = resolve_framework(project_root, &manifest, framework_override)?;
+            let framework = detect_project_framework(project_root)?;
             let pages = resolve_lxapp_pages(project_root, &manifest, framework)?;
             let page_names = resolve_page_names(&manifest);
             validate_page_configs(project_root, &pages)?;
@@ -65,7 +62,7 @@ impl Project {
 
         if lxplugin_path.exists() {
             let manifest = read_json(&lxplugin_path)?;
-            let framework = resolve_framework(project_root, &manifest, framework_override)?;
+            let framework = detect_project_framework(project_root)?;
             let pages_obj = manifest
                 .get("pages")
                 .and_then(Value::as_array)
@@ -124,20 +121,6 @@ impl Project {
             project_root.display()
         ))
     }
-}
-
-fn resolve_framework(
-    project_root: &Path,
-    manifest: &Value,
-    framework_override: Option<ProjectFramework>,
-) -> Result<ProjectFramework> {
-    // A manifest pin is part of the package contract. A host-level framework
-    // selection chooses among ambiguous app sources; it must not reinterpret
-    // an explicitly HTML/React/Vue resource bundled alongside that app.
-    if manifest.get("framework").is_some() {
-        return detect_project_framework(project_root);
-    }
-    framework_override.map_or_else(|| detect_project_framework(project_root), Ok)
 }
 
 fn validate_lxapp_manifest(manifest: &Value) -> Result<()> {
@@ -710,13 +693,17 @@ mod tests {
               "name": "@demo/home"
             }"#,
         );
-        write_file(temp.path(), "pages/home/index.vue", "<template />");
+        write_file(
+            temp.path(),
+            "pages/home/index.tsx",
+            "export default function Page() {}",
+        );
 
-        let project = Project::discover(temp.path(), None).unwrap();
+        let project = Project::discover(temp.path()).unwrap();
 
         assert_eq!(project.kind, ProjectKind::LxApp);
-        assert_eq!(project.framework, ProjectFramework::Vue);
-        assert_eq!(project.pages, vec!["pages/home/index.vue".to_string()]);
+        assert_eq!(project.framework, ProjectFramework::React);
+        assert_eq!(project.pages, vec!["pages/home/index.tsx".to_string()]);
         assert_eq!(project.logic_entry, None);
         assert_eq!(project.output_dir, temp.path().join("dist"));
         assert_eq!(project.package_name.as_deref(), Some("@demo/home"));
@@ -749,7 +736,7 @@ mod tests {
         write_file(temp.path(), "pages/newtab/index.html", "<!doctype html>");
         write_file(temp.path(), "pages/settings/index.html", "<!doctype html>");
 
-        let project = Project::discover(temp.path(), None).unwrap();
+        let project = Project::discover(temp.path()).unwrap();
 
         assert_eq!(project.kind, ProjectKind::LxApp);
         assert_eq!(project.framework, ProjectFramework::Html);
@@ -790,7 +777,7 @@ mod tests {
         write_file(temp.path(), "pages/newtab/index.html", "<!doctype html>");
         write_file(temp.path(), "pages/settings/index.html", "<!doctype html>");
 
-        let project = Project::discover(temp.path(), None).unwrap();
+        let project = Project::discover(temp.path()).unwrap();
 
         assert_eq!(project.kind, ProjectKind::LxApp);
         assert_eq!(project.framework, ProjectFramework::Html);
@@ -824,9 +811,7 @@ mod tests {
             "export default function Page() {}",
         );
 
-        let error = Project::discover(temp.path(), None)
-            .unwrap_err()
-            .to_string();
+        let error = Project::discover(temp.path()).unwrap_err().to_string();
         assert!(error.contains("\"appService\" is no longer supported"));
     }
 
@@ -845,9 +830,7 @@ mod tests {
         );
         write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
 
-        let error = Project::discover(temp.path(), None)
-            .unwrap_err()
-            .to_string();
+        let error = Project::discover(temp.path()).unwrap_err().to_string();
         assert!(error.contains("Missing appId in lxapp.json"));
     }
 
@@ -866,9 +849,7 @@ mod tests {
             }"#,
         );
 
-        let error = Project::discover(temp.path(), None)
-            .unwrap_err()
-            .to_string();
+        let error = Project::discover(temp.path()).unwrap_err().to_string();
         assert!(error.contains("lxapp.json pages must not be empty"));
     }
 
@@ -890,9 +871,7 @@ mod tests {
         );
         write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
 
-        let error = Project::discover(temp.path(), None)
-            .unwrap_err()
-            .to_string();
+        let error = Project::discover(temp.path()).unwrap_err().to_string();
         assert!(error.contains("lxapp.json page name must use"));
     }
 
@@ -914,9 +893,7 @@ mod tests {
             }"#,
         );
 
-        let error = Project::discover(temp.path(), Some(ProjectFramework::Html))
-            .unwrap_err()
-            .to_string();
+        let error = Project::discover(temp.path()).unwrap_err().to_string();
         assert!(error.contains("page name must be unique"));
     }
 
@@ -935,9 +912,7 @@ mod tests {
             }"#,
         );
 
-        let error = Project::discover(temp.path(), None)
-            .unwrap_err()
-            .to_string();
+        let error = Project::discover(temp.path()).unwrap_err().to_string();
         assert!(error.contains("lxapp.json pages entry must stay inside"));
     }
 
@@ -956,7 +931,7 @@ mod tests {
         );
         write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
 
-        let project = Project::discover(temp.path(), Some(ProjectFramework::Html)).unwrap();
+        let project = Project::discover(temp.path()).unwrap();
         assert_eq!(project.kind, ProjectKind::LxApp);
     }
 
@@ -976,7 +951,7 @@ mod tests {
         );
         write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
 
-        let project = Project::discover(temp.path(), Some(ProjectFramework::Html)).unwrap();
+        let project = Project::discover(temp.path()).unwrap();
 
         assert_eq!(project.kind, ProjectKind::LxPlugin);
         assert_eq!(project.framework, ProjectFramework::Html);
@@ -1003,9 +978,7 @@ mod tests {
         );
         write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
 
-        let error = Project::discover(temp.path(), None)
-            .unwrap_err()
-            .to_string();
+        let error = Project::discover(temp.path()).unwrap_err().to_string();
         assert!(error.contains("\"logic\" entry must stay within the lxapp package"));
     }
 
@@ -1023,47 +996,17 @@ mod tests {
               "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
-        write_file(temp.path(), "pages/home/index.vue", "<template />");
+        write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
         write_file(
             temp.path(),
             "pages/home/index.tsx",
             "export default function Page() {}",
         );
 
-        let error = Project::discover(temp.path(), None)
-            .unwrap_err()
-            .to_string();
-        // Only the frameworks actually present are offered, and the manifest
-        // pin is suggested as the permanent fix.
-        assert!(error.contains("Pass --framework react|vue,"), "{error}");
+        let error = Project::discover(temp.path()).unwrap_err().to_string();
+        assert!(error.contains("react|html"), "{error}");
         assert!(error.contains("\"framework\""), "{error}");
-    }
-
-    #[test]
-    fn allows_framework_override_for_ambiguous_extensionless_page() {
-        let temp = tempdir().unwrap();
-        write_file(
-            temp.path(),
-            "lxapp.json",
-            r#"{
-              "appId": "demo",
-              "version": "1.0.0",
-              "logic": false,
-
-              "pages": [{"name":"home","path":"pages/home/index"}]
-            }"#,
-        );
-        write_file(temp.path(), "pages/home/index.vue", "<template />");
-        write_file(
-            temp.path(),
-            "pages/home/index.tsx",
-            "export default function Page() {}",
-        );
-
-        let project = Project::discover(temp.path(), Some(ProjectFramework::Vue)).unwrap();
-
-        assert_eq!(project.framework, ProjectFramework::Vue);
-        assert_eq!(project.pages, vec!["pages/home/index.vue".to_string()]);
+        assert!(!error.contains("--framework"), "{error}");
     }
 
     #[test]
@@ -1081,21 +1024,21 @@ mod tests {
               "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
-        write_file(temp.path(), "pages/home/index.vue", "<template />");
+        write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
         write_file(
             temp.path(),
             "pages/home/index.tsx",
             "export default function Page() {}",
         );
 
-        let project = Project::discover(temp.path(), None).unwrap();
+        let project = Project::discover(temp.path()).unwrap();
 
         assert_eq!(project.framework, ProjectFramework::React);
         assert_eq!(project.pages, vec!["pages/home/index.tsx".to_string()]);
     }
 
     #[test]
-    fn manifest_framework_pin_beats_host_override() {
+    fn manifest_framework_pin_selects_html() {
         let temp = tempdir().unwrap();
         write_file(
             temp.path(),
@@ -1111,7 +1054,7 @@ mod tests {
         );
         write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
 
-        let project = Project::discover(temp.path(), Some(ProjectFramework::React)).unwrap();
+        let project = Project::discover(temp.path()).unwrap();
 
         assert_eq!(project.framework, ProjectFramework::Html);
         assert_eq!(project.pages, vec!["pages/home/index.html".to_string()]);
@@ -1134,7 +1077,7 @@ mod tests {
         );
         write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
 
-        let project = Project::discover(temp.path(), None).unwrap();
+        let project = Project::discover(temp.path()).unwrap();
 
         assert_eq!(project.framework, ProjectFramework::Html);
         assert_eq!(project.logic_entry, None);
@@ -1158,7 +1101,7 @@ mod tests {
         );
         write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
 
-        let project = Project::discover(temp.path(), None).unwrap();
+        let project = Project::discover(temp.path()).unwrap();
         assert_eq!(project.logic_entry, None);
     }
 
