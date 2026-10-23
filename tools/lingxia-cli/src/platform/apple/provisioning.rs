@@ -2165,17 +2165,19 @@ fn apply_associated_domains_policy(
         .map(|host| format!("applinks:{host}"))
         .collect::<Vec<_>>();
 
-    let Some(granted) = entitlements
-        .get(ASSOCIATED_DOMAINS)
-        .and_then(plist::Value::as_array)
-        .map(|values| {
+    // Apple's profiles grant the capability as the string "*" (any domain);
+    // the app's signature still has to list its actual domains.
+    let Some(granted) = (match entitlements.get(ASSOCIATED_DOMAINS) {
+        Some(plist::Value::String(any)) if any == "*" => Some(vec![any.clone()]),
+        Some(plist::Value::Array(values)) => Some(
             values
                 .iter()
                 .filter_map(plist::Value::as_string)
                 .map(str::to_string)
-                .collect::<Vec<_>>()
-        })
-    else {
+                .collect::<Vec<_>>(),
+        ),
+        _ => None,
+    }) else {
         entitlements.remove(ASSOCIATED_DOMAINS);
         if !requested.is_empty() {
             eprintln!(
@@ -2187,9 +2189,10 @@ fn apply_associated_domains_policy(
         return;
     };
 
+    let any_domain = granted.iter().any(|domain| domain == "*");
     let preserved = granted
         .iter()
-        .filter(|domain| !domain.starts_with("applinks:"))
+        .filter(|domain| !domain.starts_with("applinks:") && *domain != "*")
         .cloned()
         .collect::<Vec<_>>();
     if requested.is_empty() {
@@ -2199,7 +2202,7 @@ fn apply_associated_domains_policy(
 
     let missing = requested
         .iter()
-        .filter(|domain| !granted.iter().any(|entry| entry == *domain))
+        .filter(|domain| !any_domain && !granted.iter().any(|entry| entry == *domain))
         .cloned()
         .collect::<Vec<_>>();
     if !missing.is_empty() {
@@ -2608,27 +2611,57 @@ mod tests {
         assert!(!dict.contains_key("com.apple.developer.networking.HotspotConfiguration"));
     }
 
-    #[test]
-    fn test_capability_policy_removes_malformed_associated_domains() {
+    fn associated_domains_after(granted: plist::Value, hosts: &[&str]) -> Option<Vec<String>> {
         let mut entitlements = plist::Dictionary::new();
         entitlements.insert(
             "com.apple.developer.associated-domains".to_string(),
-            plist::Value::String("*".to_string()),
+            granted,
         );
         entitlements.insert("get-task-allow".to_string(), plist::Value::Boolean(true));
         let mut source = Vec::new();
         plist::to_writer_xml(&mut source, &entitlements).unwrap();
-
-        let filtered = apply_capability_entitlement_policy(
-            &source,
-            "app.lingxia.test",
-            &["www.example.com".to_string()],
-        )
-        .unwrap();
+        let hosts: Vec<String> = hosts.iter().map(|host| host.to_string()).collect();
+        let filtered =
+            apply_capability_entitlement_policy(&source, "app.lingxia.test", &hosts).unwrap();
         let parsed = plist::from_bytes::<plist::Value>(&filtered).unwrap();
         let dict = parsed.as_dictionary().unwrap();
-        assert!(!dict.contains_key("com.apple.developer.associated-domains"));
         assert!(dict.contains_key("get-task-allow"));
+        dict.get("com.apple.developer.associated-domains")
+            .map(|value| {
+                value
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_string().unwrap().to_string())
+                    .collect()
+            })
+    }
+
+    #[test]
+    fn test_capability_policy_signs_requested_domains_under_a_wildcard_grant() {
+        // How Apple's profiles grant the capability.
+        let any = plist::Value::String("*".to_string());
+        assert_eq!(
+            associated_domains_after(any.clone(), &["applink.example.com"]),
+            Some(vec!["applinks:applink.example.com".to_string()])
+        );
+        assert_eq!(associated_domains_after(any, &[]), None);
+
+        let any_in_list = plist::Value::Array(vec![
+            plist::Value::String("*".to_string()),
+            plist::Value::String("webcredentials:example.com".to_string()),
+        ]);
+        assert_eq!(
+            associated_domains_after(any_in_list, &["applink.example.com"]),
+            Some(vec![
+                "webcredentials:example.com".to_string(),
+                "applinks:applink.example.com".to_string()
+            ])
+        );
+        assert_eq!(
+            associated_domains_after(plist::Value::Boolean(true), &["applink.example.com"]),
+            None
+        );
     }
 
     #[test]
