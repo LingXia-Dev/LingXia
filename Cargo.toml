@@ -37,6 +37,7 @@ members = [
     "tools/lingxia-cli",
     "tools/lingxia-devtools-cli",
     "crates/lingxia-native-codegen",
+    "xtask",
 ]
 exclude = [
     "examples/lingxia-showcase/native",

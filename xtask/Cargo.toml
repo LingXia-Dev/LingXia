@@ -1,0 +1,16 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# `lingxia pin` builds a pinned commit's SDKs through `cargo xtask sdk`; it
+# reads this before calling, and an older commit without it goes through
+# scripts/release/sdk.sh. Bump on an incompatible change to the arguments or
+# the artifact names.
+[package.metadata.lingxia]
+sdk-interface = 1
+
+[dependencies]
+anyhow = "1"
+zip = { version = "9", default-features = false, features = ["deflate"] }

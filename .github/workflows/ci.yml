@@ -130,6 +130,7 @@ jobs:
               - 'crates/lingxia-webview/src/harmony/**'
             sdk_release:
               - 'scripts/release/sdk.sh'
+              - 'xtask/**'
             examples_common:
               - 'examples/lingxia-showcase/lingxia.yaml'
               - 'examples/lingxia-showcase/AppIcon.png'

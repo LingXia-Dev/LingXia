@@ -1,0 +1,3 @@
+[alias]
+# Build tasks for this repository; see xtask/src/main.rs.
+xtask = "run -q -p xtask --"
