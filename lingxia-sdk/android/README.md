@@ -48,7 +48,7 @@ Build every Maven publication together (a facade AAR alone is insufficient):
 ./gradlew publishAllPublicationsToLocalExampleRepository -Pversion=<version>
 ```
 
-`scripts/release/sdk.sh --platform android` packages all four publications in
+`cargo xtask sdk --platform android --out <dir>` packages all four publications in
 the existing Maven SDK zip. Generate icons and translations first when building
 a clean checkout directly; see `.github/actions/bootstrap-android-sdk`.
 

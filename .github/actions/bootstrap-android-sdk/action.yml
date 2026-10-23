@@ -4,7 +4,7 @@ description: >
   drawables (from the SVG icon set) and localized strings.xml. The SDK's Kotlin
   references R.drawable.* / R.string.*, so these must exist before the gradle
   build that `lingxia build --platform android` runs. Mirrors the android half
-  of scripts/release/sdk.sh's generate_resources. Assumes Rust is set up.
+  of `cargo xtask sdk`'s resource generation. Assumes Rust is set up.
 
 inputs:
   cli:

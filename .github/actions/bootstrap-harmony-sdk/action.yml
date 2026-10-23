@@ -3,8 +3,8 @@ description: >
   Generate the gitignored harmony SDK assets a clean checkout lacks. The harmony
   SDK module is compiled from source (the example wires it via build-profile
   `srcPath`), so these must exist before `lingxia build --platform harmony` runs
-  hvigor. Mirrors the harmony half of scripts/release/sdk.sh
-  (generate_resources). Assumes Rust is set up.
+  hvigor. Mirrors the harmony half of `cargo xtask sdk`'s resource
+  generation. Assumes Rust is set up.
 
 inputs:
   cli:

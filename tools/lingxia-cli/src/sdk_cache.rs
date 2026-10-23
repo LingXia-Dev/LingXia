@@ -2,7 +2,7 @@
 //!
 //! When `lingxia build` runs inside a user's project (outside the LingXia
 //! monorepo), the native SDK is not present on disk. This module downloads the
-//! per-platform SDK artifact published by `scripts/release/sdk.sh` to the
+//! per-platform SDK artifact built by `cargo xtask sdk` and published to the
 //! GitHub release `lingxia-sdk-v<version>`, verifies its SHA-256 against the
 //! release's SHASUMS file, and unpacks it into a content-addressed cache under
 //! `~/.lingxia/sdk/`. A `.ready` sentinel marks a complete install so repeat
@@ -27,7 +27,7 @@ pub enum SdkPlatform {
 }
 
 impl SdkPlatform {
-    /// Exact release asset name produced by `scripts/release/sdk.sh`.
+    /// Exact release asset name produced by `cargo xtask sdk`.
     pub fn asset_name(&self, version: &str) -> String {
         match self {
             SdkPlatform::Android => format!("lingxia-sdk-android-maven-{version}.zip"),
@@ -45,7 +45,7 @@ impl SdkPlatform {
         }
     }
 
-    /// `sdk.sh` platforms_slug for the single-platform SHASUMS filename
+    /// The platform name in the single-platform SHASUMS filename
     /// (`SHASUMS256-<version>-<slug>.txt`). The full release uses
     /// `apple-android-harmony`; we try that first and fall back to these.
     fn shasums_slug(&self) -> &'static str {
@@ -62,7 +62,7 @@ pub fn sdk_cache_root() -> Option<PathBuf> {
     Some(crate::state_root::lingxia_dir().ok()?.join("sdk"))
 }
 
-/// GitHub release tag for an SDK version (matches `scripts/release/sdk.sh` `GH_TAG`).
+/// GitHub release tag for an SDK version (the release workflow's tag).
 fn release_tag(version: &str) -> String {
     format!("lingxia-sdk-v{version}")
 }

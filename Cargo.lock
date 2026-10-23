@@ -9991,6 +9991,7 @@ name = "xtask"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "sha2 0.11.0",
  "zip",
 ]
 

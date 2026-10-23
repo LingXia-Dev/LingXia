@@ -171,7 +171,7 @@ Scripts:
   npm:    scripts/release/npm.sh
   cli:    scripts/release/cli.sh
   runner: scripts/release/runner.sh
-  sdk:    scripts/release/sdk.sh
+  sdk:    cargo xtask sdk
   install: install.sh
 EOF
 }
@@ -206,7 +206,7 @@ case "$cmd" in
     run_cmd "$SCRIPT_DIR/runner.sh" "$@"
     ;;
   sdk)
-    run_cmd "$SCRIPT_DIR/sdk.sh" "$@"
+    (cd "$SCRIPT_DIR/../.." && cargo xtask sdk "$@")
     ;;
   changelog)
     node "$SCRIPT_DIR/changelog.mjs" "$@"

@@ -35,11 +35,10 @@ for arg in "$@"; do
   esac
 done
 
-echo "Building Harmony HAR via scripts/release/sdk.sh ..."
-bash "$LINGXIA_ROOT/scripts/release/sdk.sh" \
+echo "Building Harmony HAR via cargo xtask sdk ..."
+(cd "$LINGXIA_ROOT" && cargo xtask sdk \
   --platform harmony \
-  --no-shasums \
-  --out "$LINGXIA_ROOT/target/sdk-harmony-build"
+  --out "$LINGXIA_ROOT/target/sdk-harmony-build")
 
 HAR_OUT="$LINGXIA_ROOT/target/ohpm/lingxia.har"
 if [[ ! -f "$HAR_OUT" ]]; then
