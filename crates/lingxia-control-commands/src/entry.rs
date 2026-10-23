@@ -49,6 +49,11 @@ enum Command {
 
 /// Run the command line and return its exit code, or `None` to become the app.
 pub fn run_if_invoked(app_data_dir: &Path) -> Option<i32> {
+    let app_data_dir = app_data_dir.to_path_buf();
+    crate::with_cli_stack(move || run_if_invoked_here(&app_data_dir))
+}
+
+fn run_if_invoked_here(app_data_dir: &Path) -> Option<i32> {
     let (explicit, args) = invocation_args();
     if !invocation_is_command(explicit, cfg!(windows), std::io::stdin().is_terminal())
         && !first_argument_is_a_command(&args)
