@@ -20,7 +20,7 @@ mod bridge;
 mod bridge_upstream;
 mod browser;
 #[cfg(feature = "browser")]
-mod browser_agent;
+mod browser_page;
 #[cfg(feature = "computer-use")]
 mod desktop;
 mod devtool;

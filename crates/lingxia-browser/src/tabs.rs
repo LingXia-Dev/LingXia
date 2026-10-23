@@ -644,7 +644,9 @@ pub fn browser_activate_tab(tab_id: &str) -> Result<BrowserTabInfo, BrowserAutom
 
 pub fn browser_present_tab(tab_id: &str) -> Result<BrowserTabInfo, BrowserAutomationError> {
     let info = browser_activate_tab(tab_id)?;
-    notify_tab_present_requested(&info.tab_id);
+    if !is_standalone_tab(&info.tab_id) {
+        notify_tab_present_requested(&info.tab_id);
+    }
     Ok(info)
 }
 
@@ -1334,7 +1336,7 @@ fn close_browser_tab_inner(tab_id: &str, remember: bool) -> Result<(), LxAppErro
     };
     let removed_any = removed.is_some();
     if removed_any {
-        crate::agent::forget_tab(&normalized);
+        crate::page::forget_tab(&normalized);
     }
     if let Some(tab) = removed {
         // Detach only when this tab currently backs the startup page bridge.

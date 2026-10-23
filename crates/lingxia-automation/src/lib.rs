@@ -15,6 +15,7 @@ mod clock;
 mod desktop;
 // Dialogs are watched for a spec of a host run; without the runtime the
 // driver exists but every call rejects.
+mod browser;
 #[cfg(feature = "runtime")]
 mod dialogs;
 #[cfg(not(feature = "runtime"))]
@@ -331,6 +332,7 @@ pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<host::JSDeviceDriver>()?;
     ctx.register_hidden_class::<host::JSBrowserDriver>()?;
     ctx.register_hidden_class::<host::JSBrowserCookies>()?;
+    ctx.register_hidden_class::<host::JSBrowserConsole>()?;
     ctx.register_hidden_class::<shell::JSShellDriver>()?;
     ctx.register_hidden_class::<terminal::JSTerminalDriver>()?;
     #[cfg(feature = "desktop")]

@@ -4,7 +4,7 @@ use lxapp::{
     OrientationConfig, PageInstanceEvent, PageInstanceId, PageOrientation, PageOwner,
     PageQueryInput, PageTarget, PresentationKind, SceneId,
 };
-#[cfg(all(target_os = "macos", feature = "browser-shell"))]
+#[cfg(all(target_os = "macos", feature = "browser-runtime"))]
 use std::sync::Arc;
 
 #[swift_bridge::bridge]
@@ -906,6 +906,16 @@ fn install_browser_native_input_host() {
 #[cfg(not(all(target_os = "macos", feature = "browser-shell")))]
 fn install_browser_native_input_host() {}
 
+#[cfg(all(target_os = "macos", feature = "browser-runtime"))]
+fn install_browser_present_handler() {
+    lingxia_browser::set_tab_present_handler(Arc::new(|tab_id| {
+        let _ = self::bridge::present_internal_browser_tab(tab_id);
+    }));
+}
+
+#[cfg(not(all(target_os = "macos", feature = "browser-runtime")))]
+fn install_browser_present_handler() {}
+
 /// Run the product's command line and return its exit code, or `-1` to carry
 /// on and become the app.
 ///
@@ -929,6 +939,7 @@ fn product_run_cli_if_invoked(data_dir: &str) -> i32 {
 pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::LingxiaInitResult {
     crate::logging::init();
     install_browser_native_input_host();
+    install_browser_present_handler();
     lxapp::add_display_language_effective_listener(Box::new(|_| {
         self::bridge::display_language_changed();
     }));
@@ -1529,12 +1540,6 @@ pub fn browser_bookmark_pin(url: &str, title: &str) -> bool {
 
 pub fn browser_tab_path_for_id(tab_id: &str) -> String {
     crate::browser::tab_path(tab_id)
-}
-
-pub fn present_internal_browser_tab(tab_id: &str) -> bool {
-    ffi_catch_unwind!("present_internal_browser_tab", false, || {
-        self::bridge::present_internal_browser_tab(tab_id)
-    })
 }
 
 pub fn set_surface_width(appid: &str, width: f64) -> bool {

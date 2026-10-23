@@ -75,6 +75,10 @@ pub fn start_dev_session_bridge_from_env() {
     // Specs drive this app from a terminal or editor, often with its window
     // covered: keep its pages and timers running meanwhile.
     lxapp::keep_responsive_for_development();
+    // The developer driving `lingxia dev` owns this machine's files, so file
+    // uploads are open here; a shipped product sets its own policy.
+    #[cfg(feature = "browser")]
+    lingxia_browser::page::set_input_file_policy(|_| true);
     #[cfg(feature = "test-runtime")]
     lingxia_network_dev::dev::session_starting();
     thread::spawn(move || run_dev_bridge(ws_url));

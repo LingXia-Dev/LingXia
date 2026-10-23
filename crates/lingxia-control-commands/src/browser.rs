@@ -243,8 +243,8 @@ pub enum BrowserCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Outline the page for an agent: roles, names, states and a ref for
-    /// every element it can act on
+    /// Outline the page: roles, names, states and a ref for every element
+    /// that can be acted on
     Snapshot {
         #[arg(long, default_value = "current")]
         tab: String,

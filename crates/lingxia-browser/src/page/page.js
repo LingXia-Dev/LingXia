@@ -1,8 +1,8 @@
-// LingXia browser agent: page snapshot, element refs, actionability, form
-// input, readable text and set-of-marks overlays for agent-driven browsing.
+// LingXia browser page script: snapshot, element refs, actionability, form
+// input, readable text and set-of-marks overlays.
 //
-// Installed lazily into the top document by the host (`agent/mod.rs`) and
-// called through `window.__LingXiaAgent.call(op, args)`. One instance per
+// Installed lazily into the top document by the host (`page/mod.rs`) and
+// called through `window.__LingXiaPage.call(op, args)`. One instance per
 // document: a navigation replaces the document, and with it every ref, so
 // `generation` tells the host which document issued a ref.
 //
@@ -11,8 +11,8 @@
 // reports (`not_found`, `stale_ref`, `not_visible`, `disabled`, `covered`,
 // `not_editable`, `unsupported`, `usage`).
 (() => {
-  const VERSION = '__LX_AGENT_VERSION__';
-  const existing = window.__LingXiaAgent;
+  const VERSION = '__LX_PAGE_VERSION__';
+  const existing = window.__LingXiaPage;
   if (existing && existing.version === VERSION) return;
 
   const generation =
@@ -20,8 +20,8 @@
   // Refs are unique per tab, not per document: the host passes where the
   // previous document's refs ended, so an old ref can never name an element
   // of this page.
-  let nextRef = Math.max(1, Number(window.__LingXiaAgentRefStart) || 1);
-  try { delete window.__LingXiaAgentRefStart; } catch (_e) {}
+  let nextRef = Math.max(1, Number(window.__LingXiaPageRefStart) || 1);
+  try { delete window.__LingXiaPageRefStart; } catch (_e) {}
   const refOf = new WeakMap();
   const byRef = new Map();
   let lastSnapshot = null;
@@ -1806,7 +1806,7 @@
       }
     };
     walk(result.nodes || []);
-    const host = document.createElement('lingxia-agent-marks');
+    const host = document.createElement('lingxia-page-marks');
     host.setAttribute('aria-hidden', 'true');
     host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;pointer-events:none;display:block;';
     const shadow = host.attachShadow({ mode: 'closed' });
@@ -1892,7 +1892,7 @@
     return result;
   }
 
-  Object.defineProperty(window, '__LingXiaAgent', {
+  Object.defineProperty(window, '__LingXiaPage', {
     configurable: true,
     enumerable: false,
     value: Object.freeze({
@@ -1900,7 +1900,7 @@
       generation,
       call(op, args) {
         const fn = OPS[op];
-        if (!fn) return fail('usage', 'unknown agent op: ' + op);
+        if (!fn) return fail('usage', 'unknown page op: ' + op);
         let result;
         try {
           result = fn(args || {});

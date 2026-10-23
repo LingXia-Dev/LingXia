@@ -1,7 +1,8 @@
 // Page console recorder for browser-profile WebViews: a bounded ring of what
 // the page logged and threw, kept in the page and read by browser automation
 // through script. It never reaches the native log delegate, which a browser
-// WebView reserves for its trusted control documents.
+// WebView reserves for its trusted control documents. `page_console.rs` wraps
+// it with `console_format.js`.
 (function () {
   if (window !== window.top || window.__LingXiaPageConsole) return;
   var MAX = 500;
@@ -9,21 +10,6 @@
   var entries = [];
   var seq = 0;
   var dropped = 0;
-
-  function format(args) {
-    var parts = [];
-    for (var i = 0; i < args.length; i++) {
-      var arg = args[i];
-      try {
-        if (arg instanceof Error) parts.push(arg.stack || String(arg));
-        else if (arg !== null && typeof arg === 'object') parts.push(JSON.stringify(arg));
-        else parts.push(String(arg));
-      } catch (e) {
-        try { parts.push(String(arg)); } catch (_) { parts.push('[unprintable]'); }
-      }
-    }
-    return parts.join(' ');
-  }
 
   function push(level, text) {
     seq += 1;
@@ -39,7 +25,7 @@
     var original = console[level];
     if (typeof original !== 'function') return;
     console[level] = function () {
-      try { push(level, format(arguments)); } catch (e) {}
+      try { push(level, formatConsoleArgs(arguments)); } catch (e) {}
       return original.apply(this, arguments);
     };
   });
