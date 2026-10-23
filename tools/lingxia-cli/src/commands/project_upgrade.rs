@@ -109,6 +109,19 @@ impl UpgradePlan {
 }
 
 pub fn execute(root: &Path, check: bool, yes: bool) -> Result<i32> {
+    // A pinned project's line is the lock's: moving it to this CLI's line
+    // would leave requirements the pinned crates no longer satisfy, and cargo
+    // would quietly go back to crates.io.
+    if let Some(lock) = crate::pin::read(root)? {
+        let pinned = lock.lingxia;
+        println!(
+            "  pinned by lingxia.lock to {} at {} (line {}); move it with `lingxia pin <ref>`",
+            pinned.reference,
+            pinned.short_commit(),
+            pinned.workspace_version
+        );
+        return Ok(0);
+    }
     let prepared = build_plan(root)?;
     report_plan(root, &prepared);
 
@@ -396,15 +409,26 @@ fn plan(root: &Path) -> Result<Vec<Edit>> {
         }
     }
 
+    edits.extend(plan_native_pins(
+        root,
+        &crate::versions::cargo_compat_req(),
+        &crate::versions::current_versions().sdk,
+    )?);
+    Ok(edits)
+}
+
+/// Crate requirements and the gradle SDK fallback set to `req` and
+/// `sdk_version` (`lingxia pin` passes the pinned commit's line).
+fn plan_native_pins(root: &Path, req: &str, sdk_version: &str) -> Result<Vec<Edit>> {
+    let mut edits = Vec::new();
     let windows_cargo = root.join("windows").join("Cargo.toml");
-    let req = crate::versions::cargo_compat_req();
     for manifest in find_cargo_manifests(root) {
         let mut new_content = fs::read_to_string(&manifest)
             .with_context(|| format!("read {}", manifest.display()))?;
         let mut changes = Vec::new();
         let mut cargo_update = Vec::new();
         if manifest == windows_cargo {
-            let (rewritten, sdk_changes) = rewrite_windows_sdk_dep(&new_content, &req);
+            let (rewritten, sdk_changes) = rewrite_windows_sdk_dep(&new_content, req);
             if !sdk_changes.is_empty() {
                 cargo_update.push("lingxia-windows-sdk".to_string());
                 changes.extend(sdk_changes);
@@ -412,7 +436,7 @@ fn plan(root: &Path) -> Result<Vec<Edit>> {
             new_content = rewritten;
         }
         for crate_name in project_lingxia_crates() {
-            let (rewritten, crate_changes) = rewrite_cargo_dep_req(&new_content, crate_name, &req);
+            let (rewritten, crate_changes) = rewrite_cargo_dep_req(&new_content, crate_name, req);
             if !crate_changes.is_empty() {
                 cargo_update.push(crate_name.to_string());
                 changes.extend(crate_changes);
@@ -434,8 +458,7 @@ fn plan(root: &Path) -> Result<Vec<Edit>> {
     if gradle.is_file() {
         let content =
             fs::read_to_string(&gradle).with_context(|| format!("read {}", gradle.display()))?;
-        let (new_content, changes) =
-            rewrite_gradle_sdk_fallback(&content, &crate::versions::current_versions().sdk);
+        let (new_content, changes) = rewrite_gradle_sdk_fallback(&content, sdk_version);
         if !changes.is_empty() {
             edits.push(Edit {
                 path: gradle,
@@ -448,6 +471,29 @@ fn plan(root: &Path) -> Result<Vec<Edit>> {
     }
 
     Ok(edits)
+}
+
+/// Set the project's native pins to `version`'s line and return what
+/// changed; with `dry_run`, only report.
+pub(crate) fn set_native_pins(root: &Path, version: &str, dry_run: bool) -> Result<Vec<String>> {
+    let edits = plan_native_pins(root, &format!("~{version}"), version)?;
+    if !dry_run {
+        write_edits(&edits)?;
+    }
+    Ok(edits
+        .iter()
+        .flat_map(|edit| {
+            let path = edit
+                .path
+                .strip_prefix(root)
+                .unwrap_or(&edit.path)
+                .display()
+                .to_string();
+            edit.changes
+                .iter()
+                .map(move |change| format!("{path}: {change}"))
+        })
+        .collect())
 }
 
 fn write_edits(edits: &[Edit]) -> Result<()> {

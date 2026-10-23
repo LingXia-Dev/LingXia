@@ -467,7 +467,7 @@ gradle.settingsEvaluated {{ settings ->
         if sdk_maven_repo.is_some() {
             command.arg(format!(
                 "-Plingxia.sdkVersion={}",
-                crate::sdk_cache::sdk_version()
+                crate::sdk_cache::project_sdk_version(project_root)
             ));
         }
         command.arg(format!(
@@ -585,10 +585,9 @@ impl Platform for AndroidPlatform {
         let sdk_maven_repo = if super::is_inside_lingxia_workspace(&config.project_root) {
             None
         } else {
-            let version = crate::sdk_cache::sdk_version();
-            Some(crate::sdk_cache::ensure_sdk(
+            Some(crate::sdk_cache::ensure_project_sdk(
+                &config.project_root,
                 crate::sdk_cache::SdkPlatform::Android,
-                &version,
             )?)
         };
 

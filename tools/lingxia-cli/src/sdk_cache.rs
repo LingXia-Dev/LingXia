@@ -191,8 +191,17 @@ pub fn ensure_sdk(platform: SdkPlatform, version: &str) -> Result<PathBuf> {
         );
     }
 
-    // Unpack into a temp dir then atomically rename into place (temp-then-rename
-    // like update.rs install).
+    install_asset(platform, &dest, version, &asset_bytes)
+}
+
+/// Unpack an SDK artifact into `dest` (temp-then-rename, like update.rs) and
+/// mark it ready with `label`.
+fn install_asset(
+    platform: SdkPlatform,
+    dest: &Path,
+    label: &str,
+    asset_bytes: &[u8],
+) -> Result<PathBuf> {
     let tmp = dest.with_extension("tmp");
     if tmp.exists() {
         fs::remove_dir_all(&tmp)
@@ -204,14 +213,14 @@ pub fn ensure_sdk(platform: SdkPlatform, version: &str) -> Result<PathBuf> {
     let unpack_result = (|| -> Result<()> {
         match platform {
             SdkPlatform::Android => {
-                extract_zip_strip_top(&asset_bytes, &tmp, "maven")?;
+                extract_zip_strip_top(asset_bytes, &tmp, "maven")?;
             }
             SdkPlatform::Apple => {
-                extract_zip_strip_top(&asset_bytes, &tmp, "lingxia-apple-sdk")?;
+                extract_zip_strip_top(asset_bytes, &tmp, "lingxia-apple-sdk")?;
             }
             SdkPlatform::Harmony => {
                 // HAR is consumed as-is by ohpm; do not unpack.
-                fs::write(tmp.join("lingxia.har"), &asset_bytes)
+                fs::write(tmp.join("lingxia.har"), asset_bytes)
                     .with_context(|| format!("Failed to write HAR into {}", tmp.display()))?;
             }
         }
@@ -225,14 +234,14 @@ pub fn ensure_sdk(platform: SdkPlatform, version: &str) -> Result<PathBuf> {
 
     // Atomic publish: rename temp into the final dest.
     if dest.exists() {
-        fs::remove_dir_all(&dest)
+        fs::remove_dir_all(dest)
             .with_context(|| format!("Failed to remove stale cache dir {}", dest.display()))?;
     }
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create cache parent {}", parent.display()))?;
     }
-    fs::rename(&tmp, &dest).with_context(|| {
+    fs::rename(&tmp, dest).with_context(|| {
         format!(
             "Failed to publish SDK cache\n  From: {}\n  To: {}",
             tmp.display(),
@@ -241,10 +250,233 @@ pub fn ensure_sdk(platform: SdkPlatform, version: &str) -> Result<PathBuf> {
     })?;
 
     // Touch the .ready sentinel.
-    fs::write(dest.join(READY_SENTINEL), version.as_bytes())
+    fs::write(dest.join(READY_SENTINEL), label.as_bytes())
         .with_context(|| format!("Failed to write {READY_SENTINEL} in {}", dest.display()))?;
 
-    resolve_cached_path(platform, &dest)
+    resolve_cached_path(platform, dest)
+}
+
+/// The SDK for `project_root`: its `lingxia.lock` when it has one (an
+/// official release from the GitHub release, any other commit built from
+/// that commit's source), otherwise this CLI's release line.
+pub fn ensure_project_sdk(project_root: &Path, platform: SdkPlatform) -> Result<PathBuf> {
+    if let Some(source) = crate::pin::overrides::source(project_root)? {
+        return ensure_override_sdk(project_root, &source, platform);
+    }
+    let Some(lock) = crate::pin::read(project_root)? else {
+        return ensure_sdk(platform, &sdk_version());
+    };
+    let pinned = lock.lingxia;
+    if pinned.is_official_release() {
+        ensure_sdk(platform, &pinned.workspace_version)
+    } else {
+        ensure_pinned_sdk(&pinned, platform)
+    }
+}
+
+/// Where the project's SDK for `platform` stands, without fetching it.
+pub fn project_sdk_status(project_root: &Path, platform: SdkPlatform) -> String {
+    let ready = |dir: Option<PathBuf>| dir.is_some_and(|d| d.join(READY_SENTINEL).exists());
+    if let Ok(Some(source)) = crate::pin::overrides::source(project_root) {
+        let key = crate::pin::overrides::tree_key(&source);
+        let dir = project_root
+            .join(".lingxia/override-sdk")
+            .join(platform.cache_subdir())
+            .join(&key);
+        return if ready(Some(dir)) {
+            format!("built from the working tree ({key})")
+        } else {
+            format!("next build builds it from the working tree ({key})")
+        };
+    }
+    match crate::pin::read(project_root) {
+        Ok(Some(lock)) if !lock.lingxia.is_official_release() => {
+            let pinned = lock.lingxia;
+            let dir =
+                sdk_cache_root().map(|r| r.join(platform.cache_subdir()).join(&pinned.commit));
+            if ready(dir) {
+                format!("cached for {}", pinned.short_commit())
+            } else {
+                format!(
+                    "next build builds it from {} (needs {})",
+                    pinned.short_commit(),
+                    source_build_tools(platform).join(", ")
+                )
+            }
+        }
+        Ok(lock) => {
+            let version = lock
+                .map(|l| l.lingxia.workspace_version)
+                .unwrap_or_else(sdk_version);
+            if sdk_is_cached(platform, &version) {
+                format!("{version} cached")
+            } else {
+                format!("next build downloads {version}")
+            }
+        }
+        Err(err) => format!("unknown: {err}"),
+    }
+}
+
+/// The version the project's SDK artifacts carry (Android's maven
+/// coordinate): the pinned line, else this CLI's.
+pub fn project_sdk_version(project_root: &Path) -> String {
+    if let Ok(Some(source)) = crate::pin::overrides::source(project_root)
+        && let Ok(version) = crate::pin::manifest_version(&source.join("Cargo.toml"))
+    {
+        return version;
+    }
+    match crate::pin::read(project_root) {
+        Ok(Some(lock)) => lock.lingxia.workspace_version,
+        _ => sdk_version(),
+    }
+}
+
+/// `~/.lingxia/sdk/<platform>/<commit>`: a fork's 0.27.0 is not the
+/// official 0.27.0, so pinned SDKs are keyed by commit, not version.
+fn ensure_pinned_sdk(pinned: &crate::pin::Pin, platform: SdkPlatform) -> Result<PathBuf> {
+    let root = sdk_cache_root()
+        .ok_or_else(|| anyhow!("Could not resolve home directory for SDK cache"))?;
+    let dest = root.join(platform.cache_subdir()).join(&pinned.commit);
+    if dest.join(READY_SENTINEL).exists() {
+        return resolve_cached_path(platform, &dest);
+    }
+    let asset_name = platform.asset_name(&pinned.workspace_version);
+    let bytes = build_from_source(pinned, platform, &asset_name)?;
+    install_asset(platform, &dest, &pinned.commit, &bytes)
+}
+
+/// An SDK built from the `LINGXIA_SOURCE` working tree, cached in the
+/// project by the tree's HEAD and uncommitted changes.
+fn ensure_override_sdk(
+    project_root: &Path,
+    source: &Path,
+    platform: SdkPlatform,
+) -> Result<PathBuf> {
+    let key = crate::pin::overrides::tree_key(source);
+    let dest = project_root
+        .join(".lingxia")
+        .join("override-sdk")
+        .join(platform.cache_subdir())
+        .join(&key);
+    if dest.join(READY_SENTINEL).exists() {
+        return resolve_cached_path(platform, &dest);
+    }
+    require_build_tools(platform, &key)?;
+    let version = crate::pin::manifest_version(&source.join("Cargo.toml"))?;
+    let bytes = build_in_checkout(source, &key, platform, &platform.asset_name(&version))?;
+    install_asset(platform, &dest, &key, &bytes)
+}
+
+/// Build the platform's SDK artifact from the pinned commit's checkout with
+/// the release script. The tools that platform needs must be installed.
+fn build_from_source(
+    pinned: &crate::pin::Pin,
+    platform: SdkPlatform,
+    asset_name: &str,
+) -> Result<Vec<u8>> {
+    require_build_tools(platform, pinned.short_commit())?;
+    let checkout = crate::pin::ensure_source(&pinned.git, &pinned.commit, Some(&pinned.reference))?;
+    build_in_checkout(&checkout, pinned.short_commit(), platform, asset_name)
+}
+
+fn require_build_tools(platform: SdkPlatform, label: &str) -> Result<()> {
+    let missing: Vec<&str> = source_build_tools(platform)
+        .iter()
+        .copied()
+        .filter(|tool| which::which(tool).is_err())
+        .collect();
+    if !missing.is_empty() {
+        bail!(
+            "building the {} SDK from {label} needs {}; install them (building the app for this platform needs them too)",
+            platform.shasums_slug(),
+            missing.join(", ")
+        );
+    }
+    Ok(())
+}
+
+/// Run the release script for one platform in a LingXia checkout.
+fn build_in_checkout(
+    checkout: &Path,
+    label: &str,
+    platform: SdkPlatform,
+    asset_name: &str,
+) -> Result<Vec<u8>> {
+    // One build at a time per checkout: two platforms or two projects would
+    // otherwise share its node_modules and output directories.
+    let lock = fs::File::create(checkout.join(".lingxia-build.lock"))
+        .with_context(|| format!("lock {}", checkout.display()))?;
+    lock.lock()
+        .with_context(|| format!("lock {}", checkout.display()))?;
+    let packages = checkout.join("packages");
+    if !packages.join("node_modules").is_dir() {
+        run_in(&packages, "npm", &["ci", "--no-audit", "--no-fund"])?;
+    }
+    let out = checkout.join("dist-sdk-pin");
+    let _ = fs::remove_dir_all(&out);
+    let out_arg = out.to_string_lossy().into_owned();
+    let script = checkout.join("scripts/release/sdk.sh");
+    println!(
+        "Building the {} SDK from {label} (first build of this source)…",
+        platform.shasums_slug(),
+    );
+    let status = std::process::Command::new("bash")
+        .arg(&script)
+        .args([
+            "--platform",
+            platform.shasums_slug(),
+            "--out",
+            &out_arg,
+            "--no-shasums",
+        ])
+        .current_dir(checkout)
+        .status()
+        .with_context(|| format!("run {}", script.display()))?;
+    if !status.success() {
+        bail!(
+            "{} failed for {}",
+            script.display(),
+            platform.shasums_slug()
+        );
+    }
+    let built = find_file(&out, asset_name)
+        .ok_or_else(|| anyhow!("{} did not produce {asset_name}", script.display()))?;
+    fs::read(&built).with_context(|| format!("read {}", built.display()))
+}
+
+fn source_build_tools(platform: SdkPlatform) -> &'static [&'static str] {
+    match platform {
+        SdkPlatform::Apple => &["cargo", "node", "npm", "zip"],
+        SdkPlatform::Android => &["cargo", "node", "npm", "java"],
+        SdkPlatform::Harmony => &["cargo", "node", "npm", "ohpm", "hvigorw"],
+    }
+}
+
+fn run_in(dir: &Path, program: &str, args: &[&str]) -> Result<()> {
+    let status = std::process::Command::new(program)
+        .args(args)
+        .current_dir(dir)
+        .status()
+        .with_context(|| format!("run {program} in {}", dir.display()))?;
+    if !status.success() {
+        bail!("{program} {} failed in {}", args.join(" "), dir.display());
+    }
+    Ok(())
+}
+
+fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
+    for entry in fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_file(&path, name) {
+                return Some(found);
+            }
+        } else if path.file_name().is_some_and(|n| n == name) {
+            return Some(path);
+        }
+    }
+    None
 }
 
 /// Map a populated cache dir to the platform-specific resolved path.

@@ -952,9 +952,9 @@ pub fn ensure_sdk_package_dependency(project_root: &Path, package_dir: &Path) ->
             package_dir.join("Package.swift").display()
         ));
     }
-    let version = crate::sdk_cache::sdk_version();
-    let sdk_dir = crate::sdk_cache::ensure_sdk(crate::sdk_cache::SdkPlatform::Apple, &version)?;
-    prepare_sdk_package_link(package_dir, &sdk_dir)
+    let sdk =
+        crate::sdk_cache::ensure_project_sdk(project_root, crate::sdk_cache::SdkPlatform::Apple)?;
+    prepare_sdk_package_link(package_dir, &sdk)
 }
 
 #[cfg(test)]

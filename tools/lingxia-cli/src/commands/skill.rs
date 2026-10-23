@@ -408,6 +408,77 @@ fn embedded_files() -> Vec<(PathBuf, Vec<u8>)> {
     files
 }
 
+/// A pinned project's skill: `docs/skill` of the commit it builds against,
+/// copied to `<project>/.agents/skills/lingxia` (linked from
+/// `.claude/skills/lingxia` when the project uses Claude Code) and kept out
+/// of git. Projects pinned to different commits no longer share one skill.
+/// Returns whether anything was written. Without `setup` (every other run)
+/// only an existing copy is refreshed; the link and `.gitignore` are
+/// `lingxia pin`'s to write.
+pub fn sync_project_skill(project_root: &Path, source_skill: &Path, setup: bool) -> Result<bool> {
+    let mut files = Vec::new();
+    collect_disk_files(source_skill, source_skill, &mut files)
+        .with_context(|| format!("Failed to read {}", source_skill.display()))?;
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    let dest = skills_root(project_root).join(SKILL_DIR_NAME);
+    if !setup && !dest.join("SKILL.md").is_file() {
+        return Ok(false);
+    }
+    let current = read_manifest(&dest)
+        .and_then(|m| m.get("digest").and_then(|d| d.as_str()).map(str::to_string));
+    let written = current.as_deref() != Some(digest_of(&files).as_str());
+    if written {
+        write_skill(&dest, &files)?;
+    }
+    if !setup {
+        return Ok(written);
+    }
+    link_for_claude(project_root, &dest, |path| {
+        !fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink())
+    })?;
+    ignore_in_git(
+        project_root,
+        &[".agents/skills/lingxia/", ".claude/skills/lingxia"],
+    )?;
+    Ok(written)
+}
+
+fn collect_disk_files(root: &Path, dir: &Path, out: &mut Vec<(PathBuf, Vec<u8>)>) -> Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            collect_disk_files(root, &path, out)?;
+        } else {
+            out.push((path.strip_prefix(root)?.to_path_buf(), fs::read(&path)?));
+        }
+    }
+    Ok(())
+}
+
+fn ignore_in_git(project_root: &Path, entries: &[&str]) -> Result<()> {
+    let path = project_root.join(".gitignore");
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    let missing: Vec<&str> = entries
+        .iter()
+        .copied()
+        .filter(|entry| !existing.lines().any(|line| line.trim() == *entry))
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let mut text = existing;
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text.push_str("# The pinned LingXia skill (lingxia.lock)\n");
+    for entry in missing {
+        text.push_str(entry);
+        text.push('\n');
+    }
+    fs::write(&path, text).with_context(|| format!("Failed to update {}", path.display()))
+}
+
 fn home_dir() -> Result<PathBuf> {
     dirs::home_dir().context("Could not resolve the home directory")
 }
@@ -575,6 +646,35 @@ fn collect_files<'a>(dir: &'a Dir<'a>) -> Vec<(PathBuf, &'a [u8])> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pinned_project_gets_its_own_ignored_skill() {
+        let project = TempDir::new().unwrap();
+        let source = TempDir::new().unwrap();
+        fs::create_dir_all(source.path().join("cli")).unwrap();
+        fs::write(source.path().join("SKILL.md"), "pinned skill").unwrap();
+        fs::write(source.path().join("cli/lxdev.md"), "cli").unwrap();
+        fs::create_dir_all(project.path().join(".claude")).unwrap();
+
+        assert!(sync_project_skill(project.path(), source.path(), true).unwrap());
+        let dest = project.path().join(".agents/skills/lingxia");
+        assert_eq!(
+            fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "pinned skill"
+        );
+        assert!(
+            project
+                .path()
+                .join(".claude/skills/lingxia/cli/lxdev.md")
+                .exists()
+        );
+        let ignore = fs::read_to_string(project.path().join(".gitignore")).unwrap();
+        assert!(ignore.contains(".agents/skills/lingxia/"));
+
+        assert!(!sync_project_skill(project.path(), source.path(), false).unwrap());
+        let again = fs::read_to_string(project.path().join(".gitignore")).unwrap();
+        assert_eq!(again, ignore);
+    }
 
     fn skill_dir(root: &Path) -> PathBuf {
         skills_root(root).join(SKILL_DIR_NAME)

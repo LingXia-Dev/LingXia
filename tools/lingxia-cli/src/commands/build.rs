@@ -252,6 +252,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     if package && !release {
         return Err(anyhow!("Packaging requires a release build."));
     }
+    crate::pin::ensure_js_matches_cli(&project_root)?;
     let config = LingXiaConfig::load(&project_root)?;
 
     let app = config.app.as_ref().ok_or_else(|| {

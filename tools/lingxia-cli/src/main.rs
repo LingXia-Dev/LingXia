@@ -29,6 +29,7 @@ mod commands;
 mod compat;
 mod config;
 mod dist_manifest;
+mod embedded_js_digest;
 // `gen` is a reserved keyword in Rust 2024 — escape it so the module name
 // stays aligned with the user-facing `lingxia gen …` subcommand.
 mod r#gen;
@@ -42,6 +43,7 @@ mod lxapp;
 mod npm;
 mod path_completion;
 mod permission_cache;
+mod pin;
 mod platform;
 mod product_i18n;
 mod resolver;
@@ -565,6 +567,22 @@ session per project and target: starting another takes over the old one.
         cli_only: bool,
     },
 
+    /// Record the LingXia source this project builds against (lingxia.lock):
+    /// a release tag, a branch, or a commit of the official repo or a fork
+    Pin {
+        /// Tag, branch, or full commit (default: the lock's ref, else this
+        /// CLI's release)
+        #[arg(value_name = "REF")]
+        reference: Option<String>,
+        /// Git URL of the LingXia source, e.g. a fork (default: the lock's,
+        /// else the official repository)
+        #[arg(long)]
+        git: Option<String>,
+        /// Change nothing; exit 1 when the project drifted from the lock
+        #[arg(long, conflicts_with_all = ["reference", "git"])]
+        check: bool,
+    },
+
     /// Show LingXia CLI version information
     Version {
         /// Print build, host, toolchain, and LingXia component versions
@@ -925,6 +943,7 @@ fn main() -> Result<()> {
         // The new binary already wrote its skill; this one would roll it back.
         if !replaced {
             update::sync_installed_skill(false);
+            pin::sync_project_skill_if_pinned();
         }
         // Templates come from git, so this only reads state and hands any
         // fetching to a detached worker.
@@ -1144,6 +1163,20 @@ fn main() -> Result<()> {
         }
         Commands::RefreshTemplates { slugs } => {
             commands::template_provider::refresh_now(&slugs);
+        }
+        Commands::Pin {
+            reference,
+            git,
+            check,
+        } => {
+            let code = commands::pin::execute(commands::pin::PinArgs {
+                reference,
+                git,
+                check,
+            })?;
+            if code != 0 {
+                std::process::exit(code);
+            }
         }
         Commands::Upgrade {
             check,
