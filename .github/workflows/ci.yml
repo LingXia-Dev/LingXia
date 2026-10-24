@@ -1461,9 +1461,15 @@ jobs:
           LINGXIA_CLI: ${{ github.workspace }}/target/debug/lingxia
         run: cargo xtask sdk --platform android --out dist/sdk-ci --cli "$LINGXIA_CLI"
 
+      # GPU adapter unit tests drive the real shared core through JNI on the host JVM.
+      - name: Build the host GPU core for JVM tests
+        run: cargo build -p lingxia-ui --features jvm
+
       - name: Verify API 21 core and complete Android module packaging
         working-directory: lingxia-sdk/android
-        run: ./gradlew :compatibility:assembleCoreDebug :compatibility:assembleFullDebug :lingxia-core:testDebugUnitTest
+        run: >-
+          ./gradlew :compatibility:assembleCoreDebug :compatibility:assembleFullDebug :lingxia-core:testDebugUnitTest
+          -PlingxiaUiNative=${{ github.workspace }}/target/debug/liblingxia_ui.so
 
   sdk-apple:
     needs: changes
