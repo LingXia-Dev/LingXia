@@ -32,12 +32,18 @@ recoverable from the code alone.
 
 ## Example projects
 
-Two examples under `examples/`, one per project shape:
+Reference projects under `examples/`:
 
 - [examples/lingxia-chat](examples/lingxia-chat) — **standalone lxapp** only: `lxapp.json` + `pages/`, no native host. The minimal reference for lxapp structure.
 - [examples/lingxia-showcase](examples/lingxia-showcase) — **native host app + embedded lxapp**: one host app for Android/iOS/macOS/HarmonyOS/Windows embedding the showcase lxapp; kitchen-sink demo of pages, the `lx.*` surface, native components, media, and the terminal. Its pages are React.
 
 ## Build & verify
+
+`examples/lingxia-showcase-gpu` is an independent Android GPU host and embedded
+TSX lxapp; the React showcase is its parity reference. SDK device probes belong
+in `lingxia-sdk/android/tests/gpu`, outside app bundles. `examples/hello-ui` is
+the minimal GPU compiler fixture. Read `docs/internal/ui-authoring.md`,
+`ui-renderer.md`, `ui-styling.md` and `ui-animation.md` before changing GPU contracts.
 
 - Rust gate: `cargo check --workspace --all-targets` (CI runs clippy on the same scope). The workspace default feature set skips the Windows browser shell — cover it with `cargo clippy -p lingxia-windows-sdk --features browser-shell`.
 - JS deps live in the `packages/` npm workspace (repo root is not a workspace). `lingxia-cli`'s `build.rs` embeds JS from `packages/lingxia-bridge` and `packages/lingxia-polyfills`, so `npm install` there before the first cargo build; each example project also needs its own `npm install`.

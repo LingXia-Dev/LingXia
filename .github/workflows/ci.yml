@@ -151,6 +151,8 @@ jobs:
               - 'i18n/**'
             npm:
               - 'packages/**'
+              - 'examples/lingxia-showcase-gpu/**'
+              - 'examples/lingxia-showcase/lxapp/**'
               - 'crates/lingxia-lxapp/src/appservice/scripts/**'
               - 'crates/lingxia-browser-shell/webui/**'
             # Source of truth for the generated @lingxia/types Logic API.
@@ -1654,6 +1656,18 @@ jobs:
           node lingxia-types/tests/page-runtime.mjs
 
       # The test SDK grades every other suite, so its own specs gate here.
+      - name: Test GPU authoring and compiler
+        working-directory: packages
+        run: npm test --workspace @lingxia/ui
+
+      - name: Check GPU showcase contracts and Logic
+        working-directory: examples/lingxia-showcase-gpu/lxapp
+        run: |
+          npm ci --prefix ../../lingxia-showcase/lxapp
+          npm ci
+          npm run typecheck
+          node --experimental-strip-types --test ../tests/*.test.mjs
+
       - name: Test (@lingxia/test)
         working-directory: packages
         run: npm test --workspace @lingxia/test

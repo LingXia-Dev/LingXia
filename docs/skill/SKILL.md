@@ -130,6 +130,7 @@ never add them to a project.
 | **Lxapp** | |
 | Pages: `Page({})`, View hooks, lifecycle, events, `App({})`, tab bar, page chrome | [lxapp/guide.md](./lxapp/guide.md) |
 | Hook order, `App`/`Page` triggers, what each navigation or restart fires | [lxapp/lifecycle.md](./lxapp/lifecycle.md) |
+| Experimental native GPU Views: TSX, Tailwind subset, bindings, compatibility | [lxapp/gpu.md](./lxapp/gpu.md) |
 | `setData`, streams, channels | [lxapp/bridge.md](./lxapp/bridge.md) |
 | Native components: `LxNativeRoot` + `LxVideo`, `LxPicker`, `LxMediaSwiper`, `LxNavigator`; text inputs | [lxapp/components.md](./lxapp/components.md) |
 | Logic runtime: typing, Web globals, product settings, `lx.supports`, badges, notifications, errors | [lxapp/lx-api.md](./lxapp/lx-api.md) |

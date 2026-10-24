@@ -32,6 +32,12 @@ An lxapp is a page-based mini-app with a strict split between:
 
 This keeps UI rendering separate from business work. View code renders; Logic code owns state and platform APIs; the bridge moves data and events between them.
 
+An experimental [GPU View](docs/skill/lxapp/gpu.md) path compiles TSX and a
+validated Tailwind subset to native rendering while retaining the same Logic
+bridge and host-owned navbar/tabbar. The current host adapter is Android;
+[the independent GPU showcase](examples/lingxia-showcase-gpu/README.md) documents
+its build and device acceptance tests.
+
 ## What You Build
 
 | Shape | Use when | Starting point |
