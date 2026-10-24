@@ -12,20 +12,20 @@ pub(crate) const MAX_REQUEST_BYTES: usize = 512 * 1024;
 enum Request {
     DragHitTest {
         identity: String,
-        generation: u64,
+        generation: crate::session::lifecycle::CommitTicket,
         token: u64,
         point: [f32; 2],
         edge: [i8; 2],
     },
     HitTest {
         identity: String,
-        generation: u64,
+        generation: crate::session::lifecycle::CommitTicket,
         point: [f32; 2],
         word: bool,
     },
     Focus {
         identity: String,
-        generation: u64,
+        generation: crate::session::lifecycle::CommitTicket,
     },
     Query {
         identity: String,

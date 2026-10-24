@@ -401,7 +401,9 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeRender(
             let height = u16::try_from(height).map_err(|_| "UI_VIEWPORT: height")?;
             let now = animation_time(time)?;
             session.set_animation_surface(
-                Some(u64::try_from(epoch).map_err(|_| "UI_ANIMATION: invalid epoch")?),
+                Some(crate::session::lifecycle::SurfaceTicket::new(
+                    u64::try_from(epoch).map_err(|_| "UI_ANIMATION: invalid epoch")?,
+                )),
                 now,
             )?;
             let frame = session.prepare_view_animated(
@@ -472,7 +474,11 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeAnimationPresented(
             let epoch = u64::try_from(epoch).map_err(|_| "UI_ANIMATION: invalid epoch")?;
             let generation =
                 u64::try_from(generation).map_err(|_| "UI_ANIMATION: invalid generation")?;
-            if !session.animation_presented(epoch, generation, now)? {
+            if !session.animation_presented(
+                crate::session::lifecycle::SurfaceTicket::new(epoch),
+                crate::session::lifecycle::CommitTicket::new(generation),
+                now,
+            )? {
                 return Ok(-1);
             }
             match session.view_animation_wakeup(now)? {
@@ -545,7 +551,10 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeClick(
     guarded(&mut env, |_| {
         with_page(page, |session, _| {
             session
-                .click(generation as u64, handle as u64)
+                .click(
+                    crate::session::lifecycle::CommitTicket::new(generation as u64),
+                    handle as u64,
+                )
                 .map(u8::from)
         })
     })
@@ -573,7 +582,11 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativePlot(
         };
         with_page(page, |session, _| {
             session
-                .select_plot(generation as u64, &identity, selection)
+                .select_plot(
+                    crate::session::lifecycle::CommitTicket::new(generation as u64),
+                    &identity,
+                    selection,
+                )
                 .map(u8::from)
         })
     })
@@ -591,7 +604,11 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeNumber(
     guarded(&mut env, |_| {
         with_page(page, |session, _| {
             session
-                .number_event(generation as u64, handle as u64, value)
+                .number_event(
+                    crate::session::lifecycle::CommitTicket::new(generation as u64),
+                    handle as u64,
+                    value,
+                )
                 .map(u8::from)
         })
     })
@@ -675,7 +692,9 @@ extern "system" fn image_events(
     guarded(&mut env, |_| {
         with_page(page, |session, _| {
             session
-                .dispatch_image_events(generation as u64)
+                .dispatch_image_events(crate::session::lifecycle::CommitTicket::new(
+                    generation as u64,
+                ))
                 .map(u8::from)
         })
     })

@@ -2,6 +2,7 @@ use crate::protocol::field;
 pub mod app;
 pub mod image_requests;
 pub(crate) mod input_protocol;
+pub mod lifecycle;
 pub mod metrics;
 pub mod state;
 
@@ -22,7 +23,7 @@ pub struct ViewSession {
     context: rong::JSContext,
     _runtime: rong::JSRuntime,
     renderer: Renderer,
-    generation: u64,
+    generation: lifecycle::CommitTicket,
     state: crate::session::state::StateReplica,
     budget: Arc<crate::engine::budget::Budget>,
     poisoned: Cell<bool>,
@@ -45,8 +46,12 @@ pub struct ViewSession {
     pending_inputs: Option<crate::interaction::input_state::Inputs>,
     metrics: crate::FrameMetrics,
     animations: crate::animation::Timeline,
-    animation_surface: Option<u64>,
-    pending_animation: Option<(u64, u64, crate::animation::Prepared)>,
+    animation_surface: Option<lifecycle::SurfaceTicket>,
+    pending_animation: Option<(
+        lifecycle::CommitTicket,
+        lifecycle::SurfaceTicket,
+        crate::animation::Prepared,
+    )>,
     animation_inventory: crate::animation::records::Inventory,
     animation_visible: std::collections::BTreeSet<String>,
 }
@@ -95,7 +100,7 @@ impl ViewSession {
             context,
             _runtime: runtime,
             renderer: Renderer::default(),
-            generation: 0,
+            generation: lifecycle::CommitTicket::new(0),
             budget,
             poisoned: Cell::new(false),
             bridge: None,
@@ -164,8 +169,13 @@ impl ViewSession {
         self.image_sources = wanted;
         self.retain_image_lifecycle();
     }
-    pub fn generation(&self) -> u64 {
+    /// The committed View description that input must target.
+    pub fn generation(&self) -> lifecycle::CommitTicket {
         self.generation
+    }
+
+    fn advance(&mut self) {
+        self.generation = lifecycle::CommitTicket::new(self.generation.get() + 1);
     }
 
     /// Native measurements are sampled with the frame; viewport stays renderer-owned.
@@ -229,7 +239,7 @@ impl ViewSession {
         self.reveal_input = false;
         self.pending_inputs = None;
         self.metrics = Default::default();
-        self.generation += 1;
+        self.advance();
         Ok(())
     }
 
@@ -452,7 +462,7 @@ impl ViewSession {
             &mut metrics,
         )?;
         metrics.total_us = crate::session::metrics::micros(started);
-        metrics.generation = self.generation;
+        metrics.generation = self.generation.get();
         self.metrics = metrics;
         Ok(result)
     }
@@ -464,7 +474,7 @@ impl ViewSession {
     /// Supply a fresh surface epoch after replacement; `None` parks the page.
     pub fn set_animation_surface(
         &mut self,
-        surface: Option<u64>,
+        surface: Option<lifecycle::SurfaceTicket>,
         now: Duration,
     ) -> Result<(), String> {
         let mut candidate = self.animations.fork();
@@ -567,8 +577,8 @@ impl ViewSession {
     /// Stale acknowledgements leave a newer candidate intact.
     pub fn animation_presented(
         &mut self,
-        surface: u64,
-        generation: u64,
+        surface: lifecycle::SurfaceTicket,
+        generation: lifecycle::CommitTicket,
         now: Duration,
     ) -> Result<bool, String> {
         if self.animation_surface != Some(surface)
@@ -678,7 +688,7 @@ impl ViewSession {
                         self.input_dirty = input_dirty;
                         self.commit_images(wanted);
                         self.scroll_offsets = applied;
-                        self.generation += 1;
+                        self.advance();
                         return Ok(frame);
                     }
                 }
@@ -880,7 +890,7 @@ impl ViewSession {
                 self.lists = lists;
                 self.viewport = Some((width, height, scale));
                 self.scroll_offsets = applied;
-                self.generation += 1;
+                self.advance();
                 Ok(frame)
             }
             Err(error) => {
@@ -901,7 +911,7 @@ impl ViewSession {
     /// Ignore input from frames superseded while the event was queued.
     pub fn hit_test_input(
         &self,
-        generation: u64,
+        generation: lifecycle::CommitTicket,
         identity: &str,
         point: [f32; 2],
         word: bool,
@@ -919,7 +929,7 @@ impl ViewSession {
     /// Ignore input from frames superseded while the event was queued.
     pub fn drag_hit_test_input(
         &self,
-        generation: u64,
+        generation: lifecycle::CommitTicket,
         identity: &str,
         token: u64,
         point: [f32; 2],
@@ -942,7 +952,7 @@ impl ViewSession {
     /// Ignore input from frames superseded while the event was queued.
     pub fn focus_input(
         &mut self,
-        generation: u64,
+        generation: lifecycle::CommitTicket,
         identity: &str,
     ) -> Result<Option<crate::InputReply>, String> {
         self.check_input_active()?;
@@ -1035,7 +1045,11 @@ impl ViewSession {
     }
 
     /// Ignore input from frames superseded while the event was queued.
-    pub fn click(&mut self, generation: u64, handle: u64) -> Result<bool, String> {
+    pub fn click(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        handle: u64,
+    ) -> Result<bool, String> {
         if generation != self.generation || handle == 0 {
             return Ok(false);
         }
@@ -1049,7 +1063,12 @@ impl ViewSession {
     }
 
     /// Only text callbacks accept this payload; stale displayed-frame events are ignored.
-    pub fn text_event(&mut self, generation: u64, handle: u64, text: &str) -> Result<bool, String> {
+    pub fn text_event(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        handle: u64,
+        text: &str,
+    ) -> Result<bool, String> {
         if generation != self.generation || handle == 0 {
             return Ok(false);
         }
@@ -1069,7 +1088,7 @@ impl ViewSession {
     /// Resolve and dispatch selection against committed geometry and callback identity.
     pub fn select_plot(
         &mut self,
-        generation: u64,
+        generation: lifecycle::CommitTicket,
         identity: &str,
         selection: crate::PlotSelection,
     ) -> Result<bool, String> {
@@ -1111,7 +1130,7 @@ impl ViewSession {
     /// Propose a finite scalar to a numeric control from the displayed generation.
     pub fn number_event(
         &mut self,
-        generation: u64,
+        generation: lifecycle::CommitTicket,
         handle: u64,
         value: f64,
     ) -> Result<bool, String> {
@@ -1299,7 +1318,7 @@ pub(crate) mod tests {
         assert_eq!(page.frame_metrics(), &crate::FrameMetrics::default());
         let display = page.layout(300, 200, 1.0).unwrap();
         let measured = page.frame_metrics().clone();
-        assert_eq!(measured.generation, page.generation());
+        assert_eq!(measured.generation, page.generation().get());
         assert_eq!(measured.nodes, display.nodes.len());
         assert_eq!(measured.paints, display.paint_count());
         assert_eq!(measured.view_passes, 1);
@@ -1717,7 +1736,14 @@ pub(crate) mod tests {
             .unwrap();
         assert_eq!(scrolled.nodes[1].text, "1:0");
         assert_eq!(scrolled.nodes[0].scroll.as_ref().unwrap().offset, 60.0);
-        assert!(!page.click(1, scrolled.nodes[1].on_click.unwrap()).unwrap());
+        assert!(
+            !page
+                .click(
+                    crate::session::lifecycle::CommitTicket::new(1),
+                    scrolled.nodes[1].on_click.unwrap()
+                )
+                .unwrap()
+        );
         assert!(
             page.click(page.generation(), scrolled.nodes[1].on_click.unwrap())
                 .unwrap()
@@ -1747,7 +1773,7 @@ pub(crate) mod tests {
             |_| Err::<(), _>("surface lost".into()),
         );
         assert!(result.is_err());
-        assert_eq!(page.generation(), 1);
+        assert_eq!(page.generation().get(), 1);
         let next = page.prepare_native(100, 100, 1.0, false, None, Ok).unwrap();
         assert_eq!(next.nodes[0].scroll.as_ref().unwrap().offset, 0.0);
     }
@@ -2757,10 +2783,24 @@ pub(crate) mod tests {
         let mut session = ViewSession::new(&source).unwrap();
         let first = session.render(300, 500, 1.0).unwrap();
         assert_eq!(first.nodes[0].text, "0");
-        assert!(session.click(1, first.nodes[0].on_click.unwrap()).unwrap());
+        assert!(
+            session
+                .click(
+                    crate::session::lifecycle::CommitTicket::new(1),
+                    first.nodes[0].on_click.unwrap()
+                )
+                .unwrap()
+        );
         let second = session.render(300, 500, 1.0).unwrap();
         assert_eq!(second.nodes[0].text, "1");
-        assert!(!session.click(1, first.nodes[0].on_click.unwrap()).unwrap());
+        assert!(
+            !session
+                .click(
+                    crate::session::lifecycle::CommitTicket::new(1),
+                    first.nodes[0].on_click.unwrap()
+                )
+                .unwrap()
+        );
         assert_eq!(session.render(500, 300, 1.0).unwrap().nodes[0].text, "1");
     }
 
@@ -2785,7 +2825,7 @@ pub(crate) mod tests {
         let update=session.receive_state(&json!({"v":2,"kind":"state.patch","baseRev":0,"rev":1,"ack":true,"ops":[{"op":"add","path":"/fail","value":true}]})).unwrap();
         assert_eq!(update.outbound[0]["kind"], "state.ack");
         assert!(session.render(300, 500, 1.0).is_err());
-        assert_eq!(session.generation(), 1);
+        assert_eq!(session.generation().get(), 1);
         session.receive_state(&json!({"v":2,"kind":"state.patch","baseRev":1,"rev":2,"ops":[{"op":"remove","path":"/fail"},{"op":"replace","path":"/count","value":2}]})).unwrap();
         assert_eq!(session.render(300, 500, 1.0).unwrap().nodes[0].text, "2");
     }
@@ -2798,10 +2838,14 @@ pub(crate) mod tests {
         let mut session = ViewSession::new(&source).unwrap();
         let first = session.render(300, 500, 1.0).unwrap();
         let handle = first.nodes[0].on_click.unwrap();
-        session.click(1, handle).unwrap();
+        session
+            .click(crate::session::lifecycle::CommitTicket::new(1), handle)
+            .unwrap();
         assert!(session.render(300, 500, 1.0).is_err());
-        assert_eq!(session.generation(), 1);
-        session.click(1, handle).unwrap();
+        assert_eq!(session.generation().get(), 1);
+        session
+            .click(crate::session::lifecycle::CommitTicket::new(1), handle)
+            .unwrap();
         assert_eq!(session.render(300, 500, 1.0).unwrap().nodes[0].text, "1");
     }
 }

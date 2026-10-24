@@ -131,10 +131,12 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativePrepareGpu(
         with_page(page, |session, current_snapshot| {
             let now = super::animation_time(time)?;
             session.set_animation_surface(
-                Some(u64::try_from(epoch).map_err(|_| "UI_ANIMATION: invalid epoch")?),
+                Some(crate::session::lifecycle::SurfaceTicket::new(
+                    u64::try_from(epoch).map_err(|_| "UI_ANIMATION: invalid epoch")?,
+                )),
                 now,
             )?;
-            let generation = session.generation() + 1;
+            let generation = session.generation().get() + 1;
             let (mut snapshot, prepare, scene_cache_hit) = session.prepare_view_animated(
                 u16::try_from(width).map_err(|_| "UI_VIEWPORT: width")?,
                 u16::try_from(height).map_err(|_| "UI_VIEWPORT: height")?,

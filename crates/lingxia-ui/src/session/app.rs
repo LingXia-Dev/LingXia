@@ -104,7 +104,10 @@ mod tests {
         let first = app.page(a).unwrap().layout(300, 500, 1.0).unwrap();
         app.page(a)
             .unwrap()
-            .click(1, first.nodes[0].on_click.unwrap())
+            .click(
+                crate::session::lifecycle::CommitTicket::new(1),
+                first.nodes[0].on_click.unwrap(),
+            )
             .unwrap();
         assert_eq!(
             app.page(a).unwrap().layout(300, 500, 1.0).unwrap().nodes[0].text,
@@ -118,7 +121,10 @@ mod tests {
         assert!(
             !app.page(a)
                 .unwrap()
-                .click(1, first.nodes[0].on_click.unwrap())
+                .click(
+                    crate::session::lifecycle::CommitTicket::new(1),
+                    first.nodes[0].on_click.unwrap()
+                )
                 .unwrap()
         );
         assert_eq!(
@@ -174,7 +180,7 @@ mod tests {
                 .unwrap()
                 .contains("UI_TIMEOUT")
         );
-        assert_eq!(app.page(bad).unwrap().generation(), 0);
+        assert_eq!(app.page(bad).unwrap().generation().get(), 0);
         assert!(
             app.page(bad)
                 .unwrap()
@@ -194,7 +200,10 @@ mod tests {
         assert!(
             app.page(click)
                 .unwrap()
-                .click(1, frame.nodes[0].on_click.unwrap())
+                .click(
+                    crate::session::lifecycle::CommitTicket::new(1),
+                    frame.nodes[0].on_click.unwrap()
+                )
                 .unwrap_err()
                 .contains("UI_TIMEOUT")
         );

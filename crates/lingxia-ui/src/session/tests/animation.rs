@@ -3,6 +3,7 @@ use crate::animation::{
     Definition, Effect, Timing, Wakeup,
     interpolate::{Easing, Keyframe, Track},
 };
+use crate::session::lifecycle::{CommitTicket, SurfaceTicket};
 use std::num::NonZeroU32;
 
 const CHART: &str = "/i:0:0";
@@ -21,7 +22,8 @@ fn authored_transform_can_bring_an_offscreen_node_into_the_animation_visible_set
         "function render(){{return h('column',{{}},h('spacer',{{style:{{height:130,shrink:0}}}}),h('column',{{testId:'incoming',style:{{height:20,shrink:0,background:'#ff0000',animation:{effect}}}}}));}}"
     ));
     let mut page = ViewSession::new(&source).unwrap();
-    page.set_animation_surface(Some(1), ms(0)).unwrap();
+    page.set_animation_surface(Some(SurfaceTicket::new(1)), ms(0))
+        .unwrap();
     let first = automatic(&mut page, 0, true, 0.0);
     let node = first
         .nodes
@@ -35,7 +37,7 @@ fn authored_transform_can_bring_an_offscreen_node_into_the_animation_visible_set
         &pixels.pixels.data_as_u8_slice()[(95 * 200 + 10) * 4..(95 * 200 + 10) * 4 + 4],
         &[255, 0, 0, 255]
     );
-    page.animation_presented(1, page.generation(), ms(0))
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(0))
         .unwrap();
     assert_eq!(
         page.view_animation_wakeup(ms(10)).unwrap(),
@@ -50,7 +52,7 @@ fn authored_transform_can_bring_an_offscreen_node_into_the_animation_visible_set
             .bounds[1],
         130.0
     );
-    page.animation_presented(1, page.generation(), ms(110))
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(110))
         .unwrap();
     assert_eq!(page.view_animation_wakeup(ms(120)).unwrap(), Wakeup::None);
 }
@@ -75,13 +77,14 @@ fn authored_collection_uses_records_and_rolls_back_failed_pixel_builds() {
         authored_effect()
     ));
     let mut page = ViewSession::new(&source).unwrap();
-    page.set_animation_surface(Some(1), ms(0)).unwrap();
+    page.set_animation_surface(Some(SurfaceTicket::new(1)), ms(0))
+        .unwrap();
     let first = automatic(&mut page, 0, true, 0.0);
     assert_eq!(
         first.rasterize().unwrap().pixels.data_as_u8_slice()[0..4],
         [246, 247, 251, 255]
     );
-    page.animation_presented(1, page.generation(), ms(0))
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(0))
         .unwrap();
     automatic(&mut page, 50, false, 0.0);
     assert_eq!(page.frame_metrics().view_passes, 0);
@@ -99,7 +102,10 @@ fn authored_collection_uses_records_and_rolls_back_failed_pixel_builds() {
         .is_err()
     );
     assert_eq!(page.generation(), generation);
-    assert!(page.animation_presented(1, generation, ms(60)).unwrap());
+    assert!(
+        page.animation_presented(SurfaceTicket::new(1), generation, ms(60))
+            .unwrap()
+    );
     assert_eq!(
         page.animation_inventory
             .definitions()
@@ -111,7 +117,7 @@ fn authored_collection_uses_records_and_rolls_back_failed_pixel_builds() {
     );
     page.eval("effect=null").unwrap();
     automatic(&mut page, 70, true, 0.0);
-    page.animation_presented(1, page.generation(), ms(70))
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(70))
         .unwrap();
     assert_eq!(page.animation_inventory.definitions().count(), 0);
     assert_eq!(page.view_animation_wakeup(ms(71)).unwrap(), Wakeup::None);
@@ -124,7 +130,8 @@ fn authored_virtual_animation_retains_eviction_but_restarts_after_semantic_remov
         authored_effect()
     ));
     let mut page = ViewSession::new(&source).unwrap();
-    page.set_animation_surface(Some(1), ms(0)).unwrap();
+    page.set_animation_surface(Some(SurfaceTicket::new(1)), ms(0))
+        .unwrap();
     let first = automatic(&mut page, 0, true, 0.0);
     let id = first
         .nodes
@@ -133,7 +140,7 @@ fn authored_virtual_animation_retains_eviction_but_restarts_after_semantic_remov
         .unwrap()
         .identity
         .clone();
-    page.animation_presented(1, page.generation(), ms(0))
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(0))
         .unwrap();
     page.eval("items.unshift('inserted')").unwrap();
     automatic(&mut page, 50, true, 0.0);
@@ -141,11 +148,11 @@ fn authored_virtual_animation_retains_eviction_but_restarts_after_semantic_remov
         page.pending_animation.as_ref().unwrap().2.visuals()[&id].opacity,
         Some(0.5)
     );
-    page.animation_presented(1, page.generation(), ms(50))
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(50))
         .unwrap();
     let away = automatic(&mut page, 60, false, 2000.0);
     assert!(!away.nodes.iter().any(|node| node.identity == id));
-    page.animation_presented(1, page.generation(), ms(60))
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(60))
         .unwrap();
     assert_eq!(page.animation_inventory.definitions().count(), 1);
     assert_eq!(page.view_animation_wakeup(ms(70)).unwrap(), Wakeup::None);
@@ -158,10 +165,10 @@ fn authored_virtual_animation_retains_eviction_but_restarts_after_semantic_remov
             .visuals()
             .is_empty()
     );
-    page.animation_presented(1, page.generation(), ms(110))
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(110))
         .unwrap();
     automatic(&mut page, 120, false, 2000.0);
-    page.animation_presented(1, page.generation(), ms(120))
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(120))
         .unwrap();
     page.eval("items=items.filter(key=>key!=='item-1')")
         .unwrap();
@@ -173,7 +180,7 @@ fn authored_virtual_animation_retains_eviction_but_restarts_after_semantic_remov
     );
     assert_eq!(page.animation_inventory.definitions().count(), 1);
     automatic(&mut page, 140, true, 2000.0);
-    page.animation_presented(1, page.generation(), ms(140))
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(140))
         .unwrap();
     assert_eq!(page.animation_inventory.definitions().count(), 0);
     page.eval("items.splice(1,0,'item-1')").unwrap();
@@ -191,14 +198,15 @@ fn authored_virtual_effect_requires_inventory_and_unseen_overscan_does_not_start
         authored_effect()
     ));
     let mut page = ViewSession::new(&source).unwrap();
-    page.set_animation_surface(Some(1), ms(0)).unwrap();
+    page.set_animation_surface(Some(SurfaceTicket::new(1)), ms(0))
+        .unwrap();
     assert!(
         page.prepare_view_animated(200, 120, 1.0, true, None, ms(0), Ok)
             .err()
             .unwrap()
             .contains("require itemKeys")
     );
-    assert_eq!(page.generation(), 0);
+    assert_eq!(page.generation().get(), 0);
     page.eval("keys=Array.from({length:100},(_,i)=>'item-'+i)")
         .unwrap();
     let first = automatic(&mut page, 0, true, 0.0);
@@ -210,7 +218,7 @@ fn authored_virtual_effect_requires_inventory_and_unseen_overscan_does_not_start
         .identity
         .clone();
     assert!(!page.animation_visible.contains(&id));
-    page.animation_presented(1, page.generation(), ms(0))
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(0))
         .unwrap();
     assert_eq!(page.view_animation_wakeup(ms(500)).unwrap(), Wakeup::None);
     automatic(&mut page, 500, false, 160.0);
@@ -259,7 +267,8 @@ fn page() -> ViewSession {
         "function render(){return h('column',{},h('text',{},'Chart'));}",
     ))
     .unwrap();
-    page.set_animation_surface(Some(10), ms(0)).unwrap();
+    page.set_animation_surface(Some(SurfaceTicket::new(10)), ms(0))
+        .unwrap();
     page
 }
 
@@ -299,18 +308,21 @@ fn preparation_does_not_start_time_and_animation_frames_reuse_layout() {
         page.animation_wakeup(ms(500), [CHART]).unwrap(),
         Wakeup::None
     );
-    assert!(page.animation_presented(10, generation, ms(600)).unwrap());
+    assert!(
+        page.animation_presented(SurfaceTicket::new(10), generation, ms(600))
+            .unwrap()
+    );
     assert_eq!(prepare(&mut page, 650, false), Some(0.5));
     assert_eq!(page.frame_metrics().view_passes, 0);
     assert_eq!(page.frame_metrics().layout_passes, 0);
     assert_eq!(page.frame_metrics().text_us, 0);
     assert!(
-        page.animation_presented(10, page.generation(), ms(650))
+        page.animation_presented(SurfaceTicket::new(10), page.generation(), ms(650))
             .unwrap()
     );
     assert_eq!(prepare(&mut page, 700, false), None);
     assert!(
-        page.animation_presented(10, page.generation(), ms(700))
+        page.animation_presented(SurfaceTicket::new(10), page.generation(), ms(700))
             .unwrap()
     );
     assert_eq!(
@@ -337,14 +349,28 @@ fn failed_build_and_bad_acknowledgements_preserve_the_valid_candidate() {
     );
     assert!(result.is_err());
     assert_eq!(page.generation(), generation);
-    assert!(!page.animation_presented(11, generation, ms(30)).unwrap());
     assert!(
         !page
-            .animation_presented(10, generation + 1, ms(30))
+            .animation_presented(SurfaceTicket::new(11), generation, ms(30))
             .unwrap()
     );
-    assert!(page.animation_presented(10, generation, ms(9)).is_err());
-    assert!(page.animation_presented(10, generation, ms(30)).unwrap());
+    assert!(
+        !page
+            .animation_presented(
+                SurfaceTicket::new(10),
+                CommitTicket::new(generation.get() + 1),
+                ms(30)
+            )
+            .unwrap()
+    );
+    assert!(
+        page.animation_presented(SurfaceTicket::new(10), generation, ms(9))
+            .is_err()
+    );
+    assert!(
+        page.animation_presented(SurfaceTicket::new(10), generation, ms(30))
+            .unwrap()
+    );
     assert_eq!(prepare(&mut page, 80, false), Some(0.5));
 }
 
@@ -353,26 +379,43 @@ fn surface_replacement_and_parking_reject_old_callbacks_and_preserve_active_time
     let mut page = page();
     prepare(&mut page, 0, true);
     assert!(
-        page.animation_presented(10, page.generation(), ms(0))
+        page.animation_presented(SurfaceTicket::new(10), page.generation(), ms(0))
             .unwrap()
     );
     prepare(&mut page, 20, false);
     let old = page.generation();
     page.set_animation_surface(None, ms(20)).unwrap();
-    assert!(!page.animation_presented(10, old, ms(50)).unwrap());
+    assert!(
+        !page
+            .animation_presented(SurfaceTicket::new(10), old, ms(50))
+            .unwrap()
+    );
     assert_eq!(
         page.animation_wakeup(ms(500), [CHART]).unwrap(),
         Wakeup::None
     );
-    page.set_animation_surface(Some(11), ms(1000)).unwrap();
+    page.set_animation_surface(Some(SurfaceTicket::new(11)), ms(1000))
+        .unwrap();
     assert!((prepare(&mut page, 1030, false).unwrap() - 0.5).abs() < 1e-12);
     let current = page.generation();
-    assert!(!page.animation_presented(10, old, ms(1030)).unwrap());
-    assert!(page.animation_presented(11, current, ms(1030)).unwrap());
+    assert!(
+        !page
+            .animation_presented(SurfaceTicket::new(10), old, ms(1030))
+            .unwrap()
+    );
+    assert!(
+        page.animation_presented(SurfaceTicket::new(11), current, ms(1030))
+            .unwrap()
+    );
     prepare(&mut page, 1040, false);
     let replaced = page.generation();
-    page.set_animation_surface(Some(12), ms(1040)).unwrap();
-    assert!(!page.animation_presented(11, replaced, ms(1040)).unwrap());
+    page.set_animation_surface(Some(SurfaceTicket::new(12)), ms(1040))
+        .unwrap();
+    assert!(
+        !page
+            .animation_presented(SurfaceTicket::new(11), replaced, ms(1040))
+            .unwrap()
+    );
     assert!((prepare(&mut page, 1050, false).unwrap() - 0.7).abs() < 1e-12);
 }
 
@@ -382,16 +425,24 @@ fn ordinary_frames_and_reset_cannot_acknowledge_old_animation_candidates() {
     prepare(&mut page, 0, true);
     let old = page.generation();
     page.layout(200, 100, 1.0).unwrap();
-    assert!(!page.animation_presented(10, old, ms(20)).unwrap());
+    assert!(
+        !page
+            .animation_presented(SurfaceTicket::new(10), old, ms(20))
+            .unwrap()
+    );
     assert_eq!(prepare(&mut page, 50, false), Some(0.0));
     assert!(
-        page.animation_presented(10, page.generation(), ms(50))
+        page.animation_presented(SurfaceTicket::new(10), page.generation(), ms(50))
             .unwrap()
     );
     prepare(&mut page, 70, false);
     let old = page.generation();
     page.reset().unwrap();
-    assert!(!page.animation_presented(10, old, ms(80)).unwrap());
+    assert!(
+        !page
+            .animation_presented(SurfaceTicket::new(10), old, ms(80))
+            .unwrap()
+    );
     assert_eq!(prepare(&mut page, 100, true), Some(0.0));
 }
 
@@ -416,7 +467,8 @@ fn keyed_virtual_row_animation_survives_reorder_and_window_eviction() {
     let identity = item.identity.clone();
     let old_y = item.bounds[1];
     let scroll = initial.nodes[0].scroll.as_ref().unwrap().id.clone();
-    page.set_animation_surface(Some(10), ms(0)).unwrap();
+    page.set_animation_surface(Some(SurfaceTicket::new(10)), ms(0))
+        .unwrap();
     let definition = definitions()[0].1.clone();
     let prepare = |page: &mut ViewSession, now, rebuild, offset, visible| {
         page.prepare_animated(
@@ -437,7 +489,7 @@ fn keyed_virtual_row_animation_survives_reorder_and_window_eviction() {
         .unwrap_or_else(|error| panic!("frame at {now}ms: {error}"))
     };
     prepare(&mut page, 0, false, 0.0, true);
-    page.animation_presented(10, page.generation(), ms(0))
+    page.animation_presented(SurfaceTicket::new(10), page.generation(), ms(0))
         .unwrap();
     page.eval("items.splice(0,0,'inserted')").unwrap();
     let moved = prepare(&mut page, 50, true, 0.0, true);
@@ -452,12 +504,12 @@ fn keyed_virtual_row_animation_survives_reorder_and_window_eviction() {
         page.pending_animation.as_ref().unwrap().2.visuals()[&identity].opacity,
         Some(0.5)
     );
-    page.animation_presented(10, page.generation(), ms(50))
+    page.animation_presented(SurfaceTicket::new(10), page.generation(), ms(50))
         .unwrap();
     let away = prepare(&mut page, 60, false, 2000.0, false);
     assert!(away.nodes[0].scroll.as_ref().unwrap().offset > 1500.0);
     assert!(!away.nodes.iter().any(|node| node.test_id == "item-1"));
-    page.animation_presented(10, page.generation(), ms(60))
+    page.animation_presented(SurfaceTicket::new(10), page.generation(), ms(60))
         .unwrap();
     let returned = prepare(&mut page, 110, false, 0.0, true);
     assert_eq!(
@@ -508,8 +560,9 @@ fn view_wire_requires_matching_definition_and_presentation_aware_rendering() {
         error.contains("requires animation presentation scheduling"),
         "{error}"
     );
-    assert_eq!(page.generation(), 0);
-    page.set_animation_surface(Some(1), ms(0)).unwrap();
+    assert_eq!(page.generation().get(), 0);
+    page.set_animation_surface(Some(SurfaceTicket::new(1)), ms(0))
+        .unwrap();
     let definition = crate::animation::decode_definition(&payload).unwrap();
     let mut wrong = definition.clone();
     wrong.name = "different".into();
@@ -527,7 +580,7 @@ fn view_wire_requires_matching_definition_and_presentation_aware_rendering() {
         )
         .is_err()
     );
-    assert_eq!(page.generation(), 0);
+    assert_eq!(page.generation().get(), 0);
     let first = page
         .prepare_animated(
             80,
@@ -548,7 +601,7 @@ fn view_wire_requires_matching_definition_and_presentation_aware_rendering() {
         &[246, 247, 251, 255]
     );
     assert!(
-        page.animation_presented(1, page.generation(), ms(0))
+        page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(0))
             .unwrap()
     );
     let next = page

@@ -52,7 +52,10 @@ impl ViewSession {
     }
 
     /// Called after presentation; newly mounted consumers also receive cached outcomes.
-    pub fn dispatch_image_events(&mut self, generation: u64) -> Result<bool, String> {
+    pub fn dispatch_image_events(
+        &mut self,
+        generation: crate::session::lifecycle::CommitTicket,
+    ) -> Result<bool, String> {
         if generation != self.generation {
             return Ok(false);
         }
@@ -147,7 +150,13 @@ mod tests {
         page.layout(200, 200, 1.0).unwrap();
         let original = page.image_requests()[0].clone();
         page.image_completed(original.clone(), false);
-        assert!(!page.dispatch_image_events(page.generation() - 1).unwrap());
+        assert!(
+            !page
+                .dispatch_image_events(crate::session::lifecycle::CommitTicket::new(
+                    page.generation().get() - 1
+                ))
+                .unwrap()
+        );
         assert!(page.dispatch_image_events(page.generation()).unwrap());
         let frame = page.layout(200, 200, 1.0).unwrap();
         assert_eq!(
