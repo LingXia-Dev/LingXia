@@ -1,4 +1,4 @@
-use crate::scene::render::ClipSnapshot;
+use crate::scene::node::ClipSnapshot;
 use vello_cpu::{
     filter_effects::{Filter, FilterFunction},
     kurbo::{Affine, Rect},

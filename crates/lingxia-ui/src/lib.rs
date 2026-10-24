@@ -12,8 +12,10 @@ pub mod text;
 
 pub use engine::evaluate;
 pub use interaction::input_state::InputReply;
+pub use layout::Renderer;
+pub use scene::display::DisplayList;
+pub use scene::node::Frame;
 pub use scene::plot::{PieLayout, PlotSelection, PlotSnapshot};
-pub use scene::render::{DisplayList, Frame, Renderer};
 pub use scene::slider::SliderSnapshot;
 pub use session::ViewSession;
 pub use session::app::{ViewApp, ViewPageId};

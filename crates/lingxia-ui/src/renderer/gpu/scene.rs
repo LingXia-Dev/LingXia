@@ -1,4 +1,4 @@
-use crate::{DisplayList, scene::render::SceneKey};
+use crate::{DisplayList, scene::display::SceneKey};
 use std::{collections::HashMap, sync::Arc};
 
 struct Entry {

@@ -1,5 +1,6 @@
 //! Backends that rasterize a shared scene.
 pub mod cpu;
+pub(crate) mod cpu_paint;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 

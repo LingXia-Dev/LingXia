@@ -516,7 +516,7 @@ fn shared_composite_plan_matches_cpu_for_nested_roots_clips_and_siblings() {
     use crate::{
         scene::color_filter::Saturation,
         scene::composite::{Layer, Plan, Step},
-        scene::render::ClipSnapshot,
+        scene::node::ClipSnapshot,
     };
     let mut context = vello::util::RenderContext::new();
     let id = pollster::block_on(context.device(None)).expect("GPU adapter required");
@@ -636,7 +636,7 @@ fn compositor_pool_reuses_submitted_work_without_overwriting_live_outputs() {
     use crate::{
         scene::color_filter::Saturation,
         scene::composite::{Layer, Plan, Step},
-        scene::render::ClipSnapshot,
+        scene::node::ClipSnapshot,
     };
     let shared = crate::renderer::gpu::Context::default();
     let other_page = shared.clone();
@@ -738,7 +738,7 @@ fn mirrored_backdrop_crop_preserves_gpu_card_edges() {
     use crate::{
         scene::color_filter::Saturation,
         scene::composite::{Layer, Plan, Step},
-        scene::render::ClipSnapshot,
+        scene::node::ClipSnapshot,
     };
     let mut context = vello::util::RenderContext::new();
     let id = pollster::block_on(context.device(None)).expect("GPU adapter required");

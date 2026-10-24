@@ -1,5 +1,5 @@
 //! Shared ordered composition of isolated groups and backdrop captures.
-use crate::{scene::color_filter::Saturation, scene::render::ClipSnapshot};
+use crate::{scene::color_filter::Saturation, scene::node::ClipSnapshot};
 use std::ops::Range;
 
 #[derive(Clone, Debug)]

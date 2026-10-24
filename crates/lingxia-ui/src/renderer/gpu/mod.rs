@@ -1,5 +1,6 @@
 pub mod color_filter;
 pub mod composite;
+mod encode;
 pub(crate) mod images;
 pub(crate) mod pass;
 pub(crate) mod scene;

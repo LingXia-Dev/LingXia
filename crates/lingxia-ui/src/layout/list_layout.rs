@@ -52,7 +52,7 @@ pub(crate) fn current(lists: &Lists) -> Windows {
 
 fn request(
     state: &ListState,
-    node: &crate::scene::render::NodeSnapshot,
+    node: &crate::scene::node::NodeSnapshot,
     offset: f32,
 ) -> Result<Request, String> {
     let visible = node.visible_bounds;

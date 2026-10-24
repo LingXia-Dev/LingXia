@@ -27,8 +27,8 @@ pub struct ViewSession {
     poisoned: Cell<bool>,
     environment: serde_json::Value,
     bridge: Option<ViewBridge>,
-    retained: Option<Arc<crate::scene::render::RetainedLayout>>,
-    input_hits: Option<crate::scene::render::InputHitMap>,
+    retained: Option<Arc<crate::scene::retained::RetainedLayout>>,
+    input_hits: Option<crate::interaction::input_hits::InputHitMap>,
     viewport: Option<(u16, u16, f32)>,
     scroll_offsets: HashMap<String, f32>,
     lists: crate::layout::list_layout::Lists,
@@ -669,7 +669,8 @@ impl ViewSession {
                             .is_some_and(|records| records.iter().any(|r| r.string(98).is_some()));
                     if !changed_style {
                         let input_dirty = inputs.needs_layout(&display);
-                        let input_hits = crate::scene::render::InputHitMap::capture(&display);
+                        let input_hits =
+                            crate::interaction::input_hits::InputHitMap::capture(&display);
                         metrics.nodes = display.nodes.len();
                         metrics.paints = display.paint_count();
                         let started = std::time::Instant::now();
@@ -825,7 +826,7 @@ impl ViewSession {
                     let wanted = display.image_sources().map(str::to_owned).collect();
                     display.bind_images(&self.images)?;
                     let input_dirty = inputs.needs_layout(&display);
-                    let input_hits = crate::scene::render::InputHitMap::capture(&display);
+                    let input_hits = crate::interaction::input_hits::InputHitMap::capture(&display);
                     metrics.nodes = display.nodes.len();
                     metrics.paints = display.paint_count();
                     let started = std::time::Instant::now();

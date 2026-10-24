@@ -149,7 +149,7 @@ mod tests {
     use crate::{
         scene::color_filter::Saturation,
         scene::composite::{Plan, Step},
-        scene::render::ClipSnapshot,
+        scene::node::ClipSnapshot,
     };
     use vello_cpu::{
         color::{AlphaColor, Srgb, palette::css},
