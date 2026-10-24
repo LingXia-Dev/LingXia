@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {h, prepare, prepareWindows, commit, discard, dispatch, useLocal, reset} from '../src/runtime.js';
+import {h, prepare, prepareWindows, commit, discard, dispatch, useLocal, reset} from '../src/internal.js';
 import {listFields} from '../src/generated/wire.js';
 function records(buffer) {
  const result=[];

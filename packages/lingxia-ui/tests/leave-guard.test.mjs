@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createLeaveGuards } from '../src/leave-guard.js';
+import { createLeaveGuards } from '../src/runtime/leave-guard.js';
 import {
   h, prepare, commit, discard, describe, reset, createView, useLeaveGuard,
   requestLeave, configureActions, takeActionRequests, receiveActionResponse,
-} from '../src/runtime.js';
+} from '../src/internal.js';
 
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 function setup() {

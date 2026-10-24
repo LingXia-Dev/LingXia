@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {compile} from 'tailwindcss';
 import postcss from 'postcss';
-import {lowerAnimation} from '../animation.mjs';
-import {compileUtilities} from '../tailwind.mjs';
-import {configureClasses, resolveStyle} from '../src/classes.js';
-import {describe, h} from '../src/runtime.js';
+import {lowerAnimation} from '../compiler/animation.mjs';
+import {compileUtilities} from '../compiler/tailwind.mjs';
+import {configureClasses, resolveStyle} from '../src/style/classes.js';
+import {describe, h} from '../src/internal.js';
 
 const fixture = JSON.parse(await readFile(new URL('./fixtures/animations.json',import.meta.url),'utf8'));
 const lower = (css,value='enter 350ms linear') => lowerAnimation(value,postcss.parse(css));

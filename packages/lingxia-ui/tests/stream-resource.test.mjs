@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { h, prepare, prepareWindows, commit, discard, describe, reset, configureActions, createView, useStream, takeActionRequests, receiveActionResponse, hasLocalUpdates } from '../src/runtime.js';
+import { h, prepare, prepareWindows, commit, discard, describe, reset, configureActions, createView, useStream, takeActionRequests, receiveActionResponse, hasLocalUpdates } from '../src/internal.js';
 const frames = () => takeActionRequests().map(JSON.parse);
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); };
 const setup = () => { reset(); configureActions({ __names: ['ticks', 'echo'], __modes: { ticks: 'stream', echo: 'call' } }); return createView({}, {}); };

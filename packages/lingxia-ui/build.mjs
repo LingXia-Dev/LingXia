@@ -1,6 +1,6 @@
 ﻿import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
-import { buildPages } from './compiler.mjs';
+import { buildPages } from './compiler/index.mjs';
 const root = resolve(process.argv[2] ?? '.');
 const manifest = JSON.parse(await readFile(join(root, 'lxapp.json'), 'utf8'));
 if (manifest.logic !== false) throw Error('Use lingxia build to compile pages with Logic');

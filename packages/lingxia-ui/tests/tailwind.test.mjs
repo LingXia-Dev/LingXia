@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { compileUtilities } from '../tailwind.mjs';
-import { configureClasses, resolveStyle, focusStyle } from '../src/classes.js';
-import { describe, h } from '../src/runtime.js';
+import { compileUtilities } from '../compiler/tailwind.mjs';
+import { configureClasses, resolveStyle, focusStyle } from '../src/style/classes.js';
+import { describe, h } from '../src/internal.js';
 const corners = radius => ({radiusTopLeft:radius,radiusTopRight:radius,radiusBottomRight:radius,radiusBottomLeft:radius});
 const classStyle = (name, env) => resolveStyle(name, undefined, env).style;
 

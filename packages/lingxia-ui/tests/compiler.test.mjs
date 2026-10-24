@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { audit, buildPages } from '../compiler.mjs';
+import { audit, buildPages } from '../compiler/index.mjs';
 import { moduleBanner } from '../compiler/compatibility.mjs';
 import { runInNewContext } from 'node:vm';
 import { field } from '../src/generated/wire.js';

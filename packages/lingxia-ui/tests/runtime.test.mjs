@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { h, describe, prepare, commit, discard, dispatch, useLocal, createView } from '../src/runtime.js';
+import { h, describe, prepare, commit, discard, dispatch, useLocal, createView } from '../src/internal.js';
 import { field } from '../src/generated/wire.js';
 
 test('image lifecycle callbacks are committed handles and retry keys are bounded', () => {

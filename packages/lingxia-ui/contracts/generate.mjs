@@ -115,7 +115,7 @@ ${lines.join('\n')}
 
 // Native session tests evaluate the real runtime without the page compiler.
 async function nativeTestRuntime() {
-  const entry = `import * as ui from './src/runtime.js'; import { publishHost } from './src/host.js'; Object.assign(globalThis, ui, { __lingxiaPublish: publishHost });`;
+  const entry = `import * as ui from './src/internal.js'; import { publishHost } from './src/host.js'; Object.assign(globalThis, ui, { __lingxiaPublish: publishHost });`;
   const result = await build({ stdin: { contents: entry, resolveDir: packageRoot }, bundle: true, write: false, format: 'iife', target: 'es2020', legalComments: 'none', absWorkingDir: packageRoot });
   return header + result.outputFiles[0].text;
 }

@@ -6,9 +6,10 @@
   "exports": {
     ".": {
       "types": "./src/index.d.ts",
-      "default": "./src/runtime.js"
+      "default": "./src/index.js"
     },
-    "./compiler": "./compiler.mjs"
+    "./internal": "./src/internal.js",
+    "./compiler": "./compiler/index.mjs"
   },
   "scripts": {
     "test": "node --test tests/*.test.mjs"

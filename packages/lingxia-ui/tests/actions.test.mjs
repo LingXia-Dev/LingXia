@@ -1,6 +1,6 @@
 ﻿import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {configureActions, createView, takeActionRequests, receiveActionResponse, reset, describe, h, dispatch, takeActionErrors} from '../src/runtime.js';
+import {configureActions, createView, takeActionRequests, receiveActionResponse, reset, describe, h, dispatch, takeActionErrors} from '../src/internal.js';
 const catalog={__names:['increment'],__modes:{increment:'call'}};
 test('actions preserve LegacyV2 payloads and settle responses exactly once', async()=>{
   configureActions(catalog);

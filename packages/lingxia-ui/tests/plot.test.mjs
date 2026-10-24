@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { h, describe, reset, dispatch, prepare, discard, useLocal } from '../src/runtime.js';
-import { audit } from '../compiler.mjs';
+import { h, describe, reset, dispatch, prepare, discard, useLocal } from '../src/internal.js';
+import { audit } from '../compiler/index.mjs';
 const view = { data: {}, env: {} };
 const plot = overrides => h('plot', { accessibilityLabel: 'Revenue', kind: 'bar', values: [10, 20], colors: ['#435DD9'], style: { height: 180 }, ...overrides });
 

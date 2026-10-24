@@ -6,9 +6,9 @@
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
-  // src/runtime.js
-  var runtime_exports = {};
-  __export(runtime_exports, {
+  // src/internal.js
+  var internal_exports = {};
+  __export(internal_exports, {
     List: () => List,
     childrenToArray: () => childrenToArray,
     commit: () => commit,
@@ -193,7 +193,7 @@
     return common.has(key) || extra[tag]?.includes(key) || wireProps[tag] !== void 0 && has(wireProps[tag], key) || ["scroll", "list"].includes(tag) && has(reachProps, key) || false;
   }
 
-  // src/shadow.js
+  // src/style/shadow.js
   function normalizeShadows(value) {
     if (value === "none") return value;
     const invalid = () => {
@@ -214,7 +214,7 @@
     });
   }
 
-  // src/gradient.js
+  // src/style/gradient.js
   var directions = ["top", "right", "bottom", "left", "top-right", "bottom-right", "bottom-left", "top-left"];
   function normalizeGradient(value) {
     if (value === "none") return value;
@@ -236,7 +236,7 @@
     };
   }
 
-  // src/classes.js
+  // src/style/classes.js
   var byName = /* @__PURE__ */ new Map();
   var styles = /* @__PURE__ */ new Map();
   var styleTheme;
@@ -348,7 +348,7 @@
     return Object.keys(result).length ? result : void 0;
   }
 
-  // src/stream.js
+  // src/runtime/stream.js
   function createStream(id, cancel, report, error) {
     let done = false, failure, finalValue, iterator = false, bytes = 0;
     const queue = [], reads = [];
@@ -447,7 +447,7 @@
     };
   }
 
-  // src/channel.js
+  // src/runtime/channel.js
   function createChannel(id, send, close, report, error) {
     let closed = false, failure, iterator = false, bytes = 0;
     const queue = [], reads = [];
@@ -546,7 +546,7 @@
     };
   }
 
-  // src/channel-resource.js
+  // src/runtime/channel-resource.js
   function channelResource(state, report) {
     let definition, channel, ticket = 0, mounted = false;
     let snapshot = state.value;
@@ -625,7 +625,7 @@
     };
   }
 
-  // src/leave-guard.js
+  // src/runtime/leave-guard.js
   function createLeaveGuards(callHost, report) {
     const holders = /* @__PURE__ */ new Set();
     let epoch2 = 0, sent = false, asking = false, tail = Promise.resolve();
@@ -736,7 +736,7 @@
     };
   }
 
-  // src/runtime.js
+  // src/runtime/tree.js
   var arena = [];
   var epoch = 0;
   var nextHandle = 1;
@@ -1805,5 +1805,5 @@
   }
 
   // <stdin>
-  Object.assign(globalThis, runtime_exports, { __lingxiaPublish: publishHost });
+  Object.assign(globalThis, internal_exports, { __lingxiaPublish: publishHost });
 })();

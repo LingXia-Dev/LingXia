@@ -1,5 +1,5 @@
 import { describe, prepare, prepareWindows, commit, discard, reset, dispatch, createView, configureActions,
-  takeActionRequests, receiveActionResponse, takeActionErrors, hasLocalUpdates, requestLeave } from './runtime.js';
+  takeActionRequests, receiveActionResponse, takeActionErrors, hasLocalUpdates, requestLeave } from './runtime/tree.js';
 
 // The native session calls only these globals; module code stays unreachable from the host.
 export function publishHost(render, catalog) {

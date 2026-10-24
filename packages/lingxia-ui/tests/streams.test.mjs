@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { configureActions, createView, takeActionRequests, receiveActionResponse, reset, takeActionErrors } from '../src/runtime.js';
+import { configureActions, createView, takeActionRequests, receiveActionResponse, reset, takeActionErrors } from '../src/internal.js';
 
 function start() {
   configureActions({__names:['watch'], __modes:{watch:'stream'}});

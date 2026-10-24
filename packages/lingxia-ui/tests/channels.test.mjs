@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { configureActions, createView, takeActionRequests, takeActionErrors, receiveActionResponse, reset, describe, h } from '../src/runtime.js';
+import { configureActions, createView, takeActionRequests, takeActionErrors, receiveActionResponse, reset, describe, h } from '../src/internal.js';
 const catalog = {__names:['ticker'],__modes:{ticker:'call'}};
 function start() {
   configureActions(catalog);

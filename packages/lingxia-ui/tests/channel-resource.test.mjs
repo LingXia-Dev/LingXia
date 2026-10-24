@@ -4,7 +4,7 @@ import {
   h, prepare, prepareWindows, commit, discard, reset, describe, useChannel,
   useLocal, configureActions, createView, takeActionRequests, receiveActionResponse,
   hasLocalUpdates,
-} from '../src/runtime.js';
+} from '../src/internal.js';
 
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); };
 const requests = () => takeActionRequests().map(JSON.parse);

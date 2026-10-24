@@ -1,6 +1,6 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { h, List, childrenToArray, describe, prepare, discard, reset, useLocal, useRequest, configureActions, createView, takeActionRequests } from '../src/runtime.js';
+import { h, List, childrenToArray, describe, prepare, discard, reset, useLocal, useRequest, configureActions, createView, takeActionRequests } from '../src/internal.js';
 
 beforeEach(() => reset());
 

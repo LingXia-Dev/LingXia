@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {h,describe,prepare,discard,dispatch,useLocal,reset} from '../src/runtime.js';
+import {h,describe,prepare,discard,dispatch,useLocal,reset} from '../src/internal.js';
 import {inputProps} from '../src/generated/wire.js';
 function records(buffer) {
   const result=[];

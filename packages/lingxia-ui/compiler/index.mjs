@@ -1,18 +1,20 @@
-import { acceptsProp } from './src/authoring/props.js';
+import { acceptsProp } from '../src/authoring/props.js';
 import { build } from 'esbuild';
 import ts from 'typescript';
-import { collectClassUsage } from './compiler/class-usage.mjs';
-import { sourceChecker, moduleChecker, parseSource } from './compiler/source.mjs';
-import { moduleBanner } from './compiler/compatibility.mjs';
+import { collectClassUsage } from './class-usage.mjs';
+import { sourceChecker, moduleChecker, parseSource } from './source.mjs';
+import { moduleBanner } from './compatibility.mjs';
 import { compileUtilities } from './tailwind.mjs';
 import { loadStylesheet, validateTokens } from './stylesheets.mjs';
 import { readFile, mkdir, writeFile, copyFile } from 'node:fs/promises';
 import { resolve, dirname, join, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { tags, fields } from './src/generated/wire.js';
+import { tags, fields } from '../src/generated/wire.js';
 
-const runtime = fileURLToPath(new URL('./src/runtime.js', import.meta.url));
-const host = fileURLToPath(new URL('./src/host.js', import.meta.url));
+const runtime = fileURLToPath(new URL('../src/internal.js', import.meta.url));
+const publicEntry = fileURLToPath(new URL('../src/index.js', import.meta.url));
+const jsx = fileURLToPath(new URL('../src/runtime/jsx.js', import.meta.url));
+const host = fileURLToPath(new URL('../src/host.js', import.meta.url));
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
 export function audit(source, filename) {
@@ -66,7 +68,7 @@ export function audit(source, filename) {
 }
 
 export async function buildPages(root, pages, output, catalogs = {}) {
-  const { version } = JSON.parse(await readFile(new URL('./package.json', import.meta.url), 'utf8'));
+  const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   root = resolve(root); output = resolve(output);
   for (const page of pages) {
     const source = resolve(root, page);
@@ -81,8 +83,8 @@ export async function buildPages(root, pages, output, catalogs = {}) {
     const candidates = new Set(), themes = new Map(), sourceFiles = [];
     const bundled = await build({
       stdin: { contents: `import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)});`, resolveDir: root },
-      bundle: true, write: false, format: 'esm', target: 'es2020', jsxFactory: 'h', inject: [runtime],
-      alias: { '@lingxia/ui': runtime },
+      bundle: true, write: false, format: 'esm', target: 'es2020', jsxFactory: 'h', inject: [jsx],
+      alias: { '@lingxia/ui': publicEntry },
       plugins: [{ name: 'lingxia-ui-language', setup(builder) {
         builder.onLoad({ filter: /\.css$/ }, async ({ path }) => {
           const stylesheet = await loadStylesheet(path);

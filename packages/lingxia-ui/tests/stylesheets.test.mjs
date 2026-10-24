@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadStylesheet } from '../stylesheets.mjs';
-import { compileUtilities } from '../tailwind.mjs';
-import { configureClasses, resolveStyle } from '../src/classes.js';
+import { loadStylesheet } from '../compiler/stylesheets.mjs';
+import { compileUtilities } from '../compiler/tailwind.mjs';
+import { configureClasses, resolveStyle } from '../src/style/classes.js';
 
 test('nested CSS imports retain source order and theme source locations', async () => {
   const root = await mkdtemp(join(tmpdir(), 'lingxia-ui-theme-'));
