@@ -1,3 +1,4 @@
+use crate::protocol::field;
 pub mod app;
 pub mod image_requests;
 pub(crate) mod input_protocol;
@@ -663,10 +664,11 @@ impl ViewSession {
                     let old_focus = inputs.focused().map(str::to_owned);
                     inputs.decorate(&mut display, &mut self.renderer)?;
                     let changed_style = old_focus.as_deref() != inputs.focused()
-                        && self
-                            .input_records
-                            .as_ref()
-                            .is_some_and(|records| records.iter().any(|r| r.string(98).is_some()));
+                        && self.input_records.as_ref().is_some_and(|records| {
+                            records
+                                .iter()
+                                .any(|r| r.string(field::FOCUS_STYLE).is_some())
+                        });
                     if !changed_style {
                         let input_dirty = inputs.needs_layout(&display);
                         let input_hits =
@@ -786,7 +788,9 @@ impl ViewSession {
                 let old_focus = inputs.focused().map(str::to_owned);
                 inputs.decorate(&mut display, &mut self.renderer)?;
                 if old_focus.as_deref() != inputs.focused()
-                    && records.iter().any(|r| r.string(98).is_some())
+                    && records
+                        .iter()
+                        .any(|r| r.string(field::FOCUS_STYLE).is_some())
                 {
                     continue;
                 }
@@ -1166,7 +1170,7 @@ fn strip_record_animations(records: &mut [crate::protocol::Record]) {
     for record in records {
         record
             .fields
-            .retain(|(field, _)| !matches!(field, 101 | 102));
+            .retain(|(id, _)| !matches!(*id, field::ANIMATION | field::LIST_ITEM_KEYS));
     }
 }
 
@@ -1174,12 +1178,15 @@ fn validate_record_animations(
     records: &[crate::protocol::Record],
     frame: Option<&crate::animation::Prepared>,
 ) -> Result<(), String> {
-    if !records.iter().any(|record| record.string(101).is_some()) {
+    if !records
+        .iter()
+        .any(|record| record.string(field::ANIMATION).is_some())
+    {
         return Ok(());
     }
     let frame = frame.ok_or("UI_ANIMATION: page requires animation presentation scheduling")?;
     for (record, identity) in records.iter().zip(crate::protocol::identities(records)) {
-        if let Some(source) = record.string(101) {
+        if let Some(source) = record.string(field::ANIMATION) {
             let definition = crate::animation::decode_definition(source)?;
             if !frame.contains_definition(&identity, &definition) {
                 return Err("UI_ANIMATION: frame definition does not match View record".into());
@@ -1741,42 +1748,11 @@ pub(crate) mod tests {
         assert_eq!(next.nodes[0].scroll.as_ref().unwrap().offset, 0.0);
     }
 
+    /// The bundled runtime the page compiler links, published with `render` as the page.
     pub(crate) fn source(render: &str) -> String {
-        let resources = include_str!("../../../../packages/lingxia-ui/src/runtime/resources.js")
-            .replace("export function", "function");
-        let authoring = include_str!("../../../../packages/lingxia-ui/src/authoring/props.js")
-            .lines()
-            .filter(|line| !line.starts_with("import "))
-            .collect::<Vec<_>>()
-            .join("\n")
-            .replace("export function", "function");
-        let authoring =
-            format!("const acceptsProp = (() => {{ {authoring}\nreturn acceptsProp; }})();");
-        let runtime = include_str!("../../../../packages/lingxia-ui/src/runtime.js");
-        let runtime = runtime
-            .lines()
-            .filter(|line| !line.starts_with("import ") && !line.starts_with("export { "))
-            .collect::<Vec<_>>()
-            .join("\n")
-            .replace("export function", "function");
-        let runtime = format!("{authoring}\n{resources}\n{runtime}");
         format!(
-            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{runtime}\n{render}\nObject.assign(globalThis, {{__lingxiaRender:render,__lingxiaPrepare:prepare,__lingxiaPrepareWindows:prepareWindows,__lingxiaCommit:commit,__lingxiaDiscard:discard,__lingxiaReset:reset,__lingxiaDispatch:dispatch,__lingxiaCreateView:createView,__lingxiaConfigureActions:configureActions,__lingxiaTakeActionRequests:takeActionRequests,__lingxiaReceiveActionResponse:receiveActionResponse,__lingxiaTakeActionErrors:takeActionErrors,__lingxiaHasLocalUpdates:hasLocalUpdates,__lingxiaRequestLeave:requestLeave}});",
-            crate::protocol::javascript_schema().replace("export const", "const"),
-            include_str!("../../../../packages/lingxia-ui/src/shadow.js")
-                .replace("export function", "function"),
-            include_str!("../../../../packages/lingxia-ui/src/gradient.js")
-                .replace("export function", "function"),
-            include_str!("../../../../packages/lingxia-ui/src/stream.js")
-                .replace("export function", "function"),
-            include_str!("../../../../packages/lingxia-ui/src/channel.js")
-                .replace("export function", "function"),
-            include_str!("../../../../packages/lingxia-ui/src/channel-resource.js")
-                .replace("export function", "function"),
-            include_str!("../../../../packages/lingxia-ui/src/leave-guard.js")
-                .replace("export function", "function"),
-            include_str!("../../../../packages/lingxia-ui/src/classes.js")
-                .replace("export function", "function")
+            "{}\n{render}\n__lingxiaPublish(render);",
+            include_str!("tests/runtime.js")
         )
     }
 

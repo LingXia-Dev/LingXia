@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {h,describe,prepare,discard,dispatch,useLocal,reset} from '../src/runtime.js';
-import {sliderProps} from '../src/schema.js';
+import {sliderProps} from '../src/generated/wire.js';
 const fields=buffer=>new Map(Array.from({length:buffer[5]},(_,i)=>buffer.slice(6+i*2,8+i*2)));
 
 test('slider clamps and snaps numeric proposals including a partial final interval',()=>{

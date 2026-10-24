@@ -1,137 +1,48 @@
 use serde_json::Value;
 
-pub const TAGS: &[&str] = &[
-    "column",
-    "row",
-    "text",
-    "button",
-    "spacer",
-    "scroll",
-    "list",
-    "image",
-    "input",
-    "textarea",
-    "checkbox",
-    "switch",
-    "radio",
-    "radio-option",
-    "search",
-    "slider",
-    "grid",
-    "stack",
-    "plot",
-    "vector",
+#[rustfmt::skip]
+mod generated;
+pub use generated::{FIELDS, TAGS, UI_ABI, field, options, tag};
+
+/// Absolute dimension fields paired with their percentage forms.
+pub const DIMENSIONS: [(usize, usize); 6] = [
+    (field::WIDTH, field::WIDTH_PERCENT),
+    (field::HEIGHT, field::HEIGHT_PERCENT),
+    (field::MIN_WIDTH, field::MIN_WIDTH_PERCENT),
+    (field::MIN_HEIGHT, field::MIN_HEIGHT_PERCENT),
+    (field::MAX_WIDTH, field::MAX_WIDTH_PERCENT),
+    (field::MAX_HEIGHT, field::MAX_HEIGHT_PERCENT),
 ];
-pub const FIELDS: &[(&str, &str)] = &[
-    ("width", "number"),
-    ("height", "number"),
-    ("gap", "number"),
-    ("padding", "number"),
-    ("fontSize", "number"),
-    ("color", "string"),
-    ("background", "string"),
-    ("grow", "number"),
-    ("onClick", "handle"),
-    ("enabled", "flag"),
-    ("radius", "number"),
-    ("listId", "list-id"),
-    ("listCount", "list-count"),
-    ("leading", "list-extent"),
-    ("trailing", "list-extent"),
-    ("rowIndex", "list-index"),
-    ("anchor", "list-anchor"),
-    ("onReachStart", "reach-handle"),
-    ("onReachEnd", "reach-handle"),
-    ("src", "image-source"),
-    ("fit", "image-fit"),
-    ("value", "input-text"),
-    ("placeholder", "input-text"),
-    ("secure", "input-flag"),
-    ("keyboard", "input-keyboard"),
-    ("autoFocus", "input-flag"),
-    ("onInput", "input-handle"),
-    ("onSubmit", "input-handle"),
-    ("minWidth", "number"),
-    ("minHeight", "number"),
-    ("maxWidth", "number"),
-    ("maxHeight", "number"),
-    ("shrink", "number"),
-    ("align", "alignment"),
-    ("justify", "justification"),
-    ("alignSelf", "alignment"),
-    ("fontWeight", "number"),
-    ("lineHeight", "number"),
-    ("fontFamily", "font-family"),
-    ("checked", "check-flag"),
-    ("onChange", "check-handle"),
-    ("accessibilityLabel", "radio-label"),
-    ("value", "slider-number"),
-    ("min", "slider-number"),
-    ("max", "slider-number"),
-    ("step", "slider-number"),
-    ("onChange", "slider-handle"),
-    ("columns", "grid-columns"),
-    ("offsetX", "stack-offset"),
-    ("offsetY", "stack-offset"),
-    ("lines", "text-lines"),
-    ("values", "plot-values"),
-    ("kind", "plot-kind"),
-    ("colors", "plot-colors"),
-    ("smooth", "plot-flag"),
-    ("area", "plot-flag"),
-    ("onSelect", "plot-handle"),
-    ("selectedIndex", "plot-index"),
-    ("opacity", "number"),
-    ("paddingTop", "number"),
-    ("paddingRight", "number"),
-    ("paddingBottom", "number"),
-    ("paddingLeft", "number"),
-    ("wordBreak", "word-break"),
-    ("overflowWrap", "overflow-wrap"),
-    ("borderWidth", "number"),
-    ("borderColor", "string"),
-    ("borderTopWidth", "number"),
-    ("borderRightWidth", "number"),
-    ("borderBottomWidth", "number"),
-    ("borderLeftWidth", "number"),
-    ("textAlign", "text-alignment"),
-    ("backgroundGradient", "gradient"),
-    ("boxShadow", "shadow"),
-    ("widthPercent", "dimension-percent"),
-    ("heightPercent", "dimension-percent"),
-    ("minWidthPercent", "dimension-percent"),
-    ("minHeightPercent", "dimension-percent"),
-    ("maxWidthPercent", "dimension-percent"),
-    ("maxHeightPercent", "dimension-percent"),
-    ("vector", "vector-source"),
-    ("textDecorationLine", "text-decoration-line"),
-    ("heightAuto", "dimension-auto"),
-    ("submitOnEnter", "input-flag"),
-    ("fontStyle", "font-style"),
-    ("domainMin", "plot-domain"),
-    ("domainMax", "plot-domain"),
-    ("flexWrap", "flex-wrap"),
-    ("pieLayout", "plot-layout"),
-    ("letterSpacing", "number"),
-    ("radiusTopLeft", "number"),
-    ("radiusTopRight", "number"),
-    ("radiusBottomRight", "number"),
-    ("radiusBottomLeft", "number"),
-    ("markerEmphasisScale", "plot-marker-scale"),
-    ("backdropBlur", "number"),
-    ("backdropSaturation", "number"),
-    ("placeholderColor", "string"),
-    ("focusStyle", "focus-style"),
-    ("flexBasis", "flex-basis"),
-    ("scrollAxis", "scroll-axis"),
-    ("animation", "animation"),
-    ("itemKeys", "list-keys"),
-    ("flexDirection", "flex-direction"),
-    ("display", "flex-display"),
-    ("alt", "image-alt"),
-    ("retryKey", "image-retry"),
-    ("onLoad", "image-handle"),
-    ("onError", "image-handle"),
+/// Top, right, bottom, left.
+pub const PADDING_EDGES: [usize; 4] = [
+    field::PADDING_TOP,
+    field::PADDING_RIGHT,
+    field::PADDING_BOTTOM,
+    field::PADDING_LEFT,
+];
+/// Top, right, bottom, left.
+pub const BORDER_EDGES: [usize; 4] = [
+    field::BORDER_TOP_WIDTH,
+    field::BORDER_RIGHT_WIDTH,
+    field::BORDER_BOTTOM_WIDTH,
+    field::BORDER_LEFT_WIDTH,
+];
+/// Top-left, top-right, bottom-right, bottom-left.
+pub const RADIUS_CORNERS: [usize; 4] = [
+    field::RADIUS_TOP_LEFT,
+    field::RADIUS_TOP_RIGHT,
+    field::RADIUS_BOTTOM_RIGHT,
+    field::RADIUS_BOTTOM_LEFT,
+];
+/// Paint-only fields an editor focus delta may carry.
+pub const FOCUS_PAINT_FIELDS: [usize; 7] = [
+    field::COLOR,
+    field::BACKGROUND,
+    field::OPACITY,
+    field::BORDER_COLOR,
+    field::BACKGROUND_GRADIENT,
+    field::BOX_SHADOW,
+    field::PLACEHOLDER_COLOR,
 ];
 
 #[cfg(test)]
@@ -159,7 +70,7 @@ mod list_key_wire_tests {
                 .clone(),
         );
         let records = decode(&buffer).unwrap();
-        assert_eq!(records[1].number(15), Some(1.0));
+        assert_eq!(records[1].number(field::LIST_ROW_INDEX), Some(1.0));
         buffer[18] = json!("key:\"wrong\"");
         assert!(decode(&buffer).err().unwrap().contains("does not match"));
         for (source, count) in [
@@ -235,7 +146,7 @@ mod animation_wire_tests {
                 .unwrap(),
         )
         .unwrap();
-        assert_eq!(records[0].string(101), Some(source.as_str()));
+        assert_eq!(records[0].string(field::ANIMATION), Some(source.as_str()));
         assert!(
             crate::Renderer::default()
                 .layout(&records, 80, 80, 1.0)
@@ -306,9 +217,10 @@ pub(crate) fn focus_style(value: &Value) -> Result<Vec<(usize, Value)>, String> 
         serde_json::from_str(text).map_err(|_| "UI_STYLE: invalid focus style")?;
     if pairs.len() > 14
         || pairs.len() % 2 != 0
-        || pairs
-            .chunks_exact(2)
-            .any(|p| !matches!(p[0].as_u64(), Some(5 | 6 | 58 | 66 | 72 | 73 | 97)))
+        || pairs.chunks_exact(2).any(|p| {
+            p[0].as_u64()
+                .is_none_or(|id| !FOCUS_PAINT_FIELDS.contains(&(id as usize)))
+        })
     {
         return Err("UI_STYLE: focus supports paint properties only".into());
     }
@@ -408,13 +320,26 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
             let index = *offsets
                 .get(&parent_offset)
                 .ok_or("UI_PARENT: must precede child")?;
-            if matches!(records[index].tag, 2 | 4 | 7..=9 | 11 | 13..=15 | 18 | 19) {
+            if matches!(
+                records[index].tag,
+                tag::TEXT
+                    | tag::SPACER
+                    | tag::IMAGE
+                    | tag::INPUT
+                    | tag::TEXTAREA
+                    | tag::SWITCH
+                    | tag::RADIO_OPTION
+                    | tag::SEARCH
+                    | tag::SLIDER
+                    | tag::PLOT
+                    | tag::VECTOR
+            ) {
                 return Err("UI_CHILD: leaf node".into());
             }
-            if matches!(records[index].tag, 3 | 10)
+            if matches!(records[index].tag, tag::BUTTON | tag::CHECKBOX)
                 && (!records[index].text.is_empty()
                     || records[index]
-                        .string(41)
+                        .string(field::ACCESSIBILITY_LABEL)
                         .is_none_or(|label| label.trim().is_empty()))
             {
                 return Err(
@@ -424,8 +349,18 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
             }
             let mut ancestor = Some(index);
             while let Some(owner) = ancestor {
-                if matches!(records[owner].tag, 3 | 10)
-                    && !matches!(tag, 0 | 1 | 2 | 4 | 7 | 16 | 17 | 19)
+                if matches!(records[owner].tag, tag::BUTTON | tag::CHECKBOX)
+                    && !matches!(
+                        tag,
+                        tag::COLUMN
+                            | tag::ROW
+                            | tag::TEXT
+                            | tag::SPACER
+                            | tag::IMAGE
+                            | tag::GRID
+                            | tag::STACK
+                            | tag::VECTOR
+                    )
                 {
                     return Err("UI_BUTTON: descendants must be noninteractive content".into());
                 }
@@ -447,7 +382,11 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
         if text.len() > 65536 || test_id.len() > 256 || key.len() > 256 {
             return Err("UI_LIMIT: string too large".into());
         }
-        if !matches!(tag, 2 | 3 | 10 | 11 | 13) && !text.is_empty() {
+        if !matches!(
+            tag,
+            tag::TEXT | tag::BUTTON | tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION
+        ) && !text.is_empty()
+        {
             return Err("UI_TEXT: container".into());
         }
         let count = header[5]
@@ -467,27 +406,31 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
             if fields.iter().any(|(old, _)| *old == id) {
                 return Err("UI_FIELD: duplicate".into());
             }
-            if let Some(options) = style_options(FIELDS[id].1) {
-                if matches!(id, 103 | 104) && !matches!(tag, 0 | 1) {
+            if let Some(options) = options(FIELDS[id].1) {
+                if matches!(id, field::FLEX_DIRECTION | field::DISPLAY)
+                    && !matches!(tag, tag::COLUMN | tag::ROW)
+                {
                     return Err(
                         "UI_LAYOUT: flex direction/display requires a flex container".into(),
                     );
                 }
-                if id == 100 && tag != 5 {
+                if id == field::SCROLL_AXIS && tag != tag::SCROLL {
                     return Err("UI_SCROLL: scrollAxis requires a scroll node".into());
                 }
                 let value = pair[1]
                     .as_str()
                     .filter(|v| options.contains(v))
                     .ok_or("UI_STYLE: invalid style option")?;
-                if tag == 6 && ((id == 33 && value != "stretch") || (id == 34 && value != "start"))
+                if tag == tag::LIST
+                    && ((id == field::ALIGN && value != "stretch")
+                        || (id == field::JUSTIFY && value != "start"))
                 {
                     return Err(
                         "UI_LIST: rows require stretch alignment and start justification".into(),
                     );
                 }
-            } else if id == 102 {
-                if tag != 6 {
+            } else if id == field::LIST_ITEM_KEYS {
+                if tag != tag::LIST {
                     return Err("UI_LIST: itemKeys requires a list".into());
                 }
                 let source = pair[1].as_str().ok_or("UI_LIST: invalid itemKeys")?;
@@ -499,7 +442,7 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
                     records.len(),
                     crate::layout::list::decode_item_keys(source)?,
                 );
-            } else if id == 101 {
+            } else if id == field::ANIMATION {
                 let source = pair[1]
                     .as_str()
                     .ok_or("UI_ANIMATION: expected encoded definition")?;
@@ -510,97 +453,100 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
                     return Err("UI_ANIMATION: page payload budget exceeded".into());
                 }
                 crate::animation::decode_definition(source)?;
-            } else if id == 99 {
+            } else if id == field::FLEX_BASIS {
                 flex_basis(&pair[1])?;
-            } else if id == 98 {
-                if !matches!(tag, 8 | 9 | 14) {
+            } else if id == field::FOCUS_STYLE {
+                if !matches!(tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
                     return Err("UI_STYLE: focus styles require an editor".into());
                 }
                 focus_style(&pair[1])?;
-            } else if id == 80 {
-                if tag != 19 || !pair[1].is_string() {
+            } else if id == field::VECTOR_SOURCE {
+                if tag != tag::VECTOR || !pair[1].is_string() {
                     return Err("UI_VECTOR: source requires vector node".into());
                 }
-            } else if id == 83 {
-                if tag != 9 || pair[1].as_u64().is_none_or(|v| v > 1) {
+            } else if id == field::SUBMIT_ON_ENTER {
+                if tag != tag::TEXTAREA || pair[1].as_u64().is_none_or(|v| v > 1) {
                     return Err("UI_INPUT: invalid submitOnEnter".into());
                 }
-            } else if id == 82 {
+            } else if id == field::HEIGHT_AUTO {
                 if pair[1].as_u64() != Some(1) {
                     return Err("UI_STYLE: invalid automatic height".into());
                 }
-            } else if (74..=79).contains(&id) {
+            } else if DIMENSIONS.iter().any(|(_, percent)| *percent == id) {
                 pair[1]
                     .as_f64()
                     .filter(|v| v.is_finite() && (0.0..=16384.0).contains(v))
                     .ok_or("UI_STYLE: invalid percentage")?;
-            } else if id == 73 {
+            } else if id == field::BOX_SHADOW {
                 crate::scene::shadow::BoxShadow::parse(
                     pair[1]
                         .as_str()
                         .ok_or("UI_SHADOW: expected encoded shadows")?,
                 )?;
-            } else if id == 72 {
+            } else if id == field::BACKGROUND_GRADIENT {
                 crate::scene::gradient::LinearGradient::parse(
                     pair[1]
                         .as_str()
                         .ok_or("UI_GRADIENT: expected encoded gradient")?,
                 )?;
-            } else if id == 89 {
+            } else if id == field::LETTER_SPACING {
                 if pair[1]
                     .as_f64()
                     .is_none_or(|v| !v.is_finite() || v.abs() > 1024.0)
                 {
                     return Err("UI_STYLE: invalid letter spacing".into());
                 }
-            } else if id == 94 {
-                if tag != 18
+            } else if id == field::PLOT_MARKER_EMPHASIS_SCALE {
+                if tag != tag::PLOT
                     || pair[1]
                         .as_f64()
                         .is_none_or(|v| !v.is_finite() || !(1.0..=4.0).contains(&v))
                 {
                     return Err("UI_PLOT: invalid marker emphasis scale".into());
                 }
-            } else if id == 88 {
-                if tag != 18 || pair[1].as_str().is_none_or(|s| s.len() > 1024) {
+            } else if id == field::PLOT_PIE_LAYOUT {
+                if tag != tag::PLOT || pair[1].as_str().is_none_or(|s| s.len() > 1024) {
                     return Err("UI_PLOT: invalid pie layout".into());
                 }
-            } else if matches!(id, 85 | 86) {
-                if tag != 18
+            } else if matches!(id, field::PLOT_DOMAIN_MIN | field::PLOT_DOMAIN_MAX) {
+                if tag != tag::PLOT
                     || pair[1]
                         .as_f64()
                         .is_none_or(|v| !v.is_finite() || v.abs() > 1e9)
                 {
                     return Err("UI_PLOT: invalid domain bound".into());
                 }
-            } else if id == 56 {
-                if tag != 18
+            } else if id == field::ON_PLOT_SELECT {
+                if tag != tag::PLOT
                     || pair[1]
                         .as_u64()
                         .is_none_or(|v| v == 0 || v > 9_007_199_254_740_991)
                 {
                     return Err("UI_PLOT: invalid selection callback".into());
                 }
-            } else if id == 57 {
-                if tag != 18 || pair[1].as_i64().is_none_or(|v| !(-1..128).contains(&v)) {
+            } else if id == field::PLOT_SELECTED_INDEX {
+                if tag != tag::PLOT || pair[1].as_i64().is_none_or(|v| !(-1..128).contains(&v)) {
                     return Err("UI_PLOT: invalid selected index".into());
                 }
-            } else if matches!(id, 54 | 55) {
-                if tag != 18 || !matches!(pair[1].as_u64(), Some(0 | 1)) {
+            } else if matches!(id, field::PLOT_SMOOTH | field::PLOT_AREA) {
+                if tag != tag::PLOT || !matches!(pair[1].as_u64(), Some(0 | 1)) {
                     return Err("UI_PLOT: invalid boolean property".into());
                 }
-            } else if (51..=53).contains(&id) {
-                if tag != 18 || pair[1].as_str().is_none_or(|s| s.len() > 8192) {
+            } else if matches!(
+                id,
+                field::PLOT_VALUES | field::PLOT_KIND | field::PLOT_COLORS
+            ) {
+                if tag != tag::PLOT || pair[1].as_str().is_none_or(|s| s.len() > 8192) {
                     return Err("UI_PLOT: invalid encoded property".into());
                 }
-            } else if id == 50 {
-                if tag != 2 || pair[1].as_u64().is_none_or(|v| !(1..=1024).contains(&v)) {
+            } else if id == field::TEXT_LINES {
+                if tag != tag::TEXT || pair[1].as_u64().is_none_or(|v| !(1..=1024).contains(&v)) {
                     return Err(
                         "UI_TEXT: lines must be an integer between 1 and 1024 on text".into(),
                     );
                 }
-            } else if matches!(id, 48 | 49) {
-                if parent.is_none_or(|p| records[p].tag != 17)
+            } else if matches!(id, field::OFFSET_X | field::OFFSET_Y) {
+                if parent.is_none_or(|p| records[p].tag != tag::STACK)
                     || pair[1]
                         .as_f64()
                         .is_none_or(|v| !v.is_finite() || v.abs() > 16384.0)
@@ -609,17 +555,24 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
                         "UI_STACK: offset requires a stack parent and bounded number".into(),
                     );
                 }
-            } else if id == 47 {
-                if tag != 16 || pair[1].as_u64().is_none_or(|v| !(1..=64).contains(&v)) {
+            } else if id == field::GRID_COLUMNS {
+                if tag != tag::GRID || pair[1].as_u64().is_none_or(|v| !(1..=64).contains(&v)) {
                     return Err(
                         "UI_GRID: columns must be an integer between 1 and 64 on a grid".into(),
                     );
                 }
-            } else if (42..=46).contains(&id) {
-                if tag != 15 {
+            } else if matches!(
+                id,
+                field::SLIDER_VALUE
+                    | field::SLIDER_MIN
+                    | field::SLIDER_MAX
+                    | field::SLIDER_STEP
+                    | field::ON_SLIDER_CHANGE
+            ) {
+                if tag != tag::SLIDER {
                     return Err("UI_SLIDER: property on another tag".into());
                 }
-                if id == 46 {
+                if id == field::ON_SLIDER_CHANGE {
                     pair[1]
                         .as_u64()
                         .filter(|v| *v > 0 && *v <= 9_007_199_254_740_991)
@@ -630,66 +583,80 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
                         .filter(|v| v.is_finite() && v.abs() <= 1e9)
                         .ok_or("UI_SLIDER: invalid number")?;
                 }
-            } else if id == 106 {
-                if tag != 7
+            } else if id == field::IMAGE_RETRY_KEY {
+                if tag != tag::IMAGE
                     || pair[1]
                         .as_str()
                         .is_none_or(|s| s.len() > 256 || s.contains('\0'))
                 {
                     return Err("UI_IMAGE: invalid retry key".into());
                 }
-            } else if matches!(id, 107 | 108) {
-                if tag != 7
+            } else if matches!(id, field::ON_IMAGE_LOAD | field::ON_IMAGE_ERROR) {
+                if tag != tag::IMAGE
                     || pair[1]
                         .as_u64()
                         .is_none_or(|v| v == 0 || v > 9_007_199_254_740_991)
                 {
                     return Err("UI_IMAGE: invalid callback".into());
                 }
-            } else if id == 105 {
-                if tag != 7
+            } else if id == field::IMAGE_ALT {
+                if tag != tag::IMAGE
                     || pair[1].as_str().is_none_or(|s| {
                         s.len() > 1024 || s.contains('\0') || (!s.is_empty() && s.trim().is_empty())
                     })
                 {
                     return Err("UI_IMAGE: invalid alternative text".into());
                 }
-            } else if id == 41 {
-                if !matches!(tag, 3 | 8 | 9 | 10 | 12 | 14 | 15 | 18)
-                    || pair[1].as_str().is_none_or(|s| {
-                        s.len() > 1024
-                            || s.contains('\0')
-                            || (matches!(tag, 3 | 10) && s.trim().is_empty())
-                    })
-                {
+            } else if id == field::ACCESSIBILITY_LABEL {
+                if !matches!(
+                    tag,
+                    tag::BUTTON
+                        | tag::INPUT
+                        | tag::TEXTAREA
+                        | tag::CHECKBOX
+                        | tag::RADIO
+                        | tag::SEARCH
+                        | tag::SLIDER
+                        | tag::PLOT
+                ) || pair[1].as_str().is_none_or(|s| {
+                    s.len() > 1024
+                        || s.contains('\0')
+                        || (matches!(tag, tag::BUTTON | tag::CHECKBOX) && s.trim().is_empty())
+                }) {
                     return Err("UI_RADIO: invalid accessibility label".into());
                 }
-            } else if matches!(id, 39 | 40) {
-                if !matches!(tag, 10 | 11 | 13) {
+            } else if matches!(id, field::CHECKED | field::ON_CHECKED_CHANGE) {
+                if !matches!(tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION) {
                     return Err("UI_CHECK: property on another tag".into());
                 }
                 let value = pair[1].as_u64().ok_or("UI_CHECK: invalid flag or handle")?;
-                if (id == 39 && value > 1)
-                    || (id == 40 && (value == 0 || value > 9_007_199_254_740_991))
+                if (id == field::CHECKED && value > 1)
+                    || (id == field::ON_CHECKED_CHANGE
+                        && (value == 0 || value > 9_007_199_254_740_991))
                 {
                     return Err("UI_CHECK: invalid flag or handle".into());
                 }
-            } else if (11..=27).contains(&id) {
+            } else if (field::LIST_ID..=field::ON_SUBMIT).contains(&id) {
                 match id {
-                    21 | 22 if matches!(tag, 8 | 9 | 14) => {
+                    field::INPUT_VALUE | field::PLACEHOLDER
+                        if matches!(tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) =>
+                    {
                         pair[1]
                             .as_str()
                             .filter(|s| s.len() <= crate::text::input::MAX_TEXT_BYTES)
                             .ok_or("UI_INPUT: invalid text")?;
                     }
-                    23 | 25 if matches!(tag, 8 | 9 | 14) && !(tag == 14 && id == 23) => {
+                    field::SECURE | field::AUTO_FOCUS
+                        if matches!(tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH)
+                            && !(tag == tag::SEARCH && id == field::SECURE) =>
+                    {
                         pair[1]
                             .as_u64()
                             .filter(|v| *v <= 1)
                             .ok_or("UI_INPUT: invalid flag")?;
                     }
-                    24 if matches!(tag, 8 | 9 | 14) => {
-                        if tag == 14 && pair[1].as_str() != Some("search") {
+                    field::KEYBOARD if matches!(tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) => {
+                        if tag == tag::SEARCH && pair[1].as_str() != Some("search") {
                             return Err("UI_INPUT: search requires search keyboard".into());
                         }
                         if !matches!(
@@ -699,30 +666,34 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
                             return Err("UI_INPUT: invalid keyboard".into());
                         }
                     }
-                    26 | 27 if matches!(tag, 8 | 9 | 14) => {
+                    field::ON_INPUT | field::ON_SUBMIT
+                        if matches!(tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) =>
+                    {
                         pair[1]
                             .as_u64()
                             .filter(|v| *v > 0 && *v <= 9_007_199_254_740_991)
                             .ok_or("UI_INPUT: invalid callback")?;
                     }
-                    19 if tag == 7 => {
+                    field::IMAGE_SRC if tag == tag::IMAGE => {
                         pair[1]
                             .as_str()
                             .filter(|s| !s.is_empty() && s.len() <= 8192 && !s.contains('\0'))
                             .ok_or("UI_IMAGE: invalid source")?;
                     }
-                    20 if tag == 7 => {
+                    field::IMAGE_FIT if tag == tag::IMAGE => {
                         if !matches!(pair[1].as_str(), Some("cover" | "contain" | "fill")) {
                             return Err("UI_IMAGE: invalid fit".into());
                         }
                     }
-                    17 | 18 if matches!(tag, 5 | 6) => {
+                    field::ON_REACH_START | field::ON_REACH_END
+                        if matches!(tag, tag::SCROLL | tag::LIST) =>
+                    {
                         pair[1]
                             .as_u64()
                             .filter(|v| *v > 0 && *v <= 9_007_199_254_740_991)
                             .ok_or("UI_SCROLL: invalid endpoint handle")?;
                     }
-                    11 if tag == 6 => {
+                    field::LIST_ID if tag == tag::LIST => {
                         let value = pair[1]
                             .as_str()
                             .filter(|s| !s.is_empty() && s.len() <= 8192)
@@ -731,26 +702,31 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
                             return Err("UI_LIST: duplicate identity".into());
                         }
                     }
-                    12 if tag == 6 => {
+                    field::LIST_COUNT if tag == tag::LIST => {
                         pair[1]
                             .as_u64()
                             .filter(|n| *n <= crate::layout::list::MAX_ROWS as u64)
                             .ok_or("UI_LIST: invalid count")?;
                     }
-                    13 | 14 if tag == 6 => {
+                    field::LIST_LEADING | field::LIST_TRAILING if tag == tag::LIST => {
                         pair[1]
                             .as_f64()
                             .filter(|v| v.is_finite() && *v >= 0.0 && *v <= 1_638_400_000.0)
                             .ok_or("UI_LIST: invalid extent")?;
                     }
-                    15 if tag == 0 && parent.is_some_and(|p| records[p].tag == 6) => {
-                        let count = records[parent.unwrap()].number(12).unwrap_or(0.0) as u64;
+                    field::LIST_ROW_INDEX
+                        if tag == tag::COLUMN
+                            && parent.is_some_and(|p| records[p].tag == tag::LIST) =>
+                    {
+                        let count = records[parent.unwrap()]
+                            .number(field::LIST_COUNT)
+                            .unwrap_or(0.0) as u64;
                         pair[1]
                             .as_u64()
                             .filter(|n| *n < count)
                             .ok_or("UI_LIST: invalid row index")?;
                     }
-                    16 if tag == 6 => {
+                    field::LIST_ANCHOR if tag == tag::LIST => {
                         let text = pair[1]
                             .as_str()
                             .filter(|s| s.len() <= 256)
@@ -775,13 +751,26 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
                     }
                     _ => return Err("UI_LIST: property on another tag".into()),
                 }
-            } else if id == 8 || id == 9 {
-                if tag != 3 && !(id == 9 && matches!(tag, 8..=15)) {
+            } else if id == field::ON_CLICK || id == field::ENABLED {
+                if tag != tag::BUTTON
+                    && !(id == field::ENABLED
+                        && matches!(
+                            tag,
+                            tag::INPUT
+                                | tag::TEXTAREA
+                                | tag::CHECKBOX
+                                | tag::SWITCH
+                                | tag::RADIO
+                                | tag::RADIO_OPTION
+                                | tag::SEARCH
+                                | tag::SLIDER
+                        ))
+                {
                     return Err("UI_PROP: button property on another tag".into());
                 }
                 let value = pair[1].as_u64().ok_or("UI_PROP: invalid handle or flag")?;
-                if (id == 8 && (value == 0 || value > 9_007_199_254_740_991))
-                    || (id == 9 && value > 1)
+                if (id == field::ON_CLICK && (value == 0 || value > 9_007_199_254_740_991))
+                    || (id == field::ENABLED && value > 1)
                 {
                     return Err("UI_PROP: invalid handle or flag".into());
                 }
@@ -790,21 +779,23 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
                     .as_f64()
                     .filter(|v| v.is_finite() && *v >= 0.0 && *v <= 16384.0)
                     .ok_or("UI_STYLE: invalid length")?;
-                if matches!(id, 4 | 37) && value == 0.0 {
+                if matches!(id, field::FONT_SIZE | field::LINE_HEIGHT) && value == 0.0 {
                     return Err("UI_STYLE: font size and line height must be positive".into());
                 }
-                if (id == 95 && value > 64.0) || (id == 96 && value > 16.0) {
+                if (id == field::BACKDROP_BLUR && value > 64.0)
+                    || (id == field::BACKDROP_SATURATION && value > 16.0)
+                {
                     return Err("UI_STYLE: invalid backdrop filter".into());
                 }
-                if id == 58 && value > 1.0 {
+                if id == field::OPACITY && value > 1.0 {
                     return Err("UI_STYLE: opacity must be between 0 and 1".into());
                 }
-                if id == 36 && !(1.0..=1000.0).contains(&value) {
+                if id == field::FONT_WEIGHT && !(1.0..=1000.0).contains(&value) {
                     return Err("UI_STYLE: font weight must be between 1 and 1000".into());
                 }
             } else {
                 let value = pair[1].as_str().ok_or("UI_STYLE: expected color")?;
-                if id != 66 || value != "currentColor" {
+                if id != field::BORDER_COLOR || value != "currentColor" {
                     color(value)?;
                 }
             }
@@ -812,44 +803,52 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
         }
         for (index, absolute) in [0, 1, 28, 29, 30, 31].into_iter().enumerate() {
             if fields.iter().any(|(id, _)| *id == absolute)
-                && fields.iter().any(|(id, _)| *id == 74 + index)
+                && fields
+                    .iter()
+                    .any(|(id, _)| *id == field::WIDTH_PERCENT + index)
             {
                 return Err("UI_STYLE: conflicting absolute and percentage dimensions".into());
             }
         }
-        if fields.iter().any(|(id, _)| *id == 82)
-            && fields.iter().any(|(id, _)| matches!(*id, 1 | 75))
+        if fields.iter().any(|(id, _)| *id == field::HEIGHT_AUTO)
+            && fields
+                .iter()
+                .any(|(id, _)| matches!(*id, field::HEIGHT | field::HEIGHT_PERCENT))
         {
             return Err("UI_STYLE: conflicting automatic height".into());
         }
-        if (tag == 13) != parent.is_some_and(|p| records[p].tag == 12) {
+        if (tag == tag::RADIO_OPTION) != parent.is_some_and(|p| records[p].tag == tag::RADIO) {
             return Err(
                 "UI_RADIO: options require a radio parent, groups accept only options".into(),
             );
         }
-        if tag == 13 && (key.is_empty() || !fields.iter().any(|(id, _)| *id == 39)) {
+        if tag == tag::RADIO_OPTION
+            && (key.is_empty() || !fields.iter().any(|(id, _)| *id == field::CHECKED))
+        {
             return Err("UI_RADIO: option requires a key and checked flag".into());
         }
-        if tag == 16 && !fields.iter().any(|(id, _)| *id == 47) {
+        if tag == tag::GRID && !fields.iter().any(|(id, _)| *id == field::GRID_COLUMNS) {
             return Err("UI_GRID: missing columns".into());
         }
-        if tag == 7 && !fields.iter().any(|(id, _)| *id == 19) {
+        if tag == tag::IMAGE && !fields.iter().any(|(id, _)| *id == field::IMAGE_SRC) {
             return Err("UI_IMAGE: missing source".into());
         }
-        if tag == 6
+        if tag == tag::LIST
             && ![11, 12, 13, 14]
                 .iter()
                 .all(|required| fields.iter().any(|(id, _)| id == required))
         {
             return Err("UI_LIST: missing geometry".into());
         }
-        if parent.is_some_and(|p| records[p].tag == 6) && !fields.iter().any(|(id, _)| *id == 15) {
+        if parent.is_some_and(|p| records[p].tag == tag::LIST)
+            && !fields.iter().any(|(id, _)| *id == field::LIST_ROW_INDEX)
+        {
             return Err("UI_LIST: expected row wrapper".into());
         }
         if let Some(roster) = item_keys.get(&records.len()) {
             let count = fields
                 .iter()
-                .find(|(id, _)| *id == 12)
+                .find(|(id, _)| *id == field::LIST_COUNT)
                 .and_then(|(_, v)| v.as_u64());
             if count != Some(roster.len() as u64) {
                 return Err("UI_LIST: itemKeys must match count".into());
@@ -858,7 +857,7 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
         if let Some(roster) = parent.and_then(|p| item_keys.get(&p)) {
             let row = fields
                 .iter()
-                .find(|(id, _)| *id == 15)
+                .find(|(id, _)| *id == field::LIST_ROW_INDEX)
                 .and_then(|(_, v)| v.as_u64())
                 .ok_or("UI_LIST: missing row index")? as usize;
             if roster
@@ -883,13 +882,15 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
         return Err("UI_ROOT: empty buffer".into());
     }
     let mut groups = std::collections::HashMap::new();
-    for record in records.iter().filter(|r| r.tag == 15) {
+    for record in records.iter().filter(|r| r.tag == tag::SLIDER) {
         crate::SliderSnapshot::from_record(record)?;
     }
     let mut vector_work = 0;
-    for record in records.iter().filter(|r| r.tag == 19) {
+    for record in records.iter().filter(|r| r.tag == tag::VECTOR) {
         let vector = crate::scene::vector::Vector::parse(
-            record.string(80).ok_or("UI_VECTOR: missing source")?,
+            record
+                .string(field::VECTOR_SOURCE)
+                .ok_or("UI_VECTOR: missing source")?,
         )?;
         vector_work += vector.work;
         if vector_work > 32768 {
@@ -897,19 +898,19 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
         }
     }
     let mut plot_work = 0;
-    for record in records.iter().filter(|r| r.tag == 18) {
+    for record in records.iter().filter(|r| r.tag == tag::PLOT) {
         let plot = crate::scene::plot::Plot::from_record(record)?;
         plot_work += plot.work();
         if plot_work > 16384 {
             return Err("UI_LIMIT: plot geometry budget exceeded".into());
         }
     }
-    for record in records.iter().filter(|r| r.tag == 13) {
+    for record in records.iter().filter(|r| r.tag == tag::RADIO_OPTION) {
         let group = groups
             .entry(record.parent.unwrap())
             .or_insert_with(|| (0usize, 0usize, std::collections::HashSet::new()));
         group.0 += 1;
-        group.1 += usize::from(record.number(39) == Some(1.0));
+        group.1 += usize::from(record.number(field::CHECKED) == Some(1.0));
         if !group.2.insert(record.key.as_str()) || group.0 > 64 || group.1 > 1 {
             return Err("UI_RADIO: duplicate, oversized or multiply selected options".into());
         }
@@ -917,7 +918,7 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
     if records
         .iter()
         .enumerate()
-        .any(|(i, r)| r.tag == 12 && !groups.contains_key(&i))
+        .any(|(i, r)| r.tag == tag::RADIO && !groups.contains_key(&i))
     {
         return Err("UI_RADIO: group requires options".into());
     }
@@ -949,212 +950,6 @@ pub fn color(value: &str) -> Result<[u8; 4], String> {
     } else {
         [(n >> 16) as u8, (n >> 8) as u8, n as u8, 255]
     })
-}
-
-fn style_options(kind: &str) -> Option<&'static [&'static str]> {
-    match kind {
-        "font-family" => Some(&["sans", "mono"]),
-        "font-style" => Some(&["normal", "italic"]),
-        "flex-wrap" => Some(&["nowrap", "wrap", "wrap-reverse"]),
-        "flex-direction" => Some(&["row", "column", "row-reverse", "column-reverse"]),
-        "flex-display" => Some(&["flex"]),
-        "scroll-axis" => Some(&["horizontal", "vertical"]),
-        "word-break" => Some(&["normal", "break-all", "keep-all"]),
-        "overflow-wrap" => Some(&["normal", "break-word", "anywhere"]),
-        "text-decoration-line" => Some(&["none", "line-through"]),
-        "text-alignment" => Some(&["start", "end", "left", "center", "right", "justify"]),
-        "alignment" => Some(&["start", "center", "end", "stretch", "baseline"]),
-        "justification" => Some(&["start", "center", "end", "between"]),
-        _ => None,
-    }
-}
-
-pub fn javascript_schema() -> String {
-    let tags: serde_json::Map<String, Value> = TAGS
-        .iter()
-        .enumerate()
-        .map(|(i, n)| (n.to_string(), i.into()))
-        .collect();
-    let fields: serde_json::Map<String, Value> = FIELDS
-        .iter()
-        .enumerate()
-        .filter(|(_, (_, kind))| {
-            matches!(
-                *kind,
-                "number"
-                    | "string"
-                    | "alignment"
-                    | "justification"
-                    | "font-family"
-                    | "font-style"
-                    | "flex-wrap"
-                    | "flex-direction"
-                    | "flex-display"
-                    | "flex-basis"
-                    | "scroll-axis"
-                    | "animation"
-                    | "word-break"
-                    | "overflow-wrap"
-                    | "text-alignment"
-                    | "text-decoration-line"
-                    | "gradient"
-                    | "shadow"
-                    | "stack-offset"
-            )
-        })
-        .map(|(i, (n, _))| (n.to_string(), i.into()))
-        .collect();
-    let options: serde_json::Map<String, Value> = FIELDS
-        .iter()
-        .filter_map(|(name, kind)| {
-            style_options(kind).map(|options| (name.to_string(), serde_json::json!(options)))
-        })
-        .collect();
-    let props: serde_json::Map<String, Value> = FIELDS
-        .iter()
-        .enumerate()
-        .filter(|(_, (_, kind))| matches!(*kind, "handle" | "flag" | "radio-label"))
-        .map(|(i, (n, _))| (n.to_string(), i.into()))
-        .collect();
-    let internal: serde_json::Map<String, Value> = FIELDS
-        .iter()
-        .enumerate()
-        .filter(|(_, (_, kind))| kind.starts_with("list-"))
-        .map(|(i, (name, _))| (name.to_string(), i.into()))
-        .collect();
-    let reaches: serde_json::Map<String, Value> = FIELDS
-        .iter()
-        .enumerate()
-        .filter(|(_, (_, kind))| *kind == "reach-handle")
-        .map(|(i, (name, _))| (name.to_string(), i.into()))
-        .collect();
-    let images: serde_json::Map<String, Value> = FIELDS
-        .iter()
-        .enumerate()
-        .filter(|(_, (_, kind))| kind.starts_with("image-"))
-        .map(|(i, (name, _))| (name.to_string(), i.into()))
-        .collect();
-    let inputs: serde_json::Map<String, Value> = FIELDS
-        .iter()
-        .enumerate()
-        .filter(|(_, (_, kind))| kind.starts_with("input-"))
-        .map(|(i, (name, _))| (name.to_string(), i.into()))
-        .collect();
-    let radio: serde_json::Map<String, Value> = FIELDS
-        .iter()
-        .enumerate()
-        .filter(|(_, (_, kind))| kind.starts_with("radio-"))
-        .map(|(i, (name, _))| (name.to_string(), i.into()))
-        .collect();
-    let sliders: serde_json::Map<String, Value> = FIELDS
-        .iter()
-        .enumerate()
-        .filter(|(_, (_, kind))| kind.starts_with("slider-") || *kind == "radio-label")
-        .map(|(i, (name, _))| (name.to_string(), i.into()))
-        .collect();
-    let grid: serde_json::Map<String, Value> = FIELDS
-        .iter()
-        .enumerate()
-        .filter(|(_, (_, kind))| kind.starts_with("grid-"))
-        .map(|(i, (name, _))| (name.to_string(), i.into()))
-        .collect();
-    let text: serde_json::Map<String, Value> = FIELDS
-        .iter()
-        .enumerate()
-        .filter(|(_, (_, kind))| kind.starts_with("text-"))
-        .map(|(i, (name, _))| (name.to_string(), i.into()))
-        .collect();
-    let checks: serde_json::Map<String, Value> = FIELDS
-        .iter()
-        .enumerate()
-        .filter(|(_, (_, kind))| kind.starts_with("check-"))
-        .map(|(i, (name, _))| {
-            (
-                (if *name == "checked" { "value" } else { name }).to_string(),
-                i.into(),
-            )
-        })
-        .collect();
-    format!(
-        "// Generated by lingxia-ui; do not edit.\nexport const tags = {};\nexport const fields = {};\nexport const vectorField = 80;\nexport const dimensionPercentFields = {{\"width\":74,\"height\":75,\"minWidth\":76,\"minHeight\":77,\"maxWidth\":78,\"maxHeight\":79}};\nexport const styleOptions = {};\nexport const buttonProps = {};\nexport const listFields = {};\nexport const reachProps = {};\nexport const imageProps = {};\nexport const inputProps = {};\nexport const checkProps = {};\nexport const radioProps = {};\nexport const sliderProps = {};\nexport const gridProps = {};\nexport const textProps = {};\nexport const plotProps = {{\"values\":51,\"kind\":52,\"colors\":53,\"accessibilityLabel\":41,\"smooth\":54,\"area\":55,\"onSelect\":56,\"selectedIndex\":57,\"domainMin\":85,\"domainMax\":86,\"pieLayout\":88,\"markerEmphasisScale\":94}};\n",
-        Value::Object(tags),
-        Value::Object(fields),
-        Value::Object(options),
-        Value::Object(props),
-        Value::Object(internal),
-        Value::Object(reaches),
-        Value::Object(images),
-        Value::Object(inputs),
-        Value::Object(checks),
-        Value::Object(radio),
-        Value::Object(sliders),
-        Value::Object(grid),
-        Value::Object(text)
-    )
-}
-
-pub fn typescript_schema() -> String {
-    let fields = FIELDS
-        .iter()
-        .filter(|(_, kind)| {
-            matches!(
-                *kind,
-                "number"
-                    | "string"
-                    | "alignment"
-                    | "justification"
-                    | "font-family"
-                    | "font-style"
-                    | "flex-wrap"
-                    | "flex-direction"
-                    | "flex-display"
-                    | "flex-basis"
-                    | "scroll-axis"
-                    | "word-break"
-                    | "overflow-wrap"
-                    | "text-alignment"
-                    | "text-decoration-line"
-                    | "gradient"
-                    | "shadow"
-            )
-        })
-        .map(|(name, ty)| {
-            let ty = style_options(ty)
-                .map(|values| {
-                    values
-                        .iter()
-                        .map(|v| format!("\"{v}\""))
-                        .collect::<Vec<_>>()
-                        .join(" | ")
-                })
-                .unwrap_or_else(|| {
-                    if *name == "height" || *name == "flexBasis" {
-                        "number | `${number}%` | \"auto\"".to_string()
-                    } else if [
-                        "width",
-                        "height",
-                        "minWidth",
-                        "minHeight",
-                        "maxWidth",
-                        "maxHeight",
-                    ]
-                    .contains(name)
-                    {
-                        "number | `${number}%`".to_string()
-                    } else if *ty == "shadow" {
-                        "ReadonlyArray<BoxShadow> | \"none\"".to_string()
-                    } else if *ty == "gradient" {
-                        "LinearGradient | \"none\"".to_string()
-                    } else {
-                        ty.to_string()
-                    }
-                });
-            format!("  {name}?: {ty};\n")
-        })
-        .collect::<String>();
-    format!(
-        "// Generated by lingxia-ui; do not edit.\nexport interface BoxShadow {{ offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: string }}\nexport interface LinearGradient {{ direction?: \"top\" | \"right\" | \"bottom\" | \"left\" | \"top-right\" | \"bottom-right\" | \"bottom-left\" | \"top-left\"; angle?: number; colorSpace?: \"srgb\" | \"oklab\"; stops: ReadonlyArray<{{ offset: number; color: string }}> }}\nexport interface Style {{\n  offset?: {{ x?: number; y?: number }};\n{fields}}}\n"
-    )
 }
 
 #[cfg(test)]
@@ -1729,16 +1524,84 @@ mod tests {
     }
 
     #[test]
-    fn generated_schema_has_not_drifted() {
-        assert_eq!(
-            include_str!("../../../../packages/lingxia-ui/src/schema.js").replace("\r\n", "\n"),
-            javascript_schema()
+    fn compiled_wire_table_matches_the_contract_schema() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../packages/lingxia-ui/contracts/schema.json"
         );
-        assert_eq!(
-            include_str!("../../../../packages/lingxia-ui/src/generated/style.d.ts")
-                .replace("\r\n", "\n"),
-            typescript_schema()
-        );
+        // Published crates ship without the package tree; the repository gate runs this.
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return;
+        };
+        let schema: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(contract_drift(&schema), Vec::<String>::new());
+    }
+
+    #[test]
+    fn contract_drift_reports_fields_missing_on_either_side() {
+        let current = json!({
+            "uiAbi": UI_ABI,
+            "tags": TAGS,
+            "options": {},
+            "fields": FIELDS.iter().enumerate().map(|(id, (wire, kind))| json!({"id": id, "wire": wire, "kind": kind})).collect::<Vec<_>>(),
+        });
+        let mut extra = current.clone();
+        extra["fields"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"id": FIELDS.len(), "wire": "added", "kind": "number"}));
+        assert!(contract_drift(&extra).iter().any(|e| e.contains("added")));
+        let mut missing = current.clone();
+        missing["fields"].as_array_mut().unwrap().pop();
+        assert!(!contract_drift(&missing).is_empty());
+        let mut renamed = current;
+        renamed["tags"][0] = json!("box");
+        assert!(contract_drift(&renamed).iter().any(|e| e.contains("box")));
+    }
+
+    fn contract_drift(schema: &Value) -> Vec<String> {
+        let mut errors = Vec::new();
+        if schema["uiAbi"] != UI_ABI {
+            errors.push(format!("uiAbi {} != {UI_ABI}", schema["uiAbi"]));
+        }
+        let tags: Vec<&str> = schema["tags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        if tags != TAGS {
+            errors.push(format!("tags {tags:?} != {TAGS:?}"));
+        }
+        let fields = schema["fields"].as_array().unwrap();
+        for index in 0..fields.len().max(FIELDS.len()) {
+            let schema_field = fields.get(index).map(|f| {
+                (
+                    f["wire"].as_str().unwrap_or(""),
+                    f["kind"].as_str().unwrap_or(""),
+                )
+            });
+            if schema_field != FIELDS.get(index).copied() {
+                errors.push(format!(
+                    "field {index}: schema {schema_field:?}, native {:?}",
+                    FIELDS.get(index)
+                ));
+            }
+        }
+        if let Some(kinds) = schema["options"].as_object() {
+            for (kind, values) in kinds {
+                let values: Vec<&str> = values
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect();
+                if options(kind) != Some(values.as_slice()) {
+                    errors.push(format!("options {kind}"));
+                }
+            }
+        }
+        errors
     }
     #[test]
     fn every_truncation_and_unknown_token_is_safe() {

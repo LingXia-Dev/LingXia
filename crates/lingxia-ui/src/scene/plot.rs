@@ -1,3 +1,4 @@
+use crate::protocol::field;
 use crate::protocol::{Record, color};
 
 /// Platform-independent plot activation from the displayed frame.
@@ -158,16 +159,24 @@ pub(crate) enum Shape {
 
 impl Plot {
     pub fn from_record(record: &Record) -> Result<Self, String> {
-        if record.string(41).is_none_or(|s| s.trim().is_empty()) {
+        if record
+            .string(field::ACCESSIBILITY_LABEL)
+            .is_none_or(|s| s.trim().is_empty())
+        {
             return Err("UI_PLOT: accessibilityLabel is required".into());
         }
-        let kind = record.string(52).ok_or("UI_PLOT: missing kind")?;
+        let kind = record
+            .string(field::PLOT_KIND)
+            .ok_or("UI_PLOT: missing kind")?;
         if !matches!(kind, "bar" | "line" | "pie") {
             return Err("UI_PLOT: invalid kind".into());
         }
-        let values: Vec<f64> =
-            serde_json::from_str(record.string(51).ok_or("UI_PLOT: missing values")?)
-                .map_err(|_| "UI_PLOT: invalid values")?;
+        let values: Vec<f64> = serde_json::from_str(
+            record
+                .string(field::PLOT_VALUES)
+                .ok_or("UI_PLOT: missing values")?,
+        )
+        .map_err(|_| "UI_PLOT: invalid values")?;
         if values.is_empty()
             || values.len() > 128
             || values
@@ -178,9 +187,12 @@ impl Plot {
                 "UI_PLOT: expected 1..128 bounded values; pie values must be nonnegative".into(),
             );
         }
-        let palette: Vec<String> =
-            serde_json::from_str(record.string(53).ok_or("UI_PLOT: missing colors")?)
-                .map_err(|_| "UI_PLOT: invalid colors")?;
+        let palette: Vec<String> = serde_json::from_str(
+            record
+                .string(field::PLOT_COLORS)
+                .ok_or("UI_PLOT: missing colors")?,
+        )
+        .map_err(|_| "UI_PLOT: invalid colors")?;
         if palette.is_empty()
             || palette.len() > 16
             || palette
@@ -190,10 +202,12 @@ impl Plot {
             return Err("UI_PLOT: expected 1..16 colors".into());
         }
         let colors = palette.iter().map(|s| color(s)).collect::<Result<_, _>>()?;
-        let smooth = record.number(54) == Some(1.0);
-        let area = record.number(55) == Some(1.0);
-        let marker_emphasis_scale = record.number(94).unwrap_or(1.0);
-        if record.number(94).is_some()
+        let smooth = record.number(field::PLOT_SMOOTH) == Some(1.0);
+        let area = record.number(field::PLOT_AREA) == Some(1.0);
+        let marker_emphasis_scale = record
+            .number(field::PLOT_MARKER_EMPHASIS_SCALE)
+            .unwrap_or(1.0);
+        if record.number(field::PLOT_MARKER_EMPHASIS_SCALE).is_some()
             && (kind != "line" || !(1.0..=4.0).contains(&marker_emphasis_scale))
         {
             return Err("UI_PLOT: marker emphasis scale requires a line and range 1..4".into());
@@ -201,7 +215,7 @@ impl Plot {
         let selected_index = record
             .fields
             .iter()
-            .find(|(id, _)| *id == 57)
+            .find(|(id, _)| *id == field::PLOT_SELECTED_INDEX)
             .map(|(_, value)| value.as_i64().ok_or("UI_PLOT: invalid selected index"))
             .transpose()?
             .unwrap_or(-1);
@@ -211,7 +225,7 @@ impl Plot {
         let on_select = record
             .fields
             .iter()
-            .find(|(id, _)| *id == 56)
+            .find(|(id, _)| *id == field::ON_PLOT_SELECT)
             .and_then(|(_, value)| value.as_u64());
         if kind != "line" && (smooth || area) {
             return Err("UI_PLOT: smooth and area require a line plot".into());
@@ -232,7 +246,7 @@ impl Plot {
             }
             _ => return Err("UI_PLOT: domain must contain zero and all values".into()),
         };
-        let pie_layout = match record.string(88) {
+        let pie_layout = match record.string(field::PLOT_PIE_LAYOUT) {
             Some(source) if kind == "pie" => PieLayout::parse(source)?,
             Some(_) => return Err("UI_PLOT: pie layout requires a pie".into()),
             None => PieLayout::default(),
@@ -922,7 +936,7 @@ mod tests {
             }
             assert_eq!(
                 crate::protocol::decode(&wire).is_ok(),
-                tag == 18 && min == 0 && max == 30
+                tag == crate::protocol::tag::PLOT && min == 0 && max == 30
             );
         }
     }

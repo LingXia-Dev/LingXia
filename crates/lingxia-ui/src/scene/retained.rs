@@ -1,5 +1,6 @@
 //! Retained layout and its scroll/animation composition.
 use crate::protocol::Record;
+use crate::protocol::{field, tag};
 use crate::scene::display::*;
 use crate::scene::node::*;
 use crate::scene::paint::*;
@@ -51,8 +52,14 @@ impl RetainedLayout {
                 return None;
             }
             // Anchors affect scroll reconciliation; callback identities do not affect paint.
-            let mut a = old.fields.iter().filter(|(id, _)| *id != 16);
-            let mut b = new.fields.iter().filter(|(id, _)| *id != 16);
+            let mut a = old
+                .fields
+                .iter()
+                .filter(|(id, _)| *id != field::LIST_ANCHOR);
+            let mut b = new
+                .fields
+                .iter()
+                .filter(|(id, _)| *id != field::LIST_ANCHOR);
             loop {
                 match (a.next(), b.next()) {
                     (None, None) => break,
@@ -60,7 +67,16 @@ impl RetainedLayout {
                         if a.0 == b.0
                             && (matches!(
                                 a.0,
-                                8 | 17 | 18 | 26 | 27 | 40 | 46 | 56 | 107 | 108
+                                field::ON_CLICK
+                                    | field::ON_REACH_START
+                                    | field::ON_REACH_END
+                                    | field::ON_INPUT
+                                    | field::ON_SUBMIT
+                                    | field::ON_CHECKED_CHANGE
+                                    | field::ON_SLIDER_CHANGE
+                                    | field::ON_PLOT_SELECT
+                                    | field::ON_IMAGE_LOAD
+                                    | field::ON_IMAGE_ERROR
                             ) || a.1 == b.1) => {}
                     _ => return None,
                 }
@@ -76,11 +92,13 @@ impl RetainedLayout {
                     .and_then(|(_, value)| value.as_u64())
             };
             if node.on_click.is_some() {
-                node.on_click = handle(if matches!(record.tag, 10 | 11 | 13) {
-                    40
-                } else {
-                    8
-                });
+                node.on_click = handle(
+                    if matches!(record.tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION) {
+                        40
+                    } else {
+                        8
+                    },
+                );
             }
             if let Some(input) = &mut node.input {
                 input.on_input = handle(26);

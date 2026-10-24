@@ -1246,7 +1246,7 @@ the last accepted frame. Apple and ArkJS do not use this watchdog; Apple private
 SPI preemption is deliberately excluded. Their stuck-worker recovery is pending.
 
 - Rust generates the JSX vocabulary and wire field IDs. Update the generator
-  and generated files together (`cargo run -p lingxia-ui --example generate`).
+  and generated files together (`node packages/lingxia-ui/contracts/generate.mjs`).
 - Candidate validation/layout precede callback and local-state commit.
   Failed candidates preserve the last committed handlers and generation.
 - Input carries the displayed frame generation; stale input is ignored.

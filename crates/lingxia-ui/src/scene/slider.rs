@@ -1,4 +1,5 @@
 use crate::protocol::Record;
+use crate::protocol::field;
 use serde::Serialize;
 
 #[derive(Clone, Debug, Serialize)]
@@ -39,25 +40,25 @@ impl SliderSnapshot {
             return Err("UI_SLIDER: invalid range or precision".into());
         }
         if record
-            .string(41)
+            .string(field::ACCESSIBILITY_LABEL)
             .is_none_or(|label| label.trim().is_empty())
         {
             return Err("UI_SLIDER: accessibilityLabel is required".into());
         }
-        let enabled = record.number(9) != Some(0.0);
+        let enabled = record.number(field::ENABLED) != Some(0.0);
         let mut result = Self {
             min,
             max,
             step,
             value,
-            inset: record.number(3).unwrap_or(12.0) + 12.0,
+            inset: record.number(field::PADDING).unwrap_or(12.0) + 12.0,
             enabled,
             on_change: enabled
                 .then(|| {
                     record
                         .fields
                         .iter()
-                        .find(|(id, _)| *id == 46)
+                        .find(|(id, _)| *id == field::ON_SLIDER_CHANGE)
                         .and_then(|(_, v)| v.as_u64())
                 })
                 .flatten(),

@@ -1,0 +1,275 @@
+// Generated from packages/lingxia-ui/contracts/schema.json; do not edit.
+//! Wire ids are append-only; native validation stays independent of the JS runtime.
+
+pub const UI_ABI: u32 = 1;
+
+/// Wire tag ids.
+pub mod tag {
+    pub const COLUMN: usize = 0;
+    pub const ROW: usize = 1;
+    pub const TEXT: usize = 2;
+    pub const BUTTON: usize = 3;
+    pub const SPACER: usize = 4;
+    pub const SCROLL: usize = 5;
+    pub const LIST: usize = 6;
+    pub const IMAGE: usize = 7;
+    pub const INPUT: usize = 8;
+    pub const TEXTAREA: usize = 9;
+    pub const CHECKBOX: usize = 10;
+    pub const SWITCH: usize = 11;
+    pub const RADIO: usize = 12;
+    pub const RADIO_OPTION: usize = 13;
+    pub const SEARCH: usize = 14;
+    pub const SLIDER: usize = 15;
+    pub const GRID: usize = 16;
+    pub const STACK: usize = 17;
+    pub const PLOT: usize = 18;
+    pub const VECTOR: usize = 19;
+}
+
+/// Wire field ids.
+pub mod field {
+    pub const WIDTH: usize = 0;
+    pub const HEIGHT: usize = 1;
+    pub const GAP: usize = 2;
+    pub const PADDING: usize = 3;
+    pub const FONT_SIZE: usize = 4;
+    pub const COLOR: usize = 5;
+    pub const BACKGROUND: usize = 6;
+    pub const GROW: usize = 7;
+    pub const ON_CLICK: usize = 8;
+    pub const ENABLED: usize = 9;
+    pub const RADIUS: usize = 10;
+    pub const LIST_ID: usize = 11;
+    pub const LIST_COUNT: usize = 12;
+    pub const LIST_LEADING: usize = 13;
+    pub const LIST_TRAILING: usize = 14;
+    pub const LIST_ROW_INDEX: usize = 15;
+    pub const LIST_ANCHOR: usize = 16;
+    pub const ON_REACH_START: usize = 17;
+    pub const ON_REACH_END: usize = 18;
+    pub const IMAGE_SRC: usize = 19;
+    pub const IMAGE_FIT: usize = 20;
+    pub const INPUT_VALUE: usize = 21;
+    pub const PLACEHOLDER: usize = 22;
+    pub const SECURE: usize = 23;
+    pub const KEYBOARD: usize = 24;
+    pub const AUTO_FOCUS: usize = 25;
+    pub const ON_INPUT: usize = 26;
+    pub const ON_SUBMIT: usize = 27;
+    pub const MIN_WIDTH: usize = 28;
+    pub const MIN_HEIGHT: usize = 29;
+    pub const MAX_WIDTH: usize = 30;
+    pub const MAX_HEIGHT: usize = 31;
+    pub const SHRINK: usize = 32;
+    pub const ALIGN: usize = 33;
+    pub const JUSTIFY: usize = 34;
+    pub const ALIGN_SELF: usize = 35;
+    pub const FONT_WEIGHT: usize = 36;
+    pub const LINE_HEIGHT: usize = 37;
+    pub const FONT_FAMILY: usize = 38;
+    pub const CHECKED: usize = 39;
+    pub const ON_CHECKED_CHANGE: usize = 40;
+    pub const ACCESSIBILITY_LABEL: usize = 41;
+    pub const SLIDER_VALUE: usize = 42;
+    pub const SLIDER_MIN: usize = 43;
+    pub const SLIDER_MAX: usize = 44;
+    pub const SLIDER_STEP: usize = 45;
+    pub const ON_SLIDER_CHANGE: usize = 46;
+    pub const GRID_COLUMNS: usize = 47;
+    pub const OFFSET_X: usize = 48;
+    pub const OFFSET_Y: usize = 49;
+    pub const TEXT_LINES: usize = 50;
+    pub const PLOT_VALUES: usize = 51;
+    pub const PLOT_KIND: usize = 52;
+    pub const PLOT_COLORS: usize = 53;
+    pub const PLOT_SMOOTH: usize = 54;
+    pub const PLOT_AREA: usize = 55;
+    pub const ON_PLOT_SELECT: usize = 56;
+    pub const PLOT_SELECTED_INDEX: usize = 57;
+    pub const OPACITY: usize = 58;
+    pub const PADDING_TOP: usize = 59;
+    pub const PADDING_RIGHT: usize = 60;
+    pub const PADDING_BOTTOM: usize = 61;
+    pub const PADDING_LEFT: usize = 62;
+    pub const WORD_BREAK: usize = 63;
+    pub const OVERFLOW_WRAP: usize = 64;
+    pub const BORDER_WIDTH: usize = 65;
+    pub const BORDER_COLOR: usize = 66;
+    pub const BORDER_TOP_WIDTH: usize = 67;
+    pub const BORDER_RIGHT_WIDTH: usize = 68;
+    pub const BORDER_BOTTOM_WIDTH: usize = 69;
+    pub const BORDER_LEFT_WIDTH: usize = 70;
+    pub const TEXT_ALIGN: usize = 71;
+    pub const BACKGROUND_GRADIENT: usize = 72;
+    pub const BOX_SHADOW: usize = 73;
+    pub const WIDTH_PERCENT: usize = 74;
+    pub const HEIGHT_PERCENT: usize = 75;
+    pub const MIN_WIDTH_PERCENT: usize = 76;
+    pub const MIN_HEIGHT_PERCENT: usize = 77;
+    pub const MAX_WIDTH_PERCENT: usize = 78;
+    pub const MAX_HEIGHT_PERCENT: usize = 79;
+    pub const VECTOR_SOURCE: usize = 80;
+    pub const TEXT_DECORATION_LINE: usize = 81;
+    pub const HEIGHT_AUTO: usize = 82;
+    pub const SUBMIT_ON_ENTER: usize = 83;
+    pub const FONT_STYLE: usize = 84;
+    pub const PLOT_DOMAIN_MIN: usize = 85;
+    pub const PLOT_DOMAIN_MAX: usize = 86;
+    pub const FLEX_WRAP: usize = 87;
+    pub const PLOT_PIE_LAYOUT: usize = 88;
+    pub const LETTER_SPACING: usize = 89;
+    pub const RADIUS_TOP_LEFT: usize = 90;
+    pub const RADIUS_TOP_RIGHT: usize = 91;
+    pub const RADIUS_BOTTOM_RIGHT: usize = 92;
+    pub const RADIUS_BOTTOM_LEFT: usize = 93;
+    pub const PLOT_MARKER_EMPHASIS_SCALE: usize = 94;
+    pub const BACKDROP_BLUR: usize = 95;
+    pub const BACKDROP_SATURATION: usize = 96;
+    pub const PLACEHOLDER_COLOR: usize = 97;
+    pub const FOCUS_STYLE: usize = 98;
+    pub const FLEX_BASIS: usize = 99;
+    pub const SCROLL_AXIS: usize = 100;
+    pub const ANIMATION: usize = 101;
+    pub const LIST_ITEM_KEYS: usize = 102;
+    pub const FLEX_DIRECTION: usize = 103;
+    pub const DISPLAY: usize = 104;
+    pub const IMAGE_ALT: usize = 105;
+    pub const IMAGE_RETRY_KEY: usize = 106;
+    pub const ON_IMAGE_LOAD: usize = 107;
+    pub const ON_IMAGE_ERROR: usize = 108;
+}
+
+pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector"];
+
+/// Wire name and value kind, indexed by field id.
+pub const FIELDS: &[(&str, &str)] = &[
+    ("width", "number"),
+    ("height", "number"),
+    ("gap", "number"),
+    ("padding", "number"),
+    ("fontSize", "number"),
+    ("color", "string"),
+    ("background", "string"),
+    ("grow", "number"),
+    ("onClick", "handle"),
+    ("enabled", "flag"),
+    ("radius", "number"),
+    ("listId", "list-id"),
+    ("listCount", "list-count"),
+    ("leading", "list-extent"),
+    ("trailing", "list-extent"),
+    ("rowIndex", "list-index"),
+    ("anchor", "list-anchor"),
+    ("onReachStart", "reach-handle"),
+    ("onReachEnd", "reach-handle"),
+    ("src", "image-source"),
+    ("fit", "image-fit"),
+    ("value", "input-text"),
+    ("placeholder", "input-text"),
+    ("secure", "input-flag"),
+    ("keyboard", "input-keyboard"),
+    ("autoFocus", "input-flag"),
+    ("onInput", "input-handle"),
+    ("onSubmit", "input-handle"),
+    ("minWidth", "number"),
+    ("minHeight", "number"),
+    ("maxWidth", "number"),
+    ("maxHeight", "number"),
+    ("shrink", "number"),
+    ("align", "alignment"),
+    ("justify", "justification"),
+    ("alignSelf", "alignment"),
+    ("fontWeight", "number"),
+    ("lineHeight", "number"),
+    ("fontFamily", "font-family"),
+    ("checked", "check-flag"),
+    ("onChange", "check-handle"),
+    ("accessibilityLabel", "radio-label"),
+    ("value", "slider-number"),
+    ("min", "slider-number"),
+    ("max", "slider-number"),
+    ("step", "slider-number"),
+    ("onChange", "slider-handle"),
+    ("columns", "grid-columns"),
+    ("offsetX", "stack-offset"),
+    ("offsetY", "stack-offset"),
+    ("lines", "text-lines"),
+    ("values", "plot-values"),
+    ("kind", "plot-kind"),
+    ("colors", "plot-colors"),
+    ("smooth", "plot-flag"),
+    ("area", "plot-flag"),
+    ("onSelect", "plot-handle"),
+    ("selectedIndex", "plot-index"),
+    ("opacity", "number"),
+    ("paddingTop", "number"),
+    ("paddingRight", "number"),
+    ("paddingBottom", "number"),
+    ("paddingLeft", "number"),
+    ("wordBreak", "word-break"),
+    ("overflowWrap", "overflow-wrap"),
+    ("borderWidth", "number"),
+    ("borderColor", "string"),
+    ("borderTopWidth", "number"),
+    ("borderRightWidth", "number"),
+    ("borderBottomWidth", "number"),
+    ("borderLeftWidth", "number"),
+    ("textAlign", "text-alignment"),
+    ("backgroundGradient", "gradient"),
+    ("boxShadow", "shadow"),
+    ("widthPercent", "dimension-percent"),
+    ("heightPercent", "dimension-percent"),
+    ("minWidthPercent", "dimension-percent"),
+    ("minHeightPercent", "dimension-percent"),
+    ("maxWidthPercent", "dimension-percent"),
+    ("maxHeightPercent", "dimension-percent"),
+    ("vector", "vector-source"),
+    ("textDecorationLine", "text-decoration-line"),
+    ("heightAuto", "dimension-auto"),
+    ("submitOnEnter", "input-flag"),
+    ("fontStyle", "font-style"),
+    ("domainMin", "plot-domain"),
+    ("domainMax", "plot-domain"),
+    ("flexWrap", "flex-wrap"),
+    ("pieLayout", "plot-layout"),
+    ("letterSpacing", "number"),
+    ("radiusTopLeft", "number"),
+    ("radiusTopRight", "number"),
+    ("radiusBottomRight", "number"),
+    ("radiusBottomLeft", "number"),
+    ("markerEmphasisScale", "plot-marker-scale"),
+    ("backdropBlur", "number"),
+    ("backdropSaturation", "number"),
+    ("placeholderColor", "string"),
+    ("focusStyle", "focus-style"),
+    ("flexBasis", "flex-basis"),
+    ("scrollAxis", "scroll-axis"),
+    ("animation", "animation"),
+    ("itemKeys", "list-keys"),
+    ("flexDirection", "flex-direction"),
+    ("display", "flex-display"),
+    ("alt", "image-alt"),
+    ("retryKey", "image-retry"),
+    ("onLoad", "image-handle"),
+    ("onError", "image-handle"),
+];
+
+/// Enumerated values accepted for an option-valued field kind.
+pub fn options(kind: &str) -> Option<&'static [&'static str]> {
+    match kind {
+        "font-family" => Some(&["sans", "mono"]),
+        "font-style" => Some(&["normal", "italic"]),
+        "flex-wrap" => Some(&["nowrap", "wrap", "wrap-reverse"]),
+        "flex-direction" => Some(&["row", "column", "row-reverse", "column-reverse"]),
+        "flex-display" => Some(&["flex"]),
+        "scroll-axis" => Some(&["horizontal", "vertical"]),
+        "word-break" => Some(&["normal", "break-all", "keep-all"]),
+        "overflow-wrap" => Some(&["normal", "break-word", "anywhere"]),
+        "text-decoration-line" => Some(&["none", "line-through"]),
+        "text-alignment" => Some(&["start", "end", "left", "center", "right", "justify"]),
+        "alignment" => Some(&["start", "center", "end", "stretch", "baseline"]),
+        "justification" => Some(&["start", "center", "end", "between"]),
+        _ => None,
+    }
+}

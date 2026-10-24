@@ -25,7 +25,7 @@ installed NDK. The script installs `com.lingxia.ui.smoke` and launches it.
 Headless checks:
 
 ```powershell
-cargo run -p lingxia-ui --example generate
+node packages/lingxia-ui/contracts/generate.mjs
 node packages/lingxia-ui/build.mjs examples/hello-ui
 cargo run -p lingxia-ui --example render -- examples/hello-ui/dist/pages/home/index.ui.js examples/hello-ui/dist/hello.png
 cargo test -p lingxia-ui

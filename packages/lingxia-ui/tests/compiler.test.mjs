@@ -78,16 +78,16 @@ test('compiled wrapper components forward children with explicit JSX precedence'
     `);
     await buildPages(root, ['page.ui.tsx'], join(root, 'dist'));
     const source = await readFile(join(root, 'dist/page.ui.js'), 'utf8');
-    const entry = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
-    const records = entry.describe(entry.render, {data:{},env:{}});
+    await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+    const records = globalThis.__lingxiaDescribe(globalThis.__lingxiaRender, {data:{},env:{}});
     assert.ok(records.includes('Visible'));
     assert.ok(!records.includes('Replaced'));
     await writeFile(join(root, 'components.tsx'), 'export function Card(props){return <view {...props}/>}');
     await writeFile(join(root, 'page.ui.tsx'), "import * as components from './components';export function render(){return <components.Card className='flex flex-col'><text>Member</text></components.Card>}");
     await buildPages(root, ['page.ui.tsx'], join(root, 'dist'));
     const memberSource=await readFile(join(root,'dist/page.ui.js'),'utf8');
-    const member=await import('data:text/javascript;base64,'+Buffer.from(memberSource).toString('base64'));
-    const memberRecords=member.describe(member.render,{data:{},env:{}});
+    await import('data:text/javascript;base64,'+Buffer.from(memberSource).toString('base64'));
+    const memberRecords=globalThis.__lingxiaDescribe(globalThis.__lingxiaRender,{data:{},env:{}});
     assert.ok(memberRecords.includes('Member'));
     assert.ok(memberRecords.includes(103),'forwarded flex direction reaches native records');
     await writeFile(join(root, 'page.ui.tsx'), 'export function render(){return <view className="flex flex-col md:flex-row"><text>Hello</text></view>}');
@@ -108,8 +108,8 @@ test('compiled transparent and empty components follow the public children contr
     `);
     await buildPages(root, ['page.ui.tsx'], join(root, 'dist'));
     const source = await readFile(join(root, 'dist/page.ui.js'), 'utf8');
-    const entry = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
-    const records = entry.describe(entry.render, {data:{},env:{}});
+    await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+    const records = globalThis.__lingxiaDescribe(globalThis.__lingxiaRender, {data:{},env:{}});
     assert.ok(records.includes('One'));
     assert.equal(records[1], -1);
   } finally { await rm(root, {recursive:true,force:true}); }
@@ -176,9 +176,9 @@ test('compiler emits executable ESM UI and preserves page config', async () => {
     const module = await readFile(join(root, 'dist/hello.ui.js'), 'utf8');
     assert.match(module, /^\/\/ LingXia UI module/);
     assert.match(module, /export\s*\{/);
-    const entry = await import(`data:text/javascript;base64,${Buffer.from(module).toString('base64')}`);
+    await import(`data:text/javascript;base64,${Buffer.from(module).toString('base64')}`);
     assert.deepEqual(globalThis.__lingxiaActionCatalog, catalog);
-    const records = entry.describe(entry.render, { data: {}, actions: {}, env: {} });
+    const records = globalThis.__lingxiaDescribe(globalThis.__lingxiaRender, { data: {}, actions: {}, env: {} });
     assert.ok(records.includes('Hello, world!') && records.includes(50));
     assert.ok(records.includes('Front') && records.includes(48) && records.includes(49));
     assert.ok(records.includes(16) && records.includes(47) && records.includes('Second card'));
@@ -223,8 +223,8 @@ test('bundled TSX classes use theme tokens, conditional strings and explicit sty
     `);
     await buildPages(root, ['hello.ui.tsx'], join(root, 'dist'));
     const source = await readFile(join(root, 'dist/hello.ui.js'), 'utf8');
-    const entry = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
-    const describe = (active, theme) => entry.describe(entry.render, { data: { active }, env: { theme } });
+    await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+    const describe = (active, theme) => globalThis.__lingxiaDescribe(globalThis.__lingxiaRender, { data: { active }, env: { theme } });
     const light = describe(true, 'light');
     assert.ok(light.includes('#007affff'));
     assert.ok(light.includes(17));

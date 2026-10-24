@@ -1,3 +1,4 @@
+use crate::protocol::{field, tag};
 use crate::{
     DisplayList, Renderer,
     protocol::{Record, identities},
@@ -62,7 +63,7 @@ impl Inputs {
         let wanted: HashSet<_> = records
             .iter()
             .zip(&ids)
-            .filter(|(r, _)| matches!(r.tag, 8 | 9 | 14))
+            .filter(|(r, _)| matches!(r.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH))
             .map(|(_, id)| id.clone())
             .collect();
         if wanted.len() > MAX_EDITORS {
@@ -71,14 +72,14 @@ impl Inputs {
         let projected: usize = records
             .iter()
             .zip(&ids)
-            .filter(|(r, _)| matches!(r.tag, 8 | 9 | 14))
+            .filter(|(r, _)| matches!(r.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH))
             .map(|(r, id)| {
-                let value = r.string(21).unwrap_or("");
+                let value = r.string(field::INPUT_VALUE).unwrap_or("");
                 self.entries
                     .get(id)
                     .map(|e| {
                         e.editor
-                            .projected_value_bytes(value, r.number(9) != Some(0.0))
+                            .projected_value_bytes(value, r.number(field::ENABLED) != Some(0.0))
                     })
                     .unwrap_or(value.len() * 3)
             })
@@ -94,9 +95,9 @@ impl Inputs {
         for (record, id) in records
             .iter()
             .zip(ids)
-            .filter(|(r, _)| matches!(r.tag, 8 | 9 | 14))
+            .filter(|(r, _)| matches!(r.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH))
         {
-            let value = record.string(21).unwrap_or("");
+            let value = record.string(field::INPUT_VALUE).unwrap_or("");
             if !self.entries.contains_key(&id) {
                 self.entries.insert(
                     id.clone(),
@@ -104,7 +105,7 @@ impl Inputs {
                         editor: Editor::new(value).map_err(|e| format!("UI_INPUT: {e:?}"))?,
                         enabled: true,
                         visible: false,
-                        autofocus: record.number(25) == Some(1.0),
+                        autofocus: record.number(field::AUTO_FOCUS) == Some(1.0),
                         on_input: None,
                         on_submit: None,
                         scroll_offset: [0.0; 2],
@@ -112,16 +113,16 @@ impl Inputs {
                 );
             }
             let entry = self.entries.get_mut(&id).unwrap();
-            entry.enabled = record.number(9) != Some(0.0);
+            entry.enabled = record.number(field::ENABLED) != Some(0.0);
             entry.on_input = record
                 .fields
                 .iter()
-                .find(|(id, _)| *id == 26)
+                .find(|(id, _)| *id == field::ON_INPUT)
                 .and_then(|(_, v)| v.as_u64());
             entry.on_submit = record
                 .fields
                 .iter()
-                .find(|(id, _)| *id == 27)
+                .find(|(id, _)| *id == field::ON_SUBMIT)
                 .and_then(|(_, v)| v.as_u64());
             renderer.edit_text(&mut entry.editor, &[Edit::Value(value.into())])?;
             if !entry.enabled && self.focused.as_deref() == Some(&id) {
@@ -136,7 +137,11 @@ impl Inputs {
         for (record, id) in records.iter_mut().zip(ids) {
             if let Some(entry) = self.entries.get(&id) {
                 let value = serde_json::Value::String(entry.editor.snapshot().text);
-                if let Some((_, old)) = record.fields.iter_mut().find(|(field, _)| *field == 21) {
+                if let Some((_, old)) = record
+                    .fields
+                    .iter_mut()
+                    .find(|(field, _)| *field == field::INPUT_VALUE)
+                {
                     *old = value;
                 } else {
                     record.fields.push((21, value));
@@ -151,7 +156,11 @@ impl Inputs {
             if self.focused.as_deref() != Some(&id) {
                 continue;
             }
-            if let Some((_, value)) = record.fields.iter().find(|(field, _)| *field == 98) {
+            if let Some((_, value)) = record
+                .fields
+                .iter()
+                .find(|(field, _)| *field == field::FOCUS_STYLE)
+            {
                 let overrides = crate::protocol::focus_style(value)?;
                 for (field, value) in overrides {
                     if let Some((_, old)) = record.fields.iter_mut().find(|(id, _)| *id == field) {

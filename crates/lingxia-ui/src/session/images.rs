@@ -1,5 +1,6 @@
 use super::ViewSession;
 use crate::ImageSource;
+use crate::protocol::{field, tag};
 use std::collections::HashSet;
 
 impl ViewSession {
@@ -9,11 +10,11 @@ impl ViewSession {
             .as_deref()
             .unwrap_or_default()
             .iter()
-            .filter(|record| record.tag == 7)
+            .filter(|record| record.tag == tag::IMAGE)
             .filter_map(|record| {
                 let resource = ImageSource {
-                    source: record.string(19)?.into(),
-                    retry_key: record.string(106).unwrap_or("").into(),
+                    source: record.string(field::IMAGE_SRC)?.into(),
+                    retry_key: record.string(field::IMAGE_RETRY_KEY).unwrap_or("").into(),
                 };
                 (self.image_sources.contains(&resource.source) && seen.insert(resource.clone()))
                     .then_some(resource)
@@ -29,13 +30,13 @@ impl ViewSession {
         let alive: HashSet<_> = records
             .iter()
             .zip(identities)
-            .filter(|(r, _)| r.tag == 7)
+            .filter(|(r, _)| r.tag == tag::IMAGE)
             .map(|(record, identity)| {
                 (
                     identity,
                     ImageSource {
-                        source: record.string(19).unwrap_or_default().into(),
-                        retry_key: record.string(106).unwrap_or("").into(),
+                        source: record.string(field::IMAGE_SRC).unwrap_or_default().into(),
+                        retry_key: record.string(field::IMAGE_RETRY_KEY).unwrap_or("").into(),
                     },
                 )
             })
@@ -58,10 +59,14 @@ impl ViewSession {
         let records = self.input_records.as_deref().unwrap_or_default();
         let identities = crate::protocol::identities(records);
         let mut handles = Vec::new();
-        for (record, identity) in records.iter().zip(identities).filter(|(r, _)| r.tag == 7) {
+        for (record, identity) in records
+            .iter()
+            .zip(identities)
+            .filter(|(r, _)| r.tag == tag::IMAGE)
+        {
             let resource = ImageSource {
-                source: record.string(19).unwrap_or_default().into(),
-                retry_key: record.string(106).unwrap_or("").into(),
+                source: record.string(field::IMAGE_SRC).unwrap_or_default().into(),
+                retry_key: record.string(field::IMAGE_RETRY_KEY).unwrap_or("").into(),
             };
             let Some(success) = self.image_status.get(&resource) else {
                 continue;
@@ -75,7 +80,13 @@ impl ViewSession {
             if let Some(handle) = record
                 .fields
                 .iter()
-                .find(|(id, _)| *id == if *success { 107 } else { 108 })
+                .find(|(id, _)| {
+                    *id == if *success {
+                        field::ON_IMAGE_LOAD
+                    } else {
+                        field::ON_IMAGE_ERROR
+                    }
+                })
                 .and_then(|(_, value)| value.as_u64())
             {
                 handles.push((identity, resource, handle));

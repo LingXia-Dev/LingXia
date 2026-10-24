@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {h,describe,prepare,discard,dispatch,useLocal,reset} from '../src/runtime.js';
-import {inputProps} from '../src/schema.js';
+import {inputProps} from '../src/generated/wire.js';
 function records(buffer) {
   const result=[];
   for(let i=0;i<buffer.length;){const n=buffer[i+5];result.push({tag:buffer[i],text:buffer[i+4],fields:new Map(Array.from({length:n},(_,j)=>buffer.slice(i+6+j*2,i+8+j*2)))});i+=6+n*2;}

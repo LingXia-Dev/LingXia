@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import ts from 'typescript';
 import { fileURLToPath } from 'node:url';
 import { acceptsProp } from '../src/authoring/props.js';
-import { tags } from '../src/schema.js';
+import { tags } from '../src/generated/wire.js';
 
 test('authoring types preserve binding ownership, page contracts and children', () => {
   const filename = fileURLToPath(new URL('./fixtures/authoring.tsx', import.meta.url));

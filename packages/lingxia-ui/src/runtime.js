@@ -4,7 +4,7 @@ import { normalizeShadows } from './shadow.js';
 import { normalizeGradient } from './gradient.js';
 import { resolveStyle, focusStyle } from './classes.js';
 export { configureClasses } from './classes.js';
-import { tags, fields, vectorField, dimensionPercentFields, styleOptions, buttonProps, listFields, reachProps, imageProps, inputProps, checkProps, radioProps, sliderProps, gridProps, textProps, plotProps } from './schema.js';
+import { tags, fields, vectorField, dimensionPercentFields, styleOptions, buttonProps, listFields, reachProps, imageProps, inputProps, checkProps, radioProps, sliderProps, gridProps, textProps, plotProps } from './generated/wire.js';
 import { createStream } from './stream.js';
 import { createChannel } from './channel.js';
 import { channelResource } from './channel-resource.js';

@@ -1,4 +1,4 @@
-import { buttonProps, reachProps, imageProps, inputProps, checkProps, radioProps, sliderProps, gridProps, textProps, plotProps } from '../schema.js';
+import { buttonProps, reachProps, imageProps, inputProps, checkProps, radioProps, sliderProps, gridProps, textProps, plotProps } from '../generated/wire.js';
 
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const common = new Set(['key', 'testId', 'style', 'className', 'children']);

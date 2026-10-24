@@ -1,3 +1,4 @@
+use crate::protocol::field;
 use crate::{
     DisplayList,
     animation::{Prepared, Timeline, records::Inventory},
@@ -49,7 +50,7 @@ impl FrameAnimations<'_> {
                 let realized: BTreeSet<_> = records
                     .iter()
                     .zip(&display.nodes)
-                    .filter(|(record, _)| record.string(101).is_some())
+                    .filter(|(record, _)| record.string(field::ANIMATION).is_some())
                     .map(|(_, node)| node.identity.clone())
                     .collect();
                 let preview = timeline.prepare_visible(

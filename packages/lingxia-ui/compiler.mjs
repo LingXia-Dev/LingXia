@@ -9,9 +9,10 @@ import { loadStylesheet, validateTokens } from './stylesheets.mjs';
 import { readFile, mkdir, writeFile, copyFile } from 'node:fs/promises';
 import { resolve, dirname, join, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { tags, fields } from './src/schema.js';
+import { tags, fields } from './src/generated/wire.js';
 
 const runtime = fileURLToPath(new URL('./src/runtime.js', import.meta.url));
+const host = fileURLToPath(new URL('./src/host.js', import.meta.url));
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
 export function audit(source, filename) {
@@ -79,7 +80,7 @@ export async function buildPages(root, pages, output, catalogs = {}) {
       throw Error(`${page}: invalid GPU action metadata`);
     const candidates = new Set(), themes = new Map(), sourceFiles = [];
     const bundled = await build({
-      stdin: { contents: `export { render } from ${JSON.stringify(source)}; export { configureClasses, describe, prepare, prepareWindows, commit, discard, reset, dispatch, createView, configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, hasLocalUpdates, requestLeave } from ${JSON.stringify(runtime)};`, resolveDir: root },
+      stdin: { contents: `import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)});`, resolveDir: root },
       bundle: true, write: false, format: 'esm', target: 'es2020', jsxFactory: 'h', inject: [runtime],
       alias: { '@lingxia/ui': runtime },
       plugins: [{ name: 'lingxia-ui-language', setup(builder) {
@@ -105,7 +106,6 @@ export async function buildPages(root, pages, output, catalogs = {}) {
         });
       } }],
       banner: { js: moduleBanner(version) },
-      footer: { js: `Object.assign(globalThis, {__lingxiaRender:render, __lingxiaDescribe:describe, __lingxiaPrepare:prepare, __lingxiaPrepareWindows:prepareWindows, __lingxiaCommit:commit, __lingxiaDiscard:discard, __lingxiaReset:reset, __lingxiaDispatch:dispatch, __lingxiaCreateView:createView, __lingxiaConfigureActions:configureActions, __lingxiaTakeActionRequests:takeActionRequests, __lingxiaReceiveActionResponse:receiveActionResponse, __lingxiaTakeActionErrors:takeActionErrors, __lingxiaHasLocalUpdates:hasLocalUpdates, __lingxiaRequestLeave:requestLeave, __lingxiaActionCatalog:${JSON.stringify(catalog)}});` },
     });
     const dest = join(output, `${base}.ui.js`);
     await mkdir(dirname(dest), { recursive: true });

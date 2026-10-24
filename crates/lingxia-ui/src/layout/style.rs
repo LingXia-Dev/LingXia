@@ -6,9 +6,11 @@ pub(crate) fn dimension<T: taffy::style_helpers::FromLength + taffy::style_helpe
     record: &Record,
     field: usize,
 ) -> Option<T> {
-    let index = [0, 1, 28, 29, 30, 31].iter().position(|id| *id == field)?;
+    let (_, relative) = crate::protocol::DIMENSIONS
+        .iter()
+        .find(|(absolute, _)| *absolute == field)?;
     record
-        .number(74 + index)
+        .number(*relative)
         .map(|value| percent(value / 100.0))
         .or_else(|| record.number(field).map(length))
 }

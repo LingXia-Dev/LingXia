@@ -1,4 +1,5 @@
 //! Box geometry, virtual-list window reconciliation and the layout pass.
+use crate::protocol::{field, tag};
 pub mod list;
 pub(crate) mod list_layout;
 pub(crate) mod style;
@@ -121,10 +122,12 @@ impl Renderer {
         scale: f32,
         offsets: &HashMap<String, f32>,
     ) -> Result<DisplayList, String> {
-        if records
-            .iter()
-            .any(|record| record.fields.iter().any(|(field, _)| *field == 101))
-        {
+        if records.iter().any(|record| {
+            record
+                .fields
+                .iter()
+                .any(|(field, _)| *field == field::ANIMATION)
+        }) {
             return Err("UI_ANIMATION: page requires animation presentation scheduling".into());
         }
         self.text_time = std::time::Duration::ZERO;
@@ -149,7 +152,7 @@ impl Renderer {
             HashMap::new();
         for record in records {
             let owner = record.parent.and_then(|parent| {
-                if matches!(records[parent].tag, 3 | 10) {
+                if matches!(records[parent].tag, tag::BUTTON | tag::CHECKBOX) {
                     Some(parent)
                 } else {
                     button_owners[parent]
@@ -182,18 +185,18 @@ impl Renderer {
         let texts: Vec<String> = records
             .iter()
             .map(|record| {
-                if !matches!(record.tag, 8 | 9 | 14) {
+                if !matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
                     return record.text.clone();
                 }
-                let value = record.string(21).unwrap_or("");
+                let value = record.string(field::INPUT_VALUE).unwrap_or("");
                 let text = if value.is_empty() {
-                    record.string(22).unwrap_or("").to_owned()
-                } else if record.number(23) == Some(1.0) {
+                    record.string(field::PLACEHOLDER).unwrap_or("").to_owned()
+                } else if record.number(field::SECURE) == Some(1.0) {
                     "\u{2022}".repeat(value.chars().count())
                 } else {
                     value.to_owned()
                 };
-                if matches!(record.tag, 8 | 14) {
+                if matches!(record.tag, tag::INPUT | tag::SEARCH) {
                     text.replace(['\r', '\n', '\u{2028}', '\u{2029}'], " ")
                 } else {
                     text
@@ -202,38 +205,36 @@ impl Renderer {
             .collect();
         for (index, record) in records.iter().enumerate() {
             let font_size = record
-                .number(4)
+                .number(field::FONT_SIZE)
                 .unwrap_or_else(|| record.parent.map(|p| font_sizes[p]).unwrap_or(14.0));
             font_sizes.push(font_size);
             // Decorations propagate through layout descendants; `none` only
             // removes a node's own decoration, not one drawn by its ancestor.
-            strike_owners.push(
-                record
-                    .parent
-                    .and_then(|p| strike_owners[p])
-                    .or_else(|| (record.string(81) == Some("line-through")).then_some(index)),
-            );
-            text_alignments.push(match record.string(71) {
+            strike_owners.push(record.parent.and_then(|p| strike_owners[p]).or_else(|| {
+                (record.string(field::TEXT_DECORATION_LINE) == Some("line-through"))
+                    .then_some(index)
+            }));
+            text_alignments.push(match record.string(field::TEXT_ALIGN) {
                 Some("left") => Alignment::Left,
                 Some("right") => Alignment::Right,
                 Some("center") => Alignment::Center,
                 Some("justify") => Alignment::Justify,
                 Some("end") => Alignment::End,
                 Some("start") => Alignment::Start,
-                _ if record.tag == 3 => Alignment::Center,
+                _ if record.tag == tag::BUTTON => Alignment::Center,
                 _ => record
                     .parent
                     .map(|parent| text_alignments[parent])
                     .unwrap_or(Alignment::Start),
             });
-            let word_break = match record.string(63) {
+            let word_break = match record.string(field::WORD_BREAK) {
                 Some("break-all") => 1,
                 Some("keep-all") => 2,
                 Some("normal") => 0,
                 _ => record.parent.map(|parent| word_breaks[parent]).unwrap_or(0),
             };
             word_breaks.push(word_break);
-            let overflow_wrap = match record.string(64) {
+            let overflow_wrap = match record.string(field::OVERFLOW_WRAP) {
                 Some("break-word") => 1,
                 Some("anywhere") => 2,
                 Some("normal") => 0,
@@ -244,24 +245,24 @@ impl Renderer {
             };
             overflow_wraps.push(overflow_wrap);
             let family = record
-                .string(38)
+                .string(field::FONT_FAMILY)
                 .unwrap_or_else(|| record.parent.map(|p| font_families[p]).unwrap_or("sans"));
             font_families.push(family);
             let italic = record
-                .string(84)
+                .string(field::FONT_STYLE)
                 .map(|style| style == "italic")
                 .unwrap_or_else(|| record.parent.map(|p| font_italics[p]).unwrap_or(false));
             font_italics.push(italic);
             let weight = record
-                .number(36)
+                .number(field::FONT_WEIGHT)
                 .unwrap_or_else(|| record.parent.map(|p| font_weights[p]).unwrap_or(400.0));
             font_weights.push(weight);
             let line_height = record
-                .number(37)
+                .number(field::LINE_HEIGHT)
                 .or_else(|| record.parent.and_then(|p| line_heights[p]));
             line_heights.push(line_height);
             let letter_spacing = record
-                .number(89)
+                .number(field::LETTER_SPACING)
                 .unwrap_or_else(|| record.parent.map(|p| letter_spacings[p]).unwrap_or(0.0));
             letter_spacings.push(letter_spacing);
             // Keep inherited values in author units; scaling inherited output again
@@ -275,20 +276,33 @@ impl Renderer {
             let line_height = line_height.map(|height| height * text_ratio);
             let letter_spacing = letter_spacing * text_ratio;
             let font_size = scaled_font_size;
-            let color_name = record.string(5).map(str::to_owned).unwrap_or_else(|| {
-                if record.tag == 3 {
-                    "primaryText".into()
-                } else {
-                    record
-                        .parent
-                        .map(|p| colors[p].clone())
-                        .unwrap_or("text".into())
-                }
-            });
+            let color_name = record
+                .string(field::COLOR)
+                .map(str::to_owned)
+                .unwrap_or_else(|| {
+                    if record.tag == tag::BUTTON {
+                        "primaryText".into()
+                    } else {
+                        record
+                            .parent
+                            .map(|p| colors[p].clone())
+                            .unwrap_or("text".into())
+                    }
+                });
             colors.push(color_name);
-            let text = if matches!(record.tag, 2 | 3 | 8..=11 | 13 | 14) {
+            let text = if matches!(
+                record.tag,
+                tag::TEXT
+                    | tag::BUTTON
+                    | tag::INPUT
+                    | tag::TEXTAREA
+                    | tag::CHECKBOX
+                    | tag::SWITCH
+                    | tag::RADIO_OPTION
+                    | tag::SEARCH
+            ) {
                 let started = std::time::Instant::now();
-                let key = (!matches!(record.tag, 8 | 9 | 14))
+                let key = (!matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH))
                     .then(|| {
                         crate::text::cache::Key::new(
                             &texts[index],
@@ -315,7 +329,7 @@ impl Renderer {
                     } else {
                         FontStyle::Normal
                     }));
-                    if matches!(record.tag, 8 | 14) {
+                    if matches!(record.tag, tag::INPUT | tag::SEARCH) {
                         builder.push_default(StyleProperty::TextWrapMode(
                             parley::TextWrapMode::NoWrap,
                         ));
@@ -353,26 +367,35 @@ impl Renderer {
                 None
             };
             layouts.push(text);
-            let padding =
-                record
-                    .number(3)
-                    .unwrap_or(if matches!(record.tag, 3 | 8..=11 | 13..=15) {
-                        12.0
-                    } else {
-                        0.0
-                    });
+            let padding = record.number(field::PADDING).unwrap_or(
+                if matches!(
+                    record.tag,
+                    tag::BUTTON
+                        | tag::INPUT
+                        | tag::TEXTAREA
+                        | tag::CHECKBOX
+                        | tag::SWITCH
+                        | tag::RADIO_OPTION
+                        | tag::SEARCH
+                        | tag::SLIDER
+                ) {
+                    12.0
+                } else {
+                    0.0
+                },
+            );
             let [padding_top, padding_right, padding_bottom, padding_left] =
-                [59, 60, 61, 62].map(|field| record.number(field).unwrap_or(padding));
-            let border = record.number(65).unwrap_or(0.0);
+                crate::protocol::PADDING_EDGES.map(|field| record.number(field).unwrap_or(padding));
+            let border = record.number(field::BORDER_WIDTH).unwrap_or(0.0);
             let [border_top, border_right, border_bottom, border_left] =
-                [67, 68, 69, 70].map(|id| record.number(id).unwrap_or(border));
+                crate::protocol::BORDER_EDGES.map(|id| record.number(id).unwrap_or(border));
             let style = Style {
-                display: if matches!(record.tag, 16 | 17) {
+                display: if matches!(record.tag, tag::GRID | tag::STACK) {
                     Display::Grid
                 } else {
                     Display::Flex
                 },
-                grid_column: if record.parent.is_some_and(|p| records[p].tag == 17) {
+                grid_column: if record.parent.is_some_and(|p| records[p].tag == tag::STACK) {
                     Line {
                         start: line(1),
                         end: line(2),
@@ -380,7 +403,7 @@ impl Renderer {
                 } else {
                     Default::default()
                 },
-                grid_row: if record.parent.is_some_and(|p| records[p].tag == 17) {
+                grid_row: if record.parent.is_some_and(|p| records[p].tag == tag::STACK) {
                     Line {
                         start: line(1),
                         end: line(2),
@@ -389,34 +412,34 @@ impl Renderer {
                     Default::default()
                 },
                 inset: Rect {
-                    left: record.number(48).map(length).unwrap_or(auto()),
-                    top: record.number(49).map(length).unwrap_or(auto()),
+                    left: record.number(field::OFFSET_X).map(length).unwrap_or(auto()),
+                    top: record.number(field::OFFSET_Y).map(length).unwrap_or(auto()),
                     right: auto(),
                     bottom: auto(),
                 },
-                grid_template_columns: if record.tag == 16 {
-                    vec![flex(1.0); record.number(47).unwrap_or(1.0) as usize]
+                grid_template_columns: if record.tag == tag::GRID {
+                    vec![flex(1.0); record.number(field::GRID_COLUMNS).unwrap_or(1.0) as usize]
                 } else {
                     Vec::new()
                 },
-                flex_direction: match record.string(103) {
+                flex_direction: match record.string(field::FLEX_DIRECTION) {
                     Some("row") => FlexDirection::Row,
                     Some("row-reverse") => FlexDirection::RowReverse,
                     Some("column") => FlexDirection::Column,
                     Some("column-reverse") => FlexDirection::ColumnReverse,
-                    _ if record.tag == 1 => FlexDirection::Row,
+                    _ if record.tag == tag::ROW => FlexDirection::Row,
                     _ => FlexDirection::Column,
                 },
-                flex_wrap: match record.string(87) {
+                flex_wrap: match record.string(field::FLEX_WRAP) {
                     Some("wrap") => FlexWrap::Wrap,
                     Some("wrap-reverse") => FlexWrap::WrapReverse,
                     _ => FlexWrap::NoWrap,
                 },
-                flex_grow: record.number(7).unwrap_or(0.0),
+                flex_grow: record.number(field::GROW).unwrap_or(0.0),
                 flex_basis: match record
                     .fields
                     .iter()
-                    .find(|(id, _)| *id == 99)
+                    .find(|(id, _)| *id == field::FLEX_BASIS)
                     .map(|(_, value)| crate::protocol::flex_basis(value))
                     .transpose()?
                     .flatten()
@@ -425,65 +448,80 @@ impl Renderer {
                     Some((value, false)) => length(value),
                     None => auto(),
                 },
-                flex_shrink: record.number(32).unwrap_or(
-                    if (matches!(record.tag, 5 | 6) || record.number(7).unwrap_or(0.0) > 0.0)
-                        && dimension::<Dimension>(record, 1).is_none()
+                flex_shrink: record.number(field::SHRINK).unwrap_or(
+                    if (matches!(record.tag, tag::SCROLL | tag::LIST)
+                        || record.number(field::GROW).unwrap_or(0.0) > 0.0)
+                        && dimension::<Dimension>(record, field::HEIGHT).is_none()
                     {
                         1.0
                     } else {
                         0.0
                     },
                 ),
-                align_items: record.string(33).map(cross_alignment),
-                align_self: record.string(35).map(cross_alignment),
-                justify_content: record.string(34).map(|value| match value {
+                align_items: record.string(field::ALIGN).map(cross_alignment),
+                align_self: record.string(field::ALIGN_SELF).map(cross_alignment),
+                justify_content: record.string(field::JUSTIFY).map(|value| match value {
                     "center" => JustifyContent::SAFE_CENTER,
                     "end" => JustifyContent::SAFE_FLEX_END,
                     "between" => JustifyContent::SPACE_BETWEEN,
                     _ => JustifyContent::FLEX_START,
                 }),
                 overflow: Point {
-                    x: if record.string(100) == Some("horizontal") {
+                    x: if record.string(field::SCROLL_AXIS) == Some("horizontal") {
                         Overflow::Scroll
-                    } else if matches!(record.tag, 5 | 6) {
+                    } else if matches!(record.tag, tag::SCROLL | tag::LIST) {
                         Overflow::Hidden
                     } else {
                         Overflow::Visible
                     },
-                    y: if record.string(100) == Some("horizontal") {
+                    y: if record.string(field::SCROLL_AXIS) == Some("horizontal") {
                         Overflow::Hidden
-                    } else if matches!(record.tag, 5 | 6) {
+                    } else if matches!(record.tag, tag::SCROLL | tag::LIST) {
                         Overflow::Scroll
                     } else {
                         Overflow::Visible
                     },
                 },
                 min_size: Size {
-                    width: dimension(record, 28).unwrap_or(if record.tag == 15 {
-                        length(120.0)
-                    } else if matches!(record.tag, 10 | 11 | 13) {
-                        length(
-                            check_reserve(record.tag)
-                                + padding_left
-                                + padding_right
-                                + border_left
-                                + border_right,
-                        )
-                    } else if matches!(record.tag, 5 | 6) || record.number(7).unwrap_or(0.0) > 0.0 {
-                        length(0.0)
-                    } else {
-                        auto()
-                    }),
-                    height: dimension(record, 29).unwrap_or(
-                        if matches!(record.tag, 8 | 14)
-                            && dimension::<taffy::Dimension>(record, 1).is_none()
-                            && record.number(82) != Some(1.0)
+                    width: dimension(record, field::MIN_WIDTH).unwrap_or(
+                        if record.tag == tag::SLIDER {
+                            length(120.0)
+                        } else if matches!(
+                            record.tag,
+                            tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION
+                        ) {
+                            length(
+                                check_reserve(record.tag)
+                                    + padding_left
+                                    + padding_right
+                                    + border_left
+                                    + border_right,
+                            )
+                        } else if matches!(record.tag, tag::SCROLL | tag::LIST)
+                            || record.number(field::GROW).unwrap_or(0.0) > 0.0
+                        {
+                            length(0.0)
+                        } else {
+                            auto()
+                        },
+                    ),
+                    height: dimension(record, field::MIN_HEIGHT).unwrap_or(
+                        if matches!(record.tag, tag::INPUT | tag::SEARCH)
+                            && dimension::<taffy::Dimension>(record, field::HEIGHT).is_none()
+                            && record.number(field::HEIGHT_AUTO) != Some(1.0)
                         {
                             length(48.0)
-                        } else if matches!(record.tag, 10 | 11 | 13 | 14 | 15) {
+                        } else if matches!(
+                            record.tag,
+                            tag::CHECKBOX
+                                | tag::SWITCH
+                                | tag::RADIO_OPTION
+                                | tag::SEARCH
+                                | tag::SLIDER
+                        ) {
                             length(44.0)
-                        } else if matches!(record.tag, 5 | 6)
-                            || record.number(7).unwrap_or(0.0) > 0.0
+                        } else if matches!(record.tag, tag::SCROLL | tag::LIST)
+                            || record.number(field::GROW).unwrap_or(0.0) > 0.0
                         {
                             length(0.0)
                         } else {
@@ -492,31 +530,33 @@ impl Renderer {
                     ),
                 },
                 max_size: Size {
-                    width: dimension(record, 30).unwrap_or(auto()),
-                    height: dimension(record, 31).unwrap_or(auto()),
+                    width: dimension(record, field::MAX_WIDTH).unwrap_or(auto()),
+                    height: dimension(record, field::MAX_HEIGHT).unwrap_or(auto()),
                 },
                 size: Size {
-                    width: dimension(record, 0).unwrap_or(if index == 0 {
+                    width: dimension(record, field::WIDTH).unwrap_or(if index == 0 {
                         length(width as f32 / scale)
-                    } else if record.tag == 19 {
+                    } else if record.tag == tag::VECTOR {
                         length(24.0)
-                    } else if record.tag == 7 {
+                    } else if record.tag == tag::IMAGE {
                         length(64.0)
                     } else {
                         auto()
                     }),
-                    height: dimension(record, 1).unwrap_or(
-                        if record.number(82) == Some(1.0) || matches!(record.tag, 8 | 14) {
+                    height: dimension(record, field::HEIGHT).unwrap_or(
+                        if record.number(field::HEIGHT_AUTO) == Some(1.0)
+                            || matches!(record.tag, tag::INPUT | tag::SEARCH)
+                        {
                             auto()
-                        } else if record.tag == 15 {
+                        } else if record.tag == tag::SLIDER {
                             length(48.0)
-                        } else if record.tag == 9 {
+                        } else if record.tag == tag::TEXTAREA {
                             length(120.0)
                         } else if index == 0 {
                             length(height as f32 / scale)
-                        } else if record.tag == 19 {
+                        } else if record.tag == tag::VECTOR {
                             length(24.0)
-                        } else if record.tag == 7 {
+                        } else if record.tag == tag::IMAGE {
                             length(64.0)
                         } else {
                             auto()
@@ -524,15 +564,15 @@ impl Renderer {
                     ),
                 },
                 gap: Size {
-                    width: length(if record.tag == 6 {
+                    width: length(if record.tag == tag::LIST {
                         0.0
                     } else {
-                        record.number(2).unwrap_or(0.0)
+                        record.number(field::GAP).unwrap_or(0.0)
                     }),
-                    height: length(if record.tag == 6 {
+                    height: length(if record.tag == tag::LIST {
                         0.0
                     } else {
-                        record.number(2).unwrap_or(0.0)
+                        record.number(field::GAP).unwrap_or(0.0)
                     }),
                 },
                 border: Rect {
@@ -542,7 +582,7 @@ impl Renderer {
                     bottom: length(border_bottom),
                 },
                 padding: Rect {
-                    left: length(padding_left + if record.tag == 14 { 32.0 } else { 0.0 }),
+                    left: length(padding_left + if record.tag == tag::SEARCH { 32.0 } else { 0.0 }),
                     right: length(padding_right),
                     top: length(padding_top),
                     bottom: length(padding_bottom),
@@ -551,12 +591,12 @@ impl Renderer {
                     bottom: length(
                         record
                             .parent
-                            .filter(|p| records[*p].tag == 6)
+                            .filter(|p| records[*p].tag == tag::LIST)
                             .filter(|p| {
-                                record.number(15).unwrap_or(0.0) + 1.0
-                                    < records[*p].number(12).unwrap_or(0.0)
+                                record.number(field::LIST_ROW_INDEX).unwrap_or(0.0) + 1.0
+                                    < records[*p].number(field::LIST_COUNT).unwrap_or(0.0)
                             })
-                            .and_then(|p| records[p].number(2))
+                            .and_then(|p| records[p].number(field::GAP))
                             .unwrap_or(0.0),
                     ),
                     left: length(0.0),
@@ -571,13 +611,13 @@ impl Renderer {
             if let Some(parent) = record.parent {
                 tree.add_child(ids[parent], id).map_err(|e| e.to_string())?;
             }
-            if record.tag == 6 {
+            if record.tag == tag::LIST {
                 // Zero-width spacers do not contribute to Taffy's scroll overflow.
                 let spacer = tree
                     .new_leaf(Style {
                         size: Size {
                             width: Dimension::AUTO,
-                            height: length(record.number(13).unwrap_or(0.0)),
+                            height: length(record.number(field::LIST_LEADING).unwrap_or(0.0)),
                         },
                         flex_shrink: 0.0,
                         ..Default::default()
@@ -587,12 +627,16 @@ impl Renderer {
             }
             ids.push(id);
         }
-        for (index, record) in records.iter().enumerate().filter(|(_, r)| r.tag == 6) {
+        for (index, record) in records
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.tag == tag::LIST)
+        {
             let spacer = tree
                 .new_leaf(Style {
                     size: Size {
                         width: Dimension::AUTO,
-                        height: length(record.number(14).unwrap_or(0.0)),
+                        height: length(record.number(field::LIST_TRAILING).unwrap_or(0.0)),
                     },
                     flex_shrink: 0.0,
                     ..Default::default()
@@ -603,7 +647,8 @@ impl Renderer {
         }
         let root = *ids.first().ok_or("UI_ROOT: missing")?;
         let needs_baselines = records.iter().any(|record| {
-            record.string(33) == Some("baseline") || record.string(35) == Some("baseline")
+            record.string(field::ALIGN) == Some("baseline")
+                || record.string(field::ALIGN_SELF) == Some("baseline")
         });
         tree.compute_layout_with_measure(
             root,
@@ -619,10 +664,10 @@ impl Renderer {
                     |_, _| 0.0,
                     |known, available| {
                         let tag = context.as_ref().map(|i| records[**i].tag).unwrap_or(0);
-                        let single_line = matches!(tag, 8 | 14);
+                        let single_line = matches!(tag, tag::INPUT | tag::SEARCH);
                         let limit = context
                             .as_ref()
-                            .and_then(|i| records[**i].number(50))
+                            .and_then(|i| records[**i].number(field::TEXT_LINES))
                             .map(|n| n as usize);
                         let Some(layout) = context.and_then(|i| layouts[*i].as_mut()) else {
                             return Size::ZERO;
@@ -661,7 +706,7 @@ impl Renderer {
                         // Known dimensions can bypass measurement. Reflow against
                         // the final content width so the reported baseline matches paint.
                         let started = std::time::Instant::now();
-                        text.break_all_lines(if matches!(record.tag, 8 | 14) {
+                        text.break_all_lines(if matches!(record.tag, tag::INPUT | tag::SEARCH) {
                             None
                         } else {
                             Some(
@@ -675,7 +720,15 @@ impl Renderer {
                             )
                         });
                         self.text_time += started.elapsed();
-                        let label_y = if matches!(record.tag, 3 | 8 | 10 | 11 | 13 | 14) {
+                        let label_y = if matches!(
+                            record.tag,
+                            tag::BUTTON
+                                | tag::INPUT
+                                | tag::CHECKBOX
+                                | tag::SWITCH
+                                | tag::RADIO_OPTION
+                                | tag::SEARCH
+                        ) {
                             ((output.size.height - top - bottom - text.height()) / 2.0).max(0.0)
                         } else {
                             0.0
@@ -737,15 +790,18 @@ impl Renderer {
                 layout.border.bottom,
                 layout.border.left,
             ];
-            let default_radius =
-                record
-                    .number(10)
-                    .unwrap_or(if matches!(record.tag, 3 | 8 | 9 | 14) {
-                        12.0
-                    } else {
-                        0.0
-                    });
-            let authored = [90, 91, 92, 93].map(|id| record.number(id).unwrap_or(default_radius));
+            let default_radius = record.number(field::RADIUS).unwrap_or(
+                if matches!(
+                    record.tag,
+                    tag::BUTTON | tag::INPUT | tag::TEXTAREA | tag::SEARCH
+                ) {
+                    12.0
+                } else {
+                    0.0
+                },
+            );
+            let authored = crate::protocol::RADIUS_CORNERS
+                .map(|id| record.number(id).unwrap_or(default_radius));
             let geometry = if authored.iter().all(|r| *r == authored[0]) {
                 crate::scene::border::Border::new(bounds, border_widths, authored[0])
             } else {
@@ -762,8 +818,8 @@ impl Renderer {
                 .iter()
                 .any(|w| *w > 0.0)
                 .then_some(geometry.clone());
-            let content_clip =
-                (border.is_some() || corners.is_some() || record.tag == 18).then(|| ClipSnapshot {
+            let content_clip = (border.is_some() || corners.is_some() || record.tag == tag::PLOT)
+                .then(|| ClipSnapshot {
                     bounds: geometry.inner.bounds.map(|v| v as f32),
                     radius: 0.0,
                     radii: Some(geometry.inner.radii.map(|pair| pair.map(|v| v as f32))),
@@ -771,8 +827,8 @@ impl Renderer {
             let control_bounds = content_clip.map(|clip| clip.bounds).unwrap_or(bounds);
             let visible_bounds = intersect(bounds, viewport);
             let scroll_parent = record.parent.and_then(|p| scroll_parents[p].clone());
-            let scroll = (matches!(record.tag, 5 | 6)).then(|| {
-                let axis = if record.string(100) == Some("horizontal") {
+            let scroll = (matches!(record.tag, tag::SCROLL | tag::LIST)).then(|| {
+                let axis = if record.string(field::SCROLL_AXIS) == Some("horizontal") {
                     ScrollAxis::Horizontal
                 } else {
                     ScrollAxis::Vertical
@@ -796,18 +852,18 @@ impl Renderer {
                     on_reach_start: record
                         .fields
                         .iter()
-                        .find(|(id, _)| *id == 17)
+                        .find(|(id, _)| *id == field::ON_REACH_START)
                         .and_then(|(_, v)| v.as_u64()),
                     on_reach_end: record
                         .fields
                         .iter()
-                        .find(|(id, _)| *id == 18)
+                        .find(|(id, _)| *id == field::ON_REACH_END)
                         .and_then(|(_, v)| v.as_u64()),
                     parent: scroll_parent.clone(),
                     offset: 0.0,
                     max_offset,
                     id: record
-                        .string(11)
+                        .string(field::LIST_ID)
                         .map(str::to_owned)
                         .unwrap_or_else(|| identity.clone()),
                 }
@@ -820,7 +876,7 @@ impl Renderer {
             );
             origins.push((x, y));
             let paint_start = commands.len();
-            if let Some(source) = record.string(73) {
+            if let Some(source) = record.string(field::BOX_SHADOW) {
                 for shadow in crate::scene::shadow::BoxShadow::parse(source)?
                     .into_iter()
                     .rev()
@@ -863,15 +919,19 @@ impl Renderer {
                 }
             }
 
-            if let Some(background) = record.string(6).or(if record.tag == 3 {
-                Some("primary")
-            } else if matches!(record.tag, 8 | 9 | 14) {
-                Some("surface")
-            } else if index == 0 {
-                Some("background")
-            } else {
-                None
-            }) {
+            if let Some(background) =
+                record
+                    .string(field::BACKGROUND)
+                    .or(if record.tag == tag::BUTTON {
+                        Some("primary")
+                    } else if matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
+                        Some("surface")
+                    } else if index == 0 {
+                        Some("background")
+                    } else {
+                        None
+                    })
+            {
                 let [r, g, b, a] = color(background)?;
                 commands.push(Paint::Rect {
                     corners,
@@ -880,7 +940,7 @@ impl Renderer {
                     radius,
                 });
             }
-            if let Some(source) = record.string(72) {
+            if let Some(source) = record.string(field::BACKGROUND_GRADIENT) {
                 if let Some(gradient) = crate::scene::gradient::LinearGradient::parse(source)? {
                     commands.push(Paint::Gradient {
                         corners,
@@ -892,7 +952,7 @@ impl Renderer {
             }
             if border.is_some() {
                 let tint = record
-                    .string(66)
+                    .string(field::BORDER_COLOR)
                     .filter(|value| *value != "currentColor")
                     .unwrap_or(&colors[index]);
                 commands.push(Paint::Border {
@@ -903,8 +963,10 @@ impl Renderer {
                     radius,
                 });
             }
-            if record.tag == 19 {
-                let vector = crate::scene::vector::Vector::parse(record.string(80).unwrap())?;
+            if record.tag == tag::VECTOR {
+                let vector = crate::scene::vector::Vector::parse(
+                    record.string(field::VECTOR_SOURCE).unwrap(),
+                )?;
                 let vector_bounds = [
                     control_bounds[0] + layout.padding.left,
                     control_bounds[1] + layout.padding.top,
@@ -937,7 +999,7 @@ impl Renderer {
                 }
             }
             let mut plot_snapshot = None;
-            if record.tag == 18 {
+            if record.tag == tag::PLOT {
                 let plot = crate::scene::plot::Plot::from_record(record)?;
                 plot_snapshot = Some(plot.snapshot());
                 for shape in plot.shapes(control_bounds) {
@@ -967,7 +1029,7 @@ impl Renderer {
                     });
                 }
             }
-            let range = if record.tag == 15 {
+            let range = if record.tag == tag::SLIDER {
                 Some(crate::SliderSnapshot::from_record(record)?)
             } else {
                 None
@@ -978,7 +1040,7 @@ impl Renderer {
                 let center = control_bounds[1] + control_bounds[3] / 2.0;
                 let fraction = ((range.value - range.min) / (range.max - range.min)) as f32;
                 let accent = if range.enabled {
-                    color(record.string(5).unwrap_or("primary"))?
+                    color(record.string(field::COLOR).unwrap_or("primary"))?
                 } else {
                     [160, 168, 190, 255]
                 };
@@ -1006,13 +1068,13 @@ impl Renderer {
                     radius: 12.0,
                 });
             }
-            if record.tag == 14 {
+            if record.tag == tag::SEARCH {
                 let cx = x + layout.padding.left - 30.0;
                 let cy = y
                     + layout.padding.top
                     + (layout.size.height - layout.padding.top - layout.padding.bottom).max(0.0)
                         / 2.0;
-                let tint = if record.number(9) == Some(0.0) {
+                let tint = if record.number(field::ENABLED) == Some(0.0) {
                     [193, 199, 210, 255]
                 } else {
                     color(&colors[index])?
@@ -1025,7 +1087,7 @@ impl Renderer {
                 });
                 commands.push(Paint::Rect {
                     corners: None,
-                    color: color(record.string(6).unwrap_or("surface"))?,
+                    color: color(record.string(field::BACKGROUND).unwrap_or("surface"))?,
                     bounds: [cx + 2.0, cy - 8.0, 14.0, 14.0],
                     radius: 7.0,
                 });
@@ -1050,29 +1112,39 @@ impl Renderer {
                 .max(0.0);
                 // Overflowing single-line editors retain a nonnegative text origin;
                 // caret scrolling, not alignment, reveals the hidden text.
-                let alignment_width = if matches!(record.tag, 8 | 14) {
+                let alignment_width = if matches!(record.tag, tag::INPUT | tag::SEARCH) {
                     content_width.max(text.full_width())
                 } else {
                     content_width
                 };
                 text.break_all_lines(Some(alignment_width));
                 text.align(text_alignments[index], AlignmentOptions::default());
-                let placeholder =
-                    matches!(record.tag, 8 | 9 | 14) && record.string(21).unwrap_or("").is_empty();
+                let placeholder = matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH)
+                    && record.string(field::INPUT_VALUE).unwrap_or("").is_empty();
                 let tint = if placeholder {
-                    record.string(97).unwrap_or(&colors[index])
+                    record
+                        .string(field::PLACEHOLDER_COLOR)
+                        .unwrap_or(&colors[index])
                 } else {
                     &colors[index]
                 };
                 let [r, g, b, a] = color(tint)?;
                 self.text_time += started.elapsed();
 
-                let label_x = if matches!(record.tag, 10 | 13) {
+                let label_x = if matches!(record.tag, tag::CHECKBOX | tag::RADIO_OPTION) {
                     check_reserve(record.tag)
                 } else {
                     0.0
                 };
-                let label_y = if matches!(record.tag, 3 | 8 | 10 | 11 | 13 | 14) {
+                let label_y = if matches!(
+                    record.tag,
+                    tag::BUTTON
+                        | tag::INPUT
+                        | tag::CHECKBOX
+                        | tag::SWITCH
+                        | tag::RADIO_OPTION
+                        | tag::SEARCH
+                ) {
                     ((layout.size.height
                         - layout.padding.top
                         - layout.padding.bottom
@@ -1083,10 +1155,12 @@ impl Renderer {
                     0.0
                 };
                 text_offset_y = label_y;
-                for line in text
-                    .lines()
-                    .take(record.number(50).map(|n| n as usize).unwrap_or(usize::MAX))
-                {
+                for line in text.lines().take(
+                    record
+                        .number(field::TEXT_LINES)
+                        .map(|n| n as usize)
+                        .unwrap_or(usize::MAX),
+                ) {
                     for item in line.items() {
                         if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
                             let run = glyph_run.run();
@@ -1145,15 +1219,16 @@ impl Renderer {
                     }
                 }
             }
-            if matches!(record.tag, 10 | 11 | 13)
-                && !(record.tag == 10 && button_hashes.contains_key(&index))
+            if matches!(record.tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION)
+                && !(record.tag == tag::CHECKBOX && button_hashes.contains_key(&index))
             {
-                let checked = record.number(39) == Some(1.0);
-                let enabled = record.number(9) != Some(0.0)
-                    && record
-                        .parent
-                        .is_none_or(|p| records[p].tag != 12 || records[p].number(9) != Some(0.0))
-                    && record.number(40).is_some();
+                let checked = record.number(field::CHECKED) == Some(1.0);
+                let enabled = record.number(field::ENABLED) != Some(0.0)
+                    && record.parent.is_none_or(|p| {
+                        records[p].tag != tag::RADIO
+                            || records[p].number(field::ENABLED) != Some(0.0)
+                    })
+                    && record.number(field::ON_CHECKED_CHANGE).is_some();
                 let accent = if enabled {
                     [67, 93, 217, 255]
                 } else {
@@ -1168,7 +1243,7 @@ impl Renderer {
                     + layout.padding.top
                     + (layout.size.height - layout.padding.top - layout.padding.bottom).max(0.0)
                         / 2.0;
-                if record.tag == 13 {
+                if record.tag == tag::RADIO_OPTION {
                     let cx = x + layout.padding.left;
                     commands.push(Paint::Rect {
                         corners: None,
@@ -1178,7 +1253,7 @@ impl Renderer {
                     });
                     commands.push(Paint::Rect {
                         corners: None,
-                        color: color(record.string(6).unwrap_or("surface"))?,
+                        color: color(record.string(field::BACKGROUND).unwrap_or("surface"))?,
                         bounds: [cx + 2.0, cy - 10.0, 20.0, 20.0],
                         radius: 10.0,
                     });
@@ -1190,7 +1265,7 @@ impl Renderer {
                             radius: 6.0,
                         });
                     }
-                } else if record.tag == 10 {
+                } else if record.tag == tag::CHECKBOX {
                     let cx = x + layout.padding.left;
                     commands.push(Paint::Rect {
                         corners: None,
@@ -1212,7 +1287,7 @@ impl Renderer {
                     } else {
                         commands.push(Paint::Rect {
                             corners: None,
-                            color: color(record.string(6).unwrap_or("surface"))?,
+                            color: color(record.string(field::BACKGROUND).unwrap_or("surface"))?,
                             bounds: [cx + 2.0, cy - 10.0, 20.0, 20.0],
                             radius: 3.0,
                         });
@@ -1233,89 +1308,105 @@ impl Renderer {
                     });
                 }
             }
-            if record.tag == 7 {
+            if record.tag == tag::IMAGE {
                 commands.push(Paint::Image {
                     src: record
-                        .string(19)
+                        .string(field::IMAGE_SRC)
                         .ok_or("UI_IMAGE: missing source")?
                         .to_owned(),
                     bounds: control_bounds,
                     radius: if content_clip.is_some() { 0.0 } else { radius },
-                    fit: match record.string(20) {
+                    fit: match record.string(field::IMAGE_FIT) {
                         Some("contain") => crate::scene::image::Fit::Contain,
                         Some("fill") => crate::scene::image::Fit::Fill,
                         _ => crate::scene::image::Fit::Cover,
                     },
                 });
             }
-            input_layouts.push(if matches!(record.tag, 8 | 9 | 14) {
-                Some(InputLayout {
-                    layout: layouts[index].take().unwrap(),
-                    padding: [layout.padding.left, layout.padding.top],
-                    text_offset_y,
-                    content_size: [
-                        (layout.size.width - layout.padding.left - layout.padding.right).max(0.0),
-                        (layout.size.height - layout.padding.top - layout.padding.bottom).max(0.0),
-                    ],
-                    color: color(&colors[index])?,
-                })
-            } else {
-                None
-            });
+            input_layouts.push(
+                if matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
+                    Some(InputLayout {
+                        layout: layouts[index].take().unwrap(),
+                        padding: [layout.padding.left, layout.padding.top],
+                        text_offset_y,
+                        content_size: [
+                            (layout.size.width - layout.padding.left - layout.padding.right)
+                                .max(0.0),
+                            (layout.size.height - layout.padding.top - layout.padding.bottom)
+                                .max(0.0),
+                        ],
+                        color: color(&colors[index])?,
+                    })
+                } else {
+                    None
+                },
+            );
             ranges.push(paint_start..commands.len());
             nodes.push(NodeSnapshot {
                 plot_local: None,
                 radii: corners,
                 plot: plot_snapshot,
                 content_clip,
-                control_bounds: (border.is_some() && matches!(record.tag, 7 | 15 | 18))
-                    .then_some(control_bounds),
+                control_bounds: (border.is_some()
+                    && matches!(record.tag, tag::IMAGE | tag::SLIDER | tag::PLOT))
+                .then_some(control_bounds),
                 scroll_parent,
-                radio_group: (record.tag == 13).then(|| identities[record.parent.unwrap()].clone()),
+                radio_group: (record.tag == tag::RADIO_OPTION)
+                    .then(|| identities[record.parent.unwrap()].clone()),
                 accessibility_label: record
-                    .string(41)
-                    .or_else(|| record.string(105))
+                    .string(field::ACCESSIBILITY_LABEL)
+                    .or_else(|| record.string(field::IMAGE_ALT))
                     .filter(|label| !label.is_empty())
                     .map(str::to_owned),
                 accessibility_hidden: (button_owners[index].is_some()
-                    || record.string(105) == Some(""))
+                    || record.string(field::IMAGE_ALT) == Some(""))
                 .then_some(true),
                 button_content: button_hashes
                     .get(&index)
                     .map(|hash| format!("{:016x}", hash.finish())),
                 identity,
-                checked: matches!(record.tag, 10 | 11 | 13).then(|| record.number(39) == Some(1.0)),
+                checked: matches!(record.tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION)
+                    .then(|| record.number(field::CHECKED) == Some(1.0)),
                 range,
-                input: matches!(record.tag, 8 | 9 | 14).then(|| InputSnapshot {
-                    edit: None,
-                    edit_token: None,
-                    geometry: None,
-                    scroll_offset: [0.0; 2],
-                    value: record.string(21).unwrap_or("").into(),
-                    placeholder: record.string(22).unwrap_or("").into(),
-                    secure: record.number(23) == Some(1.0),
-                    keyboard: record
-                        .string(24)
-                        .unwrap_or(if record.tag == 14 { "search" } else { "text" })
-                        .into(),
-                    auto_focus: record.number(25) == Some(1.0),
-                    submit_on_enter: record.number(83) == Some(1.0),
-                    enabled: record.number(9) != Some(0.0),
-                    on_input: record
-                        .fields
-                        .iter()
-                        .find(|(id, _)| *id == 26)
-                        .and_then(|(_, v)| v.as_u64()),
-                    on_submit: record
-                        .fields
-                        .iter()
-                        .find(|(id, _)| *id == 27)
-                        .and_then(|(_, v)| v.as_u64()),
+                input: matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH).then(|| {
+                    InputSnapshot {
+                        edit: None,
+                        edit_token: None,
+                        geometry: None,
+                        scroll_offset: [0.0; 2],
+                        value: record.string(field::INPUT_VALUE).unwrap_or("").into(),
+                        placeholder: record.string(field::PLACEHOLDER).unwrap_or("").into(),
+                        secure: record.number(field::SECURE) == Some(1.0),
+                        keyboard: record
+                            .string(field::KEYBOARD)
+                            .unwrap_or(if record.tag == tag::SEARCH {
+                                "search"
+                            } else {
+                                "text"
+                            })
+                            .into(),
+                        auto_focus: record.number(field::AUTO_FOCUS) == Some(1.0),
+                        submit_on_enter: record.number(field::SUBMIT_ON_ENTER) == Some(1.0),
+                        enabled: record.number(field::ENABLED) != Some(0.0),
+                        on_input: record
+                            .fields
+                            .iter()
+                            .find(|(id, _)| *id == field::ON_INPUT)
+                            .and_then(|(_, v)| v.as_u64()),
+                        on_submit: record
+                            .fields
+                            .iter()
+                            .find(|(id, _)| *id == field::ON_SUBMIT)
+                            .and_then(|(_, v)| v.as_u64()),
+                    }
                 }),
                 tag: crate::protocol::TAGS[record.tag],
                 test_id: record.test_id.clone(),
-                text: if matches!(record.tag, 3 | 10) {
-                    record.string(41).unwrap_or(&texts[index]).to_owned()
+                text: if matches!(record.tag, tag::BUTTON | tag::CHECKBOX) {
+                    record
+                        .string(field::ACCESSIBILITY_LABEL)
+                        .unwrap_or(&texts[index])
+                        .to_owned()
                 } else {
                     texts[index].clone()
                 },
@@ -1324,18 +1415,21 @@ impl Renderer {
                 clips: Vec::new(),
                 scroll,
                 radius,
-                on_click: if record.number(9) == Some(0.0)
-                    || record
-                        .parent
-                        .is_some_and(|p| records[p].tag == 12 && records[p].number(9) == Some(0.0))
-                {
+                on_click: if record.number(field::ENABLED) == Some(0.0)
+                    || record.parent.is_some_and(|p| {
+                        records[p].tag == tag::RADIO
+                            && records[p].number(field::ENABLED) == Some(0.0)
+                    }) {
                     None
                 } else {
                     record
                         .fields
                         .iter()
                         .find(|(id, _)| {
-                            *id == if matches!(record.tag, 10 | 11 | 13) {
+                            *id == if matches!(
+                                record.tag,
+                                tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION
+                            ) {
                                 40
                             } else {
                                 8
@@ -1353,13 +1447,19 @@ impl Renderer {
             backdrops: records
                 .iter()
                 .map(|r| {
-                    (r.number(95).is_some() || r.number(96).is_some())
-                        .then(|| (r.number(95).unwrap_or(0.0), r.number(96).unwrap_or(1.0)))
+                    (r.number(field::BACKDROP_BLUR).is_some()
+                        || r.number(field::BACKDROP_SATURATION).is_some())
+                    .then(|| {
+                        (
+                            r.number(field::BACKDROP_BLUR).unwrap_or(0.0),
+                            r.number(field::BACKDROP_SATURATION).unwrap_or(1.0),
+                        )
+                    })
                 })
                 .collect(),
             opacities: records
                 .iter()
-                .map(|record| record.number(58).unwrap_or(1.0))
+                .map(|record| record.number(field::OPACITY).unwrap_or(1.0))
                 .collect(),
             width,
             height,

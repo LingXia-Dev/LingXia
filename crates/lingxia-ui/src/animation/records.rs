@@ -1,5 +1,6 @@
 use super::Definition;
 use crate::protocol::{Record, identities};
+use crate::protocol::{field, tag};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Clone)]
@@ -31,7 +32,11 @@ impl Inventory {
 
     /// Reconcile a fully measured View candidate, never an intermediate list window.
     pub(crate) fn reconcile(&self, records: &[Record]) -> Result<Self, String> {
-        if self.0.is_empty() && !records.iter().any(|record| record.string(101).is_some()) {
+        if self.0.is_empty()
+            && !records
+                .iter()
+                .any(|record| record.string(field::ANIMATION).is_some())
+        {
             return Ok(Self::default());
         }
         let ids = identities(records);
@@ -39,7 +44,7 @@ impl Inventory {
         let mut owners: Vec<Vec<Owner>> = Vec::with_capacity(records.len());
         for (index, record) in records.iter().enumerate() {
             let mut path = record.parent.map(|p| owners[p].clone()).unwrap_or_default();
-            if let Some(parent) = record.parent.filter(|p| records[*p].tag == 6) {
+            if let Some(parent) = record.parent.filter(|p| records[*p].tag == tag::LIST) {
                 lists
                     .get_mut(&ids[parent])
                     .unwrap()
@@ -51,9 +56,9 @@ impl Inventory {
                 });
             }
             owners.push(path);
-            if record.tag == 6 {
+            if record.tag == tag::LIST {
                 let keys = record
-                    .string(102)
+                    .string(field::LIST_ITEM_KEYS)
                     .map(crate::layout::list::decode_item_keys)
                     .transpose()?
                     .map(|keys| {
@@ -91,7 +96,7 @@ impl Inventory {
             }
         }
         for (index, record) in records.iter().enumerate() {
-            let Some(source) = record.string(101) else {
+            let Some(source) = record.string(field::ANIMATION) else {
                 continue;
             };
             for owner in &owners[index] {

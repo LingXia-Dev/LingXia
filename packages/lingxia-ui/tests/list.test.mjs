@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {h, prepare, prepareWindows, commit, discard, dispatch, useLocal, reset} from '../src/runtime.js';
-import {listFields} from '../src/schema.js';
+import {listFields} from '../src/generated/wire.js';
 function records(buffer) {
  const result=[];
  for(let i=0;i<buffer.length;) { const fields=new Map(); for(let n=0;n<buffer[i+5];n++)fields.set(buffer[i+6+n*2],buffer[i+7+n*2]);result.push({tag:buffer[i],id:buffer[i+3],text:buffer[i+4],fields});i+=6+buffer[i+5]*2; }

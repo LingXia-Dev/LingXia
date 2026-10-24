@@ -1,3 +1,4 @@
+use crate::protocol::{field, tag};
 use crate::{
     DisplayList,
     layout::list::{Align, Anchor, ListMetrics},
@@ -101,9 +102,13 @@ pub(crate) fn reconcile(
     let mut alive = HashSet::new();
     let mut windows = Windows::new();
     let mut changed = false;
-    for (index, record) in records.iter().enumerate().filter(|(_, r)| r.tag == 6) {
+    for (index, record) in records
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.tag == tag::LIST)
+    {
         let id = record
-            .string(11)
+            .string(field::LIST_ID)
             .ok_or("UI_LIST: missing identity")?
             .to_owned();
         alive.insert(id.clone());
@@ -112,9 +117,9 @@ pub(crate) fn reconcile(
             .scroll
             .as_ref()
             .ok_or("UI_LIST: missing scroll geometry")?;
-        let count = record.number(12).unwrap_or(0.0) as usize;
+        let count = record.number(field::LIST_COUNT).unwrap_or(0.0) as usize;
         let [padding, _, bottom, _] = scroll.content_insets;
-        let gap = record.number(2).unwrap_or(0.0);
+        let gap = record.number(field::GAP).unwrap_or(0.0);
         let width = scroll.content_size[0];
         // Measurement restoration must use the same content box as row anchors;
         // ignoring the bottom inset clamps an already anchored list on rerender.
@@ -153,7 +158,7 @@ pub(crate) fn reconcile(
             .enumerate()
             .filter(|(_, r)| r.parent == Some(index))
             .map(|(i, r)| {
-                let row = r.number(15).unwrap_or(0.0) as usize;
+                let row = r.number(field::LIST_ROW_INDEX).unwrap_or(0.0) as usize;
                 (
                     row,
                     (display.nodes[i].bounds[3] + if row + 1 < count { gap } else { 0.0 }) as f64,
@@ -162,7 +167,7 @@ pub(crate) fn reconcile(
             .collect();
         let measured = state.metrics.measure(&rows, position, viewport)?;
         let mut target = scroll.offset + (measured - original_position) as f32;
-        let next_anchor = record.string(16).map(str::to_owned);
+        let next_anchor = record.string(field::LIST_ANCHOR).map(str::to_owned);
         if next_anchor != state.anchor {
             if let Some(encoded) = &next_anchor {
                 let value: serde_json::Value =
@@ -199,8 +204,8 @@ pub(crate) fn reconcile(
         let actual = Request {
             start,
             end,
-            leading: record.number(13).unwrap_or(0.0) as f64,
-            trailing: record.number(14).unwrap_or(0.0) as f64,
+            leading: record.number(field::LIST_LEADING).unwrap_or(0.0) as f64,
+            trailing: record.number(field::LIST_TRAILING).unwrap_or(0.0) as f64,
         };
         changed |= !desired.matches(&actual);
         state.window = desired.clone();
