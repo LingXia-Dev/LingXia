@@ -4,5 +4,6 @@ pub(crate) mod editing;
 pub mod input;
 pub(crate) mod scale;
 pub(crate) mod shape;
+pub(crate) mod style;
 #[cfg(test)]
 mod tests;

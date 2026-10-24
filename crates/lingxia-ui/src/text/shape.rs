@@ -1,5 +1,10 @@
-//! Shaped text extents and glyph ink bounds.
+//! Text shaping, shaped extents and glyph ink bounds.
+use crate::layout::Renderer;
+use crate::protocol::{Record, tag};
+use crate::text::style::TextStyle;
 use parley::Layout;
+use parley::StyleProperty;
+use parley::style::{FontStyle, FontWeight, GenericFamily, LineHeight};
 use vello_cpu::Glyph;
 
 pub(crate) fn text_extent(layout: &Layout<()>, lines: Option<usize>) -> (f32, f32) {
@@ -69,4 +74,103 @@ pub(crate) fn glyph_ink(
             })
             .unwrap_or([0.0; 4]),
     )
+}
+
+impl Renderer {
+    /// Shape one record's text at the system text scale; the cache keys every shaping input.
+    pub(crate) fn shape(
+        &mut self,
+        record: &Record,
+        style: &TextStyle,
+        text: &str,
+    ) -> Option<Layout<()>> {
+        if !matches!(
+            record.tag,
+            tag::TEXT
+                | tag::BUTTON
+                | tag::INPUT
+                | tag::TEXTAREA
+                | tag::CHECKBOX
+                | tag::SWITCH
+                | tag::RADIO_OPTION
+                | tag::SEARCH
+        ) {
+            return None;
+        }
+        // Keep inherited values in author units; scaling inherited output again
+        // would compound with every nested layout container.
+        let scaled_font_size = self.text_scale.map(style.size);
+        let text_ratio = if style.size > 0.0 {
+            scaled_font_size / style.size
+        } else {
+            1.0
+        };
+        let line_height = style.line_height.map(|height| height * text_ratio);
+        let letter_spacing = style.letter_spacing * text_ratio;
+        let font_size = scaled_font_size;
+        let (weight, italic, word_break, overflow_wrap) = (
+            style.weight,
+            style.italic,
+            style.word_break,
+            style.overflow_wrap,
+        );
+
+        let started = std::time::Instant::now();
+        let key = (!matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH))
+            .then(|| {
+                crate::text::cache::Key::new(
+                    text,
+                    (font_size, letter_spacing),
+                    weight,
+                    line_height,
+                    (style.mono, italic),
+                    word_break,
+                    overflow_wrap,
+                )
+            })
+            .flatten();
+        let cached = key.as_ref().and_then(|key| self.text_cache.get(key));
+        let mut layout = if let Some(layout) = cached {
+            layout
+        } else {
+            let mut builder = self.text.ranged_builder(&mut self.fonts, text, 1.0, true);
+            builder.push_default(StyleProperty::FontSize(font_size));
+            builder.push_default(StyleProperty::LetterSpacing(letter_spacing));
+            builder.push_default(StyleProperty::FontStyle(if italic {
+                FontStyle::Italic
+            } else {
+                FontStyle::Normal
+            }));
+            if matches!(record.tag, tag::INPUT | tag::SEARCH) {
+                builder.push_default(StyleProperty::TextWrapMode(parley::TextWrapMode::NoWrap));
+            }
+            builder.push_default(StyleProperty::OverflowWrap(match overflow_wrap {
+                1 => parley::OverflowWrap::BreakWord,
+                2 => parley::OverflowWrap::Anywhere,
+                _ => parley::OverflowWrap::Normal,
+            }));
+            builder.push_default(StyleProperty::WordBreak(match word_break {
+                1 => parley::WordBreak::BreakAll,
+                2 => parley::WordBreak::KeepAll,
+                _ => parley::WordBreak::Normal,
+            }));
+            builder.push_default(StyleProperty::FontWeight(FontWeight::new(weight)));
+            builder.push_default(if style.mono {
+                GenericFamily::Monospace
+            } else {
+                GenericFamily::SansSerif
+            });
+            if let Some(height) = line_height {
+                builder.push_default(StyleProperty::LineHeight(LineHeight::Absolute(height)));
+            }
+            let layout = builder.build(text);
+            if let Some(key) = key {
+                self.text_cache.insert(key, &layout);
+            }
+            layout
+        };
+        layout.break_all_lines(None);
+        self.text_time += started.elapsed();
+        Some(layout)
+    }
 }

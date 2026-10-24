@@ -1,6 +1,7 @@
 //! Display lists and paint primitives shared by every renderer.
 pub(crate) mod backdrop_region;
 pub(crate) mod border;
+mod build;
 pub mod color_filter;
 pub mod composite;
 pub(crate) mod display;

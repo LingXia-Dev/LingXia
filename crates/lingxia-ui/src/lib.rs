@@ -7,6 +7,7 @@ pub mod platform;
 pub mod protocol;
 pub mod renderer;
 pub mod scene;
+pub(crate) mod semantics;
 pub mod session;
 pub mod text;
 
