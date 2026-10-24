@@ -5,7 +5,7 @@ app:
   packageId: com.lingxia.example.gpu
   productName: LingXia GPU Showcase
   productVersion: 0.2.7
-  platforms: [android, ios, macos, harmony, windows]
+  platforms: [android]
   homeAppId: lingxia-showcase-gpu
   lingxiaServer:
     dev: http://127.0.0.1:39881
@@ -16,33 +16,14 @@ android:
   minSdk: 29
   targetSdk: 35
   compileSdk: 35
-ios:
-  deploymentTarget: "17.0"
-  targetName: lxapp
-macos:
-  deploymentTarget: "12.0"
-  targetName: LingXiaDemo
-harmony:
-  bundleName: app.lingxia.gpu
-windows: {}
 
 features:
   appService: true
   devtools: false
 
-browser:
-  webui:
-    path: ../../crates/lingxia-browser-shell/webui
-
 capabilities:
   notifications: true
   browser: true
-  proxy: true
-  terminal: true
-  autostart: true
-  appUse: true
-  computerUse: true
-  browserUse: true
 
 resources:
   bundles:

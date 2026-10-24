@@ -1,28 +1,25 @@
 # GPU showcase
 
-Independent native host and embedded GPU lxapp. React showcase remains the
-read-only functional reference in `../lingxia-showcase`.
+Android host with an embedded lxapp whose pages all render through the native
+GPU renderer. The React showcase in `../lingxia-showcase` is the functional
+reference; this project mirrors its pages, not its host.
 
-```powershell
-cd lxapp
-npm install
-cd ..
-lingxia dev -p android --release --name showcase-gpu
+```sh
+cd lxapp && npm install && cd ..
+lingxia dev -p android --release
 ```
 
-Every page declares `renderer: "gpu"` and compiles its `.ui.tsx` View.
-From the repository root, build workspace JS packages before the first build
-(`cd packages; npm ci; npm run build --workspaces --if-present`).
+A page renders natively because its `index.json` declares `"renderer": "gpu"`;
+its View is `index.tsx` beside the Logic in `index.ts`. Shared View code lives in
+`lxapp/shared/ui` (the design system) and `lxapp/shared` (charts, types).
 
-Android uses `com.lingxia.example.gpu` (`.dev` in development), separate from
-the React example's package and storage. Platform host sources originate from
-the existing showcase; Android is the current device verification target.
+Checks that need no device:
 
-`lxapp/` contains only the mini-app's TS/JS, configuration and assets.
-Android automation probes, verification scripts and fixtures live separately
-under [the Android SDK tests](../../lingxia-sdk/android/tests/gpu/README.md);
-they are not app code or bundled resources.
+```sh
+cd lxapp && npm run typecheck
+node --experimental-strip-types --test ../tests/*.test.mjs
+```
 
-See `tests/PARITY.md` for migration coverage and pending acceptance checks.
-For parity tests, install the React reference's lxapp dependencies too; the chart
-tests compare against its ECharts implementation.
+Device probes and renderer fixtures live with the Android SDK tests in
+`lingxia-sdk/android/tests/gpu`; they are not part of the app bundle.
+`tests/PARITY.md` tracks page parity with the React reference.

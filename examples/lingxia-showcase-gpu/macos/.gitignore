@@ -1,6 +1,0 @@
-.build
-Sources/Resources/*
-!Sources/Resources/AppIcon.png
-!Sources/Resources/Assets.xcassets/
-!Sources/Resources/Assets.xcassets/AppIcon.appiconset/
-!Sources/Resources/Assets.xcassets/AppIcon.appiconset/**

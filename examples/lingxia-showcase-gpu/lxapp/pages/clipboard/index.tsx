@@ -1,85 +1,96 @@
 import { useLocal, type View } from '@lingxia/ui';
 import '../../theme/index.css';
+import { Button, Page, Section } from '../../shared/ui';
 
-export function render({ data, actions, env }: View) {
+export function render({ data, actions }: View) {
   const draft = useLocal('clipboard-draft', 'Hello from lx.clipboard');
   const busy = useLocal('clipboard-busy', false);
-  const error = useLocal('clipboard-error', '');
-
+  const failure = useLocal('clipboard-error', '');
   const run = async (action: () => Promise<unknown>) => {
     if (busy.value) return;
-    busy.set(true); error.set('');
-    try { await action(); } catch { error.set('The action failed. Please try again.'); }
-    finally { busy.set(false); }
+    busy.set(true);
+    failure.set('');
+    try {
+      await action();
+    } catch {
+      failure.set('The action failed. Please try again.');
+    } finally {
+      busy.set(false);
+    }
   };
-  const height = Math.max(1, env.viewport.height - env.insets.top - Math.max(env.insets.bottom, env.keyboard.height));
-  const card = 'bg-surface rounded-lg shadow-sm';
-  const heading = 'px-4 py-4 border-b border-line-100 gap-1';
-  const primary = 'min-h-11 py-3 px-2 rounded-lg bg-blue-500 text-white font-medium text-base';
-  const secondary = 'min-h-11 py-3 px-2 rounded-lg bg-surface-900 text-white font-medium text-base';
-  const neutral = 'min-h-11 py-3 px-2 rounded-lg bg-surface-200 text-gray-900 font-medium text-base';
-  return <column className="bg-surface-100 text-gray-900">
-    <spacer style={{ height: env.insets.top }} />
-    <row style={{ height }}>
-      <spacer style={{ width: env.insets.left }} />
-      <scroll testId="page-scroll" className="grow basis-0 min-w-0" style={{ height }}>
-        <column className="px-3 pt-3 pb-12 gap-3">
-          <column className={card}>
-            <column className={heading}>
-              <text className="text-base font-medium">Clipboard</text>
-              <text className="text-xs text-gray-500">lx.clipboard reads and writes the system clipboard. Write never toasts.</text>
-            </column>
-            <text testId="clipboard-status" className="px-4 py-3 text-sm text-gray-700">{error.value || (busy.value ? 'Working...' : String(data.statusText || 'Ready'))}</text>
-            <text testId="clipboard-types-value" className="px-4 pb-3 text-xs text-gray-500">{`types: ${String(data.typesText || 'Not peeked')}`}</text>
+  const status = failure.value || (busy.value ? 'Working...' : String(data.statusText || 'Ready'));
+  return (
+    <Page title="Clipboard" subtitle="lx.clipboard reads and writes the system clipboard. Write never toasts.">
+      <Section title="Status">
+        <text testId="clipboard-status" className={failure.value ? 'text-sm text-error' : 'text-sm'}>
+          {status}
+        </text>
+        <text testId="clipboard-types-value" className="text-xs text-muted-foreground">{`types: ${String(data.typesText || 'Not peeked')}`}</text>
+      </Section>
+      <Section title="Text" description="writeText / readText. An empty string is a valid write, not clear().">
+        <textarea
+          testId="clipboard-draft"
+          accessibilityLabel="Text to copy"
+          bind={draft}
+          placeholder="Text to copy"
+          className="h-20 px-3 py-2 rounded-lg border border-input bg-card text-sm"
+        />
+        <grid className="gap-3 grid-cols-2">
+          <Button testId="clipboard-write-text" disabled={busy.value} onClick={() => run(() => actions.writeText({ text: draft.value }))}>
+            Write text
+          </Button>
+          <Button variant="secondary" testId="clipboard-read-text" disabled={busy.value} onClick={() => run(() => actions.readText())}>
+            Read text
+          </Button>
+        </grid>
+        <Button
+          variant="secondary"
+          testId="clipboard-write-typed"
+          disabled={busy.value}
+          onClick={() => run(() => actions.writeTypedText({ text: draft.value }))}
+        >
+          Write typed item
+        </Button>
+        {!!data.readTextValue && (
+          <text testId="clipboard-read-value" className="px-3 py-2 rounded-lg bg-muted text-xs text-muted-foreground break-all">
+            {String(data.readTextValue)}
+          </text>
+        )}
+      </Section>
+      <Section title="Image" description="Write a 1×1 sample PNG, or pick one with lx.chooseMedia.">
+        <grid className="gap-3 grid-cols-2">
+          <Button testId="clipboard-write-sample-image" disabled={busy.value} onClick={() => run(() => actions.writeSampleImage())}>
+            Write sample PNG
+          </Button>
+          <Button variant="secondary" testId="clipboard-choose-image" disabled={busy.value} onClick={() => run(() => actions.chooseAndWriteImage())}>
+            Choose image
+          </Button>
+        </grid>
+        {!!data.imagePath && (
+          <column className="items-center gap-2">
+            <image
+              testId="clipboard-image"
+              src={String(data.imagePath)}
+              alt="Image from clipboard"
+              className="w-40 h-40 rounded border border-border object-contain"
+            />
+            <text className="text-xs text-muted-foreground break-all">{String(data.imagePath)}</text>
           </column>
-          <column className={card}>
-            <column className={heading}>
-              <text className="text-sm font-medium">Text</text>
-              <text className="text-xs text-gray-500">writeText / readText. An empty string is a valid write, not clear().</text>
-            </column>
-            <column className="p-4 gap-3">
-              <textarea testId="clipboard-draft" bind={draft} placeholder="Text to copy" className="w-full h-[78px] px-3 py-2 border border-line-300 rounded-md text-sm bg-surface text-gray-900" />
-              <grid columns={2} className="gap-3">
-                <button testId="clipboard-write-text" enabled={!busy.value} onClick={() => run(() => actions.writeText({ text: draft.value }))} className={primary}>Write text</button>
-                <button testId="clipboard-read-text" enabled={!busy.value} onClick={() => run(() => actions.readText())} className={secondary}>Read text</button>
-              </grid>
-              <button testId="clipboard-write-typed" enabled={!busy.value} onClick={() => run(() => actions.writeTypedText({ text: draft.value }))} className={neutral}>Write typed item</button>
-              {data.readTextValue ? <text testId="clipboard-read-value" className="rounded bg-surface-50 px-3 py-2 text-xs text-gray-500 break-all">{String(data.readTextValue)}</text> : null}
-            </column>
-          </column>
-          <column className={card}>
-            <column className={heading}>
-              <text className="text-sm font-medium">Image</text>
-              <text className="text-xs text-gray-500">Write a 1×1 sample PNG, or pick one with lx.chooseMedia.</text>
-            </column>
-            <column className="p-4 gap-3">
-              <grid columns={2} className="gap-3">
-                <button testId="clipboard-write-sample-image" enabled={!busy.value} onClick={() => run(() => actions.writeSampleImage())} className={primary}>Write sample PNG</button>
-                <button testId="clipboard-choose-image" enabled={!busy.value} onClick={() => run(() => actions.chooseAndWriteImage())} className={secondary}>Choose image</button>
-              </grid>
-              {data.imagePath ? <column className="gap-2">
-                <row className="justify-center">
-                  <image testId="clipboard-image" src={String(data.imagePath)} alt="Image from clipboard" fit="contain" className="w-40 h-40 rounded border border-line-200" />
-                </row>
-                <text className="text-xs text-gray-500 break-all">{String(data.imagePath)}</text>
-              </column> : null}
-            </column>
-          </column>
-          <column className={card}>
-            <column className={heading}>
-              <text className="text-sm font-medium">Inspect</text>
-              <text className="text-xs text-gray-500">Peek types without the payload, read every representation, or clear.</text>
-            </column>
-            <grid columns={3} className="p-4 gap-3">
-              <button testId="clipboard-types" enabled={!busy.value} onClick={() => run(() => actions.peekTypes())} className={neutral}>Types</button>
-              <button testId="clipboard-read-all" enabled={!busy.value} onClick={() => run(() => actions.readAll())} className={primary}>Read</button>
-              <button testId="clipboard-clear" enabled={!busy.value} onClick={() => run(() => actions.clearClipboard())} className={secondary}>Clear</button>
-            </grid>
-          </column>
-        </column>
-      </scroll>
-      <spacer style={{ width: env.insets.right }} />
-    </row>
-    <spacer style={{ height: Math.max(env.insets.bottom, env.keyboard.height) }} />
-  </column>;
+        )}
+      </Section>
+      <Section title="Inspect" description="Peek types without the payload, read every representation, or clear.">
+        <grid className="gap-3 grid-cols-3">
+          <Button variant="secondary" testId="clipboard-types" disabled={busy.value} onClick={() => run(() => actions.peekTypes())}>
+            Types
+          </Button>
+          <Button testId="clipboard-read-all" disabled={busy.value} onClick={() => run(() => actions.readAll())}>
+            Read
+          </Button>
+          <Button variant="destructive" testId="clipboard-clear" disabled={busy.value} onClick={() => run(() => actions.clearClipboard())}>
+            Clear
+          </Button>
+        </grid>
+      </Section>
+    </Page>
+  );
 }

@@ -1,4 +1,4 @@
-import type { LeafProps } from '@lingxia/ui';
+import type { VectorProps } from '@lingxia/ui';
 
 // React showcase paths plus the monochrome ToDo note.
 const paths = {
@@ -17,9 +17,23 @@ const paths = {
   media: ['M5 3L19 12L5 21Z'],
   file: ['M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z', 'M14 2V8H20'],
   location: ['M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z', 'M15 10A3 3 0 1 0 9 10A3 3 0 1 0 15 10Z'],
+  check: ['M5 12l5 5L20 7'],
+  close: ['M6 6L18 18M18 6L6 18'],
+  expand: ['M5 9L12 16L19 9'],
+  send: ['M12 4l8 8H14v8h-4v-8H4l8-8z'],
+  chat: ['M21 12c0 4.6-4 8.3-9 8.3a9.8 9.8 0 0 1-2.6-.3A6 6 0 0 1 5.4 21a4.5 4.5 0 0 0 .5-2.1C3.9 17.3 3 15 3 12c0-4.6 4-8.3 9-8.3s9 3.7 9 8.3z'],
 } as const;
 
+const filled = new Set<IconName>(['success', 'send']);
+
 export type IconName = keyof typeof paths;
-export function Icon({ name, className = 'w-6 h-6 text-gray-400', ...props }: LeafProps & { name: IconName }) {
-  return <vector {...props} className={`shrink-0 ${className}`} paths={paths[name].map(d => ({ d, fill: name === 'success' ? 'currentColor' : 'none', stroke: name === 'success' ? 'none' : 'currentColor', strokeWidth: 1.5 }))} />;
+export function Icon({ name, className = 'w-6 h-6 text-muted-foreground', ...props }: Omit<VectorProps, 'paths'> & { name: IconName }) {
+  const fill = filled.has(name);
+  return (
+    <vector
+      {...props}
+      className={`shrink-0 ${className}`}
+      paths={paths[name].map(d => ({ d, fill: fill ? 'currentColor' : 'none', stroke: fill ? 'none' : 'currentColor', strokeWidth: 1.5 }))}
+    />
+  );
 }
