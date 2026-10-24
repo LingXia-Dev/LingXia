@@ -9,11 +9,14 @@ pub(crate) struct ControlGroups {
     pub(crate) owners: Vec<Option<usize>>,
     /// A digest of each owner's content; gestures cannot survive a changed label.
     pub(crate) content: HashMap<usize, DefaultHasher>,
+    /// Descendant text and image alternatives, in order: the name of an unlabeled control.
+    pub(crate) names: HashMap<usize, String>,
 }
 
 pub(crate) fn control_groups(records: &[Record]) -> Result<ControlGroups, String> {
     let mut button_owners: Vec<Option<usize>> = Vec::with_capacity(records.len());
     let mut button_hashes: HashMap<usize, DefaultHasher> = HashMap::new();
+    let mut names: HashMap<usize, String> = HashMap::new();
     for record in records {
         let owner = record.parent.and_then(|parent| {
             if matches!(records[parent].tag, tag::BUTTON | tag::CHECKBOX) {
@@ -24,6 +27,20 @@ pub(crate) fn control_groups(records: &[Record]) -> Result<ControlGroups, String
         });
         button_owners.push(owner);
         if let Some(owner) = owner {
+            let part = if record.tag == tag::IMAGE {
+                record
+                    .string(crate::protocol::field::IMAGE_ALT)
+                    .unwrap_or("")
+            } else {
+                record.text.as_str()
+            };
+            if !part.trim().is_empty() {
+                let name = names.entry(owner).or_default();
+                if !name.is_empty() {
+                    name.push(' ');
+                }
+                name.push_str(part.trim());
+            }
             // A gesture cannot survive a changed child label or image merely
             // because the outer button's identity and bounds stayed the same.
             let hash = button_hashes.entry(owner).or_default();
@@ -39,5 +56,6 @@ pub(crate) fn control_groups(records: &[Record]) -> Result<ControlGroups, String
     Ok(ControlGroups {
         owners: button_owners,
         content: button_hashes,
+        names,
     })
 }

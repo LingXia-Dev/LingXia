@@ -5,7 +5,7 @@ use super::{Engine, Feature};
 fn evaluate(context: &rong::JSContext, source: &str) -> Result<(), String> {
     context
         .eval::<()>(rong::Source::from_bytes(source))
-        .map_err(|e| e.to_string())
+        .map_err(|e| super::js_error(context, e))
 }
 
 /// JavaScriptCore. Its watchdog is private SPI, so a runaway loop cannot be interrupted.

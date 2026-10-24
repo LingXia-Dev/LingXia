@@ -605,7 +605,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             return hostEnvironment.apply(new JSONObject().put("theme", dark ? "dark" : "light").put("insets", insets)
                 .put("textScale", textScale)
                 .put("keyboard", new JSONObject().put("height", Math.min(surface.getHeight(), Math.max(0, keyboard - trailingY)) / scale))
-                .put("os", "android").put("formFactor", configuration.smallestScreenWidthDp >= 600 ? "tablet" : "phone")
+                .put("os", "android").put("pointer", "coarse").put("formFactor", configuration.smallestScreenWidthDp >= 600 ? "tablet" : "phone")
                 .put("displayLanguage", locale.toLanguageTag()).put("aside", false).put("runner", false)).toString();
         } catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native environment", error); }
     }

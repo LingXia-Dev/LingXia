@@ -131,7 +131,7 @@ impl ViewSession {
             pending_animation: None,
             pressed: None,
             hovered: None,
-            environment: serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":std::env::consts::OS,"formFactor":"phone","aside":false,"displayLanguage":"en","runner":true}),
+            environment: serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":std::env::consts::OS,"formFactor":"phone","aside":false,"displayLanguage":"en","runner":true,"pointer":"coarse"}),
             state: if logic {
                 crate::session::state::StateReplica::default()
             } else {
@@ -185,8 +185,13 @@ impl ViewSession {
     }
 
     /// Native measurements are sampled with the frame; viewport stays renderer-owned.
-    pub fn set_environment(&mut self, value: serde_json::Value) -> Result<(), String> {
+    pub fn set_environment(&mut self, mut value: serde_json::Value) -> Result<(), String> {
+        // Hover styles apply only to fine pointers; adapters that cannot tell report touch.
+        if value.is_object() && value.get("pointer").is_none() {
+            value["pointer"] = serde_json::json!("coarse");
+        }
         let valid = value.is_object()
+            && matches!(value["pointer"].as_str(), Some("fine" | "coarse"))
             && matches!(value["theme"].as_str(), Some("light" | "dark"))
             && ["top", "right", "bottom", "left"].iter().all(|edge| {
                 value["insets"][edge]
@@ -1200,7 +1205,7 @@ impl ViewSession {
         self.execute(|| {
             self.context
                 .eval::<()>(Source::from_bytes(source.as_bytes()))
-                .map_err(|e| e.to_string())
+                .map_err(|e| crate::engine::js_error(&self.context, e))
         })
     }
 

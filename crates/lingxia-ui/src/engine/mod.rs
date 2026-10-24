@@ -81,9 +81,9 @@ pub fn evaluate(
     crate::engine::compatibility::install(&context)?;
     context
         .eval::<()>(Source::from_bytes(module.as_bytes()))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| js_error(&context, e))?;
     let invoke = format!(
-        "__lingxiaDescribe(__lingxiaRender, {{data: Object.freeze({{}}), actions: Object.freeze({{}}), env: Object.freeze({{theme:'light', viewport:{{width:{width},height:{height}}}, insets:{{top:0,right:0,bottom:0,left:0}}, keyboard:{{height:0}}, os:'android', formFactor:'phone', sizeClass:'compact', aside:false, displayLanguage:'en', runner:true}})}})"
+        "__lingxiaDescribe(__lingxiaRender, {{data: Object.freeze({{}}), actions: Object.freeze({{}}), env: Object.freeze({{theme:'light', viewport:{{width:{width},height:{height}}}, insets:{{top:0,right:0,bottom:0,left:0}}, keyboard:{{height:0}}, os:'android', pointer:'coarse', formFactor:'phone', sizeClass:'compact', aside:false, displayLanguage:'en', runner:true}})}})"
     );
     decode_context(&context, &invoke)
 }
@@ -93,6 +93,18 @@ pub(crate) fn decode_context(
     invoke: &str,
 ) -> Result<Vec<crate::protocol::Record>, String> {
     decode_context_timed(context, invoke).map(|(records, _)| records)
+}
+
+/// A JS failure as text. Thrown values keep their own message, which carries
+/// the `UI_*` code and the JSX trace; rong's display of them drops both.
+pub(crate) fn js_error(context: &rong::JSContext, error: rong::RongJSError) -> String {
+    if error.is_thrown() {
+        if let Some(host) = error.into_host_in(context).into_host_error() {
+            return host.message;
+        }
+        return "JavaScript threw a value".into();
+    }
+    error.to_string()
 }
 
 pub(crate) fn decode_context_timed(
@@ -108,7 +120,7 @@ pub(crate) fn decode_context_timed(
     let started = std::time::Instant::now();
     let values: rong::JSArray = context
         .eval(Source::from_bytes(invoke.as_bytes()))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| js_error(context, e))?;
     let eval_us = crate::session::metrics::micros(started);
     let started = std::time::Instant::now();
     let count = values.len().map_err(|e| e.to_string())?;

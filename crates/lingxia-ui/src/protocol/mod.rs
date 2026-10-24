@@ -349,15 +349,9 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
                 return Err("UI_CHILD: leaf node".into());
             }
             if matches!(records[index].tag, tag::BUTTON | tag::CHECKBOX)
-                && (!records[index].text.is_empty()
-                    || records[index]
-                        .string(field::ACCESSIBILITY_LABEL)
-                        .is_none_or(|label| label.trim().is_empty()))
+                && !records[index].text.is_empty()
             {
-                return Err(
-                    "UI_BUTTON: composed button requires an explicit label and no inline text"
-                        .into(),
-                );
+                return Err("UI_BUTTON: a control with children carries no inline text".into());
             }
             let mut ancestor = Some(index);
             while let Some(owner) = ancestor {
@@ -420,7 +414,7 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
             }
             if let Some(options) = options(FIELDS[id].1) {
                 if matches!(id, field::FLEX_DIRECTION | field::DISPLAY)
-                    && !matches!(tag, tag::COLUMN | tag::ROW)
+                    && !matches!(tag, tag::COLUMN | tag::ROW | tag::PAGE)
                 {
                     return Err(
                         "UI_LAYOUT: flex direction/display requires a flex container".into(),
@@ -618,6 +612,7 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
                         | tag::INPUT
                         | tag::TEXTAREA
                         | tag::CHECKBOX
+                        | tag::SWITCH
                         | tag::RADIO
                         | tag::SEARCH
                         | tag::SLIDER
@@ -625,9 +620,10 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
                 ) || pair[1].as_str().is_none_or(|s| {
                     s.len() > 1024
                         || s.contains('\0')
-                        || (matches!(tag, tag::BUTTON | tag::CHECKBOX) && s.trim().is_empty())
+                        || (matches!(tag, tag::BUTTON | tag::CHECKBOX | tag::SWITCH)
+                            && s.trim().is_empty())
                 }) {
-                    return Err("UI_RADIO: invalid accessibility label".into());
+                    return Err("UI_PROP: invalid accessibility label".into());
                 }
             } else if matches!(id, field::CHECKED | field::ON_CHECKED_CHANGE) {
                 if !matches!(tag, tag::CHECKBOX | tag::SWITCH | tag::RADIO_OPTION) {
@@ -1121,6 +1117,10 @@ mod tests {
             0
         ]);
         assert_eq!(decode(valid.as_array().unwrap()).unwrap().len(), 3);
+        let unlabeled = json!([
+            3, -1, "", "button", "", 1, 8, 1, 0, 0, "", "", "", 0, 2, 8, "", "", "Inbox", 0
+        ]);
+        assert_eq!(decode(unlabeled.as_array().unwrap()).unwrap().len(), 3);
         for tag in [3, 5, 6, 8, 9, 10, 11, 12, 14, 15, 18] {
             let mut invalid = valid.clone();
             invalid[16] = json!(tag);

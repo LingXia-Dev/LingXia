@@ -111,6 +111,26 @@ fn flex_wrap_reflows_items_with_gaps_and_reverse_order() {
     }
 }
 #[test]
+fn unlabeled_composed_controls_are_named_by_their_descendant_text() {
+    let module = crate::session::tests::source(
+        "function render(){return h('column',{},h('button',{testId:'open',onClick(){}},h('image',{src:'icon',alt:'Mail',style:{width:16,height:16}}),h('column',{},h('text',{},'Inbox'),' 3 unread ')),h('button',{testId:'labeled',accessibilityLabel:'Compose'},h('text',{},'New')),h('switch',{testId:'sync',accessibilityLabel:'Sync mail',value:true},'Sync'))}",
+    );
+    let mut page = crate::ViewSession::new(&module).unwrap();
+    let layout = page.layout(300, 200, 1.0).unwrap();
+    let name = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.test_id == id)
+            .unwrap()
+            .text
+            .clone()
+    };
+    assert_eq!(name("open"), "Mail Inbox 3 unread");
+    assert_eq!(name("labeled"), "Compose");
+    assert_eq!(name("sync"), "Sync mail");
+}
+#[test]
 fn composed_button_lays_out_content_and_groups_semantics_at_each_scale() {
     for scale in [1.0, 2.0] {
         let module = crate::session::tests::source(

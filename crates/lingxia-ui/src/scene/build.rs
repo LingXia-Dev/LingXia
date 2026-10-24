@@ -715,9 +715,10 @@ impl Renderer {
                 tag: crate::protocol::TAGS[record.tag],
                 test_id: record.test_id.clone(),
                 // Semantics read the authored text; transforms and truncation are paint-only.
-                text: if matches!(record.tag, tag::BUTTON | tag::CHECKBOX) {
+                text: if matches!(record.tag, tag::BUTTON | tag::CHECKBOX | tag::SWITCH) {
                     record
                         .string(field::ACCESSIBILITY_LABEL)
+                        .or_else(|| groups.names.get(&index).map(String::as_str))
                         .unwrap_or(&record.text)
                         .to_owned()
                 } else if matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
