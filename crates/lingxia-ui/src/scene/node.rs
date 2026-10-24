@@ -154,7 +154,7 @@ impl ClipSnapshot {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ScrollAxis {
     Horizontal,

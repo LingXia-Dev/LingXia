@@ -1,5 +1,6 @@
 use crate::protocol::field;
 pub mod app;
+pub mod controller;
 pub mod image_requests;
 pub(crate) mod input_protocol;
 pub mod lifecycle;
@@ -185,11 +186,11 @@ impl ViewSession {
             && ["top", "right", "bottom", "left"].iter().all(|edge| {
                 value["insets"][edge]
                     .as_f64()
-                    .is_some_and(|n| n.is_finite() && n >= 0.0 && n <= 16384.0)
+                    .is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))
             })
             && value["keyboard"]["height"]
                 .as_f64()
-                .is_some_and(|n| n.is_finite() && n >= 0.0 && n <= 16384.0)
+                .is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))
             && ["os", "formFactor", "displayLanguage"].iter().all(|key| {
                 value[key]
                     .as_str()
@@ -643,54 +644,55 @@ impl ViewSession {
             return Err("UI_VIEWPORT: invalid dimensions".into());
         }
         let mut window_only = None;
-        if !rebuild && !self.input_dirty && self.viewport == Some((width, height, scale)) {
-            if let Some(retained) = &self.retained {
-                if let Some(records) = &self.input_records {
-                    animation.validate(records)?;
-                }
+        if !rebuild
+            && !self.input_dirty
+            && self.viewport == Some((width, height, scale))
+            && let Some(retained) = &self.retained
+        {
+            if let Some(records) = &self.input_records {
+                animation.validate(records)?;
+            }
+            let started = std::time::Instant::now();
+            let mut display = retained.compose(&offsets)?;
+            metrics.compose_us += crate::session::metrics::micros(started);
+            window_only = crate::layout::list_layout::scroll_windows(&display, &self.lists)?;
+            if window_only.is_none() {
                 let started = std::time::Instant::now();
-                let mut display = retained.compose(&offsets)?;
+                display = animation
+                    .compose(
+                        self.input_records.as_deref().unwrap_or_default(),
+                        display,
+                        &offsets,
+                    )?
+                    .0;
                 metrics.compose_us += crate::session::metrics::micros(started);
-                window_only = crate::layout::list_layout::scroll_windows(&display, &self.lists)?;
-                if window_only.is_none() {
+                let applied = applied_offsets(&display);
+                let wanted = display.image_sources().map(str::to_owned).collect();
+                display.bind_images(&self.images)?;
+                let mut inputs = self.inputs.clone();
+                let old_focus = inputs.focused().map(str::to_owned);
+                inputs.decorate(&mut display, &mut self.renderer)?;
+                let changed_style = old_focus.as_deref() != inputs.focused()
+                    && self.input_records.as_ref().is_some_and(|records| {
+                        records
+                            .iter()
+                            .any(|r| r.string(field::FOCUS_STYLE).is_some())
+                    });
+                if !changed_style {
+                    let input_dirty = inputs.needs_layout(&display);
+                    let input_hits = crate::interaction::input_hits::InputHitMap::capture(&display);
+                    metrics.nodes = display.nodes.len();
+                    metrics.paints = display.paint_count();
                     let started = std::time::Instant::now();
-                    display = animation
-                        .compose(
-                            self.input_records.as_deref().unwrap_or_default(),
-                            display,
-                            &offsets,
-                        )?
-                        .0;
-                    metrics.compose_us += crate::session::metrics::micros(started);
-                    let applied = applied_offsets(&display);
-                    let wanted = display.image_sources().map(str::to_owned).collect();
-                    display.bind_images(&self.images)?;
-                    let mut inputs = self.inputs.clone();
-                    let old_focus = inputs.focused().map(str::to_owned);
-                    inputs.decorate(&mut display, &mut self.renderer)?;
-                    let changed_style = old_focus.as_deref() != inputs.focused()
-                        && self.input_records.as_ref().is_some_and(|records| {
-                            records
-                                .iter()
-                                .any(|r| r.string(field::FOCUS_STYLE).is_some())
-                        });
-                    if !changed_style {
-                        let input_dirty = inputs.needs_layout(&display);
-                        let input_hits =
-                            crate::interaction::input_hits::InputHitMap::capture(&display);
-                        metrics.nodes = display.nodes.len();
-                        metrics.paints = display.paint_count();
-                        let started = std::time::Instant::now();
-                        let frame = build(display)?;
-                        metrics.build_us += crate::session::metrics::micros(started);
-                        self.input_hits = Some(input_hits);
-                        self.inputs = inputs;
-                        self.input_dirty = input_dirty;
-                        self.commit_images(wanted);
-                        self.scroll_offsets = applied;
-                        self.advance();
-                        return Ok(frame);
-                    }
+                    let frame = build(display)?;
+                    metrics.build_us += crate::session::metrics::micros(started);
+                    self.input_hits = Some(input_hits);
+                    self.inputs = inputs;
+                    self.input_dirty = input_dirty;
+                    self.commit_images(wanted);
+                    self.scroll_offsets = applied;
+                    self.advance();
+                    return Ok(frame);
                 }
             }
         }
@@ -1231,6 +1233,9 @@ fn applied_offsets(display: &DisplayList) -> HashMap<String, f32> {
 #[cfg(test)]
 #[path = "tests/animation.rs"]
 mod animation_tests;
+#[cfg(test)]
+#[path = "tests/controller.rs"]
+mod controller_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {

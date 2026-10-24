@@ -125,6 +125,10 @@ impl ImageRequests {
         batch
     }
 
+    pub fn inflight_tokens(&self) -> Vec<u64> {
+        self.inflight.keys().copied().collect()
+    }
+
     pub fn current(&self, token: u64) -> bool {
         self.current_source(token).is_some()
     }

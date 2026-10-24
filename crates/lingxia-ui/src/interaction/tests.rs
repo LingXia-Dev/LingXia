@@ -152,7 +152,7 @@ fn search_keeps_icon_fixed_while_text_selection_and_caret_scroll() {
             let offset = (y * 180 + x) * 4;
             let before = &baseline.data_as_u8_slice()[offset..offset + 4];
             assert_eq!(before, &pixels.data_as_u8_slice()[offset..offset + 4]);
-            if x >= 12 && x < 36 && y >= 12 && y < 36 && before != [255, 255, 255, 255] {
+            if (12..36).contains(&x) && (12..36).contains(&y) && before != [255, 255, 255, 255] {
                 ink += 1;
             }
         }
@@ -721,15 +721,14 @@ fn long_inputs_reveal_selection_focus_without_resetting_the_viewport() {
             caret[1] >= 12.0 && caret[1] + caret[3] <= 88.01,
             "{caret:?}"
         );
-        let old_glyph = first
+        let old_glyph = *first
             .commands
             .iter()
             .find_map(|p| match p {
                 Paint::Text { glyphs, .. } => glyphs.first(),
                 _ => None,
             })
-            .unwrap()
-            .clone();
+            .unwrap();
         // Selecting toward the beginning must reveal the focus, not the anchor.
         let end = input.edit.as_ref().unwrap().selection[1];
         page.edit_input(

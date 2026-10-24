@@ -227,15 +227,15 @@ impl Renderer {
                     radius,
                 });
             }
-            if let Some(source) = record.string(field::BACKGROUND_GRADIENT) {
-                if let Some(gradient) = crate::scene::gradient::LinearGradient::parse(source)? {
-                    commands.push(Paint::Gradient {
-                        corners,
-                        gradient: Arc::new(gradient),
-                        bounds: [x, y, layout.size.width, layout.size.height],
-                        radius,
-                    });
-                }
+            if let Some(source) = record.string(field::BACKGROUND_GRADIENT)
+                && let Some(gradient) = crate::scene::gradient::LinearGradient::parse(source)?
+            {
+                commands.push(Paint::Gradient {
+                    corners,
+                    gradient: Arc::new(gradient),
+                    bounds: [x, y, layout.size.width, layout.size.height],
+                    radius,
+                });
             }
             if border.is_some() {
                 let tint = record

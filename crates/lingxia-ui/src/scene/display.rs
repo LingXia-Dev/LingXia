@@ -164,8 +164,8 @@ impl DisplayList {
                     layout.height() + shaped.text_offset_y,
                 ),
             ];
-            for axis in 0..2 {
-                origin[axis] -= input.scroll_offset[axis];
+            for (origin, offset) in origin.iter_mut().zip(input.scroll_offset) {
+                *origin -= offset;
             }
             for paint in &mut self.commands[range.clone()] {
                 if let Paint::Text { glyphs, ink, .. } = paint {

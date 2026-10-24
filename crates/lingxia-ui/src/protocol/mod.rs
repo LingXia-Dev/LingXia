@@ -216,7 +216,7 @@ pub(crate) fn focus_style(value: &Value) -> Result<Vec<(usize, Value)>, String> 
     let pairs: Vec<Value> =
         serde_json::from_str(text).map_err(|_| "UI_STYLE: invalid focus style")?;
     if pairs.len() > 14
-        || pairs.len() % 2 != 0
+        || !pairs.len().is_multiple_of(2)
         || pairs.chunks_exact(2).any(|p| {
             p[0].as_u64()
                 .is_none_or(|id| !FOCUS_PAINT_FIELDS.contains(&(id as usize)))

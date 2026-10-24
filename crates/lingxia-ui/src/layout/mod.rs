@@ -229,52 +229,52 @@ impl Renderer {
                         }
                     },
                 );
-                if let Some(index) = index.filter(|_| needs_baselines) {
-                    if let Some(text) = layouts[index].as_mut() {
-                        let record = &records[index];
-                        let padding = style
-                            .padding
-                            .resolve_or_zero(inputs.parent_size.width, &|_, _| 0.0);
-                        let border = style
-                            .border
-                            .resolve_or_zero(inputs.parent_size.width, &|_, _| 0.0);
-                        let top = padding.top + border.top;
-                        let bottom = padding.bottom + border.bottom;
-                        // Known dimensions can bypass measurement. Reflow against
-                        // the final content width so the reported baseline matches paint.
-                        let started = std::time::Instant::now();
-                        text.break_all_lines(if matches!(record.tag, tag::INPUT | tag::SEARCH) {
-                            None
-                        } else {
-                            Some(
-                                (output.size.width
-                                    - padding.left
-                                    - padding.right
-                                    - border.left
-                                    - border.right
-                                    - check_reserve(record.tag))
-                                .max(0.0),
-                            )
-                        });
-                        self.text_time += started.elapsed();
-                        let label_y = if matches!(
-                            record.tag,
-                            tag::BUTTON
-                                | tag::INPUT
-                                | tag::CHECKBOX
-                                | tag::SWITCH
-                                | tag::RADIO_OPTION
-                                | tag::SEARCH
-                        ) {
-                            ((output.size.height - top - bottom - text.height()) / 2.0).max(0.0)
-                        } else {
-                            0.0
-                        };
-                        output.baselines.first = text
-                            .lines()
-                            .next()
-                            .map(|line| top + label_y + line.metrics().baseline);
-                    }
+                if let Some(index) = index.filter(|_| needs_baselines)
+                    && let Some(text) = layouts[index].as_mut()
+                {
+                    let record = &records[index];
+                    let padding = style
+                        .padding
+                        .resolve_or_zero(inputs.parent_size.width, |_, _| 0.0);
+                    let border = style
+                        .border
+                        .resolve_or_zero(inputs.parent_size.width, |_, _| 0.0);
+                    let top = padding.top + border.top;
+                    let bottom = padding.bottom + border.bottom;
+                    // Known dimensions can bypass measurement. Reflow against
+                    // the final content width so the reported baseline matches paint.
+                    let started = std::time::Instant::now();
+                    text.break_all_lines(if matches!(record.tag, tag::INPUT | tag::SEARCH) {
+                        None
+                    } else {
+                        Some(
+                            (output.size.width
+                                - padding.left
+                                - padding.right
+                                - border.left
+                                - border.right
+                                - check_reserve(record.tag))
+                            .max(0.0),
+                        )
+                    });
+                    self.text_time += started.elapsed();
+                    let label_y = if matches!(
+                        record.tag,
+                        tag::BUTTON
+                            | tag::INPUT
+                            | tag::CHECKBOX
+                            | tag::SWITCH
+                            | tag::RADIO_OPTION
+                            | tag::SEARCH
+                    ) {
+                        ((output.size.height - top - bottom - text.height()) / 2.0).max(0.0)
+                    } else {
+                        0.0
+                    };
+                    output.baselines.first = text
+                        .lines()
+                        .next()
+                        .map(|line| top + label_y + line.metrics().baseline);
                 }
                 output
             },

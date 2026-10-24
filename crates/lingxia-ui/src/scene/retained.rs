@@ -108,10 +108,10 @@ impl RetainedLayout {
                 scroll.on_reach_start = handle(17);
                 scroll.on_reach_end = handle(18);
             }
-            if let Some(range) = &mut node.range {
-                if range.on_change.is_some() {
-                    range.on_change = handle(46);
-                }
+            if let Some(range) = &mut node.range
+                && range.on_change.is_some()
+            {
+                range.on_change = handle(46);
             }
             if let Some(plot) = &mut node.plot {
                 plot.on_select = handle(56);

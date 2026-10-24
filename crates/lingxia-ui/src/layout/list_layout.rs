@@ -168,29 +168,27 @@ pub(crate) fn reconcile(
         let measured = state.metrics.measure(&rows, position, viewport)?;
         let mut target = scroll.offset + (measured - original_position) as f32;
         let next_anchor = record.string(field::LIST_ANCHOR).map(str::to_owned);
-        if next_anchor != state.anchor {
-            if let Some(encoded) = &next_anchor {
-                let value: serde_json::Value =
-                    serde_json::from_str(encoded).map_err(|_| "UI_LIST: invalid anchor")?;
-                if value == "end" {
-                    target = (state.metrics.total() + (padding + bottom) as f64
-                        - node.bounds[3] as f64)
-                        .max(0.0) as f32;
+        if next_anchor != state.anchor
+            && let Some(encoded) = &next_anchor
+        {
+            let value: serde_json::Value =
+                serde_json::from_str(encoded).map_err(|_| "UI_LIST: invalid anchor")?;
+            if value == "end" {
+                target = (state.metrics.total() + (padding + bottom) as f64 - node.bounds[3] as f64)
+                    .max(0.0) as f32;
+            } else {
+                let row = value["index"]
+                    .as_u64()
+                    .ok_or("UI_LIST: invalid anchor index")? as usize;
+                let align = if value["align"] == "end" {
+                    Align::End
                 } else {
-                    let row = value["index"]
-                        .as_u64()
-                        .ok_or("UI_LIST: invalid anchor index")?
-                        as usize;
-                    let align = if value["align"] == "end" {
-                        Align::End
-                    } else {
-                        Align::Start
-                    };
-                    target = state.metrics.anchor_offset(
-                        Anchor::Row { index: row, align },
-                        scroll.content_size[1] as f64,
-                    )? as f32;
-                }
+                    Align::Start
+                };
+                target = state.metrics.anchor_offset(
+                    Anchor::Row { index: row, align },
+                    scroll.content_size[1] as f64,
+                )? as f32;
             }
         }
         state.next_anchor = next_anchor;
