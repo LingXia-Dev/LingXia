@@ -29,7 +29,7 @@ pub(super) fn write_root_manifest(project: &Project) -> Result<()> {
                 .map(|page| {
                     (
                         crate::lxapp::framework::page_base(page),
-                        crate::lxapp::framework::compiled_page_path(page),
+                        crate::lxapp::framework::compiled_page_path(&project.root, page),
                     )
                 })
                 .collect::<std::collections::HashMap<_, _>>();
@@ -106,10 +106,6 @@ fn rewrite_page_value(
     page.as_object_mut()
         .ok_or_else(|| anyhow!("lxapp.json pages entries must be objects with name/path"))?
         .insert("path".to_string(), Value::String(resolved.clone()));
-    if resolved.ends_with(".ui.js") {
-        page["renderer"] = "gpu".into();
-        page["module"] = resolved.clone().into();
-    }
     Ok(())
 }
 

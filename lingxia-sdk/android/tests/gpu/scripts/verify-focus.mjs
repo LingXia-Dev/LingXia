@@ -3,7 +3,7 @@ import {readFile,writeFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const adb=process.env.ADB ?? 'adb',serial=process.argv[2] ?? process.env.ANDROID_SERIAL,pkg='com.lingxia.example.gpu.dev';
 assert.ok(serial, 'Pass the device serial or set ANDROID_SERIAL.');
-const file='examples/lingxia-showcase-gpu/lxapp/pages/home/index.ui.tsx',original=await readFile(file,'utf8');
+const file='examples/lingxia-showcase-gpu/lxapp/pages/home/index.tsx',original=await readFile(file,'utf8');
 const probe=`import {useLocal,type View} from '@lingxia/ui';
 export function render({env}:View){const count=useLocal('count',0),trap=useLocal('trap',0);return <column style={{background:'#FFFFFF',padding:20,gap:12}}><spacer style={{height:env.insets.top}}/><text testId="focus-count" style={{color:'#000000'}}>{String(count.value)}</text><text testId="focus-trap" style={{color:'#000000'}}>{String(trap.value)}</text>{count.value>0&&<button key="other" testId="focus-other" onClick={()=>trap.set(trap.value+1)} style={{height:60,background:'#D03030'}}>Other action</button>}{count.value<3&&<button key="target" testId="focus-target" onClick={()=>count.set(count.value+1)} style={{height:70,background:'#2458DA',radius:14}}>{'Target '+count.value}</button>}</column>}
 `;

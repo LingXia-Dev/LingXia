@@ -2,7 +2,7 @@ import { PageContent, contentBounds } from '../../shared/components/page';
 import { useLocal, useStream, type View, type Stream, type ReadonlyData } from '@lingxia/ui';
 import '../../theme/index.css';
 import type { ChatChunk, ChartData, SendMessage, StreamPageData } from '../../shared/stream-types';
-import { Chart } from '../../shared/chart.ui';
+import { Chart } from '../../shared/chart';
 
 type Actions = {
   goBack(): Promise<void>;

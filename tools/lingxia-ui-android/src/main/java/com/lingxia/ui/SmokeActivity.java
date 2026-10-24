@@ -62,10 +62,10 @@ public final class SmokeActivity extends Activity {
             JSONObject manifest = new JSONObject(asset("lxapp.json"));
             if (manifest.optBoolean("logic", true)) throw new IllegalArgumentException("Harness requires logic: false");
             String path = manifest.getJSONArray("pages").getJSONObject(0).getString("path");
-            if (path.endsWith(".ui.js")) path = path.substring(0, path.length() - 6);
+            if (path.endsWith(".js")) path = path.substring(0, path.length() - 3);
             if (!path.matches("pages/[a-zA-Z0-9_/-]+")) throw new IllegalArgumentException("Invalid page path");
             if (!new JSONObject(asset(path + ".json")).getString("renderer").equals("gpu")) throw new IllegalArgumentException("Expected GPU page");
-            String source = asset(path + ".ui.js");
+            String source = asset(path + ".js");
             pages = new GpuView[multiple ? 2 : 1];
             for (int index = 0; index < pages.length; index++) {
                 final int page = index;

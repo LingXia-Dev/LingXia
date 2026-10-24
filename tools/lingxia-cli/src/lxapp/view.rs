@@ -88,7 +88,7 @@ pub fn build(
 ) -> Result<ViewBuildReport> {
     let mut web = project.clone();
     web.pages
-        .retain(|page| !crate::lxapp::framework::is_gpu_page(page));
+        .retain(|page| !crate::lxapp::framework::is_gpu_page(&project.root, page));
     fs::create_dir_all(&project.output_dir)?;
     vite_assets::copy_static_assets(project, options)?;
     vite_assets::write_root_manifest(project)?;
@@ -118,7 +118,7 @@ pub fn prepare_tooling(
 ) -> Result<Option<Duration>> {
     let mut web = project.clone();
     web.pages
-        .retain(|page| !crate::lxapp::framework::is_gpu_page(page));
+        .retain(|page| !crate::lxapp::framework::is_gpu_page(&project.root, page));
     if web.pages.is_empty() {
         Ok(None)
     } else {

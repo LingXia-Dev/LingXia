@@ -1255,7 +1255,7 @@ fn normalize_page_path(path: &str) -> &str {
 
 /// Strip view extensions from path for comparison
 fn strip_extension(path: &str) -> &str {
-    for ext in [".ui.tsx", ".ui.js", ".tsx", ".jsx"] {
+    for ext in [".tsx", ".jsx", ".js"] {
         if let Some(p) = path.strip_suffix(ext) {
             return p;
         }
@@ -1311,25 +1311,25 @@ mod tests {
     use crate::NavigationType;
 
     #[test]
-    fn gpu_routes_resolve_compiled_and_source_paths_without_ambiguous_aliases() {
-        let pages = vec!["pages/home/index.ui.js".to_string()];
+    fn compiled_routes_resolve_from_source_and_extensionless_paths() {
+        let pages = vec!["pages/home/index.js".to_string()];
         for path in [
             "pages/home/index",
-            "/pages/home/index.ui.js",
-            "pages/home/index.ui.tsx",
+            "/pages/home/index.js",
+            "pages/home/index.tsx",
         ] {
             assert_eq!(
                 find_matching_page_path(&pages, path),
-                Some("pages/home/index.ui.js")
+                Some("pages/home/index.js")
             );
         }
         let pages = vec![
             "pages/home/index.tsx".to_string(),
-            "pages/home/index.ui.js".to_string(),
+            "pages/home/index.js".to_string(),
         ];
         assert_eq!(
-            find_matching_page_path(&pages, "pages/home/index.ui.js"),
-            Some("pages/home/index.ui.js")
+            find_matching_page_path(&pages, "pages/home/index.js"),
+            Some("pages/home/index.js")
         );
         assert_eq!(find_matching_page_path(&pages, "pages/home/index"), None);
     }

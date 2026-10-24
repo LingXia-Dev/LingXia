@@ -28,14 +28,12 @@ fn harden_javascript_source(path: &Path, source: &str) -> Result<String> {
     let output = minify_javascript_with_source_type(&allocator, path, source, source_type(path)?)?;
     // The native UI loader reads this declaration before executing the module.
     // Ordinary comments can be stripped; this one is part of the artifact ABI.
-    if path.to_string_lossy().ends_with(".ui.js") {
-        if let Some(header) = source
-            .lines()
-            .next()
-            .filter(|line| line.starts_with("// LingXia UI module; "))
-        {
-            return Ok(format!("{header}\n{output}"));
-        }
+    if let Some(header) = source
+        .lines()
+        .next()
+        .filter(|line| line.starts_with(crate::lxapp::framework::UI_MODULE_HEADER))
+    {
+        return Ok(format!("{header}\n{output}"));
     }
     Ok(output)
 }
@@ -581,18 +579,18 @@ mod tests {
         let header = r#"// LingXia UI module; {"uiAbi":1,"minField":102,"requiredFeatures":["bounded-jobs"],"compiler":"0.25.1"}"#;
         let source =
             format!("{header}\n// discard this comment\nexport function render() {{ return 1; }}");
-        let output =
-            harden_javascript_source(Path::new("pages/home/index.ui.js"), &source).unwrap();
+        let output = harden_javascript_source(Path::new("pages/home/index.js"), &source).unwrap();
         assert_eq!(output.lines().next(), Some(header));
         assert!(!output.contains("discard this comment"));
         assert_eq!(
-            harden_javascript_source(Path::new("pages/home/index.ui.js"), &output).unwrap(),
+            harden_javascript_source(Path::new("pages/home/index.js"), &output).unwrap(),
             output
         );
+        let plain = "// ordinary comment\nexport const logic = 1;";
         assert!(
-            !harden_javascript_source(Path::new("logic.js"), &source)
+            !harden_javascript_source(Path::new("logic.js"), plain)
                 .unwrap()
-                .contains(header)
+                .contains("comment")
         );
     }
 

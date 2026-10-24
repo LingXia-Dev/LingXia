@@ -112,7 +112,7 @@ public class GpuProductContractTest {
         // The launcher may hand off to the lxapp activity while the host boots.
         await(()->main(()->{for(Activity a:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)){activity.set(a);return true;}return false;}));
         String source;
-        try(java.io.InputStream stream=instrumentation.getContext().getAssets().open("pages/home/index.ui.js")){
+        try(java.io.InputStream stream=instrumentation.getContext().getAssets().open("pages/home/index.js")){
             ByteArrayOutputStream bytes=new ByteArrayOutputStream();byte[] chunk=new byte[8192];int n;
             while((n=stream.read(chunk))!=-1)bytes.write(chunk,0,n);source=bytes.toString("UTF-8");
         }

@@ -6,7 +6,7 @@ pub(super) fn build(project: &Project) -> Result<()> {
     let pages: Vec<&str> = project
         .pages
         .iter()
-        .filter(|page| is_gpu_page(page))
+        .filter(|page| is_gpu_page(&project.root, page))
         .map(String::as_str)
         .collect();
     if pages.is_empty() {

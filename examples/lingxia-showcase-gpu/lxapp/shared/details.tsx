@@ -1,5 +1,5 @@
 import { type Env } from '@lingxia/ui';
-import { colors } from './screen.ui';
+import { colors } from './screen';
 
 export function Details({ value, testId, env }: { value: unknown; testId: string; env: Env }) {
   const c = colors(env);

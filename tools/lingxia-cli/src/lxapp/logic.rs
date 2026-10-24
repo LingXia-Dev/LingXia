@@ -480,11 +480,11 @@ fn discover_page_logic_entries(project: &Project) -> Result<Vec<(PathBuf, String
             }
             (true, false) => entries.push((
                 ts_path,
-                crate::lxapp::framework::compiled_page_path(page_path),
+                crate::lxapp::framework::compiled_page_path(&project.root, page_path),
             )),
             (false, true) => entries.push((
                 js_path,
-                crate::lxapp::framework::compiled_page_path(page_path),
+                crate::lxapp::framework::compiled_page_path(&project.root, page_path),
             )),
             (false, false) => {}
         }

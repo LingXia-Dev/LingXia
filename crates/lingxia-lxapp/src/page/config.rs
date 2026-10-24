@@ -273,17 +273,6 @@ impl PageConfig {
             Err(LxAppError::ResourceNotFound(_)) => Ok(Self::default()),
             Err(error) => Err(error),
         }?;
-        let catalog = lxapp.config();
-        if let Some(entry) = catalog
-            .pages
-            .iter()
-            .find(|entry| entry.path == path.trim_start_matches('/'))
-            && entry.renderer != config.renderer
-        {
-            return Err(LxAppError::InvalidJsonFile(format!(
-                "{json_path}: renderer must match the lxapp.json page entry"
-            )));
-        }
         Ok(config)
     }
 
@@ -321,12 +310,6 @@ fn path_to_json_path(path: &str) -> String {
         return "pages/index/index.json".to_string();
     }
 
-    // UI modules have a composite extension; their config remains index.json.
-    for extension in [".ui.js", ".ui.tsx"] {
-        if let Some(base) = trimmed.strip_suffix(extension) {
-            return format!("{base}.json");
-        }
-    }
     // Remove any extension on the last path segment
     if let Some(dot_pos) = trimmed.rfind('.') {
         let last_slash = trimmed.rfind('/');
@@ -343,13 +326,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn renderer_and_composite_module_config_paths() {
+    fn renderer_comes_from_the_page_config_beside_any_module() {
         assert_eq!(
-            path_to_json_path("/pages/home/index.ui.js"),
-            "pages/home/index.json"
-        );
-        assert_eq!(
-            path_to_json_path("pages/home/index.ui.tsx"),
+            path_to_json_path("/pages/home/index.js"),
             "pages/home/index.json"
         );
         assert_eq!(

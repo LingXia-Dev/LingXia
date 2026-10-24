@@ -22,7 +22,7 @@ async function project(files, run) {
   } finally { await rm(root, { recursive: true, force: true }); }
 }
 async function load(root, name = 'page') {
-  const source = await readFile(join(root, `dist/${name}.ui.js`), 'utf8');
+  const source = await readFile(join(root, `dist/${name}.js`), 'utf8');
   await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
   return source;
 }
@@ -106,7 +106,7 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
       /^page.tsx:4:\d+: UI_CLASS_ELEMENT: active:bg-red-500 needs a control; <column> is never pressed$/,
       /^page.tsx:4:\d+: UI_CLASS_ELEMENT: hover:p-4: hover styles change paint only, not paddingTop, paddingRight, paddingBottom, paddingLeft$/,
     ]) assert.ok(lines.some(line => pattern.test(line)), `${pattern} in\n${error.message}`);
-    await assert.rejects(readFile(join(root, 'dist/page.ui.js')), { code: 'ENOENT' });
+    await assert.rejects(readFile(join(root, 'dist/page.js')), { code: 'ENOENT' });
   });
 });
 
@@ -181,7 +181,7 @@ test('compiled transparent and empty components follow the public children contr
 test('page builds reject animation utilities before installing a module', async () => {
   await project({ 'page.tsx': 'export function render(){return <column className="animate-pulse"><text>Pending</text></column>;}' }, async (root, build) => {
     await assert.rejects(build(), /UI_ANIMATION: native presentation scheduling is not connected/);
-    await assert.rejects(readFile(join(root, 'dist/page.ui.js')), { code: 'ENOENT' });
+    await assert.rejects(readFile(join(root, 'dist/page.js')), { code: 'ENOENT' });
     await writeFile(join(root, 'tokens.css'), '@theme {--animate-enter:enter 1s;@keyframes enter{from{opacity:0}to{opacity:1}}}');
     await writeFile(join(root, 'page.tsx'), 'import "./tokens.css";export function render(){return <column className="animate-enter"/>;}');
     await assert.rejects(build(), /UI_ANIMATION/);

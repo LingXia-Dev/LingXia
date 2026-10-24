@@ -1,7 +1,7 @@
 //! Recognizing a built lxapp bundle. `lingxia dev` may be run inside a dist
 //! directory; the build output identifies itself: page entries in the
-//! transformed `lxapp.json` resolve to compiled HTML documents (a source
-//! `.tsx` page can never be one), and an explicitly named logic
+//! transformed `lxapp.json` resolve to compiled HTML documents or headed GPU
+//! modules (a source `.tsx` page can never be either), and an explicitly named logic
 //! bundle is present. No extra state files are involved.
 
 use serde_json::Value;
@@ -30,15 +30,18 @@ pub(crate) fn is_built_bundle_dir(dir: &Path) -> bool {
             page.get("path")
                 .and_then(|path| path.as_str())
                 .is_some_and(|path| {
-                    if path.ends_with(".ui.js") {
-                        page.get("renderer").and_then(Value::as_str) == Some("gpu")
-                            && page.get("module").and_then(Value::as_str) == Some(path)
-                            && dir.join(path).is_file()
+                    if crate::lxapp::framework::is_gpu_page(dir, path) {
+                        is_ui_module(&dir.join(path))
                     } else {
                         is_built_page(&dir.join(path), path)
                     }
                 })
         })
+}
+
+fn is_ui_module(file: &Path) -> bool {
+    read_head(file)
+        .is_some_and(|head| head.starts_with(crate::lxapp::framework::UI_MODULE_HEADER.as_bytes()))
 }
 
 fn is_built_page(file: &Path, manifest_path: &str) -> bool {
@@ -73,17 +76,31 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn recognizes_minified_gpu_module_only_with_renderer_metadata() {
+    fn recognizes_a_compiled_gpu_module_by_its_page_config_and_header() {
         let temp = tempfile::tempdir().unwrap();
+        fs::write(temp.path().join("home.json"), r#"{"renderer":"gpu"}"#).unwrap();
+        fs::write(temp.path().join("home.tsx"), "export function render(){}").unwrap();
+        write_manifest(temp.path(), &[("home", "home.tsx")], None);
+        assert!(
+            !is_built_bundle_dir(temp.path()),
+            "a TSX source is not a module"
+        );
         fs::write(
-            temp.path().join("home.ui.js"),
+            temp.path().join("home.js"),
             "function r(){}export{r as render}",
         )
         .unwrap();
-        fs::write(temp.path().join("lxapp.json"), r#"{"logic":false,"pages":[{"name":"home","path":"home.ui.js","renderer":"gpu","module":"home.ui.js"}]}"#).unwrap();
+        write_manifest(temp.path(), &[("home", "home.js")], None);
+        assert!(
+            !is_built_bundle_dir(temp.path()),
+            "a module without the header is not compiled"
+        );
+        fs::write(
+            temp.path().join("home.js"),
+            "// LingXia UI module; {}\nfunction r(){}export{r as render}",
+        )
+        .unwrap();
         assert!(is_built_bundle_dir(temp.path()));
-        write_manifest(temp.path(), &[("home", "home.ui.js")], None);
-        assert!(!is_built_bundle_dir(temp.path()));
     }
 
     fn write_manifest(dir: &Path, pages: &[(&str, &str)], logic: Option<&str>) {

@@ -77,7 +77,7 @@ fn evaluate(context: &rong::JSContext, source: &str) -> Result<(), String> {
             ctx,
             code.as_ptr().cast(),
             source.len(),
-            c"page.ui.js".as_ptr(),
+            c"page.js".as_ptr(),
             qjs::JS_EVAL_TYPE_MODULE as i32,
         );
         let error = if qjs::QJS_IsException(ctx, result) {

@@ -2887,11 +2887,10 @@ impl LxApp {
     }
 
     pub(crate) fn read_gpu_module(&self, path: &str) -> Result<String, LxAppError> {
-        let listed = self.config().pages.iter().any(|entry| {
-            entry.path == path
-                && entry.renderer == crate::PageRenderer::Gpu
-                && entry.module.as_deref() == Some(path)
-        });
+        // The page config is the only declaration that a route renders natively.
+        let listed = self.config().pages.iter().any(|entry| entry.path == path)
+            && crate::page::config::PageConfig::from_json(self, path)
+                .is_ok_and(|config| config.renderer == crate::PageRenderer::Gpu);
         if !listed {
             return Err(LxAppError::ResourceNotFound(format!(
                 "GPU module is not in the page catalog: {path}"
@@ -5105,14 +5104,15 @@ mod manifest_reload_tests {
             &appid,
             &r#"{
             "appId":"APPID", "version":"1.0.0", "logic":false,
-            "pages":[{"name":"home","path":"pages/home/index.ui.js","renderer":"gpu","module":"pages/home/index.ui.js"}]
-        }"#.replace("\"logic\":false", &format!("\"logic\":{logic}")),
+            "pages":[{"name":"home","path":"pages/home/index.js"}]
+        }"#
+            .replace("\"logic\":false", &format!("\"logic\":{logic}")),
         );
         let directory = temp.path().join("pages/home");
         std::fs::create_dir_all(&directory).unwrap();
         std::fs::write(directory.join("index.json"), r#"{"renderer":"gpu"}"#).unwrap();
         let app = dev_app(temp.path(), &appid);
-        let page = PageInstance::new_headless(appid, "pages/home/index.ui.js".into(), &app);
+        let page = PageInstance::new_headless(appid, "pages/home/index.js".into(), &app);
         app.state
             .lock()
             .unwrap()
@@ -5236,10 +5236,10 @@ mod manifest_reload_tests {
     }
 
     #[test]
-    fn gpu_module_source_uses_only_the_catalog_entry() {
+    fn gpu_module_source_needs_a_catalog_route_with_a_gpu_page_config() {
         let (temp, app, page) = gpu_factory_fixture();
         assert!(page.gpu_module_source().is_err());
-        let path = temp.path().join("pages/home/index.ui.js");
+        let path = temp.path().join("pages/home/index.js");
         let module = "export function render() {}";
         std::fs::write(&path, module).unwrap();
         assert_eq!(page.gpu_module_source().unwrap(), module);
@@ -5251,7 +5251,13 @@ mod manifest_reload_tests {
                 .contains("UTF-8")
         );
         assert!(app.read_gpu_module("pages/home/index.runner.js").is_err());
-        assert!(app.read_gpu_module("../outside.ui.js").is_err());
+        std::fs::write(
+            temp.path().join("pages/home/index.json"),
+            r#"{"renderer":"webview"}"#,
+        )
+        .unwrap();
+        assert!(app.read_gpu_module("pages/home/index.js").is_err());
+        assert!(app.read_gpu_module("../outside.js").is_err());
         let web =
             PageInstance::new_headless(app.appid.clone(), "pages/web/index.html".into(), &app);
         assert!(web.gpu_module_source().is_err());
@@ -5411,7 +5417,7 @@ mod manifest_reload_tests {
     }
 
     #[test]
-    fn gpu_page_config_is_loaded_from_the_compiled_catalog() {
+    fn gpu_page_renderer_is_read_from_the_page_config() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
         let appid = format!("app.lingxia.gpu-config.{}", Uuid::new_v4());
@@ -5420,7 +5426,7 @@ mod manifest_reload_tests {
             &appid,
             r#"{
             "appId":"APPID", "version":"1.0.0", "logic":false,
-            "pages":[{"name":"home", "path":"pages/home/index.ui.js", "renderer":"gpu", "module":"pages/home/index.ui.js"}]
+            "pages":[{"name":"home", "path":"pages/home/index.js"}]
         }"#,
         );
         let page_dir = root.join("pages/home");
@@ -5434,11 +5440,11 @@ mod manifest_reload_tests {
         let app = dev_app(root, &appid);
         assert_eq!(
             app.find_page_path("pages/home/index").as_deref(),
-            Some("pages/home/index.ui.js")
+            Some("pages/home/index.js")
         );
-        let config = PageConfig::from_json(&app, "pages/home/index.ui.js").unwrap();
+        let config = PageConfig::from_json(&app, "pages/home/index.js").unwrap();
         assert_eq!(config.renderer, crate::PageRenderer::Gpu);
-        let page = PageInstance::new_headless(appid.clone(), "pages/home/index.ui.js".into(), &app);
+        let page = PageInstance::new_headless(appid.clone(), "pages/home/index.js".into(), &app);
         assert_eq!(page.renderer(), crate::PageRenderer::Gpu);
         {
             use crate::bridge::ViewTransport;
@@ -5512,14 +5518,12 @@ mod manifest_reload_tests {
         assert_eq!(config.page_orientation, Some(crate::PageOrientation::Auto));
         assert_eq!(app.app_session_class(), crate::AppSessionClass::StandardApp);
         std::fs::write(&page_config, r#"{"renderer":"webview"}"#).unwrap();
-        assert!(
-            PageConfig::from_json(&app, "pages/home/index.ui.js")
-                .unwrap_err()
-                .to_string()
-                .contains("renderer must match")
+        assert_eq!(
+            PageConfig::from_json(&app, "pages/home/index.js")
+                .unwrap()
+                .renderer,
+            crate::PageRenderer::Webview
         );
-        std::fs::remove_file(&page_config).unwrap();
-        assert!(PageConfig::from_json(&app, "pages/home/index.ui.js").is_err());
     }
 
     #[test]

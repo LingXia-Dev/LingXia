@@ -113,7 +113,7 @@ function classProblems(rule, name, tag) {
 /**
  * Compiles GPU pages. `pages` are page source paths relative to `root`; each
  * page's sibling `.json` must declare `"renderer": "gpu"`, which is the only
- * thing that makes a page native. Output is `<base>.ui.js` beside a copy of the config.
+ * thing that makes a page native. Output is `<base>.js` beside a copy of the config.
  */
 export async function buildPages(root, pages, output, catalogs = {}) {
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
@@ -178,7 +178,7 @@ export async function buildPages(root, pages, output, catalogs = {}) {
       const unique = [...new Set(problems)].map(line => line.startsWith(root + sep) ? line.slice(root.length + 1) : line);
       throw Error(`${page}: ${unique.length} authoring problem${unique.length === 1 ? '' : 's'}\n${unique.join('\n')}`);
     }
-    const dest = join(output, `${base}.ui.js`);
+    const dest = join(output, `${base}.js`);
     await mkdir(dirname(dest), { recursive: true });
     await writeFile(dest, bundled.outputFiles[0].text + `\nconfigureClasses(${JSON.stringify(classes)});\n`);
     await copyFile(join(root, `${base}.json`), join(output, `${base}.json`));

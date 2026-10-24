@@ -15,7 +15,7 @@ const link = new URL(records[1].text);
 assert.equal(link.origin, 'https://applink.lingxia.app');
 assert.equal(link.pathname, '/lxapp/open');
 assert.equal(link.searchParams.get('appId'), 'lingxia-showcase-gpu');
-assert.equal(link.searchParams.get('path'), 'pages/share/index.ui.js');
+assert.equal(link.searchParams.get('path'), 'pages/share/index.js');
 assert.equal(link.searchParams.get('from'), 'share-demo');
 assert.match(records[2].mime, /^image\//);
 assert.equal(records[2].files.length, 1);
