@@ -1,6 +1,6 @@
 # Android device verification
 
-`run-core-suite.ps1 -ApkPath <matching-release-apk> -Serial <device>` runs the
+`node run-core-suite.mjs --apk <matching-release-apk> --serial <device>` runs the
 scenarios in `core-suite.json`, checks the installed APK hash, enforces deadlines
 and writes per-scenario logs plus device/build identity in `results.json`.
 The suite requires an empty ToDo list, changes clipboard contents, and exercises
@@ -35,11 +35,11 @@ Run the product probes against the installed independent GPU APK, starting at
 Home. From the repository root:
 
 ```powershell
-./lingxia-sdk/android/tests/gpu/run-probe.ps1 -Probe GpuStreamProbe -Serial <device> -AndroidSdk <sdk-directory>
+node lingxia-sdk/android/tests/gpu/run-probe.mjs --probe GpuStreamProbe --serial <device> --sdk <sdk-directory>
 node lingxia-sdk/android/tests/gpu/scripts/verify-host.mjs <adb-path> <device>
 ```
 
-`run-probe.ps1 -CompileOnly` checks all probe sources without running a device
+`run-probe.mjs --compile-only` checks all probe sources without running a device
 test. Build artifacts go under the repository's `target/`, outside `lxapp/`.
 SDK tools also accept `ANDROID_SDK_ROOT`/`ANDROID_HOME`; direct adb scripts use
 `ADB` or adb on PATH and require a device argument or `ANDROID_SERIAL`.
@@ -47,8 +47,8 @@ The Node/Python scripts also run from the repository root; relative sibling
 imports remain inside `scripts/`.
 
 `GpuRecoveryProbe` targets `com.lingxia.ui.smoke`, not showcase. Build the
-standalone host with `fixtures/recovery` using `tools/lingxia-ui-android/run.ps1
--Project <absolute-fixture-path>`. It deliberately fails one candidate, verifies
+standalone host with `fixtures/recovery` using `node tools/lingxia-ui-android/run.mjs
+--project lingxia-sdk/android/tests/gpu/fixtures/recovery`. It deliberately fails one candidate, verifies
 the retained frame, clicks Retry and checks the committed count and retained draft.
 It also runs an infinite loop, verifies the execution deadline and explicitly
 reloads the interrupted session before checking interaction again.
@@ -70,11 +70,15 @@ ring and light/dark ToDo background pixels, then blurs with Tab and checks their
 restoration. It saves focused screenshots and returns Home/light without editing
 tasks. Run with the keyboard available and the current showcase starting at Home.
 
-`GpuFlexBasisProbe` runs on the lab's `rendererFixture: 'flex'` View. It measures
-content versus zero basis, percentage basis and column growth, then resizes and
-checks updated geometry. It returns from lab without modifying persisted data.
+Renderer fixtures (flex, tracking, italic, padded text, strike, vector,
+percent, shadow, gradient, alignment, border) and the interactive renderer lab
+are one Logic-free lxapp in `fixtures/renderer`, a page each. Open one in the
+smoke host with `node tools/lingxia-ui-android/run.mjs --project
+lingxia-sdk/android/tests/gpu/fixtures/renderer --page <name>`.
+`GpuFlexBasisProbe` runs on the `flex` page: content versus zero basis,
+percentage basis and column growth, then a resize.
 
-For the current showcase, enter the `lab` page through dev tooling before running
+With the `lab` page open, run
 `node lingxia-sdk/android/tests/gpu/scripts/verify-images.mjs <adb> <serial> --current-page`.
 This preserves that page instead of relaunching Home. The image workload checks
 visible pixels, shared-source uploads, eviction/reload, surface resume and idle;
@@ -127,7 +131,7 @@ clipboard contents, rotation and clear. Inspect
 `gpu-clipboard-selected-image.png` for the actual logo pixels.
 
 Sharing to a local receiver (no network delivery): run
-`build-share-receiver.ps1`, then `run-probe.ps1 -Probe GpuShareReceiverProbe`
+`build-share-receiver.mjs --serial <device>`, then `run-probe.mjs --probe GpuShareReceiverProbe`
 from Home with the 1024x1024 logo as the newest album image. The receiver stores
 only these test intents in its private `received.jsonl`; image bytes are read
 and hashed through the granted content URI. Run
@@ -140,7 +144,7 @@ domain verification is a separate gate.
 For `GpuShareFileProbe`, generate `BODY` from `scripts/file-fixture.py` into
 `target/gpu-share-file-fixture.pdf`, push it to the phone Downloads directory
 with the same filename, and broadcast the media scanner. Install the test
-receiver with `build-share-receiver.ps1`. Run the probe from Home, then
+receiver with `build-share-receiver.mjs`. Run the probe from Home, then
 `python lingxia-sdk/android/tests/gpu/scripts/verify-share-file.py`
 from the repository root. The check compares every byte through size and SHA-256.
 Uninstall `com.lingxia.test.receiver` afterwards.
@@ -166,7 +170,7 @@ and broker-side unsubscribe checks. Login/functions and MQTT now pass on Pixel 3
 see `ui-cloud-provider-final-device.log` and `ui-cloud-mqtt-final-device.log`
 under `target/`. The MQTT probe publishes only to this test daemon's
 `lingxia/tenant/tenant-a/demo/mqtt` topic, with explicit UTF-8 metadata.
-Compile with `run-probe.ps1 -Probe GpuCloudMqttProbe -CompileOnly`, push
+Compile with `run-probe.mjs --probe GpuCloudMqttProbe --compile-only`, push
 `target/gpu-independent-probe.jar` to `/data/local/tmp/`, then run:
 
 ```powershell
