@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { audit, buildPages } from '../compiler.mjs';
 import { moduleBanner } from '../compiler/compatibility.mjs';
 import { runInNewContext } from 'node:vm';
+import { field } from '../src/generated/wire.js';
 
 globalThis.__lingxiaUiHost = {uiAbi:1,maxField:108,features:['candidate-transactions','bounded-jobs']};
 
@@ -180,7 +181,7 @@ test('compiler emits executable ESM UI and preserves page config', async () => {
     assert.deepEqual(globalThis.__lingxiaActionCatalog, catalog);
     const records = globalThis.__lingxiaDescribe(globalThis.__lingxiaRender, { data: {}, actions: {}, env: {} });
     assert.ok(records.includes('Hello, world!') && records.includes(50));
-    assert.ok(records.includes('Front') && records.includes(48) && records.includes(49));
+    assert.ok(records.includes('Front') && records.includes(field.insetLeft) && records.includes(field.insetTop));
     assert.ok(records.includes(16) && records.includes(47) && records.includes('Second card'));
     assert.ok(records.includes('Find a moment') && records.includes('search'));
     assert.ok(records.includes('Volume') && records.includes(15));

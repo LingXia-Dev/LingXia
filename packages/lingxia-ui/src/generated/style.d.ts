@@ -18,7 +18,7 @@ export interface Style {
   maxHeight?: number | `${number}%`;
   shrink?: number;
   align?: "start" | "center" | "end" | "stretch" | "baseline";
-  justify?: "start" | "center" | "end" | "between";
+  justify?: "start" | "center" | "end" | "between" | "around" | "evenly";
   alignSelf?: "start" | "center" | "end" | "stretch" | "baseline";
   fontWeight?: number;
   lineHeight?: number;
@@ -39,7 +39,7 @@ export interface Style {
   textAlign?: "start" | "end" | "left" | "center" | "right" | "justify";
   backgroundGradient?: LinearGradient | "none";
   boxShadow?: ReadonlyArray<BoxShadow> | "none";
-  textDecorationLine?: "none" | "line-through";
+  textDecorationLine?: "none" | "line-through" | "underline";
   fontStyle?: "normal" | "italic";
   flexWrap?: "nowrap" | "wrap" | "wrap-reverse";
   letterSpacing?: number;
@@ -54,4 +54,6 @@ export interface Style {
   scrollAxis?: "horizontal" | "vertical";
   flexDirection?: "row" | "column" | "row-reverse" | "column-reverse";
   display?: "flex";
+  rowGap?: number;
+  columnGap?: number;
 }

@@ -42,15 +42,75 @@ pub(crate) fn check_height(tag: usize) -> f32 {
     }
 }
 
-/// Taffy style for one record; the root fills the viewport.
+/// Surface overlap the page primitive keeps content out of, in logical pixels.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SafeArea {
+    /// Top, right, bottom, left.
+    pub insets: [f32; 4],
+    pub keyboard: f32,
+}
+
+fn margin(record: &Record, field: usize) -> LengthPercentageAuto {
+    match record
+        .fields
+        .iter()
+        .find(|(id, _)| *id == field)
+        .map(|(_, value)| value)
+    {
+        Some(value) if value.as_str() == Some("auto") => auto(),
+        Some(value) => value
+            .as_f64()
+            .map(|v| length(v as f32))
+            .unwrap_or(length(0.0)),
+        None => length(0.0),
+    }
+}
+
+fn inset(record: &Record, field: usize) -> LengthPercentageAuto {
+    record
+        .fields
+        .iter()
+        .find(|(id, _)| *id == field)
+        .and_then(|(_, value)| crate::protocol::length_or_percent(value, true))
+        .map(|(value, relative)| {
+            if relative {
+                percent(value / 100.0)
+            } else {
+                length(value)
+            }
+        })
+        .unwrap_or(auto())
+}
+
+fn keyword(record: &Record, field: usize) -> Option<Dimension> {
+    match record.string(field)? {
+        "fit-content" => Some(Dimension::fit_content()),
+        "max-content" => Some(Dimension::max_content()),
+        "min-content" => Some(Dimension::min_content()),
+        _ => None,
+    }
+}
+
+/// Taffy style for one record; the root fills the viewport and a page root keeps out of the safe area.
 pub(crate) fn node_style(
     records: &[Record],
     index: usize,
-    width: u16,
-    height: u16,
-    scale: f32,
+    (width, height, scale): (u16, u16, f32),
+    safe: SafeArea,
 ) -> Result<Style, String> {
     let record = &records[index];
+    let page = index == 0 && record.tag == tag::PAGE;
+    // Scrolling regions fill the space a page leaves them unless sized explicitly.
+    let fills = record.parent.is_some_and(|p| records[p].tag == tag::PAGE)
+        && matches!(record.tag, tag::SCROLL | tag::LIST)
+        && [
+            field::GROW,
+            field::HEIGHT,
+            field::HEIGHT_PERCENT,
+            field::FLEX_BASIS,
+        ]
+        .iter()
+        .all(|id| record.fields.iter().all(|(field, _)| field != id));
     let padding = record.number(field::PADDING).unwrap_or(
         if matches!(
             record.tag,
@@ -68,8 +128,19 @@ pub(crate) fn node_style(
             0.0
         },
     );
-    let [padding_top, padding_right, padding_bottom, padding_left] =
-        crate::protocol::PADDING_EDGES.map(|field| record.number(field).unwrap_or(padding));
+    let [
+        mut padding_top,
+        mut padding_right,
+        mut padding_bottom,
+        mut padding_left,
+    ] = crate::protocol::PADDING_EDGES.map(|field| record.number(field).unwrap_or(padding));
+    if page {
+        padding_top += safe.insets[0];
+        padding_right += safe.insets[1];
+        // The keyboard overlaps bottom chrome; avoid whichever is taller.
+        padding_bottom += safe.insets[2].max(safe.keyboard);
+        padding_left += safe.insets[3];
+    }
     let border = record.number(field::BORDER_WIDTH).unwrap_or(0.0);
     let [border_top, border_right, border_bottom, border_left] =
         crate::protocol::BORDER_EDGES.map(|id| record.number(id).unwrap_or(border));
@@ -95,11 +166,16 @@ pub(crate) fn node_style(
         } else {
             Default::default()
         },
+        position: if record.string(field::POSITION) == Some("absolute") {
+            Position::Absolute
+        } else {
+            Position::Relative
+        },
         inset: Rect {
-            left: record.number(field::OFFSET_X).map(length).unwrap_or(auto()),
-            top: record.number(field::OFFSET_Y).map(length).unwrap_or(auto()),
-            right: auto(),
-            bottom: auto(),
+            left: inset(record, field::INSET_LEFT),
+            top: inset(record, field::INSET_TOP),
+            right: inset(record, field::INSET_RIGHT),
+            bottom: inset(record, field::INSET_BOTTOM),
         },
         grid_template_columns: if record.tag == tag::GRID {
             vec![flex(1.0); record.number(field::GRID_COLUMNS).unwrap_or(1.0) as usize]
@@ -119,7 +195,9 @@ pub(crate) fn node_style(
             Some("wrap-reverse") => FlexWrap::WrapReverse,
             _ => FlexWrap::NoWrap,
         },
-        flex_grow: record.number(field::GROW).unwrap_or(0.0),
+        flex_grow: record
+            .number(field::GROW)
+            .unwrap_or(if fills { 1.0 } else { 0.0 }),
         flex_basis: match record
             .fields
             .iter()
@@ -148,23 +226,32 @@ pub(crate) fn node_style(
             "center" => JustifyContent::SAFE_CENTER,
             "end" => JustifyContent::SAFE_FLEX_END,
             "between" => JustifyContent::SPACE_BETWEEN,
+            "around" => JustifyContent::SPACE_AROUND,
+            "evenly" => JustifyContent::SPACE_EVENLY,
             _ => JustifyContent::FLEX_START,
         }),
-        overflow: Point {
-            x: if record.string(field::SCROLL_AXIS) == Some("horizontal") {
-                Overflow::Scroll
-            } else if matches!(record.tag, tag::SCROLL | tag::LIST) {
-                Overflow::Hidden
-            } else {
-                Overflow::Visible
-            },
-            y: if record.string(field::SCROLL_AXIS) == Some("horizontal") {
-                Overflow::Hidden
-            } else if matches!(record.tag, tag::SCROLL | tag::LIST) {
-                Overflow::Scroll
-            } else {
-                Overflow::Visible
-            },
+        overflow: if record.string(field::OVERFLOW) == Some("hidden") {
+            Point {
+                x: Overflow::Hidden,
+                y: Overflow::Hidden,
+            }
+        } else {
+            Point {
+                x: if record.string(field::SCROLL_AXIS) == Some("horizontal") {
+                    Overflow::Scroll
+                } else if matches!(record.tag, tag::SCROLL | tag::LIST) {
+                    Overflow::Hidden
+                } else {
+                    Overflow::Visible
+                },
+                y: if record.string(field::SCROLL_AXIS) == Some("horizontal") {
+                    Overflow::Hidden
+                } else if matches!(record.tag, tag::SCROLL | tag::LIST) {
+                    Overflow::Scroll
+                } else {
+                    Overflow::Visible
+                },
+            }
         },
         min_size: Size {
             width: dimension(record, field::MIN_WIDTH).unwrap_or(if record.tag == tag::SLIDER {
@@ -209,17 +296,22 @@ pub(crate) fn node_style(
             height: dimension(record, field::MAX_HEIGHT).unwrap_or(auto()),
         },
         size: Size {
-            width: dimension(record, field::WIDTH).unwrap_or(if index == 0 {
-                length(width as f32 / scale)
-            } else if record.tag == tag::VECTOR {
-                length(24.0)
-            } else if record.tag == tag::IMAGE {
-                length(64.0)
-            } else {
-                auto()
-            }),
-            height: dimension(record, field::HEIGHT).unwrap_or(
-                if record.number(field::HEIGHT_AUTO) == Some(1.0)
+            width: dimension(record, field::WIDTH)
+                .or_else(|| keyword(record, field::WIDTH_KEYWORD))
+                .unwrap_or(if page || index == 0 {
+                    length(width as f32 / scale)
+                } else if record.tag == tag::VECTOR {
+                    length(24.0)
+                } else if record.tag == tag::IMAGE {
+                    length(64.0)
+                } else {
+                    auto()
+                }),
+            height: dimension(record, field::HEIGHT)
+                .or_else(|| keyword(record, field::HEIGHT_KEYWORD))
+                .unwrap_or(if page {
+                    length(height as f32 / scale)
+                } else if record.number(field::HEIGHT_AUTO) == Some(1.0)
                     || matches!(record.tag, tag::INPUT | tag::SEARCH)
                 {
                     auto()
@@ -235,19 +327,24 @@ pub(crate) fn node_style(
                     length(64.0)
                 } else {
                     auto()
-                },
-            ),
+                }),
         },
         gap: Size {
             width: length(if record.tag == tag::LIST {
                 0.0
             } else {
-                record.number(field::GAP).unwrap_or(0.0)
+                record
+                    .number(field::COLUMN_GAP)
+                    .or(record.number(field::GAP))
+                    .unwrap_or(0.0)
             }),
             height: length(if record.tag == tag::LIST {
                 0.0
             } else {
-                record.number(field::GAP).unwrap_or(0.0)
+                record
+                    .number(field::ROW_GAP)
+                    .or(record.number(field::GAP))
+                    .unwrap_or(0.0)
             }),
         },
         border: Rect {
@@ -263,20 +360,22 @@ pub(crate) fn node_style(
             bottom: length(padding_bottom),
         },
         margin: Rect {
-            bottom: length(
-                record
-                    .parent
-                    .filter(|p| records[*p].tag == tag::LIST)
-                    .filter(|p| {
-                        record.number(field::LIST_ROW_INDEX).unwrap_or(0.0) + 1.0
-                            < records[*p].number(field::LIST_COUNT).unwrap_or(0.0)
-                    })
-                    .and_then(|p| records[p].number(field::GAP))
-                    .unwrap_or(0.0),
-            ),
-            left: length(0.0),
-            right: length(0.0),
-            top: length(0.0),
+            // List rows are realized windows; the list gap separates them as row margins.
+            bottom: match record
+                .parent
+                .filter(|p| records[*p].tag == tag::LIST)
+                .filter(|p| {
+                    record.number(field::LIST_ROW_INDEX).unwrap_or(0.0) + 1.0
+                        < records[*p].number(field::LIST_COUNT).unwrap_or(0.0)
+                })
+                .and_then(|p| records[p].number(field::GAP))
+            {
+                Some(gap) => length(gap),
+                None => margin(record, field::MARGIN_BOTTOM),
+            },
+            left: margin(record, field::MARGIN_LEFT),
+            right: margin(record, field::MARGIN_RIGHT),
+            top: margin(record, field::MARGIN_TOP),
         },
         ..Default::default()
     })

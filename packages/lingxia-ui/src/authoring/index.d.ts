@@ -78,6 +78,7 @@ declare global {
     interface ElementChildrenAttribute { children: {} }
     interface IntrinsicElements {
       view: Props;
+      page: Props;
       column: Props;
       row: Props;
       text: TextProps;

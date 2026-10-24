@@ -1,3 +1,4 @@
+use lingxia_ui::protocol::{field, tag};
 use lingxia_ui::{Renderer, protocol::decode};
 use serde_json::{Value, json};
 
@@ -15,25 +16,50 @@ fn node(wire: &mut Vec<Value>, tag: usize, parent: i64, id: &str, fields: Value)
 }
 
 #[test]
-fn stack_overlaps_in_source_order_and_offsets_shared_geometry() {
+fn stack_overlaps_in_source_order_and_insets_shift_shared_geometry() {
     let mut wire = vec![];
-    node(&mut wire, 17, -1, "stack", json!([]));
+    node(&mut wire, tag::STACK, -1, "stack", json!([]));
     node(
         &mut wire,
-        3,
+        tag::BUTTON,
         0,
         "back",
-        json!([0, 80, 1, 50, 3, 0, 6, "#ff0000", 8, 1]),
+        json!([
+            field::WIDTH,
+            80,
+            field::HEIGHT,
+            50,
+            field::PADDING,
+            0,
+            field::BACKGROUND,
+            "#ff0000",
+            field::ON_CLICK,
+            1
+        ]),
     );
     node(
         &mut wire,
-        3,
+        tag::BUTTON,
         0,
         "front",
-        json!([0, 80, 1, 50, 3, 0, 6, "#0000ff", 8, 2, 48, 20, 49, 10]),
+        json!([
+            field::WIDTH,
+            80,
+            field::HEIGHT,
+            50,
+            field::PADDING,
+            0,
+            field::BACKGROUND,
+            "#0000ff",
+            field::ON_CLICK,
+            2,
+            field::INSET_LEFT,
+            20,
+            field::INSET_TOP,
+            10
+        ]),
     );
-    let mut renderer = Renderer::default();
-    let frame = renderer
+    let frame = Renderer::default()
         .layout(&decode(&wire).unwrap(), 200, 100, 1.0)
         .unwrap();
     assert_eq!(frame.nodes[1].bounds, [0.0, 0.0, 80.0, 50.0]);
@@ -47,19 +73,40 @@ fn stack_overlaps_in_source_order_and_offsets_shared_geometry() {
 }
 
 #[test]
-fn nested_stack_sizes_to_largest_unshifted_child_and_offsets_do_not_reflow_siblings() {
+fn nested_stack_sizes_to_largest_unshifted_child_and_relative_insets_do_not_reflow_siblings() {
     let mut wire = vec![];
-    node(&mut wire, 0, -1, "root", json!([]));
-    let stack = node(&mut wire, 17, 0, "stack", json!([]));
-    node(&mut wire, 0, stack, "small", json!([0, 20, 1, 20]));
+    node(&mut wire, tag::COLUMN, -1, "root", json!([]));
+    let stack = node(&mut wire, tag::STACK, 0, "stack", json!([]));
     node(
         &mut wire,
-        0,
+        tag::COLUMN,
+        stack,
+        "small",
+        json!([field::WIDTH, 20, field::HEIGHT, 20]),
+    );
+    node(
+        &mut wire,
+        tag::COLUMN,
         stack,
         "large",
-        json!([0, 40, 1, 40, 48, -5, 49, 10]),
+        json!([
+            field::WIDTH,
+            40,
+            field::HEIGHT,
+            40,
+            field::INSET_LEFT,
+            -5,
+            field::INSET_TOP,
+            10
+        ]),
     );
-    node(&mut wire, 0, 0, "after", json!([1, 10]));
+    node(
+        &mut wire,
+        tag::COLUMN,
+        0,
+        "after",
+        json!([field::HEIGHT, 10]),
+    );
     let frame = Renderer::default()
         .layout(&decode(&wire).unwrap(), 200, 100, 1.0)
         .unwrap();
@@ -69,28 +116,41 @@ fn nested_stack_sizes_to_largest_unshifted_child_and_offsets_do_not_reflow_sibli
 }
 
 #[test]
-fn offset_wire_requires_direct_stack_parent_and_finite_bounded_values() {
-    for parent in [0, 1, 16] {
+fn insets_are_bounded_lengths_or_percentages_and_stack_offsets_are_reserved() {
+    for value in [
+        json!(null),
+        json!("1"),
+        json!("x%"),
+        json!(16385),
+        json!(-16385),
+    ] {
         let mut wire = vec![];
+        node(&mut wire, tag::STACK, -1, "root", json!([]));
         node(
             &mut wire,
-            parent,
-            -1,
-            "root",
-            if parent == 16 {
-                json!([47, 1])
-            } else {
-                json!([])
-            },
+            tag::COLUMN,
+            0,
+            "child",
+            json!([field::INSET_TOP, value]),
         );
-        node(&mut wire, 0, 0, "child", json!([48, 1]));
         assert!(decode(&wire).is_err());
     }
-    for value in [json!(null), json!("1"), json!(16385), json!(-16385)] {
-        let mut wire = vec![];
-        node(&mut wire, 17, -1, "root", json!([]));
-        node(&mut wire, 0, 0, "child", json!([49, value]));
-        assert!(decode(&wire).is_err());
-    }
-    assert!(decode(json!([17, -1, "", "", "", 1, 48, 0]).as_array().unwrap()).is_err());
+    let mut wire = vec![];
+    node(&mut wire, tag::ROW, -1, "root", json!([]));
+    node(
+        &mut wire,
+        tag::COLUMN,
+        0,
+        "child",
+        json!([field::INSET_TOP, "25%", field::POSITION, "absolute"]),
+    );
+    assert!(decode(&wire).is_ok());
+    assert!(
+        decode(
+            json!([tag::STACK, -1, "", "", "", 1, field::OFFSET_X, 0])
+                .as_array()
+                .unwrap()
+        )
+        .is_err()
+    );
 }

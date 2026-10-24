@@ -25,6 +25,8 @@ pub(crate) struct RetainedLayout {
     pub(crate) commands: Vec<Paint>,
     pub(crate) ranges: Vec<Range<usize>>,
     pub(crate) parents: Vec<Option<usize>>,
+    /// Paint order: depth-first, siblings stably ordered by z-index.
+    pub(crate) order: Vec<usize>,
     pub(crate) opacities: Vec<f32>,
     pub(crate) backdrops: Vec<Option<(f32, f32)>>,
     pub(crate) width: u16,
@@ -141,7 +143,8 @@ impl RetainedLayout {
             return Err("UI_ANIMATION: visual identity missing from layout".into());
         }
         let animated = !visuals.is_empty();
-        let mut transforms: Vec<Affine> = Vec::with_capacity(self.nodes.len());
+        let count = self.nodes.len();
+        let mut transforms: Vec<Affine> = vec![Affine::IDENTITY; count];
         let viewport = [
             0.0,
             0.0,
@@ -149,16 +152,22 @@ impl RetainedLayout {
             self.height as f32 / self.scale,
         ];
         let mut nodes = self.nodes.clone();
-        let mut translations: Vec<[f32; 2]> = Vec::with_capacity(nodes.len());
-        let mut clips = Vec::with_capacity(nodes.len());
+        let mut translations: Vec<[f32; 2]> = vec![[0.0; 2]; count];
+        let mut clips = vec![[0.0f32; 4]; count];
         let mut commands = Vec::new();
-        let mut rounded: Vec<Vec<ClipSnapshot>> = Vec::with_capacity(nodes.len());
-        let mut snapshot_clips: Vec<Vec<ClipSnapshot>> = Vec::with_capacity(nodes.len());
+        let mut rounded: Vec<Vec<ClipSnapshot>> = vec![Vec::new(); count];
+        let mut snapshot_clips: Vec<Vec<ClipSnapshot>> = if animated {
+            vec![Vec::new(); count]
+        } else {
+            Vec::new()
+        };
         let mut active_layers: Vec<Paint> = Vec::new();
-        let mut child_layers: Vec<Vec<Paint>> = Vec::with_capacity(nodes.len());
+        let mut child_layers: Vec<Vec<Paint>> = vec![Vec::new(); count];
         let mut painted = Vec::new();
         let mut input_paints = Vec::new();
-        for (index, node) in nodes.iter_mut().enumerate() {
+        for (position, &index) in self.order.iter().enumerate() {
+            let node = &mut nodes[index];
+            node.order = position as u32;
             let parent = self.parents[index];
             let mut desired = parent.map(|p| child_layers[p].clone()).unwrap_or_default();
             let translation = parent.map(|p| translations[p]).unwrap_or([0.0; 2]);
@@ -194,7 +203,7 @@ impl RetainedLayout {
             if !alpha.is_finite() || !(0.0..=1.0).contains(&alpha) {
                 return Err("UI_ANIMATION: invalid visual opacity".into());
             }
-            transforms.push(matrix);
+            transforms[index] = matrix;
             if animated {
                 desired.push(Paint::Transform(matrix));
             }
@@ -203,7 +212,7 @@ impl RetainedLayout {
             let world_clips = parent.map(|p| rounded[p].clone()).unwrap_or_default();
             let mut children_clips = world_clips.clone();
             if animated {
-                snapshot_clips.push(world_clips.clone());
+                snapshot_clips[index] = world_clips.clone();
             }
             node.clips = if matrix == Affine::IDENTITY {
                 world_clips
@@ -221,7 +230,8 @@ impl RetainedLayout {
                 node.visible_bounds[2] = 0.0;
                 node.visible_bounds[3] = 0.0;
             }
-            if node.scroll.is_some() {
+            let clips_children = node.scroll.is_some() || node.clips_children;
+            if clips_children {
                 if let Some(content) = node.content_clip {
                     children_clips.push(transformed_clip(content, matrix)?);
                 } else if node.radius > 0.0 || node.radii.is_some() {
@@ -254,15 +264,15 @@ impl RetainedLayout {
                 });
             }
             let mut descendants = desired.clone();
-            if node.scroll.is_some() {
+            if clips_children {
                 descendants.push(Paint::Clip(node.content_clip.unwrap_or(ClipSnapshot {
                     bounds: node.bounds,
                     radius: node.radius,
                     radii: node.radii,
                 })));
             }
-            child_layers.push(descendants);
-            rounded.push(children_clips);
+            child_layers[index] = descendants;
+            rounded[index] = children_clips;
             if let Some(scroll) = &mut node.scroll {
                 scroll.offset = offsets
                     .get(&scroll.id)
@@ -274,9 +284,9 @@ impl RetainedLayout {
             if let Some(scroll) = &node.scroll {
                 child_translation[scroll.axis.index()] += scroll.offset;
             }
-            translations.push(child_translation);
-            clips.push(transformed_bounds(
-                if node.scroll.is_some() {
+            translations[index] = child_translation;
+            clips[index] = transformed_bounds(
+                if clips_children {
                     node.content_clip
                         .map(|content| intersect(node.visible_bounds, content.bounds))
                         .unwrap_or(node.visible_bounds)
@@ -284,7 +294,7 @@ impl RetainedLayout {
                     clip
                 },
                 matrix,
-            )?);
+            )?;
             if clip[2] == 0.0 || clip[3] == 0.0 {
                 continue;
             }
@@ -680,4 +690,25 @@ impl RetainedLayout {
             retained: Arc::clone(self),
         })
     }
+}
+
+/// Depth-first paint order with siblings stably sorted by z-index; subtrees stay contiguous.
+pub(crate) fn paint_order(parents: &[Option<usize>], z: &[i32]) -> Vec<usize> {
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); parents.len()];
+    let mut roots = Vec::new();
+    for (index, parent) in parents.iter().enumerate() {
+        match parent {
+            Some(parent) => children[*parent].push(index),
+            None => roots.push(index),
+        }
+    }
+    let mut order = Vec::with_capacity(parents.len());
+    let mut stack: Vec<usize> = roots.into_iter().rev().collect();
+    while let Some(index) = stack.pop() {
+        order.push(index);
+        let mut siblings = std::mem::take(&mut children[index]);
+        siblings.sort_by_key(|child| z[*child]);
+        stack.extend(siblings.into_iter().rev());
+    }
+    order
 }

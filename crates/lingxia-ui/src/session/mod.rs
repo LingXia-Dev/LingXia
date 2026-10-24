@@ -55,6 +55,9 @@ pub struct ViewSession {
     )>,
     animation_inventory: crate::animation::records::Inventory,
     animation_visible: std::collections::BTreeSet<String>,
+    /// Native pointer state selecting `active:`/`hover:` paint deltas.
+    pressed: Option<String>,
+    hovered: Option<String>,
 }
 
 struct ViewBridge {
@@ -126,6 +129,8 @@ impl ViewSession {
             animations: Default::default(),
             animation_surface: None,
             pending_animation: None,
+            pressed: None,
+            hovered: None,
             environment: serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":std::env::consts::OS,"formFactor":"phone","aside":false,"displayLanguage":"en","runner":true}),
             state: if logic {
                 crate::session::state::StateReplica::default()
@@ -210,9 +215,47 @@ impl ViewSession {
             crate::layout::list_layout::invalidate_measurements(&mut self.lists);
             self.reveal_input = true;
         }
+        let edge = |name: &str| value["insets"][name].as_f64().unwrap_or(0.0) as f32;
+        let safe_area = crate::layout::style::SafeArea {
+            insets: [edge("top"), edge("right"), edge("bottom"), edge("left")],
+            keyboard: value["keyboard"]["height"].as_f64().unwrap_or(0.0) as f32,
+        };
+        if self.renderer.safe_area != safe_area {
+            self.renderer.safe_area = safe_area;
+            self.retained = None;
+        }
         self.reveal_input |= self.environment["insets"] != value["insets"]
             || self.environment["keyboard"] != value["keyboard"];
         self.environment = value;
+        Ok(())
+    }
+
+    /// The pressed and hovered nodes the adapter reports; paint deltas follow without running the View.
+    pub fn set_pointer_state(&mut self, pressed: Option<&str>, hovered: Option<&str>) -> bool {
+        let changed = self.pressed.as_deref() != pressed || self.hovered.as_deref() != hovered;
+        if changed {
+            self.pressed = pressed.map(str::to_owned);
+            self.hovered = hovered.map(str::to_owned);
+            self.input_dirty = true;
+        }
+        changed
+    }
+
+    fn apply_pointer_styles(&self, records: &mut [crate::protocol::Record]) -> Result<(), String> {
+        if let Some(identity) = &self.hovered {
+            crate::interaction::input_state::apply_state_style(
+                records,
+                identity,
+                crate::protocol::field::HOVER_STYLE,
+            )?;
+        }
+        if let Some(identity) = &self.pressed {
+            crate::interaction::input_state::apply_state_style(
+                records,
+                identity,
+                crate::protocol::field::PRESSED_STYLE,
+            )?;
+        }
         Ok(())
     }
 
@@ -754,6 +797,7 @@ impl ViewSession {
                 strip_record_animations(&mut render_records);
                 inputs.apply_values(&mut render_records);
                 inputs.apply_styles(&mut render_records)?;
+                self.apply_pointer_styles(&mut render_records)?;
                 let started = std::time::Instant::now();
                 let reusable = if !self.input_dirty && self.viewport == Some((width, height, scale))
                 {

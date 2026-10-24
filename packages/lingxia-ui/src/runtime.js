@@ -4,7 +4,7 @@ import { normalizeShadows } from './shadow.js';
 import { normalizeGradient } from './gradient.js';
 import { resolveStyle, focusStyle } from './classes.js';
 export { configureClasses } from './classes.js';
-import { tags, fields, vectorField, dimensionPercentFields, styleOptions, buttonProps, listFields, reachProps, imageProps, inputProps, checkProps, radioProps, sliderProps, gridProps, textProps, plotProps } from './generated/wire.js';
+import { tags, field, fields, vectorField, dimensionPercentFields, styleOptions, buttonProps, listFields, reachProps, imageProps, inputProps, checkProps, radioProps, sliderProps, gridProps, textProps, plotProps } from './generated/wire.js';
 import { createStream } from './stream.js';
 import { createChannel } from './channel.js';
 import { channelResource } from './channel-resource.js';
@@ -730,7 +730,7 @@ function encodeTree(tree, windows) {
       else if (has(dimensionPercentFields,name) && typeof value === 'string') encoded.push(dimensionPercentFields[name],Number(value.slice(0,-1)));
       else if (name === 'boxShadow') encoded.push(fields.boxShadow, value === 'none' ? value : JSON.stringify(value));
       else if (name === 'backgroundGradient') encoded.push(fields.backgroundGradient, value === 'none' ? value : JSON.stringify(value));
-      else if (name === 'offset') encoded.push(fields.offsetX, value.x, fields.offsetY, value.y);
+      else if (name === 'offset') encoded.push(field.insetLeft, value.x, field.insetTop, value.y);
       else encoded.push(fields[name], value);
     }
     if (node.focusedStyle) {

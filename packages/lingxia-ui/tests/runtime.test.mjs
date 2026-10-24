@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { h, describe, prepare, commit, discard, dispatch, useLocal, createView } from '../src/runtime.js';
+import { field } from '../src/generated/wire.js';
 
 test('image lifecycle callbacks are committed handles and retry keys are bounded', () => {
   let loads=0, errors=0;
@@ -303,7 +304,7 @@ test('grid validates bounded columns and preserves keyed child order during refl
 test('stack offsets lower through components and reject non-stack parents or malformed values',()=>{
  const Child=()=>h('button',{style:{offset:{x:-5,y:12}}},'Top');
  const rows=radioRecords(describe(()=>h('stack',{},h('text',{},'Back'),h(Child,{})),{}));
- assert.equal(rows[0].tag,17);assert.equal(rows[2].fields.get(48),-5);assert.equal(rows[2].fields.get(49),12);
+ assert.equal(rows[0].tag,17);assert.equal(rows[2].fields.get(field.insetLeft),-5);assert.equal(rows[2].fields.get(field.insetTop),12);
  for(const offset of [null,4,[],{x:null},{x:Infinity},{y:-16385},{z:1}])
   assert.throws(()=>describe(()=>h('stack',{},h('text',{style:{offset}},'x')),{}),/UI_STACK/);
  for(const parent of ['column','row','grid'])

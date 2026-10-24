@@ -18,9 +18,12 @@ use std::sync::Arc;
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Effect {
-    /// Draw pressed feedback over a node's clipped shape.
+    /// Pressed feedback: a styled node repaints through `set_pointer_state`,
+    /// others get a platform overlay over the clipped shape.
     Press {
         node: usize,
+        identity: String,
+        styled: bool,
     },
     ClearPress,
     /// Draw the keyboard focus ring.
@@ -69,6 +72,14 @@ pub enum AccessibilityEffect {
     HoverEnter { id: u32 },
     HoverExit { id: u32 },
     Change(projection::Event),
+}
+
+fn press(frame: &PresentedFrame, node: usize) -> Effect {
+    Effect::Press {
+        node,
+        identity: frame.nodes[node].identity.clone(),
+        styled: frame.nodes[node].pressed_style,
+    }
 }
 
 /// Work the View worker runs against the frame it was resolved from.
@@ -333,7 +344,7 @@ impl ViewInteraction {
             if let Some(rebound) = rebound {
                 self.gesture.pressed = Some(rebound);
                 self.gesture.pressed_commit = Some(next.commit);
-                effects.push(Effect::Press { node: rebound });
+                effects.push(press(&next, rebound));
             }
             if let Some(id) = self.accessibility_focus {
                 let gone = self
@@ -424,7 +435,7 @@ impl ViewInteraction {
                     effects.push(Effect::Claim { exclusive: true });
                 }
                 if let Some(index) = pressed {
-                    effects.push(Effect::Press { node: index });
+                    effects.push(press(&frame, index));
                     if frame.node(index).is_some_and(frame::editable) {
                         effects.push(Effect::ArmLongPress);
                     }

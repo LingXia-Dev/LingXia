@@ -151,27 +151,10 @@ impl Inputs {
     }
 
     pub fn apply_styles(&self, records: &mut [Record]) -> Result<(), String> {
-        let ids = identities(records);
-        for (record, id) in records.iter_mut().zip(ids) {
-            if self.focused.as_deref() != Some(&id) {
-                continue;
-            }
-            if let Some((_, value)) = record
-                .fields
-                .iter()
-                .find(|(field, _)| *field == field::FOCUS_STYLE)
-            {
-                let overrides = crate::protocol::focus_style(value)?;
-                for (field, value) in overrides {
-                    if let Some((_, old)) = record.fields.iter_mut().find(|(id, _)| *id == field) {
-                        *old = value;
-                    } else {
-                        record.fields.push((field, value));
-                    }
-                }
-            }
+        match self.focused.as_deref() {
+            Some(identity) => apply_state_style(records, identity, field::FOCUS_STYLE),
+            None => Ok(()),
         }
-        Ok(())
     }
 
     pub fn decorate(
@@ -321,4 +304,28 @@ impl Inputs {
             Ok(())
         }
     }
+}
+
+/// Merge a node's paint-only state delta (focus, pressed or hover) into its record.
+pub(crate) fn apply_state_style(
+    records: &mut [Record],
+    identity: &str,
+    state: usize,
+) -> Result<(), String> {
+    let ids = identities(records);
+    for (record, id) in records.iter_mut().zip(ids) {
+        if id != identity {
+            continue;
+        }
+        if let Some((_, value)) = record.fields.iter().find(|(field, _)| *field == state) {
+            for (field, value) in crate::protocol::focus_style(value)? {
+                if let Some((_, old)) = record.fields.iter_mut().find(|(id, _)| *id == field) {
+                    *old = value;
+                } else {
+                    record.fields.push((field, value));
+                }
+            }
+        }
+    }
+    Ok(())
 }

@@ -461,3 +461,126 @@ fn text_ink_outside_a_zero_height_layout_box_is_not_culled() {
             .any(|command| matches!(command, Paint::Text { .. }))
     );
 }
+
+mod text_overflow {
+    use crate::protocol::{field, tag};
+    use crate::scene::test_prelude::*;
+
+    fn painted_glyphs(display: &crate::DisplayList) -> usize {
+        display
+            .commands
+            .iter()
+            .map(|paint| match paint {
+                Paint::Text { glyphs, .. } => glyphs.len(),
+                _ => 0,
+            })
+            .sum()
+    }
+
+    fn text(content: &str, fields: &[(usize, serde_json::Value)]) -> Vec<Record> {
+        let mut label = node(tag::TEXT, Some(0), "label", fields);
+        label.text = content.into();
+        vec![
+            node(tag::COLUMN, None, "root", &[(field::WIDTH, json!(80))]),
+            label,
+        ]
+    }
+
+    #[test]
+    fn nowrap_keeps_one_line_and_ellipsis_truncates_without_changing_semantics() {
+        let long = "A sentence much longer than the box";
+        let wrapped = Renderer::default()
+            .layout(&text(long, &[]), 200, 200, 1.0)
+            .unwrap();
+        let single = Renderer::default()
+            .layout(
+                &text(long, &[(field::WHITE_SPACE, json!("nowrap"))]),
+                200,
+                200,
+                1.0,
+            )
+            .unwrap();
+        assert!(single.nodes[1].bounds[3] < wrapped.nodes[1].bounds[3]);
+        let truncated = Renderer::default()
+            .layout(
+                &text(
+                    long,
+                    &[
+                        (field::WHITE_SPACE, json!("nowrap")),
+                        (field::TEXT_OVERFLOW, json!("ellipsis")),
+                    ],
+                ),
+                200,
+                200,
+                1.0,
+            )
+            .unwrap();
+        assert!(painted_glyphs(&truncated) < painted_glyphs(&single));
+        assert_eq!(
+            truncated.nodes[1].text, long,
+            "semantics keep the authored text"
+        );
+        let clamped = Renderer::default()
+            .layout(
+                &text(
+                    long,
+                    &[
+                        (field::TEXT_LINES, json!(2)),
+                        (field::TEXT_OVERFLOW, json!("ellipsis")),
+                    ],
+                ),
+                200,
+                200,
+                1.0,
+            )
+            .unwrap();
+        assert!(painted_glyphs(&clamped) < painted_glyphs(&wrapped));
+        let short = Renderer::default()
+            .layout(
+                &text(
+                    "Hi",
+                    &[
+                        (field::WHITE_SPACE, json!("nowrap")),
+                        (field::TEXT_OVERFLOW, json!("ellipsis")),
+                    ],
+                ),
+                200,
+                200,
+                1.0,
+            )
+            .unwrap();
+        assert_eq!(
+            painted_glyphs(&short),
+            2,
+            "text that fits is painted unchanged"
+        );
+    }
+
+    #[test]
+    fn transforms_paint_while_semantics_keep_the_source_and_underlines_draw() {
+        let display = Renderer::default()
+            .layout(
+                &text(
+                    "hello world",
+                    &[
+                        (field::TEXT_TRANSFORM, json!("capitalize")),
+                        (field::TEXT_DECORATION_LINE, json!("underline")),
+                    ],
+                ),
+                200,
+                200,
+                1.0,
+            )
+            .unwrap();
+        assert_eq!(display.nodes[1].text, "hello world");
+        assert_eq!(
+            crate::text::style::Transform::Capitalize.apply("hello world"),
+            "Hello World"
+        );
+        assert_eq!(
+            crate::text::style::Transform::Uppercase.apply("straße"),
+            "STRASSE"
+        );
+        assert!(display.commands.iter().any(|paint| matches!(paint, Paint::Rect { bounds, .. } if bounds[3] <= 3.0 && bounds[2] > 10.0)), "the underline is a thin rule");
+    }
+}

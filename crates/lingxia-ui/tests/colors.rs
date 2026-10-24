@@ -1,3 +1,4 @@
+use lingxia_ui::protocol::field;
 use lingxia_ui::{
     Renderer,
     protocol::{color, decode},
@@ -52,14 +53,14 @@ fn translucent_stack_layers_composite_in_order_without_premultiplying_twice() {
         0,
         0,
         "",
-        json!([0, 32, 1, 64, 6, "#ff000000", 48, 32]),
+        json!([0, 32, 1, 64, 6, "#ff000000", field::INSET_LEFT, 32]),
     );
     node(
         &mut wire,
         0,
         0,
         "",
-        json!([0, 32, 1, 32, 6, "#ffffff80", 49, 32]),
+        json!([0, 32, 1, 32, 6, "#ffffff80", field::INSET_TOP, 32]),
     );
     let frame = Renderer::default()
         .layout(&decode(&wire).unwrap(), 64, 64, 1.0)

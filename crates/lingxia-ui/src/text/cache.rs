@@ -15,6 +15,7 @@ pub(crate) struct Key {
     face: (bool, bool),
     word_break: u8,
     overflow_wrap: u8,
+    nowrap: bool,
 }
 impl Key {
     pub(crate) fn new(
@@ -23,8 +24,7 @@ impl Key {
         weight: f32,
         line_height: Option<f32>,
         face: (bool, bool),
-        word_break: u8,
-        overflow_wrap: u8,
+        (word_break, overflow_wrap, nowrap): (u8, u8, bool),
     ) -> Option<Self> {
         (text.len() <= MAX_ENTRY_BYTES).then(|| Self {
             text: text.into(),
@@ -35,6 +35,7 @@ impl Key {
             face,
             word_break,
             overflow_wrap,
+            nowrap,
         })
     }
 }
@@ -74,31 +75,110 @@ mod tests {
     use super::*;
     #[test]
     fn cache_keys_include_all_shape_styles_and_bound_retention() {
-        let key =
-            |text: &str| Key::new(text, (16.0, 0.0), 400.0, None, (false, false), 0, 0).unwrap();
+        let key = |text: &str| {
+            Key::new(
+                text,
+                (16.0, 0.0),
+                400.0,
+                None,
+                (false, false),
+                (0, 0, false),
+            )
+            .unwrap()
+        };
         let mut cache = TextCache::default();
         let layout = Layout::default();
         cache.insert(key("label"), &layout);
         assert!(cache.get(&key("label")).is_some());
         for changed in [
-            Key::new("label", (16.0, 2.0), 400.0, None, (false, false), 0, 0),
-            Key::new("label", (16.0, 0.0), 400.0, None, (false, true), 0, 0),
-            Key::new("label", (17.0, 0.0), 400.0, None, (false, false), 0, 0),
-            Key::new("label", (16.0, 0.0), 600.0, None, (false, false), 0, 0),
+            Key::new(
+                "label",
+                (16.0, 2.0),
+                400.0,
+                None,
+                (false, false),
+                (0, 0, false),
+            ),
+            Key::new(
+                "label",
+                (16.0, 0.0),
+                400.0,
+                None,
+                (false, true),
+                (0, 0, false),
+            ),
+            Key::new(
+                "label",
+                (17.0, 0.0),
+                400.0,
+                None,
+                (false, false),
+                (0, 0, false),
+            ),
+            Key::new(
+                "label",
+                (16.0, 0.0),
+                600.0,
+                None,
+                (false, false),
+                (0, 0, false),
+            ),
             Key::new(
                 "label",
                 (16.0, 0.0),
                 400.0,
                 Some(24.0),
                 (false, false),
-                0,
-                0,
+                (0, 0, false),
             ),
-            Key::new("label", (16.0, 0.0), 400.0, None, (true, false), 0, 0),
-            Key::new("label", (16.0, 0.0), 400.0, None, (false, false), 1, 0),
-            Key::new("label", (16.0, 0.0), 400.0, None, (false, false), 2, 0),
-            Key::new("label", (16.0, 0.0), 400.0, None, (false, false), 0, 1),
-            Key::new("label", (16.0, 0.0), 400.0, None, (false, false), 0, 2),
+            Key::new(
+                "label",
+                (16.0, 0.0),
+                400.0,
+                None,
+                (true, false),
+                (0, 0, false),
+            ),
+            Key::new(
+                "label",
+                (16.0, 0.0),
+                400.0,
+                None,
+                (false, false),
+                (1, 0, false),
+            ),
+            Key::new(
+                "label",
+                (16.0, 0.0),
+                400.0,
+                None,
+                (false, false),
+                (2, 0, false),
+            ),
+            Key::new(
+                "label",
+                (16.0, 0.0),
+                400.0,
+                None,
+                (false, false),
+                (0, 1, false),
+            ),
+            Key::new(
+                "label",
+                (16.0, 0.0),
+                400.0,
+                None,
+                (false, false),
+                (0, 2, false),
+            ),
+            Key::new(
+                "label",
+                (16.0, 0.0),
+                400.0,
+                None,
+                (false, false),
+                (0, 0, true),
+            ),
         ] {
             assert!(cache.get(&changed.unwrap()).is_none());
         }
@@ -114,8 +194,7 @@ mod tests {
                 400.0,
                 None,
                 (false, false),
-                0,
-                0
+                (0, 0, false)
             )
             .is_none()
         );

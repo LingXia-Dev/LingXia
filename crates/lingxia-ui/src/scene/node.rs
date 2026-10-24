@@ -41,6 +41,14 @@ pub struct NodeSnapshot {
     pub control_bounds: Option<[f32; 4]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input: Option<InputSnapshot>,
+    /// Children are clipped to this node's padding box (`overflow: hidden`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub clips_children: bool,
+    /// An `active:` paint delta exists; the session repaints it while pressed.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub pressed_style: bool,
+    /// Position in paint order; later nodes draw above and receive hits first.
+    pub order: u32,
     #[serde(skip)]
     pub(crate) plot_local: Option<([f32; 4], Affine)>,
 }

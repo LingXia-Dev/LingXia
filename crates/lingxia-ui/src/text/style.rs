@@ -14,17 +14,58 @@ pub(crate) struct TextStyle {
     pub(crate) align: Alignment,
     pub(crate) word_break: u8,
     pub(crate) overflow_wrap: u8,
-    /// The ancestor whose decoration this record's glyphs carry.
-    pub(crate) strike_owner: Option<usize>,
+    /// The ancestor whose decoration this record's glyphs carry, and its line.
+    pub(crate) decoration: Option<(usize, Decoration)>,
+    pub(crate) transform: Transform,
+    pub(crate) nowrap: bool,
 }
 
-/// Text painted for each record: editor values, placeholders or masked secrets.
-pub(crate) fn display_texts(records: &[Record]) -> Vec<String> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Decoration {
+    LineThrough,
+    Underline,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Transform {
+    None,
+    Uppercase,
+    Lowercase,
+    Capitalize,
+}
+
+impl Transform {
+    pub(crate) fn apply(self, text: &str) -> String {
+        match self {
+            Self::None => text.to_owned(),
+            Self::Uppercase => text.to_uppercase(),
+            Self::Lowercase => text.to_lowercase(),
+            Self::Capitalize => {
+                let mut start = true;
+                text.chars()
+                    .flat_map(|c| {
+                        let upper = start && c.is_alphanumeric();
+                        start = c.is_whitespace();
+                        if upper {
+                            c.to_uppercase().collect::<Vec<_>>()
+                        } else {
+                            vec![c]
+                        }
+                    })
+                    .collect()
+            }
+        }
+    }
+}
+
+/// Text painted for each record: transformed labels, editor values, placeholders or masked secrets.
+pub(crate) fn display_texts(records: &[Record], styles: &[TextStyle]) -> Vec<String> {
     records
         .iter()
-        .map(|record| {
+        .zip(styles)
+        .map(|(record, style)| {
             if !matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
-                return record.text.clone();
+                return style.transform.apply(&record.text);
             }
             let value = record.string(field::INPUT_VALUE).unwrap_or("");
             let text = if value.is_empty() {
@@ -52,9 +93,27 @@ pub(crate) fn computed(records: &[Record]) -> Vec<TextStyle> {
             .unwrap_or_else(|| parent.as_ref().map(|p| p.size).unwrap_or(14.0));
         // Decorations propagate through layout descendants; `none` only
         // removes a node's own decoration, not one drawn by its ancestor.
-        let strike_owner = parent.as_ref().and_then(|p| p.strike_owner).or_else(|| {
-            (record.string(field::TEXT_DECORATION_LINE) == Some("line-through")).then_some(index)
+        let decoration = parent.as_ref().and_then(|p| p.decoration).or_else(|| {
+            match record.string(field::TEXT_DECORATION_LINE) {
+                Some("line-through") => Some((index, Decoration::LineThrough)),
+                Some("underline") => Some((index, Decoration::Underline)),
+                _ => None,
+            }
         });
+        let transform = match record.string(field::TEXT_TRANSFORM) {
+            Some("uppercase") => Transform::Uppercase,
+            Some("lowercase") => Transform::Lowercase,
+            Some("capitalize") => Transform::Capitalize,
+            Some(_) => Transform::None,
+            None => parent
+                .as_ref()
+                .map(|p| p.transform)
+                .unwrap_or(Transform::None),
+        };
+        let nowrap = match record.string(field::WHITE_SPACE) {
+            Some(value) => value == "nowrap",
+            None => parent.as_ref().is_some_and(|p| p.nowrap),
+        };
         let align = match record.string(field::TEXT_ALIGN) {
             Some("left") => Alignment::Left,
             Some("right") => Alignment::Right,
@@ -118,7 +177,9 @@ pub(crate) fn computed(records: &[Record]) -> Vec<TextStyle> {
             align,
             word_break,
             overflow_wrap,
-            strike_owner,
+            decoration,
+            transform,
+            nowrap,
         });
     }
     styles

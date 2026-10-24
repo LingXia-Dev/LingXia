@@ -7,7 +7,7 @@ use crate::scene::paint::*;
 use crate::scene::retained::*;
 use crate::semantics::groups::ControlGroups;
 use crate::text::shape::glyph_ink;
-use crate::text::style::TextStyle;
+use crate::text::style::{Decoration, TextStyle};
 use parley::{AlignmentOptions, Layout, PositionedLayoutItem};
 use std::hash::Hasher;
 use std::sync::Arc;
@@ -405,6 +405,18 @@ impl Renderer {
                     content_width
                 };
                 text.break_all_lines(Some(alignment_width));
+                if record.string(field::TEXT_OVERFLOW) == Some("ellipsis")
+                    && let Some(short) = self.ellipsize(
+                        record,
+                        &styles[index],
+                        &texts[index],
+                        content_width,
+                        record.number(field::TEXT_LINES).map(|n| n as usize),
+                    )
+                {
+                    *text = short;
+                    text.break_all_lines(Some(alignment_width));
+                }
                 text.align(styles[index].align, AlignmentOptions::default());
                 let placeholder = matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH)
                     && record.string(field::INPUT_VALUE).unwrap_or("").is_empty();
@@ -487,17 +499,24 @@ impl Renderer {
                                 skew,
                                 glyphs,
                             });
-                            if let Some(owner) = styles[index].strike_owner {
+                            if let Some((owner, decoration)) = styles[index].decoration {
                                 let metrics = run.font_metrics();
+                                let (offset, size) = match decoration {
+                                    Decoration::LineThrough => {
+                                        (metrics.strikethrough_offset, metrics.strikethrough_size)
+                                    }
+                                    Decoration::Underline => {
+                                        (metrics.underline_offset, metrics.underline_size)
+                                    }
+                                };
                                 commands.push(Paint::Rect {
                                     corners: None,
                                     color: color(colors[owner])?,
                                     bounds: [
                                         x + layout.padding.left + label_x + glyph_run.offset(),
-                                        y + layout.padding.top + label_y + baseline
-                                            - metrics.strikethrough_offset,
+                                        y + layout.padding.top + label_y + baseline - offset,
                                         glyph_run.advance(),
-                                        metrics.strikethrough_size.max(1.0 / scale),
+                                        size.max(1.0 / scale),
                                     ],
                                     radius: 0.0,
                                 });
@@ -631,6 +650,12 @@ impl Renderer {
             ranges.push(paint_start..commands.len());
             nodes.push(NodeSnapshot {
                 plot_local: None,
+                clips_children: record.string(field::OVERFLOW) == Some("hidden"),
+                pressed_style: record
+                    .fields
+                    .iter()
+                    .any(|(id, _)| *id == field::PRESSED_STYLE),
+                order: 0,
                 radii: corners,
                 plot: plot_snapshot,
                 content_clip,
@@ -689,13 +714,16 @@ impl Renderer {
                 }),
                 tag: crate::protocol::TAGS[record.tag],
                 test_id: record.test_id.clone(),
+                // Semantics read the authored text; transforms and truncation are paint-only.
                 text: if matches!(record.tag, tag::BUTTON | tag::CHECKBOX) {
                     record
                         .string(field::ACCESSIBILITY_LABEL)
-                        .unwrap_or(&texts[index])
+                        .unwrap_or(&record.text)
                         .to_owned()
-                } else {
+                } else if matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
                     texts[index].clone()
+                } else {
+                    record.text.clone()
                 },
                 bounds,
                 visible_bounds,
@@ -731,6 +759,16 @@ impl Renderer {
             nodes,
             ranges,
             parents: records.iter().map(|record| record.parent).collect(),
+            order: crate::scene::retained::paint_order(
+                &records
+                    .iter()
+                    .map(|record| record.parent)
+                    .collect::<Vec<_>>(),
+                &records
+                    .iter()
+                    .map(|record| record.number(field::Z_INDEX).unwrap_or(0.0) as i32)
+                    .collect::<Vec<_>>(),
+            ),
             backdrops: records
                 .iter()
                 .map(|r| {

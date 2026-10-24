@@ -38,6 +38,9 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         content_clip: None,
         control_bounds: None,
         input: None,
+        clips_children: false,
+        pressed_style: false,
+        order: 0,
         plot_local: None,
     }
 }
@@ -511,7 +514,14 @@ fn taps_dispatch_against_the_frame_they_started_on() {
     let page = PageTicket::new(1);
     presented(&mut interaction, vec![button.clone()], 1);
     let (consumed, effects) = interaction.pointer(press(PointerPhase::Down, 20.0, 20.0), page);
-    assert!(consumed && effects.contains(&Effect::Press { node: 0 }));
+    assert!(
+        consumed
+            && effects.contains(&Effect::Press {
+                node: 0,
+                identity: "go".into(),
+                styled: false
+            })
+    );
     let (_, effects) = interaction.pointer(press(PointerPhase::Up, 22.0, 22.0), page);
     assert!(effects.contains(&Effect::Dispatch));
     assert_eq!(
@@ -525,7 +535,11 @@ fn taps_dispatch_against_the_frame_they_started_on() {
     interaction.pointer(press(PointerPhase::Down, 20.0, 20.0), page);
     button.on_click = Some(10);
     let rebound = presented(&mut interaction, vec![button.clone()], 2);
-    assert!(rebound.effects.contains(&Effect::Press { node: 0 }));
+    assert!(rebound.effects.contains(&Effect::Press {
+        node: 0,
+        identity: "go".into(),
+        styled: false
+    }));
     interaction.pointer(press(PointerPhase::Up, 20.0, 20.0), page);
     assert_eq!(
         interaction.take_dispatch(),

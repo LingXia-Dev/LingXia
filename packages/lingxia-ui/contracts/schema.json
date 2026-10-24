@@ -1,6 +1,6 @@
 {
   "uiAbi": 1,
-  "tags": ["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector"],
+  "tags": ["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page"],
   "options": {
     "font-family": ["sans", "mono"],
     "font-style": ["normal", "italic"],
@@ -10,10 +10,16 @@
     "scroll-axis": ["horizontal", "vertical"],
     "word-break": ["normal", "break-all", "keep-all"],
     "overflow-wrap": ["normal", "break-word", "anywhere"],
-    "text-decoration-line": ["none", "line-through"],
+    "text-decoration-line": ["none", "line-through", "underline"],
     "text-alignment": ["start", "end", "left", "center", "right", "justify"],
     "alignment": ["start", "center", "end", "stretch", "baseline"],
-    "justification": ["start", "center", "end", "between"]
+    "justification": ["start", "center", "end", "between", "around", "evenly"],
+    "position": ["relative", "absolute"],
+    "overflow": ["visible", "hidden"],
+    "text-transform": ["none", "uppercase", "lowercase", "capitalize"],
+    "white-space": ["normal", "nowrap"],
+    "text-overflow": ["clip", "ellipsis"],
+    "sizing-keyword": ["fit-content", "max-content", "min-content"]
   },
   "fields": [
     {"id": 0, "key": "width", "wire": "width", "kind": "number"},
@@ -64,8 +70,8 @@
     {"id": 45, "key": "sliderStep", "wire": "step", "kind": "slider-number"},
     {"id": 46, "key": "onSliderChange", "wire": "onChange", "kind": "slider-handle"},
     {"id": 47, "key": "gridColumns", "wire": "columns", "kind": "grid-columns"},
-    {"id": 48, "key": "offsetX", "wire": "offsetX", "kind": "stack-offset"},
-    {"id": 49, "key": "offsetY", "wire": "offsetY", "kind": "stack-offset"},
+    {"id": 48, "key": "offsetX", "wire": "offsetX", "kind": "reserved"},
+    {"id": 49, "key": "offsetY", "wire": "offsetY", "kind": "reserved"},
     {"id": 50, "key": "textLines", "wire": "lines", "kind": "text-lines"},
     {"id": 51, "key": "plotValues", "wire": "values", "kind": "plot-values"},
     {"id": 52, "key": "plotKind", "wire": "kind", "kind": "plot-kind"},
@@ -124,6 +130,26 @@
     {"id": 105, "key": "imageAlt", "wire": "alt", "kind": "image-alt"},
     {"id": 106, "key": "imageRetryKey", "wire": "retryKey", "kind": "image-retry"},
     {"id": 107, "key": "onImageLoad", "wire": "onLoad", "kind": "image-handle"},
-    {"id": 108, "key": "onImageError", "wire": "onError", "kind": "image-handle"}
+    {"id": 108, "key": "onImageError", "wire": "onError", "kind": "image-handle"},
+    {"id": 109, "key": "marginTop", "wire": "marginTop", "kind": "margin"},
+    {"id": 110, "key": "marginRight", "wire": "marginRight", "kind": "margin"},
+    {"id": 111, "key": "marginBottom", "wire": "marginBottom", "kind": "margin"},
+    {"id": 112, "key": "marginLeft", "wire": "marginLeft", "kind": "margin"},
+    {"id": 113, "key": "position", "wire": "position", "kind": "position"},
+    {"id": 114, "key": "insetTop", "wire": "insetTop", "kind": "inset"},
+    {"id": 115, "key": "insetRight", "wire": "insetRight", "kind": "inset"},
+    {"id": 116, "key": "insetBottom", "wire": "insetBottom", "kind": "inset"},
+    {"id": 117, "key": "insetLeft", "wire": "insetLeft", "kind": "inset"},
+    {"id": 118, "key": "zIndex", "wire": "zIndex", "kind": "z-index"},
+    {"id": 119, "key": "overflow", "wire": "overflow", "kind": "overflow"},
+    {"id": 120, "key": "rowGap", "wire": "rowGap", "kind": "number"},
+    {"id": 121, "key": "columnGap", "wire": "columnGap", "kind": "number"},
+    {"id": 122, "key": "textTransform", "wire": "textTransform", "kind": "text-transform"},
+    {"id": 123, "key": "whiteSpace", "wire": "whiteSpace", "kind": "white-space"},
+    {"id": 124, "key": "textOverflow", "wire": "textOverflow", "kind": "text-overflow"},
+    {"id": 125, "key": "pressedStyle", "wire": "pressedStyle", "kind": "state-style"},
+    {"id": 126, "key": "hoverStyle", "wire": "hoverStyle", "kind": "state-style"},
+    {"id": 127, "key": "widthKeyword", "wire": "widthKeyword", "kind": "sizing-keyword"},
+    {"id": 128, "key": "heightKeyword", "wire": "heightKeyword", "kind": "sizing-keyword"}
   ]
 }

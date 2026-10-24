@@ -23,6 +23,7 @@ pub struct Renderer {
     pub(crate) text_cache: crate::text::cache::TextCache,
     pub(crate) shadow_cache: crate::scene::shadow::MaskCache,
     pub(crate) text_time: std::time::Duration,
+    pub(crate) safe_area: style::SafeArea,
 }
 
 #[cfg(test)]
@@ -62,6 +63,7 @@ impl Default for Renderer {
             text_cache: Default::default(),
             shadow_cache: Default::default(),
             text_time: std::time::Duration::ZERO,
+            safe_area: Default::default(),
         }
     }
 }
@@ -133,7 +135,7 @@ impl Renderer {
         }
         let groups = crate::semantics::groups::control_groups(records)?;
         let styles = crate::text::style::computed(records);
-        let texts = crate::text::style::display_texts(records);
+        let texts = crate::text::style::display_texts(records, &styles);
         let mut layouts: Vec<Option<Layout<()>>> = Vec::with_capacity(records.len());
         for (index, record) in records.iter().enumerate() {
             layouts.push(self.shape(record, &styles[index], &texts[index]));
@@ -141,7 +143,7 @@ impl Renderer {
         let mut tree: TaffyTree<usize> = TaffyTree::new();
         let mut ids = Vec::new();
         for (index, record) in records.iter().enumerate() {
-            let style = style::node_style(records, index, width, height, scale)?;
+            let style = style::node_style(records, index, (width, height, scale), self.safe_area)?;
             let id = tree
                 .new_leaf_with_context(style, index)
                 .map_err(|e| e.to_string())?;
@@ -201,7 +203,8 @@ impl Renderer {
                     |_, _| 0.0,
                     |known, available| {
                         let tag = context.as_ref().map(|i| records[**i].tag).unwrap_or(0);
-                        let single_line = matches!(tag, tag::INPUT | tag::SEARCH);
+                        let single_line = matches!(tag, tag::INPUT | tag::SEARCH)
+                            || context.as_ref().is_some_and(|i| styles[**i].nowrap);
                         let limit = context
                             .as_ref()
                             .and_then(|i| records[**i].number(field::TEXT_LINES))

@@ -124,8 +124,7 @@ impl Renderer {
                     weight,
                     line_height,
                     (style.mono, italic),
-                    word_break,
-                    overflow_wrap,
+                    (word_break, overflow_wrap, style.nowrap),
                 )
             })
             .flatten();
@@ -141,7 +140,7 @@ impl Renderer {
             } else {
                 FontStyle::Normal
             }));
-            if matches!(record.tag, tag::INPUT | tag::SEARCH) {
+            if matches!(record.tag, tag::INPUT | tag::SEARCH) || style.nowrap {
                 builder.push_default(StyleProperty::TextWrapMode(parley::TextWrapMode::NoWrap));
             }
             builder.push_default(StyleProperty::OverflowWrap(match overflow_wrap {
@@ -172,5 +171,40 @@ impl Renderer {
         layout.break_all_lines(None);
         self.text_time += started.elapsed();
         Some(layout)
+    }
+
+    /// The longest prefix plus an ellipsis that fits `lines` lines of `width`, or `None` if all fits.
+    pub(crate) fn ellipsize(
+        &mut self,
+        record: &Record,
+        style: &TextStyle,
+        text: &str,
+        width: f32,
+        lines: Option<usize>,
+    ) -> Option<Layout<()>> {
+        let fits = |layout: &mut Layout<()>| {
+            layout.break_all_lines(if style.nowrap { None } else { Some(width) });
+            lines.is_none_or(|limit| layout.len() <= limit)
+                && (!style.nowrap || layout.width() <= width + 0.5)
+        };
+        if fits(&mut self.shape(record, style, text)?) {
+            return None;
+        }
+        let ends: Vec<usize> = text.char_indices().map(|(at, _)| at).collect();
+        // Prefixes of `k` characters for k < count; the whole text is known not to fit.
+        let (mut low, mut high) = (0, ends.len().saturating_sub(1));
+        let mut best = self.shape(record, style, "\u{2026}")?;
+        while low < high {
+            let middle = (low + high).div_ceil(2);
+            let candidate = format!("{}\u{2026}", text[..ends[middle]].trim_end());
+            let mut layout = self.shape(record, style, &candidate)?;
+            if fits(&mut layout) {
+                best = layout;
+                low = middle;
+            } else {
+                high = middle - 1;
+            }
+        }
+        Some(best)
     }
 }

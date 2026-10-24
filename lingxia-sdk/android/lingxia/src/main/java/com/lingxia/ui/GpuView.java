@@ -63,6 +63,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private static native void nativeDetach(long surface);
     private static native long nativeTakeFrame(long page);
     private static native void nativeFrameRelease(long frame);
+    private static native boolean nativePointerState(long page, String pressed, String hovered);
     // Shared lifecycle core.
     static native long nativeLifecycleCreate(boolean logic);
     static native void nativeLifecycleRelease(long lifecycle);
@@ -827,8 +828,11 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         for (int i = 0; effects != null && i < effects.length(); i++) {
             JSONObject effect = effects.optJSONObject(i);
             switch (effect.optString("kind")) {
-                case "press": surface.showPress(effect.optInt("node")); break;
-                case "clear-press": surface.clearPress(); break;
+                case "press":
+                    if (effect.optBoolean("styled")) setPressedStyle(effect.optString("identity"));
+                    else surface.showPress(effect.optInt("node"));
+                    break;
+                case "clear-press": surface.clearPress(); setPressedStyle(null); break;
                 case "focus-ring": surface.showFocusRing(effect.optInt("node")); break;
                 case "clear-focus-ring": surface.clearFocusRing(); break;
                 case "redraw": scheduleFrame(); break;
@@ -853,6 +857,20 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 default: break;
             }
         }
+    }
+
+    private String styledPress;
+    /** `active:` styles repaint in the session; only the transition is forwarded. */
+    private void setPressedStyle(String identity) {
+        if (java.util.Objects.equals(identity, styledPress)) return;
+        styledPress = identity;
+        final long page = page();
+        worker.execute(() -> {
+            try {
+                if (currentPage(page) && nativePage != 0 && nativePointerState(nativePage, identity, null))
+                    main.post(() -> { if (!destroyed && currentPage(page)) scheduleFrame(); });
+            } catch (Throwable error) { postError(error, page); }
+        });
     }
 
     /** Run queued activations against the frame the core resolved them on. */

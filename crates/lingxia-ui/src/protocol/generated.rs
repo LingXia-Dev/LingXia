@@ -25,6 +25,7 @@ pub mod tag {
     pub const STACK: usize = 17;
     pub const PLOT: usize = 18;
     pub const VECTOR: usize = 19;
+    pub const PAGE: usize = 20;
 }
 
 /// Wire field ids.
@@ -138,9 +139,29 @@ pub mod field {
     pub const IMAGE_RETRY_KEY: usize = 106;
     pub const ON_IMAGE_LOAD: usize = 107;
     pub const ON_IMAGE_ERROR: usize = 108;
+    pub const MARGIN_TOP: usize = 109;
+    pub const MARGIN_RIGHT: usize = 110;
+    pub const MARGIN_BOTTOM: usize = 111;
+    pub const MARGIN_LEFT: usize = 112;
+    pub const POSITION: usize = 113;
+    pub const INSET_TOP: usize = 114;
+    pub const INSET_RIGHT: usize = 115;
+    pub const INSET_BOTTOM: usize = 116;
+    pub const INSET_LEFT: usize = 117;
+    pub const Z_INDEX: usize = 118;
+    pub const OVERFLOW: usize = 119;
+    pub const ROW_GAP: usize = 120;
+    pub const COLUMN_GAP: usize = 121;
+    pub const TEXT_TRANSFORM: usize = 122;
+    pub const WHITE_SPACE: usize = 123;
+    pub const TEXT_OVERFLOW: usize = 124;
+    pub const PRESSED_STYLE: usize = 125;
+    pub const HOVER_STYLE: usize = 126;
+    pub const WIDTH_KEYWORD: usize = 127;
+    pub const HEIGHT_KEYWORD: usize = 128;
 }
 
-pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector"];
+pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page"];
 
 /// Wire name and value kind, indexed by field id.
 pub const FIELDS: &[(&str, &str)] = &[
@@ -192,8 +213,8 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("step", "slider-number"),
     ("onChange", "slider-handle"),
     ("columns", "grid-columns"),
-    ("offsetX", "stack-offset"),
-    ("offsetY", "stack-offset"),
+    ("offsetX", "reserved"),
+    ("offsetY", "reserved"),
     ("lines", "text-lines"),
     ("values", "plot-values"),
     ("kind", "plot-kind"),
@@ -253,6 +274,26 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("retryKey", "image-retry"),
     ("onLoad", "image-handle"),
     ("onError", "image-handle"),
+    ("marginTop", "margin"),
+    ("marginRight", "margin"),
+    ("marginBottom", "margin"),
+    ("marginLeft", "margin"),
+    ("position", "position"),
+    ("insetTop", "inset"),
+    ("insetRight", "inset"),
+    ("insetBottom", "inset"),
+    ("insetLeft", "inset"),
+    ("zIndex", "z-index"),
+    ("overflow", "overflow"),
+    ("rowGap", "number"),
+    ("columnGap", "number"),
+    ("textTransform", "text-transform"),
+    ("whiteSpace", "white-space"),
+    ("textOverflow", "text-overflow"),
+    ("pressedStyle", "state-style"),
+    ("hoverStyle", "state-style"),
+    ("widthKeyword", "sizing-keyword"),
+    ("heightKeyword", "sizing-keyword"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -266,10 +307,16 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "scroll-axis" => Some(&["horizontal", "vertical"]),
         "word-break" => Some(&["normal", "break-all", "keep-all"]),
         "overflow-wrap" => Some(&["normal", "break-word", "anywhere"]),
-        "text-decoration-line" => Some(&["none", "line-through"]),
+        "text-decoration-line" => Some(&["none", "line-through", "underline"]),
         "text-alignment" => Some(&["start", "end", "left", "center", "right", "justify"]),
         "alignment" => Some(&["start", "center", "end", "stretch", "baseline"]),
-        "justification" => Some(&["start", "center", "end", "between"]),
+        "justification" => Some(&["start", "center", "end", "between", "around", "evenly"]),
+        "position" => Some(&["relative", "absolute"]),
+        "overflow" => Some(&["visible", "hidden"]),
+        "text-transform" => Some(&["none", "uppercase", "lowercase", "capitalize"]),
+        "white-space" => Some(&["normal", "nowrap"]),
+        "text-overflow" => Some(&["clip", "ellipsis"]),
+        "sizing-keyword" => Some(&["fit-content", "max-content", "min-content"]),
         _ => None,
     }
 }

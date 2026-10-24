@@ -142,11 +142,12 @@
   }
 
   // src/generated/wire.js
-  var tags = { "column": 0, "row": 1, "text": 2, "button": 3, "spacer": 4, "scroll": 5, "list": 6, "image": 7, "input": 8, "textarea": 9, "checkbox": 10, "switch": 11, "radio": 12, "radio-option": 13, "search": 14, "slider": 15, "grid": 16, "stack": 17, "plot": 18, "vector": 19 };
-  var fields = { "width": 0, "height": 1, "gap": 2, "padding": 3, "fontSize": 4, "color": 5, "background": 6, "grow": 7, "radius": 10, "minWidth": 28, "minHeight": 29, "maxWidth": 30, "maxHeight": 31, "shrink": 32, "align": 33, "justify": 34, "alignSelf": 35, "fontWeight": 36, "lineHeight": 37, "fontFamily": 38, "offsetX": 48, "offsetY": 49, "opacity": 58, "paddingTop": 59, "paddingRight": 60, "paddingBottom": 61, "paddingLeft": 62, "wordBreak": 63, "overflowWrap": 64, "borderWidth": 65, "borderColor": 66, "borderTopWidth": 67, "borderRightWidth": 68, "borderBottomWidth": 69, "borderLeftWidth": 70, "textAlign": 71, "backgroundGradient": 72, "boxShadow": 73, "textDecorationLine": 81, "fontStyle": 84, "flexWrap": 87, "letterSpacing": 89, "radiusTopLeft": 90, "radiusTopRight": 91, "radiusBottomRight": 92, "radiusBottomLeft": 93, "backdropBlur": 95, "backdropSaturation": 96, "placeholderColor": 97, "flexBasis": 99, "scrollAxis": 100, "animation": 101, "flexDirection": 103, "display": 104 };
+  var tags = { "column": 0, "row": 1, "text": 2, "button": 3, "spacer": 4, "scroll": 5, "list": 6, "image": 7, "input": 8, "textarea": 9, "checkbox": 10, "switch": 11, "radio": 12, "radio-option": 13, "search": 14, "slider": 15, "grid": 16, "stack": 17, "plot": 18, "vector": 19, "page": 20 };
+  var field = { "width": 0, "height": 1, "gap": 2, "padding": 3, "fontSize": 4, "color": 5, "background": 6, "grow": 7, "onClick": 8, "enabled": 9, "radius": 10, "listId": 11, "listCount": 12, "listLeading": 13, "listTrailing": 14, "listRowIndex": 15, "listAnchor": 16, "onReachStart": 17, "onReachEnd": 18, "imageSrc": 19, "imageFit": 20, "inputValue": 21, "placeholder": 22, "secure": 23, "keyboard": 24, "autoFocus": 25, "onInput": 26, "onSubmit": 27, "minWidth": 28, "minHeight": 29, "maxWidth": 30, "maxHeight": 31, "shrink": 32, "align": 33, "justify": 34, "alignSelf": 35, "fontWeight": 36, "lineHeight": 37, "fontFamily": 38, "checked": 39, "onCheckedChange": 40, "accessibilityLabel": 41, "sliderValue": 42, "sliderMin": 43, "sliderMax": 44, "sliderStep": 45, "onSliderChange": 46, "gridColumns": 47, "offsetX": 48, "offsetY": 49, "textLines": 50, "plotValues": 51, "plotKind": 52, "plotColors": 53, "plotSmooth": 54, "plotArea": 55, "onPlotSelect": 56, "plotSelectedIndex": 57, "opacity": 58, "paddingTop": 59, "paddingRight": 60, "paddingBottom": 61, "paddingLeft": 62, "wordBreak": 63, "overflowWrap": 64, "borderWidth": 65, "borderColor": 66, "borderTopWidth": 67, "borderRightWidth": 68, "borderBottomWidth": 69, "borderLeftWidth": 70, "textAlign": 71, "backgroundGradient": 72, "boxShadow": 73, "widthPercent": 74, "heightPercent": 75, "minWidthPercent": 76, "minHeightPercent": 77, "maxWidthPercent": 78, "maxHeightPercent": 79, "vectorSource": 80, "textDecorationLine": 81, "heightAuto": 82, "submitOnEnter": 83, "fontStyle": 84, "plotDomainMin": 85, "plotDomainMax": 86, "flexWrap": 87, "plotPieLayout": 88, "letterSpacing": 89, "radiusTopLeft": 90, "radiusTopRight": 91, "radiusBottomRight": 92, "radiusBottomLeft": 93, "plotMarkerEmphasisScale": 94, "backdropBlur": 95, "backdropSaturation": 96, "placeholderColor": 97, "focusStyle": 98, "flexBasis": 99, "scrollAxis": 100, "animation": 101, "listItemKeys": 102, "flexDirection": 103, "display": 104, "imageAlt": 105, "imageRetryKey": 106, "onImageLoad": 107, "onImageError": 108, "marginTop": 109, "marginRight": 110, "marginBottom": 111, "marginLeft": 112, "position": 113, "insetTop": 114, "insetRight": 115, "insetBottom": 116, "insetLeft": 117, "zIndex": 118, "overflow": 119, "rowGap": 120, "columnGap": 121, "textTransform": 122, "whiteSpace": 123, "textOverflow": 124, "pressedStyle": 125, "hoverStyle": 126, "widthKeyword": 127, "heightKeyword": 128 };
+  var fields = { "width": 0, "height": 1, "gap": 2, "padding": 3, "fontSize": 4, "color": 5, "background": 6, "grow": 7, "radius": 10, "minWidth": 28, "minHeight": 29, "maxWidth": 30, "maxHeight": 31, "shrink": 32, "align": 33, "justify": 34, "alignSelf": 35, "fontWeight": 36, "lineHeight": 37, "fontFamily": 38, "opacity": 58, "paddingTop": 59, "paddingRight": 60, "paddingBottom": 61, "paddingLeft": 62, "wordBreak": 63, "overflowWrap": 64, "borderWidth": 65, "borderColor": 66, "borderTopWidth": 67, "borderRightWidth": 68, "borderBottomWidth": 69, "borderLeftWidth": 70, "textAlign": 71, "backgroundGradient": 72, "boxShadow": 73, "textDecorationLine": 81, "fontStyle": 84, "flexWrap": 87, "letterSpacing": 89, "radiusTopLeft": 90, "radiusTopRight": 91, "radiusBottomRight": 92, "radiusBottomLeft": 93, "backdropBlur": 95, "backdropSaturation": 96, "placeholderColor": 97, "flexBasis": 99, "scrollAxis": 100, "animation": 101, "flexDirection": 103, "display": 104, "rowGap": 120, "columnGap": 121 };
   var vectorField = 80;
   var dimensionPercentFields = { "width": 74, "height": 75, "minWidth": 76, "minHeight": 77, "maxWidth": 78, "maxHeight": 79 };
-  var styleOptions = { "align": ["start", "center", "end", "stretch", "baseline"], "justify": ["start", "center", "end", "between"], "alignSelf": ["start", "center", "end", "stretch", "baseline"], "fontFamily": ["sans", "mono"], "wordBreak": ["normal", "break-all", "keep-all"], "overflowWrap": ["normal", "break-word", "anywhere"], "textAlign": ["start", "end", "left", "center", "right", "justify"], "textDecorationLine": ["none", "line-through"], "fontStyle": ["normal", "italic"], "flexWrap": ["nowrap", "wrap", "wrap-reverse"], "scrollAxis": ["horizontal", "vertical"], "flexDirection": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex"] };
+  var styleOptions = { "align": ["start", "center", "end", "stretch", "baseline"], "justify": ["start", "center", "end", "between", "around", "evenly"], "alignSelf": ["start", "center", "end", "stretch", "baseline"], "fontFamily": ["sans", "mono"], "wordBreak": ["normal", "break-all", "keep-all"], "overflowWrap": ["normal", "break-word", "anywhere"], "textAlign": ["start", "end", "left", "center", "right", "justify"], "textDecorationLine": ["none", "line-through", "underline"], "fontStyle": ["normal", "italic"], "flexWrap": ["nowrap", "wrap", "wrap-reverse"], "scrollAxis": ["horizontal", "vertical"], "flexDirection": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex"], "position": ["relative", "absolute"], "overflow": ["visible", "hidden"], "textTransform": ["none", "uppercase", "lowercase", "capitalize"], "whiteSpace": ["normal", "nowrap"], "textOverflow": ["clip", "ellipsis"], "widthKeyword": ["fit-content", "max-content", "min-content"], "heightKeyword": ["fit-content", "max-content", "min-content"] };
   var buttonProps = { "onClick": 8, "enabled": 9, "accessibilityLabel": 41 };
   var listFields = { "listId": 11, "listCount": 12, "leading": 13, "trailing": 14, "rowIndex": 15, "anchor": 16, "itemKeys": 102 };
   var reachProps = { "onReachStart": 17, "onReachEnd": 18 };
@@ -156,7 +157,7 @@
   var radioProps = { "accessibilityLabel": 41 };
   var sliderProps = { "accessibilityLabel": 41, "value": 42, "min": 43, "max": 44, "step": 45, "onChange": 46 };
   var gridProps = { "columns": 47 };
-  var textProps = { "lines": 50, "textAlign": 71, "textDecorationLine": 81 };
+  var textProps = { "lines": 50, "textAlign": 71, "textDecorationLine": 81, "textTransform": 122, "textOverflow": 124 };
   var plotProps = { "values": 51, "kind": 52, "colors": 53, "accessibilityLabel": 41, "smooth": 54, "area": 55, "onSelect": 56, "selectedIndex": 57, "domainMin": 85, "domainMax": 86, "pieLayout": 88, "markerEmphasisScale": 94 };
 
   // src/authoring/props.js
@@ -1496,7 +1497,7 @@
         else if (has2(dimensionPercentFields, name) && typeof value === "string") encoded.push(dimensionPercentFields[name], Number(value.slice(0, -1)));
         else if (name === "boxShadow") encoded.push(fields.boxShadow, value === "none" ? value : JSON.stringify(value));
         else if (name === "backgroundGradient") encoded.push(fields.backgroundGradient, value === "none" ? value : JSON.stringify(value));
-        else if (name === "offset") encoded.push(fields.offsetX, value.x, fields.offsetY, value.y);
+        else if (name === "offset") encoded.push(field.insetLeft, value.x, field.insetTop, value.y);
         else encoded.push(fields[name], value);
       }
       if (node.focusedStyle) {
@@ -1543,9 +1544,9 @@
           encoded.push(checkProps.onChange, node.change[0]);
         }
       }
-      for (const [field, handle, callback] of node.reaches ?? []) {
-        candidate.callbacks.set(handle, { callback, text: false, isolated: field === imageProps.onLoad || field === imageProps.onError });
-        encoded.push(field, handle);
+      for (const [field2, handle, callback] of node.reaches ?? []) {
+        candidate.callbacks.set(handle, { callback, text: false, isolated: field2 === imageProps.onLoad || field2 === imageProps.onError });
+        encoded.push(field2, handle);
       }
       if (tag === "input" || tag === "textarea" || tag === "search") {
         if (props.accessibilityLabel !== void 0) {
@@ -1554,9 +1555,9 @@
         }
         encoded.push(inputProps.value, props.value ?? "");
         for (const name of ["placeholder", "secure", "keyboard", "autoFocus", "submitOnEnter"]) if (props[name] !== void 0) encoded.push(inputProps[name], typeof props[name] === "boolean" ? +props[name] : props[name]);
-        for (const [field, handle, callback] of node.inputs) {
+        for (const [field2, handle, callback] of node.inputs) {
           candidate.callbacks.set(handle, { callback, text: true });
-          encoded.push(field, handle);
+          encoded.push(field2, handle);
         }
       }
       if (tag === "image") {

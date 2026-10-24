@@ -90,6 +90,11 @@ pub unsafe fn register_natives(
             core::interaction_accessibility
         ),
         method!("nativeTakeFrame", "(J)J", take_frame),
+        method!(
+            "nativePointerState",
+            "(JLjava/lang/String;Ljava/lang/String;)Z",
+            pointer_state
+        ),
         method!("nativeFrameRelease", "(J)V", core::frame_release),
         method!("nativeImageQueueCreate", "()J", image_requests::create),
         method!(
@@ -412,6 +417,31 @@ fn publish_frame(
     page.frame = Some(std::sync::Arc::new(
         crate::interaction::frame::PresentedFrame::new(session.generation(), scale, nodes),
     ));
+}
+
+extern "system" fn pointer_state(
+    mut env: JNIEnv,
+    _: JClass,
+    page: jlong,
+    pressed: JString,
+    hovered: JString,
+) -> jboolean {
+    guarded(&mut env, |env| {
+        let mut read = |value: &JString| -> Result<Option<String>, String> {
+            if value.is_null() {
+                return Ok(None);
+            }
+            env.get_string(value)
+                .map(|s| Some(s.into()))
+                .map_err(|e| e.to_string())
+        };
+        let (pressed, hovered) = (read(&pressed)?, read(&hovered)?);
+        with_page(page, |session, _| {
+            Ok(u8::from(
+                session.set_pointer_state(pressed.as_deref(), hovered.as_deref()),
+            ))
+        })
+    })
 }
 
 extern "system" fn take_frame(mut env: JNIEnv, _: JClass, page: jlong) -> jlong {

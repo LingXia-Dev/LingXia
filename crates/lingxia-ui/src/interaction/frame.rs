@@ -29,7 +29,11 @@ impl PresentedFrame {
 
     /// Nodes from topmost to bottommost paint order.
     pub fn hit_order(&self) -> impl Iterator<Item = (usize, &NodeSnapshot)> {
-        self.nodes.iter().enumerate().rev()
+        let mut order: Vec<_> = self.nodes.iter().enumerate().collect();
+        order.sort_by_key(|(index, node)| {
+            (std::cmp::Reverse(node.order), std::cmp::Reverse(*index))
+        });
+        order.into_iter()
     }
 
     /// The topmost interactive node under a logical point.

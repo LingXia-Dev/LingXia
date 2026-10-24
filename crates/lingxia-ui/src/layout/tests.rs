@@ -583,3 +583,223 @@ fn growing_ancestors_reserve_a_bounded_scroll_viewport() {
     assert_eq!(frame.nodes[5].bounds, [0.0, 40.0, 100.0, 60.0]);
     assert_eq!(frame.nodes[5].scroll.as_ref().unwrap().max_offset, 940.0);
 }
+
+mod box_model {
+    use crate::layout::style::SafeArea;
+    use crate::protocol::{field, tag};
+    use crate::scene::test_prelude::*;
+
+    fn bounds(records: &[Record], width: u16, height: u16) -> Vec<[f32; 4]> {
+        Renderer::default()
+            .layout(records, width, height, 1.0)
+            .unwrap()
+            .nodes
+            .iter()
+            .map(|node| node.bounds)
+            .collect()
+    }
+
+    #[test]
+    fn margins_offset_siblings_and_auto_margins_center() {
+        let records = vec![
+            node(tag::COLUMN, None, "root", &[]),
+            node(
+                tag::COLUMN,
+                Some(0),
+                "a",
+                &[
+                    (field::HEIGHT, json!(10)),
+                    (field::MARGIN_TOP, json!(8)),
+                    (field::MARGIN_LEFT, json!(4)),
+                ],
+            ),
+            node(
+                tag::COLUMN,
+                Some(0),
+                "b",
+                &[
+                    (field::HEIGHT, json!(10)),
+                    (field::WIDTH, json!(50)),
+                    (field::MARGIN_LEFT, json!("auto")),
+                    (field::MARGIN_RIGHT, json!("auto")),
+                ],
+            ),
+            node(
+                tag::COLUMN,
+                Some(0),
+                "c",
+                &[(field::HEIGHT, json!(10)), (field::MARGIN_TOP, json!(-4))],
+            ),
+        ];
+        let b = bounds(&records, 200, 200);
+        assert_eq!(b[1], [4.0, 8.0, 196.0, 10.0]);
+        assert_eq!(b[2], [75.0, 18.0, 50.0, 10.0]);
+        assert_eq!(
+            b[3][1], 24.0,
+            "negative margins overlap the previous sibling"
+        );
+    }
+
+    #[test]
+    fn absolute_children_take_insets_from_their_parent_and_leave_flow() {
+        let records = vec![
+            node(tag::COLUMN, None, "root", &[(field::PADDING, json!(10))]),
+            node(tag::COLUMN, Some(0), "flow", &[(field::HEIGHT, json!(30))]),
+            node(
+                tag::COLUMN,
+                Some(0),
+                "overlay",
+                &[
+                    (field::POSITION, json!("absolute")),
+                    (field::INSET_TOP, json!(0)),
+                    (field::INSET_RIGHT, json!(0)),
+                    (field::INSET_BOTTOM, json!(0)),
+                    (field::INSET_LEFT, json!("50%")),
+                ],
+            ),
+            node(tag::COLUMN, Some(0), "next", &[(field::HEIGHT, json!(30))]),
+        ];
+        let b = bounds(&records, 200, 100);
+        assert_eq!(b[2], [100.0, 0.0, 100.0, 100.0]);
+        assert_eq!(b[3][1], 40.0, "the absolute child takes no space in flow");
+    }
+
+    #[test]
+    fn z_index_reorders_paint_and_hits_among_siblings_only() {
+        let records = vec![
+            node(tag::STACK, None, "root", &[]),
+            node(
+                tag::BUTTON,
+                Some(0),
+                "front",
+                &[(field::ON_CLICK, json!(1)), (field::Z_INDEX, json!(2))],
+            ),
+            node(tag::BUTTON, Some(0), "back", &[(field::ON_CLICK, json!(2))]),
+        ];
+        let display = Renderer::default().layout(&records, 100, 100, 1.0).unwrap();
+        assert!(display.nodes[1].order > display.nodes[2].order);
+        let frame = crate::interaction::frame::PresentedFrame::new(
+            crate::session::lifecycle::CommitTicket::new(1),
+            1.0,
+            display.nodes,
+        );
+        assert_eq!(
+            frame.hit([10.0, 10.0]),
+            Some(1),
+            "the raised sibling receives the tap"
+        );
+    }
+
+    #[test]
+    fn overflow_hidden_clips_children_and_their_visible_bounds() {
+        let records = vec![
+            node(tag::COLUMN, None, "root", &[]),
+            node(
+                tag::COLUMN,
+                Some(0),
+                "box",
+                &[
+                    (field::HEIGHT, json!(40)),
+                    (field::OVERFLOW, json!("hidden")),
+                    (field::RADIUS, json!(8)),
+                ],
+            ),
+            node(
+                tag::COLUMN,
+                Some(1),
+                "tall",
+                &[(field::HEIGHT, json!(100)), (field::SHRINK, json!(0))],
+            ),
+        ];
+        let display = Renderer::default().layout(&records, 100, 200, 1.0).unwrap();
+        assert!(display.nodes[1].clips_children);
+        assert_eq!(display.nodes[2].visible_bounds[3], 40.0);
+        assert!(
+            !display.nodes[2].clips.is_empty(),
+            "rounded clip masks the child"
+        );
+    }
+
+    #[test]
+    fn axis_gaps_distribution_and_content_sizing_keywords() {
+        let item = |key| {
+            node(
+                tag::COLUMN,
+                Some(0),
+                key,
+                &[(field::WIDTH, json!(20)), (field::HEIGHT, json!(10))],
+            )
+        };
+        let row = |justify: &str| {
+            vec![
+                node(
+                    tag::ROW,
+                    None,
+                    "root",
+                    &[
+                        (field::JUSTIFY, json!(justify)),
+                        (field::COLUMN_GAP, json!(4)),
+                        (field::ROW_GAP, json!(30)),
+                    ],
+                ),
+                item("a"),
+                item("b"),
+            ]
+        };
+        assert_eq!(
+            bounds(&row("start"), 100, 50)[2][0],
+            24.0,
+            "columnGap separates row items"
+        );
+        assert_eq!(bounds(&row("around"), 100, 50)[1][0], 14.0);
+        assert_eq!(
+            bounds(&row("evenly"), 100, 50)[1][0],
+            19.0,
+            "space-evenly, pixel rounded"
+        );
+        let mut text = node(
+            tag::TEXT,
+            Some(0),
+            "label",
+            &[(field::WIDTH_KEYWORD, json!("fit-content"))],
+        );
+        text.text = "Hi".into();
+        let records = vec![node(tag::COLUMN, None, "root", &[]), text];
+        assert!(
+            bounds(&records, 300, 50)[1][2] < 50.0,
+            "fit-content does not stretch"
+        );
+    }
+
+    #[test]
+    fn page_roots_fill_the_viewport_inside_the_safe_area_and_avoid_the_keyboard() {
+        let records = vec![
+            node(tag::PAGE, None, "page", &[(field::PADDING, json!(4))]),
+            node(tag::SCROLL, Some(0), "content", &[]),
+            node(tag::COLUMN, Some(1), "row", &[(field::HEIGHT, json!(20))]),
+        ];
+        let mut renderer = Renderer {
+            safe_area: SafeArea {
+                insets: [24.0, 0.0, 16.0, 8.0],
+                keyboard: 100.0,
+            },
+            ..Default::default()
+        };
+        let display = renderer.layout(&records, 200, 400, 1.0).unwrap();
+        assert_eq!(display.nodes[0].bounds, [0.0, 0.0, 200.0, 400.0]);
+        assert_eq!(
+            display.nodes[1].bounds,
+            [12.0, 28.0, 184.0, 268.0],
+            "the scroll fills what the page leaves"
+        );
+        assert!(
+            crate::protocol::decode(
+                json!([0, -1, "", "", "", 0, 20, 0, "", "", "", 0])
+                    .as_array()
+                    .unwrap()
+            )
+            .is_err(),
+            "page must be the root"
+        );
+    }
+}

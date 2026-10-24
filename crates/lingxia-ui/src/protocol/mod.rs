@@ -189,6 +189,18 @@ mod animation_wire_tests {
     }
 }
 
+/// A logical length, or a bounded percentage string such as `"50%"`.
+pub(crate) fn length_or_percent(value: &Value, signed: bool) -> Option<(f32, bool)> {
+    let percent = value.as_str().and_then(|v| v.strip_suffix('%'));
+    let number = match percent {
+        Some(text) => text.parse::<f64>().ok(),
+        None => value.as_f64(),
+    }?;
+    let bound = if signed { -16384.0 } else { 0.0 };
+    (number.is_finite() && (bound..=16384.0).contains(&number))
+        .then_some((number as f32, percent.is_some()))
+}
+
 pub(crate) fn flex_basis(value: &Value) -> Result<Option<(f32, bool)>, String> {
     if value.as_str() == Some("auto") {
         return Ok(None);
@@ -545,16 +557,8 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
                         "UI_TEXT: lines must be an integer between 1 and 1024 on text".into(),
                     );
                 }
-            } else if matches!(id, field::OFFSET_X | field::OFFSET_Y) {
-                if parent.is_none_or(|p| records[p].tag != tag::STACK)
-                    || pair[1]
-                        .as_f64()
-                        .is_none_or(|v| !v.is_finite() || v.abs() > 16384.0)
-                {
-                    return Err(
-                        "UI_STACK: offset requires a stack parent and bounded number".into(),
-                    );
-                }
+            } else if FIELDS[id].1 == "reserved" {
+                return Err(format!("UI_FIELD: {} is not accepted", FIELDS[id].0));
             } else if id == field::GRID_COLUMNS {
                 if tag != tag::GRID || pair[1].as_u64().is_none_or(|v| !(1..=64).contains(&v)) {
                     return Err(
@@ -774,6 +778,27 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
                 {
                     return Err("UI_PROP: invalid handle or flag".into());
                 }
+            } else if FIELDS[id].1 == "margin" {
+                if pair[1].as_str() != Some("auto")
+                    && pair[1]
+                        .as_f64()
+                        .is_none_or(|v| !v.is_finite() || v.abs() > 16384.0)
+                {
+                    return Err("UI_STYLE: invalid margin".into());
+                }
+            } else if FIELDS[id].1 == "inset" {
+                length_or_percent(&pair[1], true).ok_or("UI_STYLE: invalid inset")?;
+            } else if id == field::Z_INDEX {
+                if pair[1].as_i64().is_none_or(|v| v.abs() > 10_000) {
+                    return Err("UI_STYLE: invalid z-index".into());
+                }
+            } else if FIELDS[id].1 == "state-style" {
+                if id == field::PRESSED_STYLE
+                    && !matches!(tag, tag::BUTTON | tag::CHECKBOX | tag::SWITCH | tag::RADIO)
+                {
+                    return Err("UI_STYLE: pressed styles require a control".into());
+                }
+                focus_style(&pair[1])?;
             } else if FIELDS[id].1 == "number" {
                 let value = pair[1]
                     .as_f64()
@@ -816,6 +841,9 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
                 .any(|(id, _)| matches!(*id, field::HEIGHT | field::HEIGHT_PERCENT))
         {
             return Err("UI_STYLE: conflicting automatic height".into());
+        }
+        if tag == tag::PAGE && parent.is_some() {
+            return Err("UI_PAGE: page must be the root".into());
         }
         if (tag == tag::RADIO_OPTION) != parent.is_some_and(|p| records[p].tag == tag::RADIO) {
             return Err(
