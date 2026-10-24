@@ -40,9 +40,9 @@ pub(super) fn initialize(env: &mut Env) -> Result<(), jni::errors::Error> {
             &class,
             &[
                 jni::NativeMethod::from_raw_parts(
-                    jni_str!("readImage"),
-                    jni_str!("(JJLjava/lang/String;)[B"),
-                    Java_com_lingxia_lxapp_GpuPage_readImage as *const () as *mut std::ffi::c_void,
+                    jni_str!("requestImage"),
+                    jni_str!("(JJLjava/lang/String;)V"),
+                    request_image as *const () as *mut std::ffi::c_void,
                 ),
                 jni::NativeMethod::from_raw_parts(
                     jni_str!("beginImage"),
@@ -453,59 +453,67 @@ pub extern "system" fn Java_com_lingxia_lxapp_GpuPage_presented(
     }
 }
 
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_GpuPage_readImage<'a>(
+/// Completes on the runtime executor through `GpuPage.imageLoaded`; never blocks a caller thread.
+extern "system" fn request_image<'a>(
     mut env: EnvUnowned<'a>,
     _: JClass<'a>,
     token: i64,
     request: i64,
     source: JString<'a>,
-) -> jni::sys::jbyteArray {
-    env.with_env(|env| -> Result<jni::sys::jbyteArray, jni::errors::Error> {
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let source = source.try_to_string(env)?;
         let cancellation = IMAGE_REQUESTS
             .lock()
             .unwrap()
             .get_mut(&request)
             .and_then(|(_, receiver)| receiver.take());
-        let Some(cancellation) = cancellation else {
-            return Ok(std::ptr::null_mut());
-        };
-        let endpoint = LIVE
+        let page = LIVE
             .lock()
             .unwrap()
             .values()
-            .find_map(|(id, endpoint)| (*id == token).then(|| endpoint.upgrade()).flatten());
-        let Some(endpoint) =
-            endpoint.filter(|endpoint| !endpoint.lease.disposed.load(Ordering::Acquire))
-        else {
-            return Ok(std::ptr::null_mut());
+            .find_map(|(id, endpoint)| (*id == token).then(|| endpoint.upgrade()).flatten())
+            .filter(|endpoint| !endpoint.lease.disposed.load(Ordering::Acquire))
+            .and_then(|endpoint| lxapp::find_page_by_instance_id(&endpoint.lease.page));
+        let (Some(cancellation), Some(page)) = (cancellation, page) else {
+            deliver_image(request, None);
+            return Ok(());
         };
-        let Some(page) = lxapp::find_page_by_instance_id(&endpoint.lease.page) else {
-            return Ok(std::ptr::null_mut());
-        };
-        let source = source.try_to_string(env)?;
-        // Called on the bounded Java image IO pool, never the UI/View thread.
-        let (send, receive) = std::sync::mpsc::sync_channel(1);
         std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
-            let result = tokio::select! {
+            let bytes = tokio::select! {
                 biased;
+                // A cancelled request never calls back; its consumer was dropped with it.
                 _ = cancellation => return,
                 result = page.load_gpu_image_bytes(&source) => result,
             };
-            let _ = send.send(result);
+            let bytes = bytes
+                .map_err(|error| log::warn!("GPU image resource failed: {error}"))
+                .ok();
+            deliver_image(request, bytes);
         }));
-        let Ok(result) = receive.recv() else {
-            return Ok(std::ptr::null_mut());
-        };
-        match result {
-            Ok(bytes) => Ok(env.byte_array_from_slice(&bytes)?.into_raw()),
-            Err(error) => {
-                log::warn!("GPU image resource failed: {error}");
-                Ok(std::ptr::null_mut())
-            }
-        }
+        Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+fn deliver_image(request: i64, bytes: Option<Vec<u8>>) {
+    IMAGE_REQUESTS.lock().unwrap().remove(&request);
+    let result = with_env(|env| {
+        let bytes = match &bytes {
+            Some(bytes) => JObject::from(env.byte_array_from_slice(bytes)?),
+            None => JObject::null(),
+        };
+        env.call_static_method(
+            CLASS.get().expect("GPU factory initialized"),
+            jni_str!("imageLoaded"),
+            jni_sig!("(J[B)V"),
+            &[request.into(), (&bytes).into()],
+        )?;
+        Ok::<_, jni::errors::Error>(())
+    });
+    if let Err(error) = result {
+        log::warn!("GPU image delivery failed: {error}");
+    }
 }
 
 extern "system" fn begin_image(_: EnvUnowned<'_>, _: JClass<'_>) -> i64 {

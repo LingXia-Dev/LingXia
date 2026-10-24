@@ -19,10 +19,12 @@ public final class GpuPage extends FrameLayout {
         final ExecutorService executor = Executors.newSingleThreadExecutor(r -> new Thread(r, "lingxia-gpu-view"));
         int pages;
     }
-    private static final ExecutorService IMAGE_IO = Executors.newFixedThreadPool(2, r -> new Thread(r, "lingxia-gpu-images"));
+    // Native loads run on the runtime executor and complete through imageLoaded.
+    private static final java.util.concurrent.ConcurrentHashMap<Long, java.util.function.Consumer<byte[]>> IMAGES =
+        new java.util.concurrent.ConcurrentHashMap<>();
     private static native long beginImage();
     private static native void cancelImage(long request);
-    private static native byte[] readImage(long token, long request, String source);
+    private static native void requestImage(long token, long request, String source);
     private static native void created(long token, GpuPage page, String error);
     private static native void presented(long token, long generation);
     private static native boolean restart(long token, long generation);
@@ -44,14 +46,10 @@ public final class GpuPage extends FrameLayout {
             candidate = new GpuView(context, source, worker.executor, new GpuView.Listener() {
                 public Runnable onImageRequest(String source, java.util.function.Consumer<byte[]> result) {
                     long request = beginImage();
-                    java.util.concurrent.Future<?> work = IMAGE_IO.submit(() -> {
-                        byte[] bytes = null;
-                        try { bytes = readImage(token, request, source); }
-                        catch (Throwable error) { android.util.Log.w("LingXia.UI", "Image resource failed", error); }
-                        finally { cancelImage(request); }
-                        result.accept(bytes);
-                    });
-                    return () -> { cancelImage(request); work.cancel(false); };
+                    IMAGES.put(request, result);
+                    try { requestImage(token, request, source); }
+                    catch (Throwable error) { IMAGES.remove(request); cancelImage(request); result.accept(null); }
+                    return () -> { if (IMAGES.remove(request) != null) cancelImage(request); };
                 }
                 public void onLoaded() {
                     if (!reported) { reported = true; created(token, GpuPage.this, null); }
@@ -74,6 +72,12 @@ public final class GpuPage extends FrameLayout {
             releaseWorker(workerKey);
             throw error;
         }
+    }
+
+    /** Called from native load completion on a runtime thread. */
+    public static void imageLoaded(long request, byte[] bytes) {
+        java.util.function.Consumer<byte[]> result = IMAGES.remove(request);
+        if (result != null) result.accept(bytes);
     }
 
     public String getAppId() { return appId; }
