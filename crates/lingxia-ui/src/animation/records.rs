@@ -1,5 +1,5 @@
 use super::Definition;
-use crate::schema::{Record, identities};
+use crate::protocol::{Record, identities};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Clone)]
@@ -54,9 +54,13 @@ impl Inventory {
             if record.tag == 6 {
                 let keys = record
                     .string(102)
-                    .map(crate::list::decode_item_keys)
+                    .map(crate::layout::list::decode_item_keys)
                     .transpose()?
-                    .map(|keys| keys.iter().map(|key| crate::list::item_key(key)).collect());
+                    .map(|keys| {
+                        keys.iter()
+                            .map(|key| crate::layout::list::item_key(key))
+                            .collect()
+                    });
                 lists.insert(
                     ids[index].clone(),
                     List {

@@ -1,4 +1,4 @@
-use lingxia_ui::{Renderer, schema::decode};
+use lingxia_ui::{Renderer, protocol::decode};
 use serde_json::{Value, json};
 
 fn node(wire: &mut Vec<Value>, tag: usize, parent: i64, id: &str, fields: Value) -> i64 {

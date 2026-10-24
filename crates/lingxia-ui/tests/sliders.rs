@@ -1,4 +1,4 @@
-use lingxia_ui::{Renderer, schema::decode};
+use lingxia_ui::{Renderer, protocol::decode};
 use serde_json::json;
 
 #[test]

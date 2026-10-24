@@ -1,4 +1,4 @@
-use lingxia_ui::{Renderer, image::Bitmap, schema::decode};
+use lingxia_ui::{Renderer, protocol::decode, scene::image::Bitmap};
 use serde_json::json;
 use std::collections::HashMap;
 

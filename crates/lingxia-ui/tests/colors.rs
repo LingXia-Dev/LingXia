@@ -1,6 +1,6 @@
 use lingxia_ui::{
     Renderer,
-    schema::{color, decode},
+    protocol::{color, decode},
 };
 use serde_json::{Value, json};
 
