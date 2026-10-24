@@ -1,0 +1,10 @@
+{
+  "renderer": "gpu",
+  "pageOrientation": "auto",
+  "navigationBar": {
+    "title": {
+      "default": "Media APIs",
+      "zh-CN": "媒体接口"
+    }
+  }
+}

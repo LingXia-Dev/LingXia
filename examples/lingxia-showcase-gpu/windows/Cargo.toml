@@ -1,0 +1,62 @@
+[package]
+name = "lingxia-showcase-windows"
+version = "0.1.0"
+edition = "2024"
+
+# Its own workspace root: the repo workspace excludes this package, and the
+# explicit empty table keeps cargo from walking further up (e.g. out of a
+# nested git worktree into the enclosing checkout's workspace).
+[workspace]
+
+[[bin]]
+name = "LingXiaDemo"
+path = "src/main.rs"
+
+[features]
+default = ["standard"]
+standard = ["host/standard", "lingxia-windows-sdk/standard"]
+browser-shell = ["host/browser-shell", "lingxia-windows-sdk/browser-shell"]
+proxy = ["host/proxy", "browser-shell"]
+terminal-runtime = ["host/terminal-runtime", "lingxia-windows-sdk/terminal-runtime"]
+control = ["host/control"]
+computer-use = ["host/computer-use"]
+browser-use = ["host/browser-use"]
+devtools = ["host/devtools"]
+webview-input = ["host/webview-input", "lingxia-windows-sdk/webview-input"]
+cloud = ["host/cloud"]  # activated by `--with-provider cloud`
+
+[dependencies]
+lingxia-windows-sdk = { path = "../../../crates/lingxia-windows-sdk", default-features = false }
+host = { package = "native", path = "../native", default-features = false }
+# 1.13.0/1.13.1 do not compile (Lokathor/tinyvec#225). 1.13.2 fixed the
+# `vec!` import. This crate is its own workspace and its lockfile is
+# gitignored, so `lingxia dev` re-resolves from crates.io.
+tinyvec = "1.13.2"
+
+[build-dependencies]
+lingxia-windows-build = { path = "../../../crates/lingxia-windows-build" }
+
+[patch.crates-io]
+portable-pty = { git = "https://github.com/LingXia-Dev/wezterm.git", rev = "59d0fb89c54a77c12afe2561dc6969d8dc55fc4f", package = "portable-pty" }
+lingxia = { path = "../../../crates/lingxia" }
+lingxia-app-context = { path = "../../../crates/lingxia-app-context" }
+lingxia-browser = { path = "../../../crates/lingxia-browser" }
+lingxia-control-runtime = { path = "../../../crates/lingxia-control-runtime" }
+lingxia-control-protocol = { path = "../../../crates/lingxia-control-protocol" }
+lingxia-log = { path = "../../../crates/lingxia-log" }
+lingxia-logic = { path = "../../../crates/lingxia-logic" }
+lingxia-lxapp = { path = "../../../crates/lingxia-lxapp" }
+lingxia-media = { path = "../../../crates/lingxia-media" }
+lingxia-messaging = { path = "../../../crates/lingxia-messaging" }
+lingxia-native-macros = { path = "../../../crates/lingxia-native-macros" }
+lingxia-platform = { path = "../../../crates/lingxia-platform" }
+lingxia-provider = { path = "../../../crates/lingxia-provider" }
+lingxia-proxy = { path = "../../../crates/lingxia-proxy" }
+lingxia-service = { path = "../../../crates/lingxia-service" }
+lingxia-settings = { path = "../../../crates/lingxia-settings" }
+lingxia-browser-shell = { path = "../../../crates/lingxia-browser-shell" }
+lingxia-terminal = { path = "../../../crates/lingxia-terminal" }
+lingxia-transfer = { path = "../../../crates/lingxia-transfer" }
+lingxia-update = { path = "../../../crates/lingxia-update" }
+lingxia-webview = { path = "../../../crates/lingxia-webview" }
+lingxia-windows-sdk = { path = "../../../crates/lingxia-windows-sdk" }

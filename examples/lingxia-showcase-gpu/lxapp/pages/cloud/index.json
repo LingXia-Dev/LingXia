@@ -1,0 +1,11 @@
+{
+  "renderer": "gpu",
+  "navigationStyle": "default",
+  "pageOrientation": "auto",
+  "navigationBar": {
+    "title": {
+      "default": "Cloud",
+      "zh-CN": "云服务"
+    }
+  }
+}

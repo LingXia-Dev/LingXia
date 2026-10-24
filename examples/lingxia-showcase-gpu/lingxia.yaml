@@ -1,0 +1,77 @@
+app:
+  projectName: lingxia
+  rustLibDir: native
+  lingxiaId: lingxia-showcase-gpu
+  packageId: com.lingxia.example.gpu
+  productName: LingXia GPU Showcase
+  productVersion: 0.2.7
+  platforms: [android, ios, macos, harmony, windows]
+  homeAppId: lingxia-showcase-gpu
+  lingxiaServer:
+    dev: http://127.0.0.1:39881
+    prod: http://192.168.37.211:8080
+
+android:
+  packageId: com.lingxia.example.gpu
+  minSdk: 29
+  targetSdk: 35
+  compileSdk: 35
+ios:
+  deploymentTarget: "17.0"
+  targetName: lxapp
+macos:
+  deploymentTarget: "12.0"
+  targetName: LingXiaDemo
+harmony:
+  bundleName: app.lingxia.gpu
+windows: {}
+
+features:
+  appService: true
+  devtools: false
+
+browser:
+  webui:
+    path: ../../crates/lingxia-browser-shell/webui
+
+capabilities:
+  notifications: true
+  browser: true
+  proxy: true
+  terminal: true
+  autostart: true
+  appUse: true
+  computerUse: true
+  browserUse: true
+
+resources:
+  bundles:
+    - type: lxapp
+      appId: lingxia-showcase-gpu
+      path: lxapp
+
+surfaces:
+  - lxapp: lingxia-showcase-gpu
+    role: main
+    launch: true
+
+appLinks:
+  hosts:
+    - applink.lingxia.app
+
+theme:
+  light:
+    pageBackgroundColor: "#F6F7FB"
+  dark:
+    pageBackgroundColor: "#121C30"
+
+splash:
+  background: "#171C22"
+  image: design/splash.png
+  mark: design/splash-mark.png
+
+storage:
+  tempMaxSizeMB: 1024
+  cacheMaxSizeMB: 2048
+  dataMaxSizeMB: 4096
+  appStorageMaxSizeMB: 16384

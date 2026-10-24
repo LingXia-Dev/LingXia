@@ -1,0 +1,238 @@
+import java.net.URI
+import java.util.Properties
+
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+}
+
+val mpvAarUrl = "https://repo1.maven.org/maven2/dev/jdtech/mpv/libmpv/1.0.0/libmpv-1.0.0.aar"
+val mpvDir = layout.buildDirectory.dir("mpv")
+val mpvJniDir = layout.buildDirectory.dir("mpv/jni")
+
+val packageMpvJni = providers
+    .gradleProperty("lingxia.packageMpvJni")
+    .map { it.equals("true", ignoreCase = true) }
+    .orElse(false)
+    .get()
+val requestedMinSdk = (project.findProperty("MIN_SDK") as String?)?.toIntOrNull() ?: 29
+val lingxiaApplicationIdSuffix = providers
+    .gradleProperty("lingxia.applicationIdSuffix")
+    .orElse("")
+    .get()
+val lingxiaApplicationId = providers
+    .gradleProperty("lingxia.applicationId")
+    .orElse("com.lingxia.example.gpu")
+    .get()
+val lingxiaAppName = providers
+    .gradleProperty("lingxia.appName")
+    .orElse("LingXia App Demo")
+    .get()
+val lingxiaResOverlayDir = providers
+    .gradleProperty("lingxia.resOverlayDir")
+    .orNull
+val lingxiaAppIcon = providers
+    .gradleProperty("lingxia.appIcon")
+    .orElse("@mipmap/ic_launcher")
+    .get()
+val lingxiaAppRoundIcon = providers
+    .gradleProperty("lingxia.appRoundIcon")
+    .orElse("@mipmap/ic_launcher_round")
+    .get()
+// Launcher activity theme. `lingxia build` passes the generated splash theme
+// when `splash:` is configured in lingxia.yaml; otherwise the manifest's
+// `${lxSplashTheme}` placeholder resolves to the regular app theme.
+val lingxiaSplashTheme = providers
+    .gradleProperty("lingxia.splashTheme")
+    .orElse("@style/Theme.AppCompat.Light.NoActionBar")
+    .get()
+// Launcher activity orientation. `lingxia build` derives it from the home
+// lxapp's entry-page config; the fallback matches the runtime's own page
+// default (portrait), so the OS splash never comes up sideways and rotates
+// mid-launch on a device lying flat.
+val lingxiaLaunchOrientation = providers
+    .gradleProperty("lingxia.launchOrientation")
+    .orElse("portrait")
+    .get()
+// Overridden by `lingxia build` from `app.productVersion`. Fallbacks are
+// only for opening the project in Android Studio without the CLI.
+val lingxiaVersionName = providers
+    .gradleProperty("lingxia.versionName")
+    .orElse("0.0.1")
+    .get()
+val lingxiaVersionCode = providers
+    .gradleProperty("lingxia.versionCode")
+    .orElse("1")
+    .get()
+    .toInt()
+
+// Release signing — values come from keystore.properties (local) or matching
+// env vars (CI). When none are set the build falls back to the debug keystore
+// so it still produces an installable APK (local dev / a fork without secrets).
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.inputStream().use { stream -> keystoreProperties.load(stream) }
+}
+fun getSigningValue(name: String): String? {
+    val fileValue = keystoreProperties.getProperty(name)?.trim()
+    if (!fileValue.isNullOrEmpty()) {
+        return fileValue
+    }
+    val envValue = System.getenv(name)?.trim()
+    if (!envValue.isNullOrEmpty()) {
+        return envValue
+    }
+    return null
+}
+val releaseStoreFile = getSigningValue("RELEASE_STORE_FILE")
+val releaseStorePassword = getSigningValue("RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = getSigningValue("RELEASE_KEY_ALIAS")
+val releaseKeyPassword = getSigningValue("RELEASE_KEY_PASSWORD")
+val releaseSigningEnabled = releaseStoreFile != null &&
+    releaseStorePassword != null &&
+    releaseKeyAlias != null &&
+    releaseKeyPassword != null
+
+// Loudly flag a release build that falls back to the debug keystore (no release
+// keystore configured): it installs for testing but cannot be distributed.
+if (!releaseSigningEnabled) {
+    gradle.taskGraph.whenReady {
+        val buildingRelease = allTasks.any {
+            it.name.endsWith("Release") &&
+                (it.name.startsWith("assemble") ||
+                    it.name.startsWith("bundle") ||
+                    it.name.startsWith("package"))
+        }
+        if (buildingRelease) {
+            logger.warn(
+                "No release keystore configured: the release build is DEBUG-signed " +
+                    "and NOT distributable. Set keystore.properties or the RELEASE_* " +
+                    "env vars to sign for release."
+            )
+        }
+    }
+}
+
+android {
+    namespace = "com.lingxia.example.gpu"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = lingxiaApplicationId
+        if (lingxiaApplicationIdSuffix.isNotEmpty()) {
+            applicationIdSuffix = lingxiaApplicationIdSuffix
+        }
+        manifestPlaceholders["lxAppName"] = lingxiaAppName
+        manifestPlaceholders["lxAppIcon"] = lingxiaAppIcon
+        manifestPlaceholders["lxAppRoundIcon"] = lingxiaAppRoundIcon
+        manifestPlaceholders["lxSplashTheme"] = lingxiaSplashTheme
+        manifestPlaceholders["lxLaunchOrientation"] = lingxiaLaunchOrientation
+        minSdk = requestedMinSdk
+        targetSdk = 35
+        versionCode = lingxiaVersionCode
+        versionName = lingxiaVersionName
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    sourceSets.getByName("main") {
+        lingxiaResOverlayDir?.let { dir ->
+            res.srcDir(file(dir))
+        }
+        if (packageMpvJni) {
+            jniLibs.srcDir(mpvJniDir)
+        }
+    }
+
+    if (providers.gradleProperty("lingxia.gpuDeviceTests").orNull == "true") {
+        testBuildType = "release"
+        sourceSets.getByName("androidTest").java.srcDir("../../../../lingxia-sdk/android/tests/gpu/instrumentation")
+        sourceSets.getByName("androidTest").assets.srcDir("../../../../target/gpu-device-fixtures")
+    }
+
+    signingConfigs {
+        if (releaseSigningEnabled) {
+            create("release") {
+                storeFile = rootProject.file(requireNotNull(releaseStoreFile))
+                storePassword = requireNotNull(releaseStorePassword)
+                keyAlias = requireNotNull(releaseKeyAlias)
+                keyPassword = requireNotNull(releaseKeyPassword)
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            // Real release keystore when configured (keystore.properties / env);
+            // otherwise debug-sign so the build still yields an installable APK.
+            signingConfig = if (releaseSigningEnabled) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+    kotlinOptions {
+        jvmTarget = "11"
+    }
+    packaging {
+        jniLibs {
+            pickFirsts += "**/libc++_shared.so"
+        }
+    }
+}
+
+// libmpv's published AAR requires compileSdk 36. Extract only the JNI libs and
+// keep MPVLib.kt in this module so the host can stay on compileSdk 35.
+val extractMpvJni by tasks.registering {
+    outputs.dir(mpvJniDir)
+    doLast {
+        val cache = mpvDir.get().asFile.apply { mkdirs() }
+        val dest = mpvJniDir.get().asFile.apply { mkdirs() }
+        val aar = cache.resolve("libmpv-1.0.0.aar")
+        if (!aar.exists()) {
+            URI(mpvAarUrl).toURL().openStream().use { input ->
+                aar.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+        copy {
+            from(zipTree(aar))
+            include("jni/arm64-v8a/*.so")
+            eachFile {
+                path = relativePath.pathString.removePrefix("jni/")
+            }
+            includeEmptyDirs = false
+            into(dest)
+        }
+    }
+}
+
+if (packageMpvJni) {
+    tasks.matching { it.name.startsWith("merge") && it.name.contains("JniLibFolders") }
+        .configureEach { dependsOn(extractMpvJni) }
+    tasks.named("preBuild").configure { dependsOn(extractMpvJni) }
+}
+
+dependencies {
+    androidTestImplementation(libs.androidxTestRunner)
+    androidTestImplementation(libs.androidxTestExtJunit)
+    implementation(project(":lingxia"))
+
+    // App's own dependencies
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.appcompat)
+    implementation(libs.material)
+}

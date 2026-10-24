@@ -1,0 +1,1 @@
+          <button testId="probe-transfer-limit" onClick={() => { (globalThis as any).__lingxiaPrepare = () => { const values = new Array(100001); Object.defineProperty(values, 0, { get() { throw new Error('ELEMENT_READ_BEFORE_BOUND'); } }); return values; }; }}>Probe transfer limit</button>

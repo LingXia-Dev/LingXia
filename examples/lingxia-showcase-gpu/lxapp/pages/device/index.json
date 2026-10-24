@@ -1,0 +1,9 @@
+{
+  "renderer": "gpu",
+  "navigationBar": {
+    "title": {
+      "default": "Device",
+      "zh-CN": "设备"
+    }
+  }
+}

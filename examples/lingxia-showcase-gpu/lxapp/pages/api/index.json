@@ -1,0 +1,15 @@
+{
+  "renderer": "gpu",
+  "navigationStyle": "default",
+  "pageOrientation": "auto",
+  "navigationBar": {
+    "title": {
+      "default": "API",
+      "zh-CN": "接口"
+    },
+    "style": {
+      "backgroundColor": "#3b82f6",
+      "foregroundColor": "#000000"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "appId": "hello-ui",
+  "appName": "Hello UI",
+  "version": "0.1.0",
+  "minRuntime": "0.28.0",
+  "logic": false,
+  "pages": [{ "name": "home", "path": "pages/home/index" }]
+}

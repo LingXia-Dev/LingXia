@@ -1,0 +1,102 @@
+[package]
+name = "native"
+version = "0.1.0"
+edition = "2024"
+description = "Native library for LingXia example App (builds to .so/.a)"
+
+# Its own workspace root: the repo workspace excludes this package, and the
+# explicit empty table keeps cargo from walking further up (e.g. out of a
+# nested git worktree into the enclosing checkout's workspace).
+[workspace]
+
+[lib]
+name = "lingxia"
+# One lib, three crate-types so the same crate can be a Windows rlib dep and
+# still produce Android/Harmony .so / Apple .a. `lingxia build` rustc's only
+# the type the current platform links; `cargo build` of this crate as root
+# would rustc it once per crate-type.
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = ["standard"]
+# Keep the example host self-contained by default. Projects that own an
+# external cloud/update provider can declare their own feature and enable it
+# with `lingxia build --native-feature <feature>` or LINGXIA_NATIVE_FEATURES.
+standard = ["lingxia/standard"]
+browser-shell = ["lingxia/browser-shell", "webview-input", "standard"]
+proxy = ["lingxia/proxy", "browser-shell"]
+terminal-runtime = ["lingxia/terminal-runtime"]
+# Dev builds always enable `devtools`; ride automation in so `lingxia dev`
+# sessions get lx.automation() by default (still privilege-gated per lxapp.json).
+control = ["dep:lingxia-control-runtime", "lingxia/devtool", "lingxia-control-runtime/local-control", "lingxia/product-cli"]
+# `lingxia/computer-use` carries both halves of the SDK side (the `computer`
+# subcommand and the in-process automation driver); the runtime provider is the
+# host end that answers them.
+computer-use = ["control", "lingxia/computer-use", "lingxia-control-runtime/computer-use"]
+realtime-capture = ["lingxia/realtime-capture"]
+desktop-realtime-capture = [
+    "realtime-capture",
+    "dep:lingxia-device-io",
+    "lingxia-device-io/realtime-capture-provider",
+]
+android-capture = ["realtime-capture", "lingxia/android-capture"]
+apple-capture = ["realtime-capture", "lingxia/apple-capture"]
+harmony-capture = ["realtime-capture", "lingxia/harmony-capture"]
+# Derived from `capabilities.browserUse`. Without it the browser methods are
+# not linked and every browser command answers "feature unavailable".
+browser-use = ["control", "lingxia-control-runtime/browser"]
+devtools = ["dep:lingxia-control-runtime", "lingxia/devtool", "lingxia-control-runtime/dev-bridge", "lingxia-control-runtime/browser", "lingxia-control-runtime/test-runtime", "automation"]
+automation = ["lingxia/automation"]
+webview-input = ["lingxia/webview-input"]
+# Cloud provider. Inert by default; `lingxia build/dev --with-provider cloud`
+# injects the private `lingxia-cloud-client` crate and rewrites this to `dep:`.
+cloud = []
+
+[dependencies]
+lingxia = { version = "0.28.0", default-features = false }
+lingxia-control-runtime = { version = "0.28.0", optional = true, default-features = false }
+lingxia-device-io = { version = "0.28.0", optional = true, default-features = false }
+rong = { version = "0.6.3", default-features = false }
+log = "0.4.34"
+
+# Platform-specific dependencies for FFI
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.22.4"
+
+[target.'cfg(target_env = "ohos")'.dependencies]
+napi-ohos = "1.2"
+napi-derive-ohos = "1.2"
+
+# Release profile: optimize for size
+[profile.release]
+opt-level = 'z'
+lto = true
+codegen-units = 1
+strip = true
+
+[patch.crates-io]
+lingxia-ui = { path = "../../../crates/lingxia-ui" }
+portable-pty = { git = "https://github.com/LingXia-Dev/wezterm.git", rev = "59d0fb89c54a77c12afe2561dc6969d8dc55fc4f", package = "portable-pty" }
+lingxia = { path = "../../../crates/lingxia" }
+lingxia-app-context = { path = "../../../crates/lingxia-app-context" }
+lingxia-browser = { path = "../../../crates/lingxia-browser" }
+lingxia-control-runtime = { path = "../../../crates/lingxia-control-runtime" }
+lingxia-control-protocol = { path = "../../../crates/lingxia-control-protocol" }
+lingxia-device-io = { path = "../../../crates/lingxia-device-io" }
+lingxia-log = { path = "../../../crates/lingxia-log" }
+lingxia-logic = { path = "../../../crates/lingxia-logic" }
+lingxia-lxapp = { path = "../../../crates/lingxia-lxapp" }
+lingxia-media = { path = "../../../crates/lingxia-media" }
+lingxia-messaging = { path = "../../../crates/lingxia-messaging" }
+lingxia-native-macros = { path = "../../../crates/lingxia-native-macros" }
+lingxia-platform = { path = "../../../crates/lingxia-platform" }
+lingxia-provider = { path = "../../../crates/lingxia-provider" }
+lingxia-proxy = { path = "../../../crates/lingxia-proxy" }
+lingxia-service = { path = "../../../crates/lingxia-service" }
+lingxia-settings = { path = "../../../crates/lingxia-settings" }
+lingxia-browser-shell = { path = "../../../crates/lingxia-browser-shell" }
+lingxia-terminal = { path = "../../../crates/lingxia-terminal" }
+lingxia-transfer = { path = "../../../crates/lingxia-transfer" }
+lingxia-update = { path = "../../../crates/lingxia-update" }
+lingxia-webview = { path = "../../../crates/lingxia-webview" }
+lingxia-windows-sdk = { path = "../../../crates/lingxia-windows-sdk" }

@@ -1,0 +1,10 @@
+{
+  "renderer": "gpu",
+  "pageOrientation": "auto",
+  "navigationBar": {
+    "title": {
+      "default": "Bridge Repro",
+      "zh-CN": "桥接复现"
+    }
+  }
+}

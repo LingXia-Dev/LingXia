@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.lingxia.test.receiver">
+  <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35" />
+  <application android:label="LingXia Test Receiver" android:debuggable="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+    <activity android:name=".Receiver" android:exported="true">
+      <intent-filter><action android:name="android.intent.action.SEND"/><action android:name="android.intent.action.SEND_MULTIPLE"/><category android:name="android.intent.category.DEFAULT"/><data android:mimeType="*/*"/></intent-filter>
+    </activity>
+  </application>
+</manifest>

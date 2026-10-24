@@ -1,0 +1,155 @@
+{
+  "appId": "lingxia-showcase-gpu",
+  "appName": "LingXia Showcase GPU",
+  "version": "1.0.0",
+  "minRuntime": "0.28.0",
+  "pages": [
+    {
+      "name": "home",
+      "path": "pages/home/index"
+    },
+    {
+      "name": "media",
+      "path": "pages/media/index"
+    },
+    {
+      "name": "cloud",
+      "path": "pages/cloud/index"
+    },
+    {
+      "name": "bridge-repro",
+      "path": "pages/bridge-repro/index"
+    },
+    {
+      "name": "surface",
+      "path": "pages/surface/index"
+    },
+    {
+      "name": "feedback",
+      "path": "pages/feedback/index"
+    },
+    {
+      "name": "leaveguard",
+      "path": "pages/leaveguard/index"
+    },
+    {
+      "name": "todo",
+      "path": "pages/todo/index"
+    },
+    {
+      "name": "clipboard",
+      "path": "pages/clipboard/index"
+    },
+    {
+      "name": "share",
+      "path": "pages/share/index"
+    },
+    {
+      "name": "lab",
+      "path": "pages/lab/index"
+    },
+    {
+      "name": "api",
+      "path": "pages/api/index"
+    },
+    {
+      "name": "device",
+      "path": "pages/device/index"
+    },
+    {
+      "name": "system",
+      "path": "pages/system/index"
+    },
+    {
+      "name": "wifi",
+      "path": "pages/wifi/index"
+    },
+    {
+      "name": "location",
+      "path": "pages/location/index"
+    },
+    {
+      "name": "file",
+      "path": "pages/file/index"
+    },
+    {
+      "name": "stream",
+      "path": "pages/stream/index"
+    },
+    {
+      "name": "channel",
+      "path": "pages/channel/index"
+    },
+    {
+      "name": "ui",
+      "path": "pages/ui/index"
+    },
+    {
+      "name": "pulltorefresh",
+      "path": "pages/pulltorefresh/index"
+    }
+  ],
+  "tabBar": {
+    "presentation": "immersive",
+    "style": {
+      "foregroundColor": "#999999",
+      "selectedForegroundColor": "#1677ff"
+    },
+    "items": [
+      {
+        "text": {
+          "default": "Home",
+          "zh-CN": "首页"
+        },
+        "page": "home",
+        "iconPath": "public/home.png"
+      },
+      {
+        "text": {
+          "default": "API",
+          "zh-CN": "接口"
+        },
+        "page": "api",
+        "iconPath": "public/api.png"
+      },
+      {
+        "text": {
+          "default": "ToDo",
+          "zh-CN": "待办"
+        },
+        "page": "todo",
+        "iconPath": "public/todo.png"
+      },
+      {
+        "text": {
+          "default": "Media",
+          "zh-CN": "媒体"
+        },
+        "page": "media",
+        "iconPath": "public/component.png"
+      },
+      {
+        "text": {
+          "default": "Device",
+          "zh-CN": "设备"
+        },
+        "page": "device",
+        "iconPath": "public/api.png",
+        "showOn": [
+          "mobile"
+        ]
+      },
+      {
+        "text": {
+          "default": "Surface",
+          "zh-CN": "窗口"
+        },
+        "page": "surface",
+        "iconPath": "public/home.png",
+        "showOn": [
+          "desktop"
+        ]
+      }
+    ]
+  }
+}

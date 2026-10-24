@@ -1,0 +1,7 @@
+{
+  "name": "lingxia-hello-ui",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": { "build": "lingxia build" },
+  "devDependencies": { "@lingxia/ui": "file:../../packages/lingxia-ui" }
+}

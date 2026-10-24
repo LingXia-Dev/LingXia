@@ -1,0 +1,28 @@
+package com.lingxia.example.gpu
+
+import android.os.Bundle
+import android.util.Log
+import androidx.appcompat.app.AppCompatActivity
+import com.lingxia.app.Lingxia
+// import com.lingxia.example.gpu.mpv.MpvUrlPlayerEngineFactory
+
+class MainActivity : AppCompatActivity() {
+    private val TAG = "MainActivity"
+
+    private external fun nativeRegisterHostAddon()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Default URL playback is ExoPlayer. To use host libmpv instead:
+        // 1. Set lingxia.packageMpvJni=true in gradle.properties (or -P)
+        // 2. Set android:name=".ShowcaseApp" on <application> in AndroidManifest.xml
+        // 3. Uncomment MpvNative.load() in ShowcaseApp
+        // 4. Uncomment the factory line below (must stay before quickStart)
+        // Lingxia.setUrlPlayerEngineFactory(MpvUrlPlayerEngineFactory())
+        Lingxia.quickStart(this) {
+            nativeRegisterHostAddon()
+        }
+
+        Log.d(TAG, "Lingxia is ready")
+    }
+}

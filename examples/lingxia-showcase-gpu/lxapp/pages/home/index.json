@@ -1,0 +1,11 @@
+{
+  "renderer": "gpu",
+  "navigationStyle": "custom",
+  "pageOrientation": "auto",
+  "navigationBar": {
+    "title": {
+      "default": "Home",
+      "zh-CN": "首页"
+    }
+  }
+}

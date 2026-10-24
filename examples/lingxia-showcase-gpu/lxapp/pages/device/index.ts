@@ -1,0 +1,224 @@
+import type { DeviceInfo, NetworkInfo, ScreenInfo } from "@lingxia/types";
+import { errorMessage } from "../../shared/lib/errors";
+Page({
+  async goBack() { await lx.navigateBack(); },
+  async selectSection({ type }: { type: string }) {
+    this.stopNetworkChangeListen();
+    this.stopDeviceOrientationListen();
+    await this.onLoad({ type });
+  },
+  data: {
+    currentType: "device",
+    deviceInfo: null as DeviceInfo | null,
+    screenInfo: null as ScreenInfo | null,
+    networkInfo: null as NetworkInfo | null,
+    networkChange: null as NetworkInfo | null,
+    networkListening: false,
+    orientationListening: false,
+    deviceOrientationValue: "",
+    orientationEvents: [] as string[],
+    orientationLock: "",
+  },
+
+  // Unsubscribe handles live on the instance, not in `data`: they are not
+  // serializable and the View never sees them.
+  _offNetworkChange: null as (() => void) | null,
+  _offDeviceOrientationChange: null as (() => void) | null,
+
+  onLoad: async function (options = {}) {
+    console.log("Device page onLoad options:", options);
+
+    const { type: requested = "device" } = (options || {}) as { type?: string };
+    const type = requested === "phone" ? "dial"
+      : requested === "network" ? "networkType"
+      : requested;
+    if (type !== this.data.currentType) {
+      this.setData({ currentType: type });
+    }
+  },
+
+  onShow: function () {
+    console.log("Device page onShow");
+  },
+
+  onHide: function () {
+    console.log("Device page onHide");
+    this.stopNetworkChangeListen();
+    this.stopDeviceOrientationListen();
+  },
+
+  onUnload: function () {
+    this.stopNetworkChangeListen();
+    this.stopDeviceOrientationListen();
+  },
+
+  // Get device information
+  getDeviceInfo: async function () {
+    try {
+      const deviceInfo = lx.getDeviceInfo();
+      console.log("Device info:", deviceInfo);
+
+      this.setData({
+        deviceInfo: deviceInfo,
+      });
+    } catch (error) {
+      console.error("Failed to get device info:", error);
+    }
+  },
+
+  // Get screen information
+  getScreenInfo: async function () {
+    try {
+      const screenInfo = lx.getScreenInfo();
+      console.log("Screen info:", screenInfo);
+
+      this.setData({
+        screenInfo: screenInfo,
+      });
+    } catch (error) {
+      console.error("Failed to get screen info:", error);
+    }
+  },
+
+  // Trigger short vibration
+  vibrateShort: async function () {
+    try {
+      await lx.vibrateShort();
+      console.log("Triggered short vibration");
+    } catch (error) {
+      console.error("Failed to trigger short vibration:", error);
+      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
+    }
+  },
+
+  // Trigger long vibration
+  vibrateLong: async function () {
+    try {
+      await lx.vibrateLong();
+      console.log("Triggered long vibration");
+    } catch (error) {
+      console.error("Failed to trigger long vibration:", error);
+      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
+    }
+  },
+
+  // Make a phone call
+  makePhoneCall: async function (options?: { phoneNumber?: string }) {
+    const rawPhoneNumber = typeof options?.phoneNumber === "string" ? options.phoneNumber : "";
+    const normalizedPhoneNumber = rawPhoneNumber.replace(/^tel:/i, "").trim();
+    if (!normalizedPhoneNumber) {
+      return;
+    }
+
+    try {
+      await lx.makePhoneCall({ phoneNumber: normalizedPhoneNumber });
+      console.log("Making phone call to:", normalizedPhoneNumber);
+    } catch (error) {
+      console.error("Failed to make phone call:", error);
+      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
+    }
+  },
+
+  getNetworkInfo: async function () {
+    try {
+      const result = await lx.getNetworkInfo();
+      this.setData({
+        networkInfo: result || null,
+      });
+    } catch (error) {
+      console.error("Failed to get network info:", error);
+    }
+  },
+
+  startNetworkChangeListen: function () {
+    if (this._offNetworkChange) {
+      return;
+    }
+    this._offNetworkChange = lx.onNetworkChange((info) => {
+      this.setData({
+        networkChange: info || null,
+      });
+    });
+    this.setData({ networkListening: true });
+  },
+
+  stopNetworkChangeListen: function () {
+    if (!this._offNetworkChange) {
+      return;
+    }
+    this._offNetworkChange();
+    this._offNetworkChange = null;
+    this.setData({ networkListening: false });
+  },
+
+  _appendOrientationEvent: function (value: string) {
+    const orientationValue = value === "portrait" || value === "landscape" ? value : "unknown";
+    const timestamp = new Date().toISOString();
+    const eventText = `${timestamp}  ${orientationValue}`;
+    const currentEvents = Array.isArray(this.data.orientationEvents) ? this.data.orientationEvents : [];
+    const nextEvents = [eventText, ...currentEvents].slice(0, 20);
+
+    this.setData({
+      orientationEvents: nextEvents,
+      deviceOrientationValue: orientationValue,
+    });
+  },
+
+  setOrientationPortrait: async function () {
+    try {
+      await lx.setDeviceOrientation("portrait");
+      this.setData({ orientationLock: "portrait" });
+    } catch (error) {
+      console.error("Failed to set portrait orientation:", error);
+      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
+    }
+  },
+
+  setOrientationLandscape: async function () {
+    try {
+      await lx.setDeviceOrientation("landscape");
+      this.setData({ orientationLock: "landscape" });
+    } catch (error) {
+      console.error("Failed to set landscape orientation:", error);
+      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
+    }
+  },
+
+  startDeviceOrientationListen: function () {
+    if (this._offDeviceOrientationChange) {
+      return;
+    }
+
+    try {
+      this._offDeviceOrientationChange = lx.onDeviceOrientationChange((event) => {
+        const value = typeof event === "string" ? event : event?.value;
+        this._appendOrientationEvent(value);
+      });
+      this.setData({ orientationListening: true });
+    } catch (error) {
+      console.error("Failed to start device orientation listener:", error);
+      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
+    }
+  },
+
+  stopDeviceOrientationListen: function () {
+    if (!this._offDeviceOrientationChange) {
+      return;
+    }
+
+    try {
+      this._offDeviceOrientationChange();
+    } catch (error) {
+      console.error("Failed to stop device orientation listener:", error);
+    }
+
+    this._offDeviceOrientationChange = null;
+    this.setData({ orientationListening: false });
+  },
+
+  clearOrientationEvents: function () {
+    this.setData({
+      orientationEvents: [],
+    });
+  },
+});

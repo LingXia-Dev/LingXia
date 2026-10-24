@@ -1,0 +1,15 @@
+{
+  "renderer": "gpu",
+  "navigationStyle": "default",
+  "pageOrientation": "auto",
+  "navigationBar": {
+    "title": {
+      "default": "File",
+      "zh-CN": "文件"
+    },
+    "style": {
+      "backgroundColor": "#3b82f6",
+      "foregroundColor": "#000000"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "renderer": "gpu",
+  "pageOrientation": "auto",
+  "navigationBar": {
+    "title": {
+      "default": "System",
+      "zh-CN": "系统"
+    }
+  }
+}

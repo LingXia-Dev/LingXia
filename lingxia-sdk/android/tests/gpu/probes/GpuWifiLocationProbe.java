@@ -1,0 +1,20 @@
+import android.app.UiAutomation;
+import android.os.*;
+import android.view.accessibility.AccessibilityNodeInfo;
+public class GpuWifiLocationProbe {
+ static UiAutomation a;
+ static void click(String id)throws Exception{GpuApiProbe.click(id);}
+ static String text(String id)throws Exception{return GpuApiProbe.text(id);}
+ static void check(boolean v,String s){if(!v)throw new AssertionError(s);}
+ static AccessibilityNodeInfo findResource(AccessibilityNodeInfo n,String id){if(n==null)return null;if(id.equals(n.getViewIdResourceName()))return n;for(int j=0;j<n.getChildCount();j++){AccessibilityNodeInfo f=findResource(n.getChild(j),id);if(f!=null){n.recycle();return f;}}n.recycle();return null;}
+ static void permission()throws Exception{for(int j=0;j<6;j++){AccessibilityNodeInfo n=findResource(a.getRootInActiveWindow(),"com.android.permissioncontroller:id/permission_allow_foreground_only_button");if(n!=null){check(n.performAction(AccessibilityNodeInfo.ACTION_CLICK),"grant foreground permission");n.recycle();Thread.sleep(500);return;}Thread.sleep(250);}}
+ public static void main(String[] args)throws Exception{
+ HandlerThread t=new HandlerThread("wifi-location");t.start();Object c=Class.forName("android.app.UiAutomationConnection").getConstructor().newInstance();a=(UiAutomation)UiAutomation.class.getConstructor(Looper.class,Class.forName("android.app.IUiAutomationConnection")).newInstance(t.getLooper(),c);GpuRadioProbe.automation=a;GpuApiProbe.a=a;
+ try{UiAutomation.class.getMethod("connect").invoke(a);android.accessibilityservice.AccessibilityServiceInfo i=a.getServiceInfo();i.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;a.setServiceInfo(i);Thread.sleep(800);
+ GpuChromeProbe.tab("API");click("api-wifi");click("wifi-start");permission();check(text("wifi-status").equals("Module started"),"module starts after permission");click("wifi-current");check(!text("wifi-status").equals("Module started"),"read reports result");click("wifi-listener-on");check(text("wifi-listener-status").equals("Listening: On"),"WiFi listener starts");GpuChromeProbe.back();click("api-wifi");check(text("wifi-status").equals("Module started"),"app-scoped module state");check(text("wifi-listener-status").equals("Listening: Off"),"listener stops on hide/unload");
+ click("wifi-scan");String scan="";for(int j=0;j<20;j++){scan=text("wifi-status");if(!scan.startsWith("Scanning"))break;Thread.sleep(500);}check(!scan.startsWith("Scanning")&&!scan.isEmpty(),"scan settles with visible result or error");System.out.println("Scan outcome: "+(scan.startsWith("Found")?"results":"visible error"));click("wifi-stop");check(text("wifi-status").equals("Module stopped"),"module stops");GpuChromeProbe.back();
+ click("api-location");click("location-get");permission();boolean settled=false;for(int j=0;j<35&&!settled;j++){AccessibilityNodeInfo button=GpuApiProbe.node("location-get");settled=button.isEnabled();button.recycle();if(!settled)Thread.sleep(500);}check(settled,"location settles");AccessibilityNodeInfo statusNode=GpuRadioProbe.find(a.getRootInActiveWindow(),"location-status");if(statusNode!=null){String status=String.valueOf(statusNode.getText());statusNode.recycle();check(!status.equals("No location data available")&&!status.equals("Getting location..."),"location error visible");System.out.println("Location outcome: visible error");}else{GpuApiProbe.node("location-coordinate").recycle();System.out.println("Location outcome: fix received");}click("location-clear");check(text("location-status").equals("No location data available"),"clear location result");GpuChromeProbe.back();GpuChromeProbe.tab("Home");
+ System.out.println("PASS permission flow, WiFi module/listener lifecycle, scan result/error and location result/error/reset");
+ }finally{UiAutomation.class.getMethod("disconnect").invoke(a);t.quitSafely();}
+ }
+}

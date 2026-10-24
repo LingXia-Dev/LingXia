@@ -1,0 +1,5 @@
+"NSCameraUsageDescription" = "Required to capture photos and videos.";
+"NSMicrophoneUsageDescription" = "Required to record audio when capturing videos.";
+"NSLocationWhenInUseUsageDescription" = "Required to read Wi-Fi network information.";
+"NSPhotoLibraryUsageDescription" = "Required to access photos and videos in your library.";
+"NSPhotoLibraryAddUsageDescription" = "Required to save photos and videos.";

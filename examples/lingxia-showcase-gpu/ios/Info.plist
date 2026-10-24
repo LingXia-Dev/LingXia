@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>app.lingxia.example.lxapp</string>
+
+    <!-- Supported localizations -->
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>zh-Hans</string>
+    </array>
+
+    <!-- Push Notifications Configuration -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>remote-notification</string>
+    </array>
+
+    <!-- Location permission description for runtime prompts (required for WiFi info access) -->
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Allow LingXia to access your location to read WiFi information.</string>
+
+    <!-- Local network access (dev tooling connects to the Mac dev server);
+         without this key iOS silently denies LAN connections with no prompt. -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Allow LingXia to connect to the development server on your local network.</string>
+
+    <!-- Photos library permission descriptions -->
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Allow LingXia to save images and videos to your photo library.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Allow LingXia to access your photo library for media features.</string>
+
+    <!-- Camera and microphone permission descriptions -->
+    <key>NSCameraUsageDescription</key>
+    <string>Allow LingXia to capture photos and videos through the camera.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Allow LingXia to record audio when capturing videos.</string>
+
+    <!-- Allow runtime orientation lock APIs to switch between portrait and landscape -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+</dict>
+</plist>

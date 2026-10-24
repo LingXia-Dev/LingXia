@@ -1,0 +1,10 @@
+{
+  "package": "com.lingxia.example.gpu.dev",
+  "scenarios": [
+    {"probe":"GpuHomeParityProbe","timeoutSeconds":180},
+    {"probe":"GpuTodoParityProbe","timeoutSeconds":180},
+    {"probe":"GpuImageSemanticsProbe","timeoutSeconds":180},
+    {"probe":"GpuTabTransitionProbe","timeoutSeconds":180},
+    {"probe":"GpuTextScaleProbe","timeoutSeconds":240}
+  ]
+}

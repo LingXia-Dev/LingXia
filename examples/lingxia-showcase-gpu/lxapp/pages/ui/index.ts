@@ -1,0 +1,694 @@
+import { errorMessage } from "../../shared/lib/errors";
+import type {
+  PageSurface,
+  OverlaySurfaceSizeValue,
+  SurfaceEdge,
+  SurfaceErrorCode,
+  SurfaceFloatPosition,
+  ModalResult,
+  ActionSheetResult,
+  ShowToastOptions,
+  NavigationBarPatch,
+  TabBarItemPatch,
+} from "@lingxia/types";
+
+type DemoSurfaceVerb = "float" | "window" | "lxapp" | "aside";
+
+/** What the View sends when it asks for a demo surface. */
+interface DemoSurfaceConfig {
+  verb?: string;
+  width?: OverlaySurfaceSizeValue;
+  height?: OverlaySurfaceSizeValue;
+  url?: string;
+  appId?: string;
+  page?: string;
+  edge?: SurfaceEdge;
+  position?: SurfaceFloatPosition;
+  /** Window decoration. Ignored unless `verb` is `window`. */
+  chrome?: "system" | "full";
+}
+
+// The type is erased at compile time. `SURFACE_ERROR_CODES` is a runtime export
+// of the same package, and importing that would leave an external module in the
+// concatenated Logic bundle — so the list is restated here.
+const SURFACE_ERROR_CODES: readonly SurfaceErrorCode[] = [
+  "unsupported_placement",
+  "denied",
+  "not_declared",
+  "invalid_arg",
+  "already_open_other_role",
+  "closed",
+  "capability_missing",
+  "failed",
+];
+
+// One key names one live surface, so the page demo and the composed-lxapp demo
+// cannot share one — `lx.surface.getByKey` would hand back whichever ran last.
+const DEMO_PAGE_SURFACE_KEY = "surface-demo-page";
+const DEMO_APP_SURFACE_KEY = "surface-demo-app";
+
+const NAV_TITLE_MAP: Record<string, string> = {
+  navigation: "Navigation Demo",
+  toast: "Toast Demo",
+  actionsheet: "Action Sheet Demo",
+  modal: "Modal Demo",
+  navbar: "Navigation Bar Demo",
+  tabbar: "Tab Bar Demo",
+  appearance: "Appearance Demo",
+  surface: "Surface Demo",
+};
+
+function surfaceErrorObject(error: unknown): Record<string, unknown> | null {
+  return typeof error === "object" && error !== null
+    ? (error as Record<string, unknown>)
+    : null;
+}
+
+function surfaceErrorCode(error: unknown): SurfaceErrorCode | null {
+  const root = surfaceErrorObject(error);
+  const data = surfaceErrorObject(root?.data);
+  const code = data?.code;
+  return typeof code === "string" && SURFACE_ERROR_CODES.includes(code as SurfaceErrorCode)
+    ? (code as SurfaceErrorCode)
+    : null;
+}
+
+function surfaceErrorMessage(error: unknown): string {
+  const object = surfaceErrorObject(error);
+  return typeof object?.message === "string"
+    ? object.message
+    : String(error || "unknown error");
+}
+
+const LAST_INSTANCE_TAG_KEY = "lifecycle:lastInstanceTag";
+const MAX_EVENTS = 8;
+
+// Module scope: evaluated once per app session, shared by every live
+// instance of this route, and never reset by leaving the page. The value in
+// `data` below is only a display mirror of this variable.
+let moduleCounter = 0;
+
+function newInstanceTag() {
+  return Math.random().toString(16).slice(2, 6).toUpperCase();
+}
+
+Page({
+  stopWatchingAppearance: null as (() => void) | null,
+  data: {
+    currentType: "navigation",
+    pageStack: [] as { index: number; name: string; current: boolean }[],
+    instanceTag: "",
+    previousInstanceTag: "",
+    logicCounter: 0,
+    moduleCounter: 0,
+    events: [] as string[],
+    modalResult: null as ModalResult | null,
+    actionSheetResult: null as ActionSheetResult | null,
+    toastIcon: "success" as NonNullable<ShowToastOptions["icon"]>,
+    toastIconLabel: "Success",
+    toastIconOptions: [
+      { label: "Success", value: "success" },
+      { label: "Error", value: "error" },
+      { label: "Loading", value: "loading" },
+      { label: "None", value: "none" },
+    ] as { label: string; value: NonNullable<ShowToastOptions["icon"]> }[],
+    toastPosition: "center" as NonNullable<ShowToastOptions["position"]>,
+    toastPositionLabel: "Center",
+    toastPositionOptions: [
+      { label: "Top", value: "top" },
+      { label: "Center", value: "center" },
+      { label: "Bottom", value: "bottom" },
+    ] as { label: string; value: NonNullable<ShowToastOptions["position"]> }[],
+    surfaceDemo: { message: "", active: false, visible: false },
+    chromeError: "",
+    appearance: { preference: "auto", resolved: "light" },
+  },
+
+  _asideTabIndex: 0,
+  _surfaceOffs: [] as (() => void)[],
+  _stopSurfaceObservers() { for (const off of this._surfaceOffs) off(); this._surfaceOffs = []; },
+
+  onLoad: function (options = {}) {
+    console.log("UI page onLoad options:", options);
+
+    // Pass querystring parameters to page via setData
+    const { type = "navigation" } = (options || {}) as { type?: string };
+    if (type !== this.data.currentType) {
+      this.setData({ currentType: type });
+    }
+
+    const title = NAV_TITLE_MAP[type] || "User Interface";
+    this.updateNavigationBarTitle({ title });
+
+    // Update page stack immediately
+    this._updatePageStack();
+    this.stopWatchingAppearance?.();
+    this.stopWatchingAppearance = lx.host.appearance.watch(() => this._syncAppearance());
+    this._syncAppearance();
+
+    // Instance identity: a fresh tag per entry proves that leaving ends the
+    // instance. The previous tag is mirrored through app-scoped storage,
+    // which survives the reset.
+    const tag = newInstanceTag();
+    this.setData({ instanceTag: tag, moduleCounter });
+    this._record("onLoad");
+    const storage = lx.getStorage();
+    storage
+      .get(LAST_INSTANCE_TAG_KEY)
+      .then((previous) => {
+        this.setData({ previousInstanceTag: (previous as string) || "—" });
+        return storage.set(LAST_INSTANCE_TAG_KEY, tag);
+      })
+      .catch((err) => console.warn("[UI] instance tag storage failed", err));
+  },
+
+  onReady: function () {
+    this._record("onReady");
+  },
+
+  onShow: function () {
+    console.log("UI page onShow");
+    // Update page stack every time page shows
+    this._updatePageStack();
+    this._syncAppearance();
+    this._record("onShow");
+  },
+
+  onHide: function () {
+    console.log("UI page onHide");
+    this._record("onHide");
+  },
+
+  onUnload: function () {
+    this._stopSurfaceObservers();
+    this.stopWatchingAppearance?.();
+    this.stopWatchingAppearance = null;
+    this._record("onUnload");
+  },
+
+  bumpLogicCounter: function () {
+    this.setData({ logicCounter: this.data.logicCounter + 1 });
+  },
+
+  bumpModuleCounter: function () {
+    moduleCounter += 1;
+    this.setData({ moduleCounter });
+  },
+
+  // The log lives in `data`, so it only ever shows the current instance's
+  // events — hide/show repeat within one instance, unload ends it.
+  _record: function (event: string) {
+    const stamp = new Date().toLocaleTimeString();
+    this.setData({
+      events: [...this.data.events, `${stamp}  ${event}`].slice(-MAX_EVENTS),
+    });
+  },
+
+  // Appearance is part of Page Chrome: the product picks light/dark and the
+  // runtime projects the resolved scheme into every page as `color-scheme` plus
+  // `data-theme` on <html>. Both halves are read from the runtime rather than
+  // mirrored in page state.
+  _syncAppearance: function () {
+    try {
+      this.setData({
+        appearance: {
+          preference: lx.host.control?.appearance.getPreference() ?? "auto",
+          resolved: lx.host.appearance.get(),
+        },
+      });
+    } catch (error) {
+      this.setData({ chromeError: `Appearance unavailable: ${surfaceErrorMessage(error)}` });
+    }
+  },
+
+  setAppearance: async function (options: { preference?: "auto" | "light" | "dark" } = {}) {
+    const preference = options.preference || "auto";
+    const applied = await this._runChromeUpdate("Appearance update", () =>
+      lx.host.control!.appearance.setPreference(preference),
+    );
+    this._syncAppearance();
+    return applied;
+  },
+
+  // Update current page stack
+  _updatePageStack: function () {
+    try {
+      const pages = getCurrentPages();
+      const top = pages.length - 1;
+      const pageStack = pages.map((page, index) => ({
+        index,
+        name: ((page.route || "unknown").split("pages/")[1] || page.route || "unknown")
+          .replace(/\/index\.\w+$/, ""),
+        current: index === top,
+      }));
+
+      this.setData({
+        pageStack: pageStack,
+      });
+    } catch (error) {
+      console.error("Failed to get current pages:", error);
+    }
+  },
+
+  // Push THIS page again: every entry is its own instance, so the stack
+  // drills as deep as the 10-entry cap allows.
+  demoNavigateTo: async function () {
+    try {
+      await lx.navigateTo({ page: "ui", query: { type: "navigation" } });
+    } catch (err) {
+      lx.showToast({ title: "Page stack is full (10)", icon: "error", durationMs: 1800 });
+      console.warn("[UI] navigateTo rejected", err);
+    }
+  },
+
+  demoNavigateBack: async function () {
+    await lx.navigateBack({
+      delta: 1,
+    });
+  },
+
+  demoSwitchTab: async function () {
+    await lx.switchTab({
+      page: "home",
+    });
+  },
+
+  demoRedirectTo: async function () {
+    await lx.redirectTo({
+      page: "ui",
+      query: { type: "navigation" },
+    });
+  },
+
+  // Show toast with custom parameters
+  showToastWithParams: function (params: Partial<ShowToastOptions>) {
+    const icon = params.icon || this.data.toastIcon || "success";
+    const position = params.position || this.data.toastPosition || "center";
+    lx.showToast({
+      title: params.title || "Hello Toast!",
+      icon,
+      durationMs: params.durationMs || 2000,
+      position,
+      mask: params.mask || false,
+    });
+  },
+
+  // Choose toast icon via action sheet
+  chooseToastIcon: async function () {
+    const result = await lx.showActionSheet({
+      items: this.data.toastIconOptions.map((option, index) => ({ id: String(index), label: option.label })),
+      itemColor: "#007AFF",
+    });
+    if (result.status === 'canceled') {
+      return;
+    }
+    const selected = this.data.toastIconOptions[Number(result.id)];
+    this.setData({ toastIcon: selected.value, toastIconLabel: selected.label });
+  },
+
+  // Choose toast position via action sheet
+  chooseToastPosition: async function () {
+    const result = await lx.showActionSheet({
+      items: this.data.toastPositionOptions.map((option, index) => ({ id: String(index), label: option.label })),
+      itemColor: "#007AFF",
+    });
+    if (result.status === 'canceled') {
+      return;
+    }
+    const selected = this.data.toastPositionOptions[Number(result.id)];
+    this.setData({ toastPosition: selected.value, toastPositionLabel: selected.label });
+  },
+
+  hideToast: function () {
+    lx.hideToast();
+  },
+
+  // Demo action sheet with mixed language options
+  showDemoActionSheet: async function () {
+    this.setData({ actionSheetResult: null });
+    const items = ["View Details", "查看日志", "Send Email", "删除"];
+    const result = await lx.showActionSheet({
+      items: items.map((label, index) => ({ id: String(index), label })),
+      itemColor: "#007AFF",
+    });
+    this.setData({ actionSheetResult: result });
+    if (result.status === 'canceled') {
+      lx.showToast({ title: "Dismissed", icon: "none" });
+      return;
+    }
+    lx.showToast({ title: `Selected: ${items[Number(result.id)]}`, icon: "success" });
+  },
+
+  openSurfaceDemo: async function (config?: DemoSurfaceConfig) {
+    this.setPath(["surfaceDemo", "message"], "");
+
+    const cfg = config || {};
+    // The content source picks the function; `as` is a small closed set within
+    // it. float/window target this app's own page, an aside carries external
+    // content, and another lxapp is shell composition.
+    const verb = cfg.verb === "float" || cfg.verb === "window" || cfg.verb === "lxapp"
+      ? cfg.verb
+      : "aside";
+
+    // Ask before offering: a window is a property of the host build, so this
+    // answer is stable and does not need the error path to discover it.
+    if (verb === "window" && !lx.supports('surface.window')) {
+      this.setData({
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          message: "not supported",
+          active: false,
+          visible: false,
+        },
+      });
+      lx.showToast({ title: "not supported", icon: "none" });
+      return;
+    }
+
+    const size: { width?: OverlaySurfaceSizeValue; height?: OverlaySurfaceSizeValue } = {};
+    if (cfg.width) size.width = cfg.width;
+    if (cfg.height) size.height = cfg.height;
+
+    try {
+      const surface = await this._openDemoSurface(verb, cfg, size);
+      // Aside tabs accumulate (multi-tab); only a single float/window drives
+      // the hide/show/close controls below.
+      const single = verb === "float" || verb === "window";
+      this.setData({
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          message: `Opened ${surface.realized}: ${surface.id}`,
+          active: single,
+          visible: single,
+        },
+      });
+      if (surface.kind === "page") {
+        this._observeDemoPageSurface(surface);
+      }
+    } catch (error) {
+      // Every rejection carries a code from the exported union; read it with
+      // the helper rather than reaching into the error's shape.
+      const message = surfaceErrorMessage(error);
+      console.error("lx.surface open failed:", error);
+      this.setData({
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          message: `Failed (${surfaceErrorCode(error) ?? "unknown"}): ${message}`,
+          active: false,
+          visible: false,
+        },
+      });
+      lx.showToast({ title: `open failed: ${message}`, icon: "none" });
+    }
+  },
+
+  // A key is an identity, not a slot: every open mints a fresh surface, so
+  // reusing a key without closing first leaves the old one on screen with
+  // nothing pointing at it.
+  _releaseDemoSurfaceKey: async function (key: string) {
+    const existing = lx.surface.getByKey(key);
+    if (!existing || !("close" in existing)) return;
+    try {
+      await existing.close();
+    } catch (error) {
+      console.warn("surface.close before reopen failed:", error);
+    }
+  },
+
+  _openDemoSurface: async function (
+    verb: DemoSurfaceVerb,
+    cfg: DemoSurfaceConfig,
+    size: { width?: OverlaySurfaceSizeValue; height?: OverlaySurfaceSizeValue },
+  ) {
+    if (verb === "lxapp") {
+      // Compose another lxapp into the aside slot — home-lxapp privilege, so
+      // it lives on lx.shell rather than lx.surface.
+      await this._releaseDemoSurfaceKey(DEMO_APP_SURFACE_KEY);
+      return lx.shell.openApp("lingxia-chat", {
+        as: "aside",
+        edge: cfg.edge ?? "right",
+        key: DEMO_APP_SURFACE_KEY,
+      });
+    }
+    if (verb === "aside") {
+      // Multi-tab demo: each click opens the next url as a tab in the one
+      // browser aside (deduped by url). An aside is external content only.
+      const demoUrls = [
+        "https://www.deepseek.com/",
+        "https://cn.bing.com/",
+        "https://opensource.adobe.com/",
+      ];
+      const idx = (this._asideTabIndex || 0) % demoUrls.length;
+      this._asideTabIndex = (this._asideTabIndex || 0) + 1;
+      return lx.surface.openUrl(cfg.url ?? demoUrls[idx], {
+        as: "aside",
+        edge: cfg.edge ?? "right",
+        size,
+      });
+    }
+    this._stopSurfaceObservers();
+    await this._releaseDemoSurfaceKey(DEMO_PAGE_SURFACE_KEY);
+    if (verb === "window") {
+      // `full` runs the page to the window edge and keeps system min/max/close
+      // plus a runtime drag strip. `system` is the standard title bar. The
+      // demo lets the caller pick; default to full when the host offers it.
+      const wantsFull = cfg.chrome !== "system"
+        && lx.supports('surface.window.fullChrome');
+      const chrome = wantsFull ? ("full" as const) : ("system" as const);
+      return lx.surface.openPage("surface", {
+        as: "window",
+        chrome,
+        key: DEMO_PAGE_SURFACE_KEY,
+        size,
+      });
+    }
+    return lx.surface.openPage("surface", {
+      as: "float",
+      position: cfg.position ?? "center",
+      key: DEMO_PAGE_SURFACE_KEY,
+      size,
+    });
+  },
+
+  _observeDemoPageSurface: function (surface: PageSurface) {
+    this._surfaceOffs.push(surface.onMessage((payload) => {
+      // Messages from the surface page no longer auto-close it — that would
+      // defeat the show/hide demo.
+      const message =
+        payload && typeof payload === "object"
+          ? (payload as { message?: unknown }).message || JSON.stringify(payload)
+          : payload;
+      const text = typeof message === "string" ? message : JSON.stringify(message);
+      this.setPath(["surfaceDemo", "message"], `Message: ${text}`);
+    }));
+    // Both opener-side and page-side toggles flow through these events, so the
+    // parent UI stays in sync even when the surface hides itself.
+    this._surfaceOffs.push(surface.onShow((event) => {
+      this.setData({
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          visible: true,
+          message: `Shown ${event.id} (source=${event.source})`,
+        },
+      });
+    }));
+    this._surfaceOffs.push(surface.onHide((event) => {
+      this.setData({
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          visible: false,
+          message: `Hidden ${event.id} (source=${event.source})`,
+        },
+      });
+    }));
+    this._surfaceOffs.push(surface.onClose((event) => {
+      const currentMessage = this.data.surfaceDemo?.message || "";
+      const closeMessage = `Closed ${event.id}: ${event.reason}`;
+      this.setData({
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          message: currentMessage.startsWith("Message:")
+            ? `${currentMessage} (${closeMessage})`
+            : closeMessage,
+          active: false,
+          visible: false,
+        },
+      });
+    }));
+  },
+
+  showActiveSurface: async function () {
+    // `lx.surface.getByKey(key)` finds the live surface, so no handle is cached.
+    const surface = lx.surface.getByKey(DEMO_PAGE_SURFACE_KEY);
+    // The demo only ever opens its own page as a surface.
+    if (surface?.kind !== "page") {
+      return;
+    }
+    try {
+      await surface.show();
+      this.setData({
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          message: `Shown ${surface.id}`,
+          visible: true,
+        },
+      });
+    } catch (error) {
+      console.warn("surface.show failed:", error);
+      this.setPath(["surfaceDemo", "message"], `Show failed: ${errorMessage(error, "unknown error")}`);
+    }
+  },
+
+  hideActiveSurface: async function () {
+    const surface = lx.surface.getByKey(DEMO_PAGE_SURFACE_KEY);
+    if (surface?.kind !== "page") {
+      return;
+    }
+    try {
+      await surface.hide();
+      this.setData({
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          message: `Hidden ${surface.id}`,
+          visible: false,
+        },
+      });
+    } catch (error) {
+      console.warn("surface.hide failed:", error);
+      this.setPath(["surfaceDemo", "message"], `Hide failed: ${errorMessage(error, "unknown error")}`);
+    }
+  },
+
+  closeActiveSurface: async function () {
+    const surface = lx.surface.getByKey(DEMO_PAGE_SURFACE_KEY);
+    if (!surface || !("close" in surface)) {
+      return;
+    }
+    try {
+      await surface.close();
+    } catch (error) {
+      console.warn("surface.close failed:", error);
+    }
+  },
+
+  sendToSurface({ message }: { message: string }) {
+    const surface = lx.surface.getByKey(DEMO_PAGE_SURFACE_KEY);
+    if (surface?.kind === "page") surface.postMessage({ message });
+  },
+
+  // Show modal with custom parameters
+  showModalWithParams: async function (params: { title?: string; content?: string; showCancel?: boolean; cancelText?: string; confirmText?: string }) {
+    const result = await lx.showModal({
+      title: params.title ?? "Alert",
+      content: params.content || "This is a modal dialog",
+      showCancel: params.showCancel ?? true,
+      cancelText: params.cancelText || "Cancel",
+      confirmText: params.confirmText || "OK",
+    });
+    this.setData({ modalResult: result });
+    return result;
+  },
+
+  // Clear modal result
+  clearModalResult: function () {
+    this.setData({
+      modalResult: null,
+    });
+  },
+
+  // NavigationBar API functions
+  _runChromeUpdate: async function (label: string, update: () => Promise<boolean | void>) {
+    try {
+      const result = await update();
+      this.setData({ chromeError: "" });
+      return result;
+    } catch (error) {
+      const message = surfaceErrorMessage(error);
+      this.setData({ chromeError: `${label}: ${message}` });
+      console.error(`${label} failed:`, error);
+      return undefined;
+    }
+  },
+
+  updateNavigationBarTitle: function (options: { title: string }) {
+    return this._runChromeUpdate("Navigation bar update", () =>
+      lx.navigationBar.update({ title: options.title }),
+    );
+  },
+
+  updateNavigationBarColors: function (options: {
+    backgroundColor?: string;
+    frontColor?: string;
+    dividerColor?: string;
+  }) {
+    return this._runChromeUpdate("Navigation bar update", () =>
+      lx.navigationBar.update({
+        style: {
+          backgroundColor: options.backgroundColor,
+          foregroundColor: options.frontColor,
+          dividerColor: options.dividerColor,
+        },
+      }),
+    );
+  },
+
+  updateNavigationBarHomeButton: function (options: { homeButton: NavigationBarPatch["homeButton"] }) {
+    return this._runChromeUpdate("Navigation bar update", () =>
+      lx.navigationBar.update({ homeButton: options.homeButton }),
+    );
+  },
+
+  resetNavigationBar: function () {
+    return this._runChromeUpdate("Navigation bar update", () =>
+      lx.navigationBar.update({ title: null, style: null, homeButton: "auto" }),
+    );
+  },
+
+  // TabBar API functions
+  enableTabBarRedDot: function (options: { index: number }) {
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ items: [{ index: options.index, redDot: true }] }),
+    );
+  },
+
+  disableTabBarRedDot: function (options: { index: number }) {
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ items: [{ index: options.index, redDot: false }] }),
+    );
+  },
+
+  updateTabBarBadge: function (options: { index: number; text: string }) {
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ items: [{ index: options.index, badge: options.text }] }),
+    );
+  },
+
+  clearTabBarBadge: function (options: { index: number }) {
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ items: [{ index: options.index, badge: null }] }),
+    );
+  },
+
+  revealTabBar: function () {
+    return this._runChromeUpdate("Tab bar update", async () => {
+      const result = await lx.tabBar.update({ visibility: "visible" });
+      this.showToastWithParams({ title: "shown", icon: "success", durationMs: 800 });
+      return result;
+    });
+  },
+
+  concealTabBar: function () {
+    return this._runChromeUpdate("Tab bar update", async () => {
+      const result = await lx.tabBar.update({ visibility: "hidden" });
+      this.showToastWithParams({ title: "hidden", icon: "success", durationMs: 800 });
+      return result;
+    });
+  },
+
+  updateTabBarItem: function (options: TabBarItemPatch) {
+    console.log("updateTabBarItem called with:", options);
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ items: [options] }),
+    );
+  },
+});

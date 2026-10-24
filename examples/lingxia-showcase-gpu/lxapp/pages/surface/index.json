@@ -1,0 +1,14 @@
+{
+  "renderer": "gpu",
+  "pageOrientation": "auto",
+  "navigationBar": {
+    "title": {
+      "default": "Surface",
+      "zh-CN": "窗口"
+    },
+    "style": {
+      "backgroundColor": "#0f172a",
+      "foregroundColor": "#FFFFFF"
+    }
+  }
+}
