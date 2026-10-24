@@ -135,7 +135,7 @@ rong_assert = "0.6.0"
 rong_buffer = "0.6.0"
 rong_encoding = "0.6.1"
 rong_exception = "0.6.0"
-rong_stream = "0.6.0"
+rong_stream = "0.6.1"
 rong_timer = "0.6.1"
 rong_url = "0.6.1"
 
