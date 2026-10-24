@@ -498,14 +498,14 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     private func handleRootWindowCloseRequest() {
-        if menuBarActivators.isEmpty {
-            NSApp.terminate(nil)
-            return
-        }
-        // Closing a tray-backed window hides the window; it does not close the
-        // stable root Surface, which is intentionally non-closable.
+        // macOS convention: closing the main window hides it and the app keeps
+        // running in the Dock; ⌘Q quits. The root Surface is never closed.
         shell.hide()
         visibleSurfaceIDs.remove(rootSurface.id)
+        if let ownerAppId = graphOwnerAppId,
+           let activeId = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId)?.activeSurfaceId {
+            visibleSurfaceIDs.remove(activeId)
+        }
         refreshChromeActions()
     }
 
@@ -1755,11 +1755,23 @@ final class LxAppMacAppUIRuntime: NSObject {
             }
             return true
         }
-        // No explicit app-activation activator: for a tray app whose main window was
-        // closed to the menu bar, the dock icon must still bring it back. AppKit's
-        // default reopen can't re-show an ordered-out window, so restore it here.
-        if !menuBarActivators.isEmpty, !visibleSurfaceIDs.contains(rootSurface.id) {
-            openSurfaceHandlingError(id: rootSurface.id)
+        // No explicit app-activation activator: the Dock icon brings back a closed
+        // main window. AppKit's default reopen can't re-show an ordered-out
+        // window, so restore it here. Ask the window, not visibleSurfaceIDs:
+        // root also leaves that set when another main is active in a shown window.
+        let window = shell.window
+        if !(window?.isVisible ?? false), !(window?.isMiniaturized ?? false) {
+            guard openedSurfaceIDs.contains(rootSurface.id),
+                  let ownerAppId = graphOwnerAppId,
+                  let activeId = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId)?.activeSurfaceId
+            else {
+                openSurfaceHandlingError(id: rootSurface.id)
+                return true
+            }
+            // Re-show the window as it was closed, without switching mains.
+            shell.show()
+            visibleSurfaceIDs.insert(activeId)
+            refreshChromeActions()
             return true
         }
         return false
