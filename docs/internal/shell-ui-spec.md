@@ -183,6 +183,9 @@ Main is special:
   a main handle does not support explicit `hide()` — such a call MUST fail with
   `E_NOT_SUPPORTED`, guaranteeing there is always a selected main;
 - the first admitted main is a stable root and ordinary close MUST reject it;
+- the window close button never closes the root: on macOS it hides the window
+  and the Dock icon restores it, tray or not; on Windows it hides the window
+  only when a tray exists, otherwise it quits;
 - closing an eligible non-root main removes its switcher item and destroys its
   provider instance; closing the selected item selects an adjacent remaining
   main. A product Host therefore never enters a zero-main placeholder state.
