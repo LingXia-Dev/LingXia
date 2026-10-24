@@ -11,12 +11,8 @@ import com.lingxia.lxapp.R;
 
 /** Host-owned feedback; author content cannot replace its recovery action. */
 final class GpuRecovery {
+    /** Failure kinds the shared lifecycle reports. */
     enum Kind { CANDIDATE, COMPATIBILITY, SESSION }
-    static Kind kind(Throwable error) {
-        String message = error.toString();
-        return message.contains("UI_COMPAT") ? Kind.COMPATIBILITY
-                : message.contains("UI_TIMEOUT:") ? Kind.SESSION : Kind.CANDIDATE;
-    }
     private final FrameLayout host;
     private LinearLayout panel;
     private final android.graphics.Rect insets = new android.graphics.Rect();

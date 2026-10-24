@@ -14,7 +14,7 @@ use crate::interaction::view::{AccessibilityEffect, Dispatch, Effect};
 use crate::semantics::projection::Projection;
 use crate::session::lifecycle::SurfaceTicket;
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", feature = "jvm"))]
 pub mod android;
 
 /// Puts prepared pixels on screen. Returns false when the target was not ready.

@@ -568,6 +568,7 @@ fn drags_scroll_past_slop_and_release_into_a_fling() {
     let (_, effects) = interaction.pointer(up, page);
     assert!(effects.contains(&Effect::Fling {
         region: "list".into(),
+        horizontal: false,
         velocity: 900.0
     }));
     assert!(interaction.take_dispatch().is_empty());

@@ -7,7 +7,9 @@ import android.graphics.drawable.GradientDrawable;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-final class GpuClip {
+/** Pressed/focus feedback and selection chrome masks, drawn from presented geometry. */
+final class GpuHighlight {
+    /** Whether chrome anchored at a point would show through the node's clips. */
     static boolean contains(JSONObject node, double x, double y, boolean ownRadius) {
         JSONArray visible = node.optJSONArray("visible_bounds");
         if (!inside(visible == null ? node.optJSONArray("bounds") : visible, 0, x, y)) return false;
@@ -21,10 +23,6 @@ final class GpuClip {
             if (clip == null || !inside(clip.optJSONArray("bounds"), clip.optDouble("radius"), clip.optJSONArray("radii"), x, y)) return false;
         }
         return true;
-    }
-    static boolean containsContent(JSONObject node, double x, double y) {
-        JSONObject clip = node.optJSONObject("content_clip");
-        return clip == null || inside(clip.optJSONArray("bounds"), clip.optDouble("radius"), clip.optJSONArray("radii"), x, y);
     }
     private static double[] radii(JSONArray values, double radius, double width, double height) {
         double[] result = new double[8];
@@ -68,7 +66,7 @@ final class GpuClip {
         return true;
     }
 
-    /** Native pressed/focus feedback must obey the same ancestor masks as GPU paint. */
+    /** Feedback obeys the same ancestor masks as GPU paint. */
     static final class Highlight extends GradientDrawable {
         private Path[] masks = new Path[0];
         void setNode(JSONObject node, float scale) {

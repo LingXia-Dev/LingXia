@@ -42,6 +42,10 @@ public class GpuSessionRecoveryTest {
         while (android.os.SystemClock.uptimeMillis() < end);
         fail("GPU recovery deadline exceeded");
     }
+    private static boolean bridgeReady(Object view) throws Exception {
+        java.lang.reflect.Method method = GpuView.class.getDeclaredMethod("bridgeReady"); method.setAccessible(true);
+        return (boolean)method.invoke(view);
+    }
     private static Object field(Object target, String name) throws Exception {
         Field field = target.getClass().getDeclaredField(name); field.setAccessible(true);
         return field.get(target);
@@ -74,7 +78,7 @@ public class GpuSessionRecoveryTest {
         await(() -> main(() -> {
             for (Activity activity : ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)) {
                 GpuView view = gpu(activity.getWindow().getDecorView());
-                if (view != null && (boolean)field(view, "bridgeReady") && field(view, "snapshot") != null) {
+                if (view != null && bridgeReady(view) && field(view, "snapshot") != null) {
                     content.set(view); return true;
                 }
             }
@@ -97,7 +101,7 @@ public class GpuSessionRecoveryTest {
         assertNotNull(main(() -> reload(view)));
         main(() -> { reload(view).performClick(); return null; });
         await(() -> main(() -> view.getConnectionGeneration() > before
-                && (boolean)field(view, "bridgeReady") && field(view, "snapshot") != null));
+                && bridgeReady(view) && field(view, "snapshot") != null));
         assertNull(main(() -> reload(view)));
         main(() -> {
             Method restart = GpuPage.class.getDeclaredMethod("restart", long.class, long.class); restart.setAccessible(true);

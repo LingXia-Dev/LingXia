@@ -302,6 +302,11 @@ impl Lifecycle {
         })
     }
 
+    /// The current connection delivered ready and its first state.
+    pub fn bridge_ready(&self) -> bool {
+        self.with(|state| state.bridge_ready)
+    }
+
     /// Whether the presented page has stopped accepting input after an interrupted session.
     pub fn session_failed(&self) -> bool {
         self.with(|state| state.session_failed)

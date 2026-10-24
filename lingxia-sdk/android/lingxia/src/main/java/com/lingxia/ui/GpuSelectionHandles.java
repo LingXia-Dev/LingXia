@@ -55,7 +55,7 @@ final class GpuSelectionHandles extends Drawable {
         if (Float.isNaN(cx) || Float.isInfinite(cx) || Float.isNaN(bottom) || Float.isInfinite(bottom) || Float.isNaN(mid) || Float.isInfinite(mid)
             || cx < clip.optDouble(0) || cx > clip.optDouble(0)+clip.optDouble(2)
             || bottom <= clip.optDouble(1) || bottom > clip.optDouble(1)+clip.optDouble(3)+0.5
-            || !GpuClip.contains(node,cx,bottom-0.5,false)) return null;
+            || !GpuHighlight.contains(node,cx,bottom-0.5,false)) return null;
         return new float[]{cx,bottom,mid};
     }
     void update() {
@@ -74,7 +74,7 @@ final class GpuSelectionHandles extends Drawable {
         if (action==MotionEvent.ACTION_DOWN) {
             cancel(); JSONObject node=node(); if (node==null || !matches(node) || host.busy()) return false;
             float factor=host.scale(), px=event.getX()/factor, py=event.getY()/factor;
-            if (!GpuClip.containsAncestors(node,px,py)) return false;
+            if (!GpuHighlight.containsAncestors(node,px,py)) return false;
             GpuInputConnection c=ime.capture().connection;
             float[] hit=null; int chosen=-1; float best=22*22;
             for(int i=0;i<2;i++) {
@@ -117,7 +117,7 @@ final class GpuSelectionHandles extends Drawable {
         float py=Math.max(top+0.5f,Math.min(y,bottom-0.5f));
         int edgeX=x<content.optDouble(0) ? -1 : x>content.optDouble(0)+content.optDouble(2) ? 1 : 0;
         int edgeY=y<content.optDouble(1) ? -1 : y>content.optDouble(1)+content.optDouble(3) ? 1 : 0;
-        if (!GpuClip.contains(node,px,py,false)) { pending=false; if (released) finish(); return; }
+        if (!GpuHighlight.contains(node,px,py,false)) { pending=false; if (released) finish(); return; }
         long serial=gesture, point=movement; querying=true;
         boolean sent=ime.dragSelection(node,generation,px,py,edgeX,edgeY,fixed,collapsed,() -> owner!=null && gesture==serial && movement==point,result -> {
             if (gesture!=serial || owner==null) return;

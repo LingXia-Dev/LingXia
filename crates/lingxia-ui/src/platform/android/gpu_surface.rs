@@ -1,4 +1,4 @@
-use super::{guarded, with_page};
+use super::guarded;
 use jni::{
     JNIEnv,
     objects::{JClass, JObject, JString},
@@ -68,11 +68,11 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeAttach(
         let mut surfaces = SURFACES
             .lock()
             .map_err(|_| "UI_SURFACE: poisoned presenters")?;
-        if existing != 0 {
-            if let Some(presenter) = surfaces.get_mut(&(existing as u64)) {
-                presenter.resume(Arc::new(window), width as u32, height as u32)?;
-                return Ok(existing);
-            }
+        if existing != 0
+            && let Some(presenter) = surfaces.get_mut(&(existing as u64))
+        {
+            presenter.resume(Arc::new(window), width as u32, height as u32)?;
+            return Ok(existing);
         }
         // The registry retains the device domain only while a presenter exists.
         let context = surfaces
@@ -128,7 +128,7 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativePrepareGpu(
     guarded(&mut env, |env| {
         let offsets: String = env.get_string(&offsets).map_err(|e| e.to_string())?.into();
         let offsets = serde_json::from_str(&offsets).map_err(|e| format!("UI_SCROLL: {e}"))?;
-        with_page(page, |session, current_snapshot| {
+        super::with_worker_page(page, |session, worker_page| {
             let now = super::animation_time(time)?;
             session.set_animation_surface(
                 Some(crate::session::lifecycle::SurfaceTicket::new(
@@ -137,7 +137,7 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativePrepareGpu(
                 now,
             )?;
             let generation = session.generation().get() + 1;
-            let (mut snapshot, prepare, scene_cache_hit) = session.prepare_view_animated(
+            let ((mut snapshot, nodes), prepare, scene_cache_hit) = session.prepare_view_animated(
                 u16::try_from(width).map_err(|_| "UI_VIEWPORT: width")?,
                 u16::try_from(height).map_err(|_| "UI_VIEWPORT: height")?,
                 scale,
@@ -151,7 +151,7 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativePrepareGpu(
                     if !presenter.prepare(&display, width as u32, height as u32, generation)? {
                         return Err("UI_SURFACE: suspended".into());
                     }
-                    Ok((serde_json::json!({"generation":generation,"images":display.image_sources().collect::<std::collections::HashSet<_>>(),"loadedImages":display.loaded_image_count(),"nodes":display.nodes,"backend":"vello-vulkan","renderer":"sparse-strips","gpuDevices":presenter.context().device_count()?,"gpuRenderers":presenter.context().renderer_count()?}), presenter.preparation_timings_us(), presenter.scene_cache_hit()))
+                    Ok(((serde_json::json!({"generation":generation,"images":display.image_sources().collect::<std::collections::HashSet<_>>(),"loadedImages":display.loaded_image_count(),"nodes":display.nodes,"backend":"vello-vulkan","renderer":"sparse-strips","gpuDevices":presenter.context().device_count()?,"gpuRenderers":presenter.context().renderer_count()?}), display.nodes.clone()), presenter.preparation_timings_us(), presenter.scene_cache_hit()))
                 },
             )?;
             snapshot["images"] =
@@ -162,7 +162,8 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativePrepareGpu(
             snapshot["metrics"]["sceneCacheHit"] = serde_json::json!(scene_cache_hit);
             snapshot["metrics"]["gpuDevices"] = snapshot["gpuDevices"].clone();
             snapshot["metrics"]["gpuRenderers"] = snapshot["gpuRenderers"].clone();
-            *current_snapshot = snapshot.to_string();
+            worker_page.snapshot = snapshot.to_string();
+            super::publish_frame(worker_page, session, scale, nodes);
             Ok(())
         })
     });

@@ -26,6 +26,7 @@ public class GpuBootstrapTest {
     }
 
     @Test public void viewShowsTimeoutAndRecoversOnlyForItsCurrentConnection() throws Exception {
+        GpuNative.load();
         GpuView view = new GpuView(org.robolectric.RuntimeEnvironment.getApplication(), "", new DeferredWorker(), null, true);
         android.view.View surface = view.getChildAt(0);
         int importance = surface.getImportantForAccessibility();

@@ -9,7 +9,8 @@ use std::{
     sync::atomic::{AtomicI64, Ordering},
 };
 
-#[cfg(feature = "gpu")]
+mod core;
+#[cfg(all(feature = "gpu", target_os = "android"))]
 mod gpu_surface;
 mod image_requests;
 
@@ -34,6 +35,62 @@ pub unsafe fn register_natives(
         };
     }
     let methods = [
+        method!("nativeLifecycleCreate", "(Z)J", core::lifecycle_create),
+        method!("nativeLifecycleRelease", "(J)V", core::lifecycle_release),
+        method!("nativeLifecycle", "(JIJ)J", core::lifecycle_op),
+        method!(
+            "nativeLifecycleFail",
+            "(JLjava/lang/String;)Ljava/lang/String;",
+            core::lifecycle_fail
+        ),
+        method!("nativeInteractionCreate", "()J", core::interaction_create),
+        method!(
+            "nativeInteractionRelease",
+            "(J)V",
+            core::interaction_release
+        ),
+        method!(
+            "nativePresented",
+            "(JJJLjava/lang/String;J)Ljava/lang/String;",
+            core::interaction_presented
+        ),
+        method!(
+            "nativePointer",
+            "(JIFFFFFFJ)Ljava/lang/String;",
+            core::interaction_pointer
+        ),
+        method!(
+            "nativeSignal",
+            "(JIJ)Ljava/lang/String;",
+            core::interaction_signal
+        ),
+        method!(
+            "nativeKey",
+            "(JIZZJ)Ljava/lang/String;",
+            core::interaction_key
+        ),
+        method!(
+            "nativeQuery",
+            "(JIJ)Ljava/lang/String;",
+            core::interaction_query
+        ),
+        method!(
+            "nativeScrollBy",
+            "(JLjava/lang/String;F)Z",
+            core::interaction_scroll_by
+        ),
+        method!(
+            "nativeExplore",
+            "(JZFF)Ljava/lang/String;",
+            core::interaction_explore
+        ),
+        method!(
+            "nativeAccessibility",
+            "(JIIDLjava/lang/String;J)Ljava/lang/String;",
+            core::interaction_accessibility
+        ),
+        method!("nativeTakeFrame", "(J)J", take_frame),
+        method!("nativeFrameRelease", "(J)V", core::frame_release),
         method!("nativeImageQueueCreate", "()J", image_requests::create),
         method!(
             "nativeImageQueueUpdate",
@@ -138,31 +195,31 @@ pub unsafe fn register_natives(
             "(J)V",
             Java_com_lingxia_ui_GpuView_nativeRelease
         ),
-        #[cfg(feature = "gpu")]
+        #[cfg(all(feature = "gpu", target_os = "android"))]
         method!(
             "nativeAttach",
             "(Landroid/view/Surface;IIJ)J",
             gpu_surface::Java_com_lingxia_ui_GpuView_nativeAttach
         ),
-        #[cfg(feature = "gpu")]
+        #[cfg(all(feature = "gpu", target_os = "android"))]
         method!(
             "nativeSuspend",
             "(J)V",
             gpu_surface::Java_com_lingxia_ui_GpuView_nativeSuspend
         ),
-        #[cfg(feature = "gpu")]
+        #[cfg(all(feature = "gpu", target_os = "android"))]
         method!(
             "nativePrepareGpu",
             "(JJIIFZZLjava/lang/String;JJ)V",
             gpu_surface::Java_com_lingxia_ui_GpuView_nativePrepareGpu
         ),
-        #[cfg(feature = "gpu")]
+        #[cfg(all(feature = "gpu", target_os = "android"))]
         method!(
             "nativePresentGpu",
             "(JJ)Z",
             gpu_surface::Java_com_lingxia_ui_GpuView_nativePresentGpu
         ),
-        #[cfg(feature = "gpu")]
+        #[cfg(all(feature = "gpu", target_os = "android"))]
         method!(
             "nativeDetach",
             "(J)V",
@@ -176,6 +233,8 @@ pub unsafe fn register_natives(
 struct WorkerPage {
     id: crate::ViewPageId,
     snapshot: String,
+    /// The last prepared frame, awaiting handoff to the UI thread.
+    frame: Option<std::sync::Arc<crate::interaction::frame::PresentedFrame>>,
 }
 struct Worker {
     app: crate::ViewApp,
@@ -325,6 +384,13 @@ fn with_page<T>(
     id: i64,
     work: impl FnOnce(&mut crate::ViewSession, &mut String) -> Result<T, String>,
 ) -> Result<T, String> {
+    with_worker_page(id, |session, page| work(session, &mut page.snapshot))
+}
+
+fn with_worker_page<T>(
+    id: i64,
+    work: impl FnOnce(&mut crate::ViewSession, &mut WorkerPage) -> Result<T, String>,
+) -> Result<T, String> {
     WORKER.with(|worker| {
         let mut worker = worker.borrow_mut();
         let worker = worker.as_mut().ok_or("UI_SESSION: missing app worker")?;
@@ -332,7 +398,27 @@ fn with_page<T>(
             .pages
             .get_mut(&id)
             .ok_or("UI_SESSION: discarded page or wrong worker")?;
-        work(worker.app.page(page.id)?, &mut page.snapshot)
+        work(worker.app.page(page.id)?, page)
+    })
+}
+
+/// Publish a prepared frame for presentation; the UI thread consumes or releases it.
+fn publish_frame(
+    page: &mut WorkerPage,
+    session: &crate::ViewSession,
+    scale: f32,
+    nodes: Vec<crate::scene::node::NodeSnapshot>,
+) {
+    page.frame = Some(std::sync::Arc::new(
+        crate::interaction::frame::PresentedFrame::new(session.generation(), scale, nodes),
+    ));
+}
+
+extern "system" fn take_frame(mut env: JNIEnv, _: JClass, page: jlong) -> jlong {
+    guarded(&mut env, |_| {
+        with_worker_page(page, |_, page| {
+            Ok(page.frame.take().map_or(0, core::frame_handle))
+        })
     })
 }
 
@@ -372,6 +458,7 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeLoad(
                 WorkerPage {
                     id,
                     snapshot: String::new(),
+                    frame: None,
                 },
             );
             Ok(handle)
@@ -396,7 +483,7 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeRender(
     guarded(&mut env, |env| {
         let offsets: String = env.get_string(&offsets).map_err(|e| e.to_string())?.into();
         let offsets = serde_json::from_str(&offsets).map_err(|e| format!("UI_SCROLL: {e}"))?;
-        with_page(page, |session, snapshot| {
+        with_worker_page(page, |session, worker_page| {
             let width = u16::try_from(width).map_err(|_| "UI_VIEWPORT: width")?;
             let height = u16::try_from(height).map_err(|_| "UI_VIEWPORT: height")?;
             let now = animation_time(time)?;
@@ -420,8 +507,9 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeRender(
                     display.rasterize()
                 },
             )?;
-            *snapshot = serde_json::json!({"generation":session.generation(), "nodes":frame.nodes,"images":session.image_requests(),"metrics":session.frame_metrics()})
+            worker_page.snapshot = serde_json::json!({"generation":session.generation(), "nodes":frame.nodes,"images":session.image_requests(),"metrics":session.frame_metrics()})
                 .to_string();
+            publish_frame(worker_page, session, scale, frame.nodes.clone());
             // The opaque root background makes these premultiplied channels also valid ARGB colors.
             let pixels: Vec<jint> = frame
                 .pixels

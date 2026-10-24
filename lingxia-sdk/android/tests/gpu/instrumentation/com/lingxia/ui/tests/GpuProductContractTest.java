@@ -63,7 +63,7 @@ public class GpuProductContractTest {
             Field pages=com.lingxia.lxapp.GpuPage.class.getDeclaredField("PAGES");pages.setAccessible(true);
             for(Object page:((java.util.Map<?,?>)pages.get(null)).values()) {
                 Field content=page.getClass().getDeclaredField("content");content.setAccessible(true);Object view=content.get(page);
-                Field ready=GpuView.class.getDeclaredField("bridgeReady");ready.setAccessible(true);if(!ready.getBoolean(view))continue;
+                java.lang.reflect.Method ready=GpuView.class.getDeclaredMethod("bridgeReady");ready.setAccessible(true);if(!(boolean)ready.invoke(view))continue;
                 Field listener=GpuView.class.getDeclaredField("listener");listener.setAccessible(true);host.set((GpuView.Listener)listener.get(view));return true;
             }return false;
         }));

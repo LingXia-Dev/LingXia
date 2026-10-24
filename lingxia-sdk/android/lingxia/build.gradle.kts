@@ -42,6 +42,11 @@ android {
     }
 
     testOptions.unitTests.isIncludeAndroidResources = true
+    // GPU view tests run against the host build of the shared Rust core
+    // (`cargo build -p lingxia-ui --features jvm`); they skip without it.
+    testOptions.unitTests.all {
+        it.systemProperty("lingxia.ui.native", (project.findProperty("lingxiaUiNative") as String?) ?: "")
+    }
 
     sourceSets {
         getByName("main") {

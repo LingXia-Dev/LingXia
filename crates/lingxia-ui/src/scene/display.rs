@@ -96,7 +96,7 @@ impl DisplayList {
         display
     }
     /// Reveal through existing scroll regions before resize can invalidate editor focus.
-    #[cfg(any(target_os = "android", test))]
+    #[cfg(any(target_os = "android", feature = "jvm", test))]
     pub(crate) fn hide_caret(&mut self) {
         if let Some(index) = self.caret_paint.take() {
             self.commands.remove(index);

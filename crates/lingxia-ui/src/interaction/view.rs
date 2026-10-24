@@ -39,6 +39,7 @@ pub enum Effect {
     /// Continue a released drag with platform fling physics, feeding `scroll_by`.
     Fling {
         region: String,
+        horizontal: bool,
         velocity: f32,
     },
     StopFling,
@@ -514,6 +515,7 @@ impl ViewInteraction {
                     {
                         effects.push(Effect::Fling {
                             region,
+                            horizontal: axis == ScrollAxis::Horizontal,
                             velocity: speed,
                         });
                     }
