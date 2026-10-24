@@ -68,10 +68,10 @@ Retain declaration order; `scale(.96) translateY(8px)` scales the translation to
 The compiler must resolve duplicate/implicit keyframes before constructing a
 track; runtime track offsets are strictly increasing with explicit endpoints.
 
-`packages/lingxia-ui/animation.mjs` lowers a resolved animation shorthand and
+`packages/lingxia-ui/compiler/animation.mjs` lowers a resolved animation shorthand and
 PostCSS keyframes into the bounded payload consumed by `decode_definition`.
-Both sides share fixtures generated from official Tailwind output using the
-React showcase token file. The payload carries a bounded name, durationMs/delayMs, required
+Both sides share fixtures generated from official Tailwind output for
+`tests/fixtures/animation-tokens.css`. The payload carries a bounded name, durationMs/delayMs, required
 iterations (null means infinite), easing (linear/step-end or four Bezier values),
 optional opacity keys and ordered scale/translate x/y tracks. Keys contain offset
 and value. Native decoding caps each payload at32KiB and revalidates every track.
@@ -106,7 +106,7 @@ validation. Keep production authoring disabled until that path is verified.
 
 ## Reference behavior
 
-`examples/lingxia-showcase/lxapp/theme/tokens.css` defines two effects used by
+`packages/lingxia-ui/tests/fixtures/animation-tokens.css` defines two effects used by
 the Stream page:
 
 - `blink`: 900ms, step-end, infinite; opacity1 at0/49%, opacity0 at50/100%.
