@@ -14,7 +14,7 @@ it has no layer for: give a new crate one there and a line below.
 |---|---|---|
 | 1. Contracts | `app-context`, `provider`, `log`, `messaging`, `settings`, `surface`, `shell`, `update`, `control-protocol` | Types, policy, wire formats. No runtime. |
 | 2. Platform | `webview`, `platform`, `windows-contract`, `device-io` | OS and WebView hosting. Knows nothing of lxapps. |
-| 3. Runtime | `lxapp`, `logic`, `service`, `transfer`, `media`, `browser`, `terminal`, `terminal-config` | What a shipped app runs. |
+| 3. Runtime | `lxapp`, `ui`, `logic`, `service`, `transfer`, `media`, `browser`, `terminal`, `terminal-config` | What a shipped app runs. |
 | 4. Products and dev features | `browser-shell`, `proxy`, `control-commands`, `network-dev`, `automation` | Built on the runtime; pulled in by facade features. |
 | 5. Facade | `lingxia` | The app-author API, the platform entry surface, init. |
 | 6. Host integrations | `control-runtime`, `windows-sdk` | Linked by host apps beside the facade. |
@@ -58,6 +58,7 @@ Names omit the `lingxia-` prefix.
 - `windows-contract`: Windows host UI traits shared by `platform` and `windows-sdk`.
 - `device-io`: sessionless desktop input, AX, windows, clipboard, processes.
 - `lxapp`: the lxapp container and runtime: pages, bridge, host APIs, updates.
+- `ui`: GPU View language, layout, text, rendering and platform adapters; no app authorization.
 - `logic`: the JavaScript (Logic) runtime.
 - `service`: service APIs shared by JS bindings, shell and facade.
 - `transfer`: downloads and uploads; network owner attribution.

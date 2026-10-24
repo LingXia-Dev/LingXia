@@ -1,0 +1,43 @@
+[package]
+name = "lingxia-ui"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+description = "Experimental LingXia UI language and headless renderer"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = []
+gpu = ["dep:vello_gpu", "dep:glifo", "dep:vello", "dep:wgpu", "dep:pollster", "dep:raw-window-handle"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+taffy = "=0.14.0"
+parley = "=0.12.0"
+skrifa = "=0.44.0"
+vello_cpu = "=0.3.0"
+vello_common = { version = "=0.3.0", default-features = false }
+vello = { version = "=0.11.0", optional = true, default-features = false, features = ["wgpu"] }
+vello_gpu = { version = "=0.3.0", optional = true, default-features = false, features = ["wgpu", "text"] }
+glifo = { version = "=0.4.0", optional = true, features = ["png"] }
+wgpu = { version = "=30.0.0", optional = true, default-features = false, features = ["vulkan", "dx12", "metal", "wgsl"] }
+pollster = { version = "=0.4.0", optional = true }
+raw-window-handle = { version = "=0.6.2", optional = true }
+
+[target.'cfg(any(target_os = "android", target_os = "windows", all(target_os = "linux", not(target_env = "ohos"))))'.dependencies]
+rong = { workspace = true, features = ["quickjs"] }
+rong_core = "=0.6.2"
+rong_quickjs_sys = "=0.6.1"
+
+[target.'cfg(target_vendor = "apple")'.dependencies]
+rong = { workspace = true, features = ["jscore"] }
+
+[target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
+rong = { workspace = true, features = ["arkjs"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"

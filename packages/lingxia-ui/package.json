@@ -1,0 +1,23 @@
+{
+  "name": "@lingxia/ui",
+  "version": "0.28.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/runtime.js"
+    },
+    "./compiler": "./compiler.mjs"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "culori": "^4.0.2",
+    "esbuild": "0.25.12",
+    "postcss": "^8.5.31",
+    "tailwindcss": "4.3.3",
+    "typescript": "^5.7.2"
+  }
+}

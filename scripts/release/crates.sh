@@ -38,6 +38,7 @@ CRATES=(
   "lingxia-terminal"
   "lingxia-terminal-config"
   "lingxia-transfer"
+  "lingxia-ui"
   "lingxia-update"
   "lingxia-webview"
   "lingxia-windows-build"

@@ -1,0 +1,17 @@
+{
+  "blink": {
+    "name": "blink",
+    "durationMs": 900, "delayMs": 0, "iterations": null, "easing": "step-end",
+    "opacity": [{"offset":0,"value":1},{"offset":0.49,"value":1},{"offset":0.5,"value":0},{"offset":1,"value":0}],
+    "transforms": []
+  },
+  "chart-in": {
+    "name": "chart-in",
+    "durationMs": 350, "delayMs": 0, "iterations": 1, "easing": [0.16,1,0.3,1],
+    "opacity": [{"offset":0,"value":0},{"offset":1,"value":1}],
+    "transforms": [
+      {"kind":"scale","x":[{"offset":0,"value":0.96},{"offset":1,"value":1}],"y":[{"offset":0,"value":0.96},{"offset":1,"value":1}]},
+      {"kind":"translate","x":[{"offset":0,"value":0},{"offset":1,"value":0}],"y":[{"offset":0,"value":8},{"offset":1,"value":0}]}
+    ]
+  }
+}
