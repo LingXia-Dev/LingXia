@@ -1,27 +1,47 @@
-use lingxia_ui::protocol::decode;
+use lingxia_ui::protocol::{decode, field, tag};
 use serde_json::json;
 
 #[test]
 fn boolean_control_wire_rejects_invalid_values_callbacks_and_children() {
-    for tag in [10, 11] {
-        let valid = json!([tag, -1, "", "preference", "A label", 3, 39, 1, 40, 42, 9, 1]);
-        assert_eq!(decode(valid.as_array().unwrap()).unwrap()[0].tag, tag);
+    use field::{CHECKED, ENABLED, ON_CHECKED_CHANGE, ON_CLICK, ON_INPUT};
+    use tag::{CHECKBOX, COLUMN, SWITCH, TEXT};
+    let text_child = |t: usize| json!([t, -1, "", "", "", 0, TEXT, 0, "", "", "Child", 0]);
+    for t in [CHECKBOX, SWITCH] {
+        let valid = json!([
+            t,
+            -1,
+            "",
+            "preference",
+            "A label",
+            3,
+            CHECKED,
+            1,
+            ON_CHECKED_CHANGE,
+            42,
+            ENABLED,
+            1
+        ]);
+        assert_eq!(decode(valid.as_array().unwrap()).unwrap()[0].tag, t);
         for invalid in [
-            json!([tag, -1, "", "", "", 1, 39, true]),
-            json!([tag, -1, "", "", "", 1, 39, 2]),
-            json!([tag, -1, "", "", "", 1, 39, -1]),
-            json!([tag, -1, "", "", "", 1, 40, 0]),
-            json!([tag, -1, "", "", "", 1, 40, 9007199254740992u64]),
-            json!([tag, -1, "", "", "", 1, 8, 42]),
-            json!([tag, -1, "", "", "", 1, 26, 42]),
-            json!([tag, -1, "", "", "", 0, 2, 0, "", "", "Child", 0]),
+            json!([t, -1, "", "", "", 1, CHECKED, true]),
+            json!([t, -1, "", "", "", 1, CHECKED, 2]),
+            json!([t, -1, "", "", "", 1, CHECKED, -1]),
+            json!([t, -1, "", "", "", 1, ON_CHECKED_CHANGE, 0]),
+            json!([t, -1, "", "", "", 1, ON_CHECKED_CHANGE, 9007199254740992u64]),
+            json!([t, -1, "", "", "", 1, ON_CLICK, 42]),
+            json!([t, -1, "", "", "", 1, ON_INPUT, 42]),
         ] {
             assert!(decode(invalid.as_array().unwrap()).is_err(), "{invalid}");
         }
     }
-    for tag in 0..10 {
-        for field in [39, 40] {
-            let invalid = json!([tag, -1, "", "", "", 1, field, 1]);
+    // A checkbox composes content; a switch is a leaf; containers carry no inline text.
+    assert!(decode(text_child(CHECKBOX).as_array().unwrap()).is_ok());
+    assert!(decode(text_child(SWITCH).as_array().unwrap()).is_err());
+    let labeled_column = json!([CHECKBOX, -1, "", "", "", 0, COLUMN, 0, "", "", "Child", 0]);
+    assert!(decode(labeled_column.as_array().unwrap()).is_err());
+    for t in 0..CHECKBOX {
+        for f in [CHECKED, ON_CHECKED_CHANGE] {
+            let invalid = json!([t, -1, "", "", "", 1, f, 1]);
             assert!(decode(invalid.as_array().unwrap()).is_err(), "{invalid}");
         }
     }
