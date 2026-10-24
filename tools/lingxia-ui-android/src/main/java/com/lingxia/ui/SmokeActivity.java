@@ -61,7 +61,13 @@ public final class SmokeActivity extends Activity {
         try {
             JSONObject manifest = new JSONObject(asset("lxapp.json"));
             if (manifest.optBoolean("logic", true)) throw new IllegalArgumentException("Harness requires logic: false");
-            String path = manifest.getJSONArray("pages").getJSONObject(0).getString("path");
+            // `--es page <name>` selects one page of a multi-page fixture; the first page is the default.
+            org.json.JSONArray entries = manifest.getJSONArray("pages");
+            String wanted = getIntent().getStringExtra("page");
+            JSONObject entry = entries.getJSONObject(0);
+            for (int index = 0; wanted != null && index < entries.length(); index++)
+                if (wanted.equals(entries.getJSONObject(index).optString("name"))) entry = entries.getJSONObject(index);
+            String path = entry.getString("path");
             if (path.endsWith(".js")) path = path.substring(0, path.length() - 3);
             if (!path.matches("pages/[a-zA-Z0-9_/-]+")) throw new IllegalArgumentException("Invalid page path");
             if (!new JSONObject(asset(path + ".json")).getString("renderer").equals("gpu")) throw new IllegalArgumentException("Expected GPU page");

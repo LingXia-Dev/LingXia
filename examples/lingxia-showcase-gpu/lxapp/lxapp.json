@@ -45,10 +45,6 @@
       "path": "pages/share/index"
     },
     {
-      "name": "lab",
-      "path": "pages/lab/index"
-    },
-    {
       "name": "api",
       "path": "pages/api/index"
     },

@@ -1,7 +1,7 @@
-import { useLocal, type Env } from '@lingxia/ui';
-import '../../theme/index.css';
+import { useLocal, useView } from '@lingxia/ui';
 
-export function percentFixture(env: Env) {
+export function render() {
+  const { env } = useView();
   const narrow = useLocal('percent-narrow', false);
   return <column className="bg-white p-4 gap-3 text-black" style={{ paddingTop: env.insets.top + 16 }}>
     <button testId="percent-toggle" onClick={() => narrow.set(!narrow.value)} className="w-60 h-12 bg-blue-600 text-white">{narrow.value ? 'Narrow' : 'Wide'}</button>

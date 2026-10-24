@@ -7,7 +7,6 @@ const json = async url => JSON.parse(await readFile(url, 'utf8'));
 
 test('GPU pages preserve the reference host navigation configuration', async () => {
   for (const name of await readdir(new URL('pages/', gpu))) {
-    if (name === 'lab') continue;
     const path = `pages/${name}/index.json`;
     const actual = await json(new URL(path, gpu));
     const expected = await json(new URL(path, reference));

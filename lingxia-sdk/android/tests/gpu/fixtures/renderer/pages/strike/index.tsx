@@ -1,6 +1,6 @@
-import { useLocal, type Env } from '@lingxia/ui';
-import '../../theme/index.css';
-export function strikeFixture(env: Env) {
+import { useLocal, useView } from '@lingxia/ui';
+export function render() {
+  const { env } = useView();
   const strike = useLocal('strike-fixture', false);
   return <column className="bg-white text-black p-4 gap-4" style={{ paddingTop: env.insets.top + 16 }}>
     <button testId="strike-toggle" className="h-12 bg-blue-600 text-white" onClick={() => strike.set(!strike.value)}>Toggle decoration</button>

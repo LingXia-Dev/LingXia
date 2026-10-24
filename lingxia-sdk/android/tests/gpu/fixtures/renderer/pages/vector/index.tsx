@@ -1,8 +1,13 @@
-import { useLocal, type Env } from '@lingxia/ui';
-import { Icon } from '../../shared/components/icon';
-import '../../theme/index.css';
+import { useLocal, useView } from '@lingxia/ui';
 
-export function vectorFixture(env: Env) {
+const icons = [
+  ['M6 19a4 4 0 0 1-.4-7.98A5.5 5.5 0 0 1 16 8.5h.5a4.5 4.5 0 1 1 .5 9H6z'],
+  ['M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z', 'M15 10A3 3 0 1 0 9 10A3 3 0 1 0 15 10Z'],
+  ['M7 2H17A2 2 0 0 1 19 4V20A2 2 0 0 1 17 22H7A2 2 0 0 1 5 20V4A2 2 0 0 1 7 2Z', 'M12 18h.01'],
+];
+
+export function render() {
+  const { env } = useView();
   const alternate = useLocal('vector-alternate', false);
   const tint = alternate.value ? 'text-blue-600' : 'text-red-600';
   return <column className="bg-white p-4 gap-3 text-black" style={{ paddingTop: env.insets.top + 16 }}>
@@ -24,6 +29,7 @@ export function vectorFixture(env: Env) {
     <scroll testId="vector-scroll" className="w-20 h-20 bg-white">
       <vector className="w-20 h-40 shrink-0" viewBox={[0, 0, 24, 48]} paths={[{ d: 'M0 0h24v24H0z', fill: '#ff0000' }, { d: 'M0 24h24v24H0z', fill: '#0000ff' }]} />
     </scroll>
-    <row className="gap-3"><Icon name="cloud" className="w-12 h-12 text-gray-900" /><Icon name="location" className="w-12 h-12 text-gray-900" /><Icon name="device" className="w-12 h-12 text-gray-900" /></row>
+    <row className="gap-3">{icons.map((paths, index) => <vector key={String(index)} className="w-12 h-12 text-gray-900"
+      paths={paths.map(d => ({ d, fill: 'none', stroke: 'currentColor', strokeWidth: 1.5 }))} />)}</row>
   </column>;
 }

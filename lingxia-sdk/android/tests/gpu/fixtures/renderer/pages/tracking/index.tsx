@@ -1,6 +1,6 @@
-import { useLocal, type Env } from '@lingxia/ui';
-import '../../theme/index.css';
-export function trackingFixture(env: Env) {
+import { useLocal, useView } from '@lingxia/ui';
+export function render() {
+  const { env } = useView();
   const tracking = useLocal('tracking-enabled', false);
   const sample = 'Tracking sample';
   const row = 'w-[280px] h-11 text-[28px] leading-10';

@@ -1,9 +1,9 @@
-import { useLocal, type Env } from '@lingxia/ui';
-import '../../theme/index.css';
+import { useLocal, useView } from '@lingxia/ui';
 
 const alignments = ['right', 'left', 'center', 'start', 'end', 'justify'] as const;
 const classes = { right: 'text-right', left: 'text-left', center: 'text-center', start: 'text-start', end: 'text-end', justify: 'text-justify' };
-export function alignmentFixture(env: Env) {
+export function render() {
+  const { env } = useView();
   const mode = useLocal('alignment-mode', 0);
   const value = useLocal('alignment-input', 'MMMM');
   const alignment = alignments[mode.value];

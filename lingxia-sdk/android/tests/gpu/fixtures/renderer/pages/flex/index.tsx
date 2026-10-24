@@ -1,6 +1,7 @@
-import { useLocal, type Env } from '@lingxia/ui';
+import { useLocal, useView } from '@lingxia/ui';
 
-export function flexFixture(env: Env) {
+export function render() {
+  const { env } = useView();
   const narrow = useLocal('flex-narrow', false);
   return <column className="bg-white text-black" style={{paddingTop:env.insets.top,paddingLeft:8}}>
     <button testId="flex-resize" onClick={()=>narrow.set(!narrow.value)} className="h-11 bg-blue-500 text-white">Resize</button>

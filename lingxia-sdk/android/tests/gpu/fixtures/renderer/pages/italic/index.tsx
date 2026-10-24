@@ -1,6 +1,6 @@
-import { useLocal, type Env } from '@lingxia/ui';
-import '../../theme/index.css';
-export function italicFixture(env: Env) {
+import { useLocal, useView } from '@lingxia/ui';
+export function render() {
+  const { env } = useView();
   const italic = useLocal('italic-enabled', false);
   const sample = 'Italic sample ffi';
   const row = 'w-[280px] h-11 text-[28px] leading-10';
