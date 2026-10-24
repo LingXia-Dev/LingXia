@@ -20,3 +20,13 @@ update:
   # 后台静默下载完成后的“可安装”提示；仅在用户确认后才拉起系统安装器。
   ready_message: "新版本已下载完成，现在安装？"
   ready_title: "更新已就绪"
+
+# GPU page recovery UI.
+gpu:
+  update_required: "请更新应用后打开此页面。"
+  update_failed: "页面更新失败，已保留上次显示的内容。"
+  display_failed: "暂时无法显示此页面。"
+  retry: "重试"
+  session_failed: "页面已停止响应，请重新载入后继续。尚未保存的输入可能丢失。"
+  reload: "重新载入页面"
+  retrying: "正在重试…"

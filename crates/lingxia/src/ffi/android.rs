@@ -17,6 +17,8 @@ use lxapp::{
 use std::sync::OnceLock;
 
 static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
+#[path = "android/gpu_page.rs"]
+mod gpu_page;
 
 fn initialize_jni(vm: JavaVM) {
     let _ = JAVA_VM.set(vm);
@@ -141,7 +143,18 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
         // the app classloader. Doing this in `JNI_OnLoad` can fail on Android.
         init_cached_java_classes(env);
 
+        let gpu_class = env.find_class(jni_str!("com/lingxia/ui/GpuView"))?;
+        // Use raw JNI references across the renderer's JNI crate version boundary.
+        // Registration happens synchronously on this thread and retains neither reference.
+        if let Err(error) = unsafe {
+            lingxia_ui::android::register_natives(env.get_raw().cast(), gpu_class.as_raw().cast())
+        } {
+            error!("Failed to register Android GPU renderer: {error}");
+            return Err(jni::errors::Error::JniCall(jni::errors::JniError::Unknown));
+        }
+
         let data_dir_str: String = data_dir.try_to_string(env)?;
+        gpu_page::initialize(env)?;
         let cache_dir_str: String = cache_dir.try_to_string(env)?;
         let locale_str: String = locale.try_to_string(env)?;
 
@@ -360,6 +373,80 @@ fn java_webview_of<'l>(
     Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) })
 }
 
+fn java_page_view_of<'l>(
+    env: &mut Env<'l>,
+    page: &lxapp::PageInstance,
+) -> Result<JObject<'l>, jni::errors::Error> {
+    if page.renderer() == lxapp::PageRenderer::Gpu {
+        let _ = lxapp::touch_page_instance_by_id(&page.instance_id_string());
+        gpu_page::java_view(env, page)
+    } else {
+        java_webview_of(env, page)
+    }
+}
+
+fn deliver_page_view(
+    callback: &jni::objects::Global<JObject<'static>>,
+    outcome: lxapp::PageWebViewAwait,
+) {
+    let _ = with_env(|env| -> Result<(), jni::errors::Error> {
+        let (view, status): (JObject, jint) = match outcome {
+            lxapp::PageWebViewAwait::Ready(page) => {
+                let view = java_page_view_of(env, &page)?;
+                let status = if view.is_null() { 1 } else { 0 };
+                (view, status)
+            }
+            lxapp::PageWebViewAwait::Failed(reason) => {
+                warn!("page View is not available: {reason}");
+                (JObject::null(), 1)
+            }
+            lxapp::PageWebViewAwait::Gone => (JObject::null(), 2),
+        };
+        env.call_method(
+            callback,
+            jni_str!("onResult"),
+            jni_sig!("(Landroid/view/View;I)V"),
+            &[(&view).into(), status.into()],
+        )?;
+        Ok(())
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_awaitPageView<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    appid: JString<'a>,
+    session_id: jlong,
+    webtag: JString<'a>,
+    callback: JObject<'a>,
+) -> JObject<'a> {
+    env.with_env(|env| -> Result<JObject, jni::errors::Error> {
+        let appid = appid.try_to_string(env)?;
+        let webtag = if webtag.is_null() {
+            None
+        } else {
+            Some(webtag.try_to_string(env)?)
+        };
+        let callback = std::sync::Arc::new(env.new_global_ref(callback)?);
+        let done = || {
+            let callback = callback.clone();
+            move |outcome| deliver_page_view(&callback, outcome)
+        };
+        match lxapp::await_page_webview(&appid, session_id as u64, webtag.as_deref(), done()) {
+            lxapp::PageWebView::Ready(page) => {
+                let view = java_page_view_of(env, &page)?;
+                if view.is_null() {
+                    page.on_webview_ready(done());
+                }
+                Ok(view)
+            }
+            lxapp::PageWebView::Pending => Ok(JObject::null()),
+        }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 /// Tell `callback` how waiting for a page's WebView ended:
 /// status 0 ready, 1 failed, 2 the page is gone.
 fn deliver_page_webview(
@@ -449,6 +536,27 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_findWebViewByPageInstanceI
             return Ok(JObject::null());
         };
         java_webview_of(env, &page)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_findPageViewByPageInstanceId<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    page_instance_id: JString<'a>,
+) -> JObject<'a> {
+    env.with_env(|env| -> Result<JObject, jni::errors::Error> {
+        let page_instance_id: String = page_instance_id.try_to_string(env)?;
+        let page_instance_id = page_instance_id.trim();
+        if page_instance_id.is_empty() {
+            return Ok(JObject::null());
+        }
+        let _ = lxapp::touch_page_instance_by_id(page_instance_id);
+        let Some(page) = lxapp::find_page_by_instance_id(page_instance_id) else {
+            return Ok(JObject::null());
+        };
+        java_page_view_of(env, &page)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

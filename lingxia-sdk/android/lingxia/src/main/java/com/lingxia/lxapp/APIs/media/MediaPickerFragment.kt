@@ -299,6 +299,20 @@ internal class MediaPickerFragment : Fragment() {
         }
     }
 
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        requireActivity().onBackPressedDispatcher.addCallback(
+            viewLifecycleOwner,
+            object : androidx.activity.OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    isEnabled = false
+                    sendCancel()
+                    removeSelf()
+                }
+            }
+        )
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         recycler = null

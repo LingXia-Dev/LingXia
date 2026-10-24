@@ -527,14 +527,10 @@ fn hash_resource_bundle_inputs(plan: &ResourceBundlePlan) -> Result<String> {
         &plan.bundle_dir,
         &["dist", "node_modules", ".git", ".lingxia"],
     )?);
-    // A linked `@lingxia/*` package changes without touching the lockfile.
+    // Linked packages may export source files and compiler entrypoints, not dist.
     for package in lingxia_packages(&plan.bundle_dir) {
         hasher.update(path_key(&package).as_bytes());
-        hasher.update(fs::read(package.join("package.json")).unwrap_or_default());
-        let dist = package.join("dist");
-        if dist.is_dir() {
-            hasher.update(hash_tree(&dist, &[])?);
-        }
+        hasher.update(hash_tree(&package, &["node_modules", ".git", ".lingxia"])?);
     }
 
     Ok(sha256_hex(&hasher.finalize()))
@@ -860,6 +856,57 @@ mod tests {
         );
         // The session prepared at start; a failing prepare here would surface.
         prepare_lxapp_plan(plan, BuildProfile::Debug, None, "test", &mut cache).unwrap();
+    }
+
+    #[test]
+    fn source_exported_package_changes_invalidate_cached_bundle() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let package = root.join("node_modules/@lingxia/ui");
+        fs::create_dir_all(package.join("src")).unwrap();
+        fs::create_dir_all(root.join("dist")).unwrap();
+        fs::write(
+            package.join("package.json"),
+            r#"{"exports":"./src/runtime.js"}"#,
+        )
+        .unwrap();
+        fs::write(package.join("src/runtime.js"), "export const value=1").unwrap();
+        fs::write(package.join("compiler.mjs"), "export const target=1").unwrap();
+        fs::write(root.join("dist/asset.txt"), "old bundle").unwrap();
+        let plan = ResourceBundlePlan {
+            bundle_dir: root.to_path_buf(),
+            asset_name: "app".into(),
+            output_dir: root.join("dist"),
+            version: "1.0.0".into(),
+            dev: true,
+            build: true,
+        };
+        let initial = hash_resource_bundle_inputs(&plan).unwrap();
+        let mut cache = HostAssetsCache::default();
+        cache.lxapp_builds.insert(
+            format!("{}|debug|test|framework=auto|dev=true", path_key(root)),
+            LxAppBuildStamp {
+                inputs_hash: initial.clone(),
+                dist_hash: hash_tree(&root.join("dist"), &[]).unwrap(),
+                asset_name: "app".into(),
+            },
+        );
+        for ignored in ["node_modules/other", ".git", ".lingxia/cache"] {
+            fs::create_dir_all(package.join(ignored)).unwrap();
+            fs::write(package.join(ignored).join("state"), "transient").unwrap();
+        }
+        assert_eq!(initial, hash_resource_bundle_inputs(&plan).unwrap());
+        fs::write(package.join("compiler.mjs"), "export const target=2").unwrap();
+        assert_ne!(initial, hash_resource_bundle_inputs(&plan).unwrap());
+        fs::write(package.join("compiler.mjs"), "export const target=1").unwrap();
+        assert_eq!(initial, hash_resource_bundle_inputs(&plan).unwrap());
+        fs::write(package.join("src/runtime.js"), "export const value=2").unwrap();
+        assert_ne!(initial, hash_resource_bundle_inputs(&plan).unwrap());
+        // A rebuild reaches the missing source manifest instead of reusing dist.
+        let error = prepare_lxapp_plan(plan, BuildProfile::Debug, None, "test", &mut cache)
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("No lxapp.json"), "{error:#}");
     }
 
     #[test]

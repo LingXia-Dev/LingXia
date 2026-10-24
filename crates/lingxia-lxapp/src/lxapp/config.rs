@@ -1,6 +1,7 @@
 use crate::lxapp::page_chrome::AppearancePreference;
 use crate::lxapp::tabbar::TabBar;
 use crate::lxapp::version::Version;
+use crate::page::config::PageRenderer;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -50,6 +51,10 @@ pub(crate) enum LxAppLogicEntry {
 pub struct LxAppPageEntry {
     pub name: String,
     pub path: String,
+    #[serde(default)]
+    pub renderer: PageRenderer,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -74,7 +79,7 @@ pub(crate) struct LxAppConfig {
     /// Logic entry configuration.
     ///
     /// - omitted => defaults to `logic.js`
-    /// - false => disable logic/appservice entirely, and ignore page.json config
+    /// - false => disable logic/appservice entirely; page presentation config still applies
     /// - true => use default `logic.js`
     /// - "path/to/entry.js" => use a custom entry inside the lxapp package
     #[serde(default)]
@@ -231,6 +236,25 @@ impl LxAppConfig {
                     page.path
                 )));
             }
+            match page.renderer {
+                PageRenderer::Gpu => {
+                    if !page.path.ends_with(".ui.js") || page.module.as_deref() != Some(&page.path)
+                    {
+                        return Err(serde_json::Error::custom(format!(
+                            "pages.{}: GPU pages require a compiled .ui.js path and matching module",
+                            page.name
+                        )));
+                    }
+                }
+                PageRenderer::Webview => {
+                    if page.module.is_some() || page.path.ends_with(".ui.js") {
+                        return Err(serde_json::Error::custom(format!(
+                            "pages.{}: UI modules require renderer: gpu",
+                            page.name
+                        )));
+                    }
+                }
+            }
         }
 
         for (plugin_name, plugin) in &mut self.plugins {
@@ -337,6 +361,32 @@ fn is_safe_plugin_component(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::LxAppConfig;
+
+    #[test]
+    fn gpu_catalog_retains_and_validates_module_metadata() {
+        let manifest = serde_json::json!({
+            "appId":"gpu", "version":"1.0.0", "logic":false,
+            "pages":[{"name":"home", "path":"pages/home/index.ui.js", "renderer":"gpu", "module":"pages/home/index.ui.js"}]
+        });
+        let config = LxAppConfig::from_value(manifest.clone()).unwrap();
+        assert_eq!(
+            serde_json::to_value(config).unwrap()["pages"],
+            manifest["pages"]
+        );
+        for (field, value) in [
+            ("renderer", serde_json::json!("webview")),
+            ("renderer", serde_json::json!("canvas")),
+            ("module", serde_json::Value::Null),
+            ("module", serde_json::json!("../outside.ui.js")),
+            ("module", serde_json::json!("pages/other/index.ui.js")),
+            ("path", serde_json::json!("../outside.ui.js")),
+            ("path", serde_json::json!("pages/home/index.html")),
+        ] {
+            let mut invalid = manifest.clone();
+            invalid["pages"][0][field] = value;
+            assert!(LxAppConfig::from_value(invalid).is_err(), "{field}");
+        }
+    }
 
     #[test]
     fn initial_route_is_empty_when_pages_are_empty() {

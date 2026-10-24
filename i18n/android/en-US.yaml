@@ -29,3 +29,13 @@ update:
   # download; the system installer fires only when the user confirms.
   ready_message: "A new version has been downloaded. Install it now?"
   ready_title: "Update ready"
+
+# GPU page recovery UI.
+gpu:
+  update_required: "Update the app to open this page."
+  update_failed: "This page couldn't update. Your previous view is still available."
+  display_failed: "This page couldn't be displayed."
+  retry: "Retry"
+  session_failed: "This page stopped responding. Reload to continue. Unsaved input may be lost."
+  reload: "Reload page"
+  retrying: "Retrying…"

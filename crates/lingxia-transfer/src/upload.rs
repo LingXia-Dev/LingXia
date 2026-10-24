@@ -933,14 +933,9 @@ mod wire_tests {
     /// Answers with `status` while the body is still arriving, then hangs up --
     /// how a presigned endpoint refuses a signature it disagrees with.
     ///
-    /// It absorbs a slice of the body between answering and closing. Closing a
-    /// socket that still holds unread data resets the connection, which would
-    /// discard the answer in flight and leave an ordinary connection error in
-    /// its place; draining a little first lets the client read the status,
-    /// while leaving far too much body outstanding for the upload to finish.
+    /// Half-close the response and drain until the client stops sending. Dropping
+    /// a socket with unread data can reset it and discard the response on Windows.
     async fn refuse_once(status: u16) -> (SocketAddr, JoinHandle<()>) {
-        const DRAIN_AFTER_ANSWER: usize = 256 * 1024;
-
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let handle = tokio::spawn(async move {
@@ -952,17 +947,16 @@ mod wire_tests {
             let _ = socket.write_all(response.as_bytes()).await;
             let _ = socket.flush().await;
 
-            let mut drained = 0usize;
-            while drained < DRAIN_AFTER_ANSWER {
-                match socket.read(&mut buf).await {
-                    Ok(0) | Err(_) => break,
-                    Ok(read) => drained += read,
-                }
-            }
-            // FIN first: the client sees the answer and end-of-stream before the
-            // reset that the still-arriving body will provoke.
             let _ = socket.shutdown().await;
-            drop(socket);
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while let Ok(read) = socket.read(&mut buf).await {
+                    if read == 0 {
+                        break;
+                    }
+                }
+            })
+            .await
+            .expect("rejected upload must stop sending");
         });
         (addr, handle)
     }

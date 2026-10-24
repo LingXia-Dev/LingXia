@@ -143,6 +143,28 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     private var onMoreRequestedListener: ((List<Int>) -> Unit)? = null
     private var moreOpen = false
 
+    /** Keep labels inside the strip when the system enlarges text. */
+    fun calculatedThicknessPx(state: TabBarState = config): Int {
+        val density = resources.displayMetrics.density
+        val configured = (state.dimension * density).toInt()
+        if (state.position != TabBarState.Position.BOTTOM) return configured
+        val hasLabel = state.list.any { !it.text.isNullOrBlank() } || state.overflowStartIndex >= 0
+        val labelHeight = if (hasLabel) {
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP,
+                    HORIZONTAL_ITEM_TEXT_SIZE_SP, resources.displayMetrics)
+            }
+            paint.fontMetricsInt.descent - paint.fontMetricsInt.ascent
+        } else 0
+        val iconAndBadge = ((HORIZONTAL_ITEM_ICON_SIZE_DP + 8) * density).toInt()
+        val contentPadding = 2 * (4 * density).toInt()
+        val slotMargins = 2 * (2 * density).toInt()
+        val labelMargins = if (hasLabel) (ITEM_TEXT_TOP_MARGIN_DP * density).toInt() +
+            (ITEM_TEXT_BOTTOM_MARGIN_DP * density).toInt() else 0
+        val border = if (state.isBackgroundTransparent()) 0 else (ITEM_BORDER_THICKNESS_DP * density).toInt()
+        return maxOf(configured, iconAndBadge + contentPadding + slotMargins + labelHeight + labelMargins + border)
+    }
+
 
     init {
         orientation = when (config.position.value) {
@@ -199,7 +221,8 @@ internal class TabBar(context: Context) : LinearLayout(context) {
                 // For horizontal TabBar, itemsContainer matches parent width and has fixed height
                 layoutParams = LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    (tabBarDimension * resources.displayMetrics.density).toInt()
+                    calculatedThicknessPx(currentConfig) -
+                        if (currentConfig.isBackgroundTransparent()) 0 else (ITEM_BORDER_THICKNESS_DP * resources.displayMetrics.density).toInt()
                 )
             }
 

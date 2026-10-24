@@ -72,6 +72,17 @@ named — the type that implements `WebViewDelegate` and drives lifecycle is
 | Page id | `PageInstanceId(String)` | UUID v4 |
 | Core creation stage | `WebViewCreateStage` | `Requested → NativeCreated → ControllerAttached → Ready → Destroyed` |
 
+## Android retained GPU pages
+
+A cached GPU page retains View/Logic state, not a visible compositor layer.
+Retiring its container pauses the GPU content. `GpuView` explicitly hides its
+SurfaceView when paused or hidden by an ancestor, and restores it only when the
+page is active and shown. Do not attach or present a GPU surface for a hidden
+page; late worker results must still satisfy visibility and generation checks.
+Native navbar/tabbar ownership stays with the host. Test tab switches using
+actual pixels as well as semantics: a correct accessibility tree can coexist
+with an old SurfaceView covering the newly selected page.
+
 ## Android cold-start presentation
 
 `SplashOverlay` gates the bootstrap and home activities' first draw until the
@@ -281,7 +292,10 @@ sync when dispatch changes. The runtime side:
   (session suffix included, so instances are isolated per session).
 - Global registry: `WEBVIEW_INSTANCES` (`HashMap<String, Arc<WebView>>`) holds
   all live WebView `Arc`s.
-- `PageInstance` holds an `Option<Arc<WebView>>`.
+- `PageInstance` holds an optional `PageView`: its WebView variant owns the
+  `Arc<WebView>`; its GPU variant owns a native endpoint. `webview()` returns
+  `None` for GPU pages. App-wide reload and environment updates use the common
+  View path; browser document generations remain WebView-only.
 - `WebView` holds an `Option<Arc<dyn WebViewDelegate>>` behind a lock (usually
   the `PageInstance` itself).
 - `EffectiveWebViewCreateOptions` records the profile, the registered scheme

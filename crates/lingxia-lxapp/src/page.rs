@@ -1,6 +1,12 @@
 pub(crate) mod config;
 pub(crate) mod definition;
 pub(crate) mod runtime;
+mod view;
+use view::PageView;
+pub use view::{
+    GpuPageView, GpuPageViewFactory, GpuViewCreation, GpuViewGeneration, PageViewEnvironment,
+    register_gpu_page_view_factory,
+};
 #[cfg(all(test, feature = "js-appservice"))]
 pub(crate) mod startup_test_host;
 
@@ -9,7 +15,7 @@ pub use definition::{register_page_resolver, resolve_page_path};
 use crate::bridge::PageBridge;
 use crate::lifecycle::PageLifecycleEvent;
 use crate::lxapp::{self, LxAppSessionStatus, navbar::NavigationBarState};
-use crate::page::config::{OrientationOverride, PageConfig};
+use crate::page::config::{OrientationOverride, PageConfig, PageRenderer};
 use crate::plugin;
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, debug, error, info, warn};
@@ -115,6 +121,20 @@ struct WebviewSetupResult {
 
 type WebviewReadyReceiver = Arc<Mutex<watch::Receiver<Option<WebviewSetupResult>>>>;
 
+struct GpuSetupLease {
+    page: PageInstance,
+    endpoint: Arc<dyn GpuPageView>,
+    committed: bool,
+}
+
+impl Drop for GpuSetupLease {
+    fn drop(&mut self) {
+        if !self.committed {
+            self.page.detach_gpu_view_if_matches(&self.endpoint);
+        }
+    }
+}
+
 const DEFAULT_VIEW_CALL_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Inner state of a page that can be shared across threads
@@ -128,7 +148,7 @@ pub(crate) struct PageInstanceInner {
     isolated: bool,
 
     // Reference to the WebView (optional, set when WebView is ready)
-    webview: Arc<Mutex<Option<Arc<WebView>>>>,
+    view: Arc<Mutex<Option<PageView>>>,
 
     // Time when this page was last active
     last_active_time: Arc<Mutex<Instant>>,
@@ -212,6 +232,7 @@ enum Visibility {
 
 #[derive(Clone, Debug)]
 pub struct PageState {
+    renderer: PageRenderer,
     // PageInstance(webview) render status
     render_status: PageRenderStatus,
     // page lifecycle event
@@ -471,6 +492,7 @@ impl PageInstance {
             }
         };
         PageState {
+            renderer: page_config.renderer,
             event: None,
             render_status: PageRenderStatus::Unstarted,
             entry: EntryPhase::Idle,
@@ -529,7 +551,7 @@ impl PageInstance {
             isolated,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
-            webview: Arc::new(Mutex::new(None)),
+            view: Arc::new(Mutex::new(None)),
             bridge_nonce: Arc::new(Mutex::new(Some(bridge_nonce))),
             bridge: PageBridge::new(lxapp_arc.clone(), lxapp_arc.executor.clone()),
             webview_ready_tx: ready_tx,
@@ -559,7 +581,7 @@ impl PageInstance {
         F: Fn(&PageInstance) -> Fut + Send + 'static,
         Fut: Future<Output = Result<(), String>> + Send + 'static,
     {
-        self.spawn_strict_webview(setup_callback);
+        self.spawn_view(setup_callback);
     }
 
     /// Create a headless page (nonce allocated, no WebView created).
@@ -585,7 +607,7 @@ impl PageInstance {
             isolated: false,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
-            webview: Arc::new(Mutex::new(None)),
+            view: Arc::new(Mutex::new(None)),
             bridge_nonce: Arc::new(Mutex::new(Some(bridge_nonce))),
             bridge: PageBridge::new(lxapp_arc.clone(), lxapp_arc.executor.clone()),
             webview_ready_tx: ready_tx,
@@ -628,6 +650,10 @@ impl PageInstance {
         self.webview().is_some() && !self.is_discarded()
     }
 
+    pub(crate) fn has_live_view(&self) -> bool {
+        self.page_view().is_some() && !self.is_discarded()
+    }
+
     /// Destroy the native WebView without unloading the page. Logic, `data`,
     /// query, and the instance stay; the next show recreates the document.
     pub(crate) fn discard_webview(&self) -> Result<(), LxAppError> {
@@ -643,15 +669,18 @@ impl PageInstance {
         if lxapp.is_shown() || lxapp.get_page_stack().contains(&self.instance_id_string()) {
             return Ok(());
         }
-        let Some(webview) = self.webview() else {
+        let Some(view) = self.page_view() else {
             self.inner.discarded.store(true, Ordering::SeqCst);
             return Ok(());
         };
         self.cancel_bridge_work();
-        if let Ok(mut webview_guard) = self.inner.webview.lock() {
+        if let Ok(mut webview_guard) = self.inner.view.lock() {
             let _ = webview_guard.take();
         }
-        destroy_webview_if_matches(&self.webtag(), &webview);
+        if let Some(webview) = view.webview() {
+            destroy_webview_if_matches(&self.webtag(), &webview);
+        }
+        view.dispose();
         if let Ok(mut state) = self.inner.state.lock() {
             Self::invalidate_document_state(&mut state);
         }
@@ -663,7 +692,7 @@ impl PageInstance {
     /// Recreate a discarded page WebView. No-op when the view is already live
     /// or a create is already in flight.
     pub(crate) fn ensure_live_webview(&self) {
-        if self.has_live_webview() {
+        if self.has_live_view() {
             return;
         }
         if !self.is_discarded() {
@@ -678,16 +707,19 @@ impl PageInstance {
         }
         self.inner.discarded.store(false, Ordering::SeqCst);
         let _ = self.inner.webview_ready_tx.send(None);
-        self.spawn_strict_webview(|page| {
+        self.spawn_view(|page| {
             let page = page.clone();
             async move {
-                let result = page.load_html().map_err(|err| err.to_string());
+                let result = page.reload_view().map_err(|err| err.to_string());
                 if let Err(ref err) = result {
                     // Same-tag creates refuse a registered view, so a kept
                     // one would fail every later reload.
-                    let attached = page.inner.webview.lock().ok().and_then(|mut v| v.take());
-                    if let Some(webview) = attached {
-                        destroy_webview_if_matches(&page.webtag(), &webview);
+                    let attached = page.inner.view.lock().ok().and_then(|mut v| v.take());
+                    if let Some(view) = attached {
+                        if let Some(webview) = view.webview() {
+                            destroy_webview_if_matches(&page.webtag(), &webview);
+                        }
+                        view.dispose();
                     }
                     page.inner.discarded.store(true, Ordering::SeqCst);
                     crate::warn!("failed to reload discarded page WebView: {err}")
@@ -697,6 +729,90 @@ impl PageInstance {
                 result
             }
         });
+    }
+
+    fn spawn_view<F, Fut>(&self, setup_callback: F)
+    where
+        F: Fn(&PageInstance) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<(), String>> + Send + 'static,
+    {
+        if self.renderer() == PageRenderer::Gpu {
+            let page = self.clone();
+            let factory = view::gpu_factory();
+            std::mem::drop(crate::executor::spawn(async move {
+                let result = match factory {
+                    Some(factory) => page.setup_gpu_view(factory.as_ref(), setup_callback).await,
+                    None => Err("GPU renderer is unavailable in this host".into()),
+                };
+                page.finish_webview_setup(result);
+            }));
+        } else {
+            self.spawn_strict_webview(setup_callback);
+        }
+    }
+
+    fn is_registered_for_view_setup(&self) -> bool {
+        let app = self.owning_lxapp();
+        !app.session.is_cancelled()
+            && !app.session.is_retired()
+            && !self.document_is_departing()
+            && app.get_page_by_instance_id(&self.instance_id()).is_some()
+    }
+
+    pub(crate) async fn setup_gpu_view<F, Fut>(
+        &self,
+        factory: &dyn GpuPageViewFactory,
+        setup: F,
+    ) -> Result<(), String>
+    where
+        F: Fn(&PageInstance) -> Fut,
+        Fut: Future<Output = Result<(), String>>,
+    {
+        if !self.is_registered_for_view_setup() {
+            return Err("GPU page departed before creation".into());
+        }
+        let endpoint = tokio::time::timeout(Duration::from_secs(30), factory.create(self.clone()))
+            .await
+            .map_err(|_| "GPU View creation timed out")?
+            .map_err(|error| error.to_string())?;
+        if !self.is_registered_for_view_setup() {
+            endpoint.dispose();
+            return Err("GPU page departed during creation".into());
+        }
+        if let Err(error) = self.attach_gpu_view(endpoint.clone()) {
+            endpoint.dispose();
+            return Err(error.to_string());
+        }
+        let mut lease = GpuSetupLease {
+            page: self.clone(),
+            endpoint,
+            committed: false,
+        };
+        let result = setup(self).await.and_then(|()| {
+            if self.is_registered_for_view_setup() {
+                Ok(())
+            } else {
+                Err("GPU page departed during setup".into())
+            }
+        });
+        lease.committed = result.is_ok();
+        result
+    }
+
+    fn detach_gpu_view_if_matches(&self, endpoint: &Arc<dyn GpuPageView>) {
+        let detached = {
+            let mut view = self.inner.view.lock().unwrap();
+            if matches!(view.as_ref(), Some(PageView::Gpu(current)) if Arc::ptr_eq(current, endpoint))
+            {
+                view.take()
+            } else {
+                None
+            }
+        };
+        if let Some(view) = detached {
+            self.inner.bridge.cancel_gpu_endpoint(self, endpoint);
+            view.dispose();
+        }
     }
 
     fn spawn_strict_webview<F, Fut>(&self, setup_callback: F)
@@ -964,6 +1080,14 @@ impl PageInstance {
         if let Ok(mut state) = self.inner.state.lock() {
             state.parked = true;
         }
+        if let Some(PageView::Gpu(view)) = self.page_view() {
+            if let Err(error) = view.park() {
+                warn!("Failed to park GPU View: {}", error)
+                    .with_appid(self.appid())
+                    .with_path(self.path());
+            }
+            return;
+        }
         // Transparent so the host-owned page background shows through.
         const PARKED_DOCUMENT: &str = "<!DOCTYPE html><html><head><meta charset=\"utf-8\">\
              <style>html,body{background:transparent}</style></head><body></body></html>";
@@ -1041,7 +1165,7 @@ impl PageInstance {
         if self.webview().is_none() {
             return Ok(());
         }
-        if let Err(error) = self.load_html() {
+        if let Err(error) = self.reload_view() {
             self.inner.state.lock().unwrap().renderer_recovery_pending = true;
             return Err(error);
         }
@@ -1085,13 +1209,14 @@ impl PageInstance {
     /// Attach WebView to this page (called when WebView is ready)
     pub fn attach_webview(&self, webview: Arc<WebView>) {
         let mut should_reset_lifecycle = false;
-        if let Ok(mut webview_guard) = self.inner.webview.lock() {
+        if let Ok(mut webview_guard) = self.inner.view.lock() {
             let current_webview_is_same = webview_guard
                 .as_ref()
-                .map(|current| Arc::ptr_eq(current, &webview));
+                .and_then(PageView::webview)
+                .map(|current| Arc::ptr_eq(&current, &webview));
             should_reset_lifecycle =
                 Self::should_reset_lifecycle_on_attach(current_webview_is_same);
-            *webview_guard = Some(webview);
+            *webview_guard = Some(PageView::Web(webview));
         }
         if should_reset_lifecycle && let Ok(mut state) = self.inner.state.lock() {
             Self::reset_webview_lifecycle_state(&mut state);
@@ -1107,6 +1232,54 @@ impl PageInstance {
         message: IncomingWebMessage,
     ) -> Result<(), LxAppError> {
         self.inner.bridge.handle_incoming(self, message)
+    }
+
+    pub fn handle_incoming_gpu_message(
+        &self,
+        endpoint: &Arc<dyn GpuPageView>,
+        generation: GpuViewGeneration,
+        message: &str,
+    ) -> Result<(), LxAppError> {
+        if !self.is_current_gpu_endpoint(endpoint) {
+            return Err(LxAppError::Bridge(
+                "GPU endpoint is no longer attached".into(),
+            ));
+        }
+        self.inner
+            .bridge
+            .handle_gpu_incoming(self, endpoint, generation, message)
+    }
+
+    pub(crate) fn is_current_gpu_endpoint(&self, endpoint: &Arc<dyn GpuPageView>) -> bool {
+        self.is_registered_for_view_setup()
+            && matches!(self.page_view(), Some(PageView::Gpu(current)) if Arc::ptr_eq(&current, endpoint))
+    }
+
+    /// Host-requested recovery of the currently attached GPU View and its bridge.
+    pub fn reload_gpu_view(&self, endpoint: &Arc<dyn GpuPageView>) -> Result<(), LxAppError> {
+        if !self.is_current_gpu_endpoint(endpoint) {
+            return Err(LxAppError::Bridge(
+                "GPU endpoint is no longer attached".into(),
+            ));
+        }
+        self.notify_render_started_inner();
+        endpoint.reload()?;
+        self.connect_gpu_bridge(endpoint)
+    }
+
+    fn connect_gpu_bridge(&self, endpoint: &Arc<dyn GpuPageView>) -> Result<(), LxAppError> {
+        if !self.logic_enabled() {
+            return Ok(());
+        }
+        let generation = self.inner.bridge.bind_gpu(self, endpoint)?;
+        if let Err(error) = endpoint.connect(
+            generation,
+            self.bridge_nonce().as_deref().unwrap_or_default(),
+        ) {
+            self.inner.bridge.cancel_gpu_generation(self, generation);
+            return Err(error);
+        }
+        Ok(())
     }
 
     /// Registry-held phase of browser control ingress. It prepares an opaque
@@ -1363,8 +1536,30 @@ impl PageInstance {
 
     /// Hand this page's View its adaptive context, for `useLxHost()`.
     pub(crate) fn push_surface_context(&self) {
-        if let Some(script) = crate::lxapp::view_surface_context_script(&self.appid()) {
-            self.push_view_script(&script);
+        if let Some((context, revision)) =
+            crate::lxapp::view_surface_context_snapshot(&self.appid())
+        {
+            self.push_surface_context_value(&context, revision);
+        }
+    }
+
+    pub(crate) fn push_surface_context_value(&self, context: &str, revision: u64) {
+        match serde_json::from_str(context) {
+            Ok(context) => self
+                .push_view_environment(PageViewEnvironment::SurfaceContext { context, revision }),
+            Err(error) => {
+                warn!("Invalid View surface context: {}", error).with_appid(self.appid());
+            }
+        }
+    }
+
+    pub(crate) fn push_view_environment(&self, update: PageViewEnvironment) {
+        if let Some(view) = self.page_view()
+            && let Err(error) = view.update_environment(update)
+        {
+            warn!("View environment update failed: {}", error)
+                .with_appid(self.appid())
+                .with_path(self.path());
         }
     }
 
@@ -1372,7 +1567,8 @@ impl PageInstance {
     /// built with the language of that moment, and a change published while
     /// the document loaded found no bridge to deliver to.
     pub(crate) fn push_display_language(&self) {
-        self.push_view_script(&crate::lxapp::view_display_language_snapshot_script());
+        let (language, revision) = crate::lxapp::view_display_language_snapshot();
+        self.push_view_environment(PageViewEnvironment::DisplayLanguage { language, revision });
     }
 
     /// Run a host-to-View script in this page's document, if it has one.
@@ -1400,6 +1596,25 @@ impl PageInstance {
             Self::collect_ready_lifecycle_events(&mut state, &mut events_to_fire);
         }
         self.fire_lifecycle_events(events_to_fire);
+    }
+
+    /// Native presentation receipt; only the endpoint currently attached may complete a load.
+    pub fn gpu_frame_presented(&self, endpoint: &Arc<dyn GpuPageView>) {
+        let mut events = Vec::new();
+        {
+            let view = self.inner.view.lock().unwrap();
+            if !matches!(view.as_ref(), Some(PageView::Gpu(current)) if Arc::ptr_eq(current, endpoint))
+            {
+                return;
+            }
+            let mut state = self.inner.state.lock().unwrap();
+            state.render_status = PageRenderStatus::Finished;
+            Self::collect_ready_lifecycle_events(&mut state, &mut events);
+        }
+        self.fire_lifecycle_events(events);
+        self.inner
+            .loaded_tx
+            .send_modify(|value| *value = value.wrapping_add(1));
     }
 
     pub(crate) fn dispatch_lifecycle_event(&self, event: PageLifecycleEvent) {
@@ -1527,11 +1742,30 @@ impl PageInstance {
 
     /// Get WebView if available
     pub fn webview(&self) -> Option<Arc<WebView>> {
-        if let Ok(webview_guard) = self.inner.webview.lock() {
-            webview_guard.clone()
-        } else {
-            None
+        self.page_view().and_then(|view| view.webview())
+    }
+
+    pub(crate) fn page_view(&self) -> Option<PageView> {
+        self.inner.view.lock().ok().and_then(|view| view.clone())
+    }
+
+    /// Attach a native GPU endpoint to its owning page, without creating a browser document.
+    pub fn attach_gpu_view(&self, view: Arc<dyn GpuPageView>) -> Result<(), LxAppError> {
+        if self.renderer() != PageRenderer::Gpu {
+            return Err(LxAppError::Runtime(
+                "GPU endpoint requires a GPU page".into(),
+            ));
         }
+        let mut current = self.inner.view.lock().unwrap();
+        if current.is_some() {
+            return Err(LxAppError::Runtime("page already has a View".into()));
+        }
+        *current = Some(PageView::Gpu(view));
+        drop(current);
+        self.inner.discarded.store(false, Ordering::SeqCst);
+        // Navigation may have queued Load/Show while the asynchronous factory ran.
+        // As with the first WebView attachment, those entry requests must survive.
+        Ok(())
     }
 
     /// Return a non-blocking readiness snapshot suitable for devtools.
@@ -1592,7 +1826,7 @@ impl PageInstance {
             rx.borrow()
                 .as_ref()
                 .is_some_and(|setup| setup.result.is_ok())
-        }) && self.webview().is_some()
+        }) && self.has_live_view()
     }
 
     /// Call `done` once the WebView is ready, failed, or the page is gone.
@@ -1790,9 +2024,9 @@ impl PageInstance {
     /// combined with registry removal.
     pub fn detach_webview(&self) {
         self.cancel_bridge_work();
-        if let Ok(mut webview_guard) = self.inner.webview.lock() {
-            // Drop the Arc by taking it out
-            let _ = webview_guard.take();
+        let detached = self.inner.view.lock().ok().and_then(|mut view| view.take());
+        if let Some(view) = detached {
+            view.dispose();
         }
         if let Ok(mut state) = self.inner.state.lock() {
             Self::reset_webview_lifecycle_state(&mut state);
@@ -1808,11 +2042,11 @@ impl PageInstance {
         }
     }
 
-    /// Load HTML content into this page's WebView.
+    /// Reload the retained View for its current page service.
     ///
     /// Does not wait on the permission snapshot: an empty WebView is torn down
     /// before the grant arrives. Fetches stay denied until it is ready.
-    pub(crate) fn load_html(&self) -> Result<(), LxAppError> {
+    pub(crate) fn reload_view(&self) -> Result<(), LxAppError> {
         #[cfg(all(test, feature = "js-appservice"))]
         if let Some(host) = startup_test_host::for_page(self) {
             return host.load_html();
@@ -1827,6 +2061,11 @@ impl PageInstance {
             {
                 state.renderer_recovery_pending = false;
             }
+        }
+        if let Some(PageView::Gpu(view)) = self.page_view() {
+            self.notify_render_started_inner();
+            view.reload()?;
+            return self.connect_gpu_bridge(&view);
         }
         let lxapp = self.owning_lxapp();
         let path = self.path();
@@ -1863,6 +2102,91 @@ impl PageInstance {
     /// Returns the appid of this page
     pub fn path(&self) -> String {
         self.inner.path.clone()
+    }
+
+    /// The validated backend selected when this page instance was allocated.
+    pub fn renderer(&self) -> PageRenderer {
+        self.inner.state.lock().unwrap().renderer
+    }
+
+    /// Load the catalog's bundled ESM entry using the app's managed resource source.
+    pub fn gpu_module_source(&self) -> Result<String, LxAppError> {
+        if self.renderer() != PageRenderer::Gpu {
+            return Err(LxAppError::Runtime(
+                "page does not use the GPU renderer".into(),
+            ));
+        }
+        self.owning_lxapp().read_gpu_module(&self.inner.path)
+    }
+
+    /// Resolve package or managed image bytes on the host's resource worker.
+    pub fn gpu_image_bytes(&self, source: &str) -> Result<Vec<u8>, LxAppError> {
+        if self.renderer() != PageRenderer::Gpu {
+            return Err(LxAppError::Runtime(
+                "page does not use the GPU renderer".into(),
+            ));
+        }
+        self.owning_lxapp().read_gpu_image(source)
+    }
+
+    /// Resolve image resources off the UI thread, sharing the managed URL cache.
+    pub async fn load_gpu_image_bytes(&self, source: &str) -> Result<Vec<u8>, LxAppError> {
+        if !source.starts_with("https://") && !source.starts_with("http://") {
+            return self.gpu_image_bytes(source);
+        }
+        if self.renderer() != PageRenderer::Gpu || source.len() > 8192 || source.contains('\0') {
+            return Err(LxAppError::InvalidParameter(
+                "invalid GPU image source".into(),
+            ));
+        }
+        let app = self.owning_lxapp();
+        let uri: rong_rt::http::Uri = source
+            .parse()
+            .map_err(|_| LxAppError::InvalidParameter("invalid image URL".into()))?;
+        // Cache hits must still pass the current owning app's grant.
+        if app.session.is_cancelled() || !uri.host().is_some_and(|host| app.is_domain_allowed(host))
+        {
+            return Err(LxAppError::InvalidParameter(
+                "image URL is not allowed".into(),
+            ));
+        }
+        let result = crate::network_access::scope_lxapp_network_access(
+            app.clone(),
+            lingxia_transfer::user_cache::download_to_user_cache_with_behavior(
+                None,
+                &app.user_cache_dir,
+                lingxia_transfer::user_cache::UserCacheDownloadRequest {
+                    url: source.into(),
+                    headers: Vec::new(),
+                },
+                None,
+                lingxia_transfer::user_cache::DownloadBehavior {
+                    max_bytes: Some(8 * 1024 * 1024),
+                    request_timeout: std::time::Duration::from_secs(30),
+                    max_retries: 0,
+                    ..Default::default()
+                },
+                |_| {},
+            ),
+        )
+        .await
+        .map_err(|error| LxAppError::ResourceNotFound(error.error))?;
+        if app.session.is_cancelled() {
+            return Err(LxAppError::Runtime("image owner has closed".into()));
+        }
+        let managed = app.to_uri(&result.temp_path).ok_or_else(|| {
+            LxAppError::ResourceNotFound("image cache is outside managed storage".into())
+        })?;
+        crate::cache::touch_access_time(&result.temp_path);
+        app.read_gpu_image(managed.as_str())
+    }
+
+    pub fn app_session_id(&self) -> u64 {
+        self.owning_lxapp().session_id()
+    }
+
+    pub fn logic_enabled(&self) -> bool {
+        self.owning_lxapp().logic_enabled()
     }
 
     /// Returns the appid of this page
@@ -1923,7 +2247,13 @@ impl PageInstance {
     /// Ask the View of a guarded page whether the user may leave. The page
     /// stays put; the View answers through `navigation.leave`.
     pub(crate) fn request_leave(&self, reason: LeaveReason) {
-        self.push_view_script(&leave_request_script(reason));
+        if let Some(PageView::Gpu(view)) = self.page_view() {
+            if let Err(error) = view.request_leave(reason) {
+                warn!("GPU leave request failed: {}", error).with_appid(self.appid());
+            }
+        } else {
+            self.push_view_script(&leave_request_script(reason));
+        }
     }
 
     /// Check if this page is a TabBar page
@@ -2488,11 +2818,11 @@ impl Drop for PageInstanceInner {
         crate::native_component::notify_page_destroyed(self.webtag.key());
 
         // Destroy WebView if it exists
-        if let Ok(mut webview) = self.webview.lock()
-            && let Some(_webview_controller) = webview.take()
-        {
+        let detached = self.view.lock().ok().and_then(|mut view| view.take());
+        if let Some(view) = detached {
+            view.dispose();
             // WebView will be automatically destroyed when controller is dropped
-            info!("WebView destroyed for page")
+            info!("View destroyed for page")
                 .with_appid(self.appid.clone())
                 .with_path(self.path.clone());
         }
@@ -2521,6 +2851,7 @@ mod tests {
 
     fn test_page_state() -> PageState {
         PageState {
+            renderer: PageRenderer::Webview,
             event: None,
             render_status: PageRenderStatus::Unstarted,
             entry: EntryPhase::Idle,

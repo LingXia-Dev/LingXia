@@ -363,7 +363,7 @@ impl LxApp {
                 }
 
                 page_clone
-                    .load_html()
+                    .reload_view()
                     .map_err(|e| format!("Failed to load HTML for page: {}", e))?;
                 lxapp_arc
                     .notify_page_instance(&page_clone.instance_id(), PageInstanceEvent::Mounted)
@@ -614,7 +614,7 @@ impl LxApp {
                     .map_err(|e| format!("PageInstance service creation failed: {}", e))?;
 
                 page_clone
-                    .load_html()
+                    .reload_view()
                     .map_err(|e| format!("Failed to load HTML for page: {}", e))
             }
         });
@@ -932,9 +932,8 @@ impl LxApp {
     /// Logic's `watchContext` was just sent — after it changed. A page whose
     /// bridge is not up yet gets it once it is.
     pub fn push_surface_context_to_views(&self, context_json: &str, revision: u64) {
-        let script = super::surface::view_surface_context_script_for(context_json, revision);
         for page in self.live_page_instances() {
-            page.push_view_script(&script);
+            page.push_surface_context_value(context_json, revision);
         }
     }
 
@@ -1256,7 +1255,7 @@ fn normalize_page_path(path: &str) -> &str {
 
 /// Strip view extensions from path for comparison
 fn strip_extension(path: &str) -> &str {
-    for ext in [".tsx", ".jsx"] {
+    for ext in [".ui.tsx", ".ui.js", ".tsx", ".jsx"] {
         if let Some(p) = path.strip_suffix(ext) {
             return p;
         }
@@ -1268,13 +1267,18 @@ fn strip_extension(path: &str) -> &str {
 fn find_matching_page_path<'a>(pages: &'a [String], path: &str) -> Option<&'a str> {
     let path = normalize_page_path(path);
     let path_no_ext = strip_extension(path);
-    pages
+    if let Some(exact) = pages.iter().find(|p| normalize_page_path(p) == path) {
+        return Some(exact);
+    }
+    let mut candidates = pages
         .iter()
-        .find(|p| {
+        .filter(|p| {
             let p = normalize_page_path(p);
             p == path || strip_extension(p) == path_no_ext
         })
-        .map(|s| s.as_str())
+        .map(|s| s.as_str());
+    let candidate = candidates.next()?;
+    candidates.next().is_none().then_some(candidate)
 }
 
 fn extract_plugin_page_path(url: &str) -> Option<String> {
@@ -1305,6 +1309,30 @@ mod tests {
         find_matching_page_path, isolated_page_waits_for_page_service, validate_navigation_stack,
     };
     use crate::NavigationType;
+
+    #[test]
+    fn gpu_routes_resolve_compiled_and_source_paths_without_ambiguous_aliases() {
+        let pages = vec!["pages/home/index.ui.js".to_string()];
+        for path in [
+            "pages/home/index",
+            "/pages/home/index.ui.js",
+            "pages/home/index.ui.tsx",
+        ] {
+            assert_eq!(
+                find_matching_page_path(&pages, path),
+                Some("pages/home/index.ui.js")
+            );
+        }
+        let pages = vec![
+            "pages/home/index.tsx".to_string(),
+            "pages/home/index.ui.js".to_string(),
+        ];
+        assert_eq!(
+            find_matching_page_path(&pages, "pages/home/index.ui.js"),
+            Some("pages/home/index.ui.js")
+        );
+        assert_eq!(find_matching_page_path(&pages, "pages/home/index"), None);
+    }
 
     #[test]
     fn automation_lifecycle_does_not_report_ready_pages_as_created() {

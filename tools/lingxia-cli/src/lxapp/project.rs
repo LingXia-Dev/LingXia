@@ -141,7 +141,7 @@ fn validate_lxapp_manifest(manifest: &Value) -> Result<()> {
 
 fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
     for page in pages {
-        let relative = Path::new(page).with_extension("json");
+        let relative = PathBuf::from(format!("{}.json", crate::lxapp::framework::page_base(page)));
         let path = project_root.join(&relative);
         if !path.exists() {
             continue;
@@ -177,6 +177,7 @@ fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
         for key in object.keys() {
             if ![
                 "navigationStyle",
+                "renderer",
                 "navigationBar",
                 "enablePullDownRefresh",
                 "pageOrientation",
@@ -188,6 +189,14 @@ fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
                     relative.display()
                 ));
             }
+        }
+        if let Some(renderer) = object.get("renderer")
+            && !matches!(renderer.as_str(), Some("gpu" | "webview"))
+        {
+            return Err(anyhow!(
+                "{} renderer: expected gpu or webview",
+                relative.display()
+            ));
         }
         if let Some(style) = object.get("navigationStyle")
             && !matches!(style.as_str(), Some("default" | "custom"))

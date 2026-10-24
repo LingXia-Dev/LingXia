@@ -197,6 +197,16 @@ Widening that list widens what every downloaded lxapp can do;
 
 ## Invariants to preserve
 
+- GPU View ingress is native-owned: the attached endpoint and runtime-issued
+  connection generation must match before protocol decoding. LegacyV2 caller
+  identity comes from the owning LxApp. Never synthesize a WebMessageContext or
+  browser document identity for a GPU page. Capture its endpoint and generation
+  for outbound work and recheck the generation at native worker delivery.
+  GPU Views may call only the page-owned `navigation.setLeaveGuard` and
+  `navigation.leave` host routes directly; both still use normal audience and
+  calling-page admission. Other host APIs go through Logic. Native leave
+  requests capture the endpoint generation and recheck it on the View worker.
+
 - No route audience defaults by omission. `LogicRoute::audience` is an
   exhaustive match on purpose — a catch-all makes the next route
   ControlApp-only, which breaks every guest that expected to call it.

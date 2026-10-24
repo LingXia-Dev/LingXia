@@ -17,6 +17,12 @@ failed or canceled download never leaves a partial final file; pausing keeps
 the staging for `resume()`, and identical URLs may download concurrently.
 `lx.fs` final writes use a sibling temp file and rename/replace.
 
+Each download attempt owns an HTTP abort guard through body consumption;
+dropping the future must stop the transport as well as release its caller.
+Non-persistent shared-cache subscribers may elect a replacement when their
+leader disappears (at most three attempts). Ordinary transfer failures do not
+trigger this takeover; the existing retry policy still governs those failures.
+
 ## Eviction triggers
 
 Usercache cleanup runs at host startup, on usercache writes, and app-wide when
@@ -46,3 +52,8 @@ snapshots; neither includes WebView bytes or promises reclaimed disk blocks,
 and partially removed paths are not counted. `skippedActivePaths` counts
 protected cache/session directories, not apps. A partial clear resolves with
 `failures`; failing to initialize or run the task rejects.
+
+`DownloadBehavior.max_bytes` optionally bounds cached and transferred bytes.
+Check the cumulative size before writing each chunk, including resumed data;
+never publish an oversized transfer. Include the bound in concurrent-download
+behavior matching so a bounded consumer cannot join an unlimited transfer.

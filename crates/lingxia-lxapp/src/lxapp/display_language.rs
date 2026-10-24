@@ -738,6 +738,14 @@ fn publish_effective(update: &DisplayLanguageEffectiveUpdate) {
         .map(|entry| (entry.key().clone(), entry.value().clone()))
         .collect();
     for (appid, app) in apps {
+        for page in app.live_page_instances() {
+            if page.renderer() == crate::PageRenderer::Gpu {
+                page.push_view_environment(crate::page::PageViewEnvironment::DisplayLanguage {
+                    language: update.effective.to_string(),
+                    revision: update.revision,
+                });
+            }
+        }
         crate::appservice::event_bus::publish_app_event(
             &appid,
             crate::DISPLAY_LANGUAGE_CHANGE_EVENT,
@@ -766,7 +774,7 @@ fn publish_effective(update: &DisplayLanguageEffectiveUpdate) {
 /// the new document's bridge installed the hook — and then boots from the
 /// language baked into its HTML when it was generated, now stale. So each
 /// document is also sent the current value when its bridge reports ready
-/// ([`view_display_language_snapshot_script`]); the revision lets the page
+/// ([`view_display_language_snapshot`]); the revision lets the page
 /// keep the newest of the two whichever lands last.
 pub(crate) fn view_display_language_script(revision: u64, effective: &LanguageTag) -> String {
     let quoted = serde_json::to_string(effective.as_str())
@@ -776,9 +784,9 @@ pub(crate) fn view_display_language_script(revision: u64, effective: &LanguageTa
 
 /// The current effective language as a View push, for a document whose
 /// bridge just became ready.
-pub(crate) fn view_display_language_snapshot_script() -> String {
+pub(crate) fn view_display_language_snapshot() -> (String, u64) {
     let update = service().effective_snapshot();
-    view_display_language_script(update.revision, &update.effective)
+    (update.effective.to_string(), update.revision)
 }
 
 /// Re-resolve per-language tab labels and repaint the host chrome.

@@ -65,6 +65,8 @@ pub struct DownloadTask {
 /// one, so the total attempt count is `1 + max_retries`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DownloadBehavior {
+    /// Bound persisted bytes, including resumed data; None keeps ordinary downloads unlimited.
+    pub max_bytes: Option<u64>,
     pub request_timeout: Duration,
     pub connect_timeout: Option<Duration>,
     pub max_retries: u32,
@@ -74,6 +76,7 @@ pub struct DownloadBehavior {
 impl Default for DownloadBehavior {
     fn default() -> Self {
         Self {
+            max_bytes: None,
             request_timeout: DOWNLOAD_DEFAULT_REQUEST_TIMEOUT,
             connect_timeout: None,
             max_retries: DOWNLOAD_DEFAULT_MAX_RETRIES,
@@ -734,14 +737,15 @@ fn shared_download_signature(
     let mut material = user_cache_download_key(request);
     material.push('\n');
     material.push_str(&format!(
-        "rt={};ct={};mr={};rd={}",
+        "rt={};ct={};mr={};rd={};mb={:?}",
         behavior.request_timeout.as_millis(),
         behavior
             .connect_timeout
             .map(|value| value.as_millis().to_string())
             .unwrap_or_else(|| "none".to_string()),
         behavior.max_retries,
-        behavior.retry_delay.as_millis()
+        behavior.retry_delay.as_millis(),
+        behavior.max_bytes
     ));
     material
 }
@@ -1092,6 +1096,13 @@ async fn write_chunk(
     url: &str,
     on_event: &mut impl FnMut(DownloadEvent),
 ) -> Result<(), String> {
+    if task
+        .behavior
+        .max_bytes
+        .is_some_and(|limit| progress.downloaded.saturating_add(chunk.len() as u64) > limit)
+    {
+        return Err("download exceeds byte limit".into());
+    }
     file.write_all(chunk)
         .await
         .map_err(|e| format!("write chunk failed: {}", e))?;
@@ -1240,7 +1251,11 @@ async fn run_download_attempt(
         }
     };
 
-    let pending_response = send_download_request(task, request_obj);
+    // The runtime pumps HTTP bodies independently. Keep cancellation alive through
+    // body consumption, and abort that pump even when this entire future is dropped.
+    let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
+    let _abort_on_drop = DownloadAbortOnDrop(Some(abort_tx));
+    let pending_response = send_download_request(task, request_obj, Some(abort_rx));
     tokio::pin!(pending_response);
     let response_result = if let Some(cancel) = cancel_rx.as_mut() {
         loop {
@@ -1946,6 +1961,39 @@ pub async fn download_to_user_cache_with_behavior(
     behavior: DownloadBehavior,
     mut on_event: impl FnMut(DownloadEvent) + Send,
 ) -> Result<UserCacheDownloadResult, DownloadFailure> {
+    // A canceled leader owns no authority over its still-live subscribers.
+    // Reenter admission to elect a new leader; bound churn independently of
+    // transport retries and keep the caller's network-access scope intact.
+    for takeover in 0..3 {
+        let result = download_to_user_cache_attempt(
+            persistence.clone(),
+            user_cache_dir,
+            user_request.clone(),
+            fallback_user_agent.clone(),
+            behavior,
+            &mut on_event,
+        )
+        .await;
+        let interrupted = persistence.is_none()
+            && result.as_ref().is_err_and(|error| {
+                error.kind == DownloadFailureKind::Conflict
+                    && error.error == "download channel closed unexpectedly"
+            });
+        if !interrupted || takeover == 2 {
+            return result;
+        }
+    }
+    unreachable!()
+}
+
+async fn download_to_user_cache_attempt(
+    persistence: Option<DownloadPersistence>,
+    user_cache_dir: &Path,
+    user_request: UserCacheDownloadRequest,
+    fallback_user_agent: Option<String>,
+    behavior: DownloadBehavior,
+    mut on_event: impl FnMut(DownloadEvent) + Send,
+) -> Result<UserCacheDownloadResult, DownloadFailure> {
     let url = user_request.url.trim().to_string();
     if url.is_empty() {
         return Err(DownloadFailure::new(
@@ -1971,6 +2019,15 @@ pub async fn download_to_user_cache_with_behavior(
             .ok()
             .map(|meta| meta.len())
             .unwrap_or(0);
+        if behavior.max_bytes.is_some_and(|limit| size > limit) {
+            return Err(DownloadFailure::new(
+                DownloadFailureKind::InvalidRequest,
+                url,
+                "cached download exceeds byte limit",
+                size,
+                Some(size),
+            ));
+        }
         return Ok(UserCacheDownloadResult {
             temp_path: target_path,
             file_name,
@@ -2206,9 +2263,20 @@ pub async fn download_to_path_with_behavior(
 
 // Keep browser transport choices local to a task. A global HTTP override could
 // proxy app control requests (or the proxy engine itself) recursively.
+struct DownloadAbortOnDrop(Option<tokio::sync::oneshot::Sender<()>>);
+
+impl Drop for DownloadAbortOnDrop {
+    fn drop(&mut self) {
+        if let Some(sender) = self.0.take() {
+            let _ = sender.send(());
+        }
+    }
+}
+
 async fn send_download_request(
     task: &DownloadTask,
     mut request: HttpRequest<http_body_util::combinators::BoxBody<Bytes, IoError>>,
+    abort_rx: Option<tokio::sync::oneshot::Receiver<()>>,
 ) -> Result<host_http::HttpResponse, host_http::HttpError> {
     crate::tag_network_kind(&mut request, crate::TransferKind::Download);
     #[cfg(feature = "http-proxy")]
@@ -2218,7 +2286,7 @@ async fn send_download_request(
     host_http::send_with_small_body_limit(
         request,
         DOWNLOAD_SMALL_BODY_LIMIT,
-        download_request_options(task.behavior),
+        download_request_options(task.behavior).with_abort_opt(abort_rx),
     )
     .await
 }
@@ -2440,6 +2508,199 @@ mod tests {
         assert!(!is_retryable_http_status(404));
     }
 
+    #[tokio::test]
+    async fn dropping_cache_download_closes_transport() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        for send_body in [false, true] {
+            let root = test_temp_dir("cancel-transport");
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let request = UserCacheDownloadRequest {
+                url: format!("http://{}/image", listener.local_addr().unwrap()),
+                headers: vec![],
+            };
+            let started = std::sync::Arc::new(tokio::sync::Notify::new());
+            let download_started = started.clone();
+            let download = tokio::spawn(async move {
+                download_to_user_cache_with_behavior(
+                    None,
+                    &root,
+                    request,
+                    None,
+                    DownloadBehavior::default(),
+                    |event| {
+                        if matches!(event, DownloadEvent::Started { .. }) {
+                            download_started.notify_one();
+                        }
+                    },
+                )
+                .await
+            });
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut bytes = [0; 4096];
+            socket.read(&mut bytes).await.unwrap();
+            if send_body {
+                socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1048576\r\nConnection: close\r\n\r\npartial").await.unwrap();
+                tokio::time::timeout(Duration::from_secs(3), started.notified())
+                    .await
+                    .expect("download must consume response headers before cancellation");
+            }
+            download.abort();
+            assert!(download.await.unwrap_err().is_cancelled());
+            let closed = tokio::time::timeout(Duration::from_secs(3), socket.read(&mut bytes))
+                .await
+                .expect("canceled HTTP connection must close");
+            assert!(
+                matches!(closed, Ok(0) | Err(_)),
+                "unexpected response from client"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn live_cache_subscriber_takes_over_after_its_leader_is_dropped() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let root = test_temp_dir("cache-leader-takeover");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let request = UserCacheDownloadRequest {
+            url: format!("http://{}/image", listener.local_addr().unwrap()),
+            headers: vec![],
+        };
+        let behavior = DownloadBehavior {
+            max_retries: 0,
+            ..Default::default()
+        };
+        let key = user_cache_download_key(&request);
+        let (tx, rx) = watch::channel(SharedDownloadState::InProgress);
+        drop(rx);
+        user_cache_downloads().insert(
+            key.clone(),
+            SharedDownloadRegistration {
+                signature: shared_download_signature(&request, behavior),
+                tx,
+            },
+        );
+        let leader = SharedDownloadLeaderGuard::new(key.clone());
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut bytes = [0; 4096];
+            socket.read(&mut bytes).await.unwrap();
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\nabc")
+                .await
+                .unwrap();
+        });
+        let subscriber = tokio::spawn(async move {
+            download_to_user_cache_with_behavior(None, &root, request, None, behavior, |_| {}).await
+        });
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while user_cache_downloads()
+                .get(&key)
+                .unwrap()
+                .tx
+                .receiver_count()
+                == 0
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        drop(leader);
+        let result = tokio::time::timeout(Duration::from_secs(5), subscriber)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(fs::read(result.temp_path).await.unwrap(), b"abc");
+        assert!(!user_cache_downloads().contains_key(&key));
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn image_download_limit_applies_to_streams_and_cached_files() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        for chunked in [false, true] {
+            let root = test_temp_dir(if chunked {
+                "image-chunked"
+            } else {
+                "image-fixed"
+            });
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}/image.png", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = [0; 4096];
+                socket.read(&mut request).await.unwrap();
+                let response: &[u8] = if chunked {
+                    b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\n12345\r\n0\r\n\r\n"
+                } else {
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\n12345"
+                };
+                socket.write_all(response).await.unwrap();
+            });
+            let request = UserCacheDownloadRequest {
+                url,
+                headers: vec![],
+            };
+            let behavior = DownloadBehavior {
+                max_bytes: Some(4),
+                max_retries: 0,
+                ..Default::default()
+            };
+            let failure = download_to_user_cache_with_behavior(
+                None,
+                &root,
+                request.clone(),
+                None,
+                behavior,
+                |_| {},
+            )
+            .await
+            .unwrap_err();
+            assert!(failure.error.contains("byte limit"));
+            server.await.unwrap();
+            let cache_root = user_cache_download_root(&root);
+            let target = stable_target_path_for_key(
+                &cache_root,
+                &user_cache_download_key(&request),
+                "image.png",
+            );
+            assert!(
+                !target.exists(),
+                "oversized transfer must not publish a cache hit"
+            );
+            let _ = fs::remove_file(part_path_for(&target)).await;
+            fs::write(&target, b"12345").await.unwrap();
+            let failure = download_to_user_cache_with_behavior(
+                None,
+                &root,
+                request.clone(),
+                None,
+                behavior,
+                |_| {},
+            )
+            .await
+            .unwrap_err();
+            assert!(failure.error.contains("byte limit"));
+            // Server is gone: this must use the existing URL cache, without a request.
+            let hit = download_to_user_cache_with_behavior(
+                None,
+                &root,
+                request,
+                None,
+                DownloadBehavior {
+                    max_bytes: Some(5),
+                    ..behavior
+                },
+                |_| {},
+            )
+            .await
+            .unwrap();
+            assert_eq!(fs::read(hit.temp_path).await.unwrap(), b"12345");
+            fs::remove_dir_all(&root).await.unwrap();
+        }
+    }
+
     #[test]
     fn download_task_with_behavior_overrides_defaults() {
         let request = build_user_cache_download_request("https://example.com/file".to_string());
@@ -2447,6 +2708,7 @@ mod tests {
         assert_eq!(task.behavior, DownloadBehavior::default());
 
         let custom = DownloadBehavior {
+            max_bytes: None,
             request_timeout: Duration::from_secs(30),
             connect_timeout: Some(Duration::from_secs(5)),
             max_retries: 0,
@@ -2529,7 +2791,7 @@ mod browser_proxy_tests {
                 .unwrap();
         });
         let task = task("http://download.invalid/file".into(), proxy_url);
-        let response = send_download_request(&task, request(&task.request.url))
+        let response = send_download_request(&task, request(&task.request.url), None)
             .await
             .unwrap();
         assert_eq!(response.status.as_u16(), 200);
@@ -2564,7 +2826,7 @@ mod browser_proxy_tests {
                 ..DownloadBehavior::default()
             },
         );
-        let response = send_download_request(&task, request(&task.request.url))
+        let response = send_download_request(&task, request(&task.request.url), None)
             .await
             .unwrap();
         let HttpBody::Stream(mut body) = response.body else {
@@ -2622,7 +2884,7 @@ mod browser_proxy_tests {
             proxy_url,
         );
         assert!(
-            send_download_request(&task, request(&task.request.url))
+            send_download_request(&task, request(&task.request.url), None)
                 .await
                 .is_err()
         );

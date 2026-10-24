@@ -76,7 +76,7 @@ pub use crate::page::runtime::{
 use crate::page::runtime::{
     PageInstanceLifecycleState, PageInstanceRuntimeRecord, transition_page_instance_lifecycle,
 };
-pub(crate) use display_language::view_display_language_snapshot_script;
+pub(crate) use display_language::view_display_language_snapshot;
 pub use display_language::{
     DisplayLanguageEffectiveSource, DisplayLanguageEffectiveUpdate, DisplayLanguagePreference,
     DisplayLanguageSessionOwner, DisplayLanguageState, DisplayLanguageStateUpdate, LanguageTag,
@@ -127,7 +127,9 @@ pub use surface::{
     register_surface_close_observer, register_surface_context_observer,
     register_surface_context_snapshot, register_surface_visibility_observer,
 };
-pub(crate) use surface::{SurfaceRecords, view_surface_context_script};
+pub(crate) use surface::{
+    SurfaceRecords, view_surface_context_script_for, view_surface_context_snapshot,
+};
 use version::Version;
 
 /// Constants for lxapp storage layout
@@ -1718,7 +1720,7 @@ impl LxApp {
         self.config()
             .page_entries()
             .into_iter()
-            .map(|LxAppPageEntry { name, path }| LxAppRuntimePageInfo { name, path })
+            .map(|LxAppPageEntry { name, path, .. }| LxAppRuntimePageInfo { name, path })
             .collect()
     }
 
@@ -2143,7 +2145,7 @@ impl LxApp {
                     // loadHTMLString with a logical base URL, and a reload would
                     // fetch that URL's raw source, losing the bridge config and
                     // nonce.
-                    let result = page.load_html().map_err(|err| {
+                    let result = page.reload_view().map_err(|err| {
                         warn!("Failed to reload {} for re-entry: {}", path, err).with_appid(appid);
                         err.to_string()
                     });
@@ -2884,6 +2886,60 @@ impl LxApp {
         page_override.apply(app_orientation)
     }
 
+    pub(crate) fn read_gpu_module(&self, path: &str) -> Result<String, LxAppError> {
+        let listed = self.config().pages.iter().any(|entry| {
+            entry.path == path
+                && entry.renderer == crate::PageRenderer::Gpu
+                && entry.module.as_deref() == Some(path)
+        });
+        if !listed {
+            return Err(LxAppError::ResourceNotFound(format!(
+                "GPU module is not in the page catalog: {path}"
+            )));
+        }
+        String::from_utf8(self.read_bytes(path)?)
+            .map_err(|_| LxAppError::Runtime(format!("GPU module is not UTF-8: {path}")))
+    }
+
+    pub(crate) fn read_gpu_image(&self, source: &str) -> Result<Vec<u8>, LxAppError> {
+        const LIMIT: u64 = 8 * 1024 * 1024;
+        if source.is_empty()
+            || source.len() > 8192
+            || source.contains('\0')
+            || (!source.starts_with("lx://")
+                && (source.starts_with('/')
+                    || source.contains(':')
+                    || uri::has_invalid_segment(source)))
+        {
+            return Err(LxAppError::InvalidParameter(
+                "image source must be a package path or managed lx:// URI".into(),
+            ));
+        }
+        let reader: Box<dyn Read> = if !source.starts_with("lx://")
+            && matches!(self.bundle_source, LxAppBundleSource::BuiltinAssets)
+        {
+            Box::new(
+                self.runtime
+                    .read_asset(&format!("{}/{}", self.appid, source))
+                    .map_err(|e| LxAppError::ResourceNotFound(e.to_string()))?,
+            )
+        } else {
+            let path = self.resolve_accessible_path(source)?;
+            Box::new(fs::File::open(path).map_err(|e| LxAppError::ResourceNotFound(e.to_string()))?)
+        };
+        let mut bytes = Vec::new();
+        reader
+            .take(LIMIT + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| LxAppError::ResourceNotFound(e.to_string()))?;
+        if bytes.len() as u64 > LIMIT {
+            return Err(LxAppError::InvalidParameter(
+                "image resource exceeds 8 MiB".into(),
+            ));
+        }
+        Ok(bytes)
+    }
+
     // Reads binary data from the specified relative path
     fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, LxAppError> {
         if matches!(self.bundle_source, LxAppBundleSource::Synthetic) {
@@ -3587,7 +3643,7 @@ impl LxApp {
                 .owning_lxapp()
                 .get_page_by_instance_id_str(&page.instance_id_string())
                 .is_none()
-                || page.webview_controller().is_none()
+                || !page.has_live_view()
                 || page.document_is_departing()
             {
                 continue;
@@ -3595,7 +3651,7 @@ impl LxApp {
             // These pages originate from loadHTMLString + a logical base URL.
             // WebView::reload would request that base URL's raw source and skip
             // generate_page_html, losing the bridge config and nonce.
-            page.load_html()?;
+            page.reload_view()?;
         }
         Ok(())
     }
@@ -3646,7 +3702,7 @@ impl LxApp {
                     if self
                         .get_page_by_instance_id_str(&page.instance_id_string())
                         .is_none()
-                        || page.webview_controller().is_none()
+                        || !page.has_live_view()
                         || page.document_is_departing()
                     {
                         continue;
@@ -4978,6 +5034,492 @@ mod manifest_reload_tests {
         let app = Arc::new(app);
         app.bind_arc();
         app
+    }
+
+    #[derive(Default)]
+    struct FactoryEndpoint(
+        std::sync::atomic::AtomicUsize,
+        std::sync::Mutex<Vec<(crate::GpuViewGeneration, String)>>,
+        std::sync::Mutex<Vec<String>>,
+    );
+    impl crate::GpuPageView for FactoryEndpoint {
+        fn post_message(&self, _: &str) -> Result<(), LxAppError> {
+            Ok(())
+        }
+        fn post_message_for_generation(
+            &self,
+            generation: crate::GpuViewGeneration,
+            message: &str,
+        ) -> Result<(), LxAppError> {
+            self.1.lock().unwrap().push((generation, message.into()));
+            Ok(())
+        }
+        fn update_environment(&self, _: crate::PageViewEnvironment) -> Result<(), LxAppError> {
+            Ok(())
+        }
+        fn reload(&self) -> Result<(), LxAppError> {
+            self.2.lock().unwrap().push("reload".into());
+            Ok(())
+        }
+        fn connect(&self, generation: crate::GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
+            self.2
+                .lock()
+                .unwrap()
+                .push(format!("connect:{}", generation.get()));
+            Ok(())
+        }
+        fn park(&self) -> Result<(), LxAppError> {
+            Ok(())
+        }
+        fn dispose(&self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    struct TestGpuFactory {
+        endpoint: Arc<FactoryEndpoint>,
+        retire: bool,
+    }
+    impl crate::GpuPageViewFactory for TestGpuFactory {
+        fn create(&self, page: PageInstance) -> crate::GpuViewCreation {
+            let endpoint = self.endpoint.clone();
+            let retire = self.retire;
+            Box::pin(async move {
+                if retire {
+                    page.owning_lxapp()
+                        .remove_pages(&[page.instance_id_string()]);
+                }
+                Ok(endpoint as Arc<dyn crate::GpuPageView>)
+            })
+        }
+    }
+    fn gpu_factory_fixture() -> (tempfile::TempDir, Arc<LxApp>, PageInstance) {
+        gpu_factory_fixture_with_logic(false)
+    }
+    fn gpu_factory_fixture_with_logic(
+        logic: bool,
+    ) -> (tempfile::TempDir, Arc<LxApp>, PageInstance) {
+        let temp = tempfile::tempdir().unwrap();
+        let appid = format!("app.lingxia.gpu-factory.{}", Uuid::new_v4());
+        write_manifest(
+            temp.path(),
+            &appid,
+            &r#"{
+            "appId":"APPID", "version":"1.0.0", "logic":false,
+            "pages":[{"name":"home","path":"pages/home/index.ui.js","renderer":"gpu","module":"pages/home/index.ui.js"}]
+        }"#.replace("\"logic\":false", &format!("\"logic\":{logic}")),
+        );
+        let directory = temp.path().join("pages/home");
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(directory.join("index.json"), r#"{"renderer":"gpu"}"#).unwrap();
+        let app = dev_app(temp.path(), &appid);
+        let page = PageInstance::new_headless(appid, "pages/home/index.ui.js".into(), &app);
+        app.state
+            .lock()
+            .unwrap()
+            .pages_by_id
+            .lock()
+            .unwrap()
+            .insert(page.instance_id_string(), page.clone());
+        (temp, app, page)
+    }
+
+    #[test]
+    fn gpu_recovery_reloads_only_the_attached_endpoint_and_rebinds_logic() {
+        let (_temp, _app, page) = gpu_factory_fixture_with_logic(true);
+        let concrete = Arc::new(FactoryEndpoint::default());
+        let endpoint: Arc<dyn crate::GpuPageView> = concrete.clone();
+        let other: Arc<dyn crate::GpuPageView> = Arc::new(FactoryEndpoint::default());
+        page.attach_gpu_view(endpoint.clone()).unwrap();
+        let previous = page.bridge().bind_gpu(&page, &endpoint).unwrap();
+        assert!(page.reload_gpu_view(&other).is_err());
+        assert!(concrete.2.lock().unwrap().is_empty());
+        page.reload_gpu_view(&endpoint).unwrap();
+        let events = concrete.2.lock().unwrap().clone();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0], "reload");
+        assert!(events[1].starts_with("connect:"));
+        assert_ne!(events[1], format!("connect:{}", previous.get()));
+        assert!(
+            page.handle_incoming_gpu_message(&endpoint, previous, "not JSON")
+                .unwrap_err()
+                .to_string()
+                .contains("stale GPU connection")
+        );
+        page.detach_webview();
+        assert!(page.reload_gpu_view(&endpoint).is_err());
+        assert_eq!(*concrete.2.lock().unwrap(), events);
+    }
+
+    #[test]
+    fn gpu_bridge_handshake_preserves_the_native_connection_and_replies_to_denied_calls() {
+        let (_temp, _app, page) = gpu_factory_fixture();
+        let concrete = Arc::new(FactoryEndpoint::default());
+        let endpoint: Arc<dyn crate::GpuPageView> = concrete.clone();
+        page.attach_gpu_view(endpoint.clone()).unwrap();
+        let generation = page.bridge().bind_gpu(&page, &endpoint).unwrap();
+        let hello = serde_json::json!({"v":2,"kind":"hello","nonce":page.bridge_nonce().unwrap(),"role":"view","protocolsSupported":[2]}).to_string();
+        page.handle_incoming_gpu_message(&endpoint, generation, &hello)
+            .unwrap();
+        let frames: Vec<serde_json::Value> = concrete
+            .1
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(actual, text)| {
+                assert_eq!(*actual, generation);
+                serde_json::from_str(text).unwrap()
+            })
+            .collect();
+        assert_eq!(frames[0]["kind"], "helloAck");
+        assert_eq!(frames[1]["kind"], "ready");
+        assert_eq!(frames[0]["sessionId"], frames[1]["sessionId"]);
+        assert!(
+            page.handle_incoming_gpu_message(&endpoint, generation, &hello)
+                .is_err()
+        );
+        page.handle_incoming_gpu_message(
+            &endpoint,
+            generation,
+            r#"{"v":2,"kind":"req","id":"forbidden","method":"host.anything","cap":"host"}"#,
+        )
+        .unwrap();
+        let denied: serde_json::Value =
+            serde_json::from_str(&concrete.1.lock().unwrap().last().unwrap().1).unwrap();
+        assert_eq!(denied["id"], "forbidden");
+        assert_eq!(denied["error"]["code"], "E_PERMISSION_DENIED");
+        assert!(denied.get("sessionId").is_none());
+        for (topic, cap) in [("host.terminal", "host"), ("other.topic", "other")] {
+            let frame = serde_json::json!({"v":2,"kind":"ch.open","id":"channel-forbidden","topic":topic,"cap":cap});
+            page.handle_incoming_gpu_message(&endpoint, generation, &frame.to_string())
+                .unwrap();
+            let denied: serde_json::Value =
+                serde_json::from_str(&concrete.1.lock().unwrap().last().unwrap().1).unwrap();
+            assert_eq!(denied["kind"], "ch.ack");
+            assert_eq!(denied["error"]["code"], "E_PERMISSION_DENIED");
+        }
+        page.detach_webview();
+    }
+
+    #[test]
+    fn gpu_bridge_rejects_stale_generation_and_wrong_endpoint_before_decode() {
+        let (_temp, _app, page) = gpu_factory_fixture();
+        let endpoint: Arc<dyn crate::GpuPageView> = Arc::new(FactoryEndpoint::default());
+        let other: Arc<dyn crate::GpuPageView> = Arc::new(FactoryEndpoint::default());
+        page.attach_gpu_view(endpoint.clone()).unwrap();
+        let first = page.bridge().bind_gpu(&page, &endpoint).unwrap();
+        let second = page.bridge().bind_gpu(&page, &endpoint).unwrap();
+        assert_ne!(first, second);
+        let error = page
+            .handle_incoming_gpu_message(&endpoint, first, "not JSON")
+            .unwrap_err();
+        assert!(error.to_string().contains("stale GPU connection"));
+        let error = page
+            .handle_incoming_gpu_message(&other, second, "not JSON")
+            .unwrap_err();
+        assert!(error.to_string().contains("no longer attached"));
+        page.bridge().cancel_gpu_generation(&page, first);
+        let error = page
+            .handle_incoming_gpu_message(&endpoint, second, "not JSON")
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("invalid bridge protocol envelope")
+        );
+        page.detach_webview();
+        assert!(
+            page.handle_incoming_gpu_message(&endpoint, second, "not JSON")
+                .unwrap_err()
+                .to_string()
+                .contains("no longer attached")
+        );
+    }
+
+    #[test]
+    fn gpu_module_source_uses_only_the_catalog_entry() {
+        let (temp, app, page) = gpu_factory_fixture();
+        assert!(page.gpu_module_source().is_err());
+        let path = temp.path().join("pages/home/index.ui.js");
+        let module = "export function render() {}";
+        std::fs::write(&path, module).unwrap();
+        assert_eq!(page.gpu_module_source().unwrap(), module);
+        std::fs::write(&path, [0xff]).unwrap();
+        assert!(
+            page.gpu_module_source()
+                .unwrap_err()
+                .to_string()
+                .contains("UTF-8")
+        );
+        assert!(app.read_gpu_module("pages/home/index.runner.js").is_err());
+        assert!(app.read_gpu_module("../outside.ui.js").is_err());
+        let web =
+            PageInstance::new_headless(app.appid.clone(), "pages/web/index.html".into(), &app);
+        assert!(web.gpu_module_source().is_err());
+    }
+
+    #[tokio::test]
+    async fn gpu_image_loader_preserves_local_resources_and_refuses_private_networks() {
+        let (temp, app, page) = gpu_factory_fixture();
+        std::fs::write(temp.path().join("avatar.png"), b"fixture").unwrap();
+        assert_eq!(
+            page.load_gpu_image_bytes("avatar.png").await.unwrap(),
+            b"fixture"
+        );
+        for source in [
+            "http://127.0.0.1/image.png",
+            "http://169.254.169.254/image.png",
+            "https://[::1]/image.png",
+            "https://",
+            "file:///etc/passwd",
+        ] {
+            assert!(page.load_gpu_image_bytes(source).await.is_err(), "{source}");
+        }
+        app.session.cancel();
+        assert!(
+            page.load_gpu_image_bytes("https://example.com/image.png")
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("not allowed")
+        );
+    }
+
+    #[test]
+    fn gpu_images_resolve_only_owned_resources_with_bounded_reads() {
+        let (temp, app, page) = gpu_factory_fixture();
+        std::fs::write(temp.path().join("avatar.png"), b"fixture").unwrap();
+        assert_eq!(page.gpu_image_bytes("avatar.png").unwrap(), b"fixture");
+        assert_eq!(
+            page.gpu_image_bytes(&format!("lx://lxapp/{}/avatar.png", app.appid))
+                .unwrap(),
+            b"fixture"
+        );
+        for source in [
+            "../outside",
+            "/etc/passwd",
+            "C:/secret",
+            "https://example.com/image.png",
+            "lx://lxapp/another/avatar.png",
+            "lx://userdata/%2e%2e/outside",
+            "lx://temp/ungranted",
+        ] {
+            assert!(page.gpu_image_bytes(source).is_err(), "{source}");
+        }
+        let oversized = std::fs::File::create(temp.path().join("large.png")).unwrap();
+        oversized.set_len(8 * 1024 * 1024 + 1).unwrap();
+        assert!(
+            page.gpu_image_bytes("large.png")
+                .unwrap_err()
+                .to_string()
+                .contains("8 MiB")
+        );
+    }
+
+    #[tokio::test]
+    async fn gpu_factory_setup_and_cancellation_release_only_owned_endpoints() {
+        let (_temp, _app, page) = gpu_factory_fixture();
+        page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnLoad);
+        page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnShow);
+        let endpoint = Arc::new(FactoryEndpoint::default());
+        let factory = TestGpuFactory {
+            endpoint: endpoint.clone(),
+            retire: false,
+        };
+        page.setup_gpu_view(&factory, |page| {
+            std::future::ready(page.reload_view().map_err(|error| error.to_string()))
+        })
+        .await
+        .unwrap();
+        assert!(page.has_live_view());
+        assert!(page.webview().is_none());
+        assert!(!page.webview_ready_now());
+        page.finish_webview_setup(Ok(()));
+        assert!(page.webview_ready_now());
+        let mut loaded = page.subscribe_loaded();
+        let other: Arc<dyn crate::GpuPageView> = Arc::new(FactoryEndpoint::default());
+        page.gpu_frame_presented(&other);
+        assert!(!loaded.has_changed().unwrap());
+        let receipt: Arc<dyn crate::GpuPageView> = endpoint.clone();
+        page.gpu_frame_presented(&receipt);
+        assert!(loaded.has_changed().unwrap());
+        assert!(page.automation_state().ready);
+        loaded.borrow_and_update();
+        assert_eq!(endpoint.0.load(Ordering::SeqCst), 0);
+        page.detach_webview();
+        assert!(!page.webview_ready_now());
+        page.gpu_frame_presented(&receipt);
+        assert!(!loaded.has_changed().unwrap());
+        assert_eq!(endpoint.0.load(Ordering::SeqCst), 1);
+
+        let timeout = tokio::time::timeout(
+            Duration::from_millis(10),
+            page.setup_gpu_view(&factory, |_| std::future::pending::<Result<(), String>>()),
+        )
+        .await;
+        assert!(timeout.is_err());
+        assert!(!page.has_live_view());
+        assert_eq!(endpoint.0.load(Ordering::SeqCst), 2);
+
+        let replacement = Arc::new(FactoryEndpoint::default());
+        let result = page
+            .setup_gpu_view(&factory, |page| {
+                page.detach_webview();
+                page.attach_gpu_view(replacement.clone()).unwrap();
+                std::future::ready(Err("old setup failed".to_string()))
+            })
+            .await;
+        assert!(result.is_err());
+        assert!(page.has_live_view());
+        assert_eq!(endpoint.0.load(Ordering::SeqCst), 3);
+        assert_eq!(replacement.0.load(Ordering::SeqCst), 0);
+        page.detach_webview();
+        assert_eq!(replacement.0.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn gpu_factory_cannot_attach_after_page_retirement() {
+        let (_temp, app, page) = gpu_factory_fixture();
+        let endpoint = Arc::new(FactoryEndpoint::default());
+        let factory = TestGpuFactory {
+            endpoint: endpoint.clone(),
+            retire: true,
+        };
+        let result = page
+            .setup_gpu_view(&factory, |_| async {
+                panic!("retired page must not run setup")
+            })
+            .await;
+        assert!(result.unwrap_err().contains("departed during creation"));
+        assert!(!page.has_live_view());
+        assert_eq!(endpoint.0.load(Ordering::SeqCst), 1);
+        assert!(app.get_page_by_instance_id(&page.instance_id()).is_none());
+    }
+
+    #[tokio::test]
+    async fn gpu_factory_missing_fails_setup_without_webview() {
+        let (_temp, app, page) = gpu_factory_fixture();
+        page.start_webview(|_| async {
+            panic!("missing GPU factory must not fall back to WebView setup")
+        });
+        let result = tokio::time::timeout(Duration::from_secs(2), page.wait_webview_ready())
+            .await
+            .unwrap();
+        assert!(result.unwrap_err().contains("GPU renderer is unavailable"));
+        assert!(page.webview().is_none());
+        assert!(!page.has_live_view());
+        assert!(app.get_page_by_instance_id(&page.instance_id()).is_none());
+    }
+
+    #[test]
+    fn gpu_page_config_is_loaded_from_the_compiled_catalog() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let appid = format!("app.lingxia.gpu-config.{}", Uuid::new_v4());
+        write_manifest(
+            root,
+            &appid,
+            r#"{
+            "appId":"APPID", "version":"1.0.0", "logic":false,
+            "pages":[{"name":"home", "path":"pages/home/index.ui.js", "renderer":"gpu", "module":"pages/home/index.ui.js"}]
+        }"#,
+        );
+        let page_dir = root.join("pages/home");
+        std::fs::create_dir_all(&page_dir).unwrap();
+        let page_config = page_dir.join("index.json");
+        std::fs::write(
+            &page_config,
+            r#"{"renderer":"gpu","navigationStyle":"custom","pageOrientation":"auto"}"#,
+        )
+        .unwrap();
+        let app = dev_app(root, &appid);
+        assert_eq!(
+            app.find_page_path("pages/home/index").as_deref(),
+            Some("pages/home/index.ui.js")
+        );
+        let config = PageConfig::from_json(&app, "pages/home/index.ui.js").unwrap();
+        assert_eq!(config.renderer, crate::PageRenderer::Gpu);
+        let page = PageInstance::new_headless(appid.clone(), "pages/home/index.ui.js".into(), &app);
+        assert_eq!(page.renderer(), crate::PageRenderer::Gpu);
+        {
+            use crate::bridge::ViewTransport;
+            use crate::page::{GpuPageView, PageViewEnvironment};
+            #[derive(Default)]
+            struct Endpoint(Mutex<Vec<String>>);
+            impl GpuPageView for Endpoint {
+                fn post_message(&self, message: &str) -> Result<(), LxAppError> {
+                    self.0.lock().unwrap().push(message.into());
+                    Ok(())
+                }
+                fn update_environment(
+                    &self,
+                    update: PageViewEnvironment,
+                ) -> Result<(), LxAppError> {
+                    self.0.lock().unwrap().push(format!("{update:?}"));
+                    Ok(())
+                }
+                fn reload(&self) -> Result<(), LxAppError> {
+                    self.0.lock().unwrap().push("reload".into());
+                    Ok(())
+                }
+                fn park(&self) -> Result<(), LxAppError> {
+                    self.0.lock().unwrap().push("park".into());
+                    Ok(())
+                }
+                fn dispose(&self) {
+                    self.0.lock().unwrap().push("dispose".into());
+                }
+            }
+            struct RejectDocument;
+            impl lingxia_webview::DocumentOutboundGate for RejectDocument {
+                fn with_active(&self, _: &mut dyn FnMut()) -> bool {
+                    panic!("GPU must not enter browser document gate");
+                }
+            }
+            let endpoint = Arc::new(Endpoint::default());
+            page.attach_gpu_view(endpoint.clone()).unwrap();
+            assert!(page.has_live_view());
+            assert!(page.webview().is_none());
+            assert!(page.attach_gpu_view(endpoint.clone()).is_err());
+            page.post_message_to_view("snapshot".into()).unwrap();
+            assert!(
+                page.post_message_to_document(
+                    lingxia_webview::DocumentGeneration::for_test(1),
+                    Arc::new(RejectDocument),
+                    "browser".into()
+                )
+                .is_err()
+            );
+            page.push_surface_context_value(r#"{"aside":true}"#, 7);
+            page.push_view_environment(PageViewEnvironment::DisplayLanguage {
+                language: "zh-CN".into(),
+                revision: 8,
+            });
+            page.park_view();
+            assert!(page.document_is_departing());
+            page.reload_view().unwrap();
+            assert!(!page.document_is_departing());
+            page.detach_webview();
+            page.detach_webview();
+            assert!(!page.has_live_view());
+            assert!(page.post_message_to_view("stale".into()).is_err());
+            let events = endpoint.0.lock().unwrap();
+            assert_eq!(events.len(), 6);
+            assert_eq!(events[0], "snapshot");
+            assert!(events[1].contains("SurfaceContext") && events[1].contains("revision: 7"));
+            assert!(events[2].contains("zh-CN") && events[2].contains("revision: 8"));
+            assert_eq!(&events[3..], ["park", "reload", "dispose"]);
+        }
+        assert_eq!(config.page_orientation, Some(crate::PageOrientation::Auto));
+        assert_eq!(app.app_session_class(), crate::AppSessionClass::StandardApp);
+        std::fs::write(&page_config, r#"{"renderer":"webview"}"#).unwrap();
+        assert!(
+            PageConfig::from_json(&app, "pages/home/index.ui.js")
+                .unwrap_err()
+                .to_string()
+                .contains("renderer must match")
+        );
+        std::fs::remove_file(&page_config).unwrap();
+        assert!(PageConfig::from_json(&app, "pages/home/index.ui.js").is_err());
     }
 
     #[test]

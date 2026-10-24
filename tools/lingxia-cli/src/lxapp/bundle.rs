@@ -29,7 +29,15 @@ pub(crate) fn is_built_bundle_dir(dir: &Path) -> bool {
         && pages.iter().all(|page| {
             page.get("path")
                 .and_then(|path| path.as_str())
-                .is_some_and(|path| is_built_page(&dir.join(path), path))
+                .is_some_and(|path| {
+                    if path.ends_with(".ui.js") {
+                        page.get("renderer").and_then(Value::as_str) == Some("gpu")
+                            && page.get("module").and_then(Value::as_str) == Some(path)
+                            && dir.join(path).is_file()
+                    } else {
+                        is_built_page(&dir.join(path), path)
+                    }
+                })
         })
 }
 
@@ -63,6 +71,20 @@ fn read_head(path: &Path) -> Option<Vec<u8>> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn recognizes_minified_gpu_module_only_with_renderer_metadata() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(
+            temp.path().join("home.ui.js"),
+            "function r(){}export{r as render}",
+        )
+        .unwrap();
+        fs::write(temp.path().join("lxapp.json"), r#"{"logic":false,"pages":[{"name":"home","path":"home.ui.js","renderer":"gpu","module":"home.ui.js"}]}"#).unwrap();
+        assert!(is_built_bundle_dir(temp.path()));
+        write_manifest(temp.path(), &[("home", "home.ui.js")], None);
+        assert!(!is_built_bundle_dir(temp.path()));
+    }
 
     fn write_manifest(dir: &Path, pages: &[(&str, &str)], logic: Option<&str>) {
         let pages = pages

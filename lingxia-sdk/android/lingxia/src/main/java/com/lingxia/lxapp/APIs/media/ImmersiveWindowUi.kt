@@ -18,9 +18,13 @@ internal object ImmersiveWindowUi {
         val navigationBarColor: Int,
         val navigationBarContrastEnforced: Boolean?,
         val cutoutMode: Int?,
+        val lightStatusBars: Boolean,
+        val lightNavigationBars: Boolean,
+        val systemBarsBehavior: Int,
     )
 
     fun capture(window: Window): Snapshot {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
         return Snapshot(
             systemUiVisibility = window.decorView.systemUiVisibility,
             windowFlags = window.attributes.flags,
@@ -36,7 +40,10 @@ internal object ImmersiveWindowUi {
                 window.attributes.layoutInDisplayCutoutMode
             } else {
                 null
-            }
+            },
+            lightStatusBars = controller.isAppearanceLightStatusBars,
+            lightNavigationBars = controller.isAppearanceLightNavigationBars,
+            systemBarsBehavior = controller.systemBarsBehavior,
         )
     }
 
@@ -119,6 +126,11 @@ internal object ImmersiveWindowUi {
         val wasStatusHidden = (snapshot.systemUiVisibility and View.SYSTEM_UI_FLAG_FULLSCREEN) != 0
         val wasNavHidden = (snapshot.systemUiVisibility and View.SYSTEM_UI_FLAG_HIDE_NAVIGATION) != 0
         WindowCompat.getInsetsController(window, window.decorView)?.let { controller ->
+            // API 30+ appearance lives in the insets controller, independently of
+            // the legacy decor flags restored above.
+            controller.isAppearanceLightStatusBars = snapshot.lightStatusBars
+            controller.isAppearanceLightNavigationBars = snapshot.lightNavigationBars
+            controller.systemBarsBehavior = snapshot.systemBarsBehavior
             if (wasStatusHidden || wasNavHidden) {
                 controller.hide(WindowInsetsCompat.Type.systemBars())
             } else {

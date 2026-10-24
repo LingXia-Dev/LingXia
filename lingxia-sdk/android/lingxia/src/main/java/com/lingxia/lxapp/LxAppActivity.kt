@@ -333,7 +333,11 @@ class LxAppActivity : AppCompatActivity() {
     private var currentSessionId: Long = 0L
 
     // Tracks the currently visible WebView instance
-    private var currentWebView: com.lingxia.lxapp.WebView? = null
+    private var currentWebView: View? = null
+    private var gpuTransitionVersion = 0L
+    private var gpuTransitionCover: android.widget.ImageView? = null
+    private var gpuOutgoingCover: android.widget.ImageView? = null
+    private val pendingGpuDisposals = mutableSetOf<Runnable>()
     private var systemBottomInset: Int = 0
     private var imeContentBottomInset: Int = 0
     /** A visible bottom navigation strip; only opaque TabBars reserve it in root padding. */
@@ -497,6 +501,7 @@ class LxAppActivity : AppCompatActivity() {
             )
         }
         setContentView(rootContainer)
+        observeGpuChromeInsets()
 
         // Cover the home cold start until its page first renders (or times out).
         SplashOverlay.attachIfNeeded(this, appId)
@@ -798,6 +803,31 @@ class LxAppActivity : AppCompatActivity() {
         )
     }
 
+    private fun observeGpuChromeInsets() {
+        val pageBounds = android.graphics.Rect()
+        val barBounds = android.graphics.Rect()
+        rootContainer.viewTreeObserver.addOnPreDrawListener {
+            val page = currentWebView as? GpuPage
+            if (page != null) {
+                var left = 0
+                var right = 0
+                var bottom = 0
+                val bar = tabBar
+                // Actual clipped frames avoid double-counting space already reserved by margins.
+                if (page.getGlobalVisibleRect(pageBounds) && bar != null && bar.isShown &&
+                    bar.getGlobalVisibleRect(barBounds) && barBounds.intersect(pageBounds)) {
+                    when (bar.config.position) {
+                        TabBarState.Position.LEFT -> left = barBounds.right - pageBounds.left
+                        TabBarState.Position.RIGHT -> right = pageBounds.right - barBounds.left
+                        TabBarState.Position.BOTTOM -> bottom = pageBounds.bottom - barBounds.top
+                    }
+                }
+                page.setChromeInsets(left, 0, right, bottom)
+            }
+            true
+        }
+    }
+
     private fun setupContainers() {
         // Create root container
         rootContainer = FrameLayout(this).apply {
@@ -809,6 +839,7 @@ class LxAppActivity : AppCompatActivity() {
             setBackgroundColor(Color.TRANSPARENT)
         }
         setContentView(rootContainer)
+        observeGpuChromeInsets()
 
         // Create WebView container
         webViewContainer = FrameLayout(this).apply {
@@ -822,7 +853,38 @@ class LxAppActivity : AppCompatActivity() {
         rootContainer.addView(webViewContainer)
     }
 
-    private fun setupTabBar(config: TabBarState?) {
+    private fun setupTabBar(config: TabBarState?, preserveGpuFrame: Boolean = true) {
+        val page = currentWebView as? GpuPage
+        if (preserveGpuFrame && page != null && gpuTransitionCover == null &&
+            (config?.visible == true) != (tabBar?.visibility == View.VISIBLE)) {
+            val version = gpuTransitionVersion
+            // Runtime chrome events precede navigation. Cover the old geometry
+            // before changing it; navigation will own the cover if it follows.
+            prepareGpuTransition(version, Runnable {
+                page.afterNextPresentation { success ->
+                    if (version == gpuTransitionVersion) {
+                        if (!success) clearGpuTransitionCover()
+                        else page.capturePreview { frame ->
+                            if (version != gpuTransitionVersion || isFinishing || isDestroyed) frame?.recycle()
+                            else if (frame == null) clearGpuTransitionCover()
+                            else {
+                                showGpuTransitionFrame(frame, page)
+                                val committed = Runnable { rootContainer.postOnAnimation {
+                                    if (version == gpuTransitionVersion) clearGpuTransitionCover()
+                                } }
+                                if (Build.VERSION.SDK_INT >= 29 && rootContainer.isHardwareAccelerated) {
+                                    rootContainer.viewTreeObserver.registerFrameCommitCallback(committed)
+                                    rootContainer.invalidate()
+                                } else rootContainer.postOnAnimation(committed)
+                            }
+                        }
+                    }
+                }
+                setupTabBar(config, false)
+                page.resume()
+            })
+            return
+        }
         if (config == null) {
             tabBar?.let { bar ->
                 (bar.parent as? ViewGroup)?.removeView(bar)
@@ -847,7 +909,7 @@ class LxAppActivity : AppCompatActivity() {
                 setConfig(config)
                 setOnTabSelectedListener { index, path ->
                     // Use new UI event API
-                    NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_TABBAR_CLICK, index.toString())
+                    dispatchTabClick(index)
                 }
                 setOnMoreRequestedListener { indices ->
                     val bar = this@apply
@@ -858,11 +920,7 @@ class LxAppActivity : AppCompatActivity() {
                         indices,
                         onPick = { index ->
                             bar.setSelectedIndex(index, notifyListener = false)
-                            NativeApi.onLxappEvent(
-                                appId,
-                                NativeApi.UI_EVENT_TABBAR_CLICK,
-                                index.toString()
-                            )
+                            dispatchTabClick(index)
                         },
                         onDismiss = { bar.setMoreOpen(false) }
                     )
@@ -890,10 +948,8 @@ class LxAppActivity : AppCompatActivity() {
 
     private fun applyTabBarLayoutParams(tabBar: TabBar, config: TabBarState) {
         val isVertical = config.position == TabBarState.Position.LEFT || config.position == TabBarState.Position.RIGHT
-        val density = resources.displayMetrics.density
         // Use configured dimension (Rust provides default value)
-        val tabBarDimension = config.dimension ?: 64 // Fallback just in case
-        val tabBarSizePx = (tabBarDimension * density).toInt()
+        val tabBarSizePx = tabBar.calculatedThicknessPx(config)
 
         val tabBarBgColor = config.backgroundColor
         val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
@@ -1034,6 +1090,7 @@ class LxAppActivity : AppCompatActivity() {
 
         val container = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
         container?.translationY = if (!isTabBarTransparent) calculateWebViewTranslationY() else 0f
+        pullToRefreshHelper?.restorePageOffset()
     }
 
 
@@ -1044,7 +1101,7 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     // Helper function to attach a WebView to the container and resume it
-    private fun attachWebViewToUI(view: com.lingxia.lxapp.WebView?) {
+    private fun attachWebViewToUI(view: View?) {
         if (view == null) {
             LxLog.e(TAG, "attachWebViewToUI called with null view!")
             return
@@ -1087,7 +1144,7 @@ class LxAppActivity : AppCompatActivity() {
             view.dispatchConfigurationChanged(resources.configuration)
 
             // Attach native bridge for component overlay
-            NativeBridge.attachIfNeeded(view)
+            (view as? WebView)?.let { NativeBridge.attachIfNeeded(it) }
 
             ensurePullToRefreshHelper().attachToWebView(view)
             updatePullToRefreshEnabledForPath(view.getCurrentPath())
@@ -1126,7 +1183,7 @@ class LxAppActivity : AppCompatActivity() {
      */
     private fun present(webtag: String?, request: Presentation, resolvesLeft: Int = FIRST_SCREEN_RESOLVE_LIMIT) {
         val ticket = ++presentTicket
-        val ready = NativeApi.awaitPageWebView(appId, currentSessionId, webtag) { webView, status ->
+        val ready = NativeApi.awaitPageView(appId, currentSessionId, webtag) { webView, status ->
             runOnUiThread { onPresentResult(ticket, webtag, request, webView, status, resolvesLeft) }
         }
         if (ready != null) showPresentation(ready, request)
@@ -1136,7 +1193,7 @@ class LxAppActivity : AppCompatActivity() {
         ticket: Int,
         webtag: String?,
         request: Presentation,
-        webView: com.lingxia.lxapp.WebView?,
+        webView: View?,
         status: Int,
         resolvesLeft: Int
     ) {
@@ -1157,17 +1214,18 @@ class LxAppActivity : AppCompatActivity() {
                 return
             }
         }
+        clearGpuTransitionCover()
         LxLog.e(TAG, "WebView not available for appId=$appId, page=${webtag ?: "current"} (status=$status)")
         if (currentWebView == null) finishWithSessionClose("initial_webview_missing")
     }
 
-    private fun showPresentation(webView: com.lingxia.lxapp.WebView, request: Presentation) {
+    private fun showPresentation(webView: View, request: Presentation) {
         if (request.firstScreen) {
             setupWebViewContentWithExisting(webView)
             // Resumed while it had no page: the resume-time notification found
             // nobody to tell.
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                NativeBridge.notifyPageActive(webView)
+                (webView as? WebView)?.let { NativeBridge.notifyPageActive(it) }
             }
         } else {
             navigateToPage(webView, request.isReplace, request.isBackNavigation)
@@ -1191,7 +1249,7 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     // New method to setup WebView content with an existing WebView
-    private fun setupWebViewContentWithExisting(webView: com.lingxia.lxapp.WebView) {
+    private fun setupWebViewContentWithExisting(webView: View) {
         // Set the current WebView first
         this.currentWebView = webView
 
@@ -1437,7 +1495,7 @@ class LxAppActivity : AppCompatActivity() {
             enterImmersiveMode()
         }
         // Resume native components
-        currentWebView?.let { NativeBridge.notifyPageActive(it) }
+        currentWebView?.let { (it as? WebView)?.let { NativeBridge.notifyPageActive(it) } }
         // Show the "ready to install" prompt for an update that finished
         // downloading while no activity was in the foreground.
         UpdateManager.tryShowPendingReadyInstall()
@@ -1520,7 +1578,7 @@ class LxAppActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         currentWebView?.pause()
-        currentWebView?.let { NativeBridge.notifyPageInactive(it) }
+        currentWebView?.let { (it as? WebView)?.let { NativeBridge.notifyPageInactive(it) } }
     }
 
     override fun onStart() {
@@ -1558,13 +1616,17 @@ class LxAppActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         isDestroyed = true
+        pendingGpuDisposals.toList().forEach { it.run() }
+        ++gpuTransitionVersion
+        clearGpuTransitionCover()
+        pullToRefreshHelper?.detach()
         pendingFileChooserCallback?.onReceiveValue(null)
         pendingFileChooserCallback = null
         pendingHostFileDialogCallback?.invoke(HostFileDialogResult.Failed)
         pendingHostFileDialogCallback = null
 
         // Destroy native components before pausing WebView
-        currentWebView?.let { NativeBridge.notifyPageDestroyed(it) }
+        currentWebView?.let { (it as? WebView)?.let { NativeBridge.notifyPageDestroyed(it) } }
 
         // Pause current WebView but don't destroy it
         // WebView destruction is managed by native
@@ -1582,23 +1644,176 @@ class LxAppActivity : AppCompatActivity() {
     /** [webtag] names the page instance to show; null: the app's current page. */
     internal fun navigate(webtag: String?, animationType: AnimationType): Boolean {
         if (!::appId.isInitialized) return false
-
-        try {
-            syncTabBarFromRuntime()
-            // Launch/Replace/SwitchTab arrive as NONE and swap without animation.
-            present(
-                webtag,
-                Presentation(
+        val version = ++gpuTransitionVersion
+        ++presentTicket
+        if (gpuOutgoingCover != null) clearGpuTransitionCover()
+        val navigate = Runnable {
+            if (version != gpuTransitionVersion || isFinishing || isDestroyed) return@Runnable
+            try {
+                syncTabBarFromRuntime()
+                present(webtag, Presentation(
                     isReplace = animationType == AnimationType.NONE,
                     isBackNavigation = animationType == AnimationType.BACKWARD,
                     firstScreen = false
-                )
-            )
-            return true
-        } catch (e: Exception) {
-            LxLog.e(TAG, "Navigation failed: ${e.message}", e)
-            return false
+                ))
+            } catch (error: Exception) {
+                clearGpuTransitionCover()
+                LxLog.e(TAG, "Navigation failed: ${error.message}", error)
+            }
         }
+        if (currentWebView is GpuPage && gpuTransitionCover == null) {
+            prepareGpuTransition(version, navigate)
+        } else {
+            navigate.run()
+        }
+        return true
+    }
+
+    private fun dispatchTabClick(index: Int) {
+        val target = tabBar?.config?.list?.getOrNull(index)?.pagePath
+        val previous = currentWebView
+        if (target == previous?.getCurrentPath()) {
+            NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_TABBAR_CLICK, index.toString())
+            return
+        }
+        val version = ++gpuTransitionVersion
+        val dispatch = Runnable {
+            if (version != gpuTransitionVersion || isFinishing || isDestroyed) return@Runnable
+            val handled = NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_TABBAR_CLICK, index.toString())
+            if (handled == 0 && version == gpuTransitionVersion) clearGpuTransitionCover()
+        }
+        if (previous is GpuPage && target != previous.getCurrentPath() && gpuTransitionCover == null)
+            prepareGpuTransition(version, dispatch)
+        else dispatch.run()
+    }
+
+    private fun prepareGpuTransition(version: Long, navigate: Runnable) {
+        val previous = currentWebView as? GpuPage ?: return navigate.run()
+        previous.captureReadyPreview { preview ->
+            if (version != gpuTransitionVersion || isFinishing || isDestroyed) {
+                preview?.recycle()
+                return@captureReadyPreview
+            }
+            if (preview != null) {
+                showGpuTransitionFrame(preview, previous)
+            }
+            val committed = Runnable { webViewContainer.postOnAnimation(navigate) }
+            if (Build.VERSION.SDK_INT >= 29 && webViewContainer.isHardwareAccelerated) {
+                webViewContainer.viewTreeObserver.registerFrameCommitCallback(committed)
+                webViewContainer.invalidate()
+            } else webViewContainer.postOnAnimation(committed)
+        }
+    }
+
+    fun preserveGpuPageBeforeDisposal(page: GpuPage, release: Runnable) {
+        if (currentWebView !== page || !page.isShown || isFinishing || isDestroyed || gpuTransitionCover != null) {
+            release.run()
+            return
+        }
+        val releaseOnce = object : Runnable {
+            override fun run() {
+                if (pendingGpuDisposals.remove(this)) release.run()
+            }
+        }
+        pendingGpuDisposals.add(releaseOnce)
+        // Pop/replace removes the runtime page before the host navigation event.
+        // Detach its registry identity immediately, but retain pixels until the
+        // replacement window buffer covers its SurfaceView.
+        page.capturePreview { frame ->
+            if (frame != null && currentWebView === page && !isFinishing && !isDestroyed && gpuTransitionCover == null)
+                showGpuTransitionFrame(frame, page)
+            else frame?.recycle()
+            if (gpuTransitionCover != null && Build.VERSION.SDK_INT >= 29 && rootContainer.isHardwareAccelerated) {
+                rootContainer.viewTreeObserver.registerFrameCommitCallback { rootContainer.post(releaseOnce) }
+                rootContainer.invalidate()
+            } else rootContainer.postOnAnimation(releaseOnce)
+        }
+    }
+
+    private fun clearGpuTransitionCover() {
+        listOfNotNull(gpuTransitionCover, gpuOutgoingCover).forEach {
+            it.animate().cancel()
+            (it.parent as? ViewGroup)?.removeView(it)
+            it.setImageDrawable(null)
+        }
+        gpuTransitionCover = null
+        gpuOutgoingCover = null
+    }
+
+    private fun animateGpuTransition(outgoing: android.graphics.drawable.Drawable,
+                                     backwards: Boolean, version: Long, page: View) {
+        val incoming = gpuTransitionCover ?: return
+        val previous = android.widget.ImageView(this).apply {
+            scaleType = android.widget.ImageView.ScaleType.MATRIX
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            setBackgroundColor(android.graphics.Color.BLACK)
+            setImageDrawable(outgoing)
+            layoutParams = FrameLayout.LayoutParams(incoming.layoutParams as FrameLayout.LayoutParams)
+        }
+        gpuOutgoingCover = previous
+        rootContainer.addView(previous, rootContainer.indexOfChild(incoming))
+        val distance = rootContainer.width.toFloat() * if (backwards) -1f else 1f
+        incoming.translationX = distance
+        val interpolator = android.view.animation.DecelerateInterpolator()
+        // Equal progress keeps the opaque edges touching throughout the slide.
+        previous.animate().translationX(-distance).setDuration(300L).setInterpolator(interpolator).start()
+        incoming.animate().translationX(0f).setDuration(300L).setInterpolator(interpolator)
+            .withEndAction {
+                if (version == gpuTransitionVersion) {
+                    clearGpuTransitionCover()
+                    (page.parent as? FrameLayout)?.let { triggerOnPageShow(it) }
+                }
+            }.start()
+    }
+
+    private fun showGpuTransitionFrame(frame: android.graphics.Bitmap, source: View) {
+        val origin = IntArray(2)
+        val rootOrigin = IntArray(2)
+        source.getLocationInWindow(origin)
+        rootContainer.getLocationInWindow(rootOrigin)
+        val snapshot = android.graphics.Bitmap.createBitmap(
+            rootContainer.width, rootContainer.height, android.graphics.Bitmap.Config.ARGB_8888
+        )
+        val canvas = android.graphics.Canvas(snapshot)
+        val previousCover = gpuTransitionCover
+        val previousAlpha = previousCover?.alpha
+        previousCover?.alpha = 0f
+        try {
+            rootContainer.draw(canvas)
+        } finally {
+            if (previousAlpha != null) previousCover.alpha = previousAlpha
+        }
+        canvas.drawBitmap(frame, (origin[0] - rootOrigin[0]).toFloat(),
+            (origin[1] - rootOrigin[1]).toFloat(), null)
+        // This PixelCopy buffer was only read by the synchronous software canvas;
+        // it never enters a display list. Do not retain it until the next GC.
+        frame.recycle()
+        snapshot.setHasAlpha(false)
+        val cover = gpuTransitionCover ?: android.widget.ImageView(this).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+            scaleType = android.widget.ImageView.ScaleType.MATRIX
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            isClickable = true
+            rootContainer.addView(this)
+            gpuTransitionCover = this
+        }
+        // Preserve the outgoing chrome too: hiding the navbar exposes an area
+        // outside the GPU buffer. Keep the snapshot at its original pixel size.
+        cover.layoutParams = FrameLayout.LayoutParams(snapshot.width, snapshot.height).apply {
+            leftMargin = -rootContainer.paddingLeft
+            topMargin = -rootContainer.paddingTop
+        }
+        cover.setImageBitmap(snapshot)
+        bringGpuTransitionCoverToFront()
+    }
+
+    private fun bringGpuTransitionCoverToFront() {
+        navigationBar?.let { rootContainer.bringChildToFront(it) }
+        // The snapshot owns navbar pixels until incoming content is presented.
+        // Keep tabs interactive so a newer selection can supersede this transition.
+        gpuTransitionCover?.let { rootContainer.bringChildToFront(it) }
+        tabBar?.let { rootContainer.bringChildToFront(it) }
+        rootContainer.findViewWithTag<View>("capsule_button")?.let { rootContainer.bringChildToFront(it) }
     }
 
     private fun syncTabBarFromRuntime() {
@@ -1787,7 +2002,7 @@ class LxAppActivity : AppCompatActivity() {
      */
     private fun animateOldContainerOut(
         oldContainer: ViewGroup,
-        oldWebView: com.lingxia.lxapp.WebView,
+        oldWebView: View,
         endX: Float,
         duration: Long,
         interpolator: AccelerateDecelerateInterpolator
@@ -1817,7 +2032,7 @@ class LxAppActivity : AppCompatActivity() {
      *
      * Extracted from navigateToPage for reuse in coordinated navigation
      */
-    private fun performWebViewTransition(oldWebView: WebView?, newContainer: FrameLayout, isBackNavigation: Boolean, shouldAnimate: Boolean = true, navbarState: NavigationBarState? = null) {
+    private fun performWebViewTransition(oldWebView: View?, newContainer: FrameLayout, isBackNavigation: Boolean, shouldAnimate: Boolean = true, navbarState: NavigationBarState? = null, deferPageShow: Boolean = false) {
         // Get reference to old container BEFORE adding new one. A reused
         // container is already a child and can still carry the current tag, so
         // exclude it here or the page would be mistaken for its own predecessor.
@@ -1840,6 +2055,7 @@ class LxAppActivity : AppCompatActivity() {
             return
         }
         pruneRetiredDuplicates(newContainer)
+        if (gpuTransitionCover != null) bringGpuTransitionCoverToFront()
         // App-context webviews miss the activity's night override; sync the
         // freshly attached tree (see setupWebViewContentWithExisting).
         newContainer.dispatchConfigurationChanged(resources.configuration)
@@ -1903,7 +2119,7 @@ class LxAppActivity : AppCompatActivity() {
             }
 
             // Trigger onPageShow immediately
-            triggerOnPageShow(newContainer)
+            if (!deferPageShow) triggerOnPageShow(newContainer)
         }
     }
 
@@ -1916,7 +2132,7 @@ class LxAppActivity : AppCompatActivity() {
     private fun triggerOnPageShow(container: FrameLayout) {
         container.post {
             try {
-                val webView = container.getChildAt(0) as? WebView
+                val webView = container.getChildAt(0) as? View
                 if (webView?.getAppId() != null && webView.getCurrentPath() != null) {
                     val pagePath = webView.getCurrentPath()!!
                     NativeApi.onPageShow(webView.getAppId()!!, pagePath)
@@ -1955,7 +2171,8 @@ class LxAppActivity : AppCompatActivity() {
      * Everything else is removed as before — a pushed page is not coming back.
      */
     private fun retireContainer(container: ViewGroup) {
-        val path = (container.getChildAt(0) as? WebView)?.getCurrentPath()
+        (container.getChildAt(0) as? GpuPage)?.pause()
+        val path = (container.getChildAt(0) as? View)?.getCurrentPath()
         if (isTabPath(path)) {
             container.translationX = 0f
             container.visibility = View.GONE
@@ -1971,12 +2188,12 @@ class LxAppActivity : AppCompatActivity() {
      * containers qualify: a visible one is still mid-transition.
      */
     private fun pruneRetiredDuplicates(keep: ViewGroup) {
-        val keepPath = (keep.getChildAt(0) as? WebView)?.getCurrentPath() ?: return
+        val keepPath = (keep.getChildAt(0) as? View)?.getCurrentPath() ?: return
         val normalized = keepPath.substringBefore('?').substringBefore('#')
         for (index in webViewContainer.childCount - 1 downTo 0) {
             val child = webViewContainer.getChildAt(index) as? ViewGroup ?: continue
             if (child === keep || child.visibility != View.GONE) continue
-            val childPath = (child.getChildAt(0) as? WebView)?.getCurrentPath() ?: continue
+            val childPath = (child.getChildAt(0) as? View)?.getCurrentPath() ?: continue
             if (childPath.substringBefore('?').substringBefore('#') == normalized) {
                 cleanupOldContainer(child)
             }
@@ -1999,17 +2216,66 @@ class LxAppActivity : AppCompatActivity() {
      * @param isBackNavigation Whether this is a back navigation
      */
     private fun navigateToPage(
-        newWebView: com.lingxia.lxapp.WebView,
+        newWebView: View,
         isReplace: Boolean = false,
         isBackNavigation: Boolean = false
     ) {
+        val version = gpuTransitionVersion
+        val animateGpu = newWebView is GpuPage && gpuTransitionCover != null && !isReplace
+        fun failedGpuPresentation() {
+            clearGpuTransitionCover()
+            if (animateGpu) (newWebView.parent as? FrameLayout)?.let { triggerOnPageShow(it) }
+        }
+        if (newWebView is GpuPage && gpuTransitionCover != null) {
+            var copyRetries = 0
+            fun revealPresentedFrame() {
+                newWebView.capturePreview { frame ->
+                    if (version != gpuTransitionVersion || isFinishing || isDestroyed) {
+                        frame?.recycle()
+                        return@capturePreview
+                    }
+                    if (frame == null) {
+                        if (++copyRetries > 1) { failedGpuPresentation(); return@capturePreview }
+                        newWebView.afterNextPresentation { success ->
+                            if (version == gpuTransitionVersion) {
+                                if (success) revealPresentedFrame() else failedGpuPresentation()
+                            }
+                        }
+                        newWebView.resume()
+                        return@capturePreview
+                    }
+                    // PixelCopy waits for the submitted GPU buffer, unlike the
+                    // presentation callback. Commit those pixels before uncovering.
+                    val outgoing = gpuTransitionCover?.drawable
+                    if (gpuTransitionCover != null) showGpuTransitionFrame(frame, newWebView)
+                    if (animateGpu && outgoing != null) {
+                        animateGpuTransition(outgoing, isBackNavigation, version, newWebView)
+                        return@capturePreview
+                    }
+                    val committed = Runnable {
+                        webViewContainer.postOnAnimation {
+                            if (version == gpuTransitionVersion) clearGpuTransitionCover()
+                        }
+                    }
+                    if (Build.VERSION.SDK_INT >= 29 && webViewContainer.isHardwareAccelerated) {
+                        webViewContainer.viewTreeObserver.registerFrameCommitCallback(committed)
+                        webViewContainer.invalidate()
+                    } else webViewContainer.postOnAnimation(committed)
+                }
+            }
+            newWebView.afterNextPresentation { success ->
+                if (version == gpuTransitionVersion) {
+                    if (success) revealPresentedFrame() else failedGpuPresentation()
+                }
+            }
+        } else clearGpuTransitionCover()
         try {
             val targetPath = normalizePath(newWebView.getCurrentPath())
             // Get current WebView before changes
             val oldWebView = currentWebView
 
             if (oldWebView != null && oldWebView != newWebView) {
-                NativeBridge.notifyPageInactive(oldWebView)
+                (oldWebView as? WebView)?.let { NativeBridge.notifyPageInactive(it) }
             }
 
             val navbarState = getNavBarState(appId, targetPath)
@@ -2049,19 +2315,19 @@ class LxAppActivity : AppCompatActivity() {
                 }
             }
 
-            NativeBridge.attachIfNeeded(newWebView)
+            (newWebView as? WebView)?.let { NativeBridge.attachIfNeeded(it) }
 
             ensurePullToRefreshHelper().attachToWebView(newWebView)
             updatePullToRefreshEnabledForPath(targetPath)
 
             if (oldWebView != newWebView) {
-                NativeBridge.notifyPageActive(newWebView)
+                (newWebView as? WebView)?.let { NativeBridge.notifyPageActive(it) }
             }
 
             // Use coordinated WebView transition (handles all animation and onPageShow)
             // Only animate for forward/backward navigation, not for replace operations (tab switch, launch, replace)
-            val shouldAnimate = !isReplace
-            performWebViewTransition(oldWebView, newContainer, isBackNavigation, shouldAnimate, navbarState)
+            val shouldAnimate = !isReplace && !animateGpu
+            performWebViewTransition(oldWebView, newContainer, isBackNavigation, shouldAnimate, navbarState, animateGpu)
 
             // Update the current WebView reference
             currentWebView = newWebView
@@ -2473,6 +2739,8 @@ class LxAppActivity : AppCompatActivity() {
             Log.w(TAG, "Ignoring stale close callback for appId=$appId sessionId=$sessionId")
             return
         }
+        ++gpuTransitionVersion
+        clearGpuTransitionCover()
 
         // Pause and clean up current WebView
         currentWebView?.let { webView ->
@@ -2510,6 +2778,8 @@ class LxAppActivity : AppCompatActivity() {
 
         // Ensure all UI operations are on the main thread
         runOnUiThread {
+            ++gpuTransitionVersion
+            clearGpuTransitionCover()
             // Update app state (no intent extras needed - we're not switching activities)
             this.appId = appId
             this.currentSessionId = sessionId
@@ -2604,7 +2874,9 @@ class LxAppActivity : AppCompatActivity() {
     fun getSessionId(): Long = currentSessionId
 
     // Get current WebView (internal access for LxApp)
-    internal fun getCurrentWebView(): com.lingxia.lxapp.WebView? = currentWebView
+    internal fun getCurrentPageWebTag(): String? = currentWebView?.getWebTag()
+
+    internal fun getCurrentWebView(): com.lingxia.lxapp.WebView? = currentWebView as? WebView
 
     // Handle configuration changes to prevent Activity recreation
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {

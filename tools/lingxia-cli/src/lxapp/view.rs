@@ -1,3 +1,4 @@
+mod gpu;
 mod react;
 mod vite_assets;
 mod vite_html;
@@ -85,7 +86,29 @@ pub fn build(
     progress: Option<ViewProgress>,
     install_duration_hint: Option<Duration>,
 ) -> Result<ViewBuildReport> {
-    vite_pipeline::build(project, options, progress, install_duration_hint)
+    let mut web = project.clone();
+    web.pages
+        .retain(|page| !crate::lxapp::framework::is_gpu_page(page));
+    fs::create_dir_all(&project.output_dir)?;
+    vite_assets::copy_static_assets(project, options)?;
+    vite_assets::write_root_manifest(project)?;
+    let mut report = if web.pages.is_empty() {
+        ViewBuildReport {
+            framework: project.framework,
+            page_count: 0,
+            install_duration: None,
+            prepare_duration: Duration::ZERO,
+            bundle_duration: Duration::ZERO,
+            finalize_duration: Duration::ZERO,
+        }
+    } else {
+        vite_pipeline::build(&web, options, progress, install_duration_hint)?
+    };
+    let started = std::time::Instant::now();
+    gpu::build(project)?;
+    report.bundle_duration += started.elapsed();
+    report.page_count = project.pages.len();
+    Ok(report)
 }
 
 pub fn prepare_tooling(
@@ -93,12 +116,18 @@ pub fn prepare_tooling(
     options: &BuildOptions,
     progress: Option<ViewProgress>,
 ) -> Result<Option<Duration>> {
-    vite_pipeline::prepare_tooling(project, options, progress)
+    let mut web = project.clone();
+    web.pages
+        .retain(|page| !crate::lxapp::framework::is_gpu_page(page));
+    if web.pages.is_empty() {
+        Ok(None)
+    } else {
+        vite_pipeline::prepare_tooling(&web, options, progress)
+    }
 }
 
 pub(crate) fn page_logic_path(project: &Project, page_path: &str) -> Result<Option<PathBuf>> {
-    let page_path_obj = Path::new(page_path);
-    let without_ext = page_path_obj.with_extension("");
+    let without_ext = PathBuf::from(crate::lxapp::framework::page_base(page_path));
     let ts_path = project.root.join(&without_ext).with_extension("ts");
     let js_path = project.root.join(&without_ext).with_extension("js");
     match (ts_path.exists(), js_path.exists()) {
@@ -799,6 +828,11 @@ fn collect_top_level_function_bindings<'a>(
 /// Every framework ships the same page-bridge metadata; the page runtime builds
 /// the action functions from it.
 pub(crate) fn bridge_metadata_script(actions: &[PageAction]) -> String {
+    let metadata = bridge_metadata(actions);
+    format!("window.__pageBridge = {metadata};")
+}
+
+pub(crate) fn bridge_metadata(actions: &[PageAction]) -> Value {
     let names = actions
         .iter()
         .map(|action| action.name.as_str())
@@ -807,11 +841,7 @@ pub(crate) fn bridge_metadata_script(actions: &[PageAction]) -> String {
         .iter()
         .map(|action| (action.name.as_str(), action.mode.as_str()))
         .collect::<std::collections::BTreeMap<_, _>>();
-    format!(
-        "window.__pageBridge = {{ __names: {}, __modes: {} }};",
-        serde_json::to_string(&names).unwrap_or_else(|_| "[]".to_string()),
-        serde_json::to_string(&modes).unwrap_or_else(|_| "{{}}".to_string())
-    )
+    serde_json::json!({"__names": names, "__modes": modes})
 }
 
 fn infer_property_mode(

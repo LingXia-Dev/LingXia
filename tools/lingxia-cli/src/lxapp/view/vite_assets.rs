@@ -1,4 +1,3 @@
-use super::vite_pipeline::strip_ext;
 use crate::lxapp::framework::ProjectFramework;
 use crate::lxapp::options::BuildOptions;
 use crate::lxapp::project::{Project, ProjectKind};
@@ -27,7 +26,12 @@ pub(super) fn write_root_manifest(project: &Project) -> Result<()> {
             let page_map = project
                 .pages
                 .iter()
-                .map(|page| (strip_ext(page), page.clone()))
+                .map(|page| {
+                    (
+                        crate::lxapp::framework::page_base(page),
+                        crate::lxapp::framework::compiled_page_path(page),
+                    )
+                })
                 .collect::<std::collections::HashMap<_, _>>();
 
             rewrite_manifest_pages(value.get_mut("pages"), &page_map)?;
@@ -96,12 +100,16 @@ fn rewrite_page_value(
         .get("path")
         .and_then(Value::as_str)
         .ok_or_else(|| anyhow!("lxapp.json pages entries must include path"))?;
-    let Some(resolved) = page_map.get(&strip_ext(raw)) else {
+    let Some(resolved) = page_map.get(&crate::lxapp::framework::page_base(raw)) else {
         bail!("Page file not found for {raw}");
     };
     page.as_object_mut()
         .ok_or_else(|| anyhow!("lxapp.json pages entries must be objects with name/path"))?
         .insert("path".to_string(), Value::String(resolved.clone()));
+    if resolved.ends_with(".ui.js") {
+        page["renderer"] = "gpu".into();
+        page["module"] = resolved.clone().into();
+    }
     Ok(())
 }
 

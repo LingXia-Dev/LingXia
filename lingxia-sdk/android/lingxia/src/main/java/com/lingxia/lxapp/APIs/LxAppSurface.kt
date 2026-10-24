@@ -27,6 +27,9 @@ import com.lingxia.app.Lingxia
 import com.lingxia.app.LxLog
 import com.lingxia.lxapp.DevServiceMark
 import com.lingxia.lxapp.LxApp
+import com.lingxia.lxapp.GpuPage
+import com.lingxia.lxapp.pause
+import com.lingxia.lxapp.resume
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.R
 import com.lingxia.lxapp.updateFrameLayoutParamsIfChanged
@@ -78,9 +81,10 @@ internal object LxAppSurface {
         val appId: String,
         val pageInstanceId: String?,
         val overlay: FrameLayout,
-        val webView: android.webkit.WebView,
+        val contentView: View,
         val browserTabId: String?,
         val fullScreen: Boolean,
+        val modal: Boolean,
         /**
          * True only for explicitly immersive full-screen floats. Adaptive asides
          * use full-screen layout too, but keep Android system chrome visible and
@@ -130,6 +134,23 @@ internal object LxAppSurface {
     // JNI entrypoints run on Rust worker threads while mount retries and layout
     // reconciliation run on the UI thread, so all three maps share one lock.
     private val stateLock = Any()
+    // Main-thread state: restore authored values when the top modal changes.
+    private val modalAccessibility = java.util.WeakHashMap<View, Int>()
+
+    private fun updateModalAccessibility(activity: Activity) {
+        modalAccessibility.forEach { (view, original) -> view.importantForAccessibility = original }
+        modalAccessibility.clear()
+        val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
+        val modals = synchronized(stateLock) {
+            entries.values.filter { it.modal && it.overlay.visibility == View.VISIBLE }.map { it.overlay }.toSet()
+        }
+        val top = (root.childCount - 1 downTo 0).firstOrNull { root.getChildAt(it) in modals } ?: return
+        for (index in 0 until top) {
+            val view = root.getChildAt(index)
+            modalAccessibility[view] = view.importantForAccessibility
+            view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        }
+    }
 
     @JvmStatic
     fun present(
@@ -282,7 +303,7 @@ internal object LxAppSurface {
     }
 
     /**
-     * Toggle the surface to visible without tearing it down. Leaves the WebView
+     * Toggle the surface to visible without tearing it down. Leaves the page View
      * attached so the page state survives — a subsequent hide() then show()
      * round-trip restores the same scroll position, form input, and JS state.
      *
@@ -331,8 +352,8 @@ internal object LxAppSurface {
         if (synchronized(stateLock) { !pendingRequests.containsKey(request.id) }) {
             return
         }
-        val webView = NativeApi.findWebViewByPageInstanceId(request.pageInstanceId)
-        if (webView == null) {
+        val contentView = NativeApi.findPageViewByPageInstanceId(request.pageInstanceId)
+        if (contentView == null) {
             if (attempt < MOUNT_RETRY_COUNT) {
                 activity.window?.decorView?.postDelayed({ mountWhenReady(activity, request, attempt + 1) }, MOUNT_RETRY_DELAY_MS)
             } else {
@@ -340,13 +361,13 @@ internal object LxAppSurface {
                     pendingRequests.remove(request.id)
                     pendingVisibility.remove(request.id)
                 }
-                LxLog.e(TAG, "present failed: WebView not ready for ${request.webtag}", appId = request.appId, path = request.logPath)
+                LxLog.e(TAG, "present failed: page View not ready for ${request.webtag}", appId = request.appId, path = request.logPath)
                 NativeApi.disposePageInstance(request.pageInstanceId, "failed")
                 NativeApi.onSurfaceClosed(request.appId, request.id, "failed")
             }
             return
         }
-        mount(activity, request, webView)
+        mount(activity, request, contentView)
     }
 
     private fun mountManagedUrlWhenReady(activity: Activity, request: Request, attempt: Int) {
@@ -373,7 +394,7 @@ internal object LxAppSurface {
         mount(activity, request, webView)
     }
 
-    private fun mount(activity: Activity, request: Request, webView: android.webkit.WebView) {
+    private fun mount(activity: Activity, request: Request, contentView: View) {
         closeEntry(request.id, request.appId, "programmatic", notifyNative = false)
         val requestedVisibility = synchronized(stateLock) {
             pendingRequests.remove(request.id)
@@ -387,13 +408,12 @@ internal object LxAppSurface {
             } else if (request.browserTabId != null) {
                 NativeApi.browserTabClose(request.browserTabId)
             } else {
-                webView.stopLoading()
-                webView.destroy()
+                (contentView as? android.webkit.WebView)?.let { it.stopLoading(); it.destroy() }
             }
             NativeApi.onSurfaceClosed(request.appId, request.id, "failed")
             return
         }
-        (webView.parent as? ViewGroup)?.removeView(webView)
+        (contentView.parent as? ViewGroup)?.removeView(contentView)
 
         val fillsScreen = isFullScreenRequest(request)
         val usesDrillInChrome = usesDrillInChrome(request)
@@ -469,7 +489,13 @@ internal object LxAppSurface {
             applySafeLayout(activity, rootView, overlay, surface, request)
             WindowInsetsCompat.CONSUMED
         }
-        surface.addView(webView, FrameLayout.LayoutParams(
+        // Insets can arrive before the new window dimensions are measured.
+        overlay.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                applySafeLayout(activity, rootView, overlay, surface, request)
+            }
+        }
+        surface.addView(contentView, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
@@ -489,17 +515,17 @@ internal object LxAppSurface {
         DevServiceMark.bringToFront(activity)
         ViewCompat.requestApplyInsets(overlay)
 
-        if (webView is com.lingxia.lxapp.WebView) {
-            NativeBridge.attachIfNeeded(webView)
+        if (contentView is com.lingxia.lxapp.WebView) {
+            NativeBridge.attachIfNeeded(contentView)
         }
         val initiallyVisible = requestedVisibility != PendingVisibility.HIDE
-        webView.visibility = if (initiallyVisible) View.VISIBLE else View.GONE
-        if (webView is com.lingxia.lxapp.WebView) {
+        contentView.visibility = if (initiallyVisible) View.VISIBLE else View.GONE
+        if (contentView is com.lingxia.lxapp.WebView || contentView is GpuPage) {
             if (request.content == CONTENT_PAGE) {
                 NativeApi.notifyPageInstanceMounted(request.pageInstanceId)
             }
             if (initiallyVisible) {
-                webView.resume()
+                contentView.resume()
                 if (request.content == CONTENT_PAGE) {
                     NativeApi.notifyPageInstanceVisible(request.pageInstanceId)
                 }
@@ -511,9 +537,10 @@ internal object LxAppSurface {
             appId = request.appId,
             pageInstanceId = request.pageInstanceId.takeIf { request.content == CONTENT_PAGE },
             overlay = overlay,
-            webView = webView,
+            contentView = contentView,
             browserTabId = request.browserTabId,
             fullScreen = fillsScreen,
+            modal = request.modal,
             immersive = immersive,
         )
         synchronized(stateLock) {
@@ -533,6 +560,7 @@ internal object LxAppSurface {
             ImmersiveWindowUi.apply(activity.window, keepScreenOn = false)
         }
 
+        updateModalAccessibility(activity)
         Log.d(TAG, "presented id=${request.id} appId=${request.appId} content=${request.logPath} fillsScreen=$fillsScreen immersive=$immersive role=${request.role}")
     }
 
@@ -706,15 +734,16 @@ internal object LxAppSurface {
             entry.windowSnapshot = null
         }
 
-        (entry.webView.parent as? ViewGroup)?.removeView(entry.webView)
+        (entry.contentView.parent as? ViewGroup)?.removeView(entry.contentView)
         (entry.overlay.parent as? ViewGroup)?.removeView(entry.overlay)
+        LxApp.getCurrentActivity()?.let { updateModalAccessibility(it) }
         if (entry.browserTabId != null) {
             NativeApi.browserTabClose(entry.browserTabId)
-        } else if (entry.webView is com.lingxia.lxapp.WebView) {
-            entry.webView.pause()
-        } else {
-            entry.webView.stopLoading()
-            entry.webView.destroy()
+        } else if (entry.pageInstanceId != null) {
+            entry.contentView.pause()
+        } else if (entry.contentView is android.webkit.WebView) {
+            entry.contentView.stopLoading()
+            entry.contentView.destroy()
         }
 
         if (notifyNative) {
@@ -768,7 +797,8 @@ internal object LxAppSurface {
         // ever forwards a redundant show/hide.
         if (entry.overlay.visibility == target) return
         entry.overlay.visibility = target
-        entry.webView.visibility = target
+        entry.contentView.visibility = target
+        updateModalAccessibility(activity)
         if (visible) DevServiceMark.bringToFront(activity)
         if (entry.immersive) {
             if (visible) {
@@ -780,13 +810,13 @@ internal object LxAppSurface {
                 entry.windowSnapshot?.let { ImmersiveWindowUi.restore(activity.window, it) }
             }
         }
-        if (notifyLifecycle && entry.webView is com.lingxia.lxapp.WebView) {
+        if (notifyLifecycle && entry.pageInstanceId != null) {
             if (visible) {
-                entry.webView.resume()
-                NativeBridge.notifyPageActive(entry.webView)
+                entry.contentView.resume()
+                if (entry.contentView is com.lingxia.lxapp.WebView) NativeBridge.notifyPageActive(entry.contentView)
                 entry.pageInstanceId?.let { NativeApi.notifyPageInstanceVisible(it) }
             } else {
-                entry.webView.pause()
+                entry.contentView.pause()
                 entry.pageInstanceId?.let { NativeApi.notifyPageInstanceHidden(it, "hidden") }
             }
         }

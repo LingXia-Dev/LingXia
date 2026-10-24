@@ -30,6 +30,7 @@ pub mod lx;
 mod lxapp;
 mod native_authority;
 mod native_component;
+pub mod network_access;
 mod page;
 pub(crate) mod plugin;
 pub mod provider;
@@ -142,7 +143,11 @@ pub use lxapp::{
 #[doc(hidden)]
 pub use native_authority::NativeControlPlaneAuthority;
 pub use native_component::{NativeComponentHost, register_native_component_host};
-pub use page::config::{OrientationConfig, PageOrientation};
+pub use page::config::{OrientationConfig, PageOrientation, PageRenderer};
+pub use page::{
+    GpuPageView, GpuPageViewFactory, GpuViewCreation, GpuViewGeneration, PageViewEnvironment,
+    register_gpu_page_view_factory,
+};
 pub use page::{
     LeaveReason, NavigationType, PageAutomationState, PageInstance, PageInstanceId,
     PageWebViewAwait, ViewCallOptions, register_page_resolver, resolve_page_path,

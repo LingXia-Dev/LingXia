@@ -69,13 +69,13 @@ pub(crate) fn reload_pages_for_host_class_change() {
             // stack is parked awaiting re-entry and a headless or LRU-detached
             // one has no WebView at all; serving either would un-park it and
             // run its code off-screen against a service that is gone.
-            if page.webview().is_none() || page.document_is_departing() {
+            if !page.has_live_view() || page.document_is_departing() {
                 continue;
             }
             // The old document's in-flight view calls and channels belong to a
             // page that is about to be replaced.
             page.cancel_bridge_work();
-            if let Err(error) = page.load_html() {
+            if let Err(error) = page.reload_view() {
                 warn!("failed to re-serve page after a host class change: {error}")
                     .with_appid(app.appid.clone());
             }

@@ -116,6 +116,12 @@ pub(super) fn copy_html_page_support_files(
         let destination_path = output_dir.join(&file_name);
 
         if entry.file_type()?.is_dir() {
+            // Root-level HTML pages must not copy their output back into itself.
+            if output_dir.starts_with(&source_path)
+                || matches!(file_name_str.as_ref(), "node_modules" | ".git" | ".lingxia")
+            {
+                continue;
+            }
             copy_dir_recursive(&source_path, &destination_path)?;
             continue;
         }
@@ -649,6 +655,21 @@ mod tests {
     use crate::lxapp::framework::{PageAction, PageActionMode, ProjectFramework};
     use crate::lxapp::project::ProjectKind;
     use tempfile::tempdir;
+
+    #[test]
+    fn root_html_support_copy_excludes_output_and_tooling() {
+        let temp = tempdir().unwrap();
+        let output = temp.path().join("dist");
+        fs::create_dir_all(&output).unwrap();
+        fs::create_dir_all(temp.path().join("node_modules")).unwrap();
+        fs::write(output.join("already-built.js"), "built").unwrap();
+        fs::write(temp.path().join("node_modules/dep.js"), "dependency").unwrap();
+        fs::write(temp.path().join("style.css"), "body{}").unwrap();
+        copy_html_page_support_files(temp.path(), &output, "index").unwrap();
+        assert!(output.join("style.css").exists());
+        assert!(!output.join("dist").exists());
+        assert!(!output.join("node_modules").exists());
+    }
 
     fn write_file(root: &Path, relative: &str, content: &str) {
         let path = root.join(relative);

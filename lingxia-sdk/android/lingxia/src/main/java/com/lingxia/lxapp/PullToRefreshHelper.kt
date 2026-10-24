@@ -59,6 +59,8 @@ internal class PullToRefreshHelper(
     private var startY = 0f
     private var currentPullDistance = 0f
     private var webView: View? = null
+    private var gpuTouchCallback: com.lingxia.ui.GpuView.PullToRefresh? = null
+    private var webTouchCallback: ((MotionEvent) -> Boolean)? = null
     // The wrapper last moved down, so a reset puts back the one it moved even
     // after a page swap made another wrapper current.
     private var movedWrapper: View? = null
@@ -117,14 +119,38 @@ internal class PullToRefreshHelper(
         if (isBusy() && this.webView !== webView) {
             abort()
         }
+        if (this.webView !== webView) clearTouchCallback()
         this.webView = webView
         ensureIndicatorAttached()
 
-        if (webView is com.lingxia.lxapp.WebView) {
-            webView.pullToRefreshCallback = { event ->
-                handleTouch(webView, event)
-            }
+        if (webView is GpuPage) {
+            gpuTouchCallback = com.lingxia.ui.GpuView.PullToRefresh { event -> handleTouch(webView, event) }
+            webView.setPullToRefresh(gpuTouchCallback)
         }
+        if (webView is com.lingxia.lxapp.WebView) {
+            webTouchCallback = { event -> handleTouch(webView, event) }
+            webView.pullToRefreshCallback = webTouchCallback
+        }
+    }
+
+    private fun clearTouchCallback() {
+        // A replacement activity may already have installed its own callback.
+        gpuTouchCallback?.let { (webView as? GpuPage)?.clearPullToRefresh(it) }
+        (webView as? com.lingxia.lxapp.WebView)?.let {
+            if (it.pullToRefreshCallback === webTouchCallback) it.pullToRefreshCallback = null
+        }
+        gpuTouchCallback = null
+        webTouchCallback = null
+    }
+
+    fun detach() {
+        abort()
+        clearTouchCallback()
+        webView = null
+    }
+
+    fun restorePageOffset() {
+        if (currentPullDistance > 0f && movedWrapper === currentWrapper()) updatePullState()
     }
 
     fun setEnabled(enabled: Boolean) {
@@ -141,7 +167,7 @@ internal class PullToRefreshHelper(
     private fun isBusy(): Boolean = isRefreshing || pendingDismiss != null
 
     private fun handleTouch(view: View, event: MotionEvent): Boolean {
-        if (!isEnabled) return false
+        if (!isEnabled || view !== webView) return false
         if (event.pointerCount > 1) {
             if (!isBusy()) resetState()
             return false
@@ -165,6 +191,11 @@ internal class PullToRefreshHelper(
                 if (isBusy()) return false
 
                 val isAtTop = !view.canScrollVertically(-1)
+                if (!isPulling && !isAtTop) {
+                    startX = event.rawX
+                    startY = event.rawY
+                    return false
+                }
                 val deltaX = event.rawX - startX
                 val deltaY = event.rawY - startY
 
@@ -193,7 +224,7 @@ internal class PullToRefreshHelper(
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (isPulling && !isBusy()) {
-                    if (currentPullDistance >= triggerDistancePx) {
+                    if (event.action == MotionEvent.ACTION_UP && currentPullDistance >= triggerDistancePx) {
                         startRefreshing()
                     } else {
                         animateToPosition(0f)

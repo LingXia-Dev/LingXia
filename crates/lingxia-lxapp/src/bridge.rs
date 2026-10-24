@@ -39,6 +39,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::oneshot;
 
+enum BridgeMessageContext<'a> {
+    Web(&'a WebMessageContext),
+    Gpu,
+}
+
 /// Browser host-TCB lease used only to install a required V3 bridge binding.
 /// It may be current while bootstrap is pending, but its supplied outbound
 /// gate remains Active-only and is therefore safe to retain for later sends.
@@ -176,12 +181,10 @@ fn admit_before_host_dispatch<C, T>(
 
 impl ViewTransport for PageInstance {
     fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError> {
-        if let Some(controller) = self.webview_controller() {
-            controller
-                .post_message(&message_json)
-                .map_err(LxAppError::from)
+        if let Some(view) = self.page_view() {
+            view.post_message(&message_json)
         } else {
-            Err(LxAppError::WebView("WebView not ready".to_string()))
+            Err(LxAppError::Runtime("page View not ready".to_string()))
         }
     }
 
@@ -191,12 +194,10 @@ impl ViewTransport for PageInstance {
         gate: Arc<dyn DocumentOutboundGate>,
         message_json: String,
     ) -> Result<(), LxAppError> {
-        if let Some(controller) = self.webview_controller() {
-            controller
-                .post_message_to_document(expected_generation, gate, &message_json)
-                .map_err(LxAppError::from)
+        if let Some(view) = self.page_view() {
+            view.post_message_to_document(expected_generation, gate, &message_json)
         } else {
-            Err(LxAppError::WebView("WebView not ready".to_string()))
+            Err(LxAppError::Runtime("page View not ready".to_string()))
         }
     }
 }
@@ -273,10 +274,46 @@ impl SessionWorkId {
 /// Immutable delivery credentials captured when work is created. The gate
 /// owns the final document/session check at the native JavaScript boundary.
 #[derive(Clone)]
-pub(crate) struct OutboundContext {
-    expected_generation: DocumentGeneration,
-    gate: Arc<dyn DocumentOutboundGate>,
-    binding: Option<V3OutboundBinding>,
+pub(crate) enum OutboundContext {
+    Document {
+        expected_generation: DocumentGeneration,
+        gate: Arc<dyn DocumentOutboundGate>,
+        binding: Option<V3OutboundBinding>,
+    },
+    Gpu {
+        endpoint: std::sync::Weak<dyn crate::GpuPageView>,
+        generation: crate::GpuViewGeneration,
+    },
+}
+
+impl OutboundContext {
+    fn binding(&self) -> Option<&V3OutboundBinding> {
+        match self {
+            Self::Document { binding, .. } => binding.as_ref(),
+            Self::Gpu { .. } => None,
+        }
+    }
+
+    fn post<T: ViewTransport>(&self, transport: &T, message: String) -> Result<(), LxAppError> {
+        match self {
+            Self::Document {
+                expected_generation,
+                gate,
+                ..
+            } => {
+                transport.post_message_to_document(*expected_generation, Arc::clone(gate), message)
+            }
+            Self::Gpu {
+                endpoint,
+                generation,
+            } => {
+                let endpoint = endpoint
+                    .upgrade()
+                    .ok_or_else(|| LxAppError::Bridge("GPU endpoint was disposed".into()))?;
+                endpoint.post_message_for_generation(*generation, &message)
+            }
+        }
+    }
 }
 
 /// One bridge lifetime, legacy or V3. Work must retain this exact connection
@@ -562,6 +599,27 @@ impl DeferredRequiredV3Cancellation {
     }
 }
 
+fn gpu_view_control_route(route: &str) -> bool {
+    matches!(route, "navigation.setLeaveGuard" | "navigation.leave")
+}
+
+#[test]
+fn gpu_leave_controls_are_an_exact_allowlist() {
+    assert!(gpu_view_control_route("navigation.setLeaveGuard"));
+    assert!(gpu_view_control_route("navigation.leave"));
+    for route in [
+        "navigation.leave.extra",
+        "navigation",
+        "navigation.navigateBack",
+        "navigation.goHome",
+        "host.navigation.leave",
+        "navigation.leave ",
+        "storage.get",
+    ] {
+        assert!(!gpu_view_control_route(route), "{route}");
+    }
+}
+
 pub(crate) fn required_cap_for_name(name: &str) -> String {
     if name.starts_with("host.") {
         return "host".to_string();
@@ -667,7 +725,7 @@ impl PageBridge {
             .expect("native-generated control document binding must be valid");
         let connection = Arc::new(BridgeConnection {
             work_id: self.next_session_work_id(),
-            outbound: Some(OutboundContext {
+            outbound: Some(OutboundContext::Document {
                 expected_generation,
                 gate: outbound_gate,
                 binding: Some(protocol.outbound_binding()),
@@ -774,7 +832,7 @@ impl PageBridge {
         let work_id = self.next_session_work_id();
         #[cfg(target_os = "windows")]
         let outbound = match document {
-            DocumentBinding::Bound(expected_generation) => Some(OutboundContext {
+            DocumentBinding::Bound(expected_generation) => Some(OutboundContext::Document {
                 expected_generation,
                 gate: Arc::new(LegacySessionOutboundGate {
                     handshake: Arc::downgrade(&self.inner.handshake),
@@ -897,6 +955,143 @@ impl PageBridge {
         self.inner.lxapp.clone()
     }
 
+    pub(crate) fn bind_gpu(
+        &self,
+        page: &PageInstance,
+        endpoint: &Arc<dyn crate::GpuPageView>,
+    ) -> Result<crate::GpuViewGeneration, LxAppError> {
+        if !page.is_current_gpu_endpoint(endpoint) {
+            return Err(LxAppError::Bridge(
+                "GPU endpoint is no longer attached".into(),
+            ));
+        }
+        let work_id = self.next_session_work_id();
+        let generation = crate::GpuViewGeneration(work_id.0);
+        let connection = Arc::new(BridgeConnection {
+            work_id,
+            outbound: Some(OutboundContext::Gpu {
+                endpoint: Arc::downgrade(endpoint),
+                generation,
+            }),
+            caller: host::AuthenticatedCaller::for_lxapp(&self.inner.lxapp),
+        });
+        let previous = {
+            let mut handshake = self.inner.handshake.lock().unwrap();
+            self.begin_work_locked(page, work_id)?;
+            handshake.protocol = BridgeProtocol::LegacyV2;
+            handshake.ready = false;
+            handshake.session_id = None;
+            handshake.connection.replace(connection)
+        };
+        if let Some(previous) = previous {
+            self.cancel_work(page, previous, "GPU connection replaced");
+        }
+        Ok(generation)
+    }
+
+    pub(crate) fn cancel_gpu_generation(
+        &self,
+        page: &PageInstance,
+        generation: crate::GpuViewGeneration,
+    ) {
+        let connection = {
+            let mut handshake = self.inner.handshake.lock().unwrap();
+            if !connection_matches_work(
+                handshake.connection.as_ref(),
+                Some(SessionWorkId(generation.0)),
+            ) {
+                return;
+            }
+            handshake.ready = false;
+            handshake.session_id = None;
+            handshake.connection.take()
+        };
+        if let Some(connection) = connection {
+            self.cancel_work(page, connection, "GPU connection failed");
+        }
+    }
+
+    pub(crate) fn cancel_gpu_endpoint(
+        &self,
+        page: &PageInstance,
+        endpoint: &Arc<dyn crate::GpuPageView>,
+    ) {
+        let connection = {
+            let mut handshake = self.inner.handshake.lock().unwrap();
+            let matches = handshake.connection.as_ref().is_some_and(|connection|
+                matches!(connection.outbound.as_ref(), Some(OutboundContext::Gpu { endpoint: current, .. })
+                    if current.upgrade().is_some_and(|current| Arc::ptr_eq(&current, endpoint))));
+            if !matches {
+                return;
+            }
+            handshake.ready = false;
+            handshake.session_id = None;
+            handshake.connection.take()
+        };
+        if let Some(connection) = connection {
+            self.cancel_work(page, connection, "GPU setup cancelled");
+        }
+    }
+
+    pub(crate) fn handle_gpu_incoming(
+        &self,
+        page: &PageInstance,
+        endpoint: &Arc<dyn crate::GpuPageView>,
+        generation: crate::GpuViewGeneration,
+        frame: &str,
+    ) -> Result<(), LxAppError> {
+        // Admission precedes parsing; JavaScript cannot select either the endpoint or generation.
+        {
+            let handshake = self.inner.handshake.lock().unwrap();
+            let valid = handshake.connection.as_ref().is_some_and(|connection| {
+                matches!(connection.outbound.as_ref(), Some(OutboundContext::Gpu { endpoint: expected, generation: current })
+                    if *current == generation && expected.upgrade().is_some_and(|expected| Arc::ptr_eq(&expected, endpoint)))
+            });
+            if !valid {
+                return Err(LxAppError::Bridge("stale GPU connection".into()));
+            }
+        }
+        let decoded = self.predecode_inbound(frame)?;
+        if decoded.bound_v3 || decoded.work.work_id != Some(SessionWorkId(generation.0)) {
+            return Err(LxAppError::Bridge(
+                "GPU connection changed during admission".into(),
+            ));
+        }
+        if let IncomingMessage::Req(request) = &decoded.message
+            && request
+                .method
+                .strip_prefix("host.")
+                .is_some_and(|route| !gpu_view_control_route(route))
+        {
+            return self.send_res_err_for_context(
+                page,
+                decoded.work.work_id,
+                decoded.work.outbound.as_ref(),
+                request.id.clone(),
+                "E_PERMISSION_DENIED",
+                Some("GPU View host calls require a Logic action".into()),
+                None,
+            );
+        }
+        if let IncomingMessage::ChOpen(request) = &decoded.message
+            && request.topic.contains('.')
+        {
+            return self.send_ch_ack_err_for_context(
+                page,
+                decoded.work.work_id,
+                decoded.work.outbound.as_ref(),
+                request.id.clone(),
+                "E_PERMISSION_DENIED",
+                Some("GPU View channels require a page Logic handler".into()),
+                None,
+            );
+        }
+        if matches!(decoded.message, IncomingMessage::Notify(_)) {
+            return Err(LxAppError::Bridge("unsupported GPU ingress frame".into()));
+        }
+        self.execute_decoded_incoming(page, &BridgeMessageContext::Gpu, decoded)
+    }
+
     pub(crate) fn handle_incoming(
         &self,
         page: &PageInstance,
@@ -918,13 +1113,13 @@ impl PageBridge {
             ));
         }
 
-        self.execute_decoded_incoming(page, context, decoded)
+        self.execute_decoded_incoming(page, &BridgeMessageContext::Web(context), decoded)
     }
 
     fn execute_decoded_incoming(
         &self,
         page: &PageInstance,
-        context: &WebMessageContext,
+        context: &BridgeMessageContext,
         decoded: DecodedIncoming,
     ) -> Result<(), LxAppError> {
         match &decoded.message {
@@ -1025,7 +1220,11 @@ impl PageBridge {
         if !Self::work_try_commit_effect(&prepared.decoded.work) {
             return Ok(());
         }
-        self.execute_decoded_incoming(page, prepared.incoming.context(), prepared.decoded)
+        self.execute_decoded_incoming(
+            page,
+            &BridgeMessageContext::Web(prepared.incoming.context()),
+            prepared.decoded,
+        )
     }
 
     fn predecode_inbound(&self, frame: &str) -> Result<DecodedIncoming, LxAppError> {
@@ -1118,16 +1317,21 @@ impl PageBridge {
     fn admit_host_route(
         &self,
         _page: &PageInstance,
-        _context: &WebMessageContext,
-        _route: &str,
+        context: &BridgeMessageContext,
+        route: &str,
     ) -> Result<(), LxAppError> {
+        if matches!(context, BridgeMessageContext::Gpu) && !gpu_view_control_route(route) {
+            return Err(LxAppError::Bridge(
+                "GPU Views must invoke host APIs through Logic actions".into(),
+            ));
+        }
         Ok(())
     }
 
     fn handle_res(
         &self,
         page: &PageInstance,
-        _context: &WebMessageContext,
+        _context: &BridgeMessageContext,
         msg: &ResMsg,
         work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
@@ -1155,7 +1359,7 @@ impl PageBridge {
     fn handle_ch_data(
         &self,
         page: &PageInstance,
-        _context: &WebMessageContext,
+        _context: &BridgeMessageContext,
         msg: &ChDataMsg,
         work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
@@ -1181,7 +1385,7 @@ impl PageBridge {
     fn handle_ch_close(
         &self,
         page: &PageInstance,
-        _context: &WebMessageContext,
+        _context: &BridgeMessageContext,
         msg: &ChCloseMsg,
         work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
@@ -1209,7 +1413,7 @@ impl PageBridge {
     fn handle_cancel(
         &self,
         _page: &PageInstance,
-        _context: &WebMessageContext,
+        _context: &BridgeMessageContext,
         msg: &CancelMsg,
         work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
@@ -1225,7 +1429,7 @@ impl PageBridge {
     fn handle_state_ack(
         &self,
         page: &PageInstance,
-        _context: &WebMessageContext,
+        _context: &BridgeMessageContext,
         msg: &StateAckMsg,
         work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
@@ -1245,7 +1449,7 @@ impl PageBridge {
     fn handle_unknown(
         &self,
         page: &PageInstance,
-        _context: &WebMessageContext,
+        _context: &BridgeMessageContext,
         unknown: &UnknownMsg,
         work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
@@ -1291,7 +1495,7 @@ impl PageBridge {
     fn handle_hello(
         &self,
         page: &PageInstance,
-        _context: &WebMessageContext,
+        _context: &BridgeMessageContext,
         msg: &HelloMsg,
         decoded: &DecodedIncoming,
     ) -> Result<(), LxAppError> {
@@ -1322,9 +1526,23 @@ impl PageBridge {
         }
 
         let session_id = self.new_session_id();
-        let Some(connection) =
-            self.replace_with_legacy_session_work(page, decoded.work.work_id, _context.document())?
-        else {
+        let connection = match _context {
+            BridgeMessageContext::Web(context) => self.replace_with_legacy_session_work(
+                page,
+                decoded.work.work_id,
+                context.document(),
+            )?,
+            BridgeMessageContext::Gpu => {
+                let handshake = self.inner.handshake.lock().unwrap();
+                if handshake.ready
+                    || !connection_matches_work(handshake.connection.as_ref(), decoded.work.work_id)
+                {
+                    return Err(LxAppError::Bridge("stale or repeated GPU hello".into()));
+                }
+                handshake.connection.clone()
+            }
+        };
+        let Some(connection) = connection else {
             return Ok(());
         };
         let work_id = connection.work_id;
@@ -1441,7 +1659,7 @@ impl PageBridge {
     fn handle_req(
         &self,
         page: &PageInstance,
-        context: &WebMessageContext,
+        context: &BridgeMessageContext,
         msg: &ReqMsg,
         work: &CapturedSessionWork,
         ready: bool,
@@ -1560,7 +1778,7 @@ impl PageBridge {
     fn handle_notify(
         &self,
         page: &PageInstance,
-        context: &WebMessageContext,
+        context: &BridgeMessageContext,
         msg: &NotifyMsg,
         work: &CapturedSessionWork,
         ready: bool,
@@ -1599,7 +1817,7 @@ impl PageBridge {
     fn handle_ch_open(
         &self,
         page: &PageInstance,
-        context: &WebMessageContext,
+        context: &BridgeMessageContext,
         msg: &ChOpenMsg,
         work: &CapturedSessionWork,
         ready: bool,
@@ -1960,9 +2178,7 @@ impl PageBridge {
         if !self.is_current_work(work_id) {
             return Ok(());
         }
-        let serialized = if let Some(binding) =
-            outbound.and_then(|outbound| outbound.binding.as_ref())
-        {
+        let serialized = if let Some(binding) = outbound.and_then(OutboundContext::binding) {
             let mut payload = serde_json::to_value(msg)?;
             let object = payload
                 .as_object_mut()
@@ -1980,11 +2196,7 @@ impl PageBridge {
             serde_json::to_string(msg)?
         };
         if let Some(outbound) = outbound {
-            transport.post_message_to_document(
-                outbound.expected_generation,
-                Arc::clone(&outbound.gate),
-                serialized,
-            )
+            outbound.post(transport, serialized)
         } else {
             transport.post_message_to_view(serialized)
         }
@@ -2004,26 +2216,18 @@ impl PageBridge {
         if !self.is_current_work(work_id) {
             return Ok(());
         }
-        if let Some(binding) = outbound.and_then(|outbound| outbound.binding.as_ref()) {
+        if let Some(binding) = outbound.and_then(OutboundContext::binding) {
             let payload: Value = serde_json::from_str(payload_json)
                 .map_err(|_| LxAppError::Bridge("invalid V3 outbound payload".to_string()))?;
             let frame = serde_json::json!({ "id": id, "seq": seq, "payload": payload });
             let frame = encode_v3_outbound_frame(binding, v3_kind, frame)
                 .map_err(|_| LxAppError::Bridge("invalid V3 outbound payload".to_string()))?;
             let outbound = outbound.expect("V3 binding belongs to an outbound context");
-            return transport.post_message_to_document(
-                outbound.expected_generation,
-                Arc::clone(&outbound.gate),
-                serde_json::to_string(&frame)?,
-            );
+            return outbound.post(transport, serde_json::to_string(&frame)?);
         }
         let serialized = serialize_seq_frame_with_payload(kind, id, seq, payload_json)?;
         if let Some(outbound) = outbound {
-            transport.post_message_to_document(
-                outbound.expected_generation,
-                Arc::clone(&outbound.gate),
-                serialized,
-            )
+            outbound.post(transport, serialized)
         } else {
             transport.post_message_to_view(serialized)
         }
@@ -2039,8 +2243,7 @@ impl PageBridge {
     ) -> Result<(), LxAppError> {
         // The captured outbound binding, rather than mutable handshake state,
         // identifies the protocol of the document receiving this frame.
-        let protocol =
-            protocol_for_binding(outbound.and_then(|outbound| outbound.binding.as_ref()));
+        let protocol = protocol_for_binding(outbound.and_then(OutboundContext::binding));
         let msg = HelloAck {
             v: 2,
             kind: "helloAck",
@@ -2292,7 +2495,7 @@ impl PageBridge {
     fn dispatch_host_ch_open(
         &self,
         page: &PageInstance,
-        context: &WebMessageContext,
+        context: &BridgeMessageContext,
         id: String,
         host_topic: &str,
         params_json: Option<String>,
@@ -2431,7 +2634,7 @@ impl PageBridge {
     fn dispatch_host_req(
         &self,
         page: &PageInstance,
-        context: &WebMessageContext,
+        context: &BridgeMessageContext,
         id: String,
         host_method: String,
         params_json: Option<String>,
@@ -2628,7 +2831,7 @@ impl PageBridge {
     fn dispatch_host_notify(
         &self,
         page: &PageInstance,
-        context: &WebMessageContext,
+        context: &BridgeMessageContext,
         host_method: String,
         params_json: Option<String>,
         work: &CapturedSessionWork,
@@ -2809,6 +3012,56 @@ mod tests {
     use super::*;
     use std::cell::RefCell;
 
+    #[test]
+    fn gpu_outbound_keeps_its_endpoint_and_generation_without_document_fallback() {
+        #[derive(Default)]
+        struct Endpoint(Mutex<Vec<(u64, String)>>);
+        impl crate::GpuPageView for Endpoint {
+            fn post_message(&self, _: &str) -> Result<(), LxAppError> {
+                panic!("unbound delivery")
+            }
+            fn post_message_for_generation(
+                &self,
+                generation: crate::GpuViewGeneration,
+                frame: &str,
+            ) -> Result<(), LxAppError> {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((generation.get(), frame.into()));
+                Ok(())
+            }
+            fn update_environment(&self, _: crate::PageViewEnvironment) -> Result<(), LxAppError> {
+                Ok(())
+            }
+            fn reload(&self) -> Result<(), LxAppError> {
+                Ok(())
+            }
+            fn park(&self) -> Result<(), LxAppError> {
+                Ok(())
+            }
+            fn dispose(&self) {}
+        }
+        struct OtherTransport;
+        impl ViewTransport for OtherTransport {
+            fn post_message_to_view(&self, _: String) -> Result<(), LxAppError> {
+                panic!("must not target current View")
+            }
+        }
+        let target = Arc::new(Endpoint::default());
+        let endpoint: Arc<dyn crate::GpuPageView> = target.clone();
+        let outbound = OutboundContext::Gpu {
+            endpoint: Arc::downgrade(&endpoint),
+            generation: crate::GpuViewGeneration(42),
+        };
+        assert!(outbound.binding().is_none());
+        outbound.post(&OtherTransport, "reply".into()).unwrap();
+        assert_eq!(*target.0.lock().unwrap(), vec![(42, "reply".into())]);
+        drop(endpoint);
+        drop(target);
+        assert!(outbound.post(&OtherTransport, "late".into()).is_err());
+    }
+
     #[derive(Debug, PartialEq, Eq)]
     struct TestContext {
         native_view: u64,
@@ -2816,11 +3069,11 @@ mod tests {
     }
 
     #[test]
-    fn host_admission_seam_requires_web_message_context() {
+    fn host_admission_seam_requires_native_message_context() {
         let _seam: fn(
             &PageBridge,
             &PageInstance,
-            &WebMessageContext,
+            &BridgeMessageContext,
             &str,
         ) -> Result<(), LxAppError> = PageBridge::admit_host_route;
     }

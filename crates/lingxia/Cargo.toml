@@ -84,6 +84,7 @@ tokio = { workspace = true }
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.22.4"
 android_logger = "0.15.1"
+lingxia-ui = { workspace = true, features = ["gpu"] }
 
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 swift-bridge = "0.1.59"

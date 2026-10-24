@@ -13,6 +13,8 @@
 }
 
 # Classes the Rust runtime resolves by name to call their static methods.
+-keep class com.lingxia.ui.GpuView { *; }
+-keep class com.lingxia.lxapp.GpuPage { *; }
 -keep class com.lingxia.app.AppScreenshot { public static !synthetic <methods>; }
 -keep class com.lingxia.app.UpdateManager { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.LxApp { public static !synthetic <methods>; }
@@ -50,6 +52,9 @@
 # Called back from the Rust runtime when a page's WebView resolves.
 -keep interface com.lingxia.app.PageWebViewCallback {
     void onResult(com.lingxia.lxapp.WebView, int);
+}
+-keep interface com.lingxia.app.PageViewCallback {
+    void onResult(android.view.View, int);
 }
 
 # WebView methods the Rust runtime calls on the instance it was handed.

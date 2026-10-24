@@ -51,6 +51,11 @@ the same commit (`tools/lingxia-runner/macos/install-local-runner.sh`, or
 Template providers refresh in the background; the one being scaffolded from is
 refreshed first.
 
+Host bundle cache keys include the contents of reachable `@lingxia/*` packages,
+including source exports, compiler entrypoints and `dist`. Exclude nested
+`node_modules`, `.git` and `.lingxia` state; dependency discovery hashes reachable
+LingXia packages separately. Re-run the host build after editing a linked package.
+
 ## `lxdev` details
 
 - `lxdev lxapp info` carries `logic_features`: a read-only snapshot keyed by

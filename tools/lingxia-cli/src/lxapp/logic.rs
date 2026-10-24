@@ -469,8 +469,7 @@ fn discover_app_logic(project_root: &Path) -> Result<Option<PathBuf>> {
 fn discover_page_logic_entries(project: &Project) -> Result<Vec<(PathBuf, String)>> {
     let mut entries = Vec::new();
     for page_path in &project.pages {
-        let page_path_obj = Path::new(page_path);
-        let without_ext = page_path_obj.with_extension("");
+        let without_ext = PathBuf::from(crate::lxapp::framework::page_base(page_path));
         let ts_path = project.root.join(&without_ext).with_extension("ts");
         let js_path = project.root.join(&without_ext).with_extension("js");
         match (ts_path.exists(), js_path.exists()) {
@@ -479,8 +478,14 @@ fn discover_page_logic_entries(project: &Project) -> Result<Vec<(PathBuf, String
                     "Logic layer conflict for {page_path}: found both .ts and .js"
                 ));
             }
-            (true, false) => entries.push((ts_path, page_path.clone())),
-            (false, true) => entries.push((js_path, page_path.clone())),
+            (true, false) => entries.push((
+                ts_path,
+                crate::lxapp::framework::compiled_page_path(page_path),
+            )),
+            (false, true) => entries.push((
+                js_path,
+                crate::lxapp::framework::compiled_page_path(page_path),
+            )),
             (false, false) => {}
         }
     }

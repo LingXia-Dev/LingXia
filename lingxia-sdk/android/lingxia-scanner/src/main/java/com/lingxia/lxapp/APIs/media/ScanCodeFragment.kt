@@ -23,6 +23,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -304,6 +305,15 @@ internal class ScanCodeFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        requireActivity().onBackPressedDispatcher.addCallback(
+            viewLifecycleOwner,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    isEnabled = false
+                    deliverCancelled()
+                }
+            }
+        )
         previewView?.previewStreamState?.observe(viewLifecycleOwner) { state ->
             updatePreviewStreamState(state)
         }

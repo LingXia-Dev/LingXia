@@ -77,6 +77,19 @@ pub fn resolve_page_path(
     page_path: &str,
     framework: ProjectFramework,
 ) -> Option<String> {
+    let base = page_base(page_path);
+    let config = project_root.join(format!("{base}.json"));
+    if fs::read_to_string(config)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .is_some_and(|value| value["renderer"] == "gpu")
+    {
+        let candidate = format!("{base}.ui.tsx");
+        return project_root.join(&candidate).is_file().then_some(candidate);
+    }
+    if is_gpu_page(page_path) {
+        return None;
+    }
     let page_path = Path::new(page_path);
     if page_path.extension().is_some() {
         let full_path = project_root.join(page_path);
@@ -105,6 +118,30 @@ pub fn resolve_page_path(
     None
 }
 
+pub(crate) fn is_gpu_page(path: &str) -> bool {
+    path.ends_with(".ui.tsx") || path.ends_with(".ui.js")
+}
+
+pub(crate) fn page_base(path: &str) -> String {
+    for suffix in [".ui.tsx", ".ui.js"] {
+        if let Some(base) = path.strip_suffix(suffix) {
+            return base.replace('\\', "/");
+        }
+    }
+    Path::new(path)
+        .with_extension("")
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+pub(crate) fn compiled_page_path(path: &str) -> String {
+    if is_gpu_page(path) {
+        format!("{}.ui.js", page_base(path))
+    } else {
+        path.to_owned()
+    }
+}
+
 fn detect_framework_from_manifest(project_root: &Path) -> Result<Option<ProjectFramework>> {
     for manifest_name in ["lxapp.json", "lxplugin.json"] {
         let manifest_path = project_root.join(manifest_name);
@@ -117,11 +154,30 @@ fn detect_framework_from_manifest(project_root: &Path) -> Result<Option<ProjectF
         if let Some(framework) = manifest.get("framework").and_then(Value::as_str) {
             return Ok(Some(parse_framework(framework)?));
         }
-        let Some(page_path) = extract_first_manifest_page_entry(&manifest)? else {
-            continue;
-        };
-        if let Some(framework) = detect_framework_for_page_path(project_root, page_path)? {
-            return Ok(Some(framework));
+        // GPU pages do not select the WebView framework for their siblings.
+        extract_first_manifest_page_entry(&manifest)?;
+        let mut gpu = false;
+        if let Some(pages) = manifest.get("pages").and_then(Value::as_array) {
+            for page in pages {
+                let Some(path) = page.get("path").and_then(Value::as_str) else {
+                    continue;
+                };
+                let config = project_root.join(format!("{}.json", page_base(path)));
+                if fs::read_to_string(config)
+                    .ok()
+                    .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+                    .is_some_and(|v| v["renderer"] == "gpu")
+                {
+                    gpu = true;
+                    continue;
+                }
+                if let Some(framework) = detect_framework_for_page_path(project_root, path)? {
+                    return Ok(Some(framework));
+                }
+            }
+        }
+        if gpu {
+            return Ok(Some(ProjectFramework::Html));
         }
     }
 
@@ -222,6 +278,32 @@ fn normalize_relative_path(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gpu_page_does_not_select_react_for_webview_siblings() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("lxapp.json"),
+            r#"{"pages":[{"name":"native","path":"native"},{"name":"web","path":"web"}]}"#,
+        )
+        .unwrap();
+        fs::write(dir.path().join("native.json"), r#"{"renderer":"gpu"}"#).unwrap();
+        fs::write(dir.path().join("native.ui.tsx"), "").unwrap();
+        fs::write(dir.path().join("web.html"), "").unwrap();
+        assert_eq!(
+            detect_project_framework(dir.path()).unwrap(),
+            ProjectFramework::Html
+        );
+        assert_eq!(
+            resolve_page_path(dir.path(), "native", ProjectFramework::Html).as_deref(),
+            Some("native.ui.tsx")
+        );
+        assert_eq!(page_base("pages/home/index.ui.tsx"), "pages/home/index");
+        assert_eq!(
+            compiled_page_path("pages/home/index.ui.tsx"),
+            "pages/home/index.ui.js"
+        );
+    }
 
     #[test]
     fn ambiguity_error_lists_only_actual_candidates() {

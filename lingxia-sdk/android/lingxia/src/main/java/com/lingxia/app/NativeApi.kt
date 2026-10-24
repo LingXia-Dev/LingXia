@@ -406,7 +406,18 @@ internal object NativeApi {
     ): com.lingxia.lxapp.WebView?
 
     @JvmStatic
+    external fun awaitPageView(
+        appId: String,
+        sessionId: Long,
+        webtag: String?,
+        callback: PageViewCallback
+    ): android.view.View?
+
+    @JvmStatic
     external fun findWebViewByPageInstanceId(pageInstanceId: String): com.lingxia.lxapp.WebView?
+
+    @JvmStatic
+    external fun findPageViewByPageInstanceId(pageInstanceId: String): android.view.View?
 
     @JvmStatic
     external fun notifyPageInstanceMounted(pageInstanceId: String): Boolean
@@ -516,4 +527,8 @@ internal fun interface PageWebViewCallback {
         const val FAILED = 1
         const val GONE = 2
     }
+}
+
+internal fun interface PageViewCallback {
+    fun onResult(view: android.view.View?, status: Int)
 }

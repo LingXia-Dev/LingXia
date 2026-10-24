@@ -26,7 +26,7 @@ internal object LxAppPullToRefresh {
             return
         }
         activity.runOnUiThread {
-            val presented = activity.getCurrentWebView()?.getWebTag()
+            val presented = activity.getCurrentPageWebTag()
             if (presented != webtag) {
                 Log.d(TAG, "$action skipped: $webtag is not the presented page ($presented)")
                 return@runOnUiThread

@@ -6,6 +6,15 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
+/// Rendering backend is presentation metadata, never caller authority.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PageRenderer {
+    #[default]
+    Webview,
+    Gpu,
+}
+
 /// PageInstance orientation configuration
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -157,6 +166,8 @@ impl<'de> Deserialize<'de> for OrientationOverride {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PageConfig {
     #[serde(default)]
+    pub renderer: PageRenderer,
+    #[serde(default)]
     pub navigation_style: NavigationStyle,
 
     #[serde(default)]
@@ -249,7 +260,7 @@ impl PageConfig {
         }
 
         let json_path = path_to_json_path(path);
-        match lxapp.read_json(&json_path) {
+        let config = match lxapp.read_json(&json_path) {
             Ok(value) => Self::from_value(&json_path, value).map_err(|error| {
                 let detail = error.to_string();
                 let detail = if detail.starts_with(&json_path) {
@@ -261,7 +272,19 @@ impl PageConfig {
             }),
             Err(LxAppError::ResourceNotFound(_)) => Ok(Self::default()),
             Err(error) => Err(error),
+        }?;
+        let catalog = lxapp.config();
+        if let Some(entry) = catalog
+            .pages
+            .iter()
+            .find(|entry| entry.path == path.trim_start_matches('/'))
+            && entry.renderer != config.renderer
+        {
+            return Err(LxAppError::InvalidJsonFile(format!(
+                "{json_path}: renderer must match the lxapp.json page entry"
+            )));
         }
+        Ok(config)
     }
 
     /// Create NavigationBarState from this config
@@ -298,6 +321,12 @@ fn path_to_json_path(path: &str) -> String {
         return "pages/index/index.json".to_string();
     }
 
+    // UI modules have a composite extension; their config remains index.json.
+    for extension in [".ui.js", ".ui.tsx"] {
+        if let Some(base) = trimmed.strip_suffix(extension) {
+            return format!("{base}.json");
+        }
+    }
     // Remove any extension on the last path segment
     if let Some(dot_pos) = trimmed.rfind('.') {
         let last_slash = trimmed.rfind('/');
@@ -312,6 +341,37 @@ fn path_to_json_path(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn renderer_and_composite_module_config_paths() {
+        assert_eq!(
+            path_to_json_path("/pages/home/index.ui.js"),
+            "pages/home/index.json"
+        );
+        assert_eq!(
+            path_to_json_path("pages/home/index.ui.tsx"),
+            "pages/home/index.json"
+        );
+        assert_eq!(
+            path_to_json_path("pages/v1.2/index.html"),
+            "pages/v1.2/index.json"
+        );
+        assert_eq!(
+            PageConfig::from_value("page.json", serde_json::json!({}))
+                .unwrap()
+                .renderer,
+            PageRenderer::Webview
+        );
+        assert_eq!(
+            PageConfig::from_value("page.json", serde_json::json!({"renderer":"gpu"}))
+                .unwrap()
+                .renderer,
+            PageRenderer::Gpu
+        );
+        assert!(
+            PageConfig::from_value("page.json", serde_json::json!({"renderer":"canvas"})).is_err()
+        );
+    }
 
     #[test]
     fn rejects_removed_page_fields_with_actionable_diagnostics() {

@@ -25,7 +25,19 @@ pub(crate) fn harden_release_output(project: &Project) -> Result<()> {
 
 fn harden_javascript_source(path: &Path, source: &str) -> Result<String> {
     let allocator = Allocator::default();
-    minify_javascript_with_source_type(&allocator, path, source, source_type(path)?)
+    let output = minify_javascript_with_source_type(&allocator, path, source, source_type(path)?)?;
+    // The native UI loader reads this declaration before executing the module.
+    // Ordinary comments can be stripped; this one is part of the artifact ABI.
+    if path.to_string_lossy().ends_with(".ui.js") {
+        if let Some(header) = source
+            .lines()
+            .next()
+            .filter(|line| line.starts_with("// LingXia UI module; "))
+        {
+            return Ok(format!("{header}\n{output}"));
+        }
+    }
+    Ok(output)
 }
 
 /// Oxc can undo the target an ES5 or plugin View build chose, so that output
@@ -561,6 +573,26 @@ mod tests {
         assert!(
             error.contains("Failed to parse release JavaScript"),
             "{error}"
+        );
+    }
+
+    #[test]
+    fn gpu_release_keeps_compatibility_manifest_before_minified_code() {
+        let header = r#"// LingXia UI module; {"uiAbi":1,"minField":102,"requiredFeatures":["bounded-jobs"],"compiler":"0.25.1"}"#;
+        let source =
+            format!("{header}\n// discard this comment\nexport function render() {{ return 1; }}");
+        let output =
+            harden_javascript_source(Path::new("pages/home/index.ui.js"), &source).unwrap();
+        assert_eq!(output.lines().next(), Some(header));
+        assert!(!output.contains("discard this comment"));
+        assert_eq!(
+            harden_javascript_source(Path::new("pages/home/index.ui.js"), &output).unwrap(),
+            output
+        );
+        assert!(
+            !harden_javascript_source(Path::new("logic.js"), &source)
+                .unwrap()
+                .contains(header)
         );
     }
 
