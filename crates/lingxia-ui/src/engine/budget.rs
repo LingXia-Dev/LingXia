@@ -9,7 +9,7 @@ struct State {
     stopped: bool,
 }
 
-/// A sleeping watchdog per QuickJS isolate, never a timer or thread per frame.
+/// A sleeping watchdog per preemptible isolate, never a timer or thread per frame.
 pub(crate) struct Budget {
     shared: Arc<(Mutex<State>, Condvar)>,
     thread: Option<JoinHandle<()>>,
@@ -18,12 +18,7 @@ pub(crate) struct Budget {
 impl Budget {
     pub(crate) fn new(runtime: &rong::JSRuntime) -> Arc<Self> {
         let shared = Arc::new((Mutex::new(State::default()), Condvar::new()));
-        // Apple preemption uses private SPI; ArkJS cannot preempt a running loop.
-        let enabled = cfg!(any(
-            target_os = "android",
-            target_os = "windows",
-            all(target_os = "linux", not(target_env = "ohos"))
-        ));
+        let enabled = <super::Active as super::Engine>::PREEMPTIBLE;
         let thread = enabled.then(|| {
             let shared = shared.clone();
             let handle = runtime.interrupt_handle();

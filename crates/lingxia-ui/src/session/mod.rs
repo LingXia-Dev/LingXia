@@ -78,17 +78,17 @@ impl ViewSession {
         let context = runtime.context();
         let initialized = budget.run(Duration::from_secs(1), || {
             crate::engine::compatibility::install(&context)?;
-            crate::engine::module::evaluate(&context, source)?;
+            <crate::engine::Active as crate::engine::Engine>::evaluate_module(&context, source)?;
             let valid: bool = context.eval(Source::from_bytes(
                 "['Render','Prepare','Commit','Discard','Reset','Dispatch','CreateView'].every(name=>typeof globalThis['__lingxia'+name]==='function')"
             )).map_err(|e| e.to_string())?;
             if !valid {
                 return Err("UI_MODULE: missing render or compiled UI runtime exports".into());
             }
-            crate::engine::module::drain_jobs(&context)
+            <crate::engine::Active as crate::engine::Engine>::drain_jobs(&context)
         });
         if let Err(error) = initialized {
-            crate::engine::module::discard_jobs(&context);
+            <crate::engine::Active as crate::engine::Engine>::discard_jobs(&context);
             return Err(error);
         }
         Ok(Self {
@@ -297,6 +297,7 @@ impl ViewSession {
                 {
                     return Err("UI_BRIDGE: invalid ready".into());
                 }
+                require_bounded_jobs()?;
                 self.eval("__lingxiaConfigureActions(globalThis.__lingxiaActionCatalog)")?;
                 self.bridge.as_mut().unwrap().ready = true;
                 Ok(crate::session::state::StateUpdate {
@@ -338,13 +339,7 @@ impl ViewSession {
     }
 
     pub fn configure_actions(&self, metadata: &serde_json::Value) -> Result<(), String> {
-        if !cfg!(any(
-            target_os = "android",
-            target_os = "windows",
-            all(target_os = "linux", not(target_env = "ohos"))
-        )) {
-            return Err("UI_ACTION: this engine has no View microtask adapter".into());
-        }
+        require_bounded_jobs()?;
         let json = serde_json::to_string(&metadata.to_string()).map_err(|e| e.to_string())?;
         self.eval(&format!("__lingxiaConfigureActions(JSON.parse({json}))"))
     }
@@ -1150,11 +1145,11 @@ impl ViewSession {
         }
         let result = self.budget.run(Duration::from_millis(100), || {
             let value = work()?;
-            crate::engine::module::drain_jobs(&self.context)?;
+            <crate::engine::Active as crate::engine::Engine>::drain_jobs(&self.context)?;
             Ok(value)
         });
         if result.is_err() {
-            crate::engine::module::discard_jobs(&self.context);
+            <crate::engine::Active as crate::engine::Engine>::discard_jobs(&self.context);
         }
         if result
             .as_ref()
@@ -1163,6 +1158,15 @@ impl ViewSession {
             self.poisoned.set(true);
         }
         result
+    }
+}
+
+// Page actions resolve through microtasks; an unbounded continuation would hang the worker.
+fn require_bounded_jobs() -> Result<(), String> {
+    if crate::engine::supports(crate::engine::Feature::BoundedJobs) {
+        Ok(())
+    } else {
+        Err("UI_ACTION: this engine cannot bound View microtasks".into())
     }
 }
 
@@ -1748,6 +1752,33 @@ pub(crate) mod tests {
         assert_eq!(next.nodes[0].scroll.as_ref().unwrap().offset, 0.0);
     }
 
+    /// Action tests need an engine that can interrupt runaway continuations.
+    pub(crate) fn bounded_jobs() -> bool {
+        crate::engine::supports(crate::engine::Feature::BoundedJobs)
+    }
+
+    #[test]
+    fn engines_without_bounded_jobs_refuse_page_actions() {
+        if bounded_jobs() {
+            return;
+        }
+        let mut page = ViewSession::new_with_logic(
+            &source("function render(){return h('text',{},'x')}"),
+            true,
+        )
+        .unwrap();
+        assert!(
+            page.configure_actions(&serde_json::json!({"__names":[],"__modes":{}}))
+                .is_err()
+        );
+        page.begin_bridge("nonce").unwrap();
+        page.receive_bridge(&serde_json::json!({"v":2,"kind":"helloAck","nonce":"nonce","protocol":2,"sessionId":"s"})).unwrap();
+        let error = page
+            .receive_bridge(&serde_json::json!({"v":2,"kind":"ready","sessionId":"s"}))
+            .unwrap_err();
+        assert!(error.contains("UI_ACTION"), "{error}");
+    }
+
     /// The bundled runtime the page compiler links, published with `render` as the page.
     pub(crate) fn source(render: &str) -> String {
         format!(
@@ -1758,6 +1789,9 @@ pub(crate) mod tests {
 
     #[test]
     fn committed_channel_resource_opens_without_input_and_quiesces_after_redraw() {
+        if !bounded_jobs() {
+            return;
+        }
         use serde_json::json;
         let module = source(
             "function render(view){const last=useLocal('last','waiting');const feed=useChannel('feed','ticker',{onData:v=>last.set(v)});return h('column',{},h('text',{},feed.connected?'connected':'waiting'),h('text',{},last.value));}",
@@ -1796,6 +1830,9 @@ pub(crate) mod tests {
 
     #[test]
     fn stream_bridge_events_render_and_cancel_through_the_page_endpoint() {
+        if !bounded_jobs() {
+            return;
+        }
         use serde_json::json;
         let module = source(
             "let stream;function render({actions}){const value=useLocal('value','');return h('column',{},h('button',{onClick:()=>{stream=actions.watch();stream.on('data',v=>value.set(v));}},'Start'),h('text',{},value.value),h('button',{onClick:()=>stream.cancel()},'Stop'))}",
@@ -1829,6 +1866,9 @@ pub(crate) mod tests {
 
     #[test]
     fn channel_bridge_opens_delivers_and_sends_on_the_bound_endpoint() {
+        if !bounded_jobs() {
+            return;
+        }
         use serde_json::json;
         let module = source(
             "let channel;function render({channels}){const value=useLocal('value','');return h('column',{},h('button',{onClick:async()=>{channel=await channels.open('ticker');channel.on('data',v=>{value.set(v);channel.send({symbol:'MSFT'})})}},'Connect'),h('text',{},value.value),h('button',{onClick:()=>channel.close()},'Close'))}",
@@ -2520,6 +2560,9 @@ pub(crate) mod tests {
 
     #[test]
     fn bridge_requires_ack_ready_and_state_then_roundtrips_actions() {
+        if !bounded_jobs() {
+            return;
+        }
         use serde_json::json;
         let source = source(
             "function render({data,actions}){const result=useLocal('result','');return h('button',{onClick:async()=>{result.set(await actions.increment({step:1}))}},`${data.count}/${result.value}`)}",
@@ -2605,6 +2648,9 @@ pub(crate) mod tests {
 
     #[test]
     fn action_response_runs_async_continuation_on_view_worker() {
+        if !bounded_jobs() {
+            return;
+        }
         let source = source(
             "function render({actions}){const n=useLocal('n',0);return h('button',{onClick:async()=>{const result=await actions.increment({step:1});n.set(result.count)}},n.value)}",
         );
@@ -2631,6 +2677,9 @@ pub(crate) mod tests {
 
     #[test]
     fn leave_request_updates_view_and_waits_for_explicit_confirmation() {
+        if !bounded_jobs() {
+            return;
+        }
         use serde_json::{Value, json};
         let source = source(
             "function render(){const guard=useLeaveGuard('draft',true);return h('button',{onClick:()=>guard.answer(true)},guard.pending??'editing')}",

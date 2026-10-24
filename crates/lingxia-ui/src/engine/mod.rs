@@ -1,7 +1,68 @@
 //! JavaScript engine adapters for View isolates.
 pub(crate) mod budget;
 pub(crate) mod compatibility;
-pub(crate) mod module;
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "windows",
+    all(target_os = "linux", not(target_env = "ohos"))
+)))]
+mod portable;
+#[cfg(any(
+    target_os = "android",
+    target_os = "windows",
+    all(target_os = "linux", not(target_env = "ohos"))
+))]
+mod quickjs;
+
+/// A module feature an engine adapter implements for compiled UI bundles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Feature {
+    /// Candidate render/commit/discard of View output.
+    CandidateTransactions,
+    /// Microtasks drain inside the frame budget and a runaway job can be interrupted.
+    BoundedJobs,
+}
+
+impl Feature {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::CandidateTransactions => "candidate-transactions",
+            Self::BoundedJobs => "bounded-jobs",
+        }
+    }
+}
+
+/// The per-engine half of a View isolate. Capabilities come from the impl, never from target lists.
+pub(crate) trait Engine {
+    const FEATURES: &'static [Feature];
+    /// Whether the budget watchdog can interrupt running script.
+    const PREEMPTIBLE: bool;
+    fn evaluate_module(context: &rong::JSContext, source: &str) -> Result<(), String>;
+    fn drain_jobs(context: &rong::JSContext) -> Result<(), String>;
+    /// Drain under interruption before dropping a failed context or running a sibling page.
+    fn discard_jobs(context: &rong::JSContext);
+}
+
+// Rong links exactly one engine per target; this is the only engine selection.
+#[cfg(any(
+    target_os = "android",
+    target_os = "windows",
+    all(target_os = "linux", not(target_env = "ohos"))
+))]
+pub(crate) type Active = quickjs::QuickJs;
+#[cfg(target_vendor = "apple")]
+pub(crate) type Active = portable::JavaScriptCore;
+#[cfg(target_env = "ohos")]
+pub(crate) type Active = portable::ArkJs;
+
+/// Features the linked engine provides.
+pub fn features() -> &'static [Feature] {
+    <Active as Engine>::FEATURES
+}
+
+pub(crate) fn supports(feature: Feature) -> bool {
+    features().contains(&feature)
+}
 
 use rong::{JSEngine, RongJS, Source};
 

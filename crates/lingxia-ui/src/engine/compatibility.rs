@@ -2,7 +2,7 @@ use rong::Source;
 use serde::Deserialize;
 
 const PREFIX: &str = "// LingXia UI module; ";
-const ABI: u32 = 1;
+const ABI: u32 = crate::protocol::UI_ABI;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -11,18 +11,6 @@ struct Manifest {
     min_field: usize,
     required_features: Vec<String>,
     compiler: String,
-}
-
-fn features() -> &'static [&'static str] {
-    if cfg!(any(
-        target_os = "android",
-        target_os = "windows",
-        all(target_os = "linux", not(target_env = "ohos"))
-    )) {
-        &["candidate-transactions", "bounded-jobs"]
-    } else {
-        &["candidate-transactions"]
-    }
 }
 
 pub(crate) fn validate(source: &str) -> Result<(), String> {
@@ -60,7 +48,10 @@ pub(crate) fn validate(source: &str) -> Result<(), String> {
         return Err("UI_COMPAT: invalid compiler or feature inventory".into());
     }
     for feature in manifest.required_features {
-        if !features().contains(&feature.as_str()) {
+        if !super::features()
+            .iter()
+            .any(|known| known.name() == feature)
+        {
             return Err(format!("UI_COMPAT: host lacks {feature}"));
         }
     }
@@ -68,12 +59,16 @@ pub(crate) fn validate(source: &str) -> Result<(), String> {
 }
 
 pub(crate) fn install(context: &rong::JSContext) -> Result<(), String> {
+    let features: Vec<&str> = super::features()
+        .iter()
+        .map(|feature| feature.name())
+        .collect();
     let host = serde_json::json!({
-        "uiAbi": ABI, "maxField": crate::protocol::FIELDS.len() - 1, "features": features(),
+        "uiAbi": ABI, "maxField": crate::protocol::FIELDS.len() - 1, "features": features,
     });
     context.eval::<()>(Source::from_bytes(format!(
         "Object.defineProperty(globalThis,'__lingxiaUiHost',{{value:Object.freeze({{...{host},features:Object.freeze({})}})}});",
-        serde_json::to_string(features()).unwrap()
+        serde_json::to_string(&features).unwrap()
     ))).map_err(|error| error.to_string())
 }
 
@@ -90,6 +85,11 @@ mod tests {
             )
         };
         assert!(validate(&source(1, 102, vec!["candidate-transactions"])).is_ok());
+        let bounded = validate(&source(1, 102, vec!["bounded-jobs"]));
+        assert_eq!(
+            bounded.is_ok(),
+            super::super::supports(super::super::Feature::BoundedJobs)
+        );
         for invalid in [
             source(2, 102, vec![]),
             source(1, 999, vec![]),

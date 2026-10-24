@@ -67,6 +67,9 @@ mod tests {
 
     #[test]
     fn runaway_action_microtasks_are_drained_before_a_sibling_runs() {
+        if !crate::session::tests::bounded_jobs() {
+            return;
+        }
         let mut app = ViewApp::new(2).unwrap();
         let bad = app.create(&source("function render(){return h('button',{onClick:()=>{const loop=()=>Promise.resolve().then(loop);loop()}},'run')}"), false).unwrap();
         let good = app

@@ -1,11 +1,24 @@
-//! Engine-specific ESM entry until Rong exposes module evaluation through its portable API.
+//! QuickJS adapter: native ESM evaluation, bounded microtask draining and preemption.
+use super::{Engine, Feature};
 
-#[cfg(any(
-    target_os = "android",
-    target_os = "windows",
-    all(target_os = "linux", not(target_env = "ohos"))
-))]
-pub(crate) fn drain_jobs(context: &rong::JSContext) -> Result<(), String> {
+pub(crate) struct QuickJs;
+
+impl Engine for QuickJs {
+    const FEATURES: &'static [Feature] = &[Feature::CandidateTransactions, Feature::BoundedJobs];
+    const PREEMPTIBLE: bool = true;
+
+    fn evaluate_module(context: &rong::JSContext, source: &str) -> Result<(), String> {
+        evaluate(context, source)
+    }
+    fn drain_jobs(context: &rong::JSContext) -> Result<(), String> {
+        drain_jobs(context)
+    }
+    fn discard_jobs(context: &rong::JSContext) {
+        discard_jobs(context)
+    }
+}
+
+fn drain_jobs(context: &rong::JSContext) -> Result<(), String> {
     use rong_core::engine::JSContextImpl;
     use rong_quickjs_sys as qjs;
     let started = std::time::Instant::now();
@@ -28,12 +41,7 @@ pub(crate) fn drain_jobs(context: &rong::JSContext) -> Result<(), String> {
 }
 
 /// Drain under an interrupt before dropping a failed context or running a sibling page.
-#[cfg(any(
-    target_os = "android",
-    target_os = "windows",
-    all(target_os = "linux", not(target_env = "ohos"))
-))]
-pub(crate) fn discard_jobs(context: &rong::JSContext) {
+fn discard_jobs(context: &rong::JSContext) {
     use rong_core::engine::JSContextImpl;
     use rong_quickjs_sys as qjs;
     let _interrupt = context.runtime().interrupt_handle().interrupt_scoped();
@@ -53,27 +61,7 @@ pub(crate) fn discard_jobs(context: &rong::JSContext) {
     }
 }
 
-#[cfg(not(any(
-    target_os = "android",
-    target_os = "windows",
-    all(target_os = "linux", not(target_env = "ohos"))
-)))]
-pub(crate) fn drain_jobs(_: &rong::JSContext) -> Result<(), String> {
-    Ok(())
-}
-#[cfg(not(any(
-    target_os = "android",
-    target_os = "windows",
-    all(target_os = "linux", not(target_env = "ohos"))
-)))]
-pub(crate) fn discard_jobs(_: &rong::JSContext) {}
-
-#[cfg(any(
-    target_os = "android",
-    target_os = "windows",
-    all(target_os = "linux", not(target_env = "ohos"))
-))]
-pub(crate) fn evaluate(context: &rong::JSContext, source: &str) -> Result<(), String> {
+fn evaluate(context: &rong::JSContext, source: &str) -> Result<(), String> {
     use rong_core::engine::JSContextImpl;
     use rong_quickjs_sys as qjs;
 
@@ -126,25 +114,7 @@ pub(crate) fn evaluate(context: &rong::JSContext, source: &str) -> Result<(), St
     Ok(())
 }
 
-#[cfg(not(any(
-    target_os = "android",
-    target_os = "windows",
-    all(target_os = "linux", not(target_env = "ohos"))
-)))]
-pub(crate) fn evaluate(context: &rong::JSContext, source: &str) -> Result<(), String> {
-    context
-        .eval::<()>(rong::Source::from_bytes(source))
-        .map_err(|e| e.to_string())
-}
-
-#[cfg(all(
-    test,
-    any(
-        target_os = "android",
-        target_os = "windows",
-        all(target_os = "linux", not(target_env = "ohos"))
-    )
-))]
+#[cfg(test)]
 mod tests {
     use crate::{ViewApp, session::tests::source};
 
