@@ -24,7 +24,7 @@ test('stream action references preserve commit ownership and typed payload trans
 
 test('manual stream starts only after commit, retains callbacks across redraw and returns its result', async () => {
   const view = setup(), seen = []; let stream;
-  const render = label => () => { stream = useStream('ticks', 'ticks', { onData: value => seen.push([label, value]) }); return h('text'); };
+  const render = label => () => { stream = useStream('ticks', view.actions.ticks, { onData: value => seen.push([label, value]) }); return h('text'); };
   prepare(render('abandoned'), view); discard(); stream.start(); assert.deepEqual(frames(), []);
   describe(render('first'), view); assert.deepEqual(frames(), []);
   stream.start({ count: 2 }); const [request] = frames();
@@ -39,7 +39,7 @@ test('manual stream starts only after commit, retains callbacks across redraw an
 
 test('restart cancels old stream and ignores its late events and rejection', async () => {
   const view = setup(), seen = []; let stream;
-  describe(() => { stream = useStream('ticks', 'ticks', { onData: value => seen.push(value) }); return h('text'); }, view);
+  describe(() => { stream = useStream('ticks', view.actions.ticks, { onData: value => seen.push(value) }); return h('text'); }, view);
   stream.start(); const [old] = frames();
   stream.start(); const [cancel, next] = frames(); assert.equal(cancel.id, old.id); assert.equal(cancel.kind, 'cancel');
   await flush(); assert.equal(stream.status, 'streaming');
@@ -50,7 +50,7 @@ test('restart cancels old stream and ignores its late events and rejection', asy
 
 test('scope removal cancels without local updates and stale start cannot reopen', async () => {
   const view = setup(); let stream;
-  describe(() => { stream = useStream('ticks', 'ticks', { onData() {} }); return h('text'); }, view);
+  describe(() => { stream = useStream('ticks', view.actions.ticks, { onData() {} }); return h('text'); }, view);
   stream.start(); frames();
   describe(() => h('text'), view); assert.equal(frames()[0].kind, 'cancel');
   await flush(); assert.equal(hasLocalUpdates(), false);
@@ -59,9 +59,9 @@ test('scope removal cancels without local updates and stale start cannot reopen'
 
 test('callback failure stops its producer and catalog replacement invalidates ownership', async () => {
   const view = setup(); let stream;
-  const render = () => { stream = useStream('ticks', 'ticks', { onData() { throw Error('bad payload'); } }); return h('text'); };
+  const render = view => { stream = useStream('ticks', view.actions.ticks, { onData() { throw Error('bad payload'); } }); return h('text'); };
   describe(render, view); stream.start(); const [request] = frames(); event(request.id, 0, 1);
-  await flush(); assert.equal(stream.status, 'failed'); assert.equal(stream.error, 'bad payload');
+  await flush(); assert.equal(stream.status, 'failed'); assert.deepEqual(stream.error, { code: 'UI_ERROR', message: 'bad payload' });
   assert.equal(frames()[0].kind, 'cancel');
   stream.start(); frames();
   configureActions({ __names: ['ticks'], __modes: { ticks: 'stream' } });
@@ -74,11 +74,20 @@ test('callback failure stops its producer and catalog replacement invalidates ow
 test('invalid methods, duplicate resources and render mutations never issue requests', () => {
   const view = setup();
   for (const method of ['echo', 'host.ticks', 'missing']) {
-    assert.throws(() => prepare(() => { useStream('s', method, { onData() {} }); return h('text'); }, view), /UI_STREAM/);
+    assert.throws(() => prepare(() => { useStream('s', view.actions[method], { onData() {} }); return h('text'); }, view), /UI_STREAM/);
     discard();
   }
-  assert.throws(() => prepare(() => { useStream('s', 'ticks', { onData() {} }).start(); return h('text'); }, view), /UI_RENDER/);
+  assert.throws(() => prepare(() => { useStream('s', view.actions.ticks, { onData() {} }).start(); return h('text'); }, view), /UI_RENDER/);
   discard();
-  assert.throws(() => prepare(() => { useStream('s', 'ticks', { onData() {} }); useStream('s', 'ticks', { onData() {} }); return h('text'); }, view), /duplicate/);
+  assert.throws(() => prepare(() => { useStream('s', view.actions.ticks, { onData() {} }); useStream('s', view.actions.ticks, { onData() {} }); return h('text'); }, view), /duplicate/);
   discard(); assert.deepEqual(frames(), []);
+});
+
+test('a stream without onData still reports its result', async () => {
+  const view = setup(); let stream;
+  describe(() => { stream = useStream('ticks', view.actions.ticks); return h('text'); }, view);
+  stream.start(); const [request] = frames();
+  event(request.id, 0, 'ignored'); end(request.id, 'done'); await flush();
+  assert.equal(stream.status, 'completed'); assert.equal(stream.result, 'done');
+  assert.throws(() => describe(() => { useStream('bad', view.actions.ticks, { onData: 1 }); return h('text'); }, view), /UI_STREAM: onData must be a function/);
 });

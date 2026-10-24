@@ -27,7 +27,7 @@ fn bar_paths_stay_inside_short_narrow_and_zero_bounds() {
 #[test]
 fn retained_scroll_combines_axes_and_reveals_through_nested_regions() {
     let module = crate::session::tests::source(
-        "function render(){return h('scroll',{testId:'outer',style:{width:180,height:140,background:'#ffffff'}},h('spacer',{style:{height:30}}),h('scroll',{testId:'inner',style:{scrollAxis:'horizontal',width:180,height:80,borderWidth:2,borderColor:'#000000',radius:12}},h('row',{style:{width:400,height:60}},h('spacer',{style:{width:220}}),h('button',{testId:'target',onClick:()=>{},style:{width:80,height:50,background:'#0000ff',color:'#ffffff'}},'Target'))),h('spacer',{style:{height:300}}))}",
+        "function render(){return h('scroll',{testId:'outer',style:{width:180,height:140,backgroundColor:'#ffffff'}},h('spacer',{style:{height:30}}),h('scroll',{testId:'inner',style:{overflowX:'auto',width:180,height:80,borderWidth:2,borderColor:'#000000',borderRadius:12}},h('row',{style:{width:400,height:60}},h('spacer',{style:{width:220}}),h('button',{testId:'target',onClick:()=>{},style:{width:80,height:50,backgroundColor:'#0000ff',color:'#ffffff'}},'Target'))),h('spacer',{style:{height:300}}))}",
     );
     for scale in [1.0, 2.0] {
         let mut page = crate::ViewSession::new(&module).unwrap();
@@ -120,7 +120,7 @@ fn retained_scroll_combines_axes_and_reveals_through_nested_regions() {
 #[test]
 fn bordered_scroll_keeps_children_inside_the_inner_ellipse() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{style:{background:'#ffffff'}},h('scroll',{testId:'scroll',style:{width:100,height:80,borderTopWidth:2,borderRightWidth:4,borderBottomWidth:6,borderLeftWidth:8,borderColor:'#ff0000',radius:20,background:'#ffffff'}},h('spacer',{testId:'child',style:{height:200,background:'#0000ff'}})))}",
+        "function render(){return h('column',{style:{backgroundColor:'#ffffff'}},h('scroll',{testId:'scroll',style:{width:100,height:80,borderTopWidth:2,borderRightWidth:4,borderBottomWidth:6,borderLeftWidth:8,borderColor:'#ff0000',borderRadius:20,backgroundColor:'#ffffff'}},h('spacer',{testId:'child',style:{height:200,backgroundColor:'#0000ff'}})))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let first = page.layout(120, 160, 1.0).unwrap();
@@ -162,7 +162,7 @@ fn bordered_scroll_keeps_children_inside_the_inner_ellipse() {
 #[test]
 fn subtree_opacity_composites_overlap_once_and_keeps_sibling_groups_separate() {
     let module = crate::session::tests::source(
-        "function render(){return h('stack',{style:{width:100,height:100,background:'#ffffff'}},h('stack',{style:{width:80,height:80,opacity:0.5,background:'#ff0000'}},h('spacer',{style:{width:60,height:60,background:'#0000ff'}})),h('spacer',{style:{offset:{x:40,y:40},width:40,height:40,opacity:0.5,background:'#00ff00'}}))}",
+        "function render(){return h('stack',{style:{width:100,height:100,backgroundColor:'#ffffff'}},h('stack',{style:{width:80,height:80,opacity:0.5,backgroundColor:'#ff0000'}},h('spacer',{style:{width:60,height:60,backgroundColor:'#0000ff'}})),h('spacer',{style:{left:40,top:40,width:40,height:40,opacity:0.5,backgroundColor:'#00ff00'}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();
@@ -200,7 +200,7 @@ fn subtree_opacity_composites_overlap_once_and_keeps_sibling_groups_separate() {
 #[test]
 fn vector_paths_inherit_color_fit_clip_and_move_with_retained_scroll() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{background:'#ffffff',color:'#ff0000'}},h('scroll',{style:{height:40}},h('vector',{testId:'vector',viewBox:[0,0,24,24],paths:[{d:'M-12 -12H36V36H-12z'}],style:{width:80,height:80,padding:10,shrink:0}}),h('spacer',{style:{height:80,shrink:0}})))}",
+        "function render(){return h('column',{style:{backgroundColor:'#ffffff',color:'#ff0000'}},h('scroll',{style:{height:40}},h('vector',{testId:'vector',viewBox:[0,0,24,24],paths:[{d:'M-12 -12H36V36H-12z'}],style:{width:80,height:80,padding:10,flexShrink:0}}),h('spacer',{style:{height:80,flexShrink:0}})))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();
@@ -228,7 +228,7 @@ fn vector_paths_inherit_color_fit_clip_and_move_with_retained_scroll() {
 #[test]
 fn vector_fill_and_butt_strokes_preserve_holes_and_device_scale() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{background:'#ffffff'}},h('vector',{viewBox:[0,0,24,24],paths:[{d:'M2 2h20v20H2z',fill:'none',stroke:'#0000ff',strokeWidth:2}],style:{width:48,height:48}}))}",
+        "function render(){return h('column',{style:{backgroundColor:'#ffffff'}},h('vector',{viewBox:[0,0,24,24],paths:[{d:'M2 2h20v20H2z',fill:'none',stroke:'#0000ff',strokeWidth:2}],style:{width:48,height:48}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     for scale in [1.0, 2.0] {
@@ -261,7 +261,7 @@ fn vector_transforms_cannot_expand_bounded_paths_past_coordinate_budget() {
 #[test]
 fn outer_shadows_knock_out_transparent_owners_and_preserve_layer_order() {
     let source = crate::session::tests::source(
-        "function render(){return h('stack',{style:{width:150,height:100,background:'#ffffff'}},h('column',{testId:'owner',style:{width:80,height:40,offset:{x:20,y:20},boxShadow:[{offsetX:10,color:'#ff000080'},{offsetX:15,color:'#0000ff'}]}}))}",
+        "function render(){return h('stack',{style:{width:150,height:100,backgroundColor:'#ffffff'}},h('column',{testId:'owner',style:{width:80,height:40,left:20,top:20,boxShadow:[{offsetX:10,color:'#ff000080'},{offsetX:15,color:'#0000ff'}]}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(150, 100, 1.0).unwrap();
@@ -280,7 +280,7 @@ fn outer_shadows_knock_out_transparent_owners_and_preserve_layer_order() {
 #[test]
 fn equal_corner_overrides_keep_the_image_clip_and_uniform_fast_path() {
     let source = crate::session::tests::source(
-        "function render(){return h('image',{src:'photo',style:{width:100,height:80,radiusTopLeft:8,radiusTopRight:8,radiusBottomRight:8,radiusBottomLeft:8}})}",
+        "function render(){return h('image',{src:'photo',style:{width:100,height:80,borderTopLeftRadius:8,borderTopRightRadius:8,borderBottomRightRadius:8,borderBottomLeftRadius:8}})}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(100, 80, 1.0).unwrap();
@@ -296,7 +296,7 @@ fn equal_corner_overrides_keep_the_image_clip_and_uniform_fast_path() {
 #[test]
 fn authored_corner_styles_render_shadow_and_reuse_mask_without_external_images() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{background:'#ffffff'}},h('column',{testId:'bubble',style:{width:100,height:60,radius:24,radiusBottomRight:6,background:'#0000ff',boxShadow:[{blur:8,color:'#00000080'}]}}))}",
+        "function render(){return h('column',{style:{backgroundColor:'#ffffff'}},h('column',{testId:'bubble',style:{width:100,height:60,borderRadius:24,borderBottomRightRadius:6,backgroundColor:'#0000ff',boxShadow:[{blur:8,color:'#00000080'}]}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let mut first = page.layout(140, 100, 1.0).unwrap();
@@ -325,7 +325,7 @@ fn authored_corner_styles_render_shadow_and_reuse_mask_without_external_images()
 #[test]
 fn independent_corner_snapshot_controls_editor_hits_and_scroll_clips() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{},h('scroll',{style:{width:100,height:60,radius:24}},h('input',{value:'ABCD',style:{width:100,height:60,radius:0,shrink:0}}),h('spacer',{style:{height:100,shrink:0}})))}",
+        "function render(){return h('column',{},h('scroll',{style:{width:100,height:60,borderRadius:24}},h('input',{value:'ABCD',style:{width:100,height:60,borderRadius:0,flexShrink:0}}),h('spacer',{style:{height:100,flexShrink:0}})))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(120, 100, 1.0).unwrap();
@@ -347,12 +347,12 @@ fn independent_corner_snapshot_controls_editor_hits_and_scroll_clips() {
 #[test]
 fn independent_corner_paints_survive_retained_scroll_and_keep_contours() {
     for paint_style in [
-        "background:'#0000ff'",
-        "backgroundGradient:{direction:'bottom',stops:[{offset:0,color:'#0000ff'},{offset:1,color:'#0000ff'}]}",
+        "backgroundColor:'#0000ff'",
+        "backgroundImage:{direction:'bottom',stops:[{offset:0,color:'#0000ff'},{offset:1,color:'#0000ff'}]}",
         "borderWidth:4,borderColor:'#0000ff'",
     ] {
         let source = crate::session::tests::source(&format!(
-            "function render(){{return h('column',{{style:{{background:'#ffffff'}}}},h('scroll',{{style:{{width:100,height:80}}}},h('column',{{style:{{width:100,height:60,shrink:0,radius:24,{paint_style}}}}}),h('spacer',{{style:{{height:100,shrink:0}}}})))}}"
+            "function render(){{return h('column',{{style:{{backgroundColor:'#ffffff'}}}},h('scroll',{{style:{{width:100,height:80}}}},h('column',{{style:{{width:100,height:60,flexShrink:0,borderRadius:24,{paint_style}}}}}),h('spacer',{{style:{{height:100,flexShrink:0}}}})))}}"
         ));
         let mut page = crate::ViewSession::new(&source).unwrap();
         let display = page.layout(120, 100, 1.0).unwrap();
@@ -399,7 +399,7 @@ fn independent_corner_paints_survive_retained_scroll_and_keep_contours() {
 fn blurred_shadows_fade_outside_input_clips() {
     for tag in ["column", "input"] {
         let source = crate::session::tests::source(&format!(
-            "function render(){{return h('stack',{{style:{{width:150,height:100,background:'#ffffff'}}}},h('{tag}',{{style:{{width:80,height:40,radius:0,offset:{{x:20,y:20}},boxShadow:[{{blur:10,color:'#000000'}}]}}}}))}}"
+            "function render(){{return h('stack',{{style:{{width:150,height:100,backgroundColor:'#ffffff'}}}},h('{tag}',{{style:{{width:80,height:40,borderRadius:0,left:20,top:20,boxShadow:[{{blur:10,color:'#000000'}}]}}}}))}}"
         ));
         let mut page = crate::ViewSession::new(&source).unwrap();
         let frame = page.layout(150, 100, 1.0).unwrap().rasterize().unwrap();
@@ -420,7 +420,7 @@ fn blurred_shadows_fade_outside_input_clips() {
 #[test]
 fn offscreen_owner_shadow_remains_visible_without_increasing_scroll_extent() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{width:100,height:100,background:'#ffffff'}},h('scroll',{testId:'scroll',style:{height:60}},h('column',{testId:'owner',style:{width:40,height:20,shrink:0,boxShadow:[{offsetY:40,color:'#ff0000'}]}}),h('spacer',{style:{height:100,shrink:0}})))}",
+        "function render(){return h('column',{style:{width:100,height:100,backgroundColor:'#ffffff'}},h('scroll',{testId:'scroll',style:{height:60}},h('column',{testId:'owner',style:{width:40,height:20,flexShrink:0,boxShadow:[{offsetY:40,color:'#ff0000'}]}}),h('spacer',{style:{height:100,flexShrink:0}})))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();
@@ -457,7 +457,7 @@ fn offscreen_owner_shadow_remains_visible_without_increasing_scroll_extent() {
 #[test]
 fn linear_gradient_preserves_alpha_radius_borders_and_scroll_coordinates() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{style:{width:100,height:100,background:'#ffffff'}},h('scroll',{testId:'scroll',style:{width:80,height:40}},h('column',{style:{width:80,height:80,shrink:0,radius:12,borderWidth:4,borderColor:'#00ff00',backgroundGradient:{direction:'bottom',stops:[{offset:0,color:'#ff000080'},{offset:1,color:'#0000ff80'}]}}})),h('spacer',{style:{height:20}}))}",
+        "function render(){return h('column',{style:{width:100,height:100,backgroundColor:'#ffffff'}},h('scroll',{testId:'scroll',style:{width:80,height:40}},h('column',{style:{width:80,height:80,flexShrink:0,borderRadius:12,borderWidth:4,borderColor:'#00ff00',backgroundImage:{direction:'bottom',stops:[{offset:0,color:'#ff000080'},{offset:1,color:'#0000ff80'}]}}})),h('spacer',{style:{height:20}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();
@@ -490,7 +490,7 @@ fn linear_gradient_preserves_alpha_radius_borders_and_scroll_coordinates() {
 fn gradient_interpolation_space_and_premultiplied_alpha_affect_pixels() {
     let sample = |space: &str, first: &str, last: &str| {
         let render = format!(
-            "function render(){{return h('column',{{style:{{width:101,height:20,background:'#000000',backgroundGradient:{{direction:'right',colorSpace:'{space}',stops:[{{offset:0,color:'{first}'}},{{offset:1,color:'{last}'}}]}}}}}})}}"
+            "function render(){{return h('column',{{style:{{width:101,height:20,backgroundColor:'#000000',backgroundImage:{{direction:'right',colorSpace:'{space}',stops:[{{offset:0,color:'{first}'}},{{offset:1,color:'{last}'}}]}}}}}})}}"
         );
         let mut page = crate::ViewSession::new(&crate::session::tests::source(&render)).unwrap();
         let frame = page.layout(101, 20, 1.0).unwrap().rasterize().unwrap();
@@ -508,7 +508,7 @@ fn gradient_interpolation_space_and_premultiplied_alpha_affect_pixels() {
 #[test]
 fn nested_opacity_and_scroll_clipping_preserve_group_boundaries() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{style:{width:100,height:100,background:'#ffffff'}},h('scroll',{testId:'scroll',style:{width:80,height:40,opacity:0.5}},h('column',{style:{opacity:0.5}},h('spacer',{style:{width:80,height:80,background:'#000000'}}))),h('spacer',{style:{width:100,height:20,background:'#ff0000'}}))}",
+        "function render(){return h('column',{style:{width:100,height:100,backgroundColor:'#ffffff'}},h('scroll',{testId:'scroll',style:{width:80,height:40,opacity:0.5}},h('column',{style:{opacity:0.5}},h('spacer',{style:{width:80,height:80,backgroundColor:'#000000'}}))),h('spacer',{style:{width:100,height:20,backgroundColor:'#ff0000'}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();
@@ -544,7 +544,7 @@ fn nested_opacity_and_scroll_clipping_preserve_group_boundaries() {
 #[test]
 fn scene_key_compares_paint_content_and_not_semantic_metadata() {
     let module = crate::session::tests::source(
-        "function render(){return h('scroll',{style:{height:60,radius:12,background:'#ffffff'}},h('text',{},'Hello world'),h('spacer',{style:{height:200}}))}",
+        "function render(){return h('scroll',{style:{height:60,borderRadius:12,backgroundColor:'#ffffff'}},h('text',{},'Hello world'),h('spacer',{style:{height:200}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let mut display = page.layout(240, 100, 1.0).unwrap();
@@ -641,7 +641,7 @@ fn scene_key_tracks_immutable_image_identity_and_input_bounds() {
 #[test]
 fn rounded_scroll_masks_are_shared_and_stay_fixed_during_scroll() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{padding:10,background:'#ffffff'}},h('scroll',{style:{height:80,radius:24}},h('column',{style:{height:40,background:'#ff0000'}}),h('column',{style:{height:120,background:'#0000ff'}})))}",
+        "function render(){return h('column',{style:{padding:10,backgroundColor:'#ffffff'}},h('scroll',{style:{height:80,borderRadius:24}},h('column',{style:{height:40,backgroundColor:'#ff0000'}}),h('column',{style:{height:120,backgroundColor:'#0000ff'}})))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();
@@ -678,7 +678,7 @@ fn rounded_scroll_masks_are_shared_and_stay_fixed_during_scroll() {
 #[test]
 fn nested_rounding_uses_original_bounds_and_hides_fully_masked_nodes() {
     let source = crate::session::tests::source(
-        "function render(){return h('scroll',{style:{background:'#ffffff'}},h('scroll',{style:{height:80,radius:30}},h('column',{style:{height:200,background:'#0000ff'}})),h('spacer',{style:{height:100}}))}",
+        "function render(){return h('scroll',{style:{backgroundColor:'#ffffff'}},h('scroll',{style:{height:80,borderRadius:30}},h('column',{style:{height:200,backgroundColor:'#0000ff'}})),h('spacer',{style:{height:100}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();
@@ -693,7 +693,7 @@ fn nested_rounding_uses_original_bounds_and_hides_fully_masked_nodes() {
         &pixels.data_as_u8_slice()[(100 + 10) * 4..(100 + 10) * 4 + 3],
         &[0, 0, 255]
     );
-    let mut page = crate::ViewSession::new(&crate::session::tests::source("function render(){return h('scroll',{style:{radius:40}},h('image',{src:'hidden',style:{width:1,height:1}}))}")).unwrap();
+    let mut page = crate::ViewSession::new(&crate::session::tests::source("function render(){return h('scroll',{style:{borderRadius:40}},h('image',{src:'hidden',style:{width:1,height:1}}))}")).unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();
     assert_eq!(display.image_sources().count(), 0);
     assert_eq!(display.nodes[1].visible_bounds[2], 0.0);

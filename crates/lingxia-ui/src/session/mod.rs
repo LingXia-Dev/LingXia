@@ -1583,7 +1583,7 @@ pub(crate) mod tests {
     #[test]
     fn text_scaling_discards_offscreen_list_measurements() {
         let module = source(
-            "globalThis.anchor={index:0,align:'start',seq:0};function render(){return h('list',{count:100,anchor:globalThis.anchor,row:i=>h('text',{testId:'row-'+i,style:{fontSize:16,lineHeight:24}},'A row with enough words to wrap over multiple lines')})}",
+            "globalThis.anchor={index:0,align:'start',seq:0};function render(){return h('list',{count:100,anchor:globalThis.anchor,row:i=>h('text',{testId:'row-'+i,style:{fontSize:16,lineHeight:'24px'}},'A row with enough words to wrap over multiple lines')})}",
         );
         let mut page = ViewSession::new(&module).unwrap();
         page.layout(200, 300, 1.0).unwrap();
@@ -2070,7 +2070,7 @@ pub(crate) mod tests {
     fn input_focus_tokens_survive_reorder_but_not_disable_removal_or_reset() {
         use crate::text::input::Edit;
         let module = source(
-            "globalThis.show=true;globalThis.enabled=true;globalThis.insert=false;function render(){return h('column',{},insert?h('text',{key:'new'},'new'):null,show?h('input',{key:'a',value:'canonical',enabled,autoFocus:true}):null,h('input',{key:'b',value:'second'}))}",
+            "globalThis.show=true;globalThis.enabled=true;globalThis.insert=false;function render(){return h('column',{},insert?h('text',{key:'new'},'new'):null,show?h('input',{key:'a',value:'canonical',disabled:!enabled,autoFocus:true}):null,h('input',{key:'b',value:'second'}))}",
         );
         let mut page = ViewSession::new(&module).unwrap();
         let first = page.layout(300, 300, 1.0).unwrap();
@@ -2254,7 +2254,7 @@ pub(crate) mod tests {
     #[test]
     fn keyboard_occlusion_reveals_without_surface_resize() {
         let module = source(
-            "function render(view){return h('column',{},h('scroll',{style:{grow:1}},h('spacer',{style:{height:300}}),h('input',{autoFocus:true,value:'draft',style:{height:44}}),h('spacer',{style:{height:200}})),h('spacer',{style:{height:view.env.keyboard.height}}))}",
+            "function render(view){return h('column',{},h('scroll',{style:{flexGrow:1}},h('spacer',{style:{height:300}}),h('input',{autoFocus:true,value:'draft',style:{height:44}}),h('spacer',{style:{height:200}})),h('spacer',{style:{height:view.env.keyboard.height}}))}",
         );
         let mut page = ViewSession::new(&module).unwrap();
         let frame = page.layout(300, 500, 1.0).unwrap();
@@ -2274,7 +2274,7 @@ pub(crate) mod tests {
     #[test]
     fn editor_focus_paint_tracks_autofocus_blur_disable_and_failed_frames() {
         let module = source(
-            "configureClasses([{name:'base',when:{},style:{background:'#ffffff'}},{name:'focused',when:{focus:true},style:{background:'#0000ff'}}]);globalThis.__focusEnabled=true;function render(){return h('input',{className:'base focused',enabled:globalThis.__focusEnabled,autoFocus:true,style:{width:100,height:40,radius:0}})}",
+            "configureClasses([{name:'base',when:{},style:{backgroundColor:'#ffffff'}},{name:'focused',when:{state:'focus'},style:{backgroundColor:'#0000ff'}}]);globalThis.__focusEnabled=true;function render(){return h('input',{className:'base focused',disabled:!globalThis.__focusEnabled,autoFocus:true,style:{width:100,height:40,borderRadius:0}})}",
         );
         let mut page = ViewSession::new(&module).unwrap();
         let display = page.layout(100, 40, 1.0).unwrap();
@@ -2319,7 +2319,7 @@ pub(crate) mod tests {
     #[test]
     fn editor_focus_paint_recomputes_when_scrolling_changes_visibility() {
         let module = source(
-            "configureClasses([{name:'base',when:{},style:{background:'#ffffff'}},{name:'focused',when:{focus:true},style:{background:'#0000ff'}}]);function render(){return h('scroll',{},h('spacer',{style:{height:200}}),h('input',{className:'base focused',autoFocus:true,style:{height:40,radius:0}}),h('spacer',{style:{height:160}}))}",
+            "configureClasses([{name:'base',when:{},style:{backgroundColor:'#ffffff'}},{name:'focused',when:{state:'focus'},style:{backgroundColor:'#0000ff'}}]);function render(){return h('scroll',{},h('spacer',{style:{height:200}}),h('input',{className:'base focused',autoFocus:true,style:{height:40,borderRadius:0}}),h('spacer',{style:{height:160}}))}",
         );
         let mut page = ViewSession::new(&module).unwrap();
         let first = page.layout(200, 100, 1.0).unwrap();

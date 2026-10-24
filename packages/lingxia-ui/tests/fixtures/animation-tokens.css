@@ -1,0 +1,14 @@
+/* Animation tokens the native lowering is checked against. */
+@theme {
+  --animate-blink: blink 0.9s step-end infinite;
+  --animate-chart-in: chart-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+
+  @keyframes blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+  @keyframes chart-in {
+    from { opacity: 0; transform: scale(0.96) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+}

@@ -3,7 +3,7 @@ use crate::scene::test_prelude::*;
 #[test]
 fn zero_opacity_contains_input_decorations_without_removing_semantics() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{style:{background:'#ffffff',width:100,height:100}},h('input',{testId:'editor',value:'Hello',autoFocus:true,style:{opacity:0,width:100,height:60}}))}",
+        "function render(){return h('column',{style:{backgroundColor:'#ffffff',width:100,height:100}},h('input',{testId:'editor',value:'Hello',autoFocus:true,style:{opacity:0,width:100,height:60}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let display = page.layout(100, 100, 1.0).unwrap();
@@ -27,7 +27,7 @@ fn zero_opacity_contains_input_decorations_without_removing_semantics() {
 #[test]
 fn borders_preserve_input_content_and_paint_after_editor_foreground() {
     let module = crate::session::tests::source(
-        "function render(){return h('input',{autoFocus:true,value:'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz',style:{width:160,height:56,padding:8,borderWidth:6,borderColor:'#ff0000',radius:0,background:'#ffffff'}})}",
+        "function render(){return h('input',{autoFocus:true,value:'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz',style:{width:160,height:56,padding:8,borderWidth:6,borderColor:'#ff0000',borderRadius:0,backgroundColor:'#ffffff'}})}",
     );
     for scale in [1.0, 2.0] {
         let mut page = crate::ViewSession::new(&module).unwrap();
@@ -118,7 +118,7 @@ fn aligned_single_line_editors_keep_caret_and_hit_geometry_together() {
 fn search_keeps_icon_fixed_while_text_selection_and_caret_scroll() {
     use crate::text::input::Edit;
     let module = crate::session::tests::source(
-        "function render(){return h('search',{value:'A long search query that must scroll',autoFocus:true,style:{fontSize:18,background:'#ffffff',color:'#18243a'}})}",
+        "function render(){return h('search',{value:'A long search query that must scroll',autoFocus:true,style:{fontSize:18,backgroundColor:'#ffffff',color:'#18243a'}})}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let first = page.layout(180, 80, 1.0).unwrap();
@@ -167,7 +167,7 @@ fn search_keeps_icon_fixed_while_text_selection_and_caret_scroll() {
 #[test]
 fn letter_spacing_inherits_resets_and_changes_input_geometry() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{style:{fontFamily:'mono',fontSize:20,letterSpacing:4}},h('input',{value:'ABCD',style:{height:50}}),h('input',{value:'ABCD',style:{height:50,letterSpacing:0}}),h('input',{value:'ABCD',style:{height:50,letterSpacing:-1}}))}",
+        "function render(){return h('column',{style:{fontFamily:'monospace',fontSize:20,letterSpacing:4}},h('input',{value:'ABCD',style:{height:50}}),h('input',{value:'ABCD',style:{height:50,letterSpacing:0}}),h('input',{value:'ABCD',style:{height:50,letterSpacing:-1}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let frame = page.layout(320, 200, 1.0).unwrap();
@@ -181,7 +181,7 @@ fn letter_spacing_inherits_resets_and_changes_input_geometry() {
 fn styled_textarea_caret_and_hits_share_the_retained_line_spacing() {
     use crate::text::input::Edit;
     let module = crate::session::tests::source(
-        "function render(){return h('textarea',{value:'one\\ntwo\\nthree',autoFocus:true,style:{height:160,padding:8,fontFamily:'mono',fontWeight:700,fontSize:18,lineHeight:36}})}",
+        "function render(){return h('textarea',{value:'one\\ntwo\\nthree',autoFocus:true,style:{height:160,padding:8,fontFamily:'monospace',fontWeight:700,fontSize:18,lineHeight:'36px'}})}",
     );
     for scale in [1.0, 2.0] {
         let mut page = crate::ViewSession::new(&module).unwrap();
@@ -583,7 +583,7 @@ fn placeholder_tint_is_local_and_does_not_recolor_value_or_caret() {
         }
     }
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{color:'#0000ff',placeholderColor:'#ff0000'}},h('input',{placeholder:'Hint'}))}",
+        "function render(){return h('column',{style:{color:'#0000ff'}},h('input',{placeholder:'Hint'}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(200, 80, 1.0).unwrap();
@@ -703,7 +703,7 @@ fn long_inputs_reveal_selection_focus_without_resetting_the_viewport() {
         ("textarea", "line\\n".repeat(12) + "last", 1),
     ] {
         let module = crate::session::tests::source(&format!(
-            "function render(){{return h('{tag}',{{value:'{value}',autoFocus:true,style:{{height:100,fontSize:20,background:'#ffffff'}}}})}}"
+            "function render(){{return h('{tag}',{{value:'{value}',autoFocus:true,style:{{height:100,fontSize:20,backgroundColor:'#ffffff'}}}})}}"
         ));
         let mut page = crate::ViewSession::new(&module).unwrap();
         let first = page.layout(180, 100, 1.0).unwrap();
@@ -827,7 +827,7 @@ fn displayed_offsets_preserve_unicode_and_password_boundaries() {
 fn input_geometry_uses_displayed_font_and_paints_selection_below_text() {
     use crate::text::input::Edit;
     let module = crate::session::tests::source(
-        "function render(){return h('input',{value:'Hello world',autoFocus:true,style:{fontSize:32,color:'#000000',background:'#ffffff'}})}",
+        "function render(){return h('input',{value:'Hello world',autoFocus:true,style:{fontSize:32,color:'#000000',backgroundColor:'#ffffff'}})}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let first = page.layout(300, 80, 1.0).unwrap();
@@ -943,7 +943,7 @@ fn empty_and_secure_inputs_keep_a_caret_and_multiline_selection_wraps() {
 #[test]
 fn caret_moves_with_retained_scroll_and_disappears_when_hidden() {
     let module = crate::session::tests::source(
-        "function render(){return h('scroll',{style:{radius:20}},h('input',{value:'hello',autoFocus:true}),h('spacer',{style:{height:300}}))}",
+        "function render(){return h('scroll',{style:{borderRadius:20}},h('input',{value:'hello',autoFocus:true}),h('spacer',{style:{height:300}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let first = page.layout(200, 100, 1.0).unwrap();

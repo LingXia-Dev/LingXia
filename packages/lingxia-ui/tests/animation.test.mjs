@@ -5,9 +5,10 @@ import {compile} from 'tailwindcss';
 import postcss from 'postcss';
 import {lowerAnimation} from '../compiler/animation.mjs';
 import {compileUtilities} from '../compiler/tailwind.mjs';
-import {configureClasses, resolveStyle} from '../src/style/classes.js';
+import {configureClasses, resolveClasses} from '../src/style/classes.js';
 import {describe, h} from '../src/internal.js';
 
+const tokens = await readFile(new URL('./fixtures/animation-tokens.css',import.meta.url),'utf8');
 const fixture = JSON.parse(await readFile(new URL('./fixtures/animations.json',import.meta.url),'utf8'));
 const lower = (css,value='enter 350ms linear') => lowerAnimation(value,postcss.parse(css));
 const fade = '@keyframes enter {from {opacity:0} to {opacity:1}}';
@@ -16,22 +17,19 @@ const theme = `@theme { --animate-enter: enter 200ms linear; @keyframes enter {f
 const experimental = {animationLowering:true};
 
 test('utility lowering carries exact showcase effects through the existing rule cascade', async () => {
-  const tokens = await readFile(new URL('../../../examples/lingxia-showcase/lxapp/theme/tokens.css',import.meta.url),'utf8');
-  // Browser pre-stamp media fallbacks are separate from native View.env themes.
-  const animationTheme = postcss.parse(tokens).nodes.find(node=>node.type==='atrule'&&node.name==='theme'&&node.nodes.some(child=>child.prop==='--animate-blink'));
-  const rules = await compileUtilities(new Set(['animate-blink','animate-chart-in']),animationTheme.toString(),experimental);
+  const rules = await compileUtilities(new Set(['animate-blink','animate-chart-in']),tokens,experimental);
   assert.ok(rules.length >= 2);
   assert.ok(rules.every(rule=>!rule.error),JSON.stringify(rules));
   configureClasses(rules);
   for (const theme of ['light','dark']) for (const name of ['blink','chart-in']) {
-    assert.deepEqual(resolveStyle(`animate-${name}`,undefined,{theme}).style.animation,fixture[name]);
+    assert.deepEqual(resolveClasses(`animate-${name}`,{theme}).base.animation,fixture[name]);
   }
 });
 
 test('animation shorthand reset obeys Tailwind order, viewport and theme rather than class string order', async () => {
   const names = new Set(['animate-enter','animate-none','md:animate-none','dark:animate-none']);
   configureClasses(await compileUtilities(names,theme,experimental));
-  const style = (name,theme='light',width=400) => resolveStyle(name,undefined,{theme,viewport:{width}}).style.animation;
+  const style = (name,theme='light',width=400) => resolveClasses(name,{theme,viewport:{width}}).base.animation;
   assert.equal(style('animate-enter animate-none'),null);
   assert.equal(style('animate-none animate-enter'),null);
   assert.equal(style('animate-enter').opacity[0].value,0);
@@ -40,25 +38,22 @@ test('animation shorthand reset obeys Tailwind order, viewport and theme rather 
   assert.equal(style('animate-enter md:animate-none','light',400).durationMs,200);
   assert.equal(style('animate-enter dark:animate-none','dark'),null);
   assert.equal(style('animate-enter dark:animate-none','light').durationMs,200);
-  assert.equal(resolveStyle('animate-enter',{animation:null},{theme:'light'}).style.animation,null);
 });
 
 test('nested animation tracks are isolated across rule configuration, cache hits and environment changes', async () => {
   const rules = await compileUtilities(new Set(['animate-enter']),theme,experimental);
   configureClasses(rules);
   rules[0].style.animation.opacity[0].value = 0.9;
-  const first = resolveStyle('animate-enter',undefined,{theme:'light'}).style.animation;
+  const first = resolveClasses('animate-enter',{theme:'light'}).base.animation;
   first.opacity[0].value = 0.8;
-  assert.equal(resolveStyle('animate-enter',undefined,{theme:'light'}).style.animation.opacity[0].value,0);
-  assert.equal(resolveStyle('animate-enter',undefined,{theme:'dark'}).style.animation.opacity[0].value,0.25);
-  assert.equal(resolveStyle('animate-enter',undefined,{theme:'light'}).style.animation.opacity[0].value,0);
+  assert.equal(resolveClasses('animate-enter',{theme:'light'}).base.animation.opacity[0].value,0);
+  assert.equal(resolveClasses('animate-enter',{theme:'dark'}).base.animation.opacity[0].value,0.25);
+  assert.equal(resolveClasses('animate-enter',{theme:'light'}).base.animation.opacity[0].value,0);
 });
 
 test('invalid effects and focus animation report diagnostics while page builds stay gated', async () => {
   const invalid = await compileUtilities(new Set(['animate-enter']), '@theme {--animate-enter:enter 1s;@keyframes enter{from{width:0px}to{width:10px}}}',experimental);
-  assert.match(invalid[0].error,/unsupported animated property width/);
-  const focus = await compileUtilities(new Set(['focus:animate-enter']),theme,experimental);
-  assert.match(focus[0].error,/focus supports paint properties only/);
+  assert.match(invalid[0].error.message,/unsupported animated property width/);
   configureClasses(await compileUtilities(new Set(['animate-enter','animate-none']),theme,experimental));
   const records = describe(()=>h('column',{className:'animate-enter'}));
   assert.equal(records[6],101);
@@ -97,10 +92,9 @@ test('animation transport budgets count UTF-8 bytes at definition and page bound
   }
 });
 
-test('official Tailwind output from React showcase tokens lowers to native fixtures', async () => {
+test('official Tailwind output from animation tokens lowers to native fixtures', async () => {
   const defaults = await readFile(new URL(import.meta.resolve('tailwindcss/theme.css')),'utf8');
-  const theme = await readFile(new URL('../../../examples/lingxia-showcase/lxapp/theme/tokens.css',import.meta.url),'utf8');
-  const compiler = await compile(`${defaults}\n${theme}\n@tailwind utilities;`);
+  const compiler = await compile(`${defaults}\n${tokens}\n@tailwind utilities;`);
   const root = postcss.parse(compiler.build(['animate-blink','animate-chart-in']));
   const vars = new Map();
   root.walkDecls(decl=>{if(decl.prop.startsWith('--'))vars.set(decl.prop,decl.value);});

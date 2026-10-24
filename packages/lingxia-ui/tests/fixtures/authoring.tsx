@@ -1,4 +1,4 @@
-import { h, List, useLocal, useRequest, useStream, useChannel, type Channel, type Stream, type Props, type View } from '../../src/index.js';
+import { List, useLocal, useRequest, useStream, useChannel, useLeaveGuard, useView, type Channel, type ChannelEndpoint, type Stream, type Props, type View } from '../../src/index.js';
 
 function Card(props: Props) { return <column {...props}/>; }
 export function render(view: View<{ save(value: string): Promise<void> }, { title: string; rows: { text: string }[]; pair: [string, number] }>) {
@@ -36,6 +36,16 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const search = <search bind={draft} value="conflict"/>;
   // @ts-expect-error search owns its keyboard
   const keyboard = <search keyboard="email"/>;
+  // @ts-expect-error style properties are checked per element
+  const misplaced = <text style={{alignItems: 'center'}}/>;
+  // @ts-expect-error grid columns are a style, not a prop
+  const columns = <grid columns={2}/>;
+  const grid = <grid style={{gridTemplateColumns: 2}}><text style={{lineClamp: 2}}>Card</text></grid>;
+  const disabled = <button disabled onClick={() => {}}>Save</button>;
+  // @ts-expect-error controls are disabled, not enabled
+  const enabled = <button enabled={false}/>;
+  const composed = <button onClick={() => {}}><vector paths={[{d: 'M0 0'}]}/><text>Inbox</text></button>;
+  const named = <switch bind={checked} accessibilityLabel="Sync"/>;
   // @ts-expect-error boolean binding has one owner
   const toggle = <switch bind={checked} onChange={() => {}}/>;
   // @ts-expect-error checkbox preserves the binding union
@@ -118,6 +128,7 @@ interface Payload { items: { title: string }[] }
 declare const load: () => Promise<Payload>;
 declare const watch: () => Stream<Payload, Payload>;
 declare const channel: Channel<Payload>;
+declare const updates: (params: { room: string }, channel: ChannelEndpoint<Payload, string>) => void;
 export async function readonlyResources() {
   const request = useRequest('load', load);
   // @ts-expect-error request snapshots are frozen
@@ -128,10 +139,19 @@ export async function readonlyResources() {
   }});
   // @ts-expect-error stream results are frozen
   stream.result?.items.pop();
-  useChannel<Payload>('channel', 'updates', {onData(message) {
+  useChannel('channel', updates, {params: {room: 'a'}, onData(message) {
     // @ts-expect-error channel messages are frozen
     message.items.pop();
   }});
+  // @ts-expect-error channel params follow the handler
+  useChannel('wrong-params', updates, {params: {room: 1}});
+  const quiet = useStream('quiet', watch);
+  quiet.error?.code.toUpperCase();
+  const guard = useLeaveGuard('draft', {enabled: true});
+  guard.answer(true);
+  const current: View = useView();
+  current.env.pointer satisfies 'fine' | 'coarse';
+  request.stale satisfies boolean;
   const direct = watch();
   // @ts-expect-error direct stream promise results are frozen
   (await direct.result).items.pop();

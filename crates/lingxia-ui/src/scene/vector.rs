@@ -248,7 +248,7 @@ mod tests {
     fn fixed_stroke_keeps_pixel_width_and_dashes_in_stretched_viewboxes() {
         for width in [64, 128] {
             let source = crate::session::tests::source(&format!(
-                "function render(){{return h('vector',{{fit:'fill',viewBox:[0,0,1,1],paths:[{{d:'M0 .5H1',fill:'none',stroke:'#000000',strokeWidth:2,strokeDasharray:[4,2],vectorEffect:'non-scaling-stroke'}}],style:{{width:{width},height:8,background:'#ffffff'}}}})}}"
+                "function render(){{return h('vector',{{viewBox:[0,0,1,1],paths:[{{d:'M0 .5H1',fill:'none',stroke:'#000000',strokeWidth:2,strokeDasharray:[4,2],vectorEffect:'non-scaling-stroke'}}],style:{{width:{width},height:8,backgroundColor:'#ffffff',objectFit:'fill'}}}})}}"
             ));
             let mut page = crate::ViewSession::new(&source).unwrap();
             let frame = page.layout(width, 8, 1.0).unwrap().rasterize().unwrap();
@@ -282,7 +282,7 @@ mod tests {
                 .contains("dash geometry budget")
         );
         let source = crate::session::tests::source(
-            "function render(){return h('column',{},Array.from({length:80},(_,i)=>h('vector',{key:String(i),fit:'fill',viewBox:[0,0,1,1],paths:[{d:'M0 .5H1',fill:'none',stroke:'#000000',strokeDasharray:[1,1],vectorEffect:'non-scaling-stroke'}],style:{width:200,height:1}})))}",
+            "function render(){return h('column',{},Array.from({length:80},(_,i)=>h('vector',{key:String(i),viewBox:[0,0,1,1],paths:[{d:'M0 .5H1',fill:'none',stroke:'#000000',strokeDasharray:[1,1],vectorEffect:'non-scaling-stroke'}],style:{width:200,height:1,objectFit:'fill'}})))}",
         );
         let mut page = crate::ViewSession::new(&source).unwrap();
         assert!(
@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn dashed_vector_raster_keeps_gaps_after_viewbox_scaling() {
         let source = crate::session::tests::source(
-            "function render(){return h('vector',{viewBox:[0,0,24,24],paths:[{d:'M0 12H24',fill:'none',stroke:'#000000',strokeWidth:2,strokeDasharray:[4,2]}],style:{width:96,height:96,background:'#ffffff'}})}",
+            "function render(){return h('vector',{viewBox:[0,0,24,24],paths:[{d:'M0 12H24',fill:'none',stroke:'#000000',strokeWidth:2,strokeDasharray:[4,2]}],style:{width:96,height:96,backgroundColor:'#ffffff'}})}",
         );
         let mut page = crate::ViewSession::new(&source).unwrap();
         let frame = page.layout(96, 96, 1.0).unwrap().rasterize().unwrap();

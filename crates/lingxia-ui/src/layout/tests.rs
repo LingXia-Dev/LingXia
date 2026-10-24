@@ -10,7 +10,7 @@ fn flex_basis_is_independent_of_growth_in_both_axes() {
             (",flexBasis:'25%'", [150.0, 150.0]),
         ] {
             let source = crate::session::tests::source(&format!(
-                "function render(){{return h('{axis}',{{style:{{width:300,height:300}}}},h('column',{{testId:'a',style:{{{size}:50,grow:1{basis}}}}}),h('column',{{testId:'b',style:{{{size}:100,grow:1{basis}}}}}))}}"
+                "function render(){{return h('{axis}',{{style:{{width:300,height:300}}}},h('column',{{testId:'a',style:{{{size}:50,flexGrow:1{basis}}}}}),h('column',{{testId:'b',style:{{{size}:100,flexGrow:1{basis}}}}}))}}"
             ));
             let mut page = crate::ViewSession::new(&source).unwrap();
             for scale in [1.0, 2.0] {
@@ -35,7 +35,7 @@ fn flex_basis_is_independent_of_growth_in_both_axes() {
 #[test]
 fn percentage_basis_recomputes_after_parent_resize() {
     let source = crate::session::tests::source(
-        "function render(){const wide=useLocal('wide',false);return h('column',{},h('row',{style:{width:wide.value?240:160}},h('column',{testId:'half',style:{flexBasis:'50%',height:20,shrink:0}})),h('button',{testId:'resize',onClick:()=>wide.set(!wide.value)},'Resize'))}",
+        "function render(){const wide=useLocal('wide',false);return h('column',{},h('row',{style:{width:wide.value?240:160}},h('column',{testId:'half',style:{flexBasis:'50%',height:20,flexShrink:0}})),h('button',{testId:'resize',onClick:()=>wide.set(!wide.value)},'Resize'))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let display = page.layout(300, 300, 1.0).unwrap();
@@ -114,7 +114,7 @@ fn flex_wrap_reflows_items_with_gaps_and_reverse_order() {
 fn composed_button_lays_out_content_and_groups_semantics_at_each_scale() {
     for scale in [1.0, 2.0] {
         let module = crate::session::tests::source(
-            "function render(){const n=useLocal('n',0);return h('column',{},h('button',{testId:'action',accessibilityLabel:'Open inbox',style:{padding:16,width:240,background:'#ffffff'},onClick:()=>n.set(n.value+1)},h('column',{style:{gap:4}},h('text',{testId:'title',style:{fontSize:18}},'Inbox'),h('text',{testId:'description',style:{fontSize:12}},'Unread '+n.value))))}",
+            "function render(){const n=useLocal('n',0);return h('column',{},h('button',{testId:'action',accessibilityLabel:'Open inbox',style:{padding:16,width:240,backgroundColor:'#ffffff'},onClick:()=>n.set(n.value+1)},h('column',{style:{gap:4}},h('text',{testId:'title',style:{fontSize:18}},'Inbox'),h('text',{testId:'description',style:{fontSize:12}},'Unread '+n.value))))}",
         );
         let mut page = crate::ViewSession::new(&module).unwrap();
         let first = page.layout(300, 200, scale).unwrap();
@@ -167,7 +167,7 @@ fn composed_button_lays_out_content_and_groups_semantics_at_each_scale() {
 fn composed_checkbox_lays_out_content_and_groups_semantics_at_each_scale() {
     for scale in [1.0, 2.0] {
         let module = crate::session::tests::source(
-            "function render(){const n=useLocal('n',0);return h('column',{},h('checkbox',{value:n.value%2===1,testId:'action',accessibilityLabel:'Open inbox',style:{padding:16,width:240,background:'#ffffff'},onChange:()=>n.set(n.value+1)},h('column',{style:{gap:4}},h('text',{testId:'title',style:{fontSize:18}},'Inbox'),h('text',{testId:'description',style:{fontSize:12}},'Unread '+n.value))))}",
+            "function render(){const n=useLocal('n',0);return h('column',{},h('checkbox',{value:n.value%2===1,testId:'action',accessibilityLabel:'Open inbox',style:{padding:16,width:240,backgroundColor:'#ffffff'},onChange:()=>n.set(n.value+1)},h('column',{style:{gap:4}},h('text',{testId:'title',style:{fontSize:18}},'Inbox'),h('text',{testId:'description',style:{fontSize:12}},'Unread '+n.value))))}",
         );
         let mut page = crate::ViewSession::new(&module).unwrap();
         let first = page.layout(300, 200, scale).unwrap();
@@ -235,7 +235,7 @@ fn percentage_growth_cannot_publish_unbounded_geometry() {
 #[test]
 fn percentage_dimensions_follow_parent_content_boxes_and_scale() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{width:'100%',height:'100%',padding:20,borderWidth:5}},h('column',{testId:'half',style:{width:'50%',height:'50%',background:'#ff0000'}}))}",
+        "function render(){return h('column',{style:{width:'100%',height:'100%',padding:20,borderWidth:5}},h('column',{testId:'half',style:{width:'50%',height:'50%',backgroundColor:'#ff0000'}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     for (width, height, scale) in [(300, 200, 1.0), (600, 400, 2.0), (500, 300, 1.0)] {
@@ -256,7 +256,7 @@ fn percentage_dimensions_follow_parent_content_boxes_and_scale() {
 #[test]
 fn percentage_max_width_wraps_text_and_min_width_overrides_a_smaller_width() {
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{width:'100%',padding:20,align:'end'}},h('text',{testId:'address',style:{maxWidth:'72%',wordBreak:'break-all',fontSize:16}},'2001:db8:1234:5678:90ab:cdef:1234:5678'),h('column',{testId:'limited',style:{width:'10%',minWidth:'50%',maxWidth:'80%',height:10}}))}",
+        "function render(){return h('column',{style:{width:'100%',padding:20,alignItems:'end'}},h('text',{testId:'address',style:{maxWidth:'72%',wordBreak:'break-all',fontSize:16}},'2001:db8:1234:5678:90ab:cdef:1234:5678'),h('column',{testId:'limited',style:{width:'10%',minWidth:'50%',maxWidth:'80%',height:10}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let mut heights = Vec::new();
@@ -295,7 +295,7 @@ fn automatic_textarea_height_tracks_wrapping_and_respects_limits() {
         &"More words to wrap. ".repeat(30),
     ] {
         let module = crate::session::tests::source(&format!(
-            "function render(){{return h('column',{{style:{{width:180}}}},h('textarea',{{testId:'editor',value:{},style:{{height:'auto',minHeight:42,maxHeight:120,fontSize:14,lineHeight:21,padding:10}}}}))}}",
+            "function render(){{return h('column',{{style:{{width:180}}}},h('textarea',{{testId:'editor',value:{},style:{{height:'auto',minHeight:42,maxHeight:120,fontSize:14,lineHeight:'21px',padding:10}}}}))}}",
             serde_json::to_string(value).unwrap()
         ));
         let mut page = crate::ViewSession::new(&module).unwrap();
@@ -321,7 +321,7 @@ fn automatic_textarea_height_tracks_wrapping_and_respects_limits() {
 #[test]
 fn asymmetric_padding_controls_child_geometry_and_painted_insets() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{style:{padding:10,paddingLeft:40,paddingRight:20,paddingBottom:30,background:'#ffffff'}},h('spacer',{style:{grow:1,background:'#ff0000'}}))}",
+        "function render(){return h('column',{style:{padding:10,paddingLeft:40,paddingRight:20,paddingBottom:30,backgroundColor:'#ffffff'}},h('spacer',{style:{flexGrow:1,backgroundColor:'#ff0000'}}))}",
     );
     for scale in [1.0, 2.0] {
         let mut page = crate::ViewSession::new(&module).unwrap();
@@ -343,7 +343,7 @@ fn asymmetric_padding_controls_child_geometry_and_painted_insets() {
 
 #[test]
 fn mixed_text_and_control_baselines_match_painted_glyphs() {
-    for align in ["align:'baseline'", "align:'start'"] {
+    for align in ["alignItems:'baseline'", "alignItems:'start'"] {
         let own = if align.contains("start") {
             "alignSelf:'baseline',"
         } else {
@@ -351,9 +351,9 @@ fn mixed_text_and_control_baselines_match_painted_glyphs() {
         };
         let module = crate::session::tests::source(&format!(
             "function render(){{return h('row',{{style:{{{align},gap:12}}}},
-                h('text',{{style:{{{own}fontSize:36,lineHeight:40}}}},'100'),
+                h('text',{{style:{{{own}fontSize:36,lineHeight:'40px'}}}},'100'),
                 h('column',{{style:{{{own}padding:7,borderWidth:2}}}},
-                    h('text',{{style:{{width:50,fontSize:18,lineHeight:28}}}},'11 22 33')),
+                    h('text',{{style:{{width:50,fontSize:18,lineHeight:'28px'}}}},'11 22 33')),
                 h('button',{{style:{{{own}width:75,height:64,fontSize:13,padding:4}}}},'Go'))}}"
         ));
         for scale in [1.0, 2.0] {
@@ -410,7 +410,7 @@ fn button_labels_center_vertically_without_artificial_padding() {
 #[test]
 fn layout_alignment_and_self_override_use_logical_dimensions_at_each_scale() {
     let module = crate::session::tests::source(
-        "function render(){return h('row',{style:{padding:10,align:'center',justify:'between'}},h('spacer',{style:{width:40,height:20}}),h('spacer',{style:{width:60,height:30,alignSelf:'end'}}))}",
+        "function render(){return h('row',{style:{padding:10,alignItems:'center',justifyContent:'space-between'}},h('spacer',{style:{width:40,height:20}}),h('spacer',{style:{width:60,height:30,alignSelf:'end'}}))}",
     );
     for scale in [1.0, 2.0] {
         let mut page = crate::ViewSession::new(&module).unwrap();
@@ -425,7 +425,7 @@ fn layout_alignment_and_self_override_use_logical_dimensions_at_each_scale() {
 #[test]
 fn layout_size_limits_and_shrink_preserve_fixed_siblings() {
     let module = crate::session::tests::source(
-        "function render(){return h('row',{},h('spacer',{style:{width:200,height:30,minWidth:80,maxWidth:120,minHeight:40,maxHeight:50,shrink:1}}),h('spacer',{style:{width:160,height:20,shrink:0}}))}",
+        "function render(){return h('row',{},h('spacer',{style:{width:200,height:30,minWidth:80,maxWidth:120,minHeight:40,maxHeight:50,flexShrink:1}}),h('spacer',{style:{width:160,height:20,flexShrink:0}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let narrow = page.layout(240, 100, 1.0).unwrap();
@@ -439,7 +439,7 @@ fn layout_size_limits_and_shrink_preserve_fixed_siblings() {
 #[test]
 fn column_alignment_respects_min_width_and_max_height() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{style:{align:'center',justify:'center'}},h('spacer',{style:{width:20,height:200,minWidth:60,maxWidth:80,minHeight:40,maxHeight:50}}))}",
+        "function render(){return h('column',{style:{alignItems:'center',justifyContent:'center'}},h('spacer',{style:{width:20,height:200,minWidth:60,maxWidth:80,minHeight:40,maxHeight:50}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let frame = page.layout(100, 200, 1.0).unwrap();
@@ -449,7 +449,7 @@ fn column_alignment_respects_min_width_and_max_height() {
 #[test]
 fn centered_overflow_keeps_scroll_content_start_reachable() {
     let module = crate::session::tests::source(
-        "function render(){return h('scroll',{style:{align:'center',justify:'end'}},h('spacer',{style:{width:200,height:180}}))}",
+        "function render(){return h('scroll',{style:{alignItems:'center',justifyContent:'end'}},h('spacer',{style:{width:200,height:180}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let frame = page.layout(100, 100, 1.0).unwrap();
@@ -474,7 +474,7 @@ fn late_images_share_layout_and_obey_fit_rounding_and_scroll_clipping() {
         crate::scene::image::Bitmap::decode(&bytes).unwrap(),
     )]);
     let source = crate::session::tests::source(
-        "function render(){return h('column',{style:{background:'#ffffff'}},h('image',{src:'photo',fit:'contain',style:{width:100,height:100,radius:20}}))}",
+        "function render(){return h('column',{style:{backgroundColor:'#ffffff'}},h('image',{src:'photo',style:{width:100,height:100,borderRadius:20,objectFit:'contain'}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let pending = page.layout(100, 100, 1.0).unwrap();
@@ -495,7 +495,7 @@ fn late_images_share_layout_and_obey_fit_rounding_and_scroll_clipping() {
     assert!(pixel(10, 50)[0] > 240 && pixel(10, 50)[2] < 15);
     assert!(pixel(90, 50)[2] > 240 && pixel(90, 50)[0] < 15);
     let source = crate::session::tests::source(
-        "function render(){return h('scroll',{},h('spacer',{style:{height:150}}),h('image',{src:'photo',style:{width:100,height:100,radius:30}}))}",
+        "function render(){return h('scroll',{},h('spacer',{style:{height:150}}),h('image',{src:'photo',style:{width:100,height:100,borderRadius:30}}))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
     let first = page.layout(100, 100, 1.0).unwrap();

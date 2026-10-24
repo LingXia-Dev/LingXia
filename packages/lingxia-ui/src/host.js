@@ -1,5 +1,6 @@
-import { describe, prepare, prepareWindows, commit, discard, reset, dispatch, createView, configureActions,
-  takeActionRequests, receiveActionResponse, takeActionErrors, hasLocalUpdates, requestLeave } from './runtime/tree.js';
+import { describe, prepare, prepareWindows, commit, discard, reset, dispatch } from './runtime/tree.js';
+import { createView, hasLocalUpdates } from './runtime/hooks.js';
+import { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave } from './runtime/actions.js';
 
 // The native session calls only these globals; module code stays unreachable from the host.
 export function publishHost(render, catalog) {

@@ -1,3 +1,5 @@
+import { resourceError } from './errors.js';
+
 // A committed local cell owns the connection; abandoned candidates never open it.
 export function channelResource(state, report) {
   let definition, channel, ticket = 0, mounted = false;
@@ -10,7 +12,7 @@ export function channelResource(state, report) {
     old?.close();
   };
   const connect = async () => {
-    if (!mounted || snapshot.connecting || snapshot.connected) return;
+    if (!mounted || !definition.topic || snapshot.connecting || snapshot.connected) return;
     const current = ++ticket;
     update({ connecting: true, connected: false, error: null });
     try {
@@ -18,11 +20,11 @@ export function channelResource(state, report) {
       if (!mounted || current !== ticket) { opened.close(); return; }
       channel = opened;
       update({ connecting: false, connected: true });
-      opened.on('data', value => {
+      if (definition.onData) opened.on('data', value => {
         if (mounted && current === ticket) definition.onData(value);
       });
       opened.on('error', error => {
-        if (mounted && current === ticket) update({ error: String(error.message ?? error) });
+        if (mounted && current === ticket) update({ error: resourceError(error) });
       });
       opened.on('close', () => {
         if (mounted && current === ticket) {
@@ -32,7 +34,7 @@ export function channelResource(state, report) {
       });
     } catch (error) {
       if (mounted && current === ticket) {
-        update({ connecting: false, connected: false, error: String(error.message ?? error) });
+        update({ connecting: false, connected: false, error: resourceError(error) });
       }
     }
   };

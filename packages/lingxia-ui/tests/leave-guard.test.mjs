@@ -65,7 +65,7 @@ test('render candidates register only on commit and navigation requires an expli
   reset(); configureActions({ __names: [], __modes: {} });
   const view = createView({}, {});
   let guard;
-  const render = () => { guard = useLeaveGuard('draft', true); return h('text', {}, guard.pending ?? 'saved'); };
+  const render = () => { guard = useLeaveGuard('draft', { enabled: true }); return h('text', {}, guard.pending ?? 'saved'); };
   prepare(render, view); discard(); await flush();
   assert.deepEqual(takeActionRequests(), []);
   prepare(render, view); commit(); await flush();
@@ -89,7 +89,7 @@ test('leave controls cannot run during rendering', () => {
   reset(); configureActions({ __names: [], __modes: {} });
   const view = createView({}, {});
   assert.throws(() => prepare(() => {
-    useLeaveGuard('draft', true).answer(true);
+    useLeaveGuard('draft', { enabled: true }).answer(true);
     return h('text');
   }, view), /mutation during render/);
   discard(); reset();
@@ -116,6 +116,6 @@ test('registration failure is visible to the page and reported', async () => {
   const guards = createLeaveGuards(async () => { throw Error('registration unavailable'); }, error => errors.push(error));
   const guard = guards.resource({ value: { pending: null, requests: 0, error: null }, set() {} });
   guard.commit({ enabled: true }); await flush();
-  assert.equal(guard.state.error, 'registration unavailable');
+  assert.deepEqual(guard.state.error, { code: 'UI_ERROR', message: 'registration unavailable' });
   assert.equal(errors.length, 1);
 });

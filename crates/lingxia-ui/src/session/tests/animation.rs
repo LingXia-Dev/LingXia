@@ -19,7 +19,7 @@ fn authored_transform_can_bring_an_offscreen_node_into_the_animation_visible_set
       "transforms":[{"kind":"translate","x":[{"offset":0,"value":0},{"offset":1,"value":0}],
         "y":[{"offset":0,"value":-40},{"offset":1,"value":0}]}]});
     let source = tests::source(&format!(
-        "function render(){{return h('column',{{}},h('spacer',{{style:{{height:130,shrink:0}}}}),h('column',{{testId:'incoming',style:{{height:20,shrink:0,background:'#ff0000',animation:{effect}}}}}));}}"
+        "function render(){{return h('column',{{}},h('spacer',{{style:{{height:130,flexShrink:0}}}}),h('column',{{testId:'incoming',style:{{height:20,flexShrink:0,backgroundColor:'#ff0000',animation:{effect}}}}}));}}"
     ));
     let mut page = ViewSession::new(&source).unwrap();
     page.set_animation_surface(Some(SurfaceTicket::new(1)), ms(0))
@@ -73,7 +73,7 @@ fn automatic(page: &mut ViewSession, time: u64, rebuild: bool, offset: f32) -> D
 #[test]
 fn authored_collection_uses_records_and_rolls_back_failed_pixel_builds() {
     let source = tests::source(&format!(
-        "globalThis.effect={};function render(){{return h('column',{{style:{{width:40,height:40,background:'#ff0000',animation:effect}}}});}}",
+        "globalThis.effect={};function render(){{return h('column',{{style:{{width:40,height:40,backgroundColor:'#ff0000',animation:effect}}}});}}",
         authored_effect()
     ));
     let mut page = ViewSession::new(&source).unwrap();
@@ -126,7 +126,7 @@ fn authored_collection_uses_records_and_rolls_back_failed_pixel_builds() {
 #[test]
 fn authored_virtual_animation_retains_eviction_but_restarts_after_semantic_removal() {
     let source = tests::source(&format!(
-        "globalThis.items=Array.from({{length:100}},(_,i)=>'item-'+i);globalThis.effect={};function render(){{return h('list',{{style:{{height:120}},count:items.length,itemKeys:items,height:()=>40,row:i=>h('column',{{key:items[i],testId:items[i],style:{{height:40,background:'#ff0000',...(items[i]==='item-1'?{{animation:effect}}:{{}})}}}})}});}}",
+        "globalThis.items=Array.from({{length:100}},(_,i)=>'item-'+i);globalThis.effect={};function render(){{return h('list',{{style:{{height:120}},count:items.length,itemKeys:items,height:()=>40,row:i=>h('column',{{key:items[i],testId:items[i],style:{{height:40,backgroundColor:'#ff0000',...(items[i]==='item-1'?{{animation:effect}}:{{}})}}}})}});}}",
         authored_effect()
     ));
     let mut page = ViewSession::new(&source).unwrap();
@@ -552,7 +552,7 @@ fn view_wire_requires_matching_definition_and_presentation_aware_rendering() {
     .unwrap();
     let payload = fixture["chart-in"].to_string();
     let source = tests::source(&format!(
-        "function render(){{return h('column',{{style:{{width:40,height:40,background:'#ff0000',animation:{payload}}}}});}}"
+        "function render(){{return h('column',{{style:{{width:40,height:40,backgroundColor:'#ff0000',animation:{payload}}}}});}}"
     ));
     let mut page = ViewSession::new(&source).unwrap();
     let error = page.layout(80, 80, 1.0).err().unwrap();

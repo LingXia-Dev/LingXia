@@ -3,7 +3,7 @@ use serde_json::json;
 #[test]
 fn scaling_reflows_text_and_input_once_and_invalidates_retained_geometry() {
     let module = crate::session::tests::source(
-        "function render({env}){if(env.textScale)throw Error('internal mapping leaked');return h('column',{style:{fontSize:16,lineHeight:24}},h('input',{value:'Scaling',style:{minHeight:44,padding:8}}),h('column',{},h('input',{value:'Scaling',style:{minHeight:44,padding:8}})),h('text',{},'Wrapping text for larger fonts in a narrow viewport'))}",
+        "function render({env}){if(env.textScale)throw Error('internal mapping leaked');return h('column',{style:{fontSize:16,lineHeight:'24px'}},h('input',{value:'Scaling',style:{minHeight:44,padding:8}}),h('column',{},h('input',{value:'Scaling',style:{minHeight:44,padding:8}})),h('text',{},'Wrapping text for larger fonts in a narrow viewport'))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let baseline = page.layout(220, 600, 1.0).unwrap();

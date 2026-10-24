@@ -2,14 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { h, describe, reset, dispatch, prepare, discard, useLocal } from '../src/internal.js';
 import { audit } from '../compiler/index.mjs';
+import { tree, rendered } from './support/wire.mjs';
 const view = { data: {}, env: {} };
 const plot = overrides => h('plot', { accessibilityLabel: 'Revenue', kind: 'bar', values: [10, 20], colors: ['#435DD9'], style: { height: 180 }, ...overrides });
 
 test('line marker emphasis has a bounded append-only property', () => {
   for (const markerEmphasisScale of [1,1.1,4]) {
     reset();
-    const wire=describe(()=>plot({kind:'line',markerEmphasisScale}),view);
-    assert.equal(wire[wire.indexOf(94)+1],markerEmphasisScale);
+    assert.equal(rendered(()=>plot({kind:'line',markerEmphasisScale}),view).props.plotMarkerEmphasisScale,markerEmphasisScale);
   }
   for (const props of [{kind:'bar',markerEmphasisScale:1.1},{kind:'pie',markerEmphasisScale:1.1},
     ...[0.9,4.1,NaN,Infinity,'1.1',null].map(markerEmphasisScale=>({kind:'line',markerEmphasisScale}))]) {
@@ -19,11 +19,10 @@ test('line marker emphasis has a bounded append-only property', () => {
 
 test('plot uses append-only wire fields with bounded JSON arrays', () => {
   reset();
-  const wire = describe(() => plot({ kind: 'pie' }), view);
-  assert.equal(wire[0], 18);
-  assert.ok(wire.includes('[10,20]'));
-  assert.ok(wire.includes('["#435DD9"]'));
-  assert.doesNotThrow(() => audit('const view = <plot kind="line" values={[1,2]} colors={["#123456"]} />;', 'plot.ui.tsx'));
+  const { tag, props } = rendered(() => plot({ kind: 'pie' }), view);
+  assert.equal(tag, 'plot');
+  assert.deepEqual([props.plotValues, props.plotColors, props.plotKind], ['[10,20]', '["#435DD9"]', 'pie']);
+  assert.deepEqual(audit('const view = <plot kind="line" values={[1,2]} colors={["#123456"]} />;', 'plot.tsx'), []);
 });
 
 test('invalid plot data, palette and children fail before commit', () => {
@@ -51,35 +50,33 @@ test('selection delivers bounded numeric indices only from committed handles', (
     const selected = useLocal('selected', -1);
     return plot({ selectedIndex: selected.value, onSelect: index => { calls.push(index); selected.set(index); } });
   };
-  const fields = wire => new Map(Array.from({length:wire[5]}, (_, i) => wire.slice(6+i*2, 8+i*2)));
+  const fields = wire => tree(wire).props;
   let output = fields(describe(render, view));
-  const old = output.get(56);
-  assert.equal(output.get(57), -1);
+  const old = output.onPlotSelect;
+  assert.equal(output.plotSelectedIndex, -1);
   for (const value of [undefined, '1', true, NaN, Infinity, -2, 2, 0.5]) dispatch(old, value);
   assert.deepEqual(calls, []);
   assert.equal(dispatch(old, 1), true);
   output = fields(describe(render, view));
-  assert.equal(output.get(57), 1);
+  assert.equal(output.plotSelectedIndex, 1);
   assert.equal(dispatch(old, 0), false);
-  const pending = fields(prepare(render, view)).get(56);
+  const pending = fields(prepare(render, view)).onPlotSelect;
   discard();
   assert.equal(dispatch(pending, 0), false);
-  assert.equal(dispatch(output.get(56), 0), true);
+  assert.equal(dispatch(output.onPlotSelect, 0), true);
   assert.deepEqual(calls, [1, 0]);
   output = fields(describe(render, view));
-  assert.equal(dispatch(output.get(56), -1), true);
+  assert.equal(dispatch(output.onPlotSelect, -1), true);
   output = fields(describe(render, view));
-  assert.equal(output.get(57), -1);
+  assert.equal(output.plotSelectedIndex, -1);
   assert.deepEqual(calls, [1, 0, -1]);
 });
 
 test('smooth area fields are optional and share the expanded geometry budget', () => {
   reset();
-  const wire = describe(() => plot({ kind: 'line', smooth: true, area: true }), view);
-  const fields = new Map();
-  for (let i = 0; i < wire[5]; i++) fields.set(wire[6 + i * 2], wire[7 + i * 2]);
-  assert.equal(fields.get(54), 1); assert.equal(fields.get(55), 1);
-  assert.doesNotThrow(() => audit('const v = <plot kind="line" values={[1,2]} colors={["#123456"]} smooth area />;', 'plot.ui.tsx'));
+  const { props } = rendered(() => plot({ kind: 'line', smooth: true, area: true }), view);
+  assert.equal(props.plotSmooth, 1); assert.equal(props.plotArea, 1);
+  assert.deepEqual(audit('const v = <plot kind="line" values={[1,2]} colors={["#123456"]} smooth area />;', 'plot.tsx'), []);
   reset();
   assert.throws(() => describe(() => h('column', {}, Array.from({ length: 8 }, (_, i) =>
     plot({ key: String(i), kind: 'line', smooth: true, area: true, values: Array(128).fill(1) }))), view), /plot geometry budget/);
@@ -92,9 +89,8 @@ test('many individually valid plots share one geometry budget', () => {
 
 test('explicit plot domains encode exact bounds and reject misleading scales', () => {
   reset();
-  const wire = describe(() => plot({domainMin: 0, domainMax: 30}), view);
-  const fields = new Map(Array.from({length: wire[5]}, (_, i) => wire.slice(6+i*2,8+i*2)));
-  assert.equal(fields.get(85), 0); assert.equal(fields.get(86), 30);
+  const { props } = rendered(() => plot({domainMin: 0, domainMax: 30}), view);
+  assert.equal(props.plotDomainMin, 0); assert.equal(props.plotDomainMax, 30);
   for (const props of [
     {domainMin: 0}, {domainMax: 30}, {domainMin: 0, domainMax: 10},
     {domainMin: 10, domainMax: 30}, {domainMin: 20, domainMax: 20},

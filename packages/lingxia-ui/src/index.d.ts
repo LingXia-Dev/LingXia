@@ -1,1 +1,1 @@
-export * from "./authoring/index.js";
+export * from "./generated/authoring.js";

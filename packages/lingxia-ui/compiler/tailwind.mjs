@@ -5,129 +5,146 @@ import { readFile } from 'node:fs/promises';
 import { tokenSelectorTheme, validateTokens } from './stylesheets.mjs';
 import { lowerAnimation } from './animation.mjs';
 
-const dimensions = {
-  width: 'width', height: 'height', 'min-width': 'minWidth', 'max-width': 'maxWidth',
-  'min-height': 'minHeight', 'max-height': 'maxHeight', gap: 'gap',
-  'border-radius': 'radius', 'font-size': 'fontSize',
-};
-const alignment = { 'flex-start': 'start', start: 'start', center: 'center', end: 'end', 'flex-end': 'end', stretch: 'stretch', baseline: 'baseline', 'space-between': 'between' };
-const paddingSides = {
-  padding: ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'],
-  'padding-inline': ['paddingLeft', 'paddingRight'], 'padding-block': ['paddingTop', 'paddingBottom'],
-  'padding-top': ['paddingTop'], 'padding-right': ['paddingRight'],
-  'padding-bottom': ['paddingBottom'], 'padding-left': ['paddingLeft'],
-};
+// Tailwind owns utility expansion and cascade order; this module lowers each
+// rule's declarations to the CSS-named style the native renderer accepts and
+// reports everything else instead of quietly producing a different design.
 
-const borderSides = {
-  'border-width': ['borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'],
-  'border-inline-width': ['borderLeftWidth', 'borderRightWidth'],
-  'border-block-width': ['borderTopWidth', 'borderBottomWidth'],
-  'border-top-width': ['borderTopWidth'], 'border-right-width': ['borderRightWidth'],
-  'border-bottom-width': ['borderBottomWidth'], 'border-left-width': ['borderLeftWidth'],
-};
+class Unsupported extends Error {}
+const unsupported = message => { throw new Unsupported(message); };
 
-function paddingValues(value, sides) {
-  const values = []; let start = 0, depth = 0;
-  for (let i = 0; i <= value.length; i++) {
-    if (value[i] === '(') depth++;
-    if (value[i] === ')') depth--;
-    if (i === value.length || (!depth && /\s/.test(value[i]))) {
-      if (i > start) values.push(number(value.slice(start, i), true));
-      start = i + 1;
+// calc() arithmetic over px, rem, em, %, vw and vh; rem resolves to 16px.
+function evaluate(text) {
+  const source = text.trim(); let i = 0;
+  const space = () => { while (/\s/.test(source[i] ?? '')) i++; };
+  const expect = char => { space(); if (source[i] !== char) unsupported(`unsupported value: ${text}`); i++; };
+  const primary = () => {
+    space();
+    if (source.startsWith('calc(', i) || source[i] === '(') {
+      i += source[i] === '(' ? 1 : 5;
+      const value = sum(); expect(')'); return value;
     }
-  }
-  if (!values.length || values.length > sides.length || values.some(n => n < 0 || n > 16384)) throw Error(`unsupported padding: ${value}`);
-  const [top, right = top, bottom = top, left = right] = values;
-  const expanded = sides.length === 4 ? [top, right, bottom, left] : sides.length === 2 ? [top, right] : [top];
-  return Object.fromEntries(sides.map((side, index) => [side, expanded[index]]));
+    const match = source.slice(i).match(/^(-?(?:\d*\.)?\d+(?:e[+-]?\d+)?)(px|rem|em|%|vw|vh)?/i);
+    if (!match) unsupported(`unsupported value: ${text}`);
+    i += match[0].length;
+    const unit = match[2]?.toLowerCase() ?? '';
+    return unit === 'rem' ? { value: Number(match[1]) * 16, unit: 'px' } : { value: Number(match[1]), unit };
+  };
+  const product = () => {
+    let left = primary();
+    for (;;) {
+      space();
+      const op = source[i];
+      if (op !== '*' && op !== '/') return left;
+      i++;
+      const right = primary();
+      if (op === '*') {
+        if (left.unit && right.unit) unsupported(`unsupported calculation: ${text}`);
+        left = { value: left.value * right.value, unit: left.unit || right.unit };
+      } else {
+        if (right.unit) unsupported(`unsupported calculation: ${text}`);
+        left = { value: left.value / right.value, unit: left.unit };
+      }
+    }
+  };
+  const sum = () => {
+    let left = product();
+    for (;;) {
+      space();
+      const op = source[i];
+      if ((op !== '+' && op !== '-') || !/\s/.test(source[i + 1] ?? '')) return left;
+      i++;
+      const right = product();
+      if (left.unit !== right.unit && left.value !== 0 && right.value !== 0) unsupported(`unsupported calculation: ${text}`);
+      left = { value: op === '+' ? left.value + right.value : left.value - right.value, unit: left.unit || right.unit };
+    }
+  };
+  const result = sum(); space();
+  if (i !== source.length || !Number.isFinite(result.value)) unsupported(`unsupported value: ${text}`);
+  return result;
 }
 
-function variables(value, vars, depth = 0) {
-  if (depth > 32) throw Error('cyclic CSS variable');
-  for (let start; (start = value.indexOf('var(')) !== -1;) {
-    let end = start + 4, balance = 1;
-    for (; end < value.length && balance; end++) {
-      if (value[end] === '(') balance++;
-      if (value[end] === ')') balance--;
-    }
-    if (balance) throw Error(`invalid CSS variable: ${value}`);
-    const body = value.slice(start + 4, end - 1), comma = body.indexOf(',');
-    const name = (comma < 0 ? body : body.slice(0, comma)).trim();
-    const fallback = comma < 0 ? undefined : body.slice(comma + 1).trim();
-    if (!(name in vars) && fallback === undefined) throw Error(`unresolved ${name}`);
-    value = value.slice(0, start) + variables(vars[name] ?? fallback, vars, depth + 1) + value.slice(end);
-  }
-  return value;
-}
-
+// A length in pixels, or with `fraction` a unitless number where `%` means /100.
 function number(value, length = false) {
-  value = value.trim();
-  if (value.startsWith('calc(') && value.endsWith(')')) {
-    const match = value.slice(5, -1).match(/^(.+?)\s+([*/])\s+(.+)$/);
-    if (!match) throw Error(`unsupported calculation: ${value}`);
-    const a = number(match[1], length), b = number(match[3]);
-    const result = match[2] === '*' ? a * b : a / b;
-    if (!Number.isFinite(result)) throw Error(`invalid calculation: ${value}`);
-    return result;
-  }
-  const match = value.match(/^(-?(?:\d*\.)?\d+)(px|rem|%)?$/);
-  if (!match || (length && match[2] === '%')) throw Error(`unsupported value: ${value}`);
-  return Number(match[1]) * (match[2] === 'rem' ? 16 : match[2] === '%' ? .01 : 1);
+  const { value: amount, unit } = evaluate(value);
+  if (unit === 'px' || (unit === '' && (!length || amount === 0))) return amount;
+  if (unit === '%' && !length) return amount / 100;
+  return unsupported(`unsupported ${length ? 'length' : 'number'}: ${value}`);
 }
 
 function dimension(value) {
-  const fraction = value.match(/^calc\(([\d.]+)\s*\/\s*([\d.]+)\s*\*\s*100%\)$/);
-  if (fraction) value = `${Number(fraction[1])/Number(fraction[2])*100}%`;
-  if (value.endsWith('%')) {
-    const amount = number(value)*100;
-    if (!Number.isFinite(amount) || amount<0 || amount>16384) throw Error(`invalid percentage: ${value}`);
-    return `${amount}%`;
-  }
-  return number(value,true);
+  if (['auto', 'fit-content', 'max-content', 'min-content'].includes(value)) return value;
+  const { value: amount, unit } = evaluate(value);
+  if (unit === '%' || unit === 'vw' || unit === 'vh') return `${Math.round(amount * 1e6) / 1e6}${unit}`;
+  if (unit === 'px' || (unit === '' && amount === 0)) return amount;
+  return unsupported(`unsupported length: ${value}`);
+}
+
+function values(value, count, lower) {
+  const parts = postcss.list.space(value);
+  if (!parts.length || parts.length > count) unsupported(`unsupported shorthand: ${value}`);
+  const [top, right = top, bottom = top, left = right] = parts.map(lower);
+  return count === 4 ? [top, right, bottom, left] : count === 2 ? [top, right] : [top];
 }
 
 function parseColor(value) {
   const mix = value.match(/^color-mix\(in (?:srgb|oklab), (.+) ([\d.]+)%, transparent\)$/);
   const result = mix ? parseColor(mix[1]) : parse(value);
-  if (!result) throw Error(`unsupported color: ${value}`);
+  if (!result) unsupported(`unsupported color: ${value}`);
   if (mix) result.alpha = (result.alpha ?? 1) * Number(mix[2]) / 100;
   return result;
 }
 
 function color(value) { return formatHex8(parseColor(value)); }
 
+function variables(value, vars, depth = 0) {
+  if (depth > 32) unsupported('cyclic CSS variable');
+  for (let start; (start = value.indexOf('var(')) !== -1;) {
+    let end = start + 4, balance = 1;
+    for (; end < value.length && balance; end++) {
+      if (value[end] === '(') balance++;
+      if (value[end] === ')') balance--;
+    }
+    if (balance) unsupported(`invalid CSS variable: ${value}`);
+    const body = value.slice(start + 4, end - 1), comma = body.indexOf(',');
+    const name = (comma < 0 ? body : body.slice(0, comma)).trim();
+    const fallback = comma < 0 ? undefined : body.slice(comma + 1).trim();
+    if (!(name in vars) && fallback === undefined) unsupported(`unresolved ${name}`);
+    value = value.slice(0, start) + variables(vars[name] ?? fallback, vars, depth + 1) + value.slice(end);
+  }
+  return value;
+}
+
 function fontFamily(value) {
   const families = value.split(',').map(family => family.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
   const stacks = [
-    ['mono', ['ui-monospace', 'sfmono-regular', 'menlo', 'monaco', 'consolas', 'liberation mono', 'courier new', 'monospace']],
-    ['sans', ['ui-sans-serif', 'system-ui', 'sans-serif', 'apple color emoji', 'segoe ui emoji', 'segoe ui symbol', 'noto color emoji']],
-    ['sans', ['-apple-system', 'blinkmacsystemfont', 'segoe ui', 'roboto', 'helvetica neue', 'noto sans', 'arial', 'sans-serif', 'apple color emoji', 'segoe ui emoji', 'segoe ui symbol', 'noto color emoji']],
+    ['monospace', ['ui-monospace', 'sfmono-regular', 'menlo', 'monaco', 'consolas', 'liberation mono', 'courier new', 'monospace']],
+    ['sans-serif', ['ui-sans-serif', 'system-ui', 'sans-serif', 'apple color emoji', 'segoe ui emoji', 'segoe ui symbol', 'noto color emoji']],
+    ['sans-serif', ['-apple-system', 'blinkmacsystemfont', 'segoe ui', 'roboto', 'helvetica neue', 'noto sans', 'arial', 'sans-serif', 'apple color emoji', 'segoe ui emoji', 'segoe ui symbol', 'noto color emoji']],
   ];
   for (const [native, stack] of stacks)
-    if (families.join(',') === stack.join(',') ||
-        (families.length === 1 && families[0] === (native === 'mono' ? 'monospace' : 'sans-serif'))) return native;
-  throw Error(`unsupported font-family: ${value}`);
+    if (families.join(',') === stack.join(',') || (families.length === 1 && families[0] === native)) return native;
+  return unsupported(`unsupported font-family: ${value}`);
 }
 
 function gradientDeclaration(prop, raw, local, gradient) {
   if (prop === 'background-image') {
     if (raw === 'none') gradient.enabled = false;
     else if (raw.replace(/\s/g, '') === 'linear-gradient(var(--tw-gradient-stops))') gradient.enabled = true;
-    else throw Error(`unsupported background-image: ${raw}`);
+    else unsupported(`unsupported background-image: ${raw}`);
     return;
   }
   if (prop === '--tw-gradient-stops') {
     const expression = raw.replace(/\s/g, '');
     if (expression === 'var(--tw-gradient-via-stops)') gradient.source = 'via';
     else if (expression === 'var(--tw-gradient-via-stops,var(--tw-gradient-position),var(--tw-gradient-from)var(--tw-gradient-from-position),var(--tw-gradient-to)var(--tw-gradient-to-position))') gradient.source = 'fallback';
-    else throw Error(`unsupported gradient stops: ${raw}`);
+    else unsupported(`unsupported gradient stops: ${raw}`);
     return;
   }
   if (prop === '--tw-gradient-via-stops') {
     const expression = raw.replace(/\s/g, '');
     if (expression === 'initial') gradient.via = false;
     else if (expression === 'var(--tw-gradient-position),var(--tw-gradient-from)var(--tw-gradient-from-position),var(--tw-gradient-via)var(--tw-gradient-via-position),var(--tw-gradient-to)var(--tw-gradient-to-position)') gradient.via = true;
-    else throw Error(`unsupported gradient via stops: ${raw}`);
+    else unsupported(`unsupported gradient via stops: ${raw}`);
     return;
   }
   const value = variables(raw, local);
@@ -137,21 +154,21 @@ function gradientDeclaration(prop, raw, local, gradient) {
     gradient.colorSpace = match[2] ?? 'srgb';
     if (/^-?(?:\d*\.)?\d+deg$/.test(position)) {
       gradient.orientation = { angle: Number(position.slice(0, -3)) };
-      if (Math.abs(gradient.orientation.angle) > 36000) throw Error('gradient angle exceeds native bounds');
+      if (Math.abs(gradient.orientation.angle) > 36000) unsupported('gradient angle exceeds native bounds');
     } else {
       const directions = { 'to top':'top', 'to right':'right', 'to bottom':'bottom', 'to left':'left',
         'to top right':'top-right', 'to right top':'top-right', 'to bottom right':'bottom-right', 'to right bottom':'bottom-right',
         'to bottom left':'bottom-left', 'to left bottom':'bottom-left', 'to top left':'top-left', 'to left top':'top-left' };
-      if (!directions[position]) throw Error(`unsupported gradient direction: ${value}`);
+      if (!directions[position]) unsupported(`unsupported gradient direction: ${value}`);
       gradient.orientation = { direction: directions[position] };
     }
   } else {
     const match = prop.match(/^--tw-gradient-(from|via|to)(-position)?$/);
-    if (!match) throw Error(`unsupported gradient property: ${prop}`);
+    if (!match) unsupported(`unsupported gradient property: ${prop}`);
     if (match[2]) {
-      if (!/^-?(?:\d*\.)?\d+%$/.test(value)) throw Error(`unsupported gradient stop position: ${value}`);
+      if (!/^-?(?:\d*\.)?\d+%$/.test(value)) unsupported(`unsupported gradient stop position: ${value}`);
       const offset = number(value);
-      if (Math.abs(offset) > 16) throw Error('gradient stop exceeds native bounds');
+      if (Math.abs(offset) > 16) unsupported('gradient stop exceeds native bounds');
       gradient[`${match[1]}Offset`] = offset;
     } else gradient[`${match[1]}Color`] = color(value);
   }
@@ -165,19 +182,19 @@ function shadowLayers(value, local) {
     const lengths = [], colors = [];
     for (const token of tokens) {
       if (/^-?(?:\d*\.)?\d+(?:px|rem)?$/.test(token)) {
-        if (!/px|rem/.test(token) && Number(token) !== 0) throw Error(`shadow length needs a unit: ${token}`);
+        if (!/px|rem/.test(token) && Number(token) !== 0) unsupported(`shadow length needs a unit: ${token}`);
         lengths.push(number(token, true));
       }
-      else if (token === 'inset') throw Error('inset shadows are not supported yet');
+      else if (token === 'inset') unsupported('inset shadows are not supported yet');
       else colors.push(token);
     }
-    if (lengths.length < 2 || lengths.length > 4 || colors.length > 1) throw Error(`unsupported box-shadow: ${layer}`);
+    if (lengths.length < 2 || lengths.length > 4 || colors.length > 1) unsupported(`unsupported box-shadow: ${layer}`);
     const [offsetX,offsetY,blur=0,spread=0] = lengths;
-    if ([offsetX,offsetY,spread].some(value => Math.abs(value)>1024) || blur<0 || blur>256) throw Error('shadow exceeds native bounds');
+    if ([offsetX,offsetY,spread].some(value => Math.abs(value)>1024) || blur<0 || blur>256) unsupported('shadow exceeds native bounds');
     const tint = colors[0] ?? 'currentColor';
     return {offsetX,offsetY,blur,spread,color:tint.toLowerCase()==='currentcolor'?'currentColor':color(tint),useColor};
   });
-  if (layers.length > 8) throw Error('too many box shadows');
+  if (layers.length > 8) unsupported('too many box shadows');
   return layers;
 }
 
@@ -187,9 +204,9 @@ function shadowDeclaration(prop, raw, local, shadow) {
   else if (prop === '--tw-ring-color') shadow.ringColor = color(variables(raw,local));
   else if (prop === '--tw-ring-shadow') {
     const match = raw.match(/^var\(--tw-ring-inset,\)\s+0 0 0 calc\((.+?) \+ var\(--tw-ring-offset-width\)\) var\(--tw-ring-color, currentcolor\)$/i);
-    if (!match) throw Error(`unsupported ring geometry: ${raw}`);
+    if (!match) unsupported(`unsupported ring geometry: ${raw}`);
     const width = number(variables(match[1],local),true);
-    if (width < 0 || width > 1024) throw Error('ring exceeds native bounds');
+    if (width < 0 || width > 1024) unsupported('ring exceeds native bounds');
     shadow.ringWidth = width;
   }
   else if (prop === 'box-shadow') {
@@ -197,38 +214,38 @@ function shadowDeclaration(prop, raw, local, shadow) {
     const composite = 'var(--tw-inset-shadow),var(--tw-inset-ring-shadow),var(--tw-ring-offset-shadow),var(--tw-ring-shadow),var(--tw-shadow)';
     shadow.composite = raw.replace(/\s/g,'') === composite;
     if (!shadow.composite) {
-      if (raw.includes('var(--tw-')) throw Error(`unsupported shadow composition: ${raw}`);
+      if (raw.includes('var(--tw-')) unsupported(`unsupported shadow composition: ${raw}`);
       shadow.fixedLayers = shadowLayers(raw, local);
     }
-  } else throw Error(`unsupported shadow property: ${prop}`);
+  } else unsupported(`unsupported shadow property: ${prop}`);
 }
 
 function backdropValue(name, raw, vars) {
   const value = variables(raw, vars).trim();
   if (!value) return null;
   const match = value.match(name === 'blur' ? /^blur\(([^()]*)\)$/ : /^saturate\(([^()]*)\)$/);
-  if (!match) throw Error(`unsupported backdrop ${name}: ${value}`);
+  if (!match) unsupported(`unsupported backdrop ${name}: ${value}`);
   const argument = match[1].trim();
   const n = name === 'blur' ? number(argument, true) : argument.endsWith('%') ? number(argument.slice(0,-1)) / 100 : number(argument);
-  if (!Number.isFinite(n) || n < 0 || n > (name === 'blur' ? 64 : 16)) throw Error(`unsupported backdrop ${name}: ${value}`);
+  if (!Number.isFinite(n) || n < 0 || n > (name === 'blur' ? 64 : 16)) unsupported(`unsupported backdrop ${name}: ${value}`);
   return n;
 }
 
 function backdropDeclaration(prop, raw, vars, backdrop) {
   if (prop.startsWith('--tw-backdrop-')) {
     const name = {'--tw-backdrop-blur':'blur', '--tw-backdrop-saturate':'saturation'}[prop];
-    if (!name) throw Error(`unsupported backdrop property: ${prop}`);
+    if (!name) unsupported(`unsupported backdrop property: ${prop}`);
     backdrop[name] = backdropValue(name === 'blur' ? 'blur' : 'saturate', raw, vars);
   } else if (raw.trim() === 'none') backdrop.mode = 'none';
   else if (raw.includes('var(--tw-backdrop-')) {
     // Tailwind composes independently cascading filter variables in this order.
     const remainder = raw.replace(/var\(--tw-backdrop-(?:blur|brightness|contrast|grayscale|hue-rotate|invert|opacity|saturate|sepia),\)/g, '').trim();
-    if (remainder) throw Error(`unsupported backdrop filter: ${raw}`);
+    if (remainder) unsupported(`unsupported backdrop filter: ${raw}`);
     backdrop.mode = 'variables';
   } else {
     const value = variables(raw, vars).trim();
     const match = value.match(/^(blur\([^()]*\))?\s*(saturate\([^()]*\))?$/);
-    if (!match || (!match[1] && !match[2])) throw Error(`unsupported backdrop filter: ${value}`);
+    if (!match || (!match[1] && !match[2])) unsupported(`unsupported backdrop filter: ${value}`);
     backdrop.mode = 'fixed';
     backdrop.fixed = {blur:match[1] ? backdropValue('blur',match[1],vars) : 0,
       saturation:match[2] ? backdropValue('saturate',match[2],vars) : 1};
@@ -237,98 +254,140 @@ function backdropDeclaration(prop, raw, vars, backdrop) {
 
 const supportedConditions = ['(color: color-mix(in lab, red, red))', '(background-image: linear-gradient(in lab, red, red))'];
 
+const sides = {
+  padding: ['padding', ['Top', 'Right', 'Bottom', 'Left']], 'padding-inline': ['padding', ['Left', 'Right']], 'padding-block': ['padding', ['Top', 'Bottom']],
+  margin: ['margin', ['Top', 'Right', 'Bottom', 'Left']], 'margin-inline': ['margin', ['Left', 'Right']], 'margin-block': ['margin', ['Top', 'Bottom']],
+  'border-width': ['border', ['Top', 'Right', 'Bottom', 'Left'], 'Width'], 'border-inline-width': ['border', ['Left', 'Right'], 'Width'],
+  'border-block-width': ['border', ['Top', 'Bottom'], 'Width'],
+};
+for (const [css, side] of [['top', 'Top'], ['right', 'Right'], ['bottom', 'Bottom'], ['left', 'Left'],
+  ['inline-start', 'Left'], ['inline-end', 'Right'], ['block-start', 'Top'], ['block-end', 'Bottom']]) {
+  sides[`padding-${css}`] = ['padding', [side]];
+  sides[`margin-${css}`] = ['margin', [side]];
+  sides[`border-${css}-width`] = ['border', [side], 'Width'];
+}
+const insets = { inset: ['top', 'right', 'bottom', 'left'], 'inset-inline': ['left', 'right'], 'inset-block': ['top', 'bottom'],
+  top: ['top'], right: ['right'], bottom: ['bottom'], left: ['left'] };
+const dimensions = { width: 'width', height: 'height', 'min-width': 'minWidth', 'max-width': 'maxWidth', 'min-height': 'minHeight', 'max-height': 'maxHeight' };
+const corners = { 'border-top-left-radius': 'borderTopLeftRadius', 'border-top-right-radius': 'borderTopRightRadius',
+  'border-bottom-right-radius': 'borderBottomRightRadius', 'border-bottom-left-radius': 'borderBottomLeftRadius' };
+const keywords = {
+  position: ['position', ['relative', 'absolute']], overflow: ['overflow', ['visible', 'hidden']],
+  'overflow-x': ['overflowX', ['auto']], 'overflow-y': ['overflowY', ['auto']],
+  'overflow-wrap': ['overflowWrap', ['normal', 'break-word', 'anywhere']], 'flex-wrap': ['flexWrap', ['nowrap', 'wrap', 'wrap-reverse']],
+  'flex-direction': ['flexDirection', ['row', 'column', 'row-reverse', 'column-reverse']], display: ['display', ['flex']],
+  'word-break': ['wordBreak', ['normal', 'break-all', 'keep-all']], 'text-decoration-line': ['textDecorationLine', ['none', 'line-through', 'underline']],
+  'text-align': ['textAlign', ['start', 'end', 'left', 'center', 'right', 'justify']], 'font-style': ['fontStyle', ['normal', 'italic']],
+  'text-transform': ['textTransform', ['none', 'uppercase', 'lowercase', 'capitalize']], 'white-space': ['whiteSpace', ['normal', 'nowrap']],
+  'text-overflow': ['textOverflow', ['clip', 'ellipsis']], 'object-fit': ['objectFit', ['cover', 'contain', 'fill']],
+  'align-items': ['alignItems', ['flex-start', 'start', 'center', 'end', 'flex-end', 'stretch', 'baseline']],
+  'align-self': ['alignSelf', ['flex-start', 'start', 'center', 'end', 'flex-end', 'stretch', 'baseline']],
+  'justify-content': ['justifyContent', ['flex-start', 'start', 'center', 'end', 'flex-end', 'space-between', 'space-around', 'space-evenly']],
+};
+const transitions = /^(?:transition|transition-[a-z-]+|animation-[a-z-]+|transform|translate|scale|rotate|filter|cursor|pointer-events|user-select|outline.*)$/;
+
 function declarations(nodes, vars, root, animationLowering) {
   nodes = nodes.flatMap(node => node.type === 'atrule' && node.name === 'supports' && supportedConditions.includes(node.params) ? node.nodes : [node]);
   const style = {}, gradient = {}, shadow = {}, backdrop = {}, local = { ...vars };
   for (const node of nodes) if (node.type === 'decl' && node.prop.startsWith('--')) local[node.prop] = node.value;
+  const clamp = nodes.some(node => node.type === 'decl' && node.prop === '-webkit-line-clamp');
   for (const node of nodes) {
     if (node.type === 'comment') continue;
-    if (node.type !== 'decl') throw Error(`unsupported selector or condition: ${node.toString()}`);
+    if (node.type !== 'decl') unsupported(`nested rule ${node.toString().split('{')[0].trim()}`);
     const { prop } = node;
-    if (node.important) throw Error('important utilities are not supported yet');
+    if (node.important) unsupported('!important utilities');
     if (prop === 'animation') {
       if (!animationLowering) throw Error('UI_ANIMATION: native presentation scheduling is not connected');
       style.animation = lowerAnimation(node.value, root, value => variables(value, local));
       continue;
     }
-    if (prop.startsWith('--tw-backdrop-') || prop === 'backdrop-filter' || prop === '-webkit-backdrop-filter') {
-      backdropDeclaration(prop, node.value, local, backdrop);
-      continue;
-    }
-    if (prop.startsWith('--tw-shadow') || prop.startsWith('--tw-ring-') || prop.startsWith('--tw-inset-') || prop === 'box-shadow') {
-      shadowDeclaration(prop, node.value, local, shadow);
-      continue;
-    }
-    if (prop.startsWith('--tw-gradient-') || prop === 'background-image') {
-      gradientDeclaration(prop, node.value, local, gradient);
-      continue;
-    }
+    if (prop.startsWith('--tw-backdrop-') || prop === 'backdrop-filter' || prop === '-webkit-backdrop-filter') { backdropDeclaration(prop, node.value, local, backdrop); continue; }
+    if (prop.startsWith('--tw-shadow') || prop.startsWith('--tw-ring-') || prop.startsWith('--tw-inset-') || prop === 'box-shadow') { shadowDeclaration(prop, node.value, local, shadow); continue; }
+    if (prop.startsWith('--tw-gradient-') || prop === 'background-image') { gradientDeclaration(prop, node.value, local, gradient); continue; }
     if (prop.startsWith('--')) continue;
-    const value = variables(node.value, local);
-    if (prop in paddingSides) Object.assign(style, paddingValues(value, paddingSides[prop]));
-    else if (prop in borderSides) Object.assign(style, paddingValues(value, borderSides[prop]));
-    else if (/^border(?:-(?:top|right|bottom|left|inline|block))?-style$/.test(prop) && value === 'solid') { /* Native borders are solid. */ }
+    if (transitions.test(prop)) unsupported(`${prop} (the native renderer has no transitions or transforms)`);
+    const value = variables(node.value, local).trim();
+    if (prop in sides) {
+      const [family, edges, suffix = ''] = sides[prop];
+      const lowered = values(value, edges.length, part => family === 'margin' && part === 'auto' ? 'auto' : number(part, true));
+      edges.forEach((edge, index) => { style[`${family}${edge}${suffix}`] = lowered[index]; });
+    } else if (prop in insets) {
+      const lowered = values(value, insets[prop].length, part => { const v = dimension(part); if (typeof v === 'string' && !v.endsWith('%')) unsupported(`unsupported inset: ${part}`); return v; });
+      insets[prop].forEach((edge, index) => { style[edge] = lowered[index]; });
+    } else if (prop in dimensions) style[dimensions[prop]] = dimension(value);
+    else if (/^border(?:-(?:top|right|bottom|left|inline|block|x|y))?-style$/.test(prop)) { if (value !== 'solid') unsupported(`${prop}: ${value}`); }
     else if (prop === 'border-color') style.borderColor = value.toLowerCase() === 'currentcolor' ? 'currentColor' : color(value);
-    // The native radius is bounded and clamps to half the shorter box edge.
-    else if (/^border-(?:(?:top|bottom)-(?:left|right)-)?radius$/.test(prop)) {
+    else if (prop === 'border-radius' || prop in corners) {
+      // The native radius is bounded and clamps to half the shorter box edge.
       const radius = /^calc\(infinity\s*\*\s*1px\)$/.test(value) ? 16384 : number(value, true);
-      const corners = {'border-top-left-radius':'radiusTopLeft','border-top-right-radius':'radiusTopRight','border-bottom-right-radius':'radiusBottomRight','border-bottom-left-radius':'radiusBottomLeft'};
-      if (prop === 'border-radius') { style.radius=radius; for(const name of Object.values(corners)) style[name]=radius; }
-      else style[corners[prop]]=radius;
-    }
+      style[prop === 'border-radius' ? 'borderRadius' : corners[prop]] = radius;
+    } else if (prop === 'gap') {
+      const [row, column = row] = postcss.list.space(value).map(part => number(part, true));
+      if (row === column) style.gap = row; else Object.assign(style, { rowGap: row, columnGap: column });
+    } else if (prop === 'row-gap' || prop === 'column-gap') style[prop === 'row-gap' ? 'rowGap' : 'columnGap'] = number(value, true);
+    else if (prop === 'font-size') style.fontSize = number(value, true);
     else if (prop === 'flex-basis') style.flexBasis = value === 'auto' ? 'auto' : dimension(value);
     else if (prop === 'flex') {
-      if (value === 'auto') Object.assign(style,{grow:1,shrink:1,flexBasis:'auto'});
-      else if (value === 'none') Object.assign(style,{grow:0,shrink:0,flexBasis:'auto'});
-      else if (value === 'initial' || value === '0 auto') Object.assign(style,{grow:0,shrink:1,flexBasis:'auto'});
-      else if (/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)) Object.assign(style,{grow:number(value),shrink:1,flexBasis:'0%'});
+      if (value === 'auto') Object.assign(style, { flexGrow: 1, flexShrink: 1, flexBasis: 'auto' });
+      else if (value === 'none') Object.assign(style, { flexGrow: 0, flexShrink: 0, flexBasis: 'auto' });
+      else if (value === 'initial' || value === '0 auto') Object.assign(style, { flexGrow: 0, flexShrink: 1, flexBasis: 'auto' });
+      else if (/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)) Object.assign(style, { flexGrow: number(value), flexShrink: 1, flexBasis: '0%' });
       else {
-        const parts=value.split(/\s+/);
-        if(parts.length!==3) throw Error(`unsupported flex: ${value}`);
-        Object.assign(style,{grow:number(parts[0]),shrink:number(parts[1]),flexBasis:parts[2]==='auto'?'auto':dimension(parts[2])});
+        const parts = value.split(/\s+/);
+        if (parts.length !== 3) unsupported(`flex: ${value}`);
+        Object.assign(style, { flexGrow: number(parts[0]), flexShrink: number(parts[1]), flexBasis: parts[2] === 'auto' ? 'auto' : dimension(parts[2]) });
       }
     }
-    else if (prop === 'height' && value === 'auto') style.height = 'auto';
-    else if (prop in dimensions) style[dimensions[prop]] = /^(?:min-|max-)?(?:width|height)$/.test(prop) ? dimension(value) : number(value, true);
-    else if (prop === 'font-style' && ['normal', 'italic'].includes(value)) style.fontStyle = value;
     else if (prop === 'font-family') style.fontFamily = fontFamily(value);
-    else if (prop === 'color' || prop === 'background-color') style[prop === 'color' ? 'color' : 'background'] = color(value);
-    else if (prop === 'opacity' || prop === 'font-weight' || prop === 'flex-grow' || prop === 'flex-shrink')
-      style[{ opacity: 'opacity', 'font-weight': 'fontWeight', 'flex-grow': 'grow', 'flex-shrink': 'shrink' }[prop]] = number(value);
-    else if (prop === 'overflow-x' && value === 'auto') style.scrollAxis = 'horizontal';
-    else if (prop === 'overflow-wrap' && ['normal', 'break-word', 'anywhere'].includes(value)) style.overflowWrap = value;
-    else if (prop === 'flex-wrap' && ['nowrap', 'wrap', 'wrap-reverse'].includes(value)) style.flexWrap = value;
-    else if (prop === 'flex-direction' && ['row', 'column', 'row-reverse', 'column-reverse'].includes(value)) style.flexDirection = value;
-    else if (prop === 'display' && value === 'flex') style.display = value;
-    else if (prop === 'word-break' && ['normal', 'break-all', 'keep-all'].includes(value)) style.wordBreak = value;
-    else if (prop === 'text-decoration-line' && ['none', 'line-through'].includes(value)) style.textDecorationLine = value;
-    else if (prop === 'text-align' && ['start', 'end', 'left', 'center', 'right', 'justify'].includes(value)) style.textAlign = value;
+    else if (prop === 'color') style.color = color(value);
+    else if (prop === 'background-color') style.backgroundColor = color(value);
+    else if (prop === 'opacity') style.opacity = number(value);
+    else if (prop === 'font-weight') style.fontWeight = number(value);
+    else if (prop === 'flex-grow' || prop === 'flex-shrink') style[prop === 'flex-grow' ? 'flexGrow' : 'flexShrink'] = number(value);
+    else if (prop === 'z-index') {
+      if (!/^-?\d+$/.test(value)) unsupported(`z-index: ${value}`);
+      style.zIndex = Number(value);
+    }
+    else if (prop === 'grid-template-columns') {
+      const columns = value.match(/^repeat\((\d+),\s*minmax\(0,\s*1fr\)\)$/);
+      if (!columns) unsupported(`grid-template-columns: ${value}`);
+      style.gridTemplateColumns = Number(columns[1]);
+    }
+    else if (prop === '-webkit-line-clamp') {
+      if (!/^\d+$/.test(value)) unsupported(`line clamp: ${value}`);
+      style.lineClamp = Number(value);
+    }
+    else if (clamp && ((prop === 'display' && value === '-webkit-box') || (prop === '-webkit-box-orient' && value === 'vertical'))) { /* The line clamp owns these. */ }
     else if (prop === 'letter-spacing') {
       const em = value.match(/^(-?(?:\d*\.)?\d+)em$/);
-      style.letterSpacing = em ? { em: Number(em[1]) } : value === 'normal' ? 0 : number(value, true);
+      style.letterSpacing = em ? `${Number(em[1])}em` : value === 'normal' ? 0 : number(value, true);
     }
     else if (prop === 'line-height') {
-      const n = number(value, true);
-      if (/px|rem/.test(value)) style.lineHeight = n;
-      else style.lineHeight = { em: n };
-    } else if (['align-items', 'align-self', 'justify-content'].includes(prop) && value in alignment) {
-      const key = { 'align-items': 'align', 'align-self': 'alignSelf', 'justify-content': 'justify' }[prop];
-      if ((key === 'justify' && ['stretch', 'baseline'].includes(value)) || (key !== 'justify' && value === 'space-between')) throw Error(`unsupported ${prop}: ${value}`);
-      style[key] = alignment[value];
-    } else throw Error(`renderer does not support ${prop}: ${value}`);
+      const { value: amount, unit } = evaluate(value);
+      if (unit === 'px') style.lineHeight = `${amount}px`;
+      else if (unit === '') style.lineHeight = amount;
+      else unsupported(`line-height: ${value}`);
+    }
+    else if (prop in keywords) {
+      const [name, allowed] = keywords[prop];
+      if (!allowed.includes(value)) unsupported(`${prop}: ${value}`);
+      style[name] = value;
+    }
+    else unsupported(`${prop}: ${value}`);
   }
-  return { style, ...(Object.keys(backdrop).length ? {backdrop} : {}), ...(Object.keys(gradient).length ? {gradient} : {}), ...(Object.keys(shadow).length ? {shadow} : {}) };
+  return { style, ...(Object.keys(backdrop).length ? { backdrop } : {}), ...(Object.keys(gradient).length ? { gradient } : {}), ...(Object.keys(shadow).length ? { shadow } : {}) };
 }
 
 function conditions(rule) {
   const result = {};
   for (let parent = rule.parent; parent?.type !== 'root'; parent = parent.parent) {
     if (parent.type === 'atrule' && (parent.name === 'layer' || (parent.name === 'supports' && supportedConditions.includes(parent.params)))) continue;
-    if (parent.type !== 'atrule' || parent.name !== 'media') throw Error('unsupported nested selector');
+    if (parent.type !== 'atrule' || parent.name !== 'media') unsupported('nested selector');
     if (parent.params === '(prefers-color-scheme: dark)') result.theme = 'dark';
+    else if (parent.params === '(hover: hover)') result.hoverMedia = true;
     else {
       const match = parent.params.match(/^\(width (>=|<) ([\d.]+(?:rem|px))\)$/);
-      if (!match) throw Error(`unsupported media query: ${parent.params}`);
+      if (!match) unsupported(`media query ${parent.params}`);
       const key = match[1] === '>=' ? 'minWidth' : 'maxWidth';
       const value = number(match[2], true);
       result[key] = key === 'minWidth' ? Math.max(result[key] ?? 0, value) : Math.min(result[key] ?? Infinity, value);
@@ -337,8 +396,22 @@ function conditions(rule) {
   return result;
 }
 
-// Tailwind owns utility expansion and cascade order. Native lowering rejects
-// unsupported declarations instead of quietly producing a different design.
+const unescape = name => name.replace(/\\([0-9a-f]{1,6})\s?|\\(.)/gi, (_, hex, char) => hex ? String.fromCodePoint(parseInt(hex, 16)) : char);
+
+// `.name`, `.name:state`, `.name::placeholder` and `:where(.name > :not(:last-child))`.
+function selectorTarget(selector) {
+  const children = selector.match(/^:where\(\.((?:\\.|[^\s>])+) > :not\(:last-child\)\)$/);
+  if (children) return { name: unescape(children[1]), children: true };
+  const match = selector.match(/^\.((?:\\.|[^\s:.>+~[])+)(.*)$/);
+  if (!match) return undefined;
+  const name = unescape(match[1]), rest = match[2];
+  if (!rest) return { name };
+  if (rest === '::placeholder') return { name, placeholder: true };
+  const state = rest.match(/^:(focus|active|hover|disabled)$/)?.[1];
+  return state ? { name, state } : { name, error: `selector ${rest}` };
+}
+
+/** Lowered rules for every candidate Tailwind generates; unsupported ones carry an error. */
 export async function compileUtilities(candidates, theme = '', { animationLowering = false } = {}) {
   const tokens = postcss.parse(theme);
   validateTokens(tokens, { animationLowering });
@@ -357,31 +430,29 @@ export async function compileUtilities(candidates, theme = '', { animationLoweri
       for (const decl of rule.nodes) if (decl.type === 'decl' && decl.prop.startsWith('--')) palettes[name][decl.prop] = decl.value;
   });
   root.walkRules(rule => {
-    if (!rule.selector.startsWith('.')) return;
-    const placeholder = rule.selector.endsWith('::placeholder');
-    let selector = placeholder ? rule.selector.slice(0, -'::placeholder'.length) : rule.selector;
-    const focus = selector.endsWith(':focus');
-    if (focus) selector = selector.slice(0, -':focus'.length);
-    const name = selector.slice(1).replace(/\\([0-9a-f]{1,6})\s?|\\(.)/gi, (_, hex, char) => hex ? String.fromCodePoint(parseInt(hex, 16)) : char);
-    if (!candidates.has(name)) return;
+    const target = selectorTarget(rule.selector);
+    if (!target || !candidates.has(target.name)) return;
+    const { name } = target;
     try {
-      const when = {...conditions(rule), ...(focus ? {focus:true} : {})};
+      if (target.error) unsupported(target.error);
+      const { hoverMedia, ...media } = conditions(rule);
+      if (hoverMedia && target.state !== 'hover') unsupported('(hover: hover) outside a hover variant');
+      const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.children ? { children: true } : {}) };
       const lower = vars => {
         const result = declarations(rule.nodes, vars, root, animationLowering);
-        if (!placeholder) {
-          if (focus && (result.backdrop || Object.keys(result.style).some(key => !['color','background','opacity','borderColor'].includes(key)))) throw Error('focus supports paint properties only');
-          return result;
-        }
+        if (!target.placeholder) return result;
         if (Object.keys(result).some(key => key !== 'style') || Object.keys(result.style).some(key => key !== 'color') || !result.style.color)
-          throw Error('placeholder supports only color');
-        return {style:{placeholderColor:result.style.color}};
+          unsupported('placeholder supports only color');
+        return { style: { placeholderColor: result.style.color } };
       };
       const light = when.theme === 'dark' ? undefined : lower(palettes.light);
       const dark = lower(palettes.dark);
       if (when.theme || JSON.stringify(light) === JSON.stringify(dark)) rules.push({ name, when, ...dark });
       else rules.push({ name, when: { ...when, theme: 'light' }, ...light }, { name, when: { ...when, theme: 'dark' }, ...dark });
+    } catch (error) {
+      if (!(error instanceof Unsupported) && !String(error.message).startsWith('UI_ANIMATION')) throw error;
+      rules.push({ name, error: { category: 'unsupported', message: error.message } });
     }
-    catch (error) { rules.push({ name, error: error.message }); }
   });
   return rules;
 }

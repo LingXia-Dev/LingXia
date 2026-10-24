@@ -489,7 +489,7 @@ mod tests {
     #[test]
     fn shared_plot_hit_uses_rendered_content_and_ancestor_clips() {
         let source = crate::session::tests::source(
-            "function render(){return h('scroll',{style:{width:80,height:80,radius:30}},h('plot',{kind:'bar',values:[1,2],colors:['#ff0000'],onSelect:()=>{},accessibilityLabel:'Series',style:{width:100,height:100}}))}",
+            "function render(){return h('scroll',{style:{width:80,height:80,borderRadius:30}},h('plot',{kind:'bar',values:[1,2],colors:['#ff0000'],onSelect:()=>{},accessibilityLabel:'Series',style:{width:100,height:100}}))}",
         );
         let mut page = crate::ViewSession::new(&source).unwrap();
         let display = page.layout(120, 120, 1.0).unwrap();
@@ -576,7 +576,7 @@ mod tests {
     fn marker_emphasis_raster_expands_white_center_and_blue_ring() {
         for selected in [-1, 0, 1] {
             let source = crate::session::tests::source(&format!(
-                "function render(){{return h('plot',{{kind:'line',values:[10,20],colors:['#0000ff'],selectedIndex:{selected},markerEmphasisScale:2,accessibilityLabel:'Series',style:{{width:100,height:100,background:'#ffffff'}}}})}}"
+                "function render(){{return h('plot',{{kind:'line',values:[10,20],colors:['#0000ff'],selectedIndex:{selected},markerEmphasisScale:2,accessibilityLabel:'Series',style:{{width:100,height:100,backgroundColor:'#ffffff'}}}})}}"
             ));
             let mut page = crate::ViewSession::new(&source).unwrap();
             let frame = page.layout(100, 100, 1.0).unwrap().rasterize().unwrap();
@@ -604,7 +604,7 @@ mod tests {
     #[test]
     fn expanded_pie_is_clipped_to_its_unbordered_plot_viewport() {
         let source = crate::session::tests::source(
-            "function render(){return h('column',{style:{background:'#ffffff',padding:20}},h('plot',{kind:'pie',values:[1,1],colors:['#ff0000','#0000ff'],selectedIndex:0,accessibilityLabel:'Series',pieLayout:{center:[0.5,0.5],innerRadius:0.1,outerRadius:0.8,emphasisScale:64},style:{width:100,height:100}}))}",
+            "function render(){return h('column',{style:{backgroundColor:'#ffffff',padding:20}},h('plot',{kind:'pie',values:[1,1],colors:['#ff0000','#0000ff'],selectedIndex:0,accessibilityLabel:'Series',pieLayout:{center:[0.5,0.5],innerRadius:0.1,outerRadius:0.8,emphasisScale:64},style:{width:100,height:100}}))}",
         );
         let mut page = crate::ViewSession::new(&source).unwrap();
         let display = page.layout(160, 160, 1.0).unwrap();
@@ -621,7 +621,7 @@ mod tests {
         for scale in [1.0, 2.0] {
             for selected in [-1, 0, 1] {
                 let source = crate::session::tests::source(&format!(
-                    "function render(){{return h('plot',{{kind:'pie',values:[1,1],colors:['#ff0000','#0000ff'],selectedIndex:{selected},accessibilityLabel:'Series',pieLayout:{{center:[0.5,0.44],innerRadius:0.4,outerRadius:0.68,emphasisScale:5}},style:{{width:300,height:210,background:'#ffffff'}}}})}}"
+                    "function render(){{return h('plot',{{kind:'pie',values:[1,1],colors:['#ff0000','#0000ff'],selectedIndex:{selected},accessibilityLabel:'Series',pieLayout:{{center:[0.5,0.44],innerRadius:0.4,outerRadius:0.68,emphasisScale:5}},style:{{width:300,height:210,backgroundColor:'#ffffff'}}}})}}"
                 ));
                 let mut page = crate::ViewSession::new(&source).unwrap();
                 let display = page
@@ -667,7 +667,7 @@ mod tests {
     #[test]
     fn configured_pie_radii_and_center_match_painted_pixels() {
         let source = crate::session::tests::source(
-            "function render(){return h('plot',{kind:'pie',values:[1,1],colors:['#ff0000','#0000ff'],accessibilityLabel:'Series',pieLayout:{center:[0.5,0.44],innerRadius:0.4,outerRadius:0.68},style:{width:300,height:210,background:'#ffffff'}})}",
+            "function render(){return h('plot',{kind:'pie',values:[1,1],colors:['#ff0000','#0000ff'],accessibilityLabel:'Series',pieLayout:{center:[0.5,0.44],innerRadius:0.4,outerRadius:0.68},style:{width:300,height:210,backgroundColor:'#ffffff'}})}",
         );
         let mut page = crate::ViewSession::new(&source).unwrap();
         let display = page.layout(300, 210, 1.0).unwrap();
@@ -718,7 +718,7 @@ mod tests {
     #[test]
     fn signed_bars_round_only_top_corners() {
         let source = crate::session::tests::source(
-            "function render(){return h('plot',{kind:'bar',values:[10,-10],domainMin:-20,domainMax:20,colors:['#3b82f6'],accessibilityLabel:'Series',style:{width:100,height:128,background:'#101010'}})}",
+            "function render(){return h('plot',{kind:'bar',values:[10,-10],domainMin:-20,domainMax:20,colors:['#3b82f6'],accessibilityLabel:'Series',style:{width:100,height:128,backgroundColor:'#101010'}})}",
         );
         let mut page = crate::ViewSession::new(&source).unwrap();
         let frame = page.layout(400, 512, 4.0).unwrap().rasterize().unwrap();
@@ -741,7 +741,7 @@ mod tests {
     #[test]
     fn line_markers_have_white_centers_blue_rings_and_round_corners() {
         let source = crate::session::tests::source(
-            "function render(){return h('plot',{kind:'line',values:[10,10],domainMin:0,domainMax:20,colors:['#3b82f6'],accessibilityLabel:'Series',style:{width:100,height:128,background:'#101010'}})}",
+            "function render(){return h('plot',{kind:'line',values:[10,10],domainMin:0,domainMax:20,colors:['#3b82f6'],accessibilityLabel:'Series',style:{width:100,height:128,backgroundColor:'#101010'}})}",
         );
         let mut page = crate::ViewSession::new(&source).unwrap();
         let frame = page.layout(400, 512, 4.0).unwrap().rasterize().unwrap();
@@ -960,7 +960,7 @@ mod tests {
     #[test]
     fn area_fades_toward_zero_and_translates_with_scroll() {
         let source = crate::session::tests::source(
-            "function render(){return h('scroll',{style:{height:80}},h('plot',{kind:'line',values:[10,10],colors:['#ff0000'],smooth:true,area:true,accessibilityLabel:'Area',style:{width:100,height:200,background:'#ffffff'}}))}",
+            "function render(){return h('scroll',{style:{height:80}},h('plot',{kind:'line',values:[10,10],colors:['#ff0000'],smooth:true,area:true,accessibilityLabel:'Area',style:{width:100,height:200,backgroundColor:'#ffffff'}}))}",
         );
         let mut page = crate::ViewSession::new(&source).unwrap();
         let first = page.layout(100, 80, 1.0).unwrap();
@@ -1051,7 +1051,7 @@ mod tests {
     #[test]
     fn negative_area_fades_to_its_top_baseline_on_a_dark_background() {
         let source = crate::session::tests::source(
-            "function render(){return h('plot',{kind:'line',values:[-10,-10],colors:['#0000ff'],smooth:true,area:true,accessibilityLabel:'Negative area',style:{width:100,height:100,background:'#101010'}})}",
+            "function render(){return h('plot',{kind:'line',values:[-10,-10],colors:['#0000ff'],smooth:true,area:true,accessibilityLabel:'Negative area',style:{width:100,height:100,backgroundColor:'#101010'}})}",
         );
         let mut page = crate::ViewSession::new(&source).unwrap();
         let frame = page.layout(100, 100, 1.0).unwrap().rasterize().unwrap();
@@ -1120,7 +1120,7 @@ mod tests {
     fn native_decode_and_reference_pixels_cover_each_plot_kind() {
         for kind in ["bar", "line", "pie"] {
             let source = crate::session::tests::source(&format!(
-                "function render(){{return h('plot',{{accessibilityLabel:'Chart',kind:'{kind}',values:[10,20],colors:['#ff0000','#0000ff'],style:{{width:100,height:100,background:'#ffffff'}}}})}}"
+                "function render(){{return h('plot',{{accessibilityLabel:'Chart',kind:'{kind}',values:[10,20],colors:['#ff0000','#0000ff'],style:{{width:100,height:100,backgroundColor:'#ffffff'}}}})}}"
             ));
             let mut page = crate::ViewSession::new(&source).unwrap();
             let display = page.layout(100, 100, 1.0).unwrap();

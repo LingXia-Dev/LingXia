@@ -1,3 +1,5 @@
+import { resourceError } from './errors.js';
+
 export function createLeaveGuards(callHost, report) {
   const holders = new Set();
   let epoch = 0, sent = false, asking = false, tail = Promise.resolve();
@@ -58,7 +60,7 @@ export function createLeaveGuards(callHost, report) {
           update({ pending: reason, requests: snapshot.requests + 1 });
           return new Promise(resolve => { answer = resolve; });
         },
-        fail(error) { update({ error: String(error.message ?? error) }); },
+        fail(error) { update({ error: resourceError(error) }); },
       };
       return {
         get state() { return snapshot; },

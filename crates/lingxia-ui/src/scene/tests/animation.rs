@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 #[test]
 fn subtree_translation_recovers_offscreen_paint_without_moving_siblings() {
     let mut page = crate::ViewSession::new(&crate::session::tests::source(
-        "function render(){return h('stack',{style:{width:100,height:100}},h('column',{testId:'card',style:{offset:{x:120,y:10},width:30,height:30,background:'#ff0000'}}),h('column',{testId:'sibling',style:{offset:{x:0,y:50},width:20,height:20,background:'#00ff00'}}));}"
+        "function render(){return h('stack',{style:{width:100,height:100}},h('column',{testId:'card',style:{left:120,top:10,width:30,height:30,backgroundColor:'#ff0000'}}),h('column',{testId:'sibling',style:{left:0,top:50,width:20,height:20,backgroundColor:'#00ff00'}}));}"
     )).unwrap();
     let original = page.layout(100, 100, 1.0).unwrap();
     let card = original.nodes.iter().find(|n| n.test_id == "card").unwrap();
@@ -36,7 +36,7 @@ fn subtree_translation_recovers_offscreen_paint_without_moving_siblings() {
 fn transformed_plot_selection_uses_original_geometry_inside_static_scroll_clips() {
     for kind in ["bar", "pie"] {
         let source = format!(
-            "function render(){{return h('scroll',{{style:{{width:100,height:80,radius:8}}}},h('column',{{testId:'card',style:{{width:80,height:140}}}},h('plot',{{kind:'{kind}',values:[2,4,6],colors:['#123456'],accessibilityLabel:'Series',onSelect:()=>{{}},style:{{width:80,height:60}}}})));}}"
+            "function render(){{return h('scroll',{{style:{{width:100,height:80,borderRadius:8}}}},h('column',{{testId:'card',style:{{width:80,height:140}}}},h('plot',{{kind:'{kind}',values:[2,4,6],colors:['#123456'],accessibilityLabel:'Series',onSelect:()=>{{}},style:{{width:80,height:60}}}})));}}"
         );
         let mut page = crate::ViewSession::new(&crate::session::tests::source(&source)).unwrap();
         let original = page.layout(100, 100, 1.0).unwrap();
@@ -86,7 +86,7 @@ fn transformed_plot_selection_uses_original_geometry_inside_static_scroll_clips(
 #[test]
 fn animated_opacity_replaces_base_alpha_and_isolates_overlapping_children() {
     let mut page = crate::ViewSession::new(&crate::session::tests::source(
-        "function render(){return h('stack',{style:{width:40,height:40,opacity:0.8}},h('column',{style:{width:40,height:40,background:'#ff0000'}}),h('column',{style:{width:40,height:40,background:'#0000ff'}}));}"
+        "function render(){return h('stack',{style:{width:40,height:40,opacity:0.8}},h('column',{style:{width:40,height:40,backgroundColor:'#ff0000'}}),h('column',{style:{width:40,height:40,backgroundColor:'#0000ff'}}));}"
     )).unwrap();
     let display = page.layout(50, 50, 1.0).unwrap().animate_for_test(
         0,

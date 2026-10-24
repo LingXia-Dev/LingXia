@@ -1,7 +1,9 @@
-// Requirements describe the bundled runtime, including capabilities it can
-// emit after state changes. Do not infer a lower baseline from the first frame.
+import { uiAbi, maxField } from '../src/generated/wire.js';
+
+// Requirements describe the bundled runtime, including fields it can emit after
+// state changes. Do not infer a lower baseline from the first frame.
 export function moduleBanner(compiler) {
-  const manifest = { uiAbi: 1, minField: 108, requiredFeatures: ['candidate-transactions', 'bounded-jobs'], compiler };
+  const manifest = { uiAbi, minField: maxField, requiredFeatures: ['candidate-transactions', 'bounded-jobs'], compiler };
   return `// LingXia UI module; ${JSON.stringify(manifest)}
 ;(function(required) {
   const host = globalThis.__lingxiaUiHost;

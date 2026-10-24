@@ -6,271 +6,235 @@ import { join } from 'node:path';
 import { audit, buildPages } from '../compiler/index.mjs';
 import { moduleBanner } from '../compiler/compatibility.mjs';
 import { runInNewContext } from 'node:vm';
-import { field } from '../src/generated/wire.js';
+import { maxField } from '../src/generated/wire.js';
+import { tree, decode } from './support/wire.mjs';
 
-globalThis.__lingxiaUiHost = {uiAbi:1,maxField:108,features:['candidate-transactions','bounded-jobs']};
+globalThis.__lingxiaUiHost = { uiAbi: 1, maxField, features: ['candidate-transactions', 'bounded-jobs'] };
+const clean = source => assert.deepEqual(audit(source, 'page.tsx'), []);
+const flags = (source, pattern) => assert.match(audit(source, 'page.tsx').join('\n'), pattern);
+
+async function project(files, run) {
+  const root = await mkdtemp(join(tmpdir(), 'lingxia-ui-compiler-'));
+  try {
+    await writeFile(join(root, 'page.json'), '{"renderer":"gpu"}');
+    for (const [name, contents] of Object.entries(files)) await writeFile(join(root, name), contents);
+    await run(root, page => buildPages(root, [page ?? 'page.tsx'], join(root, 'dist')));
+  } finally { await rm(root, { recursive: true, force: true }); }
+}
+async function load(root, name = 'page') {
+  const source = await readFile(join(root, `dist/${name}.ui.js`), 'utf8');
+  await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+  return source;
+}
+const describePage = (view = { data: {}, env: {} }) => globalThis.__lingxiaDescribe(globalThis.__lingxiaRender, view);
 
 test('compiled entry refuses old native and missing capabilities before author code runs', () => {
   const source = moduleBanner('0.25.1') + '\nglobalThis.didRender = true;';
-  for (const host of [undefined, {uiAbi:2,maxField:104,features:[]},
-    {uiAbi:1,features:['candidate-transactions','bounded-jobs']},
-    {uiAbi:1,maxField:104,features:['candidate-transactions','bounded-jobs']},
-    {uiAbi:1,maxField:105,features:['candidate-transactions']}]) {
-    const context = {__lingxiaUiHost:host};
+  for (const host of [undefined, { uiAbi: 2, maxField, features: [] }, { uiAbi: 1, features: ['candidate-transactions', 'bounded-jobs'] },
+    { uiAbi: 1, maxField: maxField - 1, features: ['candidate-transactions', 'bounded-jobs'] }, { uiAbi: 1, maxField, features: ['candidate-transactions'] }]) {
+    const context = { __lingxiaUiHost: host };
     assert.throws(() => runInNewContext(source, context), /UI_COMPAT/);
     assert.equal(context.didRender, undefined);
   }
-  const context = {__lingxiaUiHost:globalThis.__lingxiaUiHost};
+  const context = { __lingxiaUiHost: globalThis.__lingxiaUiHost };
   runInNewContext(source, context);
   assert.equal(context.didRender, true);
 });
 
-test('component member expressions are not intrinsic tags', () => {
-  assert.doesNotThrow(() => audit("import * as components from './components'; export function render(){return <components.Card custom={true}/>}", 'member.ui.tsx'));
-  assert.throws(() => audit('export function render(){return <unsupported/>}', 'member.ui.tsx'), /UI_TAG/);
+test('audit collects every problem with its source position', () => {
+  const problems = audit('const a = <div/>;\nconst b = <text onClick={x} style={{alignItems:"center", widthPercent:1}}/>;\ndocument.title;', 'page.tsx');
+  assert.deepEqual(problems, [
+    'page.tsx:1:11: UI_TAG: unsupported tag <div>',
+    'page.tsx:2:17: UI_PROP: onClick is not a property of <text>',
+    'page.tsx:2:37: UI_STYLE: alignItems is not supported on <text>',
+    'page.tsx:2:58: UI_STYLE: unknown style property widthPercent',
+    'page.tsx:3:1: UI_DOM: document is unavailable in GPU Views',
+  ]);
 });
 
-test('DOM diagnostics distinguish free globals from local bindings and property names', () => {
-  for (const source of [
-    'const metadata = {window: 1}; metadata.window;',
-    'function read(document) { return document.title; }',
-    'const window = 1; const metadata = {window};',
-  ]) assert.doesNotThrow(() => audit(source, 'scope.ui.tsx'));
-  for (const source of ['window.location;', 'const metadata = {window};',
-    'function read(document) { return document; } document.title;'])
-    assert.throws(() => audit(source, 'scope.ui.tsx'), /UI_DOM/);
-  assert.throws(() => audit('export function render(){return <><text>Hello</text></>}', 'fragment.ui.tsx'), /UI_FRAGMENT/);
+test('component member expressions are not intrinsic tags; fragments and DOM globals are diagnosed', () => {
+  clean("import * as components from './components'; export function render(){return <components.Card custom={true}/>}");
+  flags('export function render(){return <unsupported/>}', /UI_TAG/);
+  for (const source of ['const metadata = {window: 1}; metadata.window;', 'function read(document) { return document.title; }', 'const window = 1; const metadata = {window};'])
+    clean(source);
+  for (const source of ['window.location;', 'const metadata = {window};', 'function read(document) { return document; } document.title;']) flags(source, /UI_DOM/);
+  flags('export function render(){return <><text>Hello</text></>}', /UI_FRAGMENT/);
 });
 
-test('known spread properties obey the same intrinsic contract as explicit props', () => {
-  for (const source of [
-    'const view = <text {...{typo:true}}>Hello</text>;',
-    'const props = {typo:true}; const view = <text {...props}/>;',
-    'const view = <search {...{secure:true}}/>;',
-  ]) assert.throws(() => audit(source, 'spread.ui.tsx'), /UI_PROP/);
-  assert.doesNotThrow(() => audit('const props = {children:"Hello",className:"text-sm"}; const view = <text {...props}/>;', 'spread.ui.tsx'));
+test('spread and explicit props obey one element contract', () => {
+  for (const source of ['const view = <text {...{typo:true}}>Hello</text>;', 'const props = {typo:true}; const view = <text {...props}/>;',
+    'const view = <search {...{secure:true}}/>;']) flags(source, /UI_PROP/);
+  clean('const props = {children:"Hello",className:"text-sm"}; const view = <text {...props}/>;');
+  clean('const view = <list count={keys.length} itemKeys={keys} row={renderRow}/>;');
+  flags('const view = <scroll itemKeys={keys}/>;', /UI_PROP: itemKeys is not a property of <scroll>/);
+  clean('const x = <input bind={draft} placeholder="Write" keyboard="text" autoFocus onSubmit={save} disabled/>;');
+  clean('const x = <textarea value="" onInput={change} disabled={false}/>;');
+  flags('const x = <textarea enabled={false}/>;', /UI_PROP: enabled/);
+  clean('const x = <checkbox value={true}><row><text>Task</text></row></checkbox>;');
+  clean('const x = <switch accessibilityLabel="Task" bind={on}/>;');
+  for (const prop of ['secure={false}', 'keyboard="text"', 'onChange={find}']) flags(`const x=<search ${prop}/>;`, /UI_PROP/);
+  for (const name of ['onClick', 'onInput', 'onSubmit']) flags(`const x=<slider accessibilityLabel="Range" ${name}={update}/>;`, /UI_PROP/);
+  flags('const x=<radio-option/>;', /UI_TAG/);
+  flags('const x=<radio onClick={change}/>;', /UI_PROP/);
+  flags('const icon=<vector paths={paths} onClick={click}/>;', /UI_PROP/);
+  for (const [tag, prop] of [['text', 'lines={2}'], ['grid', 'columns={3}'], ['image', 'fit="cover"']]) flags(`const x=<${tag} ${prop}/>;`, /UI_PROP/);
 });
 
-test('known classes fail at build time in expressions, hidden branches and lexical constants', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'lingxia-ui-class-usage-'));
-  try {
-    await writeFile(join(root, 'page.json'), '{"renderer":"gpu"}');
-    for (const expression of ['"grid-cols-2"', 'view.data.active ? "text-sm" : "grid-cols-2"',
-      'view.data.active && "grid-cols-2"', 'bad', '(bad as string)']) {
-      await writeFile(join(root, 'page.ui.tsx'), `const bad = 'grid-cols-2'; export function render(view){return <column className={${expression}}/>}`);
-      await assert.rejects(buildPages(root, ['page.ui.tsx'], join(root, 'dist')), /page.ui.tsx:1:\d+: UI_CLASS: grid-cols-2/);
-      await assert.rejects(readFile(join(root, 'dist/page.ui.js')), {code:'ENOENT'});
+test('inline styles are CSS-named and checked per element', () => {
+  clean('const x=<grid style={{gridTemplateColumns:3}}><text style={{lineClamp:2}}>Card</text></grid>;');
+  clean('const x=<stack><text style={{position:"absolute",top:-5,left:10}}>Top</text></stack>;');
+  flags('const x=<column style={{gridTemplateColumns:3}}/>;', /UI_STYLE: gridTemplateColumns is not supported on <column>/);
+  flags('const x=<text style={{offset:{x:1}}}/>;', /UI_STYLE: unknown style property offset/);
+  flags('const view = <column style={{animation:null}}/>;', /UI_ANIMATION/);
+});
+
+test('class diagnostics separate unknown, unsupported and wrong-element utilities and report all at once', async () => {
+  await project({ 'page.tsx': `export function render(view) {
+  return <column className="grid-cols-2 not-a-utility transition">
+    <text className={view.data.on ? "text-sm" : "items-center"}>A</text>
+    <column className="active:bg-red-500 hover:p-4"/>
+  </column>;
+}` }, async (root, build) => {
+    const error = await build().catch(error => error);
+    const lines = error.message.split('\n');
+    assert.match(lines[0], /page.tsx: 6 authoring problems/);
+    for (const pattern of [
+      /^page.tsx:2:\d+: UI_CLASS_ELEMENT: grid-cols-2 sets gridTemplateColumns, which <column> does not support$/,
+      /^page.tsx:2:\d+: UI_CLASS_UNKNOWN: not-a-utility is not a Tailwind utility$/,
+      /^page.tsx:2:\d+: UI_CLASS_UNSUPPORTED: transition: the native renderer does not support transition-property/,
+      /^page.tsx:3:\d+: UI_CLASS_ELEMENT: items-center sets alignItems, which <text> does not support$/,
+      /^page.tsx:4:\d+: UI_CLASS_ELEMENT: active:bg-red-500 needs a control; <column> is never pressed$/,
+      /^page.tsx:4:\d+: UI_CLASS_ELEMENT: hover:p-4: hover styles change paint only, not paddingTop, paddingRight, paddingBottom, paddingLeft$/,
+    ]) assert.ok(lines.some(line => pattern.test(line)), `${pattern} in\n${error.message}`);
+    await assert.rejects(readFile(join(root, 'dist/page.ui.js')), { code: 'ENOENT' });
+  });
+});
+
+test('class usage follows lexical constants, hidden branches and imported maps to their defining module', async () => {
+  await project({ 'styles.ts': 'export const bad = "nope-utility"; export const variants = {good:"text-sm", bad};' }, async (root, build) => {
+    for (const expression of ['"nope-utility"', 'view.data.active ? "text-sm" : "nope-utility"', 'view.data.active && "nope-utility"', 'local', '(local as string)']) {
+      await writeFile(join(root, 'page.tsx'), `const local = 'nope-utility'; export function render(view){return <column className={${expression}}/>}`);
+      await assert.rejects(build(), /page.tsx:1:\d+: UI_CLASS_UNKNOWN: nope-utility/);
     }
-    await writeFile(join(root, 'page.ui.tsx'), `
-      const style = 'grid-cols-2';
-      export function render(){const style = 'text-sm'; return <text className={style}>grid-cols-2</text>}
-    `);
-    await buildPages(root, ['page.ui.tsx'], join(root, 'dist'));
-  } finally { await rm(root, { recursive:true, force:true }); }
+    for (const expression of ['bad', 'variants[view.data.mode]']) {
+      await writeFile(join(root, 'page.tsx'), `import {bad, variants} from './styles'; export function render(view){return <text className={${expression}}>Hello</text>}`);
+      await assert.rejects(build(), /styles.ts:1:\d+: UI_CLASS_UNKNOWN: nope-utility/);
+    }
+    await writeFile(join(root, 'page.tsx'), 'export function render(){return <text {...{className:"nope-utility"}} className="text-sm">Hello</text>}');
+    await build();
+    await writeFile(join(root, 'page.tsx'), "const style = 'nope-utility';\nexport function render(){const style = 'text-sm'; return <text className={style}>nope-utility</text>}");
+    await build();
+  });
 });
 
-test('compiled wrapper components forward children with explicit JSX precedence', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'lingxia-ui-children-'));
-  try {
-    await writeFile(join(root, 'page.json'), '{"renderer":"gpu"}');
-    await writeFile(join(root, 'page.ui.tsx'), `
+test('runtime errors in compiled pages name the JSX site and component chain', async () => {
+  await project({ 'page.tsx': `function Card({ children }) {
+  return <column>{children}</column>;
+}
+export function render() {
+  return <Card><text onClick={() => {}}>x</text></Card>;
+}` }, async (root, build) => {
+    // A spread the checker cannot see past reaches the runtime, which reports the JSX chain.
+    await writeFile(join(root, 'page.tsx'), `function Card({ children }) {
+  return <column>{children}</column>;
+}
+const extra = JSON.parse('{"onClick":1}');
+export function render() {
+  return <Card><text {...extra}>x</text></Card>;
+}`);
+    await build();
+    await load(root);
+    assert.throws(() => describePage(), /UI_PROP: onClick is not a property of <text>\n  at <text> \(page.tsx:6:16\)\n  at <column> \(page.tsx:2:10\)\n  at Card \(page.tsx:6:10\)/);
+  });
+});
+
+test('wrapper components forward children; renderer config is the only page switch', async () => {
+  await project({ 'page.tsx': `
       function Card(props){return <column {...props}/>}
-      export function render(){return <Card><text children="Replaced">Visible{true}{false}{null}</text></Card>}
-    `);
-    await buildPages(root, ['page.ui.tsx'], join(root, 'dist'));
-    const source = await readFile(join(root, 'dist/page.ui.js'), 'utf8');
-    await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
-    const records = globalThis.__lingxiaDescribe(globalThis.__lingxiaRender, {data:{},env:{}});
-    assert.ok(records.includes('Visible'));
-    assert.ok(!records.includes('Replaced'));
+      export function render(){return <Card><text children="Replaced">Visible{true}{false}{null}{''}</text></Card>}
+    ` }, async (root, build) => {
+    await build(); await load(root);
+    const card = tree(describePage());
+    assert.equal(card.children[0].text, 'Visible');
     await writeFile(join(root, 'components.tsx'), 'export function Card(props){return <view {...props}/>}');
-    await writeFile(join(root, 'page.ui.tsx'), "import * as components from './components';export function render(){return <components.Card className='flex flex-col'><text>Member</text></components.Card>}");
-    await buildPages(root, ['page.ui.tsx'], join(root, 'dist'));
-    const memberSource=await readFile(join(root,'dist/page.ui.js'),'utf8');
-    await import('data:text/javascript;base64,'+Buffer.from(memberSource).toString('base64'));
-    const memberRecords=globalThis.__lingxiaDescribe(globalThis.__lingxiaRender,{data:{},env:{}});
-    assert.ok(memberRecords.includes('Member'));
-    assert.ok(memberRecords.includes(103),'forwarded flex direction reaches native records');
-    await writeFile(join(root, 'page.ui.tsx'), 'export function render(){return <view className="flex flex-col md:flex-row"><text>Hello</text></view>}');
-    await buildPages(root, ['page.ui.tsx'], join(root, 'dist'));
-    await writeFile(join(root, 'page.ui.tsx'), 'export function render(){return <text className="flex-col">Hello</text>}');
-    await assert.rejects(buildPages(root, ['page.ui.tsx'], join(root, 'dist')), /UI_LAYOUT: flex-col requires a flex container/);
-  } finally { await rm(root, { recursive:true, force:true }); }
+    await writeFile(join(root, 'page.tsx'), "import * as components from './components';export function render(){return <components.Card className='flex flex-col'><text>Member</text></components.Card>}");
+    await build(); await load(root);
+    assert.equal(tree(describePage()).props.flexDirection, 'column');
+    await writeFile(join(root, 'page.json'), '{"renderer":"webview"}');
+    await assert.rejects(build(), /page.json: expected "renderer": "gpu"/);
+    await assert.rejects(build('../outside.tsx'), /Invalid GPU page path/);
+  });
 });
 
 test('compiled transparent and empty components follow the public children contract', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'lingxia-ui-composition-'));
-  try {
-    await writeFile(join(root, 'page.json'), '{"renderer":"gpu"}');
-    await writeFile(join(root, 'page.ui.tsx'), `
+  await project({ 'page.tsx': `
       function Forward({children}: {children: JSX.Element}) { return children; }
       function Optional(): JSX.Element | null { return null; }
       export function render() { return <column><Forward><text>One</text></Forward><Optional/></column>; }
-    `);
-    await buildPages(root, ['page.ui.tsx'], join(root, 'dist'));
-    const source = await readFile(join(root, 'dist/page.ui.js'), 'utf8');
-    await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
-    const records = globalThis.__lingxiaDescribe(globalThis.__lingxiaRender, {data:{},env:{}});
-    assert.ok(records.includes('One'));
-    assert.equal(records[1], -1);
-  } finally { await rm(root, {recursive:true,force:true}); }
-});
-
-test('imported class maps diagnose every selectable branch at its defining module', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'lingxia-ui-imported-classes-'));
-  try {
-    await writeFile(join(root, 'page.json'), '{"renderer":"gpu"}');
-    await writeFile(join(root, 'styles.ts'), 'export const bad = "grid-cols-2"; export const variants = {good:"text-sm", bad};');
-    for (const expression of ['bad', 'variants[view.data.mode]']) {
-      await writeFile(join(root, 'page.ui.tsx'), `import {bad, variants} from './styles'; export function render(view){return <text className={${expression}}>Hello</text>}`);
-      await assert.rejects(buildPages(root, ['page.ui.tsx'], join(root, 'dist')), /styles.ts:1:\d+: UI_CLASS: grid-cols-2/);
-    }
-    await writeFile(join(root, 'page.ui.tsx'), 'export function render(){return <text {...{className:"grid-cols-2"}}>Hello</text>}');
-    await assert.rejects(buildPages(root, ['page.ui.tsx'], join(root, 'dist')), /UI_CLASS: grid-cols-2/);
-    await writeFile(join(root, 'page.ui.tsx'), 'export function render(){return <text {...{className:"grid-cols-2"}} className="text-sm">Hello</text>}');
-    await buildPages(root, ['page.ui.tsx'], join(root, 'dist'));
-  } finally { await rm(root, { recursive:true, force:true }); }
-});
-
-test('virtual list identity inventories are accepted only on lists', () => {
-  assert.doesNotThrow(() => audit('const view = <list count={keys.length} itemKeys={keys} row={renderRow}/>;', 'list.ui.tsx'));
-  assert.throws(() => audit('const view = <scroll itemKeys={keys}/>;', 'list.ui.tsx'), /UI_PROP: unsupported itemKeys/);
-});
-
-test('compiler diagnoses unsupported UI constructs at their source', () => {
-  assert.throws(() => audit('const x = <div/>;', 'bad.ui.tsx'), /bad.ui.tsx:1:11: UI_TAG/);
-  assert.doesNotThrow(() => audit('const x = <text className="text-sm"/>;', 'good.ui.tsx'));
-  assert.throws(() => audit('const x = <text style={{position:"fixed"}}/>;', 'bad.ui.tsx'), /UI_STYLE/);
-  assert.throws(() => audit('document.title = "x";', 'bad.ui.tsx'), /UI_DOM/);
-  assert.doesNotThrow(() => audit('const x = <input bind={draft} placeholder="Write" keyboard="text" autoFocus onSubmit={save}/>;', 'input.ui.tsx'));
-  assert.doesNotThrow(() => audit('const x = <textarea value="" onInput={change} enabled={false}/>;', 'input.ui.tsx'));
-  assert.throws(() => audit('const x = <text value="invalid"/>;', 'bad.ui.tsx'), /UI_PROP/);
-});
-
-test('compiler admits checkbox composition without widening switch props', () => {
-  assert.doesNotThrow(() => audit('const x = <checkbox accessibilityLabel="Task" value={true}><row><text>Task</text></row></checkbox>;', 'check.ui.tsx'));
-  assert.throws(() => audit('const x = <switch accessibilityLabel="Task"/>;', 'check.ui.tsx'), /UI_PROP/);
+    ` }, async (root, build) => {
+    await build(); await load(root);
+    const column = tree(describePage());
+    assert.deepEqual(column.children.map(child => child.text), ['One']);
+  });
 });
 
 test('page builds reject animation utilities before installing a module', async () => {
-  assert.throws(()=>audit('const view = <column style={{animation:null}}/>;', 'animation.ui.tsx'),/UI_ANIMATION/);
-  const root = await mkdtemp(join(tmpdir(), 'lingxia-ui-animation-'));
-  try {
-    await writeFile(join(root, 'animated.json'), '{"renderer":"gpu"}');
-    await writeFile(join(root, 'animated.ui.tsx'), 'export function render(){return <column className="animate-pulse"><text>Pending</text></column>;}');
-    await assert.rejects(buildPages(root, ['animated.ui.tsx'], join(root,'dist')), /UI_ANIMATION: native presentation scheduling is not connected/);
-    await assert.rejects(readFile(join(root,'dist/animated.ui.js')), {code:'ENOENT'});
+  await project({ 'page.tsx': 'export function render(){return <column className="animate-pulse"><text>Pending</text></column>;}' }, async (root, build) => {
+    await assert.rejects(build(), /UI_ANIMATION: native presentation scheduling is not connected/);
+    await assert.rejects(readFile(join(root, 'dist/page.ui.js')), { code: 'ENOENT' });
     await writeFile(join(root, 'tokens.css'), '@theme {--animate-enter:enter 1s;@keyframes enter{from{opacity:0}to{opacity:1}}}');
-    await writeFile(join(root, 'animated.ui.tsx'), 'import "./tokens.css";export function render(){return <column className="animate-enter"/>;}');
-    await assert.rejects(buildPages(root, ['animated.ui.tsx'], join(root,'dist')), /UI_ANIMATION/);
-    await assert.rejects(readFile(join(root,'dist/animated.ui.js')), {code:'ENOENT'});
-  } finally { await rm(root,{recursive:true,force:true}); }
+    await writeFile(join(root, 'page.tsx'), 'import "./tokens.css";export function render(){return <column className="animate-enter"/>;}');
+    await assert.rejects(build(), /UI_ANIMATION/);
+  });
 });
 
-test('compiler emits executable ESM UI and preserves page config', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'lingxia-ui-'));
-  try {
-    await writeFile(join(root, 'hello.json'), '{"renderer":"gpu","title":"Hello"}');
-    await writeFile(join(root, 'hello.ui.tsx'), 'export function render() { return <column><stack><text>Back</text><text style={{offset:{x:12,y:-4}}}>Front</text></stack><grid columns={2}><text lines={2}>Hello, world!</text><text>Second card</text></grid><search placeholder="Find a moment"/><slider accessibilityLabel="Volume" value={40}/><radio value="daily" options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"}]} /></column>; }');
+test('compiler emits executable ESM UI, carries the action catalog and preserves page config', async () => {
+  await project({
+    'page.json': '{"renderer":"gpu","title":"Hello"}',
+    'page.tsx': `export function render() { return <column>
+      <stack><text>Back</text><text style={{position:"absolute",left:12,top:-4}}>Front</text></stack>
+      <grid style={{gridTemplateColumns:2}}><text style={{lineClamp:2}}>Hello, world!</text><text>Second card</text></grid>
+      <search placeholder="Find a moment"/><slider accessibilityLabel="Volume" value={40}/>
+      <radio value="daily" options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"}]} />
+    </column>; }`,
+  }, async root => {
     const catalog = { __names: ['increment'], __modes: { increment: 'call' } };
-    await buildPages(root, ['hello.ui.tsx'], join(root, 'dist'), { 'hello.ui.tsx': catalog });
-    const module = await readFile(join(root, 'dist/hello.ui.js'), 'utf8');
+    await buildPages(root, ['page.tsx'], join(root, 'dist'), { 'page.tsx': catalog });
+    const module = await load(root);
     assert.match(module, /^\/\/ LingXia UI module/);
-    assert.match(module, /export\s*\{/);
-    await import(`data:text/javascript;base64,${Buffer.from(module).toString('base64')}`);
     assert.deepEqual(globalThis.__lingxiaActionCatalog, catalog);
-    const records = globalThis.__lingxiaDescribe(globalThis.__lingxiaRender, { data: {}, actions: {}, env: {} });
-    assert.ok(records.includes('Hello, world!') && records.includes(50));
-    assert.ok(records.includes('Front') && records.includes(field.insetLeft) && records.includes(field.insetTop));
-    assert.ok(records.includes(16) && records.includes(47) && records.includes('Second card'));
-    assert.ok(records.includes('Find a moment') && records.includes('search'));
-    assert.ok(records.includes('Volume') && records.includes(15));
-    assert.ok(records.includes('Daily') && records.includes('Weekly'));
-    assert.ok(records.includes(12) && records.includes(13));
-    assert.equal(JSON.parse(await readFile(join(root, 'dist/hello.json'), 'utf8')).title, 'Hello');
-    await assert.rejects(buildPages(root, ['../outside.ui.tsx'], join(root, 'dist')), /Invalid GPU page path/);
-    await assert.rejects(buildPages(root, ['hello.ui.tsx'], join(root, 'dist'), {
-      'hello.ui.tsx': { __names: ['watch'], __modes: { watch: 'channel' } },
-    }), /action metadata/);
-    await buildPages(root, ['hello.ui.tsx'], join(root, 'stream'), {
-      'hello.ui.tsx': { __names: ['watch'], __modes: { watch: 'stream' } },
-    });
-  } finally { await rm(root, { recursive: true, force: true }); }
-});
-
-test('compiler admits vector paths and rejects interactive vector props', () => {
-  assert.doesNotThrow(()=>audit('const icon=<vector viewBox={[0,0,24,24]} paths={[{d:"M0 0h24"}]} className="w-6 text-blue-500"/>;','vector.ui.tsx'));
-  assert.throws(()=>audit('const icon=<vector paths={paths} onClick={click}/>;','vector.ui.tsx'),/UI_PROP/);
-});
-
-test('compiler accepts boolean bindings and rejects unrelated control events', () => {
-  for (const tag of ['checkbox','switch']) {
-    assert.doesNotThrow(()=>audit(`const x=<${tag} bind={preference} enabled>Label</${tag}>;`,'check.ui.tsx'));
-    assert.doesNotThrow(()=>audit(`const x=<${tag} value={true} onChange={change}/>;`,'check.ui.tsx'));
-    assert.throws(()=>audit(`const x=<${tag} onInput={change}/>;`,'check.ui.tsx'),/UI_PROP/);
-  }
+    const records = decode(describePage({ data: {}, actions: {}, env: {} }));
+    const named = text => records.find(record => record.text === text);
+    assert.equal(named('Hello, world!').props.textLines, 2);
+    assert.deepEqual([named('Front').props.insetLeft, named('Front').props.insetTop], [12, -4]);
+    assert.equal(records.find(record => record.tag === 'grid').props.gridColumns, 2);
+    assert.equal(records.find(record => record.tag === 'search').props.placeholder, 'Find a moment');
+    assert.equal(records.find(record => record.tag === 'slider').props.sliderValue, 40);
+    assert.deepEqual(records.filter(record => record.tag === 'radio-option').map(record => record.text), ['Daily', 'Weekly']);
+    assert.equal(JSON.parse(await readFile(join(root, 'dist/page.json'), 'utf8')).title, 'Hello');
+    await assert.rejects(buildPages(root, ['page.tsx'], join(root, 'dist'), { 'page.tsx': { __names: ['watch'], __modes: { watch: 'channel' } } }), /action metadata/);
+  });
 });
 
 test('bundled TSX classes use theme tokens, conditional strings and explicit style overrides', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'lingxia-ui-classes-'));
-  try {
-    await writeFile(join(root, 'hello.json'), '{"renderer":"gpu"}');
-    await writeFile(join(root, 'theme.css'), '@import "./palette.css"; @theme inline { --color-primary: var(--brand); }');
-    await writeFile(join(root, 'palette.css'), ':root { --brand: #007aff; } [data-theme="dark"] { --brand: #0a84ff; }');
-    await writeFile(join(root, 'hello.ui.tsx'), `
+  await project({
+    'theme.css': '@import "./palette.css"; @theme inline { --color-primary: var(--brand); }',
+    'palette.css': ':root { --brand: #007aff; } [data-theme="dark"] { --brand: #0a84ff; }',
+    'page.tsx': `
       import './theme.css';
       function Label({ className, children }) { return <text className={className} style={{ fontSize: 17 }}>{children}</text>; }
       export function render(view) { return <Label className={view.data.active ? 'text-sm text-primary dark:text-white' : 'text-sm text-black'}>Hello</Label>; }
-    `);
-    await buildPages(root, ['hello.ui.tsx'], join(root, 'dist'));
-    const source = await readFile(join(root, 'dist/hello.ui.js'), 'utf8');
-    await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
-    const describe = (active, theme) => globalThis.__lingxiaDescribe(globalThis.__lingxiaRender, { data: { active }, env: { theme } });
-    const light = describe(true, 'light');
-    assert.ok(light.includes('#007affff'));
-    assert.ok(light.includes(17));
-    assert.ok(!light.includes(14));
-    assert.ok(light.includes(17 * (1.25 / .875)));
-    assert.ok(describe(true, 'dark').includes('#ffffffff'));
-    assert.ok(describe(false, 'dark').includes('#000000ff'));
+    `,
+  }, async (root, build) => {
+    await build();
+    const source = await load(root);
+    const label = (active, theme) => tree(describePage({ data: { active }, env: { theme } })).props;
+    const light = label(true, 'light');
+    assert.deepEqual([light.color, light.fontSize, light.lineHeight], ['#007affff', 17, 17 * (1.25 / .875)]);
+    assert.equal(label(true, 'dark').color, '#ffffffff');
+    assert.equal(label(false, 'dark').color, '#000000ff');
     assert.doesNotMatch(source, /function compileUtilities|function declarations\(/);
-    await writeFile(join(root, 'hello.ui.tsx'), 'export function render() { return <text className="backdrop-invert">Hello</text>; }');
-    await assert.rejects(buildPages(root, ['hello.ui.tsx'], join(root, 'dist')), /hello.ui.tsx:1:\d+: UI_CLASS: backdrop-invert/);
-  } finally { await rm(root, { recursive: true, force: true }); }
-});
-
-test('compiler admits radio groups but keeps internal options private',()=>{
-  assert.doesNotThrow(()=>audit('const x=<radio options={choices} bind={choice} accessibilityLabel="Pace"/>;','radio.ui.tsx'));
-  assert.throws(()=>audit('const x=<radio-option/>;','radio.ui.tsx'),/UI_TAG/);
-  assert.throws(()=>audit('const x=<radio onClick={change}/>;','radio.ui.tsx'),/UI_PROP/);
-});
-
-test('search accepts string binding and reserves its keyboard configuration',()=>{
-  assert.doesNotThrow(()=>audit('const x=<search bind={query} onSubmit={find} placeholder="Search"/>;','search.ui.tsx'));
-  for(const prop of ['secure={false}','keyboard="text"','onChange={find}'])
-    assert.throws(()=>audit(`const x=<search ${prop}/>;`,'search.ui.tsx'),/UI_PROP/);
-});
-
-test('slider exposes typed numeric changes rather than click or input events',()=>{
- assert.doesNotThrow(()=>audit('const x=<slider accessibilityLabel="Volume" bind={volume} min={0} max={1} step={0.1}/>;','slider.ui.tsx'));
- for(const name of ['onClick','onInput','onSubmit'])assert.throws(()=>audit(`const x=<slider accessibilityLabel="Range" ${name}={update}/>;`,'slider.ui.tsx'),/UI_PROP/);
-});
-
-
-test('grid columns belong to the layout primitive',()=>{
- assert.doesNotThrow(()=>audit('const x=<grid columns={3}><text>Card</text></grid>;','grid.ui.tsx'));
- assert.throws(()=>audit('const x=<column columns={3}/>;','grid.ui.tsx'),/UI_PROP/);
-});
-
-
-test('compiler keeps stack offsets structured and wire field names private',()=>{
- assert.doesNotThrow(()=>audit('const x=<stack><text style={{offset:{x:10,y:-5}}}>Top</text></stack>;','stack.ui.tsx'));
- for(const field of ['offsetX','offsetY'])assert.throws(()=>audit(`const x=<text style={{${field}:1}}/>;`,'stack.ui.tsx'),/UI_STYLE/);
-});
-
-
-test('compiler scopes lines to text props',()=>{
- assert.doesNotThrow(()=>audit('const x=<text lines={2}>Summary</text>;','text.ui.tsx'));
- for(const tag of ['button','column'])assert.throws(()=>audit(`const x=<${tag} lines={2}/>;`,'text.ui.tsx'),/UI_PROP/);
- assert.throws(()=>audit('const x=<text style={{lines:2}}/>;','text.ui.tsx'),/UI_STYLE/);
+    await writeFile(join(root, 'page.tsx'), 'export function render() { return <text className="backdrop-invert">Hello</text>; }');
+    await assert.rejects(build(), /page.tsx:1:\d+: UI_CLASS_UNSUPPORTED: backdrop-invert/);
+  });
 });

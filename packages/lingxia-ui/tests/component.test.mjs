@@ -33,7 +33,7 @@ test('component children preserve zero/one/many and explicit JSX precedence', ()
 test('duplicate locals fail with component context, while custom hook namespaces stay independent', () => {
   const useDraft = name => useLocal(`${name}/value`, '');
   function Bad() { useDraft('draft'); useDraft('draft'); return h('text'); }
-  assert.throws(() => describe(() => h(Bad), {}), /UI_LOCAL: duplicate declaration.*draft\/value[\s\S]*at component Bad/);
+  assert.throws(() => describe(() => h(Bad), {}), /UI_LOCAL: duplicate declaration.*draft\/value[\s\S]*at Bad/);
   let first, second;
   const render = () => { first = useDraft('first'); second = useDraft('second'); return h('text', {}, first.value + second.value); };
   describe(render, {}); first.set('a'); second.set('b');
@@ -51,7 +51,7 @@ test('empty invoked components retain own state and dispose descendants only aft
   visible = false; prepare(render, {}); discard(); visible = true;
   assert.ok(describe(render, {}).includes('changed'));
   visible = false; describe(render, {}); assert.equal(owner.value, 'kept');
-  child.set('stale'); visible = true;
+  assert.throws(() => child.set('stale'), /UI_LOCAL: "value" in .* is no longer mounted/); visible = true;
   assert.ok(describe(render, {}).includes('child')); assert.equal(owner.value, 'kept');
   for (const value of [null, undefined, false, true]) {
     assert.doesNotThrow(() => describe(() => h('column', {}, h(() => value)), {}));
@@ -62,8 +62,8 @@ test('empty invoked components retain own state and dispose descendants only aft
 test('an empty component keeps its request while removing its descendant request', () => {
   configureActions({__names:['load'], __modes:{load:'call'}});
   const view = createView({}, {}); let visible = true;
-  function Child() { useRequest('load', 'load', {owner:'child'}); return h('text'); }
-  function Optional() { useRequest('load', 'load', {owner:'parent'}); return visible ? h(Child) : null; }
+  function Child() { useRequest('load', view.actions.load, {owner:'child'}); return h('text'); }
+  function Optional() { useRequest('load', view.actions.load, {owner:'parent'}); return visible ? h(Child) : null; }
   const render = () => h('column', {}, h(Optional));
   describe(render, view); const started = takeActionRequests().map(JSON.parse);
   assert.equal(started.length, 2);

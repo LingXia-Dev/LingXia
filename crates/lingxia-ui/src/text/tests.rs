@@ -155,7 +155,7 @@ fn word_break_wraps_inherited_text_and_keeps_cached_modes_distinct() {
         ("overflowWrap", "break-word"),
     ] {
         let source = crate::session::tests::source(
-        "function render(){const wrap=useLocal('wrap',false);return h('column',{style:{width:320,padding:20,wordBreak:wrap.value?'break-all':'normal'}},h('row',{style:{gap:12}},h('text',{style:{fontSize:14}},'IPv6'),h('column',{testId:'cell',style:{grow:1,minWidth:0,align:'end'}},h('text',{testId:'address',style:{fontSize:14,padding:12}},'2001:db8:1234:5678:90ab:cdef:1234:5678'))),h('button',{testId:'toggle',onClick:()=>wrap.set(!wrap.value)},'Toggle'))}".replace("wordBreak", property).replace("break-all", value).as_str(),
+        "function render(){const wrap=useLocal('wrap',false);return h('column',{style:{width:320,padding:20,wordBreak:wrap.value?'break-all':'normal'}},h('row',{style:{gap:12}},h('text',{style:{fontSize:14}},'IPv6'),h('column',{testId:'cell',style:{flexGrow:1,minWidth:0,alignItems:'end'}},h('text',{testId:'address',style:{fontSize:14,padding:12}},'2001:db8:1234:5678:90ab:cdef:1234:5678'))),h('button',{testId:'toggle',onClick:()=>wrap.set(!wrap.value)},'Toggle'))}".replace("wordBreak", property).replace("break-all", value).as_str(),
     );
         for scale in [1.0, 2.0] {
             let mut page = crate::ViewSession::new(&source).unwrap();
@@ -201,7 +201,7 @@ fn word_break_wraps_inherited_text_and_keeps_cached_modes_distinct() {
 #[test]
 fn letter_spacing_changes_wrapping_without_stale_cached_layouts() {
     let module = crate::session::tests::source(
-        "function render(v){return h('column',{},h('text',{style:{width:80,fontFamily:'mono',fontSize:16,wordBreak:'break-all',letterSpacing:v.data.spacing}},'ABCDEFGH'))}",
+        "function render(v){return h('column',{},h('text',{style:{width:80,fontFamily:'monospace',fontSize:16,wordBreak:'break-all',letterSpacing:v.data.spacing}},'ABCDEFGH'))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let mut heights = Vec::new();
@@ -217,7 +217,7 @@ fn letter_spacing_changes_wrapping_without_stale_cached_layouts() {
 #[test]
 fn typography_inherits_family_and_absolute_line_height_with_local_overrides() {
     let module = crate::session::tests::source(
-        "function render(){return h('column',{style:{fontFamily:'mono',fontSize:18,lineHeight:36}},h('input',{value:'iiii',style:{height:70}}),h('input',{value:'WWWW',style:{height:70}}),h('input',{value:'WWWW',style:{height:70,fontFamily:'sans',lineHeight:28}}))}",
+        "function render(){return h('column',{style:{fontFamily:'monospace',fontSize:18,lineHeight:'36px'}},h('input',{value:'iiii',style:{height:70}}),h('input',{value:'WWWW',style:{height:70}}),h('input',{value:'WWWW',style:{height:70,fontFamily:'sans-serif',lineHeight:'28px'}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let frame = page.layout(320, 240, 1.0).unwrap();
@@ -240,7 +240,7 @@ fn typography_inherits_family_and_absolute_line_height_with_local_overrides() {
 #[test]
 fn synthetic_italic_leans_right_and_ink_bounds_contain_pixels() {
     let module = crate::session::tests::source(
-        "function render(){return h('text',{style:{fontSize:48,padding:16,color:'#000000',background:'#ffffff'}},'IIII')}",
+        "function render(){return h('text',{style:{fontSize:48,padding:16,color:'#000000',backgroundColor:'#ffffff'}},'IIII')}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let mut centers = Vec::new();
@@ -293,7 +293,7 @@ fn synthetic_italic_leans_right_and_ink_bounds_contain_pixels() {
 #[test]
 fn italic_inherits_resets_and_does_not_reuse_upright_shaping() {
     let module = crate::session::tests::source(
-        "function render(v){return h('column',{style:{background:'#ffffff',color:'#000000',fontSize:32,fontStyle:v.data.parent}},h('text',{style:v.data.child?{fontStyle:v.data.child}:{}},'Italic text ffi'))}",
+        "function render(v){return h('column',{style:{backgroundColor:'#ffffff',color:'#000000',fontSize:32,fontStyle:v.data.parent}},h('text',{style:v.data.child?{fontStyle:v.data.child}:{}},'Italic text ffi'))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let mut pixels = Vec::new();
@@ -331,7 +331,7 @@ fn font_weight_inherits_and_explicit_children_override_it() {
             format!("fontWeight:{weight},")
         };
         let module = crate::session::tests::source(&format!(
-            "function render(){{return h('column',{{style:{{background:'#ffffff',color:'#000000',fontSize:32,fontWeight:{parent_weight}}}}},h('text',{{style:{{{weight}lineHeight:44}}}},'Hello world'))}}"
+            "function render(){{return h('column',{{style:{{backgroundColor:'#ffffff',color:'#000000',fontSize:32,fontWeight:{parent_weight}}}}},h('text',{{style:{{{weight}lineHeight:'44px'}}}},'Hello world'))}}"
         ));
         let mut page = crate::ViewSession::new(&module).unwrap();
         let frame = page.layout(300, 80, 1.0).unwrap().rasterize().unwrap();
@@ -354,7 +354,7 @@ fn padded_multiline_text_matches_equivalent_container_height() {
     for (scale, border) in [(1.0, 0), (2.0, 0), (1.0, 2), (2.0, 2)] {
         for width in 300..341 {
             let module = crate::session::tests::source(&format!(
-                "function render(){{return h('column',{{style:{{width:{width},gap:10}}}},h('text',{{testId:'padded',style:{{fontSize:12,lineHeight:20,borderWidth:{border},paddingLeft:12,paddingRight:12,paddingTop:8,paddingBottom:8}}}},'{value}'),h('column',{{testId:'wrapped',style:{{borderWidth:{border},paddingLeft:12,paddingRight:12,paddingTop:8,paddingBottom:8}}}},h('text',{{style:{{fontSize:12,lineHeight:20}}}},'{value}')))}}"
+                "function render(){{return h('column',{{style:{{width:{width},gap:10}}}},h('text',{{testId:'padded',style:{{fontSize:12,lineHeight:'20px',borderWidth:{border},paddingLeft:12,paddingRight:12,paddingTop:8,paddingBottom:8}}}},'{value}'),h('column',{{testId:'wrapped',style:{{borderWidth:{border},paddingLeft:12,paddingRight:12,paddingTop:8,paddingBottom:8}}}},h('text',{{style:{{fontSize:12,lineHeight:'20px'}}}},'{value}')))}}"
             ));
             let mut page = crate::ViewSession::new(&module).unwrap();
             let frame = page

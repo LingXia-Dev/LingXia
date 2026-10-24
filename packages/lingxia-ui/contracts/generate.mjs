@@ -1,6 +1,6 @@
 // Every artifact derived from schema.json. `--check` fails on drift instead of writing.
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
@@ -62,73 +62,128 @@ ${options}
 `;
 }
 
-const styleKinds = new Set(['number', 'string', 'alignment', 'justification', 'font-family', 'font-style', 'flex-wrap',
-  'flex-direction', 'flex-display', 'flex-basis', 'scroll-axis', 'animation', 'word-break', 'overflow-wrap',
-  'text-alignment', 'text-decoration-line', 'gradient', 'shadow', 'stack-offset']);
-
 function wire(schema) {
-  const byKind = test => schema.fields.filter(field => test(field.kind));
-  const map = (fields, key = field => field.wire) => object(fields.map(field => [key(field), field.id]));
-  const fieldId = key => schema.fields.find(field => field.key === key).id;
-  return `${header}export const tags = ${object(schema.tags.map((name, id) => [name, id]))};
+  const options = schema.fields.filter(field => schema.options[field.kind]).map(field => [field.key, schema.options[field.kind]]);
+  return `${header}export const uiAbi = ${schema.uiAbi};
+export const maxField = ${schema.fields.length - 1};
+export const tags = ${object(schema.tags.map((name, id) => [name, id]))};
 export const field = ${object(schema.fields.map(field => [field.key, field.id]))};
-export const fields = ${map(byKind(kind => styleKinds.has(kind)))};
-export const vectorField = ${fieldId('vectorSource')};
-export const dimensionPercentFields = ${object(['width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight'].map(name => [name, fieldId(`${name}Percent`)]))};
-export const styleOptions = ${object(schema.fields.filter(field => schema.options[field.kind]).map(field => [field.wire, schema.options[field.kind]]))};
-export const buttonProps = ${map(byKind(kind => ['handle', 'flag', 'radio-label'].includes(kind)))};
-export const listFields = ${map(byKind(kind => kind.startsWith('list-')))};
-export const reachProps = ${map(byKind(kind => kind === 'reach-handle'))};
-export const imageProps = ${map(byKind(kind => kind.startsWith('image-')))};
-export const inputProps = ${map(byKind(kind => kind.startsWith('input-')))};
-export const checkProps = ${map(byKind(kind => kind.startsWith('check-')), field => field.wire === 'checked' ? 'value' : field.wire)};
-export const radioProps = ${map(byKind(kind => kind.startsWith('radio-')))};
-export const sliderProps = ${map(byKind(kind => kind.startsWith('slider-') || kind === 'radio-label'))};
-export const gridProps = ${map(byKind(kind => kind.startsWith('grid-')))};
-export const textProps = ${map(byKind(kind => kind.startsWith('text-')))};
-export const plotProps = ${object(['plotValues', 'plotKind', 'plotColors', 'accessibilityLabel', 'plotSmooth', 'plotArea', 'onPlotSelect',
-    'plotSelectedIndex', 'plotDomainMin', 'plotDomainMax', 'plotPieLayout', 'plotMarkerEmphasisScale']
-    .map(key => [schema.fields[fieldId(key)].wire, fieldId(key)]))};
+export const fieldOptions = ${object(options)};
 `;
 }
 
-function styleTypes(schema) {
-  const typed = new Set([...styleKinds].filter(kind => !['animation', 'stack-offset'].includes(kind)));
-  const dimensions = ['width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight'];
-  const lines = schema.fields.filter(field => typed.has(field.kind)).map(field => {
-    const values = schema.options[field.kind];
-    const type = values ? values.map(value => JSON.stringify(value)).join(' | ')
-      : field.wire === 'height' || field.wire === 'flexBasis' ? 'number | `${number}%` | "auto"'
-      : dimensions.includes(field.wire) ? 'number | `${number}%`'
-      : field.kind === 'shadow' ? 'ReadonlyArray<BoxShadow> | "none"'
-      : field.kind === 'gradient' ? 'LinearGradient | "none"' : field.kind;
-    return `  ${field.wire}?: ${type};`;
-  });
-  return `${header}export interface BoxShadow { offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: string }
-export interface LinearGradient { direction?: "top" | "right" | "bottom" | "left" | "top-right" | "bottom-right" | "bottom-left" | "top-left"; angle?: number; colorSpace?: "srgb" | "oklab"; stops: ReadonlyArray<{ offset: number; color: string }> }
+const pascal = name => name.replace(/(^|-)([a-z])/g, (_, __, c) => c.toUpperCase());
+
+/** Style properties an element accepts, from its style groups. */
+export function elementStyle(schema, element) {
+  const groups = new Map(Object.entries(schema.styleGroups));
+  for (const [name, entry] of Object.entries(schema.style)) {
+    if (!groups.has(entry.group)) groups.set(entry.group, []);
+    if (!groups.get(entry.group).includes(name)) groups.get(entry.group).push(name);
+  }
+  return [...new Set(element.style.flatMap(group => {
+    if (!groups.has(group)) throw Error(`schema.json: unknown style group ${group}`);
+    return groups.get(group);
+  }))];
+}
+
+function validateAuthor(schema) {
+  const keys = new Set(schema.fields.map(field => field.key));
+  for (const [name, entry] of Object.entries(schema.style))
+    for (const target of [entry.wire].flat())
+      if (!keys.has(target)) throw Error(`schema.json: style ${name} lowers to unknown field ${target}`);
+  for (const [name, element] of Object.entries(schema.elements)) {
+    if (!schema.tags.includes(element.wire)) throw Error(`schema.json: element ${name} uses unknown tag ${element.wire}`);
+    elementStyle(schema, element);
+  }
+}
+
+function authoring(schema, api) {
+  const style = Object.entries(schema.style).filter(([, entry]) => !entry.internal)
+    .map(([name, entry]) => `  ${name}?: ${entry.type};`).join('\n');
+  const lines = [];
+  for (const [name, element] of Object.entries(schema.elements)) {
+    const type = pascal(name);
+    const keys = elementStyle(schema, element).filter(key => !schema.style[key].internal).map(key => JSON.stringify(key)).join(' | ');
+    lines.push(`export type ${type}Style = Pick<Style, ${keys}>;`);
+    const children = { any: 'Child', content: 'Child', text: 'TextChild', none: 'never' }[element.children];
+    const props = Object.entries(element.props).map(([prop, entry]) => `${prop}${entry.required ? '' : '?'}: ${entry.type};`);
+    const base = `Omit<Props, "style" | "children"> & { style?: ${type}Style; children?: ${children}${props.length ? '; ' + props.join(' ') : ''} }`;
+    const binding = element.binding;
+    if (binding) {
+      const payload = binding.type === 'string' ? 'string' : `ReadonlyData<${binding.type}>`;
+      lines.push(`export type ${type}Props = ${base} & (`
+        + `{ bind: Local<${binding.type}>; value?: never; ${binding.event}?: never } | `
+        + `{ bind?: never; value?: ${binding.type}; ${binding.event}?: (value: ${payload}) => void });`);
+    } else lines.push(`export type ${type}Props = ${base};`);
+  }
+  const intrinsics = Object.keys(schema.elements).map(name => `      ${JSON.stringify(name)}: ${pascal(name)}Props;`).join('\n');
+  return `${header}${api.replace(/^\/\/.*\n/gm, '')}
+/** CSS-named style; each element accepts the subset its \`*Style\` type lists. */
 export interface Style {
-  offset?: { x?: number; y?: number };
+${style}
+}
+
 ${lines.join('\n')}
+
+declare global {
+  namespace JSX {
+    type ElementType = keyof IntrinsicElements | ((props: any) => ComponentResult);
+    interface Element { readonly __ui: unique symbol }
+    interface IntrinsicAttributes { key?: string }
+    interface ElementChildrenAttribute { children: {} }
+    interface IntrinsicElements {
+${intrinsics}
+    }
+  }
 }
 `;
 }
 
-// Native session tests evaluate the real runtime without the page compiler.
-async function nativeTestRuntime() {
+function contract(schema) {
+  const elements = Object.fromEntries(Object.entries(schema.elements).map(([name, element]) => [name, {
+    wire: element.wire,
+    children: element.children,
+    style: elementStyle(schema, element),
+    props: Object.fromEntries(Object.entries(element.props).map(([prop, entry]) => [prop, Boolean(entry.required)])),
+    ...(element.binding ? { binding: element.binding } : {}),
+  }]));
+  const style = Object.fromEntries(Object.entries(schema.style).map(([name, entry]) => [name, {
+    lower: entry.lower, wire: entry.wire, ...(entry.paint ? { paint: true } : {}), ...(entry.internal ? { internal: true } : {}),
+  }]));
+  return `${header}// Element admission and the author-style lowering table.
+export const elements = ${JSON.stringify(elements)};
+export const style = ${JSON.stringify(style)};
+`;
+}
+
+// Native session tests evaluate the real runtime without the page compiler; the
+// bundle reads generated modules from this generation, not from disk.
+async function nativeTestRuntime(generated) {
   const entry = `import * as ui from './src/internal.js'; import { publishHost } from './src/host.js'; Object.assign(globalThis, ui, { __lingxiaPublish: publishHost });`;
-  const result = await build({ stdin: { contents: entry, resolveDir: packageRoot }, bundle: true, write: false, format: 'iife', target: 'es2020', legalComments: 'none', absWorkingDir: packageRoot });
+  const fresh = new Map(Object.entries(generated).map(([path, contents]) => [join(repositoryRoot, path), contents]));
+  const plugin = { name: 'fresh-contract', setup(builder) {
+    builder.onResolve({ filter: /generated\/[^/]+\.js$/ }, ({ path, resolveDir }) => ({ path: resolve(resolveDir, path) }));
+    builder.onLoad({ filter: /generated[\\/][^\\/]+\.js$/ }, ({ path }) => fresh.has(path) ? { contents: fresh.get(path), loader: 'js' } : undefined);
+  } };
+  const result = await build({ stdin: { contents: entry, resolveDir: packageRoot }, bundle: true, write: false, format: 'iife',
+    target: 'es2020', legalComments: 'none', absWorkingDir: packageRoot, plugins: [plugin] });
   return header + result.outputFiles[0].text;
 }
 
 /** Map of repository-relative path to generated content. */
 export async function generate(schema) {
   validate(schema);
-  return {
-    'crates/lingxia-ui/src/session/tests/runtime.js': await nativeTestRuntime(),
+  validateAuthor(schema);
+  const api = await readFile(join(packageRoot, 'contracts/api.d.ts'), 'utf8');
+  const generated = {
     'crates/lingxia-ui/src/protocol/generated.rs': rust(schema),
     'packages/lingxia-ui/src/generated/wire.js': wire(schema),
-    'packages/lingxia-ui/src/generated/style.d.ts': styleTypes(schema),
+    'packages/lingxia-ui/src/generated/contract.js': contract(schema),
+    'packages/lingxia-ui/src/generated/authoring.d.ts': authoring(schema, api),
   };
+  generated['crates/lingxia-ui/src/session/tests/runtime.js'] = await nativeTestRuntime(generated);
+  return generated;
 }
 
 /** Paths whose committed content differs from a fresh generation. */

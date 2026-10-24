@@ -40,7 +40,7 @@ test('action references wait for the catalog and reject stale or arbitrary funct
 
 test('request starts after commit only and survives refinement without duplication', async () => {
   const view = setup(); let request;
-  const render = () => { request = useRequest('bootstrap', 'probe', { n: 1 }); return h('text'); };
+  const render = () => { request = useRequest('bootstrap', view.actions.probe, { n: 1 }); return h('text'); };
   prepare(render, view); discard(); assert.deepEqual(frames(), []);
   prepare(render, view); prepareWindows({}); commit();
   const [frame] = frames(); assert.equal(frame.method, 'probe'); assert.equal(request.pending, true);
@@ -51,7 +51,7 @@ test('request starts after commit only and survives refinement without duplicati
 
 test('replacement ignores out-of-order success and failure; discarded params do not run', async () => {
   const view = setup(); let request;
-  const render = n => () => { request = useRequest('probe', 'probe', { n }); return h('text'); };
+  const render = n => () => { request = useRequest('probe', view.actions.probe, { n }); return h('text'); };
   describe(render(1), view); const [old] = frames();
   prepare(render(2), view); discard(); assert.deepEqual(frames(), []);
   describe(render(3), view); const [current] = frames();
@@ -59,24 +59,24 @@ test('replacement ignores out-of-order success and failure; discarded params do 
   assert.equal(request.value, 3);
   const reload = request.reload(); const [retry] = frames();
   receiveActionResponse({ v: 2, kind: 'res', id: retry.id, ok: false, error: { code: 'FAILED', message: 'offline' } }); await reload;
-  assert.equal(request.error, 'offline'); assert.equal(request.pending, false);
+  assert.deepEqual(request.error, { code: 'FAILED', message: 'offline' }); assert.equal(request.value, 3); assert.equal(request.stale, true); assert.equal(request.pending, false);
 });
 
 test('removal and reset invalidate late results and retained reload handles', async () => {
   const view = setup(); let request;
-  describe(() => { request = useRequest('probe', 'probe'); return h('text'); }, view);
+  describe(() => { request = useRequest('probe', view.actions.probe); return h('text'); }, view);
   const [frame] = frames();
   describe(() => h('text'), view);
   answer(frame.id, 'late'); await flush();
   assert.equal(request.value, null); assert.equal(hasLocalUpdates(), false);
   await request.reload(); assert.deepEqual(frames(), []);
-  describe(() => { request = useRequest('probe', 'probe'); return h('text'); }, view);
+  describe(() => { request = useRequest('probe', view.actions.probe); return h('text'); }, view);
   reset(); await flush(); assert.equal(hasLocalUpdates(), false);
 });
 
 test('catalog arrival starts a waiting request and catalog replacement retries', async () => {
   reset(); let request;
-  const render = () => { request = useRequest('probe', 'probe'); return h('text'); };
+  const render = view => { request = useRequest('probe', view.actions.probe); return h('text'); };
   describe(render, createView({}, {})); assert.deepEqual(frames(), []);
   configureActions({ __names: ['probe'], __modes: { probe: 'call' } });
   describe(render, createView({}, {}));
@@ -90,10 +90,21 @@ test('catalog arrival starts a waiting request and catalog replacement retries',
 test('streams, duplicate names and render-time reload are rejected without issuing requests', () => {
   const view = setup();
   for (const render of [
-    () => { useRequest('r', 'host.call'); return h('text'); },
-    () => { useRequest('r', 'missing'); return h('text'); },
-    () => { useRequest('r', 'ticks'); return h('text'); },
-    () => { useRequest('r', 'probe'); useRequest('r', 'probe'); return h('text'); },
-    () => { useRequest('r', 'probe').reload(); return h('text'); },
+    () => { useRequest('r', view.actions['host.call']); return h('text'); },
+    () => { useRequest('r', view.actions.missing); return h('text'); },
+    () => { useRequest('r', view.actions.ticks); return h('text'); },
+    () => { useRequest('r', view.actions.probe); useRequest('r', view.actions.probe); return h('text'); },
+    () => { useRequest('r', view.actions.probe).reload(); return h('text'); },
   ]) { assert.throws(() => prepare(render, view), /UI_REQUEST|UI_RENDER/); discard(); assert.deepEqual(frames(), []); }
+});
+
+test('reload keeps the previous value visible and marks it stale until the reply lands', async () => {
+  const view = setup(); let request;
+  const render = () => { request = useRequest('probe', view.actions.probe); return h('text', {}, String(request.value)); };
+  describe(render, view); answer(frames()[0].id, 'first'); await flush();
+  assert.equal(request.value, 'first'); assert.equal(request.stale, false);
+  const reload = request.reload(); const [retry] = frames();
+  assert.equal(request.pending, true); assert.equal(request.stale, true); assert.equal(request.value, 'first');
+  answer(retry.id, 'second'); await reload;
+  assert.equal(request.value, 'second'); assert.equal(request.stale, false); assert.equal(request.error, null);
 });
