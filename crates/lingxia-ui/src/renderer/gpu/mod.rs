@@ -23,10 +23,7 @@ pub struct Context(
 
 impl Default for Context {
     fn default() -> Self {
-        Self(
-            Arc::new(Mutex::new(RenderContext::new())),
-            Default::default(),
-        )
+        Self::with_backends(wgpu::Backends::from_env().unwrap_or_default())
     }
 }
 
@@ -35,6 +32,10 @@ impl Context {
     pub fn with_backends(backends: wgpu::Backends) -> Self {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends,
+            // Debug builds would otherwise emit driver debug groups, which corrupt the
+            // stack in some GLES drivers (Maleoon); `WGPU_DEBUG`/`WGPU_VALIDATION` opt in.
+            flags: wgpu::InstanceFlags::empty().with_env(),
+            backend_options: wgpu::BackendOptions::from_env_or_default(),
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         Self(
