@@ -3088,6 +3088,35 @@ impl LxApp {
     /// Snapshot the core's `LayoutPresentationPlan` for this app's window — the
     /// stable, renderable contract `lx.surface.derivedLayout()` returns (the
     /// same plan the skin reconciler binds via `present_layout`).
+    /// The edge the side panel docks at now (`right` while it is empty), so
+    /// an aside opened into it joins it there.
+    pub fn side_panel_edge(&self) -> &'static str {
+        use lingxia_surface::{Edge, SlotKind};
+        match self.surface_derived_layout().and_then(|plan| {
+            plan.aside_slots
+                .into_iter()
+                .find(|slot| slot.kind == SlotKind::Panel && !slot.children.is_empty())
+                .and_then(|slot| slot.edge)
+        }) {
+            Some(Edge::Left) => "left",
+            Some(Edge::Top) => "top",
+            Some(Edge::Bottom) => "bottom",
+            _ => "right",
+        }
+    }
+
+    /// A window too small to dock a side panel: a URL aside opens in the
+    /// compact aside browser over the main instead.
+    pub fn aside_browser_is_compact(&self) -> bool {
+        use lingxia_surface::SizeClass;
+        !matches!(
+            self.surface_derived_layout()
+                .as_ref()
+                .map(|layout| layout.size_class),
+            Some(SizeClass::Medium) | Some(SizeClass::Expanded)
+        )
+    }
+
     pub fn surface_derived_layout(&self) -> Option<lingxia_surface::LayoutPresentationPlan> {
         Some(window_controller(PRIMARY_WINDOW, &self.runtime).presentation_plan())
     }

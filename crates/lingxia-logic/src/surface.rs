@@ -1197,7 +1197,9 @@ async fn open_app_spec(
             ));
         }
         if lxapp::try_get(&app_id).is_some_and(|app| app.release_type() == requested_channel) {
-            show_lxapp_region(&lxapp, &app_id, &app_id, current_region, edge.as_deref()).await?;
+            lxapp::show_lxapp_in_region(Some(&lxapp), &app_id, current_region, edge.as_deref())
+                .await
+                .map_err(lxapp_open_error)?;
             deliver_to_reused_app(&app_id, &target)?;
             return lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id, current_region);
         }
@@ -1205,28 +1207,15 @@ async fn open_app_spec(
     let (startup_options, release_type) =
         crate::navigator::prepare_app_open(&lxapp, &target, Some(invocation)).await?;
 
-    let (region, shell_surface_id) = match as_role {
-        "main" => {
-            open_lxapp_region(
-                &app_id,
-                lxapp::LxAppOpenRegion::Main,
-                &app_id,
-                startup_options.clone(),
-            )?;
-            (lxapp::LxAppOpenRegion::Main, app_id.clone())
-        }
-        "aside" => {
-            open_lxapp_region(
-                &app_id,
-                lxapp::LxAppOpenRegion::Aside,
-                &app_id,
-                startup_options.clone(),
-            )?;
-            lxapp.register_host_aside(&app_id, edge.as_deref().unwrap_or("right"));
-            (lxapp::LxAppOpenRegion::Aside, app_id.clone())
-        }
-        _ => unreachable!("validated above"),
-    };
+    lxapp::open_lxapp_in_region(
+        Some(&lxapp),
+        &app_id,
+        requested_region,
+        edge.as_deref(),
+        startup_options,
+    )
+    .map_err(lxapp_open_error)?;
+    let (region, shell_surface_id) = (requested_region, app_id.clone());
     lxapp::schedule_lxapp_update_check(&app_id, release_type);
     lxapp_surface_handle(&ctx, lxapp, app_id, shell_surface_id, region)
 }
@@ -1251,66 +1240,6 @@ fn deliver_to_reused_app(
     let (options, _) =
         crate::navigator::build_startup_options(&app, target).map_err(lxapp_open_error)?;
     app.deliver_reopen(options).map_err(lxapp_open_error)
-}
-
-fn open_lxapp_region(
-    app_id: &str,
-    region: lxapp::LxAppOpenRegion,
-    shell_surface_id: &str,
-    mut options: lxapp::LxAppStartupOptions,
-) -> JSResult<()> {
-    if region == lxapp::LxAppOpenRegion::Aside {
-        options.open_mode = lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel;
-        options.panel_id = shell_surface_id.to_string();
-    }
-    let app = lxapp::open_lxapp(app_id, options).map_err(lxapp_open_error)?;
-    activate_opened_lxapp_region(region, || app.activate_main());
-    Ok(())
-}
-
-fn activate_opened_lxapp_region(region: lxapp::LxAppOpenRegion, activate_main: impl FnOnce()) {
-    if region == lxapp::LxAppOpenRegion::Main {
-        activate_main();
-    }
-}
-
-async fn show_lxapp_region(
-    shell: &LxApp,
-    app_id: &str,
-    shell_surface_id: &str,
-    region: lxapp::LxAppOpenRegion,
-    edge: Option<&str>,
-) -> JSResult<()> {
-    match region {
-        lxapp::LxAppOpenRegion::Main => {
-            let app = lxapp::try_get(app_id).ok_or_else(|| {
-                surface_error(
-                    SurfaceErrorCode::NotDeclared,
-                    format!("lxapp is not active: {app_id}"),
-                )
-            })?;
-            app.activate_main();
-            Ok(())
-        }
-        lxapp::LxAppOpenRegion::Aside => {
-            if shell
-                .set_shell_surface_visible(shell_surface_id, true, None, edge)
-                .await
-                .is_ok()
-            {
-                Ok(())
-            } else {
-                open_lxapp_region(
-                    app_id,
-                    region,
-                    shell_surface_id,
-                    lxapp::LxAppStartupOptions::new(""),
-                )?;
-                shell.register_host_aside(shell_surface_id, edge.unwrap_or("right"));
-                Ok(())
-            }
-        }
-    }
 }
 
 fn lxapp_open_error(err: LxAppError) -> rong::RongJSError {
@@ -1594,7 +1523,7 @@ async fn open_url_spec(
         Some("aside") => {
             let position = read_validated_edge(spec)?.unwrap_or_else(|| "right".to_string());
             let _ = parse_size(spec, SurfaceKind::Overlay)?;
-            if url_aside_uses_compact_browser(&lxapp) {
+            if lxapp.aside_browser_is_compact() {
                 return open_url_in_browser(&ctx, &lxapp, trimmed_url, true);
             }
             let url = validate_url_target(&lxapp, trimmed_url)?;
@@ -1724,7 +1653,6 @@ fn lxapp_surface_handle(
 
     let show_shell = shell.clone();
     let show_id = app_id.clone();
-    let show_surface_id = shell_surface_id.clone();
     let show_session_id = session_id;
     let show_handle = handle.clone();
     handle.set(
@@ -1732,11 +1660,12 @@ fn lxapp_surface_handle(
         JSFunc::new(ctx, move |ctx: JSContext| {
             let shell = show_shell.clone();
             let id = show_id.clone();
-            let surface_id = show_surface_id.clone();
             let handle = show_handle.clone();
             Promise::from_future(&ctx, None, async move {
                 ensure_lxapp_surface_open(&handle, &id, region, show_session_id)?;
-                show_lxapp_region(&shell, &id, &surface_id, region, None).await?;
+                lxapp::show_lxapp_in_region(Some(&shell), &id, region, None)
+                    .await
+                    .map_err(lxapp_open_error)?;
                 mark_visible(&handle, true, "opener")
             })
         })?,
@@ -2295,7 +2224,7 @@ fn simulating_handheld_device() -> bool {
 /// Whether a docked aside region exists right now. Live: a desktop window
 /// dragged below the compact breakpoint loses its dock.
 pub(crate) fn can_dock(lxapp: &LxApp) -> bool {
-    !url_aside_uses_compact_browser(lxapp)
+    !lxapp.aside_browser_is_compact()
 }
 
 /// Compact has no dock region. A URL aside therefore uses the native in-app
@@ -2303,17 +2232,6 @@ pub(crate) fn can_dock(lxapp: &LxApp) -> bool {
 /// Treat an unavailable layout as compact: mobile hosts can receive an open
 /// before their first measured viewport, and showing desktop surface chrome in
 /// that interval is the more disruptive fallback.
-fn url_aside_uses_compact_browser(lxapp: &LxApp) -> bool {
-    use lingxia_surface::SizeClass;
-    !matches!(
-        lxapp
-            .surface_derived_layout()
-            .as_ref()
-            .map(|layout| layout.size_class),
-        Some(SizeClass::Medium) | Some(SizeClass::Expanded)
-    )
-}
-
 /// Open a URL as an in-app browser tab; `aside` selects compact aside chrome.
 /// Returns `{ tabId }` when the host named the tab, otherwise null so the
 /// handle reports `scope: 'group'`.
@@ -3630,23 +3548,6 @@ mod tests {
         assert!(!cache.contains_key(&sibling));
         assert!(cache.contains_key(&restarted));
         assert!(cache.contains_key(&other_app));
-    }
-
-    #[test]
-    fn cold_main_open_requests_explicit_activation_but_aside_open_does_not() {
-        use std::cell::Cell;
-
-        let main_activations = Cell::new(0);
-        activate_opened_lxapp_region(lxapp::LxAppOpenRegion::Main, || {
-            main_activations.set(main_activations.get() + 1);
-        });
-        assert_eq!(main_activations.get(), 1);
-
-        let aside_activations = Cell::new(0);
-        activate_opened_lxapp_region(lxapp::LxAppOpenRegion::Aside, || {
-            aside_activations.set(aside_activations.get() + 1);
-        });
-        assert_eq!(aside_activations.get(), 0);
     }
 
     #[test]
