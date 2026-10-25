@@ -577,6 +577,14 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_onHostForegroundChanged(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_onMemoryPressure(
+    _env: EnvUnowned,
+    _class: JClass,
+) {
+    lxapp::release_retained_surfaces();
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_onHostAppearanceChanged(
     _env: EnvUnowned,
     _class: JClass,

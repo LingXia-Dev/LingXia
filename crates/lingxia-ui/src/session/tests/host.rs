@@ -20,7 +20,10 @@ use std::time::Duration;
 #[derive(Default)]
 struct Log {
     prepared: Vec<ThreadId>,
+    /// Display sizes of frames the fake target accepted.
+    accepted: Vec<(u16, u16)>,
     presented: Vec<Vec<String>>,
+    presented_at: Vec<std::time::Instant>,
     fetched: Vec<(u64, String)>,
     cancelled: Vec<u64>,
     events: Vec<AccessibilityEffect>,
@@ -78,6 +81,11 @@ impl Presenter for Fake {
         if self.pending.load(std::sync::atomic::Ordering::Acquire) {
             return Ok(None);
         }
+        self.log
+            .lock()
+            .unwrap()
+            .accepted
+            .push((display.width, display.height));
         Ok(Some(Encoded {
             texts: display
                 .nodes
@@ -92,6 +100,7 @@ impl Presenter for Fake {
         let mut log = self.main();
         log.carets.push(frame.caret);
         log.presented.push(frame.texts);
+        log.presented_at.push(std::time::Instant::now());
         Ok(true)
     }
 }
@@ -574,6 +583,155 @@ fn a_stalled_image_decode_never_holds_up_another_page_on_the_worker() {
     drop(release);
     platform.settle(&[&photo, &other]);
     assert!(photo.adapter().log.lock().unwrap().loaded >= 1);
+}
+
+#[test]
+fn only_an_accepted_frame_for_the_current_environment_is_current() {
+    let worker = ViewWorker::shared("test:current").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'A')}"),
+        false,
+    );
+    assert!(!host.frame_is_current(), "nothing presented yet");
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    assert!(host.frame_is_current());
+    host.surface_changed();
+    assert!(
+        !host.frame_is_current(),
+        "a changed target holds no accepted frame"
+    );
+    platform.settle(&[&host]);
+    assert!(host.frame_is_current());
+    host.adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .width = 300;
+    assert!(
+        !host.frame_is_current(),
+        "a frame for another size is not current"
+    );
+    host.surface_changed();
+    platform.settle(&[&host]);
+    assert!(
+        host.frame_is_current(),
+        "presenting at the new size makes it current again"
+    );
+}
+
+#[test]
+fn a_declined_frame_leaves_the_session_as_it_was() {
+    let worker = ViewWorker::shared("test:declined").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'A')}"),
+        false,
+    );
+    host.adapter()
+        .pending
+        .store(true, std::sync::atomic::Ordering::Release);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    assert!(host.snapshot().is_none(), "nothing was accepted");
+    // The final sample differs from the one the declined attempt laid out.
+    host.adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .width = 300;
+    host.adapter()
+        .pending
+        .store(false, std::sync::atomic::Ordering::Release);
+    host.surface_changed();
+    platform.settle(&[&host]);
+    let log = host.adapter().log.lock().unwrap();
+    assert_eq!(
+        log.accepted,
+        [(300, 400)],
+        "laid out once, for the final sample"
+    );
+    drop(log);
+    assert_eq!(
+        host.snapshot().unwrap().generation.get(),
+        1,
+        "declined candidates take no generation"
+    );
+    assert_eq!(last(&host), ["A"]);
+}
+
+#[test]
+fn a_hidden_page_catches_up_after_the_shown_page_and_stays_frozen() {
+    let worker = ViewWorker::shared("test:catch-up").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let shown = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'S')}"),
+        false,
+    );
+    let hidden = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'H')}"),
+        false,
+    );
+    shown.set_visible(true);
+    hidden.set_visible(true);
+    platform.settle(&[&shown, &hidden]);
+    hidden.set_visible(false);
+    let frames = hidden.adapter().log.lock().unwrap().presented.len();
+    // Both targets change while the worker is busy; the hidden one asks first.
+    let (release, busy) = channel::<()>();
+    worker.run(move |_| {
+        let _ = busy.recv();
+    });
+    for host in [&hidden, &shown] {
+        host.adapter()
+            .environment
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .width = 300;
+        host.surface_changed();
+    }
+    drop(release);
+    platform.settle(&[&shown, &hidden]);
+    let shown_at = *shown
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .presented_at
+        .last()
+        .unwrap();
+    let hidden_at = *hidden
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .presented_at
+        .last()
+        .unwrap();
+    assert!(shown_at < hidden_at, "the shown page's frame goes first");
+    assert_eq!(
+        hidden.adapter().log.lock().unwrap().presented.len(),
+        frames + 1
+    );
+    assert!(hidden.frame_is_current(), "returning needs no new frame");
+    hidden.request_frame();
+    platform.settle(&[&shown, &hidden]);
+    assert_eq!(
+        hidden.adapter().log.lock().unwrap().presented.len(),
+        frames + 1,
+        "still frozen"
+    );
 }
 
 #[test]

@@ -202,6 +202,8 @@ struct Main<F> {
     interaction: ViewInteraction,
     images: ImageRequests,
     environment: Option<FrameEnvironment>,
+    /// The environment of the last frame the target accepted; cleared when the target changes.
+    presented_environment: Option<FrameEnvironment>,
     host_environment: environment::HostEnvironment,
     snapshot: Option<Arc<FrameSnapshot>>,
     prepared: Option<pump::Prepared<F>>,
@@ -209,6 +211,8 @@ struct Main<F> {
     styled_press: Option<String>,
     caret: Caret,
     visible: bool,
+    /// A hidden page whose target changed renders once, so returning to it needs no wait.
+    catch_up: bool,
     dirty: bool,
     pending: bool,
     busy: bool,
@@ -250,6 +254,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     interaction: ViewInteraction::default(),
                     images: ImageRequests::default(),
                     environment: None,
+                    presented_environment: None,
                     host_environment: Default::default(),
                     snapshot: None,
                     prepared: None,
@@ -257,6 +262,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     styled_press: None,
                     caret: Caret::default(),
                     visible: false,
+                    catch_up: false,
                     dirty: true,
                     pending: false,
                     busy: false,
@@ -311,15 +317,35 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.set_visible(visible);
     }
 
-    /// The presentation target was replaced or resized.
+    /// The presentation target was replaced or resized; a size change still reruns the View.
     pub fn surface_changed(&self) {
         self.inner.lifecycle.invalidate_surface();
-        self.request_frame();
+        let hidden = {
+            let mut main = self.inner.main();
+            main.presented_environment = None;
+            main.catch_up = !main.visible;
+            main.catch_up
+        };
+        // A hidden page's catch-up frame runs as background work, behind the shown page's frame.
+        let _ = hidden;
+        self.redraw();
+    }
+
+    /// The target holds an accepted frame for the current size and environment; a pending
+    /// data update still follows as an ordinary frame.
+    pub fn frame_is_current(&self) -> bool {
+        let Some(mut environment) = self.inner.adapter.environment() else {
+            return false;
+        };
+        let main = self.inner.main();
+        main.host_environment.apply(&mut environment.value);
+        main.presented_environment.as_ref() == Some(&environment)
     }
 
     /// The presentation target is gone; nothing presents until it returns.
     pub fn surface_lost(&self) {
         self.inner.lifecycle.invalidate_surface();
+        self.inner.main().presented_environment = None;
         self.inner.park_animations();
         let effects = self.inner.main().interaction.cancel_all();
         self.inner.deliver(effects);
@@ -514,8 +540,19 @@ impl<A: PlatformAdapter> Inner<A> {
         job: impl FnOnce(&Arc<Self>, &mut ViewSession) -> Result<R, String> + Send + 'static,
         done: impl FnOnce(&Arc<Self>, Option<Result<R, String>>) + Send + 'static,
     ) {
+        self.work_at(false, guard, job, done);
+    }
+
+    /// `background` work waits until no shown page has work queued on the shared worker.
+    fn work_at<R: Send + 'static>(
+        self: &Arc<Self>,
+        background: bool,
+        guard: Guard,
+        job: impl FnOnce(&Arc<Self>, &mut ViewSession) -> Result<R, String> + Send + 'static,
+        done: impl FnOnce(&Arc<Self>, Option<Result<R, String>>) + Send + 'static,
+    ) {
         let inner = self.clone();
-        self.worker.run(move |app| {
+        let run = move |app: &mut crate::ViewApp| {
             let result = inner.current(guard).then(|| {
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let id = (*inner.page.lock().unwrap_or_else(|p| p.into_inner()))
@@ -526,7 +563,12 @@ impl<A: PlatformAdapter> Inner<A> {
             });
             let host = inner.clone();
             inner.adapter.post(Box::new(move || done(&host, result)));
-        });
+        };
+        if background {
+            self.worker.run_background(run);
+        } else {
+            self.worker.run(run);
+        }
     }
 
     fn load(self: &Arc<Self>, source: Option<String>) {

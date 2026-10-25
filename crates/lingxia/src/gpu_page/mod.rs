@@ -31,6 +31,7 @@ pub(crate) trait NativePage: Send + Sync + 'static {
     fn update_environment(&self, update: &serde_json::Value) -> Result<(), LxAppError>;
     fn reload(&self, source: &str) -> Result<(), LxAppError>;
     fn park(&self) -> Result<(), LxAppError>;
+    fn retain_surface(&self, retained: bool) -> Result<(), LxAppError>;
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
@@ -199,6 +200,13 @@ impl GpuPageView for Endpoint {
     fn park(&self) -> Result<(), LxAppError> {
         *self.generation() = None;
         self.native.park()
+    }
+
+    fn retain_surface(&self, retained: bool) -> Result<(), LxAppError> {
+        if self.lease.disposed() {
+            return Ok(());
+        }
+        self.native.retain_surface(retained)
     }
 
     fn dispose(&self) {

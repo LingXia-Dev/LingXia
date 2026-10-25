@@ -3046,6 +3046,9 @@ mod tests {
             fn park(&self) -> Result<(), LxAppError> {
                 Ok(())
             }
+            fn retain_surface(&self, _: bool) -> Result<(), LxAppError> {
+                Ok(())
+            }
             fn dispose(&self) {}
         }
         struct OtherTransport;

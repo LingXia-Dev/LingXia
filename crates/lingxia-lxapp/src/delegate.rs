@@ -347,6 +347,8 @@ impl LxAppDelegate for LxApp {
 
         // Mark the page as active for LRU tracking
         page.mark_active();
+        page.mark_shown();
+        lxapp::surface_retention::enforce_surface_retention();
 
         // Re-resolve Auto against the product, then re-stamp the document.
         // A backgrounded (paused) webview can drop the broadcast of a host

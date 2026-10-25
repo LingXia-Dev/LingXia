@@ -256,9 +256,18 @@ impl Lifecycle {
 
     /// A frame may be prepared now; returns the surface ticket it must present against.
     pub fn frame(&self) -> Option<SurfaceTicket> {
+        self.frame_when(true)
+    }
+
+    /// As [`Self::frame`], for a hidden page catching up with a changed target.
+    pub fn frame_hidden(&self) -> Option<SurfaceTicket> {
+        self.frame_when(false)
+    }
+
+    fn frame_when(&self, needs_visible: bool) -> Option<SurfaceTicket> {
         self.with(|state| {
             let ready = state.loaded
-                && state.visible
+                && (state.visible || !needs_visible)
                 && !state.disposed
                 && !state.session_failed
                 && (!self.logic || state.bridge_ready);

@@ -13,8 +13,7 @@ and CPU/GPU painting. It has no lxapp, route, page-stack or WebView dependency.
 bridging; `crates/lingxia/src/gpu_page` binds lxapp pages to platform page
 shells (creation, live registry, dispose-once leases, connection-generation
 gate, worker key) and `crates/lingxia/src/ffi/<platform>` only marshals. A page renders
-natively exactly when its page config declares `"renderer": "gpu"`; nothing is
-inferred from file names.
+natively exactly when its page config declares `"renderer": "gpu"`.
 
 | Module | Owns |
 | --- | --- |
@@ -97,12 +96,10 @@ engine boundary.
   (unique, ≤256 bytes each, ≤256 KiB per page) that lets state follow
   reorders without calling offscreen factories. Anchors move the window
   without rendering skipped rows.
-- System text scaling is a sampled `[authorSize, logicalSize]` curve from the
-  platform; layout applies it once to font size, line height and letter
-  spacing. Fixed author heights stay fixed.
-- Fallback chains come from the platform font config (Android `fonts.xml`,
-  installed by the adapter); `displayLanguage` is the shaping locale, so Han
-  picks SC/TC/JP/KR faces by locale.
+- System text scaling is a sampled `[authorSize, logicalSize]` curve applied once
+  to font size, line height and letter spacing; fixed author heights stay fixed.
+- Fallback chains come from the platform font config (Android `fonts.xml`, via the
+  adapter); `displayLanguage` is the shaping locale, so Han picks SC/TC/JP/KR faces.
 
 ## Text
 
@@ -176,25 +173,28 @@ the View worker, present on the main thread), `FrameScheduler` (vsync),
 `session::host::ViewHost` drives a page through them: it owns the View worker
 queue (`ViewWorker`, one isolate per app session), frame sequencing, dispatch,
 images, the Logic bridge, the bootstrap deadline, recovery and caret blink.
-Adapters convert OS events into host calls and execute typed effects; the host
-never calls the adapter while holding its locks. Its tests use a fake adapter
-on a test main thread, so new platforms start from tested policy.
+Adapters convert OS events into host calls and execute typed effects; the host never
+calls the adapter while holding its locks. Its tests use a fake adapter.
 
-Android runs on `ViewHost`: `crates/lingxia-ui-android` implements the traits over the
-Java `GpuPlatform` interface (Choreographer vsync, `Handler` posts, CPU or
-Vulkan presentation, IME, accessibility events, feedback chrome) and exposes
-host calls as `GpuView` natives. Java converts events and draws chrome; it
-holds no frame sequencing, timers, layout, hit testing or effect parsing.
-Chrome geometry (clip tests, selection-handle hit radius, knob offset and drag
-clamping) is `interaction::chrome` over the snapshot node.
+Android runs on `ViewHost`: `crates/lingxia-ui-android` implements the traits over
+the Java `GpuPlatform` (vsync, posts, presentation, IME, accessibility, feedback
+chrome) and exposes host calls as `GpuView` natives. Java converts events and
+draws chrome; chrome geometry is `interaction::chrome` over the snapshot node.
 Pages of one `appId:session` share a worker by key, so nothing slow runs on it:
 image decode uses a small process pool, GPU attach its own thread, and a page
 whose attach is pending declines frames rather than rasterizing on the CPU.
-Host JVM tests load the crate's cdylib built for the host.
+A hidden GPU page is frozen (no frames, input or semantics). `lxapp::surface_retention`
+decides whether it keeps its surface: every tab page of the shown app plus the three
+most recently shown others (~32 MB each at 1080×2504, so at most (tabs + 3) × 32 MB),
+none under memory pressure. Android moves a kept layer off screen (SurfaceView ignores
+alpha). A kept page shows at once only when `ViewHost::frame_is_current` holds — the
+target accepted a frame for the current size and environment; a hidden page whose
+target changed renders one catch-up frame as background work. Otherwise the outgoing
+page stays on screen, frozen, until the incoming one presents: at most 300 ms when
+returning; a first visit waits for its first frame (a 2 s watchdog logs one that never
+does). Host JVM tests load the crate's cdylib built for the host.
 
-To add a platform: implement the adapter traits, map the platform's text
-scaling and insets into the environment, present `renderer` frames on its
-surface, and make the module banner's required features available.
+New platform: adapter traits, text scaling and insets in the environment, `renderer` frames.
 
 ## Capability matrix
 

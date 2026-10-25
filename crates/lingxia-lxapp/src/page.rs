@@ -4,7 +4,7 @@ pub(crate) mod runtime;
 #[rustfmt::skip]
 pub(crate) mod ui_limits;
 mod view;
-use view::PageView;
+pub(crate) use view::PageView;
 pub use view::{
     GpuPageView, GpuPageViewFactory, GpuViewCreation, GpuViewGeneration, PageViewEnvironment,
     register_gpu_page_view_factory,
@@ -154,6 +154,8 @@ pub(crate) struct PageInstanceInner {
 
     // Time when this page was last active
     last_active_time: Arc<Mutex<Instant>>,
+    /// When the container last showed this page; `None` until its first show.
+    last_shown: Arc<Mutex<Option<Instant>>>,
 
     // state of PageInstance
     state: Arc<Mutex<PageState>>,
@@ -552,6 +554,7 @@ impl PageInstance {
             webtag: webtag.clone(),
             isolated,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
+            last_shown: Arc::new(Mutex::new(None)),
             state: Arc::new(Mutex::new(page_state)),
             view: Arc::new(Mutex::new(None)),
             bridge_nonce: Arc::new(Mutex::new(Some(bridge_nonce))),
@@ -608,6 +611,7 @@ impl PageInstance {
             webtag,
             isolated: false,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
+            last_shown: Arc::new(Mutex::new(None)),
             state: Arc::new(Mutex::new(page_state)),
             view: Arc::new(Mutex::new(None)),
             bridge_nonce: Arc::new(Mutex::new(Some(bridge_nonce))),
@@ -2208,6 +2212,24 @@ impl PageInstance {
             return format!("lx://plugin/{}/{}", plugin_name, page_path);
         }
         format!("lx://lxapp/{}/{}", self.appid(), self.path())
+    }
+
+    pub(crate) fn mark_shown(&self) {
+        if let Ok(mut shown) = self.inner.last_shown.lock() {
+            *shown = Some(Instant::now());
+        }
+    }
+
+    pub(crate) fn last_shown(&self) -> Option<Instant> {
+        self.inner.last_shown.lock().ok().and_then(|shown| *shown)
+    }
+
+    /// Whether the container shows this page now.
+    pub(crate) fn is_visible(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .is_ok_and(|state| state.visibility != Visibility::Hidden)
     }
 
     /// Update the last active time to now

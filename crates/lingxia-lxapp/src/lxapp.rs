@@ -56,6 +56,7 @@ mod runtime_ops;
 pub(crate) mod runtime_registry;
 mod scheme;
 mod shutdown;
+pub(crate) mod surface_retention;
 pub use shutdown::{
     block_lxapp_admission, drain_lxapps, resume_lxapp_admission, shutdown_lxapps_except,
 };
@@ -130,6 +131,7 @@ pub use surface::{
 pub(crate) use surface::{
     SurfaceRecords, view_surface_context_script_for, view_surface_context_snapshot,
 };
+pub use surface_retention::release_retained_surfaces;
 use version::Version;
 
 /// Constants for lxapp storage layout
@@ -5073,6 +5075,9 @@ mod manifest_reload_tests {
         fn park(&self) -> Result<(), LxAppError> {
             Ok(())
         }
+        fn retain_surface(&self, _: bool) -> Result<(), LxAppError> {
+            Ok(())
+        }
         fn dispose(&self) {
             self.0.fetch_add(1, Ordering::SeqCst);
         }
@@ -5485,6 +5490,10 @@ mod manifest_reload_tests {
                 }
                 fn park(&self) -> Result<(), LxAppError> {
                     self.0.lock().unwrap().push("park".into());
+                    Ok(())
+                }
+                fn retain_surface(&self, retained: bool) -> Result<(), LxAppError> {
+                    self.0.lock().unwrap().push(format!("retain {retained}"));
                     Ok(())
                 }
                 fn dispose(&self) {

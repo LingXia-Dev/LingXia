@@ -45,6 +45,10 @@ impl NativePage for Shell {
         self.0.lock().unwrap().push("park".into());
         Ok(())
     }
+    fn retain_surface(&self, retained: bool) -> Result<(), LxAppError> {
+        self.0.lock().unwrap().push(format!("retain {retained}"));
+        Ok(())
+    }
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

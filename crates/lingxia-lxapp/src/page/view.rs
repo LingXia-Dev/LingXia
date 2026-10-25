@@ -72,6 +72,8 @@ pub trait GpuPageView: Send + Sync {
     fn reload(&self) -> Result<(), LxAppError>;
     /// Clear local state and stop presenting until the next entry.
     fn park(&self) -> Result<(), LxAppError>;
+    /// Whether a hidden page keeps its presented surface; see `surface_retention`.
+    fn retain_surface(&self, retained: bool) -> Result<(), LxAppError>;
     /// Release the context and native surface; must be idempotent.
     fn dispose(&self);
 }

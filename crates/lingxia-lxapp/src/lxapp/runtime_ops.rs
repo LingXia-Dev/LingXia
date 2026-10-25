@@ -290,6 +290,7 @@ pub fn dispose_page_instance_by_id(id: &str, reason: CloseReason) -> Result<(), 
 pub fn on_low_memory() {
     info!("on_low_memory: discarding hidden-main tab WebViews, then evicting an unused lxapp");
     super::page_discard::enforce_page_webview_budget_with_limit(0);
+    super::surface_retention::release_retained_surfaces();
     if let Some(manager) = super::runtime_registry::get_lxapps_manager() {
         manager.evict_lru_lxapp();
     }

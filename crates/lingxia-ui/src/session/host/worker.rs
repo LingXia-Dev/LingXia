@@ -1,17 +1,33 @@
 //! The View worker: one thread owning one [`ViewApp`] isolate, shared by the
 //! pages of one app session.
 use crate::ViewApp;
-use std::collections::HashMap;
-use std::sync::mpsc::{Sender, channel};
-use std::sync::{Arc, LazyLock, Mutex, Weak};
+use std::collections::{HashMap, VecDeque};
+use std::sync::mpsc::channel;
+use std::sync::{Arc, Condvar, LazyLock, Mutex, Weak};
 
 type Job = Box<dyn FnOnce(&mut ViewApp) + Send>;
 
 /// Contexts per isolate; matches the page stack bound.
 const PAGES: usize = 16;
 
+#[derive(Default)]
+struct Queue {
+    jobs: VecDeque<Job>,
+    /// Served only when no shown page has work queued: hidden pages catching up.
+    background: VecDeque<Job>,
+    closed: bool,
+}
+
 pub struct ViewWorker {
-    jobs: Mutex<Sender<Job>>,
+    queue: Arc<(Mutex<Queue>, Condvar)>,
+}
+
+impl Drop for ViewWorker {
+    fn drop(&mut self) {
+        let (queue, ready) = &*self.queue;
+        queue.lock().unwrap_or_else(|p| p.into_inner()).closed = true;
+        ready.notify_all();
+    }
 }
 
 static SHARED: LazyLock<Mutex<HashMap<String, Weak<ViewWorker>>>> =
@@ -19,8 +35,9 @@ static SHARED: LazyLock<Mutex<HashMap<String, Weak<ViewWorker>>>> =
 
 impl ViewWorker {
     pub fn spawn(name: &str) -> Result<Arc<Self>, String> {
-        let (jobs, queue) = channel::<Job>();
+        let queue: Arc<(Mutex<Queue>, Condvar)> = Default::default();
         let (ready, started) = channel();
+        let shared = queue.clone();
         std::thread::Builder::new()
             .name(name.into())
             .spawn(move || {
@@ -34,18 +51,36 @@ impl ViewWorker {
                         return;
                     }
                 };
-                // The queue closes when the last owner drops; queued work still runs first.
-                while let Ok(job) = queue.recv() {
-                    job(&mut app);
+                let (queue, wake) = &*shared;
+                loop {
+                    let job = {
+                        let mut queue = queue.lock().unwrap_or_else(|p| p.into_inner());
+                        loop {
+                            if let Some(job) = queue
+                                .jobs
+                                .pop_front()
+                                .or_else(|| queue.background.pop_front())
+                            {
+                                break Some(job);
+                            }
+                            // The queue closes when the last owner drops; queued work still runs first.
+                            if queue.closed {
+                                break None;
+                            }
+                            queue = wake.wait(queue).unwrap_or_else(|p| p.into_inner());
+                        }
+                    };
+                    match job {
+                        Some(job) => job(&mut app),
+                        None => return,
+                    }
                 }
             })
             .map_err(|error| format!("UI_WORKER: {error}"))?;
         started
             .recv()
             .map_err(|_| "UI_WORKER: worker exited during startup".to_string())??;
-        Ok(Arc::new(Self {
-            jobs: Mutex::new(jobs),
-        }))
+        Ok(Arc::new(Self { queue }))
     }
 
     /// The worker for `key`, started on first use and stopped after its last owner drops.
@@ -61,10 +96,22 @@ impl ViewWorker {
     }
 
     pub fn run(&self, job: impl FnOnce(&mut ViewApp) + Send + 'static) {
-        let _ = self
-            .jobs
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .send(Box::new(job));
+        self.push(Box::new(job), false);
+    }
+
+    /// Runs after every job a shown page has queued.
+    pub fn run_background(&self, job: impl FnOnce(&mut ViewApp) + Send + 'static) {
+        self.push(Box::new(job), true);
+    }
+
+    fn push(&self, job: Job, background: bool) {
+        let (queue, ready) = &*self.queue;
+        let mut queue = queue.lock().unwrap_or_else(|p| p.into_inner());
+        if background {
+            queue.background.push_back(job);
+        } else {
+            queue.jobs.push_back(job);
+        }
+        ready.notify_one();
     }
 }

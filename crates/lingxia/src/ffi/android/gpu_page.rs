@@ -136,6 +136,19 @@ impl NativePage for AndroidPage {
     fn park(&self) -> Result<(), LxAppError> {
         operation(self.token, jni_str!("park"))
     }
+    fn retain_surface(&self, retained: bool) -> Result<(), LxAppError> {
+        let token = self.token;
+        with_env(|env| {
+            env.call_static_method(
+                class(),
+                jni_str!("retainSurface"),
+                jni_sig!("(JZ)V"),
+                &[token.into(), retained.into()],
+            )?;
+            Ok::<_, jni::errors::Error>(())
+        })
+        .map_err(runtime)
+    }
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

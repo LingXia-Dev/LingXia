@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 /// A frame prepared on the worker, waiting for vsync.
 pub(super) struct Prepared<F> {
     frame: F,
+    environment: crate::platform::FrameEnvironment,
     snapshot: Arc<FrameSnapshot>,
     surface: SurfaceTicket,
     page: PageTicket,
@@ -19,6 +20,8 @@ pub(super) struct Prepared<F> {
     timing: FrameTiming,
     prepared_at: Instant,
 }
+
+const DECLINED: &str = "UI_FRAME: declined by the target";
 
 fn micros(duration: Duration) -> u64 {
     u64::try_from(duration.as_micros()).unwrap_or(u64::MAX)
@@ -38,7 +41,7 @@ impl<A: PlatformAdapter> Inner<A> {
     /// Prepare a frame when the page can present and no frame is in flight.
     pub(super) fn schedule(self: &Arc<Self>) {
         let environment = self.adapter.environment();
-        let request = {
+        let (request, background) = {
             let mut main = self.main();
             main.animation_timer += 1;
             main.pending = true;
@@ -57,7 +60,15 @@ impl<A: PlatformAdapter> Inner<A> {
             if main.busy || main.number_busy {
                 return;
             }
-            let Some(surface) = self.lifecycle.frame() else {
+            let background = !main.visible;
+            let surface = if main.visible {
+                self.lifecycle.frame()
+            } else if main.catch_up {
+                self.lifecycle.frame_hidden()
+            } else {
+                None
+            };
+            let Some(surface) = surface else {
                 return;
             };
             let request = Request {
@@ -72,20 +83,22 @@ impl<A: PlatformAdapter> Inner<A> {
             main.dirty = false;
             main.pending = false;
             main.busy = true;
-            request
+            (request, background)
         };
         let now = self.adapter.now();
         let surface = request.surface;
         let page = request.page;
         let revision = request.revision;
         let offsets = request.offsets.clone();
+        let environment = request.environment.clone();
         let mut timing = FrameTiming {
             rebuild: request.rebuild,
             caret_visible: request.caret,
             ..Default::default()
         };
         let queued = Instant::now();
-        self.work(
+        self.work_at(
+            background,
             Guard::Page(page),
             move |inner, session| {
                 let started = Instant::now();
@@ -106,6 +119,7 @@ impl<A: PlatformAdapter> Inner<A> {
                     }
                     inner.main().prepared = Some(Prepared {
                         frame,
+                        environment,
                         snapshot,
                         surface,
                         page,
@@ -156,7 +170,9 @@ impl<A: PlatformAdapter> Inner<A> {
         let generation = CommitTicket::new(session.generation().get() + 1);
         let caret = request.caret;
         let surface = request.surface;
-        let (frame, nodes) = session.prepare_view_animated(
+        // A frame the target declines is a failed candidate: the session keeps its previous
+        // commit (layout, viewport, generation) and the next attempt starts from it.
+        let prepared = session.prepare_view_animated(
             width,
             height,
             scale,
@@ -169,9 +185,17 @@ impl<A: PlatformAdapter> Inner<A> {
                 }
                 let nodes = display.nodes.clone();
                 loaded_images = display.loaded_image_count();
-                Ok((self.adapter.prepare(display, surface, generation)?, nodes))
+                match self.adapter.prepare(display, surface, generation)? {
+                    Some(frame) => Ok((frame, nodes)),
+                    None => Err(DECLINED.into()),
+                }
             },
-        )?;
+        );
+        let (frame, nodes) = match prepared {
+            Ok(prepared) => prepared,
+            Err(error) if error == DECLINED => return Ok((None, None)),
+            Err(error) => return Err(error),
+        };
         let update = if self.logic {
             let mut update = super::bridge::update(
                 session,
@@ -184,9 +208,6 @@ impl<A: PlatformAdapter> Inner<A> {
             Some((self.lifecycle.connection(), update))
         } else {
             None
-        };
-        let Some(frame) = frame else {
-            return Ok((None, update));
         };
         let images = session.image_requests();
         let mut metrics =
@@ -266,6 +287,7 @@ impl<A: PlatformAdapter> Inner<A> {
         if current {
             let Prepared {
                 frame,
+                environment,
                 snapshot,
                 surface,
                 page,
@@ -277,6 +299,11 @@ impl<A: PlatformAdapter> Inner<A> {
             timing.wait_us = micros(vsync.saturating_duration_since(prepared_at));
             match self.adapter.present(frame) {
                 Ok(true) => {
+                    // The gate in `frame_is_current` trusts only a frame the target accepted.
+                    let mut main = self.main();
+                    main.presented_environment = Some(environment);
+                    main.catch_up = false;
+                    drop(main);
                     self.presented(snapshot, surface, page, revision, offsets, timing, vsync)
                 }
                 Ok(false) => retry = true,
