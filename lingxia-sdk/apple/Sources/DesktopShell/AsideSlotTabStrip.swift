@@ -474,6 +474,13 @@ private final class AsideSlotTabItemView: NSView {
             let room = leadingInset + trailingInset + ChromeTabMetrics.iconSize + 16 + row.spacing
             closeButton.isHidden = !(selected || isHeader) || width < room
         }
+        // A compact tab that shows its ✕ drops a title too short to read
+        // (a bare "…"), as the icon form does.
+        if fit == .compact && !closeButton.isHidden {
+            let titleRoom = width - leadingInset - trailingInset
+                - ChromeTabMetrics.iconSize - 16 - row.spacing * 2
+            if titleRoom < 28 { titleButton.title = "" }
+        }
         // Centred, short of what the empty title button and trailing inset
         // still need.
         let iconInset = closeButton.isHidden
