@@ -12,9 +12,12 @@ struct AsideSlotTab: Equatable {
 
 /// Header tab strip for an aside slot: the browser slot's bar metrics, with
 /// title tabs (ChromeTabRowView, non-bridging) as chips centred in a
-/// bar-height strip over a whole hairline. Always
-/// shown while the slot has content — even one child keeps its tab, since the
-/// strip is the slot's management surface (switch and close both live here).
+/// bar-height strip over a whole hairline. Always shown while the slot has
+/// content, since the strip is the slot's management surface (switch, close,
+/// drag out and the per-tab menu all live here). With a single child the
+/// strip reads as a plain panel header — icon, name, "···" and ✕ — rather
+/// than a lone tab chip; it becomes a tab row when a second child arrives,
+/// at the same height, so the region never jumps.
 @MainActor
 final class AsideSlotTabStripView: NSView {
     /// Bar + the separator hairline under the tabs.
@@ -22,6 +25,12 @@ final class AsideSlotTabStripView: NSView {
 
     var onSelect: ((String) -> Void)?
     var onClose: ((String) -> Void)?
+    /// Builds the menu for one tab (its id): shown from the tab's "···"
+    /// button and on right-click alike. Nil hides the button and offers no
+    /// menu.
+    var onMenu: ((String) -> NSMenu?)? {
+        didSet { itemViews.forEach { $0.menuEnabled = onMenu != nil } }
+    }
     /// Put the whole slot away. Nothing closes — the tabs come back with the
     /// region, so this is a chevron, never an ✕.
     var onCollapse: (() -> Void)?
@@ -145,6 +154,9 @@ final class AsideSlotTabStripView: NSView {
             let item = AsideSlotTabItemView(tab: tab, icon: tiled)
             item.onSelect = { [weak self] in self?.onSelect?(tab.id) }
             item.onClose = { [weak self] in self?.onClose?(tab.id) }
+            item.menuProvider = { [weak self] in self?.onMenu?(tab.id) }
+            item.menuEnabled = onMenu != nil
+            item.isHeader = tabs.count == 1
             stack.addArrangedSubview(item)
             itemViews.append(item)
         }
@@ -166,16 +178,31 @@ final class AsideSlotTabStripView: NSView {
 }
 
 /// A single slot tab assembled exactly like the browser's tab chip:
-/// icon + title button (activates) + close button inside a ChromeTabRowView.
+/// icon + title button (activates) + "···" (menu) + close button inside a
+/// ChromeTabRowView. The "···" keeps its room always and shows on hover (a
+/// chip) or always (the single-child header), so revealing it never shifts
+/// the title; right-click on the row opens the same menu.
 @MainActor
 private final class AsideSlotTabItemView: NSView {
     var onSelect: (() -> Void)?
     var onClose: (() -> Void)?
+    var menuProvider: (() -> NSMenu?)?
+    var menuEnabled = false {
+        didSet { applyMoreVisibility() }
+    }
+    var isHeader = false {
+        didSet {
+            row.isHeader = isHeader
+            applyMoreVisibility()
+        }
+    }
 
     let row = ChromeTabRowView()
     private let iconView = NSImageView()
     private let titleButton = AsideTabTitleButton()
+    private let moreButton = NSButton()
     private let closeButton = NSButton()
+    private var hovered = false
 
     init(tab: AsideSlotTab, icon: NSImage?) {
         super.init(frame: .zero)
@@ -211,6 +238,25 @@ private final class AsideSlotTabItemView: NSView {
         closeButton.action = #selector(closeTapped)
         closeButton.setAccessibilityLabel("Close \(tab.title)")
 
+        moreButton.translatesAutoresizingMaskIntoConstraints = false
+        moreButton.isBordered = false
+        moreButton.imagePosition = .imageOnly
+        moreButton.image = LxIcon.image(
+            named: "icon_more_vertical", size: CGSize(width: 12, height: 12))
+        moreButton.contentTintColor = LxAppHostTheme.mutedForeground
+        moreButton.target = self
+        moreButton.action = #selector(moreTapped)
+        moreButton.toolTip = L10n.string("lx_aside_tab_menu")
+        moreButton.setAccessibilityLabel(L10n.string("lx_aside_tab_menu"))
+        row.onHoverChanged = { [weak self] hovered in
+            self?.hovered = hovered
+            self?.applyMoreVisibility()
+        }
+        // Right-click anywhere on the row: the same menu as the button.
+        let rowMenu = NSMenu()
+        rowMenu.delegate = self
+        row.menu = rowMenu
+
         // The slot below is an lxapp: its page (or its declared navigation
         // bar colour) meets the strip, so the active tab must not pretend to
         // merge into it — the hairline stays whole under the selection.
@@ -227,8 +273,10 @@ private final class AsideSlotTabItemView: NSView {
         )
         row.addArrangedSubview(iconView)
         row.addArrangedSubview(titleButton)
+        row.addArrangedSubview(moreButton)
         row.addArrangedSubview(closeButton)
         row.translatesAutoresizingMaskIntoConstraints = false
+        applyMoreVisibility()
 
         addSubview(row)
         titleButton.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -240,6 +288,7 @@ private final class AsideSlotTabItemView: NSView {
             iconView.widthAnchor.constraint(equalToConstant: ChromeTabMetrics.iconSize),
             iconView.heightAnchor.constraint(equalToConstant: ChromeTabMetrics.iconSize),
             closeButton.widthAnchor.constraint(equalToConstant: 16),
+            moreButton.widthAnchor.constraint(equalToConstant: 16),
             row.heightAnchor.constraint(equalToConstant: ChromeTabMetrics.tabHeight),
             minWidth,
             row.widthAnchor.constraint(lessThanOrEqualToConstant: ChromeTabMetrics.maxTabWidth),
@@ -262,7 +311,31 @@ private final class AsideSlotTabItemView: NSView {
         closeButton.alphaValue = selected ? 1 : 0.65
     }
 
+    /// Room is reserved whenever a menu exists; the glyph itself shows on
+    /// hover, or always in the header form, where it is a panel control.
+    private func applyMoreVisibility() {
+        moreButton.isHidden = !menuEnabled
+        moreButton.alphaValue = (isHeader || hovered) ? 1 : 0
+    }
+
     @objc private func selectTapped() { onSelect?() }
     @objc private func closeTapped() { onClose?() }
+
+    @objc private func moreTapped() {
+        guard let menu = menuProvider?() else { return }
+        let origin = NSPoint(x: 0, y: moreButton.bounds.maxY + 4)
+        menu.popUp(positioning: nil, at: origin, in: moreButton)
+    }
+}
+
+extension AsideSlotTabItemView: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        guard let built = menuProvider?() else { return }
+        for item in built.items {
+            built.removeItem(item)
+            menu.addItem(item)
+        }
+    }
 }
 #endif

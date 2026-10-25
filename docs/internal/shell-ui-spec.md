@@ -408,7 +408,8 @@ crammed in the moment the window crosses 840.
   switching belongs to its slot's header tabs (§4.6), structurally identical to
   the browser aside's title tabs. A sidebar list of "open asides" is abolished
   behavior.
-- **Dropping an aside tab on the sidebar promotes it to a main.** The same live
+- **Dropping an aside tab on the sidebar promotes it to a main**, and the
+  tab's menu offers the same move as *Open in Main Area* (§4.6). The same live
   content moves: an lxapp keeps its Logic, page stack, and WebViews (one
   `onHide`/`onShow` pair, no restart); a URL tab becomes a main-browser tab with
   the same tab id and document. The new main is appended to the switcher and
@@ -793,10 +794,12 @@ The aside region is fixed at three slots, grouped by rendering engine:
 
 - Slot tab switching performs hide/show and preserves content state; only an
   explicit close destroys the current content.
-- A collapsed slot that still holds content leaves a slim handle at its edge
-  (macOS: a pill in the window gap; Windows: a strip the main gives up);
-  clicking it restores the slot. Opening or focusing a child still restores
-  it too.
+- A collapsed slot that still holds content leaves a handle at its edge: a
+  small icon tab (28×44pt, vertically centred, over the main card's rim on
+  macOS; in a strip the main gives up on Windows) showing the content's icon
+  — the lxapp's, or a globe for the browser — so the put-away region stays
+  visible; clicking it restores the slot. Opening or focusing a child still
+  restores it too.
 - Collapsing a slot hides it without closing anything. The lxapp child it was
   showing receives page `onHide`; restoring the slot with that child still
   active delivers `onShow`. Logic and the WebView stay alive throughout.
@@ -808,20 +811,33 @@ The aside region is fixed at three slots, grouped by rendering engine:
   sidebar promotes it, §4.2); under pressure they drop
   text before icons, then become a scrollable strip — tabs never shrink into
   unrecognizable slivers.
-- **A docked slot always shows its tab strip, including at one content.** The
-  strip is the slot's management surface (switching and closing live there);
-  hiding it at n=1 removes the close affordance and causes a region jump when
-  the second content arrives. The three slots are mechanically identical, only
-  their content kinds differ.
+- **A docked slot always shows its header strip, including at one content.**
+  The strip is the slot's management surface (switching, closing, the tab
+  menu and drag-out live there); hiding it at n=1 removes those affordances
+  and causes a region jump when the second content arrives. At one content
+  the strip reads as a plain panel header — icon, name, "···", ✕ — with no
+  chip fill, hover wash or divider, since there is nothing to pick among; it
+  turns into tab chips at the same height when a sibling arrives. The three
+  slots are mechanically identical, only their content kinds differ.
 - **Slot tab visuals are one component**: every slot's header tabs use the same
   tab component and metrics (Chrome-style title tab: flared outline, bottom
   aligned, hover wash, adjacent separators), with icon + title + close button.
   lxapp tabs show the lxapp icon and name, browser tabs the favicon and page
   title. Slots MUST NOT each paint their own style.
-- **The slot tab strip carries no create/menu entries** (no "+", no "···"):
-  the strip only switches and closes. Content enters a slot elsewhere — the
-  open API, sidebar action entries, the sidebar browser "+"; page-level actions live
-  in the tab's context menu.
+- **The slot tab strip carries no create entries and no strip-level menu**
+  (no "+", no strip "···"): the strip only switches and closes. Content enters
+  a slot elsewhere — the open API, sidebar action entries, the sidebar browser
+  "+".
+- **Every tab has one menu, reached two ways**: a per-tab "···" button (room
+  always reserved; shown on hover, or always on the single-content header)
+  and right-click on the tab. Both open the same menu, so the actions are
+  discoverable without knowing to right-click or drag. The menu holds, in
+  order: the content's identity header; **Open in Main Area** (exactly what
+  dropping the tab on the sidebar does, §4.2; absent on URL-callback and
+  ephemeral tabs); the content's own section (a browser tab's page actions —
+  bookmark, pin, copy link, open externally; an lxapp's MoreActions); then
+  **Close**. Collapse and Maximize are slot controls already on the strip and
+  stay out of the menu. The two kinds differ only in that middle section.
 - Maximizing an aside covers only the main area and toggles back on the next
   click; it does not change the role. The core owns the state (one maximized
   slot per window at most; the plan marks it `maximized` and also `overlay`,

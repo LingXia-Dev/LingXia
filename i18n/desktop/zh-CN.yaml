@@ -24,6 +24,11 @@ browser:
   manage_pinned_sites: "管理固定的站点…"
   manage_bookmarks: "管理书签…"
 
+# Aside slot tab menu (the per-tab "···" and right-click menu)
+aside:
+  open_in_main: "在主区打开"
+  tab_menu: "标签选项"
+
 # Terminal panel (native Windows shell terminal)
 terminal:
   title: "终端"

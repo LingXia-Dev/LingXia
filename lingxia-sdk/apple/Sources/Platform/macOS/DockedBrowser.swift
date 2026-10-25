@@ -770,6 +770,34 @@ final class DockedBrowser: NSObject {
         onCloseTab(id)
     }
 
+    /// The tab's menu: the page actions (bookmark, pin, copy link, open
+    /// externally), the move into the main browser (what dropping the tab
+    /// on the sidebar does; callback and ephemeral tabs stay with their
+    /// opener), and Close. Collapse and Maximize stay out: they are slot
+    /// controls, already on the bar.
+    private func tabMenu(for tab: Tab) -> NSMenu {
+        let menu = BrowserPageMenu.menu(for: pageMenuContext(for: tab))
+        if !tab.urlCallback && !tab.ephemeralWebData {
+            menu.addItem(.separator())
+            let surfaceId = tab.surfaceId
+            let openInMain = MenuActionItem(title: L10n.string("lx_aside_open_in_main")) {
+                _ = LxAppSurface.promoteBrowserAsideTab(surfaceId: surfaceId)
+            }
+            openInMain.image = NSImage(
+                systemSymbolName: "macwindow", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+            menu.addItem(openInMain)
+        }
+        menu.addItem(.separator())
+        let surfaceId = tab.surfaceId
+        let close = MenuActionItem(title: L10n.string("lx_common_close")) { [weak self] in
+            self?.onCloseTab(surfaceId)
+        }
+        close.image = LxIcon.menuSymbol("icon_close_x")
+        menu.addItem(close)
+        return menu
+    }
+
     // MARK: - Helpers
 
     /// Dedup key: compare normalized URLs (ignore trailing slash + fragment).
@@ -796,7 +824,7 @@ extension DockedBrowser: NSMenuDelegate {
         menu.removeAllItems()
         guard let surfaceId = objc_getAssociatedObject(menu, &AssociatedKeys.surfaceId) as? String,
               let tab = tabs.first(where: { $0.surfaceId == surfaceId }) else { return }
-        let built = BrowserPageMenu.menu(for: pageMenuContext(for: tab))
+        let built = tabMenu(for: tab)
         for item in built.items {
             built.removeItem(item)
             menu.addItem(item)

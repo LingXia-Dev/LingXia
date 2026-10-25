@@ -437,9 +437,63 @@ enum LxAppLayoutReconciler {
                 // A compact overlay already covers the main: nothing to toggle.
                 onToggleMaximize: slot.overlay && slot.maximized != true ? nil : {
                     _ = setAsideSlotMaximized(focusAppId, "lxapp", slot.maximized != true)
+                },
+                onMenu: { childId in
+                    lxappAsideTabMenu(appId: childId, graphAppId: focusAppId)
                 }
             )
         }
+    }
+
+    /// The menu behind an lxapp aside tab's "···" and right-click: the
+    /// app's identity, the move to the main area (what dropping the tab on
+    /// the sidebar does), the app's own MoreActions, and Close. Collapse and
+    /// Maximize stay out: they are slot controls, already on the strip.
+    private static func lxappAsideTabMenu(appId: String, graphAppId: String) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+
+        let info = getLxAppInfo(appId)
+        let name = info.app_name.toString().trimmingCharacters(in: .whitespacesAndNewlines)
+        var header = name.isEmpty ? appId : name
+        let version = info.version.toString().trimmingCharacters(in: .whitespacesAndNewlines)
+        if !version.isEmpty { header += " · \(version)" }
+        if info.release_type.toString().lowercased() == "draft" { header += " [DRAFT]" }
+        let headerItem = NSMenuItem(title: header, action: nil, keyEquivalent: "")
+        headerItem.isEnabled = false
+        menu.addItem(headerItem)
+        menu.addItem(.separator())
+
+        let openInMain = MenuActionItem(title: L10n.string("lx_aside_open_in_main")) {
+            _ = promoteAsideLxappToMain(appId)
+        }
+        openInMain.image = NSImage(
+            systemSymbolName: "macwindow", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+        menu.addItem(openInMain)
+
+        let snapshot = LxAppMoreActionSnapshot.load(appId: appId)
+        if !snapshot.items.isEmpty {
+            menu.addItem(.separator())
+            for (index, item) in snapshot.items.enumerated() {
+                let token = snapshot.token(at: index)
+                let actionItem = MenuActionItem(title: item.label) {
+                    DispatchQueue.main.async {
+                        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, token)
+                    }
+                }
+                actionItem.image = LxIcon.menuImage(fromPath: item.iconPath)
+                menu.addItem(actionItem)
+            }
+        }
+
+        menu.addItem(.separator())
+        let close = MenuActionItem(title: L10n.string("lx_common_close")) {
+            _ = LxAppMacAppUIRuntime.handleAsideSlotClose(surfaceId: appId)
+        }
+        close.image = LxIcon.menuSymbol("icon_close_x")
+        menu.addItem(close)
+        return menu
     }
 
     /// Focus follows a maximize, whichever way it was asked for (the control,
@@ -506,13 +560,19 @@ enum LxAppLayoutReconciler {
                 ?? LxAppTabManager.shared.activeTab?.appId
                 ?? lxappAsideChildId()
                 ?? ""
+            var appId: String?
+            var iconPath: String?
             if slot.kind == "lxapp", let child = slot.activeChild ?? slot.children.last {
                 let name = getLxAppInfo(child).app_name.toString()
                 title = name.isEmpty ? child : name
                 graphAppId = child
+                appId = child
+                let icon = getLxAppDisplayIconPath(child).toString()
+                iconPath = icon.isEmpty ? nil : icon
             }
             return CollapsedAsideHandle(
-                kind: slot.kind, position: position, title: title, graphAppId: graphAppId)
+                kind: slot.kind, position: position, title: title, graphAppId: graphAppId,
+                appId: appId, iconPath: iconPath)
         }
         workspace.setCollapsedAsideHandles(handles) { handle in
             _ = restoreAsideSlot(handle.graphAppId, handle.kind)

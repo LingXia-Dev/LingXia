@@ -176,7 +176,7 @@ private class PanelSlot {
     var sideFullscreenConstraints: [NSLayoutConstraint] = []
 
     /// Aside-slot header tab strip. Mounted above `containerView`;
-    /// zero-height while the slot has at most one child.
+    /// zero-height only while the slot is empty.
     let slotTabStrip = AsideSlotTabStripView()
     private var slotStripHeight: NSLayoutConstraint?
 
@@ -242,9 +242,10 @@ private class PanelSlot {
         ])
     }
 
-    /// Show the slot strip whenever the slot has content — a single child still
-    /// shows its tab (the strip is the slot's management surface: switch AND
-    /// close live here, and the region doesn't reflow when a sibling arrives).
+    /// Show the slot strip whenever the slot has content. A single child
+    /// shows as a panel header rather than a lone chip (the strip is the
+    /// slot's management surface: close, menu and drag-out live here, and
+    /// the region doesn't reflow when a sibling arrives).
     func setSlotTabs(_ tabs: [AsideSlotTab], activeId: String?) {
         slotTabStrip.update(tabs: tabs, activeId: activeId)
         let wantsStrip = !tabs.isEmpty
@@ -276,30 +277,50 @@ struct CollapsedAsideHandle {
     let title: String
     /// An lxapp whose window graph owns the slot, for the restore call.
     let graphAppId: String
+    /// The lxapp the slot shows (its id is its app id); nil for the browser.
+    var appId: String? = nil
+    var iconPath: String? = nil
 }
 
-/// The slim pill a collapsed aside leaves at its edge; clicking it brings
-/// the region back with everything in it.
+/// The tab a collapsed aside leaves at its edge: a small card, vertically
+/// centred, showing the content's icon (the lxapp's, or a globe for the
+/// browser), so the put-away region stays visible and one click brings it
+/// back with everything in it.
 @MainActor
 final class CollapsedAsideHandleView: NSView {
-    var handle: CollapsedAsideHandle { didSet { applyLabel() } }
+    static let width: CGFloat = 28
+    static let height: CGFloat = 44
+
+    var handle: CollapsedAsideHandle { didSet { applyHandle() } }
     var onRestore: ((CollapsedAsideHandle) -> Void)?
-    private let pill = NSView()
+    private let card = NSView()
+    private let iconView = NSImageView()
     private var hovering = false { didSet { applyColors() } }
 
     init(handle: CollapsedAsideHandle) {
         self.handle = handle
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        pill.translatesAutoresizingMaskIntoConstraints = false
-        pill.wantsLayer = true
-        pill.layer?.cornerRadius = 2
-        addSubview(pill)
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.wantsLayer = true
+        card.layer?.cornerRadius = 8
+        card.layer?.borderWidth = 1
+        card.layer?.shadowOpacity = 0.12
+        card.layer?.shadowRadius = 4
+        card.layer?.shadowOffset = CGSize(width: 0, height: -1)
+        addSubview(card)
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.imageScaling = .scaleProportionallyDown
+        card.addSubview(iconView)
         NSLayoutConstraint.activate([
-            pill.centerXAnchor.constraint(equalTo: centerXAnchor),
-            pill.centerYAnchor.constraint(equalTo: centerYAnchor),
-            pill.widthAnchor.constraint(equalToConstant: 4),
-            pill.heightAnchor.constraint(equalTo: heightAnchor, constant: -8),
+            card.leadingAnchor.constraint(equalTo: leadingAnchor),
+            card.trailingAnchor.constraint(equalTo: trailingAnchor),
+            card.topAnchor.constraint(equalTo: topAnchor),
+            card.bottomAnchor.constraint(equalTo: bottomAnchor),
+            iconView.centerXAnchor.constraint(equalTo: card.centerXAnchor),
+            iconView.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 18),
+            iconView.heightAnchor.constraint(equalToConstant: 18),
         ])
         addTrackingArea(NSTrackingArea(
             rect: .zero,
@@ -308,20 +329,31 @@ final class CollapsedAsideHandleView: NSView {
         ))
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        applyLabel()
+        applyHandle()
         applyColors()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    private func applyLabel() {
+    private func applyHandle() {
         let label = "Show \(handle.title)"
         toolTip = label
         setAccessibilityLabel(label)
+        if let appId = handle.appId,
+           let icon = LxIcon.lxappImage(appId: appId, path: handle.iconPath ?? "") {
+            iconView.image = TabBarHelper.appTileIcon(icon, size: 18)
+            iconView.contentTintColor = nil
+        } else {
+            iconView.image = LxIcon.image(named: "icon_globe", size: CGSize(width: 16, height: 16))
+            iconView.contentTintColor = LxAppHostTheme.mutedForeground
+        }
     }
 
     private func applyColors() {
-        pill.layer?.backgroundColor = (hovering ? LxAppHostTheme.accent : LxAppHostTheme.separator).cgColor
+        card.layer?.backgroundColor = themeCGColor(
+            hovering ? LxAppHostTheme.accent.withAlphaComponent(0.14) : LxAppHostTheme.surfaceBackground)
+        card.layer?.borderColor = themeCGColor(hovering ? LxAppHostTheme.accent : LxAppHostTheme.separator)
+        card.layer?.shadowColor = NSColor.black.cgColor
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -538,12 +570,14 @@ class WorkspaceManager: NSObject {
         onClose: @escaping (String) -> Void,
         onCollapse: @escaping () -> Void,
         maximized: Bool = false,
-        onToggleMaximize: (() -> Void)? = nil
+        onToggleMaximize: (() -> Void)? = nil,
+        onMenu: ((String) -> NSMenu?)? = nil
     ) {
         guard let slot = panels[panelId] else { return }
         slot.slotTabStrip.onSelect = onSelect
         slot.slotTabStrip.onClose = onClose
         slot.slotTabStrip.onCollapse = onCollapse
+        slot.slotTabStrip.onMenu = onMenu
         slot.slotTabStrip.onToggleMaximize = onToggleMaximize
         slot.slotTabStrip.setMaximized(maximized)
         slot.setSlotTabs(tabs, activeId: activeId)
@@ -737,8 +771,8 @@ class WorkspaceManager: NSObject {
         panels.values.contains { $0.isVisible && $0.isFullscreen }
     }
 
-    /// Edge handles of collapsed aside slots: a slim pill in the gap at the
-    /// slot's edge that brings the region back.
+    /// Edge handles of collapsed aside slots: a small icon tab at the slot's
+    /// edge, over the main card's rim, that brings the region back.
     func setCollapsedAsideHandles(
         _ handles: [CollapsedAsideHandle],
         onRestore: @escaping (CollapsedAsideHandle) -> Void
@@ -759,14 +793,14 @@ class WorkspaceManager: NSObject {
             view.onRestore = onRestore
             parent.addSubview(view, positioned: .above, relativeTo: nil)
             var constraints = [
-                view.widthAnchor.constraint(equalToConstant: max(padding, 6)),
-                view.heightAnchor.constraint(equalToConstant: 56),
+                view.widthAnchor.constraint(equalToConstant: CollapsedAsideHandleView.width),
+                view.heightAnchor.constraint(equalToConstant: CollapsedAsideHandleView.height),
                 view.centerYAnchor.constraint(equalTo: parent.centerYAnchor),
             ]
             if handle.position == .left, let sidebar = sidebarRef {
-                constraints.append(view.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor))
+                constraints.append(view.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: 2))
             } else {
-                constraints.append(view.trailingAnchor.constraint(equalTo: parent.trailingAnchor))
+                constraints.append(view.trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -2))
             }
             NSLayoutConstraint.activate(constraints)
             collapsedHandleViews[handle.kind] = view

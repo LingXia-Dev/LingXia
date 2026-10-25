@@ -266,7 +266,8 @@ pub struct PlanAside {
 /// One aside slot in the [`LayoutPresentationPlan`]: the aside area holds at
 /// most one region per content kind (lxapp / browser / native); the region's
 /// contents are its tabs, in open order. Skins render ONE docked panel per
-/// slot, with a header tab strip when `children` has more than one entry.
+/// slot with a header strip whenever `children` is non-empty: a single
+/// child reads as the panel's header row, two or more as tabs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanAsideSlot {
