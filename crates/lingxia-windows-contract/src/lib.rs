@@ -54,6 +54,9 @@ pub struct WindowsAsidePanelTab {
     pub surface_id: String,
     pub title: String,
     pub active: bool,
+    /// A URL tab of the side panel (navigation chrome, favicon); false for
+    /// an lxapp child.
+    pub browser: bool,
 }
 
 /// The navigation bar an lxapp aside slot shows under its tab strip, for the
@@ -128,10 +131,9 @@ pub enum WindowsAsidePanelEvent {
 
 pub type WindowsAsidePanelEventHandler = Arc<dyn Fn(WindowsAsidePanelEvent) + Send + Sync>;
 
-/// Stable panel id of the shared aside browser panel (one per window).
-pub const ASIDE_BROWSER_PANEL_ID: &str = "lx.aside-browser";
-/// Stable panel id of the shared lxapp aside slot (one per window).
-pub const ASIDE_LXAPP_PANEL_ID: &str = "lx.aside-lxapp";
+/// Stable panel id of the side panel slot (one per window): lxapp pages and
+/// URL tabs share it, in open order, under one header strip.
+pub const ASIDE_PANEL_ID: &str = "lx.aside-panel";
 
 /// Publishes the tab strip of an aside browser panel; an empty list removes
 /// it (the panel then falls back to non-tabbed chrome).

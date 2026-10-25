@@ -2282,9 +2282,7 @@ fn refresh_aside_panel_nav_state() {
         changed
     });
     if changed.unwrap_or(false) {
-        lingxia_windows_contract::refresh_aside_panel(
-            lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID,
-        );
+        lingxia_windows_contract::refresh_aside_panel(lingxia_windows_contract::ASIDE_PANEL_ID);
     }
 }
 
@@ -3776,17 +3774,17 @@ fn handle_managed_aside_event(event: WindowsAsidePanelEvent) {
             }
         }
         WindowsAsidePanelEvent::NavBack { panel_id }
-            if panel_id == lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID =>
+            if panel_id == lingxia_windows_contract::ASIDE_PANEL_ID =>
         {
             lxapp_aside_navigation_click("back");
         }
         WindowsAsidePanelEvent::NavHome { panel_id }
-            if panel_id == lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID =>
+            if panel_id == lingxia_windows_contract::ASIDE_PANEL_ID =>
         {
             lxapp_aside_navigation_click("home");
         }
         WindowsAsidePanelEvent::TabBarClick { panel_id, index }
-            if panel_id == lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID =>
+            if panel_id == lingxia_windows_contract::ASIDE_PANEL_ID =>
         {
             if let Some(app) = lxapp_aside_active_app() {
                 let _ = app.on_lxapp_event(LxAppUiEventType::TabBarClick, index.to_string());
@@ -3863,19 +3861,17 @@ fn sync_lxapp_aside_navigation() {
     });
     let tabbar = app.as_deref().and_then(lxapp_aside_tabbar);
     let tabbar_changed = lingxia_windows_contract::set_aside_panel_tabbar(
-        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID,
+        lingxia_windows_contract::ASIDE_PANEL_ID,
         tabbar,
     );
     if lingxia_windows_contract::set_aside_panel_navigation(
-        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID,
+        lingxia_windows_contract::ASIDE_PANEL_ID,
         navigation,
     ) | tabbar_changed
     {
         // The bar's height moves the aside's webview, not just its chrome.
         crate::window_host::sync_active_host_layout();
-        lingxia_windows_contract::refresh_aside_panel(
-            lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID,
-        );
+        lingxia_windows_contract::refresh_aside_panel(lingxia_windows_contract::ASIDE_PANEL_ID);
     }
 }
 
@@ -3996,9 +3992,21 @@ fn lxapp_aside_shows_navigation(navbar: &WindowsShellNavigationBarLayout) -> boo
 /// panels are two hosts of the ONE side panel slot.
 fn aside_slot_kind(panel_id: &str) -> &'static str {
     match panel_id {
-        lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID
-        | lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID => "panel",
+        lingxia_windows_contract::ASIDE_PANEL_ID => "panel",
         _ => "native",
+    }
+}
+
+/// Whether `surface_id` is a URL tab of the side panel (not an lxapp child).
+fn is_browser_aside_surface(surface_id: &str) -> bool {
+    #[cfg(feature = "browser-runtime")]
+    {
+        lingxia_platform::windows::windows_aside_browser_tab_id(surface_id).is_some()
+    }
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = surface_id;
+        false
     }
 }
 
@@ -4089,8 +4097,11 @@ fn show_aside_tab_context_menu(panel_id: &str, surface_id: &str, screen_x: i32, 
     };
     let separator = || (ContextMenuEntry::separator(), None);
 
-    match panel_id {
-        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID => {
+    if panel_id != lingxia_windows_contract::ASIDE_PANEL_ID {
+        return;
+    }
+    match is_browser_aside_surface(surface_id) {
+        false => {
             let appid = match panel_target_for_id(surface_id) {
                 Some(PanelTarget::LxApp { appid, .. }) => appid,
                 Some(PanelTarget::Terminal(_)) => return,
@@ -4126,7 +4137,7 @@ fn show_aside_tab_context_menu(panel_id: &str, surface_id: &str, screen_x: i32, 
             }
         }
         #[cfg(feature = "browser-runtime")]
-        lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID => {
+        true => {
             let tab = lingxia_platform::windows::windows_aside_browser_tab_id(surface_id)
                 .and_then(|tab_id| browser_tab_summary(&tab_id));
             let url = tab
@@ -4184,7 +4195,8 @@ fn show_aside_tab_context_menu(panel_id: &str, surface_id: &str, screen_x: i32, 
                 ));
             }
         }
-        _ => return,
+        #[cfg(not(feature = "browser-runtime"))]
+        true => return,
     }
 
     entries.push(separator());
@@ -4248,6 +4260,14 @@ fn handle_aside_tab_menu_action(
                 let _ = target.on_lxapp_event(LxAppUiEventType::CapsuleClick, token);
             }
         }
+        Some(AsideTabMenuAction::Close) if is_browser_aside_surface(surface_id) => {
+            // A URL tab closes through the panel bridge, which owns the
+            // browser group; an lxapp child closes through the graph.
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::TabClose {
+                panel_id: panel_id.to_string(),
+                surface_id: surface_id.to_string(),
+            });
+        }
         Some(AsideTabMenuAction::Close) => close_managed_aside_child(surface_id),
         None => {}
     }
@@ -4256,12 +4276,14 @@ fn handle_aside_tab_menu_action(
 /// An aside tab dropped on the sidebar (spec §4.2): its live content becomes
 /// a main. Returns whether it moved.
 pub(crate) fn promote_aside_tab(panel_id: &str, surface_id: &str) -> bool {
-    match panel_id {
-        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID => promote_lxapp_aside(surface_id),
-        #[cfg(feature = "browser-runtime")]
-        lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID => promote_browser_aside(surface_id),
-        _ => false,
+    if panel_id != lingxia_windows_contract::ASIDE_PANEL_ID {
+        return false;
     }
+    #[cfg(feature = "browser-runtime")]
+    if is_browser_aside_surface(surface_id) {
+        return promote_browser_aside(surface_id);
+    }
+    promote_lxapp_aside(surface_id)
 }
 
 /// Re-host a live lxapp aside as the active main: Logic, the page stack and

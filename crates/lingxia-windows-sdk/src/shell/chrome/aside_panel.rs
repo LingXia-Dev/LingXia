@@ -75,7 +75,7 @@ pub(super) fn aside_panel_header_hit(
     tabs: &[WindowsAsidePanelTab],
     point: (i32, i32),
 ) -> WindowsChromeHit {
-    if panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID {
+    if aside_panel_shows_browser(panel) {
         for (command, rect) in aside_panel_nav_button_rects(panel) {
             if rect_contains(&rect, point) {
                 return chrome_command(command, json!({ "panel_id": panel.panel_id.clone() }));
@@ -137,11 +137,8 @@ pub(crate) fn aside_tab_drag_source(command: &WindowsChromeCommand) -> Option<(S
     }
     let panel_id = command.payload.get("panel_id")?.as_str()?;
     let surface_id = command.payload.get("surface_id")?.as_str()?;
-    matches!(
-        panel_id,
-        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID
-            | lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID
-    )
+    (panel_id == lingxia_windows_contract::ASIDE_PANEL_ID
+        && crate::shell::aside_tab_promotable(surface_id))
     .then(|| (panel_id.to_string(), surface_id.to_string()))
 }
 
@@ -510,7 +507,17 @@ fn aside_panel_tab_top_inset() -> i32 {
 /// colour), so its active tab stays a chip clear of the seam instead of
 /// pretending to merge into it.
 fn aside_panel_tabs_bridge(panel: &WindowsChromePanel) -> bool {
-    panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID
+    aside_panel_shows_browser(panel)
+}
+
+/// Whether the side panel's active tab is a URL tab: then the header carries
+/// the browser navigation cluster and the active tab bridges into the page.
+pub(super) fn aside_panel_shows_browser(panel: &WindowsChromePanel) -> bool {
+    panel.panel_id == lingxia_windows_contract::ASIDE_PANEL_ID
+        && panel_aside_tabs(panel)
+            .iter()
+            .find(|tab| tab.active)
+            .is_some_and(|tab| tab.browser)
 }
 /// Upper-corner radius of the active tab shape.
 fn aside_panel_tab_radius() -> i32 {
@@ -541,7 +548,7 @@ pub(super) fn aside_panel_tab_rects(
         return Vec::new();
     }
     let header = browser_panel_header_rect(panel);
-    let left_edge = if panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID {
+    let left_edge = if aside_panel_shows_browser(panel) {
         aside_panel_nav_button_rects(panel)[2].1.right + browser_panel_header_padding()
     } else {
         header.left + browser_panel_header_padding()
@@ -727,7 +734,7 @@ pub(super) fn draw_aside_panel_header(
     // the active tab lifts out as a round-topped shape in the card's fill,
     // merging seamlessly into the web content below (browser slot only).
 
-    if panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID {
+    if aside_panel_shows_browser(panel) {
         let (can_back, can_forward) = crate::shell::runtime::aside_panel_nav_state();
         for (command, rect) in aside_panel_nav_button_rects(panel) {
             let (icon, enabled) = match command {
