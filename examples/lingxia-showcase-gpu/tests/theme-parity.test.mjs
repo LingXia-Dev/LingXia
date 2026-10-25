@@ -2,11 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { readReference } from './reference.mjs';
 const postcss = createRequire(new URL('../../../packages/lingxia-ui/package.json', import.meta.url))('postcss');
 
 test('GPU showcase static design tokens match the React reference', async () => {
-  const tokens = async relative => {
-    const root = postcss.parse(await readFile(new URL(relative, import.meta.url), 'utf8'));
+  const tokens = css => {
+    const root = postcss.parse(css);
     const blocks = [];
     for (const node of root.nodes) {
       if (!(node.type === 'atrule' && node.name === 'theme') && !(node.type === 'rule' && [':root', "[data-theme='dark']"].includes(node.selector))) continue;
@@ -14,5 +15,5 @@ test('GPU showcase static design tokens match the React reference', async () => 
     }
     return blocks;
   };
-  assert.deepEqual(await tokens('../lxapp/theme/tokens.css'), await tokens('../../lingxia-showcase/lxapp/theme/tokens.css'));
+  assert.deepEqual(tokens(await readFile(new URL('../lxapp/theme/tokens.css', import.meta.url), 'utf8')), tokens(readReference('theme/tokens.css')));
 });

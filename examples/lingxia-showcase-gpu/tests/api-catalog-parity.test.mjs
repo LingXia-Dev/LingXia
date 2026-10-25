@@ -1,9 +1,9 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { readReference } from './reference.mjs';
 const require = createRequire(new URL('../../../packages/lingxia-ui/package.json', import.meta.url));
 const source = require('esbuild').buildSync({
   entryPoints: [fileURLToPath(new URL('../lxapp/pages/api/index.tsx', import.meta.url))],
@@ -12,7 +12,7 @@ const source = require('esbuild').buildSync({
 const module = { exports: {} };
 vm.runInNewContext(source, { module, exports: module.exports, require: () => ({}) });
 const groups = JSON.parse(JSON.stringify(module.exports.groups));
-const reference = readFileSync(new URL('../../lingxia-showcase/lxapp/pages/api/index.tsx', import.meta.url), 'utf8');
+const reference = readReference('pages/API/index.tsx');
 
 test('API groups retain the React reference order', () => {
   const expected = [...reference.matchAll(/onClick=\{\(\) => toggleSection\(\{ section: '([^']+)' \}\)\}/g)].map(match => match[1]);

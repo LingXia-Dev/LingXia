@@ -44,5 +44,8 @@ executed and CPU-rendered after the CSS-named authoring rewrite · — not verif
 | Hover | not exercised: Android reports a coarse pointer |
 | Animation | not authored; see `docs/internal/ui-animation.md` |
 
+Parity tests compare against the React showcase as committed at `HEAD`; uncommitted
+edits there print a notice naming the file and are not compared until committed.
+
 Renderer probes and fixtures that used to live in a `lab` page are now the
 Logic-free fixture app in `lingxia-sdk/android/tests/gpu/fixtures/renderer`.
