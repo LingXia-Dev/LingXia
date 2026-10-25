@@ -234,8 +234,10 @@ enum LxAppLayoutReconciler {
                 desired[host] = panelPosition(for: slot.edge)
                 if projectedOverlay { overlayIds.insert(host) }
                 if projectedOverlay && keepsDockRoom(slot) { maximizedIds.insert(host) }
-                // A browser child: the docked browser shows that tab.
-                if host != active {
+                // A browser child: the docked browser shows that tab. The
+                // host is the anchor tab's id, so the anchor itself is a
+                // browser child too.
+                if isBrowserChild(active, shell: shell) {
                     shell.browserCoordinator.activeDockedBrowser?.activateTab(surfaceId: active)
                 }
             }
