@@ -134,7 +134,7 @@ impl ViewSession {
             pending_animation: None,
             pressed: None,
             hovered: None,
-            environment: serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":std::env::consts::OS,"formFactor":"phone","aside":false,"displayLanguage":"en","runner":true,"pointer":"coarse"}),
+            environment: serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":std::env::consts::OS,"formFactor":"phone","canDock":false,"displayLanguage":"en","runner":true,"pointer":"coarse"}),
             state: if logic {
                 crate::session::state::StateReplica::default()
             } else {

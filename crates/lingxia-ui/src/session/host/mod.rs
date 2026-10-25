@@ -17,6 +17,7 @@ use std::time::Duration;
 
 mod bridge;
 mod dispatch;
+mod environment;
 mod images;
 mod pump;
 mod worker;
@@ -200,6 +201,7 @@ struct Main<F> {
     interaction: ViewInteraction,
     images: ImageRequests,
     environment: Option<FrameEnvironment>,
+    host_environment: environment::HostEnvironment,
     snapshot: Option<Arc<FrameSnapshot>>,
     prepared: Option<pump::Prepared<F>>,
     failure: Option<Failure>,
@@ -247,6 +249,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     interaction: ViewInteraction::default(),
                     images: ImageRequests::default(),
                     environment: None,
+                    host_environment: Default::default(),
                     snapshot: None,
                     prepared: None,
                     failure: None,
@@ -319,6 +322,14 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.park_animations();
         let effects = self.inner.main().interaction.cancel_all();
         self.inner.deliver(effects);
+    }
+
+    /// A runtime environment push (`language` or `surface` kind, JSON).
+    pub fn update_environment(&self, update: &str) -> Result<(), String> {
+        if self.inner.main().host_environment.update(update)? {
+            self.request_frame();
+        }
+        Ok(())
     }
 
     /// Rebuild the View for the next frame.

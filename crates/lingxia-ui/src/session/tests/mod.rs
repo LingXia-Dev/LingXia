@@ -1508,7 +1508,7 @@ fn environment_is_atomic_immutable_and_survives_reset() {
         "function render({env}){if(!Object.isFrozen(env.insets))throw Error('mutable');return h('text',{},JSON.stringify(env))}",
     );
     let mut page = ViewSession::new(&source).unwrap();
-    let environment = serde_json::json!({"theme":"dark","insets":{"top":24,"right":0,"bottom":16,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","aside":false,"displayLanguage":"zh-CN","runner":false,"viewport":{"width":999}});
+    let environment = serde_json::json!({"theme":"dark","insets":{"top":24,"right":0,"bottom":16,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","canDock":false,"displayLanguage":"zh-CN","runner":false,"viewport":{"width":999}});
     page.set_environment(environment.clone()).unwrap();
     let mut invalid = environment.clone();
     invalid["insets"]["top"] = serde_json::json!(-1);

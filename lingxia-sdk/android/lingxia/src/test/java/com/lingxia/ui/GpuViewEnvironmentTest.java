@@ -94,21 +94,18 @@ public class GpuViewEnvironmentTest {
         assertFalse("disposal leaves the core inert", view.canScrollVertically(1));
     }
 
-    @Test public void activityConfigurationAndHostOverridesSurviveModuleReload() throws Exception {
+    @Test public void activityConfigurationSurvivesModuleReloadAndHostPushesStayInTheCore() throws Exception {
         GpuView view = new GpuView(RuntimeEnvironment.getApplication(), "", "test:environment", null);
         Configuration configuration = new Configuration(view.getResources().getConfiguration());
         configuration.uiMode = Configuration.UI_MODE_NIGHT_YES;
         view.onConfigurationChanged(configuration);
         configuration.uiMode = Configuration.UI_MODE_NIGHT_NO;
         assertEquals("dark", sample(view).getString("theme"));
-        view.updateEnvironment("{kind:'language',revision:'1',language:'zh-CN'}");
-        view.updateEnvironment("{kind:'surface',revision:'1',context:{sizeClass:'regular',aside:true}}");
+        view.updateEnvironment("{\"kind\":\"surface\",\"revision\":1,\"context\":{\"sizeClass\":\"regular\",\"canDock\":true,\"width\":800,\"height\":600}}");
         view.reload("new module");
         JSONObject retained = sample(view);
         assertEquals("dark", retained.getString("theme"));
-        assertEquals("zh-CN", retained.getString("displayLanguage"));
-        assertEquals("regular", retained.getString("sizeClass"));
-        assertTrue(retained.getBoolean("aside"));
+        assertFalse("the core overlays host pushes", retained.has("sizeClass") || retained.has("canDock"));
         view.onConfigurationChanged(configuration);
         assertEquals("light", sample(view).getString("theme"));
         view.dispose();

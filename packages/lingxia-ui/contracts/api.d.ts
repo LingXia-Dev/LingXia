@@ -23,7 +23,8 @@ export interface Env {
   readonly formFactor: string;
   readonly sizeClass: string;
   readonly displayLanguage: string;
-  readonly aside: boolean;
+  /** Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it. */
+  readonly canDock: boolean;
   readonly runner: boolean;
   /** `fallback: "driver"` when this device's GPU driver failed and pages render on the CPU. */
   readonly renderer?: Readonly<{ fallback: "driver" | null }>;

@@ -45,9 +45,10 @@ impl<A: PlatformAdapter> Inner<A> {
             if main.disposed {
                 return;
             }
-            let Some(environment) = environment else {
+            let Some(mut environment) = environment else {
                 return;
             };
+            main.host_environment.apply(&mut environment.value);
             if main.environment.as_ref() != Some(&environment) {
                 main.environment = Some(environment.clone());
                 self.lifecycle.invalidate_surface();

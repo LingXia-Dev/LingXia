@@ -205,7 +205,7 @@ impl Platform {
                         "os": "test",
                         "formFactor": "phone",
                         "displayLanguage": "en",
-                        "aside": false,
+                        "canDock": false,
                         "runner": false,
                     }),
                 })),

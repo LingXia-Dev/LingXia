@@ -7,7 +7,7 @@ fn scaling_reflows_text_and_input_once_and_invalidates_retained_geometry() {
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let baseline = page.layout(220, 600, 1.0).unwrap();
-    let mut environment = json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","aside":false,"runner":false,"textScale":[[0,0],[16384,32768]]});
+    let mut environment = json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"runner":false,"textScale":[[0,0],[16384,32768]]});
     page.set_environment(environment.clone()).unwrap();
     let enlarged = page.layout(220, 600, 1.0).unwrap();
     let first = &enlarged.retained.inputs[1].as_ref().unwrap().layout;

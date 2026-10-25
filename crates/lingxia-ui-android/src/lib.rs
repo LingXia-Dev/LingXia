@@ -103,6 +103,11 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeSessionFailed", "(J)Z", session_failed),
         method!("nativeBridgeReady", "(J)Z", bridge_ready),
         method!("nativeFail", "(JLjava/lang/String;)V", fail),
+        method!(
+            "nativeUpdateEnvironment",
+            "(JLjava/lang/String;)V",
+            update_environment
+        ),
         method!("nativePointer", "(JIFFFFFF)Z", pointer),
         method!("nativeLongPress", "(J)V", long_press),
         method!("nativeKey", "(JIZZ)Z", key),
@@ -353,6 +358,21 @@ extern "system" fn fail<'a>(
     run(&mut env, |env| {
         let error = text(env, &error)?;
         host(handle)?.fail(error);
+        Ok(())
+    })
+}
+
+extern "system" fn update_environment<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    update: JString<'a>,
+) {
+    run(&mut env, |env| {
+        let update = text(env, &update)?;
+        if let Err(error) = host(handle)?.update_environment(&update) {
+            adapter::log(&error);
+        }
         Ok(())
     })
 }

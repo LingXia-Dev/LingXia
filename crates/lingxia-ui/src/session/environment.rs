@@ -25,7 +25,7 @@ impl ViewSession {
             })
             && (value.get("sizeClass").is_none()
                 || matches!(value["sizeClass"].as_str(), Some("compact" | "regular")))
-            && value["aside"].is_boolean()
+            && value["canDock"].is_boolean()
             && value["runner"].is_boolean()
             && (value.get("renderer").is_none()
                 || (matches!(

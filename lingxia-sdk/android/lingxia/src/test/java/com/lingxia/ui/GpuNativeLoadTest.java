@@ -30,7 +30,7 @@ public class GpuNativeLoadTest {
         public void requestVsync() { vsync = true; }
         public String environment() {
             return "{\"width\":200,\"height\":300,\"scale\":2,\"env\":{\"theme\":\"light\",\"insets\":{\"top\":0,\"right\":0,\"bottom\":0,\"left\":0},"
-                + "\"keyboard\":{\"height\":0},\"os\":\"android\",\"pointer\":\"coarse\",\"formFactor\":\"phone\",\"displayLanguage\":\"en\",\"aside\":false,\"runner\":false}}";
+                + "\"keyboard\":{\"height\":0},\"os\":\"android\",\"pointer\":\"coarse\",\"formFactor\":\"phone\",\"displayLanguage\":\"en\",\"runner\":false}}";
         }
         public boolean presentPixels(int[] argb, int width, int height) { assertEquals(argb.length, width * height); pixels.add(argb); return true; }
         public void gpuAttached(boolean attached) { }
@@ -87,6 +87,22 @@ public class GpuNativeLoadTest {
     }
 
     /** Images load in Rust; without an image owner the host settles them as failed, with no Java call. */
+    @Test public void hostPushesReachTheViewEnvironment() throws Exception {
+        Fake fake = new Fake();
+        long host = GpuView.nativeHostCreate(fake, "test:jvm", false, 0);
+        try {
+            GpuView.nativeLoad(host, GpuNative.module(
+                "function render(){const e=useView().env;return h('text',{testId:'env'},e.canDock+' '+e.sizeClass+' '+e.displayLanguage)}"));
+            GpuView.nativeSetVisible(host, true);
+            fake.pump(host, () -> fake.presented >= 1);
+            assertEquals("false compact en", text(last(fake), "env"));
+            GpuView.nativeUpdateEnvironment(host, "{\"kind\":\"surface\",\"revision\":2,\"context\":{\"sizeClass\":\"regular\",\"canDock\":true,\"width\":800,\"height\":600}}");
+            GpuView.nativeUpdateEnvironment(host, "{\"kind\":\"language\",\"revision\":3,\"language\":\"zh-Hans-CN\"}");
+            GpuView.nativeUpdateEnvironment(host, "{\"kind\":\"surface\",\"revision\":1,\"context\":{\"sizeClass\":\"compact\",\"canDock\":false,\"width\":1,\"height\":1}}");
+            fake.pump(host, () -> { try { return "true regular zh-Hans-CN".equals(text(last(fake), "env")); } catch (Exception e) { throw new AssertionError(e); } });
+        } finally { GpuView.nativeHostRelease(host); }
+    }
+
     @Test public void presentedFramesDriveTapsAndSemanticsThroughTheHost() throws Exception {
         Fake fake = new Fake();
         long host = GpuView.nativeHostCreate(fake, "test:jvm", false, 0);

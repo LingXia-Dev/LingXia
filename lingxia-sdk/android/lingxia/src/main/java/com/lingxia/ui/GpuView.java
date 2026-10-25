@@ -52,6 +52,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native boolean nativeBridgeReady(long host);
     /** A platform-detected failure; the host classifies it and shows recovery. */
     static native void nativeFail(long host, String error);
+    static native void nativeUpdateEnvironment(long host, String update);
     static native boolean nativePointer(long host, int phase, float x, float y, float slop, float vx, float vy, float minFling);
     static native void nativeLongPress(long host);
     static native boolean nativeKey(long host, int key, boolean shift, boolean repeat);
@@ -117,7 +118,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private android.content.res.Configuration hostConfiguration;
     private org.json.JSONArray textScale;
     private float textScalePreference = Float.NaN, textScaleDensity = Float.NaN;
-    private final GpuEnvironment hostEnvironment = new GpuEnvironment();
     private final java.util.HashMap<Long, java.util.function.Consumer<JSONObject>> inputReplies = new java.util.HashMap<>();
     private long nextInputReply;
     private boolean vsyncRequested;
@@ -357,9 +357,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
 
     public void updateEnvironment(String update) {
         if (destroyed) return;
-        try {
-            if (hostEnvironment.update(new JSONObject(update))) requestFrame();
-        } catch (Exception error) { Log.e("LingXia.UI", "Invalid host environment", error); }
+        nativeUpdateEnvironment(host, update);
     }
 
     /** Measured overlap in physical pixels, supplied by the native host after layout. */
@@ -430,11 +428,11 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 textScalePreference = preference;
                 textScaleDensity = density;
             }
-            return hostEnvironment.apply(new JSONObject().put("theme", dark ? "dark" : "light").put("insets", insets)
+            return (new JSONObject().put("theme", dark ? "dark" : "light").put("insets", insets)
                 .put("textScale", textScale)
                 .put("keyboard", new JSONObject().put("height", Math.min(surface.getHeight(), Math.max(0, keyboard - trailingY)) / scale))
                 .put("os", "android").put("pointer", "coarse").put("formFactor", configuration.smallestScreenWidthDp >= 600 ? "tablet" : "phone")
-                .put("displayLanguage", locale.toLanguageTag()).put("aside", false).put("runner", false)).toString();
+                .put("displayLanguage", locale.toLanguageTag()).put("runner", false)).toString();
         } catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native environment", error); }
     }
     public void dispose() {
