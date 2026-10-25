@@ -598,7 +598,7 @@ pub fn side_panel_tabs_for_url(url: &str) -> Vec<String> {
         })
         .map(|(tab_id, tab)| (tab.created_order, tab_id.clone()))
         .collect::<Vec<_>>();
-    matches.sort_by(|left, right| right.0.cmp(&left.0));
+    matches.sort_by_key(|(created_order, _)| std::cmp::Reverse(*created_order));
     matches.into_iter().map(|(_, tab_id)| tab_id).collect()
 }
 
