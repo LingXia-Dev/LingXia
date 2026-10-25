@@ -97,24 +97,32 @@ pub(super) fn aside_panel_header_hit(
         );
     }
     for (tab, rect) in tabs.iter().zip(aside_panel_tab_rects(panel, tabs)) {
+        let payload = json!({
+            "panel_id": panel.panel_id.clone(),
+            "surface_id": tab.surface_id.clone()
+        });
         if let Some(close) = aside_panel_tab_close_rect(rect)
             && rect_contains(&close, point)
         {
-            return chrome_command(
-                command_id::ASIDE_PANEL_TAB_CLOSE,
-                json!({
-                    "panel_id": panel.panel_id.clone(),
-                    "surface_id": tab.surface_id.clone()
-                }),
+            return chrome_command(command_id::ASIDE_PANEL_TAB_CLOSE, payload);
+        }
+        // "···" opens the tab's menu where the button is; the tab body
+        // selects on click and opens the same menu on right-click.
+        if let Some(more) = aside_panel_tab_more_rect(rect)
+            && rect_contains(&more, point)
+        {
+            return WindowsChromeHit::Command(
+                WindowsChromeCommand::new(command_id::ASIDE_PANEL_TAB_MENU)
+                    .with_payload(payload)
+                    .with_screen_position(),
             );
         }
         if rect_contains(&rect, point) {
-            return chrome_command(
+            return chrome_command_with_context(
                 command_id::ASIDE_PANEL_TAB_CLICK,
-                json!({
-                    "panel_id": panel.panel_id.clone(),
-                    "surface_id": tab.surface_id.clone()
-                }),
+                payload.clone(),
+                command_id::ASIDE_PANEL_TAB_MENU,
+                payload,
             );
         }
     }
@@ -511,6 +519,11 @@ fn aside_panel_tab_radius() -> i32 {
 fn aside_panel_tab_close_size() -> i32 {
     crate::dpi::px(16)
 }
+/// The "···" menu button left of the close glyph. Its room is always
+/// reserved so revealing it on hover never shifts the title.
+fn aside_panel_tab_more_size() -> i32 {
+    crate::dpi::px(16)
+}
 /// Below this the tab has no room for a title next to the close glyph, so the
 /// glyph is dropped and the tab is closed from its neighbours or the slot.
 fn aside_panel_tab_close_min_tab_width() -> i32 {
@@ -544,6 +557,7 @@ pub(super) fn aside_panel_tab_rects(
         .map(|tab| {
             (measure_chrome_text_width(&tab.title)
                 + 2 * aside_panel_tab_text_padding()
+                + aside_panel_tab_more_size()
                 + aside_panel_tab_close_size())
             .clamp(aside_panel_tab_min_width(), aside_panel_tab_max_width())
         })
@@ -585,6 +599,20 @@ pub(super) fn aside_panel_tab_close_rect(tab: RECT) -> Option<RECT> {
         top,
         right: tab.right - px(6),
         bottom: top + aside_panel_tab_close_size(),
+    }))
+}
+
+/// Menu-button rect left of a tab's close glyph; dropped with the close
+/// glyph on tabs too narrow for either.
+pub(super) fn aside_panel_tab_more_rect(tab: RECT) -> Option<RECT> {
+    let close = aside_panel_tab_close_rect(tab)?;
+    let size = aside_panel_tab_more_size();
+    let top = tab.top + (rect_height(&tab) - size) / 2;
+    Some(normalize_rect(RECT {
+        left: close.left - size - px(2),
+        top,
+        right: close.left - px(2),
+        bottom: top + size,
     }))
 }
 
@@ -681,7 +709,10 @@ pub(super) fn browser_panel_title(panel: &WindowsChromePanel) -> String {
 
 /// Shared aside-slot chrome row: title tabs and the collapse control. The browser slot
 /// additionally gets back/forward/reload; lxapp slots start the strip at the
-/// leading edge. No slot carries a "+" affordance.
+/// leading edge. No slot carries a "+" affordance. A single tab is drawn as
+/// the panel's header (icon-less title, "···", ✕) with no chip, wash or
+/// divider — there is nothing to pick among — and turns into tabs when a
+/// sibling arrives.
 pub(super) fn draw_aside_panel_header(
     hdc: HDC,
     panel: &WindowsChromePanel,
@@ -717,9 +748,12 @@ pub(super) fn draw_aside_panel_header(
     }
 
     let bridges = aside_panel_tabs_bridge(panel);
+    let header = tabs.len() == 1;
     let rects = aside_panel_tab_rects(panel, tabs);
     for (index, (tab, rect)) in tabs.iter().zip(rects.iter().copied()).enumerate() {
-        if tab.active && !bridges {
+        if header {
+            // A plain header row: no chip, wash or divider.
+        } else if tab.active && !bridges {
             // The white card on the grey cap, as the sidebar's selected child.
             fill_round_rect_aa(hdc, rect, px(6), pal.panel_background);
         } else if tab.active {
@@ -749,7 +783,7 @@ pub(super) fn draw_aside_panel_header(
                 pal.divider,
             );
         }
-        if !tab.active {
+        if !tab.active && !header {
             let radius = if bridges {
                 aside_panel_tab_radius()
             } else {
@@ -758,10 +792,14 @@ pub(super) fn draw_aside_panel_header(
             draw_hover_wash(hdc, rect, radius, cursor);
         }
         let close = aside_panel_tab_close_rect(rect);
+        let more = aside_panel_tab_more_rect(rect);
         let title_rect = normalize_rect(RECT {
             left: rect.left + px(10),
             top: rect.top,
-            right: close.map(|close| close.left).unwrap_or(rect.right - px(6)),
+            right: more
+                .or(close)
+                .map(|control| control.left)
+                .unwrap_or(rect.right - px(6)),
             bottom: rect.bottom,
         });
         let text_color = if tab.active {
@@ -770,6 +808,21 @@ pub(super) fn draw_aside_panel_header(
             pal.text_muted
         };
         draw_text(hdc, &tab.title, title_rect, text_color, DT_LEFT);
+        // "···" shows on hover, or always on the header where it is a panel
+        // control; its room is reserved either way.
+        let hovered = cursor.is_some_and(|point| rect_contains(&rect, point));
+        if let Some(more) = more
+            && (header || hovered)
+        {
+            draw_hover_wash(hdc, more, 5, cursor);
+            draw_design_icon_button(
+                hdc,
+                more,
+                WindowsDesignIcon::MoreVertical,
+                pal.text_muted,
+                px(14),
+            );
+        }
         if let Some(close) = close {
             draw_hover_wash(hdc, close, 5, cursor);
             draw_text(hdc, GLYPH_TAB_CLOSE, close, pal.text_muted, DT_CENTER);

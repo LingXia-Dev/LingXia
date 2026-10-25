@@ -280,6 +280,12 @@ pub fn promote_standalone_tab(tab_id: &str) -> Result<(), LxAppError> {
     tabs::promote_standalone_tab(tab_id)
 }
 
+/// Whether a docked tab may move into the main browser: URL-callback and
+/// ephemeral tabs belong to their opener.
+pub fn can_promote_standalone_tab(tab_id: &str) -> bool {
+    tabs::can_promote_standalone_tab(tab_id)
+}
+
 pub fn close(tab_id: &str) -> Result<(), LxAppError> {
     let owner_appid = tabs::tab_owner_appid(tab_id);
     tabs::close_browser_tab(tab_id)?;

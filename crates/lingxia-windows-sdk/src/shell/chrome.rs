@@ -337,6 +337,7 @@ pub(super) mod command_id {
     pub(super) const BROWSER_PANEL_NAV_RELOAD: &str = "browser-panel.nav.reload";
     pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
     pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
+    pub(super) const ASIDE_PANEL_TAB_MENU: &str = "aside-panel.tab.menu";
     pub(super) const ASIDE_PANEL_COLLAPSE: &str = "aside-panel.collapse";
     pub(super) const ASIDE_PANEL_MAXIMIZE: &str = "aside-panel.maximize";
     pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
@@ -705,6 +706,11 @@ fn chrome_hover_rect(
                     && rect_contains(&close, point)
                 {
                     return Some(close);
+                }
+                if let Some(more) = aside_panel_tab_more_rect(rect)
+                    && rect_contains(&more, point)
+                {
+                    return Some(more);
                 }
                 if rect_contains(&rect, point) {
                     return Some(rect);
@@ -2223,23 +2229,29 @@ fn compute_attached_layout(
     }
 }
 
-/// Width of the strip a collapsed aside keeps at its edge.
+/// Width of the strip a collapsed aside keeps at its edge: room for the
+/// icon tab plus a gap on either side.
 fn collapsed_aside_handle_width() -> i32 {
-    px(10)
+    px(32)
 }
 
-/// The handles of collapsed aside slots, beside `main_region`: a short strip
-/// centred on the edge the slot docks to. Clicking one restores the slot.
+/// The handles of collapsed aside slots, beside `main_region`: a small icon
+/// tab centred on the edge the slot docks to, showing the content's icon so
+/// the put-away region stays visible. Clicking one restores the slot.
 fn collapsed_aside_handle_rects(main_region: RECT) -> Vec<(String, RECT)> {
-    let width = collapsed_aside_handle_width();
+    let width = collapsed_aside_tongue_width();
     let center = (main_region.top + main_region.bottom) / 2;
-    let half = px(32).min(rect_height(&main_region) / 2);
+    let half = px(22).min(rect_height(&main_region) / 2);
     lingxia_windows_contract::collapsed_aside_panels()
         .into_iter()
         .filter_map(|(panel_id, edge)| {
             let (left, right) = match edge {
-                WindowsPanelPosition::Right => (main_region.right, main_region.right + width),
-                WindowsPanelPosition::Left => (main_region.left - width, main_region.left),
+                WindowsPanelPosition::Right => {
+                    (main_region.right + px(2), main_region.right + px(2) + width)
+                }
+                WindowsPanelPosition::Left => {
+                    (main_region.left - px(2) - width, main_region.left - px(2))
+                }
                 WindowsPanelPosition::Top | WindowsPanelPosition::Bottom => return None,
             };
             Some((
@@ -3034,10 +3046,25 @@ pub(super) fn draw_content_cards(
         // the card shadows carry the split), horizontal terminal splits keep
         // theirs since native panels stay flat.
         draw_content_card(hdc, attached.main_region, desktop_card);
-        for (_, rect) in collapsed_aside_handle_rects(attached.main_region) {
+        for (panel_id, rect) in collapsed_aside_handle_rects(attached.main_region) {
             let pal = shell_palette();
-            draw_hover_wash(hdc, rect, 4, state.cursor);
-            fill_round_rect_aa(hdc, inset_rect(rect, px(3), px(10)), 2, pal.divider);
+            // A small card with the content's icon; the hover wash on top
+            // lights it like the other edge controls.
+            fill_round_rect_aa(hdc, rect, px(8), pal.panel_background);
+            draw_hover_wash(hdc, rect, px(8), state.cursor);
+            let icon = centered_icon_rect(rect, px(18));
+            let drew = crate::shell::runtime::collapsed_aside_handle_icon_path(&panel_id)
+                .map(|path| draw_icon_or_default(hdc, &path, icon, px(18) as u32))
+                .unwrap_or(false);
+            if !drew {
+                draw_design_icon_button(
+                    hdc,
+                    rect,
+                    WindowsDesignIcon::Globe,
+                    pal.frame_button_icon,
+                    px(16),
+                );
+            }
         }
         for panel in &attached.panels {
             if panel.host_content.is_some() {
