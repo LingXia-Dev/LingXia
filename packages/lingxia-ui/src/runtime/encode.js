@@ -1,4 +1,5 @@
 import { tags, field } from '../generated/wire.js';
+import { limits } from '../generated/contract.js';
 import { utf8Bytes } from './data.js';
 import { render } from './state.js';
 import { readNode, isNode } from './nodes.js';
@@ -34,12 +35,12 @@ export function encodeTree(tree, windows) {
   const { candidate } = render;
   const output = []; let count = 0, plotWork = 0, animationBytes = 0, itemKeyBytes = 0;
   const write = (node, parent, depth) => {
-    if (depth > 128 || ++count > 4096) throw Error('UI_LIMIT: candidate too large');
+    if (depth > limits.depth || ++count > limits.nodes) throw Error('UI_LIMIT: candidate too large');
     const { tag, props, identity } = node, encoded = [];
     for (const [key, value] of Object.entries(node.fields)) {
       if (key === 'animation') {
         animationBytes += utf8Bytes(JSON.stringify(value), 32768);
-        if (animationBytes > 262144) throw Error('UI_ANIMATION: page payload budget exceeded');
+        if (animationBytes > limits.animationBytes) throw Error('UI_ANIMATION: page payload budget exceeded');
       }
       encoded.push(field[key], encodeValue(key, value));
     }
@@ -77,8 +78,8 @@ export function encodeTree(tree, windows) {
       encoded.push(field.listId, identity, field.listCount, props.count, field.listLeading, window.leading, field.listTrailing, window.trailing);
       if (props.itemKeys !== undefined) {
         const payload = JSON.stringify(props.itemKeys);
-        itemKeyBytes += utf8Bytes(payload, 262144);
-        if (itemKeyBytes > 262144) throw Error('UI_LIST: itemKeys page budget exceeded');
+        itemKeyBytes += utf8Bytes(payload, limits.itemKeyBytes);
+        if (itemKeyBytes > limits.itemKeyBytes) throw Error('UI_LIST: itemKeys page budget exceeded');
         encoded.push(field.listItemKeys, payload);
       }
       if (props.anchor !== undefined) encoded.push(field.listAnchor, JSON.stringify(props.anchor));

@@ -1,6 +1,8 @@
 pub(crate) mod config;
 pub(crate) mod definition;
 pub(crate) mod runtime;
+#[rustfmt::skip]
+pub(crate) mod ui_limits;
 mod view;
 use view::PageView;
 pub use view::{
@@ -2134,7 +2136,10 @@ impl PageInstance {
         if !source.starts_with("https://") && !source.starts_with("http://") {
             return self.gpu_image_bytes(source);
         }
-        if self.renderer() != PageRenderer::Gpu || source.len() > 8192 || source.contains('\0') {
+        if self.renderer() != PageRenderer::Gpu
+            || source.len() > ui_limits::SOURCE_BYTES
+            || source.contains('\0')
+        {
             return Err(LxAppError::InvalidParameter(
                 "invalid GPU image source".into(),
             ));
@@ -2161,7 +2166,7 @@ impl PageInstance {
                 },
                 None,
                 lingxia_transfer::user_cache::DownloadBehavior {
-                    max_bytes: Some(8 * 1024 * 1024),
+                    max_bytes: Some(ui_limits::IMAGE_BYTES as u64),
                     request_timeout: std::time::Duration::from_secs(30),
                     max_retries: 0,
                     ..Default::default()

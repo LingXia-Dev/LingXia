@@ -18,7 +18,6 @@ fn alternative_text_is_image_only_bounded_and_preserves_legacy_records() {
         (7, json!("  ")),
         (7, json!("\0")),
         (7, json!("图片".repeat(171))),
-        (2, json!("Wrong tag")),
     ] {
         let values = json!([tag, -1, "", "", "", 1, 105, alt]);
         assert!(
@@ -27,6 +26,12 @@ fn alternative_text_is_image_only_bounded_and_preserves_legacy_records() {
                 .contains("UI_IMAGE")
         );
     }
+    let values = json!([2, -1, "", "", "", 1, 105, "Wrong tag"]);
+    assert!(
+        protocol::decode(values.as_array().unwrap())
+            .unwrap_err()
+            .contains("UI_FIELD: alt is not accepted on <text>")
+    );
 }
 
 #[test]

@@ -3,7 +3,6 @@ use ::image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader, Limits};
 use std::{io::Cursor, sync::Arc};
 use vello_cpu::Pixmap;
 
-pub const MAX_ENCODED_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_DIMENSION: u32 = 4096;
 pub const MAX_PIXELS: u64 = 4 * 1024 * 1024;
 const MAX_SOURCE_PIXELS: u64 = 12 * 1024 * 1024;
@@ -29,7 +28,7 @@ impl Bitmap {
     }
     /// The host supplies authorized bytes; call off the UI thread.
     pub fn decode(bytes: &[u8]) -> Result<Self, String> {
-        if bytes.is_empty() || bytes.len() > MAX_ENCODED_BYTES {
+        if bytes.is_empty() || bytes.len() > crate::protocol::limits::IMAGE_BYTES {
             return Err("UI_IMAGE: encoded size exceeds limit or is empty".into());
         }
         let format = ::image::guess_format(bytes).map_err(image_error)?;
@@ -194,7 +193,7 @@ mod tests {
         for bytes in [&[][..], b"not an image", b"GIF89a"] {
             assert!(Bitmap::decode(bytes).is_err());
         }
-        assert!(Bitmap::decode(&vec![0; MAX_ENCODED_BYTES + 1]).is_err());
+        assert!(Bitmap::decode(&vec![0; crate::protocol::limits::IMAGE_BYTES + 1]).is_err());
         assert!(
             Bitmap::decode(&png(
                 MAX_DIMENSION + 1,

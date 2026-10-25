@@ -1,4 +1,4 @@
-import { elements } from '../generated/contract.js';
+import { elements, admission, limits } from '../generated/contract.js';
 import { resolveClasses } from '../style/classes.js';
 import { lowerStyle, paintOnly, mergeStyle } from '../style/lower.js';
 import { h, readNode, isNode, nodeKey, flatten } from './nodes.js';
@@ -9,9 +9,7 @@ import { has, validInputText } from './data.js';
 import * as check from './validate.js';
 
 const common = new Set(['key', 'testId', 'style', 'className', 'children']);
-const editors = new Set(['input', 'textarea', 'search']);
-const controls = new Set(['button', 'checkbox', 'switch', 'radio']);
-const composedContent = new Set(['view', 'column', 'row', 'text', 'spacer', 'image', 'grid', 'stack', 'vector']);
+const accepts = (field, tag) => admission.fields[field].includes(elements[tag].wire);
 const bindCodes = { input: 'UI_INPUT', textarea: 'UI_INPUT', search: 'UI_INPUT', checkbox: 'UI_CHECK', switch: 'UI_CHECK', slider: 'UI_SLIDER', radio: 'UI_RADIO' };
 const optionStyle = ['fontSize', 'fontWeight', 'fontFamily', 'lineHeight', 'color', 'background'];
 const componentIds = new WeakMap();
@@ -59,16 +57,16 @@ function nodeStyle(tag, props, extra, inherited) {
     paintOnly(name, tag, delta);
     states[wire] = lowerStyle(tag, delta, env, { fontSize: typography.fontSize }).fields;
   };
-  state('focus', 'focusStyle', editors.has(tag), 'an editor');
+  state('focus', 'focusStyle', accepts('focusStyle', tag), 'an editor');
   if (!disabled) {
-    state('active', 'pressedStyle', controls.has(tag), 'a control');
+    state('active', 'pressedStyle', accepts('pressedStyle', tag), 'a control');
     state('hover', 'hoverStyle', true);
   }
   return { fields, states, typography, children: classes?.children };
 }
 
 export function resolveNode(node, identity, depth = 0, parent = {}) {
-  if (depth > 128) throw Error('UI_LIMIT: children too deep');
+  if (depth > limits.depth) throw Error('UI_LIMIT: children too deep');
   if (node == null || typeof node === 'boolean' || node === '') return null;
   if (typeof node === 'string' || typeof node === 'number') node = h('text', {}, node);
   if (!isNode(node)) throw Error('UI_ROOT: expected one node');
@@ -91,7 +89,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const element = elements[tag];
   const props = { ...original };
   admit(tag, element, props);
-  if (parent.inControl && !composedContent.has(tag)) throw Error('UI_BUTTON: descendants must be noninteractive content');
+  if (parent.inControl && !admission.tags[element.wire].content) throw Error('UI_BUTTON: descendants must be noninteractive content');
   if (element.binding) bind(tag, element, props);
   const style = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 });
   const flat = flatten(children);
@@ -199,7 +197,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       const part = key === undefined ? `position:${position}` : `key:${JSON.stringify(key)}`;
       return resolveNode(child, `${identity}/${tag}/${part}`, depth + 1, {
         tag, typography: style.typography, extra: position < last ? style.children : undefined,
-        inControl: parent.inControl || tag === 'button' || tag === 'checkbox',
+        inControl: parent.inControl || admission.tags[element.wire].children === 'content',
       });
     }).filter(child => child !== null);
   }

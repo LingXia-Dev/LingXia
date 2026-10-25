@@ -320,3 +320,206 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         _ => None,
     }
 }
+
+/// Page-wide bounds both sides of the wire enforce.
+pub mod limits {
+    pub const NODES: usize = 4096;
+    pub const DEPTH: usize = 128;
+    pub const ANIMATION_BYTES: usize = 262144;
+    pub const ITEM_KEY_BYTES: usize = 262144;
+    pub const IMAGE_BYTES: usize = 8388608;
+    pub const SOURCE_BYTES: usize = 8192;
+}
+
+/// What a wire tag may contain.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Children {
+    /// A leaf.
+    None,
+    /// A leaf carrying inline text.
+    Text,
+    /// Inline text, or noninteractive content descendants.
+    Content,
+    Any,
+    /// Virtual list row wrappers.
+    Rows,
+    /// Only tags whose admission names this tag as parent.
+    Options,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct TagAdmission {
+    pub children: Children,
+    /// May sit inside a `Children::Content` control.
+    pub content: bool,
+    pub parent: Option<usize>,
+    pub root: bool,
+    /// Requires a non-empty key.
+    pub keyed: bool,
+    pub requires: &'static [usize],
+}
+
+/// Indexed by tag id.
+pub const TAG_ADMISSION: &[TagAdmission] = &[
+    TagAdmission { children: Children::Any, content: true, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Any, content: true, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Text, content: true, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Content, content: false, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::None, content: true, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Any, content: false, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Rows, content: false, parent: None, root: false, keyed: false, requires: &[field::LIST_ID, field::LIST_COUNT, field::LIST_LEADING, field::LIST_TRAILING] },
+    TagAdmission { children: Children::None, content: true, parent: None, root: false, keyed: false, requires: &[field::IMAGE_SRC] },
+    TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Content, content: false, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Text, content: false, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Options, content: false, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Text, content: false, parent: Some(tag::RADIO), root: false, keyed: true, requires: &[field::CHECKED] },
+    TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Any, content: true, parent: None, root: false, keyed: false, requires: &[field::GRID_COLUMNS] },
+    TagAdmission { children: Children::Any, content: true, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::None, content: true, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Any, content: false, parent: None, root: true, keyed: false, requires: &[] },
+];
+
+/// The tags a field applies to (`None`: every tag) and the parent tag it requires.
+#[derive(Clone, Copy, Debug)]
+pub struct FieldAdmission {
+    pub tags: Option<&'static [usize]>,
+    pub parent: Option<usize>,
+}
+
+/// Indexed by field id.
+pub const FIELD_ADMISSION: &[FieldAdmission] = &[
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::RADIO_OPTION, tag::SEARCH, tag::SLIDER]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::LIST]), parent: None },
+    FieldAdmission { tags: Some(&[tag::LIST]), parent: None },
+    FieldAdmission { tags: Some(&[tag::LIST]), parent: None },
+    FieldAdmission { tags: Some(&[tag::LIST]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN]), parent: Some(tag::LIST) },
+    FieldAdmission { tags: Some(&[tag::LIST]), parent: None },
+    FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
+    FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
+    FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
+    FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
+    FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
+    FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
+    FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
+    FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
+    FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
+    FieldAdmission { tags: Some(&[tag::GRID]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::TEXT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::PLOT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::PLOT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::PLOT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::PLOT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::PLOT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::PLOT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::PLOT]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::VECTOR]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::TEXTAREA]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::PLOT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::PLOT]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::PLOT]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::PLOT]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::SCROLL]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::LIST]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::PAGE]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::ROW, tag::PAGE]), parent: None },
+    FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
+    FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
+    FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
+    FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::CHECKBOX, tag::SWITCH, tag::RADIO]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+];

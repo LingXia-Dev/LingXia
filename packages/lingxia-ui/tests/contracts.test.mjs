@@ -15,7 +15,44 @@ test('a schema change is reported as drift until the artifacts are regenerated',
   assert.ok(stale.includes('packages/lingxia-ui/src/generated/wire.js'));
   const added = structuredClone(schema);
   added.tags.push('drift-probe');
+  added.admission['drift-probe'] = { children: 'none' };
   assert.ok((await drift(added)).includes('crates/lingxia-ui/src/protocol/generated.rs'));
+});
+
+test('limits, admission and the CSS table reach native decode and the JS runtime together', async () => {
+  const schema = await readSchema();
+  const limit = structuredClone(schema);
+  limit.limits.sourceBytes += 1;
+  for (const path of ['crates/lingxia-ui/src/protocol/generated.rs', 'crates/lingxia-lxapp/src/page/ui_limits.rs', 'packages/lingxia-ui/src/generated/contract.js'])
+    assert.ok((await drift(limit)).includes(path), path);
+  const nesting = structuredClone(schema);
+  nesting.admission.text.children = 'any';
+  const fieldTags = structuredClone(schema);
+  fieldTags.fields.find(field => field.key === 'onClick').tags.push('row');
+  const css = structuredClone(schema);
+  css.style.width.css = 'inline-size';
+  for (const changed of [nesting, fieldTags]) {
+    const stale = await drift(changed);
+    assert.ok(stale.includes('crates/lingxia-ui/src/protocol/generated.rs'));
+    assert.ok(stale.includes('packages/lingxia-ui/src/generated/contract.js'));
+  }
+  assert.ok((await drift(css)).includes('packages/lingxia-ui/src/generated/contract.js'));
+});
+
+test('the schema rejects incomplete admission and conflicting CSS longhands', async () => {
+  const schema = await readSchema();
+  const missing = structuredClone(schema);
+  delete missing.admission.page;
+  await assert.rejects(generate(missing), /admission must list every tag/);
+  const unknown = structuredClone(schema);
+  unknown.fields.find(field => field.key === 'onClick').tags = ['paragraph'];
+  await assert.rejects(generate(unknown), /unknown tag paragraph/);
+  const limit = structuredClone(schema);
+  delete limit.limits.nodes;
+  await assert.rejects(generate(limit), /missing limit nodes/);
+  const twice = structuredClone(schema);
+  twice.style.height.css = 'width';
+  await assert.rejects(generate(twice), /css width sets both/);
 });
 
 test('the schema rejects reused field keys and sparse ids', async () => {

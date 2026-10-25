@@ -9,7 +9,7 @@ pub(crate) fn item_key(value: &str) -> String {
 }
 
 pub(crate) fn decode_item_keys(source: &str) -> Result<Vec<String>, String> {
-    if source.len() > 262_144 {
+    if source.len() > crate::protocol::limits::ITEM_KEY_BYTES {
         return Err("UI_LIST: itemKeys budget exceeded".into());
     }
     let keys: Vec<String> =

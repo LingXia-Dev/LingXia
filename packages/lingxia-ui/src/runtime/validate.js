@@ -1,4 +1,5 @@
 import { utf8Bytes } from './data.js';
+import { limits } from '../generated/contract.js';
 
 // Per-element value checks; native decoding re-validates everything it receives.
 export function label(value, code, required = false) {
@@ -82,7 +83,7 @@ export function slider(props) {
 }
 
 export function image(props) {
-  if (typeof props.src !== 'string' || !props.src.length || props.src.length > 8192 || props.src.includes('\0')) throw Error('UI_IMAGE: invalid source');
+  if (typeof props.src !== 'string' || !props.src.length || props.src.length > limits.sourceBytes || props.src.includes('\0')) throw Error('UI_IMAGE: invalid source');
   if (props.alt !== undefined && (typeof props.alt !== 'string' || utf8Bytes(props.alt, 1024) > 1024 || props.alt.includes('\0') ||
       (props.alt.length > 0 && !props.alt.trim()))) throw Error('UI_IMAGE: invalid alternative text');
   if (props.retryKey !== undefined && (typeof props.retryKey !== 'string' || utf8Bytes(props.retryKey, 257) > 256 || props.retryKey.includes('\0')))
@@ -101,7 +102,7 @@ export function listKeys(props) {
         throw Error('UI_LIST: invalid or duplicate itemKey');
       seen.add(key); return key;
     });
-    if (utf8Bytes(JSON.stringify(props.itemKeys), 262144) > 262144) throw Error('UI_LIST: itemKeys budget exceeded');
+    if (utf8Bytes(JSON.stringify(props.itemKeys), limits.itemKeyBytes) > limits.itemKeyBytes) throw Error('UI_LIST: itemKeys budget exceeded');
   }
   if (props.anchor !== undefined && props.anchor !== 'end') {
     const a = props.anchor;

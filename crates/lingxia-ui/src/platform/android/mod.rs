@@ -761,7 +761,7 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeImage(
             return Ok(0);
         }
         if env.get_array_length(&bytes).map_err(|e| e.to_string())? as usize
-            > crate::scene::image::MAX_ENCODED_BYTES
+            > crate::protocol::limits::IMAGE_BYTES
         {
             return Err("UI_IMAGE: encoded size limit".into());
         }

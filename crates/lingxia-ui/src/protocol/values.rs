@@ -1,5 +1,5 @@
 //! Value grammars shared by decode and layout: lengths, colors, bases and paint deltas.
-use super::{FIELDS, FOCUS_PAINT_FIELDS, field, tag};
+use super::{FIELDS, FOCUS_PAINT_FIELDS, field, limits, tag};
 use serde_json::Value;
 
 /// Largest callback handle a JS number represents exactly.
@@ -234,9 +234,9 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         }
         field::ON_INPUT | field::ON_SUBMIT => ensure(handle(value), "UI_INPUT: invalid callback"),
         field::IMAGE_SRC => ensure(
-            value
-                .as_str()
-                .is_some_and(|s| !s.is_empty() && s.len() <= 8192 && !s.contains('\0')),
+            value.as_str().is_some_and(|s| {
+                !s.is_empty() && s.len() <= limits::SOURCE_BYTES && !s.contains('\0')
+            }),
             "UI_IMAGE: invalid source",
         ),
         field::IMAGE_FIT => ensure(

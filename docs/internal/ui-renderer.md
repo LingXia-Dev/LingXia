@@ -30,12 +30,15 @@ inferred from file names.
 ## Wire contract
 
 `packages/lingxia-ui/contracts/schema.json` is the single source for tags,
-field ids, option enums, the CSS-named author style table and element
-admission. `contracts/generate.mjs` writes the Rust table, `wire.js`,
-`contract.js`, the authoring `.d.ts` and the native-test runtime bundle.
-`--check` fails on drift; a Rust test compares the compiled table with the
-schema. Field and tag ids are append-only and dense; reserved fields are
-rejected by the decoder.
+field ids, option enums, the CSS-named author style table (with the CSS
+longhand each key accepts), element admission, wire admission (per-tag
+children, content eligibility, required parent and fields, per-field tags) and
+page limits (nodes, depth, animation and item-key bytes, image bytes, source
+length). `contracts/generate.mjs` writes the Rust tables, lxapp's
+`page/ui_limits.rs`, `wire.js`, `contract.js`, the authoring `.d.ts` and the
+native-test runtime bundle; no consumer keeps its own copy. `--check` fails on
+drift; a Rust test compares every compiled table with the schema. Field and
+tag ids are append-only and dense; reserved fields are rejected by the decoder.
 
 JS lowers author style to wire fields; native validation is independent and
 re-checks every record. Never trust that a field reached native through the

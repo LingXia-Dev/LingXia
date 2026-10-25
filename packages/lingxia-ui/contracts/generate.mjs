@@ -15,6 +15,9 @@ const header = '// Generated from packages/lingxia-ui/contracts/schema.json; do 
 const screaming = name => name.replace(/-/g, '_').replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase();
 const object = entries => JSON.stringify(Object.fromEntries(entries));
 
+const childKinds = ['none', 'text', 'content', 'any', 'rows', 'options'];
+const limitNames = ['nodes', 'depth', 'animationBytes', 'itemKeyBytes', 'imageBytes', 'sourceBytes'];
+
 function validate(schema) {
   const ids = schema.fields.map(field => field.id);
   if (ids.some((id, index) => id !== index)) throw Error('schema.json: field ids must be dense and ordered');
@@ -22,6 +25,18 @@ function validate(schema) {
   for (const field of schema.fields) {
     if (keys.has(field.key)) throw Error(`schema.json: duplicate field key ${field.key}`);
     keys.add(field.key);
+    for (const tag of [field.tags ?? [], field.parent ?? []].flat())
+      if (!schema.tags.includes(tag)) throw Error(`schema.json: field ${field.key} names unknown tag ${tag}`);
+  }
+  for (const name of limitNames)
+    if (!Number.isSafeInteger(schema.limits?.[name]) || schema.limits[name] <= 0) throw Error(`schema.json: missing limit ${name}`);
+  const admitted = Object.keys(schema.admission ?? {});
+  if (admitted.join() !== schema.tags.join()) throw Error('schema.json: admission must list every tag in tag order');
+  for (const [tag, entry] of Object.entries(schema.admission)) {
+    if (!childKinds.includes(entry.children)) throw Error(`schema.json: tag ${tag} has unknown children ${entry.children}`);
+    if (entry.parent !== undefined && !schema.tags.includes(entry.parent)) throw Error(`schema.json: tag ${tag} names unknown parent ${entry.parent}`);
+    for (const field of entry.requires ?? [])
+      if (!keys.has(field)) throw Error(`schema.json: tag ${tag} requires unknown field ${field}`);
   }
 }
 
@@ -31,6 +46,18 @@ function rust(schema) {
   const table = schema.fields.map(field => `    (${JSON.stringify(field.wire)}, ${JSON.stringify(field.kind)}),`).join('\n');
   const options = Object.entries(schema.options)
     .map(([kind, values]) => `        ${JSON.stringify(kind)} => Some(&[${values.map(value => JSON.stringify(value)).join(', ')}]),`).join('\n');
+  const tagConst = name => `tag::${screaming(name)}`;
+  const fieldConst = key => `field::${screaming(key)}`;
+  const children = kind => kind.replace(/(^|-)([a-z])/g, (_, __, c) => c.toUpperCase());
+  const admission = schema.tags.map(name => {
+    const entry = schema.admission[name];
+    return `    TagAdmission { children: Children::${children(entry.children)}, content: ${Boolean(entry.content)}, `
+      + `parent: ${entry.parent ? `Some(${tagConst(entry.parent)})` : 'None'}, root: ${Boolean(entry.root)}, keyed: ${Boolean(entry.keyed)}, `
+      + `requires: &[${(entry.requires ?? []).map(fieldConst).join(', ')}] },`;
+  }).join('\n');
+  const fieldAdmission = schema.fields.map(field => `    FieldAdmission { tags: ${field.tags ? `Some(&[${field.tags.map(tagConst).join(', ')}])` : 'None'}, `
+    + `parent: ${field.parent ? `Some(${tagConst(field.parent)})` : 'None'} },`).join('\n');
+  const limits = limitNames.map(name => `    pub const ${screaming(name)}: usize = ${schema.limits[name]};`).join('\n');
   return `${header}//! Wire ids are append-only; native validation stays independent of the JS runtime.
 
 pub const UI_ABI: u32 = ${schema.uiAbi};
@@ -59,6 +86,66 @@ ${options}
         _ => None,
     }
 }
+
+/// Page-wide bounds both sides of the wire enforce.
+pub mod limits {
+${limits}
+}
+
+/// What a wire tag may contain.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Children {
+    /// A leaf.
+    None,
+    /// A leaf carrying inline text.
+    Text,
+    /// Inline text, or noninteractive content descendants.
+    Content,
+    Any,
+    /// Virtual list row wrappers.
+    Rows,
+    /// Only tags whose admission names this tag as parent.
+    Options,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct TagAdmission {
+    pub children: Children,
+    /// May sit inside a \`Children::Content\` control.
+    pub content: bool,
+    pub parent: Option<usize>,
+    pub root: bool,
+    /// Requires a non-empty key.
+    pub keyed: bool,
+    pub requires: &'static [usize],
+}
+
+/// Indexed by tag id.
+pub const TAG_ADMISSION: &[TagAdmission] = &[
+${admission}
+];
+
+/// The tags a field applies to (\`None\`: every tag) and the parent tag it requires.
+#[derive(Clone, Copy, Debug)]
+pub struct FieldAdmission {
+    pub tags: Option<&'static [usize]>,
+    pub parent: Option<usize>,
+}
+
+/// Indexed by field id.
+pub const FIELD_ADMISSION: &[FieldAdmission] = &[
+${fieldAdmission}
+];
+`;
+}
+
+function lxappLimits(schema) {
+  return `${header}//! GPU page resource bounds lxapp enforces before bytes reach the View.
+
+/// Largest encoded image a GPU page may load.
+pub(crate) const IMAGE_BYTES: usize = ${schema.limits.imageBytes};
+/// Longest image source string.
+pub(crate) const SOURCE_BYTES: usize = ${schema.limits.sourceBytes};
 `;
 }
 
@@ -151,9 +238,30 @@ function contract(schema) {
   const style = Object.fromEntries(Object.entries(schema.style).map(([name, entry]) => [name, {
     lower: entry.lower, wire: entry.wire, ...(entry.paint ? { paint: true } : {}), ...(entry.internal ? { internal: true } : {}),
   }]));
+  const css = {}, keywords = {};
+  for (const [name, entry] of Object.entries(schema.style)) {
+    for (const property of [entry.css ?? []].flat()) {
+      if (css[property]) throw Error(`schema.json: css ${property} sets both ${css[property]} and ${name}`);
+      css[property] = name;
+    }
+    const literals = entry.type.split('|').map(part => part.trim());
+    if (literals.every(part => /^"[^"]*"$/.test(part))) keywords[name] = literals.map(part => JSON.parse(part));
+  }
+  const admission = {
+    tags: schema.admission,
+    fields: Object.fromEntries(schema.fields.filter(field => field.tags).map(field => [field.key, field.tags])),
+  };
   return `${header}// Element admission and the author-style lowering table.
 export const elements = ${JSON.stringify(elements)};
 export const style = ${JSON.stringify(style)};
+/** Page-wide bounds native decode enforces too. */
+export const limits = ${JSON.stringify(schema.limits)};
+/** Wire-tag nesting and the tags each restricted field applies to. */
+export const admission = ${JSON.stringify(admission)};
+/** CSS longhand to the author style key it sets. */
+export const css = ${JSON.stringify(css)};
+/** Keyword-valued style keys and the author values they accept. */
+export const keywords = ${JSON.stringify(keywords)};
 `;
 }
 
@@ -178,6 +286,7 @@ export async function generate(schema) {
   const api = await readFile(join(packageRoot, 'contracts/api.d.ts'), 'utf8');
   const generated = {
     'crates/lingxia-ui/src/protocol/generated.rs': rust(schema),
+    'crates/lingxia-lxapp/src/page/ui_limits.rs': lxappLimits(schema),
     'packages/lingxia-ui/src/generated/wire.js': wire(schema),
     'packages/lingxia-ui/src/generated/contract.js': contract(schema),
     'packages/lingxia-ui/src/generated/authoring.d.ts': authoring(schema, api),

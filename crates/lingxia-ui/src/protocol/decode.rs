@@ -1,5 +1,5 @@
 //! The record walk: header, parent links, fields and page-wide budgets.
-use super::{FIELDS, Record, TAGS, admission, field, tag, values};
+use super::{FIELDS, Record, TAGS, admission, field, limits, tag, values};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
@@ -25,7 +25,7 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
         return Err("UI_LIMIT: buffer too large".into());
     }
     while cursor < buffer.len() {
-        if records.len() >= 4096 {
+        if records.len() >= limits::NODES {
             return Err("UI_LIMIT: too many nodes".into());
         }
         let start = cursor;
@@ -49,7 +49,7 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
         let parent_tag = parent.map(|p| records[p].tag);
         let key = header[2].as_str().ok_or("UI_KEY")?.to_owned();
         let depth = parent.map(|p| depths[p] + 1).unwrap_or(0);
-        if depth > 128 {
+        if depth > limits::DEPTH {
             return Err("UI_LIMIT: tree too deep".into());
         }
         depths.push(depth);
@@ -122,7 +122,7 @@ impl Page {
     fn item_keys(&mut self, record: usize, value: &Value) -> Result<(), String> {
         let source = value.as_str().ok_or("UI_LIST: invalid itemKeys")?;
         self.item_key_bytes = self.item_key_bytes.saturating_add(source.len());
-        if self.item_key_bytes > 262_144 {
+        if self.item_key_bytes > limits::ITEM_KEY_BYTES {
             return Err("UI_LIST: itemKeys page budget exceeded".into());
         }
         self.item_keys
@@ -138,7 +138,7 @@ impl Page {
             .animation_bytes
             .checked_add(source.len())
             .ok_or("UI_ANIMATION: page payload budget exceeded")?;
-        if self.animation_bytes > 262144 {
+        if self.animation_bytes > limits::ANIMATION_BYTES {
             return Err("UI_ANIMATION: page payload budget exceeded".into());
         }
         crate::animation::decode_definition(source)?;

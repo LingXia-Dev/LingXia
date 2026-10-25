@@ -2901,9 +2901,9 @@ impl LxApp {
     }
 
     pub(crate) fn read_gpu_image(&self, source: &str) -> Result<Vec<u8>, LxAppError> {
-        const LIMIT: u64 = 8 * 1024 * 1024;
+        const LIMIT: u64 = crate::page::ui_limits::IMAGE_BYTES as u64;
         if source.is_empty()
-            || source.len() > 8192
+            || source.len() > crate::page::ui_limits::SOURCE_BYTES
             || source.contains('\0')
             || (!source.starts_with("lx://")
                 && (source.starts_with('/')

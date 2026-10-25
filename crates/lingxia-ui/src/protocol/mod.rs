@@ -6,7 +6,10 @@ mod values;
 
 #[rustfmt::skip]
 mod generated;
-pub use generated::{FIELDS, TAGS, UI_ABI, field, options, tag};
+pub use generated::{
+    Children, FIELD_ADMISSION, FIELDS, FieldAdmission, TAG_ADMISSION, TAGS, TagAdmission, UI_ABI,
+    field, limits, options, tag,
+};
 
 pub(crate) use decode::MAX_BUFFER_VALUES;
 pub use decode::decode;

@@ -4,6 +4,7 @@ import { parse, formatHex8 } from 'culori';
 import { readFile } from 'node:fs/promises';
 import { tokenSelectorTheme, validateTokens } from './stylesheets.mjs';
 import { lowerAnimation } from './animation.mjs';
+import { css as cssStyle, keywords, style as styleTable } from '../src/generated/contract.js';
 
 // Tailwind owns utility expansion and cascade order; this module lowers each
 // rule's declarations to the CSS-named style the native renderer accepts and
@@ -254,36 +255,65 @@ function backdropDeclaration(prop, raw, vars, backdrop) {
 
 const supportedConditions = ['(color: color-mix(in lab, red, red))', '(background-image: linear-gradient(in lab, red, red))'];
 
-const sides = {
-  padding: ['padding', ['Top', 'Right', 'Bottom', 'Left']], 'padding-inline': ['padding', ['Left', 'Right']], 'padding-block': ['padding', ['Top', 'Bottom']],
-  margin: ['margin', ['Top', 'Right', 'Bottom', 'Left']], 'margin-inline': ['margin', ['Left', 'Right']], 'margin-block': ['margin', ['Top', 'Bottom']],
-  'border-width': ['border', ['Top', 'Right', 'Bottom', 'Left'], 'Width'], 'border-inline-width': ['border', ['Left', 'Right'], 'Width'],
-  'border-block-width': ['border', ['Top', 'Bottom'], 'Width'],
+// CSS shorthands expand to longhands in top, right, bottom, left order; the
+// contract names which author style key each longhand sets.
+const edges = ['top', 'right', 'bottom', 'left'];
+const shorthands = {
+  'border-width': edges.map(edge => `border-${edge}-width`),
+  'border-inline-width': ['border-left-width', 'border-right-width'],
+  'border-block-width': ['border-top-width', 'border-bottom-width'],
+  inset: edges, 'inset-inline': ['left', 'right'], 'inset-block': ['top', 'bottom'],
 };
-for (const [css, side] of [['top', 'Top'], ['right', 'Right'], ['bottom', 'Bottom'], ['left', 'Left'],
-  ['inline-start', 'Left'], ['inline-end', 'Right'], ['block-start', 'Top'], ['block-end', 'Bottom']]) {
-  sides[`padding-${css}`] = ['padding', [side]];
-  sides[`margin-${css}`] = ['margin', [side]];
-  sides[`border-${css}-width`] = ['border', [side], 'Width'];
+for (const family of ['padding', 'margin']) {
+  shorthands[family] = edges.map(edge => `${family}-${edge}`);
+  shorthands[`${family}-inline`] = [`${family}-left`, `${family}-right`];
+  shorthands[`${family}-block`] = [`${family}-top`, `${family}-bottom`];
 }
-const insets = { inset: ['top', 'right', 'bottom', 'left'], 'inset-inline': ['left', 'right'], 'inset-block': ['top', 'bottom'],
-  top: ['top'], right: ['right'], bottom: ['bottom'], left: ['left'] };
-const dimensions = { width: 'width', height: 'height', 'min-width': 'minWidth', 'max-width': 'maxWidth', 'min-height': 'minHeight', 'max-height': 'maxHeight' };
-const corners = { 'border-top-left-radius': 'borderTopLeftRadius', 'border-top-right-radius': 'borderTopRightRadius',
-  'border-bottom-right-radius': 'borderBottomRightRadius', 'border-bottom-left-radius': 'borderBottomLeftRadius' };
-const keywords = {
-  position: ['position', ['relative', 'absolute']], overflow: ['overflow', ['visible', 'hidden']],
-  'overflow-x': ['overflowX', ['auto']], 'overflow-y': ['overflowY', ['auto']],
-  'overflow-wrap': ['overflowWrap', ['normal', 'break-word', 'anywhere']], 'flex-wrap': ['flexWrap', ['nowrap', 'wrap', 'wrap-reverse']],
-  'flex-direction': ['flexDirection', ['row', 'column', 'row-reverse', 'column-reverse']], display: ['display', ['flex']],
-  'word-break': ['wordBreak', ['normal', 'break-all', 'keep-all']], 'text-decoration-line': ['textDecorationLine', ['none', 'line-through', 'underline']],
-  'text-align': ['textAlign', ['start', 'end', 'left', 'center', 'right', 'justify']], 'font-style': ['fontStyle', ['normal', 'italic']],
-  'text-transform': ['textTransform', ['none', 'uppercase', 'lowercase', 'capitalize']], 'white-space': ['whiteSpace', ['normal', 'nowrap']],
-  'text-overflow': ['textOverflow', ['clip', 'ellipsis']], 'object-fit': ['objectFit', ['cover', 'contain', 'fill']],
-  'align-items': ['alignItems', ['flex-start', 'start', 'center', 'end', 'flex-end', 'stretch', 'baseline']],
-  'align-self': ['alignSelf', ['flex-start', 'start', 'center', 'end', 'flex-end', 'stretch', 'baseline']],
-  'justify-content': ['justifyContent', ['flex-start', 'start', 'center', 'end', 'flex-end', 'space-between', 'space-around', 'space-evenly']],
-};
+
+// One CSS longhand value lowered by the author style key it sets.
+function longhand(prop, value) {
+  const key = cssStyle[prop];
+  switch (styleTable[key].lower) {
+    case 'dimension': return dimension(value);
+    case 'basis': return value === 'auto' ? 'auto' : dimension(value);
+    case 'margin': return value === 'auto' ? 'auto' : number(value, true);
+    case 'inset': {
+      const lowered = dimension(value);
+      if (typeof lowered === 'string' && !lowered.endsWith('%')) unsupported(`unsupported inset: ${value}`);
+      return lowered;
+    }
+    // The native radius is bounded and clamps to half the shorter box edge.
+    case 'length': return prop.endsWith('radius') && /^calc\(infinity\s*\*\s*1px\)$/.test(value) ? 16384 : number(value, true);
+    case 'font-size': return number(value, true);
+    case 'number': case 'opacity': case 'font-weight': return number(value);
+    case 'color': return key === 'borderColor' && value.toLowerCase() === 'currentcolor' ? 'currentColor' : color(value);
+    case 'family': return fontFamily(value);
+    case 'z-index':
+      if (!/^-?\d+$/.test(value)) unsupported(`z-index: ${value}`);
+      return Number(value);
+    case 'columns': {
+      const columns = value.match(/^repeat\((\d+),\s*minmax\(0,\s*1fr\)\)$/);
+      if (!columns) unsupported(`grid-template-columns: ${value}`);
+      return Number(columns[1]);
+    }
+    case 'line-clamp':
+      if (!/^\d+$/.test(value)) unsupported(`line clamp: ${value}`);
+      return Number(value);
+    case 'letter-spacing': {
+      const em = value.match(/^(-?(?:\d*\.)?\d+)em$/);
+      return em ? `${Number(em[1])}em` : value === 'normal' ? 0 : number(value, true);
+    }
+    case 'line-height': {
+      const { value: amount, unit } = evaluate(value);
+      if (unit === 'px') return `${amount}px`;
+      if (unit === '') return amount;
+      return unsupported(`line-height: ${value}`);
+    }
+    default:
+      if (!keywords[key]?.includes(value)) unsupported(`${prop}: ${value}`);
+      return value;
+  }
+}
 const transitions = /^(?:transition|transition-[a-z-]+|animation-[a-z-]+|transform|translate|scale|rotate|filter|cursor|pointer-events|user-select|outline.*)$/;
 
 function declarations(nodes, vars, root, animationLowering) {
@@ -307,26 +337,16 @@ function declarations(nodes, vars, root, animationLowering) {
     if (prop.startsWith('--')) continue;
     if (transitions.test(prop)) unsupported(`${prop} (the native renderer has no transitions or transforms)`);
     const value = variables(node.value, local).trim();
-    if (prop in sides) {
-      const [family, edges, suffix = ''] = sides[prop];
-      const lowered = values(value, edges.length, part => family === 'margin' && part === 'auto' ? 'auto' : number(part, true));
-      edges.forEach((edge, index) => { style[`${family}${edge}${suffix}`] = lowered[index]; });
-    } else if (prop in insets) {
-      const lowered = values(value, insets[prop].length, part => { const v = dimension(part); if (typeof v === 'string' && !v.endsWith('%')) unsupported(`unsupported inset: ${part}`); return v; });
-      insets[prop].forEach((edge, index) => { style[edge] = lowered[index]; });
-    } else if (prop in dimensions) style[dimensions[prop]] = dimension(value);
+    if (prop in shorthands) {
+      const longhands = shorthands[prop];
+      const lowered = values(value, longhands.length, part => longhand(longhands[0], part));
+      longhands.forEach((name, index) => { style[cssStyle[name]] = lowered[index]; });
+    }
     else if (/^border(?:-(?:top|right|bottom|left|inline|block|x|y))?-style$/.test(prop)) { if (value !== 'solid') unsupported(`${prop}: ${value}`); }
-    else if (prop === 'border-color') style.borderColor = value.toLowerCase() === 'currentcolor' ? 'currentColor' : color(value);
-    else if (prop === 'border-radius' || prop in corners) {
-      // The native radius is bounded and clamps to half the shorter box edge.
-      const radius = /^calc\(infinity\s*\*\s*1px\)$/.test(value) ? 16384 : number(value, true);
-      style[prop === 'border-radius' ? 'borderRadius' : corners[prop]] = radius;
-    } else if (prop === 'gap') {
+    else if (prop === 'gap') {
       const [row, column = row] = postcss.list.space(value).map(part => number(part, true));
       if (row === column) style.gap = row; else Object.assign(style, { rowGap: row, columnGap: column });
-    } else if (prop === 'row-gap' || prop === 'column-gap') style[prop === 'row-gap' ? 'rowGap' : 'columnGap'] = number(value, true);
-    else if (prop === 'font-size') style.fontSize = number(value, true);
-    else if (prop === 'flex-basis') style.flexBasis = value === 'auto' ? 'auto' : dimension(value);
+    }
     else if (prop === 'flex') {
       if (value === 'auto') Object.assign(style, { flexGrow: 1, flexShrink: 1, flexBasis: 'auto' });
       else if (value === 'none') Object.assign(style, { flexGrow: 0, flexShrink: 0, flexBasis: 'auto' });
@@ -338,41 +358,8 @@ function declarations(nodes, vars, root, animationLowering) {
         Object.assign(style, { flexGrow: number(parts[0]), flexShrink: number(parts[1]), flexBasis: parts[2] === 'auto' ? 'auto' : dimension(parts[2]) });
       }
     }
-    else if (prop === 'font-family') style.fontFamily = fontFamily(value);
-    else if (prop === 'color') style.color = color(value);
-    else if (prop === 'background-color') style.backgroundColor = color(value);
-    else if (prop === 'opacity') style.opacity = number(value);
-    else if (prop === 'font-weight') style.fontWeight = number(value);
-    else if (prop === 'flex-grow' || prop === 'flex-shrink') style[prop === 'flex-grow' ? 'flexGrow' : 'flexShrink'] = number(value);
-    else if (prop === 'z-index') {
-      if (!/^-?\d+$/.test(value)) unsupported(`z-index: ${value}`);
-      style.zIndex = Number(value);
-    }
-    else if (prop === 'grid-template-columns') {
-      const columns = value.match(/^repeat\((\d+),\s*minmax\(0,\s*1fr\)\)$/);
-      if (!columns) unsupported(`grid-template-columns: ${value}`);
-      style.gridTemplateColumns = Number(columns[1]);
-    }
-    else if (prop === '-webkit-line-clamp') {
-      if (!/^\d+$/.test(value)) unsupported(`line clamp: ${value}`);
-      style.lineClamp = Number(value);
-    }
     else if (clamp && ((prop === 'display' && value === '-webkit-box') || (prop === '-webkit-box-orient' && value === 'vertical'))) { /* The line clamp owns these. */ }
-    else if (prop === 'letter-spacing') {
-      const em = value.match(/^(-?(?:\d*\.)?\d+)em$/);
-      style.letterSpacing = em ? `${Number(em[1])}em` : value === 'normal' ? 0 : number(value, true);
-    }
-    else if (prop === 'line-height') {
-      const { value: amount, unit } = evaluate(value);
-      if (unit === 'px') style.lineHeight = `${amount}px`;
-      else if (unit === '') style.lineHeight = amount;
-      else unsupported(`line-height: ${value}`);
-    }
-    else if (prop in keywords) {
-      const [name, allowed] = keywords[prop];
-      if (!allowed.includes(value)) unsupported(`${prop}: ${value}`);
-      style[name] = value;
-    }
+    else if (prop in cssStyle) style[cssStyle[prop]] = longhand(prop, value);
     else unsupported(`${prop}: ${value}`);
   }
   return { style, ...(Object.keys(backdrop).length ? { backdrop } : {}), ...(Object.keys(gradient).length ? { gradient } : {}), ...(Object.keys(shadow).length ? { shadow } : {}) };

@@ -604,6 +604,45 @@ fn contract_drift_reports_fields_missing_on_either_side() {
     assert!(contract_drift(&renamed).iter().any(|e| e.contains("box")));
 }
 
+#[test]
+fn contract_drift_reports_admission_and_limit_changes() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../packages/lingxia-ui/contracts/schema.json"
+    );
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return;
+    };
+    let schema: Value = serde_json::from_str(&text).unwrap();
+    let mut limit = schema.clone();
+    limit["limits"]["nodes"] = json!(limits::NODES + 1);
+    assert!(
+        contract_drift(&limit)
+            .iter()
+            .any(|e| e.contains("limit nodes"))
+    );
+    let mut leaf = schema.clone();
+    leaf["admission"]["text"]["children"] = json!("any");
+    assert!(
+        contract_drift(&leaf)
+            .iter()
+            .any(|e| e.contains("admission text"))
+    );
+    let mut widened = schema.clone();
+    widened["fields"][field::ON_CLICK]["tags"] = json!(["button", "row"]);
+    assert!(
+        contract_drift(&widened)
+            .iter()
+            .any(|e| e.contains(&format!("field admission {}", field::ON_CLICK)))
+    );
+    let mut opened = schema;
+    opened["fields"][field::LIST_ROW_INDEX]
+        .as_object_mut()
+        .unwrap()
+        .remove("parent");
+    assert!(!contract_drift(&opened).is_empty());
+}
+
 fn contract_drift(schema: &Value) -> Vec<String> {
     let mut errors = Vec::new();
     if schema["uiAbi"] != UI_ABI {
@@ -644,6 +683,81 @@ fn contract_drift(schema: &Value) -> Vec<String> {
             if options(kind) != Some(values.as_slice()) {
                 errors.push(format!("options {kind}"));
             }
+        }
+    }
+    if let Some(table) = schema["limits"].as_object() {
+        let native = [
+            ("nodes", limits::NODES),
+            ("depth", limits::DEPTH),
+            ("animationBytes", limits::ANIMATION_BYTES),
+            ("itemKeyBytes", limits::ITEM_KEY_BYTES),
+            ("imageBytes", limits::IMAGE_BYTES),
+            ("sourceBytes", limits::SOURCE_BYTES),
+        ];
+        let names: Vec<&str> = native.iter().map(|(name, _)| *name).collect();
+        for (name, value) in table {
+            match native.iter().find(|(native, _)| native == name) {
+                Some((_, native)) if Some(*native as u64) == value.as_u64() => {}
+                _ => errors.push(format!("limit {name}: schema {value}, native {names:?}")),
+            }
+        }
+        if table.len() != native.len() {
+            errors.push(format!("limits: schema {table:?}, native {names:?}"));
+        }
+    }
+    let tag_id = |name: &Value| TAGS.iter().position(|tag| Some(*tag) == name.as_str());
+    let field_id = |name: &Value| {
+        fields
+            .iter()
+            .position(|field| field["key"] == *name)
+            .unwrap_or(usize::MAX)
+    };
+    if let Some(table) = schema["admission"].as_object() {
+        for (index, name) in TAGS.iter().enumerate() {
+            let Some(entry) = table.get(*name) else {
+                errors.push(format!("admission {name}: missing in schema"));
+                continue;
+            };
+            let native = TAG_ADMISSION[index];
+            let children = format!("{:?}", native.children).to_lowercase();
+            let requires: Vec<usize> = entry["requires"]
+                .as_array()
+                .map(|r| r.iter().map(field_id).collect())
+                .unwrap_or_default();
+            if entry["children"].as_str() != Some(children.as_str())
+                || entry["content"].as_bool().unwrap_or(false) != native.content
+                || entry["root"].as_bool().unwrap_or(false) != native.root
+                || entry["keyed"].as_bool().unwrap_or(false) != native.keyed
+                || entry.get("parent").and_then(tag_id) != native.parent
+                || requires != native.requires
+            {
+                errors.push(format!(
+                    "admission {name}: schema {entry}, native {native:?}"
+                ));
+            }
+        }
+        if table.len() != TAGS.len() || TAG_ADMISSION.len() != TAGS.len() {
+            errors.push("admission: tag count differs".into());
+        }
+    }
+    // Field admission is part of the admission section; table-only schemas omit both.
+    let admitted_fields = if schema["admission"].is_object() {
+        fields.as_slice()
+    } else {
+        &[]
+    };
+    for (index, entry) in admitted_fields.iter().enumerate() {
+        let Some(native) = FIELD_ADMISSION.get(index) else {
+            errors.push(format!("field admission {index}: missing natively"));
+            continue;
+        };
+        let tags: Option<Vec<usize>> = entry["tags"]
+            .as_array()
+            .map(|tags| tags.iter().filter_map(tag_id).collect());
+        if tags.as_deref() != native.tags || entry.get("parent").and_then(tag_id) != native.parent {
+            errors.push(format!(
+                "field admission {index}: schema {entry}, native {native:?}"
+            ));
         }
     }
     errors
