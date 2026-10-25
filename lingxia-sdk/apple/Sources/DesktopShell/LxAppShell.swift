@@ -831,6 +831,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         workspace.addSubview(toolbar)
         workspaceManager.attachBelowToolbar(toolbar)
 
+        installMainAsideDropZone(in: contentView)
         workspaceManager.configure(
             overlayParent: contentView,
             sidebar: sidebarSlot,
@@ -2946,6 +2947,20 @@ extension LxAppShell {
         tabManager.addTab(appId: appId, activate: false)
         tabManager.activeTab = tabManager.tabs.first { $0.appId == appId }
         return viewController
+    }
+
+    /// The band along the content area's trailing edge that takes a dragged
+    /// sidebar group: the live lxapp main moves into the side panel there.
+    private func installMainAsideDropZone(in parent: NSView) {
+        let zone = MainAsideDropZoneView(edge: "right")
+        zone.onDrop = { payload, edge in demoteMainLxappToAside(payload.appId, edge) }
+        parent.addSubview(zone, positioned: .above, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            zone.trailingAnchor.constraint(equalTo: parent.trailingAnchor),
+            zone.topAnchor.constraint(equalTo: parent.topAnchor),
+            zone.bottomAnchor.constraint(equalTo: parent.bottomAnchor),
+            zone.widthAnchor.constraint(equalToConstant: 96),
+        ])
     }
 
     /// The core made `appId` an aside while its main controller still exists:
