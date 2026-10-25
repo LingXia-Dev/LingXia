@@ -26,7 +26,6 @@ Page({
   async openTodo() { await lx.navigateTo({ page: 'todo' }); },
   async openClipboard() { await lx.navigateTo({ page: 'clipboard' }); },
   async openShare() { await lx.navigateTo({ page: 'share' }); },
-  async openLab() { await lx.navigateTo({ page: 'lab' }); },
   ipReadyCallback: null as ((ip: string) => void) | null,
   stopWatchingAppearance: null as (() => void) | null,
   stopWatchingLanguage: null as (() => void) | null,
