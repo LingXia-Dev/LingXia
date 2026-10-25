@@ -141,6 +141,17 @@ impl ImageRequests {
             .then_some(source.as_str())
     }
 
+    /// The current request for `token`, if its source is still wanted.
+    pub fn request(&self, token: u64) -> Option<&ImageRequest> {
+        if !self.current(token) {
+            return None;
+        }
+        self.wanted
+            .iter()
+            .find(|entry| entry.request.token == token)
+            .map(|entry| &entry.request)
+    }
+
     /// Finish success or failure exactly once; only a current result may bind pixels.
     pub fn complete(&mut self, token: u64) -> bool {
         let current = self.current(token);

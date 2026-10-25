@@ -18,7 +18,7 @@ inferred from file names.
 | --- | --- |
 | `protocol` | Wire decode/validation, generated ids (`protocol/generated.rs`) |
 | `engine` | JS engine adapters and their capability list |
-| `session` | `ViewSession`, lifecycle tickets, candidate prepare/commit, images, metrics |
+| `session` | `ViewSession`, `ViewHost`, lifecycle tickets, candidate prepare/commit, images, metrics |
 | `layout` | Taffy styles, page root, virtual lists |
 | `text` | Computed text style, Parley shaping, editing geometry, text scaling |
 | `scene` | Node snapshots, display list, paint order, plots, vectors, shadows |
@@ -155,15 +155,20 @@ running loads. Resource authority and caches stay in lxapp.
 
 ## Platform adapters
 
-`platform/mod.rs` defines what a platform supplies: `Presenter`,
-`ImageProvider`, `AccessibilitySink`, `InputMethod`, `Feedback` and `Clock`.
-`session::controller::ViewController` drives a page through them; its tests use
-a fake adapter, so new platforms start from tested policy.
+`platform/mod.rs` defines what a platform supplies: `Presenter` (prepare on
+the View worker, present on the main thread), `FrameScheduler` (vsync),
+`MainThread` (post, delayed post), `EnvironmentSource`, `ImageProvider`,
+`AccessibilitySink`, `InputMethod`, `Feedback`, `HostEvents` and `Clock`.
+`session::host::ViewHost` drives a page through them: it owns the View worker
+queue (`ViewWorker`, one isolate per app session), frame sequencing, dispatch,
+images, the Logic bridge, the bootstrap deadline, recovery and caret blink.
+Adapters convert OS events into host calls and execute typed effects; the host
+never calls the adapter while holding its locks. Its tests use a fake adapter
+on a test main thread, so new platforms start from tested policy.
 
-Android implements them in `platform/android/core.rs` (a JNI codec for
-lifecycle, interaction, semantics and frames) and `GpuView.java` (surfaces,
-input conversion, IME, accessibility nodes). Java holds no layout, hit-test
-or selection logic. Host JVM tests load the real core built with the `jvm`
+Android does not use `ViewHost` yet: `platform/android/core.rs` (a JNI codec
+for lifecycle, interaction, semantics and frames) and `GpuView.java` sequence
+frames themselves. Java holds no layout or hit-test logic. Host JVM tests load the real core built with the `jvm`
 feature.
 
 To add a platform: implement the adapter traits, map the platform's text

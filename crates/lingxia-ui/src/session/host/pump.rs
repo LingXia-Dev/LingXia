@@ -1,0 +1,361 @@
+//! Frame sequencing: sample, prepare on the worker, present on vsync, then run
+//! the presented frame's effects, reach, images and animation wakeup.
+use super::{FrameSnapshot, Guard, Inner};
+use crate::interaction::frame::PresentedFrame;
+use crate::platform::{FrameEnvironment, PlatformAdapter};
+use crate::session::lifecycle::{CommitTicket, PageTicket, SurfaceTicket};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+
+/// A frame prepared on the worker, waiting for vsync.
+pub(super) struct Prepared<F> {
+    frame: F,
+    snapshot: Arc<FrameSnapshot>,
+    surface: SurfaceTicket,
+    page: PageTicket,
+    revision: u64,
+    offsets: HashMap<String, f32>,
+    rebuild: bool,
+}
+
+struct Request {
+    environment: FrameEnvironment,
+    surface: SurfaceTicket,
+    page: PageTicket,
+    rebuild: bool,
+    revision: u64,
+    offsets: HashMap<String, f32>,
+    caret: bool,
+}
+
+impl<A: PlatformAdapter> Inner<A> {
+    /// Prepare a frame when the page can present and no frame is in flight.
+    pub(super) fn schedule(self: &Arc<Self>) {
+        let environment = self.adapter.environment();
+        let request = {
+            let mut main = self.main();
+            main.animation_timer += 1;
+            main.pending = true;
+            if main.disposed {
+                return;
+            }
+            let Some(environment) = environment else {
+                return;
+            };
+            if main.environment.as_ref() != Some(&environment) {
+                main.environment = Some(environment.clone());
+                self.lifecycle.invalidate_surface();
+                main.dirty = true;
+            }
+            if main.busy || main.number_busy {
+                return;
+            }
+            let Some(surface) = self.lifecycle.frame() else {
+                return;
+            };
+            let request = Request {
+                environment,
+                surface,
+                page: self.lifecycle.page(),
+                rebuild: main.dirty || main.snapshot.is_none(),
+                revision: main.interaction.scroll().revision(),
+                offsets: main.interaction.scroll().snapshot(),
+                caret: !main.caret.hidden,
+            };
+            main.dirty = false;
+            main.pending = false;
+            main.busy = true;
+            request
+        };
+        let now = self.adapter.now();
+        let surface = request.surface;
+        let page = request.page;
+        let rebuild = request.rebuild;
+        let revision = request.revision;
+        let offsets = request.offsets.clone();
+        self.work(
+            Guard::Page(page),
+            move |inner, session| inner.prepare(session, request, now),
+            move |inner, result| match result {
+                Some(Ok((Some((frame, snapshot)), update))) => {
+                    if let Some((connection, update)) = update {
+                        inner.publish(connection, update);
+                    }
+                    inner.main().prepared = Some(Prepared {
+                        frame,
+                        snapshot,
+                        surface,
+                        page,
+                        revision,
+                        offsets,
+                        rebuild,
+                    });
+                    inner.adapter.request_vsync();
+                }
+                Some(Ok((None, update))) => {
+                    if let Some((connection, update)) = update {
+                        inner.publish(connection, update);
+                    }
+                    inner.unprepared(None, surface, page);
+                }
+                Some(Err(error)) => inner.unprepared(Some(error), surface, page),
+                None => inner.unprepared(None, surface, page),
+            },
+        );
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn prepare(
+        &self,
+        session: &mut crate::ViewSession,
+        request: Request,
+        now: Duration,
+    ) -> Result<
+        (
+            Option<(A::Frame, Arc<FrameSnapshot>)>,
+            Option<(
+                crate::session::lifecycle::ConnectionTicket,
+                super::BridgeUpdate,
+            )>,
+        ),
+        String,
+    > {
+        let FrameEnvironment {
+            width,
+            height,
+            scale,
+            value,
+        } = request.environment;
+        session.set_environment(value)?;
+        session.set_animation_surface(Some(request.surface), now)?;
+        let generation = CommitTicket::new(session.generation().get() + 1);
+        let caret = request.caret;
+        let surface = request.surface;
+        let (frame, nodes) = session.prepare_view_animated(
+            width,
+            height,
+            scale,
+            request.rebuild,
+            Some(&request.offsets),
+            now,
+            |mut display| {
+                if !caret {
+                    display.hide_caret();
+                }
+                let nodes = display.nodes.clone();
+                Ok((self.adapter.prepare(display, surface, generation)?, nodes))
+            },
+        )?;
+        let update = if self.logic {
+            let mut update = super::bridge::update(
+                session,
+                crate::session::state::StateUpdate {
+                    changed: true,
+                    outbound: Vec::new(),
+                },
+            )?;
+            update.changed = update.local_changed;
+            Some((self.lifecycle.connection(), update))
+        } else {
+            None
+        };
+        let Some(frame) = frame else {
+            return Ok((None, update));
+        };
+        let images = session.image_requests();
+        let mut metrics =
+            serde_json::to_value(session.frame_metrics()).map_err(|e| e.to_string())?;
+        if let (Some(extra), Some(metrics)) =
+            (self.adapter.metrics(&frame), metrics.as_object_mut())
+            && let Some(extra) = extra.as_object()
+        {
+            metrics.extend(extra.clone());
+        }
+        let generation = session.generation();
+        let json = serde_json::json!({
+            "generation": generation,
+            "nodes": nodes,
+            "images": images,
+            "metrics": metrics,
+        })
+        .to_string();
+        let snapshot = Arc::new(FrameSnapshot {
+            generation,
+            scale,
+            frame: Arc::new(PresentedFrame::new(generation, scale, nodes)),
+            images,
+            json,
+        });
+        Ok((Some((frame, snapshot)), update))
+    }
+
+    /// A frame that will not present: the next one must rebuild.
+    fn unprepared(
+        self: &Arc<Self>,
+        error: Option<String>,
+        surface: SurfaceTicket,
+        page: PageTicket,
+    ) {
+        let (pending, effects) = {
+            let mut main = self.main();
+            main.busy = false;
+            main.dirty = true;
+            let effects =
+                if error.is_some() && !main.disposed && self.lifecycle.is_current_page(page) {
+                    main.interaction.cancel_all()
+                } else {
+                    Vec::new()
+                };
+            (main.pending && !main.disposed, effects)
+        };
+        self.deliver(effects);
+        if let Some(error) = error
+            && self.lifecycle.is_current_page(page)
+            && self.lifecycle.is_current_surface(surface)
+        {
+            self.fail(error);
+        }
+        if pending {
+            self.schedule();
+        }
+    }
+
+    pub(super) fn vsync(self: &Arc<Self>) {
+        let Some(prepared) = ({
+            let mut main = self.main();
+            let prepared = main.prepared.take();
+            if prepared.is_some() {
+                main.busy = false;
+            }
+            prepared
+        }) else {
+            return;
+        };
+        let current = !self.main().disposed && self.lifecycle.is_current_surface(prepared.surface);
+        let mut retry = false;
+        if current {
+            let Prepared {
+                frame,
+                snapshot,
+                surface,
+                page,
+                revision,
+                offsets,
+                rebuild,
+            } = prepared;
+            match self.adapter.present(frame) {
+                Ok(true) => self.presented(snapshot, surface, page, revision, offsets, rebuild),
+                Ok(false) => retry = true,
+                Err(error) => self.fail(error),
+            }
+        }
+        let pending = {
+            let mut main = self.main();
+            main.pending |= retry;
+            main.pending && !main.disposed
+        };
+        if pending {
+            self.schedule();
+        }
+    }
+
+    fn presented(
+        self: &Arc<Self>,
+        snapshot: Arc<FrameSnapshot>,
+        surface: SurfaceTicket,
+        page: PageTicket,
+        revision: u64,
+        offsets: HashMap<String, f32>,
+        rebuild: bool,
+    ) {
+        let (presented, recovered) = {
+            let mut main = self.main();
+            main.snapshot = Some(snapshot.clone());
+            // Repainting an old frame (caret, scroll) is not recovery.
+            let recovered = rebuild && main.failure.take().is_some();
+            let presented =
+                main.interaction
+                    .presented(snapshot.frame.clone(), revision, &offsets, page);
+            (presented, recovered)
+        };
+        if recovered {
+            self.adapter.recovery(None);
+        }
+        self.acknowledge_animation(surface, snapshot.generation);
+        self.adapter.reconcile(&snapshot);
+        self.deliver(presented.effects);
+        if let Some(reach) = presented.reach {
+            self.reach(page, reach);
+        }
+        self.update_images(snapshot.images.clone());
+        self.flush_image_events();
+        self.adapter.presented(&snapshot);
+    }
+
+    /// Start the timeline's newly presented effects and wake for its next deadline.
+    fn acknowledge_animation(self: &Arc<Self>, surface: SurfaceTicket, generation: CommitTicket) {
+        let at = self.adapter.now();
+        self.work(
+            Guard::Page(self.lifecycle.page()),
+            move |_, session| {
+                if !session.animation_presented(surface, generation, at)? {
+                    return Ok(None);
+                }
+                Ok(match session.view_animation_wakeup(at)? {
+                    crate::animation::Wakeup::None => None,
+                    crate::animation::Wakeup::NextFrame => Some(Duration::ZERO),
+                    crate::animation::Wakeup::After(delay) => Some(delay),
+                })
+            },
+            move |inner, result| {
+                let delay = match result {
+                    Some(Ok(Some(delay))) => delay,
+                    Some(Err(error)) => {
+                        inner.adapter.warn(&format!("UI_ANIMATION: {error}"));
+                        return;
+                    }
+                    _ => return,
+                };
+                let timer = {
+                    let mut main = inner.main();
+                    if main.disposed
+                        || !inner.lifecycle.is_current_surface(surface)
+                        || main.snapshot.as_ref().map(|s| s.generation) != Some(generation)
+                        || main.busy
+                        || main.pending
+                    {
+                        return;
+                    }
+                    main.animation_timer += 1;
+                    main.animation_timer
+                };
+                let spent = inner.adapter.now().saturating_sub(at);
+                let host = inner.clone();
+                inner.adapter.post_after(
+                    delay.saturating_sub(spent),
+                    Box::new(move || {
+                        if host.main().animation_timer == timer {
+                            host.schedule();
+                        }
+                    }),
+                );
+            },
+        );
+    }
+
+    /// Pause the timeline while nothing can present.
+    pub(super) fn park_animations(self: &Arc<Self>) {
+        self.main().animation_timer += 1;
+        let at = self.adapter.now();
+        self.work(
+            Guard::Page(self.lifecycle.page()),
+            move |_, session| session.set_animation_surface(None, at),
+            |inner, result| {
+                if let Some(Err(error)) = result {
+                    inner.adapter.warn(&format!("UI_ANIMATION: {error}"));
+                }
+            },
+        );
+    }
+}

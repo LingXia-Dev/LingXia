@@ -67,11 +67,12 @@ pub(crate) fn supports(feature: Feature) -> bool {
 use rong::{JSEngine, RongJS, Source};
 
 /// Called on a dedicated View thread. No host capabilities are installed.
+/// `environment` is the platform's View `env`; the viewport is added to it.
 pub fn evaluate(
     module: &str,
-    width: f32,
-    height: f32,
+    environment: &crate::platform::FrameEnvironment,
 ) -> Result<Vec<crate::protocol::Record>, String> {
+    let (width, height) = (f32::from(environment.width), f32::from(environment.height));
     crate::engine::compatibility::validate(module)?;
     if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
         return Err("UI_VIEWPORT: invalid dimensions".into());
@@ -82,8 +83,13 @@ pub fn evaluate(
     context
         .eval::<()>(Source::from_bytes(module.as_bytes()))
         .map_err(|e| js_error(&context, e))?;
+    let mut env = environment.value.clone();
+    if !env.is_object() {
+        return Err("UI_ENVIRONMENT: expected an object".into());
+    }
+    env["viewport"] = serde_json::json!({"width": width, "height": height});
     let invoke = format!(
-        "__lingxiaDescribe(__lingxiaRender, {{data: Object.freeze({{}}), actions: Object.freeze({{}}), env: Object.freeze({{theme:'light', viewport:{{width:{width},height:{height}}}, insets:{{top:0,right:0,bottom:0,left:0}}, keyboard:{{height:0}}, os:'android', pointer:'coarse', formFactor:'phone', sizeClass:'compact', aside:false, displayLanguage:'en', runner:true}})}})"
+        "__lingxiaDescribe(__lingxiaRender, {{data: Object.freeze({{}}), actions: Object.freeze({{}}), env: Object.freeze({env})}})"
     );
     decode_context(&context, &invoke)
 }
@@ -205,19 +211,28 @@ mod tests {
         assert!(decode_context(&context, "[2,-1,'','label','Recovered',0]").is_ok());
     }
 
+    fn environment(width: u16, height: u16) -> crate::platform::FrameEnvironment {
+        crate::platform::FrameEnvironment {
+            width,
+            height,
+            scale: 1.0,
+            value: serde_json::json!({"theme": "light", "os": "test", "pointer": "coarse"}),
+        }
+    }
+
     #[test]
     fn view_has_no_host_capabilities_and_transfers_primitive_buffer() {
         let script = "if (typeof lx !== 'undefined' || typeof fetch !== 'undefined' || typeof setTimeout !== 'undefined') throw Error('host capability leaked'); globalThis.__lingxiaRender = () => {}; globalThis.__lingxiaDescribe = () => [2,-1,'','hello','Hello, world!',0];";
-        let records = evaluate(script, 393.0, 760.0).unwrap();
+        let records = evaluate(script, &environment(393, 760)).unwrap();
         assert_eq!(records[0].text, "Hello, world!");
-        assert!(evaluate(script, f32::NAN, 760.0).is_err());
+        assert!(evaluate(script, &environment(0, 760)).is_err());
     }
 
     #[test]
     fn failed_view_does_not_poison_next_context() {
-        assert!(evaluate("throw Error('bad view')", 300.0, 600.0).is_err());
+        assert!(evaluate("throw Error('bad view')", &environment(300, 600)).is_err());
         let script = "globalThis.__lingxiaRender = () => {}; globalThis.__lingxiaDescribe = () => [0,-1,'','','',0,2,0,'','hello','Hello',0];";
-        let records = evaluate(script, 300.0, 600.0).unwrap();
+        let records = evaluate(script, &environment(300, 600)).unwrap();
         let frame = Renderer::default().render(&records, 300, 600, 1.0).unwrap();
         assert_eq!(frame.nodes.len(), 2);
         assert!(frame.nodes[1].bounds[2] > 0.0);

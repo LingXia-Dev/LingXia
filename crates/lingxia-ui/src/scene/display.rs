@@ -95,8 +95,7 @@ impl DisplayList {
         display.bind_images(&self.images).unwrap();
         display
     }
-    /// Reveal through existing scroll regions before resize can invalidate editor focus.
-    #[cfg(any(target_os = "android", feature = "jvm", test))]
+    /// The caret blink's off phase.
     pub(crate) fn hide_caret(&mut self) {
         if let Some(index) = self.caret_paint.take() {
             self.commands.remove(index);

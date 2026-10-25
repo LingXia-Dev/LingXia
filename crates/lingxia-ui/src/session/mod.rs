@@ -1,6 +1,6 @@
 use crate::protocol::field;
 pub mod app;
-pub mod controller;
+pub mod host;
 pub mod image_requests;
 pub(crate) mod input_protocol;
 pub mod lifecycle;
