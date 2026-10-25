@@ -278,9 +278,15 @@ enum LxAppLayoutReconciler {
 
         // Place each desired aside at the tree's edge and show it. Content paths
         // should have already registered the panel (hidden) before the graph
-        // commit. If not, skip defensively; a later plan push can converge it.
+        // commit. The one content path that cannot is a main demoted to an
+        // aside: its page still lives in a main controller, so re-host it in
+        // a panel now. Otherwise skip defensively; a later plan push can
+        // converge it.
         for (id, edge) in desired {
-            guard workspace.isPanelRegistered(id: id) else { continue }
+            if !workspace.isPanelRegistered(id: id)
+                && !LxAppMacAppUIRuntime.adoptDemotedMainLxApp(surfaceId: id, position: edge) {
+                continue
+            }
 
             let atCorrectEdge = workspace.panelPosition(id: id) == edge
             let visible = workspace.isPanelVisible(id: id)

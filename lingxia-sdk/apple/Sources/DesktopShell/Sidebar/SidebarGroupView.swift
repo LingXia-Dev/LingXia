@@ -999,6 +999,16 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             pinItem.image = LxIcon.menuSymbol(pinned ? "icon_unpin" : "icon_pin")
             pinItem.target = self
             menu.addItem(pinItem)
+            // The mirror of the aside tab's "Open in Main Area": the live app
+            // moves beside the main without restarting. Home is the root main.
+            let appId = providerAppId
+            let openInSide = MenuActionItem(title: L10n.string("lx_aside_open_in_side")) {
+                _ = demoteMainLxappToAside(appId, "")
+            }
+            openInSide.image = NSImage(
+                systemSymbolName: "sidebar.trailing", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+            menu.addItem(openInSide)
             menu.addItem(NSMenuItem.separator())
         }
 

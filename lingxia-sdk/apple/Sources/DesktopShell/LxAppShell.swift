@@ -2948,6 +2948,30 @@ extension LxAppShell {
         return viewController
     }
 
+    /// The core made `appId` an aside while its main controller still exists:
+    /// the main was demoted. Drop the main controller and its switcher row
+    /// without ending the session, and hand back the page it was showing so
+    /// a panel can re-host it (the WebView moves without reloading). The
+    /// successor main is attached by the plan's `activeMainId`, not here.
+    func detachMainLxAppForAside(appId: String) -> (path: String, pageInstanceId: String?)? {
+        guard let viewController = viewControllers[appId] else { return nil }
+        let page = viewController.presentedPage
+        viewController.pauseNativeComponents()
+        if currentViewController === viewController {
+            currentViewController = nil
+        }
+        viewController.view.removeFromSuperview()
+        viewControllers.removeValue(forKey: appId)
+        // Remove the row without `onTabChanged`: the graph already picked
+        // the successor main, which the caller presents; selecting from here
+        // would re-enter the core.
+        tabManager.tabs.removeAll { $0.appId == appId }
+        if tabManager.activeTab?.appId == appId {
+            tabManager.activeTab = nil
+        }
+        return page
+    }
+
     /// Take `appId` out of its aside panel without ending the session.
     private func detachAsideLxApp(appId: String) {
         asidePanelIdByAppId.removeValue(forKey: appId)

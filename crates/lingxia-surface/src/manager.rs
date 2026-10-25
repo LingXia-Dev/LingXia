@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use crate::arbitrate::{OpenOutcome, Policy, arbitrate};
 use crate::graph::SurfaceGraph;
 use crate::layout::{DEFAULT_HYSTERESIS, DerivedLayout, LayoutPresentationPlan, SizeClass};
-use crate::model::{Surface, SurfaceId};
+use crate::model::{Edge, Surface, SurfaceId};
 use crate::{CloseOutcome, ReplaceMainsError, Role, SurfacePresentation, SurfaceSwitcherSnapshot};
 
 /// One window's stateful surface driver.
@@ -277,6 +277,66 @@ impl SurfaceManager {
         surface.state = crate::model::SurfaceState::Mounted;
         surface.float = None;
         self.open_main(surface, presentation).is_ok()
+    }
+
+    /// Turn a live lxapp main into an aside in one graph change: the surface
+    /// keeps its id and content, leaves the switcher (its neighbour becomes
+    /// the active main) and joins the side panel at `edge` — unset, the edge
+    /// the panel already docks at, else trailing. Returns `false` unless `id`
+    /// is an lxapp main other than the stable root; the graph is unchanged
+    /// then.
+    pub fn demote_main_to_aside(&mut self, id: &str, edge: Option<Edge>) -> bool {
+        let Some(mut surface) = self
+            .graph
+            .get(id)
+            .filter(|surface| surface.role == Role::Main)
+            .cloned()
+        else {
+            return false;
+        };
+        // Only lxapp content: its arbitration is a per-appId singleton, so the
+        // re-open below resolves to this very id. A browser main could merge
+        // into an existing tab instead, which would lose the surface.
+        if self.graph.is_root_main(id)
+            || !matches!(
+                surface.content,
+                crate::SurfaceContent::Lxapp { .. } | crate::SurfaceContent::Page { .. }
+            )
+        {
+            return false;
+        }
+        let slot_edge = self
+            .graph
+            .aside_slots(self.size_class)
+            .into_iter()
+            .find(|slot| slot.kind == surface.content.slot_kind())
+            .and_then(|slot| slot.edge);
+        let main = surface.clone();
+        let presentation = self.presentations.get(id).cloned();
+        if !matches!(self.close(id), CloseOutcome::Closed { .. }) {
+            return false;
+        }
+        surface.role = Role::Aside;
+        surface.placement = crate::model::Placement {
+            edge: Some(edge.or(slot_edge).unwrap_or(Edge::Right)),
+            preferred_size: None,
+        };
+        surface.state = crate::model::SurfaceState::Mounted;
+        surface.float = None;
+        let outcome = self.open(surface);
+        let demoted = outcome.resolved_surface_id == id && outcome.resolved_role == Role::Aside;
+        if !demoted {
+            // Put the main back rather than leave the app without a node.
+            let presentation = presentation
+                .clone()
+                .unwrap_or_else(|| SurfacePresentation::for_content(&main.content));
+            let _ = self.open_main(main, presentation);
+            return false;
+        }
+        if let Some(presentation) = presentation {
+            self.presentations.insert(id.to_string(), presentation);
+        }
+        true
     }
 
     pub fn close_other_mains(&mut self, keeping: &str) -> Vec<SurfaceId> {

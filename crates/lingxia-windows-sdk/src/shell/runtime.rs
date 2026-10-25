@@ -4319,6 +4319,45 @@ fn promote_lxapp_aside(surface_id: &str) -> bool {
     true
 }
 
+/// Re-host a live lxapp main in the aside slot (the sidebar menu's "Open in
+/// Side Panel"): the mirror of `promote_lxapp_aside`. Logic, the page stack
+/// and the current page's WebView are kept; the plan sync docks the page.
+pub(crate) fn demote_lxapp_main(appid: &str) -> bool {
+    let Some(app) = lxapp::try_get(appid) else {
+        return false;
+    };
+    if lxapp::open_region(appid) != Some(lxapp::LxAppOpenRegion::Main) {
+        return false;
+    }
+    let Some(page) = app
+        .current_page()
+        .ok()
+        .or_else(|| app.get_page(&app.initial_route()))
+    else {
+        return false;
+    };
+    let title = lxapp::lxapp_display_name(appid).unwrap_or_else(|| appid.to_string());
+    // Before the commit: the plan sync that follows must already know which
+    // page the slot shows.
+    lingxia_platform::windows::adopt_windows_lxapp_main_as_aside(appid, page.webtag(), title);
+    if let Err(err) = app.demote_main_to_aside("") {
+        log::warn!("main demotion refused for {appid}: {err}");
+        let _ = lingxia_platform::windows::release_windows_lxapp_aside(appid);
+        return false;
+    }
+    if let Some(owner_appid) = shell_owner_appid()
+        && let Some(owner) = lxapp::try_get(&owner_appid)
+    {
+        if let Some(active) = owner.surface_switcher_snapshot().active_surface_id
+            && let Err(error) = present_successor_main(&owner, &active)
+        {
+            log::warn!("failed to present successor main surface {active}: {error}");
+        }
+        sync_shell_layout(&owner_appid);
+    }
+    true
+}
+
 /// Move a URL aside's browser tab into the main browser, keeping its tab id
 /// and document.
 #[cfg(feature = "browser-runtime")]
@@ -6312,6 +6351,7 @@ fn panel_startup_options(
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum LxappContextMenuAction {
     TogglePin,
+    OpenInSide,
     Restart,
     CleanCacheRestart,
     Uninstall,
@@ -6347,6 +6387,14 @@ fn build_lxapp_context_menu(
                 lingxia_logic::I18nKey::BrowserPinToSidebar
             }),
             Some(LxappContextMenuAction::TogglePin),
+        );
+        // The mirror of the aside tab's "Open in Main Area": the live app
+        // moves beside the main without restarting. Home is the root main.
+        push_lxapp_context_menu_item(
+            &mut items,
+            &mut actions,
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::AsideOpenInSide),
+            Some(LxappContextMenuAction::OpenInSide),
         );
         push_lxapp_context_menu_item(&mut items, &mut actions, String::new(), None);
     }
@@ -6469,6 +6517,9 @@ fn show_lxapp_auxiliary_context_menu(
                 sync_shell_layout(&owner_appid);
             }
             Some(LxappContextMenuAction::TogglePin) => {}
+            Some(LxappContextMenuAction::OpenInSide) => {
+                demote_lxapp_main(&target_appid);
+            }
             Some(LxappContextMenuAction::Restart) => {
                 schedule_lxapp_cold_restart(target_appid.clone(), false);
             }
@@ -8691,11 +8742,13 @@ mod tests {
         let (_, home_actions) =
             build_lxapp_context_menu(true, false, "Showcase · 1.0.0 [DEV]".to_string());
         assert!(!home_actions.contains(&Some(LxappContextMenuAction::TogglePin)));
+        assert!(!home_actions.contains(&Some(LxappContextMenuAction::OpenInSide)));
         assert!(!home_actions.contains(&Some(LxappContextMenuAction::Uninstall)));
 
         let (_, app_actions) =
             build_lxapp_context_menu(false, false, "Showcase · 1.0.0 [DEV]".to_string());
         assert!(app_actions.contains(&Some(LxappContextMenuAction::TogglePin)));
+        assert!(app_actions.contains(&Some(LxappContextMenuAction::OpenInSide)));
         assert!(app_actions.contains(&Some(LxappContextMenuAction::Uninstall)));
     }
 

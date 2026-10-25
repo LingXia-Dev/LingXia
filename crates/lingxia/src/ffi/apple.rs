@@ -448,6 +448,12 @@ mod bridge {
         #[swift_bridge(swift_name = "promoteAsideLxappToMain")]
         fn promote_aside_lxapp_to_main(app_id: &str) -> bool;
 
+        // Move a live lxapp main into the aside region at `edge` without
+        // restarting it. The committed plan docks it; the reconciler
+        // re-hosts its page from the main controller.
+        #[swift_bridge(swift_name = "demoteMainLxappToAside")]
+        fn demote_main_lxapp_to_aside(app_id: &str, edge: &str) -> bool;
+
         // Re-home a docked aside browser tab as the active main-browser tab,
         // keeping its tab id and WebView.
         #[swift_bridge(swift_name = "promoteDockedBrowserTab")]
@@ -1728,6 +1734,21 @@ pub fn promote_aside_lxapp_to_main(app_id: &str) -> bool {
             Ok(()) => true,
             Err(err) => {
                 log::warn!("aside promotion refused for {app_id}: {err}");
+                false
+            }
+        }
+    })
+}
+
+pub fn demote_main_lxapp_to_aside(app_id: &str, edge: &str) -> bool {
+    ffi_catch_unwind!("demote_main_lxapp_to_aside", false, || {
+        let Some(app) = lxapp::try_get(app_id.trim()) else {
+            return false;
+        };
+        match app.demote_main_to_aside(edge.trim()) {
+            Ok(()) => true,
+            Err(err) => {
+                log::warn!("main demotion refused for {app_id}: {err}");
                 false
             }
         }

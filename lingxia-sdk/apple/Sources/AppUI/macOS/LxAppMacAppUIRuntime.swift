@@ -330,6 +330,56 @@ final class LxAppMacAppUIRuntime: NSObject {
         visibleSurfaceIDs.insert(surfaceId)
     }
 
+    /// The core made `surfaceId` an aside while its page is still hosted by
+    /// a main controller: the main was demoted. Re-host the page in a panel
+    /// (registered hidden; the reconciler places it) and book the app as a
+    /// runtime aside, the mirror of `forgetPromotedAside`. False when the id
+    /// is not a live lxapp main of this shell.
+    static func adoptDemotedMainLxApp(surfaceId: String, position: PanelPosition) -> Bool {
+        active?.adoptDemotedMain(surfaceId: surfaceId, position: position) ?? false
+    }
+
+    private func adoptDemotedMain(surfaceId: String, position: PanelPosition) -> Bool {
+        guard runtimeLxAppPanels[surfaceId] == nil,
+              let page = shell.detachMainLxAppForAside(appId: surfaceId) else { return false }
+        shell.registerPanelWithContent(
+            id: surfaceId,
+            position: position,
+            appId: surfaceId,
+            path: page.path,
+            pageInstanceId: page.pageInstanceId
+        )
+        runtimeLxAppPanels[surfaceId] = RuntimeLxAppPanel(appId: surfaceId, path: page.path)
+        managedRoleOverrides.removeValue(forKey: surfaceId)
+        openedSurfaceIDs.insert(surfaceId)
+        visibleSurfaceIDs.insert(surfaceId)
+        // The main area lost its content; show the successor the graph chose,
+        // whatever its kind, as after closing a main.
+        if let ownerAppId = graphOwnerAppId,
+           let snapshot = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId) {
+            presentSwitcherSuccessor(snapshot, ownerAppId: ownerAppId)
+        }
+        refreshChromeActions()
+        return true
+    }
+
+    /// Present the switcher's active main after a main left it (a close or a
+    /// demotion): a managed surface opens now, an ordinary lxapp tab aligns
+    /// the provider and sidebar highlight with the graph's choice.
+    private func presentSwitcherSuccessor(_ snapshot: SurfaceSwitcherSnapshot, ownerAppId: String) {
+        guard let activeSurfaceId = snapshot.activeSurfaceId else { return }
+        if surfaceById[activeSurfaceId] != nil, !openManagedSurfaceNow(id: activeSurfaceId) {
+            return
+        }
+        _ = setActiveMainSurface(ownerAppId, activeSurfaceId)
+        if surfaceById[activeSurfaceId] == nil,
+           let active = snapshot.items.first(where: { $0.surfaceId == activeSurfaceId }),
+           active.content.kind == "lxapp",
+           let appId = active.content.appId {
+            shell.activateMainLxAppProvider(appId: appId)
+        }
+    }
+
     /// Mirror the core's slot maximize onto a terminal workspace's own zoom
     /// button. The panel geometry already follows the plan's `overlay`.
     static func reflectAsideMaximized(surfaceId: String, maximized: Bool) {
@@ -1640,27 +1690,12 @@ final class LxAppMacAppUIRuntime: NSObject {
             })?.content
             discardMainSurfaceContent(id: surfaceId, previousContent: previousContent)
         }
-        if !execution.removedSurfaceIds.isEmpty,
-           let activeSurfaceId = execution.snapshot.activeSurfaceId,
-           let ownerAppId = graphOwnerAppId {
-            if surfaceById[activeSurfaceId] != nil,
-               !openManagedSurfaceNow(id: activeSurfaceId) {
-                refreshChromeActions()
-                return
-            }
-            _ = setActiveMainSurface(ownerAppId, activeSurfaceId)
-            if surfaceById[activeSurfaceId] == nil,
-               let active = execution.snapshot.items.first(where: {
-                   $0.surfaceId == activeSurfaceId
-               }),
-               active.content.kind == "lxapp",
-               let appId = active.content.appId {
-                // Closing an active ordinary tab makes the legacy tab manager
-                // choose its first remaining item, while the graph chooses the
-                // adjacent main. Align the provider and sidebar highlight with
-                // the graph's authoritative successor.
-                shell.activateMainLxAppProvider(appId: appId)
-            }
+        if !execution.removedSurfaceIds.isEmpty, let ownerAppId = graphOwnerAppId {
+            // Closing an active ordinary tab makes the legacy tab manager
+            // choose its first remaining item, while the graph chooses the
+            // adjacent main. Align the provider and sidebar highlight with
+            // the graph's authoritative successor.
+            presentSwitcherSuccessor(execution.snapshot, ownerAppId: ownerAppId)
         }
         refreshChromeActions()
     }

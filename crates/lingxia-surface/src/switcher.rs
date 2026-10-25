@@ -394,6 +394,67 @@ mod tests {
     }
 
     #[test]
+    fn lxapp_main_demotes_to_aside_and_back_without_restart() {
+        let mut manager = SurfaceManager::new(1200.0);
+        manager.open(Surface::lxapp("home", Role::Main, "home"));
+        enable_rename(&mut manager, "home");
+        let agent = Surface::lxapp("agent", Role::Main, "agent");
+        manager
+            .open_main(
+                agent.clone(),
+                SurfacePresentation::for_content(&agent.content),
+            )
+            .unwrap();
+        assert_eq!(manager.graph().active_main_id.as_deref(), Some("agent"));
+
+        assert!(manager.demote_main_to_aside("agent", Some(crate::model::Edge::Left)));
+        let snapshot = manager.switcher_snapshot();
+        assert_eq!(snapshot.items.len(), 1);
+        assert_eq!(snapshot.active_surface_id.as_deref(), Some("home"));
+        assert_eq!(manager.graph().role_of("agent"), Some(Role::Aside));
+        assert_eq!(
+            manager.graph().get("agent").unwrap().placement.edge,
+            Some(crate::model::Edge::Left)
+        );
+
+        // The root never leaves the switcher; an aside is not a main.
+        assert!(!manager.demote_main_to_aside("home", None));
+        assert!(!manager.demote_main_to_aside("agent", None));
+
+        // Without an edge a demoted main follows the side panel's edge.
+        let tools = Surface::lxapp("tools", Role::Main, "tools");
+        manager
+            .open_main(
+                tools.clone(),
+                SurfacePresentation::for_content(&tools.content),
+            )
+            .unwrap();
+        assert!(manager.demote_main_to_aside("tools", None));
+        assert_eq!(
+            manager.graph().get("tools").unwrap().placement.edge,
+            Some(crate::model::Edge::Left)
+        );
+        assert!(
+            manager
+                .promote_aside_to_main("tools", SurfacePresentation::for_content(&tools.content))
+        );
+        assert!(
+            manager
+                .close("tools")
+                .removed()
+                .contains(&"tools".to_string())
+        );
+
+        assert!(
+            manager
+                .promote_aside_to_main("agent", SurfacePresentation::for_content(&agent.content))
+        );
+        assert_eq!(manager.graph().role_of("agent"), Some(Role::Main));
+        assert_eq!(manager.graph().active_main_id.as_deref(), Some("agent"));
+        assert!(manager.graph().is_valid());
+    }
+
+    #[test]
     fn native_root_cannot_move_to_aside() {
         for with_other_main in [false, true] {
             let mut manager = SurfaceManager::new(1200.0);

@@ -340,6 +340,14 @@ pub fn release_windows_lxapp_aside(panel_id: &str) -> Option<(WebTag, String)> {
     Some((entry.webtag, entry.title))
 }
 
+/// Start hosting a live lxapp main's current page as the runtime aside
+/// `panel_id` (its app id), ahead of the core demotion: the next plan sync
+/// then docks that page in the lxapp slot. `release_windows_lxapp_aside`
+/// undoes it when the demotion is refused.
+pub fn adopt_windows_lxapp_main_as_aside(panel_id: &str, webtag: WebTag, title: String) {
+    remember_runtime_lxapp_aside(panel_id, webtag, title);
+}
+
 /// Undo `release_windows_lxapp_aside` when the promotion was refused.
 pub fn restore_windows_lxapp_aside(panel_id: &str, webtag: WebTag, title: String) {
     remember_runtime_lxapp_aside(panel_id, webtag, title);

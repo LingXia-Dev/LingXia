@@ -824,6 +824,37 @@ impl WindowSurfaceController {
         true
     }
 
+    /// Move a live lxapp main into the side panel as an aside, in one commit.
+    /// An empty `edge` follows the panel's current edge. The successor main
+    /// the core picks becomes active through the plan; its app id (when it is
+    /// an lxapp) comes back so the caller can align the lxapp stack.
+    fn demote_main_to_aside(&self, surface_id: &str, edge: &str) -> Option<Option<String>> {
+        let successor = {
+            let mut manager = self.manager.lock().unwrap();
+            if manager.graph().role_of(surface_id) != Some(lingxia_surface::Role::Main)
+                || manager.graph().is_root_main(surface_id)
+            {
+                return None;
+            }
+            let edge = (!edge.trim().is_empty()).then(|| edge_from_name(edge));
+            if !manager.demote_main_to_aside(surface_id, edge) {
+                return None;
+            }
+            let graph = manager.graph();
+            graph
+                .active_main_id
+                .as_deref()
+                .and_then(|id| graph.get(id))
+                .and_then(|surface| match &surface.content {
+                    lingxia_surface::SurfaceContent::Lxapp { app_id, .. } => Some(app_id.clone()),
+                    _ => None,
+                })
+        };
+        *self.active_main_publication_blocked.lock().unwrap() = false;
+        self.commit();
+        Some(successor)
+    }
+
     fn replace_host_mains(
         &self,
         registrations: Vec<HostMainSurfaceRegistration>,
@@ -1205,18 +1236,24 @@ fn instantiate_native_declaration(
     (surface, presentation)
 }
 
+/// A dock edge from its API spelling; anything else is the trailing edge.
+fn edge_from_name(edge: &str) -> lingxia_surface::Edge {
+    use lingxia_surface::Edge;
+    match edge {
+        "left" | "leading" => Edge::Left,
+        "top" => Edge::Top,
+        "bottom" => Edge::Bottom,
+        _ => Edge::Right,
+    }
+}
+
 fn host_aside_node(
     surface_id: &str,
     content: lingxia_surface::SurfaceContent,
     edge: &str,
 ) -> lingxia_surface::Surface {
-    use lingxia_surface::{Edge, Placement, Role, Surface, SurfaceOwner, SurfaceState};
-    let edge = match edge {
-        "left" | "leading" => Edge::Left,
-        "top" => Edge::Top,
-        "bottom" => Edge::Bottom,
-        _ => Edge::Right,
-    };
+    use lingxia_surface::{Placement, Role, Surface, SurfaceOwner, SurfaceState};
+    let edge = edge_from_name(edge);
     Surface {
         id: surface_id.to_string(),
         role: Role::Aside,
@@ -2400,6 +2437,64 @@ impl LxApp {
             }
             .to_json_string();
             let _ = previous.appservice_notify(AppServiceEvent::OnHide, Some(args));
+        }
+        Ok(())
+    }
+
+    /// Move this lxapp's live main presentation into the side panel without
+    /// restarting it — the mirror of `promote_aside_to_main`: Logic, the page
+    /// stack and every WebView stay as they are, and the platform re-hosts
+    /// the current page in the panel. An empty `edge` keeps the panel where
+    /// it is. The root main never moves.
+    pub fn demote_main_to_aside(&self, edge: &str) -> Result<(), LxAppError> {
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        if self.current_open_region() != Some(LxAppOpenRegion::Main)
+            || controller.managed_surface_role(&self.appid) != Some(SurfaceRole::Main)
+        {
+            return Err(LxAppError::InvalidParameter(format!(
+                "lxapp '{}' is not open as a main",
+                self.appid
+            )));
+        }
+        if controller.is_root_main(&self.appid) {
+            return Err(LxAppError::UnsupportedOperation(
+                "the stable root main surface cannot change role".to_string(),
+            ));
+        }
+        let previous_startup = {
+            let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+            let previous = (
+                state.startup_options.open_mode,
+                std::mem::replace(&mut state.startup_options.panel_id, self.appid.clone()),
+            );
+            state.open_region = Some(LxAppOpenRegion::Aside);
+            state.startup_options.open_mode =
+                lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel;
+            previous
+        };
+        let Some(successor) = controller.demote_main_to_aside(&self.appid, edge) else {
+            let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+            state.open_region = Some(LxAppOpenRegion::Main);
+            (
+                state.startup_options.open_mode,
+                state.startup_options.panel_id,
+            ) = previous_startup;
+            return Err(LxAppError::InvalidParameter(format!(
+                "surface '{}' is no longer a main",
+                self.appid
+            )));
+        };
+        // An aside is not in the main navigation stack; the successor the
+        // graph chose becomes the current lxapp, as after a close.
+        if let Some(manager) = get_lxapps_manager() {
+            manager.remove_from_stack(&self.appid);
+            if let Some(successor) = &successor {
+                manager.remove_from_stack(successor);
+                manager.push_lxapp_stack(successor.clone());
+            }
+        }
+        if let Some(successor) = successor {
+            self.runtime.request_lxapp_main_activation(&successor);
         }
         Ok(())
     }

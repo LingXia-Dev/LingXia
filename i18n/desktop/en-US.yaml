@@ -27,6 +27,7 @@ browser:
 # Aside slot tab menu (the per-tab "···" and right-click menu)
 aside:
   open_in_main: "Open in Main Area"
+  open_in_side: "Open in Side Panel"
   tab_menu: "Tab options"
 
 # Terminal panel (native Windows shell terminal)

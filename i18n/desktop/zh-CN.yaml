@@ -27,6 +27,7 @@ browser:
 # Aside slot tab menu (the per-tab "···" and right-click menu)
 aside:
   open_in_main: "在主区打开"
+  open_in_side: "在侧边打开"
   tab_menu: "标签选项"
 
 # Terminal panel (native Windows shell terminal)
