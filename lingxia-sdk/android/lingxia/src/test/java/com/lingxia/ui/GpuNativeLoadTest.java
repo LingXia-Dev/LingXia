@@ -19,8 +19,9 @@ public class GpuNativeLoadTest {
     @Before public void loadCore() { GpuNative.load(); }
 
     private static String module(String render) throws Exception {
-        String runtime = new String(Files.readAllBytes(Paths.get(System.getProperty("lingxia.ui.native"))
-            .getParent().getParent().getParent().resolve("crates/lingxia-ui/src/session/tests/runtime.js")), StandardCharsets.UTF_8);
+        // Gradle runs unit tests from the module directory; the shared target may live in another checkout.
+        String runtime = new String(Files.readAllBytes(Paths.get(System.getProperty("user.dir"))
+            .resolve("../../../crates/lingxia-ui/src/session/tests/runtime.js").normalize()), StandardCharsets.UTF_8);
         return runtime + "\n" + render + "\n__lingxiaPublish(render);";
     }
 
