@@ -154,6 +154,7 @@ impl Renderer {
                 _ => parley::WordBreak::Normal,
             }));
             builder.push_default(StyleProperty::FontWeight(FontWeight::new(weight)));
+            builder.push_default(StyleProperty::Locale(self.locale));
             builder.push_default(if style.mono {
                 GenericFamily::Monospace
             } else {

@@ -100,6 +100,9 @@ engine boundary.
 - System text scaling is a sampled `[authorSize, logicalSize]` curve from the
   platform; layout applies it once to font size, line height and letter
   spacing. Fixed author heights stay fixed.
+- Fallback chains come from the platform font config (Android `fonts.xml`,
+  installed by the adapter); `displayLanguage` is the shaping locale, so Han
+  picks SC/TC/JP/KR faces by locale.
 
 ## Text
 

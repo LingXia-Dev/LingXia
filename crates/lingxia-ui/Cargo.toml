@@ -16,6 +16,8 @@ image = { version = "0.25.10", default-features = false, features = ["png", "jpe
 taffy = "=0.14.0"
 parley = "=0.12.0"
 skrifa = "=0.44.0"
+roxmltree = "0.21.1"
+memmap2 = "0.9.11"
 vello_cpu = "=0.3.0"
 vello_common = { version = "=0.3.0", default-features = false }
 vello = { version = "=0.11.0", optional = true, default-features = false, features = ["wgpu"] }

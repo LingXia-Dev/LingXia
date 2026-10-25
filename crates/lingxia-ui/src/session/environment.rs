@@ -42,6 +42,15 @@ impl ViewSession {
             crate::layout::list_layout::invalidate_measurements(&mut self.lists);
             self.reveal_input = true;
         }
+        let locale = value["displayLanguage"]
+            .as_str()
+            .and_then(crate::text::fonts::locale);
+        if self.renderer.locale != locale {
+            self.renderer.locale = locale;
+            self.renderer.clear_text_cache();
+            self.retained = None;
+            crate::layout::list_layout::invalidate_measurements(&mut self.lists);
+        }
         let edge = |name: &str| value["insets"][name].as_f64().unwrap_or(0.0) as f32;
         let safe_area = crate::layout::style::SafeArea {
             insets: [edge("top"), edge("right"), edge("bottom"), edge("left")],

@@ -19,6 +19,7 @@ use taffy::util::ResolveOrZero;
 pub struct Renderer {
     pub(crate) text_scale: crate::text::scale::TextScale,
     pub(crate) fonts: FontContext,
+    pub(crate) locale: Option<parley::fontique::Language>,
     pub(crate) text: LayoutContext<()>,
     pub(crate) text_cache: crate::text::cache::TextCache,
     pub(crate) shadow_cache: crate::scene::shadow::MaskCache,
@@ -32,33 +33,11 @@ mod text_scale_layout_tests;
 
 impl Default for Renderer {
     fn default() -> Self {
-        let fonts = FontContext::new();
-        #[cfg(target_os = "android")]
-        let fonts = {
-            let mut fonts = fonts;
-            // Fontique does not yet resolve Android's fonts.xml family aliases.
-            // Preserve an existing generic mapping; otherwise use a scanned mono face.
-            if fonts
-                .collection
-                .generic_families(parley::style::GenericFamily::Monospace)
-                .next()
-                .is_none()
-            {
-                for name in ["Droid Sans Mono", "Noto Sans Mono", "Roboto Mono"] {
-                    if let Some(family) = fonts.collection.family_by_name(name) {
-                        fonts.collection.set_generic_families(
-                            parley::style::GenericFamily::Monospace,
-                            core::iter::once(family.id()),
-                        );
-                        break;
-                    }
-                }
-            }
-            fonts
-        };
+        let fonts = crate::text::fonts::context();
         Self {
             text_scale: Default::default(),
             fonts,
+            locale: None,
             text: LayoutContext::new(),
             text_cache: Default::default(),
             shadow_cache: Default::default(),

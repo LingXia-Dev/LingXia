@@ -4332,11 +4332,13 @@ version = "0.28.0"
 dependencies = [
  "glifo",
  "image",
+ "memmap2",
  "parley",
  "pollster",
  "rong",
  "rong_core",
  "rong_quickjs_sys",
+ "roxmltree 0.21.1",
  "serde",
  "serde_json",
  "skrifa 0.44.0",

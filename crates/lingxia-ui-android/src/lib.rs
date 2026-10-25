@@ -166,12 +166,18 @@ extern "system" fn host_create<'a>(
     image_owner: jlong,
 ) -> jlong {
     run(&mut env, |env| {
+        lingxia_ui::text::fonts::set_system_fonts(system_fonts);
         let platform = env.new_global_ref(platform)?;
         let worker = ViewWorker::shared(&text(env, &worker)?)?;
         let host = ViewHost::new(AndroidAdapter::new(platform, image_owner), worker, logic);
         let _ = host.adapter().host.set(host.downgrade());
         Ok(Box::into_raw(Box::new(host)) as jlong)
     })
+}
+
+fn system_fonts() -> lingxia_ui::text::fonts::SystemFonts {
+    let root = std::env::var("ANDROID_ROOT").unwrap_or_else(|_| "/system".into());
+    lingxia_ui::text::fonts::SystemFonts::load_android(std::path::Path::new(&root))
 }
 
 extern "system" fn host_release<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, handle: jlong) {
