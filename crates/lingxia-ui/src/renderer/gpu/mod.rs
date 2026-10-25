@@ -105,6 +105,8 @@ pub struct Presenter {
     /// This presenter's adapter record for the crash sentinel.
     adapter: String,
     backend: &'static str,
+    /// Rebuilds the surface target: a GLES window surface keeps its creation size.
+    target: Option<Box<dyn Fn() -> wgpu::SurfaceTarget<'static> + Send + Sync>>,
 }
 
 impl Presenter {
@@ -139,8 +141,10 @@ impl Presenter {
     ) -> Result<Self, String>
     where
         Arc<W>: Into<wgpu::SurfaceTarget<'static>>,
+        W: Send + Sync + 'static,
     {
-        match Self::with_context(context, window.clone(), width, height) {
+        let rebind = window.clone();
+        let presenter = match Self::with_context(context, window.clone(), width, height) {
             Err(error) if error.starts_with(BLOCKED) => Self::with_context(
                 Context::with_backends(wgpu::Backends::GL),
                 window,
@@ -149,7 +153,11 @@ impl Presenter {
             )
             .map_err(|fallback| format!("{error}; GLES: {fallback}")),
             result => result,
-        }
+        };
+        presenter.map(|mut presenter| {
+            presenter.target = Some(Box::new(move || rebind.clone().into()));
+            presenter
+        })
     }
 
     pub fn with_context(
@@ -205,6 +213,7 @@ impl Presenter {
             context,
             adapter,
             backend,
+            target: None,
         })
     }
 
@@ -220,15 +229,24 @@ impl Presenter {
         self.scene_cache_hit = false;
     }
 
-    pub fn resume(
-        &mut self,
-        target: impl Into<wgpu::SurfaceTarget<'static>>,
-        width: u32,
-        height: u32,
-    ) -> Result<(), String> {
+    /// Bind to `window` again, e.g. after its `Surface` was recreated.
+    pub fn resume<W>(&mut self, window: Arc<W>, width: u32, height: u32) -> Result<(), String>
+    where
+        Arc<W>: Into<wgpu::SurfaceTarget<'static>>,
+        W: Send + Sync + 'static,
+    {
+        self.target = Some(Box::new(move || window.clone().into()));
+        self.bind(width, height)
+    }
+
+    fn bind(&mut self, width: u32, height: u32) -> Result<(), String> {
         if width == 0 || height == 0 || width > 4096 || height > 4096 {
             return Err("UI_SURFACE: empty size".into());
         }
+        let target = self.target.as_ref().ok_or("UI_SURFACE: no target")?();
+        // A window carries one EGL surface at a time; release the old one, and everything drawn
+        // for it, before binding anew.
+        self.suspend();
         let mut context = self.context.lock()?;
         let mut surface = pollster::block_on(context.create_surface(
             target,
@@ -288,6 +306,15 @@ impl Presenter {
         }
         if u32::from(display.width) != width || u32::from(display.height) != height {
             return Err("UI_SURFACE: display dimensions mismatch".into());
+        }
+        let resized = self
+            .surface
+            .as_ref()
+            .is_some_and(|s| s.config.width != width || s.config.height != height);
+        // Reconfiguring a GLES surface keeps the EGL window surface and its buffer
+        // geometry (wgpu only resizes Wayland windows); bind a fresh one instead.
+        if resized && self.backend == "vello-gles" && self.target.is_some() {
+            self.bind(width, height)?;
         }
         let Some(surface) = &mut self.surface else {
             return Ok(false);
