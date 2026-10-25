@@ -49,8 +49,15 @@ use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType};
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
-const MIN_SIDEBAR_WIDTH: i32 = 184;
+/// Expanded sidebar width bounds, in 96-DPI units (the same as macOS).
+const MIN_SIDEBAR_WIDTH: i32 = 148;
 const MAX_SIDEBAR_WIDTH: i32 = 400;
+/// Dragging the sidebar edge below this width collapses it to the icon rail
+/// (and dragging a rail past it expands the sidebar), as on macOS.
+const SIDEBAR_RAIL_THRESHOLD: i32 = 128;
+/// The width of an in-progress edge drag, in 96-DPI units; the persisted
+/// width takes over once the drag ends.
+static SIDEBAR_DRAG_WIDTH: Mutex<Option<i32>> = Mutex::new(None);
 /// Bottom tab bar height (icons + labels). The strip sits just above the
 /// content area's bottom, which is already inset for the home-indicator safe
 /// area, so no extra height is reserved here.
@@ -594,12 +601,53 @@ fn persist_sidebar_chrome(rail: bool) {
 }
 
 /// The persisted width is a 96-DPI value; the layout it feeds is physical.
+/// An edge drag in progress overrides it until it ends.
 fn persisted_expanded_sidebar_width() -> i32 {
-    let logical = lingxia_shell::sidebar_chrome()
-        .expanded_width
-        .round()
-        .clamp(f64::from(MIN_SIDEBAR_WIDTH), f64::from(MAX_SIDEBAR_WIDTH)) as i32;
-    crate::dpi::px(logical)
+    let dragging = SIDEBAR_DRAG_WIDTH.lock().ok().and_then(|width| *width);
+    let logical =
+        dragging.unwrap_or_else(|| lingxia_shell::sidebar_chrome().expanded_width.round() as i32);
+    crate::dpi::px(logical.clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH))
+}
+
+/// The user drags the sidebar's inner edge: `width` is the proposed column
+/// width in physical pixels. While the drag runs the layout follows it live,
+/// showing the icon rail below the threshold so the expanded layout never
+/// renders squished; on release the width (or the rail) is the user's own
+/// choice and is persisted, like a macOS sidebar drag.
+pub(crate) fn set_sidebar_drag_width(width: i32, done: bool) {
+    let Some(group) = preferred_sidebar_group_appid(
+        shell_owner_appid(),
+        presented_browser_group_appid(),
+        active_main_lxapp_id(),
+    ) else {
+        return;
+    };
+    let logical = (f64::from(width) / crate::dpi::chrome_scale()).round() as i32;
+    let rail = logical < SIDEBAR_RAIL_THRESHOLD;
+    let clamped = logical.clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
+    update_sidebar_ui_state(&group, |state| {
+        state.collapsed = false;
+        state.medium_expanded = !rail;
+        state.icon_rail = rail;
+        state.seeded = true;
+    });
+    if let Ok(mut dragging) = SIDEBAR_DRAG_WIDTH.lock() {
+        *dragging = (!done).then_some(clamped);
+    }
+    if done {
+        // A rail keeps the last expanded width for the next expand.
+        let expanded_width = if rail {
+            lingxia_shell::sidebar_chrome().expanded_width
+        } else {
+            f64::from(clamped)
+        };
+        if let Err(error) = lingxia_shell::set_sidebar_chrome(
+            lingxia_shell::SidebarChrome::with_expanded(!rail, expanded_width),
+        ) {
+            log::warn!("could not persist the sidebar width: {error}");
+        }
+    }
+    sync_shell_layout(&group);
 }
 
 /// A drag that lost capture: the layout returns to `origin_width` (physical

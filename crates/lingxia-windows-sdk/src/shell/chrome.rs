@@ -121,8 +121,35 @@ pub(super) fn sidebar_header_action_gap() -> i32 {
     crate::dpi::px(4)
 }
 
+/// Floor of the expanded sidebar column; the user-chosen width starts here.
 pub(super) fn shell_sidebar_width() -> i32 {
-    crate::dpi::px(184)
+    crate::dpi::px(148)
+}
+
+/// The grab zone on the sidebar column's inner edge, where dragging resizes
+/// the column (as on macOS). Returns the column's current width and whether
+/// it docks on the left; `None` off the zone or without a side sidebar.
+pub(crate) fn sidebar_resize_edge(
+    state: &WindowsChromeState,
+    point: (i32, i32),
+) -> Option<(i32, bool)> {
+    let layout = shell_layout(&state.layout)?;
+    let tabbar = layout.tab_bar.as_ref()?;
+    if tabbar.collapsed {
+        return None;
+    }
+    let left = match tabbar.position {
+        WindowsShellTabBarPosition::Left => true,
+        WindowsShellTabBarPosition::Right => false,
+        WindowsShellTabBarPosition::Bottom => return None,
+    };
+    let bar = chrome_rects_for_state(state, layout).tab_bar?;
+    let edge = if left { bar.right } else { bar.left };
+    let zone = px(4);
+    if point.1 < bar.top || point.1 >= bar.bottom || (point.0 - edge).abs() > zone {
+        return None;
+    }
+    Some((rect_width(&bar), left))
 }
 
 /// Width of the icon-only rail (the macOS first-collapse state).

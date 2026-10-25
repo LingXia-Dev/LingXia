@@ -81,6 +81,10 @@ const pinnedWindowsHostSkip = targetPlatform === 'windows'
 const DESKTOP_CASE_MS = 180_000;
 // Windows @ 1.5 scale paints an ~37 DIP icon rail; 40 DIP is just above it.
 const WINDOWS_RAIL_MIN_DIP = 32;
+/** The Windows expanded sidebar's default width (lingxia-shell DEFAULT_EXPANDED_SIDEBAR_WIDTH). */
+const WINDOWS_SIDEBAR_DIP = 148;
+/** Pins per row in that sidebar: as many 36 + 5 tiles as fit from the icon axis. */
+const WINDOWS_PIN_COLUMNS = Math.min(4, Math.max(1, Math.floor((WINDOWS_SIDEBAR_DIP - (24 - 18) - 8 + 5) / 41)));
 
 async function desktopApp(t: Fixture): Promise<TestApp> {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
@@ -471,7 +475,8 @@ async function ensureFullSidebar(
 ): Promise<DesktopWindowInfo> {
   // Expanded sizeClass is not the same as an expanded sidebar. Windows
   // persists icon-rail; a 1200 DIP window can still paint the 44px rail.
-  // Workspace-row geometry (ellipsis / close) only exists on the 184 sidebar.
+  // Workspace-row geometry (ellipsis / close) only exists on the expanded
+  // sidebar, not the icon rail.
   const current = await ensureHostForeground(desktop, host);
   await expandMediumSidebar(desktop, 'windows', current, async () => {
     const latest = (await desktop.windows()).find((window) => window.id === current.id) ?? current;
@@ -687,9 +692,9 @@ function pinnedShortcutPoint(
 ): [number, number] {
   const tile = 36;
   const gap = 5;
-  const columns = 4;
+  const columns = WINDOWS_PIN_COLUMNS;
   // Leading-aligned on the shared first-column icon axis (8 + 8 + 8), not
-  // centered in the 184 sidebar: the Windows pin grid and macOS tiles both
+  // centered in the expanded sidebar: the Windows pin grid and macOS tiles both
   // sit on that axis so the grid does not drift when the sidebar resizes.
   const iconAxis = 24;
   const gridLeft = iconAxis - tile / 2;
@@ -744,10 +749,10 @@ function staticSettingsActionPoint(
 ): [number, number] {
   if (!rail) {
     // Typed Settings leads the header actions, right-aligned against the
-    // collapse toggle at the 184-DIP sidebar's trailing edge.
+    // collapse toggle at the expanded sidebar's trailing edge.
     const size = 24;
     const gap = 4;
-    const toggleLeft = 184 - 8 - size;
+    const toggleLeft = WINDOWS_SIDEBAR_DIP - 8 - size;
     const settingsLeft = toggleLeft - gap
       - DESKTOP_HEADER_ACTION_COUNT * size
       - (DESKTOP_HEADER_ACTION_COUNT - 1) * gap;
@@ -765,7 +770,7 @@ function firstLxappWorkspacePoint(
   rootPageCount: number,
   workspaceIndex = 0,
 ): [number, number] {
-  const pinRows = Math.ceil(pinCount / 4);
+  const pinRows = Math.ceil(pinCount / WINDOWS_PIN_COLUMNS);
   const pinnedGridHeight = pinRows * (36 + 5);
   const topBarHeight = 32;
   const groupHeight = 36;
@@ -794,7 +799,7 @@ function activeGuestGroupPoint(
   pinCount: number,
   switcherIndex: number,
 ): [number, number] {
-  const pinRows = Math.ceil(pinCount / 4);
+  const pinRows = Math.ceil(pinCount / WINDOWS_PIN_COLUMNS);
   const pinnedGridHeight = pinRows * (36 + 5);
   const topBarHeight = 32;
   const rowHeight = 36;
@@ -815,7 +820,7 @@ function activeGuestGroupMenuRegion(
   pinCount: number,
   switcherIndex: number,
 ): [number, number, number, number] {
-  const sidebarWidth = 184;
+  const sidebarWidth = WINDOWS_SIDEBAR_DIP;
   const itemInset = 8;
   const chevronWidth = 18;
   const trailingControlWidth = 22;
@@ -863,7 +868,7 @@ function firstLxappWorkspaceRegion(
   rootPageCount: number,
   workspaceIndex = 0,
 ): [number, number, number, number] {
-  const sidebarWidth = 184;
+  const sidebarWidth = WINDOWS_SIDEBAR_DIP;
   const itemInset = 8;
   const [, centerY] = firstLxappWorkspacePoint(
     host, pinCount, rootPageCount, workspaceIndex,
@@ -988,7 +993,7 @@ function showcaseHomePagePoint(
   host: DesktopWindowInfo,
   pinCount: number,
 ): [number, number] {
-  const pinRows = Math.ceil(pinCount / 4);
+  const pinRows = Math.ceil(pinCount / WINDOWS_PIN_COLUMNS);
   const pinnedGridHeight = pinRows * (36 + 5);
   const topBarHeight = 32;
   const groupHeight = 36;

@@ -12,7 +12,19 @@ fn pinned_shortcut_icon_size() -> i32 {
 fn pinned_shortcut_gap() -> i32 {
     crate::dpi::px(5)
 }
-const PINNED_SHORTCUT_COLUMNS: usize = 4;
+/// At most four pins per row; fewer when the sidebar is narrower than four
+/// tiles (the 148 default fits three, a wide sidebar four), so a tile is
+/// never clipped by the column's edge.
+const PINNED_SHORTCUT_MAX_COLUMNS: usize = 4;
+
+/// Pins per row for a sidebar `width` wide: as many tiles as fit between the
+/// shared icon axis and the trailing item inset.
+fn pinned_shortcut_columns(width: i32) -> usize {
+    let stride = pinned_shortcut_size() + pinned_shortcut_gap();
+    let grid_left = sidebar_icon_axis() - pinned_shortcut_size() / 2;
+    let available = width - grid_left - sidebar_item_inset() + pinned_shortcut_gap();
+    ((available / stride).max(1) as usize).min(PINNED_SHORTCUT_MAX_COLUMNS)
+}
 
 pub(in crate::shell::chrome) fn sidebar_pinned_count(tabbar: &WindowsShellTabBarLayout) -> usize {
     tabbar
@@ -23,19 +35,19 @@ pub(in crate::shell::chrome) fn sidebar_pinned_count(tabbar: &WindowsShellTabBar
 }
 
 pub(in crate::shell::chrome) fn sidebar_pinned_grid_height(
-    _rect: RECT,
+    rect: RECT,
     tabbar: &WindowsShellTabBarLayout,
 ) -> i32 {
     let count = sidebar_pinned_count(tabbar);
     if count == 0 {
         return 0;
     }
-    pinned_grid_height(count)
+    pinned_grid_height(count, pinned_shortcut_columns(rect_width(&rect)))
 }
 
-fn pinned_grid_height(count: usize) -> i32 {
+fn pinned_grid_height(count: usize, columns: usize) -> i32 {
     let stride = pinned_shortcut_size() + pinned_shortcut_gap();
-    count.div_ceil(PINNED_SHORTCUT_COLUMNS) as i32 * stride
+    count.div_ceil(columns.max(1)) as i32 * stride
 }
 
 /// Geometry of the sidebar auxiliary section: separator line, one row rect
@@ -89,9 +101,10 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
         // lxapp group. They sit immediately below the caption controls and
         // above the lxapp header/navigation, matching macOS.
         let grid_top = rect.top + sidebar_header_height() - scroll_offset;
+        let columns = pinned_shortcut_columns(rect_width(&rect));
         for index in 0..pinned_count {
-            let row = index / PINNED_SHORTCUT_COLUMNS;
-            let column = index % PINNED_SHORTCUT_COLUMNS;
+            let row = index / columns;
+            let column = index % columns;
             let left = grid_left + column as i32 * (pinned_shortcut_size() + pinned_shortcut_gap());
             let top = grid_top + row as i32 * (pinned_shortcut_size() + pinned_shortcut_gap());
             let pinned_rect = normalize_rect(RECT {
@@ -443,10 +456,21 @@ mod tests {
     }
 
     #[test]
-    fn fixed_pin_grid_has_four_columns_and_two_bounded_rows() {
-        assert_eq!(pinned_grid_height(1), 41);
-        assert_eq!(pinned_grid_height(4), 41);
-        assert_eq!(pinned_grid_height(8), 82);
+    fn pin_grid_rows_follow_the_columns_that_fit() {
+        assert_eq!(pinned_grid_height(1, 4), 41);
+        assert_eq!(pinned_grid_height(4, 4), 41);
+        assert_eq!(pinned_grid_height(8, 4), 82);
+        assert_eq!(pinned_grid_height(4, 3), 82);
+    }
+
+    #[test]
+    fn pin_columns_never_clip_at_the_sidebar_edge() {
+        // 96 DPI: the 148 default fits three 36 + 5 tiles from the icon axis,
+        // a 184 sidebar four, and nothing exceeds four.
+        assert_eq!(pinned_shortcut_columns(148), 3);
+        assert_eq!(pinned_shortcut_columns(184), 4);
+        assert_eq!(pinned_shortcut_columns(400), 4);
+        assert_eq!(pinned_shortcut_columns(60), 1);
     }
 
     #[test]

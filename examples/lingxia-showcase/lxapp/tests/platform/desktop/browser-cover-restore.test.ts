@@ -55,7 +55,7 @@ function windowsSidebarUsesRail(
   if (!main) throw new Error('visible Windows host WebView was not found');
   // SurfaceLayout.switcherForm describes the surface graph, not the shell's
   // persisted 44-DIP icon rail. The physical content inset distinguishes it
-  // from the 184-DIP expanded sidebar.
+  // from the expanded sidebar.
   return main.bounds.x - host.bounds.x < 80 * host.scale;
 }
 
@@ -67,10 +67,11 @@ function windowsStaticSettingsPoint(
   const scale = host.scale;
   if (!rail) {
     // Typed Settings leads the header actions, which sit right-aligned
-    // against the collapse toggle at the 184-DIP sidebar's trailing edge.
+    // against the collapse toggle at the expanded sidebar's trailing edge
+    // (lingxia-shell DEFAULT_EXPANDED_SIDEBAR_WIDTH).
     const size = 24;
     const gap = 4;
-    const toggleLeft = 184 - 8 - size;
+    const toggleLeft = 148 - 8 - size;
     const shown = Math.min(1 + actions.header, 2);
     const settingsLeft = toggleLeft - gap - shown * size - (shown - 1) * gap;
     return [
