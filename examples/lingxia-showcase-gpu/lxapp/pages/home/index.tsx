@@ -26,7 +26,7 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
   };
   const greeting = failed.value ? t('sendFailed') : data.greeting;
   return (
-    <page testId="home-page" className="bg-background">
+    <page testId="home-page" className="bg-zinc-800">
       {Boolean(data.imageUrl) && <image testId="home-background" src={data.imageUrl} alt="" className="absolute inset-0 object-cover" />}
       <column testId="home-background-overlay" className="absolute inset-0 bg-linear-to-b from-black/10 via-transparent to-black/40" />
       <scroll testId="home-scroll" className="grow basis-0">
