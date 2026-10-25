@@ -26,7 +26,7 @@ public class GpuTodoParityProbe {
   check(n.getChildCount()==0,"composed checkbox exposes one accessible control");
   check("android.widget.CheckBox".contentEquals(n.getClassName()),"checkbox accessibility role");n.recycle();
  }
- static void focusCheckbox(String id)throws Exception{boolean foundFocus=false;for(int tab=0;tab<20&&!foundFocus;tab++){GpuRadioProbe.key(61);AccessibilityNodeInfo focused=GpuRadioProbe.automation.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);foundFocus=focused!=null&&("com.lingxia.example.gpu.dev:id/"+id).equals(focused.getViewIdResourceName());if(focused!=null)focused.recycle();}check(foundFocus,"Tab focuses checkbox");}
+ static void focusCheckbox(String id)throws Exception{boolean foundFocus=false;for(int tab=0;tab<20&&!foundFocus;tab++){GpuRadioProbe.key(61);AccessibilityNodeInfo focused=GpuRadioProbe.automation.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);foundFocus=focused!=null&&(GpuRadioProbe.PACKAGE+":id/"+id).equals(focused.getViewIdResourceName());if(focused!=null)focused.recycle();}check(foundFocus,"Tab focuses checkbox");}
  static void labelTap(String id)throws Exception{
   GpuRadioProbe.show(id);AccessibilityNodeInfo n=GpuRadioProbe.node(id);android.graphics.Rect r=new android.graphics.Rect();n.getBoundsInScreen(r);n.recycle();
   java.lang.Process p=Runtime.getRuntime().exec(new String[]{"/system/bin/input","tap",String.valueOf(r.right-12),String.valueOf(r.centerY())});

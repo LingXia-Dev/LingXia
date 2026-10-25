@@ -12,7 +12,7 @@ public final class GpuCacheEmojiProbe {
     static void require(boolean ok,String message){if(!ok)throw new AssertionError(message);}
     static AccessibilityNodeInfo find(AccessibilityNodeInfo node){
         if(node==null)return null;
-        if("com.lingxia.example.gpu.dev:id/greeting-input".equals(node.getViewIdResourceName()))return node;
+        if((GpuRadioProbe.PACKAGE+":id/greeting-input").equals(node.getViewIdResourceName()))return node;
         for(int i=0;i<node.getChildCount();i++){AccessibilityNodeInfo found=find(node.getChild(i));if(found!=null){node.recycle();return found;}}
         node.recycle();return null;
     }

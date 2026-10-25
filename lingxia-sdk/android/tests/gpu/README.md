@@ -23,8 +23,12 @@ with the host or lxapp. Shared interaction semantics belong in Rust tests under
 `crates/lingxia-ui`; Android adapter unit tests live in
 `lingxia-sdk/android/lingxia/src/test`.
 
-The product probes still depend on showcase page IDs and its package. Moving
-the drivers here does not make those scenarios app-independent.
+`probe-targets.json` names the app (and page) each probe and driver targets;
+probes without an entry target the showcase. `run-probe.mjs` launches smoke-host
+targets on their page and passes the package as `GPU_PACKAGE`.
+`examples/lingxia-showcase-gpu/tests/probe-ids.test.mjs` fails when a referenced
+test id no longer exists in its target's sources; ids built by string
+concatenation in a probe are not checked.
 
 - `probes/`: Java UiAutomation probes compiled to a temporary jar and run through
   adb `app_process` on the connected device.
@@ -36,7 +40,6 @@ Home. From the repository root:
 
 ```powershell
 node lingxia-sdk/android/tests/gpu/run-probe.mjs --probe GpuStreamProbe --serial <device> --sdk <sdk-directory>
-node lingxia-sdk/android/tests/gpu/scripts/verify-host.mjs <adb-path> <device>
 ```
 
 `run-probe.mjs --compile-only` checks all probe sources without running a device
@@ -78,6 +81,8 @@ lingxia-sdk/android/tests/gpu/fixtures/renderer --page <name>`.
 `GpuFlexBasisProbe` runs on the `flex` page: content versus zero basis,
 percentage basis and column growth, then a resize.
 
+The `scripts/verify-*.mjs` renderer workloads (host, input, IME, menus, lists,
+scrolling, images, performance) run on the `lab` page in the smoke host.
 With the `lab` page open, run
 `node lingxia-sdk/android/tests/gpu/scripts/verify-images.mjs <adb> <serial> --current-page`.
 This preserves that page instead of relaunching Home. The image workload checks
@@ -109,9 +114,8 @@ both previews and restored dark status icons after returning to the light page.
 It also cancels a compression and restarts it before checking successful output.
 It does not prove playback motion, compression ratio or mid-task navigation.
 
-Some historical renderer probes target the earlier smoke harness or require
-entering the playground first. They are retained as test sources; their presence
-does not establish current product coverage. See [the parity checklist](../../../../examples/lingxia-showcase-gpu/tests/PARITY.md).
+A probe's presence does not establish current product coverage. See
+[the parity checklist](../../../../examples/lingxia-showcase-gpu/tests/PARITY.md).
 
 For `GpuScanProbe`, push `fixtures/scanner-qr.png` to
 `/sdcard/Download/lingxia-gpu-scanner-fixture.png` and broadcast

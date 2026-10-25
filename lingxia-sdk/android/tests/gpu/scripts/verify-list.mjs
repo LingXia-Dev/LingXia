@@ -1,9 +1,9 @@
 ﻿import {execFileSync} from 'node:child_process';
 import {writeFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import { launcher, pkg } from './fixture-app.mjs';
 const [adb,serial]=process.argv.slice(2);
 if(!adb||!serial)throw Error('Usage: node verify-list.mjs <adb> <serial>');
-const pkg='com.lingxia.example.gpu.dev';
 const run=(...a)=>execFileSync(adb,['-s',serial,...a],{timeout:30000});
 const shell=(...a)=>run('shell',...a).toString();
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
@@ -12,7 +12,7 @@ const node=(xml,id)=>xml.match(new RegExp(`<node[^>]*resource-id="${pkg}:id/${id
 const bounds=n=>n.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/).slice(1).map(Number);
 async function until(check){for(let i=0;i<20;i++){const xml=dump();if(check(xml))return xml;await delay(300);}throw Error('List state timed out');}
 async function tap(id){const n=node(await until(x=>node(x,id)),id),b=bounds(n);shell('input','tap',String(Math.round((b[0]+b[2])/2)),String(Math.round((b[1]+b[3])/2)));}
-shell('am','force-stop',pkg);shell('am','start','-n',`${pkg}/com.lingxia.example.gpu.MainActivity`);
+shell('am','force-stop',pkg);shell('am','start','-n',`${launcher}`);
 await tap('tab-discover');await tap('discovery-save-1');
 await until(x=>node(x,'discovery-save-1')?.includes('Saved to your day'));
 await tap('discover-last');
@@ -26,7 +26,7 @@ const b=bounds(node(xml,'discover-list')), x=Math.round((b[0]+b[2])/2),h=b[3]-b[
 for(let i=0;i<4;i++){shell('input','swipe',String(x),String(Math.round(b[3]-h*.15)),String(x),String(Math.round(b[1]+h*.15)),'250');await delay(1300);}
 xml=await until(x=>!node(x,'discovery-save-1')&&/discovery-title-\d+/.test(x));
 const visible=xml.match(/resource-id="[^"]*:id\/(discovery-title-\d+)"/)[1];
-shell('input','keyevent','KEYCODE_HOME');await delay(500);shell('am','start','-n',`${pkg}/com.lingxia.example.gpu.MainActivity`);
+shell('input','keyevent','KEYCODE_HOME');await delay(500);shell('am','start','-n',`${launcher}`);
 await until(x=>node(x,visible));
 await tap('discover-first');await until(x=>node(x,'discovery-save-1')?.includes('Saved to your day'));
 const rotation=shell('settings','get','system','user_rotation').trim();

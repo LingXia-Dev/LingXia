@@ -2,7 +2,8 @@
 import {execFileSync} from 'node:child_process';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
-const [adb,serial]=process.argv.slice(2),pkg='com.lingxia.example.gpu.dev';
+import { launcher, pkg } from './fixture-app.mjs';
+const [adb,serial]=process.argv.slice(2);
 const run=(...args)=>execFileSync(adb,['-s',serial,...args],{timeout:30000});
 const shell=(...args)=>run('shell',...args).toString();
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -21,7 +22,7 @@ async function tapAt(position,long=false) {
  await delay(700);
 }
 async function expect(value){await until(t=>node(t)?.includes(`text="${value}"`));}
-shell('am','force-stop',pkg);shell('am','start','-n',`${pkg}/com.lingxia.example.gpu.MainActivity`);
+shell('am','force-stop',pkg);shell('am','start','-n',`${launcher}`);
 await tapAt((x,y,r,b)=>[(x+r)/2,(y+b)/2]);
 shell('input','text','hello%sworld');await expect('hello world');
 await tapAt((x,y,r,b)=>[x+33,(y+b)/2]);shell('input','text','X');await expect('Xhello world');

@@ -56,7 +56,7 @@ public final class GpuRefreshProbe {
    AccessibilityNodeInfo current=automation.getRootInActiveWindow();
    try{
     if(i==0||i==39)System.out.println("after shade root="+(current==null?"null":current.getPackageName()+" / "+current.getClassName()+" children="+current.getChildCount()));
-    returned=current!=null&&"com.lingxia.example.gpu.dev".contentEquals(current.getPackageName());
+    returned=current!=null&&GpuRadioProbe.PACKAGE.contentEquals(current.getPackageName());
    }
    finally{if(current!=null)current.recycle();}
    if(returned)break;Thread.sleep(150);
@@ -75,12 +75,12 @@ public final class GpuRefreshProbe {
    UiAutomation.class.getMethod("connect").invoke(automation);
    android.accessibilityservice.AccessibilityServiceInfo info=automation.getServiceInfo();
    info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;automation.setServiceInfo(info);Thread.sleep(900);
-   click("open-api");click("api-refresh");expect("pull-refresh-status","Idle");expect("pull-refresh-count","0");Rect resting=bounds("page-back");
+   GpuChromeProbe.tab("API");click("api-refresh");expect("pull-refresh-status","Idle");expect("pull-refresh-count","0");Rect resting=bounds("pull-refresh-title");
    click("pull-refresh-start");expect("pull-refresh-status","Refreshing...");expect("pull-refresh-count","1");
    check(!GpuApiProbe.text("pull-refresh-time").equals("Never"),"refresh timestamp");
    AccessibilityNodeInfo start=GpuApiProbe.node("pull-refresh-start");check(!start.isEnabled(),"start disabled during refresh");start.recycle();
    GpuRadioProbe.screenshot("gpu-independent-refresh-programmatic");
-   click("pull-refresh-stop");expect("pull-refresh-status","Idle");Thread.sleep(600);check(bounds("page-back").equals(resting),"stop restores page position");click("pull-refresh-stop");expect("pull-refresh-count","1");
+   click("pull-refresh-stop");expect("pull-refresh-status","Idle");Thread.sleep(600);check(bounds("pull-refresh-title").equals(resting),"stop restores page position");click("pull-refresh-stop");expect("pull-refresh-count","1");
    top();drag(0,30,false);expect("pull-refresh-count","1");
    top();drag(250,10,false);expect("pull-refresh-count","1");
    top();drag(0,650,true);expect("pull-refresh-count","1");expect("pull-refresh-status","Idle");
@@ -92,11 +92,11 @@ public final class GpuRefreshProbe {
    top();drag(0,650,false);expect("pull-refresh-count","3");
    GpuGridProbe.settings("put","system","accelerometer_rotation","0");GpuGridProbe.settings("put","system","user_rotation","1");Thread.sleep(1300);
    android.graphics.Bitmap shot=automation.takeScreenshot();check(shot.getWidth()>shot.getHeight(),"actual refresh landscape");shot.recycle();expect("pull-refresh-count","3");expect("pull-refresh-status","Refreshing...");
-   Rect shifted=bounds("page-back"),title=new Rect();AccessibilityNodeInfo nativeTitle=GpuUiProbe.waitNative("Pull Down Refresh");nativeTitle.getBoundsInScreen(title);nativeTitle.recycle();
+   Rect shifted=bounds("pull-refresh-title"),title=new Rect();AccessibilityNodeInfo nativeTitle=GpuUiProbe.waitNative("Pull Down Refresh");nativeTitle.getBoundsInScreen(title);nativeTitle.recycle();
    check(shifted.top>title.bottom+shifted.height(),"rotated refresh indicator retains exposed space: "+shifted+" / "+title);
    GpuRadioProbe.screenshot("gpu-independent-refresh-landscape");
    GpuGridProbe.settings("put","system","user_rotation",rotation);GpuGridProbe.settings("put","system","accelerometer_rotation",auto);Thread.sleep(1000);
-   GpuChromeProbe.back();click("api-refresh");expect("pull-refresh-count","0");check(bounds("page-back").equals(resting),"fresh page has no inherited refresh offset");expect("pull-refresh-status","Idle");
+   GpuChromeProbe.back();click("api-refresh");expect("pull-refresh-count","0");check(bounds("pull-refresh-title").equals(resting),"fresh page has no inherited refresh offset");expect("pull-refresh-status","Idle");
    click("pull-refresh-start");expect("pull-refresh-count","1");click("pull-refresh-stop");expect("pull-refresh-status","Idle");GpuChromeProbe.back();GpuChromeProbe.back();
    System.out.println("PASS GPU programmatic refresh, physical pull, short/horizontal/cancel gestures, scrolled content, rotation, offset restoration and page-instance teardown");
   }catch(Throwable error){error.printStackTrace();throw error;}

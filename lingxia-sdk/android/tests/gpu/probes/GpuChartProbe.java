@@ -85,10 +85,10 @@ public final class GpuChartProbe {
    android.accessibilityservice.AccessibilityServiceInfo info=a.getServiceInfo();
    info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;a.setServiceInfo(info);Thread.sleep(1100);
    GpuApiProbe.click(dark?"home-appearance-dark":"home-appearance-light");
-   GpuApiProbe.click("open-api");GpuApiProbe.click("api-stream");
+   GpuChromeProbe.tab("API");GpuApiProbe.click("api-stream");
    for(String kind:new String[]{"bar","line","pie"}){
     GpuApiProbe.click("stream-sample-"+kind);GpuStreamProbe.set("Show a "+kind+" chart");GpuStreamProbe.clickNow("stream-send");
-    GpuStreamProbe.waitText("stream-status","Completed");
+    GpuStreamProbe.waitSettled(2);
     AccessibilityNodeInfo plot=GpuApiProbe.node("chart-plot-"+kind);
     GpuUiProbe.check(String.valueOf(plot.getContentDescription()).contains(kind+" chart"),"chart accessible summary");
     plot.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.getId());plot.recycle();Thread.sleep(300);
@@ -123,7 +123,7 @@ public final class GpuChartProbe {
      GpuUiProbe.waitText("chart-selection",selected);
     }
     GpuApiProbe.click("chart-series-0");GpuUiProbe.waitText("chart-selection","Tap a legend item for details.");
-    GpuApiProbe.click("stream-clear");GpuStreamProbe.waitText("stream-count","0 messages");
+    GpuApiProbe.click("stream-clear");GpuStreamProbe.waitEmpty();
    }
    GpuChromeProbe.back();GpuChromeProbe.back();
    if(dark)GpuApiProbe.click("home-appearance-light");

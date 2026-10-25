@@ -1,7 +1,8 @@
 import {execFileSync} from 'node:child_process';
 import {mkdir,writeFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
-const [adb,serial,mode]=process.argv.slice(2),pkg='com.lingxia.example.gpu.dev';
+import { launcher, pkg } from './fixture-app.mjs';
+const [adb,serial,mode]=process.argv.slice(2);
 if(!adb||!serial||(mode&&mode!=='--current-page'))throw Error('Usage: node verify-images.mjs <adb> <serial> [--current-page]');
 const run=(...a)=>execFileSync(adb,['-s',serial,...a],{timeout:30000});
 const shell=(...a)=>run('shell',...a).toString();
@@ -11,7 +12,7 @@ const node=(xml,id)=>xml.match(new RegExp(`<node[^>]*resource-id="${pkg}:id/${id
 const bounds=n=>n.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/).slice(1).map(Number);
 async function until(check){for(let i=0;i<20;i++){const xml=dump();if(check(xml))return xml;await delay(300);}throw Error('Image state timed out');}
 async function tap(id){const b=bounds(node(await until(x=>node(x,id)),id));shell('input','tap',String(Math.round((b[0]+b[2])/2)),String(Math.round((b[1]+b[3])/2)));}
-if(mode!=='--current-page') { shell('am','force-stop',pkg);shell('am','start','-n',`${pkg}/com.lingxia.example.gpu.MainActivity`); }
+if(mode!=='--current-page') { shell('am','force-stop',pkg);shell('am','start','-n',`${launcher}`); }
 await mkdir('target/showcase-gpu-evidence',{recursive:true});
 const pid=shell('pidof',pkg).trim(),rawLog=()=>run('logcat','-d',`--pid=${pid}`).toString();
 // Home legitimately loads two resources before the single-source list workload.

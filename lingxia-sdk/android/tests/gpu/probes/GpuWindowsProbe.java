@@ -8,7 +8,7 @@ import android.graphics.Rect;
 import org.json.JSONArray;
 import org.json.JSONObject;
 public final class GpuWindowsProbe {
-    static String targetPackage="com.lingxia.example.gpu.dev";
+    static String targetPackage=GpuRadioProbe.PACKAGE;
     static void visit(AccessibilityNodeInfo node,JSONArray result) throws Exception {
         if(node==null)return;
         if(node.getPackageName()!=null && !targetPackage.contentEquals(node.getPackageName()))return;

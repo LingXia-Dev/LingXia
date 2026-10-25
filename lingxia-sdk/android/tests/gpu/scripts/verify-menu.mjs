@@ -2,7 +2,8 @@
 import {execFileSync} from 'node:child_process';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
-const [adb,serial]=process.argv.slice(2),pkg='com.lingxia.example.gpu.dev';
+import { launcher, pkg } from './fixture-app.mjs';
+const [adb,serial]=process.argv.slice(2);
 const run=(...args)=>execFileSync(adb,['-s',serial,...args],{timeout:30000});
 const shell=(...args)=>run('shell',...args).toString();
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -18,7 +19,7 @@ async function inputAt(long=false){const [x,y,r,b]=bounds(node(await until(t=>no
 async function expect(value){await until(t=>node(t,'greeting-input')?.includes(`text="${value}"`));}
 const out='target/gpu-menu-evidence';mkdirSync(out,{recursive:true});
 function capture(name){writeFileSync(`${out}/${name}.png`,run('exec-out','screencap','-p'));writeFileSync(`${out}/${name}.xml`,xml());writeFileSync(`${out}/${name}-windows.json`,JSON.stringify(windows()));}
-shell('am','force-stop',pkg);shell('am','start','-n',`${pkg}/com.lingxia.example.gpu.MainActivity`);
+shell('am','force-stop',pkg);shell('am','start','-n',`${launcher}`);
 await inputAt();shell('input','text','hello%sworld');await expect('hello world');
 await inputAt(true);await waitMenu('Copy');await waitMenu('Cut');await waitMenu('Paste');capture('selected-menu');
 const activePid=shell('pidof',pkg).trim();
@@ -35,7 +36,7 @@ if(!menu('Select all')){
 }
 await tapLabel('Select all');capture('all-selected');shell('input','text','done');await expect('done');assert(!menu('Cut'));
 await inputAt(true);await waitMenu('Copy');shell('input','keyevent','KEYCODE_HOME');await delay(400);
-shell('am','start','-n',`${pkg}/com.lingxia.example.gpu.MainActivity`);await until(t=>node(t,'greeting-input'));assert(!menu('Cut'));
+shell('am','start','-n',`${launcher}`);await until(t=>node(t,'greeting-input'));assert(!menu('Cut'));
 capture('resumed');
 const pid=shell('pidof',pkg).trim(),log=run('logcat','-d',`--pid=${pid}`).toString();
 assert.doesNotMatch(log,/FATAL EXCEPTION|UnsatisfiedLinkError|Render failed/);writeFileSync(`${out}/device.log`,log);

@@ -64,7 +64,7 @@ public class GpuUiProbe {
    UiAutomation.class.getMethod("connect").invoke(automation);
    android.accessibilityservice.AccessibilityServiceInfo info=automation.getServiceInfo();
    info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;automation.setServiceInfo(info);Thread.sleep(700);
-   click("open-api");
+   GpuChromeProbe.tab("API");
    if(args.length==0||!args[0].equals("controls")){
    enter("navigation");
    String first=text("lifecycle-instance-tag");check(!first.isEmpty(),"instance tag");
@@ -80,7 +80,7 @@ public class GpuUiProbe {
    click("lifecycle-open-popup");GpuRadioProbe.key(4);enter("navigation");
    AccessibilityNodeInfo popup=GpuRadioProbe.find(automation.getRootInActiveWindow(),"lifecycle-popup-close");check(popup==null,"popup resets after exit");
    waitText("lifecycle-view-counter","0");waitText("lifecycle-logic-counter","0");waitText("lifecycle-module-counter","1");
-   click("ui-switch-tab");GpuApiProbe.node("home-greet").recycle();click("open-api");
+   click("ui-switch-tab");GpuApiProbe.node("home-greet").recycle();GpuChromeProbe.tab("API");
    System.out.println("PASS navigation instances, local/Logic/module state, redirect, popup lifetime and switchTab");
    }
    if(args.length>0&&args[0].equals("navigation"))return;

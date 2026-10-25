@@ -27,7 +27,7 @@ public final class GpuCloudIdentityProbe {
   try{
    UiAutomation.class.getMethod("connect").invoke(automation);
    android.accessibilityservice.AccessibilityServiceInfo info=automation.getServiceInfo();info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;automation.setServiceInfo(info);Thread.sleep(1000);
-   GpuApiProbe.click("open-api");GpuApiProbe.click("api-cloud-auth");identity("Tenant A","User A");
+   GpuChromeProbe.tab("API");GpuApiProbe.click("api-cloud-auth");identity("Tenant A","User A");
    GpuApiProbe.click("cloud-add-identity");authorize("Tenant B");
    identity("Tenant B","User B");whoami("tenant-b");
    GpuApiProbe.click("cloud-activate-tenant-a");identity("Tenant A","User A");whoami("tenant-a");

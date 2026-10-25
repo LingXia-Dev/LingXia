@@ -1,0 +1,120 @@
+{
+  "apps": {
+    "showcase": {
+      "package": "com.lingxia.example.gpu.dev",
+      "sources": [
+        "examples/lingxia-showcase-gpu/lxapp/pages",
+        "examples/lingxia-showcase-gpu/lxapp/shared"
+      ]
+    },
+    "renderer": {
+      "package": "com.lingxia.ui.smoke",
+      "project": "lingxia-sdk/android/tests/gpu/fixtures/renderer"
+    },
+    "recovery": {
+      "package": "com.lingxia.ui.smoke",
+      "project": "lingxia-sdk/android/tests/gpu/fixtures/recovery"
+    },
+    "contracts": {
+      "sources": [
+        "lingxia-sdk/android/tests/gpu/fixtures/contracts"
+      ]
+    },
+    "hello": {
+      "package": "com.lingxia.ui.smoke",
+      "project": "examples/hello-ui"
+    }
+  },
+  "default": "showcase",
+  "targets": {
+    "GpuAccessibilityIdentityCheckProbe": "renderer/lab",
+    "GpuAccessibilityIdentityProbe": "renderer/lab",
+    "GpuAccessibilityProbe": "renderer/lab",
+    "GpuBorderProbe": "renderer/border",
+    "GpuCacheEmojiProbe": "renderer/lab",
+    "GpuCheckProbe": "renderer/lab",
+    "GpuEmojiProbe": "renderer/lab",
+    "GpuExplorationProbe": "renderer/lab",
+    "GpuFlexBasisProbe": "renderer/flex",
+    "GpuGradientProbe": "renderer/gradient",
+    "GpuGridProbe": "renderer/lab",
+    "GpuHandlesProbe": "renderer/lab",
+    "GpuHandlesScrollProbe": "renderer/lab",
+    "GpuItalicProbe": "renderer/italic",
+    "GpuOpacityProbe": "renderer/lab",
+    "GpuPaddedTextProbe": "renderer/padded_text",
+    "GpuPercentProbe": "renderer/percent",
+    "GpuProductContractTest": "contracts",
+    "GpuRadioProbe": "renderer/lab",
+    "GpuRadioRotationProbe": "renderer/lab",
+    "GpuRecoveryProbe": "recovery",
+    "GpuSearchProbe": "renderer/lab",
+    "GpuShadowProbe": "renderer/shadow",
+    "GpuSliderProbe": "renderer/lab",
+    "GpuSliderRotationProbe": "renderer/lab",
+    "GpuStackProbe": "renderer/lab",
+    "GpuStrikeProbe": "renderer/strike",
+    "GpuTextAlignProbe": "renderer/alignment",
+    "GpuTextLinesProbe": "renderer/lab",
+    "GpuTrackingProbe": "renderer/tracking",
+    "GpuTransferLimitProbe": "renderer/lab",
+    "GpuUndoProbe": "renderer/lab",
+    "GpuVectorProbe": "renderer/vector",
+    "verify-cached-emoji.mjs": "renderer/lab",
+    "verify-cjk.mjs": "renderer/lab",
+    "verify-clipboard.mjs": "renderer/lab",
+    "verify-host.mjs": "renderer/lab",
+    "verify-images.mjs": "renderer/lab",
+    "verify-input.mjs": "renderer/lab",
+    "verify-layout.mjs": "renderer/lab",
+    "verify-list.mjs": "renderer/lab",
+    "verify-menu.mjs": "renderer/lab",
+    "verify-pages.mjs": "hello",
+    "verify-performance.mjs": "renderer/lab",
+    "verify-reach.mjs": "renderer/lab",
+    "verify-scroll.mjs": "renderer/lab",
+    "verify-touch.mjs": "renderer/lab",
+    "verify-typography.mjs": "renderer/lab",
+    "verify.mjs": "renderer/lab"
+  },
+  "notIds": [
+    "resource-id",
+    "text",
+    "tenant-a",
+    "tenant-b",
+    "designer-42",
+    "not-a-color",
+    "long-ip",
+    "orientation-logs",
+    "bar-negative",
+    "bar-signed",
+    "horizontal-start",
+    "horizontal-tail",
+    "vertical-start",
+    "vertical-tail"
+  ],
+  "exempt": {
+    "GpuChromeProbe": {
+      "page-back": "asserted absent: the host owns the navigation bar"
+    },
+    "GpuDeviceLayoutProbe": {
+      "device-section-network": "asserted absent: one section per device page"
+    },
+    "GpuHomeParityProbe": {
+      "open-api": "asserted absent: Home has no navigation shortcuts"
+    },
+    "GpuTodoParityProbe": {
+      "todo-add": "asserted absent: Enter submits",
+      "todo-back": "asserted absent: the host owns Back"
+    },
+    "GpuFeedbackProbe": {
+      "feedback-bug": "composed from a lowercased category label"
+    },
+    "GpuRadioProbe": {
+      "home-scroll": "shared node() fallback for showcase probes"
+    },
+    "GpuTransferLimitProbe": {
+      "probe-transfer-limit": "injected from fixtures/transfer-limit-fixture.txt"
+    }
+  }
+}

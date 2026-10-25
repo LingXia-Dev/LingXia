@@ -18,7 +18,7 @@ public final class GpuMediaProbe {
    UiAutomation.class.getMethod("connect").invoke(a);
    android.accessibilityservice.AccessibilityServiceInfo info=a.getServiceInfo();
    info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;a.setServiceInfo(info);Thread.sleep(1100);
-   click("open-api");
+   GpuChromeProbe.tab("API");
    for(String mode:new String[]{"Pictures","Videos"}){
     click("api-media-"+mode);
     GpuUiProbe.waitText("media-selection-count","0 selected");

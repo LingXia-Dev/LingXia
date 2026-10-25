@@ -13,7 +13,7 @@ public final class GpuEmojiProbe {
     static final ArrayList<Integer> events=new ArrayList<>();
     static AccessibilityNodeInfo find(AccessibilityNodeInfo node) {
         if(node==null)return null;
-        if("com.lingxia.example.gpu.dev:id/greeting-input".equals(node.getViewIdResourceName()))return node;
+        if((GpuRadioProbe.PACKAGE+":id/greeting-input").equals(node.getViewIdResourceName()))return node;
         for(int i=0;i<node.getChildCount();i++){AccessibilityNodeInfo found=find(node.getChild(i));if(found!=null){node.recycle();return found;}}
         node.recycle();return null;
     }
@@ -40,7 +40,7 @@ public final class GpuEmojiProbe {
             service.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
             automation.setServiceInfo(service);
             automation.setOnAccessibilityEventListener(event->{
-                if("com.lingxia.example.gpu.dev".contentEquals(event.getPackageName()==null?"":event.getPackageName()))synchronized(events){events.add(event.getEventType());}
+                if(GpuRadioProbe.PACKAGE.contentEquals(event.getPackageName()==null?"":event.getPackageName()))synchronized(events){events.add(event.getEventType());}
             });
             Thread.sleep(700);
             for(String emoji:new String[]{"\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66","\ud83d\udc4d\ud83c\udffd","\ud83c\udde8\ud83c\uddf3","1\ufe0f\u20e3","\ud83d\ude00"}) {

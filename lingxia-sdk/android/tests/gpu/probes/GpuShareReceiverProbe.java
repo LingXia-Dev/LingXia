@@ -14,7 +14,7 @@ public final class GpuShareReceiverProbe {
   UiAutomation a=(UiAutomation)UiAutomation.class.getConstructor(Looper.class,Class.forName("android.app.IUiAutomationConnection")).newInstance(t.getLooper(),connection);GpuRadioProbe.automation=a;GpuApiProbe.a=a;
   try{
    UiAutomation.class.getMethod("connect").invoke(a);android.accessibilityservice.AccessibilityServiceInfo info=a.getServiceInfo();info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;a.setServiceInfo(info);Thread.sleep(1000);
-   GpuApiProbe.click("open-share");GpuApiProbe.click("share-text");receive();
+   GpuChromeProbe.tab("API");GpuApiProbe.click("api-share");GpuApiProbe.click("share-text");receive();
    GpuApiProbe.click("share-page");receive();
    GpuApiProbe.click("share-choose-image");GpuUiProbe.clickNative("Album");Thread.sleep(700);
    AccessibilityNodeInfo image=GpuMediaImageProbe.firstPhoto(a.getRootInActiveWindow());GpuUiProbe.check(image!=null,"image fixture");GpuUiProbe.check(image.performAction(AccessibilityNodeInfo.ACTION_CLICK),"select image");image.recycle();GpuUiProbe.clickNative("Done");GpuUiProbe.waitText("share-status","Image selected");

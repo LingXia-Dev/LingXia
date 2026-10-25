@@ -30,7 +30,7 @@ public class GpuChannelProbe {
   check(change.left>price.right&&change.top-price.top>8*scale,"smaller change label aligns to the price baseline rather than its center");
  }
  static int frames()throws Exception{
-  java.lang.Process pid=Runtime.getRuntime().exec(new String[]{"/system/bin/pidof","com.lingxia.example.gpu.dev"});
+  java.lang.Process pid=Runtime.getRuntime().exec(new String[]{"/system/bin/pidof",GpuRadioProbe.PACKAGE});
   String appPid=new java.io.BufferedReader(new java.io.InputStreamReader(pid.getInputStream())).readLine();
   check(pid.waitFor()==0&&appPid!=null,"GPU process exists");
   java.lang.Process log=Runtime.getRuntime().exec(new String[]{"/system/bin/logcat","-d","--pid="+appPid.trim(),"-s","LingXia.UI:I","*:S"});

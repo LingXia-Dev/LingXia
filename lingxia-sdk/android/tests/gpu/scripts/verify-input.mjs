@@ -2,8 +2,8 @@
 import {execFileSync} from 'node:child_process';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
+import { launcher, pkg } from './fixture-app.mjs';
 const [adb,serial]=process.argv.slice(2);
-const pkg='com.lingxia.example.gpu.dev', launcher=`${pkg}/com.lingxia.example.gpu.MainActivity`;
 const run=(...args)=>execFileSync(adb,['-s',serial,...args],{timeout:30000});
 const shell=(...args)=>run('shell',...args).toString();
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));

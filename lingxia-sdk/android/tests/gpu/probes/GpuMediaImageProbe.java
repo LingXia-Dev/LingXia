@@ -26,7 +26,7 @@ public final class GpuMediaImageProbe {
    android.accessibilityservice.AccessibilityServiceInfo info=a.getServiceInfo();
    info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;a.setServiceInfo(info);Thread.sleep(1100);
    if(args.length==0||!args[0].equals("resume")){
-    click("open-api");click("api-media-ImageInfo");click("media-pickImageForInfo");
+    GpuChromeProbe.tab("API");click("api-media-ImageInfo");click("media-pickImageForInfo");
     GpuUiProbe.clickNative("Album");
     Thread.sleep(600);
     AccessibilityNodeInfo allow=GpuUiProbe.nativeText(a.getRootInActiveWindow(),"Allow");

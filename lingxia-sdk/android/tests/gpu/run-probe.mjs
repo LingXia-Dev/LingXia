@@ -1,6 +1,7 @@
 // Compiles the UiAutomation probes to one dex jar and runs one on a device:
 //   node run-probe.mjs --probe GpuStreamProbe --serial <device> [--sdk <dir>] [--compile-only]
-import { mkdirSync, readdirSync, existsSync } from 'node:fs';
+// probe-targets.json names each probe's app; smoke-host apps are launched on their page first.
+import { mkdirSync, readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { androidJar, androidSdk, buildTools, options, repoRoot, run, tool } from './scripts/android-sdk.mjs';
@@ -29,6 +30,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const serial = args.serial ?? process.env.ANDROID_SERIAL;
   if (!serial) throw Error('Pass --serial or set ANDROID_SERIAL.');
   const adb = tool(sdk, 'platform-tools/adb');
+  const targets = JSON.parse(readFileSync(new URL('./probe-targets.json', import.meta.url), 'utf8'));
+  const [app, page] = (targets.targets[probe] ?? targets.default).split('/');
+  const { package: pkg, project } = targets.apps[app];
   run(adb, ['-s', serial, 'push', jar, '/data/local/tmp/gpu-independent-probe.jar']);
-  run(adb, ['-s', serial, 'shell', `CLASSPATH=/data/local/tmp/gpu-independent-probe.jar app_process /system/bin ${probe}`]);
+  if (pkg === 'com.lingxia.ui.smoke') {
+    console.log(`${probe} expects the smoke host built with --project ${project}`);
+    run(adb, ['-s', serial, 'shell', 'am', 'force-stop', pkg]);
+    run(adb, ['-s', serial, 'shell', 'am', 'start', '-W', '-n', `${pkg}/com.lingxia.ui.SmokeActivity`, ...(page ? ['--es', 'page', page] : [])]);
+  }
+  run(adb, ['-s', serial, 'shell', `GPU_PACKAGE=${pkg} CLASSPATH=/data/local/tmp/gpu-independent-probe.jar app_process /system/bin ${probe}`]);
 }

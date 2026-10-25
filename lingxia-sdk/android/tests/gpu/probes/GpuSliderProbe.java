@@ -33,7 +33,7 @@ public final class GpuSliderProbe {
   automation=(UiAutomation)UiAutomation.class.getConstructor(Looper.class,Class.forName("android.app.IUiAutomationConnection")).newInstance(thread.getLooper(),connection);GpuRadioProbe.automation=automation;
   try{
    UiAutomation.class.getMethod("connect").invoke(automation);android.accessibilityservice.AccessibilityServiceInfo service=automation.getServiceInfo();service.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;automation.setServiceInfo(service);
-   automation.setOnAccessibilityEventListener(event->{if("com.lingxia.example.gpu.dev".contentEquals(event.getPackageName()==null?"":event.getPackageName()))events.add(event.getEventType());});
+   automation.setOnAccessibilityEventListener(event->{if(GpuRadioProbe.PACKAGE.contentEquals(event.getPackageName()==null?"":event.getPackageName()))events.add(event.getEventType());});
    Thread.sleep(800);GpuRadioProbe.click("tab-explore");box();
    AccessibilityNodeInfo n=GpuRadioProbe.node("pause-length");require("android.widget.SeekBar".contentEquals(n.getClassName())&&"Minutes for a pause".contentEquals(n.getContentDescription()),"range role and label");require(n.getRangeInfo().getMin()==0&&n.getRangeInfo().getMax()==10,"range endpoints");require(!progress(n,Float.NaN),"reject NaN");n.recycle();value(3);
    progress(9.6f);value(10);n=GpuRadioProbe.node("pause-length");require(n.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD),"range decrement");n.recycle();value(9);
@@ -44,11 +44,11 @@ public final class GpuSliderProbe {
    n=GpuRadioProbe.find(automation.getRootInActiveWindow(),"pause-length");if(n!=null){n.getBoundsInScreen(r);require(r.top<oldTop,"vertical motion scrolls page");n.recycle();}box();value(3);
    System.out.println("PASS range semantics, accessibility snap/endpoints, tap/continuous drag and vertical scroll arbitration");
    boolean focused=false;
-   for(int i=0;i<24;i++){GpuRadioProbe.key(KeyEvent.KEYCODE_TAB);n=automation.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);focused=n!=null&&"com.lingxia.example.gpu.dev:id/pause-length".equals(n.getViewIdResourceName());if(n!=null)n.recycle();if(focused)break;}
+   for(int i=0;i<24;i++){GpuRadioProbe.key(KeyEvent.KEYCODE_TAB);n=automation.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);focused=n!=null&&(GpuRadioProbe.PACKAGE+":id/pause-length").equals(n.getViewIdResourceName());if(n!=null)n.recycle();if(focused)break;}
    require(focused,"Tab reaches slider");GpuRadioProbe.key(KeyEvent.KEYCODE_MOVE_END);value(10);GpuRadioProbe.key(KeyEvent.KEYCODE_DPAD_LEFT);value(9);GpuRadioProbe.key(KeyEvent.KEYCODE_DPAD_DOWN);value(6);GpuRadioProbe.key(KeyEvent.KEYCODE_DPAD_UP);value(9);GpuRadioProbe.key(KeyEvent.KEYCODE_MOVE_HOME);value(0);GpuRadioProbe.key(KeyEvent.KEYCODE_SPACE);value(0);GpuRadioProbe.key(KeyEvent.KEYCODE_DPAD_RIGHT);value(3);
    GpuRadioProbe.click("pause-toggle");n=GpuRadioProbe.node("pause-length");require(!n.isEnabled()&&!progress(n,9)&&!n.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD),"disabled range");n.recycle();value(3);GpuRadioProbe.click("pause-toggle");
    AccessibilityNodeInfo stale=GpuRadioProbe.node("pause-length");GpuRadioProbe.click("tab-hello");require(!progress(stale,10),"stale range rejected");stale.recycle();GpuRadioProbe.click("tab-explore");box();value(3);
-   GpuRadioProbe.key(KeyEvent.KEYCODE_HOME);shell("/system/bin/am","start","-n","com.lingxia.example.gpu.dev/com.lingxia.example.gpu.MainActivity");Thread.sleep(800);box();value(3);progress(6);value(6);
+   GpuRadioProbe.key(KeyEvent.KEYCODE_HOME);shell("/system/bin/am","start","-n",GpuRadioProbe.LAUNCHER);Thread.sleep(800);box();value(3);progress(6);value(6);
    require(events.contains(AccessibilityEvent.TYPE_VIEW_SELECTED),"presented range events");GpuRadioProbe.screenshot("gpu-slider");GpuRadioProbe.click("theme");box();value(6);GpuRadioProbe.screenshot("gpu-slider-dark");GpuRadioProbe.click("theme");
    System.out.println("PASS keyboard steps/Home/End, disabled and stale rejection, tab/background retention and light/dark rendering");
   }finally{UiAutomation.class.getMethod("disconnect").invoke(automation);thread.quitSafely();}

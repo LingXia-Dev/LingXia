@@ -1,7 +1,8 @@
 import {execFileSync} from 'node:child_process';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
-const [adb,serial]=process.argv.slice(2),pkg='com.lingxia.example.gpu.dev';
+import { launcher, pkg } from './fixture-app.mjs';
+const [adb,serial]=process.argv.slice(2);
 const run=(...args)=>execFileSync(adb,['-s',serial,...args],{timeout:30000});
 const shell=(...args)=>run('shell',...args).toString().trim();
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
@@ -30,7 +31,7 @@ async function capture(name,landscape){
 const auto=shell('settings','get','system','accelerometer_rotation'),rotation=shell('settings','get','system','user_rotation');
 try {
  shell('settings','put','system','accelerometer_rotation','0');shell('settings','put','system','user_rotation','0');
- shell('am','force-stop',pkg);shell('am','start','-n',`${pkg}/com.lingxia.example.gpu.MainActivity`);await delay(1500);
+ shell('am','force-stop',pkg);shell('am','start','-n',`${launcher}`);await delay(1500);
  const box=bounds(node(hierarchy(),'say-hello'));shell('input','tap',String((box[0]+box[2])/2),String((box[1]+box[3])/2));await delay(500);
  await capture('portrait',false);
  shell('settings','put','system','user_rotation','1');await delay(1000);await capture('landscape',true);

@@ -12,7 +12,7 @@ public final class GpuCheckProbe {
  static void require(boolean value,String message){if(!value)throw new AssertionError(message);}
  static AccessibilityNodeInfo find(AccessibilityNodeInfo n,String id){
   if(n==null)return null;
-  if(("com.lingxia.example.gpu.dev:id/"+id).equals(n.getViewIdResourceName()))return n;
+  if((GpuRadioProbe.PACKAGE+":id/"+id).equals(n.getViewIdResourceName()))return n;
   for(int i=0;i<n.getChildCount();i++){AccessibilityNodeInfo found=find(n.getChild(i),id);if(found!=null){n.recycle();return found;}}
   n.recycle();return null;
  }
@@ -50,7 +50,7 @@ public final class GpuCheckProbe {
    System.out.println("tab "+i);key(KeyEvent.KEYCODE_TAB);Thread.sleep(100);System.out.println("query focus "+i);
    AccessibilityNodeInfo focus=automation.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
    System.out.println("focus="+(focus==null?"null":focus.getViewIdResourceName()));
-   boolean target=focus!=null&&"com.lingxia.example.gpu.dev:id/keep-notes".equals(focus.getViewIdResourceName());if(focus!=null)focus.recycle();
+   boolean target=focus!=null&&(GpuRadioProbe.PACKAGE+":id/keep-notes").equals(focus.getViewIdResourceName());if(focus!=null)focus.recycle();
    if(target){key(KeyEvent.KEYCODE_SPACE);Thread.sleep(500);checked("keep-notes",true,"android.widget.CheckBox");key(KeyEvent.KEYCODE_ENTER);Thread.sleep(500);checked("keep-notes",false,"android.widget.CheckBox");return;}
   }
   throw new AssertionError("keyboard focus did not reach checkbox");

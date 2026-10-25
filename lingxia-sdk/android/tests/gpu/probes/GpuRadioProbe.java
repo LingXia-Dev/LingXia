@@ -7,9 +7,12 @@ import android.graphics.Rect;
 
 public final class GpuRadioProbe {
  static UiAutomation automation;
+ // run-probe.mjs sets GPU_PACKAGE for probes that target the smoke host's fixture app.
+ static final String PACKAGE=System.getenv("GPU_PACKAGE")==null?"com.lingxia.example.gpu.dev":System.getenv("GPU_PACKAGE");
+ static final String LAUNCHER=PACKAGE+(PACKAGE.equals("com.lingxia.ui.smoke")?"/com.lingxia.ui.SmokeActivity":"/com.lingxia.example.gpu.MainActivity");
  static void require(boolean ok,String message){if(!ok)throw new AssertionError(message);}
  static AccessibilityNodeInfo find(AccessibilityNodeInfo n,String id){
-  if(n==null)return null;if(("com.lingxia.example.gpu.dev:id/"+id).equals(n.getViewIdResourceName()))return n;
+  if(n==null)return null;if((GpuRadioProbe.PACKAGE+":id/"+id).equals(n.getViewIdResourceName()))return n;
   for(int i=0;i<n.getChildCount();i++){AccessibilityNodeInfo found=find(n.getChild(i),id);if(found!=null){n.recycle();return found;}}n.recycle();return null;
  }
  static AccessibilityNodeInfo node(String id)throws Exception{
@@ -33,7 +36,7 @@ public final class GpuRadioProbe {
   }require(checked==1,"exclusive selection");
  }
  static void focused(String id)throws Exception{
-  AccessibilityNodeInfo n=automation.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);require(n!=null&&("com.lingxia.example.gpu.dev:id/"+id).equals(n.getViewIdResourceName()),"focus "+id+" actual "+n);n.recycle();
+  AccessibilityNodeInfo n=automation.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);require(n!=null&&(GpuRadioProbe.PACKAGE+":id/"+id).equals(n.getViewIdResourceName()),"focus "+id+" actual "+n);n.recycle();
  }
  static void screenshot(String name)throws Exception{android.graphics.Bitmap b=automation.takeScreenshot();try(java.io.FileOutputStream out=new java.io.FileOutputStream("/data/local/tmp/"+name+".png")){b.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}b.recycle();}
  public static void main(String[] args)throws Exception{

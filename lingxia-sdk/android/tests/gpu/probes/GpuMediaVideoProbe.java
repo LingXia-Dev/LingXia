@@ -25,7 +25,7 @@ public final class GpuMediaVideoProbe {
    UiAutomation.class.getMethod("connect").invoke(a);
    android.accessibilityservice.AccessibilityServiceInfo info=a.getServiceInfo();
    info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;a.setServiceInfo(info);Thread.sleep(1100);
-   click("open-api");click("api-media-VideoTools");click("media-pickVideoForTools");
+   GpuChromeProbe.tab("API");click("api-media-VideoTools");click("media-pickVideoForTools");
    GpuUiProbe.clickNative("Album");Thread.sleep(900);
    AccessibilityNodeInfo video=GpuMediaImageProbe.firstPhoto(a.getRootInActiveWindow());
    GpuUiProbe.check(video!=null,"newest fixture video");GpuUiProbe.check(video.performAction(AccessibilityNodeInfo.ACTION_CLICK),"select video");video.recycle();

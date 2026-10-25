@@ -1,11 +1,12 @@
 import {execFileSync} from 'node:child_process';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
-const [adb,serial]=process.argv.slice(2),pkg='com.lingxia.example.gpu.dev';
+import { launcher, pkg } from './fixture-app.mjs';
+const [adb,serial]=process.argv.slice(2);
 const run=(...a)=>execFileSync(adb,['-s',serial,...a],{timeout:60000});
 const shell=(...a)=>run('shell',...a).toString();
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
-shell('am','force-stop',pkg);shell('am','start','-n',`${pkg}/com.lingxia.example.gpu.MainActivity`);await delay(1800);
+shell('am','force-stop',pkg);shell('am','start','-n',`${launcher}`);await delay(1800);
 shell('uiautomator','dump','/sdcard/cache-emoji.xml');
 const xml=shell('cat','/sdcard/cache-emoji.xml');
 const node=xml.match(new RegExp(`<node[^>]*resource-id="${pkg}:id/greeting-input"[^>]*>`))?.[0];assert.ok(node);

@@ -13,7 +13,7 @@ public final class GpuAccessibilityIdentityProbe {
     static final ArrayList<Integer> events=new ArrayList<>();
     static AccessibilityNodeInfo find(AccessibilityNodeInfo node) {
         if(node==null)return null;
-        if("com.lingxia.example.gpu.dev:id/greeting-input".equals(node.getViewIdResourceName()))return node;
+        if((GpuRadioProbe.PACKAGE+":id/greeting-input").equals(node.getViewIdResourceName()))return node;
         for(int i=0;i<node.getChildCount();i++){AccessibilityNodeInfo found=find(node.getChild(i));if(found!=null){node.recycle();return found;}}
         node.recycle();return null;
     }
@@ -45,7 +45,7 @@ public final class GpuAccessibilityIdentityProbe {
             service.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
             automation.setServiceInfo(service);
             automation.setOnAccessibilityEventListener(event->{
-                if("com.lingxia.example.gpu.dev".contentEquals(event.getPackageName()==null?"":event.getPackageName()))synchronized(events){events.add(event.getEventType());}
+                if(GpuRadioProbe.PACKAGE.contentEquals(event.getPackageName()==null?"":event.getPackageName()))synchronized(events){events.add(event.getEventType());}
             });
             Thread.sleep(700);
             AccessibilityNodeInfo node=input();require(node!=null,"input missing");
@@ -59,7 +59,7 @@ public final class GpuAccessibilityIdentityProbe {
             require(original.refresh() && "A\uD83D\uDE00\u4e2d\u6587".contentEquals(original.getText()),"old node does not resolve current text");
             original.recycle();
             AccessibilityNodeInfo focused=automation.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
-            require(focused!=null&&focused.isFocused()&&"com.lingxia.example.gpu.dev:id/greeting-input".equals(focused.getViewIdResourceName()),"virtual editor focus query");focused.recycle();
+            require(focused!=null&&focused.isFocused()&&(GpuRadioProbe.PACKAGE+":id/greeting-input").equals(focused.getViewIdResourceName()),"virtual editor focus query");focused.recycle();
             require(!select(node,2,3),"split surrogate accepted");
             require(select(node,1,3),"emoji selection rejected");node.recycle();
             node=await("A😀中文",1,3);node.recycle();

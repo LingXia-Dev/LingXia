@@ -13,7 +13,7 @@ public final class GpuHandlesScrollProbe {
     static final ArrayList<Integer> events=new ArrayList<>();
     static AccessibilityNodeInfo find(AccessibilityNodeInfo node) {
         if(node==null)return null;
-        if("com.lingxia.example.gpu.dev:id/greeting-input".equals(node.getViewIdResourceName()))return node;
+        if((GpuRadioProbe.PACKAGE+":id/greeting-input").equals(node.getViewIdResourceName()))return node;
         for(int i=0;i<node.getChildCount();i++){AccessibilityNodeInfo found=find(node.getChild(i));if(found!=null){node.recycle();return found;}}
         node.recycle();return null;
     }
@@ -91,7 +91,7 @@ public final class GpuHandlesScrollProbe {
             service.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS|android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
             automation.setServiceInfo(service);
             automation.setOnAccessibilityEventListener(event->{
-                if("com.lingxia.example.gpu.dev".contentEquals(event.getPackageName()==null?"":event.getPackageName()))synchronized(events){events.add(event.getEventType());}
+                if(GpuRadioProbe.PACKAGE.contentEquals(event.getPackageName()==null?"":event.getPackageName()))synchronized(events){events.add(event.getEventType());}
             });
             Thread.sleep(700);
             AccessibilityNodeInfo toggle=label("Short hello");if(toggle!=null){toggle.recycle();require(tapLabel("Short hello"),"single-line toggle");Thread.sleep(500);}

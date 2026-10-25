@@ -32,7 +32,7 @@ public class GpuOpacityProbe {
   try {
    UiAutomation.class.getMethod("connect").invoke(a);
    android.accessibilityservice.AccessibilityServiceInfo info=a.getServiceInfo();info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;a.setServiceInfo(info);Thread.sleep(800);
-   GpuApiProbe.click("home-appearance-light");GpuApiProbe.click("open-lab");pixels(true);GpuRadioProbe.screenshot("gpu-opacity-faded");
+   pixels(true);GpuRadioProbe.screenshot("gpu-opacity-faded");
    GpuApiProbe.click("opacity-class-toggle");pixels(false);
    GpuApiProbe.click("opacity-class-toggle");pixels(true);
    String auto=GpuSearchProbe.shell("/system/bin/settings","get","system","accelerometer_rotation").trim();
@@ -42,7 +42,7 @@ public class GpuOpacityProbe {
    }finally{GpuGridProbe.settings("put","system","user_rotation",rotation);GpuGridProbe.settings("put","system","accelerometer_rotation",auto);Thread.sleep(900);}
    pixels(true);
    GpuApiProbe.click("theme");pixels(true);GpuRadioProbe.screenshot("gpu-opacity-dark");
-   GpuApiProbe.click("theme");GpuRadioProbe.key(4);
+   GpuApiProbe.click("theme");
    System.out.println("PASS subtree opacity, overlap, sibling compositing, update, scrolling, rotation retention and light/dark GPU pixels");
   }finally{UiAutomation.class.getMethod("disconnect").invoke(a);thread.quitSafely();}
  }

@@ -1,9 +1,10 @@
 ﻿import {execFileSync} from 'node:child_process';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
+import { launcher, pkg } from './fixture-app.mjs';
 // Run from the repo root with adb path and serial; enable Simplified Chinese Pinyin first.
 // Pixel 3 / Android 12, Gboard 10.8.03.382062350. Restore the original layouts afterward.
-const [adb,serial]=process.argv.slice(2),pkg='com.lingxia.example.gpu.dev';
+const [adb,serial]=process.argv.slice(2);
 assert(adb&&serial,'usage: node verify-cjk.mjs <adb> <serial>');
 const run=(...args)=>execFileSync(adb,['-s',serial,...args],{timeout:30000});
 const shell=(...args)=>run('shell',...args).toString();
@@ -18,7 +19,7 @@ async function typePinyin(value){const keys=keyboard();for(const char of value){
 async function candidate(value){for(let i=0;i<5;i++){const match=keyboard().find(n=>n.description===value);if(match){tap(match.bounds);await delay(400);return;}await delay(200);}throw Error(`Missing candidate ${value}`);}
 const out='target/gpu-cjk-evidence';mkdirSync(out,{recursive:true});
 function capture(name){writeFileSync(`${out}/${name}.png`,run('exec-out','screencap','-p'));writeFileSync(`${out}/${name}.xml`,xml());writeFileSync(`${out}/${name}-keyboard.json`,JSON.stringify(keyboard()));}
-shell('am','force-stop',pkg);shell('am','start','-n',`${pkg}/com.lingxia.example.gpu.MainActivity`);await focus();
+shell('am','force-stop',pkg);shell('am','start','-n',`${launcher}`);await focus();
 assert(keyboard().some(n=>n.description==='\u5b8c\u6210'),'select Chinese Pinyin before running');
 await typePinyin('nihao');
 assert.match(node(xml(),'greeting-preview'),/Make it personal/);capture('pinyin-candidates');
@@ -27,7 +28,7 @@ await until(t=>node(t,'greeting-input')?.includes('text="\u4f60\u597d"')&&node(t
 capture('committed-chinese');
 await typePinyin('shijie');
 assert.match(node(xml(),'greeting-preview'),/Your note: \u4f60\u597d/);capture('second-preedit');
-shell('input','keyevent','KEYCODE_HOME');await delay(400);shell('am','start','-n',`${pkg}/com.lingxia.example.gpu.MainActivity`);
+shell('input','keyevent','KEYCODE_HOME');await delay(400);shell('am','start','-n',`${launcher}`);
 await until(t=>node(t,'greeting-input')?.includes('text="\u4f60\u597d"'));
 await focus();await typePinyin('shijie');await candidate('\u4e16\u754c');
 await until(t=>node(t,'greeting-input')?.includes('text="\u4f60\u597d\u4e16\u754c"'));

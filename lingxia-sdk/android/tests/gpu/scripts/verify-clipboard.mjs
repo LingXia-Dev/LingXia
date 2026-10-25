@@ -2,7 +2,8 @@
 import {execFileSync} from 'node:child_process';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
-const [adb,serial]=process.argv.slice(2),pkg='com.lingxia.example.gpu.dev';
+import { launcher, pkg } from './fixture-app.mjs';
+const [adb,serial]=process.argv.slice(2);
 const run=(...args)=>execFileSync(adb,['-s',serial,...args],{timeout:30000});
 const shell=(...args)=>run('shell',...args).toString();
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -13,7 +14,7 @@ async function until(check){for(let i=0;i<12;i++){const tree=xml();if(check(tree
 const shortcut=key=>shell('CLASSPATH=/data/local/tmp/gpu-shortcut-probe.jar','app_process','/system/bin','GpuShortcutProbe',key);
 const out='target/gpu-clipboard-evidence';mkdirSync(out,{recursive:true});
 function capture(name){writeFileSync(`${out}/${name}.png`,run('exec-out','screencap','-p'));writeFileSync(`${out}/${name}.xml`,xml());}
-shell('am','force-stop',pkg);shell('am','start','-n',`${pkg}/com.lingxia.example.gpu.MainActivity`);
+shell('am','force-stop',pkg);shell('am','start','-n',`${launcher}`);
 const tree=await until(t=>node(t,'greeting-input'));
 const [x,y,r,b]=node(tree,'greeting-input').match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/).slice(1).map(Number);
 shell('input','tap',String(Math.round((x+r)/2)),String(Math.round((y+b)/2)));await delay(800);

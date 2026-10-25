@@ -7,7 +7,7 @@ public final class GpuCloudProviderProbe {
   UiAutomation a=(UiAutomation)UiAutomation.class.getConstructor(Looper.class,Class.forName("android.app.IUiAutomationConnection")).newInstance(t.getLooper(),connection);GpuRadioProbe.automation=a;GpuApiProbe.a=a;
   try{
    UiAutomation.class.getMethod("connect").invoke(a);android.accessibilityservice.AccessibilityServiceInfo info=a.getServiceInfo();info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;a.setServiceInfo(info);Thread.sleep(1000);
-   GpuApiProbe.click("open-api");GpuApiProbe.click("api-cloud-auth");
+   GpuChromeProbe.tab("API");GpuApiProbe.click("api-cloud-auth");
    if(GpuApiProbe.text("cloud-current-tenant").equals("Tenant A")){GpuApiProbe.click("cloud-logout");GpuUiProbe.waitText("cloud-current-tenant","No active tenant");}
    GpuApiProbe.click("cloud-login");
    // WebView exposes the link label separately from its clickable ancestor.

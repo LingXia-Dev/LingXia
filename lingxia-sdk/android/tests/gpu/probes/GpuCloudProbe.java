@@ -15,7 +15,7 @@ public final class GpuCloudProbe {
    UiAutomation.class.getMethod("connect").invoke(automation);
    android.accessibilityservice.AccessibilityServiceInfo info=automation.getServiceInfo();
    info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;automation.setServiceInfo(info);Thread.sleep(900);
-   click("open-api");click("api-cloud-auth");
+   GpuChromeProbe.tab("API");click("api-cloud-auth");
    expect("cloud-auth-status",MISSING);
    click("cloud-login");expect("cloud-auth-status",MISSING);
    click("cloud-add-identity");expect("cloud-auth-status",MISSING);

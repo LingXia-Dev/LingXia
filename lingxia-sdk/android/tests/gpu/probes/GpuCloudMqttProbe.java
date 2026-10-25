@@ -21,7 +21,7 @@ public final class GpuCloudMqttProbe {
   UiAutomation a=(UiAutomation)UiAutomation.class.getConstructor(Looper.class,Class.forName("android.app.IUiAutomationConnection")).newInstance(t.getLooper(),connection);GpuRadioProbe.automation=a;GpuApiProbe.a=a;
   try{
    UiAutomation.class.getMethod("connect").invoke(a);android.accessibilityservice.AccessibilityServiceInfo info=a.getServiceInfo();info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;a.setServiceInfo(info);Thread.sleep(1000);
-   GpuApiProbe.click("open-api");GpuApiProbe.click("api-cloud-mqtt");GpuUiProbe.waitText("cloud-mqtt-active","Active");
+   GpuChromeProbe.tab("API");GpuApiProbe.click("api-cloud-mqtt");GpuUiProbe.waitText("cloud-mqtt-active","Active");
    GpuUiProbe.check(subscriptionCount()==1,"broker subscription present");
    publish(3);GpuUiProbe.waitText("cloud-mqtt-count","3");GpuUiProbe.waitText("cloud-mqtt-last-topic","lingxia/tenant/tenant-a/demo/mqtt");GpuUiProbe.contains("cloud-mqtt-payload","GPU verified message");
    GpuApiProbe.click("cloud-mqtt-stop");GpuUiProbe.waitText("cloud-mqtt-active","Inactive");publish(1);Thread.sleep(500);GpuUiProbe.waitText("cloud-mqtt-count","3");

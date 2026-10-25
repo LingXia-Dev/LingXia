@@ -17,7 +17,7 @@ public final class GpuScanProbe {
   try{
    UiAutomation.class.getMethod("connect").invoke(a);
    android.accessibilityservice.AccessibilityServiceInfo info=a.getServiceInfo();info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;a.setServiceInfo(info);Thread.sleep(1000);
-   GpuApiProbe.click("open-api");GpuApiProbe.click("api-media-ScanCode");
+   GpuChromeProbe.tab("API");GpuApiProbe.click("api-media-ScanCode");
    GpuApiProbe.click("media-openScanSourcePicker");GpuUiProbe.clickNative("Camera & Photo");
    GpuApiProbe.click("media-openScanTypePicker");GpuUiProbe.clickNative("qrCode");
    open();GpuRadioProbe.key(4);Thread.sleep(600);
@@ -29,7 +29,7 @@ public final class GpuScanProbe {
    GpuUiProbe.waitText("media-scan-result","LingXia GPU scanner verification");GpuUiProbe.waitText("media-scan-type","QR_CODE");
    GpuRadioProbe.screenshot("gpu-independent-scan-result");
    GpuRadioProbe.key(4);Thread.sleep(500);GpuApiProbe.node("api-media-ScanCode").recycle();
-   GpuRadioProbe.key(4);Thread.sleep(500);GpuApiProbe.node("open-api").recycle();
+   GpuRadioProbe.key(4);Thread.sleep(500);GpuApiProbe.node("api-media-ScanCode").recycle();
    System.out.println("PASS scanner cancel/reopen, album QR decoding and GPU result/type display");
   }finally{UiAutomation.class.getMethod("disconnect").invoke(a);thread.quitSafely();}
  }

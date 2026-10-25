@@ -47,8 +47,8 @@ public class GpuApiProbe {
  click("clipboard-write-typed");status("Wrote typed text item");click("clipboard-types");status("Peeked types");check(text("clipboard-types-value").contains("text"),"text type");
  click("clipboard-write-sample-image");status("Wrote sample PNG");click("clipboard-write-sample-image");status("Wrote sample PNG");click("clipboard-read-all");status("Read image");node("clipboard-image").recycle();GpuRadioProbe.screenshot("gpu-clipboard-image");
  click("clipboard-clear");status("Cleared");click("clipboard-read-text");status("No text on clipboard");GpuRadioProbe.screenshot("gpu-clipboard-empty");GpuChromeProbe.back();
- click("api-share");click("share-text");AccessibilityNodeInfo root=a.getRootInActiveWindow();check(root!=null&&!"com.lingxia.example.gpu.dev".contentEquals(root.getPackageName()),"system share sheet");root.recycle();GpuRadioProbe.screenshot("gpu-share-sheet");GpuRadioProbe.key(4);node("share-text").recycle();
- click("share-choose-file");Thread.sleep(700);root=a.getRootInActiveWindow();check(root!=null&&!"com.lingxia.example.gpu.dev".contentEquals(root.getPackageName()),"system file picker");root.recycle();GpuRadioProbe.key(4);check(text("share-status").equals("File selection canceled"),"file cancel");GpuChromeProbe.back();
+ click("api-share");click("share-text");AccessibilityNodeInfo root=a.getRootInActiveWindow();check(root!=null&&!GpuRadioProbe.PACKAGE.contentEquals(root.getPackageName()),"system share sheet");root.recycle();GpuRadioProbe.screenshot("gpu-share-sheet");GpuRadioProbe.key(4);node("share-text").recycle();
+ click("share-choose-file");Thread.sleep(700);root=a.getRootInActiveWindow();check(root!=null&&!GpuRadioProbe.PACKAGE.contentEquals(root.getPackageName()),"system file picker");root.recycle();GpuRadioProbe.key(4);check(text("share-status").equals("File selection canceled"),"file cancel");GpuChromeProbe.back();
  GpuChromeProbe.tab("Home");System.out.println("PASS clipboard text/typed/image roundtrips, types, clear/empty, share sheet and file-picker cancellation");
  }finally{UiAutomation.class.getMethod("disconnect").invoke(a);t.quitSafely();}
  }

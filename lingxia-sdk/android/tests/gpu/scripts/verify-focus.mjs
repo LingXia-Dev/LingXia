@@ -28,6 +28,6 @@ try{
  console.log('PASS: keyed focus after callback/label update, sibling insertion, rotation, removal without fallback activation');
 }finally{
  shell('settings','put','system','user_rotation',rotation);shell('settings','put','system','accelerometer_rotation',auto);
- if(await readFile(file,'utf8')===probe){await writeFile(file,original);await until(x=>node(x,'tab-hello'));}
+ if(await readFile(file,'utf8')===probe){await writeFile(file,original);await until(x=>node(x,'home-name'));}
  else throw Error('Probe changed externally; original saved in target/ui-focus-original.tsx');
 }

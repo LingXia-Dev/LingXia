@@ -16,7 +16,7 @@ public final class GpuExplorationProbe {
         for(int i=0;i<node.getChildCount();i++){AccessibilityNodeInfo found=find(node.getChild(i),id);if(found!=null){node.recycle();return found;}}
         node.recycle();return null;
     }
-    static AccessibilityNodeInfo input(){return find(automation.getRootInActiveWindow(),"com.lingxia.example.gpu.dev:id/greeting-input");}
+    static AccessibilityNodeInfo input(){return find(automation.getRootInActiveWindow(),GpuRadioProbe.PACKAGE+":id/greeting-input");}
     static void motion(long down,int action,float x,float y){
         MotionEvent event=MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,x,y,0);event.setSource(InputDevice.SOURCE_MOUSE);
         require(automation.injectInputEvent(event,true),"touch injection");event.recycle();
@@ -42,7 +42,7 @@ public final class GpuExplorationProbe {
             motion(down,MotionEvent.ACTION_HOVER_MOVE,r.centerX()+10,r.centerY());Thread.sleep(350);
             motion(down,MotionEvent.ACTION_HOVER_EXIT,r.centerX()+10,r.centerY());Thread.sleep(1200);
             synchronized(events){
-                String suffix=":com.lingxia.example.gpu.dev:id/greeting-input:android.widget.EditText";
+                String suffix=":"+GpuRadioProbe.PACKAGE+":id/greeting-input:android.widget.EditText";
                 require(events.contains(AccessibilityEvent.TYPE_VIEW_HOVER_ENTER+suffix),"missing virtual input hover enter: "+events);
                 require(events.contains(AccessibilityEvent.TYPE_VIEW_HOVER_EXIT+suffix),"missing virtual input hover exit: "+events);
             }
