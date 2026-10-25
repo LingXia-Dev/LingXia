@@ -198,6 +198,10 @@ internal object NativeApi {
     @JvmStatic
     external fun onHostAppearanceChanged()
 
+    /** The system asked the process to trim memory; hidden GPU pages give up their surfaces. */
+    @JvmStatic
+    external fun onMemoryPressure()
+
     /** Process-level foreground: whether any activity is started. */
     @JvmStatic
     external fun onHostForegroundChanged(foreground: Boolean)

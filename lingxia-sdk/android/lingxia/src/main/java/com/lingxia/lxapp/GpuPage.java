@@ -60,9 +60,12 @@ public final class GpuPage extends FrameLayout {
     @Override public boolean canScrollVertically(int direction) { return content.canScrollVertically(direction); }
     public void resume() { content.resume(); }
     public void pause() { content.pause(); }
+    public void freeze() { content.freeze(); }
     public void capturePreview(java.util.function.Consumer<android.graphics.Bitmap> completed) { content.captureFrame(completed); }
     public void captureReadyPreview(java.util.function.Consumer<android.graphics.Bitmap> completed) { content.captureFrameWhenReady(completed); }
     public void afterNextPresentation(java.util.function.Consumer<Boolean> completed) { content.afterNextPresentation(completed); }
+    public void revealOnFirstFrame(Runnable then) { content.revealOnFirstFrame(then); }
+    public boolean hasLiveFrame() { return content.hasLiveFrame(); }
 
     /** {@code worker} keys the View worker; pages of one app session share it. */
     public static void create(long token, String appId, String worker, String path, String webTag, String source, boolean logic) {
@@ -84,6 +87,10 @@ public final class GpuPage extends FrameLayout {
 
     public static void receive(long token, long generation, String frame) {
         MAIN.post(() -> { GpuPage page = PAGES.get(token); if (page != null) page.content.receive(generation, frame); });
+    }
+
+    public static void retainSurface(long token, boolean retained) {
+        MAIN.post(() -> { GpuPage page = PAGES.get(token); if (page != null) page.content.setSurfaceRetained(retained); });
     }
 
     public static void updateEnvironment(long token, String update) {

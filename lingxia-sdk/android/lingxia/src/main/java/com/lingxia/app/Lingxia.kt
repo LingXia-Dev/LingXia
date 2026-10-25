@@ -597,7 +597,12 @@ object Lingxia {
         // by that override.
         var nightBit = application.resources.configuration.uiMode and
             android.content.res.Configuration.UI_MODE_NIGHT_MASK
-        application.registerComponentCallbacks(object : android.content.ComponentCallbacks {
+        application.registerComponentCallbacks(object : android.content.ComponentCallbacks2 {
+            override fun onTrimMemory(level: Int) {
+                if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+                    NativeApi.onMemoryPressure()
+                }
+            }
             override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
                 NativeApi.onHostLocaleChanged(getSystemLocale())
                 val newNightBit = newConfig.uiMode and
@@ -607,7 +612,7 @@ object Lingxia {
                     NativeApi.onHostAppearanceChanged()
                 }
             }
-            override fun onLowMemory() {}
+            override fun onLowMemory() { NativeApi.onMemoryPressure() }
         })
         return true
     }

@@ -103,6 +103,7 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeSurfaceLost", "(J)V", surface_lost),
         method!("nativeRequestFrame", "(J)V", request_frame),
         method!("nativeRedraw", "(J)V", redraw),
+        method!("nativeFrameCurrent", "(J)Z", frame_current),
         method!("nativeVsync", "(J)V", vsync),
         method!("nativeRetry", "(J)V", retry),
         method!("nativeConnect", "(JJLjava/lang/String;)V", connect),
@@ -344,6 +345,14 @@ extern "system" fn connection<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, handle
     run(&mut env, |_| {
         Ok(host(handle)?.lifecycle().connection().get() as jlong)
     })
+}
+
+extern "system" fn frame_current<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+) -> jboolean {
+    run(&mut env, |_| Ok(host(handle)?.frame_is_current()))
 }
 
 extern "system" fn session_failed<'a>(

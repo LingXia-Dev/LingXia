@@ -42,6 +42,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native void nativeSurfaceLost(long host);
     static native void nativeRequestFrame(long host);
     static native void nativeRedraw(long host);
+    static native boolean nativeFrameCurrent(long host);
     static native void nativeVsync(long host);
     static native void nativeRetry(long host);
     static native void nativeConnect(long host, long connection, String nonce);
@@ -211,7 +212,73 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             addView(feedback, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         }
     }
-    public void resume() { active = true; updateSurfaceVisibility(); requestFrame(); }
+    /**
+     * Visibility reaches the host after the next layout, where this page sits as shown: an
+     * environment sampled before that would describe the previous page's chrome.
+     */
+    public void resume() {
+        active = true; frozen = false; updateSurfaceVisibility();
+        if (layoutPending) return;
+        layoutPending = true;
+        getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+            @Override public boolean onPreDraw() {
+                getViewTreeObserver().removeOnPreDrawListener(this);
+                layoutPending = false;
+                if (destroyed || !active) return true;
+                syncVisibility();
+                // Shown in the same frame when the target already holds a frame for this layout.
+                if (!revealed && nativeFrameCurrent(host)) reveal();
+                return true;
+            }
+        });
+        invalidate();
+    }
+    private boolean layoutPending;
+    /** API 29+: a hidden page fades its layer and keeps its surface while the runtime retains it. */
+    private static final boolean KEEP_SURFACES = android.os.Build.VERSION.SDK_INT >= 29;
+    private boolean surfaceRetained = KEEP_SURFACES, revealed = true, holdSurface;
+    private static final float OFF_SCREEN = -100_000f;
+    public static boolean keepsSurfaces() { return KEEP_SURFACES; }
+    /** The runtime's retention decision for this page while it is hidden. */
+    public void setSurfaceRetained(boolean retained) {
+        surfaceRetained = KEEP_SURFACES && retained;
+        updateSurfaceVisibility();
+    }
+    private final java.util.ArrayList<Runnable> revealWaiters = new java.util.ArrayList<>();
+    /** A returning page whose frame is stale is shown after this long, never left under a wrong highlight. */
+    private static final long REVEAL_DEADLINE_MS = 300;
+    /** A first visit waits for its first frame; this only catches a page that never produces one. */
+    private static final long FIRST_FRAME_WATCHDOG_MS = 2000;
+    private int revealEpoch;
+    private boolean everPresented;
+    /** Stay hidden, so the page beneath remains on screen, until this page presents or fails or the deadline passes; then run [then]. */
+    public void revealOnFirstFrame(Runnable then) {
+        revealed = false; revealWaiters.add(then); updateSurfaceVisibility();
+        int epoch = ++revealEpoch;
+        boolean returning = everPresented;
+        main.postDelayed(() -> {
+            if (epoch != revealEpoch || revealed) return;
+            // Never show a frame drawn for another size: until one is current the surface stays off
+            // screen and the activity canvas, painted with the host's page floor, shows through.
+            holdSurface = !nativeFrameCurrent(host);
+            String page = Integer.toHexString(System.identityHashCode(this));
+            if (returning) Log.w("LingXia.UI", "reveal deadline: page " + page
+                + " shown before a current frame (attached=" + gpuAttached + ", stale=" + holdSurface + ")");
+            else Log.e("LingXia.UI", "first-frame watchdog: page " + page + " never presented (attached=" + gpuAttached + ")");
+            reveal();
+        }, returning ? REVEAL_DEADLINE_MS : FIRST_FRAME_WATCHDOG_MS);
+    }
+    private void reveal() {
+        if (revealed) return;
+        revealed = true; updateSurfaceVisibility();
+        java.util.ArrayList<Runnable> waiters = new java.util.ArrayList<>(revealWaiters);
+        revealWaiters.clear();
+        for (Runnable waiter : waiters) waiter.run();
+    }
+    /** The surface still holds a presented frame, so showing the page needs no new frame. */
+    public boolean hasLiveFrame() {
+        return !destroyed && hasSurfaceFrame && surface.getHolder().getSurface().isValid() && nativeFrameCurrent(host);
+    }
     @Override protected void onVisibilityChanged(View changedView, int visibility) {
         super.onVisibilityChanged(changedView, visibility);
         updateSurfaceVisibility();
@@ -220,14 +287,23 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         super.onWindowVisibilityChanged(visibility);
         syncVisibility();
     }
+    /** A page being left keeps its last frame on screen but schedules nothing more. */
+    private boolean frozen;
+    public void freeze() { frozen = true; syncVisibility(); }
     private void syncVisibility() {
-        if (!destroyed && host != 0) nativeSetVisible(host, active && isShown() && getWindowVisibility() == View.VISIBLE);
+        if (!destroyed && host != 0 && !(active && layoutPending))
+            nativeSetVisible(host, active && !frozen && isShown() && getWindowVisibility() == View.VISIBLE);
     }
     private void updateSurfaceVisibility() {
         if (surface == null) return;
         syncVisibility();
-        // A retained page must hide its separate compositor layer as well as its view tree.
-        surface.setVisibility(active && isShown() ? View.VISIBLE : View.INVISIBLE);
+        // A hidden page hides its compositor layer as well as its view tree: by moving it off
+        // screen while its surface is retained (SurfaceView ignores alpha), otherwise by releasing it.
+        boolean shown = isShown();
+        surface.setVisibility(shown && (active || surfaceRetained) ? View.VISIBLE : View.INVISIBLE);
+        if (KEEP_SURFACES) surface.setTranslationX(active && revealed && !holdSurface ? 0f : OFF_SCREEN);
+        setImportantForAccessibility(active ? View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+            : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         if (ime != null) updateCaretActivity();
     }
     private void updateCaretActivity() {
@@ -283,7 +359,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     }
     public void pause() {
         surface.cancelRefreshGesture(); finishSurfaceRedraws();
-        active = false; updateSurfaceVisibility(); ime.clear(true);
+        active = false; frozen = false; updateSurfaceVisibility(); ime.clear(true);
         cancel();
     }
     public void park() {
@@ -406,7 +482,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             }
             // Subtract space already reserved by the host; insets describe only this surface's overlap.
             int[] origin = new int[2], rootOrigin = new int[2];
-            surface.getLocationOnScreen(origin); getRootView().getLocationOnScreen(rootOrigin);
+            // The surface fills this view; a hidden page moves only the surface off screen,
+            // so measure from the view or the layout would take that offset as an inset.
+            getLocationOnScreen(origin); getRootView().getLocationOnScreen(rootOrigin);
             int x = origin[0] - rootOrigin[0], y = origin[1] - rootOrigin[1];
             int trailingX = getRootView().getWidth() - x - surface.getWidth();
             int trailingY = getRootView().getHeight() - y - surface.getHeight();
@@ -492,6 +570,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
 
     private void showFailure(int message, int action, boolean retained, String error) {
         if (message < 0) { recovery.clear(); return; }
+        reveal();
         finishPresentation(false);
         Log.e("LingXia.UI", "Render failed: " + error);
         if (listener != null) listener.onError(new IllegalStateException(error));
@@ -522,7 +601,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             attaching = false;
             if (destroyed) return;
             gpuAttached = attached;
-            requestFrame();
+            if (!destroyed) nativeRedraw(host);
         }
         @Override public void announce(int event, int id) { surface.announce(event, id); }
         @Override public void announceText(int id, boolean secure, String before, String after) {
@@ -586,6 +665,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public void loaded() { if (listener != null) listener.onLoaded(); }
         @Override public void presented() {
             if (listener != null && snapshotText != null) listener.onFrame(snapshotText);
+            everPresented = true;
+            if (holdSurface) { holdSurface = false; updateSurfaceVisibility(); }
+            reveal();
             finishPresentation(true);
         }
         @Override public void message(long connection, String message) {
@@ -694,7 +776,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
         }
         @Override public boolean onTouchEvent(MotionEvent event) {
-            if (destroyed || nativeSessionFailed(host)) return false;
+            if (destroyed || !active || nativeSessionFailed(host)) return false;
             if (selectionHandles.touch(event)) {
                 cancel();
                 getParent().requestDisallowInterceptTouchEvent(selectionHandles.dragging());
