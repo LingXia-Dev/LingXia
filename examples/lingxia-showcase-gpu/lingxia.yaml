@@ -25,6 +25,10 @@ capabilities:
   notifications: true
   browser: true
 
+browser:
+  webui:
+    path: ../../crates/lingxia-browser-shell/webui
+
 resources:
   bundles:
     - type: lxapp
