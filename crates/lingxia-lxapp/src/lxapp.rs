@@ -110,8 +110,8 @@ pub use runtime_ops::{
     mark_lxapp_active, notify_lxapp_host_visibility, notify_lxapp_host_visibility_by_session,
     notify_page_host_visibility, notify_page_host_visibility_by_webtag, notify_page_instance,
     notify_page_instance_by_id, on_low_memory, open_control_lxapp_page, open_lxapp,
-    refresh_auto_appearances, restart_lxapp, terminate_lxapp, touch_page_instance_by_id,
-    uninstall_lxapp,
+    open_lxapp_in_region, refresh_auto_appearances, restart_lxapp, show_lxapp_in_region,
+    terminate_lxapp, touch_page_instance_by_id, uninstall_lxapp,
 };
 pub(crate) use runtime_registry::get_lxapps_manager;
 pub use runtime_registry::{
@@ -4368,6 +4368,93 @@ impl From<lingxia_platform::traits::app_runtime::LxAppOpenMode> for LxAppOpenReg
 pub fn open_region(appid: &str) -> Option<LxAppOpenRegion> {
     let app = runtime_registry::try_get(appid)?;
     app.current_open_region()
+}
+
+/// How a surface is on screen right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShellPresentation {
+    /// The active main.
+    Main,
+    /// A main the user switched away from.
+    Background,
+    /// An aside docked beside the main.
+    Dock,
+    /// An aside covering the main (a compact window, no room to dock, or
+    /// maximized).
+    Overlay,
+    /// An aside that is not on screen (collapsed, or another tab of its slot).
+    Hidden,
+}
+
+impl ShellPresentation {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Main => "main",
+            Self::Background => "background",
+            Self::Dock => "dock",
+            Self::Overlay => "overlay",
+            Self::Hidden => "hidden",
+        }
+    }
+
+    /// Whether the user can see it.
+    pub const fn shown(self) -> bool {
+        matches!(self, Self::Main | Self::Dock | Self::Overlay)
+    }
+}
+
+/// Where an lxapp is presented now: its region, the shell surface that shows
+/// it, how that surface is on screen, and the window's size class.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShellPresence {
+    pub region: LxAppOpenRegion,
+    /// The shell surface presenting the app: its app id for a main or a
+    /// runtime aside, a declared surface's own id otherwise.
+    pub surface_id: String,
+    pub presentation: ShellPresentation,
+    pub size_class: lingxia_surface::SizeClass,
+}
+
+/// The app's [`ShellPresence`], read from the window's surface graph at the
+/// moment of the call — the single source of truth the shells render — so it
+/// follows every move the user makes. `None` when the app owns no live shell
+/// presentation.
+pub fn shell_presence(appid: &str) -> Option<ShellPresence> {
+    let app = runtime_registry::try_get(appid)?;
+    let region = app.current_open_region()?;
+    let plan = app.surface_derived_layout()?;
+    let surface_id = match region {
+        LxAppOpenRegion::Main => appid.to_string(),
+        LxAppOpenRegion::Aside => app.open_panel_id().unwrap_or_else(|| appid.to_string()),
+    };
+    let presentation = match region {
+        LxAppOpenRegion::Main if plan.active_main_id.as_deref() == Some(appid) => {
+            ShellPresentation::Main
+        }
+        LxAppOpenRegion::Main => ShellPresentation::Background,
+        LxAppOpenRegion::Aside => plan
+            .aside_slots
+            .iter()
+            .find(|slot| {
+                slot.visible
+                    && !slot.collapsed
+                    && slot.active_child.as_deref() == Some(surface_id.as_str())
+            })
+            .map(|slot| {
+                if slot.overlay {
+                    ShellPresentation::Overlay
+                } else {
+                    ShellPresentation::Dock
+                }
+            })
+            .unwrap_or(ShellPresentation::Hidden),
+    };
+    Some(ShellPresence {
+        region,
+        surface_id,
+        presentation,
+        size_class: plan.size_class,
+    })
 }
 
 #[cfg(test)]

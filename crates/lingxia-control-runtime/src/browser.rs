@@ -52,11 +52,43 @@ fn handle_browser_command_impl(
     match handler {
         methods::browser::OPEN => {
             let args: OpenArgs = parse_args(handler, args)?;
+            let region = match args.placement.as_ref().map(|p| p.region.trim()) {
+                None | Some("main") => "main",
+                Some("aside") => "aside",
+                Some(other) => {
+                    return Err(format!(
+                        "placement.region must be `main` or `aside`; got `{other}`"
+                    ));
+                }
+            };
+            // Navigating a given tab keeps it where it is; a placement or an
+            // owner only applies to a new page, and an owner only to one in
+            // the side panel.
+            if args.tab_id.is_some() && args.placement.is_some() {
+                return Err("placement applies only to a new page, not with tab_id".to_string());
+            }
+            if args.owner.is_some() && region != "aside" {
+                return Err("owner applies only to a page placed in the aside".to_string());
+            }
+            if region == "aside" {
+                return open_side_panel_page(&args.url, args.owner.as_deref()).map(Some);
+            }
+            let navigates = args.tab_id.is_some();
             let tab_id = run_async(lingxia_browser::open_and_present(
                 &args.url,
                 args.tab_id.as_deref(),
             ))?;
-            Ok(Some(json!({ "tab_id": tab_id })))
+            // A new tab is presented at the front of the main browser by
+            // `open_and_present`; a navigated tab stays wherever it is,
+            // which this call does not know.
+            Ok(Some(if navigates {
+                json!({ "tab_id": tab_id })
+            } else {
+                json!({
+                    "tab_id": tab_id,
+                    "surface": { "id": null, "region": "main", "presentation": "main" },
+                })
+            }))
         }
         methods::browser::TABS => {
             let _args: EmptyArgs = parse_args(handler, args)?;
@@ -447,6 +479,116 @@ struct OpenArgs {
     url: String,
     #[serde(default)]
     tab_id: Option<String>,
+    /// Where a new page goes: `main` (the main browser, default) or `aside`
+    /// (a page of the side panel).
+    #[serde(default)]
+    placement: Option<OpenPlacement>,
+    /// The lxapp a side-panel page belongs to (its opener); the shell's home
+    /// lxapp when absent.
+    #[serde(default)]
+    owner: Option<String>,
+}
+
+#[cfg(feature = "browser")]
+#[derive(Deserialize)]
+struct OpenPlacement {
+    region: String,
+}
+
+/// Open `url` as a page of the side panel, owned by `owner`, the way
+/// `lx.surface.openUrl(url, { as: 'aside' })` does, and report the browser
+/// tab behind it (for the page tools) and where the core put it.
+#[cfg(feature = "browser")]
+fn open_side_panel_page(url: &str, owner: Option<&str>) -> Result<Value, String> {
+    use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
+    let url = url.trim();
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err(format!(
+            "a side-panel page needs an http(s) URL; got `{url}`"
+        ));
+    }
+    let owner = owner
+        .map(str::trim)
+        .filter(|owner| !owner.is_empty())
+        .or_else(|| lingxia_app_context::home_app_id())
+        .and_then(lxapp::try_get)
+        .ok_or_else(|| "no running lxapp to own the side-panel page".to_string())?;
+    if owner.aside_browser_is_compact() {
+        // A compact window has no side panel: the page opens in the compact
+        // aside browser over the main, as the Logic API does.
+        let opened = owner
+            .runtime
+            .open_url(OpenUrlRequest {
+                owner_appid: owner.appid.clone(),
+                owner_session_id: owner.session_id(),
+                url: url.to_string(),
+                target: OpenUrlTarget::AsideBrowser,
+                want_tab_id: true,
+            })
+            .map_err(|err| err.to_string())?;
+        let tab_id = opened
+            .tab_id
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| "the compact browser did not name its tab".to_string())?;
+        return Ok(json!({
+            "tab_id": tab_id,
+            "surface": { "id": null, "region": "aside", "presentation": "overlay" },
+        }));
+    }
+    let id = format!(
+        "surface-control-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or_default()
+    );
+    // Tabs already open at this URL: a new page's tab is the one that is not.
+    let existing = lingxia_browser::side_panel_tabs_for_url(url);
+    let mut request =
+        lxapp::PageSurfaceRequest::new(id.clone(), lxapp::PageSurfaceTarget::Url(url.to_string()));
+    request.role = lxapp::SurfaceRole::Aside;
+    request.kind = lxapp::SurfaceKind::Overlay;
+    request.position = lxapp::SurfacePosition::Right;
+    let surface = owner.open_surface(request).map_err(|err| err.to_string())?;
+    // The platform creates the tab while presenting the surface. A reopen
+    // of the same URL resolves to the page already there (another surface
+    // id) and keeps its tab, the newest at that URL; a new page's tab is one
+    // that was not there before.
+    let reused = surface.id != id;
+    let lookup = url.to_string();
+    let tab_id = run_async(async move {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            let tabs = lingxia_browser::side_panel_tabs_for_url(&lookup);
+            let found = if reused {
+                tabs.into_iter().next()
+            } else {
+                tabs.into_iter().find(|tab_id| !existing.contains(tab_id))
+            };
+            if let Some(tab_id) = found {
+                return Ok(tab_id);
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Err(
+                    "the side-panel page opened but its browser tab did not appear within 10s"
+                        .to_string(),
+                );
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })?;
+    let region = match surface.role {
+        lxapp::SurfaceRole::Main => "main",
+        _ => "aside",
+    };
+    Ok(json!({
+        "tab_id": tab_id,
+        "surface": {
+            "id": surface.id,
+            "region": region,
+            "presentation": surface.presentation,
+        },
+    }))
 }
 
 #[cfg(feature = "browser")]

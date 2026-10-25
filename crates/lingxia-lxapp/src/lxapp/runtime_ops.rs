@@ -66,6 +66,71 @@ pub fn ensure_host_surface_owner() -> Result<Arc<LxApp>, LxAppError> {
     ensure_builtin_lxapp(HOST_SURFACE_OWNER_APP_ID)
 }
 
+/// Open `appid` in `region`. A main comes to the front; an aside joins the
+/// side panel at `edge` (the panel's current edge when `None`), registered
+/// through `shell`, the app whose surface graph the window shows; only an
+/// aside needs it.
+pub fn open_lxapp_in_region(
+    shell: Option<&LxApp>,
+    appid: &str,
+    region: LxAppOpenRegion,
+    edge: Option<&str>,
+    mut options: LxAppStartupOptions,
+) -> Result<Arc<LxApp>, LxAppError> {
+    match region {
+        LxAppOpenRegion::Main => {
+            let app = open_lxapp(appid, options)?;
+            app.activate_main();
+            Ok(app)
+        }
+        LxAppOpenRegion::Aside => {
+            let shell = shell.ok_or_else(|| {
+                LxAppError::UnsupportedOperation(format!(
+                    "opening {appid} as an aside needs the window's shell lxapp"
+                ))
+            })?;
+            options.open_mode = lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel;
+            options.panel_id = appid.to_string();
+            let app = open_lxapp(appid, options)?;
+            shell.register_host_aside(appid, edge.unwrap_or_else(|| shell.side_panel_edge()));
+            Ok(app)
+        }
+    }
+}
+
+/// Bring the already-open `appid` into view in `region`, the region it
+/// holds. An aside the host cannot show again (no managed shell surface, as
+/// on mobile) is opened again.
+pub async fn show_lxapp_in_region(
+    shell: Option<&LxApp>,
+    appid: &str,
+    region: LxAppOpenRegion,
+    edge: Option<&str>,
+) -> Result<Arc<LxApp>, LxAppError> {
+    let app = super::runtime_registry::try_get(appid)
+        .ok_or_else(|| LxAppError::ResourceNotFound(format!("lxapp is not active: {appid}")))?;
+    match region {
+        LxAppOpenRegion::Main => {
+            app.activate_main();
+            Ok(app)
+        }
+        LxAppOpenRegion::Aside => {
+            let surface_id = app.open_panel_id().unwrap_or_else(|| appid.to_string());
+            let shown = match shell {
+                Some(shell) => shell
+                    .set_shell_surface_visible(&surface_id, true, None, edge)
+                    .await
+                    .is_ok(),
+                None => false,
+            };
+            if shown {
+                return Ok(app);
+            }
+            open_lxapp_in_region(shell, appid, region, edge, LxAppStartupOptions::new(""))
+        }
+    }
+}
+
 pub fn open_lxapp(appid: &str, options: LxAppStartupOptions) -> Result<Arc<LxApp>, LxAppError> {
     let manager = super::runtime_registry::get_lxapps_manager()
         .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;

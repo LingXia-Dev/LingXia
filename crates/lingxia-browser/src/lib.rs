@@ -330,6 +330,12 @@ pub fn tabs() -> Vec<BrowserTabInfo> {
     tabs::browser_tabs()
 }
 
+/// The browser tabs that can be behind a side-panel page opened at `url`,
+/// newest first. See `tabs::side_panel_tabs_for_url`.
+pub fn side_panel_tabs_for_url(url: &str) -> Vec<String> {
+    tabs::side_panel_tabs_for_url(url)
+}
+
 pub fn current_tab() -> Option<BrowserTabInfo> {
     tabs::browser_current_tab()
 }

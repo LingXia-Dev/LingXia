@@ -580,6 +580,28 @@ pub fn browser_tab_info(tab_id: &str) -> Option<BrowserTabInfo> {
         .map(|tab| build_tab_info(&normalized, tab))
 }
 
+/// The browser tabs that can be behind a side-panel page opened at `url`,
+/// newest first: standalone or aside tabs (whichever the platform's side
+/// panel creates) whose initial URL is `url`. URL-callback tabs belong to
+/// their opener and never match.
+pub fn side_panel_tabs_for_url(url: &str) -> Vec<String> {
+    let initial_url =
+        lxapp::lingxia_surface::normalize_initial_url(&normalize_browser_target_url(url));
+    let state = lock_state();
+    let mut matches = state
+        .tabs
+        .iter()
+        .filter(|(_, tab)| {
+            (tab.standalone || tab.aside)
+                && !tab.url_callback.load(std::sync::atomic::Ordering::Acquire)
+                && tab.initial_url.as_deref() == Some(initial_url.as_str())
+        })
+        .map(|(tab_id, tab)| (tab.created_order, tab_id.clone()))
+        .collect::<Vec<_>>();
+    matches.sort_by(|left, right| right.0.cmp(&left.0));
+    matches.into_iter().map(|(_, tab_id)| tab_id).collect()
+}
+
 /// Tabs in creation order — the listing contract for automation and shells;
 /// id ordering is an accident of stable-key naming and must not leak out.
 pub fn browser_tabs() -> Vec<BrowserTabInfo> {
@@ -1768,6 +1790,57 @@ mod tests {
         tab.standalone = false;
         tab.current_url = Some("lingxia://settings".into());
         assert!(ClosedBrowserTab::from_tab(&tab).is_none());
+    }
+
+    #[test]
+    fn side_panel_tabs_are_found_by_their_first_url_newest_first() {
+        let insert = |standalone: bool, aside: bool, url_callback: bool, url: &str| {
+            let tab_id = generate_tab_id();
+            lock_state().tabs.insert(
+                tab_id.clone(),
+                BrowserTabState {
+                    session_id: 42,
+                    created_order: next_browser_created_order(),
+                    create_token: 1,
+                    create_in_flight: false,
+                    pending_url: None,
+                    initial_url: Some(lxapp::lingxia_surface::normalize_initial_url(url)),
+                    current_url: None,
+                    title: None,
+                    title_url: None,
+                    favicon_png: None,
+                    can_go_back: false,
+                    can_go_forward: false,
+                    discarded: false,
+                    data_mode: WebViewDataMode::ProfileDefault,
+                    url_callback: Arc::new(AtomicBool::new(url_callback)),
+                    standalone,
+                    aside,
+                    owner_appid: None,
+                    owner_session_id: None,
+                },
+            );
+            tab_id
+        };
+        let url = "https://side-panel.example/page";
+        // A product tab, a URL-callback tab and another URL never match.
+        let product = insert(false, false, false, url);
+        let callback = insert(true, false, true, url);
+        let other = insert(true, false, false, "https://elsewhere.example/");
+        assert!(side_panel_tabs_for_url(url).is_empty());
+        // A standalone (macOS docked browser) or aside (Windows) tab does,
+        // the newest when there are two.
+        let older = insert(true, false, false, url);
+        assert_eq!(side_panel_tabs_for_url(url), vec![older.clone()]);
+        let newer = insert(false, true, false, url);
+        assert_eq!(
+            side_panel_tabs_for_url(url),
+            vec![newer.clone(), older.clone()]
+        );
+        let mut state = lock_state();
+        for tab_id in [product, callback, other, older, newer] {
+            state.tabs.remove(&tab_id);
+        }
     }
 
     #[test]
