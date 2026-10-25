@@ -101,10 +101,10 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
             )}
           </Card>
           {Boolean(data.ipAddr) && (
-            <row className="px-4 py-2 gap-2 items-center rounded-full bg-black/20 backdrop-blur-md">
-              <spacer className="w-1.5 h-1.5 rounded-full bg-green-400" />
-              <text className="text-xs font-medium tracking-wide text-white/90">{t('myIp')}</text>
-              <text testId="home-ip" className="text-xs font-mono text-white/90">
+            <row className="max-w-full px-4 py-2 gap-2 items-center rounded-full bg-black/20 backdrop-blur-md">
+              <spacer className="shrink-0 w-1.5 h-1.5 rounded-full bg-green-400" />
+              <text className="shrink-0 text-xs font-medium tracking-wide text-white/90">{t('myIp')}</text>
+              <text testId="home-ip" className="min-w-0 grow truncate text-xs font-mono text-white/90">
                 {data.ipAddr}
               </text>
             </row>

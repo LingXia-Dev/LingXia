@@ -556,6 +556,60 @@ mod text_overflow {
         );
     }
 
+    /// A centered `max-w-full` pill whose value is `min-w-0 grow truncate` stays inside the padded parent;
+    /// without the max width it sizes to its min-content, the full nowrap text, as in CSS.
+    #[test]
+    fn truncated_value_keeps_a_centered_pill_inside_its_parent() {
+        let label = |id, content: &str, fields: &[(usize, serde_json::Value)]| {
+            let mut node = node(tag::TEXT, Some(1), id, fields);
+            node.text = content.into();
+            node
+        };
+        let records = vec![
+            node(
+                tag::COLUMN,
+                None,
+                "root",
+                &[
+                    (field::WIDTH, json!(200)),
+                    (field::PADDING, json!(20)),
+                    (field::ALIGN, json!("center")),
+                ],
+            ),
+            node(
+                tag::ROW,
+                Some(0),
+                "pill",
+                &[
+                    (field::PADDING, json!(16)),
+                    (field::GAP, json!(8)),
+                    (field::MAX_WIDTH_PERCENT, json!(100)),
+                ],
+            ),
+            label("label", "My IP", &[(field::SHRINK, json!(0))]),
+            label(
+                "value",
+                "240e:3a8:4ce5:6d70:6f26:bb66:3863:a7f1",
+                &[
+                    (field::MIN_WIDTH, json!(0)),
+                    (field::GROW, json!(1)),
+                    (field::OVERFLOW, json!("hidden")),
+                    (field::WHITE_SPACE, json!("nowrap")),
+                    (field::TEXT_OVERFLOW, json!("ellipsis")),
+                ],
+            ),
+        ];
+        let display = Renderer::default().layout(&records, 200, 200, 1.0).unwrap();
+        let [x, _, w, _] = display.nodes[1].bounds;
+        assert!(x >= 20.0 && x + w <= 180.0, "pill {x}+{w}");
+        let [vx, _, vw, _] = display.nodes[3].bounds;
+        assert!(vw > 0.0 && vx + vw <= x + w - 16.0 + 0.5, "value {vx}+{vw}");
+        assert!(
+            display.nodes[2].bounds[2] > 20.0,
+            "the label keeps its width"
+        );
+    }
+
     #[test]
     fn transforms_paint_while_semantics_keep_the_source_and_underlines_draw() {
         let display = Renderer::default()
