@@ -2949,6 +2949,7 @@ async function exactHostAxNode(
  */
 async function asidePageTop(
   t: Fixture,
+  platform: string,
   desktop: DesktopDriver,
   host: DesktopWindowInfo,
   pageName: 'chat' | 'feedback',
@@ -2983,7 +2984,11 @@ async function asidePageTop(
     return { top: rect.top, left: rect.left };
   }).catch(() => null) as { top: number; left: number } | null;
   if (!offset) return undefined;
-  return { top: node.rect.y - Math.round(offset.top), left: node.rect.x - Math.round(offset.left) };
+  // DOM rects are CSS pixels; Windows AX rects are physical pixels.
+  return {
+    top: node.rect.y - nativeWindowExtent(platform, host, offset.top),
+    left: node.rect.x - nativeWindowExtent(platform, host, offset.left),
+  };
 }
 
 /** A bundled lxapp other than Chat, opened as a main beside the Chat aside. */
@@ -3083,7 +3088,7 @@ spec('keeps an aside lxapp page stack and its floats inside the aside', {
     const navbarHeight = nativeWindowExtent(platform, host, 38);
     const slop = nativeWindowExtent(platform, host, 4);
     const rootTop = await waitForValue(
-      () => asidePageTop(t, desktop, host!, 'chat', 'AI Chat'),
+      () => asidePageTop(t, platform, desktop, host!, 'chat', 'AI Chat'),
       'Chat page top at the aside stack root',
     );
     if (platform === 'macos') {
@@ -3094,7 +3099,7 @@ spec('keeps an aside lxapp page stack and its floats inside the aside', {
     const feedback = await pushFeedback('navbar back');
     // One page deeper the bar appears: the page moves down by its height.
     const pushedTop = await waitForValue(async () => {
-      const top = await asidePageTop(t, desktop, host!, 'feedback', 'Help us improve');
+      const top = await asidePageTop(t, platform, desktop, host!, 'feedback', 'Help us improve');
       return top && top.top - rootTop.top >= navbarHeight - slop ? top : undefined;
     }, 'aside navigation bar under the tab strip after navigateTo');
     expect(Math.abs(pushedTop.top - rootTop.top - navbarHeight) <= slop).toBeTruthy();
@@ -3124,7 +3129,7 @@ spec('keeps an aside lxapp page stack and its floats inside the aside', {
     await expectChatBackInAside('navbar Back');
     // Back at the root the bar collapses again.
     await waitForValue(async () => {
-      const top = await asidePageTop(t, desktop, host!, 'chat', 'AI Chat');
+      const top = await asidePageTop(t, platform, desktop, host!, 'chat', 'AI Chat');
       return top && Math.abs(top.top - rootTop.top) <= slop ? top : undefined;
     }, 'aside navigation bar collapsed again at the stack root');
 
