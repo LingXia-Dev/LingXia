@@ -771,54 +771,59 @@ extern "system" fn attach<'a>(
         let window =
             unsafe { gpu_surface::NativeWindow::from_surface(env.get_raw(), surface.as_raw())? };
         let host = host(handle)?.clone();
-        let existing = host
-            .adapter()
-            .gpu
-            .load(std::sync::atomic::Ordering::Acquire);
+        let adapter = host.adapter();
+        let existing = adapter.gpu.load(std::sync::atomic::Ordering::Acquire);
+        adapter.set_target(adapter::Target::Waiting);
         let (width, height) = (width as u32, height as u32);
-        host.worker().clone().run(move |_| {
-            let attached = gpu_surface::attach(window, width, height, existing);
-            let main = host.clone();
-            lingxia_ui::platform::MainThread::post(
-                host.adapter(),
-                Box::new(move || {
-                    let adapter = main.adapter();
-                    let ok = match attached {
-                        Ok(id) => {
-                            adapter.gpu.store(id, std::sync::atomic::Ordering::Release);
-                            true
-                        }
-                        Err(error) => {
-                            adapter::log(&format!(
-                                "GPU unavailable; using CPU reference renderer: {error}"
-                            ));
-                            false
-                        }
-                    };
-                    let surface = adapter.gpu.load(std::sync::atomic::Ordering::Acquire);
-                    let record = gpu_surface::adapter(surface).unwrap_or_default();
-                    let backend = if !ok {
-                        "vello-cpu"
-                    } else if record.starts_with("Gl|") {
-                        "vello-gles"
-                    } else {
-                        "vello-vulkan"
-                    };
-                    adapter::info(&format!(
-                        "backend={backend} surface={surface} adapter={record}"
-                    ));
-                    adapter.java(|env, platform| {
-                        env.call_method(
-                            platform,
-                            jni_str!("gpuAttached"),
-                            jni_sig!("(Z)V"),
-                            &[JValue::Bool(ok)],
-                        )?;
-                        Ok(())
-                    });
-                }),
-            );
-        });
+        let fallback = host.clone();
+        // Off the shared View worker: an attach must never queue behind another page's frames.
+        std::thread::Builder::new()
+            .name("lingxia-gpu-attach".into())
+            .spawn(move || {
+                let attached = gpu_surface::attach(window, width, height, existing);
+                let main = host.clone();
+                lingxia_ui::platform::MainThread::post(
+                    host.adapter(),
+                    Box::new(move || {
+                        let adapter = main.adapter();
+                        let ok = match attached {
+                            Ok(id) => {
+                                adapter.gpu.store(id, std::sync::atomic::Ordering::Release);
+                                adapter.set_target(adapter::Target::Ready);
+                                true
+                            }
+                            Err(error) => {
+                                adapter.set_target(adapter::Target::Unavailable);
+                                adapter::log(&format!(
+                                    "GPU unavailable; using CPU reference renderer: {error}"
+                                ));
+                                false
+                            }
+                        };
+                        let surface = adapter.gpu.load(std::sync::atomic::Ordering::Acquire);
+                        let (record, backend) = match gpu_surface::describe(surface) {
+                            Some(described) if ok => described,
+                            _ => (String::new(), "vello-cpu"),
+                        };
+                        adapter::info(&format!(
+                            "backend={backend} surface={surface} adapter={record}"
+                        ));
+                        adapter.java(|env, platform| {
+                            env.call_method(
+                                platform,
+                                jni_str!("gpuAttached"),
+                                jni_sig!("(Z)V"),
+                                &[JValue::Bool(ok)],
+                            )?;
+                            Ok(())
+                        });
+                    }),
+                );
+            })
+            .map_err(|error| {
+                fallback.adapter().set_target(adapter::Target::Unavailable);
+                Error::from(format!("UI_SURFACE: {error}"))
+            })?;
         Ok(())
     })
 }

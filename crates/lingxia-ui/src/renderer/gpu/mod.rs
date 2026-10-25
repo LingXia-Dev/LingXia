@@ -104,11 +104,17 @@ pub struct Presenter {
     context: Context,
     /// This presenter's adapter record for the crash sentinel.
     adapter: String,
+    backend: &'static str,
 }
 
 impl Presenter {
     pub fn context(&self) -> Context {
         self.context.clone()
+    }
+
+    /// The renderer label for frame metrics, from the adapter this presenter actually uses.
+    pub fn backend(&self) -> &'static str {
+        self.backend
     }
 
     /// The adapter record: backend, ids, driver and renderer release.
@@ -163,7 +169,15 @@ impl Presenter {
             wgpu::PresentMode::Fifo,
         ))
         .map_err(|e| e.to_string())?;
-        let adapter = adapter_record(&shared.devices[surface.dev_id].adapter().get_info());
+        let info = shared.devices[surface.dev_id].adapter().get_info();
+        let adapter = adapter_record(&info);
+        let backend = match info.backend {
+            wgpu::Backend::Gl => "vello-gles",
+            wgpu::Backend::Vulkan => "vello-vulkan",
+            wgpu::Backend::Metal => "vello-metal",
+            wgpu::Backend::Dx12 => "vello-dx12",
+            _ => "vello-gpu",
+        };
         if !crate::renderer::sentinel::arm(&adapter) {
             return Err(format!("{BLOCKED}: {adapter}"));
         }
@@ -190,6 +204,7 @@ impl Presenter {
             depth: Some(depth),
             context,
             adapter,
+            backend,
         })
     }
 

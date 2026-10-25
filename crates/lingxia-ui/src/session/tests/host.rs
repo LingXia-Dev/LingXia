@@ -44,6 +44,8 @@ struct Fake {
     clock: Mutex<Duration>,
     environment: Mutex<Option<FrameEnvironment>>,
     restart: bool,
+    /// A target still attaching: frames are declined, never produced some other way.
+    pending: std::sync::atomic::AtomicBool,
 }
 
 impl Fake {
@@ -73,6 +75,9 @@ impl Presenter for Fake {
             .unwrap()
             .prepared
             .push(std::thread::current().id());
+        if self.pending.load(std::sync::atomic::Ordering::Acquire) {
+            return Ok(None);
+        }
         Ok(Some(Encoded {
             texts: display
                 .nodes
@@ -210,6 +215,7 @@ impl Platform {
                     }),
                 })),
                 restart: false,
+                pending: Default::default(),
             },
             worker.clone(),
             logic,
@@ -488,6 +494,41 @@ fn pages_share_one_worker_and_every_platform_call_lands_on_the_main_thread() {
     platform.settle(&[&first, &second]);
     assert_eq!(first.adapter().log.lock().unwrap().presented.len(), frames);
     assert_eq!(last(&second), ["second 7"]);
+}
+
+#[test]
+fn a_page_whose_target_is_attaching_waits_without_holding_up_its_worker() {
+    let worker = ViewWorker::shared("test:attach").unwrap();
+    let platform = Platform::new(&[&worker]);
+    // Page A's image transport never completes.
+    let stalled = platform.host(
+        &worker,
+        &source("function render(){return h('column',{},h('text',{},'A'),h('image',{src:'lx://slow.png',alt:'',style:{width:20,height:20}}))}"),
+        false,
+    );
+    let attaching = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'B')}"),
+        false,
+    );
+    attaching
+        .adapter()
+        .pending
+        .store(true, std::sync::atomic::Ordering::Release);
+    stalled.set_visible(true);
+    attaching.set_visible(true);
+    platform.settle(&[&stalled, &attaching]);
+    assert_eq!(last(&stalled), ["A"]);
+    assert_eq!(stalled.adapter().log.lock().unwrap().fetched.len(), 1);
+    assert!(attaching.adapter().log.lock().unwrap().presented.is_empty());
+    // The attach completes off the worker; the adapter asks for the frame it declined.
+    attaching
+        .adapter()
+        .pending
+        .store(false, std::sync::atomic::Ordering::Release);
+    attaching.request_frame();
+    platform.settle(&[&stalled, &attaching]);
+    assert_eq!(last(&attaching), ["B"]);
 }
 
 #[test]

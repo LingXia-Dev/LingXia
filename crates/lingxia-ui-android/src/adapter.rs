@@ -11,7 +11,7 @@ use lingxia_ui::session::host::{
 };
 use lingxia_ui::session::lifecycle::{CommitTicket, ConnectionTicket, SurfaceTicket};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -34,10 +34,40 @@ pub fn set_image_loader(loader: Arc<dyn ImageLoader>) {
     let _ = IMAGE_LOADER.set(loader);
 }
 
+/// Where this page's GPU target stands; see [`route`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub(super) enum Target {
+    /// No presenter yet, or an attach is in flight.
+    Waiting = 0,
+    Ready = 1,
+    /// Attach failed; frames use the CPU reference renderer.
+    Unavailable = 2,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Route {
+    Gpu(u64),
+    Cpu,
+    /// Not ready to take a frame; the host prepares again when the target is.
+    Wait,
+}
+
+/// A page whose GPU attach is pending must not rasterize on the CPU: that work
+/// shares the View worker and would hold up its own attach and other pages.
+pub(super) fn route(gpu_built: bool, surface: u64, target: Target) -> Route {
+    match (gpu_built, surface, target) {
+        (false, _, _) | (true, 0, Target::Unavailable) => Route::Cpu,
+        (true, 0, _) => Route::Wait,
+        (true, surface, _) => Route::Gpu(surface),
+    }
+}
+
 pub(super) struct AndroidAdapter {
     platform: Global<JObject<'static>>,
-    /// The attached GPU presenter; 0 renders on the CPU.
+    /// The attached GPU presenter, or 0.
     pub(super) gpu: AtomicU64,
+    target: AtomicU8,
     started: Instant,
     /// Names this page to the image loader; 0 has no image source.
     owner: i64,
@@ -80,10 +110,24 @@ impl AndroidAdapter {
         Self {
             platform,
             gpu: AtomicU64::new(0),
+            target: AtomicU8::new(Target::Waiting as u8),
             started: Instant::now(),
             owner,
             host: OnceLock::new(),
             images: Mutex::new(HashMap::new()),
+        }
+    }
+
+    #[cfg_attr(not(all(feature = "gpu", target_os = "android")), allow(dead_code))]
+    pub(super) fn set_target(&self, target: Target) {
+        self.target.store(target as u8, Ordering::Release);
+    }
+
+    fn target(&self) -> Target {
+        match self.target.load(Ordering::Acquire) {
+            1 => Target::Ready,
+            2 => Target::Unavailable,
+            _ => Target::Waiting,
         }
     }
 
@@ -144,10 +188,11 @@ impl Presenter for AndroidAdapter {
         _: SurfaceTicket,
         generation: CommitTicket,
     ) -> Result<Option<Frame>, String> {
-        #[cfg(all(feature = "gpu", target_os = "android"))]
-        {
-            let surface = self.gpu.load(Ordering::Acquire);
-            if surface != 0 {
+        let gpu_built = cfg!(all(feature = "gpu", target_os = "android"));
+        match route(gpu_built, self.gpu.load(Ordering::Acquire), self.target()) {
+            Route::Wait => return Ok(None),
+            #[cfg(all(feature = "gpu", target_os = "android"))]
+            Route::Gpu(surface) => {
                 return Ok(
                     super::gpu_surface::prepare(surface, &display, generation.get())?.map(
                         |metrics| Frame::Gpu {
@@ -158,6 +203,9 @@ impl Presenter for AndroidAdapter {
                     ),
                 );
             }
+            #[cfg(not(all(feature = "gpu", target_os = "android")))]
+            Route::Gpu(_) => return Ok(None),
+            Route::Cpu => {}
         }
         let _ = generation;
         let frame = display.rasterize()?;
@@ -625,5 +673,28 @@ impl HostEvents for AndroidAdapter {
 impl Clock for AndroidAdapter {
     fn now(&self) -> Duration {
         self.started.elapsed()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pending_gpu_targets_wait_instead_of_rasterizing() {
+        assert_eq!(route(true, 0, Target::Waiting), Route::Wait);
+        assert_eq!(route(true, 0, Target::Ready), Route::Wait);
+        assert_eq!(
+            route(true, 7, Target::Waiting),
+            Route::Gpu(7),
+            "re-attach keeps its presenter"
+        );
+        assert_eq!(route(true, 7, Target::Ready), Route::Gpu(7));
+        assert_eq!(route(true, 0, Target::Unavailable), Route::Cpu);
+        assert_eq!(
+            route(false, 0, Target::Waiting),
+            Route::Cpu,
+            "CPU-only builds never wait"
+        );
     }
 }

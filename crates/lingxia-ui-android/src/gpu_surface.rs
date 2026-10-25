@@ -1,5 +1,6 @@
 //! Vulkan presenters bound to Android `Surface`s. Prepare runs on the View
 //! worker, present on the main thread; one registry shares the device context.
+use lingxia_ui::renderer::gpu::Presenter;
 use raw_window_handle::{
     AndroidDisplayHandle, AndroidNdkWindowHandle, DisplayHandle, HandleError, HasDisplayHandle,
     HasWindowHandle, WindowHandle,
@@ -58,66 +59,72 @@ impl NativeWindow {
 }
 
 static NEXT: AtomicU64 = AtomicU64::new(1);
-static SURFACES: LazyLock<Mutex<HashMap<u64, lingxia_ui::renderer::gpu::Presenter>>> =
+type Shared = Arc<Mutex<Presenter>>;
+/// Held only to look up or insert; each presenter has its own lock, so one
+/// page's encode or attach never blocks another page's present.
+static SURFACES: LazyLock<Mutex<HashMap<u64, Shared>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-fn surfaces() -> Result<
-    std::sync::MutexGuard<'static, HashMap<u64, lingxia_ui::renderer::gpu::Presenter>>,
-    String,
-> {
+fn registry() -> Result<std::sync::MutexGuard<'static, HashMap<u64, Shared>>, String> {
     SURFACES
         .lock()
         .map_err(|_| "UI_SURFACE: poisoned presenters".into())
 }
 
+fn presenter(id: u64) -> Result<Option<Shared>, String> {
+    Ok(registry()?.get(&id).cloned())
+}
+
+fn lock(presenter: &Shared) -> Result<std::sync::MutexGuard<'_, Presenter>, String> {
+    presenter
+        .lock()
+        .map_err(|_| "UI_SURFACE: poisoned presenter".into())
+}
+
 /// Bind `window` to the presenter `existing`, or to a new one; returns its id.
+/// Runs on a dedicated attach thread: wgpu's GLES adapter makes its EGL context
+/// current per call under its own lock, so the context is not tied to this thread.
 pub(super) fn attach(
     window: NativeWindow,
     width: u32,
     height: u32,
     existing: u64,
 ) -> Result<u64, String> {
-    let mut surfaces = surfaces()?;
     if existing != 0
-        && let Some(presenter) = surfaces.get_mut(&existing)
+        && let Some(presenter) = presenter(existing)?
     {
-        presenter.resume(Arc::new(window), width, height)?;
+        lock(&presenter)?.resume(Arc::new(window), width, height)?;
         return Ok(existing);
     }
     // The registry retains the device domain only while a presenter exists.
-    let context = surfaces
-        .values()
-        .next()
-        .map(|page| page.context())
-        .unwrap_or_default();
-    let presenter = lingxia_ui::renderer::gpu::Presenter::with_fallback(
-        context,
-        Arc::new(window),
-        width,
-        height,
-    )?;
+    let shared = registry()?.values().next().cloned();
+    let context = match shared {
+        Some(presenter) => lock(&presenter)?.context(),
+        None => Default::default(),
+    };
+    let presenter = Presenter::with_fallback(context, Arc::new(window), width, height)?;
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
-    surfaces.insert(id, presenter);
+    registry()?.insert(id, Arc::new(Mutex::new(presenter)));
     Ok(id)
 }
 
-pub(super) fn adapter(id: u64) -> Option<String> {
-    surfaces()
-        .ok()?
-        .get(&id)
-        .map(|presenter| presenter.adapter().to_owned())
+/// The adapter record and metrics label of presenter `id`.
+pub(super) fn describe(id: u64) -> Option<(String, &'static str)> {
+    let presenter = presenter(id).ok()??;
+    let presenter = lock(&presenter).ok()?;
+    Some((presenter.adapter().to_owned(), presenter.backend()))
 }
 
 pub(super) fn suspend(id: u64) {
-    if let Ok(mut surfaces) = surfaces()
-        && let Some(presenter) = surfaces.get_mut(&id)
+    if let Ok(Some(presenter)) = presenter(id)
+        && let Ok(mut presenter) = lock(&presenter)
     {
         presenter.suspend();
     }
 }
 
 pub(super) fn detach(id: u64) {
-    if let Ok(mut surfaces) = surfaces() {
+    if let Ok(mut surfaces) = registry() {
         surfaces.remove(&id);
     }
 }
@@ -128,10 +135,10 @@ pub(super) fn prepare(
     display: &lingxia_ui::DisplayList,
     revision: u64,
 ) -> Result<Option<serde_json::Value>, String> {
-    let mut surfaces = surfaces()?;
-    let Some(presenter) = surfaces.get_mut(&id) else {
+    let Some(presenter) = presenter(id)? else {
         return Ok(None);
     };
+    let mut presenter = lock(&presenter)?;
     if !presenter.prepare(
         display,
         u32::from(display.width),
@@ -142,7 +149,7 @@ pub(super) fn prepare(
     }
     let [scene, images, encode, submit] = presenter.preparation_timings_us();
     Ok(Some(serde_json::json!({
-        "backend": "vello-vulkan",
+        "backend": presenter.backend(),
         "renderer": "sparse-strips",
         "loadedImages": display.loaded_image_count(),
         "prepare": {"sceneUs": scene, "imagesUs": images, "encodeUs": encode, "submitUs": submit},
@@ -154,10 +161,10 @@ pub(super) fn prepare(
 
 /// Returns the presenter's timings for diagnostics when the frame reached the screen.
 pub(super) fn present(id: u64, revision: u64) -> Result<Option<[u64; 4]>, String> {
-    let mut surfaces = surfaces()?;
-    let Some(presenter) = surfaces.get_mut(&id) else {
+    let Some(presenter) = presenter(id)? else {
         return Ok(None);
     };
+    let mut presenter = lock(&presenter)?;
     Ok(presenter
         .present(revision)?
         .then(|| presenter.presentation_timings_us()))
