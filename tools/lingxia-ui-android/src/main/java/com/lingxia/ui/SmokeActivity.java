@@ -18,7 +18,8 @@ public final class SmokeActivity extends Activity {
         System.loadLibrary("lingxia_ui");
         GpuView.initializeNative();
     }
-    private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> new Thread(r, "lingxia-ui-view"));
+    // Evidence snapshots are written off the main thread; rendering runs on the host's View worker.
+    private final ExecutorService io = Executors.newSingleThreadExecutor(r -> new Thread(r, "lingxia-ui-snapshot"));
     private GpuView[] pages;
     private int selected;
     private FrameLayout content;
@@ -75,11 +76,11 @@ public final class SmokeActivity extends Activity {
             pages = new GpuView[multiple ? 2 : 1];
             for (int index = 0; index < pages.length; index++) {
                 final int page = index;
-                pages[index] = new GpuView(this, source, worker, new GpuView.Listener() {
+                pages[index] = new GpuView(this, source, "smoke", new GpuView.Listener() {
                     public void onLoaded() { }
                     public void onError(Throwable error) { android.util.Log.e("LingXia.UI", "Page " + page, error); }
                     public void onFrame(String metadata) {
-                        worker.execute(() -> {
+                        io.execute(() -> {
                             try {
                                 JSONObject snapshot = new JSONObject(metadata); snapshot.put("page", page);
                                 java.io.File temporary = new java.io.File(getFilesDir(), "ui-snapshot.tmp");
@@ -99,6 +100,6 @@ public final class SmokeActivity extends Activity {
     @Override protected void onPause() { if (pages != null) pages[selected].pause(); super.onPause(); }
     @Override protected void onDestroy() {
         if (pages != null) for (GpuView page : pages) if (page != null) page.dispose();
-        worker.shutdown(); super.onDestroy();
+        io.shutdown(); super.onDestroy();
     }
 }

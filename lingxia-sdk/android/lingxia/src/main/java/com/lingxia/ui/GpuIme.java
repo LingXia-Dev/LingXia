@@ -20,6 +20,8 @@ final class GpuIme {
         default void showTextMenu() { }
         default void hideTextMenu() { }
         default void editingChanged() { }
+        /** The focused editor's text state for the host's caret blink; null text when none is connected. */
+        default void caret(boolean eligible, String text, int anchor, int focus, int compositionStart, int compositionEnd) { }
     }
     static final class Ticket {
         final long epoch, revision;
@@ -37,12 +39,10 @@ final class GpuIme {
     private JSONObject config;
     private boolean multiline, pendingFocus, allowAutofocus=true;
     private long epoch, touchSerial;
-    private final GpuCaretBlink caret;
     private boolean caretActive = true;
 
     GpuIme(View view, Host host) {
         this.view=view; this.host=host;
-        caret=new GpuCaretBlink(() -> host.render(false));
         manager=(InputMethodManager)view.getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
     }
     static boolean editable(JSONObject node) {
@@ -55,7 +55,6 @@ final class GpuIme {
     }
     Ticket capture() { return new Ticket(epoch,connection); }
     boolean hasFocus() { return connection != null; }
-    boolean caretVisible() { return caret.visible(); }
     void setCaretActive(boolean active) { caretActive=active; if (!active) { touchSerial++; host.hideTextMenu(); } updateCaret(); }
     boolean menuActive() { return caretActive && connection != null; }
     boolean menuSelected() { return connection != null && connection.anchor() != connection.focus(); }
@@ -65,8 +64,8 @@ final class GpuIme {
     String menuText() { return connection == null ? "" : connection.getExtractedText(null,0).text.toString(); }
     boolean menuAction(int action) { return menuActive() && connection.performContextMenuAction(action); }
     private void updateCaret() {
-        if (connection == null) { caret.stop(); return; }
-        caret.update(caretActive,connection.getExtractedText(null,0).text.toString(),connection.anchor(),connection.focus(),connection.composeStart(),connection.composeEnd());
+        if (connection == null) { host.caret(caretActive,null,0,0,-1,-1); return; }
+        host.caret(caretActive,connection.getExtractedText(null,0).text.toString(),connection.anchor(),connection.focus(),connection.composeStart(),connection.composeEnd());
     }
     boolean isActive() { return connection != null || pendingFocus; }
     boolean key(android.view.KeyEvent event) {
@@ -245,7 +244,7 @@ final class GpuIme {
         if (connection != null) connection.closeConnection();
         connection=null;
         host.hideTextMenu();
-        caret.stop();
+        host.caret(caretActive,null,0,0,-1,-1);
         if (hide) { manager.hideSoftInputFromWindow(view.getWindowToken(),0); manager.restartInput(view); }
     }
     void clear(boolean blur) {

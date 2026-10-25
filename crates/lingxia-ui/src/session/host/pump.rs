@@ -1,12 +1,12 @@
 //! Frame sequencing: sample, prepare on the worker, present on vsync, then run
 //! the presented frame's effects, reach, images and animation wakeup.
-use super::{FrameSnapshot, Guard, Inner};
+use super::{FrameSnapshot, FrameTiming, Guard, Inner};
 use crate::interaction::frame::PresentedFrame;
 use crate::platform::{FrameEnvironment, PlatformAdapter};
 use crate::session::lifecycle::{CommitTicket, PageTicket, SurfaceTicket};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// A frame prepared on the worker, waiting for vsync.
 pub(super) struct Prepared<F> {
@@ -16,7 +16,12 @@ pub(super) struct Prepared<F> {
     page: PageTicket,
     revision: u64,
     offsets: HashMap<String, f32>,
-    rebuild: bool,
+    timing: FrameTiming,
+    prepared_at: Instant,
+}
+
+fn micros(duration: Duration) -> u64 {
+    u64::try_from(duration.as_micros()).unwrap_or(u64::MAX)
 }
 
 struct Request {
@@ -71,14 +76,30 @@ impl<A: PlatformAdapter> Inner<A> {
         let now = self.adapter.now();
         let surface = request.surface;
         let page = request.page;
-        let rebuild = request.rebuild;
         let revision = request.revision;
         let offsets = request.offsets.clone();
+        let mut timing = FrameTiming {
+            rebuild: request.rebuild,
+            caret_visible: request.caret,
+            ..Default::default()
+        };
+        let queued = Instant::now();
         self.work(
             Guard::Page(page),
-            move |inner, session| inner.prepare(session, request, now),
+            move |inner, session| {
+                let started = Instant::now();
+                inner.prepare(session, request, now).map(|prepared| {
+                    (
+                        prepared,
+                        micros(started - queued),
+                        micros(started.elapsed()),
+                    )
+                })
+            },
             move |inner, result| match result {
-                Some(Ok((Some((frame, snapshot)), update))) => {
+                Some(Ok(((Some((frame, snapshot)), update), queue_us, worker_us))) => {
+                    timing.queue_us = queue_us;
+                    timing.worker_us = worker_us;
                     if let Some((connection, update)) = update {
                         inner.publish(connection, update);
                     }
@@ -89,11 +110,12 @@ impl<A: PlatformAdapter> Inner<A> {
                         page,
                         revision,
                         offsets,
-                        rebuild,
+                        timing,
+                        prepared_at: Instant::now(),
                     });
                     inner.adapter.request_vsync();
                 }
-                Some(Ok((None, update))) => {
+                Some(Ok(((None, update), ..))) => {
                     if let Some((connection, update)) = update {
                         inner.publish(connection, update);
                     }
@@ -127,6 +149,7 @@ impl<A: PlatformAdapter> Inner<A> {
             scale,
             value,
         } = request.environment;
+        let mut loaded_images = 0;
         session.set_environment(value)?;
         session.set_animation_surface(Some(request.surface), now)?;
         let generation = CommitTicket::new(session.generation().get() + 1);
@@ -144,6 +167,7 @@ impl<A: PlatformAdapter> Inner<A> {
                     display.hide_caret();
                 }
                 let nodes = display.nodes.clone();
+                loaded_images = display.loaded_image_count();
                 Ok((self.adapter.prepare(display, surface, generation)?, nodes))
             },
         )?;
@@ -182,7 +206,10 @@ impl<A: PlatformAdapter> Inner<A> {
         .to_string();
         let snapshot = Arc::new(FrameSnapshot {
             generation,
+            width,
+            height,
             scale,
+            loaded_images,
             frame: Arc::new(PresentedFrame::new(generation, scale, nodes)),
             images,
             json,
@@ -222,6 +249,7 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     pub(super) fn vsync(self: &Arc<Self>) {
+        let vsync = Instant::now();
         let Some(prepared) = ({
             let mut main = self.main();
             let prepared = main.prepared.take();
@@ -242,17 +270,26 @@ impl<A: PlatformAdapter> Inner<A> {
                 page,
                 revision,
                 offsets,
-                rebuild,
+                mut timing,
+                prepared_at,
             } = prepared;
+            timing.wait_us = micros(vsync.saturating_duration_since(prepared_at));
             match self.adapter.present(frame) {
-                Ok(true) => self.presented(snapshot, surface, page, revision, offsets, rebuild),
+                Ok(true) => {
+                    self.presented(snapshot, surface, page, revision, offsets, timing, vsync)
+                }
                 Ok(false) => retry = true,
                 Err(error) => self.fail(error),
             }
         }
+        if retry {
+            // The target refused a frame; try again on a later display frame.
+            let host = self.clone();
+            self.adapter
+                .post_after(Duration::from_millis(16), Box::new(move || host.schedule()));
+        }
         let pending = {
-            let mut main = self.main();
-            main.pending |= retry;
+            let main = self.main();
             main.pending && !main.disposed
         };
         if pending {
@@ -260,6 +297,7 @@ impl<A: PlatformAdapter> Inner<A> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn presented(
         self: &Arc<Self>,
         snapshot: Arc<FrameSnapshot>,
@@ -267,8 +305,10 @@ impl<A: PlatformAdapter> Inner<A> {
         page: PageTicket,
         revision: u64,
         offsets: HashMap<String, f32>,
-        rebuild: bool,
+        mut timing: FrameTiming,
+        vsync: Instant,
     ) {
+        let rebuild = timing.rebuild;
         let (presented, recovered) = {
             let mut main = self.main();
             main.snapshot = Some(snapshot.clone());
@@ -290,7 +330,8 @@ impl<A: PlatformAdapter> Inner<A> {
         }
         self.update_images(snapshot.images.clone());
         self.flush_image_events();
-        self.adapter.presented(&snapshot);
+        timing.main_us = micros(vsync.elapsed());
+        self.adapter.presented(&snapshot, &timing);
     }
 
     /// Start the timeline's newly presented effects and wake for its next deadline.

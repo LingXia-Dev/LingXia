@@ -144,14 +144,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
         init_cached_java_classes(env);
 
         let gpu_class = env.find_class(jni_str!("com/lingxia/ui/GpuView"))?;
-        // Use raw JNI references across the renderer's JNI crate version boundary.
-        // Registration happens synchronously on this thread and retains neither reference.
-        if let Err(error) = unsafe {
-            lingxia_ui::platform::android::register_natives(
-                env.get_raw().cast(),
-                gpu_class.as_raw().cast(),
-            )
-        } {
+        if let Err(error) = lingxia_ui::platform::android::register_natives(env, &gpu_class) {
             error!("Failed to register Android GPU renderer: {error}");
             return Err(jni::errors::Error::JniCall(jni::errors::JniError::Unknown));
         }

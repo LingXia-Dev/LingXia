@@ -30,11 +30,29 @@ const CARET_BLINK: Duration = Duration::from_millis(500);
 /// A presented frame as the adapter sees it.
 pub struct FrameSnapshot {
     pub generation: CommitTicket,
+    /// Device pixels.
+    pub width: u16,
+    pub height: u16,
     pub scale: f32,
+    pub loaded_images: usize,
     pub frame: Arc<PresentedFrame>,
     pub images: Vec<ImageSource>,
     /// `{generation, nodes, images, metrics}` for adapters that marshal the frame.
     pub json: String,
+}
+
+/// How one presented frame was produced, for diagnostics.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FrameTiming {
+    pub rebuild: bool,
+    pub caret_visible: bool,
+    /// Scheduling to the worker starting the frame.
+    pub queue_us: u64,
+    pub worker_us: u64,
+    /// Prepared to vsync.
+    pub wait_us: u64,
+    /// Vsync to the end of the presented frame's main-thread work.
+    pub main_us: u64,
 }
 
 /// Which host message recovery chrome shows.
@@ -233,6 +251,11 @@ impl<A: PlatformAdapter> ViewHost<A> {
         &self.inner.lifecycle
     }
 
+    /// The worker this page runs on, for adapter work that must serialize with its frames.
+    pub fn worker(&self) -> &Arc<ViewWorker> {
+        &self.inner.worker
+    }
+
     /// Evaluate a new module instance; earlier page work becomes stale.
     pub fn load(&self, source: String) {
         self.inner.load(Some(source));
@@ -289,6 +312,11 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// Run the recovery action offered with the last failure.
     pub fn retry(&self) {
         self.inner.retry();
+    }
+
+    /// A failure the platform detected outside the host, classified like View failures.
+    pub fn fail(&self, error: String) {
+        self.inner.fail(error);
     }
 
     pub fn connect(&self, connection: ConnectionTicket, nonce: String) {

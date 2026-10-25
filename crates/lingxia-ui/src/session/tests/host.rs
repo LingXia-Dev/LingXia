@@ -4,7 +4,8 @@ use crate::interaction::view::{AccessibilityEffect, Dispatch, Effect, Pointer, P
 use crate::platform::*;
 use crate::semantics::projection::Role;
 use crate::session::host::{
-    CaretState, Failure, FrameSnapshot, RecoveryAction, RecoveryMessage, ViewHost, ViewWorker,
+    CaretState, Failure, FrameSnapshot, FrameTiming, RecoveryAction, RecoveryMessage, ViewHost,
+    ViewWorker,
 };
 use crate::session::lifecycle::{
     CommitTicket, ConnectionTicket, FailureKind, Retry, SurfaceTicket,
@@ -142,7 +143,7 @@ impl HostEvents for Fake {
     fn loaded(&self) {
         self.main().loaded += 1;
     }
-    fn presented(&self, _: &FrameSnapshot) {}
+    fn presented(&self, _: &FrameSnapshot, _: &FrameTiming) {}
     fn message(&self, connection: ConnectionTicket, message: &str) {
         self.main()
             .messages

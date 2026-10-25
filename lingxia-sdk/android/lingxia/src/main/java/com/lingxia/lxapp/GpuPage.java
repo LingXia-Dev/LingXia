@@ -7,18 +7,11 @@ import android.widget.FrameLayout;
 import com.lingxia.app.Lingxia;
 import com.lingxia.ui.GpuView;
 import java.util.HashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
-/** SDK-owned page shell. Registry and worker ownership are confined to the main thread. */
+/** SDK-owned page shell. The registry is confined to the main thread. */
 public final class GpuPage extends FrameLayout {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final HashMap<Long, GpuPage> PAGES = new HashMap<>();
-    private static final HashMap<String, Worker> WORKERS = new HashMap<>();
-    private static final class Worker {
-        final ExecutorService executor = Executors.newSingleThreadExecutor(r -> new Thread(r, "lingxia-gpu-view"));
-        int pages;
-    }
     // Native loads run on the runtime executor and complete through imageLoaded.
     private static final java.util.concurrent.ConcurrentHashMap<Long, java.util.function.Consumer<byte[]>> IMAGES =
         new java.util.concurrent.ConcurrentHashMap<>();
@@ -29,7 +22,7 @@ public final class GpuPage extends FrameLayout {
     private static native void presented(long token, long generation);
     private static native boolean restart(long token, long generation);
     private static native void message(long token, long generation, String frame);
-    private final String appId, path, webTag, workerKey;
+    private final String appId, path, webTag;
     private final GpuView content;
     private boolean reported;
     private boolean frameReported;
@@ -37,13 +30,10 @@ public final class GpuPage extends FrameLayout {
     private GpuPage(Context context, long token, String appId, long session, String path, String webTag, String source, boolean logic) {
         super(context);
         this.appId = appId; this.path = path; this.webTag = webTag;
-        workerKey = appId + ":" + session;
-        Worker worker = WORKERS.get(workerKey);
-        if (worker == null) { worker = new Worker(); WORKERS.put(workerKey, worker); }
-        worker.pages++;
         GpuView candidate = null;
         try {
-            candidate = new GpuView(context, source, worker.executor, new GpuView.Listener() {
+            // Pages of one app session share a View worker and isolate.
+            candidate = new GpuView(context, source, appId + ":" + session, new GpuView.Listener() {
                 public Runnable onImageRequest(String source, java.util.function.Consumer<byte[]> result) {
                     long request = beginImage();
                     IMAGES.put(request, result);
@@ -69,7 +59,6 @@ public final class GpuPage extends FrameLayout {
             content = candidate;
         } catch (Throwable error) {
             if (candidate != null) candidate.dispose();
-            releaseWorker(workerKey);
             throw error;
         }
     }
@@ -141,7 +130,6 @@ public final class GpuPage extends FrameLayout {
             page.reported = true;
             Runnable release = () -> {
                 page.content.dispose();
-                releaseWorker(page.workerKey);
                 if (page.getParent() instanceof android.view.ViewGroup) {
                     ((android.view.ViewGroup)page.getParent()).removeView(page);
                 }
@@ -156,14 +144,5 @@ public final class GpuPage extends FrameLayout {
         if (parent != null && parent.getContext() instanceof LxAppActivity)
             ((LxAppActivity)parent.getContext()).preserveGpuPageBeforeDisposal(this, release);
         else release.run();
-    }
-
-    private static void releaseWorker(String key) {
-        Worker worker = WORKERS.get(key);
-        if (--worker.pages == 0) {
-            WORKERS.remove(key);
-            // dispose enqueues context release before shutdown; shutdown drains that work.
-            worker.executor.shutdown();
-        }
     }
 }

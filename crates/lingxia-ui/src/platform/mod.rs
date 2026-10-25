@@ -7,7 +7,7 @@
 //! never while holding its own locks, so an adapter may call back into the host.
 use crate::DisplayList;
 use crate::interaction::view::{AccessibilityEffect, Dispatch, Effect};
-use crate::session::host::{Failure, FrameSnapshot};
+use crate::session::host::{Failure, FrameSnapshot, FrameTiming};
 use crate::session::lifecycle::{CommitTicket, ConnectionTicket, SurfaceTicket};
 use std::time::Duration;
 
@@ -98,7 +98,7 @@ pub trait Feedback {
 /// Page-level outcomes the embedding host reacts to.
 pub trait HostEvents {
     fn loaded(&self);
-    fn presented(&self, frame: &FrameSnapshot);
+    fn presented(&self, frame: &FrameSnapshot, timing: &FrameTiming);
     /// An outbound Logic bridge message for `connection`.
     fn message(&self, connection: ConnectionTicket, message: &str);
     /// Restart the Logic connection after a session failure; false when it cannot.

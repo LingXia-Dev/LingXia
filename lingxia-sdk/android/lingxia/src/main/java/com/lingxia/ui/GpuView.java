@@ -19,86 +19,64 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.FrameLayout;
 import android.widget.TextView;
-import java.util.concurrent.ExecutorService;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * GPU page content. Construct and control on the UI thread; share one executor per app session.
- * Lifecycle tickets, input, scroll and accessibility policy live in the shared Rust core; this
- * class converts Android events into core calls and executes the effects it returns.
+ * GPU page content. Construct and control on the UI thread. The shared Rust host owns the View
+ * worker, frame sequencing, input, image, bridge and recovery policy; this class converts Android
+ * events into host calls and performs the typed effects the host sends through {@link GpuPlatform}.
  */
 public final class GpuView extends FrameLayout implements SurfaceHolder.Callback2 {
     /** Standalone hosts call this after loading the library; the SDK initializes it automatically. */
     public static native void initializeNative();
 
-    private static native long nativeLoad(String source);
-    private static native void nativeGpuSentinel(String directory);
-    private static native String nativeRendererFallback();
-    static native long nativeImageQueueCreate();
-    static native void nativeImageQueueUpdate(long queue, String sources);
-    static native String nativeImageQueueStart(long queue);
-    static native boolean nativeImageQueueCheck(long queue, long token, boolean complete);
-    static native void nativeImageQueueReset(long queue, boolean close);
-    static native boolean nativeImage(long page, long queue, long token, byte[] bytes);
-    static native void nativeImageStatus(long page, long queue, long token, String retryKey, boolean success);
-    private static native boolean nativeImageEvents(long page, long generation);
-    private static native int[] nativeRender(long page, int width, int height, float scale, boolean rebuild, boolean caretVisible, String offsets, long surface, long time);
-    private static native void nativeAnimationPark(long page, long time);
-    private static native long nativeAnimationPresented(long page, long surface, long generation, long time);
-    private static native String nativeSnapshot(long page);
-    private static native String nativeInput(long page, String request);
-    private static native boolean nativeClick(long page, long generation, long handle);
-    private static native boolean nativeNumber(long page, long generation, long handle, double value);
-    private static native boolean nativePlot(long page, long generation, String identity, int mode, float x, float y, int index);
-    private static native void nativeRelease(long page);
-    private static native void nativeReset(long page);
-    private static native void nativeEnvironment(long page, String environment);
-    private static native String nativeBeginBridge(long page, String nonce);
-    private static native String nativeReceiveBridge(long page, String frame);
-    private static native String nativeRequestLeave(long page, String reason);
-    private static native String nativeDrainActions(long page);
-    private static native long nativeAttach(android.view.Surface surface, int width, int height, long existing);
-    private static native void nativeSuspend(long surface);
-    private static native void nativePrepareGpu(long page, long surface, int width, int height, float scale, boolean rebuild, boolean caretVisible, String offsets, long epoch, long time);
-    private static native boolean nativePresentGpu(long surface, long generation);
-    private static native void nativeDetach(long surface);
-    private static native long nativeTakeFrame(long page);
-    private static native void nativeFrameRelease(long frame);
-    private static native boolean nativePointerState(long page, String pressed, String hovered);
-    // Shared lifecycle core.
-    static native long nativeLifecycleCreate(boolean logic);
-    static native void nativeLifecycleRelease(long lifecycle);
-    static native long nativeLifecycle(long lifecycle, int op, long value);
-    static native String nativeLifecycleFail(long lifecycle, String error);
-    // Shared interaction core; UI thread only.
-    static native long nativeInteractionCreate();
-    static native void nativeInteractionRelease(long interaction);
-    static native String nativePresented(long interaction, long frame, long revision, String offsets, long page);
-    static native String nativePointer(long interaction, int phase, float x, float y, float slop, float vx, float vy, float minFling, long page);
-    static native String nativeSignal(long interaction, int op, long page);
-    static native String nativeKey(long interaction, int key, boolean shift, boolean repeat, long page);
-    static native String nativeQuery(long interaction, int op, long value);
-    static native boolean nativeScrollBy(long interaction, String region, float delta);
-    static native String nativeExplore(long interaction, boolean active, float x, float y);
-    static native String nativeAccessibility(long interaction, int id, int action, double number, String argument, long page);
-
-    // Lifecycle opcodes.
-    private static final int LOAD = 0, LOADED = 1, PARK = 2, DISPOSE = 3, CONNECT = 4, BRIDGE_READY = 5, VISIBLE = 6,
-        INVALIDATE_SURFACE = 7, PAGE = 8, SURFACE = 9, CONNECTION = 10, CURRENT_PAGE = 11, CURRENT_SURFACE = 12,
-        CURRENT_CONNECTION = 13, FRAME = 14, ACCEPTS_INPUT = 15, SESSION_FAILED = 16, BRIDGE_IS_READY = 17;
-    // Interaction signals and queries.
-    private static final int LONG_PRESS = 0, CANCEL = 1, RESET = 2, FOCUS_FORWARD = 3, FOCUS_BACKWARD = 4, FOCUS_LEFT = 5,
-        INERT = 6, ACTIVE = 7;
-    private static final int SCROLL_STATE = 0, TAKE_DISPATCH = 1, TAKE_NUMBER = 2, NUMBER_DONE = 3, SEMANTIC_ROOTS = 4,
-        SEMANTIC_NODE = 5, CAN_SCROLL_VERTICALLY = 6;
+    static native long nativeHostCreate(GpuPlatform platform, String worker, boolean logic);
+    static native void nativeHostRelease(long host);
+    static native void nativeRunTask(long task);
+    static native void nativeLoad(long host, String source);
+    static native void nativeReload(long host);
+    static native void nativePark(long host);
+    static native void nativeSetVisible(long host, boolean visible);
+    static native void nativeSurfaceChanged(long host);
+    static native void nativeSurfaceLost(long host);
+    static native void nativeRequestFrame(long host);
+    static native void nativeRedraw(long host);
+    static native void nativeVsync(long host);
+    static native void nativeRetry(long host);
+    static native void nativeConnect(long host, long connection, String nonce);
+    static native void nativeReceive(long host, long connection, String frame);
+    static native void nativeRequestLeave(long host, long connection, String reason);
+    static native long nativeConnection(long host);
+    static native boolean nativeSessionFailed(long host);
+    static native boolean nativeBridgeReady(long host);
+    /** A platform-detected failure; the host classifies it and shows recovery. */
+    static native void nativeFail(long host, String error);
+    static native boolean nativePointer(long host, int phase, float x, float y, float slop, float vx, float vy, float minFling);
+    static native void nativeLongPress(long host);
+    static native boolean nativeKey(long host, int key, boolean shift, boolean repeat);
+    static native void nativeCancel(long host);
+    static native void nativeFocusEntered(long host, boolean backward);
+    static native void nativeFocusLeft(long host);
+    static native boolean nativeExplore(long host, boolean active, float x, float y);
+    static native boolean nativeAccessibility(long host, int id, int action, double number, String argument);
+    static native boolean nativeScrollBy(long host, String region, float delta);
+    static native boolean nativeCanScrollVertically(long host, int direction);
+    static native String nativeSemanticRoots(long host);
+    static native String nativeSemanticNode(long host, int id);
+    static native void nativeInput(long host, String request, long callback);
+    static native void nativeCaret(long host, boolean eligible, boolean connected, String text, int anchor, int focus, int start, int end);
+    static native void nativeImageLoaded(long host, long id, byte[] bytes);
+    /** Where the GPU crash sentinel keeps its record; the first call in a process wins. */
+    static native void nativeGpuSentinel(String directory);
+    private static native void nativeAttach(long host, android.view.Surface surface, int width, int height);
 
     public interface PullToRefresh { boolean onTouch(MotionEvent event); }
     private PullToRefresh pullToRefresh;
     public void setPullToRefresh(PullToRefresh callback) { pullToRefresh = callback; }
     public void clearPullToRefresh(PullToRefresh callback) { if (pullToRefresh == callback) pullToRefresh = null; }
     @Override public boolean canScrollVertically(int direction) {
-        return "true".equals(query(CAN_SCROLL_VERTICALLY, direction));
+        return !destroyed && nativeCanScrollVertically(host, direction);
     }
     public interface Listener {
         void onLoaded();
@@ -110,62 +88,52 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         default Runnable onImageRequest(String source, java.util.function.Consumer<byte[]> result) { onImage(source, result); return () -> {}; }
     }
 
-    private final ExecutorService worker;
     private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
-    private final GpuBootstrap bootstrap = new GpuBootstrap(main);
     private final GpuRecovery recovery = new GpuRecovery(this);
-    // Released after the last worker task; zero afterwards.
-    private volatile long lifecycle;
-    private long interaction;
+    // Zero after disposal.
+    private long host;
     private TextView bootstrapMessage;
     private int bootstrapSurfaceImportance;
     private final Listener listener;
-    private String source;
-    // Written only on the worker; the lifecycle decides whether its results still apply.
-    private long nativePage;
     private final UiSurface surface;
     private final GpuIme ime;
     private final View feedback;
-    private boolean active, destroyed, busy, pending, numberBusy;
-    private final GpuAnimationScheduler animationScheduler = new GpuAnimationScheduler(new GpuAnimationScheduler.Host() {
-        public long now() { return android.os.SystemClock.uptimeMillis(); }
-        public void post(Runnable callback, long delayMillis) { postOnAnimationDelayed(callback, delayMillis); }
-        public void remove(Runnable callback) { removeCallbacks(callback); }
-    }, () -> scheduleFrame());
+    private boolean active, destroyed, attaching, gpuAttached;
     private boolean hasSurfaceFrame;
-    private Bitmap bitmap;
     // The presented frame as JSON, for the input method and its chrome.
     private JSONObject snapshot;
+    private String snapshotText;
     private float frameScale;
-    private long gpuSurface;
-    private boolean attaching;
+    // Bumped when the surface is replaced; a capture only completes against its own surface.
+    private long surfaceEpoch;
     private java.util.function.Consumer<Boolean> nextPresentation;
     private final java.util.ArrayList<Runnable> surfaceRedraws = new java.util.ArrayList<>();
     private int unoccludedWidth, unoccludedHeight;
-    private boolean gpuAttached;
-    private String frameEnvironment;
     private final android.graphics.Rect chromeInsets = new android.graphics.Rect();
-    private boolean viewDirty = true;
-    private final GpuImages images = new GpuImages();
     private GpuTextMenu textMenu;
     private GpuSelectionHandles selectionHandles;
     private android.content.res.Configuration hostConfiguration;
     private org.json.JSONArray textScale;
     private float textScalePreference = Float.NaN, textScaleDensity = Float.NaN;
     private final GpuEnvironment hostEnvironment = new GpuEnvironment();
-    private final boolean logic;
+    private final java.util.HashMap<Long, Runnable> imageCancellations = new java.util.HashMap<>();
+    private final java.util.HashMap<Long, java.util.function.Consumer<JSONObject>> inputReplies = new java.util.HashMap<>();
+    private long nextInputReply;
+    private boolean vsyncRequested;
+    private final Choreographer.FrameCallback vsync = time -> {
+        vsyncRequested = false;
+        if (!destroyed) nativeVsync(host);
+    };
 
-    public GpuView(Context context, String source, ExecutorService worker, Listener listener) {
+    /** {@code worker} names the View worker this page shares with its app session's pages. */
+    public GpuView(Context context, String source, String worker, Listener listener) {
         this(context, source, worker, listener, false);
     }
-    public GpuView(Context context, String source, ExecutorService worker, Listener listener, boolean logic) {
+    public GpuView(Context context, String source, String worker, Listener listener, boolean logic) {
         super(context);
         nativeGpuSentinel(context.getNoBackupFilesDir().getAbsolutePath());
         hostConfiguration = new android.content.res.Configuration(context.getResources().getConfiguration());
-        this.logic = logic;
-        this.worker = worker; this.listener = listener; this.source = source;
-        lifecycle = nativeLifecycleCreate(logic);
-        interaction = nativeInteractionCreate();
+        this.listener = listener;
         // SurfaceView overlays can be hidden by its surface hole on physical devices.
         feedback = new View(context);
         feedback.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -181,38 +149,17 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 }
             }
             @Override public void request(JSONObject request, java.util.function.Consumer<JSONObject> reply) {
-                final long page = page();
-                worker.execute(() -> {
-                    if (!currentPage(page)) return;
-                    JSONObject result = null;
-                    try {
-                        if (nativePage != 0) {
-                            Object value = new org.json.JSONTokener(nativeInput(nativePage, request.toString())).nextValue();
-                            if (value instanceof JSONObject) result = (JSONObject)value;
-                        }
-                    } catch (Throwable error) {
-                        // Reject later queued edits against the failed mirror before they run.
-                        if ("edit".equals(request.optString("op"))) {
-                            try { nativeInput(nativePage, new JSONObject().put("op", "blur").put("identity", request.optString("identity")).put("token", request.optLong("token")).toString()); }
-                            catch (Throwable ignored) { }
-                        }
-                        postError(error, page);
-                    } finally {
-                        // Draining actions invalidates View. Read-only hit queries must retain
-                        // their frame generation until the following focus request is queued.
-                        if (logic && nativePage != 0 && "edit".equals(request.optString("op"))
-                                && (result == null || result.optBoolean("needs_view_render"))) {
-                            try { publishBridgeUpdate(connection(), nativeDrainActions(nativePage)); }
-                            catch (Throwable error) { postError(error, page); }
-                        }
-                    }
-                    final JSONObject response = result;
-                    main.post(() -> { if (!destroyed && currentPage(page)) reply.accept(response); });
-                });
+                if (destroyed) return;
+                long callback = ++nextInputReply;
+                inputReplies.put(callback, reply);
+                nativeInput(host, request.toString(), callback);
             }
             @Override public void render(boolean rebuild) {
                 if (destroyed) return;
-                viewDirty |= rebuild; scheduleFrame();
+                if (rebuild) nativeRequestFrame(host); else nativeRedraw(host);
+            }
+            @Override public void caret(boolean eligible, String text, int anchor, int focus, int start, int end) {
+                if (!destroyed) nativeCaret(host, eligible, text != null, text == null ? "" : text, anchor, focus, start, end);
             }
         });
         textMenu = new GpuTextMenu(surface, ime, () -> {
@@ -226,146 +173,65 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         selectionHandles = new GpuSelectionHandles(ime, new GpuSelectionHandles.Host() {
             public JSONObject frame() { return snapshot; }
             public float scale() { return frameScale; }
-            public boolean busy() { return busy; }
+            public boolean busy() { return false; }
             public void hideMenu() { textMenu.dismiss(); }
             public void showMenu() { textMenu.show(); }
         });
         feedback.getOverlay().add(selectionHandles);
+        host = nativeHostCreate(new Platform(), worker, logic);
         ime.setCaretActive(false);
         surface.getHolder().addCallback(this);
         addView(surface, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         addView(feedback, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
-        reload();
+        load(source);
     }
-
-    // ---- lifecycle tickets ----------------------------------------------------
-
-    private long lc(int op, long value) {
-        long handle = lifecycle;
-        return handle == 0 ? 0 : nativeLifecycle(handle, op, value);
-    }
-    // Interaction calls are UI-thread only and inert after disposal.
-    private String signal(int op) { return signal(op, page()); }
-    private String signal(int op, long page) { return destroyed ? "[]" : nativeSignal(interaction, op, page); }
-    private String query(int op, long value) { return destroyed ? "null" : nativeQuery(interaction, op, value); }
-    private boolean scrollRegion(String region, float delta) { return !destroyed && nativeScrollBy(interaction, region, delta); }
-    private static final String UNHANDLED = "{\"handled\":false,\"effects\":[]}";
-    private String presented(long frame, long revision, String offsets, long page) {
-        if (destroyed) { nativeFrameRelease(frame); return "{\"effects\":[]}"; }
-        return nativePresented(interaction, frame, revision, offsets, page);
-    }
-    private String pointer(int phase, float x, float y, float slop, float vx, float vy, float minFling, long page) {
-        return destroyed ? UNHANDLED : nativePointer(interaction, phase, x, y, slop, vx, vy, minFling, page);
-    }
-    private String keyEvent(int key, boolean shift, boolean repeat, long page) {
-        return destroyed ? UNHANDLED : nativeKey(interaction, key, shift, repeat, page);
-    }
-    private String explore(boolean exploring, float x, float y) {
-        return destroyed ? UNHANDLED : nativeExplore(interaction, exploring, x, y);
-    }
-    private String accessibilityAction(int id, int action, double number, String argument, long page) {
-        return destroyed ? UNHANDLED : nativeAccessibility(interaction, id, action, number, argument, page);
-    }
-    private long page() { return lc(PAGE, 0); }
-    private boolean bridgeReady() { return lc(BRIDGE_IS_READY, 0) != 0; }
-    private boolean currentPage(long page) { return lc(CURRENT_PAGE, page) != 0; }
-    private boolean currentSurface(long surface) { return lc(CURRENT_SURFACE, surface) != 0; }
-    private boolean currentConnection(long connection) { return lc(CURRENT_CONNECTION, connection) != 0; }
-    private long connection() { return lc(CONNECTION, 0); }
-    private void invalidateSurface() { lc(INVALIDATE_SURFACE, 0); }
 
     public void reload() {
-        reload(source);
+        if (destroyed) return;
+        prepareInstance();
+        nativeReload(host);
     }
     public void reload(String source) {
         if (destroyed) return;
-        animationScheduler.cancel();
-        clearBootstrap();
-        recovery.clear();
-        this.source = source;
-        final String module = source;
-        final long page = lc(LOAD, 0);
-        ime.reset();
-        snapshot = null;
-        apply(signal(RESET, page));
-        signal(ACTIVE, page);
-        images.clear(); viewDirty = true;
+        load(source);
+    }
+    private void load(String source) {
+        prepareInstance();
+        nativeLoad(host, source);
+    }
+    /** A new module instance: drop chrome and frame state tied to the previous one. */
+    private void prepareInstance() {
+        snapshot = null; snapshotText = null;
+        cancelImages(); inputReplies.clear();
         if (surface.getParent() != this) {
             removeAllViews();
             addView(surface, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
             addView(feedback, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         }
-        worker.execute(() -> {
-            try {
-                if (nativePage != 0) nativeRelease(nativePage);
-                nativePage = 0;
-                nativePage = nativeLoad(module);
-                main.post(() -> {
-                    if (!destroyed && lc(LOADED, page) != 0) {
-                        if (listener != null) listener.onLoaded();
-                        requestFrame();
-                    }
-                });
-            } catch (Throwable error) { postError(error, page); }
-        });
+    }
+    private void cancelImages() {
+        java.util.ArrayList<Runnable> cancellations = new java.util.ArrayList<>(imageCancellations.values());
+        imageCancellations.clear();
+        for (Runnable cancel : cancellations) cancel.run();
     }
 
-    private void postError(Throwable error, long page) {
-        main.post(() -> { if (!destroyed && currentPage(page)) showError(error); });
-    }
-
-    private void showError(Throwable error) {
-        if (destroyed) return;
-        finishPresentation(false);
-        clearBootstrap();
-        ime.setCaretActive(false);
-        animationScheduler.cancel();
-        pending = false;
-        Log.e("LingXia.UI", "Render failed", error);
-        if (listener != null) listener.onError(error);
-        JSONObject recovered;
-        try { recovered = new JSONObject(nativeLifecycleFail(lifecycle, String.valueOf(error))); }
-        catch (org.json.JSONException impossible) { throw new IllegalStateException(impossible); }
-        GpuRecovery.Kind kind = GpuRecovery.Kind.valueOf(recovered.optString("kind").toUpperCase(java.util.Locale.ROOT));
-        String retry = recovered.optString("retry");
-        if (kind == GpuRecovery.Kind.SESSION) {
-            apply(signal(INERT));
-            ime.reset();
-        }
-        final long connection = connection();
-        Runnable action = null;
-        switch (retry) {
-            case "Redraw": action = () -> { if (!destroyed) { viewDirty = true; scheduleFrame(); } }; break;
-            case "Reload": action = () -> { if (!destroyed) reload(); }; break;
-            case "Restart": action = () -> {
-                if (!destroyed && (listener == null || !listener.onRestart(connection))) recovery.show(snapshot != null, kind, null);
-            }; break;
-            default: break;
-        }
-        recovery.show(snapshot != null, kind, action);
-    }
-
-    public void resume() { active = true; updateSurfaceVisibility(); requestFrame(); pumpImages(); }
+    public void resume() { active = true; updateSurfaceVisibility(); requestFrame(); }
     @Override protected void onVisibilityChanged(View changedView, int visibility) {
         super.onVisibilityChanged(changedView, visibility);
         updateSurfaceVisibility();
-        if (active && isShown()) scheduleFrame();
     }
     @Override protected void onWindowVisibilityChanged(int visibility) {
         super.onWindowVisibilityChanged(visibility);
         syncVisibility();
-        if (visibility != View.VISIBLE) parkAnimations();
-        else if (active && isShown()) scheduleFrame();
     }
     private void syncVisibility() {
-        lc(VISIBLE, active && isShown() && getWindowVisibility() == View.VISIBLE && !destroyed ? 1 : 0);
+        if (!destroyed && host != 0) nativeSetVisible(host, active && isShown() && getWindowVisibility() == View.VISIBLE);
     }
     private void updateSurfaceVisibility() {
         if (surface == null) return;
         syncVisibility();
         // A retained page must hide its separate compositor layer as well as its view tree.
         surface.setVisibility(active && isShown() ? View.VISIBLE : View.INVISIBLE);
-        if (!active || !isShown()) parkAnimations();
         if (ime != null) updateCaretActivity();
     }
     private void updateCaretActivity() {
@@ -374,11 +240,13 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     @Override public void onWindowFocusChanged(boolean focused) {
         super.onWindowFocusChanged(focused);
         if (ime != null) {
-            if (!focused) { surface.cancelRefreshGesture(); apply(signal(CANCEL)); }
+            if (!focused) { surface.cancelRefreshGesture(); cancel(); }
             updateCaretActivity();
         }
     }
-    public long getConnectionGeneration() { return connection(); }
+    private void cancel() { if (!destroyed) nativeCancel(host); }
+    private void requestFrame() { if (!destroyed) nativeRequestFrame(host); }
+    public long getConnectionGeneration() { return destroyed ? 0 : nativeConnection(host); }
     public void afterNextPresentation(java.util.function.Consumer<Boolean> callback) { nextPresentation = callback; }
     private void finishPresentation(boolean success) {
         finishSurfaceRedraws();
@@ -391,10 +259,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             callback.accept(null); return;
         }
         Bitmap capture = Bitmap.createBitmap(surface.getWidth(), surface.getHeight(), Bitmap.Config.ARGB_8888);
-        final long captured = lc(SURFACE, 0);
+        final long captured = surfaceEpoch;
         try {
             android.view.PixelCopy.request(surface, capture, result -> {
-                if (result == android.view.PixelCopy.SUCCESS && !destroyed && currentSurface(captured)) {
+                if (result == android.view.PixelCopy.SUCCESS && !destroyed && surfaceEpoch == captured) {
                     // The swapchain is opaque; its alpha channel is not window coverage.
                     capture.setHasAlpha(false);
                     callback.accept(capture);
@@ -420,89 +288,37 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     public void pause() {
         surface.cancelRefreshGesture(); finishSurfaceRedraws();
         active = false; updateSurfaceVisibility(); ime.clear(true);
-        apply(signal(CANCEL));
+        cancel();
     }
     public void park() {
         if (destroyed) return;
-        clearBootstrap();
-        recovery.clear();
-        final long page = lc(PARK, 0);
-        pause(); snapshot = null; apply(signal(RESET, page)); images.clear(); viewDirty = true;
-        worker.execute(() -> {
-            try { if (nativePage != 0) nativeReset(nativePage); }
-            catch (Throwable error) { postError(error, page); }
-        });
+        pause(); snapshot = null; snapshotText = null; cancelImages();
+        nativePark(host);
     }
 
-    public void connect(long generation, String nonce) {
-        if (destroyed || lc(CONNECT, generation) == 0) return;
-        clearBootstrap();
-        recovery.clear();
-        bootstrap.begin(() -> {
-            if (destroyed || !currentConnection(generation) || lc(BRIDGE_IS_READY, 0) != 0) return;
-            bootstrapMessage = new TextView(getContext());
-            bootstrapMessage.setText("This page is taking longer to load. You can go back and try again.");
-            bootstrapMessage.setTextColor(android.graphics.Color.BLACK);
-            bootstrapMessage.setBackgroundColor(android.graphics.Color.WHITE);
-            bootstrapMessage.setPadding(32, 48, 32, 32);
-            bootstrapMessage.setClickable(true);
-            bootstrapSurfaceImportance = surface.getImportantForAccessibility();
-            surface.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-            addView(bootstrapMessage, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
-            Log.e("LingXia.UI", "UI_BOOTSTRAP_TIMEOUT: bridge ready and initial state not received within 5 seconds");
-        });
-        worker.execute(() -> {
-            if (!currentConnection(generation)) return;
-            try {
-                String hello = nativeBeginBridge(nativePage, nonce);
-                main.post(() -> {
-                    if (!destroyed && currentConnection(generation) && listener != null) listener.onMessage(generation, hello);
-                });
-            } catch (Throwable error) { main.post(() -> { if (currentConnection(generation)) showError(error); }); }
-        });
-    }
+    public void connect(long generation, String nonce) { if (!destroyed) nativeConnect(host, generation, nonce); }
+    public void receive(long generation, String frame) { if (!destroyed) nativeReceive(host, generation, frame); }
+    public void requestLeave(long generation, String reason) { if (!destroyed) nativeRequestLeave(host, generation, reason); }
 
-    public void receive(long generation, String frame) {
-        if (destroyed || !currentConnection(generation)) return;
-        worker.execute(() -> {
-            if (!currentConnection(generation)) return;
-            try { publishBridgeUpdate(generation, nativeReceiveBridge(nativePage, frame)); }
-            catch (Throwable error) { main.post(() -> { if (currentConnection(generation)) showError(error); }); }
-        });
-    }
-
-    public void requestLeave(long generation, String reason) {
-        if (destroyed || !currentConnection(generation)) return;
-        worker.execute(() -> {
-            if (!currentConnection(generation) || nativePage == 0) return;
-            try { publishBridgeUpdate(generation, nativeRequestLeave(nativePage, reason)); }
-            catch (Throwable error) { main.post(() -> { if (!destroyed && currentConnection(generation)) showError(error); }); }
-        });
-    }
-
-    private void publishBridgeUpdate(long generation, String encoded) throws org.json.JSONException {
-        JSONObject update = new JSONObject(encoded);
-        JSONArray outbound = update.getJSONArray("outbound"), errors = update.getJSONArray("errors");
-        for (int i = 0; i < errors.length(); i++) Log.e("LingXia.UI", errors.getString(i));
-        final boolean canRender = update.getBoolean("ready"), changed = update.getBoolean("changed");
-        main.post(() -> {
-            if (destroyed || !currentConnection(generation)) return;
-            try {
-                // State acknowledgements leave the View before any rendering attempt.
-                for (int i = 0; i < outbound.length(); i++) if (listener != null) listener.onMessage(generation, outbound.get(i).toString());
-                lc(BRIDGE_READY, canRender ? 1 : 0);
-                if (canRender) clearBootstrap();
-                if (changed) requestFrame();
-            } catch (Throwable error) { showError(error); }
-        });
-    }
-    private void clearBootstrap() {
-        bootstrap.cancel();
-        if (bootstrapMessage != null) {
-            removeView(bootstrapMessage);
-            bootstrapMessage = null;
-            surface.setImportantForAccessibility(bootstrapSurfaceImportance);
+    private void showBootstrapMessage(boolean overdue) {
+        if (!overdue) {
+            if (bootstrapMessage != null) {
+                removeView(bootstrapMessage);
+                bootstrapMessage = null;
+                surface.setImportantForAccessibility(bootstrapSurfaceImportance);
+            }
+            return;
         }
+        if (bootstrapMessage != null) return;
+        bootstrapMessage = new TextView(getContext());
+        bootstrapMessage.setText("This page is taking longer to load. You can go back and try again.");
+        bootstrapMessage.setTextColor(android.graphics.Color.BLACK);
+        bootstrapMessage.setBackgroundColor(android.graphics.Color.WHITE);
+        bootstrapMessage.setPadding(32, 48, 32, 32);
+        bootstrapMessage.setClickable(true);
+        bootstrapSurfaceImportance = surface.getImportantForAccessibility();
+        surface.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        addView(bootstrapMessage, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
     }
     @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
         super.onConfigurationChanged(configuration);
@@ -559,6 +375,19 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         requestFrame();
     }
 
+    /** {@code {width, height, scale, env}} for the next frame, or null while the surface cannot present. */
+    private String sampleEnvironment() {
+        android.view.Surface target = surface.getHolder().getSurface();
+        if (destroyed || target == null || !target.isValid()) return null;
+        int width = surface.getWidth(), height = surface.getHeight();
+        if (width <= 0 || height <= 0) return null;
+        float scale = getResources().getDisplayMetrics().density;
+        try {
+            return new JSONObject().put("width", width).put("height", height).put("scale", (double)scale)
+                .put("env", new JSONObject(measureEnvironment(scale))).toString();
+        } catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native environment", error); }
+    }
+
     private String measureEnvironment(float scale) {
         try {
             int top = 0, right = 0, bottom = 0, left = 0, keyboard = 0;
@@ -609,54 +438,40 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 .put("textScale", textScale)
                 .put("keyboard", new JSONObject().put("height", Math.min(surface.getHeight(), Math.max(0, keyboard - trailingY)) / scale))
                 .put("os", "android").put("pointer", "coarse").put("formFactor", configuration.smallestScreenWidthDp >= 600 ? "tablet" : "phone")
-                .put("displayLanguage", locale.toLanguageTag()).put("aside", false).put("runner", false)
-                .put("renderer", new JSONObject().put("fallback", fallback()))).toString();
+                .put("displayLanguage", locale.toLanguageTag()).put("aside", false).put("runner", false)).toString();
         } catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native environment", error); }
-    }
-    private static Object fallback() {
-        String reason = nativeRendererFallback();
-        return reason == null ? JSONObject.NULL : reason;
     }
     public void dispose() {
         if (destroyed) return;
-        animationScheduler.cancel();
         nextPresentation = null;
         finishSurfaceRedraws();
-        clearBootstrap();
+        showBootstrapMessage(false);
         recovery.clear();
-        apply(signal(CANCEL));
-        lc(DISPOSE, 0);
+        cancel();
         destroyed = true;
-        images.close(); ime.clear(false); surface.stopFling();
-        if (gpuSurface != 0) { nativeDetach(gpuSurface); gpuSurface = 0; }
-        nativeInteractionRelease(interaction);
-        interaction = 0;
-        // Worker tasks queued before disposal still read the lifecycle; release it after them.
-        worker.execute(() -> {
-            if (nativePage != 0) { nativeRelease(nativePage); nativePage = 0; }
-            long handle = lifecycle;
-            lifecycle = 0;
-            nativeLifecycleRelease(handle);
-        });
-        if (bitmap != null) { bitmap.recycle(); bitmap = null; }
+        cancelImages(); inputReplies.clear();
+        ime.clear(false); surface.stopFling();
+        if (vsyncRequested) Choreographer.getInstance().removeFrameCallback(vsync);
+        long released = host;
+        host = 0;
+        nativeHostRelease(released);
     }
     @Override public void surfaceCreated(SurfaceHolder holder) { updateCaretActivity(); }
     @Override public void surfaceDestroyed(SurfaceHolder holder) {
         surface.cancelRefreshGesture();
-        parkAnimations();
         hasSurfaceFrame = false;
-        invalidateSurface();
+        surfaceEpoch++;
         finishSurfaceRedraws();
         ime.setCaretActive(false);
-        apply(signal(CANCEL));
         gpuAttached = false;
-        if (gpuSurface != 0) nativeSuspend(gpuSurface);
+        if (!destroyed) nativeSurfaceLost(host);
     }
     @Override public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
         hasSurfaceFrame = false;
-        invalidateSurface();
+        surfaceEpoch++;
+        if (destroyed) return;
+        nativeSurfaceChanged(host);
         if (!gpuAttached) attachGpu();
-        requestFrame();
     }
 
     @Override public void surfaceRedrawNeeded(SurfaceHolder holder) { requestFrame(); }
@@ -674,360 +489,132 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
 
     private void attachGpu() {
         if (attaching || destroyed || !active || !isShown() || !surface.getHolder().getSurface().isValid()) return;
-        final long requested = lc(SURFACE, 0);
-        final int width = surface.getWidth(), height = surface.getHeight();
+        int width = surface.getWidth(), height = surface.getHeight();
         if (width <= 0 || height <= 0) return;
-        final android.view.Surface target = surface.getHolder().getSurface();
-        final long existing = gpuSurface;
         attaching = true;
-        worker.execute(() -> {
-            long created = 0;
-            try { created = nativeAttach(target, width, height, existing); }
-            catch (Throwable error) { Log.e("LingXia.UI", "GPU unavailable; using CPU reference renderer", error); }
-            final long result = created;
-            main.post(() -> {
-                attaching = false;
-                if (destroyed || !currentSurface(requested)) {
-                    if (result != 0) {
-                        if (destroyed) nativeDetach(result);
-                        else { gpuSurface = result; nativeSuspend(result); }
-                    }
-                    if (!destroyed) attachGpu();
-                    return;
-                }
-                gpuSurface = result;
-                gpuAttached = result != 0;
-                Log.i("LingXia.UI", "backend=" + (result != 0 ? "vello-vulkan" : "vello-cpu") + " surface=" + result);
-                requestFrame();
-            });
-        });
+        try { nativeAttach(host, surface.getHolder().getSurface(), width, height); }
+        catch (UnsatisfiedLinkError cpuOnly) { attaching = false; }
     }
 
-    private void requestFrame() {
-        viewDirty = true;
-        scheduleFrame();
-    }
-    private void parkAnimations() {
-        if (worker == null || destroyed) return;
-        animationScheduler.cancel();
-        final long time = android.os.SystemClock.uptimeMillis();
-        worker.execute(() -> {
-            try { if (nativePage != 0) nativeAnimationPark(nativePage, time); }
-            catch (Throwable error) { Log.e("LingXia.UI", "Animation pause failed", error); }
-        });
-    }
-    private void acknowledgeAnimation(long requested, long generation) {
-        final long time = android.os.SystemClock.uptimeMillis();
-        worker.execute(() -> {
-            try {
-                if (nativePage == 0) return;
-                final long delay = nativeAnimationPresented(nativePage, requested, generation, time);
-                main.post(() -> {
-                    if (delay < 0 || destroyed || !currentSurface(requested) || snapshot == null
-                        || snapshot.optLong("generation") != generation || busy || pending) return;
-                    animationScheduler.schedule(delay, time);
-                });
-            } catch (Throwable error) { Log.e("LingXia.UI", "Animation presentation acknowledgement failed", error); }
-        });
-    }
-    private void scheduleFrame() {
-        animationScheduler.cancel();
-        pending = true;
-        syncVisibility();
-        if (destroyed || lc(FRAME, 0) == 0 || !surface.getHolder().getSurface().isValid()) return;
-        final int width = surface.getWidth(), height = surface.getHeight();
-        if (width <= 0 || height <= 0) return;
-        final float scale = getResources().getDisplayMetrics().density;
-        final String environment = measureEnvironment(scale);
-        if (!environment.equals(frameEnvironment)) { frameEnvironment = environment; invalidateSurface(); viewDirty = true; }
-        if (busy || attaching || numberBusy) return;
-        final long requested = lc(FRAME, 0);
-        if (requested == 0) return;
-        final long page = page();
-        final long targetSurface = gpuSurface;
-        final boolean rebuild = viewDirty || snapshot == null;
-        final JSONObject scrollState = json(query(SCROLL_STATE, 0));
-        final long scrollRevision = scrollState.optLong("revision");
-        final String offsets = scrollState.optJSONObject("offsets").toString();
-        final GpuIme.Ticket inputTicket = ime.capture();
-        final boolean caretVisible = ime.caretVisible();
-        viewDirty = false;
-        pending = false; busy = true;
-        final long queuedAt = System.nanoTime();
-        final long animationTime = android.os.SystemClock.uptimeMillis();
-        worker.execute(() -> {
-            long frame = 0;
-            try {
-                long started = System.nanoTime();
-                final long workerQueueUs = (started - queuedAt) / 1000;
-                nativeEnvironment(nativePage, environment);
-                Bitmap rendered = null;
-                if (targetSurface != 0) nativePrepareGpu(nativePage, targetSurface, width, height, scale, rebuild, caretVisible, offsets, requested, animationTime);
-                else rendered = Bitmap.createBitmap(nativeRender(nativePage, width, height, scale, rebuild, caretVisible, offsets, requested, animationTime), width, height, Bitmap.Config.ARGB_8888);
-                frame = nativeTakeFrame(nativePage);
-                if (logic) {
-                    JSONObject committed = new JSONObject(nativeDrainActions(nativePage));
-                    committed.put("changed", committed.optBoolean("localChanged"));
-                    publishBridgeUpdate(connection(), committed.toString());
-                }
-                final Bitmap next = rendered;
-                final long presentedFrame = frame;
-                frame = 0;
-                final String metadata = nativeSnapshot(nativePage);
-                final JSONObject nextSnapshot = new JSONObject(metadata);
-                final long elapsed = (System.nanoTime() - started) / 1000000;
-                final long preparedAt = System.nanoTime();
-                main.post(() -> Choreographer.getInstance().postFrameCallback(time -> {
-                    final long presentStarted = System.nanoTime();
-                    busy = false;
-                    boolean presented = false;
-                    if (!destroyed && currentSurface(requested) && surface.getHolder().getSurface().isValid() && surface.present(next, nextSnapshot)) {
-                        presented = true;
-                        hasSurfaceFrame = true;
-                        if (bitmap != null) bitmap.recycle();
-                        bitmap = next;
-                        snapshot = nextSnapshot; frameScale = scale;
-                        // Repainting an old frame (caret/scroll) is not recovery.
-                        if (rebuild) recovery.clear();
-                        JSONObject outcome = json(presented(presentedFrame, scrollRevision, offsets, page));
-                        acknowledgeAnimation(requested, nextSnapshot.optLong("generation"));
-                        ime.presented(nextSnapshot, inputTicket);
-                        updateCaretActivity();
-                        apply(outcome.optJSONArray("effects"));
-                        dispatchReach(outcome.optJSONObject("reach"));
-                        updateImages(nextSnapshot.optJSONArray("images"));
-                        if (listener != null) listener.onFrame(metadata);
-                        Log.i("LingXia.UI", "present generation=" + snapshot.optLong("generation") + " surface=" + targetSurface + " size=" + width + "x" + height + " workerMs=" + elapsed + " workerQueueUs=" + workerQueueUs + " uiWaitUs=" + ((presentStarted - preparedAt) / 1000) + " uiUs=" + ((System.nanoTime() - presentStarted) / 1000) + " rebuild=" + rebuild + " caretVisible=" + caretVisible + " nodes=" + snapshot.optJSONArray("nodes").length() + " images=" + snapshot.optInt("loadedImages") + " metrics=" + snapshot.optJSONObject("metrics"));
-                    } else {
-                        nativeFrameRelease(presentedFrame);
-                        if (next != null) next.recycle();
-                    }
-                    if (presented) finishPresentation(true);
-                    if (pending && !destroyed) scheduleFrame();
-                }));
-            } catch (Throwable error) {
-                if (frame != 0) nativeFrameRelease(frame);
-                main.post(() -> {
-                    busy = false; viewDirty = true;
-                    if (!destroyed && currentPage(page)) {
-                        apply(signal(CANCEL, page));
-                        if (currentSurface(requested)) showError(error);
-                    }
-                    if (pending && !destroyed) scheduleFrame();
-                });
-            }
-        });
+    private void showFailure(int message, int action, boolean retained, String error) {
+        if (message < 0) { recovery.clear(); return; }
+        finishPresentation(false);
+        Log.e("LingXia.UI", "Render failed: " + error);
+        if (listener != null) listener.onError(new IllegalStateException(error));
+        recovery.show(retained, message, action, action < 0 ? null : () -> { if (!destroyed) nativeRetry(host); });
     }
 
-    // ---- effects --------------------------------------------------------------
-
-    private static JSONObject json(String encoded) {
-        try { return new JSONObject(encoded); }
-        catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native reply", error); }
-    }
-    private static JSONArray array(String encoded) {
-        try { return new JSONArray(encoded); }
-        catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native reply", error); }
-    }
-
-    private void apply(String encoded) { apply(array(encoded)); }
-    /** Execute core effects with Android mechanics. */
-    private void apply(JSONArray effects) {
-        for (int i = 0; effects != null && i < effects.length(); i++) {
-            JSONObject effect = effects.optJSONObject(i);
-            switch (effect.optString("kind")) {
-                case "press":
-                    if (effect.optBoolean("styled")) setPressedStyle(effect.optString("identity"));
-                    else surface.showPress(effect.optInt("node"));
-                    break;
-                case "clear-press": surface.clearPress(); setPressedStyle(null); break;
-                case "focus-ring": surface.showFocusRing(effect.optInt("node")); break;
-                case "clear-focus-ring": surface.clearFocusRing(); break;
-                case "redraw": scheduleFrame(); break;
-                case "claim": if (surface.getParent() != null) surface.getParent().requestDisallowInterceptTouchEvent(effect.optBoolean("exclusive")); break;
-                case "arm-long-press": surface.armLongPress(); break;
-                case "cancel-long-press": surface.disarmLongPress(); break;
-                case "fling": surface.fling(effect.optString("region"), effect.optBoolean("horizontal"), (float)effect.optDouble("velocity")); break;
-                case "stop-fling": surface.stopFling(); break;
-                case "dispatch": drainDispatch(); break;
-                case "number": drainNumber(); break;
-                case "clicked": surface.performClick(); break;
-                case "haptic": surface.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); break;
-                case "edit-text": {
-                    JSONObject node = surface.node(effect.optInt("node"));
-                    if (node != null && snapshot != null) {
-                        String text = effect.isNull("text") ? null : effect.optString("text");
-                        ime.accessibilityEdit(node, snapshot.optLong("generation"), text, effect.optInt("start"), effect.optInt("end"));
-                    }
-                    break;
-                }
-                case "accessibility": surface.announce(effect); break;
-                default: break;
-            }
+    /** Runs only on the main thread, as the host's platform. */
+    private final class Platform implements GpuPlatform {
+        @Override public void post(long task, long delayMillis) {
+            main.postDelayed(() -> nativeRunTask(task), delayMillis);
         }
-    }
-
-    private String styledPress;
-    /** `active:` styles repaint in the session; only the transition is forwarded. */
-    private void setPressedStyle(String identity) {
-        if (java.util.Objects.equals(identity, styledPress)) return;
-        styledPress = identity;
-        final long page = page();
-        worker.execute(() -> {
-            try {
-                if (currentPage(page) && nativePage != 0 && nativePointerState(nativePage, identity, null))
-                    main.post(() -> { if (!destroyed && currentPage(page)) scheduleFrame(); });
-            } catch (Throwable error) { postError(error, page); }
-        });
-    }
-
-    /** Run queued activations against the frame the core resolved them on. */
-    private void drainDispatch() {
-        if (busy || destroyed) return;
-        JSONArray dispatches = array(query(TAKE_DISPATCH, 0));
-        for (int i = 0; i < dispatches.length(); i++) {
-            JSONObject dispatch = dispatches.optJSONObject(i);
-            final long commit = dispatch.optLong("commit");
-            final long page = page();
-            switch (dispatch.optString("kind")) {
-                case "editor": {
-                    JSONObject node = surface.node(dispatch.optInt("node"));
-                    JSONArray point = dispatch.optJSONArray("point");
-                    if (node == null) break;
-                    if (point == null) ime.focus(node, commit);
-                    else ime.touch(node, commit, (float)point.optDouble(0), (float)point.optDouble(1), dispatch.optBoolean("word"));
-                    break;
-                }
-                case "click": {
-                    if (ime.isActive()) ime.clear(true);
-                    final long handle = dispatch.optLong("handle");
-                    runOnWorker(page, () -> nativeClick(nativePage, commit, handle), true);
-                    break;
-                }
-                case "plot": {
-                    if (ime.isActive()) ime.clear(true);
-                    final String identity = dispatch.optString("identity");
-                    final int mode = dispatch.optInt("mode"), index = dispatch.optInt("index");
-                    final JSONArray point = dispatch.optJSONArray("point");
-                    runOnWorker(page, () -> nativePlot(nativePage, commit, identity, mode, (float)point.optDouble(0), (float)point.optDouble(1), index), true);
-                    break;
-                }
-                case "dismiss-plots": {
-                    final JSONArray identities = dispatch.optJSONArray("identities");
-                    runOnWorker(page, () -> {
-                        boolean changed = false;
-                        for (int j = 0; j < identities.length(); j++) changed |= nativePlot(nativePage, commit, identities.optString(j), 2, 0, 0, -1);
-                        return changed;
-                    }, false);
-                    break;
-                }
-                default: break;
-            }
+        @Override public void requestVsync() {
+            if (destroyed || vsyncRequested) return;
+            vsyncRequested = true;
+            Choreographer.getInstance().postFrameCallback(vsync);
         }
-    }
-
-    private interface WorkerCall { boolean run() throws Exception; }
-    private void runOnWorker(long page, WorkerCall call, boolean announce) {
-        worker.execute(() -> {
-            if (!currentPage(page) || nativePage == 0) return;
-            try {
-                if (call.run()) {
-                    if (logic) publishBridgeUpdate(connection(), nativeDrainActions(nativePage));
-                    main.post(() -> {
-                        if (destroyed || !currentPage(page)) return;
-                        if (announce) surface.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED);
-                        requestFrame();
-                    });
-                }
-            } catch (Throwable error) { postError(error, page); }
-        });
-    }
-
-    private void dispatchReach(JSONObject reach) {
-        if (reach == null) return;
-        final long page = page(), commit = reach.optLong("commit");
-        final JSONArray handles = reach.optJSONArray("handles");
-        final boolean more = reach.optBoolean("more");
-        // Queue before any next preparation, so generation validation sees the presented frame.
-        worker.execute(() -> {
-            if (!currentPage(page)) return;
-            try {
-                boolean changed = false;
-                for (int i = 0; handles != null && i < handles.length(); i++) changed |= nativeClick(nativePage, commit, handles.optLong(i));
-                if (logic && changed) publishBridgeUpdate(connection(), nativeDrainActions(nativePage));
-                if (changed || more) main.post(() -> { if (!destroyed && currentPage(page)) requestFrame(); });
-            } catch (Throwable error) { postError(error, page); }
-        });
-    }
-
-    private void drainNumber() {
-        if (busy || numberBusy || destroyed) return;
-        String encoded = query(TAKE_NUMBER, 0);
-        if ("null".equals(encoded)) return;
-        JSONObject proposal = json(encoded);
-        final long commit = proposal.optLong("commit"), handle = proposal.optLong("handle"), page = proposal.optLong("page");
-        final double value = proposal.optDouble("value");
-        numberBusy = true;
-        worker.execute(() -> {
-            boolean changed = false; Throwable failure = null;
-            try {
-                if (currentPage(page) && nativePage != 0) {
-                    changed = nativeNumber(nativePage, commit, handle, value);
-                    if (changed && logic) publishBridgeUpdate(connection(), nativeDrainActions(nativePage));
-                }
-            } catch (Throwable error) { failure = error; }
-            final boolean applied = changed; final Throwable error = failure;
-            main.post(() -> {
-                numberBusy = false;
-                if (destroyed) return;
-                query(NUMBER_DONE, 0);
-                if (error != null) { apply(signal(CANCEL)); if (currentPage(page)) showError(error); return; }
-                if (applied) requestFrame(); else if (pending) scheduleFrame(); else drainNumber();
-            });
-        });
-    }
-
-    private void updateImages(JSONArray sources) {
-        images.update(sources == null ? new JSONArray() : sources); pumpImages(); flushImageEvents();
-    }
-    private void flushImageEvents() {
-        if (destroyed || snapshot == null) return;
-        final long page = page(), generation = snapshot.optLong("generation");
-        worker.execute(() -> {
-            try {
-                if (!currentPage(page) || nativePage == 0) return;
-                if (nativeImageEvents(nativePage, generation)) {
-                    if (logic) publishBridgeUpdate(connection(), nativeDrainActions(nativePage));
-                    main.post(() -> { if (!destroyed && currentPage(page)) requestFrame(); });
-                }
-            } catch (Throwable error) { postError(error, page); }
-        });
-    }
-    private void pumpImages() {
-        if (destroyed || !active || listener == null) return;
-        for (GpuImages.Request request : images.start()) {
-            final long page = page();
-            Runnable cancel = listener.onImageRequest(request.source, bytes -> main.post(() -> {
-                if (destroyed || !images.current(request)) {
-                    images.complete(request); pumpImages(); return;
-                }
-                worker.execute(() -> {
-                    boolean changed = false;
-                    boolean current = currentPage(page) && nativePage != 0;
-                    try { if (current && bytes != null) changed = images.apply(nativePage, request, bytes); }
-                    catch (Throwable error) { Log.w("LingXia.UI", "Image failed: " + request.source, error); }
-                    if (current) images.status(nativePage, request, changed);
-                    final boolean updated = changed;
-                    main.post(() -> {
-                        boolean live = images.complete(request);
-                        if (!destroyed && live && updated) scheduleFrame();
-                        if (!destroyed && live) flushImageEvents();
-                        pumpImages();
-                    });
-                });
+        @Override public String environment() { return sampleEnvironment(); }
+        @Override public boolean presentPixels(int[] argb, int width, int height) {
+            if (!active || !surface.getHolder().getSurface().isValid()) return false;
+            Canvas canvas = surface.getHolder().lockCanvas();
+            if (canvas == null) return false;
+            Bitmap frame = Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888);
+            try { canvas.drawBitmap(frame, 0, 0, null); }
+            finally { surface.getHolder().unlockCanvasAndPost(canvas); frame.recycle(); }
+            return true;
+        }
+        @Override public void gpuAttached(boolean attached) {
+            attaching = false;
+            if (destroyed) return;
+            gpuAttached = attached;
+            requestFrame();
+        }
+        @Override public void fetchImage(long id, String source) {
+            if (destroyed || listener == null) { nativeImageLoaded(host, id, null); return; }
+            Runnable cancel = listener.onImageRequest(source, bytes -> main.post(() -> {
+                if (imageCancellations.remove(id) == null || destroyed) return;
+                nativeImageLoaded(host, id, bytes);
             }));
-            images.track(request, cancel);
+            // A synchronous loader may have already completed.
+            imageCancellations.put(id, cancel);
         }
+        @Override public void cancelImage(long id) {
+            Runnable cancel = imageCancellations.remove(id);
+            if (cancel != null) cancel.run();
+        }
+        @Override public void announce(int event, int id) { surface.announce(event, id); }
+        @Override public void announceText(int id, boolean secure, String before, String after) {
+            if (!surface.accessibilityEnabled()) return;
+            AccessibilityEvent event = surface.event(id, AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED);
+            event.setClassName("android.widget.EditText"); event.setPassword(secure);
+            event.setBeforeText(before); event.getText().add(after); event.setFromIndex(0);
+            event.setRemovedCount(before.length()); event.setAddedCount(after.length());
+            surface.send(event);
+        }
+        @Override public void announceSelection(int id, boolean secure, String text, int start, int end) {
+            if (!surface.accessibilityEnabled()) return;
+            AccessibilityEvent event = surface.event(id, AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED);
+            event.setClassName("android.widget.EditText"); event.setPassword(secure);
+            event.getText().add(text); event.setFromIndex(start); event.setToIndex(end);
+            event.setItemCount(text.length());
+            surface.send(event);
+        }
+        @Override public void announceClicked() { surface.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED); }
+        @Override public void frame(String encoded, float scale) {
+            try { snapshot = new JSONObject(encoded); }
+            catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native frame", error); }
+            snapshotText = encoded; frameScale = scale; hasSurfaceFrame = true;
+            ime.presented(snapshot, ime.capture());
+            updateCaretActivity();
+        }
+        @Override public void imeFocus(int index, long commit, boolean touch, float x, float y, boolean word) {
+            JSONObject node = surface.node(index);
+            if (node == null) return;
+            if (touch) ime.touch(node, commit, x, y, word); else ime.focus(node, commit);
+        }
+        @Override public void imeActivation() { if (ime.isActive()) ime.clear(true); }
+        @Override public void imeReset() { ime.reset(); }
+        @Override public void inputReply(long callback, String reply) {
+            java.util.function.Consumer<JSONObject> consumer = inputReplies.remove(callback);
+            if (consumer == null || destroyed) return;
+            JSONObject result = null;
+            try {
+                Object value = reply == null ? null : new org.json.JSONTokener(reply).nextValue();
+                if (value instanceof JSONObject) result = (JSONObject)value;
+            } catch (org.json.JSONException error) { Log.e("LingXia.UI", "Invalid input reply", error); }
+            consumer.accept(result);
+        }
+        @Override public void press(int node) { surface.showPress(node); }
+        @Override public void clearPress() { surface.clearPress(); }
+        @Override public void focusRing(int node) { surface.showFocusRing(node); }
+        @Override public void clearFocusRing() { surface.clearFocusRing(); }
+        @Override public void claim(boolean exclusive) {
+            if (surface.getParent() != null) surface.getParent().requestDisallowInterceptTouchEvent(exclusive);
+        }
+        @Override public void armLongPress() { surface.armLongPress(); }
+        @Override public void cancelLongPress() { surface.disarmLongPress(); }
+        @Override public void fling(String region, boolean horizontal, float velocity) { surface.fling(region, horizontal, velocity); }
+        @Override public void stopFling() { surface.stopFling(); }
+        @Override public void clicked() { surface.performClick(); }
+        @Override public void haptic() { surface.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); }
+        @Override public void editText(int index, String text, int start, int end) {
+            JSONObject node = surface.node(index);
+            if (node != null && snapshot != null) ime.accessibilityEdit(node, snapshot.optLong("generation"), text, start, end);
+        }
+        @Override public void loaded() { if (listener != null) listener.onLoaded(); }
+        @Override public void presented() {
+            if (listener != null && snapshotText != null) listener.onFrame(snapshotText);
+            finishPresentation(true);
+        }
+        @Override public void message(long connection, String message) {
+            if (listener != null) listener.onMessage(connection, message);
+        }
+        @Override public boolean restart(long connection) { return listener != null && listener.onRestart(connection); }
+        @Override public void recovery(int message, int action, boolean retained, String error) {
+            showFailure(message, action, retained, error);
+        }
+        @Override public void bootstrapOverdue(boolean overdue) { showBootstrapMessage(overdue); }
     }
 
     private static final int[] KEYS = {KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
@@ -1035,6 +622,11 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private static int key(int code) {
         for (int i = 0; i < KEYS.length; i++) if (KEYS[i] == code) return i;
         return code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_SPACE || code == KeyEvent.KEYCODE_DPAD_CENTER ? 7 : -1;
+    }
+
+    private static JSONObject json(String encoded) {
+        try { return "null".equals(encoded) ? null : new JSONObject(encoded); }
+        catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native reply", error); }
     }
 
     private final class UiSurface extends SurfaceView {
@@ -1047,15 +639,14 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         private int flingPosition;
         private boolean flingHorizontal;
         private boolean refreshingGesture;
-        private final Runnable longPress = () -> apply(signal(LONG_PRESS));
+        private final Runnable longPress = () -> { if (!destroyed) nativeLongPress(host); };
         private final Choreographer.FrameCallback flingFrame = new Choreographer.FrameCallback() {
             @Override public void doFrame(long time) {
                 if (!active || destroyed || flingRegion == null || !scroller.computeScrollOffset()) return;
                 int position = flingHorizontal ? scroller.getCurrX() : scroller.getCurrY();
-                boolean changed = scrollRegion(flingRegion, position - flingPosition);
+                boolean changed = nativeScrollBy(host, flingRegion, position - flingPosition);
                 flingPosition = position;
                 if (!changed) { scroller.abortAnimation(); flingRegion = null; return; }
-                scheduleFrame();
                 Choreographer.getInstance().postFrameCallback(this);
             }
         };
@@ -1121,35 +712,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             finally { cancel.recycle(); }
             if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
         }
-        boolean present(Bitmap candidate, JSONObject frame) {
-            if (!active || !getHolder().getSurface().isValid()) return false;
-            if (gpuSurface != 0) {
-                try {
-                    long started = System.nanoTime();
-                    if (!nativePresentGpu(gpuSurface, frame.optLong("generation"))) {
-                        animationScheduler.schedule(0, android.os.SystemClock.uptimeMillis());
-                        return false;
-                    }
-                    Log.i("LingXia.UI", "gpuSubmitMs=" + ((System.nanoTime() - started) / 1000000));
-                    return true;
-                } catch (Throwable error) { showError(error); }
-                return false;
-            }
-            if (candidate == null) return false;
-            Canvas canvas = getHolder().lockCanvas();
-            if (canvas == null) {
-                animationScheduler.schedule(0, android.os.SystemClock.uptimeMillis());
-                return false;
-            }
-            try {
-                canvas.drawBitmap(candidate, 0, 0, null);
-            } finally { getHolder().unlockCanvasAndPost(canvas); }
-            return true;
-        }
         @Override public boolean onTouchEvent(MotionEvent event) {
-            if (lc(SESSION_FAILED, 0) != 0) return false;
+            if (destroyed || nativeSessionFailed(host)) return false;
             if (selectionHandles.touch(event)) {
-                apply(signal(CANCEL));
+                cancel();
                 getParent().requestDisallowInterceptTouchEvent(selectionHandles.dragging());
                 return true;
             }
@@ -1158,7 +724,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             boolean refreshConsumed = pullToRefresh != null && pullToRefresh.onTouch(event);
             if (refreshConsumed || refreshingGesture) {
                 if (!refreshingGesture) {
-                    apply(signal(CANCEL));
+                    cancel();
                     refreshingGesture = true;
                 }
                 if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) refreshingGesture = false;
@@ -1180,11 +746,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 velocity.computeCurrentVelocity(1000, configuration.getScaledMaximumFlingVelocity());
                 vx = velocity.getXVelocity(); vy = velocity.getYVelocity();
             }
-            JSONObject outcome = json(pointer(phase, event.getX(), event.getY(), slop, vx, vy,
-                configuration.getScaledMinimumFlingVelocity(), page()));
-            apply(outcome.optJSONArray("effects"));
+            boolean handled = nativePointer(host, phase, event.getX(), event.getY(), slop, vx, vy,
+                configuration.getScaledMinimumFlingVelocity());
             if (phase >= 2 && velocity != null) { velocity.recycle(); velocity = null; }
-            if (phase == 0 && !outcome.optBoolean("handled")) return pullToRefresh != null;
+            if (phase == 0 && !handled) return pullToRefresh != null;
             return true;
         }
         @Override public boolean performClick() { super.performClick(); return true; }
@@ -1193,111 +758,61 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             return ime == null ? null : ime.create(info);
         }
         @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
-            if (lc(SESSION_FAILED, 0) != 0) return super.onKeyDown(keyCode, event);
+            if (destroyed || nativeSessionFailed(host)) return super.onKeyDown(keyCode, event);
             if (ime.hasFocus() && keyCode != KeyEvent.KEYCODE_TAB) return ime.key(event) || super.onKeyDown(keyCode, event);
             if (ime.hasFocus()) ime.clear(true);
             int key = key(keyCode);
-            if (key >= 0) {
-                JSONObject outcome = json(keyEvent(key, event.isShiftPressed(), event.getRepeatCount() > 0, page()));
-                apply(outcome.optJSONArray("effects"));
-                if (outcome.optBoolean("handled")) return true;
-            }
+            if (key >= 0 && nativeKey(host, key, event.isShiftPressed(), event.getRepeatCount() > 0)) return true;
             return super.onKeyDown(keyCode, event);
         }
         @Override public boolean onKeyShortcut(int keyCode, KeyEvent event) {
-            if (lc(SESSION_FAILED, 0) != 0) return super.onKeyShortcut(keyCode, event);
+            if (destroyed || nativeSessionFailed(host)) return super.onKeyShortcut(keyCode, event);
             return ime.hasFocus() ? ime.key(event) : super.onKeyShortcut(keyCode, event);
         }
         @Override protected void onFocusChanged(boolean focused, int direction, Rect previouslyFocusedRect) {
             super.onFocusChanged(focused, direction, previouslyFocusedRect);
-            if (!focused) { apply(signal(FOCUS_LEFT)); if (ime != null) ime.clear(true); }
+            if (destroyed) return;
+            if (!focused) { nativeFocusLeft(host); if (ime != null) ime.clear(true); }
             else if (!isInTouchMode() && (ime == null || !ime.hasFocus()))
-                apply(signal(direction == View.FOCUS_BACKWARD || direction == View.FOCUS_UP ? FOCUS_BACKWARD : FOCUS_FORWARD));
+                nativeFocusEntered(host, direction == View.FOCUS_BACKWARD || direction == View.FOCUS_UP);
         }
         @Override public boolean dispatchHoverEvent(MotionEvent event) {
             android.view.accessibility.AccessibilityManager manager = (android.view.accessibility.AccessibilityManager)getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
             if (!active || destroyed || manager == null || !manager.isEnabled() || !manager.isTouchExplorationEnabled()) {
-                apply(json(explore(false, 0, 0)).optJSONArray("effects"));
+                if (!destroyed) nativeExplore(host, false, 0, 0);
                 return super.dispatchHoverEvent(event);
             }
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_HOVER_ENTER:
-                case MotionEvent.ACTION_HOVER_MOVE: {
-                    JSONObject outcome = json(explore(true, event.getX(), event.getY()));
-                    apply(outcome.optJSONArray("effects"));
-                    return outcome.optBoolean("handled");
-                }
-                case MotionEvent.ACTION_HOVER_EXIT: {
-                    JSONObject outcome = json(explore(false, 0, 0));
-                    apply(outcome.optJSONArray("effects"));
-                    return true;
-                }
+                case MotionEvent.ACTION_HOVER_MOVE: return nativeExplore(host, true, event.getX(), event.getY());
+                case MotionEvent.ACTION_HOVER_EXIT: nativeExplore(host, false, 0, 0); return true;
                 default: return false;
             }
         }
-        private boolean accessibilityEnabled() {
+        boolean accessibilityEnabled() {
             android.view.accessibility.AccessibilityManager manager = (android.view.accessibility.AccessibilityManager)getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
             return getParent() != null && manager != null && manager.isEnabled();
         }
-        private AccessibilityEvent event(int id, int type) {
+        AccessibilityEvent event(int id, int type) {
             AccessibilityEvent event = AccessibilityEvent.obtain(type);
             // Virtual descendants must be invalidated, not only the host node.
             if (type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) event.setContentChangeTypes(AccessibilityEvent.CONTENT_CHANGE_TYPE_SUBTREE);
             event.setSource(this, id); event.setPackageName(getContext().getPackageName());
             return event;
         }
-        private void send(AccessibilityEvent event) { getParent().requestSendAccessibilityEvent(this, event); }
-        /** Translate a core accessibility effect into Android events. */
-        void announce(JSONObject effect) {
-            if (!accessibilityEnabled()) return;
-            String kind = effect.optString("event");
-            int id = effect.optInt("id", View.NO_ID);
-            switch (kind) {
-                case "focused": send(event(id, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED)); break;
-                case "focus-cleared": send(event(id, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED)); break;
-                case "input-focused": send(event(id, AccessibilityEvent.TYPE_VIEW_FOCUSED)); break;
-                case "hover-enter": send(event(id, AccessibilityEvent.TYPE_VIEW_HOVER_ENTER)); break;
-                case "hover-exit": send(event(id, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT)); break;
-                case "change": {
-                    JSONObject change = effect;
-                    switch (change.optString("kind")) {
-                        case "text-changed": {
-                            AccessibilityEvent event = event(change.optInt("id"), AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED);
-                            String before = change.optString("before"), after = change.optString("after");
-                            event.setClassName("android.widget.EditText"); event.setPassword(change.optBoolean("secure"));
-                            event.setBeforeText(before); event.getText().add(after); event.setFromIndex(0);
-                            event.setRemovedCount(before.length()); event.setAddedCount(after.length());
-                            send(event);
-                            break;
-                        }
-                        case "selection-changed": {
-                            AccessibilityEvent event = event(change.optInt("id"), AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED);
-                            String text = change.optString("text");
-                            event.setClassName("android.widget.EditText"); event.setPassword(change.optBoolean("secure"));
-                            event.getText().add(text); event.setFromIndex(change.optInt("start")); event.setToIndex(change.optInt("end"));
-                            event.setItemCount(text.length());
-                            send(event);
-                            break;
-                        }
-                        case "value-changed": send(event(change.optInt("id"), AccessibilityEvent.TYPE_VIEW_SELECTED)); break;
-                        case "content-changed": send(event(View.NO_ID, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)); break;
-                        default: break;
-                    }
-                    break;
-                }
-                default: break;
-            }
+        void send(AccessibilityEvent event) { getParent().requestSendAccessibilityEvent(this, event); }
+        private final int[] EVENTS = {AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED,
+            AccessibilityEvent.TYPE_VIEW_FOCUSED, AccessibilityEvent.TYPE_VIEW_HOVER_ENTER, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT,
+            AccessibilityEvent.TYPE_VIEW_SELECTED, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED};
+        /** Translate a core accessibility event into an Android event. */
+        void announce(int kind, int id) {
+            if (!accessibilityEnabled() || kind < 0 || kind >= EVENTS.length) return;
+            send(event(kind == 6 ? View.NO_ID : id, EVENTS[kind]));
         }
         @Override public AccessibilityNodeProvider getAccessibilityNodeProvider() {
             return new AccessibilityNodeProvider() {
-                private JSONObject roots() {
-                    String encoded = query(SEMANTIC_ROOTS, 0);
-                    return "null".equals(encoded) ? null : json(encoded);
-                }
-                private JSONObject semantic(int id) {
-                    String encoded = query(SEMANTIC_NODE, id);
-                    return "null".equals(encoded) ? null : json(encoded);
-                }
+                private JSONObject roots() { return destroyed ? null : json(nativeSemanticRoots(host)); }
+                private JSONObject semantic(int id) { return destroyed ? null : json(nativeSemanticNode(host, id)); }
                 @Override public AccessibilityNodeInfo findFocus(int focus) {
                     if (!active || destroyed) return null;
                     JSONObject roots = roots();
@@ -1346,9 +861,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                     } else if (shared == GpuAccessibility.SELECT) {
                         number = action - GpuAccessibility.SELECT_ITEM;
                     }
-                    JSONObject outcome = json(accessibilityAction(id, shared, number, argument, page()));
-                    apply(outcome.optJSONArray("effects"));
-                    return outcome.optBoolean("handled");
+                    return nativeAccessibility(host, id, shared, number, argument);
                 }
             };
         }

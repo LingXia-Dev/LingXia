@@ -172,9 +172,12 @@ Adapters convert OS events into host calls and execute typed effects; the host
 never calls the adapter while holding its locks. Its tests use a fake adapter
 on a test main thread, so new platforms start from tested policy.
 
-Android does not use `ViewHost` yet: `platform/android/core.rs` (a JNI codec
-for lifecycle, interaction, semantics and frames) and `GpuView.java` sequence
-frames themselves. Java holds no layout or hit-test logic. Host JVM tests load the real core built with the `jvm`
+Android runs on `ViewHost`: `platform/android` implements the traits over the
+Java `GpuPlatform` interface (Choreographer vsync, `Handler` posts, CPU or
+Vulkan presentation, IME, accessibility events, feedback chrome) and exposes
+host calls as `GpuView` natives. Java converts events and draws chrome; it
+holds no frame sequencing, timers, layout, hit testing or effect parsing.
+Pages of one `appId:session` share a worker by key. Host JVM tests load the real core built with the `jvm`
 feature.
 
 To add a platform: implement the adapter traits, map the platform's text

@@ -42,9 +42,13 @@ public class GpuSessionRecoveryTest {
         while (android.os.SystemClock.uptimeMillis() < end);
         fail("GPU recovery deadline exceeded");
     }
+    private static long host(Object view) throws Exception {
+        Field field = GpuView.class.getDeclaredField("host"); field.setAccessible(true);
+        return field.getLong(view);
+    }
     private static boolean bridgeReady(Object view) throws Exception {
-        java.lang.reflect.Method method = GpuView.class.getDeclaredMethod("bridgeReady"); method.setAccessible(true);
-        return (boolean)method.invoke(view);
+        Method method = GpuView.class.getDeclaredMethod("nativeBridgeReady", long.class); method.setAccessible(true);
+        return (boolean)method.invoke(null, host(view));
     }
     private static Object field(Object target, String name) throws Exception {
         Field field = target.getClass().getDeclaredField(name); field.setAccessible(true);
@@ -94,8 +98,8 @@ public class GpuSessionRecoveryTest {
             throw new IllegalStateException("Current GPU page is not registered");
         });
         main(() -> {
-            Method error = GpuView.class.getDeclaredMethod("showError", Throwable.class); error.setAccessible(true);
-            error.invoke(view, new IllegalStateException("UI_TIMEOUT: instrumentation session fault"));
+            Method error = GpuView.class.getDeclaredMethod("nativeFail", long.class, String.class); error.setAccessible(true);
+            error.invoke(null, host(view), "UI_TIMEOUT: instrumentation session fault");
             return null;
         });
         assertNotNull(main(() -> reload(view)));

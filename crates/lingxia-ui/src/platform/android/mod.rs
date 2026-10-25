@@ -1,852 +1,687 @@
-use jni::{
-    JNIEnv,
-    objects::{JByteArray, JCharArray, JClass, JString},
-    sys::{jboolean, jfloat, jint, jintArray, jlong, jstring},
-};
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    sync::atomic::{AtomicI64, Ordering},
-};
+//! The Android adapter: `com.lingxia.ui.GpuView` natives over a [`ViewHost`].
+//! Java owns the host handle from `nativeHostCreate` to `nativeHostRelease` and
+//! calls every native on the main thread.
+use crate::interaction::view::{AccessibilityAction, Key, Pointer, PointerPhase};
+use crate::platform::Task;
+use crate::session::host::{CaretState, ViewHost, ViewWorker};
+use crate::session::lifecycle::ConnectionTicket;
+use jni::errors::ThrowRuntimeExAndDefault;
+use jni::objects::{JByteArray, JCharArray, JClass, JObject, JString};
+use jni::sys::{jboolean, jdouble, jfloat, jint, jlong};
+use jni::{Env, EnvUnowned, JValue, jni_sig, jni_str};
 
-mod core;
+mod adapter;
 #[cfg(all(feature = "gpu", target_os = "android"))]
 mod gpu_surface;
-mod image_requests;
+
+use adapter::AndroidAdapter;
+
+type Host = ViewHost<AndroidAdapter>;
+
+#[derive(Debug)]
+struct Error(String);
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+impl std::error::Error for Error {}
+impl From<jni::errors::Error> for Error {
+    fn from(error: jni::errors::Error) -> Self {
+        Self(error.to_string())
+    }
+}
+impl From<String> for Error {
+    fn from(error: String) -> Self {
+        Self(error)
+    }
+}
+impl From<&str> for Error {
+    fn from(error: &str) -> Self {
+        Self(error.into())
+    }
+}
+
+fn run<'a, T: Default>(
+    env: &mut EnvUnowned<'a>,
+    work: impl FnOnce(&mut Env<'a>) -> Result<T, Error>,
+) -> T {
+    env.with_env(work).resolve::<ThrowRuntimeExAndDefault>()
+}
+
+fn host<'a>(handle: jlong) -> Result<&'a Host, Error> {
+    // SAFETY: Java owns the box from create until release and calls nothing afterwards.
+    unsafe { (handle as *const Host).as_ref() }.ok_or_else(|| "UI_HOST: released".into())
+}
+
+fn text(env: &mut Env, value: &JString) -> Result<String, Error> {
+    Ok(value.try_to_string(env)?)
+}
 
 /// Bind the SDK component explicitly so static linking retains every JNI entrypoint.
-///
-/// # Safety
-/// `env` must be this thread's live JNI environment and `class` a live reference to
-/// `com.lingxia.ui.GpuView` from the host's classloader. Neither reference is retained.
-pub unsafe fn register_natives(
-    env: *mut std::ffi::c_void,
-    class: *mut std::ffi::c_void,
-) -> Result<(), String> {
-    let mut env = unsafe { JNIEnv::from_raw(env.cast()) }.map_err(|e| e.to_string())?;
-    let class = unsafe { JClass::from_raw(class.cast()) };
+pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()> {
     macro_rules! method {
         ($name:literal, $signature:literal, $function:path) => {
-            jni::NativeMethod {
-                name: $name.into(),
-                sig: $signature.into(),
-                fn_ptr: $function as *const () as *mut std::ffi::c_void,
+            // SAFETY: each function's Rust signature matches its JNI signature.
+            unsafe {
+                jni::NativeMethod::from_raw_parts(
+                    jni_str!($name),
+                    jni_str!($signature),
+                    $function as *const () as *mut std::ffi::c_void,
+                )
             }
         };
     }
     let methods = [
-        method!("nativeLifecycleCreate", "(Z)J", core::lifecycle_create),
-        method!("nativeLifecycleRelease", "(J)V", core::lifecycle_release),
-        method!("nativeLifecycle", "(JIJ)J", core::lifecycle_op),
         method!(
-            "nativeLifecycleFail",
-            "(JLjava/lang/String;)Ljava/lang/String;",
-            core::lifecycle_fail
+            "nativeHostCreate",
+            "(Lcom/lingxia/ui/GpuPlatform;Ljava/lang/String;Z)J",
+            host_create
         ),
-        method!("nativeInteractionCreate", "()J", core::interaction_create),
-        method!(
-            "nativeInteractionRelease",
-            "(J)V",
-            core::interaction_release
-        ),
-        method!(
-            "nativePresented",
-            "(JJJLjava/lang/String;J)Ljava/lang/String;",
-            core::interaction_presented
-        ),
-        method!(
-            "nativePointer",
-            "(JIFFFFFFJ)Ljava/lang/String;",
-            core::interaction_pointer
-        ),
-        method!(
-            "nativeSignal",
-            "(JIJ)Ljava/lang/String;",
-            core::interaction_signal
-        ),
-        method!(
-            "nativeKey",
-            "(JIZZJ)Ljava/lang/String;",
-            core::interaction_key
-        ),
-        method!(
-            "nativeQuery",
-            "(JIJ)Ljava/lang/String;",
-            core::interaction_query
-        ),
-        method!(
-            "nativeScrollBy",
-            "(JLjava/lang/String;F)Z",
-            core::interaction_scroll_by
-        ),
-        method!(
-            "nativeExplore",
-            "(JZFF)Ljava/lang/String;",
-            core::interaction_explore
-        ),
-        method!(
-            "nativeAccessibility",
-            "(JIIDLjava/lang/String;J)Ljava/lang/String;",
-            core::interaction_accessibility
-        ),
-        method!("nativeTakeFrame", "(J)J", take_frame),
-        method!(
-            "nativePointerState",
-            "(JLjava/lang/String;Ljava/lang/String;)Z",
-            pointer_state
-        ),
-        method!("nativeFrameRelease", "(J)V", core::frame_release),
-        method!("nativeImageQueueCreate", "()J", image_requests::create),
-        method!(
-            "nativeImageQueueUpdate",
-            "(JLjava/lang/String;)V",
-            image_requests::update
-        ),
-        method!(
-            "nativeImageQueueStart",
-            "(J)Ljava/lang/String;",
-            image_requests::start
-        ),
-        method!("nativeImageQueueCheck", "(JJZ)Z", image_requests::check),
-        method!("nativeImageQueueReset", "(JZ)V", image_requests::reset),
-        method!(
-            "nativeImageStatus",
-            "(JJJLjava/lang/String;Z)V",
-            image_status
-        ),
-        method!("nativeImageEvents", "(JJ)Z", image_events),
-        method!(
-            "nativeInput",
-            "(JLjava/lang/String;)Ljava/lang/String;",
-            Java_com_lingxia_ui_GpuView_nativeInput
-        ),
-        method!(
-            "nativeImage",
-            "(JJJ[B)Z",
-            Java_com_lingxia_ui_GpuView_nativeImage
-        ),
-        method!(
-            "nativeBeginBridge",
-            "(JLjava/lang/String;)Ljava/lang/String;",
-            Java_com_lingxia_ui_GpuView_nativeBeginBridge
-        ),
-        method!(
-            "nativeReceiveBridge",
-            "(JLjava/lang/String;)Ljava/lang/String;",
-            Java_com_lingxia_ui_GpuView_nativeReceiveBridge
-        ),
-        method!(
-            "nativeDrainActions",
-            "(J)Ljava/lang/String;",
-            Java_com_lingxia_ui_GpuView_nativeDrainActions
-        ),
+        method!("nativeHostRelease", "(J)V", host_release),
+        method!("nativeRunTask", "(J)V", run_task),
+        method!("nativeLoad", "(JLjava/lang/String;)V", load),
+        method!("nativeReload", "(J)V", reload),
+        method!("nativePark", "(J)V", park),
+        method!("nativeSetVisible", "(JZ)V", set_visible),
+        method!("nativeSurfaceChanged", "(J)V", surface_changed),
+        method!("nativeSurfaceLost", "(J)V", surface_lost),
+        method!("nativeRequestFrame", "(J)V", request_frame),
+        method!("nativeRedraw", "(J)V", redraw),
+        method!("nativeVsync", "(J)V", vsync),
+        method!("nativeRetry", "(J)V", retry),
+        method!("nativeConnect", "(JJLjava/lang/String;)V", connect),
+        method!("nativeReceive", "(JJLjava/lang/String;)V", receive),
         method!(
             "nativeRequestLeave",
-            "(JLjava/lang/String;)Ljava/lang/String;",
-            Java_com_lingxia_ui_GpuView_nativeRequestLeave
+            "(JJLjava/lang/String;)V",
+            request_leave
         ),
+        method!("nativeConnection", "(J)J", connection),
+        method!("nativeSessionFailed", "(J)Z", session_failed),
+        method!("nativeBridgeReady", "(J)Z", bridge_ready),
+        method!("nativeFail", "(JLjava/lang/String;)V", fail),
+        method!("nativePointer", "(JIFFFFFF)Z", pointer),
+        method!("nativeLongPress", "(J)V", long_press),
+        method!("nativeKey", "(JIZZ)Z", key),
+        method!("nativeCancel", "(J)V", cancel),
+        method!("nativeFocusEntered", "(JZ)V", focus_entered),
+        method!("nativeFocusLeft", "(J)V", focus_left),
+        method!("nativeExplore", "(JZFF)Z", explore),
         method!(
-            "nativeEnvironment",
-            "(JLjava/lang/String;)V",
-            Java_com_lingxia_ui_GpuView_nativeEnvironment
+            "nativeAccessibility",
+            "(JIIDLjava/lang/String;)Z",
+            accessibility
         ),
+        method!("nativeScrollBy", "(JLjava/lang/String;F)Z", scroll_by),
+        method!("nativeCanScrollVertically", "(JI)Z", can_scroll_vertically),
         method!(
-            "nativeReset",
-            "(J)V",
-            Java_com_lingxia_ui_GpuView_nativeReset
-        ),
-        method!(
-            "nativeLoad",
-            "(Ljava/lang/String;)J",
-            Java_com_lingxia_ui_GpuView_nativeLoad
-        ),
-        method!(
-            "nativeRender",
-            "(JIIFZZLjava/lang/String;JJ)[I",
-            Java_com_lingxia_ui_GpuView_nativeRender
-        ),
-        method!(
-            "nativeAnimationPark",
-            "(JJ)V",
-            Java_com_lingxia_ui_GpuView_nativeAnimationPark
-        ),
-        method!(
-            "nativeAnimationPresented",
-            "(JJJJ)J",
-            Java_com_lingxia_ui_GpuView_nativeAnimationPresented
-        ),
-        method!(
-            "nativeSnapshot",
+            "nativeSemanticRoots",
             "(J)Ljava/lang/String;",
-            Java_com_lingxia_ui_GpuView_nativeSnapshot
+            semantic_roots
         ),
         method!(
-            "nativeClick",
-            "(JJJ)Z",
-            Java_com_lingxia_ui_GpuView_nativeClick
+            "nativeSemanticNode",
+            "(JI)Ljava/lang/String;",
+            semantic_node
         ),
-        method!(
-            "nativeNumber",
-            "(JJJD)Z",
-            Java_com_lingxia_ui_GpuView_nativeNumber
-        ),
-        method!(
-            "nativePlot",
-            "(JJLjava/lang/String;IFFI)Z",
-            Java_com_lingxia_ui_GpuView_nativePlot
-        ),
-        method!(
-            "nativeRelease",
-            "(J)V",
-            Java_com_lingxia_ui_GpuView_nativeRelease
-        ),
+        method!("nativeInput", "(JLjava/lang/String;J)V", input),
+        method!("nativeCaret", "(JZZLjava/lang/String;IIII)V", caret),
+        method!("nativeImageLoaded", "(JJ[B)V", image_loaded),
         method!("nativeGpuSentinel", "(Ljava/lang/String;)V", gpu_sentinel),
-        method!(
-            "nativeRendererFallback",
-            "()Ljava/lang/String;",
-            renderer_fallback
-        ),
         #[cfg(all(feature = "gpu", target_os = "android"))]
-        method!(
-            "nativeAttach",
-            "(Landroid/view/Surface;IIJ)J",
-            gpu_surface::Java_com_lingxia_ui_GpuView_nativeAttach
-        ),
-        #[cfg(all(feature = "gpu", target_os = "android"))]
-        method!(
-            "nativeSuspend",
-            "(J)V",
-            gpu_surface::Java_com_lingxia_ui_GpuView_nativeSuspend
-        ),
-        #[cfg(all(feature = "gpu", target_os = "android"))]
-        method!(
-            "nativePrepareGpu",
-            "(JJIIFZZLjava/lang/String;JJ)V",
-            gpu_surface::Java_com_lingxia_ui_GpuView_nativePrepareGpu
-        ),
-        #[cfg(all(feature = "gpu", target_os = "android"))]
-        method!(
-            "nativePresentGpu",
-            "(JJ)Z",
-            gpu_surface::Java_com_lingxia_ui_GpuView_nativePresentGpu
-        ),
-        #[cfg(all(feature = "gpu", target_os = "android"))]
-        method!(
-            "nativeDetach",
-            "(J)V",
-            gpu_surface::Java_com_lingxia_ui_GpuView_nativeDetach
-        ),
+        method!("nativeAttach", "(JLandroid/view/Surface;II)V", attach),
     ];
-    env.register_native_methods(class, &methods)
-        .map_err(|e| e.to_string())
-}
-
-struct WorkerPage {
-    id: crate::ViewPageId,
-    snapshot: String,
-    /// The last prepared frame, awaiting handoff to the UI thread.
-    frame: Option<std::sync::Arc<crate::interaction::frame::PresentedFrame>>,
-}
-struct Worker {
-    app: crate::ViewApp,
-    pages: HashMap<i64, WorkerPage>,
-}
-thread_local! { static WORKER: RefCell<Option<Worker>> = const { RefCell::new(None) }; }
-static NEXT_PAGE: AtomicI64 = AtomicI64::new(1);
-
-fn bridge_update(
-    session: &mut crate::ViewSession,
-    mut update: crate::session::state::StateUpdate,
-) -> Result<String, String> {
-    for request in session.take_action_requests()? {
-        update
-            .outbound
-            .push(serde_json::from_str(&request).map_err(|e| e.to_string())?);
-    }
-    Ok(serde_json::json!({"ready":session.ready_to_render(),"changed":update.changed,"localChanged":session.has_local_updates()?,"outbound":update.outbound,"errors":session.take_action_errors()?}).to_string())
+    // SAFETY: every entry above names a function with the matching signature.
+    unsafe { env.register_native_methods(class, &methods) }
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeBeginBridge(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-    nonce: JString,
-) -> jstring {
-    guarded(&mut env, |env| {
-        let nonce: String = env.get_string(&nonce).map_err(|e| e.to_string())?.into();
-        let message = with_page(page, |session, snapshot| {
-            snapshot.clear();
-            Ok(session.begin_bridge(&nonce)?.to_string())
-        })?;
-        env.new_string(message)
-            .map(|s| s.into_raw())
-            .map_err(|e| e.to_string())
-    })
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeReceiveBridge(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-    frame: JString,
-) -> jstring {
-    guarded(&mut env, |env| {
-        let frame: String = env.get_string(&frame).map_err(|e| e.to_string())?.into();
-        let frame = serde_json::from_str(&frame).map_err(|e| e.to_string())?;
-        let update = with_page(page, |session, _| {
-            let update = session.receive_bridge(&frame)?;
-            bridge_update(session, update)
-        })?;
-        env.new_string(update)
-            .map(|s| s.into_raw())
-            .map_err(|e| e.to_string())
-    })
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeDrainActions(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-) -> jstring {
-    guarded(&mut env, |env| {
-        let update = with_page(page, |session, _| {
-            bridge_update(
-                session,
-                crate::session::state::StateUpdate {
-                    changed: true,
-                    outbound: Vec::new(),
-                },
-            )
-        })?;
-        env.new_string(update)
-            .map(|s| s.into_raw())
-            .map_err(|e| e.to_string())
-    })
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeRequestLeave(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-    reason: JString,
-) -> jstring {
-    guarded(&mut env, |env| {
-        let reason: String = env.get_string(&reason).map_err(|e| e.to_string())?.into();
-        let update = with_page(page, |session, _| {
-            session.request_leave(&reason)?;
-            bridge_update(
-                session,
-                crate::session::state::StateUpdate {
-                    changed: true,
-                    outbound: Vec::new(),
-                },
-            )
-        })?;
-        env.new_string(update)
-            .map(|s| s.into_raw())
-            .map_err(|e| e.to_string())
-    })
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeEnvironment(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-    value: JString,
+pub extern "system" fn Java_com_lingxia_ui_GpuView_initializeNative<'a>(
+    mut env: EnvUnowned<'a>,
+    class: JClass<'a>,
 ) {
-    guarded(&mut env, |env| {
-        let value: String = env.get_string(&value).map_err(|e| e.to_string())?.into();
-        let value = serde_json::from_str(&value).map_err(|e| format!("UI_ENVIRONMENT: {e}"))?;
-        with_page(page, |session, _| session.set_environment(value))
-    });
+    run(&mut env, |env| Ok(register_natives(env, &class)?));
 }
 
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeReset(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-) {
-    guarded(&mut env, |_| {
-        with_page(page, |session, snapshot| {
-            session.reset()?;
-            snapshot.clear();
-            Ok(())
-        })
-    });
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_initializeNative(
-    mut env: JNIEnv,
-    class: JClass,
-) {
-    guarded(&mut env, |env| unsafe {
-        register_natives(env.get_native_interface().cast(), class.as_raw().cast())
-    });
-}
-
-fn with_page<T>(
-    id: i64,
-    work: impl FnOnce(&mut crate::ViewSession, &mut String) -> Result<T, String>,
-) -> Result<T, String> {
-    with_worker_page(id, |session, page| work(session, &mut page.snapshot))
-}
-
-fn with_worker_page<T>(
-    id: i64,
-    work: impl FnOnce(&mut crate::ViewSession, &mut WorkerPage) -> Result<T, String>,
-) -> Result<T, String> {
-    WORKER.with(|worker| {
-        let mut worker = worker.borrow_mut();
-        let worker = worker.as_mut().ok_or("UI_SESSION: missing app worker")?;
-        let page = worker
-            .pages
-            .get_mut(&id)
-            .ok_or("UI_SESSION: discarded page or wrong worker")?;
-        work(worker.app.page(page.id)?, page)
-    })
-}
-
-/// Publish a prepared frame for presentation; the UI thread consumes or releases it.
-fn publish_frame(
-    page: &mut WorkerPage,
-    session: &crate::ViewSession,
-    scale: f32,
-    nodes: Vec<crate::scene::node::NodeSnapshot>,
-) {
-    page.frame = Some(std::sync::Arc::new(
-        crate::interaction::frame::PresentedFrame::new(session.generation(), scale, nodes),
-    ));
-}
-
-extern "system" fn pointer_state(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-    pressed: JString,
-    hovered: JString,
-) -> jboolean {
-    guarded(&mut env, |env| {
-        let mut read = |value: &JString| -> Result<Option<String>, String> {
-            if value.is_null() {
-                return Ok(None);
-            }
-            env.get_string(value)
-                .map(|s| Some(s.into()))
-                .map_err(|e| e.to_string())
-        };
-        let (pressed, hovered) = (read(&pressed)?, read(&hovered)?);
-        with_page(page, |session, _| {
-            Ok(u8::from(
-                session.set_pointer_state(pressed.as_deref(), hovered.as_deref()),
-            ))
-        })
-    })
-}
-
-extern "system" fn take_frame(mut env: JNIEnv, _: JClass, page: jlong) -> jlong {
-    guarded(&mut env, |_| {
-        with_worker_page(page, |_, page| {
-            Ok(page.frame.take().map_or(0, core::frame_handle))
-        })
-    })
-}
-
-fn guarded<T: Default>(env: &mut JNIEnv, work: impl FnOnce(&mut JNIEnv) -> Result<T, String>) -> T {
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| work(env)))
-        .unwrap_or_else(|_| Err("UI_RENDER: native panic".into()));
-    match result {
-        Ok(value) => value,
-        Err(error) => {
-            let _ = env.throw_new("java/lang/IllegalStateException", error);
-            T::default()
-        }
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeLoad(
-    mut env: JNIEnv,
-    _: JClass,
-    source: JString,
+extern "system" fn host_create<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    platform: JObject<'a>,
+    worker: JString<'a>,
+    logic: jboolean,
 ) -> jlong {
-    guarded(&mut env, |env| {
-        let source: String = env.get_string(&source).map_err(|e| e.to_string())?.into();
-        WORKER.with(|worker| {
-            let mut worker = worker.borrow_mut();
-            if worker.is_none() {
-                *worker = Some(Worker {
-                    app: crate::ViewApp::new(16)?,
-                    pages: HashMap::new(),
-                });
-            }
-            let worker = worker.as_mut().unwrap();
-            let id = worker.app.create(&source, false)?;
-            let handle = NEXT_PAGE.fetch_add(1, Ordering::Relaxed);
-            worker.pages.insert(
-                handle,
-                WorkerPage {
-                    id,
-                    snapshot: String::new(),
-                    frame: None,
-                },
-            );
-            Ok(handle)
-        })
+    run(&mut env, |env| {
+        let platform = env.new_global_ref(platform)?;
+        let worker = ViewWorker::shared(&text(env, &worker)?)?;
+        let host = ViewHost::new(AndroidAdapter::new(platform), worker, logic);
+        Ok(Box::into_raw(Box::new(host)) as jlong)
     })
 }
 
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeRender(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-    width: jint,
-    height: jint,
-    scale: jfloat,
-    rebuild: jboolean,
-    caret_visible: jboolean,
-    offsets: JString,
-    epoch: jlong,
-    time: jlong,
-) -> jintArray {
-    guarded(&mut env, |env| {
-        let offsets: String = env.get_string(&offsets).map_err(|e| e.to_string())?.into();
-        let offsets = serde_json::from_str(&offsets).map_err(|e| format!("UI_SCROLL: {e}"))?;
-        with_worker_page(page, |session, worker_page| {
-            let width = u16::try_from(width).map_err(|_| "UI_VIEWPORT: width")?;
-            let height = u16::try_from(height).map_err(|_| "UI_VIEWPORT: height")?;
-            let now = animation_time(time)?;
-            session.set_animation_surface(
-                Some(crate::session::lifecycle::SurfaceTicket::new(
-                    u64::try_from(epoch).map_err(|_| "UI_ANIMATION: invalid epoch")?,
-                )),
-                now,
-            )?;
-            let frame = session.prepare_view_animated(
-                width,
-                height,
-                scale,
-                rebuild != 0,
-                Some(&offsets),
-                now,
-                |mut display| {
-                    if caret_visible == 0 {
-                        display.hide_caret();
-                    }
-                    display.rasterize()
-                },
-            )?;
-            worker_page.snapshot = serde_json::json!({"generation":session.generation(), "nodes":frame.nodes,"images":session.image_requests(),"metrics":session.frame_metrics()})
-                .to_string();
-            publish_frame(worker_page, session, scale, frame.nodes.clone());
-            // The opaque root background makes these premultiplied channels also valid ARGB colors.
-            let pixels: Vec<jint> = frame
-                .pixels
-                .data_as_u8_slice()
-                .chunks_exact(4)
-                .map(|p| u32::from_be_bytes([p[3], p[0], p[1], p[2]]) as jint)
-                .collect();
-            let output = env
-                .new_int_array(pixels.len() as jint)
-                .map_err(|e| e.to_string())?;
-            env.set_int_array_region(&output, 0, &pixels)
-                .map_err(|e| e.to_string())?;
-            Ok(output.into_raw())
-        })
-    })
-}
-
-fn animation_time(time: jlong) -> Result<std::time::Duration, String> {
-    Ok(std::time::Duration::from_millis(
-        u64::try_from(time).map_err(|_| "UI_ANIMATION: invalid time")?,
-    ))
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeAnimationPark(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-    time: jlong,
-) {
-    guarded(&mut env, |_| {
-        with_page(page, |session, _| {
-            session.set_animation_surface(None, animation_time(time)?)
-        })
-    });
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeAnimationPresented(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-    epoch: jlong,
-    generation: jlong,
-    time: jlong,
-) -> jlong {
-    guarded(&mut env, |_| {
-        with_page(page, |session, _| {
-            let now = animation_time(time)?;
-            let epoch = u64::try_from(epoch).map_err(|_| "UI_ANIMATION: invalid epoch")?;
-            let generation =
-                u64::try_from(generation).map_err(|_| "UI_ANIMATION: invalid generation")?;
-            if !session.animation_presented(
-                crate::session::lifecycle::SurfaceTicket::new(epoch),
-                crate::session::lifecycle::CommitTicket::new(generation),
-                now,
-            )? {
-                return Ok(-1);
-            }
-            match session.view_animation_wakeup(now)? {
-                crate::animation::Wakeup::None => Ok(-1),
-                crate::animation::Wakeup::NextFrame => Ok(0),
-                crate::animation::Wakeup::After(delay) => {
-                    i64::try_from(delay.as_nanos().div_ceil(1_000_000))
-                        .map_err(|_| "UI_ANIMATION: wakeup exceeds clock range".into())
-                }
-            }
-        })
-    })
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeSnapshot(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-) -> jstring {
-    guarded(&mut env, |env| {
-        with_page(page, |_, snapshot| {
-            env.new_string(&*snapshot)
-                .map(|s| s.into_raw())
-                .map_err(|e| e.to_string())
-        })
-    })
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeInput(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-    request: JString,
-) -> jstring {
-    guarded(&mut env, |env| {
-        let length = env
-            .call_method(&request, "length", "()I", &[])
-            .and_then(|v| v.i())
-            .map_err(|e| e.to_string())?;
-        if length < 0 || length as usize > crate::session::input_protocol::MAX_REQUEST_BYTES {
-            return Err("UI_INPUT: request budget exceeded".into());
+extern "system" fn host_release<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, handle: jlong) {
+    run(&mut env, |_| {
+        if handle == 0 {
+            return Ok(());
         }
-        // JavaStr's lossy CESU-8 fallback would silently replace unpaired surrogates.
-        let chars = env
-            .call_method(&request, "toCharArray", "()[C", &[])
-            .and_then(|v| v.l())
-            .map_err(|e| e.to_string())?;
-        let chars = JCharArray::from(chars);
-        let mut units = vec![0; length as usize];
-        env.get_char_array_region(&chars, 0, &mut units)
-            .map_err(|e| e.to_string())?;
-        let request = String::from_utf16(&units).map_err(|_| "UI_INPUT: invalid Unicode")?;
-        let reply = with_page(page, |session, _| session.input_request(&request))?;
-        env.new_string(reply)
-            .map(|s| s.into_raw())
-            .map_err(|e| e.to_string())
+        // SAFETY: created by `host_create` and released exactly once by Java.
+        let host = unsafe { Box::from_raw(handle as *mut Host) };
+        host.dispose();
+        #[cfg(all(feature = "gpu", target_os = "android"))]
+        {
+            let surface = host
+                .adapter()
+                .gpu
+                .swap(0, std::sync::atomic::Ordering::AcqRel);
+            if surface != 0 {
+                gpu_surface::detach(surface);
+            }
+        }
+        Ok(())
     })
 }
 
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeClick(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-    generation: jlong,
+/// Posted tasks always run exactly once, even after the view is disposed.
+extern "system" fn run_task<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, task: jlong) {
+    run(&mut env, |_| {
+        if task != 0 {
+            // SAFETY: boxed by `AndroidAdapter::post_after` and handed to Java once.
+            let task = unsafe { Box::from_raw(task as *mut Task) };
+            task();
+        }
+        Ok(())
+    })
+}
+
+macro_rules! host_call {
+    ($name:ident, $method:ident) => {
+        extern "system" fn $name<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, handle: jlong) {
+            run(&mut env, |_| {
+                host(handle)?.$method();
+                Ok(())
+            })
+        }
+    };
+}
+host_call!(reload, reload);
+host_call!(park, park);
+host_call!(request_frame, request_frame);
+host_call!(redraw, redraw);
+host_call!(vsync, vsync);
+host_call!(retry, retry);
+host_call!(long_press, long_press);
+host_call!(cancel, cancel);
+host_call!(focus_left, focus_left);
+host_call!(surface_changed, surface_changed);
+
+extern "system" fn surface_lost<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, handle: jlong) {
+    run(&mut env, |_| {
+        let host = host(handle)?;
+        host.surface_lost();
+        #[cfg(all(feature = "gpu", target_os = "android"))]
+        gpu_surface::suspend(
+            host.adapter()
+                .gpu
+                .load(std::sync::atomic::Ordering::Acquire),
+        );
+        Ok(())
+    })
+}
+
+extern "system" fn load<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    source: JString<'a>,
+) {
+    run(&mut env, |env| {
+        let source = text(env, &source)?;
+        host(handle)?.load(source);
+        Ok(())
+    })
+}
+
+extern "system" fn set_visible<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    visible: jboolean,
+) {
+    run(&mut env, |_| {
+        host(handle)?.set_visible(visible);
+        Ok(())
+    })
+}
+
+fn connection_ticket(value: jlong) -> Result<ConnectionTicket, Error> {
+    u64::try_from(value)
+        .map(ConnectionTicket::new)
+        .map_err(|_| "UI_BRIDGE: invalid connection".into())
+}
+
+extern "system" fn connect<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    connection: jlong,
+    nonce: JString<'a>,
+) {
+    run(&mut env, |env| {
+        let nonce = text(env, &nonce)?;
+        host(handle)?.connect(connection_ticket(connection)?, nonce);
+        Ok(())
+    })
+}
+
+extern "system" fn receive<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    connection: jlong,
+    frame: JString<'a>,
+) {
+    run(&mut env, |env| {
+        let frame = text(env, &frame)?;
+        host(handle)?.receive(connection_ticket(connection)?, frame);
+        Ok(())
+    })
+}
+
+extern "system" fn request_leave<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    connection: jlong,
+    reason: JString<'a>,
+) {
+    run(&mut env, |env| {
+        let reason = text(env, &reason)?;
+        host(handle)?.request_leave(connection_ticket(connection)?, reason);
+        Ok(())
+    })
+}
+
+extern "system" fn connection<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, handle: jlong) -> jlong {
+    run(&mut env, |_| {
+        Ok(host(handle)?.lifecycle().connection().get() as jlong)
+    })
+}
+
+extern "system" fn session_failed<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
     handle: jlong,
 ) -> jboolean {
-    guarded(&mut env, |_| {
-        with_page(page, |session, _| {
-            session
-                .click(
-                    crate::session::lifecycle::CommitTicket::new(generation as u64),
-                    handle as u64,
-                )
-                .map(u8::from)
-        })
+    run(&mut env, |_| Ok(host(handle)?.lifecycle().session_failed()))
+}
+
+extern "system" fn bridge_ready<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+) -> jboolean {
+    run(&mut env, |_| Ok(host(handle)?.lifecycle().bridge_ready()))
+}
+
+extern "system" fn fail<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    error: JString<'a>,
+) {
+    run(&mut env, |env| {
+        let error = text(env, &error)?;
+        host(handle)?.fail(error);
+        Ok(())
     })
 }
 
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativePlot(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-    generation: jlong,
-    identity: JString,
-    mode: jint,
+#[allow(clippy::too_many_arguments)]
+extern "system" fn pointer<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    phase: jint,
     x: jfloat,
     y: jfloat,
-    index: jint,
+    slop: jfloat,
+    velocity_x: jfloat,
+    velocity_y: jfloat,
+    min_fling: jfloat,
 ) -> jboolean {
-    guarded(&mut env, |env| {
-        let identity: String = env.get_string(&identity).map_err(|e| e.to_string())?.into();
-        let selection = match mode {
-            0 => crate::PlotSelection::Point([x, y]),
-            1 => crate::PlotSelection::Next,
-            2 => crate::PlotSelection::Index(index as i64),
-            _ => return Err("UI_PLOT: invalid selection mode".into()),
+    run(&mut env, |_| {
+        let phase = match phase {
+            0 => PointerPhase::Down,
+            1 => PointerPhase::Move,
+            2 => PointerPhase::Up,
+            _ => PointerPhase::Cancel,
         };
-        with_page(page, |session, _| {
-            session
-                .select_plot(
-                    crate::session::lifecycle::CommitTicket::new(generation as u64),
-                    &identity,
-                    selection,
-                )
-                .map(u8::from)
-        })
+        Ok(host(handle)?.pointer(Pointer {
+            phase,
+            x,
+            y,
+            slop,
+            velocity: [velocity_x, velocity_y],
+            min_fling,
+        }))
     })
 }
 
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeNumber(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-    generation: jlong,
+extern "system" fn key<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
     handle: jlong,
-    value: jni::sys::jdouble,
+    key: jint,
+    shift: jboolean,
+    repeat: jboolean,
 ) -> jboolean {
-    guarded(&mut env, |_| {
-        with_page(page, |session, _| {
-            session
-                .number_event(
-                    crate::session::lifecycle::CommitTicket::new(generation as u64),
-                    handle as u64,
-                    value,
-                )
-                .map(u8::from)
-        })
+    run(&mut env, |_| {
+        let key = match key {
+            0 => Key::Tab,
+            1 => Key::Up,
+            2 => Key::Down,
+            3 => Key::Left,
+            4 => Key::Right,
+            5 => Key::Home,
+            6 => Key::End,
+            _ => Key::Activate,
+        };
+        Ok(host(handle)?.key(key, shift, repeat))
     })
 }
 
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeRelease(
-    _: JNIEnv,
-    _: JClass,
-    page: jlong,
+extern "system" fn focus_entered<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    backward: jboolean,
 ) {
-    WORKER.with(|worker| {
-        if let Some(worker) = worker.borrow_mut().as_mut()
-            && let Some(page) = worker.pages.remove(&page)
-        {
-            worker.app.discard(page.id);
-        }
-    });
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeImage(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-    queue: jlong,
-    token: jlong,
-    bytes: JByteArray,
-) -> jboolean {
-    guarded(&mut env, |env| {
-        if image_requests::current_source(queue, token)?.is_none() {
-            return Ok(0);
-        }
-        if env.get_array_length(&bytes).map_err(|e| e.to_string())? as usize
-            > crate::protocol::limits::IMAGE_BYTES
-        {
-            return Err("UI_IMAGE: encoded size limit".into());
-        }
-        let bytes = env.convert_byte_array(&bytes).map_err(|e| e.to_string())?;
-        let bitmap = crate::scene::image::Bitmap::decode(&bytes)?;
-        image_requests::bind_current(queue, token, |source| {
-            with_page(page, |session, _| session.bind_image(source, bitmap))
-        })
-        .map(u8::from)
+    run(&mut env, |_| {
+        host(handle)?.focus_entered(backward);
+        Ok(())
     })
 }
 
-extern "system" fn image_status(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-    queue: jlong,
-    token: jlong,
-    retry: JString,
-    success: jboolean,
+extern "system" fn explore<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    active: jboolean,
+    x: jfloat,
+    y: jfloat,
+) -> jboolean {
+    run(&mut env, |_| {
+        Ok(host(handle)?.explore(active.then_some([x, y])))
+    })
+}
+
+extern "system" fn accessibility<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    id: jint,
+    action: jint,
+    number: jdouble,
+    argument: JString<'a>,
+) -> jboolean {
+    run(&mut env, |env| {
+        let action = match action {
+            0 => AccessibilityAction::Focus,
+            1 => AccessibilityAction::ClearFocus,
+            2 => AccessibilityAction::Click,
+            3 => AccessibilityAction::ShowOnScreen,
+            4 => AccessibilityAction::ScrollForward,
+            5 => AccessibilityAction::ScrollBackward,
+            6 => AccessibilityAction::SetProgress(number),
+            7 => AccessibilityAction::SetText(text(env, &argument)?),
+            8 => AccessibilityAction::SetSelection(
+                number as i32,
+                text(env, &argument)?.parse().unwrap_or(-1),
+            ),
+            9 => AccessibilityAction::ClearSelection,
+            10 => AccessibilityAction::SelectItem(number as usize),
+            _ => return Err("UI_ACCESSIBILITY: unknown action".into()),
+        };
+        Ok(host(handle)?.accessibility(id as u32, action))
+    })
+}
+
+extern "system" fn scroll_by<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    region: JString<'a>,
+    delta: jfloat,
+) -> jboolean {
+    run(&mut env, |env| {
+        let region = text(env, &region)?;
+        Ok(host(handle)?.scroll_by(&region, delta))
+    })
+}
+
+extern "system" fn can_scroll_vertically<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    direction: jint,
+) -> jboolean {
+    run(&mut env, |_| {
+        Ok(host(handle)?.can_scroll_vertically(direction))
+    })
+}
+
+extern "system" fn semantic_roots<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+) -> JString<'a> {
+    run(&mut env, |env| {
+        let roots = host(handle)?.semantics(|projection, focus| match projection {
+            Some(projection) => serde_json::json!({
+                "roots": projection.roots(),
+                "inputFocus": projection.input_focus(),
+                "accessibilityFocus": focus,
+            }),
+            None => serde_json::Value::Null,
+        });
+        Ok(env.new_string(roots.to_string())?)
+    })
+}
+
+extern "system" fn semantic_node<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    id: jint,
+) -> JString<'a> {
+    run(&mut env, |env| {
+        let node = host(handle)?.semantics(|projection, _| {
+            projection
+                .and_then(|projection| projection.node(id as u32))
+                .map(|node| serde_json::to_value(node).unwrap_or_default())
+                .unwrap_or_default()
+        });
+        Ok(env.new_string(node.to_string())?)
+    })
+}
+
+/// Unpaired surrogates must reach the session as an error, not as replacement characters.
+fn utf16(env: &mut Env, value: &JString, limit: usize) -> Result<String, Error> {
+    let chars = env
+        .call_method(value, jni_str!("toCharArray"), jni_sig!("()[C"), &[])?
+        .l()?;
+    let chars = env.cast_local::<JCharArray>(chars)?;
+    let length = chars.len(env)?;
+    if length > limit {
+        return Err("UI_INPUT: request budget exceeded".into());
+    }
+    let mut units = vec![0; length];
+    chars.get_region(env, 0, &mut units)?;
+    String::from_utf16(&units).map_err(|_| "UI_INPUT: invalid Unicode".into())
+}
+
+extern "system" fn input<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    request: JString<'a>,
+    callback: jlong,
 ) {
-    guarded(&mut env, |env| {
-        let retry_key: String = env.get_string(&retry).map_err(|e| e.to_string())?.into();
-        image_requests::bind_current(queue, token, |source| {
-            with_page(page, |session, _| {
-                session.image_completed(
-                    crate::ImageSource {
-                        source: source.into(),
-                        retry_key,
-                    },
-                    success != 0,
-                );
-                Ok(true)
+    run(&mut env, |env| {
+        let request = utf16(
+            env,
+            &request,
+            crate::session::input_protocol::MAX_REQUEST_BYTES,
+        )?;
+        let host = host(handle)?;
+        let replier = host.clone();
+        host.input(request, move |reply| {
+            replier.adapter().java(|env, platform| {
+                let reply = match reply {
+                    Some(reply) => JObject::from(env.new_string(reply)?),
+                    None => JObject::null(),
+                };
+                env.call_method(
+                    platform,
+                    jni_str!("inputReply"),
+                    jni_sig!("(JLjava/lang/String;)V"),
+                    &[JValue::Long(callback), JValue::Object(&reply)],
+                )?;
+                Ok(())
             })
-        })
-        .map(|_| ())
+        });
+        Ok(())
     })
 }
 
-extern "system" fn image_events(
-    mut env: JNIEnv,
-    _: JClass,
-    page: jlong,
-    generation: jlong,
-) -> jboolean {
-    guarded(&mut env, |_| {
-        with_page(page, |session, _| {
-            session
-                .dispatch_image_events(crate::session::lifecycle::CommitTicket::new(
-                    generation as u64,
-                ))
-                .map(u8::from)
-        })
+#[allow(clippy::too_many_arguments)]
+extern "system" fn caret<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    eligible: jboolean,
+    connected: jboolean,
+    value: JString<'a>,
+    anchor: jint,
+    focus: jint,
+    composition_start: jint,
+    composition_end: jint,
+) {
+    run(&mut env, |env| {
+        let state = if connected {
+            Some(CaretState {
+                text: text(env, &value)?,
+                anchor,
+                focus,
+                composition: (composition_start, composition_end),
+            })
+        } else {
+            None
+        };
+        host(handle)?.caret(eligible, state);
+        Ok(())
+    })
+}
+
+extern "system" fn image_loaded<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    id: jlong,
+    bytes: JByteArray<'a>,
+) {
+    run(&mut env, |env| {
+        let bytes = if bytes.is_null() {
+            Err("UI_IMAGE: load failed".into())
+        } else if bytes.len(env)? > crate::protocol::limits::IMAGE_BYTES {
+            Err("UI_IMAGE: encoded size limit".into())
+        } else {
+            Ok(env.convert_byte_array(&bytes)?)
+        };
+        host(handle)?.image_loaded(id as u64, bytes);
+        Ok(())
     })
 }
 
 /// Back the GPU crash sentinel with a file in app-private storage; the first call wins.
-extern "system" fn gpu_sentinel(mut env: JNIEnv, _: JClass, directory: JString) {
-    guarded(&mut env, |env| {
-        let directory: String = env
-            .get_string(&directory)
-            .map_err(|e| e.to_string())?
-            .into();
+extern "system" fn gpu_sentinel<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    directory: JString<'a>,
+) {
+    run(&mut env, |env| {
+        let directory = text(env, &directory)?;
         crate::renderer::sentinel::install(Box::new(crate::renderer::sentinel::FileStore(
             std::path::Path::new(&directory).join("lingxia-gpu-sentinel"),
         )));
         Ok(())
-    });
+    })
 }
 
-/// Why pages render on the CPU, or null.
-extern "system" fn renderer_fallback(mut env: JNIEnv, _: JClass) -> jstring {
-    guarded(&mut env, |env| {
-        match crate::renderer::sentinel::fallback() {
-            Some(crate::renderer::sentinel::Fallback::Driver) => env
-                .new_string("driver")
-                .map(|s| s.into_raw())
-                .map_err(|e| e.to_string()),
-            None => Ok(std::ptr::null_mut()),
-        }
+/// Bind the Surface to a GPU presenter on the View worker; Java hears back
+/// through `GpuPlatform.gpuAttached` and renders on the CPU until then.
+#[cfg(all(feature = "gpu", target_os = "android"))]
+extern "system" fn attach<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    surface: JObject<'a>,
+    width: jint,
+    height: jint,
+) {
+    run(&mut env, |env| {
+        // SAFETY: `env` is this thread's environment and `surface` a live Surface argument.
+        let window =
+            unsafe { gpu_surface::NativeWindow::from_surface(env.get_raw(), surface.as_raw())? };
+        let host = host(handle)?.clone();
+        let existing = host
+            .adapter()
+            .gpu
+            .load(std::sync::atomic::Ordering::Acquire);
+        let (width, height) = (width as u32, height as u32);
+        host.worker().clone().run(move |_| {
+            let attached = gpu_surface::attach(window, width, height, existing);
+            let main = host.clone();
+            crate::platform::MainThread::post(
+                host.adapter(),
+                Box::new(move || {
+                    let adapter = main.adapter();
+                    let ok = match attached {
+                        Ok(id) => {
+                            adapter.gpu.store(id, std::sync::atomic::Ordering::Release);
+                            true
+                        }
+                        Err(error) => {
+                            adapter::log(&format!(
+                                "GPU unavailable; using CPU reference renderer: {error}"
+                            ));
+                            false
+                        }
+                    };
+                    let surface = adapter.gpu.load(std::sync::atomic::Ordering::Acquire);
+                    let record = gpu_surface::adapter(surface).unwrap_or_default();
+                    let backend = if !ok {
+                        "vello-cpu"
+                    } else if record.starts_with("Gl|") {
+                        "vello-gles"
+                    } else {
+                        "vello-vulkan"
+                    };
+                    adapter::info(&format!(
+                        "backend={backend} surface={surface} adapter={record}"
+                    ));
+                    adapter.java(|env, platform| {
+                        env.call_method(
+                            platform,
+                            jni_str!("gpuAttached"),
+                            jni_sig!("(Z)V"),
+                            &[JValue::Bool(ok)],
+                        )?;
+                        Ok(())
+                    });
+                }),
+            );
+        });
+        Ok(())
     })
 }

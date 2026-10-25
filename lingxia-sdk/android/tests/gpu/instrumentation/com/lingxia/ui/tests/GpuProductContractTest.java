@@ -48,14 +48,18 @@ public class GpuProductContractTest {
         for(int i=0;i<nodes.length();i++)if(id.equals(nodes.getJSONObject(i).optString("test_id")))return nodes.getJSONObject(i);
         return null;
     }
-    void click(GpuView view,String id,ExecutorService worker) throws Exception {
-        JSONObject frame=snapshot(view), target=node(view,id);assertNotNull(target);
-        Field pageField=GpuView.class.getDeclaredField("nativePage");pageField.setAccessible(true);
-        long page=main(()->pageField.getLong(view));
-        Method click=GpuView.class.getDeclaredMethod("nativeClick",long.class,long.class,long.class);click.setAccessible(true);
-        assertEquals(true,worker.submit(()->click.invoke(null,page,frame.getLong("generation"),target.getLong("on_click"))).get());
-        Method redraw=GpuView.class.getDeclaredMethod("requestFrame");redraw.setAccessible(true);
-        main(()->{redraw.invoke(view);return null;});
+    /** A real tap at the node's center, through the host's pointer policy. */
+    void click(GpuView view,String id) throws Exception {
+        JSONObject target=node(view,id);assertNotNull(target);
+        JSONArray b=target.optJSONArray("visible_bounds");if(b==null)b=target.getJSONArray("bounds");
+        Field scaleField=GpuView.class.getDeclaredField("frameScale");scaleField.setAccessible(true);
+        Field hostField=GpuView.class.getDeclaredField("host");hostField.setAccessible(true);
+        Method pointer=GpuView.class.getDeclaredMethod("nativePointer",long.class,int.class,float.class,float.class,float.class,float.class,float.class,float.class);pointer.setAccessible(true);
+        main(()->{
+            float scale=scaleField.getFloat(view);long host=hostField.getLong(view);
+            float x=(float)(b.getDouble(0)+b.getDouble(2)/2)*scale,y=(float)(b.getDouble(1)+b.getDouble(3)/2)*scale;
+            pointer.invoke(null,host,0,x,y,8f,0f,0f,50f);pointer.invoke(null,host,2,x,y,8f,0f,0f,50f);return null;
+        });
     }
     void verifyHostImageCancellation() throws Exception {
         AtomicReference<GpuView.Listener> host=new AtomicReference<>();
@@ -63,7 +67,8 @@ public class GpuProductContractTest {
             Field pages=com.lingxia.lxapp.GpuPage.class.getDeclaredField("PAGES");pages.setAccessible(true);
             for(Object page:((java.util.Map<?,?>)pages.get(null)).values()) {
                 Field content=page.getClass().getDeclaredField("content");content.setAccessible(true);Object view=content.get(page);
-                java.lang.reflect.Method ready=GpuView.class.getDeclaredMethod("bridgeReady");ready.setAccessible(true);if(!(boolean)ready.invoke(view))continue;
+                Field hostField=GpuView.class.getDeclaredField("host");hostField.setAccessible(true);
+                Method ready=GpuView.class.getDeclaredMethod("nativeBridgeReady",long.class);ready.setAccessible(true);if(!(boolean)ready.invoke(null,hostField.getLong(view)))continue;
                 Field listener=GpuView.class.getDeclaredField("listener");listener.setAccessible(true);host.set((GpuView.Listener)listener.get(view));return true;
             }return false;
         }));
@@ -119,9 +124,8 @@ public class GpuProductContractTest {
         ByteArrayOutputStream png=new ByteArrayOutputStream();Bitmap bitmap=Bitmap.createBitmap(2,2,Bitmap.Config.ARGB_8888);
         bitmap.eraseColor(0xff2388dd);bitmap.compress(Bitmap.CompressFormat.PNG,100,png);bitmap.recycle();
         AtomicInteger attempts=new AtomicInteger(),canceled=new AtomicInteger();AtomicReference<Throwable> error=new AtomicReference<>();
-        ExecutorService worker=Executors.newSingleThreadExecutor();
         GpuView view=main(()->{
-            GpuView candidate=new GpuView(activity.get(),source,worker,new GpuView.Listener(){
+            GpuView candidate=new GpuView(activity.get(),source,"test:product-contract",new GpuView.Listener(){
                 public void onLoaded(){} public void onFrame(String metadata){} public void onError(Throwable e){error.set(e);}
                 public Runnable onImageRequest(String src,java.util.function.Consumer<byte[]> result){
                     if(src.equals("slow.png"))return ()->canceled.incrementAndGet();
@@ -132,11 +136,11 @@ public class GpuProductContractTest {
         });
         try {
             await(()->node(view,"image-state")!=null && "failed".equals(node(view,"image-state").optString("text")));
-            assertEquals(1,attempts.get());click(view,"retry",worker);
+            assertEquals(1,attempts.get());click(view,"retry");
             await(()->"ready".equals(node(view,"image-state").optString("text")));assertEquals(2,attempts.get());
-            click(view,"remove-slow",worker);await(()->canceled.get()==1);
-            click(view,"item-a",worker);await(()->"a:1".equals(node(view,"item-a").optString("text")));
-            click(view,"reorder",worker);await(()->node(view,"item-b").getJSONArray("bounds").getDouble(1)<node(view,"item-a").getJSONArray("bounds").getDouble(1));
+            click(view,"remove-slow");await(()->canceled.get()==1);
+            click(view,"item-a");await(()->"a:1".equals(node(view,"item-a").optString("text")));
+            click(view,"reorder");await(()->node(view,"item-b").getJSONArray("bounds").getDouble(1)<node(view,"item-a").getJSONArray("bounds").getDouble(1));
             assertEquals("a:1",node(view,"item-a").getString("text"));assertEquals("b:0",node(view,"item-b").getString("text"));
             JSONObject list=node(view,"padded-list"),last=node(view,"row-99");assertNotNull(last);
             JSONObject scroll=list.getJSONObject("scroll");assertEquals(scroll.getDouble("max_offset"),scroll.getDouble("offset"),0.1);
@@ -145,6 +149,6 @@ public class GpuProductContractTest {
             assertNull(error.get());assertEquals(2,attempts.get());
         } catch(AssertionError failure) {
             throw new AssertionError("attempts="+attempts.get()+" canceled="+canceled.get()+" error="+error.get()+" state="+node(view,"image-state")+" list="+node(view,"padded-list")+" last="+node(view,"row-99"),failure);
-        } finally {main(()->{view.dispose();((ViewGroup)view.getParent()).removeView(view);return null;});worker.shutdown();}
+        } finally {main(()->{view.dispose();((ViewGroup)view.getParent()).removeView(view);return null;});}
     }
 }

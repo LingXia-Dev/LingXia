@@ -26,6 +26,10 @@ public class GpuImeTest {
         public void showTextMenu() { menus++; }
         public void request(JSONObject value,Consumer<JSONObject> reply) { requests.add(value); replies.add(reply); }
         public void render(boolean rebuild) { this.rebuild|=rebuild; frames++; }
+        final ArrayList<String> carets=new ArrayList<>();
+        public void caret(boolean eligible,String text,int anchor,int focus,int start,int end) {
+            carets.add(eligible+":"+text+":"+anchor+":"+focus+":"+start+":"+end);
+        }
     }
     private static JSONObject state(String text) throws Exception {
         return new JSONObject().put("text",text).put("selection",new JSONArray(new int[]{text.length(),text.length()}));
@@ -207,22 +211,15 @@ public class GpuImeTest {
         assertEquals(3,host.requests.size()); assertNull(input.getSelectedText(0));
     }
 
-    @Test @org.robolectric.annotation.LooperMode(org.robolectric.annotation.LooperMode.Mode.PAUSED)
-    public void presentationsPreserveBlinkPhaseAndLifecycleStopsItsTimer() throws Exception {
+    @Test public void editorStateReachesTheHostCaretAndTeardownClearsIt() throws Exception {
         Host host=new Host(); GpuIme ime=ime(host);
         ime.presented(frame(7,"hello"),ime.capture());
-        org.robolectric.shadows.ShadowLooper looper=org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper());
-        looper.idleFor(java.time.Duration.ofMillis(500));
-        assertFalse(ime.caretVisible()); assertEquals(1,host.frames);
-        ime.presented(frame(7,"hello"),ime.capture());
-        assertFalse(ime.caretVisible());
-        looper.idleFor(java.time.Duration.ofMillis(500)); assertTrue(ime.caretVisible());
-        ime.setCaretActive(false); int stopped=host.frames;
-        looper.idleFor(java.time.Duration.ofSeconds(3)); assertEquals(stopped,host.frames);
-        ime.setCaretActive(true); looper.idleFor(java.time.Duration.ofMillis(500));
-        assertFalse(ime.caretVisible()); stopped=host.frames;
-        ime.clear(true); assertEquals(stopped,host.frames);
-        looper.idleFor(java.time.Duration.ofSeconds(3)); assertEquals(stopped,host.frames);
+        assertEquals("true:hello:5:5:-1:-1",host.carets.get(host.carets.size()-1));
+        ime.setCaretActive(false);
+        assertEquals("false:hello:5:5:-1:-1",host.carets.get(host.carets.size()-1));
+        ime.setCaretActive(true); ime.clear(true);
+        assertEquals("true:null:0:0:-1:-1",host.carets.get(host.carets.size()-1));
+        assertEquals("blinking is host-timed; the input method never renders for it",0,host.frames);
     }
 
     @Test public void replacingPlatformConnectionDoesNotCloseTheLiveEditor() throws Exception {

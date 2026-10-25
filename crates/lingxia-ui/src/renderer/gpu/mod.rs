@@ -110,6 +110,11 @@ impl Presenter {
         self.context.clone()
     }
 
+    /// The adapter record: backend, ids, driver and renderer release.
+    pub fn adapter(&self) -> &str {
+        &self.adapter
+    }
+
     pub fn new(
         target: impl Into<wgpu::SurfaceTarget<'static>>,
         width: u32,

@@ -11,15 +11,18 @@ import com.lingxia.lxapp.R;
 
 /** Host-owned feedback; author content cannot replace its recovery action. */
 final class GpuRecovery {
-    /** Failure kinds the shared lifecycle reports. */
-    enum Kind { CANDIDATE, COMPATIBILITY, SESSION }
+    /** The shared host's recovery messages, by code. */
+    private static final int[] MESSAGES = {R.string.lx_gpu_update_required, R.string.lx_gpu_session_failed,
+        R.string.lx_gpu_update_failed, R.string.lx_gpu_display_failed};
+    /** Its actions: 0 retry, 1 reload. */
+    private static final int[] ACTIONS = {R.string.lx_gpu_retry, R.string.lx_gpu_reload};
     private final FrameLayout host;
     private LinearLayout panel;
     private final android.graphics.Rect insets = new android.graphics.Rect();
 
     GpuRecovery(FrameLayout host) { this.host = host; }
 
-    void show(boolean retained, Kind kind, Runnable retry) {
+    void show(boolean retained, int message, int action, Runnable retry) {
         clear();
         LinearLayout current = new LinearLayout(host.getContext());
         panel = current;
@@ -30,17 +33,15 @@ final class GpuRecovery {
         int padding = Math.round(16 * host.getResources().getDisplayMetrics().density);
         current.setPadding(padding, padding, padding, padding);
         current.setClickable(true);
-        TextView message = new TextView(host.getContext());
-        message.setTextColor(dark ? Color.WHITE : Color.rgb(32, 34, 38));
-        message.setTextSize(16);
-        message.setText(kind == Kind.COMPATIBILITY ? R.string.lx_gpu_update_required
-                : kind == Kind.SESSION ? R.string.lx_gpu_session_failed
-                : retained ? R.string.lx_gpu_update_failed : R.string.lx_gpu_display_failed);
-        message.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        current.addView(message);
-        if (kind != Kind.COMPATIBILITY && retry != null) {
+        TextView text = new TextView(host.getContext());
+        text.setTextColor(dark ? Color.WHITE : Color.rgb(32, 34, 38));
+        text.setTextSize(16);
+        text.setText(MESSAGES[message]);
+        text.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        current.addView(text);
+        if (action >= 0 && retry != null) {
             Button button = new Button(host.getContext());
-            button.setText(kind == Kind.SESSION ? R.string.lx_gpu_reload : R.string.lx_gpu_retry);
+            button.setText(ACTIONS[action]);
             button.setOnClickListener(view -> {
                 if (panel != current || !button.isEnabled()) return;
                 button.setEnabled(false);
