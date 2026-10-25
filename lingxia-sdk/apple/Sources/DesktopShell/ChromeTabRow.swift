@@ -29,9 +29,26 @@ final class ChromeTabRowView: NSStackView {
         }
     }
 
-    private var isHovered = false {
+    private(set) var isHovered = false {
         didSet {
             guard oldValue != isHovered else { return }
+            needsDisplay = true
+            onHoverChanged?(isHovered)
+        }
+    }
+
+    /// Fires when the pointer enters or leaves the row, so the owner can
+    /// reveal per-tab controls (the "···" menu button) on hover.
+    var onHoverChanged: ((Bool) -> Void)?
+
+    /// A slot with one content shows that content as a plain header row
+    /// (icon + title + controls) instead of a lone tab chip: nothing to
+    /// switch between, so no chip fill, hover wash or divider is drawn. The
+    /// row keeps its height and its drag/close/menu affordances, and turns
+    /// back into a chip the moment a sibling arrives.
+    var isHeader = false {
+        didSet {
+            guard oldValue != isHeader else { return }
             needsDisplay = true
         }
     }
@@ -83,6 +100,8 @@ final class ChromeTabRowView: NSStackView {
         let topInset = ChromeTabMetrics.tabTopInset
         let foot = ChromeTabMetrics.tabFoot
         let corner = ChromeTabMetrics.tabCorner
+
+        if isHeader { return }
 
         if !bridgesIntoContent {
             drawChip(foot: foot, corner: corner, pixel: pixel)

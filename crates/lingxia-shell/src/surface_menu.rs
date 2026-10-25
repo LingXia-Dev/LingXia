@@ -19,6 +19,9 @@ pub enum SurfaceMenuBuiltinAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LxappSurfaceMenuAction {
+    /// Move the live lxapp main into the side panel (the reverse of an aside
+    /// tab's "Open in Main Area"); never offered for the root main.
+    OpenInSide,
     Restart,
     CleanCacheRestart,
     Uninstall,

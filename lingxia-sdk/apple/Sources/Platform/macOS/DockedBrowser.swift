@@ -48,6 +48,8 @@ final class DockedBrowser: NSObject {
         let urlCallback: Bool
         var url: String
         var title: String = ""
+        /// The resolved favicon; nil while the globe placeholder shows.
+        var favicon: NSImage?
         var webView: WKWebView?
         /// Chrome-style history intervention: until the user interacts with
         /// the page, auto-created history (SPA pushState redirects) must not
@@ -104,9 +106,11 @@ final class DockedBrowser: NSObject {
     /// Toggle the slot covering the main area (spec §4.6 Maximize), the same
     /// control the lxapp slot strip offers. Nil hides it (a compact overlay
     /// already covers the main).
-    var onToggleMaximize: (() -> Void)? {
-        didSet { maximizeButton.isHidden = onToggleMaximize == nil }
-    }
+    var onToggleMaximize: (() -> Void)?
+    /// Fires when a tab's title or favicon changes, or tabs come and go, so
+    /// the side panel's slot strip (which lists these tabs beside lxapps)
+    /// can re-bind.
+    var onTabsChanged: (() -> Void)?
     private let tabStrip = NSStackView()
     private let separator = LxAppHostThemeLayerView(role: .separator)
     private let webContainer = NSView()
@@ -175,6 +179,24 @@ final class DockedBrowser: NSObject {
 
     /// Surface ids of every open tab (front = anchor).
     var tabSurfaceIds: [String] { tabs.map { $0.surfaceId } }
+
+    /// Title and favicon (nil until one lands) of the tab for `surfaceId`,
+    /// for the side panel's slot strip.
+    func tabInfo(surfaceId: String) -> (title: String, icon: NSImage?)? {
+        guard let tab = tabs.first(where: { $0.surfaceId == surfaceId }) else { return nil }
+        return (tab.title, tab.favicon)
+    }
+
+    /// Show the tab for `surfaceId` (the slot's active child), if it is one.
+    func activateTab(surfaceId: String) {
+        guard activeSurfaceId != surfaceId, contains(surfaceId: surfaceId) else { return }
+        activate(surfaceId)
+    }
+
+    /// The tab's menu, for the slot strip's "···" and right-click.
+    func menu(forSurfaceId surfaceId: String) -> NSMenu? {
+        tabs.first(where: { $0.surfaceId == surfaceId }).map(tabMenu(for:))
+    }
 
     /// Surface ids of the tabs whose Rust browser tab the core no longer
     /// has: the browser closed them (its chrome, automation, the owner's
@@ -422,8 +444,10 @@ final class DockedBrowser: NSObject {
             guard let self, let tab, !self.torn,
                   tab.webView?.url == requestURL else { return }
             image.size = NSSize(width: Layout.tabIconSize, height: Layout.tabIconSize)
+            tab.favicon = image
             tab.iconView.image = image
             tab.iconView.contentTintColor = nil
+            self.onTabsChanged?()
         }
     }
 
@@ -480,6 +504,9 @@ final class DockedBrowser: NSObject {
         closeAsideButton.setAccessibilityLabel(L10n.string("lx_common_close"))
         closeAsideButton.target = self
         closeAsideButton.action = #selector(closeAsideClicked)
+        // Collapse, maximize and close live on the slot strip above; the
+        // bar keeps only navigation. The buttons stay as layout anchors.
+        closeAsideButton.isHidden = true
         toolbar.addSubview(closeAsideButton)
 
         maximizeButton.translatesAutoresizingMaskIntoConstraints = false
@@ -679,6 +706,7 @@ final class DockedBrowser: NSObject {
     private func updateTabButtonTitle(_ tab: Tab) {
         tab.button.title = tab.title
         refreshCompactBrowserBar()
+        onTabsChanged?()
     }
 
     private func updateTabStripSelection() {
@@ -702,8 +730,11 @@ final class DockedBrowser: NSObject {
             let nextSelected = index + 1 < tabs.count && tabs[index + 1].surfaceId == activeSurfaceId
             tab.row.suppressTrailingSeparator = selected || nextSelected
         }
-        tabStrip.isHidden = tabs.isEmpty
+        // The slot strip above the panel lists these tabs beside the lxapp
+        // ones; the bar keeps only navigation.
+        tabStrip.isHidden = true
         refreshCompactBrowserBar()
+        onTabsChanged?()
     }
 
     private enum AssociatedKeys { nonisolated(unsafe) static var surfaceId = 0 }
@@ -770,6 +801,34 @@ final class DockedBrowser: NSObject {
         onCloseTab(id)
     }
 
+    /// The tab's menu: the page actions (bookmark, pin, copy link, open
+    /// externally), the move into the main browser (what dropping the tab
+    /// on the sidebar does; callback and ephemeral tabs stay with their
+    /// opener), and Close. Collapse and Maximize stay out: they are slot
+    /// controls, already on the bar.
+    private func tabMenu(for tab: Tab) -> NSMenu {
+        let menu = BrowserPageMenu.menu(for: pageMenuContext(for: tab))
+        if !tab.urlCallback && !tab.ephemeralWebData {
+            menu.addItem(.separator())
+            let surfaceId = tab.surfaceId
+            let openInMain = MenuActionItem(title: L10n.string("lx_aside_open_in_main")) {
+                _ = LxAppSurface.promoteBrowserAsideTab(surfaceId: surfaceId)
+            }
+            openInMain.image = NSImage(
+                systemSymbolName: "macwindow", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+            menu.addItem(openInMain)
+        }
+        menu.addItem(.separator())
+        let surfaceId = tab.surfaceId
+        let close = MenuActionItem(title: L10n.string("lx_common_close")) { [weak self] in
+            self?.onCloseTab(surfaceId)
+        }
+        close.image = LxIcon.menuSymbol("icon_close_x")
+        menu.addItem(close)
+        return menu
+    }
+
     // MARK: - Helpers
 
     /// Dedup key: compare normalized URLs (ignore trailing slash + fragment).
@@ -796,7 +855,7 @@ extension DockedBrowser: NSMenuDelegate {
         menu.removeAllItems()
         guard let surfaceId = objc_getAssociatedObject(menu, &AssociatedKeys.surfaceId) as? String,
               let tab = tabs.first(where: { $0.surfaceId == surfaceId }) else { return }
-        let built = BrowserPageMenu.menu(for: pageMenuContext(for: tab))
+        let built = tabMenu(for: tab)
         for item in built.items {
             built.removeItem(item)
             menu.addItem(item)

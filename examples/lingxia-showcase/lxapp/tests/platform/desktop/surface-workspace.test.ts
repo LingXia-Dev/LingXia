@@ -81,6 +81,10 @@ const pinnedWindowsHostSkip = targetPlatform === 'windows'
 const DESKTOP_CASE_MS = 180_000;
 // Windows @ 1.5 scale paints an ~37 DIP icon rail; 40 DIP is just above it.
 const WINDOWS_RAIL_MIN_DIP = 32;
+/** The Windows expanded sidebar's default width (lingxia-shell DEFAULT_EXPANDED_SIDEBAR_WIDTH). */
+const WINDOWS_SIDEBAR_DIP = 148;
+/** Pins per row in that sidebar: as many 36 + 5 tiles as fit from the icon axis. */
+const WINDOWS_PIN_COLUMNS = Math.min(4, Math.max(1, Math.floor((WINDOWS_SIDEBAR_DIP - (24 - 18) - 8 + 5) / 41)));
 
 async function desktopApp(t: Fixture): Promise<TestApp> {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
@@ -471,7 +475,8 @@ async function ensureFullSidebar(
 ): Promise<DesktopWindowInfo> {
   // Expanded sizeClass is not the same as an expanded sidebar. Windows
   // persists icon-rail; a 1200 DIP window can still paint the 44px rail.
-  // Workspace-row geometry (ellipsis / close) only exists on the 184 sidebar.
+  // Workspace-row geometry (ellipsis / close) only exists on the expanded
+  // sidebar, not the icon rail.
   const current = await ensureHostForeground(desktop, host);
   await expandMediumSidebar(desktop, 'windows', current, async () => {
     const latest = (await desktop.windows()).find((window) => window.id === current.id) ?? current;
@@ -687,9 +692,9 @@ function pinnedShortcutPoint(
 ): [number, number] {
   const tile = 36;
   const gap = 5;
-  const columns = 4;
+  const columns = WINDOWS_PIN_COLUMNS;
   // Leading-aligned on the shared first-column icon axis (8 + 8 + 8), not
-  // centered in the 184 sidebar: the Windows pin grid and macOS tiles both
+  // centered in the expanded sidebar: the Windows pin grid and macOS tiles both
   // sit on that axis so the grid does not drift when the sidebar resizes.
   const iconAxis = 24;
   const gridLeft = iconAxis - tile / 2;
@@ -744,10 +749,10 @@ function staticSettingsActionPoint(
 ): [number, number] {
   if (!rail) {
     // Typed Settings leads the header actions, right-aligned against the
-    // collapse toggle at the 184-DIP sidebar's trailing edge.
+    // collapse toggle at the expanded sidebar's trailing edge.
     const size = 24;
     const gap = 4;
-    const toggleLeft = 184 - 8 - size;
+    const toggleLeft = WINDOWS_SIDEBAR_DIP - 8 - size;
     const settingsLeft = toggleLeft - gap
       - DESKTOP_HEADER_ACTION_COUNT * size
       - (DESKTOP_HEADER_ACTION_COUNT - 1) * gap;
@@ -765,7 +770,7 @@ function firstLxappWorkspacePoint(
   rootPageCount: number,
   workspaceIndex = 0,
 ): [number, number] {
-  const pinRows = Math.ceil(pinCount / 4);
+  const pinRows = Math.ceil(pinCount / WINDOWS_PIN_COLUMNS);
   const pinnedGridHeight = pinRows * (36 + 5);
   const topBarHeight = 32;
   const groupHeight = 36;
@@ -794,7 +799,7 @@ function activeGuestGroupPoint(
   pinCount: number,
   switcherIndex: number,
 ): [number, number] {
-  const pinRows = Math.ceil(pinCount / 4);
+  const pinRows = Math.ceil(pinCount / WINDOWS_PIN_COLUMNS);
   const pinnedGridHeight = pinRows * (36 + 5);
   const topBarHeight = 32;
   const rowHeight = 36;
@@ -815,7 +820,7 @@ function activeGuestGroupMenuRegion(
   pinCount: number,
   switcherIndex: number,
 ): [number, number, number, number] {
-  const sidebarWidth = 184;
+  const sidebarWidth = WINDOWS_SIDEBAR_DIP;
   const itemInset = 8;
   const chevronWidth = 18;
   const trailingControlWidth = 22;
@@ -863,7 +868,7 @@ function firstLxappWorkspaceRegion(
   rootPageCount: number,
   workspaceIndex = 0,
 ): [number, number, number, number] {
-  const sidebarWidth = 184;
+  const sidebarWidth = WINDOWS_SIDEBAR_DIP;
   const itemInset = 8;
   const [, centerY] = firstLxappWorkspacePoint(
     host, pinCount, rootPageCount, workspaceIndex,
@@ -988,7 +993,7 @@ function showcaseHomePagePoint(
   host: DesktopWindowInfo,
   pinCount: number,
 ): [number, number] {
-  const pinRows = Math.ceil(pinCount / 4);
+  const pinRows = Math.ceil(pinCount / WINDOWS_PIN_COLUMNS);
   const pinnedGridHeight = pinRows * (36 + 5);
   const topBarHeight = 32;
   const groupHeight = 36;
@@ -2944,6 +2949,7 @@ async function exactHostAxNode(
  */
 async function asidePageTop(
   t: Fixture,
+  platform: string,
   desktop: DesktopDriver,
   host: DesktopWindowInfo,
   pageName: 'chat' | 'feedback',
@@ -2978,7 +2984,11 @@ async function asidePageTop(
     return { top: rect.top, left: rect.left };
   }).catch(() => null) as { top: number; left: number } | null;
   if (!offset) return undefined;
-  return { top: node.rect.y - Math.round(offset.top), left: node.rect.x - Math.round(offset.left) };
+  // DOM rects are CSS pixels; Windows AX rects are physical pixels.
+  return {
+    top: node.rect.y - nativeWindowExtent(platform, host, offset.top),
+    left: node.rect.x - nativeWindowExtent(platform, host, offset.left),
+  };
 }
 
 /** A bundled lxapp other than Chat, opened as a main beside the Chat aside. */
@@ -3078,7 +3088,7 @@ spec('keeps an aside lxapp page stack and its floats inside the aside', {
     const navbarHeight = nativeWindowExtent(platform, host, 38);
     const slop = nativeWindowExtent(platform, host, 4);
     const rootTop = await waitForValue(
-      () => asidePageTop(t, desktop, host!, 'chat', 'AI Chat'),
+      () => asidePageTop(t, platform, desktop, host!, 'chat', 'AI Chat'),
       'Chat page top at the aside stack root',
     );
     if (platform === 'macos') {
@@ -3089,7 +3099,7 @@ spec('keeps an aside lxapp page stack and its floats inside the aside', {
     const feedback = await pushFeedback('navbar back');
     // One page deeper the bar appears: the page moves down by its height.
     const pushedTop = await waitForValue(async () => {
-      const top = await asidePageTop(t, desktop, host!, 'feedback', 'Help us improve');
+      const top = await asidePageTop(t, platform, desktop, host!, 'feedback', 'Help us improve');
       return top && top.top - rootTop.top >= navbarHeight - slop ? top : undefined;
     }, 'aside navigation bar under the tab strip after navigateTo');
     expect(Math.abs(pushedTop.top - rootTop.top - navbarHeight) <= slop).toBeTruthy();
@@ -3119,7 +3129,7 @@ spec('keeps an aside lxapp page stack and its floats inside the aside', {
     await expectChatBackInAside('navbar Back');
     // Back at the root the bar collapses again.
     await waitForValue(async () => {
-      const top = await asidePageTop(t, desktop, host!, 'chat', 'AI Chat');
+      const top = await asidePageTop(t, platform, desktop, host!, 'chat', 'AI Chat');
       return top && Math.abs(top.top - rootTop.top) <= slop ? top : undefined;
     }, 'aside navigation bar collapsed again at the stack root');
 
@@ -3856,7 +3866,7 @@ function surfaceFileUrl(nativeDir: string, relative: string): string {
 }
 
 function browserAsideSlot(layout: SurfaceLayoutSnapshot): SurfaceLayoutAsideSlot | undefined {
-  return layout.asideSlots.find((slot) => slot.kind === 'browser');
+  return layout.asideSlots.find((slot) => slot.kind === 'panel');
 }
 
 function layoutHoldsSurface(layout: SurfaceLayoutSnapshot, id: string): boolean {
@@ -4176,7 +4186,9 @@ spec('opens a browser aside beside a docked, maximized and collapsed Chat aside 
       }, 'Chat aside restored');
       await waitForValue(async () => ((await mainPageHasFocus()) ? true : undefined), 'focus back in the main page');
 
-      // Collapse Chat; the browser aside opens beside the collapsed slot.
+      // Collapse the side panel. A browser tab opened now joins the same
+      // panel, and content arriving in a collapsed slot brings it back
+      // rather than landing out of sight; Chat stays alive as its other tab.
       const collapse = await waitForValue(() => control('Collapse panel'), 'Collapse control');
       await desktop.ax.invoke({ window: host.id, match: `id:${collapse.id}` });
       await waitForValue(async () => {
@@ -4186,8 +4198,8 @@ spec('opens a browser aside beside a docked, maximized and collapsed Chat aside 
       await openBeside('collapsed', 'bottom');
       await waitForValue(async () => {
         const slot = chatAsideSlot(await app.surfaceLayout());
-        return slot?.collapsed ? true : undefined;
-      }, 'Chat still collapsed after the browser aside');
+        return slot && !slot.collapsed && slot.children.includes('lingxia-chat') ? true : undefined;
+      }, 'side panel back, Chat still in it, after the browser tab arrived');
     }
   } finally {
     await closeNewBrowserTabs(browser, tabsBefore);

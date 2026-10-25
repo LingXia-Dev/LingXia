@@ -1258,6 +1258,18 @@ pub(crate) fn is_standalone_tab(tab_id: &str) -> bool {
 /// Re-home a docked (standalone) tab as an ordinary main-browser tab and make
 /// it active. The tab keeps its id, WebView and history. URL-callback and
 /// ephemeral tabs stay docked: they belong to the flow that opened them.
+/// Whether [`promote_standalone_tab`] would accept `tab_id`.
+pub(crate) fn can_promote_standalone_tab(tab_id: &str) -> bool {
+    let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
+        return false;
+    };
+    lock_state().tabs.get(&normalized).is_some_and(|tab| {
+        tab.standalone
+            && !tab.url_callback.load(Ordering::Acquire)
+            && tab.data_mode != WebViewDataMode::Ephemeral
+    })
+}
+
 pub(crate) fn promote_standalone_tab(tab_id: &str) -> Result<(), LxAppError> {
     let normalized = normalize_runtime_tab_id(tab_id)
         .ok_or_else(|| LxAppError::InvalidParameter(format!("invalid tab id: {tab_id}")))?;

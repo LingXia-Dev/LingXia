@@ -58,8 +58,9 @@ pub use surface::{
     set_windows_url_surface_handler,
 };
 pub use surface::{
-    close_windows_url_surface_for_browser_tab, release_windows_aside_browser_surface,
-    release_windows_lxapp_aside, restore_windows_lxapp_aside, windows_aside_browser_tab_id,
+    adopt_windows_lxapp_main_as_aside, close_windows_url_surface_for_browser_tab,
+    release_windows_aside_browser_surface, release_windows_lxapp_aside,
+    restore_windows_lxapp_aside, windows_aside_browser_tab_id,
 };
 pub use ui_update::{
     set_windows_capsule_rect_provider, set_windows_home_first_ready_handler,

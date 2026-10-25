@@ -121,8 +121,35 @@ pub(super) fn sidebar_header_action_gap() -> i32 {
     crate::dpi::px(4)
 }
 
+/// Floor of the expanded sidebar column; the user-chosen width starts here.
 pub(super) fn shell_sidebar_width() -> i32 {
-    crate::dpi::px(184)
+    crate::dpi::px(148)
+}
+
+/// The grab zone on the sidebar column's inner edge, where dragging resizes
+/// the column (as on macOS). Returns the column's current width and whether
+/// it docks on the left; `None` off the zone or without a side sidebar.
+pub(crate) fn sidebar_resize_edge(
+    state: &WindowsChromeState,
+    point: (i32, i32),
+) -> Option<(i32, bool)> {
+    let layout = shell_layout(&state.layout)?;
+    let tabbar = layout.tab_bar.as_ref()?;
+    if tabbar.collapsed {
+        return None;
+    }
+    let left = match tabbar.position {
+        WindowsShellTabBarPosition::Left => true,
+        WindowsShellTabBarPosition::Right => false,
+        WindowsShellTabBarPosition::Bottom => return None,
+    };
+    let bar = chrome_rects_for_state(state, layout).tab_bar?;
+    let edge = if left { bar.right } else { bar.left };
+    let zone = px(4);
+    if point.1 < bar.top || point.1 >= bar.bottom || (point.0 - edge).abs() > zone {
+        return None;
+    }
+    Some((rect_width(&bar), left))
 }
 
 /// Width of the icon-only rail (the macOS first-collapse state).
@@ -337,6 +364,8 @@ pub(super) mod command_id {
     pub(super) const BROWSER_PANEL_NAV_RELOAD: &str = "browser-panel.nav.reload";
     pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
     pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
+    pub(super) const ASIDE_PANEL_TAB_MENU: &str = "aside-panel.tab.menu";
+    pub(super) const ASIDE_PANEL_TAB_OVERFLOW: &str = "aside-panel.tab.overflow";
     pub(super) const ASIDE_PANEL_COLLAPSE: &str = "aside-panel.collapse";
     pub(super) const ASIDE_PANEL_MAXIMIZE: &str = "aside-panel.maximize";
     pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
@@ -700,11 +729,26 @@ fn chrome_hover_rect(
                 return Some(close_all);
             }
             let tabs = panel_aside_tabs(panel);
-            for rect in aside_panel_tab_rects(panel, &tabs) {
-                if let Some(close) = aside_panel_tab_close_rect(rect)
+            let tab_layout = aside_panel_tab_layout(panel, &tabs);
+            if let Some(overflow) = tab_layout.overflow
+                && rect_contains(&overflow, point)
+            {
+                return Some(overflow);
+            }
+            for (tab, rect) in tabs.iter().zip(tab_layout.rects) {
+                let Some(rect) = rect else {
+                    continue;
+                };
+                let controls = aside_panel_tab_controls(rect, tab.active, tabs.len() == 1, true);
+                if let Some(close) = controls.close
                     && rect_contains(&close, point)
                 {
                     return Some(close);
+                }
+                if let Some(more) = controls.more
+                    && rect_contains(&more, point)
+                {
+                    return Some(more);
                 }
                 if rect_contains(&rect, point) {
                     return Some(rect);
@@ -2223,23 +2267,41 @@ fn compute_attached_layout(
     }
 }
 
-/// Width of the strip a collapsed aside keeps at its edge.
+/// What the main gives up for a collapsed aside's handle. The tongue sits in
+/// the workspace's own edge clearance (`shell_content_inset`, 12 DIP) flush
+/// with the window edge, so the main only yields a hairline gap beside it and
+/// room for the 2 DIP hover reach.
 fn collapsed_aside_handle_width() -> i32 {
-    px(10)
+    px(4)
 }
 
-/// The handles of collapsed aside slots, beside `main_region`: a short strip
-/// centred on the edge the slot docks to. Clicking one restores the slot.
+/// The tongue's drawn width, the same as macOS.
+fn collapsed_aside_tongue_width() -> i32 {
+    px(12)
+}
+
+/// The handles of collapsed aside slots, beside `main_region`: a slim tongue
+/// flush with the window edge the slot docks to, its top and bottom sloped
+/// (`collapsed_aside_handle_slope`), so it reads as a pull-out tab of the
+/// edge itself — larger than a hairline, lighter than a card. Clicking one
+/// restores the slot.
 fn collapsed_aside_handle_rects(main_region: RECT) -> Vec<(String, RECT)> {
-    let width = collapsed_aside_handle_width();
+    let width = collapsed_aside_tongue_width();
     let center = (main_region.top + main_region.bottom) / 2;
-    let half = px(32).min(rect_height(&main_region) / 2);
+    let half = px(28).min(rect_height(&main_region) / 2);
     lingxia_windows_contract::collapsed_aside_panels()
         .into_iter()
         .filter_map(|(panel_id, edge)| {
+            // Flush with the window edge: past the main's yielded gap, the
+            // tongue fills the workspace clearance.
+            let gap = collapsed_aside_handle_width();
             let (left, right) = match edge {
-                WindowsPanelPosition::Right => (main_region.right, main_region.right + width),
-                WindowsPanelPosition::Left => (main_region.left - width, main_region.left),
+                WindowsPanelPosition::Right => {
+                    (main_region.right + gap, main_region.right + gap + width)
+                }
+                WindowsPanelPosition::Left => {
+                    (main_region.left - gap - width, main_region.left - gap)
+                }
                 WindowsPanelPosition::Top | WindowsPanelPosition::Bottom => return None,
             };
             Some((
@@ -2253,6 +2315,56 @@ fn collapsed_aside_handle_rects(main_region: RECT) -> Vec<(String, RECT)> {
             ))
         })
         .collect()
+}
+
+/// Whether `point` (client coordinates) is on a collapsed aside's handle.
+/// The tongue sits flush with the window edge, inside the host's resize
+/// border, so the non-client hit test asks this first: the handle wins over
+/// resizing there.
+pub(crate) fn collapsed_aside_handle_hit(state: &WindowsChromeState, point: (i32, i32)) -> bool {
+    state.attached.as_ref().is_some_and(|attached| {
+        collapsed_aside_handle_rects(attached.main_region)
+            .iter()
+            .any(|(_, rect)| rect_contains(rect, point))
+    })
+}
+
+/// Colors of the drag chip that follows a shell drag: the content card's
+/// fill, the divider as its hairline, the primary text.
+pub(crate) fn drag_ghost_colors() -> crate::drag_ghost::GhostColors {
+    let pal = shell_palette();
+    crate::drag_ghost::GhostColors {
+        fill: pal.panel_background,
+        border: pal.divider,
+        text: pal.text_primary,
+    }
+}
+
+/// Slope height of the tongue's top and bottom edges.
+fn collapsed_aside_handle_slope() -> i32 {
+    px(8)
+}
+
+/// The tongue polygon for a handle rect: its outer side (the window edge)
+/// runs the full height, its inner side is shortened by a slope at each end.
+fn collapsed_aside_handle_shape(rect: RECT, main_region: RECT) -> [(i32, i32); 4] {
+    let slope = collapsed_aside_handle_slope().min(rect_height(&rect) / 2);
+    if rect.left >= main_region.right {
+        // Right edge: inner side is the left.
+        [
+            (rect.right, rect.top),
+            (rect.left, rect.top + slope),
+            (rect.left, rect.bottom - slope),
+            (rect.right, rect.bottom),
+        ]
+    } else {
+        [
+            (rect.left, rect.top),
+            (rect.right, rect.top + slope),
+            (rect.right, rect.bottom - slope),
+            (rect.left, rect.bottom),
+        ]
+    }
 }
 
 fn attached_panel_order(panel: &WindowsChromePanelLayoutInput) -> (u8, u8, u8, &str) {
@@ -2356,6 +2468,27 @@ pub(crate) fn sidebar_drop_rect(state: &WindowsChromeState) -> Option<RECT> {
         return None;
     }
     chrome_rects_for_state(state, layout).tab_bar
+}
+
+/// The band along the main's trailing edge where a dragged sidebar group
+/// drops into the side panel. The main's WebView covers this region, so no
+/// outline is painted; the drag chip is the only feedback.
+pub(crate) fn main_aside_drop_rect(state: &WindowsChromeState) -> Option<RECT> {
+    let layout = shell_layout(&state.layout)?;
+    let main = state
+        .attached
+        .as_ref()
+        .map(|attached| attached.main_region)
+        .unwrap_or_else(|| chrome_rects_for_state(state, layout).content);
+    if rect_width(&main) <= 0 || rect_height(&main) <= 0 {
+        return None;
+    }
+    Some(RECT {
+        left: (main.right - px(72)).max(main.left),
+        top: main.top,
+        right: main.right,
+        bottom: main.bottom,
+    })
 }
 
 /// Outline the sidebar while a dragged aside tab is over it. Returns whether
@@ -3036,8 +3169,29 @@ pub(super) fn draw_content_cards(
         draw_content_card(hdc, attached.main_region, desktop_card);
         for (_, rect) in collapsed_aside_handle_rects(attached.main_region) {
             let pal = shell_palette();
-            draw_hover_wash(hdc, rect, 4, state.cursor);
-            fill_round_rect_aa(hdc, inset_rect(rect, px(3), px(10)), 2, pal.divider);
+            let hovered = state
+                .cursor
+                .is_some_and(|point| rect_contains(&rect, point));
+            // A muted wash over the base, one step darker on hover, when
+            // the tongue also reaches 2 DIP further toward the main.
+            let color = blend_rgb(
+                pal.text_muted,
+                pal.window_background,
+                if hovered { 38 } else { 22 },
+            );
+            let mut shape = rect;
+            if hovered {
+                if rect.left >= attached.main_region.right {
+                    shape.left -= px(2);
+                } else {
+                    shape.right += px(2);
+                }
+            }
+            fill_polygon_aa(
+                hdc,
+                &collapsed_aside_handle_shape(shape, attached.main_region),
+                color,
+            );
         }
         for panel in &attached.panels {
             if panel.host_content.is_some() {

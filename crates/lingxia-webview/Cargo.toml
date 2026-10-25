@@ -91,3 +91,6 @@ windows = { workspace = true, features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+windows = { workspace = true, features = ["Win32_System_Com_Marshal"] }

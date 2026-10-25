@@ -75,7 +75,7 @@ pub(super) fn aside_panel_header_hit(
     tabs: &[WindowsAsidePanelTab],
     point: (i32, i32),
 ) -> WindowsChromeHit {
-    if panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID {
+    if aside_panel_shows_browser(panel) {
         for (command, rect) in aside_panel_nav_button_rects(panel) {
             if rect_contains(&rect, point) {
                 return chrome_command(command, json!({ "panel_id": panel.panel_id.clone() }));
@@ -96,25 +96,55 @@ pub(super) fn aside_panel_header_hit(
             json!({ "panel_id": panel.panel_id.clone() }),
         );
     }
-    for (tab, rect) in tabs.iter().zip(aside_panel_tab_rects(panel, tabs)) {
-        if let Some(close) = aside_panel_tab_close_rect(rect)
+    let layout = aside_panel_tab_layout(panel, tabs);
+    if let Some(overflow) = layout.overflow
+        && rect_contains(&overflow, point)
+    {
+        let hidden = layout.hidden.iter().map(|&index| &tabs[index]);
+        return WindowsChromeHit::Command(
+            WindowsChromeCommand::new(command_id::ASIDE_PANEL_TAB_OVERFLOW)
+                .with_payload(json!({
+                    "panel_id": panel.panel_id.clone(),
+                    "surface_ids": hidden.clone().map(|tab| tab.surface_id.clone()).collect::<Vec<_>>(),
+                    "titles": hidden.map(|tab| tab.title.clone()).collect::<Vec<_>>(),
+                }))
+                .with_screen_position(),
+        );
+    }
+    let header = tabs.len() == 1;
+    for (tab, rect) in tabs.iter().zip(layout.rects) {
+        let Some(rect) = rect else {
+            continue;
+        };
+        let payload = json!({
+            "panel_id": panel.panel_id.clone(),
+            "surface_id": tab.surface_id.clone()
+        });
+        // The pointer is on the tab here, so the hover-revealed controls
+        // are the ones it can hit.
+        let controls = aside_panel_tab_controls(rect, tab.active, header, true);
+        if let Some(close) = controls.close
             && rect_contains(&close, point)
         {
-            return chrome_command(
-                command_id::ASIDE_PANEL_TAB_CLOSE,
-                json!({
-                    "panel_id": panel.panel_id.clone(),
-                    "surface_id": tab.surface_id.clone()
-                }),
+            return chrome_command(command_id::ASIDE_PANEL_TAB_CLOSE, payload);
+        }
+        // "···" opens the tab's menu where the button is; the tab body
+        // selects on click and opens the same menu on right-click.
+        if let Some(more) = controls.more
+            && rect_contains(&more, point)
+        {
+            return WindowsChromeHit::Command(
+                WindowsChromeCommand::new(command_id::ASIDE_PANEL_TAB_MENU)
+                    .with_payload(payload)
+                    .with_screen_position(),
             );
         }
         if rect_contains(&rect, point) {
-            return chrome_command(
+            return chrome_command_with_context(
                 command_id::ASIDE_PANEL_TAB_CLICK,
-                json!({
-                    "panel_id": panel.panel_id.clone(),
-                    "surface_id": tab.surface_id.clone()
-                }),
+                payload.clone(),
+                command_id::ASIDE_PANEL_TAB_MENU,
+                payload,
             );
         }
     }
@@ -129,11 +159,8 @@ pub(crate) fn aside_tab_drag_source(command: &WindowsChromeCommand) -> Option<(S
     }
     let panel_id = command.payload.get("panel_id")?.as_str()?;
     let surface_id = command.payload.get("surface_id")?.as_str()?;
-    matches!(
-        panel_id,
-        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID
-            | lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID
-    )
+    (panel_id == lingxia_windows_contract::ASIDE_PANEL_ID
+        && crate::shell::aside_tab_promotable(surface_id))
     .then(|| (panel_id.to_string(), surface_id.to_string()))
 }
 
@@ -481,12 +508,28 @@ pub(super) fn aside_panel_nav_button_rects(
 fn aside_panel_tab_max_width() -> i32 {
     crate::dpi::px(190)
 }
+/// The narrowest tab: its icon alone. Tabs that would go below it wait
+/// behind the overflow button.
 fn aside_panel_tab_min_width() -> i32 {
-    crate::dpi::px(44)
+    crate::dpi::px(36)
 }
-/// Horizontal air around a tab title inside its shape.
-fn aside_panel_tab_text_padding() -> i32 {
-    crate::dpi::px(14)
+/// From this width a tab keeps room for its "···" next to the title.
+fn aside_panel_tab_full_width() -> i32 {
+    crate::dpi::px(110)
+}
+/// From this width a tab shows its title; below it, its icon alone.
+fn aside_panel_tab_title_width() -> i32 {
+    crate::dpi::px(64)
+}
+fn aside_panel_tab_overflow_width() -> i32 {
+    crate::dpi::px(34)
+}
+fn aside_panel_tab_icon_size() -> i32 {
+    crate::dpi::px(16)
+}
+/// Air between a tab's leading edge and its icon, and around its title.
+fn aside_panel_tab_inset() -> i32 {
+    crate::dpi::px(10)
 }
 fn aside_panel_tab_gap() -> i32 {
     crate::dpi::px(4)
@@ -502,7 +545,17 @@ fn aside_panel_tab_top_inset() -> i32 {
 /// colour), so its active tab stays a chip clear of the seam instead of
 /// pretending to merge into it.
 fn aside_panel_tabs_bridge(panel: &WindowsChromePanel) -> bool {
-    panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID
+    aside_panel_shows_browser(panel)
+}
+
+/// Whether the side panel's active tab is a URL tab: then the header carries
+/// the browser navigation cluster and the active tab bridges into the page.
+pub(super) fn aside_panel_shows_browser(panel: &WindowsChromePanel) -> bool {
+    panel.panel_id == lingxia_windows_contract::ASIDE_PANEL_ID
+        && panel_aside_tabs(panel)
+            .iter()
+            .find(|tab| tab.active)
+            .is_some_and(|tab| tab.browser)
 }
 /// Upper-corner radius of the active tab shape.
 fn aside_panel_tab_radius() -> i32 {
@@ -511,24 +564,37 @@ fn aside_panel_tab_radius() -> i32 {
 fn aside_panel_tab_close_size() -> i32 {
     crate::dpi::px(16)
 }
-/// Below this the tab has no room for a title next to the close glyph, so the
-/// glyph is dropped and the tab is closed from its neighbours or the slot.
-fn aside_panel_tab_close_min_tab_width() -> i32 {
-    crate::dpi::px(76)
+/// The "···" menu button left of the close glyph. Its room is always
+/// reserved so revealing it on hover never shifts the title.
+fn aside_panel_tab_more_size() -> i32 {
+    crate::dpi::px(16)
+}
+/// The aside strip's tabs: a rect per registered tab (index-aligned), None
+/// for the tabs that wait behind the overflow button.
+pub(super) struct AsideTabLayout {
+    pub(super) rects: Vec<Option<RECT>>,
+    pub(super) overflow: Option<RECT>,
+    pub(super) hidden: Vec<usize>,
 }
 
-/// Tab rects of the aside panel's strip, index-aligned with the registered
-/// tabs: each fitted to its title (capped), shrunk proportionally when the
-/// strip runs out of room between the nav cluster and the collapse control.
-pub(super) fn aside_panel_tab_rects(
+/// Tabs share the strip between the nav cluster and the slot controls in
+/// equal widths (capped), Chrome style; each tab then shows what its width
+/// allows (`aside_panel_tab_controls`). When even icon-wide tabs do not fit,
+/// the ones that do are shown, the active one always, and the rest wait
+/// behind an overflow button that lists them.
+pub(super) fn aside_panel_tab_layout(
     panel: &WindowsChromePanel,
     tabs: &[WindowsAsidePanelTab],
-) -> Vec<RECT> {
+) -> AsideTabLayout {
     if tabs.is_empty() {
-        return Vec::new();
+        return AsideTabLayout {
+            rects: Vec::new(),
+            overflow: None,
+            hidden: Vec::new(),
+        };
     }
     let header = browser_panel_header_rect(panel);
-    let left_edge = if panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID {
+    let left_edge = if aside_panel_shows_browser(panel) {
         aside_panel_nav_button_rects(panel)[2].1.right + browser_panel_header_padding()
     } else {
         header.left + browser_panel_header_padding()
@@ -537,55 +603,142 @@ pub(super) fn aside_panel_tab_rects(
         .unwrap_or_else(|| browser_panel_close_rect(panel))
         .left
         - browser_panel_header_padding();
-    let count = tabs.len() as i32;
-    let avail = (right_edge - left_edge - (count - 1) * aside_panel_tab_gap()).max(0);
-    let mut widths = tabs
-        .iter()
-        .map(|tab| {
-            (measure_chrome_text_width(&tab.title)
-                + 2 * aside_panel_tab_text_padding()
-                + aside_panel_tab_close_size())
-            .clamp(aside_panel_tab_min_width(), aside_panel_tab_max_width())
-        })
-        .collect::<Vec<_>>();
-    let total: i32 = widths.iter().sum();
-    if total > avail && total > 0 {
-        for width in &mut widths {
-            *width = (*width * avail / total).max(24);
+    let avail = (right_edge - left_edge).max(0);
+    let gap = aside_panel_tab_gap();
+    // n tabs of width w take n*w + (n-1)*gap.
+    let width_for = |count: i32, room: i32| {
+        ((room - (count - 1) * gap) / count).min(aside_panel_tab_max_width())
+    };
+
+    let mut visible: Vec<usize> = (0..tabs.len()).collect();
+    if width_for(tabs.len() as i32, avail) < aside_panel_tab_min_width() {
+        let room = avail - aside_panel_tab_overflow_width();
+        let fits = ((room + gap) / (aside_panel_tab_min_width() + gap)).max(1) as usize;
+        visible.truncate(fits);
+        if let Some(active) = tabs.iter().position(|tab| tab.active)
+            && !visible.contains(&active)
+            && let Some(last) = visible.last_mut()
+        {
+            *last = active;
         }
     }
+    let hidden: Vec<usize> = (0..tabs.len())
+        .filter(|index| !visible.contains(index))
+        .collect();
+    let room = if hidden.is_empty() {
+        avail
+    } else {
+        avail - aside_panel_tab_overflow_width()
+    };
+    let width = width_for(visible.len() as i32, room).max(aside_panel_tab_min_width());
+    let top = header.top + aside_panel_tab_top_inset();
     let bottom = if aside_panel_tabs_bridge(panel) {
         header.bottom
     } else {
         header.bottom - aside_panel_tab_top_inset()
     };
-    let mut out = Vec::with_capacity(tabs.len());
+    let mut rects = vec![None; tabs.len()];
     let mut left = left_edge;
-    for width in widths {
-        out.push(normalize_rect(RECT {
+    for &index in &visible {
+        rects[index] = Some(normalize_rect(RECT {
             left,
-            top: header.top + aside_panel_tab_top_inset(),
+            top,
             right: (left + width).min(right_edge),
             bottom,
         }));
-        left += width + aside_panel_tab_gap();
+        left += width + gap;
     }
-    out
+    let overflow = (!hidden.is_empty()).then(|| {
+        let height = px(24);
+        let top = top + (bottom - top - height) / 2;
+        normalize_rect(RECT {
+            left,
+            top,
+            right: (left + aside_panel_tab_overflow_width() - px(4)).min(right_edge),
+            bottom: top + height,
+        })
+    });
+    AsideTabLayout {
+        rects,
+        overflow,
+        hidden,
+    }
 }
 
-/// Close-glyph rect at a tab's trailing edge; dropped on tabs too narrow to
-/// keep a readable title next to it.
-pub(super) fn aside_panel_tab_close_rect(tab: RECT) -> Option<RECT> {
-    if rect_width(&tab) < aside_panel_tab_close_min_tab_width() {
-        return None;
+/// What a tab of this width shows: the icon always; the title from
+/// `aside_panel_tab_title_width`; the ✕ on a wide tab, else only while the
+/// tab is active, hovered or the single-child header (an icon-wide tab: when
+/// active and it still fits); the "···" room only on a wide tab, where it is
+/// reserved so revealing it on hover never shifts the title. The menu stays
+/// on right-click at every width.
+pub(super) struct AsideTabControls {
+    pub(super) icon: RECT,
+    pub(super) title: Option<RECT>,
+    pub(super) more: Option<RECT>,
+    pub(super) close: Option<RECT>,
+}
+
+pub(super) fn aside_panel_tab_controls(
+    tab: RECT,
+    active: bool,
+    header: bool,
+    hovered: bool,
+) -> AsideTabControls {
+    let width = rect_width(&tab);
+    let icon_size = aside_panel_tab_icon_size();
+    let inset = aside_panel_tab_inset();
+    let glyph_rect = |right: i32, size: i32| {
+        let top = tab.top + (rect_height(&tab) - size) / 2;
+        normalize_rect(RECT {
+            left: right - size,
+            top,
+            right,
+            bottom: top + size,
+        })
+    };
+    let close_size = aside_panel_tab_close_size();
+    let close_at = glyph_rect(tab.right - px(6), close_size);
+    let full = width >= aside_panel_tab_full_width();
+    let titled = width >= aside_panel_tab_title_width();
+    let icon_and_close = inset + icon_size + px(4) + close_size + px(6);
+    let close = if full {
+        Some(close_at)
+    } else if titled {
+        (active || hovered || header).then_some(close_at)
+    } else {
+        ((active || header) && width >= icon_and_close).then_some(close_at)
+    };
+    let more = full.then(|| glyph_rect(close_at.left - px(2), aside_panel_tab_more_size()));
+    // An icon-wide tab centres its icon when it shows nothing else.
+    let icon_left = if titled || close.is_some() {
+        tab.left + inset
+    } else {
+        tab.left + (width - icon_size) / 2
+    };
+    let icon_top = tab.top + (rect_height(&tab) - icon_size) / 2;
+    let icon = normalize_rect(RECT {
+        left: icon_left,
+        top: icon_top,
+        right: icon_left + icon_size,
+        bottom: icon_top + icon_size,
+    });
+    let title = titled.then(|| {
+        normalize_rect(RECT {
+            left: icon.right + px(6),
+            top: tab.top,
+            right: more
+                .or(close)
+                .map(|control| control.left)
+                .unwrap_or(tab.right - px(6)),
+            bottom: tab.bottom,
+        })
+    });
+    AsideTabControls {
+        icon,
+        title,
+        more,
+        close,
     }
-    let top = tab.top + (rect_height(&tab) - aside_panel_tab_close_size()) / 2;
-    Some(normalize_rect(RECT {
-        left: tab.right - aside_panel_tab_close_size() - px(6),
-        top,
-        right: tab.right - px(6),
-        bottom: top + aside_panel_tab_close_size(),
-    }))
 }
 
 /// The URL capsule rect inside a browser aside's header (between the nav
@@ -681,7 +834,10 @@ pub(super) fn browser_panel_title(panel: &WindowsChromePanel) -> String {
 
 /// Shared aside-slot chrome row: title tabs and the collapse control. The browser slot
 /// additionally gets back/forward/reload; lxapp slots start the strip at the
-/// leading edge. No slot carries a "+" affordance.
+/// leading edge. No slot carries a "+" affordance. A single tab is drawn as
+/// the panel's header (icon-less title, "···", ✕) with no chip, wash or
+/// divider — there is nothing to pick among — and turns into tabs when a
+/// sibling arrives.
 pub(super) fn draw_aside_panel_header(
     hdc: HDC,
     panel: &WindowsChromePanel,
@@ -696,7 +852,7 @@ pub(super) fn draw_aside_panel_header(
     // the active tab lifts out as a round-topped shape in the card's fill,
     // merging seamlessly into the web content below (browser slot only).
 
-    if panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID {
+    if aside_panel_shows_browser(panel) {
         let (can_back, can_forward) = crate::shell::runtime::aside_panel_nav_state();
         for (command, rect) in aside_panel_nav_button_rects(panel) {
             let (icon, enabled) = match command {
@@ -717,9 +873,15 @@ pub(super) fn draw_aside_panel_header(
     }
 
     let bridges = aside_panel_tabs_bridge(panel);
-    let rects = aside_panel_tab_rects(panel, tabs);
-    for (index, (tab, rect)) in tabs.iter().zip(rects.iter().copied()).enumerate() {
-        if tab.active && !bridges {
+    let header = tabs.len() == 1;
+    let layout = aside_panel_tab_layout(panel, tabs);
+    for (index, (tab, rect)) in tabs.iter().zip(layout.rects.iter().copied()).enumerate() {
+        let Some(rect) = rect else {
+            continue;
+        };
+        if header {
+            // A plain header row: no chip, wash or divider.
+        } else if tab.active && !bridges {
             // The white card on the grey cap, as the sidebar's selected child.
             fill_round_rect_aa(hdc, rect, px(6), pal.panel_background);
         } else if tab.active {
@@ -735,7 +897,7 @@ pub(super) fn draw_aside_panel_header(
                 },
                 pal.panel_background,
             );
-        } else if index > 0 && !tabs[index - 1].active {
+        } else if index > 0 && !tabs[index - 1].active && layout.rects[index - 1].is_some() {
             // Chrome hides the separator next to the active tab.
             let x = rect.left - (aside_panel_tab_gap() + 1) / 2;
             fill_rect(
@@ -749,7 +911,7 @@ pub(super) fn draw_aside_panel_header(
                 pal.divider,
             );
         }
-        if !tab.active {
+        if !tab.active && !header {
             let radius = if bridges {
                 aside_panel_tab_radius()
             } else {
@@ -757,23 +919,45 @@ pub(super) fn draw_aside_panel_header(
             };
             draw_hover_wash(hdc, rect, radius, cursor);
         }
-        let close = aside_panel_tab_close_rect(rect);
-        let title_rect = normalize_rect(RECT {
-            left: rect.left + px(10),
-            top: rect.top,
-            right: close.map(|close| close.left).unwrap_or(rect.right - px(6)),
-            bottom: rect.bottom,
-        });
-        let text_color = if tab.active {
-            pal.text_primary
-        } else {
-            pal.text_muted
-        };
-        draw_text(hdc, &tab.title, title_rect, text_color, DT_LEFT);
-        if let Some(close) = close {
+        let hovered = cursor.is_some_and(|point| rect_contains(&rect, point));
+        let controls = aside_panel_tab_controls(rect, tab.active, header, hovered);
+        draw_aside_panel_tab_icon(hdc, tab, controls.icon);
+        if let Some(title_rect) = controls.title {
+            let text_color = if tab.active {
+                pal.text_primary
+            } else {
+                pal.text_muted
+            };
+            draw_text(hdc, &tab.title, title_rect, text_color, DT_LEFT);
+        }
+        // "···" shows on hover, or always on the header where it is a panel
+        // control; its room is reserved either way.
+        if let Some(more) = controls.more
+            && (header || hovered)
+        {
+            draw_hover_wash(hdc, more, 5, cursor);
+            draw_design_icon_button(
+                hdc,
+                more,
+                WindowsDesignIcon::MoreVertical,
+                pal.text_muted,
+                px(14),
+            );
+        }
+        if let Some(close) = controls.close {
             draw_hover_wash(hdc, close, 5, cursor);
             draw_text(hdc, GLYPH_TAB_CLOSE, close, pal.text_muted, DT_CENTER);
         }
+    }
+    if let Some(overflow) = layout.overflow {
+        draw_hover_wash(hdc, overflow, 5, cursor);
+        draw_text(
+            hdc,
+            &format!("{} \u{25BE}", layout.hidden.len()),
+            overflow,
+            pal.text_muted,
+            DT_CENTER,
+        );
     }
 
     // Putting the region away is not a close: it keeps every tab alive, so it
@@ -796,4 +980,21 @@ pub(super) fn draw_aside_panel_header(
         };
         draw_frame_button_glyph_grayscale(hdc, glyph, maximize, pal.frame_button_icon);
     }
+}
+
+/// A side panel tab's icon: the lxapp's icon (an lxapp child's surface id is
+/// its app id), the globe for a page.
+fn draw_aside_panel_tab_icon(hdc: HDC, tab: &WindowsAsidePanelTab, rect: RECT) {
+    if tab.browser {
+        draw_design_icon_button(
+            hdc,
+            rect,
+            WindowsDesignIcon::Globe,
+            shell_palette().text_muted,
+            aside_panel_tab_icon_size(),
+        );
+        return;
+    }
+    let path = lxapp::lxapp_display_icon_path(&tab.surface_id).unwrap_or_default();
+    draw_icon_or_default(hdc, &path, rect, aside_panel_tab_icon_size().max(1) as u32);
 }

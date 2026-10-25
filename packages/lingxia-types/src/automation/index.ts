@@ -699,9 +699,10 @@ export interface SurfaceLayoutAside {
 }
 
 export interface SurfaceLayoutAsideSlot {
-  kind: 'lxapp' | 'browser' | 'native';
+  /** `panel`: the side panel (lxapp pages and browser tabs); `native`: host views such as the terminal. */
+  kind: 'panel' | 'native';
   edge?: SurfaceLayoutEdge;
-  /** Stable tab order within this content-kind region. */
+  /** Stable tab order within this slot. */
   children: string[];
   activeChild?: string;
   visible: boolean;

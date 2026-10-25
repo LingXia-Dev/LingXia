@@ -426,6 +426,21 @@ struct AttachedPanelResizeDrag {
     origin_size: i32,
 }
 
+/// A drag of the sidebar column's inner edge (shell chrome only).
+#[cfg(feature = "shell-chrome")]
+#[derive(Clone, Copy)]
+struct SidebarResizeDrag {
+    origin_x: i32,
+    origin_width: i32,
+    /// The sidebar docks on the left, so dragging right widens it.
+    left: bool,
+    /// Past the drag threshold; until then the press changes nothing.
+    moved: bool,
+}
+
+#[cfg(feature = "shell-chrome")]
+static SIDEBAR_RESIZE_DRAG: Mutex<Option<SidebarResizeDrag>> = Mutex::new(None);
+
 #[cfg(feature = "shell-chrome")]
 #[derive(Clone)]
 struct HostChromeSnapshot {
@@ -6150,6 +6165,97 @@ fn attached_panel_resize_hit(hwnd: HWND, point: (i32, i32)) -> Option<AttachedPa
     None
 }
 
+#[cfg(feature = "shell-chrome")]
+fn sidebar_resize_hit(hwnd: HWND, point: (i32, i32)) -> Option<SidebarResizeDrag> {
+    let state = chrome_state_for_window(hwnd)?;
+    let (width, left) = crate::shell::sidebar_resize_edge(&state, point)?;
+    Some(SidebarResizeDrag {
+        origin_x: point.0,
+        origin_width: width,
+        left,
+        moved: false,
+    })
+}
+
+#[cfg(feature = "shell-chrome")]
+fn begin_sidebar_resize_drag(hwnd: HWND, point: (i32, i32)) -> bool {
+    let Some(drag) = sidebar_resize_hit(hwnd, point) else {
+        return false;
+    };
+    if let Ok(mut active) = SIDEBAR_RESIZE_DRAG.lock() {
+        *active = Some(drag);
+    }
+    true
+}
+
+#[cfg(feature = "shell-chrome")]
+fn sidebar_resize_drag_width(drag: SidebarResizeDrag, point: (i32, i32)) -> i32 {
+    let delta = if drag.left {
+        point.0 - drag.origin_x
+    } else {
+        drag.origin_x - point.0
+    };
+    (drag.origin_width + delta).max(0)
+}
+
+#[cfg(feature = "shell-chrome")]
+fn update_sidebar_resize_drag(hwnd: HWND, point: (i32, i32)) -> bool {
+    let drag = {
+        let Ok(mut active) = SIDEBAR_RESIZE_DRAG.lock() else {
+            return false;
+        };
+        let Some(drag) = active.as_mut() else {
+            return false;
+        };
+        drag.moved |= (point.0 - drag.origin_x).abs() >= PANE_DRAG_THRESHOLD;
+        *drag
+    };
+    if !drag.moved {
+        return true;
+    }
+    crate::shell::set_sidebar_drag_width(sidebar_resize_drag_width(drag, point), false);
+    sync_window_layout(hwnd);
+    invalidate_window_chrome(hwnd);
+    true
+}
+
+/// Capture was lost mid-drag: the column goes back to its width before the
+/// drag, and nothing is persisted.
+#[cfg(feature = "shell-chrome")]
+fn cancel_sidebar_resize_drag(hwnd: HWND) {
+    let Some(drag) = SIDEBAR_RESIZE_DRAG
+        .lock()
+        .ok()
+        .and_then(|mut active| active.take())
+        .filter(|drag| drag.moved)
+    else {
+        return;
+    };
+    crate::shell::cancel_sidebar_drag(drag.origin_width);
+    sync_window_layout(hwnd);
+    invalidate_window_chrome(hwnd);
+}
+
+#[cfg(feature = "shell-chrome")]
+fn end_sidebar_resize_drag(hwnd: HWND, point: (i32, i32)) -> bool {
+    let Some(drag) = SIDEBAR_RESIZE_DRAG
+        .lock()
+        .ok()
+        .and_then(|mut active| active.take())
+    else {
+        return false;
+    };
+    // A click on the edge is not a choice of width: in a Medium window it
+    // would persist the forced rail as the user's own.
+    if !drag.moved {
+        return true;
+    }
+    crate::shell::set_sidebar_drag_width(sidebar_resize_drag_width(drag, point), true);
+    sync_window_layout(hwnd);
+    invalidate_window_chrome(hwnd);
+    true
+}
+
 fn begin_attached_panel_resize_drag(hwnd: HWND, point: (i32, i32)) -> Option<bool> {
     let drag = attached_panel_resize_hit(hwnd, point)?;
     let vertical = panel_resize_is_vertical(drag.position);
@@ -7440,6 +7546,14 @@ fn resize_hit_test(hwnd: HWND, point: (i32, i32)) -> Option<LRESULT> {
     if unsafe { WindowsAndMessaging::IsZoomed(hwnd).as_bool() } {
         return None;
     }
+    // A collapsed aside's handle sits flush with the window edge, inside the
+    // resize border: a click there restores the panel, not a resize.
+    #[cfg(feature = "shell-chrome")]
+    if chrome_state_for_window(hwnd)
+        .is_some_and(|state| crate::shell::collapsed_aside_handle_hit(&state, point))
+    {
+        return None;
+    }
     let mut client = RECT::default();
     unsafe {
         if WindowsAndMessaging::GetClientRect(hwnd, &mut client).is_err() {
@@ -7922,10 +8036,14 @@ fn update_aside_tab_drag(hwnd: HWND, point: (i32, i32)) -> bool {
     if dragging {
         let over = point_over_sidebar(hwnd, point);
         set_aside_tab_drop_target(hwnd, over);
-        if over {
-            set_pane_handle_cursor();
-        } else {
-            set_pane_drag_cursor();
+        set_shell_drop_cursor(over);
+        let source = aside_tab_drags()
+            .get(&hwnd_handle(hwnd))
+            .map(|drag| (drag.panel_id.clone(), drag.surface_id.clone()));
+        if let Some((panel_id, surface_id)) = source {
+            track_drag_ghost(hwnd, point, || {
+                crate::shell::aside_tab_drag_label(&panel_id, &surface_id)
+            });
         }
     }
     true
@@ -7937,6 +8055,7 @@ fn update_aside_tab_drag(hwnd: HWND, point: (i32, i32)) -> bool {
 fn finish_aside_tab_drag(hwnd: HWND, point: Option<(i32, i32)>) -> Option<bool> {
     let drag = aside_tab_drags().remove(&hwnd_handle(hwnd))?;
     set_aside_tab_drop_target(hwnd, false);
+    end_drag_ghost();
     if !drag.dragging {
         return Some(false);
     }
@@ -7950,6 +8069,124 @@ fn finish_aside_tab_drag(hwnd: HWND, point: Option<(i32, i32)>) -> Option<bool> 
     }
     Some(true)
 }
+
+/// A pressed sidebar group header, which may become a drag toward the
+/// main's edge that moves the lxapp into the side panel.
+#[cfg(feature = "shell-chrome")]
+struct MainAsideDrag {
+    appid: String,
+    start: (i32, i32),
+    dragging: bool,
+}
+#[cfg(feature = "shell-chrome")]
+static MAIN_ASIDE_DRAGS: OnceLock<Mutex<HashMap<isize, MainAsideDrag>>> = OnceLock::new();
+
+#[cfg(feature = "shell-chrome")]
+fn main_aside_drags() -> std::sync::MutexGuard<'static, HashMap<isize, MainAsideDrag>> {
+    MAIN_ASIDE_DRAGS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[cfg(feature = "shell-chrome")]
+fn point_over_main_aside_zone(hwnd: HWND, point: (i32, i32)) -> bool {
+    chrome_state_for_window(hwnd)
+        .and_then(|state| crate::shell::main_aside_drop_rect(&state))
+        .is_some_and(|rect| point_in_rect(&rect, point))
+}
+
+/// Track a pressed sidebar group header. Returns whether the move belongs
+/// to it.
+#[cfg(feature = "shell-chrome")]
+fn update_main_aside_drag(hwnd: HWND, point: (i32, i32)) -> bool {
+    let dragging = {
+        let mut drags = main_aside_drags();
+        let Some(drag) = drags.get_mut(&hwnd_handle(hwnd)) else {
+            return false;
+        };
+        if !drag.dragging
+            && ((point.0 - drag.start.0).abs() >= PANE_DRAG_THRESHOLD
+                || (point.1 - drag.start.1).abs() >= PANE_DRAG_THRESHOLD)
+        {
+            drag.dragging = true;
+        }
+        drag.dragging
+    };
+    if dragging {
+        set_shell_drop_cursor(point_over_main_aside_zone(hwnd, point));
+        let appid = main_aside_drags()
+            .get(&hwnd_handle(hwnd))
+            .map(|drag| drag.appid.clone());
+        if let Some(appid) = appid {
+            track_drag_ghost(hwnd, point, || {
+                crate::shell::sidebar_main_drag_label(&appid)
+            });
+        }
+    }
+    true
+}
+
+/// End a pressed sidebar group header. `Some(true)` when it was dragged and
+/// handled here; `Some(false)` when the press never moved and is a click.
+#[cfg(feature = "shell-chrome")]
+fn finish_main_aside_drag(hwnd: HWND, point: Option<(i32, i32)>) -> Option<bool> {
+    let drag = main_aside_drags().remove(&hwnd_handle(hwnd))?;
+    end_drag_ghost();
+    if !drag.dragging {
+        return Some(false);
+    }
+    unsafe {
+        let _ = ReleaseCapture();
+    }
+    if let Some(point) = point
+        && point_over_main_aside_zone(hwnd, point)
+    {
+        let _ = crate::shell::demote_lxapp_main(&drag.appid);
+    }
+    Some(true)
+}
+
+/// The cursor of a shell drag-and-drop (an aside tab, a sidebar group): the
+/// plain arrow throughout, as on macOS. The drag chip under it says what is
+/// moving, and the drop target lights up (the sidebar) or the chip does
+/// (the main's edge); neither the four-way move cursor nor a "not allowed"
+/// sign while crossing the window.
+#[cfg(feature = "shell-chrome")]
+fn set_shell_drop_cursor(_over_target: bool) {
+    unsafe {
+        if let Ok(cursor) = WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW) {
+            let _ = WindowsAndMessaging::SetCursor(Some(cursor));
+        }
+    }
+}
+
+/// Show or move the drag chip for a shell drag at client `point`.
+#[cfg(feature = "shell-chrome")]
+fn track_drag_ghost(hwnd: HWND, point: (i32, i32), label: impl FnOnce() -> String) {
+    let mut screen = POINT {
+        x: point.0,
+        y: point.1,
+    };
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut screen);
+    }
+    if DRAG_GHOST_SHOWN.swap(true, Ordering::AcqRel) {
+        crate::drag_ghost::move_to(screen);
+    } else {
+        crate::drag_ghost::show(hwnd, &label(), crate::shell::drag_ghost_colors(), screen);
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn end_drag_ghost() {
+    if DRAG_GHOST_SHOWN.swap(false, Ordering::AcqRel) {
+        crate::drag_ghost::hide();
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+static DRAG_GHOST_SHOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Sets the east-west / north-south resize cursor for a divider.
 fn set_divider_cursor(vertical: bool) {
@@ -8068,6 +8305,10 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         return true;
     }
     #[cfg(feature = "shell-chrome")]
+    if update_main_aside_drag(hwnd, point) {
+        return true;
+    }
+    #[cfg(feature = "shell-chrome")]
     if let Some(pending) = pending_pane_drag(hwnd) {
         let crossed_threshold = (point.0 - pending.start.0).abs() >= PANE_DRAG_THRESHOLD
             || (point.1 - pending.start.1).abs() >= PANE_DRAG_THRESHOLD;
@@ -8107,6 +8348,18 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         }
         crate::shell::update_terminal_selection(&drag.panel_id, point.0, point.1);
         return true;
+    }
+    #[cfg(feature = "shell-chrome")]
+    {
+        if update_sidebar_resize_drag(hwnd, point) {
+            set_divider_cursor(true);
+            return true;
+        }
+        if sidebar_resize_hit(hwnd, point).is_some() {
+            clear_chrome_hover(hwnd);
+            set_divider_cursor(true);
+            return true;
+        }
     }
     if update_attached_panel_resize_drag(hwnd, point) {
         if let Some(vertical) = attached_panel_resize_drag_vertical() {
@@ -8287,6 +8540,16 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
     // The owner only sees presses outside the peek.
     #[cfg(feature = "shell-chrome")]
     sidebar_peek::close(hwnd);
+    #[cfg(feature = "shell-chrome")]
+    {
+        if begin_sidebar_resize_drag(hwnd, point) {
+            unsafe {
+                let _ = SetCapture(hwnd);
+            }
+            set_divider_cursor(true);
+            return true;
+        }
+    }
     if let Some(vertical) = begin_attached_panel_resize_drag(hwnd, point) {
         unsafe {
             let _ = SetCapture(hwnd);
@@ -8407,6 +8670,20 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
                     let _ = SetCapture(hwnd);
                 }
             }
+            #[cfg(feature = "shell-chrome")]
+            if let Some(appid) = crate::shell::sidebar_main_drag_source(&command) {
+                main_aside_drags().insert(
+                    hwnd_handle(hwnd),
+                    MainAsideDrag {
+                        appid,
+                        start: point,
+                        dragging: false,
+                    },
+                );
+                unsafe {
+                    let _ = SetCapture(hwnd);
+                }
+            }
             #[cfg(not(feature = "shell-chrome"))]
             let _ = command;
             true
@@ -8418,6 +8695,10 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
 fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
     #[cfg(feature = "shell-chrome")]
     if finish_aside_tab_drag(hwnd, Some(point)) == Some(true) {
+        return true;
+    }
+    #[cfg(feature = "shell-chrome")]
+    if finish_main_aside_drag(hwnd, Some(point)) == Some(true) {
         return true;
     }
     #[cfg(feature = "shell-chrome")]
@@ -8442,6 +8723,15 @@ fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
             let _ = ReleaseCapture();
         }
         return true;
+    }
+    #[cfg(feature = "shell-chrome")]
+    {
+        if end_sidebar_resize_drag(hwnd, point) {
+            unsafe {
+                let _ = ReleaseCapture();
+            }
+            return true;
+        }
     }
     if attached_panel_resize_drag_vertical().is_some() {
         update_attached_panel_resize_drag(hwnd, point);
@@ -10293,6 +10583,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     let _ = finish_terminal_selection_drag(hwnd, None);
                     let _ = cancel_pane_drag(hwnd, false);
                     let _ = finish_aside_tab_drag(hwnd, None);
+                    let _ = finish_main_aside_drag(hwnd, None);
+                    cancel_sidebar_resize_drag(hwnd);
                     if DIVIDER_DRAG.swap(false, Ordering::AcqRel) {
                         crate::shell::end_divider_drag();
                     }

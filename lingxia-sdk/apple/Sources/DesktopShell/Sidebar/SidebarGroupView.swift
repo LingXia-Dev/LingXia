@@ -84,6 +84,10 @@ private class SidebarGroupHeaderView: NSView {
     var renameField: NSTextField?
     var onHeaderClicked: (() -> Void)?
     var onRightClick: ((NSEvent) -> Void)?
+    /// The lxapp this header may be dragged out as (toward the main's edge,
+    /// into the side panel); nil for home, the root main.
+    var dragAppIdProvider: (() -> String?)?
+    private static let dragThreshold: CGFloat = 4
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard !isHidden, frame.contains(point) else { return nil }
@@ -121,12 +125,47 @@ private class SidebarGroupHeaderView: NSView {
 
     override var mouseDownCanMoveWindow: Bool { false }
 
+    /// A click still selects or toggles the group; moving past the threshold
+    /// with the button held drags the app out instead.
     override func mouseDown(with event: NSEvent) {
-        onHeaderClicked?()
+        guard let appId = dragAppIdProvider?(), let window else {
+            onHeaderClicked?()
+            return
+        }
+        let origin = event.locationInWindow
+        while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            if next.type == .leftMouseUp {
+                onHeaderClicked?()
+                return
+            }
+            let point = next.locationInWindow
+            if hypot(point.x - origin.x, point.y - origin.y) >= Self.dragThreshold {
+                beginDrag(appId: appId, with: next)
+                return
+            }
+        }
+    }
+
+    private func beginDrag(appId: String, with event: NSEvent) {
+        let item = NSPasteboardItem()
+        guard SidebarMainDragPayload(appId: appId).write(to: item) else { return }
+        let draggingItem = NSDraggingItem(pasteboardWriter: item)
+        draggingItem.setDraggingFrame(bounds, contents: DragSnapshot.image(of: self))
+        let session = beginDraggingSession(with: [draggingItem], event: event, source: self)
+        session.animatesToStartingPositionsOnCancelOrFail = true
     }
 
     override func rightMouseDown(with event: NSEvent) {
         onRightClick?(event)
+    }
+}
+
+extension SidebarGroupHeaderView: NSDraggingSource {
+    func draggingSession(
+        _ session: NSDraggingSession,
+        sourceOperationMaskFor context: NSDraggingContext
+    ) -> NSDragOperation {
+        context == .withinApplication ? .move : []
     }
 }
 
@@ -335,6 +374,12 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         }
         headerView.onRightClick = { [weak self] event in
             self?.requestContextMenu(with: event)
+        }
+        // Dragging the header toward the main's edge moves the live app into
+        // the side panel; home, the root main, stays.
+        headerView.dragAppIdProvider = { [weak self] in
+            guard let self, !LxAppCore.isHomeLxApp(self.providerAppId) else { return nil }
+            return self.providerAppId
         }
         addSubview(headerView)
 
@@ -999,6 +1044,16 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             pinItem.image = LxIcon.menuSymbol(pinned ? "icon_unpin" : "icon_pin")
             pinItem.target = self
             menu.addItem(pinItem)
+            // The mirror of the aside tab's "Open in Main Area": the live app
+            // moves beside the main without restarting. Home is the root main.
+            let appId = providerAppId
+            let openInSide = MenuActionItem(title: L10n.string("lx_aside_open_in_side")) {
+                _ = demoteMainLxappToAside(appId, "")
+            }
+            openInSide.image = NSImage(
+                systemSymbolName: "sidebar.trailing", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+            menu.addItem(openInSide)
             menu.addItem(NSMenuItem.separator())
         }
 

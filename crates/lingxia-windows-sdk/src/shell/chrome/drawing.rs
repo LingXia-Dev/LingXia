@@ -462,6 +462,57 @@ pub(in crate::shell) fn fill_round_rect_aa_corners(
     }
 }
 
+/// Fills a closed polygon (at least three `points`, in order) with an
+/// anti-aliased GDI+ path; falls back to the points' bounding rect when GDI+
+/// is unavailable. For the few chrome shapes that are not rounded rects.
+pub(in crate::shell) fn fill_polygon_aa(hdc: HDC, points: &[(i32, i32)], rgb: u32) {
+    if points.len() < 3 {
+        return;
+    }
+    let bounds = RECT {
+        left: points.iter().map(|p| p.0).min().unwrap_or(0),
+        top: points.iter().map(|p| p.1).min().unwrap_or(0),
+        right: points.iter().map(|p| p.0).max().unwrap_or(0),
+        bottom: points.iter().map(|p| p.1).max().unwrap_or(0),
+    };
+    if !ensure_gdiplus_started() {
+        fill_rect(hdc, bounds, rgb);
+        return;
+    }
+    unsafe {
+        let mut graphics: *mut GdiPlus::GpGraphics = std::ptr::null_mut();
+        if GdiPlus::GdipCreateFromHDC(hdc, &mut graphics) != GdiPlus::Ok || graphics.is_null() {
+            fill_rect(hdc, bounds, rgb);
+            return;
+        }
+        apply_round_rect_quality(graphics);
+        let mut path: *mut GdiPlus::GpPath = std::ptr::null_mut();
+        if GdiPlus::GdipCreatePath(GdiPlus::FillModeAlternate, &mut path) == GdiPlus::Ok
+            && !path.is_null()
+        {
+            for pair in points.windows(2) {
+                let _ = GdiPlus::GdipAddPathLine(
+                    path,
+                    pair[0].0 as f32,
+                    pair[0].1 as f32,
+                    pair[1].0 as f32,
+                    pair[1].1 as f32,
+                );
+            }
+            let _ = GdiPlus::GdipClosePathFigure(path);
+            let mut brush: *mut GdiPlus::GpSolidFill = std::ptr::null_mut();
+            if GdiPlus::GdipCreateSolidFill(0xff00_0000 | rgb, &mut brush) == GdiPlus::Ok
+                && !brush.is_null()
+            {
+                let _ = GdiPlus::GdipFillPath(graphics, brush.cast(), path);
+                let _ = GdiPlus::GdipDeleteBrush(brush.cast());
+            }
+            let _ = GdiPlus::GdipDeletePath(path);
+        }
+        let _ = GdiPlus::GdipDeleteGraphics(graphics);
+    }
+}
+
 /// Intersects the DC's clip with a rounded rect two pixels inside `rect`.
 /// Pairs with an outer [`fill_round_rect_aa`] of the same rect: the AA fill
 /// provides the card's smooth edge, and plain square fills painted inside the

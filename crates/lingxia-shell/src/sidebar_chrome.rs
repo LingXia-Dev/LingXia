@@ -7,13 +7,10 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Width a first launch opens the sidebar at. The platforms agree on expanded
-/// content geometry, not on the exact column width: macOS packs its window
-/// chrome tighter, so the same 184 there reads as a slab next to native apps.
-#[cfg(target_os = "macos")]
+/// Width a first launch opens the sidebar at, in 96-DPI units on every
+/// platform: 184 read as a slab beside the main on both macOS and Windows,
+/// and the column is user-resizable from here (down to the icon rail).
 pub const DEFAULT_EXPANDED_SIDEBAR_WIDTH: f64 = 148.0;
-#[cfg(not(target_os = "macos"))]
-pub const DEFAULT_EXPANDED_SIDEBAR_WIDTH: f64 = 184.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

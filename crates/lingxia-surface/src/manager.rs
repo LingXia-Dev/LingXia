@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use crate::arbitrate::{OpenOutcome, Policy, arbitrate};
 use crate::graph::SurfaceGraph;
 use crate::layout::{DEFAULT_HYSTERESIS, DerivedLayout, LayoutPresentationPlan, SizeClass};
-use crate::model::{Surface, SurfaceId};
+use crate::model::{Edge, Surface, SurfaceId};
 use crate::{CloseOutcome, ReplaceMainsError, Role, SurfacePresentation, SurfaceSwitcherSnapshot};
 
 /// One window's stateful surface driver.
@@ -279,6 +279,66 @@ impl SurfaceManager {
         self.open_main(surface, presentation).is_ok()
     }
 
+    /// Turn a live lxapp main into an aside in one graph change: the surface
+    /// keeps its id and content, leaves the switcher (its neighbour becomes
+    /// the active main) and joins the side panel at `edge` — unset, the edge
+    /// the panel already docks at, else trailing. Returns `false` unless `id`
+    /// is an lxapp main other than the stable root; the graph is unchanged
+    /// then.
+    pub fn demote_main_to_aside(&mut self, id: &str, edge: Option<Edge>) -> bool {
+        let Some(mut surface) = self
+            .graph
+            .get(id)
+            .filter(|surface| surface.role == Role::Main)
+            .cloned()
+        else {
+            return false;
+        };
+        // Only lxapp content: its arbitration is a per-appId singleton, so the
+        // re-open below resolves to this very id. A browser main could merge
+        // into an existing tab instead, which would lose the surface.
+        if self.graph.is_root_main(id)
+            || !matches!(
+                surface.content,
+                crate::SurfaceContent::Lxapp { .. } | crate::SurfaceContent::Page { .. }
+            )
+        {
+            return false;
+        }
+        let slot_edge = self
+            .graph
+            .aside_slots(self.size_class)
+            .into_iter()
+            .find(|slot| slot.kind == surface.content.slot_kind())
+            .and_then(|slot| slot.edge);
+        let main = surface.clone();
+        let presentation = self.presentations.get(id).cloned();
+        if !matches!(self.close(id), CloseOutcome::Closed { .. }) {
+            return false;
+        }
+        surface.role = Role::Aside;
+        surface.placement = crate::model::Placement {
+            edge: Some(edge.or(slot_edge).unwrap_or(Edge::Right)),
+            preferred_size: None,
+        };
+        surface.state = crate::model::SurfaceState::Mounted;
+        surface.float = None;
+        let outcome = self.open(surface);
+        let demoted = outcome.resolved_surface_id == id && outcome.resolved_role == Role::Aside;
+        if !demoted {
+            // Put the main back rather than leave the app without a node.
+            let presentation = presentation
+                .clone()
+                .unwrap_or_else(|| SurfacePresentation::for_content(&main.content));
+            let _ = self.open_main(main, presentation);
+            return false;
+        }
+        if let Some(presentation) = presentation {
+            self.presentations.insert(id.to_string(), presentation);
+        }
+        true
+    }
+
     pub fn close_other_mains(&mut self, keeping: &str) -> Vec<SurfaceId> {
         if self.graph.role_of(keeping) != Some(Role::Main) {
             return Vec::new();
@@ -446,6 +506,34 @@ impl SurfaceManager {
         shown
     }
 
+    /// Bring an aside slot back into view: restore it when collapsed, and
+    /// when it has no room to dock beside the main, show its active child as
+    /// an overlay (the fallback an explicit open gets). The edge handle of a
+    /// collapsed slot and of a slot hidden for lack of room both end here, so
+    /// no slot with content is ever out of reach. Returns whether anything
+    /// changed.
+    pub fn reveal_slot(&mut self, kind: crate::SlotKind) -> bool {
+        let restored = self.set_slot_collapsed(kind, false);
+        let child = self
+            .graph
+            .aside_slots(self.size_class)
+            .into_iter()
+            .find(|slot| slot.kind == kind)
+            // Only a mounted child: one hidden by its app stays hidden.
+            .and_then(|slot| slot.active_child);
+        let Some(child) = child else {
+            return restored;
+        };
+        if self.needs_overlay(&child)
+            && self.overlay_fallback_surface_id.as_deref() != Some(child.as_str())
+        {
+            self.overlay_fallback_surface_id = Some(child);
+            self.bump_revision();
+            return true;
+        }
+        restored
+    }
+
     /// Collapse or restore a whole aside slot. Collapsing is the shell's
     /// "put this region away" gesture: nothing closes, so the overlay
     /// fallback for a child of the slot is dropped along with the dock.
@@ -604,6 +692,51 @@ mod tests {
     }
 
     #[test]
+    fn reveal_slot_overlays_a_slot_without_room() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(aside_s("chat", Edge::Right));
+        // A Medium window whose sidebar leaves no room to dock beside the
+        // main (700 - 184 < 360 + 240): once the open's own fallback is gone
+        // (a click on main), the slot is hidden.
+        m.set_width(700.0);
+        m.set_sidebar_width(184.0);
+        assert_eq!(m.size_class(), SizeClass::Medium);
+        m.set_active_main("home");
+        let hidden = m.presentation_plan();
+        let slot = hidden
+            .aside_slots
+            .iter()
+            .find(|s| s.kind == crate::SlotKind::Panel)
+            .unwrap();
+        assert!(!slot.visible && !slot.collapsed);
+        // The edge handle reveals it as an overlay.
+        assert!(m.reveal_slot(crate::SlotKind::Panel));
+        let shown = m.presentation_plan();
+        let slot = shown
+            .aside_slots
+            .iter()
+            .find(|s| s.kind == crate::SlotKind::Panel)
+            .unwrap();
+        assert!(slot.visible && slot.overlay);
+        assert_eq!(slot.active_child.as_deref(), Some("chat"));
+        // A collapsed slot is restored the same way.
+        m.set_slot_collapsed(crate::SlotKind::Panel, true);
+        assert!(m.reveal_slot(crate::SlotKind::Panel));
+        assert!(!m.graph().slot_collapsed(crate::SlotKind::Panel));
+        // A child its app hid is not brought back by the handle.
+        m.hide("chat");
+        assert!(!m.reveal_slot(crate::SlotKind::Panel));
+        let plan = m.presentation_plan();
+        let slot = plan
+            .aside_slots
+            .iter()
+            .find(|s| s.kind == crate::SlotKind::Panel)
+            .unwrap();
+        assert!(!slot.visible && slot.active_child.is_none());
+    }
+
+    #[test]
     fn open_then_derive_on_expanded() {
         let mut m = SurfaceManager::new(1200.0);
         assert_eq!(m.size_class(), SizeClass::Expanded);
@@ -644,13 +777,13 @@ mod tests {
         m.open(aside_s("assistant", Edge::Right));
         m.open(aside_s("notes", Edge::Right));
 
-        assert!(m.set_slot_collapsed(crate::SlotKind::Lxapp, true));
+        assert!(m.set_slot_collapsed(crate::SlotKind::Panel, true));
         let slot = &m.presentation_plan().aside_slots[0];
         assert!(!slot.visible);
         assert!(slot.collapsed);
         assert_eq!(slot.children.len(), 2);
 
-        assert!(m.set_slot_collapsed(crate::SlotKind::Lxapp, false));
+        assert!(m.set_slot_collapsed(crate::SlotKind::Panel, false));
         let slot = &m.presentation_plan().aside_slots[0];
         assert!(slot.visible);
         assert_eq!(slot.children.len(), 2);
@@ -662,11 +795,11 @@ mod tests {
         m.open(main_s("home"));
         m.open(aside_s("assistant", Edge::Right));
 
-        m.set_slot_collapsed(crate::SlotKind::Lxapp, true);
+        m.set_slot_collapsed(crate::SlotKind::Panel, true);
         m.open(aside_s("notes", Edge::Right));
         assert!(m.presentation_plan().aside_slots[0].visible);
 
-        m.set_slot_collapsed(crate::SlotKind::Lxapp, true);
+        m.set_slot_collapsed(crate::SlotKind::Panel, true);
         assert!(m.set_focus("assistant"));
         assert!(m.presentation_plan().aside_slots[0].visible);
     }
@@ -676,7 +809,7 @@ mod tests {
         let mut m = SurfaceManager::new(1200.0);
         m.open(main_s("home"));
         m.open(aside_s("assistant", Edge::Right));
-        m.set_slot_collapsed(crate::SlotKind::Lxapp, true);
+        m.set_slot_collapsed(crate::SlotKind::Panel, true);
         m.close("assistant");
 
         m.open(aside_s("notes", Edge::Right));
@@ -690,15 +823,15 @@ mod tests {
         m.open(aside_s("assistant", Edge::Right));
         assert!(!m.presentation_plan().aside_slots[0].overlay);
 
-        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
-        assert!(!m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+        assert!(m.set_slot_maximized(crate::SlotKind::Panel, true));
+        assert!(!m.set_slot_maximized(crate::SlotKind::Panel, true));
         let slot = &m.presentation_plan().aside_slots[0];
         assert!(slot.maximized && slot.overlay && slot.visible);
         // Maximize is presentation only: the role and the main are unchanged.
         assert_eq!(m.graph().role_of("assistant"), Some(Role::Aside));
         assert_eq!(m.graph().active_main_id.as_deref(), Some("home"));
 
-        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, false));
+        assert!(m.set_slot_maximized(crate::SlotKind::Panel, false));
         let slot = &m.presentation_plan().aside_slots[0];
         assert!(!slot.maximized && !slot.overlay);
     }
@@ -727,10 +860,10 @@ mod tests {
             .unwrap();
         assert!(native.maximized && native.overlay);
 
-        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+        assert!(m.set_slot_maximized(crate::SlotKind::Panel, true));
         let plan = m.presentation_plan();
         for slot in &plan.aside_slots {
-            assert_eq!(slot.maximized, slot.kind == crate::SlotKind::Lxapp);
+            assert_eq!(slot.maximized, slot.kind == crate::SlotKind::Panel);
         }
     }
 
@@ -739,7 +872,7 @@ mod tests {
         let mut m = SurfaceManager::new(1200.0);
         m.open(main_s("home"));
         m.open(aside_s("assistant", Edge::Right));
-        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+        assert!(m.set_slot_maximized(crate::SlotKind::Panel, true));
 
         // Shrinking to compact shows the slot as an overlay anyway: the plan
         // marks it overlay, not maximized, and the user's maximize is kept
@@ -747,7 +880,7 @@ mod tests {
         m.set_width(500.0);
         let slot = &m.presentation_plan().aside_slots[0];
         assert!(slot.overlay && !slot.maximized);
-        assert!(m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(m.slot_maximized(crate::SlotKind::Panel));
 
         m.set_width(1200.0);
         let slot = &m.presentation_plan().aside_slots[0];
@@ -815,20 +948,20 @@ mod tests {
         m.set_active_main("home");
         m.open(aside_s("assistant", Edge::Right));
 
-        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
-        m.set_slot_collapsed(crate::SlotKind::Lxapp, true);
-        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
-        assert!(!m.set_slot_maximized(crate::SlotKind::Lxapp, true));
-        m.set_slot_collapsed(crate::SlotKind::Lxapp, false);
+        m.set_slot_maximized(crate::SlotKind::Panel, true);
+        m.set_slot_collapsed(crate::SlotKind::Panel, true);
+        assert!(!m.slot_maximized(crate::SlotKind::Panel));
+        assert!(!m.set_slot_maximized(crate::SlotKind::Panel, true));
+        m.set_slot_collapsed(crate::SlotKind::Panel, false);
 
-        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        m.set_slot_maximized(crate::SlotKind::Panel, true);
         m.set_active_main("other");
-        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(!m.slot_maximized(crate::SlotKind::Panel));
 
-        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        m.set_slot_maximized(crate::SlotKind::Panel, true);
         m.close("assistant");
-        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
-        assert!(!m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+        assert!(!m.slot_maximized(crate::SlotKind::Panel));
+        assert!(!m.set_slot_maximized(crate::SlotKind::Panel, true));
     }
 
     #[test]
@@ -841,10 +974,10 @@ mod tests {
         let docked = m.presentation_plan().aside_slots[0].clone();
 
         // Selecting the main that is already selected still restores.
-        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        m.set_slot_maximized(crate::SlotKind::Panel, true);
         let revision = m.switcher_snapshot().revision;
         assert!(m.set_active_main("home"));
-        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(!m.slot_maximized(crate::SlotKind::Panel));
         assert_ne!(m.switcher_snapshot().revision, revision);
         // The aside keeps its place: same children, still visible and docked.
         let slot = &m.presentation_plan().aside_slots[0];
@@ -853,22 +986,22 @@ mod tests {
         assert_eq!(m.graph().role_of("assistant"), Some(Role::Aside));
 
         // Showing a main (the selected one included).
-        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        m.set_slot_maximized(crate::SlotKind::Panel, true);
         assert!(m.show("home"));
-        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(!m.slot_maximized(crate::SlotKind::Panel));
 
         // Admitting a main in the background is not an intent to see it;
         // opening it as the main (open, then select) is.
-        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        m.set_slot_maximized(crate::SlotKind::Panel, true);
         m.open(main_s("third"));
-        assert!(m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(m.slot_maximized(crate::SlotKind::Panel));
         assert!(m.set_active_main("third"));
-        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(!m.slot_maximized(crate::SlotKind::Panel));
 
         // An aside intent leaves the maximize alone.
-        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        m.set_slot_maximized(crate::SlotKind::Panel, true);
         m.open(aside_s("notes", Edge::Right));
-        assert!(m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(m.slot_maximized(crate::SlotKind::Panel));
 
         // Nothing maximized: re-selecting the active main is not a change.
         m.restore_maximized_slot();
@@ -884,17 +1017,17 @@ mod tests {
         m.open(main_s("other"));
         m.set_active_main("other");
         m.open(aside_s("assistant", Edge::Right));
-        m.set_slot_maximized(crate::SlotKind::Lxapp, true);
+        m.set_slot_maximized(crate::SlotKind::Panel, true);
 
         // Closing a background main is not a main switch.
         m.open(main_s("third"));
         m.close("third");
-        assert!(m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(m.slot_maximized(crate::SlotKind::Panel));
 
         // Closing the active main is: its successor shows under a docked aside.
         m.close("other");
         assert_eq!(m.graph().active_main_id.as_deref(), Some("home"));
-        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(!m.slot_maximized(crate::SlotKind::Panel));
         assert!(!m.presentation_plan().aside_slots[0].overlay);
     }
 
@@ -903,14 +1036,14 @@ mod tests {
         let mut m = SurfaceManager::new(1200.0);
         m.open(main_s("home"));
         m.open(aside_s("assistant", Edge::Right));
-        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+        assert!(m.set_slot_maximized(crate::SlotKind::Panel, true));
 
         // Every child hidden: the slot is not presented, so there is no
         // overlay on screen for a main intent to take down.
         m.hide("assistant");
         assert!(!m.presentation_plan().aside_slots[0].visible);
         assert!(!m.restore_maximized_slot());
-        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(!m.slot_maximized(crate::SlotKind::Panel));
 
         // Shown again, the aside comes back docked.
         m.show("assistant");
@@ -918,7 +1051,7 @@ mod tests {
         assert!(slot.visible && !slot.maximized && !slot.overlay);
 
         // A maximize that is on screen reports the restore.
-        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+        assert!(m.set_slot_maximized(crate::SlotKind::Panel, true));
         assert!(m.restore_maximized_slot());
     }
 
@@ -929,13 +1062,13 @@ mod tests {
         m.open(main_s("home"));
         m.open(aside_s("assistant", Edge::Right));
         assert!(m.presentation_plan().aside_slots[0].overlay);
-        assert!(!m.set_slot_maximized(crate::SlotKind::Lxapp, true));
-        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(!m.set_slot_maximized(crate::SlotKind::Panel, true));
+        assert!(!m.slot_maximized(crate::SlotKind::Panel));
 
         // Docked again, it can.
         m.set_width(1200.0);
         assert!(!m.presentation_plan().aside_slots[0].overlay);
-        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+        assert!(m.set_slot_maximized(crate::SlotKind::Panel, true));
     }
 
     #[test]
@@ -945,7 +1078,7 @@ mod tests {
         m.open(aside_s("assistant", Edge::Right));
         assert!(m.presentation_plan().aside_slots[0].overlay);
 
-        m.set_slot_collapsed(crate::SlotKind::Lxapp, true);
+        m.set_slot_collapsed(crate::SlotKind::Panel, true);
         let slot = &m.presentation_plan().aside_slots[0];
         assert!(!slot.visible);
         assert!(!slot.overlay);
@@ -967,6 +1100,8 @@ mod tests {
         let mut native = Surface::native("terminal", Role::Aside, "terminal");
         native.placement.edge = Some(Edge::Right);
         manager.open(native);
+        // The lxapp and the browser tab share the side panel; the terminal
+        // docks as the native slot beside it.
         assert_eq!(
             manager
                 .presentation_plan()
@@ -974,7 +1109,7 @@ mod tests {
                 .iter()
                 .filter(|slot| slot.visible)
                 .count(),
-            3
+            2
         );
 
         // Both widths are Expanded. After the full sidebar is allocated, only
@@ -1064,7 +1199,7 @@ mod tests {
             .filter(|slot| slot.visible)
             .map(|slot| slot.kind)
             .collect();
-        assert_eq!(visible, vec![crate::SlotKind::Lxapp]);
+        assert_eq!(visible, vec![crate::SlotKind::Panel]);
     }
 
     #[test]
@@ -1072,13 +1207,10 @@ mod tests {
         let mut manager = SurfaceManager::new(900.0);
         manager.open(main_s("home"));
         manager.open(aside_s("chat", Edge::Right));
-        let mut browser = Surface::lxapp("browser", Role::Aside, "browser");
-        browser.content = SurfaceContent::Browser {
-            initial_url: "https://example.com".to_string(),
-            reuse_by_url: true,
-        };
-        browser.placement.edge = Some(Edge::Right);
-        manager.open(browser);
+        // Two horizontal slots: the side panel and a right-docked terminal.
+        let mut native = Surface::native("terminal", Role::Aside, "terminal");
+        native.placement.edge = Some(Edge::Right);
+        manager.open(native);
 
         assert_eq!(
             manager
@@ -1183,12 +1315,12 @@ mod tests {
         let mut m = SurfaceManager::new(1200.0);
         m.open(main_s("home"));
         m.open(aside_s("assistant", Edge::Right));
-        assert!(m.set_slot_maximized(crate::SlotKind::Lxapp, true));
+        assert!(m.set_slot_maximized(crate::SlotKind::Panel, true));
 
         assert!(m.promote_aside_to_main("assistant", workspace()));
 
         assert!(m.presentation_plan().aside_slots.is_empty());
-        assert!(!m.slot_maximized(crate::SlotKind::Lxapp));
+        assert!(!m.slot_maximized(crate::SlotKind::Panel));
     }
 
     #[test]

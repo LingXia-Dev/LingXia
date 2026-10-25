@@ -174,6 +174,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.onRestoreMaximizedAside = { [weak self] in
             self?.collapseExpandedAsides() ?? false
         }
+        shell.onAsideLxAppClosed = { [weak self] surfaceId in
+            self?.releaseAsidePanel(surfaceId: surfaceId, closingAppId: nil)
+        }
         shell.setToolbarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
         }
@@ -328,6 +331,56 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
         openedSurfaceIDs.insert(surfaceId)
         visibleSurfaceIDs.insert(surfaceId)
+    }
+
+    /// The core made `surfaceId` an aside while its page is still hosted by
+    /// a main controller: the main was demoted. Re-host the page in a panel
+    /// (registered hidden; the reconciler places it) and book the app as a
+    /// runtime aside, the mirror of `forgetPromotedAside`. False when the id
+    /// is not a live lxapp main of this shell.
+    static func adoptDemotedMainLxApp(surfaceId: String, position: PanelPosition) -> Bool {
+        active?.adoptDemotedMain(surfaceId: surfaceId, position: position) ?? false
+    }
+
+    private func adoptDemotedMain(surfaceId: String, position: PanelPosition) -> Bool {
+        guard runtimeLxAppPanels[surfaceId] == nil,
+              let page = shell.detachMainLxAppForAside(appId: surfaceId) else { return false }
+        shell.registerPanelWithContent(
+            id: surfaceId,
+            position: position,
+            appId: surfaceId,
+            path: page.path,
+            pageInstanceId: page.pageInstanceId
+        )
+        runtimeLxAppPanels[surfaceId] = RuntimeLxAppPanel(appId: surfaceId, path: page.path)
+        managedRoleOverrides.removeValue(forKey: surfaceId)
+        openedSurfaceIDs.insert(surfaceId)
+        visibleSurfaceIDs.insert(surfaceId)
+        // The main area lost its content; show the successor the graph chose,
+        // whatever its kind, as after closing a main.
+        if let ownerAppId = graphOwnerAppId,
+           let snapshot = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId) {
+            presentSwitcherSuccessor(snapshot, ownerAppId: ownerAppId)
+        }
+        refreshChromeActions()
+        return true
+    }
+
+    /// Present the switcher's active main after a main left it (a close or a
+    /// demotion): a managed surface opens now, an ordinary lxapp tab aligns
+    /// the provider and sidebar highlight with the graph's choice.
+    private func presentSwitcherSuccessor(_ snapshot: SurfaceSwitcherSnapshot, ownerAppId: String) {
+        guard let activeSurfaceId = snapshot.activeSurfaceId else { return }
+        if surfaceById[activeSurfaceId] != nil, !openManagedSurfaceNow(id: activeSurfaceId) {
+            return
+        }
+        _ = setActiveMainSurface(ownerAppId, activeSurfaceId)
+        if surfaceById[activeSurfaceId] == nil,
+           let active = snapshot.items.first(where: { $0.surfaceId == activeSurfaceId }),
+           active.content.kind == "lxapp",
+           let appId = active.content.appId {
+            shell.activateMainLxAppProvider(appId: appId)
+        }
     }
 
     /// Mirror the core's slot maximize onto a terminal workspace's own zoom
@@ -872,6 +925,14 @@ final class LxAppMacAppUIRuntime: NSObject {
             ?? runtimeLxAppPanels[surfaceId]?.appId
             ?? surfaceId
         guard !appId.isEmpty else { return false }
+        releaseAsidePanel(surfaceId: surfaceId, closingAppId: appId)
+        return true
+    }
+
+    /// Take side panel tab `surfaceId` out of the shell and the core graph,
+    /// closing `closingAppId`'s session on the way when the panel is what
+    /// closes it (nil when the runtime already closed the app).
+    private func releaseAsidePanel(surfaceId: String, closingAppId: String?) {
         _ = closeManagedSurface(id: surfaceId)
         if let primaryAppId = graphOwnerAppId {
             _ = unregisterHostAside(primaryAppId, surfaceId)
@@ -879,12 +940,13 @@ final class LxAppMacAppUIRuntime: NSObject {
         runtimeLxAppPanels.removeValue(forKey: surfaceId)
         openedSurfaceIDs.remove(surfaceId)
         visibleSurfaceIDs.remove(surfaceId)
-        shell.closeAsideLxApp(appId: appId)
+        if let closingAppId {
+            shell.closeAsideLxApp(appId: closingAppId)
+        }
         shell.unregisterPanel(id: surfaceId)
         managedRoleOverrides.removeValue(forKey: surfaceId)
         managedEdgeOverrides.removeValue(forKey: surfaceId)
         refreshChromeActions()
-        return true
     }
 
     /// Collapse any fullscreen-expanded aside back to its docked edge (keeps it
@@ -897,7 +959,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     private func collapseExpandedAsides() -> Bool {
         var restored = false
         if let owner = graphOwnerAppId {
-            for kind in ["lxapp", "browser", "native"] where isAsideSlotMaximized(owner, kind) {
+            for kind in ["panel", "native"] where isAsideSlotMaximized(owner, kind) {
                 restored = setAsideSlotMaximized(owner, kind, false) || restored
             }
         }
@@ -1640,27 +1702,12 @@ final class LxAppMacAppUIRuntime: NSObject {
             })?.content
             discardMainSurfaceContent(id: surfaceId, previousContent: previousContent)
         }
-        if !execution.removedSurfaceIds.isEmpty,
-           let activeSurfaceId = execution.snapshot.activeSurfaceId,
-           let ownerAppId = graphOwnerAppId {
-            if surfaceById[activeSurfaceId] != nil,
-               !openManagedSurfaceNow(id: activeSurfaceId) {
-                refreshChromeActions()
-                return
-            }
-            _ = setActiveMainSurface(ownerAppId, activeSurfaceId)
-            if surfaceById[activeSurfaceId] == nil,
-               let active = execution.snapshot.items.first(where: {
-                   $0.surfaceId == activeSurfaceId
-               }),
-               active.content.kind == "lxapp",
-               let appId = active.content.appId {
-                // Closing an active ordinary tab makes the legacy tab manager
-                // choose its first remaining item, while the graph chooses the
-                // adjacent main. Align the provider and sidebar highlight with
-                // the graph's authoritative successor.
-                shell.activateMainLxAppProvider(appId: appId)
-            }
+        if !execution.removedSurfaceIds.isEmpty, let ownerAppId = graphOwnerAppId {
+            // Closing an active ordinary tab makes the legacy tab manager
+            // choose its first remaining item, while the graph chooses the
+            // adjacent main. Align the provider and sidebar highlight with
+            // the graph's authoritative successor.
+            presentSwitcherSuccessor(execution.snapshot, ownerAppId: ownerAppId)
         }
         refreshChromeActions()
     }

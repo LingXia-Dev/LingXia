@@ -9,7 +9,7 @@ use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::{WindowsWebViewHandler, find_webview_handler};
 use lingxia_webview::runtime as webview_runtime;
 use lingxia_windows_contract::{
-    ASIDE_LXAPP_PANEL_ID, WindowsAsidePanelEvent, WindowsAsidePanelTab, WindowsNavAnimation,
+    ASIDE_PANEL_ID, WindowsAsidePanelEvent, WindowsAsidePanelTab, WindowsNavAnimation,
     WindowsPanelPosition, active_host_window_is_device_framed,
     configure_webview_surface_interaction, focus_active_main_webview, focus_webview_content,
     hide_host_panel, hide_webview_window, navigate_webview_window,
@@ -340,6 +340,14 @@ pub fn release_windows_lxapp_aside(panel_id: &str) -> Option<(WebTag, String)> {
     Some((entry.webtag, entry.title))
 }
 
+/// Start hosting a live lxapp main's current page as the runtime aside
+/// `panel_id` (its app id), ahead of the core demotion: the next plan sync
+/// then docks that page in the lxapp slot. `release_windows_lxapp_aside`
+/// undoes it when the demotion is refused.
+pub fn adopt_windows_lxapp_main_as_aside(panel_id: &str, webtag: WebTag, title: String) {
+    remember_runtime_lxapp_aside(panel_id, webtag, title);
+}
+
 /// Undo `release_windows_lxapp_aside` when the promotion was refused.
 pub fn restore_windows_lxapp_aside(panel_id: &str, webtag: WebTag, title: String) {
     remember_runtime_lxapp_aside(panel_id, webtag, title);
@@ -359,7 +367,7 @@ fn sync_runtime_lxapp_asides_from_last_plan(panel_id: &str) -> bool {
     let plan = LAST_LAYOUT_PLAN.lock().ok().and_then(|plan| plan.clone());
     plan.as_ref().is_some_and(|plan| {
         plan.aside_slots.iter().any(|slot| {
-            slot.kind == lingxia_surface::SlotKind::Lxapp
+            slot.kind == lingxia_surface::SlotKind::Panel
                 && slot.children.iter().any(|child| child == panel_id)
         }) && sync_runtime_lxapp_asides(plan)
     })
@@ -881,7 +889,7 @@ fn present_entry(id: &str, entry: &SurfaceEntry, target: PresentationTarget) -> 
             show_webview_as_overlay_panel(
                 &entry.webtag,
                 &entry.title,
-                if grouped { ASIDE_BROWSER_PANEL_ID } else { id },
+                if grouped { ASIDE_PANEL_ID } else { id },
                 panel_position_for(edge, entry.placement.position),
             )
         }
@@ -895,7 +903,7 @@ fn present_entry(id: &str, entry: &SurfaceEntry, target: PresentationTarget) -> 
         ) => show_webview_as_adaptive_panel(
             &entry.webtag,
             &entry.title,
-            if grouped { ASIDE_BROWSER_PANEL_ID } else { id },
+            if grouped { ASIDE_PANEL_ID } else { id },
             panel_position_for(edge, entry.placement.position),
             preferred_panel_size(preferred_size),
         ),
@@ -989,22 +997,22 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
     let Some(slot) = plan
         .aside_slots
         .iter()
-        .find(|slot| slot.kind == lingxia_surface::SlotKind::Lxapp)
+        .find(|slot| slot.kind == lingxia_surface::SlotKind::Panel)
     else {
-        set_aside_panel_tabs(ASIDE_LXAPP_PANEL_ID, Vec::new());
-        lingxia_windows_contract::set_aside_panel_maximized(ASIDE_LXAPP_PANEL_ID, false);
-        lingxia_windows_contract::set_aside_panel_collapsed(ASIDE_LXAPP_PANEL_ID, None);
+        set_aside_panel_tabs(ASIDE_PANEL_ID, Vec::new());
+        lingxia_windows_contract::set_aside_panel_maximized(ASIDE_PANEL_ID, false);
+        lingxia_windows_contract::set_aside_panel_collapsed(ASIDE_PANEL_ID, None);
         forget_lxapp_aside_focus_state();
         hide_all_runtime_lxapp_asides();
         return false;
     };
     lingxia_windows_contract::set_aside_panel_maximized(
-        ASIDE_LXAPP_PANEL_ID,
+        ASIDE_PANEL_ID,
         slot.visible && slot.maximized,
     );
     if slot.children.is_empty() {
-        lingxia_windows_contract::set_aside_panel_collapsed(ASIDE_LXAPP_PANEL_ID, None);
-        set_aside_panel_tabs(ASIDE_LXAPP_PANEL_ID, Vec::new());
+        lingxia_windows_contract::set_aside_panel_collapsed(ASIDE_PANEL_ID, None);
+        set_aside_panel_tabs(ASIDE_PANEL_ID, Vec::new());
         forget_lxapp_aside_focus_state();
         hide_all_runtime_lxapp_asides();
         return false;
@@ -1027,25 +1035,41 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
     // The same edge the panel docks at below, so a collapsed slot's handle
     // sits where the panel was.
     let edge = slot.edge.or_else(|| aside.and_then(|aside| aside.edge));
+    // A collapsed slot, or one hidden because it has no room to dock beside
+    // the main, keeps its edge handle: its content stays one click away. A
+    // slot whose children were all hidden by their app has nothing to show.
     lingxia_windows_contract::set_aside_panel_collapsed(
-        ASIDE_LXAPP_PANEL_ID,
-        slot.collapsed.then(|| panel_position_for(edge, 3)),
+        ASIDE_PANEL_ID,
+        (slot.active_child.is_some() && (slot.collapsed || !slot.visible))
+            .then(|| panel_position_for(edge, 3)),
     );
+    // The one strip of the side panel: lxapp children by their app title,
+    // URL children by their page host, in open order.
     let tabs = slot
         .children
         .iter()
-        .map(|id| WindowsAsidePanelTab {
-            surface_id: id.clone(),
-            title: entries
-                .get(id)
-                .map(|entry| entry.title.clone())
-                .filter(|title| !title.trim().is_empty())
-                .unwrap_or_else(|| id.clone()),
-            active: Some(id.as_str()) == active_id,
+        .map(|id| {
+            let web = surface_entry(id).filter(|entry| entry.is_web);
+            WindowsAsidePanelTab {
+                surface_id: id.clone(),
+                title: entries
+                    .get(id)
+                    .map(|entry| entry.title.clone())
+                    .or_else(|| web.as_ref().map(|entry| aside_tab_title(&entry.title)))
+                    .filter(|title| !title.trim().is_empty())
+                    .unwrap_or_else(|| id.clone()),
+                active: Some(id.as_str()) == active_id,
+                browser: web.is_some(),
+            }
         })
         .collect();
-    set_aside_panel_tabs(ASIDE_LXAPP_PANEL_ID, tabs);
+    set_aside_panel_tabs(ASIDE_PANEL_ID, tabs);
 
+    // A URL child is presented by the browser group sync; the lxapp pages
+    // just step aside for it.
+    let active_is_web = active_id
+        .and_then(surface_entry)
+        .is_some_and(|entry| entry.is_web);
     let mut active_presented = false;
     let mut presented_webtag = None;
     if slot.visible
@@ -1059,14 +1083,14 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
             show_webview_as_overlay_panel(
                 &entry.webtag,
                 &entry.title,
-                ASIDE_LXAPP_PANEL_ID,
+                ASIDE_PANEL_ID,
                 panel_position_for(edge, 3),
             )
         } else {
             show_webview_as_adaptive_panel(
                 &entry.webtag,
                 &entry.title,
-                ASIDE_LXAPP_PANEL_ID,
+                ASIDE_PANEL_ID,
                 panel_position_for(edge, 3),
                 preferred_panel_size(preferred_size),
             )
@@ -1081,16 +1105,21 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         }
     }
     for (id, entry) in entries {
-        if should_hide_runtime_lxapp_aside(slot.visible, active_presented, id.as_str(), active_id) {
+        if should_hide_runtime_lxapp_aside(
+            slot.visible,
+            active_presented || active_is_web,
+            id.as_str(),
+            active_id,
+        ) {
             let _ = hide_webview_window(&entry.webtag);
         }
     }
     // A slot that is not admitted (or that the user collapsed) must not leave
     // its dock behind: the children stay alive, the region goes away.
     if !slot.visible {
-        let _ = hide_host_panel(ASIDE_LXAPP_PANEL_ID);
+        let _ = hide_host_panel(ASIDE_PANEL_ID);
     }
-    refresh_aside_panel(ASIDE_LXAPP_PANEL_ID);
+    refresh_aside_panel(ASIDE_PANEL_ID);
     match lxapp_aside_focus_transition(LxappAsideFocusState {
         collapsed: slot.collapsed,
         maximized: slot.visible && slot.maximized,
@@ -1172,7 +1201,7 @@ fn should_hide_runtime_lxapp_aside(
 }
 
 fn hide_all_runtime_lxapp_asides() {
-    let _ = hide_host_panel(ASIDE_LXAPP_PANEL_ID);
+    let _ = hide_host_panel(ASIDE_PANEL_ID);
     let entries = RUNTIME_LXAPP_ASIDES
         .lock()
         .ok()
@@ -1186,7 +1215,6 @@ fn hide_all_runtime_lxapp_asides() {
 /// Panel id of the shared multi-tab aside browser (grouped web asides). A
 /// stable id decoupled from the surface nodes, so tabs come and go without
 /// re-anchoring the docked panel.
-use lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID;
 
 #[derive(Default)]
 struct AsideBrowserGroup {
@@ -1218,10 +1246,11 @@ fn store_aside_browser_plan(
         .map(|(id, edge, size)| (id.clone(), (*edge, *size)))
         .collect();
     group.order = tabs.into_iter().map(|(id, _, _)| id).collect();
+    // Only a URL tab that IS the side panel's active child docks; with an
+    // lxapp child active no browser page may claim the shared panel.
     group.active = active
         .filter(|id| group.order.iter().any(|child| child == *id))
-        .map(str::to_string)
-        .or_else(|| group.order.last().cloned());
+        .map(str::to_string);
     group.overlay = overlay;
 }
 
@@ -1241,23 +1270,14 @@ fn sync_aside_browser_group() {
         .iter()
         .filter_map(|id| surface_entry(id).map(|entry| (id.clone(), entry)))
         .collect();
-    let strip: Vec<WindowsAsidePanelTab> = tabs
-        .iter()
-        .map(|(id, entry)| WindowsAsidePanelTab {
-            surface_id: id.clone(),
-            title: aside_tab_title(&entry.title),
-            active: Some(id) == active.as_ref(),
-        })
-        .collect();
-    set_aside_panel_tabs(ASIDE_BROWSER_PANEL_ID, strip);
-    if active.is_none() {
-        let _ = hide_host_panel(ASIDE_BROWSER_PANEL_ID);
-    }
+    // The strip and the panel's visibility belong to the side panel sync
+    // (`sync_runtime_lxapp_asides`), which lists URL tabs beside lxapps;
+    // here only the active URL tab docks and the other pages hide.
     // The active tab docks first so switching never exposes the bare panel.
     if let Some((id, entry)) = tabs.iter().find(|(id, _)| Some(id) == active.as_ref()) {
         let (edge, preferred_size) = placement.get(id).copied().unwrap_or((None, None));
         let target = if overlay {
-            let _ = hide_host_panel(ASIDE_BROWSER_PANEL_ID);
+            let _ = hide_host_panel(ASIDE_PANEL_ID);
             PresentationTarget::Overlay {
                 edge,
                 grouped: true,
@@ -1278,7 +1298,7 @@ fn sync_aside_browser_group() {
     }
     // Repaint the header strip even when the attached layout is unchanged
     // (title updates, an inactive tab closing).
-    refresh_aside_panel(ASIDE_BROWSER_PANEL_ID);
+    refresh_aside_panel(ASIDE_PANEL_ID);
 }
 
 /// Tab label for a URL aside: the host, falling back to the raw URL.
@@ -1315,15 +1335,27 @@ fn handle_aside_panel_event(event: WindowsAsidePanelEvent) {
         | WindowsAsidePanelEvent::NavForward { panel_id }
         | WindowsAsidePanelEvent::NavReload { panel_id } => panel_id,
     };
-    // Collapsing and maximizing are slot states in the shared graph, never a
-    // local tab operation — the browser panel's own group has nothing to do.
-    let collapse = matches!(
-        event,
-        WindowsAsidePanelEvent::Collapse { .. }
-            | WindowsAsidePanelEvent::ToggleMaximize { .. }
-            | WindowsAsidePanelEvent::Restore { .. }
-    );
-    if panel_id != ASIDE_BROWSER_PANEL_ID || collapse {
+    // The side panel hosts lxapp pages and URL tabs. Slot states (collapse,
+    // maximize, restore), tab selection and everything about an lxapp child
+    // go to the shared graph; only a URL tab's own close and the browser
+    // navigation of an active URL tab are handled here.
+    let active_is_web = {
+        let group = aside_browser_group();
+        group
+            .active
+            .as_ref()
+            .is_some_and(|active| group.order.contains(active))
+    };
+    let local = match &event {
+        WindowsAsidePanelEvent::TabClose { surface_id, .. } => {
+            panel_id == ASIDE_PANEL_ID && aside_browser_group().order.contains(surface_id)
+        }
+        WindowsAsidePanelEvent::NavBack { .. }
+        | WindowsAsidePanelEvent::NavForward { .. }
+        | WindowsAsidePanelEvent::NavReload { .. } => panel_id == ASIDE_PANEL_ID && active_is_web,
+        _ => false,
+    };
+    if !local {
         if let Some(handler) = MANAGED_ASIDE_EVENT_HANDLER
             .lock()
             .ok()
@@ -1334,23 +1366,7 @@ fn handle_aside_panel_event(event: WindowsAsidePanelEvent) {
         return;
     }
     match event {
-        WindowsAsidePanelEvent::TabClick { surface_id, .. } => {
-            {
-                let mut group = aside_browser_group();
-                if !group.order.contains(&surface_id) {
-                    return;
-                }
-                group.active = Some(surface_id);
-            }
-            sync_aside_browser_group();
-        }
         WindowsAsidePanelEvent::TabClose { surface_id, .. } => close_aside_tab(&surface_id),
-        // Routed to the graph above; never reached here.
-        WindowsAsidePanelEvent::Collapse { .. }
-        | WindowsAsidePanelEvent::ToggleMaximize { .. }
-        | WindowsAsidePanelEvent::Restore { .. } => {}
-        // Browser asides have no Home or tabBar.
-        WindowsAsidePanelEvent::NavHome { .. } | WindowsAsidePanelEvent::TabBarClick { .. } => {}
         WindowsAsidePanelEvent::NavBack { .. } => {
             with_active_aside_webview(|webview| webview.go_back())
         }
@@ -1360,6 +1376,7 @@ fn handle_aside_panel_event(event: WindowsAsidePanelEvent) {
         WindowsAsidePanelEvent::NavReload { .. } => {
             with_active_aside_webview(|webview| webview.reload())
         }
+        _ => {}
     }
 }
 
@@ -1369,8 +1386,10 @@ fn close_aside_tab(id: &str) {
     {
         let mut group = aside_browser_group();
         group.order.retain(|existing| existing != id);
+        // The successor may be an lxapp child (the graph's MRU), so no URL
+        // tab docks until the plan names it.
         if group.active.as_deref() == Some(id) {
-            group.active = group.order.last().cloned();
+            group.active = None;
         }
     }
     if let Some(entry) = SURFACES.lock().ok().and_then(|mut map| map.remove(id)) {
@@ -1545,15 +1564,20 @@ pub(super) fn present_layout(
             .iter()
             .filter(|slot| slot.visible)
             .flat_map(|slot| {
-                if slot.kind == lingxia_surface::SlotKind::Browser {
-                    slot.children.iter().map(String::as_str).collect::<Vec<_>>()
-                } else {
-                    slot.active_child
-                        .as_deref()
-                        .or_else(|| slot.children.last().map(String::as_str))
-                        .into_iter()
-                        .collect()
-                }
+                let active = slot
+                    .active_child
+                    .as_deref()
+                    .or_else(|| slot.children.last().map(String::as_str));
+                // Every URL child stays planned (the browser group keeps its
+                // placement); any other content presents only as the active
+                // child of its slot.
+                slot.children
+                    .iter()
+                    .map(String::as_str)
+                    .filter(|id| {
+                        Some(*id) == active || known.get(*id).is_some_and(|entry| entry.is_web)
+                    })
+                    .collect::<Vec<_>>()
             })
             .collect()
     };
@@ -1602,29 +1626,15 @@ pub(super) fn present_layout(
     let active_browser = plan
         .aside_slots
         .iter()
-        .find(|slot| slot.kind == lingxia_surface::SlotKind::Browser && slot.visible)
+        .find(|slot| slot.kind == lingxia_surface::SlotKind::Panel && slot.visible)
         .and_then(|slot| slot.active_child.as_deref());
     let browser_overlay = plan
         .aside_slots
         .iter()
-        .find(|slot| slot.kind == lingxia_surface::SlotKind::Browser && slot.visible)
+        .find(|slot| slot.kind == lingxia_surface::SlotKind::Panel && slot.visible)
         .is_some_and(|slot| slot.overlay);
-    let browser_slot = plan
-        .aside_slots
-        .iter()
-        .find(|slot| slot.kind == lingxia_surface::SlotKind::Browser);
-    lingxia_windows_contract::set_aside_panel_collapsed(
-        ASIDE_BROWSER_PANEL_ID,
-        browser_slot
-            .filter(|slot| slot.collapsed && !slot.children.is_empty())
-            .map(|slot| panel_position_for(slot.edge, 3)),
-    );
-    lingxia_windows_contract::set_aside_panel_maximized(
-        ASIDE_BROWSER_PANEL_ID,
-        plan.aside_slots.iter().any(|slot| {
-            slot.kind == lingxia_surface::SlotKind::Browser && slot.visible && slot.maximized
-        }),
-    );
+    // Collapsed/maximized state of the side panel is published by
+    // `sync_runtime_lxapp_asides`, which owns the shared panel's chrome.
     store_aside_browser_plan(planned_web_asides, active_browser, browser_overlay);
     sync_aside_browser_group();
     sync_runtime_lxapp_asides(plan);
