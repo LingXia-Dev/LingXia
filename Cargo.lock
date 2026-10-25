@@ -3650,7 +3650,7 @@ dependencies = [
  "lingxia-terminal",
  "lingxia-terminal-config",
  "lingxia-transfer",
- "lingxia-ui",
+ "lingxia-ui-android",
  "lingxia-update",
  "lingxia-webview",
  "lingxia-windows-contract",
@@ -4332,10 +4332,8 @@ version = "0.28.0"
 dependencies = [
  "glifo",
  "image",
- "jni",
  "parley",
  "pollster",
- "raw-window-handle",
  "rong",
  "rong_core",
  "rong_quickjs_sys",
@@ -4348,6 +4346,16 @@ dependencies = [
  "vello_cpu",
  "vello_gpu",
  "wgpu",
+]
+
+[[package]]
+name = "lingxia-ui-android"
+version = "0.28.0"
+dependencies = [
+ "jni",
+ "lingxia-ui",
+ "raw-window-handle",
+ "serde_json",
 ]
 
 [[package]]

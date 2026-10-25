@@ -11,9 +11,6 @@ use crate::session::host::{Failure, FrameSnapshot, FrameTiming};
 use crate::session::lifecycle::{CommitTicket, ConnectionTicket, SurfaceTicket};
 use std::time::Duration;
 
-#[cfg(any(target_os = "android", feature = "jvm"))]
-pub mod android;
-
 pub type Task = Box<dyn FnOnce() + Send>;
 
 /// Viewport and View environment sampled for one frame.

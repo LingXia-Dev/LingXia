@@ -21,6 +21,8 @@ mod images;
 mod pump;
 mod worker;
 
+/// Largest input-method request [`ViewHost::input`] accepts, in bytes.
+pub use super::input_protocol::MAX_REQUEST_BYTES as MAX_INPUT_REQUEST_BYTES;
 pub use bridge::BridgeUpdate;
 pub use worker::ViewWorker;
 

@@ -5,14 +5,9 @@ edition.workspace = true
 license = "MIT"
 description = "Experimental LingXia UI language and headless renderer"
 
-[lib]
-crate-type = ["rlib", "cdylib"]
-
 [features]
 default = []
-gpu = ["dep:vello_gpu", "dep:glifo", "dep:vello", "dep:wgpu", "dep:pollster", "dep:raw-window-handle"]
-# Build the Android JNI adapter for the host JVM so SDK unit tests run against the real core.
-jvm = ["dep:jni"]
+gpu = ["dep:vello_gpu", "dep:glifo", "dep:vello", "dep:wgpu", "dep:pollster"]
 
 [dependencies]
 serde = { workspace = true }
@@ -28,8 +23,6 @@ vello_gpu = { version = "=0.3.0", optional = true, default-features = false, fea
 glifo = { version = "=0.4.0", optional = true, features = ["png"] }
 wgpu = { version = "=30.0.0", optional = true, default-features = false, features = ["vulkan", "dx12", "metal", "wgsl"] }
 pollster = { version = "=0.4.0", optional = true }
-raw-window-handle = { version = "=0.6.2", optional = true }
-jni = { version = "0.22.4", optional = true }
 
 [target.'cfg(any(target_os = "android", target_os = "windows", all(target_os = "linux", not(target_env = "ohos"))))'.dependencies]
 rong = { workspace = true, features = ["quickjs"] }
@@ -43,6 +36,5 @@ rong = { workspace = true, features = ["jscore"] }
 rong = { workspace = true, features = ["arkjs"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
-jni = "0.22.4"
 # GLES is the fallback for Vulkan drivers the crash sentinel blocks.
 wgpu = { version = "=30.0.0", optional = true, default-features = false, features = ["gles"] }

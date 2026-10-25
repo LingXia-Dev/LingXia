@@ -1465,13 +1465,13 @@ jobs:
 
       # GPU adapter unit tests drive the real shared core through JNI on the host JVM.
       - name: Build the host GPU core for JVM tests
-        run: cargo build -p lingxia-ui --features jvm
+        run: cargo build -p lingxia-ui-android
 
       - name: Verify API 21 core and complete Android module packaging
         working-directory: lingxia-sdk/android
         run: >-
           ./gradlew :compatibility:assembleCoreDebug :compatibility:assembleFullDebug :lingxia-core:testDebugUnitTest
-          -PlingxiaUiNative=${{ github.workspace }}/target/debug/liblingxia_ui.so
+          -PlingxiaUiNative=${{ github.workspace }}/target/debug/liblingxia_ui_android.so
 
   sdk-apple:
     needs: changes

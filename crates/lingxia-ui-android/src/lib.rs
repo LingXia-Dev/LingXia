@@ -1,14 +1,15 @@
-//! The Android adapter: `com.lingxia.ui.GpuView` natives over a [`ViewHost`].
+//! The Android adapter for the GPU View host: `com.lingxia.ui.GpuView` natives
+//! over a [`ViewHost`].
 //! Java owns the host handle from `nativeHostCreate` to `nativeHostRelease` and
 //! calls every native on the main thread.
-use crate::interaction::view::{AccessibilityAction, Key, Pointer, PointerPhase};
-use crate::platform::Task;
-use crate::session::host::{CaretState, ViewHost, ViewWorker};
-use crate::session::lifecycle::ConnectionTicket;
 use jni::errors::ThrowRuntimeExAndDefault;
 use jni::objects::{JByteArray, JCharArray, JClass, JObject, JString};
 use jni::sys::{jboolean, jdouble, jfloat, jint, jlong};
 use jni::{Env, EnvUnowned, JValue, jni_sig, jni_str};
+use lingxia_ui::interaction::view::{AccessibilityAction, Key, Pointer, PointerPhase};
+use lingxia_ui::platform::Task;
+use lingxia_ui::session::host::{CaretState, ViewHost, ViewWorker};
+use lingxia_ui::session::lifecycle::ConnectionTicket;
 
 mod adapter;
 #[cfg(all(feature = "gpu", target_os = "android"))]
@@ -543,7 +544,7 @@ extern "system" fn input<'a>(
         let request = utf16(
             env,
             &request,
-            crate::session::input_protocol::MAX_REQUEST_BYTES,
+            lingxia_ui::session::host::MAX_INPUT_REQUEST_BYTES,
         )?;
         let host = host(handle)?;
         let replier = host.clone();
@@ -605,7 +606,7 @@ extern "system" fn image_loaded<'a>(
     run(&mut env, |env| {
         let bytes = if bytes.is_null() {
             Err("UI_IMAGE: load failed".into())
-        } else if bytes.len(env)? > crate::protocol::limits::IMAGE_BYTES {
+        } else if bytes.len(env)? > lingxia_ui::protocol::limits::IMAGE_BYTES {
             Err("UI_IMAGE: encoded size limit".into())
         } else {
             Ok(env.convert_byte_array(&bytes)?)
@@ -615,7 +616,7 @@ extern "system" fn image_loaded<'a>(
     })
 }
 
-use crate::interaction::chrome::{self, ChromeNode};
+use lingxia_ui::interaction::chrome::{self, ChromeNode};
 
 fn chrome_node(env: &mut Env, node: &JString) -> Result<ChromeNode, Error> {
     Ok(ChromeNode::parse(&text(env, node)?)?)
@@ -724,9 +725,11 @@ extern "system" fn gpu_sentinel<'a>(
 ) {
     run(&mut env, |env| {
         let directory = text(env, &directory)?;
-        crate::renderer::sentinel::install(Box::new(crate::renderer::sentinel::FileStore(
-            std::path::Path::new(&directory).join("lingxia-gpu-sentinel"),
-        )));
+        lingxia_ui::renderer::sentinel::install(Box::new(
+            lingxia_ui::renderer::sentinel::FileStore(
+                std::path::Path::new(&directory).join("lingxia-gpu-sentinel"),
+            ),
+        ));
         Ok(())
     })
 }
@@ -755,7 +758,7 @@ extern "system" fn attach<'a>(
         host.worker().clone().run(move |_| {
             let attached = gpu_surface::attach(window, width, height, existing);
             let main = host.clone();
-            crate::platform::MainThread::post(
+            lingxia_ui::platform::MainThread::post(
                 host.adapter(),
                 Box::new(move || {
                     let adapter = main.adapter();

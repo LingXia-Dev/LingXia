@@ -1,13 +1,15 @@
 //! `PlatformAdapter` over a Java `com.lingxia.ui.GpuPlatform`. Calls made on
 //! the main thread run Android mechanics; only `post` is called from the worker.
-use crate::DisplayList;
-use crate::interaction::view::{AccessibilityEffect, Dispatch, Effect};
-use crate::platform::*;
-use crate::semantics::projection::Event;
-use crate::session::host::{Failure, FrameSnapshot, FrameTiming, RecoveryAction, RecoveryMessage};
-use crate::session::lifecycle::{CommitTicket, ConnectionTicket, SurfaceTicket};
 use jni::objects::{Global, JObject, JString};
 use jni::{Env, JValue, JavaVM, jni_sig, jni_str};
+use lingxia_ui::DisplayList;
+use lingxia_ui::interaction::view::{AccessibilityEffect, Dispatch, Effect};
+use lingxia_ui::platform::*;
+use lingxia_ui::semantics::projection::Event;
+use lingxia_ui::session::host::{
+    Failure, FrameSnapshot, FrameTiming, RecoveryAction, RecoveryMessage,
+};
+use lingxia_ui::session::lifecycle::{CommitTicket, ConnectionTicket, SurfaceTicket};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -257,7 +259,7 @@ impl EnvironmentSource for AndroidAdapter {
             .ok()?;
         let mut env = value["env"].clone();
         env["renderer"] = serde_json::json!({
-            "fallback": crate::renderer::sentinel::fallback().map(|_| "driver"),
+            "fallback": lingxia_ui::renderer::sentinel::fallback().map(|_| "driver"),
         });
         Some(FrameEnvironment {
             width: u16::try_from(value["width"].as_u64()?).ok()?,

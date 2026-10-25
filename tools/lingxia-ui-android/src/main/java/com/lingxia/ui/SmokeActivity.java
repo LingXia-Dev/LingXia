@@ -15,7 +15,7 @@ import java.util.concurrent.Executors;
 /** Device harness using the SDK's GPU content component. */
 public final class SmokeActivity extends Activity {
     static {
-        System.loadLibrary("lingxia_ui");
+        System.loadLibrary("lingxia_ui_android");
         GpuView.initializeNative();
     }
     // Evidence snapshots are written off the main thread; rendering runs on the host's View worker.

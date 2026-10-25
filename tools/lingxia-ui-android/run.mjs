@@ -23,10 +23,10 @@ const env = {
 };
 
 run('node', [join(repoRoot, 'packages/lingxia-ui/build.mjs'), project], { cwd: repoRoot });
-run('cargo', ['build', '-p', 'lingxia-ui', '--features', 'gpu', '--target', 'aarch64-linux-android', '--release'], { cwd: repoRoot, env });
+run('cargo', ['build', '-p', 'lingxia-ui-android', '--features', 'gpu', '--target', 'aarch64-linux-android', '--release'], { cwd: repoRoot, env });
 const jniLibs = join(here, 'src/main/jniLibs/arm64-v8a');
 mkdirSync(jniLibs, { recursive: true });
-copyFileSync(join(repoRoot, 'target/aarch64-linux-android/release/liblingxia_ui.so'), join(jniLibs, 'liblingxia_ui.so'));
+copyFileSync(join(repoRoot, 'target/aarch64-linux-android/release/liblingxia_ui_android.so'), join(jniLibs, 'liblingxia_ui_android.so'));
 run(join(repoRoot, 'lingxia-sdk/android', windows ? 'gradlew.bat' : 'gradlew'), ['-p', here, `-PuiAssets=${project}/dist`, 'assembleDebug', '--console=plain'], { env });
 const adb = tool(sdk, 'platform-tools/adb'), selector = args.device ? ['-s', args.device] : [];
 run(adb, [...selector, 'install', '-r', join(here, 'build/outputs/apk/debug/LingXiaUiSmoke-debug.apk')]);

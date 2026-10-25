@@ -26,6 +26,7 @@ export const LAYERS = {
   "device-io": 2,
   lxapp: 3,
   ui: 3,
+  "ui-android": 3,
   logic: 3,
   service: 3,
   transfer: 3,

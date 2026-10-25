@@ -58,11 +58,13 @@ impl NativeWindow {
 }
 
 static NEXT: AtomicU64 = AtomicU64::new(1);
-static SURFACES: LazyLock<Mutex<HashMap<u64, crate::renderer::gpu::Presenter>>> =
+static SURFACES: LazyLock<Mutex<HashMap<u64, lingxia_ui::renderer::gpu::Presenter>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-fn surfaces()
--> Result<std::sync::MutexGuard<'static, HashMap<u64, crate::renderer::gpu::Presenter>>, String> {
+fn surfaces() -> Result<
+    std::sync::MutexGuard<'static, HashMap<u64, lingxia_ui::renderer::gpu::Presenter>>,
+    String,
+> {
     SURFACES
         .lock()
         .map_err(|_| "UI_SURFACE: poisoned presenters".into())
@@ -88,8 +90,12 @@ pub(super) fn attach(
         .next()
         .map(|page| page.context())
         .unwrap_or_default();
-    let presenter =
-        crate::renderer::gpu::Presenter::with_fallback(context, Arc::new(window), width, height)?;
+    let presenter = lingxia_ui::renderer::gpu::Presenter::with_fallback(
+        context,
+        Arc::new(window),
+        width,
+        height,
+    )?;
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     surfaces.insert(id, presenter);
     Ok(id)
@@ -119,7 +125,7 @@ pub(super) fn detach(id: u64) {
 /// Encode `display`; `None` while the presenter is suspended or detached.
 pub(super) fn prepare(
     id: u64,
-    display: &crate::DisplayList,
+    display: &lingxia_ui::DisplayList,
     revision: u64,
 ) -> Result<Option<serde_json::Value>, String> {
     let mut surfaces = surfaces()?;

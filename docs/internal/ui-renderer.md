@@ -27,7 +27,7 @@ inferred from file names.
 | `interaction` | Hit testing, scroll, reach, sliders, keyboard, pointer state |
 | `semantics` | Composed control groups, accessibility projection, stable ids |
 | `renderer` | CPU raster and wgpu/Vello presentation |
-| `platform` | Adapter traits and the Android JNI codec |
+| `platform` | Adapter traits; platform adapters live in their own crates (`lingxia-ui-android`) |
 
 ## Wire contract
 
@@ -174,15 +174,15 @@ Adapters convert OS events into host calls and execute typed effects; the host
 never calls the adapter while holding its locks. Its tests use a fake adapter
 on a test main thread, so new platforms start from tested policy.
 
-Android runs on `ViewHost`: `platform/android` implements the traits over the
+Android runs on `ViewHost`: `crates/lingxia-ui-android` implements the traits over the
 Java `GpuPlatform` interface (Choreographer vsync, `Handler` posts, CPU or
 Vulkan presentation, IME, accessibility events, feedback chrome) and exposes
 host calls as `GpuView` natives. Java converts events and draws chrome; it
 holds no frame sequencing, timers, layout, hit testing or effect parsing.
 Chrome geometry (clip tests, selection-handle hit radius, knob offset and drag
 clamping) is `interaction::chrome` over the snapshot node.
-Pages of one `appId:session` share a worker by key. Host JVM tests load the real core built with the `jvm`
-feature.
+Pages of one `appId:session` share a worker by key. Host JVM tests load the
+crate's cdylib built for the host.
 
 To add a platform: implement the adapter traits, map the platform's text
 scaling and insets into the environment, present `renderer` frames on its
@@ -206,6 +206,6 @@ surface, and make the module banner's required features available.
   semantics, controller and session behavior with real JS.
 - `npm test --workspace @lingxia/ui` covers authoring, lowering, the compiler
   and resources; `contracts/generate.mjs --check` covers drift.
-- Android unit tests run the JNI codec against the host-built core.
+- Android unit tests run the JNI adapter against the host-built `lingxia-ui-android` cdylib.
 - Device probes and renderer fixtures live in `lingxia-sdk/android/tests/gpu`.
   CPU and unit evidence is not device evidence; say which one a change has.
