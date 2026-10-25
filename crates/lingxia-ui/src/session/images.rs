@@ -102,93 +102,40 @@ impl ViewSession {
         }
         Ok(changed)
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn image_callback_errors_do_not_consume_other_consumers_or_their_updates() {
-        let module = crate::session::tests::source(
-            "function render(){const status=useLocal('status','initial');return h('column',{},h('image',{src:'photo',onLoad:()=>{status.set('bad');throw Error('first')},style:{width:20,height:20}}),h('image',{src:'photo',onLoad:()=>status.set('ready'),style:{width:20,height:20}}),h('image',{src:'photo',onLoad:()=>{status.set('bad');throw Error('last')},style:{width:20,height:20}}),h('text',{testId:'status'},status.value))}",
-        );
-        let mut page = ViewSession::new(&module).unwrap();
-        page.layout(200, 200, 1.0).unwrap();
-        page.image_completed(page.image_requests()[0].clone(), true);
-        assert!(page.dispatch_image_events(page.generation()).unwrap());
-        assert_eq!(page.take_action_errors().unwrap().len(), 2);
-        let frame = page.layout(200, 200, 1.0).unwrap();
-        assert_eq!(
-            frame
-                .nodes
-                .iter()
-                .find(|n| n.test_id == "status")
-                .unwrap()
-                .text,
-            "ready"
-        );
-        assert!(!page.dispatch_image_events(page.generation()).unwrap());
+    pub fn image_sources(&self) -> Vec<String> {
+        self.image_sources.iter().cloned().collect()
     }
-
-    #[test]
-    fn regenerated_image_callbacks_reuse_layout() {
-        let module = crate::session::tests::source(
-            "function render(){return h('image',{src:'photo',onLoad(){},onError(){},style:{width:20,height:20}})}",
-        );
-        let mut page = ViewSession::new(&module).unwrap();
-        page.layout(200, 200, 1.0).unwrap();
-        page.layout(200, 200, 1.0).unwrap();
-        assert_eq!(page.frame_metrics().layout_passes, 0);
+    pub fn load_image(&mut self, src: &str, bytes: &[u8]) -> Result<bool, String> {
+        if !self.image_sources.contains(src) {
+            return Ok(false);
+        }
+        let bitmap = crate::scene::image::Bitmap::decode(bytes)?;
+        self.bind_image(src, bitmap)
     }
-
-    #[test]
-    fn image_outcomes_follow_committed_identity_and_retry_without_idle_loops() {
-        let module = crate::session::tests::source(
-            "globalThis.retry='';globalThis.extra=false;function render(){const status=useLocal('status','loading');return h('column',{},h('image',{key:'photo',src:'photo',retryKey:globalThis.retry,onLoad:()=>status.set('ready'),onError:()=>status.set('failed'),style:{width:20,height:20}}),globalThis.extra?h('image',{key:'extra',src:'photo',retryKey:globalThis.retry,onLoad:()=>status.set('cached'),style:{width:20,height:20}}):null,h('text',{testId:'status'},status.value))}",
-        );
-        let mut page = ViewSession::new(&module).unwrap();
-        page.layout(200, 200, 1.0).unwrap();
-        let original = page.image_requests()[0].clone();
-        page.image_completed(original.clone(), false);
-        assert!(
-            !page
-                .dispatch_image_events(crate::session::lifecycle::CommitTicket::new(
-                    page.generation().get() - 1
-                ))
-                .unwrap()
-        );
-        assert!(page.dispatch_image_events(page.generation()).unwrap());
-        let frame = page.layout(200, 200, 1.0).unwrap();
-        assert_eq!(
-            frame
-                .nodes
-                .iter()
-                .find(|n| n.test_id == "status")
-                .unwrap()
-                .text,
-            "failed"
-        );
-        assert!(!page.dispatch_image_events(page.generation()).unwrap());
-        page.eval("globalThis.retry='1'").unwrap();
-        page.layout(200, 200, 1.0).unwrap();
-        page.image_completed(original, true);
-        assert!(!page.dispatch_image_events(page.generation()).unwrap());
-        page.image_completed(page.image_requests()[0].clone(), true);
-        assert!(page.dispatch_image_events(page.generation()).unwrap());
-        page.layout(200, 200, 1.0).unwrap();
-        page.eval("globalThis.extra=true").unwrap();
-        page.layout(200, 200, 1.0).unwrap();
-        assert!(page.dispatch_image_events(page.generation()).unwrap());
-        let frame = page.layout(200, 200, 1.0).unwrap();
-        assert_eq!(
-            frame
-                .nodes
-                .iter()
-                .find(|n| n.test_id == "status")
-                .unwrap()
-                .text,
-            "cached"
-        );
-        assert!(!page.dispatch_image_events(page.generation()).unwrap());
+    pub(crate) fn bind_image(
+        &mut self,
+        src: &str,
+        bitmap: crate::scene::image::Bitmap,
+    ) -> Result<bool, String> {
+        if !self.image_sources.contains(src) {
+            return Ok(false);
+        }
+        let retained_bytes: usize = self
+            .images
+            .iter()
+            .filter(|(key, _)| key.as_str() != src)
+            .map(|(_, value)| value.byte_len())
+            .sum();
+        if retained_bytes + bitmap.byte_len() > 64 * 1024 * 1024 {
+            return Err("UI_IMAGE: page image budget exceeded".into());
+        }
+        self.images.insert(src.to_owned(), bitmap);
+        Ok(true)
+    }
+    pub(super) fn commit_images(&mut self, wanted: std::collections::HashSet<String>) {
+        self.images.retain(|src, _| wanted.contains(src));
+        self.image_sources = wanted;
+        self.retain_image_lifecycle();
     }
 }

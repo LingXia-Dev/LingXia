@@ -1,0 +1,104 @@
+use super::*;
+
+/// Work the adapter performs with OS mechanics.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum Effect {
+    /// Pressed feedback: a styled node repaints through `set_pointer_state`,
+    /// others get a platform overlay over the clipped shape.
+    Press {
+        node: usize,
+        identity: String,
+        styled: bool,
+    },
+    ClearPress,
+    /// Draw the keyboard focus ring.
+    FocusRing {
+        node: usize,
+    },
+    ClearFocusRing,
+    /// Offsets changed: present again without rerunning the View.
+    Redraw,
+    /// Keep (or release) the gesture from ancestor interception.
+    Claim {
+        exclusive: bool,
+    },
+    ArmLongPress,
+    CancelLongPress,
+    /// Continue a released drag with platform fling physics, feeding `scroll_by`.
+    Fling {
+        region: String,
+        horizontal: bool,
+        velocity: f32,
+    },
+    StopFling,
+    /// A dispatch is queued; drain it with `take_dispatch` when the worker is idle.
+    Dispatch,
+    /// A slider value is queued; drain it with `take_number`.
+    Number,
+    /// A click landed; play feedback and announce it.
+    Clicked,
+    Haptic,
+    /// Edit text on behalf of accessibility; the adapter forwards it to its input method.
+    EditText {
+        node: usize,
+        text: Option<String>,
+        start: i32,
+        end: i32,
+    },
+    Accessibility(AccessibilityEffect),
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(tag = "event", rename_all = "kebab-case")]
+pub enum AccessibilityEffect {
+    Focused { id: u32 },
+    FocusCleared { id: u32 },
+    InputFocused { id: u32 },
+    HoverEnter { id: u32 },
+    HoverExit { id: u32 },
+    Change(projection::Event),
+}
+
+pub(super) fn press(frame: &PresentedFrame, node: usize) -> Effect {
+    Effect::Press {
+        node,
+        identity: frame.nodes[node].identity.clone(),
+        styled: frame.nodes[node].pressed_style,
+    }
+}
+
+/// Work the View worker runs against the frame it was resolved from.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum Dispatch {
+    /// The adapter's input method focuses or places the caret in an editor.
+    Editor {
+        node: usize,
+        commit: CommitTicket,
+        point: Option<[f32; 2]>,
+        word: bool,
+    },
+    Click {
+        commit: CommitTicket,
+        handle: u64,
+    },
+    /// Mode 0: point, 1: next item, 2: explicit index (-1 clears).
+    Plot {
+        commit: CommitTicket,
+        identity: String,
+        mode: u8,
+        point: [f32; 2],
+        index: i64,
+    },
+    DismissPlots {
+        commit: CommitTicket,
+        identities: Vec<String>,
+    },
+    /// Edges reached by a presented frame.
+    Reach {
+        commit: CommitTicket,
+        handles: Vec<u64>,
+        more: bool,
+    },
+}

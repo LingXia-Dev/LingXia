@@ -23,8 +23,8 @@ pub(super) enum FrameAnimations<'a> {
 impl FrameAnimations<'_> {
     pub(super) fn validate(&self, records: &[crate::protocol::Record]) -> Result<(), String> {
         match self {
-            Self::Disabled => super::validate_record_animations(records, None),
-            Self::Explicit(frame) => super::validate_record_animations(records, Some(frame)),
+            Self::Disabled => validate_record_animations(records, None),
+            Self::Explicit(frame) => validate_record_animations(records, Some(frame)),
             Self::Collected { .. } => Ok(()),
         }
     }
@@ -110,4 +110,26 @@ fn compose(
     } else {
         display.retained.compose_animated(offsets, frame.visuals())
     }
+}
+
+fn validate_record_animations(
+    records: &[crate::protocol::Record],
+    frame: Option<&crate::animation::Prepared>,
+) -> Result<(), String> {
+    if !records
+        .iter()
+        .any(|record| record.string(field::ANIMATION).is_some())
+    {
+        return Ok(());
+    }
+    let frame = frame.ok_or("UI_ANIMATION: page requires animation presentation scheduling")?;
+    for (record, identity) in records.iter().zip(crate::protocol::identities(records)) {
+        if let Some(source) = record.string(field::ANIMATION) {
+            let definition = crate::animation::decode_definition(source)?;
+            if !frame.contains_definition(&identity, &definition) {
+                return Err("UI_ANIMATION: frame definition does not match View record".into());
+            }
+        }
+    }
+    Ok(())
 }
