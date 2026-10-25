@@ -26,7 +26,12 @@ impl ViewSession {
             && (value.get("sizeClass").is_none()
                 || matches!(value["sizeClass"].as_str(), Some("compact" | "regular")))
             && value["aside"].is_boolean()
-            && value["runner"].is_boolean();
+            && value["runner"].is_boolean()
+            && (value.get("renderer").is_none()
+                || (matches!(
+                    value["renderer"]["fallback"].as_str(),
+                    None | Some("driver")
+                ) && value["renderer"].as_object().is_some_and(|r| r.len() == 1)));
         if !valid {
             return Err("UI_ENVIRONMENT: invalid native snapshot".into());
         }

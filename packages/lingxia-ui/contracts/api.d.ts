@@ -25,6 +25,8 @@ export interface Env {
   readonly displayLanguage: string;
   readonly aside: boolean;
   readonly runner: boolean;
+  /** `fallback: "driver"` when this device's GPU driver failed and pages render on the CPU. */
+  readonly renderer?: Readonly<{ fallback: "driver" | null }>;
 }
 
 export type ReadonlyData<T> = T extends object ? { readonly [K in keyof T]: ReadonlyData<T[K]> } : T;

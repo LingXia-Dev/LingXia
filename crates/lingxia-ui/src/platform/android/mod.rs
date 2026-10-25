@@ -200,6 +200,12 @@ pub unsafe fn register_natives(
             "(J)V",
             Java_com_lingxia_ui_GpuView_nativeRelease
         ),
+        method!("nativeGpuSentinel", "(Ljava/lang/String;)V", gpu_sentinel),
+        method!(
+            "nativeRendererFallback",
+            "()Ljava/lang/String;",
+            renderer_fallback
+        ),
         #[cfg(all(feature = "gpu", target_os = "android"))]
         method!(
             "nativeAttach",
@@ -815,5 +821,32 @@ extern "system" fn image_events(
                 ))
                 .map(u8::from)
         })
+    })
+}
+
+/// Back the GPU crash sentinel with a file in app-private storage; the first call wins.
+extern "system" fn gpu_sentinel(mut env: JNIEnv, _: JClass, directory: JString) {
+    guarded(&mut env, |env| {
+        let directory: String = env
+            .get_string(&directory)
+            .map_err(|e| e.to_string())?
+            .into();
+        crate::renderer::sentinel::install(Box::new(crate::renderer::sentinel::FileStore(
+            std::path::Path::new(&directory).join("lingxia-gpu-sentinel"),
+        )));
+        Ok(())
+    });
+}
+
+/// Why pages render on the CPU, or null.
+extern "system" fn renderer_fallback(mut env: JNIEnv, _: JClass) -> jstring {
+    guarded(&mut env, |env| {
+        match crate::renderer::sentinel::fallback() {
+            Some(crate::renderer::sentinel::Fallback::Driver) => env
+                .new_string("driver")
+                .map(|s| s.into_raw())
+                .map_err(|e| e.to_string()),
+            None => Ok(std::ptr::null_mut()),
+        }
     })
 }

@@ -125,6 +125,12 @@ string. Transforms (`uppercase` etc.) are paint-only.
   Geometry is bounded by a shared plot budget on both sides of the wire.
 
 GPU presenters on one device share a `gpu::Context`; caches stay per presenter.
+A driver crash during pipeline compilation cannot be caught: `renderer::sentinel`
+records the adapter (backend, ids, driver, renderer release) before its first
+compile and clears it after the first GPU frame presents. An adapter a dead
+process left on record, or a known-crashing driver, is never used again; Android
+falls back to GLES, then to the CPU renderer. Platforms supply only the store.
+`env.renderer.fallback` is `"driver"` while a blocked adapter is in effect.
 Lock order is presenter registry → context → renderer registry → scene
 renderer. Never call host code while holding these locks.
 
@@ -185,6 +191,7 @@ surface, and make the module banner's required features available.
 | System text scaling | yes | — | — | — | — |
 | Accessibility projection | yes | — | — | — | — |
 | Hover state styles | no (reports a coarse pointer) | — | — | — | — |
+| GPU driver crash sentinel | yes (Maleoon Vulkan → GLES) | — | — | — | — |
 
 ## Verification
 

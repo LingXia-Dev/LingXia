@@ -80,7 +80,7 @@ pub extern "system" fn Java_com_lingxia_ui_GpuView_nativeAttach(
             .next()
             .map(|page| page.context())
             .unwrap_or_default();
-        let presenter = crate::renderer::gpu::Presenter::with_context(
+        let presenter = crate::renderer::gpu::Presenter::with_fallback(
             context,
             Arc::new(window),
             width as u32,

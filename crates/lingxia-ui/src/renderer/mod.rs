@@ -3,6 +3,7 @@ pub mod cpu;
 pub(crate) mod cpu_paint;
 #[cfg(feature = "gpu")]
 pub mod gpu;
+pub mod sentinel;
 
 #[cfg(test)]
 pub(crate) mod backdrop_tests;

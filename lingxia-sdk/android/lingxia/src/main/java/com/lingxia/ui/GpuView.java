@@ -33,6 +33,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     public static native void initializeNative();
 
     private static native long nativeLoad(String source);
+    private static native void nativeGpuSentinel(String directory);
+    private static native String nativeRendererFallback();
     static native long nativeImageQueueCreate();
     static native void nativeImageQueueUpdate(long queue, String sources);
     static native String nativeImageQueueStart(long queue);
@@ -158,6 +160,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     }
     public GpuView(Context context, String source, ExecutorService worker, Listener listener, boolean logic) {
         super(context);
+        nativeGpuSentinel(context.getNoBackupFilesDir().getAbsolutePath());
         hostConfiguration = new android.content.res.Configuration(context.getResources().getConfiguration());
         this.logic = logic;
         this.worker = worker; this.listener = listener; this.source = source;
@@ -606,8 +609,13 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 .put("textScale", textScale)
                 .put("keyboard", new JSONObject().put("height", Math.min(surface.getHeight(), Math.max(0, keyboard - trailingY)) / scale))
                 .put("os", "android").put("pointer", "coarse").put("formFactor", configuration.smallestScreenWidthDp >= 600 ? "tablet" : "phone")
-                .put("displayLanguage", locale.toLanguageTag()).put("aside", false).put("runner", false)).toString();
+                .put("displayLanguage", locale.toLanguageTag()).put("aside", false).put("runner", false)
+                .put("renderer", new JSONObject().put("fallback", fallback()))).toString();
         } catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native environment", error); }
+    }
+    private static Object fallback() {
+        String reason = nativeRendererFallback();
+        return reason == null ? JSONObject.NULL : reason;
     }
     public void dispose() {
         if (destroyed) return;

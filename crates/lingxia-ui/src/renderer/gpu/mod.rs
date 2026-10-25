@@ -31,6 +31,21 @@ impl Default for Context {
 }
 
 impl Context {
+    /// A device domain limited to `backends`, e.g. GLES when the Vulkan driver is blocked.
+    pub fn with_backends(backends: wgpu::Backends) -> Self {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
+        Self(
+            Arc::new(Mutex::new(RenderContext {
+                instance,
+                devices: Vec::new(),
+            })),
+            Default::default(),
+        )
+    }
+
     pub(crate) fn lock(&self) -> Result<MutexGuard<'_, RenderContext>, String> {
         self.0
             .lock()
@@ -67,6 +82,9 @@ impl Context {
     }
 }
 
+/// Prefix of the error for an adapter whose driver crashed a previous process.
+const BLOCKED: &str = "UI_SURFACE: GPU driver failed during a previous launch";
+
 /// Surface ownership and presentation stay on the platform UI thread.
 pub struct Presenter {
     surface: Option<RenderSurface<'static>>,
@@ -83,6 +101,8 @@ pub struct Presenter {
     composed: Option<crate::renderer::gpu::composite::Surface>,
     depth: Option<wgpu::TextureView>,
     context: Context,
+    /// This presenter's adapter record for the crash sentinel.
+    adapter: String,
 }
 
 impl Presenter {
@@ -96,6 +116,28 @@ impl Presenter {
         height: u32,
     ) -> Result<Self, String> {
         Self::with_context(Context::default(), target, width, height)
+    }
+
+    /// On `context`'s adapter, or on GLES when the crash sentinel blocks it.
+    pub fn with_fallback<W>(
+        context: Context,
+        window: Arc<W>,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, String>
+    where
+        Arc<W>: Into<wgpu::SurfaceTarget<'static>>,
+    {
+        match Self::with_context(context, window.clone(), width, height) {
+            Err(error) if error.starts_with(BLOCKED) => Self::with_context(
+                Context::with_backends(wgpu::Backends::GL),
+                window,
+                width,
+                height,
+            )
+            .map_err(|fallback| format!("{error}; GLES: {fallback}")),
+            result => result,
+        }
     }
 
     pub fn with_context(
@@ -115,11 +157,17 @@ impl Presenter {
             wgpu::PresentMode::Fifo,
         ))
         .map_err(|e| e.to_string())?;
+        let adapter = adapter_record(&shared.devices[surface.dev_id].adapter().get_info());
+        if !crate::renderer::sentinel::arm(&adapter) {
+            return Err(format!("{BLOCKED}: {adapter}"));
+        }
         let device = &shared.devices[surface.dev_id].device;
         let depth = raster_target(&mut surface, device);
         let device_id = surface.dev_id;
         drop(shared);
-        let renderer = context.renderer(device_id)?;
+        let renderer = context.renderer(device_id).inspect_err(|_| {
+            crate::renderer::sentinel::released(&adapter);
+        })?;
         Ok(Self {
             surface: Some(surface),
             device_id,
@@ -135,6 +183,7 @@ impl Presenter {
             glyph_cache: Default::default(),
             depth: Some(depth),
             context,
+            adapter,
         })
     }
 
@@ -351,8 +400,23 @@ impl Presenter {
         let started = Instant::now();
         device.queue.present(texture);
         self.presentation_us[3] = started.elapsed().as_micros() as u64;
+        crate::renderer::sentinel::presented(&self.adapter);
         Ok(true)
     }
+}
+
+/// Adapter, driver and renderer release: an update to any of them is tried again.
+fn adapter_record(info: &wgpu::AdapterInfo) -> String {
+    format!(
+        "{:?}|{:04x}:{:04x}|{}|{}|{}|lingxia-ui {}",
+        info.backend,
+        info.vendor,
+        info.device,
+        info.name,
+        info.driver,
+        info.driver_info,
+        env!("CARGO_PKG_VERSION")
+    )
 }
 
 fn raster_target(surface: &mut RenderSurface<'_>, device: &wgpu::Device) -> wgpu::TextureView {
