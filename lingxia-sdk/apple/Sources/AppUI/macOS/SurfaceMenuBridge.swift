@@ -172,6 +172,7 @@ final class SurfaceMenuPresenter: NSObject {
         case "close": L10n.string("lx_surface_close")
         case "closeOthers": L10n.string("lx_surface_close_others")
         case "closeAfter": L10n.string("lx_surface_close_after")
+        case "openInSide": L10n.string("lx_aside_open_in_side")
         case "restart": L10n.string("lx_capsule_restart")
         case "cleanCacheRestart": L10n.string("lx_capsule_clean_cache")
         case "uninstall": L10n.string("lx_capsule_uninstall")
@@ -187,6 +188,9 @@ final class SurfaceMenuPresenter: NSObject {
             return LxIcon.menuImage(fromPath: path)
         }
         switch (item.action.owner, item.action.action) {
+        case ("lxapp", "openInSide"):
+            return NSImage(systemSymbolName: "sidebar.trailing", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
         case ("lxapp", "restart"):
             return LxIcon.menuSymbol("icon_restart")
         case ("lxapp", "cleanCacheRestart"):

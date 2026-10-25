@@ -5942,6 +5942,9 @@ fn surface_menu_entry(
                 lingxia_logic::i18n::t(I18nKey::CapsuleRestart),
                 Some(crate::WindowsDesignIcon::Restart),
             ),
+            LxappSurfaceMenuAction::OpenInSide => {
+                (lingxia_logic::i18n::t(I18nKey::AsideOpenInSide), None)
+            }
             LxappSurfaceMenuAction::CleanCacheRestart => (
                 lingxia_logic::i18n::t(I18nKey::CapsuleCleanCache),
                 Some(crate::WindowsDesignIcon::CleanCache),
@@ -6032,6 +6035,22 @@ fn handle_main_surface_menu_action(
                 return;
             }
             log::warn!("sidebar row is unavailable for inline surface rename");
+        }
+        // Windows re-hosts the page itself (adopt the WebView as a runtime
+        // aside, present the successor main), which the core's own handler
+        // cannot do; route the intent to that path.
+        SurfaceMenuAction::Lxapp {
+            action: lingxia_shell::LxappSurfaceMenuAction::OpenInSide,
+        } => {
+            let appid = lxapp::try_get(owner_appid)
+                .and_then(|owner| owner.main_surface_content(surface_id))
+                .and_then(|content| match content {
+                    lingxia_surface::SurfaceContent::Lxapp { app_id, .. } => Some(app_id),
+                    _ => None,
+                });
+            if let Some(appid) = appid {
+                demote_lxapp_main(&appid);
+            }
         }
         action => perform_main_surface_menu_intent(
             owner_appid,

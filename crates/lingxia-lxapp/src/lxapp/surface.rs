@@ -2631,6 +2631,23 @@ impl LxApp {
                     snapshot,
                 });
             };
+            if matches!(action, lingxia_shell::LxappSurfaceMenuAction::OpenInSide) {
+                // The live main moves beside the main: Logic, page stack and
+                // WebViews stay; the committed plan docks it.
+                let accepted = match app.demote_main_to_aside("") {
+                    Ok(()) => true,
+                    Err(error) => {
+                        warn!("Failed to move the lxapp main into the side panel: {error}")
+                            .with_appid(app.appid.clone());
+                        false
+                    }
+                };
+                return Some(HostSurfaceMenuExecution {
+                    accepted,
+                    removed_surface_ids: Vec::new(),
+                    snapshot: self.surface_switcher_snapshot(),
+                });
+            }
             if matches!(action, lingxia_shell::LxappSurfaceMenuAction::Uninstall) {
                 if app.is_home_lxapp {
                     return Some(HostSurfaceMenuExecution {
@@ -3216,15 +3233,22 @@ fn apply_registry_switcher_titles(
     snapshot
 }
 
+/// "Open in Side Panel" leads for a guest lxapp (the root main never moves).
 /// Restart and clean-cache stay together. Uninstall is its own section, and
 /// only for a guest lxapp — the home app is not removable from the switcher.
 fn lxapp_switcher_maintenance_groups(is_home: bool) -> Vec<Vec<lingxia_shell::SurfaceMenuItem>> {
-    let mut groups = vec![vec![
+    let mut groups = Vec::new();
+    if !is_home {
+        groups.push(vec![lingxia_shell::SurfaceMenuItem::lxapp(
+            lingxia_shell::LxappSurfaceMenuAction::OpenInSide,
+        )]);
+    }
+    groups.push(vec![
         lingxia_shell::SurfaceMenuItem::lxapp(lingxia_shell::LxappSurfaceMenuAction::Restart),
         lingxia_shell::SurfaceMenuItem::lxapp(
             lingxia_shell::LxappSurfaceMenuAction::CleanCacheRestart,
         ),
-    ]];
+    ]);
     if !is_home {
         let mut uninstall =
             lingxia_shell::SurfaceMenuItem::lxapp(lingxia_shell::LxappSurfaceMenuAction::Uninstall);
@@ -3760,7 +3784,20 @@ mod tests {
             uninstall.role,
             lingxia_shell::SurfaceMenuItemRole::Destructive
         );
-        assert_eq!(guest.len(), 2);
+        // Open in Side Panel leads, then maintenance, then uninstall.
+        assert_eq!(guest.len(), 3);
+        assert!(matches!(
+            guest[0][0].action,
+            lingxia_shell::SurfaceMenuAction::Lxapp {
+                action: lingxia_shell::LxappSurfaceMenuAction::OpenInSide
+            }
+        ));
+        assert!(!home.iter().flatten().any(|item| matches!(
+            item.action,
+            lingxia_shell::SurfaceMenuAction::Lxapp {
+                action: lingxia_shell::LxappSurfaceMenuAction::OpenInSide
+            }
+        )));
     }
 
     #[test]
