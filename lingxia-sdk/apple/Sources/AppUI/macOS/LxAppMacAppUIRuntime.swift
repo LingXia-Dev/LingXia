@@ -174,6 +174,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.onRestoreMaximizedAside = { [weak self] in
             self?.collapseExpandedAsides() ?? false
         }
+        shell.onAsideLxAppClosed = { [weak self] surfaceId in
+            self?.releaseAsidePanel(surfaceId: surfaceId, closingAppId: nil)
+        }
         shell.setToolbarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
         }
@@ -922,6 +925,14 @@ final class LxAppMacAppUIRuntime: NSObject {
             ?? runtimeLxAppPanels[surfaceId]?.appId
             ?? surfaceId
         guard !appId.isEmpty else { return false }
+        releaseAsidePanel(surfaceId: surfaceId, closingAppId: appId)
+        return true
+    }
+
+    /// Take side panel tab `surfaceId` out of the shell and the core graph,
+    /// closing `closingAppId`'s session on the way when the panel is what
+    /// closes it (nil when the runtime already closed the app).
+    private func releaseAsidePanel(surfaceId: String, closingAppId: String?) {
         _ = closeManagedSurface(id: surfaceId)
         if let primaryAppId = graphOwnerAppId {
             _ = unregisterHostAside(primaryAppId, surfaceId)
@@ -929,12 +940,13 @@ final class LxAppMacAppUIRuntime: NSObject {
         runtimeLxAppPanels.removeValue(forKey: surfaceId)
         openedSurfaceIDs.remove(surfaceId)
         visibleSurfaceIDs.remove(surfaceId)
-        shell.closeAsideLxApp(appId: appId)
+        if let closingAppId {
+            shell.closeAsideLxApp(appId: closingAppId)
+        }
         shell.unregisterPanel(id: surfaceId)
         managedRoleOverrides.removeValue(forKey: surfaceId)
         managedEdgeOverrides.removeValue(forKey: surfaceId)
         refreshChromeActions()
-        return true
     }
 
     /// Collapse any fullscreen-expanded aside back to its docked edge (keeps it

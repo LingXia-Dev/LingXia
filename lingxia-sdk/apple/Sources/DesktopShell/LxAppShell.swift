@@ -1105,6 +1105,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// maximized. Wired by the AppUI runtime to the core slot state.
     var onRestoreMaximizedAside: (() -> Bool)?
 
+    /// An lxapp shown in side panel `id` was closed by the runtime (not by
+    /// the panel), so the panel holds nothing. Wired by the AppUI runtime to
+    /// release the panel as the panel's own close does.
+    var onAsideLxAppClosed: ((String) -> Void)?
+
     /// A user intent to see main (draft §3.3): restore a maximized aside before
     /// the switch, also when the target is the main already showing. The aside
     /// keeps its size and its page.
@@ -2055,11 +2060,18 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         if let viewController = asideViewControllers[appId] {
             viewController.destroyNativeComponents()
         }
+        let asidePanelId = asidePanelIdByAppId[appId]
         detachAsideLxApp(appId: appId)
 
         tabManager.closeTab(appId: appId)
         appSessions.removeValue(forKey: appId)
         LxAppCore.removeSessionId(for: appId)
+
+        // A runtime close (not a restart, which reopens in place) leaves the
+        // app's side panel tab with nothing to show; let the runtime release it.
+        if !notifyRuntime, !suppressAutoReopen, let asidePanelId {
+            onAsideLxAppClosed?(asidePanelId)
+        }
 
         // A restart drives its own reopen; everything else reveals the next app.
         guard revealNext, !suppressAutoReopen, autoRevealOnClose else { return }
