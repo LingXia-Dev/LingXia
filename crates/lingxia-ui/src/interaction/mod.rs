@@ -1,4 +1,5 @@
 //! Platform-neutral input, editor and selection policy.
+pub mod chrome;
 pub mod frame;
 pub(crate) mod input_hits;
 pub(crate) mod input_state;

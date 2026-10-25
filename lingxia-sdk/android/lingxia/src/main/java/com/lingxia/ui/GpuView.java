@@ -67,6 +67,11 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native void nativeInput(long host, String request, long callback);
     static native void nativeCaret(long host, boolean eligible, boolean connected, String text, int anchor, int focus, int start, int end);
     static native void nativeImageLoaded(long host, long id, byte[] bytes);
+    // Chrome geometry over a snapshot node's JSON; the policy lives in the shared core.
+    static native boolean nativeChromeContains(String node, float x, float y, boolean ownRadius);
+    static native float[] nativeHandleEndpoint(String node, int which);
+    static native float[] nativeHandleHit(String node, float x, float y, boolean collapsed);
+    static native float[] nativeHandleDrag(String node, float x, float y);
     /** Where the GPU crash sentinel keeps its record; the first call in a process wins. */
     static native void nativeGpuSentinel(String directory);
     private static native void nativeAttach(long host, android.view.Surface surface, int width, int height);

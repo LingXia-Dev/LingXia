@@ -14,6 +14,8 @@ import static org.junit.Assert.*;
 @RunWith(RobolectricTestRunner.class)
 @Config(manifest=Config.NONE,sdk={23,31})
 public class GpuSelectionHandlesTest {
+    @org.junit.Before public void loadCore() { GpuNative.load(); }
+
     static class Client implements GpuIme.Host,GpuSelectionHandles.Host {
         final ArrayList<JSONObject> requests=new ArrayList<>();
         final ArrayList<Consumer<JSONObject>> replies=new ArrayList<>();

@@ -129,6 +129,18 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeCaret", "(JZZLjava/lang/String;IIII)V", caret),
         method!("nativeImageLoaded", "(JJ[B)V", image_loaded),
         method!("nativeGpuSentinel", "(Ljava/lang/String;)V", gpu_sentinel),
+        method!(
+            "nativeChromeContains",
+            "(Ljava/lang/String;FFZ)Z",
+            chrome_contains
+        ),
+        method!(
+            "nativeHandleEndpoint",
+            "(Ljava/lang/String;I)[F",
+            handle_endpoint
+        ),
+        method!("nativeHandleHit", "(Ljava/lang/String;FFZ)[F", handle_hit),
+        method!("nativeHandleDrag", "(Ljava/lang/String;FF)[F", handle_drag),
         #[cfg(all(feature = "gpu", target_os = "android"))]
         method!("nativeAttach", "(JLandroid/view/Surface;II)V", attach),
     ];
@@ -600,6 +612,107 @@ extern "system" fn image_loaded<'a>(
         };
         host(handle)?.image_loaded(id as u64, bytes);
         Ok(())
+    })
+}
+
+use crate::interaction::chrome::{self, ChromeNode};
+
+fn chrome_node(env: &mut Env, node: &JString) -> Result<ChromeNode, Error> {
+    Ok(ChromeNode::parse(&text(env, node)?)?)
+}
+
+/// A float array, or null for `None`.
+fn floats<'a>(
+    env: &mut Env<'a>,
+    values: Option<&[f32]>,
+) -> Result<jni::objects::JFloatArray<'a>, Error> {
+    let Some(values) = values else {
+        return Ok(jni::objects::JFloatArray::null());
+    };
+    let array = env.new_float_array(values.len())?;
+    array.set_region(env, 0, values)?;
+    Ok(array)
+}
+
+extern "system" fn chrome_contains<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    node: JString<'a>,
+    x: jfloat,
+    y: jfloat,
+    own_radius: jboolean,
+) -> jboolean {
+    run(&mut env, |env| {
+        Ok(chrome::contains(
+            &chrome_node(env, &node)?,
+            f64::from(x),
+            f64::from(y),
+            own_radius,
+        ))
+    })
+}
+
+/// `[center x, line bottom, line middle]` of the anchor (0) or caret (1) handle, or null.
+extern "system" fn handle_endpoint<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    node: JString<'a>,
+    which: jint,
+) -> jni::objects::JFloatArray<'a> {
+    run(&mut env, |env| {
+        let end = chrome::endpoint(&chrome_node(env, &node)?, usize::from(which != 0));
+        floats(
+            env,
+            end.map(|e| e.map(|v| v as f32))
+                .as_ref()
+                .map(|e| e.as_slice()),
+        )
+    })
+}
+
+/// `[which, center x, line bottom, line middle]` of the grabbed handle, or null.
+extern "system" fn handle_hit<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    node: JString<'a>,
+    x: jfloat,
+    y: jfloat,
+    collapsed: jboolean,
+) -> jni::objects::JFloatArray<'a> {
+    run(&mut env, |env| {
+        let hit = chrome::handle_hit(
+            &chrome_node(env, &node)?,
+            f64::from(x),
+            f64::from(y),
+            collapsed,
+        )
+        .map(|(which, [cx, bottom, middle])| {
+            [which as f32, cx as f32, bottom as f32, middle as f32]
+        });
+        floats(env, hit.as_ref().map(|h| h.as_slice()))
+    })
+}
+
+/// `[x, y, edge x, edge y, visible]` for a handle drag query, or null to end the drag.
+extern "system" fn handle_drag<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    node: JString<'a>,
+    x: jfloat,
+    y: jfloat,
+) -> jni::objects::JFloatArray<'a> {
+    run(&mut env, |env| {
+        let drag =
+            chrome::drag_point(&chrome_node(env, &node)?, f64::from(x), f64::from(y)).map(|d| {
+                [
+                    d.point[0] as f32,
+                    d.point[1] as f32,
+                    d.edge[0] as f32,
+                    d.edge[1] as f32,
+                    f32::from(u8::from(d.visible)),
+                ]
+            });
+        floats(env, drag.as_ref().map(|d| d.as_slice()))
     })
 }
 

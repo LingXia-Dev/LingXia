@@ -64,7 +64,7 @@ public class GpuRecoveryTest {
             public void onError(Throwable error) { errors.incrementAndGet(); }
         });
         android.view.View surface = view.getChildAt(0), feedback = view.getChildAt(1);
-        GpuNative.settle();
+        GpuNative.settleUntil(() -> errors.get() > 0);
         assertEquals(1, errors.get());
         assertEquals("the recovery panel sits above surface and feedback", 3, view.getChildCount());
         LinearLayout panel = (LinearLayout)view.getChildAt(2);
@@ -74,7 +74,7 @@ public class GpuRecoveryTest {
         view.reload(GpuNative.module("function render(){return h('text',{},'ok')}"));
         assertEquals(2, view.getChildCount());
         assertSame(surface, view.getChildAt(0)); assertSame(feedback, view.getChildAt(1));
-        GpuNative.settle();
+        GpuNative.settleUntil(() -> loads.get() > 0);
         assertEquals(1, loads.get());
         assertEquals(2, view.getChildCount());
         view.dispose();

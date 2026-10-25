@@ -37,7 +37,6 @@ final class GpuSelectionHandles extends Drawable {
         }
         return null;
     }
-    private static JSONObject geometry(JSONObject node) { return node.optJSONObject("input").optJSONObject("geometry"); }
     private boolean matches(JSONObject node) {
         JSONObject state=node.optJSONObject("input").optJSONObject("edit");
         JSONArray selection=state == null ? null : state.optJSONArray("selection");
@@ -45,18 +44,9 @@ final class GpuSelectionHandles extends Drawable {
         return c != null && c.settled() && selection != null && state.optString("text").equals(ime.menuText())
             && selection.optInt(0,-1)==c.anchor() && selection.optInt(1,-1)==c.focus();
     }
-    // Center x, line bottom, line midpoint. Offscreen endpoints must not become edge handles.
+    /** Center x, line bottom, line midpoint, or null when that end is offscreen or clipped. */
     private float[] endpoint(JSONObject node,String name) {
-        JSONObject geometry=geometry(node); if (geometry == null) return null;
-        JSONArray r=geometry.optJSONArray(name), clip=geometry.optJSONArray("content_bounds");
-        if (r == null || clip == null) return null;
-        float cx=(float)(r.optDouble(0)+r.optDouble(2)/2), bottom=(float)(r.optDouble(1)+r.optDouble(3));
-        float mid=(float)(r.optDouble(1)+r.optDouble(3)/2);
-        if (Float.isNaN(cx) || Float.isInfinite(cx) || Float.isNaN(bottom) || Float.isInfinite(bottom) || Float.isNaN(mid) || Float.isInfinite(mid)
-            || cx < clip.optDouble(0) || cx > clip.optDouble(0)+clip.optDouble(2)
-            || bottom <= clip.optDouble(1) || bottom > clip.optDouble(1)+clip.optDouble(3)+0.5
-            || !GpuHighlight.contains(node,cx,bottom-0.5,false)) return null;
-        return new float[]{cx,bottom,mid};
+        return GpuView.nativeHandleEndpoint(node.toString(),name.equals("anchor") ? 0 : 1);
     }
     void update() {
         if (owner != null) {
@@ -74,17 +64,10 @@ final class GpuSelectionHandles extends Drawable {
         if (action==MotionEvent.ACTION_DOWN) {
             cancel(); JSONObject node=node(); if (node==null || !matches(node) || host.busy()) return false;
             float factor=host.scale(), px=event.getX()/factor, py=event.getY()/factor;
-            if (!GpuHighlight.containsAncestors(node,px,py)) return false;
             GpuInputConnection c=ime.capture().connection;
-            float[] hit=null; int chosen=-1; float best=22*22;
-            for(int i=0;i<2;i++) {
-                if (i==0 && c.anchor()==c.focus()) continue;
-                float[] endpoint=endpoint(node,i==0 ? "anchor" : "caret"); if (endpoint==null) continue;
-                if (py<endpoint[1]-4) continue;
-                float distance=(px-endpoint[0])*(px-endpoint[0])+(py-endpoint[1]-8)*(py-endpoint[1]-8);
-                if (distance<best) { best=distance; hit=endpoint; chosen=i; }
-            }
-            if (hit==null) return false;
+            float[] grabbed=GpuView.nativeHandleHit(node.toString(),px,py,c.anchor()==c.focus());
+            if (grabbed==null) return false;
+            int chosen=(int)grabbed[0]; float[] hit={grabbed[1],grabbed[2],grabbed[3]};
             owner=ime.capture(); text=ime.menuText(); scale=factor; pointer=event.getPointerId(0);
             collapsed=c.anchor()==c.focus(); fixed=chosen==0 ? c.focus() : c.anchor();
             dx=px-hit[0]; dy=py-hit[2]; x=hit[0]; y=hit[2]; movement=0; failedGeneration=-1;
@@ -106,18 +89,10 @@ final class GpuSelectionHandles extends Drawable {
         JSONObject node=node(); if (node==null || !matches(node)) return;
         if (!pending) { if (released) finish(); return; }
         long generation=host.frame().optLong("generation"); if (generation==failedGeneration) return;
-        JSONArray b=node.optJSONArray("visible_bounds"), content=geometry(node).optJSONArray("content_bounds");
-        if (b==null || content==null) return;
-        float left=(float)Math.max(b.optDouble(0),content.optDouble(0));
-        float top=(float)Math.max(b.optDouble(1),content.optDouble(1));
-        float right=(float)Math.min(b.optDouble(0)+b.optDouble(2),content.optDouble(0)+content.optDouble(2));
-        float bottom=(float)Math.min(b.optDouble(1)+b.optDouble(3),content.optDouble(1)+content.optDouble(3));
-        if (right-left<1 || bottom-top<1) { cancel(); return; }
-        float px=Math.max(left+0.5f,Math.min(x,right-0.5f));
-        float py=Math.max(top+0.5f,Math.min(y,bottom-0.5f));
-        int edgeX=x<content.optDouble(0) ? -1 : x>content.optDouble(0)+content.optDouble(2) ? 1 : 0;
-        int edgeY=y<content.optDouble(1) ? -1 : y>content.optDouble(1)+content.optDouble(3) ? 1 : 0;
-        if (!GpuHighlight.contains(node,px,py,false)) { pending=false; if (released) finish(); return; }
+        float[] drag=GpuView.nativeHandleDrag(node.toString(),x,y);
+        if (drag==null) { cancel(); return; }
+        float px=drag[0], py=drag[1]; int edgeX=(int)drag[2], edgeY=(int)drag[3];
+        if (drag[4]==0) { pending=false; if (released) finish(); return; }
         long serial=gesture, point=movement; querying=true;
         boolean sent=ime.dragSelection(node,generation,px,py,edgeX,edgeY,fixed,collapsed,() -> owner!=null && gesture==serial && movement==point,result -> {
             if (gesture!=serial || owner==null) return;

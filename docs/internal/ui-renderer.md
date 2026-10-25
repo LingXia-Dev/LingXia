@@ -177,6 +177,8 @@ Java `GpuPlatform` interface (Choreographer vsync, `Handler` posts, CPU or
 Vulkan presentation, IME, accessibility events, feedback chrome) and exposes
 host calls as `GpuView` natives. Java converts events and draws chrome; it
 holds no frame sequencing, timers, layout, hit testing or effect parsing.
+Chrome geometry (clip tests, selection-handle hit radius, knob offset and drag
+clamping) is `interaction::chrome` over the snapshot node.
 Pages of one `appId:session` share a worker by key. Host JVM tests load the real core built with the `jvm`
 feature.
 

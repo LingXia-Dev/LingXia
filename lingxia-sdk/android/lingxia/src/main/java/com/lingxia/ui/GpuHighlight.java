@@ -7,22 +7,11 @@ import android.graphics.drawable.GradientDrawable;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/** Pressed/focus feedback and selection chrome masks, drawn from presented geometry. */
+/** Pressed/focus feedback drawn from presented geometry; hit policy is in the shared core. */
 final class GpuHighlight {
-    /** Whether chrome anchored at a point would show through the node's clips. */
+    /** Whether chrome anchored at a logical point would show through the node's clips. */
     static boolean contains(JSONObject node, double x, double y, boolean ownRadius) {
-        JSONArray visible = node.optJSONArray("visible_bounds");
-        if (!inside(visible == null ? node.optJSONArray("bounds") : visible, 0, x, y)) return false;
-        if (ownRadius && !inside(node.optJSONArray("bounds"), node.optDouble("radius"), node.optJSONArray("radii"), x, y)) return false;
-        return containsAncestors(node,x,y);
-    }
-    static boolean containsAncestors(JSONObject node,double x,double y) {
-        JSONArray clips = node.optJSONArray("clips");
-        for (int i = 0; clips != null && i < clips.length(); i++) {
-            JSONObject clip = clips.optJSONObject(i);
-            if (clip == null || !inside(clip.optJSONArray("bounds"), clip.optDouble("radius"), clip.optJSONArray("radii"), x, y)) return false;
-        }
-        return true;
+        return GpuView.nativeChromeContains(node.toString(), (float)x, (float)y, ownRadius);
     }
     private static double[] radii(JSONArray values, double radius, double width, double height) {
         double[] result = new double[8];
@@ -42,30 +31,6 @@ final class GpuHighlight {
         for (int i = 0; i < 8; i++) result[i] *= factor;
         return result;
     }
-    private static boolean inside(JSONArray b, double radius, double x, double y) {
-        return inside(b,radius,null,x,y);
-    }
-    private static boolean inside(JSONArray b, double radius, JSONArray corners, double x, double y) {
-        if (b == null) return false;
-        double left = b.optDouble(0), top = b.optDouble(1), width = b.optDouble(2), height = b.optDouble(3);
-        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(left) || !Double.isFinite(top)
-            || !Double.isFinite(width) || !Double.isFinite(height) || width <= 0 || height <= 0
-            || x < left || y < top || x >= left + width || y >= top + height) return false;
-        double[] rs = radii(corners,radius,width,height);
-        if (rs == null) return false;
-        for (int i = 0; i < 4; i++) {
-            double rx=rs[i*2],ry=rs[i*2+1];
-            if (rx == 0 || ry == 0) continue;
-            boolean right=i==1||i==2, bottom=i>=2;
-            double cx=right?left+width-rx:left+rx, cy=bottom?top+height-ry:top+ry;
-            if ((right?x>cx:x<cx) && (bottom?y>cy:y<cy)) {
-                double dx=(x-cx)/rx,dy=(y-cy)/ry;
-                return dx*dx+dy*dy<=1;
-            }
-        }
-        return true;
-    }
-
     /** Feedback obeys the same ancestor masks as GPU paint. */
     static final class Highlight extends GradientDrawable {
         private Path[] masks = new Path[0];
