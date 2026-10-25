@@ -1035,6 +1035,9 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
     // The same edge the panel docks at below, so a collapsed slot's handle
     // sits where the panel was.
     let edge = slot.edge.or_else(|| aside.and_then(|aside| aside.edge));
+    // A collapsed slot, or one hidden because it has no room to dock beside
+    // the main, keeps its edge handle: its content stays one click away. A
+    // slot whose children were all hidden by their app has nothing to show.
     lingxia_windows_contract::set_aside_panel_collapsed(
         ASIDE_PANEL_ID,
         (slot.active_child.is_some() && (slot.collapsed || !slot.visible))

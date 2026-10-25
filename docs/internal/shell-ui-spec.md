@@ -817,7 +817,9 @@ for the `panel` slot they merged into.
 - A slot with content that has no room to dock beside the main (a narrow
   window) is never silently absent: an explicit open shows it as an overlay,
   and while it stays hidden it keeps the same edge handle, whose click shows
-  it as an overlay again. Widening the window docks it.
+  it as an overlay again. Widening the window docks it. A slot whose children
+  were all hidden by their app has no handle, and a handle never reveals a
+  hidden child.
 - Dragging a shell element to a drop target (an aside tab to the sidebar, a
   sidebar group to the main's edge) keeps the plain arrow cursor and shows
   the element's name on a translucent chip under the pointer (macOS: the
@@ -893,7 +895,8 @@ for the `panel` slot they merged into.
 - Keyboard Back (macOS Backspace) acts on the page stack of the region that
   has focus: an aside page pops its own stack, never the main's.
 - Cmd+Option+\ (Windows Ctrl+Alt+\) collapses the side panel slot or
-  restores it, wherever focus is (a page, shell chrome, a native panel);
+  restores it (a slot with no room to dock comes back as an overlay, as from
+  its handle), wherever focus is (a page, shell chrome, a native panel);
   focus moves into the aside page when it returns and back to the main when
   it goes. Escape in a maximized aside's page, or in the shell, takes the
   aside back to its dock; it never collapses the aside.

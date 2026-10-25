@@ -56,6 +56,8 @@ mod dev_service_mark;
 mod device_frame;
 #[cfg(target_os = "windows")]
 pub(crate) mod dpi;
+#[cfg(all(target_os = "windows", feature = "shell-chrome"))]
+mod drag_ghost;
 #[cfg(all(
     target_os = "windows",
     any(

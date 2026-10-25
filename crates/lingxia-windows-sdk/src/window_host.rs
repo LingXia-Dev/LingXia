@@ -7546,6 +7546,14 @@ fn resize_hit_test(hwnd: HWND, point: (i32, i32)) -> Option<LRESULT> {
     if unsafe { WindowsAndMessaging::IsZoomed(hwnd).as_bool() } {
         return None;
     }
+    // A collapsed aside's handle sits flush with the window edge, inside the
+    // resize border: a click there restores the panel, not a resize.
+    #[cfg(feature = "shell-chrome")]
+    if chrome_state_for_window(hwnd)
+        .is_some_and(|state| crate::shell::collapsed_aside_handle_hit(&state, point))
+    {
+        return None;
+    }
     let mut client = RECT::default();
     unsafe {
         if WindowsAndMessaging::GetClientRect(hwnd, &mut client).is_err() {
@@ -8028,10 +8036,14 @@ fn update_aside_tab_drag(hwnd: HWND, point: (i32, i32)) -> bool {
     if dragging {
         let over = point_over_sidebar(hwnd, point);
         set_aside_tab_drop_target(hwnd, over);
-        if over {
-            set_pane_handle_cursor();
-        } else {
-            set_pane_drag_cursor();
+        set_shell_drop_cursor(over);
+        let source = aside_tab_drags()
+            .get(&hwnd_handle(hwnd))
+            .map(|drag| (drag.panel_id.clone(), drag.surface_id.clone()));
+        if let Some((panel_id, surface_id)) = source {
+            track_drag_ghost(hwnd, point, || {
+                crate::shell::aside_tab_drag_label(&panel_id, &surface_id)
+            });
         }
     }
     true
@@ -8043,6 +8055,7 @@ fn update_aside_tab_drag(hwnd: HWND, point: (i32, i32)) -> bool {
 fn finish_aside_tab_drag(hwnd: HWND, point: Option<(i32, i32)>) -> Option<bool> {
     let drag = aside_tab_drags().remove(&hwnd_handle(hwnd))?;
     set_aside_tab_drop_target(hwnd, false);
+    end_drag_ghost();
     if !drag.dragging {
         return Some(false);
     }

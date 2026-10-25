@@ -506,6 +506,34 @@ impl SurfaceManager {
         shown
     }
 
+    /// Bring an aside slot back into view: restore it when collapsed, and
+    /// when it has no room to dock beside the main, show its active child as
+    /// an overlay (the fallback an explicit open gets). The edge handle of a
+    /// collapsed slot and of a slot hidden for lack of room both end here, so
+    /// no slot with content is ever out of reach. Returns whether anything
+    /// changed.
+    pub fn reveal_slot(&mut self, kind: crate::SlotKind) -> bool {
+        let restored = self.set_slot_collapsed(kind, false);
+        let child = self
+            .graph
+            .aside_slots(self.size_class)
+            .into_iter()
+            .find(|slot| slot.kind == kind)
+            // Only a mounted child: one hidden by its app stays hidden.
+            .and_then(|slot| slot.active_child);
+        let Some(child) = child else {
+            return restored;
+        };
+        if self.needs_overlay(&child)
+            && self.overlay_fallback_surface_id.as_deref() != Some(child.as_str())
+        {
+            self.overlay_fallback_surface_id = Some(child);
+            self.bump_revision();
+            return true;
+        }
+        restored
+    }
+
     /// Collapse or restore a whole aside slot. Collapsing is the shell's
     /// "put this region away" gesture: nothing closes, so the overlay
     /// fallback for a child of the slot is dropped along with the dock.
@@ -661,6 +689,51 @@ mod tests {
         let mut s = Surface::lxapp(id, Role::Aside, id);
         s.placement.edge = Some(edge);
         s
+    }
+
+    #[test]
+    fn reveal_slot_overlays_a_slot_without_room() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(aside_s("chat", Edge::Right));
+        // A Medium window whose sidebar leaves no room to dock beside the
+        // main (700 - 184 < 360 + 240): once the open's own fallback is gone
+        // (a click on main), the slot is hidden.
+        m.set_width(700.0);
+        m.set_sidebar_width(184.0);
+        assert_eq!(m.size_class(), SizeClass::Medium);
+        m.set_active_main("home");
+        let hidden = m.presentation_plan();
+        let slot = hidden
+            .aside_slots
+            .iter()
+            .find(|s| s.kind == crate::SlotKind::Panel)
+            .unwrap();
+        assert!(!slot.visible && !slot.collapsed);
+        // The edge handle reveals it as an overlay.
+        assert!(m.reveal_slot(crate::SlotKind::Panel));
+        let shown = m.presentation_plan();
+        let slot = shown
+            .aside_slots
+            .iter()
+            .find(|s| s.kind == crate::SlotKind::Panel)
+            .unwrap();
+        assert!(slot.visible && slot.overlay);
+        assert_eq!(slot.active_child.as_deref(), Some("chat"));
+        // A collapsed slot is restored the same way.
+        m.set_slot_collapsed(crate::SlotKind::Panel, true);
+        assert!(m.reveal_slot(crate::SlotKind::Panel));
+        assert!(!m.graph().slot_collapsed(crate::SlotKind::Panel));
+        // A child its app hid is not brought back by the handle.
+        m.hide("chat");
+        assert!(!m.reveal_slot(crate::SlotKind::Panel));
+        let plan = m.presentation_plan();
+        let slot = plan
+            .aside_slots
+            .iter()
+            .find(|s| s.kind == crate::SlotKind::Panel)
+            .unwrap();
+        assert!(!slot.visible && slot.active_child.is_none());
     }
 
     #[test]
@@ -1027,6 +1100,8 @@ mod tests {
         let mut native = Surface::native("terminal", Role::Aside, "terminal");
         native.placement.edge = Some(Edge::Right);
         manager.open(native);
+        // The lxapp and the browser tab share the side panel; the terminal
+        // docks as the native slot beside it.
         assert_eq!(
             manager
                 .presentation_plan()

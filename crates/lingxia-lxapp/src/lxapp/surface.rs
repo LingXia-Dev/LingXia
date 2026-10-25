@@ -1063,11 +1063,16 @@ impl WindowSurfaceController {
     }
 
     fn set_slot_collapsed(&self, kind: lingxia_surface::SlotKind, collapsed: bool) -> bool {
-        let changed = self
-            .manager
-            .lock()
-            .unwrap()
-            .set_slot_collapsed(kind, collapsed);
+        // Restoring is "show me this region": it also reveals a slot that is
+        // hidden for lack of room, as an overlay.
+        let changed = {
+            let mut manager = self.manager.lock().unwrap();
+            if collapsed {
+                manager.set_slot_collapsed(kind, true)
+            } else {
+                manager.reveal_slot(kind)
+            }
+        };
         if changed {
             self.commit();
         }
@@ -1082,9 +1087,19 @@ impl WindowSurfaceController {
             if !manager.slot_occupied(kind) {
                 return None;
             }
-            let collapsed = !manager.graph().slot_collapsed(kind);
-            manager.set_slot_collapsed(kind, collapsed);
-            collapsed
+            // Only a slot on screen collapses; a collapsed one, or one hidden
+            // for lack of room, is revealed like its edge handle does.
+            let shown = manager
+                .presentation_plan()
+                .aside_slots
+                .iter()
+                .any(|slot| slot.kind == kind && slot.visible);
+            if shown {
+                manager.set_slot_collapsed(kind, true);
+            } else {
+                manager.reveal_slot(kind);
+            }
+            shown
         };
         self.commit();
         Some(collapsed)
