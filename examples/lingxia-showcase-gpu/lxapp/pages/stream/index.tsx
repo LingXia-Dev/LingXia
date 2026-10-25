@@ -62,7 +62,7 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
   const anchor = { index: Math.max(0, keys.length - 1), align: 'end' as const, seq: tailRevision.value + messages.length };
   const empty = !messages.length && !pending;
   return (
-    <page testId="stream-page" className="bg-background">
+    <page testId="stream-page" className="bg-background text-foreground">
       {messages.length > 0 && !pending && (
         <row className="justify-end px-4 pt-3">
           <button testId="stream-clear" onClick={() => actions.onClear()} className="px-3 py-1 rounded-full bg-card text-xs text-primary shadow-sm">

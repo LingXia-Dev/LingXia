@@ -74,7 +74,7 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
       });
   };
   return (
-    <page testId="todo-page" className="bg-background items-center px-3 py-6 gap-4">
+    <page testId="todo-page" className="bg-background text-foreground items-center px-3 py-6 gap-4">
       <text className="text-7xl font-thin tracking-tighter text-red-300">todos</text>
       <column
         testId="todo-panel"

@@ -6,7 +6,7 @@ export function EmptyState({ icon = 'note', title, message, testId }: { icon?: I
   return (
     <column className="items-center gap-2 px-5 py-10">
       <Icon name={icon} className="w-12 h-12 text-muted-foreground" />
-      <text testId={testId} className="text-lg font-medium text-center">
+      <text testId={testId} className="text-lg font-medium text-center text-foreground">
         {title}
       </text>
       {message ? <text className="text-sm text-muted-foreground text-center">{message}</text> : null}

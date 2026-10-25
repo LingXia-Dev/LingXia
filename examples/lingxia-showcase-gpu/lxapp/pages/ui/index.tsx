@@ -352,7 +352,7 @@ function Navigation({ data, actions }: Pane) {
   const pages = (data.pageStack || []) as { index: number; name: string; current: boolean }[];
   const events = (data.events || []) as string[];
   return (
-    <page className="bg-background">
+    <page className="bg-background text-foreground">
       <scroll testId="page-scroll" className="grow basis-0">
         <column className="w-full max-w-3xl self-center px-4 pt-5 pb-10 gap-4">
           <ChromeError data={data} />
