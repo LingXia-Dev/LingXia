@@ -1,11 +1,14 @@
-use lingxia_ui::protocol::field;
+use lingxia_ui::protocol::field::{
+    BACKGROUND, COLOR, FONT_SIZE, HEIGHT, INSET_LEFT, INSET_TOP, WIDTH,
+};
+use lingxia_ui::protocol::tag::{COLUMN, SEARCH, STACK, TEXT};
 use lingxia_ui::{
     Renderer,
     protocol::{color, decode},
 };
 use serde_json::{Value, json};
 
-fn node(wire: &mut Vec<Value>, tag: u32, parent: i64, text: &str, fields: Value) {
+fn node(wire: &mut Vec<Value>, tag: usize, parent: i64, text: &str, fields: Value) {
     let fields = fields.as_array().unwrap();
     wire.extend(
         json!([tag, parent, "", "", text, fields.len() / 2])
@@ -36,8 +39,8 @@ fn colors_accept_only_rgb_rgba_or_known_tokens() {
         "unknown",
     ] {
         assert!(color(invalid).is_err(), "{invalid}");
-        for field in [5, 6] {
-            let wire = json!([2, -1, "", "", "label", 1, field, invalid]);
+        for field in [COLOR, BACKGROUND] {
+            let wire = json!([TEXT, -1, "", "", "label", 1, field, invalid]);
             assert!(decode(wire.as_array().unwrap()).is_err(), "{invalid}");
         }
     }
@@ -46,21 +49,51 @@ fn colors_accept_only_rgb_rgba_or_known_tokens() {
 #[test]
 fn translucent_stack_layers_composite_in_order_without_premultiplying_twice() {
     let mut wire = vec![];
-    node(&mut wire, 17, -1, "", json!([0, 64, 1, 64, 6, "#204060"]));
-    node(&mut wire, 0, 0, "", json!([0, 32, 1, 64, 6, "#00000080"]));
     node(
         &mut wire,
-        0,
-        0,
+        STACK,
+        -1,
         "",
-        json!([0, 32, 1, 64, 6, "#ff000000", field::INSET_LEFT, 32]),
+        json!([WIDTH, 64, HEIGHT, 64, BACKGROUND, "#204060"]),
     );
     node(
         &mut wire,
-        0,
+        COLUMN,
         0,
         "",
-        json!([0, 32, 1, 32, 6, "#ffffff80", field::INSET_TOP, 32]),
+        json!([WIDTH, 32, HEIGHT, 64, BACKGROUND, "#00000080"]),
+    );
+    node(
+        &mut wire,
+        COLUMN,
+        0,
+        "",
+        json!([
+            WIDTH,
+            32,
+            HEIGHT,
+            64,
+            BACKGROUND,
+            "#ff000000",
+            INSET_LEFT,
+            32
+        ]),
+    );
+    node(
+        &mut wire,
+        COLUMN,
+        0,
+        "",
+        json!([
+            WIDTH,
+            32,
+            HEIGHT,
+            32,
+            BACKGROUND,
+            "#ffffff80",
+            INSET_TOP,
+            32
+        ]),
     );
     let frame = Renderer::default()
         .layout(&decode(&wire).unwrap(), 64, 64, 1.0)
@@ -88,14 +121,20 @@ fn translucent_stack_layers_composite_in_order_without_premultiplying_twice() {
 fn transparent_text_and_search_strokes_keep_geometry_without_visible_ink() {
     let render = |tint: &str| {
         let mut wire = vec![];
-        node(&mut wire, 0, -1, "", json!([6, "#ffffff"]));
-        node(&mut wire, 2, 0, "Alpha text", json!([4, 24, 5, tint]));
+        node(&mut wire, COLUMN, -1, "", json!([BACKGROUND, "#ffffff"]));
         node(
             &mut wire,
-            14,
+            TEXT,
+            0,
+            "Alpha text",
+            json!([FONT_SIZE, 24, COLOR, tint]),
+        );
+        node(
+            &mut wire,
+            SEARCH,
             0,
             "",
-            json!([0, 160, 1, 48, 5, tint, 6, "#ffffff"]),
+            json!([WIDTH, 160, HEIGHT, 48, COLOR, tint, BACKGROUND, "#ffffff"]),
         );
         Renderer::default()
             .layout(&decode(&wire).unwrap(), 220, 100, 1.0)

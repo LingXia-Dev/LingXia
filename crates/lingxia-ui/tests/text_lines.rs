@@ -1,26 +1,28 @@
+use lingxia_ui::protocol::field::{FONT_SIZE, HEIGHT, LINE_HEIGHT, PADDING, TEXT_LINES};
+use lingxia_ui::protocol::tag::{BUTTON, COLUMN, GRID, INPUT, ROW, STACK, TEXT};
 use lingxia_ui::{Renderer, protocol::decode};
 use serde_json::{Value, json};
 
 fn wire(text: &str, lines: Option<u32>) -> Vec<Value> {
     let mut fields = vec![
-        json!(4),
+        json!(FONT_SIZE),
         json!(16),
-        json!(37),
+        json!(LINE_HEIGHT),
         json!(24),
-        json!(3),
+        json!(PADDING),
         json!(4),
     ];
     if let Some(lines) = lines {
-        fields.extend([json!(50), json!(lines)]);
+        fields.extend([json!(TEXT_LINES), json!(lines)]);
     }
     let mut wire = json!([
-        0,
+        COLUMN,
         -1,
         "",
         "root",
         "",
         0,
-        2,
+        TEXT,
         0,
         "summary",
         "summary",
@@ -32,7 +34,7 @@ fn wire(text: &str, lines: Option<u32>) -> Vec<Value> {
     .clone();
     wire.extend(fields);
     wire.extend(
-        json!([0, 0, "after", "after", "", 1, 1, 10])
+        json!([COLUMN, 0, "after", "after", "", 1, HEIGHT, 10])
             .as_array()
             .unwrap()
             .clone(),
@@ -98,20 +100,27 @@ fn line_limit_requires_a_bounded_integer_and_only_belongs_to_text() {
     ] {
         assert!(
             decode(
-                json!([2, -1, "", "", "Text", 1, 50, value])
+                json!([TEXT, -1, "", "", "Text", 1, TEXT_LINES, value])
                     .as_array()
                     .unwrap()
             )
             .is_err()
         );
     }
-    for tag in [0, 3, 8, 16, 17] {
-        assert!(decode(json!([tag, -1, "", "", "", 1, 50, 2]).as_array().unwrap()).is_err());
+    for tag in [COLUMN, BUTTON, INPUT, GRID, STACK] {
+        assert!(
+            decode(
+                json!([tag, -1, "", "", "", 1, TEXT_LINES, 2])
+                    .as_array()
+                    .unwrap()
+            )
+            .is_err()
+        );
     }
     for lines in [1, 1024] {
         assert!(
             decode(
-                json!([2, -1, "", "", "Text", 1, 50, lines])
+                json!([TEXT, -1, "", "", "Text", 1, TEXT_LINES, lines])
                     .as_array()
                     .unwrap()
             )
@@ -124,9 +133,9 @@ fn line_limit_requires_a_bounded_integer_and_only_belongs_to_text() {
 fn hidden_lines_do_not_inflate_intrinsic_width() {
     let mut renderer = Renderer::default();
     let mut limited = wire("x\nAn exceptionally long hidden second line", Some(1));
-    limited[0] = json!(1);
+    limited[0] = json!(ROW);
     let mut prefix = wire("x", None);
-    prefix[0] = json!(1);
+    prefix[0] = json!(ROW);
     let frame = renderer
         .layout(&decode(&limited).unwrap(), 800, 200, 1.0)
         .unwrap();

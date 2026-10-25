@@ -1,9 +1,14 @@
+use lingxia_ui::protocol::field::{
+    AUTO_FOCUS, BACKGROUND, COLOR, HEIGHT, INPUT_VALUE, KEYBOARD, ON_CLICK, ON_INPUT, ON_SUBMIT,
+    PADDING, PLACEHOLDER, RADIUS, SECURE, WIDTH,
+};
+use lingxia_ui::protocol::tag::{BUTTON, COLUMN, INPUT, SEARCH, TEXT, TEXTAREA};
 use lingxia_ui::{Renderer, protocol::decode};
 use serde_json::json;
 
 #[test]
 fn input_wire_validates_leaf_shape_flags_text_and_callback_kinds() {
-    for tag in [8, 9] {
+    for tag in [INPUT, TEXTAREA] {
         let valid = json!([
             tag,
             -1,
@@ -11,33 +16,33 @@ fn input_wire_validates_leaf_shape_flags_text_and_callback_kinds() {
             "draft",
             "",
             7,
-            21,
+            INPUT_VALUE,
             "你好😀",
-            22,
+            PLACEHOLDER,
             "Write here",
-            23,
+            SECURE,
             0,
-            24,
+            KEYBOARD,
             "text",
-            25,
+            AUTO_FOCUS,
             1,
-            26,
+            ON_INPUT,
             10,
-            27,
+            ON_SUBMIT,
             11
         ]);
         assert_eq!(decode(valid.as_array().unwrap()).unwrap()[0].tag, tag);
     }
     for invalid in [
-        json!([8, -1, "", "", "", 1, 21, 42]),
-        json!([8, -1, "", "", "", 1, 23, 2]),
-        json!([8, -1, "", "", "", 1, 24, "unknown"]),
-        json!([9, -1, "", "", "", 1, 26, 0]),
-        json!([3, -1, "", "", "", 1, 26, 1]),
-        json!([8, -1, "", "", "", 1, 8, 1]),
-        json!([8, -1, "", "", "child text", 0]),
-        json!([8, -1, "", "", "", 0, 2, 0, "", "", "child", 0]),
-        json!([8, -1, "", "", "", 1, 21, "中".repeat(22000)]),
+        json!([INPUT, -1, "", "", "", 1, INPUT_VALUE, 42]),
+        json!([INPUT, -1, "", "", "", 1, SECURE, 2]),
+        json!([INPUT, -1, "", "", "", 1, KEYBOARD, "unknown"]),
+        json!([TEXTAREA, -1, "", "", "", 1, ON_INPUT, 0]),
+        json!([BUTTON, -1, "", "", "", 1, ON_INPUT, 1]),
+        json!([INPUT, -1, "", "", "", 1, ON_CLICK, 1]),
+        json!([INPUT, -1, "", "", "child text", 0]),
+        json!([INPUT, -1, "", "", "", 0, TEXT, 0, "", "", "child", 0]),
+        json!([INPUT, -1, "", "", "", 1, INPUT_VALUE, "中".repeat(22000)]),
     ] {
         assert!(decode(invalid.as_array().unwrap()).is_err(), "{invalid}");
     }
@@ -46,49 +51,49 @@ fn input_wire_validates_leaf_shape_flags_text_and_callback_kinds() {
 #[test]
 fn input_preview_masks_passwords_preserves_placeholder_and_clips_text() {
     let values = json!([
-        0,
+        COLUMN,
         -1,
         "",
         "",
         "",
         2,
-        3,
+        PADDING,
         10,
-        6,
+        BACKGROUND,
         "#FFFFFF",
-        8,
+        INPUT,
         0,
         "first",
         "field",
         "",
         7,
-        0,
+        WIDTH,
         80,
-        1,
+        HEIGHT,
         40,
-        5,
+        COLOR,
         "#FFFFFF",
-        6,
+        BACKGROUND,
         "#2458DA",
-        21,
+        INPUT_VALUE,
         "W".repeat(100),
-        23,
+        SECURE,
         1,
-        10,
+        RADIUS,
         12,
-        9,
+        TEXTAREA,
         0,
         "second",
         "area",
         "",
         4,
-        0,
+        WIDTH,
         80,
-        1,
+        HEIGHT,
         60,
-        21,
+        INPUT_VALUE,
         "",
-        22,
+        PLACEHOLDER,
         "Placeholder"
     ]);
     let records = decode(values.as_array().unwrap()).unwrap();
@@ -112,14 +117,14 @@ fn input_preview_masks_passwords_preserves_placeholder_and_clips_text() {
 #[test]
 fn single_line_presentation_does_not_mutate_the_controlled_value() {
     let value = "first\nsecond\u{2028}third";
-    for tag in [8, 9, 14] {
-        let wire = json!([tag, -1, "", "", "", 1, 21, value]);
+    for tag in [INPUT, TEXTAREA, SEARCH] {
+        let wire = json!([tag, -1, "", "", "", 1, INPUT_VALUE, value]);
         let display = Renderer::default()
             .layout(&decode(wire.as_array().unwrap()).unwrap(), 200, 200, 1.0)
             .unwrap();
         assert_eq!(
             display.nodes[0].text,
-            if tag != 9 {
+            if tag != TEXTAREA {
                 "first second third"
             } else {
                 value
@@ -132,7 +137,20 @@ fn single_line_presentation_does_not_mutate_the_controlled_value() {
 #[test]
 fn search_wire_owns_keyboard_and_rejects_secure_or_container_shapes() {
     let wire = json!([
-        14, -1, "query", "query", "", 4, 21, "coffee", 24, "search", 25, 1, 27, 1
+        SEARCH,
+        -1,
+        "query",
+        "query",
+        "",
+        4,
+        INPUT_VALUE,
+        "coffee",
+        KEYBOARD,
+        "search",
+        AUTO_FOCUS,
+        1,
+        ON_SUBMIT,
+        1
     ]);
     let records = decode(wire.as_array().unwrap()).unwrap();
     let display = Renderer::default().layout(&records, 240, 100, 1.0).unwrap();
@@ -140,13 +158,13 @@ fn search_wire_owns_keyboard_and_rejects_secure_or_container_shapes() {
     assert_eq!(display.nodes[0].input.as_ref().unwrap().keyboard, "search");
     assert_eq!(display.nodes[0].bounds[3], 48.0);
     for wire in [
-        json!([14, -1, "", "", "", 1, 23, 0]),
-        json!([14, -1, "", "", "", 1, 24, "text"]),
-        json!([14, -1, "", "", "", 0, 2, 0, "", "", "child", 0]),
+        json!([SEARCH, -1, "", "", "", 1, SECURE, 0]),
+        json!([SEARCH, -1, "", "", "", 1, KEYBOARD, "text"]),
+        json!([SEARCH, -1, "", "", "", 0, TEXT, 0, "", "", "child", 0]),
     ] {
         assert!(decode(wire.as_array().unwrap()).is_err());
     }
-    let wire = json!([14, -1, "", "", "", 0]);
+    let wire = json!([SEARCH, -1, "", "", "", 0]);
     let display = Renderer::default()
         .layout(&decode(wire.as_array().unwrap()).unwrap(), 240, 100, 1.0)
         .unwrap();

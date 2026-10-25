@@ -1,3 +1,7 @@
+use lingxia_ui::protocol::field::{
+    BACKGROUND, FONT_SIZE, GAP, GRID_COLUMNS, HEIGHT, ON_CLICK, PADDING,
+};
+use lingxia_ui::protocol::tag::{BUTTON, COLUMN, GRID, TEXT};
 use lingxia_ui::{Renderer, protocol::decode};
 use serde_json::{Value, json};
 
@@ -13,7 +17,7 @@ fn grid_columns_are_required_bounded_and_tag_specific() {
     ] {
         assert!(
             decode(
-                json!([16, -1, "", "", "", 1, 47, value])
+                json!([GRID, -1, "", "", "", 1, GRID_COLUMNS, value])
                     .as_array()
                     .unwrap()
             )
@@ -21,15 +25,15 @@ fn grid_columns_are_required_bounded_and_tag_specific() {
         );
     }
     for wire in [
-        json!([16, -1, "", "", "", 0]),
-        json!([0, -1, "", "", "", 1, 47, 3]),
+        json!([GRID, -1, "", "", "", 0]),
+        json!([COLUMN, -1, "", "", "", 1, GRID_COLUMNS, 3]),
     ] {
         assert!(decode(wire.as_array().unwrap()).is_err());
     }
     for columns in [1, 64] {
         assert!(
             decode(
-                json!([16, -1, "", "", "", 1, 47, columns])
+                json!([GRID, -1, "", "", "", 1, GRID_COLUMNS, columns])
                     .as_array()
                     .unwrap()
             )
@@ -40,7 +44,24 @@ fn grid_columns_are_required_bounded_and_tag_specific() {
 
 fn cards(columns: u32) -> Vec<Value> {
     let mut wire = json!([
-        0, -1, "", "root", "", 0, 16, 0, "grid", "grid", "", 3, 47, columns, 2, 10, 3, 10
+        COLUMN,
+        -1,
+        "",
+        "root",
+        "",
+        0,
+        GRID,
+        0,
+        "grid",
+        "grid",
+        "",
+        3,
+        GRID_COLUMNS,
+        columns,
+        GAP,
+        10,
+        PADDING,
+        10
     ])
     .as_array()
     .unwrap()
@@ -48,19 +69,19 @@ fn cards(columns: u32) -> Vec<Value> {
     for (i, height) in [20, 40, 30, 25].iter().enumerate() {
         wire.extend(
             json!([
-                3,
+                BUTTON,
                 6,
                 format!("card-{i}"),
                 format!("card-{i}"),
                 "",
                 4,
-                1,
+                HEIGHT,
                 height,
-                3,
+                PADDING,
                 0,
-                6,
+                BACKGROUND,
                 "#ff0000",
-                8,
+                ON_CLICK,
                 i + 1
             ])
             .as_array()
@@ -108,37 +129,37 @@ fn equal_grid_tracks_wrap_in_source_order_and_keep_identity_after_reflow() {
 #[test]
 fn grid_text_wraps_without_widening_equal_columns() {
     let wire = json!([
-        0,
+        COLUMN,
         -1,
         "",
         "",
         "",
         0,
-        16,
+        GRID,
         0,
         "",
         "",
         "",
         2,
-        47,
+        GRID_COLUMNS,
         2,
-        2,
+        GAP,
         8,
-        2,
+        TEXT,
         6,
         "",
         "long",
         "A long card title that must wrap across several lines",
         1,
-        4,
+        FONT_SIZE,
         20,
-        2,
+        TEXT,
         6,
         "",
         "short",
         "Short",
         1,
-        4,
+        FONT_SIZE,
         20
     ]);
     let frame = Renderer::default()

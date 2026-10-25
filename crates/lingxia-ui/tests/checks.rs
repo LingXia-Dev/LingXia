@@ -49,28 +49,28 @@ fn boolean_control_wire_rejects_invalid_values_callbacks_and_children() {
 
 fn radio_wire(selected: usize, disabled: bool) -> Vec<serde_json::Value> {
     let mut wire = vec![
-        json!(12),
+        json!(tag::RADIO),
         json!(-1),
         json!("pace"),
         json!("pace"),
         json!(""),
         json!(2),
-        json!(41),
+        json!(field::ACCESSIBILITY_LABEL),
         json!("Pace"),
-        json!(9),
+        json!(field::ENABLED),
         json!(!disabled as u8),
     ];
     for (index, key) in ["daily", "weekly"].iter().enumerate() {
         wire.extend([
-            json!(13),
+            json!(tag::RADIO_OPTION),
             json!(0),
             json!(key),
             json!(key),
             json!(key),
             json!(2),
-            json!(39),
+            json!(field::CHECKED),
             json!((index == selected) as u8),
-            json!(40),
+            json!(field::ON_CHECKED_CHANGE),
             json!(index + 1),
         ]);
     }
@@ -79,35 +79,65 @@ fn radio_wire(selected: usize, disabled: bool) -> Vec<serde_json::Value> {
 
 #[test]
 fn radio_wire_requires_bounded_unique_options_and_a_single_selection() {
+    use field::{ACCESSIBILITY_LABEL, CHECKED};
+    use tag::{COLUMN, RADIO, RADIO_OPTION, TEXT};
     assert!(decode(&radio_wire(0, false)).is_ok());
     let mut oversized = radio_wire(0, false);
     for index in 2..65 {
         oversized.extend([
-            json!(13),
+            json!(RADIO_OPTION),
             json!(0),
             json!(index.to_string()),
             json!(""),
             json!("Option"),
             json!(1),
-            json!(39),
+            json!(CHECKED),
             json!(0),
         ]);
     }
     assert!(decode(&oversized).is_err());
+    let option = |key: &str, text: &str, checked: u8| {
+        json!([RADIO_OPTION, 0, key, "", text, 1, CHECKED, checked])
+    };
+    let group = |options: &[serde_json::Value]| {
+        let mut wire = vec![
+            json!(RADIO),
+            json!(-1),
+            json!(""),
+            json!(""),
+            json!(""),
+            json!(0),
+        ];
+        for option in options {
+            wire.extend(option.as_array().unwrap().iter().cloned());
+        }
+        serde_json::Value::Array(wire)
+    };
     for wire in [
-        json!([12, -1, "", "", "", 0]),
-        json!([12, -1, "", "", "", 0, 2, 0, "", "", "Wrong child", 0]),
-        json!([13, -1, "a", "", "A", 1, 39, 1]),
-        json!([0, -1, "", "", "", 0, 13, 0, "a", "", "A", 1, 39, 1]),
+        group(&[]),
+        json!([RADIO, -1, "", "", "", 0, TEXT, 0, "", "", "Wrong child", 0]),
+        json!([RADIO_OPTION, -1, "a", "", "A", 1, CHECKED, 1]),
         json!([
-            12, -1, "", "", "", 0, 13, 0, "a", "", "A", 1, 39, 1, 13, 0, "b", "", "B", 1, 39, 1
+            COLUMN,
+            -1,
+            "",
+            "",
+            "",
+            0,
+            RADIO_OPTION,
+            0,
+            "a",
+            "",
+            "A",
+            1,
+            CHECKED,
+            1
         ]),
-        json!([
-            12, -1, "", "", "", 0, 13, 0, "a", "", "A", 1, 39, 1, 13, 0, "a", "", "Again", 1, 39, 0
-        ]),
-        json!([12, -1, "", "", "", 0, 13, 0, "", "", "A", 1, 39, 0]),
-        json!([12, -1, "", "", "", 0, 13, 0, "a", "", "A", 0]),
-        json!([0, -1, "", "", "", 1, 41, "Wrong role"]),
+        group(&[option("a", "A", 1), option("b", "B", 1)]),
+        group(&[option("a", "A", 1), option("a", "Again", 0)]),
+        group(&[option("", "A", 0)]),
+        json!([RADIO, -1, "", "", "", 0, RADIO_OPTION, 0, "a", "", "A", 0]),
+        json!([COLUMN, -1, "", "", "", 1, ACCESSIBILITY_LABEL, "Wrong role"]),
     ] {
         assert!(decode(wire.as_array().unwrap()).is_err(), "{wire}");
     }

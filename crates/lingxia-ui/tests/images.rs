@@ -1,18 +1,35 @@
+use lingxia_ui::protocol::field::{HEIGHT, IMAGE_FIT, IMAGE_SRC, WIDTH};
+use lingxia_ui::protocol::tag::{COLUMN, IMAGE, TEXT};
 use lingxia_ui::{Renderer, protocol::decode, scene::image::Bitmap};
 use serde_json::json;
 use std::collections::HashMap;
 
 #[test]
 fn image_wire_requires_source_and_rejects_invalid_fields_and_children() {
-    let valid = json!([7, -1, "", "photo", "", 2, 19, "public/a.png", 20, "contain"]);
-    assert_eq!(decode(valid.as_array().unwrap()).unwrap()[0].tag, 7);
+    let valid = json!([
+        IMAGE,
+        -1,
+        "",
+        "photo",
+        "",
+        2,
+        IMAGE_SRC,
+        "public/a.png",
+        IMAGE_FIT,
+        "contain"
+    ]);
+    assert_eq!(decode(valid.as_array().unwrap()).unwrap()[0].tag, IMAGE);
     for invalid in [
-        json!([7, -1, "", "", "", 0]),
-        json!([7, -1, "", "", "", 1, 19, 42]),
-        json!([7, -1, "", "", "", 1, 19, ""]),
-        json!([7, -1, "", "", "", 2, 19, "a", 20, "stretch"]),
-        json!([0, -1, "", "", "", 1, 19, "a"]),
-        json!([7, -1, "", "", "", 1, 19, "a", 2, 0, "", "", "child", 0]),
+        json!([IMAGE, -1, "", "", "", 0]),
+        json!([IMAGE, -1, "", "", "", 1, IMAGE_SRC, 42]),
+        json!([IMAGE, -1, "", "", "", 1, IMAGE_SRC, ""]),
+        json!([
+            IMAGE, -1, "", "", "", 2, IMAGE_SRC, "a", IMAGE_FIT, "stretch"
+        ]),
+        json!([COLUMN, -1, "", "", "", 1, IMAGE_SRC, "a"]),
+        json!([
+            IMAGE, -1, "", "", "", 1, IMAGE_SRC, "a", TEXT, 0, "", "", "child", 0
+        ]),
     ] {
         assert!(decode(invalid.as_array().unwrap()).is_err(), "{invalid}");
     }
@@ -27,16 +44,21 @@ fn visible_image_budget_includes_pending_sources() {
         .unwrap();
     let image = Bitmap::decode(&png).unwrap();
     for count in [128, 129] {
-        let mut buffer = json!([0, -1, "", "", "", 0]).as_array().unwrap().clone();
+        let mut buffer = json!([COLUMN, -1, "", "", "", 0])
+            .as_array()
+            .unwrap()
+            .clone();
         let mut images = HashMap::new();
         for index in 0..count {
             let source = format!("image-{index}");
             buffer.extend(
-                json!([7, 0, source, "", "", 3, 0, 1, 1, 1, 19, source])
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .cloned(),
+                json!([
+                    IMAGE, 0, source, "", "", 3, WIDTH, 1, HEIGHT, 1, IMAGE_SRC, source
+                ])
+                .as_array()
+                .unwrap()
+                .iter()
+                .cloned(),
             );
             images.insert(source, image.clone());
         }
