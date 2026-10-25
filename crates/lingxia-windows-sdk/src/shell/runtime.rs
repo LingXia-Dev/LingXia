@@ -3824,7 +3824,7 @@ fn lxapp_aside_active_app() -> Option<Arc<LxApp>> {
     let slot = plan
         .aside_slots
         .iter()
-        .find(|slot| slot.kind == SlotKind::Lxapp && slot.visible)?;
+        .find(|slot| slot.kind == SlotKind::Panel && slot.visible)?;
     let surface_id = slot
         .active_child
         .as_deref()
@@ -3992,11 +3992,12 @@ fn lxapp_aside_shows_navigation(navbar: &WindowsShellNavigationBarLayout) -> boo
     navbar.visible && (navbar.show_back_button || navbar.show_home_button)
 }
 
-/// Slot kind behind a well-known aside panel id.
+/// Slot kind behind a well-known aside panel id. The lxapp and browser
+/// panels are two hosts of the ONE side panel slot.
 fn aside_slot_kind(panel_id: &str) -> &'static str {
     match panel_id {
-        lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID => "browser",
-        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID => "lxapp",
+        lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID
+        | lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID => "panel",
         _ => "native",
     }
 }

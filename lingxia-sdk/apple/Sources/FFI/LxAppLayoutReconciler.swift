@@ -200,14 +200,17 @@ enum LxAppLayoutReconciler {
         shell.applySurfaceLayoutProjection(plan.sizeClass)
         let workspace = shell.workspaceManager
 
-        // Desired docked aside set from the core (id -> edge). `plan.asides`
-        // also lists compact full-screen asides so mobile skins can keep them
-        // in their desired set; macOS only docks them when the split form says
-        // there is a side-by-side container.
+        // Desired docked panel set from the core (panel id -> edge).
+        // `plan.asides` also lists compact full-screen asides so mobile skins
+        // can keep them in their desired set; macOS only docks them when the
+        // split form says there is a side-by-side container.
         //
-        // With slots the aside area holds ONE region per content kind:
-        // only each visible slot's active child docks; sibling children stay
+        // With slots the aside area holds ONE region per slot kind: only each
+        // visible slot's active child docks; sibling children stay
         // registered-but-hidden and switch via the slot's header tab strip.
+        // In the side panel an lxapp child is its own registered panel while
+        // every browser child lives inside the ONE docked browser, whose
+        // panel is keyed by its anchor tab (`panelHostId`).
         var desired: [String: PanelPosition] = [:]
         var overlayIds = Set<String>()
         // Overlays the user maximized: they keep their docked room so the main
@@ -226,39 +229,34 @@ enum LxAppLayoutReconciler {
         } else {
             for slot in slots where slot.visible {
                 let projectedOverlay = slot.overlay || plan.splitForm == "fullScreen"
-                if slot.kind == "browser" {
-                    // Browser-slot children live inside the ONE docked browser
-                    // (its own title tabs), not the panel registry. Keep every
-                    // child desired because only the anchor owns the panel;
-                    // the browser coordinator selects the active tab itself.
-                    for child in slot.children {
-                        desired[child] = panelPosition(for: slot.edge)
-                    }
-                    if projectedOverlay,
-                       let anchor = shell.browserCoordinator.activeDockedBrowser?.anchorSurfaceId {
-                        overlayIds.insert(anchor)
-                        if keepsDockRoom(slot) { maximizedIds.insert(anchor) }
-                    }
-                    continue
-                }
                 guard let active = slot.activeChild ?? slot.children.last else { continue }
-                desired[active] = panelPosition(for: slot.edge)
-                if projectedOverlay { overlayIds.insert(active) }
-                if projectedOverlay && keepsDockRoom(slot) { maximizedIds.insert(active) }
+                let host = panelHostId(for: active, shell: shell)
+                desired[host] = panelPosition(for: slot.edge)
+                if projectedOverlay { overlayIds.insert(host) }
+                if projectedOverlay && keepsDockRoom(slot) { maximizedIds.insert(host) }
+                // A browser child: the docked browser shows that tab.
+                if host != active {
+                    shell.browserCoordinator.activeDockedBrowser?.activateTab(surfaceId: active)
+                }
             }
         }
         let desiredIds = Set(desired.keys)
 
-        // Ids taking part in an INTRA-SLOT tab switch: some sibling of the
+        // Panels taking part in an INTRA-SLOT tab switch: some sibling of the
         // slot's active child is currently on screen, so the region itself
         // stays put — hide/show must be instant, not a slide (the slide is the
         // "a new aside docks" affordance, wrong for switching tabs in place).
         let visibleNow = workspace.visiblePanelIds()
         var instantIds = Set<String>()
-        for slot in slots where slot.visible && slot.kind != "browser" {
+        for slot in slots where slot.visible {
             guard let active = slot.activeChild ?? slot.children.last else { continue }
-            if slot.children.contains(where: { $0 != active && visibleNow.contains($0) }) {
-                instantIds.formUnion(slot.children)
+            let activeHost = panelHostId(for: active, shell: shell)
+            let hosts = Set(slot.children.map { panelHostId(for: $0, shell: shell) })
+            if let shown = hosts.first(where: { $0 != activeHost && visibleNow.contains($0) }) {
+                instantIds.formUnion(hosts)
+                // One region, one width: the incoming host takes the size the
+                // user gave the slot through the host it is replacing.
+                workspace.syncPanelSize(from: shown, to: activeHost)
             }
         }
 
@@ -323,8 +321,7 @@ enum LxAppLayoutReconciler {
         // remains visible for a single child as its close affordance.
         let previousSlots = lastAsideSlots
         lastAsideSlots = slots
-        applyLxappSlotTabs(slots, shell: shell, workspace: workspace)
-        applyBrowserSlotMaximize(slots, shell: shell)
+        applyPanelSlotTabs(slots, shell: shell, workspace: workspace)
         applyCollapsedHandles(slots, shell: shell, workspace: workspace)
         applyMaximizeFocus(from: previousSlots, to: slots, shell: shell)
         for slot in slots where slot.visible && slot.kind == "native" {
@@ -374,47 +371,90 @@ enum LxAppLayoutReconciler {
         return true
     }
 
-    /// The lxapp the lxapp aside slot shows, from the last plan; nil when the
-    /// slot is absent, collapsed or not admitted.
+    /// The registered panel that shows `child`: a browser tab's is the docked
+    /// browser's (keyed by its anchor tab); an lxapp's is its own.
+    private static func panelHostId(for child: String, shell: LxAppShell) -> String {
+        if let docked = shell.browserCoordinator.activeDockedBrowser,
+           docked.contains(surfaceId: child),
+           let anchor = docked.anchorSurfaceId {
+            return anchor
+        }
+        return child
+    }
+
+    private static func isBrowserChild(_ child: String, shell: LxAppShell) -> Bool {
+        shell.browserCoordinator.activeDockedBrowser?.contains(surfaceId: child) == true
+    }
+
+    /// The lxapp the side panel shows, from the last plan; nil when the slot
+    /// is absent, collapsed, not admitted, or showing a browser tab.
     static func activeLxappAsideId() -> String? {
-        guard let slot = lastAsideSlots.first(where: { $0.kind == "lxapp" && $0.visible }) else {
+        guard let shell = LxAppActiveHost.activeShell,
+              let slot = lastAsideSlots.first(where: { $0.kind == "panel" && $0.visible }),
+              let active = slot.activeChild ?? slot.children.last,
+              !isBrowserChild(active, shell: shell) else {
             return nil
         }
-        return slot.activeChild ?? slot.children.last
+        return active
     }
 
-    /// Any lxapp the lxapp aside slot holds, shown or not. A live lxapp
-    /// reaches the window's graph, which is what a collapsed slot's keyboard
-    /// restore needs when no lxapp main is attached.
+    /// Any lxapp the side panel holds, shown or not. A live lxapp reaches the
+    /// window's graph, which is what a collapsed slot's keyboard restore needs
+    /// when no lxapp main is attached.
     static func lxappAsideChildId() -> String? {
-        guard let slot = lastAsideSlots.first(where: { $0.kind == "lxapp" }) else { return nil }
-        return slot.activeChild ?? slot.children.last
+        guard let shell = LxAppActiveHost.activeShell,
+              let slot = lastAsideSlots.first(where: { $0.kind == "panel" }) else { return nil }
+        let preferred = slot.activeChild ?? slot.children.last
+        return ([preferred].compactMap { $0 } + slot.children.reversed())
+            .first { !isBrowserChild($0, shell: shell) }
     }
 
-    /// Re-bind visible lxapp aside tabs from the last plan, resolving names
-    /// and icons against the current registry cache. The initial lookup
-    /// schedules an asynchronous fetch; without this the strip stays on the
-    /// titles/icons from that first pass until an unrelated layout commit.
+    /// Any live lxapp that reaches the window's graph, for slot-level calls
+    /// (focus, collapse, maximize) made while a browser tab may be active.
+    private static func graphAppId(shell: LxAppShell, fallback: String) -> String {
+        shell.attachedMainAppId
+            ?? LxAppTabManager.shared.activeTab?.appId
+            ?? lxappAsideChildId()
+            ?? fallback
+    }
+
+    /// Re-bind the visible side panel's tabs from the last plan, resolving
+    /// lxapp names and icons against the current registry cache and browser
+    /// titles and favicons against the docked browser. The initial lookups
+    /// are asynchronous; without this the strip stays on the first pass's
+    /// titles/icons until an unrelated layout commit.
     static func refreshVisibleSlotTabs() {
         guard let shell = LxAppActiveHost.activeShell else { return }
-        applyLxappSlotTabs(
+        applyPanelSlotTabs(
             lastAsideSlots,
             shell: shell,
             workspace: shell.workspaceManager
         )
     }
 
-    private static func applyLxappSlotTabs(
+    private static func applyPanelSlotTabs(
         _ slots: [PlanAsideSlot],
         shell: LxAppShell,
         workspace: WorkspaceManager
     ) {
-        for slot in slots where slot.visible && slot.kind == "lxapp" {
-            guard let active = slot.activeChild ?? slot.children.last,
-                  workspace.isPanelRegistered(id: active) else { continue }
-            // An lxapp aside's surface id IS its app id — resolve the
-            // human-facing app name + icon for the tab; fall back to the raw id.
+        let docked = shell.browserCoordinator.activeDockedBrowser
+        docked?.onTabsChanged = { refreshVisibleSlotTabs() }
+        for slot in slots where slot.visible && slot.kind == "panel" {
+            guard let active = slot.activeChild ?? slot.children.last else { continue }
+            let host = panelHostId(for: active, shell: shell)
+            guard workspace.isPanelRegistered(id: host) else { continue }
             let tabs = slot.children.map { child -> AsideSlotTab in
+                if let docked, docked.contains(surfaceId: child) {
+                    let info = docked.tabInfo(surfaceId: child)
+                    return AsideSlotTab(
+                        id: child,
+                        title: info?.title ?? child,
+                        isBrowser: true,
+                        image: info?.icon
+                    )
+                }
+                // An lxapp aside's surface id IS its app id — resolve the
+                // human-facing app name + icon; fall back to the raw id.
                 let info = getLxAppInfo(child)
                 let name = info.app_name.toString()
                 let icon = getLxAppDisplayIconPath(child).toString()
@@ -424,28 +464,35 @@ enum LxAppLayoutReconciler {
                     iconPath: icon.isEmpty ? nil : icon
                 )
             }
-            let focusAppId = shell.attachedMainAppId ?? active
+            let appId = graphAppId(shell: shell, fallback: active)
             workspace.setSlotTabs(
-                panelId: active,
+                panelId: host,
                 tabs: tabs,
                 activeId: active,
                 onSelect: { childId in
                     guard childId != active else { return }
-                    _ = focusSurface(focusAppId, childId)
+                    _ = focusSurface(appId, childId)
                 },
                 onClose: { childId in
-                    _ = LxAppMacAppUIRuntime.handleAsideSlotClose(surfaceId: childId)
+                    if LxAppSurface.isBrowserAside(surfaceId: childId) {
+                        _ = LxAppSurface.closeAsideTab(surfaceId: childId)
+                    } else {
+                        _ = LxAppMacAppUIRuntime.handleAsideSlotClose(surfaceId: childId)
+                    }
                 },
                 onCollapse: {
-                    _ = collapseAsideSlot(focusAppId, "lxapp")
+                    _ = collapseAsideSlot(appId, "panel")
                 },
                 maximized: slot.maximized == true,
                 // A compact overlay already covers the main: nothing to toggle.
                 onToggleMaximize: slot.overlay && slot.maximized != true ? nil : {
-                    _ = setAsideSlotMaximized(focusAppId, "lxapp", slot.maximized != true)
+                    _ = setAsideSlotMaximized(appId, "panel", slot.maximized != true)
                 },
                 onMenu: { childId in
-                    lxappAsideTabMenu(appId: childId, graphAppId: focusAppId)
+                    if let docked, docked.contains(surfaceId: childId) {
+                        return docked.menu(forSurfaceId: childId)
+                    }
+                    return lxappAsideTabMenu(appId: childId, graphAppId: appId)
                 }
             )
         }
@@ -511,66 +558,45 @@ enum LxAppLayoutReconciler {
         shell: LxAppShell
     ) {
         let shown = { (slot: PlanAsideSlot) in slot.visible && slot.maximized == true }
-        for kind in ["lxapp", "browser"] {
-            let was = previous.first(where: { $0.kind == kind }).map(shown) ?? false
-            let now = slots.first(where: { $0.kind == kind })
-            let isNow = now.map(shown) ?? false
-            guard was != isNow else { continue }
-            var panelId = now.flatMap { $0.activeChild ?? $0.children.last }
-            if kind == "browser" {
-                panelId = shell.browserCoordinator.activeDockedBrowser?.anchorSurfaceId
-            }
-            shell.asideSlotMaximizeDidChange(maximized: isNow, panelId: panelId)
-        }
+        let was = previous.first(where: { $0.kind == "panel" }).map(shown) ?? false
+        let now = slots.first(where: { $0.kind == "panel" })
+        let isNow = now.map(shown) ?? false
+        guard was != isNow else { return }
+        let panelId = now
+            .flatMap { $0.activeChild ?? $0.children.last }
+            .map { panelHostId(for: $0, shell: shell) }
+        shell.asideSlotMaximizeDidChange(maximized: isNow, panelId: panelId)
     }
 
-    /// The browser slot's Maximize control, on the docked browser's own bar
-    /// (its tabs are its own, not a slot strip). The same core state and
-    /// rules as the lxapp slot: none on a compact overlay.
-    private static func applyBrowserSlotMaximize(_ slots: [PlanAsideSlot], shell: LxAppShell) {
-        guard let docked = shell.browserCoordinator.activeDockedBrowser else { return }
-        guard let slot = slots.first(where: { $0.kind == "browser" && $0.visible }) else {
-            docked.setMaximized(false)
-            docked.onToggleMaximize = nil
-            return
-        }
-        let maximized = slot.maximized == true
-        docked.setMaximized(maximized)
-        // Any live lxapp reaches the window's graph.
-        guard let graphAppId = shell.attachedMainAppId
-            ?? LxAppTabManager.shared.activeTab?.appId
-            ?? lxappAsideChildId(), !(slot.overlay && !maximized) else {
-            docked.onToggleMaximize = nil
-            return
-        }
-        docked.onToggleMaximize = {
-            _ = setAsideSlotMaximized(graphAppId, "browser", !maximized)
-        }
-    }
-
-    /// A collapsed slot that still holds content keeps a handle at its edge,
-    /// so the region can come back without the app opening it again.
+    /// A collapsed slot that still holds content, or one hidden for lack of
+    /// room, keeps a handle at its edge, so the region can come back without
+    /// the app opening it again.
     private static func applyCollapsedHandles(
         _ slots: [PlanAsideSlot],
         shell: LxAppShell,
         workspace: WorkspaceManager
     ) {
         let handles = slots.compactMap { slot -> CollapsedAsideHandle? in
-            guard slot.collapsed == true, !slot.children.isEmpty,
-                  slot.kind == "lxapp" || slot.kind == "browser" else { return nil }
+            // A collapsed slot, or one hidden because it has no room to dock
+            // beside the main: either way its content stays one click away.
+            // A slot whose children its app hid has no active child and
+            // nothing to bring back.
+            guard slot.collapsed == true || !slot.visible, slot.activeChild != nil,
+                  slot.kind == "panel" else { return nil }
             let position = panelPosition(for: slot.edge)
             guard position == .left || position == .right else { return nil }
-            // Any live lxapp reaches the window's graph; an lxapp child is one.
+            // Named after the child the slot was showing: a browser tab's
+            // title, or the lxapp's name. Any live lxapp reaches the graph.
             var title = "Browser"
-            var graphAppId = shell.attachedMainAppId
-                ?? LxAppTabManager.shared.activeTab?.appId
-                ?? lxappAsideChildId()
-                ?? ""
-            if slot.kind == "lxapp", let child = slot.activeChild ?? slot.children.last {
+            let child = slot.activeChild ?? slot.children.last
+            if let child, let docked = shell.browserCoordinator.activeDockedBrowser,
+               let info = docked.tabInfo(surfaceId: child) {
+                title = info.title
+            } else if let child {
                 let name = getLxAppInfo(child).app_name.toString()
                 title = name.isEmpty ? child : name
-                graphAppId = child
             }
+            let graphAppId = self.graphAppId(shell: shell, fallback: child ?? "")
             return CollapsedAsideHandle(
                 kind: slot.kind, position: position, title: title, graphAppId: graphAppId)
         }

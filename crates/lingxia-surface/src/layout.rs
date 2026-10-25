@@ -264,7 +264,7 @@ pub struct PlanAside {
 }
 
 /// One aside slot in the [`LayoutPresentationPlan`]: the aside area holds at
-/// most one region per content kind (lxapp / browser / native); the region's
+/// most one region per slot kind (panel / native); the region's
 /// contents are its tabs, in open order. Skins render ONE docked panel per
 /// slot with a header strip whenever `children` is non-empty: a single
 /// child reads as the panel's header row, two or more as tabs.
@@ -362,7 +362,7 @@ pub struct LayoutPresentationPlan {
     /// Asides currently in the layout. `split_form` decides whether they dock
     /// beside the main or present full-screen on compact.
     pub asides: Vec<PlanAside>,
-    /// Asides grouped into per-kind slots (lxapp / browser / native) with tab
+    /// Asides grouped into per-kind slots (panel / native) with tab
     /// order and admission visibility. Supersedes per-aside handling; `asides`
     /// stays for skins that have not migrated yet.
     #[serde(default)]

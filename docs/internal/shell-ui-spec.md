@@ -307,7 +307,7 @@ width is below 600.
 |---|---|---|---|---|
 | sidebar | full | icon rail | icon rail | hidden |
 | main | main area | main area | main area | full screen |
-| aside | up to 3 visible slots | up to 1 visible slot | full-screen overlay over main | full-screen overlay |
+| aside | up to 2 visible slots | up to 1 visible slot | full-screen overlay over main | full-screen overlay |
 | float | popover / overlay | popover / overlay | popover / overlay | bottom sheet / popover |
 | standalone window | supported | supported | supported | rejected |
 
@@ -788,13 +788,17 @@ Sidebar peek:
 
 ### 4.6 Aside slots
 
-The aside region is fixed at three slots, grouped by rendering engine:
+The aside region is fixed at two slots. Users think in "things beside my
+main", not in rendering engines, so everything the shell can show in one
+container shares one region:
 
 | Slot | Content | Multi-content behavior |
 |---|---|---|
-| lxapp | Different appIds | Header tabs; one instance per appId |
-| browser | URL tabs | Title tabs; API URLs reuse by first URL |
-| native | Different declaration instances | Header tabs; the default instance plus keyed instances when supported |
+| panel | lxapps (different appIds) and URL tabs, mixed | One header strip in open order; one instance per appId; API URLs reuse by first URL |
+| native | Different declaration instances (terminal) | Header tabs; the default instance plus keyed instances when supported |
+
+The `lxapp` and `browser` spellings are accepted by the slot APIs as names
+for the `panel` slot they merged into.
 
 - Slot tab switching performs hide/show and preserves content state; only an
   explicit close destroys the current content.
@@ -834,7 +838,7 @@ The aside region is fixed at three slots, grouped by rendering engine:
   and causes a region jump when the second content arrives. At one content
   the strip reads as a plain panel header — icon, name, "···", ✕ — with no
   chip fill, hover wash or divider, since there is nothing to pick among; it
-  turns into tab chips at the same height when a sibling arrives. The three
+  turns into tab chips at the same height when a sibling arrives. The two
   slots are mechanically identical, only their content kinds differ.
 - **Slot tab visuals are one component**: every slot's header tabs use the same
   tab component and metrics (Chrome-style title tab: flared outline, bottom
@@ -883,7 +887,7 @@ The aside region is fixed at three slots, grouped by rendering engine:
   the sidebar.
 - Keyboard Back (macOS Backspace) acts on the page stack of the region that
   has focus: an aside page pops its own stack, never the main's.
-- Cmd+Option+\ (Windows Ctrl+Alt+\) collapses the lxapp aside slot or
+- Cmd+Option+\ (Windows Ctrl+Alt+\) collapses the side panel slot or
   restores it, wherever focus is (a page, shell chrome, a native panel);
   focus moves into the aside page when it returns and back to the main when
   it goes. Escape in a maximized aside's page, or in the shell, takes the
@@ -900,8 +904,9 @@ The aside region is fixed at three slots, grouped by rendering engine:
   page's title, else its page name.
 - Browser "open in main browser" promotes and closes only the **current URL
   tab**; other browser-aside tabs stay. Closing the last tab closes the slot.
-- A desktop browser slot offers history navigation, refresh, title tabs, and
-  slot dismissal. It MUST NOT offer address editing or user-created tabs; a
+- A browser tab active in the side panel offers history navigation and
+  refresh in a bar under the slot strip; its title tab, menu and close are
+  the strip's. It MUST NOT offer address editing or user-created tabs; a
   skin MAY expose the current URL as read-only when space permits.
 
 ### 4.7 Window chrome
@@ -1278,7 +1283,7 @@ As of 2026-08 (PR #202 follow-up design):
 | Area | Status |
 |---|---|
 | Declaration-first JS open specs | Landed in generated types and runtime: `{ surface }`, `{ appId }`, `{ page }`, and `{ url }`; legacy `{ lxapp }` and `{ native }` selectors are rejected |
-| Aside slot model, unified slot tab chrome | Landed and live-verified (dual-tab lxapp slot, shared tab metrics, strip visible at n=1, no "+"/"···") |
+| Aside slot model, unified slot tab chrome | Landed and live-verified (two slots: side panel + native; mixed lxapp/browser tabs; strip visible at n=1; per-tab "···"/right-click menu) |
 | Sidebar actions + pins | `lx.shell.sidebarActions` drives header/footer snapshots on Windows/macOS; accessibility activation is not yet automated |
 | Sidebar action footer overflow scrolling (5-row cap) | Landed on Windows/macOS |
 | Sidebar/tabbar parity | 148 (macOS) / 184 (Windows) width, 36/4 and 30/2/1 rhythm, two-level selection, style mapping landed on both platforms |

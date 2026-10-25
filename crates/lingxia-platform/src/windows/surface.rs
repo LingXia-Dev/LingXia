@@ -367,7 +367,7 @@ fn sync_runtime_lxapp_asides_from_last_plan(panel_id: &str) -> bool {
     let plan = LAST_LAYOUT_PLAN.lock().ok().and_then(|plan| plan.clone());
     plan.as_ref().is_some_and(|plan| {
         plan.aside_slots.iter().any(|slot| {
-            slot.kind == lingxia_surface::SlotKind::Lxapp
+            slot.kind == lingxia_surface::SlotKind::Panel
                 && slot.children.iter().any(|child| child == panel_id)
         }) && sync_runtime_lxapp_asides(plan)
     })
@@ -997,7 +997,7 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
     let Some(slot) = plan
         .aside_slots
         .iter()
-        .find(|slot| slot.kind == lingxia_surface::SlotKind::Lxapp)
+        .find(|slot| slot.kind == lingxia_surface::SlotKind::Panel)
     else {
         set_aside_panel_tabs(ASIDE_LXAPP_PANEL_ID, Vec::new());
         lingxia_windows_contract::set_aside_panel_maximized(ASIDE_LXAPP_PANEL_ID, false);
@@ -1553,15 +1553,20 @@ pub(super) fn present_layout(
             .iter()
             .filter(|slot| slot.visible)
             .flat_map(|slot| {
-                if slot.kind == lingxia_surface::SlotKind::Browser {
-                    slot.children.iter().map(String::as_str).collect::<Vec<_>>()
-                } else {
-                    slot.active_child
-                        .as_deref()
-                        .or_else(|| slot.children.last().map(String::as_str))
-                        .into_iter()
-                        .collect()
-                }
+                let active = slot
+                    .active_child
+                    .as_deref()
+                    .or_else(|| slot.children.last().map(String::as_str));
+                // Every URL child stays planned (the browser group keeps its
+                // placement); any other content presents only as the active
+                // child of its slot.
+                slot.children
+                    .iter()
+                    .map(String::as_str)
+                    .filter(|id| {
+                        Some(*id) == active || known.get(*id).is_some_and(|entry| entry.is_web)
+                    })
+                    .collect::<Vec<_>>()
             })
             .collect()
     };
@@ -1610,17 +1615,17 @@ pub(super) fn present_layout(
     let active_browser = plan
         .aside_slots
         .iter()
-        .find(|slot| slot.kind == lingxia_surface::SlotKind::Browser && slot.visible)
+        .find(|slot| slot.kind == lingxia_surface::SlotKind::Panel && slot.visible)
         .and_then(|slot| slot.active_child.as_deref());
     let browser_overlay = plan
         .aside_slots
         .iter()
-        .find(|slot| slot.kind == lingxia_surface::SlotKind::Browser && slot.visible)
+        .find(|slot| slot.kind == lingxia_surface::SlotKind::Panel && slot.visible)
         .is_some_and(|slot| slot.overlay);
     let browser_slot = plan
         .aside_slots
         .iter()
-        .find(|slot| slot.kind == lingxia_surface::SlotKind::Browser);
+        .find(|slot| slot.kind == lingxia_surface::SlotKind::Panel);
     lingxia_windows_contract::set_aside_panel_collapsed(
         ASIDE_BROWSER_PANEL_ID,
         browser_slot
@@ -1630,7 +1635,7 @@ pub(super) fn present_layout(
     lingxia_windows_contract::set_aside_panel_maximized(
         ASIDE_BROWSER_PANEL_ID,
         plan.aside_slots.iter().any(|slot| {
-            slot.kind == lingxia_surface::SlotKind::Browser && slot.visible && slot.maximized
+            slot.kind == lingxia_surface::SlotKind::Panel && slot.visible && slot.maximized
         }),
     );
     store_aside_browser_plan(planned_web_asides, active_browser, browser_overlay);

@@ -3856,7 +3856,7 @@ function surfaceFileUrl(nativeDir: string, relative: string): string {
 }
 
 function browserAsideSlot(layout: SurfaceLayoutSnapshot): SurfaceLayoutAsideSlot | undefined {
-  return layout.asideSlots.find((slot) => slot.kind === 'browser');
+  return layout.asideSlots.find((slot) => slot.kind === 'panel');
 }
 
 function layoutHoldsSurface(layout: SurfaceLayoutSnapshot, id: string): boolean {
@@ -4176,7 +4176,9 @@ spec('opens a browser aside beside a docked, maximized and collapsed Chat aside 
       }, 'Chat aside restored');
       await waitForValue(async () => ((await mainPageHasFocus()) ? true : undefined), 'focus back in the main page');
 
-      // Collapse Chat; the browser aside opens beside the collapsed slot.
+      // Collapse the side panel. A browser tab opened now joins the same
+      // panel, and content arriving in a collapsed slot brings it back
+      // rather than landing out of sight; Chat stays alive as its other tab.
       const collapse = await waitForValue(() => control('Collapse panel'), 'Collapse control');
       await desktop.ax.invoke({ window: host.id, match: `id:${collapse.id}` });
       await waitForValue(async () => {
@@ -4186,8 +4188,8 @@ spec('opens a browser aside beside a docked, maximized and collapsed Chat aside 
       await openBeside('collapsed', 'bottom');
       await waitForValue(async () => {
         const slot = chatAsideSlot(await app.surfaceLayout());
-        return slot?.collapsed ? true : undefined;
-      }, 'Chat still collapsed after the browser aside');
+        return slot && !slot.collapsed && slot.children.includes('lingxia-chat') ? true : undefined;
+      }, 'side panel back, Chat still in it, after the browser tab arrived');
     }
   } finally {
     await closeNewBrowserTabs(browser, tabsBefore);

@@ -8,6 +8,11 @@ struct AsideSlotTab: Equatable {
     /// The lxapp's registry icon file; nil falls back like every other lxapp
     /// row (`LxIcon.lxappImage`): the host icon, then the SDK mark.
     var iconPath: String? = nil
+    /// A browser tab of the side panel: its favicon is `image`, and dragging
+    /// it onto the sidebar moves the page into the main browser.
+    var isBrowser: Bool = false
+    /// A resolved icon (a favicon) that wins over `iconPath`.
+    var image: NSImage? = nil
 }
 
 /// Header tab strip for an aside slot: the browser slot's bar metrics, with
@@ -148,10 +153,20 @@ final class AsideSlotTabStripView: NSView {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         itemViews.removeAll()
         for tab in tabs {
-            // An lxapp slot tab's id is its app id.
-            let icon = LxIcon.lxappImage(appId: tab.id, path: tab.iconPath ?? "")
-            let tiled = icon.map { TabBarHelper.appTileIcon($0, size: ChromeTabMetrics.iconSize) }
-            let item = AsideSlotTabItemView(tab: tab, icon: tiled)
+            // An lxapp slot tab's id is its app id; a browser tab brings its
+            // favicon (or the globe) already resolved.
+            let icon: NSImage?
+            if let image = tab.image {
+                icon = image
+            } else if tab.isBrowser {
+                icon = LxIcon.image(
+                    named: "icon_globe",
+                    size: CGSize(width: ChromeTabMetrics.iconSize, height: ChromeTabMetrics.iconSize))
+            } else {
+                icon = LxIcon.lxappImage(appId: tab.id, path: tab.iconPath ?? "")
+                    .map { TabBarHelper.appTileIcon($0, size: ChromeTabMetrics.iconSize) }
+            }
+            let item = AsideSlotTabItemView(tab: tab, icon: icon)
             item.onSelect = { [weak self] in self?.onSelect?(tab.id) }
             item.onClose = { [weak self] in self?.onClose?(tab.id) }
             item.menuProvider = { [weak self] in self?.onMenu?(tab.id) }
@@ -208,8 +223,10 @@ private final class AsideSlotTabItemView: NSView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
 
-        // Dragging a tab onto the sidebar promotes the lxapp to a main.
-        titleButton.dragPayload = AsideTabDragPayload(kind: .lxapp, surfaceId: tab.id)
+        // Dragging a tab onto the sidebar promotes it to a main: the lxapp
+        // moves, or the page joins the main browser.
+        titleButton.dragPayload = AsideTabDragPayload(
+            kind: tab.isBrowser ? .browser : .lxapp, surfaceId: tab.id)
         titleButton.dragImageSource = row
         titleButton.translatesAutoresizingMaskIntoConstraints = false
         titleButton.isBordered = false
@@ -227,6 +244,9 @@ private final class AsideSlotTabItemView: NSView {
             iconView.image = icon
         }
         iconView.imageScaling = .scaleProportionallyDown
+        if tab.isBrowser && tab.image == nil {
+            iconView.contentTintColor = LxAppHostTheme.mutedForeground
+        }
 
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.isBordered = false

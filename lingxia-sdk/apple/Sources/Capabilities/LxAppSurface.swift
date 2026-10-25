@@ -1042,6 +1042,17 @@ enum LxAppSurface {
         return true
     }
 
+    /// Whether `surfaceId` is a browser tab of the side panel.
+    static func isBrowserAside(surfaceId: String) -> Bool {
+        entries[surfaceId]?.dockedBrowser != nil
+    }
+
+    /// Close one side-panel browser tab from the slot strip.
+    static func closeAsideTab(surfaceId: String) -> Bool {
+        guard let entry = entries[surfaceId] else { return false }
+        return close(id: surfaceId, appId: entry.appId, reason: "user")
+    }
+
     static func close(id: String, appId: String, reason: String) -> Bool {
         guard let entry = entries.removeValue(forKey: id) else {
             _ = onSurfaceClosed(appId, id, closeReason(reason))

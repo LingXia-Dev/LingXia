@@ -908,6 +908,21 @@ class WorkspaceManager: NSObject {
 
     // MARK: - Resize
 
+    /// Give panel `to` the size of panel `from`: two hosts of the one side
+    /// panel slot (an lxapp's panel, the docked browser's) must present as a
+    /// single region, so a tab switch never changes the region's width.
+    func syncPanelSize(from: String, to: String) {
+        guard from != to, let source = panels[from], let target = panels[to],
+              source.config.position == target.config.position,
+              abs(source.currentSize - target.currentSize) > 0.5 else { return }
+        // The source is still on screen at this point and is about to give
+        // way to the target, so it must not count against the target's room.
+        let clamped = clampedPanelSize(source.currentSize, for: target.config.position, excluding: from)
+        target.currentSize = clamped
+        target.sizeConstraint?.constant = clamped
+        LxAppShellPersistence.setAsideSize(clamped, panelId: to)
+    }
+
     /// Update panel size in real-time during drag. No animation.
     private func updatePanelSize(id: String, newSize: CGFloat) {
         guard let slot = panels[id] else { return }

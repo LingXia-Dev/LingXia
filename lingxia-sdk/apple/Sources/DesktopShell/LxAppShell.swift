@@ -1262,7 +1262,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Cmd+Option+\: collapse the lxapp aside slot or bring it back. Focus
+    /// Cmd+Option+\: collapse the side panel slot or bring it back. Focus
     /// follows: into the aside page when it returns, back to the main when it
     /// goes away.
     func toggleLxappAsideFromKeyboard() -> Bool {
@@ -1270,7 +1270,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         // is one when no lxapp main is attached (a native or browser main).
         guard let appId = attachedMainAppId ?? LxAppTabManager.shared.activeTab?.appId
             ?? LxAppLayoutReconciler.lxappAsideChildId() else { return false }
-        switch toggleAsideSlotCollapsed(appId, "lxapp") {
+        switch toggleAsideSlotCollapsed(appId, "panel") {
         case 1:
             if let webView = Self.firstWebView(in: workspaceManager.rootView) {
                 window?.makeFirstResponder(webView)

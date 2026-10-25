@@ -163,10 +163,11 @@ pub(crate) const PRIMARY_WINDOW: &str = "primary";
 /// clone the runtime handle and seed a fresh `SurfaceManager` for that window's
 /// graph.
 /// Slot kind named by a shell control ("lxapp" / "browser" / "native").
+/// A slot kind from its API spelling. `lxapp` and `browser` name the side
+/// panel they merged into, for callers written against the three-slot model.
 fn shell_slot_kind(kind: &str) -> Option<lingxia_surface::SlotKind> {
     match kind.trim() {
-        "lxapp" => Some(lingxia_surface::SlotKind::Lxapp),
-        "browser" => Some(lingxia_surface::SlotKind::Browser),
+        "panel" | "lxapp" | "browser" => Some(lingxia_surface::SlotKind::Panel),
         "native" => Some(lingxia_surface::SlotKind::Native),
         _ => None,
     }
@@ -368,7 +369,7 @@ impl WindowSurfaceController {
             let slot = plan
                 .aside_slots
                 .iter()
-                .find(|slot| slot.kind == lingxia_surface::SlotKind::Lxapp);
+                .find(|slot| slot.kind == lingxia_surface::SlotKind::Panel);
             let transition = collapsed_lxapp_transition(guard.as_deref(), slot);
             *guard = transition.collapsed.clone();
             transition
@@ -3474,7 +3475,7 @@ mod tests {
 
     fn lxapp_slot(active: &str, collapsed: bool) -> lingxia_surface::PlanAsideSlot {
         lingxia_surface::PlanAsideSlot {
-            kind: lingxia_surface::SlotKind::Lxapp,
+            kind: lingxia_surface::SlotKind::Panel,
             edge: None,
             children: vec!["agent".to_string(), "chat".to_string()],
             active_child: Some(active.to_string()),

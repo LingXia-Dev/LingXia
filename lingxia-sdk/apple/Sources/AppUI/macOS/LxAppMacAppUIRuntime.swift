@@ -947,7 +947,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     private func collapseExpandedAsides() -> Bool {
         var restored = false
         if let owner = graphOwnerAppId {
-            for kind in ["lxapp", "browser", "native"] where isAsideSlotMaximized(owner, kind) {
+            for kind in ["panel", "native"] where isAsideSlotMaximized(owner, kind) {
                 restored = setAsideSlotMaximized(owner, kind, false) || restored
             }
         }
