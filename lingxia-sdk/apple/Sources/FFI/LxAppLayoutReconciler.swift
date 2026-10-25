@@ -566,19 +566,13 @@ enum LxAppLayoutReconciler {
                 ?? LxAppTabManager.shared.activeTab?.appId
                 ?? lxappAsideChildId()
                 ?? ""
-            var appId: String?
-            var iconPath: String?
             if slot.kind == "lxapp", let child = slot.activeChild ?? slot.children.last {
                 let name = getLxAppInfo(child).app_name.toString()
                 title = name.isEmpty ? child : name
                 graphAppId = child
-                appId = child
-                let icon = getLxAppDisplayIconPath(child).toString()
-                iconPath = icon.isEmpty ? nil : icon
             }
             return CollapsedAsideHandle(
-                kind: slot.kind, position: position, title: title, graphAppId: graphAppId,
-                appId: appId, iconPath: iconPath)
+                kind: slot.kind, position: position, title: title, graphAppId: graphAppId)
         }
         workspace.setCollapsedAsideHandles(handles) { handle in
             _ = restoreAsideSlot(handle.graphAppId, handle.kind)

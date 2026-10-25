@@ -277,51 +277,38 @@ struct CollapsedAsideHandle {
     let title: String
     /// An lxapp whose window graph owns the slot, for the restore call.
     let graphAppId: String
-    /// The lxapp the slot shows (its id is its app id); nil for the browser.
-    var appId: String? = nil
-    var iconPath: String? = nil
 }
 
-/// The tab a collapsed aside leaves at its edge: a small card, vertically
-/// centred, showing the content's icon (the lxapp's, or a globe for the
-/// browser), so the put-away region stays visible and one click brings it
-/// back with everything in it.
+/// The tongue a collapsed aside leaves at its edge: a slim shape flush with
+/// the window edge, its top and bottom sloped, so it reads as a pull-out tab
+/// of the edge itself — larger than a hairline, lighter than a card. No
+/// icon: at this width nothing is legible, and the tooltip names the
+/// content. It is a muted wash over whatever the host tints the base, one
+/// step darker on hover and again on press, and the hover eases it 2pt out
+/// toward the main — the drawer's "pull here". The hit area is larger than
+/// the drawn shape. Clicking it brings the region back with everything in
+/// it.
 @MainActor
 final class CollapsedAsideHandleView: NSView {
-    static let width: CGFloat = 28
-    static let height: CGFloat = 44
+    /// Hit area; the tongue is drawn `tongueWidth` wide at the outer edge.
+    static let width: CGFloat = 16
+    static let height: CGFloat = 72
+    private static let tongueWidth: CGFloat = 12
+    private static let tongueHeight: CGFloat = 56
+    private static let slope: CGFloat = 8
+    private static let hoverReach: CGFloat = 2
 
-    var handle: CollapsedAsideHandle { didSet { applyHandle() } }
+    var handle: CollapsedAsideHandle { didSet { applyLabel() } }
     var onRestore: ((CollapsedAsideHandle) -> Void)?
-    private let card = NSView()
-    private let iconView = NSImageView()
-    private var hovering = false { didSet { applyColors() } }
+    private var hovering = false { didSet { animateReach() } }
+    private var pressing = false { didSet { needsDisplay = true } }
+    /// Animated 0...1: how far the tongue has eased out toward the main.
+    @objc private dynamic var reach: CGFloat = 0 { didSet { needsDisplay = true } }
 
     init(handle: CollapsedAsideHandle) {
         self.handle = handle
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        card.translatesAutoresizingMaskIntoConstraints = false
-        card.wantsLayer = true
-        card.layer?.cornerRadius = 8
-        card.layer?.borderWidth = 1
-        card.layer?.shadowOpacity = 0.12
-        card.layer?.shadowRadius = 4
-        card.layer?.shadowOffset = CGSize(width: 0, height: -1)
-        addSubview(card)
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.imageScaling = .scaleProportionallyDown
-        card.addSubview(iconView)
-        NSLayoutConstraint.activate([
-            card.leadingAnchor.constraint(equalTo: leadingAnchor),
-            card.trailingAnchor.constraint(equalTo: trailingAnchor),
-            card.topAnchor.constraint(equalTo: topAnchor),
-            card.bottomAnchor.constraint(equalTo: bottomAnchor),
-            iconView.centerXAnchor.constraint(equalTo: card.centerXAnchor),
-            iconView.centerYAnchor.constraint(equalTo: card.centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 18),
-            iconView.heightAnchor.constraint(equalToConstant: 18),
-        ])
         addTrackingArea(NSTrackingArea(
             rect: .zero,
             options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
@@ -329,41 +316,78 @@ final class CollapsedAsideHandleView: NSView {
         ))
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        applyHandle()
-        applyColors()
+        applyLabel()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    private func applyHandle() {
-        let label = "Show \(handle.title)"
+    override class func defaultAnimation(forKey key: NSAnimatablePropertyKey) -> Any? {
+        key == "reach" ? CABasicAnimation() : super.defaultAnimation(forKey: key)
+    }
+
+    private func applyLabel() {
+        let label = L10n.string("lx_aside_show_content")
+            .replacingOccurrences(of: "%1$s", with: handle.title)
         toolTip = label
         setAccessibilityLabel(label)
-        if let appId = handle.appId,
-           let icon = LxIcon.lxappImage(appId: appId, path: handle.iconPath ?? "") {
-            iconView.image = TabBarHelper.appTileIcon(icon, size: 18)
-            iconView.contentTintColor = nil
-        } else {
-            iconView.image = LxIcon.image(named: "icon_globe", size: CGSize(width: 16, height: 16))
-            iconView.contentTintColor = LxAppHostTheme.mutedForeground
+    }
+
+    private func animateReach() {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            animator().reach = hovering ? 1 : 0
         }
     }
 
-    private func applyColors() {
-        card.layer?.backgroundColor = themeCGColor(
-            hovering ? LxAppHostTheme.accent.withAlphaComponent(0.14) : LxAppHostTheme.surfaceBackground)
-        card.layer?.borderColor = themeCGColor(hovering ? LxAppHostTheme.accent : LxAppHostTheme.separator)
-        card.layer?.shadowColor = NSColor.black.cgColor
+    override func draw(_ dirtyRect: NSRect) {
+        let width = Self.tongueWidth + Self.hoverReach * reach
+        let slope = min(Self.slope, Self.tongueHeight / 2)
+        let top = (bounds.height - Self.tongueHeight) / 2
+        let bottom = top + Self.tongueHeight
+        let path = NSBezierPath()
+        if handle.position == .left {
+            // Outer side is the leading edge; the slopes shorten the inner side.
+            let outer = bounds.minX
+            let inner = outer + width
+            path.move(to: NSPoint(x: outer, y: top))
+            path.line(to: NSPoint(x: inner, y: top + slope))
+            path.line(to: NSPoint(x: inner, y: bottom - slope))
+            path.line(to: NSPoint(x: outer, y: bottom))
+        } else {
+            let outer = bounds.maxX
+            let inner = outer - width
+            path.move(to: NSPoint(x: outer, y: top))
+            path.line(to: NSPoint(x: inner, y: top + slope))
+            path.line(to: NSPoint(x: inner, y: bottom - slope))
+            path.line(to: NSPoint(x: outer, y: bottom))
+        }
+        path.close()
+        let alpha: CGFloat = pressing ? 0.5 : (hovering ? 0.38 : 0.22)
+        LxAppHostTheme.mutedForeground.withAlphaComponent(alpha).setFill()
+        path.fill()
     }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        applyColors()
+        needsDisplay = true
     }
 
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
-    override func mouseDown(with event: NSEvent) { onRestore?(handle) }
+    override func mouseDown(with event: NSEvent) {
+        pressing = true
+        // Fire on release inside, like a button; a drag-off cancels.
+        guard let window else { return }
+        var inside = true
+        while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            let point = convert(next.locationInWindow, from: nil)
+            inside = bounds.contains(point)
+            if next.type == .leftMouseUp { break }
+        }
+        pressing = false
+        if inside { onRestore?(handle) }
+    }
     override func accessibilityPerformPress() -> Bool {
         onRestore?(handle)
         return true
@@ -771,8 +795,8 @@ class WorkspaceManager: NSObject {
         panels.values.contains { $0.isVisible && $0.isFullscreen }
     }
 
-    /// Edge handles of collapsed aside slots: a small icon tab at the slot's
-    /// edge, over the main card's rim, that brings the region back.
+    /// Edge handles of collapsed aside slots: a slim tongue flush with the
+    /// slot's edge that brings the region back.
     func setCollapsedAsideHandles(
         _ handles: [CollapsedAsideHandle],
         onRestore: @escaping (CollapsedAsideHandle) -> Void
@@ -797,10 +821,11 @@ class WorkspaceManager: NSObject {
                 view.heightAnchor.constraint(equalToConstant: CollapsedAsideHandleView.height),
                 view.centerYAnchor.constraint(equalTo: parent.centerYAnchor),
             ]
+            // Flush with the outer edge; the gap is on the main's side.
             if handle.position == .left, let sidebar = sidebarRef {
-                constraints.append(view.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: 2))
+                constraints.append(view.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor))
             } else {
-                constraints.append(view.trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -2))
+                constraints.append(view.trailingAnchor.constraint(equalTo: parent.trailingAnchor))
             }
             NSLayoutConstraint.activate(constraints)
             collapsedHandleViews[handle.kind] = view

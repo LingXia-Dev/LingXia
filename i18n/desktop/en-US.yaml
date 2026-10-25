@@ -28,6 +28,7 @@ browser:
 aside:
   open_in_main: "Open in Main Area"
   open_in_side: "Open in Side Panel"
+  show_content: "Show %1$s"
   tab_menu: "Tab options"
 
 # Terminal panel (native Windows shell terminal)

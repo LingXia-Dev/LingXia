@@ -4034,26 +4034,6 @@ fn close_managed_aside_child(surface_id: &str) {
     }
 }
 
-/// Icon for a collapsed lxapp aside's edge handle: the app the slot was
-/// showing. None for the browser slot (the shell draws a globe).
-pub(crate) fn collapsed_aside_handle_icon_path(panel_id: &str) -> Option<String> {
-    if panel_id != lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID {
-        return None;
-    }
-    let tabs = lingxia_windows_contract::aside_panel_tabs(panel_id);
-    let surface_id = tabs
-        .iter()
-        .find(|tab| tab.active)
-        .or_else(|| tabs.last())
-        .map(|tab| tab.surface_id.clone())?;
-    let appid = match panel_target_for_id(&surface_id) {
-        Some(PanelTarget::LxApp { appid, .. }) => appid,
-        Some(PanelTarget::Terminal(_)) => return None,
-        None => surface_id,
-    };
-    lxapp::lxapp_display_icon_path(&appid).filter(|path| !path.is_empty())
-}
-
 #[derive(Clone)]
 enum AsideTabMenuAction {
     OpenInMain,

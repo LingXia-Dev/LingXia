@@ -2229,28 +2229,40 @@ fn compute_attached_layout(
     }
 }
 
-/// Width of the strip a collapsed aside keeps at its edge: room for the
-/// icon tab plus a gap on either side.
+/// What the main gives up for a collapsed aside's handle. The tongue sits in
+/// the workspace's own edge clearance (`shell_content_inset`, 12 DIP) flush
+/// with the window edge, so the main only yields a hairline gap beside it and
+/// room for the 2 DIP hover reach.
 fn collapsed_aside_handle_width() -> i32 {
-    px(32)
+    px(4)
 }
 
-/// The handles of collapsed aside slots, beside `main_region`: a small icon
-/// tab centred on the edge the slot docks to, showing the content's icon so
-/// the put-away region stays visible. Clicking one restores the slot.
+/// The tongue's drawn width, the same as macOS.
+fn collapsed_aside_tongue_width() -> i32 {
+    px(12)
+}
+
+/// The handles of collapsed aside slots, beside `main_region`: a slim tongue
+/// flush with the window edge the slot docks to, its top and bottom sloped
+/// (`collapsed_aside_handle_slope`), so it reads as a pull-out tab of the
+/// edge itself — larger than a hairline, lighter than a card. Clicking one
+/// restores the slot.
 fn collapsed_aside_handle_rects(main_region: RECT) -> Vec<(String, RECT)> {
     let width = collapsed_aside_tongue_width();
     let center = (main_region.top + main_region.bottom) / 2;
-    let half = px(22).min(rect_height(&main_region) / 2);
+    let half = px(28).min(rect_height(&main_region) / 2);
     lingxia_windows_contract::collapsed_aside_panels()
         .into_iter()
         .filter_map(|(panel_id, edge)| {
+            // Flush with the window edge: past the main's yielded gap, the
+            // tongue fills the workspace clearance.
+            let gap = collapsed_aside_handle_width();
             let (left, right) = match edge {
                 WindowsPanelPosition::Right => {
-                    (main_region.right + px(2), main_region.right + px(2) + width)
+                    (main_region.right + gap, main_region.right + gap + width)
                 }
                 WindowsPanelPosition::Left => {
-                    (main_region.left - px(2) - width, main_region.left - px(2))
+                    (main_region.left - gap - width, main_region.left - gap)
                 }
                 WindowsPanelPosition::Top | WindowsPanelPosition::Bottom => return None,
             };
@@ -2265,6 +2277,56 @@ fn collapsed_aside_handle_rects(main_region: RECT) -> Vec<(String, RECT)> {
             ))
         })
         .collect()
+}
+
+/// Whether `point` (client coordinates) is on a collapsed aside's handle.
+/// The tongue sits flush with the window edge, inside the host's resize
+/// border, so the non-client hit test asks this first: the handle wins over
+/// resizing there.
+pub(crate) fn collapsed_aside_handle_hit(state: &WindowsChromeState, point: (i32, i32)) -> bool {
+    state.attached.as_ref().is_some_and(|attached| {
+        collapsed_aside_handle_rects(attached.main_region)
+            .iter()
+            .any(|(_, rect)| rect_contains(rect, point))
+    })
+}
+
+/// Colors of the drag chip that follows a shell drag: the content card's
+/// fill, the divider as its hairline, the primary text.
+pub(crate) fn drag_ghost_colors() -> crate::drag_ghost::GhostColors {
+    let pal = shell_palette();
+    crate::drag_ghost::GhostColors {
+        fill: pal.panel_background,
+        border: pal.divider,
+        text: pal.text_primary,
+    }
+}
+
+/// Slope height of the tongue's top and bottom edges.
+fn collapsed_aside_handle_slope() -> i32 {
+    px(8)
+}
+
+/// The tongue polygon for a handle rect: its outer side (the window edge)
+/// runs the full height, its inner side is shortened by a slope at each end.
+fn collapsed_aside_handle_shape(rect: RECT, main_region: RECT) -> [(i32, i32); 4] {
+    let slope = collapsed_aside_handle_slope().min(rect_height(&rect) / 2);
+    if rect.left >= main_region.right {
+        // Right edge: inner side is the left.
+        [
+            (rect.right, rect.top),
+            (rect.left, rect.top + slope),
+            (rect.left, rect.bottom - slope),
+            (rect.right, rect.bottom),
+        ]
+    } else {
+        [
+            (rect.left, rect.top),
+            (rect.right, rect.top + slope),
+            (rect.right, rect.bottom - slope),
+            (rect.left, rect.bottom),
+        ]
+    }
 }
 
 fn attached_panel_order(panel: &WindowsChromePanelLayoutInput) -> (u8, u8, u8, &str) {
@@ -3046,25 +3108,31 @@ pub(super) fn draw_content_cards(
         // the card shadows carry the split), horizontal terminal splits keep
         // theirs since native panels stay flat.
         draw_content_card(hdc, attached.main_region, desktop_card);
-        for (panel_id, rect) in collapsed_aside_handle_rects(attached.main_region) {
+        for (_, rect) in collapsed_aside_handle_rects(attached.main_region) {
             let pal = shell_palette();
-            // A small card with the content's icon; the hover wash on top
-            // lights it like the other edge controls.
-            fill_round_rect_aa(hdc, rect, px(8), pal.panel_background);
-            draw_hover_wash(hdc, rect, px(8), state.cursor);
-            let icon = centered_icon_rect(rect, px(18));
-            let drew = crate::shell::runtime::collapsed_aside_handle_icon_path(&panel_id)
-                .map(|path| draw_icon_or_default(hdc, &path, icon, px(18) as u32))
-                .unwrap_or(false);
-            if !drew {
-                draw_design_icon_button(
-                    hdc,
-                    rect,
-                    WindowsDesignIcon::Globe,
-                    pal.frame_button_icon,
-                    px(16),
-                );
+            let hovered = state
+                .cursor
+                .is_some_and(|point| rect_contains(&rect, point));
+            // A muted wash over the base, one step darker on hover, when
+            // the tongue also reaches 2 DIP further toward the main.
+            let color = blend_rgb(
+                pal.text_muted,
+                pal.window_background,
+                if hovered { 38 } else { 22 },
+            );
+            let mut shape = rect;
+            if hovered {
+                if rect.left >= attached.main_region.right {
+                    shape.left -= px(2);
+                } else {
+                    shape.right += px(2);
+                }
             }
+            fill_polygon_aa(
+                hdc,
+                &collapsed_aside_handle_shape(shape, attached.main_region),
+                color,
+            );
         }
         for panel in &attached.panels {
             if panel.host_content.is_some() {

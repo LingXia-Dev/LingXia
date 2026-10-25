@@ -799,11 +799,24 @@ The aside region is fixed at three slots, grouped by rendering engine:
 - Slot tab switching performs hide/show and preserves content state; only an
   explicit close destroys the current content.
 - A collapsed slot that still holds content leaves a handle at its edge: a
-  small icon tab (28×44pt, vertically centred, over the main card's rim on
-  macOS; in a strip the main gives up on Windows) showing the content's icon
-  — the lxapp's, or a globe for the browser — so the put-away region stays
-  visible; clicking it restores the slot. Opening or focusing a child still
-  restores it too.
+  slim tongue (12×56pt, vertically centred, flush with the window edge, its
+  top and bottom sloped 8pt; on Windows in a strip the main gives up) in the
+  separator colour, accent on hover, with no icon — at that width nothing is
+  legible and the tooltip names the content. It reads as a pull-out tab of
+  the edge itself: larger than a hairline, lighter than a card. Clicking it
+  restores the slot. Opening or focusing a child still restores it too.
+- A slot with content that has no room to dock beside the main (a narrow
+  window) is never silently absent: an explicit open shows it as an overlay,
+  and while it stays hidden it keeps the same edge handle, whose click shows
+  it as an overlay again. Widening the window docks it.
+- Dragging a shell element to a drop target (an aside tab to the sidebar, a
+  sidebar group to the main's edge) keeps the plain arrow cursor and shows
+  the element's name on a translucent chip under the pointer (macOS: the
+  drag snapshot; Windows: a click-through layered chip), never the four-way
+  move cursor or a "not allowed" sign while crossing the window.
+- On Windows the collapsed handle sits flush with the window edge, inside
+  the resize border; a press on it restores the panel rather than resizing
+  the window.
 - Collapsing a slot hides it without closing anything. The lxapp child it was
   showing receives page `onHide`; restoring the slot with that child still
   active delivers `onShow`. Logic and the WebView stay alive throughout.

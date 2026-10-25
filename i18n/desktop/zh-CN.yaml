@@ -28,6 +28,7 @@ browser:
 aside:
   open_in_main: "在主区打开"
   open_in_side: "在侧边打开"
+  show_content: "显示 %1$s"
   tab_menu: "标签选项"
 
 # Terminal panel (native Windows shell terminal)

@@ -12,6 +12,7 @@ export const I18N_KEYS = [
   "album_selected",
   "aside_open_in_main",
   "aside_open_in_side",
+  "aside_show_content",
   "aside_tab_menu",
   "browser_add_bookmark",
   "browser_address_placeholder",
