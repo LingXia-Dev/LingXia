@@ -606,7 +606,15 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         val iconContainer = content.getChildAt(0) as FrameLayout
         iconContainer.background = if (selected) activeIndicatorDrawable() else null
         val icon = iconContainer.getChildAt(0) as ImageView
-        icon.setImageDrawable(slotIcon(slot, selected))
+        val current = icon.drawable
+        // Selection only retints: reloading re-parses and re-rasterizes every SVG glyph.
+        if (slot is Slot.Tab && current != null) {
+            if (ChromeIcon.isTemplateGlyph(items[slot.itemIndex].iconPath)) {
+                current.setTint(if (selected) config.selectedColor else config.color)
+            }
+        } else {
+            icon.setImageDrawable(slotIcon(slot, selected))
+        }
 
         if (content.childCount > 1) {
             (content.getChildAt(1) as? TextView)?.setTextColor(

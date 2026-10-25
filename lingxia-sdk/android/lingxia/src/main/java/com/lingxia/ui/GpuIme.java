@@ -241,11 +241,13 @@ final class GpuIme {
     private void drop(boolean hide) {
         epoch++; pendingFocus=false;
         invalidateWrapper();
-        if (connection != null) connection.closeConnection();
+        boolean editing = connection != null;
+        if (editing) connection.closeConnection();
         connection=null;
         host.hideTextMenu();
         host.caret(caretActive,null,0,0,-1,-1);
-        if (hide) { manager.hideSoftInputFromWindow(view.getWindowToken(),0); manager.restartInput(view); }
+        // Without an editor there is no keyboard to hide; the IME round trip would still relayout the window.
+        if (hide && editing) { manager.hideSoftInputFromWindow(view.getWindowToken(),0); manager.restartInput(view); }
     }
     void clear(boolean blur) {
         GpuInputConnection previous=connection;

@@ -283,39 +283,30 @@ class LxAppActivity : AppCompatActivity() {
 
         @JvmStatic
         fun updateNavigationBarTransparency(activity: AppCompatActivity, isTabBarTransparent: Boolean, tabBarBackgroundColor: Int? = null) {
-            activity.window.apply {
+            val window = activity.window
+            val color = if (isTabBarTransparent) Color.TRANSPARENT else tabBarBackgroundColor ?: Color.WHITE
+            // Light backgrounds keep the system contrast scrim; transparent and dark ones do not.
+            val contrast = !isTabBarTransparent &&
+                (Color.red(color) * 0.299 + Color.green(color) * 0.587 + Color.blue(color) * 0.114) > 128
+            // Unchanged bars skip the window update: every call re-dispatches insets to the
+            // whole window, which a tab switch would pay for nothing.
+            val noLimits = (window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS) != 0
+            val unchanged = !noLimits && window.navigationBarColor == color &&
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || window.isNavigationBarContrastEnforced == contrast) &&
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || window.navigationBarDividerColor == Color.TRANSPARENT)
+            if (unchanged) return
+            window.apply {
                 // Never set FLAG_LAYOUT_NO_LIMITS. It extends the window past
                 // the display on several OEMs (Huawei gesture nav especially);
                 // a Gravity.BOTTOM TabBar then sits in the clipped region and
                 // only the top of the strip remains visible. Edge-to-edge is
                 // already enabled via setDecorFitsSystemWindows(false).
                 clearFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-                if (isTabBarTransparent) {
-                    navigationBarColor = Color.TRANSPARENT
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        isNavigationBarContrastEnforced = false
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        navigationBarDividerColor = Color.TRANSPARENT
-                    }
-                } else {
-                    // Use TabBar's background color, fallback to white if not provided
-                    val navBarColor = tabBarBackgroundColor ?: Color.WHITE
-                    navigationBarColor = navBarColor
-
-                    // Set contrast enforcement based on color brightness
-                    val brightness = (Color.red(navBarColor) * 0.299 + Color.green(navBarColor) * 0.587 + Color.blue(navBarColor) * 0.114)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        isNavigationBarContrastEnforced = brightness > 128 // Light background
-                    }
-
-                    // Remove divider completely for seamless appearance
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        navigationBarDividerColor = Color.TRANSPARENT
-                    }
-                }
+                navigationBarColor = color
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isNavigationBarContrastEnforced = contrast
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) navigationBarDividerColor = Color.TRANSPARENT
             }
-            ViewCompat.requestApplyInsets(activity.window.decorView)
+            ViewCompat.requestApplyInsets(window.decorView)
         }
     }
 
@@ -2410,8 +2401,12 @@ class LxAppActivity : AppCompatActivity() {
             (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
                 Configuration.UI_MODE_NIGHT_YES
         }
-        WindowCompat.getInsetsController(window, window.decorView)
-            .isAppearanceLightStatusBars = !lightGlyphs
+        // Only on a change: an appearance write marks the window attributes changed, and
+        // the next traversal pays a window relayout for it even when the value is the same.
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        if (controller.isAppearanceLightStatusBars != !lightGlyphs) {
+            controller.isAppearanceLightStatusBars = !lightGlyphs
+        }
     }
 
     private fun animateNavBar(navbarState: NavigationBarState, isBackNavigation: Boolean) {
@@ -2623,10 +2618,14 @@ class LxAppActivity : AppCompatActivity() {
         dispatchUiOrientationChangeIfNeeded()
     }
 
+    /** Reading `requestedOrientation` is a synchronous system call; only this activity sets it. */
+    private var appliedOrientation: Int? = null
+
     private fun updateRequestedOrientation(orientation: Int) {
         val targetOrientation = resolveScreenOrientation(orientation)
-        if (requestedOrientation != targetOrientation) {
+        if (appliedOrientation != targetOrientation) {
             requestedOrientation = targetOrientation
+            appliedOrientation = targetOrientation
         }
     }
 
@@ -2644,7 +2643,8 @@ class LxAppActivity : AppCompatActivity() {
     private fun updateImmersiveMode(orientation: Int, path: String) {
         val shouldFullscreen = shouldEnterImmersiveMode(orientation, path)
         if (shouldFullscreen) {
-            enterImmersiveMode()
+            // Re-entering rewrites window flags and costs a WM relayout per switch.
+            if (!isPageFullscreen) enterImmersiveMode()
         } else {
             exitImmersiveMode()
         }
