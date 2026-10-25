@@ -57,13 +57,38 @@ impl<A: PlatformAdapter> Inner<A> {
             self.pump_images();
             return;
         };
+        match bytes {
+            Ok(bytes) => {
+                let inner = self.clone();
+                super::decode::decode(bytes, move |bitmap| {
+                    let host = inner.clone();
+                    inner
+                        .adapter
+                        .post(Box::new(move || host.decoded(token, request, bitmap)));
+                });
+            }
+            Err(_) => self.decoded(token, request, Err(String::new())),
+        }
+    }
+
+    /// Bind a decoded bitmap on the worker if its request is still current.
+    fn decoded(
+        self: &Arc<Self>,
+        token: u64,
+        request: super::super::image_requests::ImageRequest,
+        bitmap: Result<crate::scene::image::Bitmap, String>,
+    ) {
+        if self.main().images.request(token).is_none() {
+            self.pump_images();
+            return;
+        }
         self.work(
             Guard::Page(self.lifecycle.page()),
             move |inner, session| {
-                let bound = match &bytes {
-                    Ok(bytes) => {
+                let bound = match bitmap {
+                    Ok(bitmap) => {
                         session
-                            .load_image(&request.source, bytes)
+                            .bind_image(&request.source, bitmap)
                             .unwrap_or_else(|error| {
                                 inner
                                     .adapter
@@ -71,7 +96,14 @@ impl<A: PlatformAdapter> Inner<A> {
                                 false
                             })
                     }
-                    Err(_) => false,
+                    Err(error) => {
+                        if !error.is_empty() {
+                            inner
+                                .adapter
+                                .warn(&format!("UI_IMAGE: {} failed: {error}", request.source));
+                        }
+                        false
+                    }
                 };
                 session.image_completed(
                     ImageSource {

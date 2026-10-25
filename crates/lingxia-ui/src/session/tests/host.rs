@@ -226,7 +226,15 @@ impl Platform {
 
     /// Run posted work and vsyncs until the worker and every host are quiet.
     fn settle(&self, hosts: &[&ViewHost<Fake>]) {
+        self.settle_with(hosts, true);
+    }
+
+    /// `decodes: false` leaves image decodes in flight, as a stalled decode would.
+    fn settle_with(&self, hosts: &[&ViewHost<Fake>], decodes: bool) {
         loop {
+            if decodes {
+                crate::session::host::decode::wait_idle();
+            }
             // The worker is FIFO: once a marker runs, earlier jobs have posted their results.
             for worker in &self.workers {
                 let (done, wait) = channel();
@@ -529,6 +537,43 @@ fn a_page_whose_target_is_attaching_waits_without_holding_up_its_worker() {
     attaching.request_frame();
     platform.settle(&[&stalled, &attaching]);
     assert_eq!(last(&attaching), ["B"]);
+}
+
+#[test]
+fn a_stalled_image_decode_never_holds_up_another_page_on_the_worker() {
+    let worker = ViewWorker::shared("test:decode").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let photo = platform.host(
+        &worker,
+        &source("function render(){return h('column',{},h('text',{},'A'),h('image',{src:'lx://photo.png',alt:'',style:{width:20,height:20}}))}"),
+        false,
+    );
+    photo.set_visible(true);
+    platform.settle(&[&photo]);
+    let (image, _) = photo.adapter().log.lock().unwrap().fetched[0].clone();
+    let (release, stalled) = channel();
+    crate::session::host::decode::occupy(stalled);
+    photo.image_loaded(image, Ok(png()));
+    let other = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'B')}"),
+        false,
+    );
+    other.set_visible(true);
+    platform.settle_with(&[&photo, &other], false);
+    assert_eq!(
+        last(&other),
+        ["B"],
+        "B presents while A's decode is stalled"
+    );
+    assert_eq!(
+        photo.adapter().log.lock().unwrap().loaded,
+        1,
+        "A's image is not bound yet"
+    );
+    drop(release);
+    platform.settle(&[&photo, &other]);
+    assert!(photo.adapter().log.lock().unwrap().loaded >= 1);
 }
 
 #[test]

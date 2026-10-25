@@ -187,8 +187,10 @@ host calls as `GpuView` natives. Java converts events and draws chrome; it
 holds no frame sequencing, timers, layout, hit testing or effect parsing.
 Chrome geometry (clip tests, selection-handle hit radius, knob offset and drag
 clamping) is `interaction::chrome` over the snapshot node.
-Pages of one `appId:session` share a worker by key. Host JVM tests load the
-crate's cdylib built for the host.
+Pages of one `appId:session` share a worker by key, so nothing slow runs on it:
+image decode uses a small process pool, GPU attach its own thread, and a page
+whose attach is pending declines frames rather than rasterizing on the CPU.
+Host JVM tests load the crate's cdylib built for the host.
 
 To add a platform: implement the adapter traits, map the platform's text
 scaling and insets into the environment, present `renderer` frames on its

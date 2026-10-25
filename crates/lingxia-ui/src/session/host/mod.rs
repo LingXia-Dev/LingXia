@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 mod bridge;
+pub(crate) mod decode;
 mod dispatch;
 mod environment;
 mod images;
