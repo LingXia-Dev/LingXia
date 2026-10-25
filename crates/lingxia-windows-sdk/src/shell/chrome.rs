@@ -365,6 +365,7 @@ pub(super) mod command_id {
     pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
     pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
     pub(super) const ASIDE_PANEL_TAB_MENU: &str = "aside-panel.tab.menu";
+    pub(super) const ASIDE_PANEL_TAB_OVERFLOW: &str = "aside-panel.tab.overflow";
     pub(super) const ASIDE_PANEL_COLLAPSE: &str = "aside-panel.collapse";
     pub(super) const ASIDE_PANEL_MAXIMIZE: &str = "aside-panel.maximize";
     pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
@@ -728,13 +729,23 @@ fn chrome_hover_rect(
                 return Some(close_all);
             }
             let tabs = panel_aside_tabs(panel);
-            for rect in aside_panel_tab_rects(panel, &tabs) {
-                if let Some(close) = aside_panel_tab_close_rect(rect)
+            let tab_layout = aside_panel_tab_layout(panel, &tabs);
+            if let Some(overflow) = tab_layout.overflow
+                && rect_contains(&overflow, point)
+            {
+                return Some(overflow);
+            }
+            for (tab, rect) in tabs.iter().zip(tab_layout.rects) {
+                let Some(rect) = rect else {
+                    continue;
+                };
+                let controls = aside_panel_tab_controls(rect, tab.active, tabs.len() == 1, true);
+                if let Some(close) = controls.close
                     && rect_contains(&close, point)
                 {
                     return Some(close);
                 }
-                if let Some(more) = aside_panel_tab_more_rect(rect)
+                if let Some(more) = controls.more
                     && rect_contains(&more, point)
                 {
                     return Some(more);

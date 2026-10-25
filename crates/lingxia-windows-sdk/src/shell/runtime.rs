@@ -505,6 +505,7 @@ mod chrome_command {
     pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
     pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
     pub(super) const ASIDE_PANEL_TAB_MENU: &str = "aside-panel.tab.menu";
+    pub(super) const ASIDE_PANEL_TAB_OVERFLOW: &str = "aside-panel.tab.overflow";
     pub(super) const ASIDE_PANEL_COLLAPSE: &str = "aside-panel.collapse";
     pub(super) const ASIDE_PANEL_MAXIMIZE: &str = "aside-panel.maximize";
     pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
@@ -3925,6 +3926,38 @@ fn sync_lxapp_aside_navigation() {
 
 /// The narrow form of the lxapp aside's tabBar row: every item in a menu,
 /// the current one checked.
+/// The side panel tabs that did not fit its strip; picking one shows it.
+fn show_aside_tab_overflow_menu(
+    panel_id: &str,
+    surface_ids: Vec<String>,
+    titles: Vec<String>,
+    screen_x: i32,
+    screen_y: i32,
+) {
+    if surface_ids.is_empty() || surface_ids.len() != titles.len() {
+        return;
+    }
+    let Some(window) = shell_owner_appid().and_then(|appid| owner_window_handle(&appid)) else {
+        return;
+    };
+    let checked = vec![false; titles.len()];
+    let panel_id = panel_id.to_string();
+    super::context_menu::show_context_menu_checked(
+        window,
+        (screen_x, screen_y),
+        titles,
+        checked,
+        Arc::new(move |slot| {
+            if let Some(surface_id) = surface_ids.get(slot).cloned() {
+                dispatch_aside_panel_event(WindowsAsidePanelEvent::TabClick {
+                    panel_id: panel_id.clone(),
+                    surface_id,
+                });
+            }
+        }),
+    );
+}
+
 fn show_lxapp_aside_tabbar_menu(panel_id: &str, screen_x: i32, screen_y: i32) {
     let Some(tabbar) = lingxia_windows_contract::aside_panel_tabbar(panel_id) else {
         return;
@@ -4766,6 +4799,35 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let screen_x = payload_i32(&event, "screen_x").unwrap_or(0);
             let screen_y = payload_i32(&event, "screen_y").unwrap_or(0);
             show_aside_tab_context_menu(&panel_id, &surface_id, screen_x, screen_y);
+            return;
+        }
+        chrome_command::ASIDE_PANEL_TAB_OVERFLOW => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            let strings = |field: &str| -> Vec<String> {
+                event
+                    .payload
+                    .get(field)
+                    .and_then(serde_json::Value::as_array)
+                    .map(|items| {
+                        items
+                            .iter()
+                            .filter_map(serde_json::Value::as_str)
+                            .map(ToString::to_string)
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            };
+            let screen_x = payload_i32(&event, "screen_x").unwrap_or(0);
+            let screen_y = payload_i32(&event, "screen_y").unwrap_or(0);
+            show_aside_tab_overflow_menu(
+                &panel_id,
+                strings("surface_ids"),
+                strings("titles"),
+                screen_x,
+                screen_y,
+            );
             return;
         }
         chrome_command::ASIDE_PANEL_COLLAPSE => {
