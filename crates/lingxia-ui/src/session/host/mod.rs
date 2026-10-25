@@ -156,6 +156,26 @@ pub struct ViewHost<A: PlatformAdapter> {
     inner: Arc<Inner<A>>,
 }
 
+/// A host handle that does not keep the page alive, e.g. for an adapter's
+/// completion callbacks.
+pub struct WeakViewHost<A: PlatformAdapter> {
+    inner: std::sync::Weak<Inner<A>>,
+}
+
+impl<A: PlatformAdapter> Clone for WeakViewHost<A> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<A: PlatformAdapter> WeakViewHost<A> {
+    pub fn upgrade(&self) -> Option<ViewHost<A>> {
+        self.inner.upgrade().map(|inner| ViewHost { inner })
+    }
+}
+
 impl<A: PlatformAdapter> Clone for ViewHost<A> {
     fn clone(&self) -> Self {
         Self {
@@ -247,6 +267,12 @@ impl<A: PlatformAdapter> ViewHost<A> {
 
     pub fn adapter(&self) -> &A {
         &self.inner.adapter
+    }
+
+    pub fn downgrade(&self) -> WeakViewHost<A> {
+        WeakViewHost {
+            inner: Arc::downgrade(&self.inner),
+        }
     }
 
     pub fn lifecycle(&self) -> &Lifecycle {

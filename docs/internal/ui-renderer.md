@@ -159,7 +159,10 @@ convert OS events and report pointer state; they compute no geometry.
 Loads are asynchronous and cancellable. Identity is `(src, retryKey)`; the
 session owns settled outcomes and delivers `onLoad`/`onError` once per
 identity, after presentation. Obsolete request tokens cancel queued and
-running loads. Resource authority and caches stay in lxapp.
+running loads. Resource authority and caches stay in lxapp. On Android the
+adapter's `ImageProvider` calls an `ImageLoader` the facade installs
+(`gpu_page::load_image`, keyed by the page's token); dropping a load's handle
+drops its future and transport. Image bytes never cross JNI.
 
 ## Platform adapters
 

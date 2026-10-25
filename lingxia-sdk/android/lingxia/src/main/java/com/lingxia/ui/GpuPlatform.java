@@ -15,9 +15,6 @@ interface GpuPlatform {
     boolean presentPixels(int[] argb, int width, int height);
     void gpuAttached(boolean attached);
 
-    void fetchImage(long id, String source);
-    void cancelImage(long id);
-
     /** 0 focused, 1 focus cleared, 2 input focused, 3 hover enter, 4 hover exit, 5 value changed, 6 content changed. */
     void announce(int event, int id);
     void announceText(int id, boolean secure, String before, String after);

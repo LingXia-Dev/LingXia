@@ -22,7 +22,7 @@ public class GpuNativeLoadTest {
     static final class Fake implements GpuPlatform {
         final LinkedBlockingQueue<Long> tasks = new LinkedBlockingQueue<>();
         final ArrayList<Long> delayed = new ArrayList<>();
-        final ArrayList<String> frames = new ArrayList<>(), fetched = new ArrayList<>(), events = new ArrayList<>();
+        final ArrayList<String> frames = new ArrayList<>(), events = new ArrayList<>();
         final ArrayList<int[]> pixels = new ArrayList<>();
         boolean vsync;
         int loaded, presented;
@@ -34,8 +34,6 @@ public class GpuNativeLoadTest {
         }
         public boolean presentPixels(int[] argb, int width, int height) { assertEquals(argb.length, width * height); pixels.add(argb); return true; }
         public void gpuAttached(boolean attached) { }
-        public void fetchImage(long id, String source) { fetched.add(id + " " + source); }
-        public void cancelImage(long id) { events.add("cancel " + id); }
         public void announce(int event, int id) { events.add("announce " + event); }
         public void announceText(int id, boolean secure, String before, String after) { }
         public void announceSelection(int id, boolean secure, String text, int start, int end) { }
@@ -88,9 +86,10 @@ public class GpuNativeLoadTest {
         return null;
     }
 
-    @Test public void presentedFramesDriveTapsSemanticsAndImagesThroughTheHost() throws Exception {
+    /** Images load in Rust; without an image owner the host settles them as failed, with no Java call. */
+    @Test public void presentedFramesDriveTapsAndSemanticsThroughTheHost() throws Exception {
         Fake fake = new Fake();
-        long host = GpuView.nativeHostCreate(fake, "test:jvm", false);
+        long host = GpuView.nativeHostCreate(fake, "test:jvm", false, 0);
         GpuView.nativeLoad(host, GpuNative.module(
             "function render(){const n=useLocal('n',0);return h('column',{},h('button',{testId:'add',onClick:()=>n.set(n.value+1),style:{height:60}},'Count '+n.value),h('image',{src:'lx://pic.png',style:{width:20,height:20}}))}"));
         fake.pump(host, () -> fake.loaded == 1);
@@ -104,10 +103,6 @@ public class GpuNativeLoadTest {
         JSONObject node = new JSONObject(GpuView.nativeSemanticNode(host, button));
         assertEquals("button", node.getString("role"));
         assertEquals("Count 0", node.getString("name"));
-        assertEquals(1, fake.fetched.size());
-        long image = Long.parseLong(fake.fetched.get(0).split(" ")[0]);
-        assertTrue(fake.fetched.get(0).endsWith("lx://pic.png"));
-        GpuView.nativeImageLoaded(host, image, null);
         assertTrue(GpuView.nativePointer(host, 0, 40, 40, 8, 0, 0, 50));
         GpuView.nativePointer(host, 2, 40, 40, 8, 0, 0, 50);
         assertTrue(fake.events.contains("clicked"));

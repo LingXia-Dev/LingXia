@@ -7,17 +7,43 @@ use lingxia_ui::interaction::view::{AccessibilityEffect, Dispatch, Effect};
 use lingxia_ui::platform::*;
 use lingxia_ui::semantics::projection::Event;
 use lingxia_ui::session::host::{
-    Failure, FrameSnapshot, FrameTiming, RecoveryAction, RecoveryMessage,
+    Failure, FrameSnapshot, FrameTiming, RecoveryAction, RecoveryMessage, WeakViewHost,
 };
 use lingxia_ui::session::lifecycle::{CommitTicket, ConnectionTicket, SurfaceTicket};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
+
+/// Loads image bytes for the page an owner token names. The embedding host
+/// installs it; image bytes never cross JNI.
+pub trait ImageLoader: Send + Sync + 'static {
+    /// `done` runs once with the bytes, unless the returned handle is dropped first.
+    fn load(
+        &self,
+        owner: i64,
+        source: String,
+        done: Box<dyn FnOnce(Result<Vec<u8>, String>) + Send>,
+    ) -> Box<dyn Send>;
+}
+
+static IMAGE_LOADER: OnceLock<Arc<dyn ImageLoader>> = OnceLock::new();
+
+/// Install the process image loader; the first call wins.
+pub fn set_image_loader(loader: Arc<dyn ImageLoader>) {
+    let _ = IMAGE_LOADER.set(loader);
+}
 
 pub(super) struct AndroidAdapter {
     platform: Global<JObject<'static>>,
     /// The attached GPU presenter; 0 renders on the CPU.
     pub(super) gpu: AtomicU64,
     started: Instant,
+    /// Names this page to the image loader; 0 has no image source.
+    owner: i64,
+    pub(super) host: OnceLock<WeakViewHost<AndroidAdapter>>,
+    /// In-flight loads; dropping a handle cancels its transport.
+    images: Mutex<HashMap<u64, Box<dyn Send>>>,
 }
 
 pub(super) enum Frame {
@@ -50,12 +76,19 @@ pub(super) fn log(message: &str) {
 }
 
 impl AndroidAdapter {
-    pub(super) fn new(platform: Global<JObject<'static>>) -> Self {
+    pub(super) fn new(platform: Global<JObject<'static>>, owner: i64) -> Self {
         Self {
             platform,
             gpu: AtomicU64::new(0),
             started: Instant::now(),
+            owner,
+            host: OnceLock::new(),
+            images: Mutex::new(HashMap::new()),
         }
+    }
+
+    fn images(&self) -> std::sync::MutexGuard<'_, HashMap<u64, Box<dyn Send>>> {
+        self.images.lock().unwrap_or_else(|p| p.into_inner())
     }
 
     /// Run `work` with this thread's JNI environment; a thrown Java exception
@@ -272,27 +305,35 @@ impl EnvironmentSource for AndroidAdapter {
 
 impl ImageProvider for AndroidAdapter {
     fn fetch(&self, id: u64, source: &str) {
-        self.java(|env, platform| {
-            let source = env.new_string(source)?;
-            env.call_method(
-                platform,
-                jni_str!("fetchImage"),
-                jni_sig!("(JLjava/lang/String;)V"),
-                &[JValue::Long(id as i64), JValue::Object(&source)],
-            )?;
-            Ok(())
-        })
+        let Some(host) = self.host.get().cloned() else {
+            return;
+        };
+        let Some(loader) = IMAGE_LOADER.get().filter(|_| self.owner != 0) else {
+            if let Some(host) = host.upgrade() {
+                host.image_loaded(id, Err("UI_IMAGE: no image source for this page".into()));
+            }
+            return;
+        };
+        let finished = Arc::new(AtomicBool::new(false));
+        let done = {
+            let finished = finished.clone();
+            Box::new(move |result: Result<Vec<u8>, String>| {
+                finished.store(true, Ordering::Release);
+                if let Some(host) = host.upgrade() {
+                    host.adapter().images().remove(&id);
+                    host.image_loaded(id, result);
+                }
+            })
+        };
+        let handle = loader.load(self.owner, source.into(), done);
+        // A loader may finish synchronously; then there is nothing left to cancel.
+        if !finished.load(Ordering::Acquire) {
+            self.images().insert(id, handle);
+        }
     }
     fn cancel(&self, id: u64) {
-        self.java(|env, platform| {
-            env.call_method(
-                platform,
-                jni_str!("cancelImage"),
-                jni_sig!("(J)V"),
-                &[JValue::Long(id as i64)],
-            )?;
-            Ok(())
-        })
+        let handle = self.images().remove(&id);
+        drop(handle);
     }
 }
 

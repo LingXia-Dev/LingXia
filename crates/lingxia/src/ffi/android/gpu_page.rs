@@ -28,9 +28,6 @@ pub(super) fn initialize(env: &mut Env) -> Result<(), jni::errors::Error> {
         env.register_native_methods(
             &class,
             &[
-                method!("requestImage", "(JJLjava/lang/String;)V", request_image),
-                method!("beginImage", "()J", begin_image),
-                method!("cancelImage", "(J)V", cancel_image),
                 method!("message", "(JJLjava/lang/String;)V", message),
                 method!(
                     "created",
@@ -46,6 +43,7 @@ pub(super) fn initialize(env: &mut Env) -> Result<(), jni::errors::Error> {
     if CLASS.set(global).is_ok() {
         lxapp::register_gpu_page_view_factory(Arc::new(gpu_page::Binding(Arc::new(Factory))))
             .map_err(|_| jni::errors::Error::JniCall(jni::errors::JniError::Unknown))?;
+        lingxia_ui_android::set_image_loader(Arc::new(Images));
     }
     Ok(())
 }
@@ -253,47 +251,16 @@ extern "system" fn presented(_: EnvUnowned<'_>, _: JClass<'_>, token: i64, gener
     gpu_page::presented(token, generation as u64);
 }
 
-/// Completes on the runtime executor through `GpuPage.imageLoaded`; never blocks a caller thread.
-extern "system" fn request_image<'a>(
-    mut env: EnvUnowned<'a>,
-    _: JClass<'a>,
-    token: i64,
-    request: i64,
-    source: JString<'a>,
-) {
-    env.with_env(|env| -> Result<(), jni::errors::Error> {
-        let source = source.try_to_string(env)?;
-        gpu_page::request_image(token, request, source, move |bytes| {
-            deliver_image(request, bytes)
-        });
-        Ok(())
-    })
-    .resolve::<ThrowRuntimeExAndDefault>()
-}
+/// Loads for GPU pages; the image owner is the page's token.
+struct Images;
 
-fn deliver_image(request: i64, bytes: Option<Vec<u8>>) {
-    let result = with_env(|env| {
-        let bytes = match &bytes {
-            Some(bytes) => JObject::from(env.byte_array_from_slice(bytes)?),
-            None => JObject::null(),
-        };
-        env.call_static_method(
-            class(),
-            jni_str!("imageLoaded"),
-            jni_sig!("(J[B)V"),
-            &[request.into(), (&bytes).into()],
-        )?;
-        Ok::<_, jni::errors::Error>(())
-    });
-    if let Err(error) = result {
-        log::warn!("GPU image delivery failed: {error}");
+impl lingxia_ui_android::ImageLoader for Images {
+    fn load(
+        &self,
+        owner: i64,
+        source: String,
+        done: Box<dyn FnOnce(Result<Vec<u8>, String>) + Send>,
+    ) -> Box<dyn Send> {
+        Box::new(gpu_page::load_image(owner, source, done))
     }
-}
-
-extern "system" fn begin_image(_: EnvUnowned<'_>, _: JClass<'_>) -> i64 {
-    gpu_page::begin_image()
-}
-
-extern "system" fn cancel_image(_: EnvUnowned<'_>, _: JClass<'_>, request: i64) {
-    gpu_page::cancel_image(request);
 }

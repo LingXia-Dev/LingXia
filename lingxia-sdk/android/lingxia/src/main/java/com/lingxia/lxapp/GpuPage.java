@@ -12,12 +12,6 @@ import java.util.HashMap;
 public final class GpuPage extends FrameLayout {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final HashMap<Long, GpuPage> PAGES = new HashMap<>();
-    // Native loads run on the runtime executor and complete through imageLoaded.
-    private static final java.util.concurrent.ConcurrentHashMap<Long, java.util.function.Consumer<byte[]>> IMAGES =
-        new java.util.concurrent.ConcurrentHashMap<>();
-    private static native long beginImage();
-    private static native void cancelImage(long request);
-    private static native void requestImage(long token, long request, String source);
     private static native void created(long token, GpuPage page, String error);
     private static native void presented(long token, long generation);
     private static native boolean restart(long token, long generation);
@@ -32,14 +26,7 @@ public final class GpuPage extends FrameLayout {
         this.appId = appId; this.path = path; this.webTag = webTag;
         GpuView candidate = null;
         try {
-            candidate = new GpuView(context, source, worker, new GpuView.Listener() {
-                public Runnable onImageRequest(String source, java.util.function.Consumer<byte[]> result) {
-                    long request = beginImage();
-                    IMAGES.put(request, result);
-                    try { requestImage(token, request, source); }
-                    catch (Throwable error) { IMAGES.remove(request); cancelImage(request); result.accept(null); }
-                    return () -> { if (IMAGES.remove(request) != null) cancelImage(request); };
-                }
+            candidate = new GpuView(context, source, worker, token, new GpuView.Listener() {
                 public void onLoaded() {
                     if (!reported) { reported = true; created(token, GpuPage.this, null); }
                 }
@@ -60,12 +47,6 @@ public final class GpuPage extends FrameLayout {
             if (candidate != null) candidate.dispose();
             throw error;
         }
-    }
-
-    /** Called from native load completion on a runtime thread. */
-    public static void imageLoaded(long request, byte[] bytes) {
-        java.util.function.Consumer<byte[]> result = IMAGES.remove(request);
-        if (result != null) result.accept(bytes);
     }
 
     public String getAppId() { return appId; }

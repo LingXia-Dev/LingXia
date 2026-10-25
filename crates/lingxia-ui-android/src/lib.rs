@@ -3,7 +3,7 @@
 //! Java owns the host handle from `nativeHostCreate` to `nativeHostRelease` and
 //! calls every native on the main thread.
 use jni::errors::ThrowRuntimeExAndDefault;
-use jni::objects::{JByteArray, JCharArray, JClass, JObject, JString};
+use jni::objects::{JCharArray, JClass, JObject, JString};
 use jni::sys::{jboolean, jdouble, jfloat, jint, jlong};
 use jni::{Env, EnvUnowned, JValue, jni_sig, jni_str};
 use lingxia_ui::interaction::view::{AccessibilityAction, Key, Pointer, PointerPhase};
@@ -16,6 +16,7 @@ mod adapter;
 mod gpu_surface;
 
 use adapter::AndroidAdapter;
+pub use adapter::{ImageLoader, set_image_loader};
 
 type Host = ViewHost<AndroidAdapter>;
 
@@ -76,7 +77,7 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
     let methods = [
         method!(
             "nativeHostCreate",
-            "(Lcom/lingxia/ui/GpuPlatform;Ljava/lang/String;Z)J",
+            "(Lcom/lingxia/ui/GpuPlatform;Ljava/lang/String;ZJ)J",
             host_create
         ),
         method!("nativeHostRelease", "(J)V", host_release),
@@ -128,7 +129,6 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         ),
         method!("nativeInput", "(JLjava/lang/String;J)V", input),
         method!("nativeCaret", "(JZZLjava/lang/String;IIII)V", caret),
-        method!("nativeImageLoaded", "(JJ[B)V", image_loaded),
         method!("nativeGpuSentinel", "(Ljava/lang/String;)V", gpu_sentinel),
         method!(
             "nativeChromeContains",
@@ -163,11 +163,13 @@ extern "system" fn host_create<'a>(
     platform: JObject<'a>,
     worker: JString<'a>,
     logic: jboolean,
+    image_owner: jlong,
 ) -> jlong {
     run(&mut env, |env| {
         let platform = env.new_global_ref(platform)?;
         let worker = ViewWorker::shared(&text(env, &worker)?)?;
-        let host = ViewHost::new(AndroidAdapter::new(platform), worker, logic);
+        let host = ViewHost::new(AndroidAdapter::new(platform, image_owner), worker, logic);
+        let _ = host.adapter().host.set(host.downgrade());
         Ok(Box::into_raw(Box::new(host)) as jlong)
     })
 }
@@ -592,26 +594,6 @@ extern "system" fn caret<'a>(
             None
         };
         host(handle)?.caret(eligible, state);
-        Ok(())
-    })
-}
-
-extern "system" fn image_loaded<'a>(
-    mut env: EnvUnowned<'a>,
-    _: JClass<'a>,
-    handle: jlong,
-    id: jlong,
-    bytes: JByteArray<'a>,
-) {
-    run(&mut env, |env| {
-        let bytes = if bytes.is_null() {
-            Err("UI_IMAGE: load failed".into())
-        } else if bytes.len(env)? > lingxia_ui::protocol::limits::IMAGE_BYTES {
-            Err("UI_IMAGE: encoded size limit".into())
-        } else {
-            Ok(env.convert_byte_array(&bytes)?)
-        };
-        host(handle)?.image_loaded(id as u64, bytes);
         Ok(())
     })
 }

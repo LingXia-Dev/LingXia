@@ -31,7 +31,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     /** Standalone hosts call this after loading the library; the SDK initializes it automatically. */
     public static native void initializeNative();
 
-    static native long nativeHostCreate(GpuPlatform platform, String worker, boolean logic);
+    static native long nativeHostCreate(GpuPlatform platform, String worker, boolean logic, long imageOwner);
     static native void nativeHostRelease(long host);
     static native void nativeRunTask(long task);
     static native void nativeLoad(long host, String source);
@@ -66,7 +66,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native String nativeSemanticNode(long host, int id);
     static native void nativeInput(long host, String request, long callback);
     static native void nativeCaret(long host, boolean eligible, boolean connected, String text, int anchor, int focus, int start, int end);
-    static native void nativeImageLoaded(long host, long id, byte[] bytes);
     // Chrome geometry over a snapshot node's JSON; the policy lives in the shared core.
     static native boolean nativeChromeContains(String node, float x, float y, boolean ownRadius);
     static native float[] nativeHandleEndpoint(String node, int which);
@@ -89,8 +88,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         void onError(Throwable error);
         default void onMessage(long generation, String frame) { }
         default boolean onRestart(long generation) { return false; }
-        default void onImage(String source, java.util.function.Consumer<byte[]> result) { result.accept(null); }
-        default Runnable onImageRequest(String source, java.util.function.Consumer<byte[]> result) { onImage(source, result); return () -> {}; }
     }
 
     private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
@@ -121,7 +118,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private org.json.JSONArray textScale;
     private float textScalePreference = Float.NaN, textScaleDensity = Float.NaN;
     private final GpuEnvironment hostEnvironment = new GpuEnvironment();
-    private final java.util.HashMap<Long, Runnable> imageCancellations = new java.util.HashMap<>();
     private final java.util.HashMap<Long, java.util.function.Consumer<JSONObject>> inputReplies = new java.util.HashMap<>();
     private long nextInputReply;
     private boolean vsyncRequested;
@@ -132,9 +128,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
 
     /** {@code worker} names the View worker this page shares with its app session's pages. */
     public GpuView(Context context, String source, String worker, Listener listener) {
-        this(context, source, worker, listener, false);
+        this(context, source, worker, 0, listener, false);
     }
-    public GpuView(Context context, String source, String worker, Listener listener, boolean logic) {
+    /** {@code imageOwner} names this page to the host's image loader; 0 loads no images. */
+    public GpuView(Context context, String source, String worker, long imageOwner, Listener listener, boolean logic) {
         super(context);
         nativeGpuSentinel(context.getNoBackupFilesDir().getAbsolutePath());
         hostConfiguration = new android.content.res.Configuration(context.getResources().getConfiguration());
@@ -183,7 +180,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             public void showMenu() { textMenu.show(); }
         });
         feedback.getOverlay().add(selectionHandles);
-        host = nativeHostCreate(new Platform(), worker, logic);
+        host = nativeHostCreate(new Platform(), worker, logic, imageOwner);
         ime.setCaretActive(false);
         surface.getHolder().addCallback(this);
         addView(surface, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
@@ -207,19 +204,13 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     /** A new module instance: drop chrome and frame state tied to the previous one. */
     private void prepareInstance() {
         snapshot = null; snapshotText = null;
-        cancelImages(); inputReplies.clear();
+        inputReplies.clear();
         if (surface.getParent() != this) {
             removeAllViews();
             addView(surface, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
             addView(feedback, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         }
     }
-    private void cancelImages() {
-        java.util.ArrayList<Runnable> cancellations = new java.util.ArrayList<>(imageCancellations.values());
-        imageCancellations.clear();
-        for (Runnable cancel : cancellations) cancel.run();
-    }
-
     public void resume() { active = true; updateSurfaceVisibility(); requestFrame(); }
     @Override protected void onVisibilityChanged(View changedView, int visibility) {
         super.onVisibilityChanged(changedView, visibility);
@@ -297,7 +288,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     }
     public void park() {
         if (destroyed) return;
-        pause(); snapshot = null; snapshotText = null; cancelImages();
+        pause(); snapshot = null; snapshotText = null;
         nativePark(host);
     }
 
@@ -454,7 +445,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         recovery.clear();
         cancel();
         destroyed = true;
-        cancelImages(); inputReplies.clear();
+        inputReplies.clear();
         ime.clear(false); surface.stopFling();
         if (vsyncRequested) Choreographer.getInstance().removeFrameCallback(vsync);
         long released = host;
@@ -534,19 +525,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             if (destroyed) return;
             gpuAttached = attached;
             requestFrame();
-        }
-        @Override public void fetchImage(long id, String source) {
-            if (destroyed || listener == null) { nativeImageLoaded(host, id, null); return; }
-            Runnable cancel = listener.onImageRequest(source, bytes -> main.post(() -> {
-                if (imageCancellations.remove(id) == null || destroyed) return;
-                nativeImageLoaded(host, id, bytes);
-            }));
-            // A synchronous loader may have already completed.
-            imageCancellations.put(id, cancel);
-        }
-        @Override public void cancelImage(long id) {
-            Runnable cancel = imageCancellations.remove(id);
-            if (cancel != null) cancel.run();
         }
         @Override public void announce(int event, int id) { surface.announce(event, id); }
         @Override public void announceText(int id, boolean secure, String before, String after) {

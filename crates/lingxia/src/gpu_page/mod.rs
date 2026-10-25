@@ -1,6 +1,6 @@
 //! Binds lxapp GPU pages to a platform's native page shells: the creation
 //! handshake, the live registry, dispose-once leases, the connection-generation
-//! gate, image-request cancellation and the View worker key. Platform modules
+//! gate, image loads and the View worker key. Platform modules
 //! only marshal calls between these functions and their native shells.
 // Off Android it is compiled only for its tests, which exercise part of it.
 #![cfg_attr(not(target_os = "android"), allow(dead_code, unused_imports))]
@@ -18,7 +18,7 @@ use std::{
 use tokio::sync::oneshot;
 
 mod images;
-pub(crate) use images::{begin_image, cancel_image, request_image};
+pub(crate) use images::load_image;
 
 /// Identifies one native page shell from creation to disposal.
 pub(crate) type Token = i64;
