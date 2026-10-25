@@ -62,6 +62,19 @@ fn text(env: &mut Env, value: &JString) -> Result<String, Error> {
 
 /// Bind the SDK component explicitly so static linking retains every JNI entrypoint.
 pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()> {
+    static HOOK: std::sync::Once = std::sync::Once::new();
+    HOOK.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let thread = std::thread::current();
+            adapter::log(&format!(
+                "panic on {}: {info}\n{}",
+                thread.name().unwrap_or("?"),
+                std::backtrace::Backtrace::force_capture()
+            ));
+            previous(info);
+        }));
+    });
     macro_rules! method {
         ($name:literal, $signature:literal, $function:path) => {
             // SAFETY: each function's Rust signature matches its JNI signature.
