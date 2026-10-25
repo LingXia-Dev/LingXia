@@ -10,7 +10,9 @@ in [ui-animation.md](ui-animation.md).
 transactions, layout, shaping, scene building, interaction policy, semantics
 and CPU/GPU painting. It has no lxapp, route, page-stack or WebView dependency.
 `crates/lingxia-lxapp` owns page configuration, resource authority and Logic
-bridging; `crates/lingxia/src/ffi/<platform>` connects the two. A page renders
+bridging; `crates/lingxia/src/gpu_page` binds lxapp pages to platform page
+shells (creation, live registry, dispose-once leases, connection-generation
+gate, worker key) and `crates/lingxia/src/ffi/<platform>` only marshals. A page renders
 natively exactly when its page config declares `"renderer": "gpu"`; nothing is
 inferred from file names.
 

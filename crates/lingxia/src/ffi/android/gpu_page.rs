@@ -1,150 +1,84 @@
+//! `com.lingxia.lxapp.GpuPage` marshalling for the neutral GPU page binding.
 use super::with_env;
+use crate::gpu_page::{self, Creation, NativeFactory, NativePage, Token};
 use jni::objects::{Global, JClass, JObject, JString};
 use jni::{Env, EnvUnowned, errors::ThrowRuntimeExAndDefault, jni_sig, jni_str};
-use lxapp::{
-    GpuPageView, GpuPageViewFactory, GpuViewCreation, GpuViewGeneration, LxAppError, PageInstance,
-    PageViewEnvironment,
-};
-use std::{
-    collections::HashMap,
-    sync::{
-        Arc, LazyLock, Mutex, OnceLock, Weak,
-        atomic::{AtomicBool, AtomicI64, Ordering},
-    },
-};
-use tokio::sync::oneshot;
+use lxapp::{GpuViewGeneration, LxAppError, PageInstance};
+use std::sync::{Arc, OnceLock};
 
 static CLASS: OnceLock<Global<JClass<'static>>> = OnceLock::new();
-struct JavaPage {
-    object: Global<JObject<'static>>,
-}
-type Created = Result<Arc<JavaPage>, String>;
-static PENDING: LazyLock<Mutex<HashMap<i64, oneshot::Sender<Created>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-static LIVE: LazyLock<Mutex<HashMap<String, (i64, Weak<Endpoint>)>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-static NEXT: AtomicI64 = AtomicI64::new(1);
-type ImageCancellation = (oneshot::Sender<()>, Option<oneshot::Receiver<()>>);
-static IMAGE_REQUESTS: LazyLock<Mutex<HashMap<i64, ImageCancellation>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-static NEXT_IMAGE: AtomicI64 = AtomicI64::new(1);
 
 pub(super) fn initialize(env: &mut Env) -> Result<(), jni::errors::Error> {
     if CLASS.get().is_some() {
         return Ok(());
     }
     let class = env.find_class(jni_str!("com/lingxia/lxapp/GpuPage"))?;
-    // Bind the exact Java callback signature and retain it in the final host library.
+    macro_rules! method {
+        ($name:literal, $signature:literal, $function:path) => {
+            jni::NativeMethod::from_raw_parts(
+                jni_str!($name),
+                jni_str!($signature),
+                $function as *const () as *mut std::ffi::c_void,
+            )
+        };
+    }
+    // Bind the exact Java callback signatures and retain them in the final host library.
+    // SAFETY: each function's Rust signature matches its JNI signature.
     unsafe {
         env.register_native_methods(
             &class,
             &[
-                jni::NativeMethod::from_raw_parts(
-                    jni_str!("requestImage"),
-                    jni_str!("(JJLjava/lang/String;)V"),
-                    request_image as *const () as *mut std::ffi::c_void,
+                method!("requestImage", "(JJLjava/lang/String;)V", request_image),
+                method!("beginImage", "()J", begin_image),
+                method!("cancelImage", "(J)V", cancel_image),
+                method!("message", "(JJLjava/lang/String;)V", message),
+                method!(
+                    "created",
+                    "(JLcom/lingxia/lxapp/GpuPage;Ljava/lang/String;)V",
+                    created
                 ),
-                jni::NativeMethod::from_raw_parts(
-                    jni_str!("beginImage"),
-                    jni_str!("()J"),
-                    begin_image as *const () as *mut std::ffi::c_void,
-                ),
-                jni::NativeMethod::from_raw_parts(
-                    jni_str!("cancelImage"),
-                    jni_str!("(J)V"),
-                    cancel_image as *const () as *mut std::ffi::c_void,
-                ),
-                jni::NativeMethod::from_raw_parts(
-                    jni_str!("message"),
-                    jni_str!("(JJLjava/lang/String;)V"),
-                    Java_com_lingxia_lxapp_GpuPage_message as *const () as *mut std::ffi::c_void,
-                ),
-                jni::NativeMethod::from_raw_parts(
-                    jni_str!("created"),
-                    jni_str!("(JLcom/lingxia/lxapp/GpuPage;Ljava/lang/String;)V"),
-                    Java_com_lingxia_lxapp_GpuPage_created as *const () as *mut std::ffi::c_void,
-                ),
-                jni::NativeMethod::from_raw_parts(
-                    jni_str!("presented"),
-                    jni_str!("(JJ)V"),
-                    Java_com_lingxia_lxapp_GpuPage_presented as *const () as *mut std::ffi::c_void,
-                ),
-                jni::NativeMethod::from_raw_parts(
-                    jni_str!("restart"),
-                    jni_str!("(JJ)Z"),
-                    Java_com_lingxia_lxapp_GpuPage_restart as *const () as *mut std::ffi::c_void,
-                ),
+                method!("presented", "(JJ)V", presented),
+                method!("restart", "(JJ)Z", restart),
             ],
         )?;
     }
     let global = env.new_global_ref(class)?;
     if CLASS.set(global).is_ok() {
-        lxapp::register_gpu_page_view_factory(Arc::new(Factory))
+        lxapp::register_gpu_page_view_factory(Arc::new(gpu_page::Binding(Arc::new(Factory))))
             .map_err(|_| jni::errors::Error::JniCall(jni::errors::JniError::Unknown))?;
     }
     Ok(())
 }
 
-fn operation(token: i64, name: &str) -> Result<(), LxAppError> {
+fn class() -> &'static Global<JClass<'static>> {
+    CLASS.get().expect("GPU factory initialized")
+}
+
+fn runtime(error: jni::errors::Error) -> LxAppError {
+    LxAppError::Runtime(error.to_string())
+}
+
+/// `GpuPage.<name>(token)`.
+fn operation(token: Token, name: &'static jni::strings::JNIStr) -> Result<(), LxAppError> {
     with_env(|env| {
-        env.call_static_method(
-            CLASS.get().expect("GPU factory initialized"),
-            jni::strings::JNIString::new(name),
-            jni_sig!("(J)V"),
-            &[token.into()],
-        )?;
+        env.call_static_method(class(), name, jni_sig!("(J)V"), &[token.into()])?;
         Ok::<_, jni::errors::Error>(())
     })
-    .map_err(|error| LxAppError::Runtime(error.to_string()))
+    .map_err(runtime)
 }
 
-struct Lease {
-    token: i64,
-    page: String,
-    disposed: AtomicBool,
-}
-impl Lease {
-    fn dispose(&self) {
-        if self.disposed.swap(true, Ordering::AcqRel) {
-            return;
-        }
-        PENDING.lock().unwrap().remove(&self.token);
-        {
-            let mut live = LIVE.lock().unwrap();
-            if live
-                .get(&self.page)
-                .is_some_and(|(token, _)| *token == self.token)
-            {
-                live.remove(&self.page);
-            }
-        }
-        if let Err(error) = operation(self.token, "dispose") {
-            log::warn!("GPU page disposal failed: {error}");
-        }
-    }
-}
-impl Drop for Lease {
-    fn drop(&mut self) {
-        self.dispose();
-    }
-}
-
-struct Endpoint {
-    lease: Lease,
-    object: Arc<JavaPage>,
-    generation: Mutex<Option<GpuViewGeneration>>,
-}
+/// `GpuPage.<name>(token, generation, value)`.
 fn bridge_operation(
-    token: i64,
+    token: Token,
     generation: GpuViewGeneration,
     value: &str,
-    name: &str,
+    name: &'static jni::strings::JNIStr,
 ) -> Result<(), LxAppError> {
     with_env(|env| {
         let value = env.new_string(value)?;
         env.call_static_method(
-            CLASS.get().expect("GPU factory initialized"),
-            jni::strings::JNIString::new(name),
+            class(),
+            name,
             jni_sig!("(JJLjava/lang/String;)V"),
             &[
                 token.into(),
@@ -154,163 +88,120 @@ fn bridge_operation(
         )?;
         Ok::<_, jni::errors::Error>(())
     })
-    .map_err(|error| LxAppError::Runtime(error.to_string()))
-}
-impl GpuPageView for Endpoint {
-    fn post_message(&self, _: &str) -> Result<(), LxAppError> {
-        Err(LxAppError::Runtime(
-            "GPU messages require a captured connection generation".into(),
-        ))
-    }
-    fn post_message_for_generation(
-        &self,
-        generation: GpuViewGeneration,
-        message: &str,
-    ) -> Result<(), LxAppError> {
-        if self.lease.disposed.load(Ordering::Acquire)
-            || *self.generation.lock().unwrap() != Some(generation)
-        {
-            return Ok(());
-        }
-        bridge_operation(self.lease.token, generation, message, "receive")
-    }
-    fn connect(&self, generation: GpuViewGeneration, nonce: &str) -> Result<(), LxAppError> {
-        {
-            let mut current = self.generation.lock().unwrap();
-            if current.is_some_and(|current| current.get() > generation.get()) {
-                return Err(LxAppError::Bridge("GPU connection was superseded".into()));
-            }
-            *current = Some(generation);
-        }
-        bridge_operation(self.lease.token, generation, nonce, "connect")
-    }
-    fn request_leave(&self, reason: lxapp::LeaveReason) -> Result<(), LxAppError> {
-        if self.lease.disposed.load(Ordering::Acquire) {
-            return Ok(());
-        }
-        let Some(generation) = *self.generation.lock().unwrap() else {
-            return Ok(());
-        };
-        let reason = match reason {
-            lxapp::LeaveReason::Back => "back",
-            lxapp::LeaveReason::Home => "home",
-        };
-        bridge_operation(self.lease.token, generation, reason, "requestLeave")
-    }
-    fn update_environment(&self, update: PageViewEnvironment) -> Result<(), LxAppError> {
-        if self.lease.disposed.load(Ordering::Acquire) {
-            return Ok(());
-        }
-        let update = match update {
-            PageViewEnvironment::DisplayLanguage { language, revision } => {
-                serde_json::json!({"kind":"language","revision":revision.to_string(),"language":language})
-            }
-            PageViewEnvironment::SurfaceContext { context, revision } => {
-                serde_json::json!({"kind":"surface","revision":revision.to_string(),"context":context})
-            }
-        };
-        with_env(|env| {
-            let update = env.new_string(update.to_string())?;
-            env.call_static_method(
-                CLASS.get().expect("GPU factory initialized"),
-                jni_str!("updateEnvironment"),
-                jni_sig!("(JLjava/lang/String;)V"),
-                &[self.lease.token.into(), (&update).into()],
-            )?;
-            Ok::<_, jni::errors::Error>(())
-        })
-        .map_err(|error| LxAppError::Runtime(error.to_string()))
-    }
-    fn reload(&self) -> Result<(), LxAppError> {
-        let page = lxapp::find_page_by_instance_id(&self.lease.page)
-            .ok_or_else(|| LxAppError::Runtime("GPU page was removed".into()))?;
-        let source = page.gpu_module_source()?;
-        *self.generation.lock().unwrap() = None;
-        with_env(|env| {
-            let source = env.new_string(source)?;
-            env.call_static_method(
-                CLASS.get().expect("GPU factory initialized"),
-                jni_str!("reload"),
-                jni_sig!("(JLjava/lang/String;)V"),
-                &[self.lease.token.into(), (&source).into()],
-            )?;
-            Ok::<_, jni::errors::Error>(())
-        })
-        .map_err(|error| LxAppError::Runtime(error.to_string()))
-    }
-    fn park(&self) -> Result<(), LxAppError> {
-        *self.generation.lock().unwrap() = None;
-        operation(self.lease.token, "park")
-    }
-    fn dispose(&self) {
-        self.lease.dispose();
-    }
+    .map_err(runtime)
 }
 
-fn begin_creation(page: &PageInstance) -> Result<(Lease, oneshot::Receiver<Created>), LxAppError> {
-    let source = page.gpu_module_source()?;
-    let token = NEXT.fetch_add(1, Ordering::Relaxed);
-    let lease = Lease {
-        token,
-        page: page.instance_id_string(),
-        disposed: AtomicBool::new(false),
-    };
-    let (tx, rx) = oneshot::channel();
-    PENDING.lock().unwrap().insert(token, tx);
+/// `GpuPage.<name>(token, value)`.
+fn value_operation(
+    token: Token,
+    value: &str,
+    name: &'static jni::strings::JNIStr,
+) -> Result<(), LxAppError> {
     with_env(|env| {
-        let appid = env.new_string(page.appid())?;
-        let path = env.new_string(page.path())?;
-        let tag = env.new_string(page.webtag().to_string())?;
-        let source = env.new_string(source)?;
+        let value = env.new_string(value)?;
         env.call_static_method(
-            CLASS.get().expect("GPU factory initialized"),
-            jni_str!("create"),
-            jni_sig!(
-                "(JLjava/lang/String;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V"
-            ),
-            &[
-                token.into(),
-                (&appid).into(),
-                (page.app_session_id() as i64).into(),
-                (&path).into(),
-                (&tag).into(),
-                (&source).into(),
-                page.logic_enabled().into(),
-            ],
+            class(),
+            name,
+            jni_sig!("(JLjava/lang/String;)V"),
+            &[token.into(), (&value).into()],
         )?;
         Ok::<_, jni::errors::Error>(())
     })
-    .map_err(|error| LxAppError::Runtime(error.to_string()))?;
-
-    Ok((lease, rx))
+    .map_err(runtime)
 }
 
-struct Factory;
-impl GpuPageViewFactory for Factory {
-    fn create(&self, page: PageInstance) -> GpuViewCreation {
-        Box::pin(async move {
-            let (lease, rx) = begin_creation(&page)?;
-            let token = lease.token;
-            let object = rx
-                .await
-                .map_err(|_| LxAppError::Runtime("GPU creation cancelled".into()))?
-                .map_err(LxAppError::Runtime)?;
-            let endpoint = Arc::new(Endpoint {
-                lease,
-                object,
-                generation: Mutex::new(None),
-            });
-            LIVE.lock().unwrap().insert(
-                page.instance_id_string(),
-                (token, Arc::downgrade(&endpoint)),
-            );
-            Ok(endpoint as Arc<dyn GpuPageView>)
-        })
+struct AndroidPage {
+    token: Token,
+    object: Global<JObject<'static>>,
+}
+
+impl NativePage for AndroidPage {
+    fn connect(&self, generation: GpuViewGeneration, nonce: &str) -> Result<(), LxAppError> {
+        bridge_operation(self.token, generation, nonce, jni_str!("connect"))
+    }
+    fn receive(&self, generation: GpuViewGeneration, frame: &str) -> Result<(), LxAppError> {
+        bridge_operation(self.token, generation, frame, jni_str!("receive"))
+    }
+    fn request_leave(&self, generation: GpuViewGeneration, reason: &str) -> Result<(), LxAppError> {
+        bridge_operation(self.token, generation, reason, jni_str!("requestLeave"))
+    }
+    fn update_environment(&self, update: &serde_json::Value) -> Result<(), LxAppError> {
+        value_operation(
+            self.token,
+            &update.to_string(),
+            jni_str!("updateEnvironment"),
+        )
+    }
+    fn reload(&self, source: &str) -> Result<(), LxAppError> {
+        value_operation(self.token, source, jni_str!("reload"))
+    }
+    fn park(&self) -> Result<(), LxAppError> {
+        operation(self.token, jni_str!("park"))
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_GpuPage_message<'a>(
+struct Factory;
+
+impl NativeFactory for Factory {
+    fn create(
+        &self,
+        token: Token,
+        page: &PageInstance,
+        request: Creation,
+    ) -> Result<(), LxAppError> {
+        with_env(|env| {
+            let appid = env.new_string(page.appid())?;
+            let worker = env.new_string(&request.worker)?;
+            let path = env.new_string(page.path())?;
+            let tag = env.new_string(page.webtag().to_string())?;
+            let source = env.new_string(request.source)?;
+            env.call_static_method(
+                class(),
+                jni_str!("create"),
+                jni_sig!(
+                    "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V"
+                ),
+                &[
+                    token.into(),
+                    (&appid).into(),
+                    (&worker).into(),
+                    (&path).into(),
+                    (&tag).into(),
+                    (&source).into(),
+                    request.logic.into(),
+                ],
+            )?;
+            Ok::<_, jni::errors::Error>(())
+        })
+        .map_err(runtime)
+    }
+
+    fn dispose(&self, token: Token) {
+        if let Err(error) = operation(token, jni_str!("dispose")) {
+            log::warn!("GPU page disposal failed: {error}");
+        }
+    }
+}
+
+/// The Java view of a live GPU page, or null.
+pub(super) fn java_view<'a>(
+    env: &mut Env<'a>,
+    page: &PageInstance,
+) -> Result<JObject<'a>, jni::errors::Error> {
+    let native = gpu_page::native_view(page);
+    match native
+        .as_ref()
+        .and_then(|native| native.as_any().downcast_ref::<AndroidPage>())
+    {
+        Some(page) => env.new_local_ref(&page.object),
+        None => Ok(JObject::null()),
+    }
+}
+
+extern "system" fn message<'a>(
     mut env: EnvUnowned<'a>,
     _: JClass<'a>,
     token: i64,
@@ -318,53 +209,14 @@ pub extern "system" fn Java_com_lingxia_lxapp_GpuPage_message<'a>(
     message: JString<'a>,
 ) {
     env.with_env(|env| -> Result<(), jni::errors::Error> {
-        let endpoint = LIVE
-            .lock()
-            .unwrap()
-            .values()
-            .find_map(|(id, endpoint)| (*id == token).then(|| endpoint.upgrade()).flatten());
-        if let Some(endpoint) = endpoint
-            && !endpoint.lease.disposed.load(Ordering::Acquire)
-        {
-            let current = *endpoint.generation.lock().unwrap();
-            if let Some(current) = current
-                && current.get() == generation as u64
-                && let Some(page) = lxapp::find_page_by_instance_id(&endpoint.lease.page)
-            {
-                let body = message.try_to_string(env)?;
-                if let Err(error) = page.handle_incoming_gpu_message(
-                    &(endpoint as Arc<dyn GpuPageView>),
-                    current,
-                    &body,
-                ) {
-                    log::warn!("GPU bridge ingress rejected: {error}");
-                }
-            }
-        }
+        let body = message.try_to_string(env)?;
+        gpu_page::message(token, generation as u64, &body);
         Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>();
 }
 
-pub(super) fn java_view<'a>(
-    env: &mut Env<'a>,
-    page: &PageInstance,
-) -> Result<JObject<'a>, jni::errors::Error> {
-    let endpoint = LIVE
-        .lock()
-        .unwrap()
-        .get(&page.instance_id_string())
-        .and_then(|(_, endpoint)| endpoint.upgrade());
-    match endpoint {
-        Some(endpoint) if !endpoint.lease.disposed.load(Ordering::Acquire) => {
-            env.new_local_ref(&endpoint.object.object)
-        }
-        _ => Ok(JObject::null()),
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_GpuPage_created<'a>(
+extern "system" fn created<'a>(
     mut env: EnvUnowned<'a>,
     _: JClass<'a>,
     token: i64,
@@ -377,80 +229,28 @@ pub extern "system" fn Java_com_lingxia_lxapp_GpuPage_created<'a>(
         } else if page.is_null() {
             Err("GPU creation returned no view".into())
         } else {
-            Ok(Arc::new(JavaPage {
+            Ok(Arc::new(AndroidPage {
+                token,
                 object: env.new_global_ref(page)?,
-            }))
+            }) as Arc<dyn NativePage>)
         };
-        let pending = PENDING.lock().unwrap().remove(&token);
-        if let Some(pending) = pending {
-            let _ = pending.send(outcome);
-        }
+        gpu_page::created(token, outcome);
         Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>();
 }
 
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_GpuPage_restart(
+extern "system" fn restart(
     _: EnvUnowned<'_>,
     _: JClass<'_>,
     token: i64,
     generation: i64,
 ) -> jni::sys::jboolean {
-    let endpoint = LIVE
-        .lock()
-        .unwrap()
-        .values()
-        .find_map(|(id, endpoint)| (*id == token).then(|| endpoint.upgrade()).flatten());
-    let Some(endpoint) = endpoint else {
-        return false.into();
-    };
-    // Release both registry and generation locks before reload calls host code.
-    let current = *endpoint.generation.lock().unwrap();
-    if endpoint.lease.disposed.load(Ordering::Acquire)
-        || !current.map_or(generation == 0, |current| {
-            current.get() == generation as u64
-        })
-    {
-        return false.into();
-    }
-    let Some(page) = lxapp::find_page_by_instance_id(&endpoint.lease.page) else {
-        return false.into();
-    };
-    match page.reload_gpu_view(&(endpoint as Arc<dyn GpuPageView>)) {
-        Ok(()) => true.into(),
-        Err(error) => {
-            log::warn!("GPU page recovery failed: {error}");
-            false.into()
-        }
-    }
+    gpu_page::restart(token, generation as u64)
 }
 
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_GpuPage_presented(
-    _: EnvUnowned<'_>,
-    _: JClass<'_>,
-    token: i64,
-    generation: i64,
-) {
-    let endpoint = LIVE
-        .lock()
-        .unwrap()
-        .values()
-        .find_map(|(id, endpoint)| (*id == token).then(|| endpoint.upgrade()).flatten());
-    if let Some(endpoint) = endpoint
-        && !endpoint.lease.disposed.load(Ordering::Acquire)
-        && endpoint
-            .generation
-            .lock()
-            .unwrap()
-            .map_or(generation == 0, |current| {
-                current.get() == generation as u64
-            })
-        && let Some(page) = lxapp::find_page_by_instance_id(&endpoint.lease.page)
-    {
-        page.gpu_frame_presented(&(endpoint as Arc<dyn GpuPageView>));
-    }
+extern "system" fn presented(_: EnvUnowned<'_>, _: JClass<'_>, token: i64, generation: i64) {
+    gpu_page::presented(token, generation as u64);
 }
 
 /// Completes on the runtime executor through `GpuPage.imageLoaded`; never blocks a caller thread.
@@ -463,48 +263,22 @@ extern "system" fn request_image<'a>(
 ) {
     env.with_env(|env| -> Result<(), jni::errors::Error> {
         let source = source.try_to_string(env)?;
-        let cancellation = IMAGE_REQUESTS
-            .lock()
-            .unwrap()
-            .get_mut(&request)
-            .and_then(|(_, receiver)| receiver.take());
-        let page = LIVE
-            .lock()
-            .unwrap()
-            .values()
-            .find_map(|(id, endpoint)| (*id == token).then(|| endpoint.upgrade()).flatten())
-            .filter(|endpoint| !endpoint.lease.disposed.load(Ordering::Acquire))
-            .and_then(|endpoint| lxapp::find_page_by_instance_id(&endpoint.lease.page));
-        let (Some(cancellation), Some(page)) = (cancellation, page) else {
-            deliver_image(request, None);
-            return Ok(());
-        };
-        std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
-            let bytes = tokio::select! {
-                biased;
-                // A cancelled request never calls back; its consumer was dropped with it.
-                _ = cancellation => return,
-                result = page.load_gpu_image_bytes(&source) => result,
-            };
-            let bytes = bytes
-                .map_err(|error| log::warn!("GPU image resource failed: {error}"))
-                .ok();
-            deliver_image(request, bytes);
-        }));
+        gpu_page::request_image(token, request, source, move |bytes| {
+            deliver_image(request, bytes)
+        });
         Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 fn deliver_image(request: i64, bytes: Option<Vec<u8>>) {
-    IMAGE_REQUESTS.lock().unwrap().remove(&request);
     let result = with_env(|env| {
         let bytes = match &bytes {
             Some(bytes) => JObject::from(env.byte_array_from_slice(bytes)?),
             None => JObject::null(),
         };
         env.call_static_method(
-            CLASS.get().expect("GPU factory initialized"),
+            class(),
             jni_str!("imageLoaded"),
             jni_sig!("(J[B)V"),
             &[request.into(), (&bytes).into()],
@@ -517,17 +291,9 @@ fn deliver_image(request: i64, bytes: Option<Vec<u8>>) {
 }
 
 extern "system" fn begin_image(_: EnvUnowned<'_>, _: JClass<'_>) -> i64 {
-    let request = NEXT_IMAGE.fetch_add(1, Ordering::Relaxed);
-    let (send, receive) = oneshot::channel();
-    IMAGE_REQUESTS
-        .lock()
-        .unwrap()
-        .insert(request, (send, Some(receive)));
-    request
+    gpu_page::begin_image()
 }
 
 extern "system" fn cancel_image(_: EnvUnowned<'_>, _: JClass<'_>, request: i64) {
-    if let Some((send, _)) = IMAGE_REQUESTS.lock().unwrap().remove(&request) {
-        let _ = send.send(());
-    }
+    gpu_page::cancel_image(request);
 }

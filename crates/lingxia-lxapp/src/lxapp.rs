@@ -5067,6 +5067,9 @@ mod manifest_reload_tests {
                 .push(format!("connect:{}", generation.get()));
             Ok(())
         }
+        fn request_leave(&self, _: crate::LeaveReason) -> Result<(), LxAppError> {
+            Ok(())
+        }
         fn park(&self) -> Result<(), LxAppError> {
             Ok(())
         }
@@ -5454,6 +5457,19 @@ mod manifest_reload_tests {
             impl GpuPageView for Endpoint {
                 fn post_message(&self, message: &str) -> Result<(), LxAppError> {
                     self.0.lock().unwrap().push(message.into());
+                    Ok(())
+                }
+                fn post_message_for_generation(
+                    &self,
+                    _: crate::GpuViewGeneration,
+                    message: &str,
+                ) -> Result<(), LxAppError> {
+                    self.post_message(message)
+                }
+                fn connect(&self, _: crate::GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
+                    Ok(())
+                }
+                fn request_leave(&self, _: crate::LeaveReason) -> Result<(), LxAppError> {
                     Ok(())
                 }
                 fn update_environment(

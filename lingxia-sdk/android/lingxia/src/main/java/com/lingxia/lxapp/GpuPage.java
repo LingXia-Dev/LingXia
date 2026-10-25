@@ -27,13 +27,12 @@ public final class GpuPage extends FrameLayout {
     private boolean reported;
     private boolean frameReported;
 
-    private GpuPage(Context context, long token, String appId, long session, String path, String webTag, String source, boolean logic) {
+    private GpuPage(Context context, long token, String appId, String worker, String path, String webTag, String source, boolean logic) {
         super(context);
         this.appId = appId; this.path = path; this.webTag = webTag;
         GpuView candidate = null;
         try {
-            // Pages of one app session share a View worker and isolate.
-            candidate = new GpuView(context, source, appId + ":" + session, new GpuView.Listener() {
+            candidate = new GpuView(context, source, worker, new GpuView.Listener() {
                 public Runnable onImageRequest(String source, java.util.function.Consumer<byte[]> result) {
                     long request = beginImage();
                     IMAGES.put(request, result);
@@ -84,12 +83,13 @@ public final class GpuPage extends FrameLayout {
     public void captureReadyPreview(java.util.function.Consumer<android.graphics.Bitmap> completed) { content.captureFrameWhenReady(completed); }
     public void afterNextPresentation(java.util.function.Consumer<Boolean> completed) { content.afterNextPresentation(completed); }
 
-    public static void create(long token, String appId, long session, String path, String webTag, String source, boolean logic) {
+    /** {@code worker} keys the View worker; pages of one app session share it. */
+    public static void create(long token, String appId, String worker, String path, String webTag, String source, boolean logic) {
         MAIN.post(() -> {
             try {
                 Context context = Lingxia.applicationContext();
                 if (context == null) throw new IllegalStateException("SDK context unavailable");
-                PAGES.put(token, new GpuPage(context, token, appId, session, path, webTag, source, logic));
+                PAGES.put(token, new GpuPage(context, token, appId, worker, path, webTag, source, logic));
             } catch (Throwable error) { created(token, null, error.toString()); }
         });
     }

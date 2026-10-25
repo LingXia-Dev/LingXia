@@ -3031,6 +3031,12 @@ mod tests {
                     .push((generation.get(), frame.into()));
                 Ok(())
             }
+            fn connect(&self, _: crate::GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
+                Ok(())
+            }
+            fn request_leave(&self, _: crate::LeaveReason) -> Result<(), LxAppError> {
+                Ok(())
+            }
             fn update_environment(&self, _: crate::PageViewEnvironment) -> Result<(), LxAppError> {
                 Ok(())
             }

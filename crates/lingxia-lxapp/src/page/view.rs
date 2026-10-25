@@ -48,25 +48,25 @@ impl GpuViewGeneration {
     pub fn get(self) -> u64 {
         self.0
     }
+
+    /// Hosts never mint generations; tests of native bindings do.
+    #[cfg(feature = "test-utils")]
+    pub fn new_for_test(value: u64) -> Self {
+        Self(value)
+    }
 }
 
 /// Native-owned GPU endpoint. Methods must enqueue without blocking the caller.
 pub trait GpuPageView: Send + Sync {
     fn post_message(&self, message: &str) -> Result<(), LxAppError>;
     /// Recheck this generation at worker delivery, not only while enqueueing.
-    fn post_message_for_generation(&self, _: GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
-        Err(LxAppError::Bridge(
-            "GPU generation transport is unavailable".into(),
-        ))
-    }
-    fn connect(&self, _: GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
-        Err(LxAppError::Bridge("GPU bridge is unavailable".into()))
-    }
-    fn request_leave(&self, _: super::LeaveReason) -> Result<(), LxAppError> {
-        Err(LxAppError::Runtime(
-            "GPU leave control is unavailable".into(),
-        ))
-    }
+    fn post_message_for_generation(
+        &self,
+        generation: GpuViewGeneration,
+        message: &str,
+    ) -> Result<(), LxAppError>;
+    fn connect(&self, generation: GpuViewGeneration, nonce: &str) -> Result<(), LxAppError>;
+    fn request_leave(&self, reason: super::LeaveReason) -> Result<(), LxAppError>;
     fn update_environment(&self, update: PageViewEnvironment) -> Result<(), LxAppError>;
     /// Rebuild View state for a fresh Logic connection.
     fn reload(&self) -> Result<(), LxAppError>;
