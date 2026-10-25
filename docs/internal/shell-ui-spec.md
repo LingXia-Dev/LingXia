@@ -415,12 +415,17 @@ crammed in the moment the window crosses 840.
   the same tab id and document. The new main is appended to the switcher and
   selected; the aside slot loses that child. Only a main can be pinned, so an
   aside reaches the Pins through this step. URL-callback and ephemeral tabs
-  belong to their opener and are not draggable. There is no reverse drag;
-  the reverse move is the sidebar group menu's **Open in Side Panel**: the
-  live lxapp main leaves the switcher (its neighbour becomes active) and
-  joins its slot at the trailing edge, keeping Logic, page stack and WebViews
-  (`demote_main_to_aside`, the mirror of the promotion). The root main never
-  moves. Implemented on macOS and Windows; other platforms have no sidebar.
+  belong to their opener and are not draggable.
+- **Dragging a sidebar group onto the main's trailing edge moves it into the
+  side panel**, and the group menu's **Open in Side Panel** does the same:
+  the live lxapp main leaves the switcher (its neighbour becomes active) and
+  joins the panel slot at that edge, keeping Logic, page stack and WebViews
+  (`demote_main_to_aside`, the mirror of the promotion). The drop band is
+  the trailing 72–96pt of the main area; macOS tints it while a group hovers.
+  Windows cannot paint over the main's WebView there, so the drag chip is its
+  only feedback.
+  The root main never moves. Implemented on macOS and Windows; other
+  platforms have no sidebar.
 - While the main window has tabs, exactly one tab MUST be selected.
 - lxapp, browser, and native mains interleave in stable graph order; pins and
   sidebar actions stay fixed, outside the main navigation scroll region.

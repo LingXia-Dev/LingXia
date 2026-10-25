@@ -2459,6 +2459,27 @@ pub(crate) fn sidebar_drop_rect(state: &WindowsChromeState) -> Option<RECT> {
     chrome_rects_for_state(state, layout).tab_bar
 }
 
+/// The band along the main's trailing edge where a dragged sidebar group
+/// drops into the side panel. The main's WebView covers this region, so no
+/// outline is painted; the drag chip is the only feedback.
+pub(crate) fn main_aside_drop_rect(state: &WindowsChromeState) -> Option<RECT> {
+    let layout = shell_layout(&state.layout)?;
+    let main = state
+        .attached
+        .as_ref()
+        .map(|attached| attached.main_region)
+        .unwrap_or_else(|| chrome_rects_for_state(state, layout).content);
+    if rect_width(&main) <= 0 || rect_height(&main) <= 0 {
+        return None;
+    }
+    Some(RECT {
+        left: (main.right - px(72)).max(main.left),
+        top: main.top,
+        right: main.right,
+        bottom: main.bottom,
+    })
+}
+
 /// Outline the sidebar while a dragged aside tab is over it. Returns whether
 /// the outline changed.
 pub(crate) fn set_aside_tab_drop_targeted(targeted: bool) -> bool {

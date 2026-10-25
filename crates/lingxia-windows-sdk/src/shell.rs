@@ -80,7 +80,6 @@ pub use chrome::{
 pub use chrome::begin_address_edit;
 
 pub(crate) use chrome::shell_chrome_dirty_rects;
-pub(crate) use chrome::sidebar_resize_edge;
 pub(crate) use chrome::{
     PHONE_SWITCHER_SHEET_RADIUS, PhoneTabSwitcherHit, PhoneTabSwitcherLayout,
     paint_phone_tab_switcher, paint_shell_notice, phone_tab_click_command, phone_tab_close_command,
@@ -103,8 +102,13 @@ pub(crate) use chrome::{
     sidebar_rail_tooltip_radius, sidebar_tabbar_popup_radius, sidebar_tooltip,
     transparent_tabbar_overlay_rect,
 };
-pub(crate) use runtime::promote_aside_tab;
-pub(crate) use runtime::set_sidebar_drag_width;
+pub(crate) use chrome::{
+    collapsed_aside_handle_hit, drag_ghost_colors, main_aside_drop_rect, sidebar_resize_edge,
+};
+pub(crate) use runtime::{
+    aside_tab_drag_label, aside_tab_promotable, cancel_sidebar_drag, demote_lxapp_main,
+    promote_aside_tab, set_sidebar_drag_width, sidebar_main_drag_label, sidebar_main_drag_source,
+};
 
 pub(crate) use chrome::{workspace_corner_radii, workspace_silhouette_rect};
 

@@ -4321,6 +4321,47 @@ fn handle_aside_tab_menu_action(
     }
 }
 
+/// The lxapp a press on a sidebar group header belongs to, when dragging the
+/// header toward the main's edge may move the live app into the side panel
+/// (the reverse of the aside tab's drop on the sidebar). Home, the root
+/// main, never moves.
+pub(crate) fn sidebar_main_drag_source(command: &WindowsChromeCommand) -> Option<String> {
+    let appid = match command.id.as_str() {
+        chrome_command::SIDEBAR_GROUP_TOGGLE => command.payload.get("group")?.as_str()?.to_string(),
+        chrome_command::BROWSER_TAB_CLICK => {
+            auxiliary_lxapp_id(command.payload.get("tab_id")?.as_str()?)?.to_string()
+        }
+        _ => return None,
+    };
+    (!is_home_lxapp(&appid)).then_some(appid)
+}
+
+/// The name a dragged aside tab shows under the pointer: its strip title.
+pub(crate) fn aside_tab_drag_label(panel_id: &str, surface_id: &str) -> String {
+    lingxia_windows_contract::aside_panel_tabs(panel_id)
+        .into_iter()
+        .find(|tab| tab.surface_id == surface_id)
+        .map(|tab| tab.title)
+        .unwrap_or_default()
+}
+
+/// The name a dragged sidebar group shows under the pointer: its app's.
+pub(crate) fn sidebar_main_drag_label(appid: &str) -> String {
+    lxapp::lxapp_display_name(appid).unwrap_or_else(|| appid.to_string())
+}
+
+/// Whether an aside tab may become a main (spec §4.2): URL-callback and
+/// ephemeral browser tabs stay with their opener, so they neither drag nor
+/// offer Open in Main Area.
+pub(crate) fn aside_tab_promotable(surface_id: &str) -> bool {
+    #[cfg(feature = "browser-runtime")]
+    if let Some(tab_id) = lingxia_platform::windows::windows_aside_browser_tab_id(surface_id) {
+        return lingxia_browser::can_promote_standalone_tab(&tab_id);
+    }
+    let _ = surface_id;
+    true
+}
+
 /// An aside tab dropped on the sidebar (spec §4.2): its live content becomes
 /// a main. Returns whether it moved.
 pub(crate) fn promote_aside_tab(panel_id: &str, surface_id: &str) -> bool {
