@@ -17,6 +17,10 @@
       "path": "pages/border/index"
     },
     {
+      "name": "cover",
+      "path": "pages/cover/index"
+    },
+    {
       "name": "flex",
       "path": "pages/flex/index"
     },

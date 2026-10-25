@@ -73,7 +73,7 @@ ring and light/dark ToDo background pixels, then blurs with Tab and checks their
 restoration. It saves focused screenshots and returns Home/light without editing
 tasks. Run with the keyboard available and the current showcase starting at Home.
 
-Renderer fixtures (flex, tracking, italic, padded text, strike, vector,
+Renderer fixtures (flex, tracking, italic, padded text, strike, vector, cover,
 percent, shadow, gradient, alignment, border) and the interactive renderer lab
 are one Logic-free lxapp in `fixtures/renderer`, a page each. Open one in the
 smoke host with `node tools/lingxia-ui-android/run.mjs --project

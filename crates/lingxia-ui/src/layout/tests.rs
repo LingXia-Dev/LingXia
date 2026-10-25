@@ -685,6 +685,35 @@ mod box_model {
     }
 
     #[test]
+    fn absolute_inset_image_covers_its_parent() {
+        let cover = |id: &'static str, insets: &[(usize, serde_json::Value)]| {
+            let mut fields = vec![
+                (field::POSITION, json!("absolute")),
+                (field::IMAGE_FIT, json!("cover")),
+                (field::IMAGE_SRC, json!("bg.png")),
+            ];
+            fields.extend_from_slice(insets);
+            node(tag::IMAGE, Some(0), id, &fields)
+        };
+        let all = [
+            (field::INSET_TOP, json!(0)),
+            (field::INSET_RIGHT, json!(0)),
+            (field::INSET_BOTTOM, json!(0)),
+            (field::INSET_LEFT, json!(0)),
+        ];
+        let records = vec![
+            node(tag::COLUMN, None, "root", &[]),
+            cover("background", &all),
+            cover("corner", &all[..1]),
+            node(tag::COLUMN, Some(0), "flow", &[(field::HEIGHT, json!(30))]),
+        ];
+        let b = bounds(&records, 360, 640);
+        assert_eq!(b[1], [0.0, 0.0, 360.0, 640.0]);
+        assert_eq!(b[2][2..], [64.0, 64.0], "one inset keeps the media default");
+        assert_eq!(b[3][1], 0.0, "absolute images leave flow");
+    }
+
+    #[test]
     fn z_index_reorders_paint_and_hits_among_siblings_only() {
         let records = vec![
             node(tag::STACK, None, "root", &[]),

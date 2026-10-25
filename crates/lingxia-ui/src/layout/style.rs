@@ -100,6 +100,12 @@ pub(crate) fn node_style(
 ) -> Result<Style, String> {
     let record = &records[index];
     let page = index == 0 && record.tag == tag::PAGE;
+    // Opposing insets size an absolute box, so fixed media defaults must not override them.
+    let spans = |a: usize, b: usize| {
+        record.string(field::POSITION) == Some("absolute")
+            && record.fields.iter().any(|(id, _)| *id == a)
+            && record.fields.iter().any(|(id, _)| *id == b)
+    };
     // Scrolling regions fill the space a page leaves them unless sized explicitly.
     let fills = record.parent.is_some_and(|p| records[p].tag == tag::PAGE)
         && matches!(record.tag, tag::SCROLL | tag::LIST)
@@ -300,6 +306,8 @@ pub(crate) fn node_style(
                 .or_else(|| keyword(record, field::WIDTH_KEYWORD))
                 .unwrap_or(if page || index == 0 {
                     length(width as f32 / scale)
+                } else if spans(field::INSET_LEFT, field::INSET_RIGHT) {
+                    auto()
                 } else if record.tag == tag::VECTOR {
                     length(24.0)
                 } else if record.tag == tag::IMAGE {
@@ -321,6 +329,8 @@ pub(crate) fn node_style(
                     length(120.0)
                 } else if index == 0 {
                     length(height as f32 / scale)
+                } else if spans(field::INSET_TOP, field::INSET_BOTTOM) {
+                    auto()
                 } else if record.tag == tag::VECTOR {
                     length(24.0)
                 } else if record.tag == tag::IMAGE {
