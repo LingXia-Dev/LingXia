@@ -28,10 +28,12 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `lineHeight` is a multiplier. Each element accepts only styles it renders.
 - RTL: use `ps`/`ms`/`start-`/`text-start` etc.; they mirror with `env.direction` (from the
   display language) or a `dir` prop. Mirror icons with `rtl:-scale-x-100`.
-- Supported variants: `dark:`, `rtl:`/`ltr:`, `first:`/`last:`/`odd:`/`even:`/`only:`/`empty:`, breakpoints, `focus:` (editors), `active:`
+- Supported variants: `dark:`, `rtl:`/`ltr:`, `first:`/`last:`/`odd:`/`even:`/`only:`/`empty:`, `sm:`–`2xl:`, `focus:` (editors), `active:`
   (controls), `hover:` (fine pointers), `disabled:`, `placeholder:`,
-  `space-*`/`divide-*`. Transitions, skew and 3D transforms are
-  rejected; `translate`/`rotate`/`scale`/`origin` are static.
+  `space-*`/`divide-*`. `*:`, `**:`, `in-*:`, `group-*:`, `peer-*:` fail naming the TS-side form.
+- `translate`/`rotate`/`scale`/`origin` are static and state variants may set them; skew and 3D fail.
+  Transitions and `animate-*` need `// @ui-experimental motion` in the page source.
+- Utilities that would draw nothing (filters, masks, text shadows, cursors, outlines) fail naming what to use.
 - The build reports every problem with `file:line:col`, split into unknown
   utilities, ones the renderer cannot draw, and ones the element ignores.
 - `useLocal(name, value)` state is keyed by name and component identity.

@@ -70,7 +70,7 @@ is still refused on an element that does not render its style ([styles.md](style
 | `grid-cols` | `grid-cols-1`, `grid-cols-2`, `grid-cols-3`, `grid-cols-4`, `grid-cols-5`, … (13) | grid-template-columns (1) |
 | `grid-rows` | `grid-rows-1`, `grid-rows-2`, `grid-rows-3`, `grid-rows-4`, `grid-rows-5`, … (13) | grid-template-rows (1) |
 | `items` | `items-baseline`, `items-center`, `items-end`, `items-start`, `items-stretch` | align-items (3) |
-| `justify` | `justify-around`, `justify-between`, `justify-center`, `justify-end`, `justify-evenly`, … (12) | justify-content (5); justify-self (5); justify-items (3) |
+| `justify` | `justify-around`, `justify-between`, `justify-center`, `justify-end`, `justify-evenly`, … (14) | justify-content (5); justify-items (3); justify-self (3) |
 | `place` | `place-content-around`, `place-content-between`, `place-content-center`, `place-content-end`, `place-content-evenly`, … (15) | align-content (3); align-self (3); align-items (2) |
 
 ## Sizing
@@ -101,8 +101,8 @@ is still refused on an element that does not render its style ([styles.md](style
 | `mt` | `-mt-0`, `-mt-0.5`, `-mt-1`, `-mt-1.5`, `-mt-2`, … (71) |  |
 | `mx` | `-mx-0`, `-mx-0.5`, `-mx-1`, `-mx-1.5`, `-mx-2`, … (71) |  |
 | `my` | `-my-0`, `-my-0.5`, `-my-1`, `-my-1.5`, `-my-2`, … (71) |  |
-| `space-x` | `-space-x-0`, `-space-x-0.5`, `-space-x-1`, `-space-x-1.5`, `-space-x-2`, … (70) |  |
-| `space-y` | `-space-y-0`, `-space-y-0.5`, `-space-y-1`, `-space-y-1.5`, `-space-y-2`, … (70) |  |
+| `space-x` | `-space-x-0`, `-space-x-0.5`, `-space-x-1`, `-space-x-1.5`, `-space-x-2`, … (70) | reversed space/divide order (1) |
+| `space-y` | `-space-y-0`, `-space-y-0.5`, `-space-y-1`, `-space-y-1.5`, `-space-y-2`, … (70) | reversed space/divide order (1) |
 
 ## Padding
 
@@ -140,7 +140,7 @@ is still refused on an element that does not render its style ([styles.md](style
 | `oldstyle` | `oldstyle-nums` |  |
 | `ordinal` | `ordinal` |  |
 | `proportional` | `proportional-nums` |  |
-| `select` | `select-all`, `select-none`, `select-text` |  |
+| `select` | `select-all`, `select-none`, `select-text` | select-auto (1) |
 | `slashed` | `slashed-zero` |  |
 | `stacked` | `stacked-fractions` |  |
 | `tabular` | `tabular-nums` |  |
@@ -200,8 +200,8 @@ is still refused on an element that does not render its style ([styles.md](style
 | `border-x` | `border-x`, `border-x-0`, `border-x-2`, `border-x-4`, `border-x-8` | border-inline-color (291) |
 | `border-y` | `border-y`, `border-y-0`, `border-y-2`, `border-y-4`, `border-y-8` | border-block-color (291) |
 | `divide` | `divide-amber-50`, `divide-amber-100`, `divide-amber-200`, `divide-amber-300`, `divide-amber-400`, … (293) | border-style (2); unsupported color (1) |
-| `divide-x` | `divide-x`, `divide-x-0`, `divide-x-2`, `divide-x-4`, `divide-x-8` |  |
-| `divide-y` | `divide-y`, `divide-y-0`, `divide-y-2`, `divide-y-4`, `divide-y-8` |  |
+| `divide-x` | `divide-x`, `divide-x-0`, `divide-x-2`, `divide-x-4`, `divide-x-8` | reversed space/divide order (1) |
+| `divide-y` | `divide-y`, `divide-y-0`, `divide-y-2`, `divide-y-4`, `divide-y-8` | reversed space/divide order (1) |
 
 ## Effects
 
@@ -219,14 +219,12 @@ is still refused on an element that does not render its style ([styles.md](style
 | --- | --- | --- |
 | `origin` | `origin-bottom`, `origin-bottom-left`, `origin-bottom-right`, `origin-center`, `origin-left`, … (9) |  |
 | `rotate` | `-rotate-0`, `-rotate-1`, `-rotate-2`, `-rotate-3`, `-rotate-6`, … (19) |  |
-| `scale` | `-scale-0`, `-scale-50`, `-scale-75`, `-scale-90`, `-scale-95`, … (23) | unsupported value (1) |
+| `scale` | `-scale-0`, `-scale-50`, `-scale-75`, `-scale-90`, `-scale-95`, … (22) | scale-z (1); unsupported value (1) |
 | `scale-x` | `-scale-x-0`, `-scale-x-50`, `-scale-x-75`, `-scale-x-90`, `-scale-x-95`, … (22) |  |
 | `scale-y` | `-scale-y-0`, `-scale-y-50`, `-scale-y-75`, `-scale-y-90`, `-scale-y-95`, … (22) |  |
-| `scale-z` | `-scale-z-0`, `-scale-z-50`, `-scale-z-75`, `-scale-z-90`, `-scale-z-95`, … (22) |  |
-| `translate` | `-translate-0`, `-translate-0.5`, `-translate-1`, `-translate-1.5`, `-translate-2`, … (125) | unsupported value (1) |
+| `translate` | `-translate-0`, `-translate-0.5`, `-translate-1`, `-translate-1.5`, `-translate-2`, … (124) | translate-z (1); unsupported value (1) |
 | `translate-x` | `-translate-x-0`, `-translate-x-0.5`, `-translate-x-1`, `-translate-x-1.5`, `-translate-x-2`, … (124) |  |
 | `translate-y` | `-translate-y-0`, `-translate-y-0.5`, `-translate-y-1`, `-translate-y-1.5`, `-translate-y-2`, … (124) |  |
-| `translate-z` | `-translate-z-0`, `-translate-z-0.5`, `-translate-z-1`, `-translate-z-1.5`, `-translate-z-2`, … (70) |  |
 
 ## Scrolling
 
@@ -252,12 +250,6 @@ Refused unless the page opts into the gated motion lowering (see the motion chap
 
 `animate` (5), `delay` (8), `duration` (9), `ease` (5)
 
-## Accepted without effect
-
-These compile but set nothing the renderer draws:
-
-`space-x-reverse`, `space-y-reverse`, `divide-x-reverse`, `divide-y-reverse`, `drop-shadow` (291), `mask` (2), `mask-radial-at` (9), `mask-radial` (4), `select-auto`, `snap` (2), `text-shadow` (292), `transform` (2)
-
 ## Not supported
 
 | Family | Utilities | Reason |
@@ -275,12 +267,12 @@ These compile but set nothing the renderer draws:
 | `backdrop-opacity` | 21 | unsupported backdrop property (21) |
 | `backdrop-sepia` | 4 | unsupported backdrop property (4) |
 | `backface` | 2 | backface-visibility (2) |
-| `blur` | 8 | filter (8) |
+| `blur` | 8 | filters (8) |
 | `border-spacing` | 35 | border-spacing (35) |
 | `border-spacing-x` | 35 | border-spacing (35) |
 | `border-spacing-y` | 35 | border-spacing (35) |
 | `box` | 4 | -webkit-box-decoration-break (2); box-sizing (2) |
-| `brightness` | 11 | filter (11) |
+| `brightness` | 11 | filters (11) |
 | `caption` | 2 | caption-side (2) |
 | `caret` | 291 | caret-color (291) |
 | `clear` | 6 | clear (6) |
@@ -289,31 +281,31 @@ These compile but set nothing the renderer draws:
 | `contain` | 8 | contain (8) |
 | `container` | 1 | nested rule @media (1) |
 | `contents` | 1 | display (1) |
-| `contrast` | 7 | filter (7) |
+| `contrast` | 7 | filters (7) |
 | `cursor` | 36 | cursor (36) |
 | `decoration` | 301 | text-decoration-color (291); text-decoration-style (5); text-decoration-thickness (5) |
-| `drop-shadow` | 7 | filter (7) |
+| `drop-shadow` | 298 | drop-shadow colors (291); filters (7) |
 | `field` | 2 | field-sizing (2) |
 | `fill` | 292 | fill (292) |
 | `float` | 5 | float (5) |
 | `flow` | 1 | display (1) |
 | `font-stretch` | 19 | font-stretch (19) |
 | `forced` | 2 | forced-color-adjust (2) |
-| `grayscale` | 6 | filter (6) |
-| `hue-rotate` | 6 | filter (6) |
+| `grayscale` | 6 | filters (6) |
+| `hue-rotate` | 6 | filters (6) |
 | `hyphens` | 3 | -webkit-hyphens (3) |
 | `indent` | 70 | text-indent (70) |
 | `inset-be` | 125 | inset-block-end (125) |
 | `inset-bs` | 125 | inset-block-start (125) |
 | `inset-ring` | 297 | unsupported shadow property (297) |
 | `inset-shadow` | 296 | unsupported shadow property (296) |
-| `invert` | 6 | filter (6) |
+| `invert` | 6 | filters (6) |
 | `invisible` | 1 | visibility (1) |
 | `isolate` | 1 | isolation (1) |
 | `isolation` | 1 | isolation (1) |
 | `list` | 6 | list-style-type (3); list-style-position (2); display (1) |
 | `list-image` | 1 | list-style-image (1) |
-| `mask` | 41 | mask-position (9); mask-clip (7); mask-origin (6) |
+| `mask` | 43 | mask-position (9); mask-clip (7); mask-origin (6) |
 | `mask-b-from` | 346 | mask-image (346) |
 | `mask-b-to` | 346 | mask-image (346) |
 | `mask-conic` | 18 | mask-image (18) |
@@ -326,6 +318,8 @@ These compile but set nothing the renderer draws:
 | `mask-linear-to` | 346 | mask-image (346) |
 | `mask-r-from` | 346 | mask-image (346) |
 | `mask-r-to` | 346 | mask-image (346) |
+| `mask-radial` | 4 | masks (4) |
+| `mask-radial-at` | 9 | masks (9) |
 | `mask-radial-from` | 346 | mask-image (346) |
 | `mask-radial-to` | 346 | mask-image (346) |
 | `mask-t-from` | 346 | mask-image (346) |
@@ -339,8 +333,8 @@ These compile but set nothing the renderer draws:
 | `min-block` | 71 | min-block-size (71) |
 | `min-inline` | 83 | min-inline-size (83) |
 | `mix` | 18 | mix-blend-mode (18) |
-| `outline` | 303 | outline-color (291); outline-style (12) |
-| `outline-offset` | 10 | outline-offset (10) |
+| `outline` | 303 | outline (303) |
+| `outline-offset` | 10 | outline (10) |
 | `overline` | 1 | text-decoration-line (1) |
 | `perspective` | 6 | perspective (6) |
 | `perspective-origin` | 9 | perspective-origin (9) |
@@ -350,7 +344,8 @@ These compile but set nothing the renderer draws:
 | `rotate-x` | 18 | transform (18) |
 | `rotate-y` | 18 | transform (18) |
 | `rotate-z` | 18 | transform (18) |
-| `saturate` | 5 | filter (5) |
+| `saturate` | 5 | filters (5) |
+| `scale-z` | 22 | scale-z (22) |
 | `scheme` | 6 | color-scheme (6) |
 | `scroll` | 2 | scroll-behavior (2) |
 | `scroll-m` | 70 | scroll-margin (70) |
@@ -378,21 +373,22 @@ These compile but set nothing the renderer draws:
 | `scrollbar` | 6 | scrollbar-gutter (3); scrollbar-width (3) |
 | `scrollbar-thumb` | 291 | scrollbar-color (291) |
 | `scrollbar-track` | 291 | scrollbar-color (291) |
-| `sepia` | 4 | filter (4) |
+| `sepia` | 4 | filters (4) |
 | `skew` | 12 | transform (12) |
 | `skew-x` | 12 | transform (12) |
 | `skew-y` | 12 | transform (12) |
-| `snap` | 10 | scroll-snap-align (4); scroll-snap-type (4); scroll-snap-stop (2) |
+| `snap` | 12 | scroll-snap-align (4); scroll-snap-type (4); scroll-snap-stop (2) |
 | `sr` | 1 | clip-path (1) |
 | `static` | 1 | position (1) |
 | `stroke` | 296 | stroke (292); stroke-width (4) |
 | `subpixel` | 1 | -webkit-font-smoothing (1) |
 | `tab` | 3 | tab-size (3) |
 | `table` | 11 | display (9); table-layout (2) |
-| `text-shadow` | 6 | text-shadow (6) |
+| `text-shadow` | 298 | text shadows (292); text-shadow (6) |
 | `touch` | 10 | touch-action (10) |
-| `transform` | 9 | transform-box (5); transform (2); transform-style (2) |
+| `transform` | 11 | transform-box (5); transform (4); transform-style (2) |
 | `transition` | 9 | gated motion (7); transition-behavior (2) |
+| `translate-z` | 70 | translate-z (70) |
 | `underline-offset` | 11 | text-underline-offset (11) |
 | `visible` | 1 | visibility (1) |
 | `will-change` | 4 | will-change (4) |

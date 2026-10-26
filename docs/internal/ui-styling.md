@@ -41,7 +41,7 @@ time (see [ui-authoring.md](ui-authoring.md)) and again at runtime.
 - `translate-*` moves layout geometry after layout (siblings stay put, hits stay exact);
   `rotate-*`, `scale-*` and `origin-*` paint an affine about the origin and hit-test the
   transformed shape. Editors, scrolls and sliders may translate but not rotate or scale;
-  state variants cannot transform; skew and 3D fail.
+  state variants transform as paint (`active:scale-95`); skew and 3D fail.
 - Percent sizes resolve in layout against the parent content box. `aspect-*` derives
   the free axis; `max-w-[Nch]` resolves against the advance of "0" in the node's font.
 - `bg-current` paints the text color. `overscroll-contain`/`-none` stop a scroll or
@@ -127,7 +127,8 @@ custom properties and a matching `color-scheme`.
 
 ## Unsupported on purpose
 
-Transitions, skew and 3D transforms, filters other than backdrop blur/saturation, inset
-shadows, ring offsets, per-edge border styles and colors, `group-*` and
-`peer-*` selectors, container queries and plugins. Each fails with
-`UI_CLASS_UNSUPPORTED` rather than rendering differently from CSS.
+Skew and 3D transforms, filters other than backdrop blur/saturation, masks, text and
+drop shadows, inset shadows, ring offsets, per-edge border styles and colors, `*`, `**`,
+`in-*`, `group-*` and `peer-*` selectors, container queries and plugins. Each fails with
+`UI_CLASS_UNSUPPORTED` naming what to use, rather than rendering differently from CSS
+or compiling to nothing: a utility that lowers to no drawn style is refused.

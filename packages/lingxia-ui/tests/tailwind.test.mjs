@@ -47,7 +47,7 @@ test('static transforms compose per-axis variables, origins and rotations; skew 
   assert.deepEqual(classStyle('scale-95 scale-y-50').scale, [.95, .5]);
   assert.deepEqual([classStyle('-rotate-90').rotate, classStyle('rotate-45 md:rotate-180', env('light', 900)).rotate], [-90, 180]);
   assert.deepEqual([classStyle('origin-top-left').transformOrigin, classStyle('origin-[25%_75%]').transformOrigin], [[0, 0], [.25, .75]]);
-  assert.deepEqual(classStyle('transform'), {});
+  assert.throws(() => classStyle('transform'), /apply without it/);
   for (const name of ['skew-x-6', 'rotate-x-45']) assert.throws(() => classStyle(name), /only translate, rotate and scale/);
   assert.deepEqual(JSON.parse(node('column', { className: 'translate-x-2 rotate-45 -scale-x-100 origin-top-left' }).transform),
     { translate: [8, 0], rotate: 45, scale: [-1, 1], origin: [0, 0] });
@@ -540,4 +540,34 @@ test('editor focus paint preserves cascade order without affecting base style', 
   assert.throws(() => classStyle('focus:placeholder:text-[#123456]'), /UI_CLASS/);
   assert.throws(() => describe(() => h('input', { className: 'focus:p-4' }), {}), /focus: supports paint properties only/);
   assert.throws(() => describe(() => h('button', { className: 'focus:bg-red-500' }, 'x'), {}), /focus: requires an editor/);
+});
+
+test('every Tailwind breakpoint matches, including the escaped 2xl', async () => {
+  await use(['sm:p-1', 'md:p-2', 'lg:p-3', 'xl:p-4', '2xl:p-5']);
+  const at = width => classStyle('sm:p-1 md:p-2 lg:p-3 xl:p-4 2xl:p-5', env('light', width)).paddingTop;
+  assert.deepEqual([at(700), at(800), at(1100), at(1300), at(1600)], [4, 8, 12, 16, 20]);
+});
+
+test('relative variants, undrawn properties and no-op utilities fail with what to write instead', async () => {
+  const rules = new Map((await compileUtilities(new Set(['*:p-2', '**:p-2', 'in-focus:p-2', 'group-hover:p-2', 'peer-checked:p-2',
+    'cursor-pointer', 'pointer-events-none', 'outline-2', 'blur-sm', 'translate-z-4', 'scale-z-50', 'transform', 'transform-cpu',
+    'drop-shadow-red-500', 'text-shadow-red-500', 'mask-radial-at-center', 'space-x-reverse', 'divide-y-reverse', 'select-auto'])))
+    .map(rule => [rule.name, rule.error?.message]));
+  const expect = {
+    '*:p-2': /child variants .*each child/, '**:p-2': /descendant variants/, 'in-focus:p-2': /ancestor-state variants .*onFocus/,
+    'group-hover:p-2': /group-\*\/peer-\*/, 'peer-checked:p-2': /group-\*\/peer-\*/, 'cursor-pointer': /no pointer cursor/,
+    'pointer-events-none': /hit testing follows handlers/, 'outline-2': /ring-\*/, 'blur-sm': /filters .*backdrop-blur/,
+    'translate-z-4': /3D transforms/, 'scale-z-50': /3D transforms/, transform: /apply without it/, 'transform-cpu': /apply without it/,
+    'drop-shadow-red-500': /shadow-<color>/, 'text-shadow-red-500': /text shadows/, 'mask-radial-at-center': /masks/,
+    'space-x-reverse': /gap-\*/, 'divide-y-reverse': /gap-\*/, 'select-auto': /select-text or select-none/,
+  };
+  for (const [name, pattern] of Object.entries(expect)) {
+    assert.match(rules.get(name) ?? '', pattern, name);
+    assert.doesNotMatch(rules.get(name), /transitions/, name);
+  }
+});
+
+test('justify-self-start and -end place grid items like justify-items', async () => {
+  await use(['justify-self-start', 'justify-self-end', 'justify-self-center']);
+  assert.deepEqual(['start', 'end', 'center'].map(edge => classStyle(`justify-self-${edge}`).justifySelf), ['start', 'end', 'center']);
 });

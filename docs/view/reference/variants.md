@@ -27,6 +27,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `md:` | any element |
 | `lg:` | any element |
 | `xl:` | any element |
+| `2xl:` | any element |
 | `min:` | any element |
 | `ltr:` | any element |
 | `rtl:` | any element |
@@ -38,11 +39,11 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 
 | Variant | Probed as | Reason |
 | --- | --- | --- |
-| `*:` | `*:` | matches no rule; the build reports it as `UI_CLASS_UNKNOWN` |
-| `**:` | `**:` | matches no rule; the build reports it as `UI_CLASS_UNKNOWN` |
+| `*:` | `*:` | child variants (put the classes on each child, e.g. when mapping the children in TS) |
+| `**:` | `**:` | descendant variants (put the classes on the descendants that need them) |
 | `not:` | `not-hover:` | selector :not(:hover) |
-| `group:` | `group-hover:` | selector :is(:where(.group):hover *) |
-| `peer:` | `peer-hover:` | selector :is(:where(.peer):hover ~ *) |
+| `group:` | `group-hover:` | group-*/peer-* variants (hold the shared state in TS and choose both elements' classes from it) |
+| `peer:` | `peer-hover:` | group-*/peer-* variants (hold the shared state in TS and choose both elements' classes from it) |
 | `first-letter:` | `first-letter:` | selector ::first-letter |
 | `first-line:` | `first-line:` | selector ::first-line |
 | `marker:` | `marker:` | selector  ::marker |
@@ -76,7 +77,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `focus-visible:` | `focus-visible:` | selector :focus-visible |
 | `enabled:` | `enabled:` | selector :enabled |
 | `inert:` | `inert:` | selector :is([inert], [inert] *) |
-| `in:` | `in-focus:` | matches no rule; the build reports it as `UI_CLASS_UNKNOWN` |
+| `in:` | `in-focus:` | ancestor-state variants (in-*; track the ancestor state in TS, e.g. onFocus/onBlur, and choose the classes from it) |
 | `has:` | `has-checked:` | selector :has(:checked) (has-[…]: compute the condition in TS and choose the class, e.g. hasError ? "border-error" : "border-input") |
 | `aria:` | `aria-checked:` | selector [aria-checked="true"] (aria-*: choose classes from the state in TS and set accessibility props such as role separately) |
 | `data:` | `data-[open]:` | selector [data-open] (data-[…]: there are no data attributes; choose classes from the state in TS) |
@@ -87,7 +88,6 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `supports:` | `supports-[display:grid]:` | nested selector |
 | `contrast-more:` | `contrast-more:` | media query (prefers-contrast: more) |
 | `contrast-less:` | `contrast-less:` | media query (prefers-contrast: less) |
-| `2xl:` | `2xl:` | matches no rule; the build reports it as `UI_CLASS_UNKNOWN` |
 | `@max:` | `@max-md:` | nested selector |
 | `@:` | `@md:` | nested selector |
 | `@min:` | `@min-md:` | nested selector |

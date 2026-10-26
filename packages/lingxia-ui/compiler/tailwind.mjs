@@ -418,11 +418,20 @@ function longhand(prop, value) {
       return unsupported(`line-height: ${value}`);
     }
     default:
+      // `justify-self-start|end` emit the flex spellings, which mean start/end on a grid item.
+      if (prop === 'justify-self' && (value === 'flex-start' || value === 'flex-end')) return value.slice(5);
       if (!keywords[key]?.includes(value)) unsupported(`${prop}: ${value}`);
       return value;
   }
 }
-const transitions = /^(?:animation-[a-z-]+|filter|cursor|pointer-events|outline.*)$/;
+// Properties with no native counterpart, each naming what to write instead.
+const undrawn = [
+  [/^animation-[a-z-]+$/, 'animation longhands (use an animate-* utility)'],
+  [/^filter$/, 'filters (use opacity-*, or backdrop-blur-* behind a translucent background)'],
+  [/^cursor$/, 'cursor (touch input has no pointer cursor; remove it)'],
+  [/^pointer-events$/, 'pointer-events (hit testing follows handlers; omit onClick, or set disabled)'],
+  [/^outline/, 'outline (use ring-* for a focus ring)'],
+];
 
 function angle(text) {
   const negated = text.match(/^calc\(([\s\S]+?)\s*\*\s*-1\)$/);
@@ -457,6 +466,7 @@ function transformDeclaration(prop, raw, local, style, transform) {
     return;
   }
   const kind = prop === 'translate' ? 'translate' : 'scale';
+  if (raw.includes(`var(--tw-${kind}-z)`)) unsupported(`${kind}-z (3D transforms; use ${kind}-x-* or ${kind}-y-*)`);
   transform[kind] = true;
   if (raw.replace(/\s/g, '') === `var(--tw-${kind}-x)var(--tw-${kind}-y)`) return;
   const [x, y] = postcss.list.space(value);
@@ -546,8 +556,9 @@ function declarations(nodes, vars, root, animationLowering) {
     if (prop.startsWith('--')) continue;
     // Tailwind writes the prefixed twin of user-select; it carries nothing more.
     if (prop === '-webkit-user-select') continue;
-    if (prop === 'user-select' && node.value.trim() === 'auto') continue;
-    if (transitions.test(prop)) unsupported(`${prop} (the native renderer has no transitions)`);
+    if (prop === 'user-select' && node.value.trim() === 'auto') unsupported('select-auto (text is unselectable by default; use select-text or select-none)');
+    const missing = undrawn.find(([test]) => test.test(prop));
+    if (missing) unsupported(missing[1]);
     const value = variables(node.value, local).trim();
     if (prop in shorthands) {
       const longhands = shorthands[prop];
@@ -606,6 +617,18 @@ function conditions(rule) {
   return result;
 }
 
+// A CSS identifier with escapes; `\\32 xl` is how `2xl:` starts.
+const ident = String.raw`(?:\\[0-9a-fA-F]{1,6}\s?|\\[^0-9a-fA-F]|[^\s:.>+~[\\()])+`;
+
+// Each relative variant names the TS-side way to say the same.
+function relatives(selector) {
+  if (/^:is\(\.\S+ > \*\)$/.test(selector)) return 'child variants (put the classes on each child, e.g. when mapping the children in TS)';
+  if (/^:is\(\.\S+ \*\)$/.test(selector)) return 'descendant variants (put the classes on the descendants that need them)';
+  if (/^:where\(:[a-z-]+\) \./.test(selector)) return 'ancestor-state variants (in-*; track the ancestor state in TS, e.g. onFocus/onBlur, and choose the classes from it)';
+  if (/\.(?:group|peer)\b/.test(selector)) return 'group-*/peer-* variants (hold the shared state in TS and choose both elements\' classes from it)';
+  return undefined;
+}
+
 const unescape = name => name.replace(/\\([0-9a-f]{1,6})\s?|\\(.)/gi, (_, hex, char) => hex ? String.fromCodePoint(parseInt(hex, 16)) : char);
 
 // `.name`, `.name:state`, `.name::placeholder` and `:where(.name > :not(:last-child))`.
@@ -626,10 +649,14 @@ function alternative(rest) {
 }
 
 function selectorParts(selector) {
-  const children = selector.match(/^:where\(\.((?:\\.|[^\s>])+) > :not\(:last-child\)\)$/);
+  const children = selector.match(new RegExp(`^:where\\(\\.(${ident}) > :not\\(:last-child\\)\\)$`));
   if (children) return { name: unescape(children[1]), children: true };
-  const match = selector.match(/^\.((?:\\.|[^\s:.>+~[])+)(.*)$/);
-  if (!match) return undefined;
+  const match = selector.match(new RegExp(`^\\.(${ident})(.*)$`));
+  if (!match) {
+    // Variants that style relatives (`*:`, `**:`, `in-*:`, `group-*:`, `peer-*:`) put the class elsewhere in the selector.
+    const relative = selector.match(new RegExp(`\\.(${ident})`));
+    return relative && { name: unescape(relative[1]), error: relatives(selector) ?? `selector ${selector}` };
+  }
   const name = unescape(match[1]), rest = match[2];
   if (!rest) return { name };
   if (rest === '::placeholder') return { name, placeholder: true };
@@ -640,7 +667,20 @@ function selectorParts(selector) {
     if (remaining.startsWith(pseudo) && !structure) { structure = kind; remaining = remaining.slice(pseudo.length); }
   const state = remaining.match(/^:(focus|active|hover|disabled)$/)?.[1];
   if (!remaining || state) return { name, ...(state ? { state } : {}), ...(structure ? { structure } : {}) };
-  return { name, error: `selector ${rest}${alternative(rest)}` };
+  return { name, error: relatives(selector) ?? `selector ${rest}${alternative(rest)}` };
+}
+
+// Utilities that lower to nothing drawn are refused, never compiled to a no-op.
+function inert(name) {
+  const base = name.slice(name.lastIndexOf(':') + 1).replace(/^-/, '');
+  const families = [
+    [/^(?:space|divide)-[xy]-reverse$/, 'reversed space/divide order (use gap-* with flex-row-reverse or flex-col-reverse)'],
+    [/^drop-shadow/, 'drop-shadow colors (filter drop shadows are not drawn; use shadow-* with shadow-<color>)'],
+    [/^text-shadow/, 'text shadows (not drawn; use a contrasting text-* color)'],
+    [/^mask/, 'masks (not drawn; use rounded-* with overflow-hidden, or a bg-linear-* overlay)'],
+    [/^transform/, 'transform (translate-*, rotate-* and scale-* apply without it; remove it)'],
+  ];
+  return families.find(([test]) => test.test(base))?.[1] ?? `${base} (it sets nothing the native renderer draws)`;
 }
 
 /** Lowered rules for every candidate Tailwind generates; unsupported ones carry an error. */
@@ -673,6 +713,7 @@ export async function compileUtilities(candidates, theme = '', { animationLoweri
         ...(target.direction ? { direction: target.direction } : {}), ...(target.structure ? { structure: target.structure } : {}) };
       const lower = vars => {
         const result = declarations(rule.nodes, vars, root, animationLowering);
+        if (!Object.keys(result.style).length && Object.keys(result).length === 1) unsupported(inert(name));
         if (!target.placeholder) return result;
         if (Object.keys(result).some(key => key !== 'style') || Object.keys(result.style).some(key => key !== 'color') || !result.style.color)
           unsupported('placeholder supports only color');

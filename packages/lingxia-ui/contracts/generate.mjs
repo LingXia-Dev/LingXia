@@ -346,6 +346,7 @@ export async function generate(schema) {
     'lingxia-sdk/android/lingxia/src/main/java/com/lingxia/ui/generated/GpuInput.java': androidInput(schema),
   };
   generated['crates/lingxia-ui/src/session/tests/runtime.js'] = await nativeTestRuntime(generated);
+  Object.assign(generated, await (await import('./docs.mjs')).docs(schema, generated));
   return generated;
 }
 
@@ -359,7 +360,8 @@ export async function drift(schema, root = repositoryRoot) {
   return stale;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+// Not top-level await: docs.mjs imports this module back, and would wait on its evaluation.
+const main = async () => {
   const schema = await readSchema();
   if (process.argv.includes('--check')) {
     const stale = await drift(schema);
@@ -373,4 +375,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       await writeFile(join(repositoryRoot, path), content);
     }
   }
-}
+};
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1])
+  main().catch(error => { console.error(error); process.exit(1); });
