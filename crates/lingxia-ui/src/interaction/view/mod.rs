@@ -90,6 +90,13 @@ pub struct Presented {
 }
 
 impl ViewInteraction {
+    /// The identity of `node` when it is a `<select>` whose `focus:` delta the session paints.
+    pub fn styled_focus(&self, node: usize) -> Option<String> {
+        let frame = self.frame.as_ref()?;
+        let snapshot = frame.nodes.get(node)?;
+        snapshot.focus_style.then(|| snapshot.identity.clone())
+    }
+
     pub fn frame(&self) -> Option<&Arc<PresentedFrame>> {
         self.frame.as_ref()
     }

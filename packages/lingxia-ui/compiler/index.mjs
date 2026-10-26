@@ -160,7 +160,7 @@ function classProblems(rule, name, tag, suggestions) {
   const state = rule.when?.state;
   const problems = props.filter(prop => !elements[tag].style.includes(prop))
     .map(prop => `UI_CLASS_ELEMENT: ${name} sets ${prop}, which <${tag}> does not support${hints[tag]?.[prop] ?? flexHints[prop] ?? ''}`);
-  if (state === 'focus' && !editors.has(tag)) problems.push(`UI_CLASS_ELEMENT: ${name} needs an editor; <${tag}> never takes focus`);
+  if (state === 'focus' && !editors.has(tag) && tag !== 'select') problems.push(`UI_CLASS_ELEMENT: ${name} needs an editor or <select>; <${tag}> never takes focus`);
   if (state === 'active' && !controls.has(tag)) problems.push(`UI_CLASS_ELEMENT: ${name} needs a control; <${tag}> is never pressed`);
   const layout = state && state !== 'disabled' ? props.filter(prop => !styleTable[prop]?.paint) : [];
   if (layout.length) problems.push(`UI_CLASS_ELEMENT: ${name}: ${state} styles change paint only, not ${layout.join(', ')}`);

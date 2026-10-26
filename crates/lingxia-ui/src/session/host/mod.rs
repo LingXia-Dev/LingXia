@@ -238,6 +238,7 @@ struct Main<F> {
     no_frames_ahead: bool,
     failure: Option<Failure>,
     styled_press: Option<String>,
+    styled_focus: Option<String>,
     caret: Caret,
     visible: bool,
     /// A hidden page whose target changed renders once, so returning to it needs no wait.
@@ -352,6 +353,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     no_frames_ahead: false,
                     failure: None,
                     styled_press: None,
+                    styled_focus: None,
                     caret: Caret::default(),
                     visible: false,
                     catch_up: false,
@@ -970,6 +972,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.dirty = true;
             main.caret.stop();
             main.styled_press = None;
+            main.styled_focus = None;
             let effects = main.interaction.reset();
             main.interaction.set_inert(false);
             let cancelled = main.images.inflight_tokens();
@@ -1030,6 +1033,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.dirty = true;
             main.caret.stop();
             main.styled_press = None;
+            main.styled_focus = None;
             let effects = main.interaction.reset();
             let cancelled = main.images.inflight_tokens();
             main.images.clear();

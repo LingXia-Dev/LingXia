@@ -20,8 +20,18 @@ impl<A: PlatformAdapter> Inner<A> {
         let mut events = Vec::new();
         let (mut redraw, mut dispatch, mut number) = (false, false, false);
         let mut press = None;
+        let mut focus = None;
         for effect in effects {
             match effect {
+                // A styled `<select>` repaints its `focus:` delta in the session; the ring still draws.
+                Effect::FocusRing { node } => {
+                    focus = Some(self.main().interaction.styled_focus(node));
+                    platform.push(effect);
+                }
+                Effect::ClearFocusRing => {
+                    focus = Some(None);
+                    platform.push(effect);
+                }
                 Effect::Redraw => redraw = true,
                 Effect::Dispatch => dispatch = true,
                 Effect::Number => number = true,
@@ -48,6 +58,9 @@ impl<A: PlatformAdapter> Inner<A> {
         if let Some(identity) = press {
             self.set_pressed(identity);
         }
+        if let Some(identity) = focus {
+            self.set_control_focus(identity);
+        }
         if dispatch {
             self.drain_dispatch();
         }
@@ -70,6 +83,25 @@ impl<A: PlatformAdapter> Inner<A> {
         self.work(
             Guard::Page(self.lifecycle.page()),
             move |_, session| Ok(session.set_pointer_state(identity.as_deref(), None)),
+            |inner, result| match result {
+                Some(Ok(true)) => inner.schedule(),
+                Some(Err(error)) => inner.fail(error),
+                _ => {}
+            },
+        );
+    }
+
+    fn set_control_focus(self: &Arc<Self>, identity: Option<String>) {
+        {
+            let mut main = self.main();
+            if main.styled_focus == identity {
+                return;
+            }
+            main.styled_focus = identity.clone();
+        }
+        self.work(
+            Guard::Page(self.lifecycle.page()),
+            move |_, session| Ok(session.set_control_focus(identity.as_deref())),
             |inner, result| match result {
                 Some(Ok(true)) => inner.schedule(),
                 Some(Err(error)) => inner.fail(error),

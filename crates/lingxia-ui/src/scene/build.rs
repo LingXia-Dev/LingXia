@@ -966,6 +966,11 @@ impl Renderer {
                     .fields
                     .iter()
                     .any(|(id, _)| *id == field::PRESSED_STYLE),
+                focus_style: record.tag == tag::SELECT
+                    && record
+                        .fields
+                        .iter()
+                        .any(|(id, _)| *id == field::FOCUS_STYLE),
                 order: 0,
                 radii: corners,
                 plot: plot_snapshot,

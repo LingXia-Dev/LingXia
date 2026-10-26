@@ -138,3 +138,9 @@ test('disabled editors and selects read as disabled without authoring', async ()
   assert.equal(props(() => h('input', { disabled: true, style: { backgroundColor: 'canvas' } })).background, 'canvas');
   assert.equal(props(() => h('input', { className: 'bg-surface' })).background, 'surface');
 });
+
+test('a select takes focus: classes like the editors it sits beside', async () => {
+  configureClasses(await compileUtilities(new Set(['border', 'border-line-strong', 'focus:border-focus'])));
+  const props = rendered(() => h('select', { accessibilityLabel: 'Plan', options: [{ value: 'a', label: 'A' }], className: 'border border-line-strong focus:border-focus' })).props;
+  assert.deepEqual(props.focusStyle, { borderColor: 'focus' });
+});

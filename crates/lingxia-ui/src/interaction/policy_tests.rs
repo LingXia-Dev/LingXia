@@ -49,6 +49,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         input: None,
         clips_children: false,
         pressed_style: false,
+        focus_style: false,
         order: 0,
         plot_local: None,
     }

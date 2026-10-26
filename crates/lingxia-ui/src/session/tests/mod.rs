@@ -1662,3 +1662,28 @@ fn a_render_that_runs_out_of_time_names_the_element_it_was_building() {
         "{error}"
     );
 }
+
+#[test]
+fn a_focused_select_paints_its_focus_classes_without_the_view() {
+    let module = source(
+        "configureClasses([{name:'base',when:{},style:{backgroundColor:'#ffffff'}},{name:'focused',when:{state:'focus'},style:{backgroundColor:'#0000ff'}}]);function render(){return h('select',{className:'base focused',accessibilityLabel:'Plan',options:[{value:'a',label:'A'}],value:'a',onChange(){},style:{width:100,height:40,borderRadius:0}})}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let display = page.layout(100, 40, 1.0).unwrap();
+    assert!(display.nodes[0].focus_style);
+    let id = display.nodes[0].identity.clone();
+    let tint = |display: DisplayList| {
+        display.rasterize().unwrap().pixels.data_as_u8_slice()[4..8].to_vec()
+    };
+    assert_eq!(tint(display), vec![255; 4]);
+    assert!(page.set_control_focus(Some(&id)));
+    assert_eq!(
+        tint(page.prepare_native(100, 40, 1.0, false, None, Ok).unwrap()),
+        vec![0, 0, 255, 255]
+    );
+    assert!(page.set_control_focus(None));
+    assert_eq!(
+        tint(page.prepare_native(100, 40, 1.0, false, None, Ok).unwrap()),
+        vec![255; 4]
+    );
+}

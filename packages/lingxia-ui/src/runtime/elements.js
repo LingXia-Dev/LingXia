@@ -103,7 +103,7 @@ function lowerNodeStyle(tag, props, extra, inherited, direction, structure) {
     paintOnly(name, tag, delta);
     states[wire] = lowerStyle(tag, delta, env, { fontSize: typography.fontSize }).fields;
   };
-  state('focus', 'focusStyle', accepts('focusStyle', tag), 'an editor');
+  state('focus', 'focusStyle', accepts('focusStyle', tag), 'an editor or <select>');
   if (!disabled) {
     state('active', 'pressedStyle', accepts('pressedStyle', tag), 'a control');
     state('hover', 'hoverStyle', true);

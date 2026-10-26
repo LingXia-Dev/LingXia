@@ -90,10 +90,27 @@ impl ViewSession {
         changed
     }
 
+    /// The styled control holding keyboard focus; its `focus:` delta repaints without the View.
+    pub fn set_control_focus(&mut self, identity: Option<&str>) -> bool {
+        let changed = self.focused_control.as_deref() != identity;
+        if changed {
+            self.focused_control = identity.map(str::to_owned);
+            self.input_dirty = true;
+        }
+        changed
+    }
+
     pub(super) fn apply_pointer_styles(
         &self,
         records: &mut [crate::protocol::Record],
     ) -> Result<(), String> {
+        if let Some(identity) = &self.focused_control {
+            crate::interaction::input_state::apply_state_style(
+                records,
+                identity,
+                crate::protocol::field::FOCUS_STYLE,
+            )?;
+        }
         if let Some(identity) = &self.hovered {
             crate::interaction::input_state::apply_state_style(
                 records,

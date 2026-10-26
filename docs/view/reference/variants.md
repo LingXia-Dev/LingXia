@@ -17,7 +17,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `even:` | any element |
 | `empty:` | any element |
 | `hover:` | any element, only when `env.pointer` is `fine`; paint only |
-| `focus:` | `<input>` `<textarea>` `<search>`; paint only |
+| `focus:` | `<input>` `<textarea>` `<search>` `<select>`; paint only |
 | `active:` | `<button>` `<checkbox>` `<switch>` `<radio>` `<link>`; paint only |
 | `disabled:` | `<button>` `<input>` `<textarea>` `<search>` `<checkbox>` `<switch>` `<radio>` `<slider>` `<link>` `<select>`; replaces the whole class cascade |
 | `motion-safe:` | any element |

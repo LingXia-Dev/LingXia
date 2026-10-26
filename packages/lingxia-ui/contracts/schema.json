@@ -160,7 +160,7 @@
     {"id": 95, "key": "backdropBlur", "wire": "backdropBlur", "kind": "number"},
     {"id": 96, "key": "backdropSaturation", "wire": "backdropSaturation", "kind": "number"},
     {"id": 97, "key": "placeholderColor", "wire": "placeholderColor", "kind": "string"},
-    {"id": 98, "key": "focusStyle", "wire": "focusStyle", "kind": "focus-style", "tags": ["input", "textarea", "search"]},
+    {"id": 98, "key": "focusStyle", "wire": "focusStyle", "kind": "focus-style", "tags": ["input", "textarea", "search", "select"]},
     {"id": 99, "key": "flexBasis", "wire": "flexBasis", "kind": "flex-basis"},
     {"id": 100, "key": "scrollAxis", "wire": "scrollAxis", "kind": "scroll-axis", "tags": ["scroll"]},
     {"id": 101, "key": "animation", "wire": "animation", "kind": "animation"},
