@@ -215,14 +215,17 @@ impl ViewInteraction {
                     id,
                 }));
             }
-            let mut moved = false;
-            for event in projection::changes(previous.as_deref(), &next, &self.ids) {
-                if matches!(event, projection::Event::ContentChanged) {
-                    moved = true;
-                } else {
-                    effects.push(Effect::Accessibility(AccessibilityEffect::Change(event)));
-                }
+            for event in projection::semantic_changes(previous.as_deref(), &next, &self.ids) {
+                effects.push(Effect::Accessibility(AccessibilityEffect::Change(event)));
             }
+            // Within one layout only presented geometry moves; compare that, not whole frames.
+            let moved = previous.as_ref().is_some_and(|previous| {
+                previous
+                    .nodes
+                    .iter()
+                    .zip(&next.nodes)
+                    .any(|(a, b)| a.bounds != b.bounds || a.visible_bounds != b.visible_bounds)
+            });
             if moved {
                 self.moved_frames += 1;
                 self.moved = !self.moved_frames.is_multiple_of(4);
@@ -341,7 +344,11 @@ impl ViewInteraction {
         self.pending_focus = None;
         self.slider.cancel();
         // A select opens its platform picker; the choice returns through the input protocol.
-        if node.select.as_ref().is_some_and(|select| select.on_select.is_some()) {
+        if node
+            .select
+            .as_ref()
+            .is_some_and(|select| select.on_select.is_some())
+        {
             return vec![Effect::OpenPicker { node: index }];
         }
         let mut effects = Vec::new();

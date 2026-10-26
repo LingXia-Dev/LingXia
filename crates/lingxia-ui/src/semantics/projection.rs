@@ -371,8 +371,9 @@ impl Projection<'_> {
                 position = Some((row, 1));
             }
         }
-        let mut clickable =
-            (button || check || input.is_some() || select.is_some()) && enabled && node.range.is_none();
+        let mut clickable = (button || check || input.is_some() || select.is_some())
+            && enabled
+            && node.range.is_none();
         if plot_enabled(node) {
             focusable = true;
             clickable = true;
@@ -576,6 +577,22 @@ pub fn changes(
     next: &PresentedFrame,
     ids: &SemanticIds,
 ) -> Vec<Event> {
+    let mut events = semantic_changes(previous, next, ids);
+    let changed = previous.is_none_or(|previous| {
+        serde_json::to_string(&previous.nodes).ok() != serde_json::to_string(&next.nodes).ok()
+    });
+    if changed {
+        events.push(Event::ContentChanged);
+    }
+    events
+}
+
+/// Text, value, selection and live-region changes, without the whole-frame content compare.
+pub fn semantic_changes(
+    previous: Option<&PresentedFrame>,
+    next: &PresentedFrame,
+    ids: &SemanticIds,
+) -> Vec<Event> {
     let before: std::collections::HashMap<&str, &NodeSnapshot> = previous
         .map(|frame| {
             frame
@@ -653,12 +670,6 @@ pub fn changes(
                 });
             }
         }
-    }
-    let changed = previous.is_none_or(|previous| {
-        serde_json::to_string(&previous.nodes).ok() != serde_json::to_string(&next.nodes).ok()
-    });
-    if changed {
-        events.push(Event::ContentChanged);
     }
     events
 }
