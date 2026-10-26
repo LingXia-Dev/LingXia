@@ -196,7 +196,7 @@ mod error;
 pub mod file;
 #[cfg(any(
     target_os = "android",
-    all(target_os = "ios", feature = "ios-gpu"),
+    all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"),
     test
 ))]
 mod gpu_page;

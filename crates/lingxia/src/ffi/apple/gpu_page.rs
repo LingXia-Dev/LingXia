@@ -1,8 +1,8 @@
 //! Swift marshalling for GPU pages. Rust owns each page's `ViewHost`; Swift
 //! owns its `GpuPageView` and reports measurements to it by token.
-#[cfg(all(target_os = "ios", feature = "ios-gpu"))]
+#[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
 use crate::gpu_page::{self, AutomationReply, Creation, NativeFactory, NativePage, Token};
-#[cfg(all(target_os = "ios", feature = "ios-gpu"))]
+#[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
 use lxapp::{GpuViewGeneration, LxAppError, PageInstance};
 
 #[swift_bridge::bridge]
@@ -66,20 +66,20 @@ fn gpu_page_measured(
     locale: &str,
     reduce_motion: bool,
 ) {
-    #[cfg(all(target_os = "ios", feature = "ios-gpu"))]
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     {
         let facts = lingxia_ui_apple::lingxia_ui::platform::DeviceFacts {
             width,
             height,
             scale,
-            os: "ios".into(),
+            os: if cfg!(target_os = "macos") { "macos" } else { "ios" }.into(),
             dark,
             system_insets: [inset_top, inset_right, inset_bottom, inset_left],
             chrome_insets: [chrome_top, 0.0, chrome_bottom, 0.0],
             keyboard,
             smallest_width,
             locale: locale.into(),
-            fine_pointer: false,
+            fine_pointer: cfg!(target_os = "macos"),
             animation_scale: 1.0,
             reduce_motion,
             text_scale: None,
@@ -87,7 +87,7 @@ fn gpu_page_measured(
         };
         with_page(token, |page| page.measured(facts));
     }
-    #[cfg(not(all(target_os = "ios", feature = "ios-gpu")))]
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
     let _ = (
         token,
         width,
@@ -102,16 +102,16 @@ fn gpu_page_measured(
 }
 
 fn gpu_page_set_visible(token: i64, visible: bool) {
-    #[cfg(all(target_os = "ios", feature = "ios-gpu"))]
+    #[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
     with_page(token, |page| page.host().set_visible(visible));
-    #[cfg(not(all(target_os = "ios", feature = "ios-gpu")))]
+    #[cfg(not(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu")))]
     let _ = (token, visible);
 }
 
-#[cfg(all(target_os = "ios", feature = "ios-gpu"))]
+#[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
 pub(super) use live::{install, token_of};
 
-#[cfg(all(target_os = "ios", feature = "ios-gpu"))]
+#[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
 mod live {
     use super::*;
     use lingxia_ui_apple::lingxia_ui::session::lifecycle::ConnectionTicket;
@@ -292,5 +292,5 @@ mod live {
     }
 }
 
-#[cfg(all(target_os = "ios", feature = "ios-gpu"))]
+#[cfg(all(any(target_os = "ios", target_os = "macos"), feature = "apple-gpu"))]
 use live::with_page;

@@ -31,6 +31,8 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     nonisolated(unsafe) private var tabBarObserver: NSObjectProtocol?
     private var webViewContainer: NSView!
     private weak var activeWebView: WKWebView?
+    /// The GPU page on screen, when the current page renders natively.
+    private weak var activeGpuView: NSView?
     /// Covers a freshly swapped-in webview until its document paints:
     /// WKWebView's pre-commit frame is white, which reads as a flash.
     private var loadingPlaceholder: NSView?
@@ -146,6 +148,8 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     private func loadWebViewContent() {
         if let webView = findManagedWebView(pageInstanceId: currentPageInstanceId) {
             showWebViewToUser(webView, pageInstanceId: currentPageInstanceId)
+        } else if showGpuPage(pageInstanceId: currentPageInstanceId) {
+            return
         } else {
             // The first mount can race the page's WebView creation; converge
             // like navigate() does instead of silently staying blank.
@@ -230,6 +234,8 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         if let old = activeWebView, old !== webView {
             WebViewManager.detachLxAppWebView(old)
         }
+        activeGpuView?.removeFromSuperview()
+        activeGpuView = nil
 
         for subview in webViewContainer.subviews {
             guard let existingWebView = subview as? WKWebView, existingWebView !== webView else {
@@ -244,6 +250,30 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         if keepsFocus {
             view.window?.makeFirstResponder(webView)
         }
+    }
+
+    /// Show the page's GPU view when it renders natively; false for a WebView page.
+    private func showGpuPage(pageInstanceId: String?) -> Bool {
+        let token = GpuPages.token(appId: appId, sessionId: sessionId, pageInstanceId: pageInstanceId)
+        guard token != 0 else { return false }
+        let view = GpuPages.view(for: token)
+        if activeGpuView === view, view.superview === webViewContainer { return true }
+        pageTransition.cancelPendingWait()
+        if let old = activeWebView {
+            WebViewManager.detachLxAppWebView(old)
+            activeWebView = nil
+        }
+        activeGpuView?.removeFromSuperview()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        webViewContainer.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.leadingAnchor.constraint(equalTo: webViewContainer.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: webViewContainer.trailingAnchor),
+            view.topAnchor.constraint(equalTo: webViewContainer.topAnchor),
+            view.bottomAnchor.constraint(equalTo: webViewContainer.bottomAnchor),
+        ])
+        activeGpuView = view
+        return true
     }
 
     /// Whether the window's first responder is `webView` or a view inside it.
@@ -453,6 +483,8 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         updateNavigationBar(appId: appId, path: path)
         if let webView = findManagedWebView(pageInstanceId: pageInstanceId) {
             showWebViewToUser(webView, pageInstanceId: pageInstanceId, animation: animationType)
+        } else if showGpuPage(pageInstanceId: pageInstanceId) {
+            // A GPU page has no WebView to wait for.
         } else {
             showWhenWebViewReady(
                 appId: appId,
@@ -487,6 +519,10 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                   self.sessionId == sessionId,
                   self.currentPath == path,
                   self.currentPageInstanceId == pageInstanceId else { return }
+            if ready, self.findManagedWebView(pageInstanceId: pageInstanceId) == nil,
+               self.showGpuPage(pageInstanceId: pageInstanceId) {
+                return
+            }
             guard ready, let webView = self.findManagedWebView(pageInstanceId: pageInstanceId) else {
                 // The page asked for was replaced (an lxapp that relaunches
                 // from `onLaunch`): follow the runtime's current page.

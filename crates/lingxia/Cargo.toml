@@ -49,8 +49,8 @@ android-capture = ["realtime-capture", "lingxia-platform/android-capture-provide
 apple-capture = ["realtime-capture", "lingxia-platform/apple-capture-provider"]
 harmony-capture = ["realtime-capture", "lingxia-platform/harmony-capture-provider"]
 webview-input = ["lingxia-webview/webview-input"]
-# GPU pages on iOS: links the View isolate (QuickJS) and the renderer.
-ios-gpu = ["dep:lingxia-ui-apple"]
+# GPU pages on Apple platforms: links the View isolate (QuickJS) and the renderer.
+apple-gpu = ["dep:lingxia-ui-apple"]
 
 [dependencies]
 rong_rt = { workspace = true, default-features = false }

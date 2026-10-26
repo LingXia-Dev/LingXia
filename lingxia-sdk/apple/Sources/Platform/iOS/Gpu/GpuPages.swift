@@ -105,14 +105,10 @@ public enum GpuPages {
             views.removeValue(forKey: token)?.removeFromSuperview()
         }
     }
-}
-#else
-/// GPU pages render only on iOS.
-public enum GpuPages {
-    static func presentPixels(token: Int64, pixels: UInt, length: UInt, width: UInt32, height: UInt32) -> Bool {
-        false
-    }
 
-    static func dispose(token: Int64) {}
+    /// The GPU page token of a page of the app, or 0 when it is not a GPU page.
+    static func token(appId: String, sessionId: UInt64, pageInstanceId: String?) -> Int64 {
+        pageBinding(appId, sessionId, pageInstanceId ?? "").gpu_token
+    }
 }
 #endif
