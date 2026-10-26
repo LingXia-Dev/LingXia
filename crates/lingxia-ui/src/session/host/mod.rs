@@ -21,11 +21,13 @@ mod dispatch;
 mod environment;
 mod images;
 mod pump;
+mod reveal;
 mod worker;
 
 /// Largest input-method request [`ViewHost::input`] accepts, in bytes.
 pub use super::input_protocol::MAX_REQUEST_BYTES as MAX_INPUT_REQUEST_BYTES;
 pub use bridge::BridgeUpdate;
+pub use reveal::{FIRST_FRAME_WATCHDOG, REVEAL_DEADLINE};
 pub use worker::ViewWorker;
 
 const BOOTSTRAP: Duration = Duration::from_secs(5);
@@ -223,6 +225,7 @@ struct Main<F> {
     /// Bumped to revoke a pending animation or bootstrap deadline.
     animation_timer: u64,
     bootstrap_timer: u64,
+    reveal: reveal::Reveal,
 }
 
 impl<A: PlatformAdapter> Drop for Inner<A> {
@@ -272,6 +275,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     disposed: false,
                     animation_timer: 0,
                     bootstrap_timer: 0,
+                    reveal: Default::default(),
                 }),
             }),
         }
@@ -336,12 +340,19 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// The target holds an accepted frame for the current size and environment; a pending
     /// data update still follows as an ordinary frame.
     pub fn frame_is_current(&self) -> bool {
-        let Some(mut environment) = self.inner.adapter.environment() else {
-            return false;
-        };
-        let main = self.inner.main();
-        main.host_environment.apply(&mut environment.value);
-        main.presented_environment.as_ref() == Some(&environment)
+        self.inner.frame_is_current()
+    }
+
+    /// Show this page in place of the one on screen once it has a current frame:
+    /// [`crate::platform::HostEvents::revealed`] says when. `surface_holds_frame`:
+    /// the target still shows a frame this page presented before.
+    pub fn reveal(&self, surface_holds_frame: bool) {
+        self.inner.begin_reveal(surface_holds_frame);
+    }
+
+    /// The window was stopped or started; a pending reveal waits while it is stopped.
+    pub fn window_visible(&self, visible: bool) {
+        self.inner.window_visible(visible);
     }
 
     /// The presentation target is gone; nothing presents until it returns.
@@ -598,6 +609,15 @@ impl<A: PlatformAdapter> Inner<A> {
         self.main
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
+    }
+
+    fn frame_is_current(&self) -> bool {
+        let Some(mut environment) = self.adapter.environment() else {
+            return false;
+        };
+        let main = self.main();
+        main.host_environment.apply(&mut environment.value);
+        main.presented_environment.as_ref() == Some(&environment)
     }
 
     fn current(&self, guard: Guard) -> bool {
@@ -883,6 +903,7 @@ impl<A: PlatformAdapter> Inner<A> {
         self.adapter.bootstrap_overdue(false);
         self.adapter.warn(&failure.error);
         self.adapter.recovery(Some(&failure));
+        self.revealed_by_failure();
     }
 
     fn caret(self: &Arc<Self>, eligible: bool, state: Option<CaretState>) {

@@ -36,6 +36,8 @@ struct Log {
     clicked: usize,
     vsync: bool,
     carets: Vec<bool>,
+    /// `hold_surface` of each reveal.
+    revealed: Vec<bool>,
     /// Threads that ran main-thread callbacks.
     main: Vec<ThreadId>,
 }
@@ -171,6 +173,9 @@ impl HostEvents for Fake {
     }
     fn bootstrap_overdue(&self, overdue: bool) {
         self.main().overdue.push(overdue);
+    }
+    fn revealed(&self, hold_surface: bool) {
+        self.main().revealed.push(hold_surface);
     }
     fn warn(&self, _: &str) {}
 }
@@ -1149,4 +1154,124 @@ fn a_reduced_motion_change_while_hidden_catches_up_once_and_stays_silent() {
     let shown = presents(&host);
     run_frames(&platform, &host, 30);
     assert_eq!(presents(&host), shown);
+}
+
+fn revealed(host: &ViewHost<Fake>) -> Vec<bool> {
+    host.adapter().log.lock().unwrap().revealed.clone()
+}
+
+/// A shown page whose next frame will not match what it last presented.
+fn resize(host: &ViewHost<Fake>, width: u16) {
+    host.adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .width = width;
+}
+
+fn revealing_page(platform: &Platform, worker: &Arc<ViewWorker>) -> ViewHost<Fake> {
+    let host = platform.host(
+        worker,
+        &source("function render(){return h('text',{},'shown')}"),
+        false,
+    );
+    host.set_visible(true);
+    host
+}
+
+#[test]
+fn a_first_visit_reveals_with_its_first_frame_and_a_current_page_at_once() {
+    let worker = ViewWorker::spawn("test-reveal-first").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = revealing_page(&platform, &worker);
+    host.reveal(false);
+    assert!(revealed(&host).is_empty(), "nothing to show yet");
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["shown"]);
+    assert_eq!(revealed(&host), [false]);
+    host.reveal(true);
+    assert_eq!(
+        revealed(&host),
+        [false, false],
+        "a current frame shows at once"
+    );
+    platform.advance(crate::session::host::FIRST_FRAME_WATCHDOG);
+    assert_eq!(
+        revealed(&host),
+        [false, false],
+        "a completed reveal's deadline is spent"
+    );
+}
+
+#[test]
+fn a_returning_page_with_a_stale_frame_is_shown_held_at_the_deadline_then_released() {
+    let worker = ViewWorker::spawn("test-reveal-stale").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = revealing_page(&platform, &worker);
+    platform.settle(&[&host]);
+    resize(&host, 180);
+    host.reveal(true);
+    let deadline = crate::session::host::REVEAL_DEADLINE;
+    assert_eq!(platform.advance(deadline - Duration::from_millis(1)), 0);
+    platform.advance(Duration::from_millis(1));
+    assert_eq!(
+        revealed(&host),
+        [true],
+        "shown, but its stale surface stays hidden"
+    );
+    host.surface_changed();
+    platform.settle(&[&host]);
+    assert_eq!(
+        revealed(&host),
+        [true, false],
+        "the current frame releases the surface"
+    );
+}
+
+#[test]
+fn a_stopped_window_pauses_the_deadline_and_a_failure_reveals_at_once() {
+    let worker = ViewWorker::spawn("test-reveal-paused").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = revealing_page(&platform, &worker);
+    platform.settle(&[&host]);
+    resize(&host, 180);
+    host.reveal(true);
+    host.window_visible(false);
+    platform.advance(crate::session::host::REVEAL_DEADLINE);
+    assert!(revealed(&host).is_empty());
+    host.window_visible(true);
+    platform.advance(crate::session::host::REVEAL_DEADLINE);
+    assert_eq!(revealed(&host), [true]);
+
+    let first = revealing_page(&platform, &worker);
+    first.reveal(false);
+    first.fail("UI_RENDER: broken".into());
+    assert_eq!(
+        revealed(&first),
+        [false],
+        "recovery chrome shows without waiting"
+    );
+    platform.advance(crate::session::host::FIRST_FRAME_WATCHDOG);
+    assert_eq!(revealed(&first), [false]);
+}
+
+#[test]
+fn a_page_that_never_presents_is_revealed_held_by_the_watchdog() {
+    let worker = ViewWorker::spawn("test-reveal-watchdog").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = revealing_page(&platform, &worker);
+    host.adapter()
+        .pending
+        .store(true, std::sync::atomic::Ordering::Release);
+    host.reveal(true);
+    platform.settle(&[&host]);
+    platform.advance(crate::session::host::REVEAL_DEADLINE);
+    assert!(
+        revealed(&host).is_empty(),
+        "never presented: not a returning page"
+    );
+    platform.advance(crate::session::host::FIRST_FRAME_WATCHDOG);
+    assert_eq!(revealed(&host), [true]);
 }

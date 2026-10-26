@@ -107,6 +107,14 @@ pub trait HostEvents {
     fn recovery(&self, failure: Option<&Failure>);
     /// The bridge has not become ready within the bootstrap deadline, or it has now.
     fn bootstrap_overdue(&self, overdue: bool);
+    /// Put this page on screen in place of the outgoing one, from [`ViewHost::reveal`].
+    /// `hold_surface`: no current frame yet, so keep the target hidden until a
+    /// later `revealed(false)`.
+    ///
+    /// [`ViewHost::reveal`]: crate::session::host::ViewHost::reveal
+    fn revealed(&self, hold_surface: bool) {
+        let _ = hold_surface;
+    }
     fn warn(&self, message: &str);
 }
 

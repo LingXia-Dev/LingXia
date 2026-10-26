@@ -376,6 +376,7 @@ impl<A: PlatformAdapter> Inner<A> {
         self.flush_image_events();
         timing.main_us = micros(vsync.elapsed());
         self.adapter.presented(&snapshot, &timing);
+        self.revealed_by_frame();
     }
 
     /// Start the timeline's newly presented effects and wake for its next deadline.
