@@ -250,10 +250,9 @@ impl ViewInteraction {
             .ok_or_else(|| {
                 format!("Element not interactable: {selector} has no option {choice:?}")
             })?;
+        // Waiting cannot enable an option, so this fails at once instead of being retried.
         if !select.options[option].enabled {
-            return Err(format!(
-                "Element not interactable: option {choice:?} is disabled"
-            ));
+            return Err(format!("option {choice:?} of {selector} is disabled"));
         }
         self.dispatches.push(super::Dispatch::Select {
             commit: frame.commit,

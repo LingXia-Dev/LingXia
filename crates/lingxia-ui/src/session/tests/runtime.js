@@ -1857,11 +1857,14 @@
     }
     return { ...style2, fields: { ...style2.fields } };
   }
+  var fieldTags = /* @__PURE__ */ new Set(["input", "textarea", "search", "select"]);
+  var disabledField = { color: "text-muted", backgroundColor: "surface-sunken", borderColor: "line" };
   function lowerNodeStyle(tag, props, extra, inherited, direction, structure2) {
     const env = { ...render.view?.env, direction, structure: structure2 };
     const classes = resolveClasses(props.className, env);
     const disabled = props.disabled === true;
-    const author = mergeStyle(direction, extra, disabled && classes?.disabled ? classes.disabled : classes?.base, props.style);
+    const muted = disabled && !classes?.disabled && fieldTags.has(tag) ? disabledField : void 0;
+    const author = mergeStyle(direction, extra, disabled && classes?.disabled ? classes.disabled : classes?.base, muted, props.style);
     const { fields, typography } = lowerStyle(tag, author, env, inherited);
     const states2 = {};
     const state = (name, wire, allowed, requirement) => {

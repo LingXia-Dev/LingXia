@@ -68,12 +68,17 @@ function nodeStyle(tag, props, extra, inherited, direction, structure) {
   return { ...style, fields: { ...style.fields } };
 }
 
+const fieldTags = new Set(['input', 'textarea', 'search', 'select']);
+const disabledField = { color: 'text-muted', backgroundColor: 'surface-sunken', borderColor: 'line' };
+
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
 function lowerNodeStyle(tag, props, extra, inherited, direction, structure) {
   const env = { ...render.view?.env, direction, structure };
   const classes = resolveClasses(props.className, env);
   const disabled = props.disabled === true;
-  const author = mergeStyle(direction, extra, disabled && classes?.disabled ? classes.disabled : classes?.base, props.style);
+  // A disabled editor without `disabled:` classes still reads as disabled: muted roles over its classes.
+  const muted = disabled && !classes?.disabled && fieldTags.has(tag) ? disabledField : undefined;
+  const author = mergeStyle(direction, extra, disabled && classes?.disabled ? classes.disabled : classes?.base, muted, props.style);
   const { fields, typography } = lowerStyle(tag, author, env, inherited);
   const states = {};
   const state = (name, wire, allowed, requirement) => {

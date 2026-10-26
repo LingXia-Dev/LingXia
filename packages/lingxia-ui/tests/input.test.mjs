@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { h, describe, prepare, discard, dispatch, useLocal, reset } from '../src/internal.js';
 import { decode, rendered } from './support/wire.mjs';
+import { compileUtilities } from '../compiler/tailwind.mjs';
+import { configureClasses } from '../src/style/classes.js';
 
 test('editor labels are distinct from values and placeholder hints', () => {
   for (const tag of ['input', 'textarea', 'search']) {
@@ -124,4 +126,15 @@ test('editor attributes are validated, normalized and wired for the platform inp
     ['input', { keyboard: 'date', step: 1 }, /step is a positive number/], ['input', { keyboard: 'search' }, /keyboard/],
     ['search', { spellCheck: 'no' }, /spellCheck/]])
     assert.throws(() => describe(() => h(tag, { value: '', ...props }), {}), message);
+});
+
+test('disabled editors and selects read as disabled without authoring', async () => {
+  configureClasses(await compileUtilities(new Set(['bg-surface', 'border', 'border-line-strong'])));
+  const props = make => rendered(make).props;
+  const plain = props(() => h('input', { disabled: true, className: 'bg-surface border border-line-strong' }));
+  assert.deepEqual([plain.color, plain.background, plain.borderColor, plain.enabled], ['text-muted', 'surface-sunken', 'line', 0]);
+  const select = props(() => h('select', { disabled: true, accessibilityLabel: 'Plan', options: [{ value: 'a', label: 'A' }] }));
+  assert.equal(select.background, 'surface-sunken');
+  assert.equal(props(() => h('input', { disabled: true, style: { backgroundColor: 'canvas' } })).background, 'canvas');
+  assert.equal(props(() => h('input', { className: 'bg-surface' })).background, 'surface');
 });

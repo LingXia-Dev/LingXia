@@ -1027,7 +1027,13 @@ fn editor_focus_paint_tracks_autofocus_blur_disable_and_failed_frames() {
             .edit_token
             .is_none()
     );
-    assert_eq!(tint(disabled), vec![255; 4]);
+    // A disabled editor drops focus paint and takes the disabled field roles.
+    assert_eq!(
+        tint(disabled),
+        crate::theme::Palette::builtin(false)
+            .role(lingxia_theme::Role::SurfaceSunken)
+            .to_vec()
+    );
 }
 
 #[test]

@@ -286,3 +286,56 @@ fn the_tree_nests_named_nodes_in_reading_order_with_their_states() {
         (Some("pay"), Some(true))
     );
 }
+
+#[test]
+fn offscreen_selects_reveal_and_a_disabled_option_fails_at_once() {
+    for layout in [
+        "h('page',{},h('scroll',{style:{flexGrow:1}},h('column',{style:{padding:16,gap:12}},h('column',{style:{height:600}}),SELECT)))",
+        "h('page',{},h('scroll',{style:{flexGrow:1}},h('column',{style:{padding:16,gap:12}},h('column',{style:{height:600}}),h('row',{style:{gap:8}},SELECT))))",
+    ] {
+        let mut i = interaction(&layout.replace("SELECT", "h('select',{testId:'plan',accessibilityLabel:'Plan',placeholder:'Choose',options:[{value:'monthly',label:'Monthly'}],value:'',onChange(){},style:{paddingLeft:12,paddingRight:12,paddingTop:8,paddingBottom:8,borderWidth:1,borderRadius:8}})"));
+        let page = PageTicket::new(1);
+        let revealed = i.automate(
+            "[data-testid=\"plan\"]",
+            None,
+            AutomationAct::ScrollIntoView,
+            false,
+            page,
+        );
+        assert!(
+            revealed.is_ok_and(|effects| effects.contains(&Effect::Redraw)),
+            "{layout}"
+        );
+    }
+    let mut i = interaction(
+        "h('scroll',{style:{height:100}},h('column',{style:{height:400}}),h('select',{testId:'plan',accessibilityLabel:'Plan',options:[{value:'monthly',label:'Monthly'},{value:'yearly',label:'Yearly',disabled:true}],value:'monthly',onChange(){}}))",
+    );
+    let page = PageTicket::new(1);
+    let revealed = i
+        .automate(
+            "[data-testid=\"plan\"]",
+            None,
+            AutomationAct::ScrollIntoView,
+            false,
+            page,
+        )
+        .unwrap();
+    assert!(revealed.contains(&Effect::Redraw));
+    let disabled = i
+        .automate(
+            "[data-testid=\"plan\"]",
+            None,
+            AutomationAct::SelectOption("yearly".into()),
+            false,
+            page,
+        )
+        .unwrap_err();
+    assert!(
+        !disabled.starts_with("Element not interactable"),
+        "{disabled}"
+    );
+    assert!(
+        disabled.starts_with("option \"yearly\"") && disabled.ends_with("is disabled"),
+        "{disabled}"
+    );
+}

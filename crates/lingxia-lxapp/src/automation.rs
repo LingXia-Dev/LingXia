@@ -674,7 +674,7 @@ pub async fn page_select_option(
   if (el.disabled) return "Element not interactable: " + {selector} + " is not enabled";
   const option = [...el.options].find(o => o.value === {value}) || [...el.options].find(o => o.label === {value});
   if (!option) return "Element not interactable: " + {selector} + " has no option " + {value};
-  if (option.disabled) return "Element not interactable: option " + {value} + " is disabled";
+  if (option.disabled) return "option " + {value} + " of " + {selector} + " is disabled";
   el.value = option.value;
   el.dispatchEvent(new Event("input", {{ bubbles: true }}));
   el.dispatchEvent(new Event("change", {{ bubbles: true }}));
