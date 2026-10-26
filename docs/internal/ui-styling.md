@@ -113,7 +113,9 @@ presentation passes device acceptance. `transition-*`, `duration-*`, `delay-*` a
 border and shadow (≤10 s each); layout transitions fail naming
 `transition-transform`/`transition-opacity`. `animate-*` keyframes may omit
 endpoints (identity), rotate, translate by `%` (relative) and ease per keyframe.
-`motion-reduce:`/`motion-safe:` follow `env.reducedMotion`. Transforms are paint, so
+`motion-reduce:`/`motion-safe:` follow `env.reducedMotion`; animations carry
+`whenReduced: keep` when authored under either, otherwise reduced motion drops
+them. Native multiplies durations by `env.animatorDurationScale` (0 = reduced). Transforms are paint, so
 `active:scale-95` is legal.
 
 ## Themes

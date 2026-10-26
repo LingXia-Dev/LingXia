@@ -78,3 +78,25 @@ fn environments_default_reduced_motion_off_and_reject_bad_values() {
     environment["reducedMotion"] = json!("yes");
     assert!(page.set_environment(environment).is_err());
 }
+
+#[test]
+fn the_animator_duration_scale_defaults_to_one_and_zero_reduces_motion() {
+    let module = super::source(
+        "function render({env}){return h('text',{},env.animatorDurationScale+'|'+env.reducedMotion)}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let mut environment = json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"runner":false});
+    let mut shown = |environment: &serde_json::Value| {
+        page.set_environment(environment.clone())
+            .map(|()| page.layout(100, 50, 1.0).unwrap().nodes[0].text.clone())
+    };
+    assert_eq!(shown(&environment).unwrap(), "1|false");
+    environment["animatorDurationScale"] = json!(0.5);
+    assert_eq!(shown(&environment).unwrap(), "0.5|false");
+    environment["animatorDurationScale"] = json!(0);
+    assert_eq!(shown(&environment).unwrap(), "0|true");
+    for bad in [json!(-1), json!(10.5), json!("1")] {
+        environment["animatorDurationScale"] = bad;
+        assert!(shown(&environment).is_err());
+    }
+}

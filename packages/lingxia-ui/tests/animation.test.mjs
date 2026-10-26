@@ -103,8 +103,15 @@ test('official Tailwind output from animation tokens lowers to native fixtures',
     let value;
     root.walkRules(rule=>{if(rule.selector===`.animate-${name}`)rule.walkDecls('animation',decl=>value=decl.value);});
     assert.ok(value);
-    assert.deepEqual(lowerAnimation(value,root,resolve),fixture[name]);
+    // The rule cascade, not the keyframe lowering, says how reduced motion treats it.
+    assert.deepEqual({...lowerAnimation(value,root,resolve),whenReduced:'base'},fixture[name]);
   }
+});
+
+test('animations authored under motion-reduce: or motion-safe: are kept under reduced motion', async () => {
+  const rules = await compileUtilities(new Set(['animate-spin','motion-reduce:animate-pulse','motion-safe:animate-bounce']),'',experimental);
+  const mode = name => rules.find(rule=>rule.name===name).style.animation.whenReduced;
+  assert.deepEqual(['animate-spin','motion-reduce:animate-pulse','motion-safe:animate-bounce'].map(mode),['base','keep','keep']);
 });
 
 test('keyframe source order merges offsets and later complete definitions replace earlier ones', () => {
