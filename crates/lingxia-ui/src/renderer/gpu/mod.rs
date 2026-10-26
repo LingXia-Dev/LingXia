@@ -1,5 +1,6 @@
 pub mod color_filter;
 pub mod composite;
+mod device;
 mod encode;
 pub(crate) mod images;
 pub(crate) mod pass;
@@ -7,17 +8,17 @@ pub(crate) mod scene;
 pub(crate) mod surface;
 pub(crate) mod text;
 
+use device::{Devices, RenderSurface};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, MutexGuard},
     time::Instant,
 };
-use vello::util::{RenderContext, RenderSurface};
 
 /// Device domain shared by related surfaces; page caches remain presenter-owned.
 #[derive(Clone)]
 pub struct Context(
-    Arc<Mutex<RenderContext>>,
+    Arc<Mutex<Devices>>,
     Arc<Mutex<HashMap<usize, crate::renderer::gpu::pass::SceneRenderer>>>,
 );
 
@@ -39,15 +40,12 @@ impl Context {
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         Self(
-            Arc::new(Mutex::new(RenderContext {
-                instance,
-                devices: Vec::new(),
-            })),
+            Arc::new(Mutex::new(Devices::new(instance))),
             Default::default(),
         )
     }
 
-    pub(crate) fn lock(&self) -> Result<MutexGuard<'_, RenderContext>, String> {
+    pub(crate) fn lock(&self) -> Result<MutexGuard<'_, Devices>, String> {
         self.0
             .lock()
             .map_err(|_| "UI_SURFACE: poisoned GPU context".into())
@@ -62,12 +60,7 @@ impl Context {
         };
         let mut short = Vec::new();
         for adapter in &adapters {
-            let mut missing = Vec::new();
-            wgpu::Limits::default().check_limits_with_fail_fn(
-                &adapter.limits(),
-                false,
-                |name, needed, has| missing.push(format!("{name} {has} < {needed}")),
-            );
+            let missing = device::shortfall(&adapter.limits());
             if missing.is_empty() {
                 return Ok(());
             }
@@ -213,9 +206,8 @@ impl Presenter {
         })
     }
 
-    /// GLES once the Vulkan driver is refused. An adapter below the limits the renderer
-    /// requests (Adreno 630 GLES: 4 storage buffers per stage, 8 required) is not
-    /// attempted, so the page goes to the CPU renderer without a failed device request.
+    /// GLES once the Vulkan driver is refused. An adapter below the renderer's limits is
+    /// not attempted, so the page goes to the CPU renderer without a failed device request.
     fn gles_fallback<W>(
         error: String,
         window: Arc<W>,
@@ -244,13 +236,7 @@ impl Presenter {
             return Err("UI_SURFACE: empty size".into());
         }
         let mut shared = context.lock()?;
-        let mut surface = pollster::block_on(shared.create_surface(
-            target,
-            width,
-            height,
-            wgpu::PresentMode::Fifo,
-        ))
-        .map_err(|e| e.to_string())?;
+        let surface = pollster::block_on(shared.create_surface(target, width, height))?;
         let info = shared.devices[surface.dev_id].adapter().get_info();
         let adapter = adapter_record(&info);
         let backend = match info.backend {
@@ -264,7 +250,7 @@ impl Presenter {
             return Err(format!("{BLOCKED}: {adapter}"));
         }
         let device = &shared.devices[surface.dev_id].device;
-        let depth = raster_target(&mut surface, device);
+        let depth = depth_view(&surface, device);
         let device_id = surface.dev_id;
         drop(shared);
         let renderer = context.renderer(device_id).inspect_err(|_| {
@@ -322,18 +308,12 @@ impl Presenter {
         // for it, before binding anew.
         self.suspend();
         let mut context = self.context.lock()?;
-        let mut surface = pollster::block_on(context.create_surface(
-            target,
-            width,
-            height,
-            wgpu::PresentMode::Fifo,
-        ))
-        .map_err(|e| e.to_string())?;
+        let surface = pollster::block_on(context.create_surface(target, width, height))?;
         if surface.dev_id != self.device_id {
             return Err("UI_SURFACE: device changed".into());
         }
-        self.depth = Some(raster_target(
-            &mut surface,
+        self.depth = Some(depth_view(
+            &surface,
             &context.devices[self.device_id].device,
         ));
         self.surface = Some(surface);
@@ -396,10 +376,7 @@ impl Presenter {
         let context = self.context.lock()?;
         if surface.config.width != width || surface.config.height != height {
             context.resize_surface(surface, width, height);
-            self.depth = Some(raster_target(
-                surface,
-                &context.devices[surface.dev_id].device,
-            ));
+            self.depth = Some(depth_view(surface, &context.devices[surface.dev_id].device));
         }
         let device = &context.devices[surface.dev_id];
 
@@ -484,10 +461,7 @@ impl Presenter {
             | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
             wgpu::CurrentSurfaceTexture::Outdated => {
                 context.resize_surface(surface, width, height);
-                self.depth = Some(raster_target(
-                    surface,
-                    &context.devices[self.device_id].device,
-                ));
+                self.depth = Some(depth_view(surface, &context.devices[self.device_id].device));
                 return Ok(false);
             }
             wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
@@ -541,24 +515,8 @@ fn adapter_record(info: &wgpu::AdapterInfo) -> String {
     )
 }
 
-fn raster_target(surface: &mut RenderSurface<'_>, device: &wgpu::Device) -> wgpu::TextureView {
-    surface.target_texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("LingXia sparse target"),
-        size: wgpu::Extent3d {
-            width: surface.config.width,
-            height: surface.config.height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8Unorm,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-        view_formats: &[],
-    });
-    surface.target_view = surface
-        .target_texture
-        .create_view(&wgpu::TextureViewDescriptor::default());
+/// The renderer's depth buffer for `surface`'s size.
+fn depth_view(surface: &RenderSurface<'_>, device: &wgpu::Device) -> wgpu::TextureView {
     vello_gpu::Renderer::create_depth_texture_view(
         device,
         &vello_gpu::RenderSize {

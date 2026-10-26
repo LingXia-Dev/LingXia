@@ -115,7 +115,8 @@ fn display_plan_preserves_gpu_text_images_clipping_opacity_and_retained_scroll()
         renderer::backdrop_tests::readback,
         scene::composite::{Plan, Step},
     };
-    let mut context = vello::util::RenderContext::new();
+    let domain = crate::renderer::gpu::Context::default();
+    let mut context = domain.lock().unwrap();
     let id = pollster::block_on(context.device(None)).expect("GPU adapter required");
     let device = &context.devices[id].device;
     let queue = &context.devices[id].queue;
@@ -236,7 +237,8 @@ fn authored_backdrop_preserves_foreground_and_scroll_scope() {
 #[test]
 #[ignore = "requires a GPU adapter"]
 fn authored_backdrop_gpu_matches_cpu_across_retained_scroll() {
-    let mut context = vello::util::RenderContext::new();
+    let domain = crate::renderer::gpu::Context::default();
+    let mut context = domain.lock().unwrap();
     let id = pollster::block_on(context.device(None)).expect("GPU adapter required");
     let device = &context.devices[id].device;
     let queue = &context.devices[id].queue;

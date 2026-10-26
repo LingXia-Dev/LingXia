@@ -210,7 +210,7 @@ New platform: adapter traits, text scaling and insets in the environment, `rende
 | Accessibility projection | yes | — | — | — | — |
 | Hover state styles | no (reports a coarse pointer) | — | — | — | — |
 | GPU driver crash sentinel | yes (Maleoon Vulkan → GLES) | — | — | — | — |
-| GPU device limits | `wgpu::Limits::default()` (8 storage buffers per stage, from the device request; the pipelines bind none), else CPU | — | — | — | — |
+| GPU device limits | WebGL2 downlevel + 4096 px textures (pipelines bind ≤5 sampled textures, 1 sampler and 1 uniform per stage, 4 bind groups; no storage buffers or compute), else CPU | — | — | — | — |
 
 ## Verification
 

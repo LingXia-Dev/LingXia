@@ -7,7 +7,7 @@ description = "Experimental LingXia UI language and headless renderer"
 
 [features]
 default = []
-gpu = ["dep:vello_gpu", "dep:glifo", "dep:vello", "dep:wgpu", "dep:pollster"]
+gpu = ["dep:vello_gpu", "dep:glifo", "dep:wgpu", "dep:pollster"]
 
 [dependencies]
 serde = { workspace = true }
@@ -20,7 +20,6 @@ roxmltree = "0.21.1"
 memmap2 = "0.9.11"
 vello_cpu = "=0.3.0"
 vello_common = { version = "=0.3.0", default-features = false }
-vello = { version = "=0.11.0", optional = true, default-features = false, features = ["wgpu"] }
 vello_gpu = { version = "=0.3.0", optional = true, default-features = false, features = ["wgpu", "text"] }
 glifo = { version = "=0.4.0", optional = true, features = ["png"] }
 wgpu = { version = "=30.0.0", optional = true, default-features = false, features = ["vulkan", "dx12", "metal", "wgsl"] }

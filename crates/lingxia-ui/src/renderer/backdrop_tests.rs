@@ -99,7 +99,8 @@ fn cpu_captured_background_blurs_beneath_sharp_foreground() {
 fn gpu_texture_capture_blurs_and_continues_existing_target() {
     use crate::renderer::gpu::pass::{SceneRenderer, Target};
     use vello_gpu::{RenderSize, Scene, TargetInit, TextureBindings, TextureId};
-    let mut context = vello::util::RenderContext::new();
+    let domain = crate::renderer::gpu::Context::default();
+    let mut context = domain.lock().unwrap();
     let id = pollster::block_on(context.device(None)).expect("GPU adapter required");
     eprintln!(
         "Backdrop backend adapter: {:?}",
@@ -350,7 +351,8 @@ pub(super) fn readback(
 #[ignore = "requires a GPU adapter; run explicitly with --features gpu -- --ignored"]
 fn gpu_saturation_matches_cpu_and_keeps_batched_parameters_independent() {
     use crate::{renderer::gpu::color_filter::SaturationPass, scene::color_filter::Saturation};
-    let mut context = vello::util::RenderContext::new();
+    let domain = crate::renderer::gpu::Context::default();
+    let mut context = domain.lock().unwrap();
     let id = pollster::block_on(context.device(None)).expect("GPU adapter required");
     let device = &context.devices[id].device;
     let queue = &context.devices[id].queue;
@@ -518,7 +520,8 @@ fn shared_composite_plan_matches_cpu_for_nested_roots_clips_and_siblings() {
         scene::composite::{Layer, Plan, Step},
         scene::node::ClipSnapshot,
     };
-    let mut context = vello::util::RenderContext::new();
+    let domain = crate::renderer::gpu::Context::default();
+    let mut context = domain.lock().unwrap();
     let id = pollster::block_on(context.device(None)).expect("GPU adapter required");
     let device = &context.devices[id].device;
     let queue = &context.devices[id].queue;
@@ -742,7 +745,8 @@ fn mirrored_backdrop_crop_preserves_gpu_card_edges() {
         scene::composite::{Layer, Plan, Step},
         scene::node::ClipSnapshot,
     };
-    let mut context = vello::util::RenderContext::new();
+    let domain = crate::renderer::gpu::Context::default();
+    let mut context = domain.lock().unwrap();
     let id = pollster::block_on(context.device(None)).expect("GPU adapter required");
     let device = &context.devices[id].device;
     let queue = &context.devices[id].queue;
