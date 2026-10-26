@@ -3,21 +3,15 @@
 #![allow(clippy::let_underscore_future)]
 
 use crate::package_download::{self, partial_download_len};
-use bytes::Bytes;
-use http::Request;
-use http_body_util::{BodyExt, Empty};
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::update::UpdateService;
 use lingxia_provider::BoxFuture;
 use lingxia_update::AppUpdateHost;
-use rong_rt::http as host_http;
 use std::fs;
-use std::io::Error as IoError;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
-use std::time::Duration;
 
 pub use lingxia_update::{
     AppUpdateApply, AppUpdateEvent, AppUpdateEventReceiver, AppUpdateProgressReporter,
@@ -377,17 +371,8 @@ async fn download_host_app_update_package(
         let _ = fs::remove_file(&dest);
     }
 
-    let file_size = match expected_size.filter(|size| *size > 0) {
-        Some(size) => Some(size),
-        None => match get_content_length(url).await {
-            Ok(size) => Some(size),
-            Err(error) => {
-                log::debug!("App update content length unavailable: {error}");
-                None
-            }
-        },
-    };
-
+    // Without a size from the release record, the transfer's declared length fills it in.
+    let file_size = expected_size.filter(|size| *size > 0);
     progress.report(partial_download_len(&dest), file_size);
     // A server that ignores `Range` resends the whole body after the resumed
     // bytes were counted, so never report past the total.
@@ -414,41 +399,6 @@ fn app_update_filename(url: &str, version: &str) -> String {
     } else {
         format!("app_{}_{}.apk", safe_version, hash_url(url))
     }
-}
-
-async fn get_content_length(url: &str) -> Result<u64, String> {
-    let request = Request::builder()
-        .method("HEAD")
-        .uri(url)
-        .body(
-            Empty::<Bytes>::new()
-                .map_err(|_| IoError::other("body error"))
-                .boxed(),
-        )
-        .map_err(|error| format!("failed to build HEAD request: {error}"))?;
-
-    // Add a connect timeout so weak-network HEAD probes don't hang on the
-    // system default (which can be a minute or more on some networks).
-    let response = host_http::send_with_small_body_limit(
-        request,
-        1024,
-        host_http::RequestOptions::new()
-            .with_connect_timeout(Duration::from_secs(10))
-            .with_request_timeout(Duration::from_secs(15)),
-    )
-    .await
-    .map_err(|error| format!("HEAD request failed: {error}"))?;
-
-    if !response.status.is_success() {
-        return Err(format!("HEAD request returned HTTP {}", response.status));
-    }
-
-    response
-        .headers
-        .get(http::header::CONTENT_LENGTH)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<u64>().ok())
-        .ok_or_else(|| "No Content-Length header".to_string())
 }
 
 fn resolve_required_app_version() -> Result<&'static str, UpdateError> {

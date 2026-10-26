@@ -4219,9 +4219,7 @@ dependencies = [
 name = "lingxia-service"
 version = "0.28.0"
 dependencies = [
- "bytes",
  "http",
- "http-body-util",
  "lingxia-app-context",
  "lingxia-messaging",
  "lingxia-platform",
