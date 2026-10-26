@@ -48,8 +48,19 @@ struct SurfaceMenuExecution: Decodable {
     let snapshot: SurfaceSwitcherSnapshot
 }
 
+/// One main-area row as the sidebar lists it: an lxapp or other managed
+/// main (by surface id) or a browser tab (by tab id).
+struct MainAreaRow: Encodable {
+    let id: String
+    let closable: Bool
+}
+
 @MainActor
 enum SurfaceMenuBridge {
+    private static func rowsJson(_ rows: [MainAreaRow]) -> String {
+        (try? JSONEncoder().encode(rows)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+    }
+
     private struct Intent: Encodable {
         let revision: UInt64
         let surfaceId: String
@@ -57,8 +68,12 @@ enum SurfaceMenuBridge {
         let value: String?
     }
 
-    static func snapshot(ownerAppId: String, surfaceId: String) -> SurfaceMenuSnapshot? {
-        let json = surfaceMenu(ownerAppId, surfaceId).toString()
+    static func snapshot(
+        ownerAppId: String,
+        surfaceId: String,
+        rows: [MainAreaRow] = []
+    ) -> SurfaceMenuSnapshot? {
+        let json = surfaceMenu(ownerAppId, surfaceId, rowsJson(rows)).toString()
         guard let data = json.data(using: .utf8), !json.isEmpty, json != "null" else {
             return nil
         }
@@ -73,14 +88,10 @@ enum SurfaceMenuBridge {
         }
     }
 
-    /// The menu of a main-area browser tab, keyed by its tab id.
-    /// `orderedTabIds` is the sidebar's tab order, which the close family
-    /// follows.
-    static func browserTabSnapshot(orderedTabIds: [String], tabId: String) -> SurfaceMenuSnapshot? {
-        guard let idsData = try? JSONEncoder().encode(orderedTabIds),
-              let idsJson = String(data: idsData, encoding: .utf8)
-        else { return nil }
-        let json = browserTabMenu(idsJson, tabId).toString()
+    /// The menu of a main-area browser tab, keyed by its tab id. `rows` are
+    /// the sidebar's main-area rows, which the close family counts.
+    static func browserTabSnapshot(rows: [MainAreaRow], tabId: String) -> SurfaceMenuSnapshot? {
+        let json = browserTabMenu(rowsJson(rows), tabId).toString()
         guard !json.isEmpty, let data = json.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(SurfaceMenuSnapshot.self, from: data)
     }
@@ -177,6 +188,7 @@ final class SurfaceMenuPresenter: NSObject {
         case "rename": L10n.string("lx_surface_rename")
         case "resetTitle": L10n.string("lx_surface_reset_title")
         case "close": L10n.string("lx_surface_close")
+        case "closeApp": L10n.string("lx_common_close")
         case "closeOthers": L10n.string("lx_surface_close_others")
         case "closeAfter": L10n.string("lx_surface_close_after")
         case "openInSide": L10n.string("lx_aside_open_in_side")
@@ -213,7 +225,7 @@ final class SurfaceMenuPresenter: NSObject {
             return LxIcon.menuSymbol("icon_clean_cache")
         case ("lxapp", "uninstall"):
             return LxIcon.menuSymbol("icon_uninstall")
-        case ("switcher", "close"):
+        case ("switcher", "close"), ("switcher", "closeApp"):
             return LxIcon.menuSymbol("icon_close_x")
         case ("switcher", "closeOthers"):
             return LxIcon.menuSymbol("icon_close_other_tabs")

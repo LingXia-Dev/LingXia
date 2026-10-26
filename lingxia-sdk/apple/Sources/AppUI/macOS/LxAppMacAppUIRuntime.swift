@@ -1128,11 +1128,11 @@ final class LxAppMacAppUIRuntime: NSObject {
         guard let ownerAppId = graphOwnerAppId,
               let previousSwitcher = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId),
               let menu = SurfaceMenuBridge.snapshot(ownerAppId: ownerAppId, surfaceId: id),
-              menu.sections.flatMap(\.items).contains(where: {
-                  $0.action.owner == "switcher" && $0.action.action == "close"
-              })
+              let action = menu.sections.flatMap(\.items).first(where: {
+                  $0.action.owner == "switcher"
+                      && ($0.action.action == "close" || $0.action.action == "closeApp")
+              })?.action
         else { return false }
-        let action = SurfaceMenuBridge.builtInAction("close")
         guard let result = SurfaceMenuBridge.perform(
             ownerAppId: ownerAppId,
             revision: menu.revision,
@@ -1635,7 +1635,8 @@ final class LxAppMacAppUIRuntime: NSObject {
         guard let ownerAppId = graphOwnerAppId else { return false }
         guard let snapshot = SurfaceMenuBridge.snapshot(
             ownerAppId: ownerAppId,
-            surfaceId: surfaceID
+            surfaceId: surfaceID,
+            rows: shell.mainAreaRows()
         ) else {
             return false
         }
@@ -1650,6 +1651,12 @@ final class LxAppMacAppUIRuntime: NSObject {
     ) {
         if action.action == "rename", value == nil {
             shell.beginManagedMainRename(surfaceId: surfaceId)
+            return
+        }
+        // The close family spans every main-area row, browser tabs included;
+        // the shell closes each through its own provider.
+        if action.owner == "switcher", action.action == "closeOthers" || action.action == "closeAfter" {
+            shell.closeMainAreaRows(around: surfaceId, below: action.action == "closeAfter")
             return
         }
         // Pin runs here so a full Pin grid can say so.

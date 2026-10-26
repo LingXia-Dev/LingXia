@@ -169,6 +169,25 @@ static TABBAR_POSITION_OVERRIDES: OnceLock<Mutex<HashMap<String, WindowsShellTab
 /// Stable shared order of main lxapp and browser tabs. The currently selected
 /// lxapp expands in place instead of jumping above every web tab.
 static MAIN_TAB_ORDER: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+/// The main-area rows the sidebar last laid out, in order: the close family
+/// of any row counts them all.
+static MAIN_AREA_ROWS: OnceLock<Mutex<Vec<MainAreaRow>>> = OnceLock::new();
+
+#[derive(Debug, Clone)]
+struct MainAreaRow {
+    /// Sidebar row id (`AUX_SURFACE_PREFIX`, `AUX_LXAPP_PREFIX`, or a
+    /// browser tab id).
+    row_id: String,
+    closable: bool,
+}
+
+impl MainAreaRow {
+    /// The id the core menus know the row by: a surface id for a graph main,
+    /// the tab id for a browser tab.
+    fn menu_id(&self) -> &str {
+        auxiliary_surface_id(&self.row_id).unwrap_or(&self.row_id)
+    }
+}
 
 #[cfg(feature = "browser-runtime")]
 #[derive(Default)]
@@ -2499,6 +2518,14 @@ fn build_tab_bar_layout(
     );
     main_rows.extend(build_browser_tab_items(browser_tabs));
     let (group_order_index, main_rows) = order_main_tab_rows(&group_target_id, main_rows);
+    record_main_area_rows(
+        &main_rows,
+        group_order_index,
+        &group_target_id,
+        this_item
+            .map(|item| item.closable)
+            .unwrap_or_else(|| main_lxapp_closable(&app.appid)),
+    );
     auxiliary_items.extend(main_rows);
     // The global "+" follows the active main provider: browser opens a tab,
     // while a terminal root opens another main workspace. A device-framed
@@ -2933,6 +2960,106 @@ fn declared_browser_tab_ids() -> HashSet<String> {
 #[cfg(not(feature = "browser-runtime"))]
 fn declared_browser_tab_ids() -> HashSet<String> {
     HashSet::new()
+}
+
+fn record_main_area_rows(
+    rows: &[WindowsShellAuxiliaryItemLayout],
+    group_index: usize,
+    group_id: &str,
+    group_closable: bool,
+) {
+    let mut recorded = rows
+        .iter()
+        .map(|row| MainAreaRow {
+            row_id: row.id.clone(),
+            closable: row.closable,
+        })
+        .collect::<Vec<_>>();
+    recorded.insert(
+        group_index.min(recorded.len()),
+        MainAreaRow {
+            row_id: group_id.to_string(),
+            closable: group_closable,
+        },
+    );
+    if let Ok(mut state) = MAIN_AREA_ROWS.get_or_init(|| Mutex::new(Vec::new())).lock() {
+        *state = recorded;
+    }
+}
+
+fn main_area_rows() -> Vec<MainAreaRow> {
+    MAIN_AREA_ROWS
+        .get()
+        .and_then(|state| state.lock().ok())
+        .map(|state| state.clone())
+        .unwrap_or_default()
+}
+
+/// The rows in the core menus' terms.
+fn main_area_menu_rows() -> Vec<lingxia_shell::MainRow> {
+    main_area_rows()
+        .iter()
+        .map(|row| lingxia_shell::MainRow {
+            id: row.menu_id().to_string(),
+            closable: row.closable,
+        })
+        .collect()
+}
+
+/// Close one main-area row through its own provider.
+fn close_main_area_row(appid: &str, row_id: &str) {
+    if let Some(surface_id) = auxiliary_surface_id(row_id) {
+        handle_main_surface_close(appid, surface_id);
+    } else if let Some(target_appid) = auxiliary_lxapp_id(row_id) {
+        handle_lxapp_auxiliary_close(appid, target_appid);
+    } else {
+        handle_browser_tab_close(appid, row_id);
+    }
+}
+
+/// Show one main-area row, as a click on it does.
+fn show_main_area_row(appid: &str, row_id: &str) {
+    if let Some(surface_id) = auxiliary_surface_id(row_id) {
+        handle_main_surface_click(appid, surface_id);
+    } else if auxiliary_lxapp_id(row_id).is_none() {
+        handle_browser_tab_click(appid, row_id);
+    }
+}
+
+/// "Close Others" (`below == false`) or "Close Tabs Below" on the row the
+/// core menus know as `menu_id`: graph mains and browser tabs alike close
+/// through their own providers. A closed main presents its successor even
+/// under a browser tab that stays, so the row that was showing comes back if
+/// it stays, else the menu's own row.
+fn close_main_area_rows(appid: &str, menu_id: &str, below: bool) {
+    let rows = main_area_rows();
+    let menu_rows = main_area_menu_rows();
+    let Some((others, after)) = lingxia_shell::main_rows_close_targets(&menu_rows, menu_id) else {
+        return;
+    };
+    let targets = if below { after } else { others };
+    if targets.is_empty() {
+        return;
+    }
+    let row_id = |menu_id: &str| {
+        rows.iter()
+            .find(|row| row.menu_id() == menu_id)
+            .map(|row| row.row_id.clone())
+    };
+    let shown = presented_browser_tab().or_else(|| {
+        lxapp::try_get(appid).and_then(|owner| owner.surface_switcher_snapshot().active_surface_id)
+    });
+    for target in &targets {
+        if let Some(target_row) = row_id(target) {
+            close_main_area_row(appid, &target_row);
+        }
+    }
+    let keep = shown
+        .filter(|shown| !targets.contains(shown))
+        .unwrap_or_else(|| menu_id.to_string());
+    if let Some(keep_row) = row_id(&keep) {
+        show_main_area_row(appid, &keep_row);
+    }
 }
 
 fn order_main_tab_rows(
@@ -5647,11 +5774,7 @@ fn reset_browser_only_last_tab(tab_id: &str, aside: bool) -> bool {
 /// actions, Open in Side Panel, the close family) run over Windows' tabs.
 #[cfg(feature = "browser-runtime")]
 fn show_browser_tab_context_menu(appid: &str, tab_id: &str, screen_x: i32, screen_y: i32) {
-    let ordered = browser_tabs()
-        .into_iter()
-        .map(|tab| tab.tab_id)
-        .collect::<Vec<_>>();
-    let Some(snapshot) = lingxia::browser_tab_menu(&ordered, tab_id) else {
+    let Some(snapshot) = lingxia::browser_tab_menu(&main_area_menu_rows(), tab_id) else {
         return;
     };
     let Some(window) = owner_window_handle(appid) else {
@@ -5714,14 +5837,14 @@ fn handle_browser_tab_menu_action(
             action: BrowserSurfaceMenuAction::OpenInSide,
         } => move_browser_tab_to_side_panel(appid, tab_id),
         SurfaceMenuAction::Switcher {
-            action: SurfaceMenuBuiltinAction::Close,
+            action: SurfaceMenuBuiltinAction::Close | SurfaceMenuBuiltinAction::CloseApp,
         } => handle_browser_tab_close(appid, tab_id),
         SurfaceMenuAction::Switcher {
             action: SurfaceMenuBuiltinAction::CloseOthers,
-        } => close_other_browser_tabs(appid, tab_id),
+        } => close_main_area_rows(appid, tab_id, false),
         SurfaceMenuAction::Switcher {
             action: SurfaceMenuBuiltinAction::CloseAfter,
-        } => close_browser_tabs_below(appid, tab_id),
+        } => close_main_area_rows(appid, tab_id, true),
         _ => {}
     }
 }
@@ -5788,50 +5911,6 @@ fn show_pinned_bookmark_context_menu(appid: &str, row_id: &str, screen_x: i32, s
 
 #[cfg(not(feature = "browser-shell"))]
 fn show_pinned_bookmark_context_menu(_appid: &str, _row_id: &str, _screen_x: i32, _screen_y: i32) {}
-
-#[cfg(feature = "browser-runtime")]
-fn close_other_browser_tabs(appid: &str, keeping_tab_id: &str) {
-    let tab_ids: Vec<String> = browser_tabs()
-        .into_iter()
-        .map(|tab| tab.tab_id)
-        .filter(|tab_id| tab_id != keeping_tab_id)
-        .collect();
-    close_browser_tab_batch(appid, tab_ids);
-}
-
-#[cfg(feature = "browser-runtime")]
-fn close_browser_tabs_below(appid: &str, tab_id: &str) {
-    let tabs = browser_tabs();
-    let Some(index) = tabs.iter().position(|tab| tab.tab_id == tab_id) else {
-        return;
-    };
-    let tab_ids = tabs
-        .into_iter()
-        .skip(index + 1)
-        .map(|tab| tab.tab_id)
-        .collect();
-    close_browser_tab_batch(appid, tab_ids);
-}
-
-#[cfg(feature = "browser-runtime")]
-fn close_browser_tab_batch(appid: &str, tab_ids: Vec<String>) {
-    let presented_closed = presented_browser_tab()
-        .map(|presented| tab_ids.iter().any(|tab_id| tab_id == &presented))
-        .unwrap_or(false);
-    let closing: HashSet<&str> = tab_ids.iter().map(String::as_str).collect();
-    let successor = presented_browser_tab()
-        .filter(|_| presented_closed)
-        .and_then(|presented| adjacent_main_tab(&presented, &closing));
-    for tab_id in tab_ids {
-        if let Err(err) = lingxia_browser::close(&tab_id) {
-            log::error!("failed to close browser tab {tab_id}: {err}");
-        }
-    }
-    if presented_closed {
-        activate_main_tab(appid, successor.as_deref());
-    }
-    sync_shell_layout(appid);
-}
 
 /// The main surface showing `target_appid`, if it has one.
 fn lxapp_main_surface_id(owner_appid: &str, target_appid: &str) -> Option<String> {
@@ -5923,7 +6002,8 @@ fn show_main_surface_context_menu(
     let Some(owner) = lxapp::try_get(owner_appid) else {
         return;
     };
-    let Some(snapshot) = owner.shell_surface_menu(surface_id) else {
+    let Some(snapshot) = owner.shell_surface_menu_in_rows(surface_id, &main_area_menu_rows())
+    else {
         return;
     };
     let Some(window) = source_window.or_else(|| owner_window_handle(owner_appid)) else {
@@ -6073,6 +6153,10 @@ fn surface_menu_entry(
                 lingxia_logic::i18n::t(I18nKey::SurfaceClose),
                 Some(crate::WindowsDesignIcon::CloseX),
             ),
+            SurfaceMenuBuiltinAction::CloseApp => (
+                lingxia_logic::i18n::t(I18nKey::CommonClose),
+                Some(crate::WindowsDesignIcon::CloseX),
+            ),
             SurfaceMenuBuiltinAction::CloseOthers => (
                 lingxia_logic::i18n::t(I18nKey::SurfaceCloseOthers),
                 Some(crate::WindowsDesignIcon::CloseOtherTabs),
@@ -6144,6 +6228,15 @@ fn handle_main_surface_menu_action(
             }
             log::warn!("sidebar row is unavailable for inline surface rename");
         }
+        // The close family spans every main-area row, browser tabs included.
+        SurfaceMenuAction::Switcher {
+            action:
+                action @ (SurfaceMenuBuiltinAction::CloseOthers | SurfaceMenuBuiltinAction::CloseAfter),
+        } => close_main_area_rows(
+            owner_appid,
+            surface_id,
+            action == SurfaceMenuBuiltinAction::CloseAfter,
+        ),
         // Pin runs here so a full Pin grid can say so.
         SurfaceMenuAction::Lxapp {
             action:

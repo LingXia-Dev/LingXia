@@ -384,8 +384,10 @@ mod bridge {
         #[swift_bridge(swift_name = "surfaceSwitcher")]
         fn surface_switcher(appid: &str) -> String;
 
+        // `rows_json`: the sidebar's main-area rows (`[{id, closable}]`, in
+        // order, browser tabs included) the close family counts.
         #[swift_bridge(swift_name = "surfaceMenu")]
-        fn surface_menu(appid: &str, surface_id: &str) -> String;
+        fn surface_menu(appid: &str, surface_id: &str, rows_json: &str) -> String;
 
         #[swift_bridge(swift_name = "performSurfaceMenuIntent")]
         fn perform_surface_menu_intent(appid: &str, intent_json: &str) -> String;
@@ -460,10 +462,9 @@ mod bridge {
         fn promote_docked_browser_tab(tab_id: &str) -> bool;
 
         // The menu of a main-area browser tab, keyed by its tab id, in the
-        // shared surface menu shape. `ordered_tab_ids_json` is the strip's
-        // tab order.
+        // shared surface menu shape. `rows_json` as for `surfaceMenu`.
         #[swift_bridge(swift_name = "browserTabMenu")]
-        fn browser_tab_menu(ordered_tab_ids_json: &str, tab_id: &str) -> String;
+        fn browser_tab_menu(rows_json: &str, tab_id: &str) -> String;
 
         // Move a main-area browser tab into the side panel, keeping its
         // WebView. The caller lets go of the tab first. Returns the side
@@ -1634,10 +1635,12 @@ pub fn surface_switcher(appid: &str) -> String {
     })
 }
 
-pub fn surface_menu(appid: &str, surface_id: &str) -> String {
+pub fn surface_menu(appid: &str, surface_id: &str, rows_json: &str) -> String {
     ffi_catch_unwind!("surface_menu", String::new(), || {
+        let rows =
+            serde_json::from_str::<Vec<lingxia_shell::MainRow>>(rows_json).unwrap_or_default();
         lxapp::try_get(appid)
-            .and_then(|app| app.shell_surface_menu(surface_id))
+            .and_then(|app| app.shell_surface_menu_in_rows(surface_id, &rows))
             .and_then(|menu| serde_json::to_string(&menu).ok())
             .unwrap_or_default()
     })
@@ -1767,19 +1770,19 @@ pub fn demote_main_lxapp_to_aside(app_id: &str, edge: &str) -> bool {
     })
 }
 
-pub fn browser_tab_menu(ordered_tab_ids_json: &str, tab_id: &str) -> String {
+pub fn browser_tab_menu(rows_json: &str, tab_id: &str) -> String {
     ffi_catch_unwind!("browser_tab_menu", String::new(), || {
         #[cfg(feature = "browser-runtime")]
         {
-            serde_json::from_str::<Vec<String>>(ordered_tab_ids_json)
+            serde_json::from_str::<Vec<lingxia_shell::MainRow>>(rows_json)
                 .ok()
-                .and_then(|ids| crate::browser_tab_menu(&ids, tab_id))
+                .and_then(|rows| crate::browser_tab_menu(&rows, tab_id))
                 .and_then(|menu| serde_json::to_string(&menu).ok())
                 .unwrap_or_default()
         }
         #[cfg(not(feature = "browser-runtime"))]
         {
-            let _ = (ordered_tab_ids_json, tab_id);
+            let _ = (rows_json, tab_id);
             String::new()
         }
     })

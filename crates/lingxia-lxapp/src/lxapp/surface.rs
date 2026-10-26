@@ -939,6 +939,7 @@ impl WindowSurfaceController {
         &self,
         surface_id: &str,
         parts: lingxia_shell::SurfaceMenuParts,
+        rows: &[lingxia_shell::MainRow],
     ) -> Option<lingxia_shell::SurfaceMenuSnapshot> {
         let snapshot = self.manager.lock().unwrap().switcher_snapshot();
         let index = snapshot
@@ -967,7 +968,8 @@ impl WindowSurfaceController {
                     .iter()
                     .skip(index + 1)
                     .any(|candidate| candidate.closable),
-            },
+            }
+            .with_rows(rows),
             parts,
         ))
     }
@@ -1520,7 +1522,8 @@ fn execute_surface_menu_intent(
             lingxia_shell::SurfaceMenuBuiltinAction::ResetTitle => {
                 item.renameable && manager.rename(&intent.surface_id, None)
             }
-            lingxia_shell::SurfaceMenuBuiltinAction::Close => {
+            lingxia_shell::SurfaceMenuBuiltinAction::Close
+            | lingxia_shell::SurfaceMenuBuiltinAction::CloseApp => {
                 if !item.closable {
                     false
                 } else {
@@ -2596,6 +2599,17 @@ impl LxApp {
         &self,
         surface_id: &str,
     ) -> Option<lingxia_shell::SurfaceMenuSnapshot> {
+        self.shell_surface_menu_in_rows(surface_id, &[])
+    }
+
+    /// The menu of a main-area row, its close family counted over `rows`:
+    /// every main-area row the sidebar shows, browser tabs included, in
+    /// order. Empty `rows` counts the graph's mains only.
+    pub fn shell_surface_menu_in_rows(
+        &self,
+        surface_id: &str,
+        rows: &[lingxia_shell::MainRow],
+    ) -> Option<lingxia_shell::SurfaceMenuSnapshot> {
         let surface_id = surface_id.trim();
         if surface_id.is_empty() {
             return None;
@@ -2636,7 +2650,7 @@ impl LxApp {
                 .unwrap_or_default(),
             _ => lingxia_shell::SurfaceMenuParts::default(),
         };
-        window_controller(PRIMARY_WINDOW, &self.runtime).surface_menu(surface_id, parts)
+        window_controller(PRIMARY_WINDOW, &self.runtime).surface_menu(surface_id, parts, rows)
     }
 
     pub fn perform_shell_surface_menu_intent(
@@ -3369,6 +3383,7 @@ fn lxapp_switcher_menu_parts(
     ]);
     let mut parts = lingxia_shell::SurfaceMenuParts {
         content,
+        close_app: true,
         ..Default::default()
     };
     if !is_home {

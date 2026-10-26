@@ -119,8 +119,8 @@ surface:
   rename: "重命名标签页"
   reset_title: "重置标签页名称"
   close: "关闭标签页"
-  close_others: "关闭其他标签页"
-  close_after: "关闭下方标签页"
+  close_others: "关闭其他"
+  close_after: "关闭下方"
 
 # 商店渠道的宿主更新提示（自动流程 + Android SDK 弹窗）
 update:

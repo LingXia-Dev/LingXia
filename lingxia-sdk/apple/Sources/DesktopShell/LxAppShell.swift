@@ -748,10 +748,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             self?.browserCoordinator.closeTab(id: id)
         }
         sidebar.onBrowserTabCloseOtherRequested = { [weak self] id in
-            self?.browserCoordinator.closeOtherTabs(keeping: id)
+            self?.closeMainAreaRows(around: id, below: false)
         }
         sidebar.onBrowserTabCloseTabsBelowRequested = { [weak self] id in
-            self?.browserCoordinator.closeTabsBelow(id: id)
+            self?.closeMainAreaRows(around: id, below: true)
         }
         sidebar.onBrowserTabMoveToSidePanelRequested = { [weak self] id in
             self?.browserCoordinator.moveTabToSidePanel(id: id)
@@ -1854,6 +1854,41 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebarView?.updateForTabs(unmanagedTabs, activeTab: activeTab)
         sidebarView?.updateManagedMainItems(items, activeId: activeId)
         reconcileSidebarAutoHide()
+    }
+
+    /// The sidebar's main-area rows, in order.
+    func mainAreaRows() -> [MainAreaRow] {
+        sidebarView?.mainAreaRows() ?? []
+    }
+
+    /// "Close Others" (`below == false`) or "Close Tabs Below" on the
+    /// main-area row `id`: every closable row it names, managed mains and
+    /// browser tabs alike, closes through its own provider.
+    func closeMainAreaRows(around id: String, below: Bool) {
+        let rows = mainAreaRows()
+        guard let index = rows.firstIndex(where: { $0.id == id }) else { return }
+        let targets = (below ? Array(rows[(index + 1)...]) : rows.filter { $0.id != id })
+            .filter(\.closable)
+            .map(\.id)
+        guard !targets.isEmpty else { return }
+        let shown = sidebarView?.selectedMainAreaRowId()
+        let browserTabs = Set(browserCoordinator.tabIds)
+        for target in targets {
+            if browserTabs.contains(target) {
+                browserCoordinator.closeTab(id: target)
+            } else if managedMainSurfaceIDs.contains(target) {
+                managedMainCloseHandler?(target)
+            }
+        }
+        // A closed main presents its provider's successor (home), even under
+        // a browser tab that stays. Show the row that was showing if it
+        // stays, else the row the menu was opened on.
+        let keep = shown.flatMap { targets.contains($0) ? nil : $0 } ?? id
+        if browserTabs.contains(keep) {
+            browserCoordinator.selectTab(id: keep)
+        } else if managedMainSurfaceIDs.contains(keep) {
+            managedMainActivateHandler?(keep)
+        }
     }
 
     func beginManagedMainRename(surfaceId: String) {
