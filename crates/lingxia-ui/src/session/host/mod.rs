@@ -230,6 +230,10 @@ struct Main<F> {
     /// Host time of the last vsync and the display interval estimate.
     last_vsync: Option<Duration>,
     vsync_interval: Duration,
+    /// Consecutive refusals of a frame that had a newer one prepared behind it.
+    stale_declines: u32,
+    /// The presenter keeps only its newest frame; nothing is prepared ahead any more.
+    single_target: bool,
     #[cfg(test)]
     no_frames_ahead: bool,
     failure: Option<Failure>,
@@ -342,6 +346,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     ahead_epoch: 0,
                     last_vsync: None,
                     vsync_interval: Duration::from_micros(16_667),
+                    stale_declines: 0,
+                    single_target: false,
                     #[cfg(test)]
                     no_frames_ahead: false,
                     failure: None,

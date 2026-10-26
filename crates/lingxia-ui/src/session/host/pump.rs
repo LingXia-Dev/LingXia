@@ -61,6 +61,8 @@ struct Request {
     sample: Duration,
     /// Built on the frame still waiting for its vsync.
     ahead: bool,
+    /// Reported in frame metrics once frames ahead were given up.
+    single_target: bool,
 }
 
 impl<A: PlatformAdapter> Inner<A> {
@@ -85,6 +87,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 && !main.ahead
                 && main.next_prepared.is_none()
                 && main.deferred.is_none()
+                && !main.single_target
                 && !main.number_busy
                 && !main.disposed
                 && !main.interaction.waiting()
@@ -141,6 +144,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 visible: main.visible,
                 sample: Duration::ZERO,
                 ahead,
+                single_target: main.single_target,
             };
             main.dirty = false;
             main.pending = false;
@@ -265,7 +269,7 @@ impl<A: PlatformAdapter> Inner<A> {
         let mut image_buckets = Default::default();
         session.set_environment(value)?;
         session.set_animation_target(Some(request.surface), request.visible, now)?;
-        let (sample, ahead) = (request.sample, request.ahead);
+        let (sample, ahead, single_target) = (request.sample, request.ahead, request.single_target);
         let generation = CommitTicket::new(session.generation().get() + 1);
         let caret = request.caret;
         let surface = request.surface;
@@ -319,6 +323,9 @@ impl<A: PlatformAdapter> Inner<A> {
                 "imageCacheBytes".into(),
                 super::decode::retained_bytes().into(),
             );
+            if single_target {
+                metrics.insert("presenterSingleTarget".into(), true.into());
+            }
         }
         if let (Some(extra), Some(metrics)) =
             (self.adapter.metrics(&frame), metrics.as_object_mut())
@@ -445,6 +452,10 @@ impl<A: PlatformAdapter> Inner<A> {
             } = prepared;
             timing.wait_us = micros(vsync.saturating_duration_since(prepared_at));
             let deferred = self.adapter.deferred(&frame);
+            let newer = {
+                let main = self.main();
+                main.prepared.is_some() || main.ahead
+            };
             match self.adapter.present(frame) {
                 Ok(true) if deferred => {
                     // Nothing else prepares until this frame is on screen.
@@ -464,12 +475,18 @@ impl<A: PlatformAdapter> Inner<A> {
                 Ok(true) => {
                     // The gate in `frame_is_current` trusts only a frame the target accepted.
                     let mut main = self.main();
+                    main.stale_declines = 0;
                     main.presented_environment = Some(environment);
                     main.catch_up = false;
                     drop(main);
                     self.presented(snapshot, surface, page, revision, offsets, timing, vsync)
                 }
-                Ok(false) => retry = true,
+                Ok(false) => {
+                    retry = true;
+                    if newer {
+                        self.stale_decline();
+                    }
+                }
                 Err(error) => self.fail(error),
             }
         }
@@ -495,6 +512,25 @@ impl<A: PlatformAdapter> Inner<A> {
             self.schedule();
         }
         self.schedule_ahead();
+    }
+
+    /// A presenter that keeps only the newest prepared frame refuses every frame with one
+    /// prepared behind it. Fall back to one frame at a time and say why, once.
+    fn stale_decline(self: &Arc<Self>) {
+        let warn = {
+            let mut main = self.main();
+            main.stale_declines += 1;
+            let warn = main.stale_declines >= 3 && !main.single_target;
+            if warn {
+                main.single_target = true;
+            }
+            warn
+        };
+        if warn {
+            self.adapter.warn(
+                "UI_FRAME: presenterSingleTarget: the presenter refused 3 frames in a row that had a newer frame prepared behind them; Presenter::prepare must keep each prepared frame presentable until it is presented or dropped (one target per frame in flight, presented by its own revision). Frames are no longer prepared ahead on this page.",
+            );
+        }
     }
 
     pub(super) fn deferred_presented(self: &Arc<Self>, generation: CommitTicket, shown: bool) {
