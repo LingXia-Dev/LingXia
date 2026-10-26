@@ -1292,6 +1292,7 @@ export class LiveFixture implements Fixture {
       type: (options) => page().type(options),
       eval: (options) => page().eval(options),
       scrollTo: (options) => page().scrollTo(options),
+      selectOption: (options) => page().selectOption(options),
     };
     const input = lazyDriver(() => ({ owner: page() as object, value: page() }), this, "page.") as PageDriver;
     const target = bound === undefined ? {} : { page: bound };

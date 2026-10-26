@@ -55,6 +55,48 @@ impl DisplayList {
         )
     }
 
+    /// One segment of a frame drawn on its own: the clips open at its start are pushed
+    /// again under the transforms they were opened with, and every clip open at its end
+    /// is closed.
+    #[cfg(feature = "gpu")]
+    pub(crate) fn sparse_segment(
+        &self,
+        cache: &mut glifo::GlyphPrepCache,
+        context: &mut vello_gpu::Scene,
+        image_ids: &HashMap<usize, vello_gpu::ImageSource>,
+        glyph_images: &mut HashMap<usize, Arc<vello_gpu::Pixmap>>,
+        segment: &crate::renderer::gpu::scene::Segment,
+    ) -> Result<(), String> {
+        context.reset_and_resize(self.width, self.height);
+        if segment.background {
+            context.set_paint(AlphaColor::<Srgb>::from_rgb8(246, 247, 251));
+            context.fill_rect(&PaintRect::new(
+                0.0,
+                0.0,
+                self.width as f64,
+                self.height as f64,
+            ));
+        }
+        for (clip, transform) in &segment.clips {
+            context.set_transform(
+                Affine::scale(self.scale as f64) * checked_paint_transform(*transform)?,
+            );
+            push_clip(context, clip);
+        }
+        self.sparse_paints(
+            cache,
+            context,
+            image_ids,
+            glyph_images,
+            segment.transform,
+            &self.commands[segment.range.clone()],
+        )?;
+        for _ in 0..segment.open_at_end {
+            context.pop_clip();
+        }
+        Ok(())
+    }
+
     #[cfg(feature = "gpu")]
     #[allow(clippy::too_many_arguments)]
     fn sparse_paints(
@@ -161,19 +203,7 @@ impl DisplayList {
                     context.set_stroke(check_stroke(*width, *round));
                     context.stroke_path(&check_path(points));
                 }
-                Paint::Clip(shape) => {
-                    if shape.radius == 0.0 && shape.radii.is_none() {
-                        let [x, y, w, h] = shape.bounds;
-                        context.push_clip_rect(&PaintRect::new(
-                            x as f64,
-                            y as f64,
-                            (x + w) as f64,
-                            (y + h) as f64,
-                        ));
-                    } else {
-                        context.push_clip_path(&shape.path());
-                    }
-                }
+                Paint::Clip(shape) => push_clip(context, shape),
                 Paint::PopClip => context.pop_clip(),
                 Paint::PopOpacity => context.pop_layer(),
                 Paint::Opacity { alpha, .. } => context.push_opacity_layer(*alpha),
@@ -289,5 +319,20 @@ impl DisplayList {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(feature = "gpu")]
+fn push_clip(context: &mut vello_gpu::Scene, shape: &ClipSnapshot) {
+    if shape.radius == 0.0 && shape.radii.is_none() {
+        let [x, y, w, h] = shape.bounds;
+        context.push_clip_rect(&PaintRect::new(
+            x as f64,
+            y as f64,
+            (x + w) as f64,
+            (y + h) as f64,
+        ));
+    } else {
+        context.push_clip_path(&shape.path());
     }
 }

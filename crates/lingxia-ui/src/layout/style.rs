@@ -30,6 +30,8 @@ pub(crate) fn check_reserve(tag: usize) -> f32 {
     match tag {
         tag::CHECKBOX | tag::RADIO_OPTION => 36.0,
         tag::SWITCH => 64.0,
+        // The chevron at the end of a select.
+        tag::SELECT => 28.0,
         _ => 0.0,
     }
 }
@@ -270,6 +272,7 @@ pub(crate) fn node_style(
                 | tag::CHECKBOX
                 | tag::SWITCH
                 | tag::RADIO_OPTION
+                | tag::SELECT
                 | tag::SEARCH
                 | tag::SLIDER
         ) {
@@ -567,7 +570,7 @@ pub(crate) fn node_style(
                     auto()
                 } else if record.tag == tag::SLIDER {
                     length(48.0)
-                } else if record.tag == tag::TEXTAREA {
+                } else if record.tag == tag::TEXTAREA && record.number(field::ROWS).is_none() {
                     length(120.0)
                 } else if index == 0 {
                     length(height as f32 / scale)

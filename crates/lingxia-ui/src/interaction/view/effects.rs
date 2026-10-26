@@ -40,6 +40,10 @@ pub enum Effect {
     Clicked,
     Haptic,
     /// Edit text on behalf of accessibility; the adapter forwards it to its input method.
+    /// Show the platform's single-choice picker for this `<select>` (options and choice on the node).
+    OpenPicker {
+        node: usize,
+    },
     EditText {
         node: usize,
         text: Option<String>,
@@ -100,6 +104,12 @@ pub enum Dispatch {
         commit: CommitTicket,
         identity: String,
         point: [f32; 2],
+    },
+    /// A `<select>` chose option `index` without its picker (arrow keys, automation).
+    Select {
+        commit: CommitTicket,
+        identity: String,
+        index: usize,
     },
     /// Enter on an editor: the session submits it as the input method's action would.
     SubmitEditor {

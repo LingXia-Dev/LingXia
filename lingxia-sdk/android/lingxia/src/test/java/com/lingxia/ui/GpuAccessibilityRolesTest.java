@@ -5,6 +5,7 @@ import static org.junit.Assert.assertTrue;
 
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
+import com.lingxia.ui.generated.GpuSemantics;
 import java.util.HashMap;
 import java.util.Map;
 import org.json.JSONArray;
@@ -73,5 +74,22 @@ public class GpuAccessibilityRolesTest {
             GpuView.nativeHostRelease(host);
             fake.release();
         }
+    }
+
+    /** Authored pressed, selected, expanded, busy and scroll states reach the node info. */
+    @Test public void authoredStatesMapToNodeInfo() throws Exception {
+        JSONObject toggle = new JSONObject().put("role", "button").put("name", "Bold").put("text", "B").put("clickable", true)
+            .put("enabled", true).put(GpuSemantics.KEY_PRESSED, true).put(GpuSemantics.KEY_SELECTED, true);
+        AccessibilityNodeInfo info = info(toggle);
+        assertTrue(info.isCheckable()); assertTrue(info.isChecked()); assertTrue(info.isSelected());
+        JSONObject disclosure = new JSONObject().put("role", "button").put("name", "More").put("clickable", true)
+            .put("enabled", true).put(GpuSemantics.KEY_EXPANDED, false).put(GpuSemantics.KEY_BUSY, true);
+        AccessibilityNodeInfo more = info(disclosure);
+        assertTrue(more.getActionList().contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_EXPAND));
+        assertEquals("More, Busy", more.getContentDescription().toString());
+        assertEquals(GpuAccessibility.CLICK, GpuAccessibility.action(AccessibilityNodeInfo.ACTION_EXPAND));
+        JSONObject region = new JSONObject().put("role", "scroll-view").put(GpuSemantics.KEY_SCROLL,
+            new JSONObject().put("offset", 0).put("max_offset", 300).put("horizontal", false));
+        assertTrue(info(region).isScrollable());
     }
 }

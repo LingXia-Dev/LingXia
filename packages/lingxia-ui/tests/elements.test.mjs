@@ -342,3 +342,25 @@ test('accessibilityState wires each declared state and refuses unknown keys or n
   for (const state of [{ checked: true }, { busy: 'yes' }, []])
     assert.throws(() => describe(() => h('column', { accessibilityState: state }), {}), /UI_PROP: accessibilityState/);
 });
+
+test('select sends its options and shows the chosen label or its placeholder', () => {
+  const options = [{ value: 'm', label: 'Monthly' }, { value: 'y', label: 'Yearly', disabled: true }];
+  const chosen = rendered(() => h('select', { options, value: 'm', accessibilityLabel: 'Plan', onChange() {} }));
+  assert.equal(chosen.tag, 'select');
+  assert.equal(chosen.text, 'Monthly');
+  assert.equal(chosen.props.inputValue, 'm');
+  assert.deepEqual(JSON.parse(chosen.props.selectOptions), options);
+  assert.ok(chosen.props.onSelect > 0);
+  const empty = rendered(() => h('select', { options, placeholder: 'Choose a plan', accessibilityLabel: 'Plan' }));
+  assert.equal(empty.text, 'Choose a plan');
+  assert.equal(empty.props.inputValue, '');
+  for (const bad of [[], [{ value: 'a', label: 'A' }, { value: 'a', label: 'B' }], [{ value: '', label: 'x' }]])
+    assert.throws(() => describe(() => h('select', { options: bad, accessibilityLabel: 'Plan' }), {}), /UI_SELECT/);
+});
+
+test('a textarea takes rows and maxRows as an autosizing range', () => {
+  const { props } = rendered(() => h('textarea', { accessibilityLabel: 'Note', rows: 2, maxRows: 6 }));
+  assert.deepEqual([props.rows, props.maxRows], [2, 6]);
+  for (const bad of [{ rows: 0 }, { rows: 2.5 }, { maxRows: 3 }, { rows: 4, maxRows: 2 }])
+    assert.throws(() => describe(() => h('textarea', { accessibilityLabel: 'Note', ...bad }), {}), /UI_INPUT: rows/);
+});

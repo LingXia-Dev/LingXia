@@ -184,13 +184,37 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       for (const name of ['secure', 'autoFocus', 'submitOnEnter']) if (props[name] !== undefined) wire(name, +props[name]);
       if (props.bind !== undefined && cellOf(props.bind).cell.focus) wire('focusRequest', cellOf(props.bind).cell.focus);
       for (const [key, value] of attributes) wire(key, value);
+      if (tag === 'textarea') {
+        const { rows, maxRows } = props;
+        const valid = value => value === undefined || (Number.isInteger(value) && value >= 1 && value <= 100);
+        if (!valid(rows) || !valid(maxRows) || (maxRows !== undefined && (rows === undefined || maxRows < rows)))
+          throw Error('UI_INPUT: rows and maxRows are integers 1..100, maxRows needs rows and is at least rows');
+        if (rows !== undefined) wire('rows', rows);
+        if (maxRows !== undefined) wire('maxRows', maxRows);
+      }
       if (!disabled) for (const name of ['onInput', 'onSubmit']) if (props[name]) on(name, props[name], 'text');
       break;
+    case 'select': {
+      check.label(props.accessibilityLabel, 'UI_SELECT');
+      const options = selectOptions(props);
+      if (props.value !== undefined && typeof props.value !== 'string') throw Error('UI_SELECT: value must be a string');
+      if (props.placeholder !== undefined && !validInputText(props.placeholder)) throw Error('UI_SELECT: invalid placeholder');
+      const chosen = options.find(option => option.value === props.value);
+      // The box shows the chosen label, else the placeholder in placeholder colour.
+      result.text = chosen?.label ?? props.placeholder ?? '';
+      if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
+      wire('inputValue', chosen ? chosen.value : '');
+      if (props.placeholder !== undefined) wire('placeholder', props.placeholder);
+      wire('selectOptions', JSON.stringify(options));
+      if (props.onChange && !disabled) on('onSelect', value => { if (value !== props.value) props.onChange(value); }, 'text');
+      break;
+    }
     case 'image':
       check.image(props);
       wire('imageSrc', props.src);
       if (props.alt !== undefined) wire('imageAlt', props.alt);
       if (props.retryKey !== undefined) wire('imageRetryKey', props.retryKey);
+      if (props.placeholder !== undefined) wire('imagePlaceholder', props.placeholder);
       if (props.onLoad) on('onImageLoad', props.onLoad, 'void', true);
       if (props.onError) on('onImageError', props.onError, 'void', true);
       break;
@@ -313,6 +337,20 @@ function semantics(tag, props, wire) {
     check.label(props.accessibilityLabel, 'UI_PROP');
     wire('accessibilityLabel', props.accessibilityLabel);
   }
+}
+
+// A select's options, validated like a radio group's and sent whole.
+function selectOptions(props) {
+  if (!Array.isArray(props.options) || !props.options.length || props.options.length > 64) throw Error('UI_SELECT: expected 1..64 options');
+  const values = new Set();
+  return props.options.map(option => {
+    if (!option || typeof option !== 'object' || Object.keys(option).some(k => !['value', 'label', 'disabled', 'testId'].includes(k)) ||
+        typeof option.value !== 'string' || !option.value.length || option.value.length > 256 || values.has(option.value) ||
+        typeof option.label !== 'string' || !validInputText(option.label) || (option.disabled !== undefined && typeof option.disabled !== 'boolean'))
+      throw Error('UI_SELECT: invalid or duplicate option');
+    values.add(option.value);
+    return option.disabled ? { value: option.value, label: option.label, disabled: true } : { value: option.value, label: option.label };
+  });
 }
 
 function radioOptions(props, identity, fields, disabled) {

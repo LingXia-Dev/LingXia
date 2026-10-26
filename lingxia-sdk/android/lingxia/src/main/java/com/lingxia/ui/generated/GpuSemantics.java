@@ -10,6 +10,7 @@ public final class GpuSemantics {
     public static final String ROLE_SWITCH = "switch";
     public static final String ROLE_RADIO_GROUP = "radio-group";
     public static final String ROLE_RADIO_BUTTON = "radio-button";
+    public static final String ROLE_COMBO_BOX = "combo-box";
     public static final String ROLE_TEXT_FIELD = "text-field";
     public static final String ROLE_SCROLL_VIEW = "scroll-view";
     public static final String ROLE_HORIZONTAL_SCROLL_VIEW = "horizontal-scroll-view";

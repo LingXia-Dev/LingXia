@@ -1,0 +1,150 @@
+//! `<select>`: picker request, choice through the input protocol and arrow keys, combobox semantics.
+use crate::ViewSession;
+use crate::interaction::frame::PresentedFrame;
+use crate::interaction::view::{Dispatch, Effect, Key, ViewInteraction};
+use crate::scene::paint::Paint;
+use crate::session::lifecycle::{CommitTicket, PageTicket};
+use std::sync::Arc;
+
+const PAGE: &str = "function render(){const plan=useLocal('plan','m');return h('column',{},h('select',{testId:'s',bind:plan,accessibilityLabel:'Plan',placeholder:'Choose',options:[{value:'m',label:'Monthly'},{value:'q',label:'Quarterly',disabled:true},{value:'y',label:'Yearly'}]}),h('text',{testId:'t'},plan.value))}";
+
+fn present(display: &crate::DisplayList) -> ViewInteraction {
+    let mut interaction = ViewInteraction::default();
+    interaction.presented(
+        Arc::new(PresentedFrame::new(
+            CommitTicket::new(1),
+            1.0,
+            display.nodes.clone(),
+        )),
+        0,
+        &Default::default(),
+        PageTicket::new(1),
+    );
+    interaction
+}
+
+fn shown(page: &mut ViewSession) -> String {
+    let display = page.layout(300, 300, 1.0).unwrap();
+    display
+        .nodes
+        .iter()
+        .find(|n| n.test_id == "t")
+        .unwrap()
+        .text
+        .clone()
+}
+
+#[test]
+fn a_select_opens_its_picker_and_takes_choices_from_the_picker_and_arrows() {
+    let mut page = ViewSession::new(&super::source(PAGE)).unwrap();
+    let display = page.layout(300, 300, 1.0).unwrap();
+    let index = display.nodes.iter().position(|n| n.test_id == "s").unwrap();
+    let node = &display.nodes[index];
+    assert_eq!(node.text, "Monthly");
+    // Activation opens the platform picker instead of dispatching a click.
+    let mut interaction = present(&display);
+    let id = interaction.semantics().unwrap().ids.id(index).unwrap();
+    let (handled, effects) = interaction.accessibility(
+        id,
+        crate::interaction::view::AccessibilityAction::Click,
+        PageTicket::new(1),
+    );
+    assert!(handled && effects.contains(&Effect::OpenPicker { node: index }));
+    let projected = interaction.semantics().unwrap().node(id).unwrap();
+    assert_eq!(
+        (
+            projected.role,
+            projected.name.as_str(),
+            projected.text.as_str()
+        ),
+        (
+            crate::semantics::projection::Role::ComboBox,
+            "Plan",
+            "Monthly"
+        )
+    );
+    // The picker answers through the input protocol; a disabled option is refused.
+    let (identity, generation) = (node.identity.clone(), page.generation());
+    let request = |index: usize| {
+        serde_json::json!({"op":"select","identity":identity,"generation":generation,"index":index})
+            .to_string()
+    };
+    assert_eq!(
+        page.input_request(&request(1)).unwrap(),
+        r#"{"needs_view_render":false}"#
+    );
+    assert_eq!(
+        page.input_request(&request(2)).unwrap(),
+        r#"{"needs_view_render":true}"#
+    );
+    assert_eq!(shown(&mut page), "y");
+    // Arrows step over the disabled option without opening the picker.
+    let display = page.layout(300, 300, 1.0).unwrap();
+    let mut interaction = present(&display);
+    interaction.key(Key::Tab, false, false, PageTicket::new(1));
+    let (_, effects) = interaction.key(Key::Up, false, false, PageTicket::new(1));
+    assert!(effects.contains(&Effect::Dispatch));
+    let Dispatch::Select { index, .. } = interaction.take_dispatch().remove(0) else {
+        panic!("expected a select dispatch")
+    };
+    assert_eq!(index, 0);
+}
+
+#[test]
+fn the_chevron_sits_at_the_inline_end_and_mirrors_in_rtl() {
+    let chevron_x = |dir: &str| {
+        let source = super::source(&format!(
+            "function render(){{return h('column',{{dir:'{dir}'}},h('select',{{accessibilityLabel:'Plan',options:[{{value:'m',label:'Monthly'}}]}}))}}"
+        ));
+        let display = ViewSession::new(&source)
+            .unwrap()
+            .layout(300, 300, 1.0)
+            .unwrap();
+        display
+            .commands
+            .iter()
+            .find_map(|paint| match paint {
+                Paint::Stroke { points, .. } if points.len() == 3 => Some(points[1][0]),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let (ltr, rtl) = (chevron_x("ltr"), chevron_x("rtl"));
+    assert!(ltr > 250.0 && rtl < 50.0, "{ltr} {rtl}");
+}
+
+#[test]
+fn automation_chooses_an_option_by_value_or_label() {
+    use crate::interaction::view::AutomationAct;
+    let mut page = ViewSession::new(&super::source(PAGE)).unwrap();
+    let display = page.layout(300, 300, 1.0).unwrap();
+    let mut interaction = present(&display);
+    let choose = |interaction: &mut ViewInteraction, choice: &str| {
+        interaction.automate(
+            "[data-testid=\"s\"]",
+            None,
+            AutomationAct::SelectOption(choice.into()),
+            false,
+            PageTicket::new(1),
+        )
+    };
+    assert!(
+        choose(&mut interaction, "Yearly")
+            .unwrap()
+            .contains(&Effect::Dispatch)
+    );
+    assert!(matches!(
+        interaction.take_dispatch()[..],
+        [Dispatch::Select { index: 2, .. }]
+    ));
+    assert!(
+        choose(&mut interaction, "q")
+            .unwrap_err()
+            .ends_with("is disabled")
+    );
+    assert!(
+        choose(&mut interaction, "weekly")
+            .unwrap_err()
+            .contains("has no option")
+    );
+}

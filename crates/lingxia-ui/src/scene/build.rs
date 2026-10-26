@@ -148,7 +148,7 @@ impl Renderer {
             let default_radius = record.number(field::RADIUS).unwrap_or(
                 if matches!(
                     record.tag,
-                    tag::BUTTON | tag::INPUT | tag::TEXTAREA | tag::SEARCH
+                    tag::BUTTON | tag::INPUT | tag::TEXTAREA | tag::SEARCH | tag::SELECT
                 ) {
                     12.0
                 } else {
@@ -329,7 +329,10 @@ impl Renderer {
                     .string(field::BACKGROUND)
                     .or(if record.tag == tag::BUTTON {
                         Some("primary")
-                    } else if matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
+                    } else if matches!(
+                        record.tag,
+                        tag::INPUT | tag::TEXTAREA | tag::SEARCH | tag::SELECT
+                    ) {
                         Some("surface")
                     } else if index == 0 {
                         Some("background")
@@ -562,8 +565,10 @@ impl Renderer {
                     text.break_all_lines(Some(alignment_width));
                 }
                 text.align(styles[index].align, AlignmentOptions::default());
-                let placeholder = matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH)
-                    && record.string(field::INPUT_VALUE).unwrap_or("").is_empty();
+                let placeholder = matches!(
+                    record.tag,
+                    tag::INPUT | tag::TEXTAREA | tag::SEARCH | tag::SELECT
+                ) && record.string(field::INPUT_VALUE).unwrap_or("").is_empty();
                 let tint = if placeholder {
                     record
                         .string(field::PLACEHOLDER_COLOR)
@@ -574,7 +579,9 @@ impl Renderer {
                 let [r, g, b, a] = color(tint)?;
                 self.text_time += started.elapsed();
 
-                let label_x = if matches!(record.tag, tag::CHECKBOX | tag::RADIO_OPTION) {
+                let label_x = if matches!(record.tag, tag::CHECKBOX | tag::RADIO_OPTION)
+                    || (record.tag == tag::SELECT && directions[index])
+                {
                     check_reserve(record.tag)
                 } else {
                     0.0
@@ -587,6 +594,7 @@ impl Renderer {
                         | tag::SWITCH
                         | tag::RADIO_OPTION
                         | tag::SEARCH
+                        | tag::SELECT
                 ) {
                     ((layout.size.height
                         - layout.padding.top
@@ -826,7 +834,39 @@ impl Renderer {
                     });
                 }
             }
+            if record.tag == tag::SELECT {
+                // A chevron at the inline end; it mirrors with the direction.
+                let cy = y
+                    + layout.padding.top
+                    + (layout.size.height - layout.padding.top - layout.padding.bottom).max(0.0)
+                        / 2.0;
+                let cx = if directions[index] {
+                    x + layout.padding.left + 10.0
+                } else {
+                    x + layout.size.width - layout.padding.right - 10.0
+                };
+                commands.push(Paint::Stroke {
+                    round: true,
+                    color: color(colors[index])?,
+                    points: vec![[cx - 5.0, cy - 2.5], [cx, cy + 2.5], [cx + 5.0, cy - 2.5]],
+                    width: 1.75,
+                });
+            }
             if record.tag == tag::IMAGE {
+                let fit = match record.string(field::IMAGE_FIT) {
+                    Some("contain") => crate::scene::image::Fit::Contain,
+                    Some("fill") => crate::scene::image::Fit::Fill,
+                    _ => crate::scene::image::Fit::Cover,
+                };
+                // A small stand-in, scaled smooth, shows until the image covers it.
+                if let Some(placeholder) = record.string(field::IMAGE_PLACEHOLDER) {
+                    commands.push(Paint::Image {
+                        src: placeholder.to_owned(),
+                        bounds: control_bounds,
+                        radius: if content_clip.is_some() { 0.0 } else { radius },
+                        fit,
+                    });
+                }
                 commands.push(Paint::Image {
                     src: record
                         .string(field::IMAGE_SRC)
@@ -834,11 +874,7 @@ impl Renderer {
                         .to_owned(),
                     bounds: control_bounds,
                     radius: if content_clip.is_some() { 0.0 } else { radius },
-                    fit: match record.string(field::IMAGE_FIT) {
-                        Some("contain") => crate::scene::image::Fit::Contain,
-                        Some("fill") => crate::scene::image::Fit::Fill,
-                        _ => crate::scene::image::Fit::Cover,
-                    },
+                    fit,
                 });
             }
             input_layouts.push(
@@ -941,6 +977,30 @@ impl Renderer {
                 selection_range: None,
                 role: record.string(field::ROLE).map(str::to_owned),
                 heading_level: record.number(field::HEADING_LEVEL).map(|level| level as u8),
+                select: (record.tag == tag::SELECT).then(|| {
+                    let value = record.string(field::INPUT_VALUE).unwrap_or("");
+                    let options: Vec<SelectOption> = record
+                        .string(field::SELECT_OPTIONS)
+                        .and_then(|text| serde_json::from_str::<Vec<serde_json::Value>>(text).ok())
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|option| SelectOption {
+                            value: option["value"].as_str().unwrap_or("").to_owned(),
+                            label: option["label"].as_str().unwrap_or("").to_owned(),
+                            enabled: option["disabled"] != true,
+                        })
+                        .collect();
+                    SelectSnapshot {
+                        selected: options.iter().position(|option| option.value == value),
+                        on_select: record
+                            .number(field::ENABLED)
+                            .is_none_or(|enabled| enabled != 0.0)
+                            .then(|| record.fields.iter().find(|(id, _)| *id == field::ON_SELECT))
+                            .flatten()
+                            .and_then(|(_, handle)| handle.as_u64()),
+                        options,
+                    }
+                }),
                 states: [
                     field::STATE_PRESSED,
                     field::STATE_SELECTED,

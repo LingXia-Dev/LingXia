@@ -107,6 +107,7 @@ Children: none. May sit inside a composed `<button>` or `<checkbox>`.
 | Prop | Type | Required |
 | --- | --- | --- |
 | `src` | `string` | yes |
+| `placeholder` | `string` |  |
 | `alt` | `string` |  |
 | `retryKey` | `string` |  |
 | `onLoad` | `() => void` |  |
@@ -144,6 +145,8 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `rows` | `number` |  |
+| `maxRows` | `number` |  |
 | `accessibilityLabel` | `string` |  |
 | `placeholder` | `string` |  |
 | `secure` | `boolean` |  |
@@ -279,5 +282,18 @@ Children: text and `<span>` runs; links do not nest. Only inside `<text>`. Not a
 | Prop | Type | Required |
 | --- | --- | --- |
 | `onPress` | `() => void` |  |
+| `accessibilityLabel` | `string` |  |
+| `disabled` | `boolean` |  |
+
+## `<select>`
+
+Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
+
+Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChange(value: string)`; not both.
+
+| Prop | Type | Required |
+| --- | --- | --- |
+| `options` | `readonly RadioOption[]` | yes |
+| `placeholder` | `string` |  |
 | `accessibilityLabel` | `string` |  |
 | `disabled` | `boolean` |  |

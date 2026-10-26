@@ -290,6 +290,7 @@ const PAGE_DRIVER_API = [
   'screenshot',
   'scroll',
   'scrollTo',
+  'selectOption',
   'tree',
   'type',
   'uiFrame',

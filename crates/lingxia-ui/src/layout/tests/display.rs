@@ -249,3 +249,51 @@ fn viewport_units_measure_the_safe_content_box() {
         );
     }
 }
+
+#[test]
+fn a_textarea_with_rows_grows_with_its_lines_up_to_max_rows() {
+    let height = |lines: usize| {
+        let value = vec!["line"; lines].join("\\n");
+        let source = crate::session::tests::source(&format!(
+            "function render(){{return h('column',{{}},h('textarea',{{testId:'t',accessibilityLabel:'Note',value:'{value}',rows:2,maxRows:4,style:{{padding:0,lineHeight:'20px'}}}}))}}"
+        ));
+        let display = crate::ViewSession::new(&source)
+            .unwrap()
+            .layout(300, 600, 1.0)
+            .unwrap();
+        display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == "t")
+            .unwrap()
+            .bounds[3]
+    };
+    assert_eq!(height(1), 40.0);
+    assert_eq!(height(3), 60.0);
+    assert_eq!(height(9), 80.0);
+}
+
+#[test]
+fn an_image_placeholder_paints_first_and_loads_alongside() {
+    use crate::scene::paint::Paint;
+    let source = crate::session::tests::source(
+        "function render(){return h('column',{},h('image',{src:'photo.jpg',placeholder:'photo-tiny.jpg',alt:'Lake',style:{width:100,height:60}}))}",
+    );
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    let display = page.layout(200, 200, 1.0).unwrap();
+    let images: Vec<&str> = display
+        .commands
+        .iter()
+        .filter_map(|paint| match paint {
+            Paint::Image { src, .. } => Some(src.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(images, ["photo-tiny.jpg", "photo.jpg"]);
+    let requested: Vec<String> = page
+        .image_requests()
+        .into_iter()
+        .map(|r| r.source)
+        .collect();
+    assert_eq!(requested, ["photo-tiny.jpg", "photo.jpg"]);
+}

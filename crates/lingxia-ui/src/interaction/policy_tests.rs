@@ -30,6 +30,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         heading_level: None,
         live_region: None,
         states: [None; 4],
+        select: None,
         clips: Vec::new(),
         scroll: None,
         on_click: None,

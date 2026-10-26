@@ -61,6 +61,12 @@ final class GpuAccessibility {
         if (GpuSemantics.ROLE_LINK.equals(role))
             info.getExtras().putCharSequence(ROLE_DESCRIPTION, host.getContext().getString(com.lingxia.lxapp.R.string.lx_gpu_a11y_link));
         String name = node.optString("name");
+        // Android has no busy state; the spoken name carries it.
+        if (node.optBoolean(GpuSemantics.KEY_BUSY)) {
+            String busy = host.getContext().getString(com.lingxia.lxapp.R.string.lx_gpu_a11y_busy);
+            String spoken = name.isEmpty() ? node.optString("text") : name;
+            name = spoken.isEmpty() ? busy : spoken + ", " + busy;
+        }
         if (!name.isEmpty() && !name.equals(node.optString("text"))) info.setContentDescription(name);
         info.setVisibleToUser(node.optBoolean("visible"));
         if (Build.VERSION.SDK_INT >= 24) info.setImportantForAccessibility(true);
@@ -71,7 +77,13 @@ final class GpuAccessibility {
         info.setClickable(node.optBoolean("clickable"));
         info.setFocused(node.optBoolean("focused"));
         if (!node.isNull("checked") && node.has("checked")) { info.setCheckable(true); info.setChecked(node.optBoolean("checked")); }
-        info.setScrollable(node.optBoolean("scrollable"));
+        // A toggle button reads as checkable, the closest Android state to aria-pressed.
+        else if (node.has(GpuSemantics.KEY_PRESSED)) { info.setCheckable(true); info.setChecked(node.optBoolean(GpuSemantics.KEY_PRESSED)); }
+        if (node.has(GpuSemantics.KEY_SELECTED)) info.setSelected(node.optBoolean(GpuSemantics.KEY_SELECTED));
+        // Expanding is a click on the disclosure control; TalkBack announces the state from the action.
+        if (node.has(GpuSemantics.KEY_EXPANDED) && node.optBoolean("clickable"))
+            info.addAction(node.optBoolean(GpuSemantics.KEY_EXPANDED) ? AccessibilityNodeInfo.ACTION_COLLAPSE : AccessibilityNodeInfo.ACTION_EXPAND);
+        info.setScrollable(node.optBoolean("scrollable") || node.has(GpuSemantics.KEY_SCROLL));
         JSONObject range = node.optJSONObject("range");
         if (range != null) info.setRangeInfo(AccessibilityNodeInfo.RangeInfo.obtain(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_FLOAT,
             (float)range.optDouble("min"), (float)range.optDouble("max"), (float)range.optDouble("value")));
@@ -150,7 +162,8 @@ final class GpuAccessibility {
     static int action(int action) {
         if (action == AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS) return FOCUS;
         if (action == AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS) return CLEAR_FOCUS;
-        if (action == AccessibilityNodeInfo.ACTION_CLICK) return CLICK;
+        if (action == AccessibilityNodeInfo.ACTION_CLICK || action == AccessibilityNodeInfo.ACTION_EXPAND
+            || action == AccessibilityNodeInfo.ACTION_COLLAPSE) return CLICK;
         if (action == AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.getId()) return SHOW_ON_SCREEN;
         if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) return SCROLL_FORWARD;
         if (action == AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) return SCROLL_BACKWARD;

@@ -98,6 +98,7 @@ impl Renderer {
                 | tag::SWITCH
                 | tag::RADIO_OPTION
                 | tag::SEARCH
+                | tag::SELECT
         ) {
             return None;
         }

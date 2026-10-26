@@ -340,6 +340,10 @@ impl ViewInteraction {
         };
         self.pending_focus = None;
         self.slider.cancel();
+        // A select opens its platform picker; the choice returns through the input protocol.
+        if node.select.as_ref().is_some_and(|select| select.on_select.is_some()) {
+            return vec![Effect::OpenPicker { node: index }];
+        }
         let mut effects = Vec::new();
         if let Some(point) = point {
             effects.extend(self.dismiss_plots(frame.outside_plot_selections(point)));

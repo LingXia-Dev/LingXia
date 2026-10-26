@@ -125,6 +125,8 @@ export function image(props) {
       (props.alt.length > 0 && !props.alt.trim()))) throw Error('UI_IMAGE: invalid alternative text');
   if (props.retryKey !== undefined && (typeof props.retryKey !== 'string' || utf8Bytes(props.retryKey, 257) > 256 || props.retryKey.includes('\0')))
     throw Error('UI_IMAGE: invalid retry key');
+  if (props.placeholder !== undefined && (typeof props.placeholder !== 'string' || !props.placeholder.length || props.placeholder.length > limits.sourceBytes || props.placeholder.includes('\0')))
+    throw Error('UI_IMAGE: invalid placeholder source');
   for (const name of ['onLoad', 'onError']) if (props[name] !== undefined && typeof props[name] !== 'function') throw Error('UI_IMAGE: invalid callback');
 }
 

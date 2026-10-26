@@ -1,7 +1,7 @@
 {
   "uiAbi": 1,
   "limits": {"nodes": 4096, "depth": 128, "animationBytes": 262144, "itemKeyBytes": 262144, "imageBytes": 8388608, "sourceBytes": 8192, "visibleImageBytes": 67108864, "decodedImageBytes": 100663296, "runs": 256, "transitionMs": 10000, "evalBudgetMs": 100, "evalBudgetDebugMultiplier": 8},
-  "tags": ["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link"],
+  "tags": ["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select"],
   "admission": {
     "column": {"children": "any", "content": true},
     "row": {"children": "any", "content": true},
@@ -25,7 +25,8 @@
     "vector": {"children": "none", "content": true},
     "page": {"children": "any", "root": true},
     "span": {"children": "text", "content": true, "parent": "text"},
-    "link": {"children": "text", "parent": "text"}
+    "link": {"children": "text", "parent": "text"},
+    "select": {"children": "text"}
   },
   "options": {
     "font-family": ["sans", "mono"],
@@ -70,7 +71,7 @@
     {"id": 6, "key": "background", "wire": "background", "kind": "string"},
     {"id": 7, "key": "grow", "wire": "grow", "kind": "number"},
     {"id": 8, "key": "onClick", "wire": "onClick", "kind": "handle", "tags": ["button", "link"]},
-    {"id": 9, "key": "enabled", "wire": "enabled", "kind": "flag", "tags": ["button", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider"]},
+    {"id": 9, "key": "enabled", "wire": "enabled", "kind": "flag", "tags": ["button", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "select"]},
     {"id": 10, "key": "radius", "wire": "radius", "kind": "number"},
     {"id": 11, "key": "listId", "wire": "listId", "kind": "list-id", "tags": ["list"]},
     {"id": 12, "key": "listCount", "wire": "listCount", "kind": "list-count", "tags": ["list"]},
@@ -82,8 +83,8 @@
     {"id": 18, "key": "onReachEnd", "wire": "onReachEnd", "kind": "reach-handle", "tags": ["scroll", "list"]},
     {"id": 19, "key": "imageSrc", "wire": "src", "kind": "image-source", "tags": ["image"]},
     {"id": 20, "key": "imageFit", "wire": "fit", "kind": "image-fit", "tags": ["image"]},
-    {"id": 21, "key": "inputValue", "wire": "value", "kind": "input-text", "tags": ["input", "textarea", "search"]},
-    {"id": 22, "key": "placeholder", "wire": "placeholder", "kind": "input-text", "tags": ["input", "textarea", "search"]},
+    {"id": 21, "key": "inputValue", "wire": "value", "kind": "input-text", "tags": ["input", "textarea", "search", "select"]},
+    {"id": 22, "key": "placeholder", "wire": "placeholder", "kind": "input-text", "tags": ["input", "textarea", "search", "select"]},
     {"id": 23, "key": "secure", "wire": "secure", "kind": "input-flag", "tags": ["input", "textarea"]},
     {"id": 24, "key": "keyboard", "wire": "keyboard", "kind": "input-keyboard", "tags": ["input", "textarea", "search"]},
     {"id": 25, "key": "autoFocus", "wire": "autoFocus", "kind": "input-flag", "tags": ["input", "textarea", "search"]},
@@ -102,7 +103,7 @@
     {"id": 38, "key": "fontFamily", "wire": "fontFamily", "kind": "font-family"},
     {"id": 39, "key": "checked", "wire": "checked", "kind": "check-flag", "tags": ["checkbox", "switch", "radio-option"]},
     {"id": 40, "key": "onCheckedChange", "wire": "onChange", "kind": "check-handle", "tags": ["checkbox", "switch", "radio-option"]},
-    {"id": 41, "key": "accessibilityLabel", "wire": "accessibilityLabel", "kind": "radio-label", "tags": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link", "column", "row", "page", "text"]},
+    {"id": 41, "key": "accessibilityLabel", "wire": "accessibilityLabel", "kind": "radio-label", "tags": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link", "column", "row", "page", "text", "select"]},
     {"id": 42, "key": "sliderValue", "wire": "value", "kind": "slider-number", "tags": ["slider"]},
     {"id": 43, "key": "sliderMin", "wire": "min", "kind": "slider-number", "tags": ["slider"]},
     {"id": 44, "key": "sliderMax", "wire": "max", "kind": "slider-number", "tags": ["slider"]},
@@ -238,14 +239,19 @@
     {"id": 174, "key": "statePressed", "wire": "statePressed", "kind": "semantic-state"},
     {"id": 175, "key": "stateSelected", "wire": "stateSelected", "kind": "semantic-state"},
     {"id": 176, "key": "stateExpanded", "wire": "stateExpanded", "kind": "semantic-state"},
-    {"id": 177, "key": "stateBusy", "wire": "stateBusy", "kind": "semantic-state"}
+    {"id": 177, "key": "stateBusy", "wire": "stateBusy", "kind": "semantic-state"},
+    {"id": 178, "key": "selectOptions", "wire": "selectOptions", "kind": "select-options", "tags": ["select"]},
+    {"id": 179, "key": "onSelect", "wire": "onSelect", "kind": "select-handle", "tags": ["select"]},
+    {"id": 180, "key": "rows", "wire": "rows", "kind": "textarea-rows", "tags": ["textarea"]},
+    {"id": 181, "key": "maxRows", "wire": "maxRows", "kind": "textarea-rows", "tags": ["textarea"]},
+    {"id": 182, "key": "imagePlaceholder", "wire": "placeholderSrc", "kind": "image-src", "tags": ["image"]}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
     "keys": {"maxLength": "max_length", "autoComplete": "auto_complete", "enterKeyHint": "enter_key_hint", "autoCapitalize": "auto_capitalize", "spellCheck": "spell_check", "min": "min", "max": "max", "step": "step", "picker": "picker"}
   },
   "semantics": {
-    "roles": ["button", "check-box", "switch", "radio-group", "radio-button", "text-field", "scroll-view", "horizontal-scroll-view", "image", "slider", "text", "link", "heading", "list", "list-item", "dialog", "alert", "status"],
+    "roles": ["button", "check-box", "switch", "radio-group", "radio-button", "combo-box", "text-field", "scroll-view", "horizontal-scroll-view", "image", "slider", "text", "link", "heading", "list", "list-item", "dialog", "alert", "status"],
     "liveRegions": ["polite", "assertive"],
     "events": ["announce"],
     "actions": ["copy", "set-selection"],
@@ -374,9 +380,9 @@
     "spacer": {"wire": "spacer", "children": "none", "style": ["box"], "props": {}},
     "scroll": {"wire": "scroll", "children": "any", "style": ["box", "padding", "flex", "align", "gap", "text", "scroll", "overscroll"], "props": {"onReachStart": {"type": "() => void"}, "onReachEnd": {"type": "() => void"}}},
     "list": {"wire": "list", "children": "none", "style": ["box", "padding", "gap", "text", "overscroll"], "props": {"count": {"type": "number", "required": true}, "row": {"type": "(index: number) => JSX.Element", "required": true}, "height": {"type": "(index: number) => number"}, "anchor": {"type": "\"end\" | { index: number; align: \"start\" | \"end\"; seq?: number }"}, "itemKeys": {"type": "readonly string[]"}, "onReachStart": {"type": "() => void"}, "onReachEnd": {"type": "() => void"}}},
-    "image": {"wire": "image", "children": "none", "style": ["box", "media"], "props": {"src": {"type": "string", "required": true}, "alt": {"type": "string"}, "retryKey": {"type": "string"}, "onLoad": {"type": "() => void"}, "onError": {"type": "() => void"}}},
+    "image": {"wire": "image", "children": "none", "style": ["box", "media"], "props": {"src": {"type": "string", "required": true}, "placeholder": {"type": "string"}, "alt": {"type": "string"}, "retryKey": {"type": "string"}, "onLoad": {"type": "() => void"}, "onError": {"type": "() => void"}}},
     "input": {"wire": "input", "children": "none", "style": ["box", "padding", "text", "editor"], "binding": {"type": "string", "event": "onInput"}, "props": {"accessibilityLabel": {"type": "string"}, "placeholder": {"type": "string"}, "secure": {"type": "boolean"}, "keyboard": {"type": "\"text\" | \"number\" | \"email\" | \"phone\" | \"date\" | \"time\""}, "autoFocus": {"type": "boolean"}, "disabled": {"type": "boolean"}, "onSubmit": {"type": "(value: string) => void"}, "maxLength": {"type": "number"}, "autoComplete": {"type": "AutoComplete"}, "enterKeyHint": {"type": "\"enter\" | \"done\" | \"go\" | \"next\" | \"previous\" | \"search\" | \"send\""}, "autoCapitalize": {"type": "\"none\" | \"sentences\" | \"words\" | \"characters\" | \"off\" | \"on\""}, "spellCheck": {"type": "boolean"}, "min": {"type": "number | string"}, "max": {"type": "number | string"}, "step": {"type": "number"}}},
-    "textarea": {"wire": "textarea", "children": "none", "style": ["box", "padding", "text", "editor"], "binding": {"type": "string", "event": "onInput"}, "props": {"accessibilityLabel": {"type": "string"}, "placeholder": {"type": "string"}, "secure": {"type": "boolean"}, "keyboard": {"type": "\"text\" | \"number\" | \"email\" | \"phone\""}, "autoFocus": {"type": "boolean"}, "disabled": {"type": "boolean"}, "submitOnEnter": {"type": "boolean"}, "onSubmit": {"type": "(value: string) => void"}, "maxLength": {"type": "number"}, "autoComplete": {"type": "AutoComplete"}, "enterKeyHint": {"type": "\"enter\" | \"done\" | \"go\" | \"next\" | \"previous\" | \"search\" | \"send\""}, "autoCapitalize": {"type": "\"none\" | \"sentences\" | \"words\" | \"characters\" | \"off\" | \"on\""}, "spellCheck": {"type": "boolean"}}},
+    "textarea": {"wire": "textarea", "children": "none", "style": ["box", "padding", "text", "editor"], "binding": {"type": "string", "event": "onInput"}, "props": {"rows": {"type": "number"}, "maxRows": {"type": "number"}, "accessibilityLabel": {"type": "string"}, "placeholder": {"type": "string"}, "secure": {"type": "boolean"}, "keyboard": {"type": "\"text\" | \"number\" | \"email\" | \"phone\""}, "autoFocus": {"type": "boolean"}, "disabled": {"type": "boolean"}, "submitOnEnter": {"type": "boolean"}, "onSubmit": {"type": "(value: string) => void"}, "maxLength": {"type": "number"}, "autoComplete": {"type": "AutoComplete"}, "enterKeyHint": {"type": "\"enter\" | \"done\" | \"go\" | \"next\" | \"previous\" | \"search\" | \"send\""}, "autoCapitalize": {"type": "\"none\" | \"sentences\" | \"words\" | \"characters\" | \"off\" | \"on\""}, "spellCheck": {"type": "boolean"}}},
     "search": {"wire": "search", "children": "none", "style": ["box", "padding", "text", "editor"], "binding": {"type": "string", "event": "onInput"}, "props": {"accessibilityLabel": {"type": "string"}, "placeholder": {"type": "string"}, "autoFocus": {"type": "boolean"}, "disabled": {"type": "boolean"}, "onSubmit": {"type": "(value: string) => void"}, "maxLength": {"type": "number"}, "autoComplete": {"type": "AutoComplete"}, "enterKeyHint": {"type": "\"enter\" | \"done\" | \"go\" | \"next\" | \"previous\" | \"search\" | \"send\""}, "autoCapitalize": {"type": "\"none\" | \"sentences\" | \"words\" | \"characters\" | \"off\" | \"on\""}, "spellCheck": {"type": "boolean"}}},
     "checkbox": {"wire": "checkbox", "children": "content", "style": ["box", "padding", "flex", "align", "gap", "text"], "binding": {"type": "boolean", "event": "onChange"}, "props": {"accessibilityLabel": {"type": "string"}, "disabled": {"type": "boolean"}}},
     "switch": {"wire": "switch", "children": "text", "style": ["box", "padding", "text"], "binding": {"type": "boolean", "event": "onChange"}, "props": {"accessibilityLabel": {"type": "string"}, "disabled": {"type": "boolean"}}},
@@ -387,6 +393,7 @@
     "plot": {"wire": "plot", "children": "none", "style": ["box"], "props": {"kind": {"type": "\"bar\" | \"line\" | \"pie\"", "required": true}, "values": {"type": "readonly number[]", "required": true}, "colors": {"type": "readonly string[]", "required": true}, "accessibilityLabel": {"type": "string", "required": true}, "smooth": {"type": "boolean"}, "area": {"type": "boolean"}, "selectedIndex": {"type": "number"}, "domainMin": {"type": "number"}, "domainMax": {"type": "number"}, "onSelect": {"type": "(index: number) => void"}, "pieLayout": {"type": "PieLayout"}, "markerEmphasisScale": {"type": "number"}}},
     "vector": {"wire": "vector", "children": "none", "style": ["box", "padding", "accent", "media"], "props": {"paths": {"type": "ReadonlyArray<VectorPath>", "required": true}, "gradients": {"type": "Readonly<Record<string, VectorGradient>>"}, "viewBox": {"type": "readonly [number, number, number, number]"}}},
     "span": {"wire": "span", "children": "runs", "style": ["run"], "props": {}},
-    "link": {"wire": "link", "children": "runs", "style": ["run"], "props": {"onPress": {"type": "() => void"}, "accessibilityLabel": {"type": "string"}, "disabled": {"type": "boolean"}}}
+    "link": {"wire": "link", "children": "runs", "style": ["run"], "props": {"onPress": {"type": "() => void"}, "accessibilityLabel": {"type": "string"}, "disabled": {"type": "boolean"}}},
+    "select": {"wire": "select", "children": "none", "style": ["box", "padding", "text"], "binding": {"type": "string", "event": "onChange"}, "props": {"options": {"type": "readonly RadioOption[]", "required": true}, "placeholder": {"type": "string"}, "accessibilityLabel": {"type": "string"}, "disabled": {"type": "boolean"}}}
   }
 }

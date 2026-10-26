@@ -56,6 +56,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_ROOT` | runtime, native | The page did not return exactly one element. |
 | `UI_SCOPE` | runtime | A hook or JSX used outside render. |
 | `UI_SCROLL` | native | Invalid scroll position from the host. |
+| `UI_SELECT` | runtime, native |  |
 | `UI_SESSION` | native | A call reached a page session that is not loaded. |
 | `UI_SHADOW` | runtime, native | An invalid or over-budget box shadow. |
 | `UI_SLIDER` | runtime, native | Invalid slider range, step, value or label. |

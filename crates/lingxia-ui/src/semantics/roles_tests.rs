@@ -170,6 +170,7 @@ fn projected_roles_match_the_schema_vocabulary() {
         Role::Switch,
         Role::RadioGroup,
         Role::RadioButton,
+        Role::ComboBox,
         Role::TextField,
         Role::ScrollView,
         Role::HorizontalScrollView,

@@ -41,6 +41,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native void nativePark(long host);
     static native void nativeSetVisible(long host, boolean visible);
     static native void nativeReveal(long host, boolean surfaceHoldsFrame);
+    static native void nativeSwapModule(long host, String source);
     static native boolean nativeTextMenuAction(long host, int action);
     static native void nativeTextMenuDismissed(long host);
     static native void nativeTextHandleDrag(long host, boolean active);
@@ -230,6 +231,12 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     public void reload(String source) {
         if (destroyed) return;
         load(source);
+    }
+    /** Dev hot-swap: replace the module and keep its state; a core built without `hot-swap` reloads. */
+    public void swapModule(String source) {
+        if (destroyed) return;
+        try { nativeSwapModule(host, source); }
+        catch (UnsatisfiedLinkError unsupported) { load(source); }
     }
     private void load(String source) {
         prepareInstance();

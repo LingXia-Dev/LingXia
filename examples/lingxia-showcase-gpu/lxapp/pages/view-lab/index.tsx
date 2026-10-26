@@ -219,6 +219,7 @@ function Inputs() {
   const amount = useLocal('amount', '');
   const day = useLocal('day', '');
   const time = useLocal('time', '');
+  const plan = useLocal('plan', '');
   const field = 'px-3 py-2 rounded-lg border border-input bg-card text-sm';
   return (
     <Section title="Inputs" testId="lab-inputs">
@@ -228,8 +229,10 @@ function Inputs() {
         <input testId="lab-input-date" bind={day} accessibilityLabel="Billing date" keyboard="date" min="2024-01-01" placeholder="Pick a date" className={`grow basis-0 ${field}`} />
         <input testId="lab-input-time" bind={time} accessibilityLabel="Reminder time" keyboard="time" placeholder="Pick a time" className={`grow basis-0 ${field}`} />
       </row>
+      <select testId="lab-input-plan" bind={plan} accessibilityLabel="Billing plan" placeholder="Choose a plan" className={field}
+        options={[{ value: 'monthly', label: 'Monthly' }, { value: 'quarterly', label: 'Quarterly', disabled: true }, { value: 'yearly', label: 'Yearly' }]} />
       <input testId="lab-input-name" accessibilityLabel="Name" autoComplete="name" autoCapitalize="words" spellCheck={false} placeholder="Full name" className={field} />
-      <text testId="lab-input-values" className="text-xs text-muted-foreground">{`code=${code.value} amount=${amount.value} date=${day.value} time=${time.value}`}</text>
+      <text testId="lab-input-values" className="text-xs text-muted-foreground">{`code=${code.value} amount=${amount.value} date=${day.value} time=${time.value} plan=${plan.value}`}</text>
     </Section>
   );
 }

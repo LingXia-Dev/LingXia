@@ -410,18 +410,27 @@ impl Presenter {
             .chain(self.scenes.glyph_images().cloned());
         let bindings = self.images.bindings(&device.device, &device.queue, pixels);
         let images_us = crate::session::metrics::micros(started);
-        let [encode_us, submit_us] = self.renderer.draw(
-            &device.device,
-            &device.queue,
-            self.scenes.scene(),
-            &bindings,
-            crate::renderer::gpu::pass::Target {
-                size,
-                view: &surface.target_view,
-                depth: self.depth.as_ref(),
-                init: vello_gpu::TargetInit::Clear(vello_gpu::ClearSettings::default()),
-            },
-        )?;
+        let [mut encode_us, mut submit_us] = [0, 0];
+        for (index, scene) in self.scenes.scenes().enumerate() {
+            let [encode, submit] = self.renderer.draw(
+                &device.device,
+                &device.queue,
+                scene,
+                &bindings,
+                crate::renderer::gpu::pass::Target {
+                    size: size.clone(),
+                    view: &surface.target_view,
+                    depth: self.depth.as_ref(),
+                    init: if index == 0 {
+                        vello_gpu::TargetInit::Clear(vello_gpu::ClearSettings::default())
+                    } else {
+                        vello_gpu::TargetInit::SrcOver
+                    },
+                },
+            )?;
+            encode_us += encode;
+            submit_us += submit;
+        }
         self.preparation_us = [scene_us, images_us, encode_us, submit_us];
         self.composed = None;
         self.scene_cache_hit = scene_cache_hit;

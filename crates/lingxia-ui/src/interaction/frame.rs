@@ -133,7 +133,9 @@ pub fn plot_can_clear(node: &NodeSnapshot) -> bool {
 }
 
 fn activatable(node: &NodeSnapshot) -> bool {
-    node.on_click.is_some_and(|handle| handle != 0) || plot_enabled(node)
+    node.on_click.is_some_and(|handle| handle != 0)
+        || plot_enabled(node)
+        || node.select.as_ref().is_some_and(|select| select.on_select.is_some())
 }
 
 /// Targets of pointer activation and keyboard focus.

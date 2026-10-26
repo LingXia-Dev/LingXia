@@ -41,3 +41,5 @@ gpu:
   retrying: "Retrying…"
   # Spoken role of a GPU page link.
   a11y_link: "Link"
+  # Appended to a GPU page element that reports itself busy (aria-busy).
+  a11y_busy: "Busy"

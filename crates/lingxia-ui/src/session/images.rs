@@ -11,13 +11,23 @@ impl ViewSession {
             .unwrap_or_default()
             .iter()
             .filter(|record| record.tag == tag::IMAGE)
-            .filter_map(|record| {
-                let resource = ImageSource {
-                    source: record.string(field::IMAGE_SRC)?.into(),
+            .flat_map(|record| {
+                let image = record.string(field::IMAGE_SRC).map(|source| ImageSource {
+                    source: source.into(),
                     retry_key: record.string(field::IMAGE_RETRY_KEY).unwrap_or("").into(),
-                };
-                (self.image_sources.contains(&resource.source) && seen.insert(resource.clone()))
-                    .then_some(resource)
+                });
+                // The placeholder loads alongside; it never reports load events of its own.
+                let placeholder =
+                    record
+                        .string(field::IMAGE_PLACEHOLDER)
+                        .map(|source| ImageSource {
+                            source: source.into(),
+                            retry_key: String::new(),
+                        });
+                [placeholder, image].into_iter().flatten()
+            })
+            .filter(|resource| {
+                self.image_sources.contains(&resource.source) && seen.insert(resource.clone())
             })
             .collect()
     }

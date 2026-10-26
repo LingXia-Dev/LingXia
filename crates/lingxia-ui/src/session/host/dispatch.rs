@@ -150,6 +150,15 @@ impl<A: PlatformAdapter> Inner<A> {
                         Box::new(move |session| session.select_text(commit, &identity, point)),
                     );
                 }
+                Dispatch::Select {
+                    commit,
+                    identity,
+                    index,
+                } => self.activate(
+                    page,
+                    false,
+                    Box::new(move |session| session.select_option(commit, &identity, index)),
+                ),
                 Dispatch::SubmitEditor { commit, identity } => self.activate(
                     page,
                     true,

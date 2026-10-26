@@ -203,4 +203,32 @@ public class GpuViewLabWalk {
             }
         }
     }
+
+    /** Static text: select a range and copy it the way an accessibility service does; the clipboard gets that range. */
+    @Test public void copyThroughAccessibility() throws Exception {
+        driver.openTab("Lab");
+        driver.node("lab-tab-text").performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        Thread.sleep(1500);
+        AccessibilityNodeInfo text = driver.reveal("lab-select-all");
+        Bundle range = new Bundle();
+        range.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0);
+        range.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, 4);
+        assertTrue("set selection", text.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, range));
+        Thread.sleep(800);
+        text = driver.node("lab-select-all");
+        assertEquals(0, text.getTextSelectionStart());
+        assertEquals(4, text.getTextSelectionEnd());
+        assertTrue("copy offered", text.getActionList().contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_COPY));
+        assertTrue("copy", text.performAction(AccessibilityNodeInfo.ACTION_COPY));
+        Thread.sleep(1000);
+        AtomicReference<String> clip = new AtomicReference<>();
+        driver.instrumentation.runOnMainSync(() -> {
+            android.content.ClipboardManager clipboard = (android.content.ClipboardManager)driver.instrumentation.getTargetContext()
+                .getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+            android.content.ClipData data = clipboard.getPrimaryClip();
+            clip.set(data == null ? null : String.valueOf(data.getItemAt(0).getText()));
+        });
+        assertEquals("8F3A", clip.get());
+        assertEquals("the selection goes after copy", -1, driver.node("lab-select-all").getTextSelectionStart());
+    }
 }
