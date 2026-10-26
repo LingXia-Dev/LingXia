@@ -74,10 +74,20 @@ pub(crate) fn paragraphs(records: &[Record], styles: &[TextStyle]) -> Vec<Option
                 out: String::new(),
                 pending: false,
             };
-            let mut ranges = Vec::with_capacity(members.len());
+            let mut ranges: Vec<(usize, Range<usize>)> = Vec::with_capacity(members.len());
             for member in members {
-                let start = collapser.out.len();
+                let mut start = collapser.out.len();
+                let carried = collapser.pending;
                 collapser.push(&styles[member].transform.apply(&records[member].text));
+                // A collapsed space belongs to the run it was typed in, not the next one,
+                // so a link's underline or a span's strike never starts on it.
+                if carried
+                    && collapser.out[start..].starts_with(' ')
+                    && let Some((_, previous)) = ranges.last_mut()
+                {
+                    previous.end += 1;
+                    start += 1;
+                }
                 ranges.push((member, start..collapser.out.len()));
             }
             Some(Paragraph {
@@ -106,5 +116,40 @@ mod tests {
         }
         assert_eq!(collapser.out, "Hello bold world");
         assert_eq!(ends, [5, 10, 16]);
+    }
+
+    #[test]
+    fn a_collapsed_space_stays_with_the_run_it_was_typed_in() {
+        use crate::scene::paint::Paint;
+        // The decoration under a run spans exactly its own glyphs.
+        let decoration = |render: &str| {
+            let source =
+                crate::session::tests::source(&format!("function render(){{return {render}}}"));
+            let display = crate::ViewSession::new(&source)
+                .unwrap()
+                .layout(400, 200, 1.0)
+                .unwrap();
+            display
+                .commands
+                .iter()
+                .find_map(|p| match p {
+                    Paint::Rect { bounds, .. } if bounds[3] <= 2.0 => Some(bounds[2]),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let alone = decoration("h('text',{},h('link',{onPress(){}},'terms'))");
+        assert_eq!(
+            decoration("h('text',{},'Read the ',h('link',{onPress(){}},'terms'))"),
+            alone
+        );
+        let strike =
+            decoration("h('text',{},h('span',{style:{textDecorationLine:'line-through'}},'sign'))");
+        assert_eq!(
+            decoration(
+                "h('text',{},'before you ',h('span',{style:{textDecorationLine:'line-through'}},'sign'))"
+            ),
+            strike
+        );
     }
 }
