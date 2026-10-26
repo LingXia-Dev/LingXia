@@ -278,6 +278,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     public void resume() {
         nativeGpuActive(true);
         active = true; frozen = false; updateSurfaceVisibility();
+        afterLayout();
+    }
+    /** Sync visibility and any pending reveal once this page is laid out where it shows. */
+    private void afterLayout() {
         if (layoutPending) return;
         layoutPending = true;
         getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
@@ -309,8 +313,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     /** Stay hidden, so the page beneath remains on screen, until the core reveals this page; then run [then]. */
     public void revealOnFirstFrame(Runnable then) {
         revealed = false; revealWaiters.add(then); updateSurfaceVisibility();
-        // Only a surface that still holds this page's frame can be shown stale.
-        if (!destroyed) nativeReveal(host, hasSurfaceFrame);
+        // The incoming page is not laid out yet; its environment is sampled after layout.
+        if (!destroyed && active) afterLayout();
+        else if (!destroyed) nativeReveal(host, hasSurfaceFrame);
     }
     private void reveal() {
         if (revealed) return;
@@ -365,7 +370,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         }
     }
     private void cancel() { if (!destroyed) nativeCancel(host); }
-    private void requestFrame() { if (!destroyed) nativeRequestFrame(host); }
+    /** Sample the environment and present; the core rebuilds the View only when it changed. */
+    private void requestFrame() { if (!destroyed) nativeRedraw(host); }
     public long getConnectionGeneration() { return destroyed ? 0 : nativeConnection(host); }
     public void afterNextPresentation(java.util.function.Consumer<Boolean> callback) { nextPresentation = callback; }
     private void finishPresentation(boolean success) {
@@ -482,6 +488,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     }
     @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
         super.onConfigurationChanged(configuration);
+        // Page switches re-dispatch an unchanged configuration before the incoming page is
+        // laid out; sampling then would describe the previous page's chrome.
+        if (hostConfiguration.diff(configuration) == 0) return;
         if (configuration.screenWidthDp != hostConfiguration.screenWidthDp
                 || configuration.screenHeightDp != hostConfiguration.screenHeightDp) {
             unoccludedWidth = unoccludedHeight = 0;
