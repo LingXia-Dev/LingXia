@@ -8,6 +8,7 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputConnectionWrapper;
 import android.view.inputmethod.InputMethodManager;
+import com.lingxia.ui.generated.GpuFrame;
 import com.lingxia.ui.generated.GpuInput;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -39,7 +40,7 @@ final class GpuIme {
     private InputConnectionWrapper wrapper;
     private JSONObject config;
     /** The core's keyboard configuration for the connected editor (`input.ime`). */
-    private JSONObject ime() { JSONObject ime=config == null ? null : config.optJSONObject("ime"); return ime == null ? new JSONObject() : ime; }
+    private GpuFrame.Ime ime() { GpuFrame.Ime ime=config == null ? null : new GpuFrame.Input(config).ime(); return ime == null ? new GpuFrame.Ime(new JSONObject()) : ime; }
     /** The last presented frame, to find the editor a NEXT/PREVIOUS action moved to. */
     private JSONObject frame;
     private android.app.Dialog picker;
@@ -54,8 +55,8 @@ final class GpuIme {
         manager=(InputMethodManager)view.getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
     }
     static boolean editable(JSONObject node) {
-        JSONObject input=node == null ? null : node.optJSONObject("input");
-        return input != null && input.optBoolean("enabled",true);
+        GpuFrame.Input input=node == null ? null : new GpuFrame.Node(node).input();
+        return input != null && input.enabled();
     }
     private static JSONObject request(String op,String identity,long value) {
         try { return new JSONObject().put("op",op).put("identity",identity).put(op.equals("focus") ? "generation" : "token",value); }
@@ -89,7 +90,7 @@ final class GpuIme {
         if (connection != null && !connection.settled()) return;
         Ticket ticket=capture(); final long serial=++touchSerial;
         JSONObject message;
-        try { message=new JSONObject().put("op","hit_test").put("identity",node.optString("identity"))
+        try { message=new JSONObject().put("op","hit_test").put("identity",identity(node))
             .put("generation",generation).put("point",new JSONArray().put(x).put(y)).put("word",word); }
         catch (org.json.JSONException impossible) { throw new IllegalArgumentException(impossible); }
         host.request(message,reply -> {
@@ -107,7 +108,7 @@ final class GpuIme {
     boolean dragSelection(JSONObject node,long generation,float x,float y,int edgeX,int edgeY,int fixed,boolean collapsed,
             java.util.function.BooleanSupplier valid,Consumer<DragResult> complete) {
         if (!menuActive() || pendingFocus || !connection.settled() || !editable(node)
-            || !connection.identity.equals(node.optString("identity"))) return false;
+            || !connection.identity.equals(identity(node))) return false;
         Ticket ticket=capture(); final long serial=++touchSerial;
         JSONObject message;
         try { message=new JSONObject().put("op","drag_hit_test").put("identity",connection.identity)
@@ -135,8 +136,9 @@ final class GpuIme {
     int accessibilityEdit(JSONObject node,long generation,String text,int start,int end) {
         if (!editable(node)) return EDIT_FAILED;
         if (!caretActive || pendingFocus) return EDIT_NOT_READY;
-        boolean current=connection != null && connection.identity.equals(node.optString("identity"));
-        String value=current ? menuText() : node.optJSONObject("input").optString("value");
+        boolean current=connection != null && connection.identity.equals(identity(node));
+        String value=current ? menuText() : new GpuFrame.Node(node).input().value();
+        if (value == null) value="";
         if (text == null && start == -1 && end == -1) start=end=current ? connection.focus() : value.length();
         if (text != null ? !GpuInputConnection.validText(text)
             : !GpuInputConnection.boundary(value,start) || !GpuInputConnection.boundary(value,end)) return EDIT_FAILED;
@@ -161,7 +163,7 @@ final class GpuIme {
     private void focus(JSONObject node,long generation,int[] selection,Consumer<GpuInputConnection> afterFocus) {
         touchSerial++;
         if (!editable(node)) return;
-        String identity=node.optString("identity");
+        String identity=identity(node);
         if (connection != null && connection.identity.equals(identity)) {
             if (selection != null) connection.selectFromTouch(selection[0],selection[1]);
             view.requestFocus();
@@ -193,42 +195,45 @@ final class GpuIme {
     void presented(JSONObject frame,Ticket ticket) {
         this.frame=frame;
         if (ticket.epoch != epoch || pendingFocus) return;
-        JSONArray nodes=frame.optJSONArray("nodes");
-        JSONObject focused=null;
-        for (int i=0; nodes != null && i<nodes.length(); i++) {
-            JSONObject node=nodes.optJSONObject(i), input=node == null ? null : node.optJSONObject("input");
-            if (input != null && input.optLong("edit_token") > 0 && editable(node)) { focused=node; break; }
+        GpuFrame.Node[] nodes=new GpuFrame.FrameSnapshot(frame).nodes();
+        GpuFrame.Node focused=null;
+        for (int i=0; nodes != null && i<nodes.length; i++) {
+            GpuFrame.Input input=nodes[i].input();
+            Long token=input == null ? null : input.editToken();
+            if (token != null && token > 0 && editable(nodes[i].json)) { focused=nodes[i]; break; }
         }
         if (focused == null) { if (connection != null) drop(true); return; }
-        JSONObject input=focused.optJSONObject("input");
-        if (connection != null && connection.token == input.optLong("edit_token") && connection.identity.equals(focused.optString("identity"))) {
-            if (ticket.connection == connection) connection.acceptFrame(ticket.revision,input.optJSONObject("edit"));
-            String previous=ime().toString();
-            config=input;
+        GpuFrame.Input input=focused.input();
+        long token=input.editToken();
+        GpuFrame.Edit edit=input.edit();
+        JSONObject editState=edit == null ? null : edit.json;
+        if (connection != null && connection.token == token && connection.identity.equals(focused.identity())) {
+            if (ticket.connection == connection) connection.acceptFrame(ticket.revision,editState);
+            String previous=ime().json.toString();
+            config=input.json;
             configure(connection);
-            if (!previous.equals(ime().toString())) manager.restartInput(view);
+            if (!previous.equals(ime().json.toString())) manager.restartInput(view);
             host.editingChanged();
-        } else if (connection != null || (input.optBoolean("raise_keyboard") && input.optLong("edit_token") != blurred)) {
-            activate(focused,input.optLong("edit_token"),input.optJSONObject("edit"));
+        } else if (connection != null || (input.raiseKeyboard() && token != blurred)) {
+            activate(focused.json,token,editState);
         }
     }
     private void configure(GpuInputConnection editor) {
-        JSONObject ime=ime();
-        editor.multiline=ime.optBoolean("multiline");
-        editor.returnInsertsNewline=ime.optBoolean("return_inserts_newline");
-        editor.secure=ime.optBoolean("secure");
-        editor.maxLength=ime.isNull("max_length") ? -1 : ime.optInt("max_length",-1);
+        GpuFrame.Ime ime=ime();
+        editor.multiline=ime.multiline();
+        editor.returnInsertsNewline=ime.returnInsertsNewline();
+        editor.secure=ime.secure();
+        Long maxLength=ime.maxLength();
+        editor.maxLength=maxLength == null ? -1 : maxLength.intValue();
     }
     private String pickerKind() {
-        JSONObject picker=ime().optJSONObject("picker");
-        return picker == null ? "" : picker.optString("kind");
+        GpuFrame.Picker picker=ime().picker();
+        return picker == null || picker.kind() == null ? "" : picker.kind();
     }
     private JSONObject node(String identity) {
-        JSONArray nodes=frame == null ? null : frame.optJSONArray("nodes");
-        for (int i=0; nodes != null && i<nodes.length(); i++) {
-            JSONObject node=nodes.optJSONObject(i);
-            if (node != null && identity.equals(node.optString("identity"))) return node;
-        }
+        GpuFrame.Node[] nodes=frame == null ? null : new GpuFrame.FrameSnapshot(frame).nodes();
+        for (int i=0; nodes != null && i<nodes.length; i++)
+            if (identity.equals(nodes[i].identity())) return nodes[i].json;
         return null;
     }
     private void activate(JSONObject node,long token,JSONObject state) {
@@ -237,9 +242,10 @@ final class GpuIme {
     private void activate(JSONObject node,long token,JSONObject state,Consumer<GpuInputConnection> initialize) {
         if (state == null || token <= 0) return;
         drop(false);
-        config=node.optJSONObject("input");
+        GpuFrame.Input input=new GpuFrame.Node(node).input();
+        config=input == null ? null : input.json;
         final long created=epoch;
-        connection=new GpuInputConnection(view,node.optString("identity"),token,state,new GpuInputConnection.Sink() {
+        connection=new GpuInputConnection(view,identity(node),token,state,new GpuInputConnection.Sink() {
             @Override public void send(long revision,JSONArray edits,boolean submit) {
                 final GpuInputConnection current=connection;
                 JSONObject message=request("edit",current.identity,current.token);
@@ -262,7 +268,7 @@ final class GpuIme {
                     if (current.acknowledge(revision,reply.optJSONObject("state"))) {
                         invalidateWrapper(); manager.restartInput(view);
                     }
-                    if (submit && ime().optBoolean("hide_on_submit")) manager.hideSoftInputFromWindow(view.getWindowToken(),0);
+                    if (submit && ime().hideOnSubmit()) manager.hideSoftInputFromWindow(view.getWindowToken(),0);
                     host.render(reply.optBoolean("needs_view_render"));
                 });
             }
@@ -331,8 +337,9 @@ final class GpuIme {
         }
     }
     /** EditorInfo input type for the core's keyboard configuration. */
-    static int inputType(JSONObject ime) {
-        String keyboard=ime.optString("keyboard"); boolean secure=ime.optBoolean("secure");
+    static int inputType(GpuFrame.Ime ime) {
+        if (ime == null) ime=new GpuFrame.Ime(new JSONObject());
+        String keyboard=ime.keyboard() == null ? "" : ime.keyboard(); boolean secure=ime.secure();
         int type;
         switch (keyboard) {
             case "number": type=secure ? InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_VARIATION_PASSWORD
@@ -342,23 +349,23 @@ final class GpuIme {
             default: type=InputType.TYPE_CLASS_TEXT|(secure ? InputType.TYPE_TEXT_VARIATION_PASSWORD : 0); break;
         }
         if ((type & InputType.TYPE_MASK_CLASS) != InputType.TYPE_CLASS_TEXT) return type;
-        switch (ime.optString("capitalize")) {
+        switch (ime.capitalize() == null ? "" : ime.capitalize()) {
             case "sentences": type|=InputType.TYPE_TEXT_FLAG_CAP_SENTENCES; break;
             case "words": type|=InputType.TYPE_TEXT_FLAG_CAP_WORDS; break;
             case "characters": type|=InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS; break;
             default: break;
         }
-        if (!ime.optBoolean("suggestions",true)) type|=InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
-        if (ime.optBoolean("multiline")) type|=InputType.TYPE_TEXT_FLAG_MULTI_LINE;
+        if (!suggestions(ime)) type|=InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+        if (ime.multiline()) type|=InputType.TYPE_TEXT_FLAG_MULTI_LINE;
         return type;
     }
     InputConnection create(EditorInfo info) {
         // A picker editor takes its value from a dialog, never a keyboard.
         if (connection == null || !pickerKind().isEmpty()) return null;
-        JSONObject ime=ime();
+        GpuFrame.Ime ime=ime();
         info.inputType=inputType(ime);
-        info.imeOptions=EditorInfo.IME_FLAG_NO_EXTRACT_UI | action(ime.optString("return_key"));
-        if (!ime.optBoolean("suggestions",true) && android.os.Build.VERSION.SDK_INT >= 26) info.imeOptions|=EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING;
+        info.imeOptions=EditorInfo.IME_FLAG_NO_EXTRACT_UI | action(ime.returnKey() == null ? "" : ime.returnKey());
+        if (!suggestions(ime) && android.os.Build.VERSION.SDK_INT >= 26) info.imeOptions|=EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING;
         info.initialSelStart=connection.anchor(); info.initialSelEnd=connection.focus();
         // Android may close an old wrapper after asking for its replacement.
         invalidateWrapper();
@@ -375,8 +382,9 @@ final class GpuIme {
         // Pages are built on the application context; dialogs need the window's.
         Context context=view.isAttachedToWindow() ? view.getRootView().getContext() : view.getContext();
         // The core seeds the dialog and bounds it, as [year, month, day] or [hour, minute, 0].
-        JSONObject spec=ime().optJSONObject("picker");
-        int[] seed=parts(spec,"seed"), low=parts(spec,"min_parts"), high=parts(spec,"max_parts");
+        GpuFrame.Picker spec=ime().picker();
+        int[] seed=parts(spec == null ? null : spec.seed()), low=parts(spec == null ? null : spec.minParts()),
+            high=parts(spec == null ? null : spec.maxParts());
         java.util.Calendar now=java.util.Calendar.getInstance();
         boolean[] chosen={false};
         android.app.Dialog dialog;
@@ -415,10 +423,12 @@ final class GpuIme {
             else host.render(reply.optBoolean("needs_view_render"));
         });
     }
-    private static int[] parts(JSONObject spec,String key) {
-        JSONArray value=spec == null ? null : spec.optJSONArray(key);
-        return value == null || value.length() != 3 ? null : new int[]{value.optInt(0),value.optInt(1),value.optInt(2)};
+    private static int[] parts(long[] value) {
+        return value == null || value.length != 3 ? null : new int[]{(int)value[0],(int)value[1],(int)value[2]};
     }
+    /** An editor offers suggestions unless the core turns them off; a missing config keeps them. */
+    private static boolean suggestions(GpuFrame.Ime ime) { return ime.json.length() == 0 || ime.suggestions(); }
+    private static String identity(JSONObject node) { return String.valueOf(new GpuFrame.Node(node).identity()); }
     private static long millis(int[] date) {
         java.util.Calendar day=java.util.Calendar.getInstance();
         day.clear(); day.set(date[0],date[1]-1,date[2]);

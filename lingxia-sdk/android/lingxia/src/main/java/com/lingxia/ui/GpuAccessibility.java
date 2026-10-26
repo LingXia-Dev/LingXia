@@ -4,6 +4,7 @@ import android.graphics.Rect;
 import android.os.Build;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
+import com.lingxia.ui.generated.GpuFrame;
 import com.lingxia.ui.generated.GpuSemantics;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -39,77 +40,83 @@ final class GpuAccessibility {
     }
 
     static boolean hasAction(JSONObject node, String kind) {
-        JSONArray actions = node.optJSONArray("actions");
-        for (int i = 0; actions != null && i < actions.length(); i++)
-            if (kind.equals(actions.optJSONObject(i).optString("kind"))) return true;
+        GpuFrame.SemanticAction[] actions = new GpuFrame.SemanticNode(node).actions();
+        for (int i = 0; actions != null && i < actions.length; i++)
+            if (kind.equals(actions[i].kind())) return true;
         return false;
     }
 
-    static Rect pixels(JSONArray bounds, float scale) {
-        if (bounds == null) return new Rect();
-        return new Rect((int)(bounds.optDouble(0) * scale), (int)(bounds.optDouble(1) * scale),
-            (int)((bounds.optDouble(0) + bounds.optDouble(2)) * scale), (int)((bounds.optDouble(1) + bounds.optDouble(3)) * scale));
+    static Rect pixels(float[] bounds, float scale) {
+        if (bounds == null || bounds.length < 4) return new Rect();
+        return new Rect((int)(bounds[0] * scale), (int)(bounds[1] * scale),
+            (int)((bounds[0] + bounds[2]) * scale), (int)((bounds[1] + bounds[3]) * scale));
     }
 
+    private static String text(String value) { return value == null ? "" : value; }
+
     /** Populate `info` for `node`; `parent` is the containing group's projection, if any. */
-    static void populate(AccessibilityNodeInfo info, View host, JSONObject node, JSONObject parent, float scale,
+    static void populate(AccessibilityNodeInfo info, View host, JSONObject json, JSONObject parentJson, float scale,
             boolean accessibilityFocused, String packageName) {
-        String role = node.optString("role");
+        GpuFrame.SemanticNode node = new GpuFrame.SemanticNode(json);
+        String role = text(node.role());
         info.setPackageName(packageName);
         info.setClassName(className(role));
-        info.setText(node.optString("text"));
+        info.setText(text(node.text()));
         // TalkBack speaks this in place of the class role; a link has no widget class of its own.
         if (GpuSemantics.ROLE_LINK.equals(role))
             info.getExtras().putCharSequence(ROLE_DESCRIPTION, host.getContext().getString(com.lingxia.lxapp.R.string.lx_gpu_a11y_link));
-        String name = node.optString("name");
+        String name = text(node.name());
         // Android has no busy state; the spoken name carries it.
-        if (node.optBoolean(GpuSemantics.KEY_BUSY)) {
+        if (Boolean.TRUE.equals(node.busy())) {
             String busy = host.getContext().getString(com.lingxia.lxapp.R.string.lx_gpu_a11y_busy);
-            String spoken = name.isEmpty() ? node.optString("text") : name;
+            String spoken = name.isEmpty() ? text(node.text()) : name;
             name = spoken.isEmpty() ? busy : spoken + ", " + busy;
         }
-        if (!name.isEmpty() && !name.equals(node.optString("text"))) info.setContentDescription(name);
-        info.setVisibleToUser(node.optBoolean("visible"));
+        if (!name.isEmpty() && !name.equals(text(node.text()))) info.setContentDescription(name);
+        info.setVisibleToUser(node.visible());
         if (Build.VERSION.SDK_INT >= 24) info.setImportantForAccessibility(true);
-        String testId = node.optString("test_id");
+        String testId = text(node.testId());
         if (!testId.isEmpty()) info.setViewIdResourceName(packageName + ":id/" + testId);
-        info.setEnabled(node.optBoolean("enabled"));
-        info.setFocusable(node.optBoolean("focusable"));
-        info.setClickable(node.optBoolean("clickable"));
-        info.setFocused(node.optBoolean("focused"));
-        if (!node.isNull("checked") && node.has("checked")) { info.setCheckable(true); info.setChecked(node.optBoolean("checked")); }
+        info.setEnabled(node.enabled());
+        info.setFocusable(node.focusable());
+        info.setClickable(node.clickable());
+        info.setFocused(node.focused());
+        Boolean checked = node.checked(), pressed = node.pressed(), selectedState = node.selected(), expanded = node.expanded();
+        if (checked != null) { info.setCheckable(true); info.setChecked(checked); }
         // A toggle button reads as checkable, the closest Android state to aria-pressed.
-        else if (node.has(GpuSemantics.KEY_PRESSED)) { info.setCheckable(true); info.setChecked(node.optBoolean(GpuSemantics.KEY_PRESSED)); }
-        if (node.has(GpuSemantics.KEY_SELECTED)) info.setSelected(node.optBoolean(GpuSemantics.KEY_SELECTED));
+        else if (pressed != null) { info.setCheckable(true); info.setChecked(pressed); }
+        if (selectedState != null) info.setSelected(selectedState);
         // Expanding is a click on the disclosure control; TalkBack announces the state from the action.
-        if (node.has(GpuSemantics.KEY_EXPANDED) && node.optBoolean("clickable"))
-            info.addAction(node.optBoolean(GpuSemantics.KEY_EXPANDED) ? AccessibilityNodeInfo.ACTION_COLLAPSE : AccessibilityNodeInfo.ACTION_EXPAND);
-        info.setScrollable(node.optBoolean("scrollable") || node.has(GpuSemantics.KEY_SCROLL));
-        JSONObject range = node.optJSONObject("range");
+        if (expanded != null && node.clickable())
+            info.addAction(expanded ? AccessibilityNodeInfo.ACTION_COLLAPSE : AccessibilityNodeInfo.ACTION_EXPAND);
+        info.setScrollable(node.scrollable() || node.scroll() != null);
+        GpuFrame.SemanticRange range = node.range();
         if (range != null) info.setRangeInfo(AccessibilityNodeInfo.RangeInfo.obtain(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_FLOAT,
-            (float)range.optDouble("min"), (float)range.optDouble("max"), (float)range.optDouble("value")));
-        JSONObject field = node.optJSONObject("text_field");
+            (float)range.min(), (float)range.max(), (float)range.value()));
+        GpuFrame.TextField field = node.textField();
         if (field != null) {
-            info.setText(field.optString("text"));
+            info.setText(text(field.text()));
             info.setEditable(true);
-            info.setPassword(field.optBoolean("secure"));
-            info.setMultiLine(field.optBoolean("multiline"));
-            JSONArray selection = field.optJSONArray("selection");
-            info.setTextSelection(selection == null ? -1 : selection.optInt(0, -1), selection == null ? -1 : selection.optInt(1, -1));
-            if (Build.VERSION.SDK_INT >= 26) { info.setHintText(field.optString("hint")); info.setShowingHintText(false); }
+            info.setPassword(field.secure());
+            info.setMultiLine(field.multiline());
+            long[] selection = field.selection();
+            info.setTextSelection(selection == null || selection.length < 2 ? -1 : (int)selection[0],
+                selection == null || selection.length < 2 ? -1 : (int)selection[1]);
+            if (Build.VERSION.SDK_INT >= 26) { info.setHintText(text(field.hint())); info.setShowingHintText(false); }
         }
-        JSONArray selected = node.optJSONArray(GpuSemantics.KEY_TEXT_SELECTION);
-        if (field == null && selected != null) info.setTextSelection(selected.optInt(0), selected.optInt(1));
-        JSONArray position = node.optJSONArray(GpuSemantics.KEY_POSITION);
+        long[] selected = node.textSelection();
+        if (field == null && selected != null && selected.length >= 2) info.setTextSelection((int)selected[0], (int)selected[1]);
+        long[] position = node.position();
+        if (position != null && position.length < 2) position = null;
         if (position != null && GpuSemantics.ROLE_RADIO_GROUP.equals(role)) {
-            info.setCollectionInfo(AccessibilityNodeInfo.CollectionInfo.obtain(position.optInt(1), 1, false,
+            info.setCollectionInfo(AccessibilityNodeInfo.CollectionInfo.obtain((int)position[1], 1, false,
                 AccessibilityNodeInfo.CollectionInfo.SELECTION_MODE_SINGLE));
         } else if (position != null && GpuSemantics.ROLE_RADIO_BUTTON.equals(role)) {
-            info.setCollectionItemInfo(AccessibilityNodeInfo.CollectionItemInfo.obtain(position.optInt(0), 1, 0, 1, false, node.optBoolean("checked")));
+            info.setCollectionItemInfo(AccessibilityNodeInfo.CollectionItemInfo.obtain((int)position[0], 1, 0, 1, false, Boolean.TRUE.equals(checked)));
         } else if (position != null && GpuSemantics.ROLE_LIST.equals(role)) {
-            info.setCollectionInfo(AccessibilityNodeInfo.CollectionInfo.obtain(position.optInt(1), 1, false));
+            info.setCollectionInfo(AccessibilityNodeInfo.CollectionInfo.obtain((int)position[1], 1, false));
         } else if (position != null && GpuSemantics.ROLE_LIST_ITEM.equals(role)) {
-            info.setCollectionItemInfo(AccessibilityNodeInfo.CollectionItemInfo.obtain(position.optInt(0), 1, 0, 1, false));
+            info.setCollectionItemInfo(AccessibilityNodeInfo.CollectionItemInfo.obtain((int)position[0], 1, 0, 1, false));
         }
         if (GpuSemantics.ROLE_HEADING.equals(role)) {
             if (Build.VERSION.SDK_INT >= 28) info.setHeading(true);
@@ -118,42 +125,45 @@ final class GpuAccessibility {
         if (GpuSemantics.ROLE_DIALOG.equals(role)) {
             if (Build.VERSION.SDK_INT >= 28 && !name.isEmpty()) info.setPaneTitle(name);
         }
-        String live = node.optString(GpuSemantics.KEY_LIVE_REGION);
+        String live = node.liveRegion();
         if (GpuSemantics.LIVE_POLITE.equals(live)) info.setLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         else if (GpuSemantics.LIVE_ASSERTIVE.equals(live)) info.setLiveRegion(View.ACCESSIBILITY_LIVE_REGION_ASSERTIVE);
-        JSONArray actions = node.optJSONArray("actions");
-        for (int i = 0; actions != null && i < actions.length(); i++) {
-            JSONObject action = actions.optJSONObject(i);
-            switch (action.optString("kind")) {
-                case "click": info.addAction(AccessibilityNodeInfo.ACTION_CLICK); break;
-                case "scroll-forward": info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); break;
-                case "scroll-backward": info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD); break;
-                case "set-text": info.addAction(AccessibilityNodeInfo.ACTION_SET_TEXT); break;
-                case "set-selection": info.addAction(AccessibilityNodeInfo.ACTION_SET_SELECTION); break;
-                case GpuSemantics.ACTION_COPY: info.addAction(AccessibilityNodeInfo.ACTION_COPY); break;
-                case "set-progress":
+        GpuFrame.SemanticAction[] actions = node.actions();
+        for (int i = 0; actions != null && i < actions.length; i++) {
+            GpuFrame.SemanticAction action = actions[i];
+            switch (text(action.kind())) {
+                case GpuFrame.SEMANTIC_ACTION_CLICK: info.addAction(AccessibilityNodeInfo.ACTION_CLICK); break;
+                case GpuFrame.SEMANTIC_ACTION_SCROLL_FORWARD: info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); break;
+                case GpuFrame.SEMANTIC_ACTION_SCROLL_BACKWARD: info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD); break;
+                case GpuFrame.SEMANTIC_ACTION_SET_TEXT: info.addAction(AccessibilityNodeInfo.ACTION_SET_TEXT); break;
+                case GpuFrame.SEMANTIC_ACTION_SET_SELECTION: info.addAction(AccessibilityNodeInfo.ACTION_SET_SELECTION); break;
+                case GpuFrame.SEMANTIC_ACTION_COPY: info.addAction(AccessibilityNodeInfo.ACTION_COPY); break;
+                case GpuFrame.SEMANTIC_ACTION_SET_PROGRESS:
                     if (Build.VERSION.SDK_INT >= 24) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS);
                     break;
-                case "clear-selection": info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLEAR_SELECTION); break;
-                case "select-item":
-                    info.addAction(new AccessibilityNodeInfo.AccessibilityAction(SELECT_ITEM + action.optInt("index"), action.optString("label")));
+                case GpuFrame.SEMANTIC_ACTION_CLEAR_SELECTION: info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLEAR_SELECTION); break;
+                case GpuFrame.SEMANTIC_ACTION_SELECT_ITEM: {
+                    Long index = action.index();
+                    info.addAction(new AccessibilityNodeInfo.AccessibilityAction(SELECT_ITEM + (index == null ? 0 : index.intValue()), action.label()));
                     break;
-                case "show-on-screen": info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN); break;
+                }
+                case GpuFrame.SEMANTIC_ACTION_SHOW_ON_SCREEN: info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN); break;
                 default: break;
             }
         }
         info.setAccessibilityFocused(accessibilityFocused);
         info.addAction(accessibilityFocused ? AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS : AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS);
-        Rect rect = pixels(node.optJSONArray("bounds"), scale), relative = new Rect(rect);
-        if (parent != null) {
-            Rect group = pixels(parent.optJSONArray("bounds"), scale);
+        Rect rect = pixels(node.bounds(), scale), relative = new Rect(rect);
+        if (parentJson != null) {
+            GpuFrame.SemanticNode parent = new GpuFrame.SemanticNode(parentJson);
+            Rect group = pixels(parent.bounds(), scale);
             relative.offset(-group.left, -group.top);
-            info.setParent(host, parent.optInt("id"));
+            info.setParent(host, (int) parent.id());
         } else {
             info.setParent(host);
         }
-        JSONArray children = node.optJSONArray("children");
-        for (int i = 0; children != null && i < children.length(); i++) info.addChild(host, children.optInt(i));
+        long[] children = node.children();
+        for (int i = 0; children != null && i < children.length; i++) info.addChild(host, (int) children[i]);
         info.setBoundsInParent(relative);
         int[] location = new int[2]; host.getLocationOnScreen(location); rect.offset(location[0], location[1]);
         info.setBoundsInScreen(rect);

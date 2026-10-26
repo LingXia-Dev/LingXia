@@ -19,6 +19,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.FrameLayout;
 import android.widget.TextView;
+import com.lingxia.ui.generated.GpuFrame;
 import com.lingxia.ui.generated.GpuInput;
 import com.lingxia.ui.generated.GpuSemantics;
 import org.json.JSONArray;
@@ -125,6 +126,15 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private boolean hasSurfaceFrame;
     // The presented frame as JSON, for the input method and its chrome.
     private JSONObject snapshot;
+    private JSONObject decodedFor;
+    private GpuFrame.FrameSnapshot decoded;
+    private GpuFrame.Node[] decodedNodes;
+    /** Typed view of the current frame snapshot, decoded once per frame. */
+    private GpuFrame.FrameSnapshot frame() {
+        if (decodedFor != snapshot) { decodedFor = snapshot; decoded = new GpuFrame.FrameSnapshot(snapshot); decodedNodes = decoded.nodes(); }
+        return decoded;
+    }
+    private GpuFrame.Node[] frameNodes() { frame(); return decodedNodes; }
     private String snapshotText;
     private float frameScale;
     // Bumped when the surface is replaced; a capture only completes against its own surface.
@@ -188,9 +198,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 if (autofill == null) return;
                 if (autofilled >= 0) { autofill.notifyViewExited(surface, autofilled); autofilled = -1; }
                 JSONObject node = null;
-                JSONArray nodes = identity == null || snapshot == null ? null : snapshot.optJSONArray("nodes");
-                for (int i = 0; nodes != null && i < nodes.length(); i++)
-                    if (identity.equals(nodes.optJSONObject(i).optString("identity"))) node = nodes.optJSONObject(i);
+                GpuFrame.Node[] nodes = identity == null || snapshot == null ? null : frameNodes();
+                for (int i = 0; nodes != null && i < nodes.length; i++)
+                    if (identity.equals(nodes[i].identity())) node = nodes[i].json;
                 if (node == null) return;
                 autofilled = surface.autofillId(node);
                 Rect bounds = surface.bounds(node);
@@ -463,9 +473,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         bootstrapMessage = new TextView(getContext());
         bootstrapMessage.setText(com.lingxia.lxapp.R.string.lx_gpu_bootstrap_overdue);
         // The core picks the notice colours for the page's theme; before any frame, the light pair.
-        JSONObject style = snapshot == null ? null : snapshot.optJSONObject("feedback");
-        bootstrapMessage.setTextColor(style == null ? android.graphics.Color.BLACK : (int)style.optLong("noticeText"));
-        bootstrapMessage.setBackgroundColor(style == null ? android.graphics.Color.WHITE : (int)style.optLong("noticeBackground"));
+        GpuFrame.FeedbackStyle style = snapshot == null ? null : frame().feedback();
+        bootstrapMessage.setTextColor(style == null ? android.graphics.Color.BLACK : (int)style.noticeText());
+        bootstrapMessage.setBackgroundColor(style == null ? android.graphics.Color.WHITE : (int)style.noticeBackground());
         int padding = Math.round(16 * getResources().getDisplayMetrics().density);
         bootstrapMessage.setPadding(padding, padding, padding, padding);
         bootstrapMessage.setClickable(true);
@@ -775,7 +785,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public int editText(int index, String text, int start, int end) {
             JSONObject node = surface.node(index);
             if (node == null || snapshot == null) return GpuIme.EDIT_FAILED;
-            return ime.accessibilityEdit(node, snapshot.optLong("generation"), text, start, end);
+            return ime.accessibilityEdit(node, GpuView.this.frame().generation(), text, start, end);
         }
         @Override public void loaded() { if (listener != null) listener.onLoaded(); }
         @Override public void presented() {
@@ -794,7 +804,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public void openPicker(int index) {
             JSONObject node = surface.node(index);
             if (destroyed || node == null || snapshot == null) return;
-            picker.show(node, snapshot.optLong("generation"), surface.bounds(node));
+            picker.show(node, GpuView.this.frame().generation(), surface.bounds(node));
         }
         @Override public void textMenu(String menu) {
             if (destroyed) return;
@@ -856,48 +866,45 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             focusOverlay.setColor(Color.TRANSPARENT);
         }
         JSONObject node(int index) {
-            JSONArray nodes = snapshot == null ? null : snapshot.optJSONArray("nodes");
-            return nodes == null ? null : nodes.optJSONObject(index);
+            GpuFrame.Node[] nodes = snapshot == null ? null : frameNodes();
+            return nodes == null || index < 0 || index >= nodes.length ? null : nodes[index].json;
         }
         /** Autofill addresses an editor by a virtual id stable across frames. */
-        int autofillId(JSONObject node) { return node.optString("identity").hashCode() & 0x7fffffff; }
+        int autofillId(JSONObject node) { return String.valueOf(new GpuFrame.Node(node).identity()).hashCode() & 0x7fffffff; }
         JSONObject editor(int autofillId) {
-            JSONArray nodes = snapshot == null ? null : snapshot.optJSONArray("nodes");
-            for (int i = 0; nodes != null && i < nodes.length(); i++) {
-                JSONObject node = nodes.optJSONObject(i);
-                if (node != null && node.optJSONObject("input") != null && autofillId(node) == autofillId) return node;
-            }
+            GpuFrame.Node[] nodes = snapshot == null ? null : frameNodes();
+            for (int i = 0; nodes != null && i < nodes.length; i++)
+                if (nodes[i].input() != null && autofillId(nodes[i].json) == autofillId) return nodes[i].json;
             return null;
         }
         @Override public void onProvideAutofillVirtualStructure(android.view.ViewStructure structure, int flags) {
             if (android.os.Build.VERSION.SDK_INT < 26) return;
             structure.setClassName(getClass().getName());
-            JSONArray nodes = snapshot == null || !active ? null : snapshot.optJSONArray("nodes");
+            GpuFrame.Node[] nodes = snapshot == null || !active ? null : frameNodes();
             java.util.List<JSONObject> editors = new java.util.ArrayList<>();
-            for (int i = 0; nodes != null && i < nodes.length(); i++) {
-                JSONObject node = nodes.optJSONObject(i);
-                if (GpuIme.editable(node)) editors.add(node);
-            }
+            for (int i = 0; nodes != null && i < nodes.length; i++)
+                if (GpuIme.editable(nodes[i].json)) editors.add(nodes[i].json);
             int index = structure.addChildCount(editors.size());
             for (JSONObject node : editors) {
-                JSONObject input = node.optJSONObject("input");
+                GpuFrame.Input input = new GpuFrame.Node(node).input();
                 android.view.ViewStructure child = structure.newChild(index++);
                 child.setAutofillId(structure.getAutofillId(), autofillId(node));
                 child.setClassName("android.widget.EditText");
                 child.setAutofillType(View.AUTOFILL_TYPE_TEXT);
-                JSONObject edit = input.optJSONObject("edit");
-                String value = edit != null ? edit.optString("text") : input.optString("value");
+                GpuFrame.Edit edit = input.edit();
+                String value = edit != null ? edit.text() : input.value();
+                if (value == null) value = "";
                 child.setAutofillValue(android.view.autofill.AutofillValue.forText(value));
-                JSONObject ime = input.optJSONObject("ime") == null ? new JSONObject() : input.optJSONObject("ime");
-                String hint = ime.isNull("auto_complete") ? null : GpuInput.autofillHint(ime.optString("auto_complete"));
+                GpuFrame.Ime ime = input.ime();
+                String hint = ime == null || ime.autoComplete() == null ? null : GpuInput.autofillHint(ime.autoComplete());
                 if (hint != null) child.setAutofillHints(new String[]{hint});
                 child.setInputType(GpuIme.inputType(ime));
-                child.setHint(input.optString("placeholder"));
+                child.setHint(input.placeholder());
                 child.setDataIsSensitive(!value.isEmpty());
                 Rect rect = bounds(node);
                 child.setDimens(rect.left, rect.top, 0, 0, rect.width(), rect.height());
                 child.setVisibility(View.VISIBLE);
-                child.setEnabled(input.optBoolean("enabled", true));
+                child.setEnabled(input.enabled());
             }
         }
         @Override public void autofill(android.util.SparseArray<android.view.autofill.AutofillValue> values) {
@@ -906,23 +913,23 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 android.view.autofill.AutofillValue value = values.valueAt(i);
                 JSONObject node = editor(values.keyAt(i));
                 if (node != null && value != null && value.isText())
-                    ime.accessibilityEdit(node, snapshot.optLong("generation"), value.getTextValue().toString(), -1, -1);
+                    ime.accessibilityEdit(node, frame().generation(), value.getTextValue().toString(), -1, -1);
             }
         }
         Rect bounds(JSONObject node) {
-            JSONArray b = node.optJSONArray("visible_bounds");
-            if (b == null) b = node.optJSONArray("bounds");
-            return GpuAccessibility.pixels(b, frameScale);
+            GpuFrame.Node n = new GpuFrame.Node(node);
+            float[] b = n.visibleBounds();
+            return GpuAccessibility.pixels(b != null ? b : n.bounds(), frameScale);
         }
         /** The frame's `feedback` style, chosen by the core for the page's theme. */
-        private JSONObject feedbackStyle() {
-            JSONObject style = snapshot == null ? null : snapshot.optJSONObject("feedback");
-            return style == null ? new JSONObject() : style;
+        private GpuFrame.FeedbackStyle feedbackStyle() {
+            GpuFrame.FeedbackStyle style = snapshot == null ? null : frame().feedback();
+            return style == null ? new GpuFrame.FeedbackStyle(new JSONObject()) : style;
         }
         void showPress(int index) {
             JSONObject node = node(index);
             if (node == null) return;
-            pressedOverlay.setColor((int)feedbackStyle().optLong("pressOverlay"));
+            pressedOverlay.setColor((int)feedbackStyle().pressOverlay());
             pressedOverlay.setNode(node, frameScale);
             feedback.getOverlay().remove(pressedOverlay);
             feedback.getOverlay().add(pressedOverlay);
@@ -932,9 +939,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             JSONObject node = node(index);
             if (node == null) return;
             focusOverlay.setNode(node, frameScale);
-            JSONObject style = feedbackStyle();
-            focusOverlay.setStroke(Math.max(1, Math.round((float)style.optDouble("focusRingWidth", 2) * frameScale)),
-                (int)style.optLong("focusRing"));
+            GpuFrame.FeedbackStyle style = feedbackStyle();
+            focusOverlay.setStroke(Math.max(1, Math.round(style.focusRingWidth() * frameScale)), (int)style.focusRing());
             feedback.getOverlay().remove(focusOverlay);
             feedback.getOverlay().add(focusOverlay);
         }
@@ -1091,15 +1097,17 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                     }
                     JSONObject node = semantic(id);
                     if (node == null) return null;
-                    JSONObject parent = node.isNull("parent") ? null : semantic(node.optInt("parent"));
+                    GpuFrame.SemanticNode semanticNode = new GpuFrame.SemanticNode(node);
+                    Long parentId = semanticNode.parent();
+                    JSONObject parent = parentId == null ? null : semantic(parentId.intValue());
                     JSONObject roots = roots();
                     boolean focused = roots != null && !roots.isNull("accessibilityFocus") && roots.optInt("accessibilityFocus") == id;
                     AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain();
                     info.setSource(UiSurface.this, id);
                     GpuAccessibility.populate(info, UiSurface.this, node, parent, frameScale, focused, getContext().getPackageName());
-                    if (GpuSemantics.ROLE_COMBO_BOX.equals(node.optString("role"))) {
-                        JSONObject box = node(node.optInt("index"));
-                        boolean open = box != null && pickerOpen != null && pickerOpen.equals(box.optString("identity"));
+                    if (GpuSemantics.ROLE_COMBO_BOX.equals(semanticNode.role())) {
+                        JSONObject box = node((int) semanticNode.index());
+                        boolean open = box != null && pickerOpen != null && pickerOpen.equals(new GpuFrame.Node(box).identity());
                         info.addAction(open ? AccessibilityNodeInfo.ACTION_COLLAPSE : AccessibilityNodeInfo.ACTION_EXPAND);
                     }
                     if (!active) info.setVisibleToUser(false);

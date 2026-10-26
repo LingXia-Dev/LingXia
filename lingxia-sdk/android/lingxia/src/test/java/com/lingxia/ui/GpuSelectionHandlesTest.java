@@ -35,7 +35,7 @@ public class GpuSelectionHandlesTest {
         void present(int anchor,int focus,double ax,double fx) throws Exception {
             JSONObject geometry=new JSONObject().put("anchor",new JSONArray(new double[]{ax,15,1.5,20}))
                 .put("caret",new JSONArray(new double[]{fx,15,1.5,20})).put("content_bounds",new JSONArray(new int[]{10,10,100,40}));
-            JSONObject input=new JSONObject().put("edit_token",7).put("edit",state(anchor,focus)).put("geometry",geometry).put("raise_keyboard",true);
+            JSONObject input=new JSONObject().put("enabled",true).put("edit_token",7).put("edit",state(anchor,focus)).put("geometry",geometry).put("raise_keyboard",true);
             JSONObject node=new JSONObject().put("identity","editor").put("tag","input").put("input",input)
                 .put("bounds",new JSONArray(new int[]{0,0,120,70})).put("visible_bounds",new JSONArray(new int[]{0,0,120,70}));
             frame=new JSONObject().put("generation",frame==null ? 1 : frame.optLong("generation")+1).put("nodes",new JSONArray().put(node));

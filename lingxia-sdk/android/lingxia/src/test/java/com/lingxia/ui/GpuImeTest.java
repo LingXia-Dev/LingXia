@@ -296,7 +296,7 @@ public class GpuImeTest {
         assertTrue(input.commitText("e",1));
         assertEquals("abc",input.getTextBeforeCursor(10,0));
         assertEquals(android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD,
-            GpuIme.inputType(ime().put("secure",true)) & android.text.InputType.TYPE_MASK_VARIATION);
+            GpuIme.inputType(new com.lingxia.ui.generated.GpuFrame.Ime(ime().put("secure",true))) & android.text.InputType.TYPE_MASK_VARIATION);
         for (String key : new String[]{"done","go","previous","search","send"}) assertTrue(key,GpuIme.action(key) != EditorInfo.IME_ACTION_NONE);
         assertEquals(EditorInfo.IME_ACTION_NONE,GpuIme.action("newline"));
     }

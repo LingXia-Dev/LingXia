@@ -4,6 +4,7 @@ import android.graphics.*;
 import android.graphics.drawable.Drawable;
 import android.view.MotionEvent;
 import android.view.View;
+import com.lingxia.ui.generated.GpuFrame;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -28,11 +29,9 @@ final class GpuStaticSelection extends Drawable {
     /** The node carrying a static-text selection in the presented frame, or null. */
     JSONObject node() {
         JSONObject frame = host.frame();
-        JSONArray nodes = frame == null ? null : frame.optJSONArray("nodes");
-        for (int i = 0; nodes != null && i < nodes.length(); i++) {
-            JSONObject node = nodes.optJSONObject(i);
-            if (node != null && node.optJSONObject("input") == null && node.optJSONObject("text_selection") != null) return node;
-        }
+        GpuFrame.Node[] nodes = frame == null ? null : new GpuFrame.FrameSnapshot(frame).nodes();
+        for (int i = 0; nodes != null && i < nodes.length; i++)
+            if (nodes[i].input() == null && nodes[i].textSelection() != null) return nodes[i].json;
         return null;
     }
     boolean dragging() { return dragging != null; }
@@ -58,7 +57,7 @@ final class GpuStaticSelection extends Drawable {
             float scale = host.scale(), x = event.getX() / scale, y = event.getY() / scale;
             float[] hit = GpuView.nativeHandleHit(node.toString(), x, y, false);
             if (hit == null) return false;
-            dragging = node.optString("identity"); which = (int)hit[0]; pointer = event.getPointerId(0);
+            dragging = new GpuFrame.Node(node).identity(); which = (int)hit[0]; pointer = event.getPointerId(0);
             dx = x - hit[1]; dy = y - hit[3];
             host.dragging(true);
             return true;

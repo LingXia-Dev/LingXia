@@ -9,6 +9,7 @@ import android.widget.ArrayAdapter;
 import android.widget.ListPopupWindow;
 import android.widget.TextView;
 import java.util.function.Consumer;
+import com.lingxia.ui.generated.GpuFrame;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -33,18 +34,19 @@ final class GpuPicker {
     /** Open for `node` (a frame node with `select`), drawn for frame `generation` at `scale`. */
     void show(JSONObject node, long generation, Rect bounds) {
         dismiss();
-        JSONObject select = node.optJSONObject("select");
-        JSONArray options = select == null ? null : select.optJSONArray("options");
-        if (options == null || options.length() == 0) return;
-        String identity = node.optString("identity");
-        String[] labels = new String[options.length()];
-        boolean[] enabled = new boolean[options.length()];
+        GpuFrame.Node frameNode = new GpuFrame.Node(node);
+        GpuFrame.Select select = frameNode.select();
+        GpuFrame.SelectOption[] options = select == null ? null : select.options();
+        if (options == null || options.length == 0) return;
+        String identity = frameNode.identity();
+        String[] labels = new String[options.length];
+        boolean[] enabled = new boolean[options.length];
         for (int i = 0; i < labels.length; i++) {
-            JSONObject option = options.optJSONObject(i);
-            labels[i] = option == null ? "" : option.optString("label");
-            enabled[i] = option != null && option.optBoolean("enabled", true);
+            labels[i] = options[i] == null || options[i].label() == null ? "" : options[i].label();
+            enabled[i] = options[i] != null && options[i].enabled();
         }
-        int selected = select.isNull("selected") ? -1 : select.optInt("selected", -1);
+        Long chosen = select.selected();
+        int selected = chosen == null ? -1 : chosen.intValue();
         Context context = anchor.isAttachedToWindow() ? anchor.getRootView().getContext() : anchor.getContext();
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(context, android.R.layout.simple_list_item_single_choice, labels) {
             @Override public boolean isEnabled(int position) { return enabled[position]; }
