@@ -19,6 +19,9 @@ struct Job {
     state: Option<Value>,
     #[serde(default)]
     png: Option<String>,
+    /// Writes the frame's node snapshots, as adapters receive them.
+    #[serde(default)]
+    nodes: Option<String>,
 }
 
 fn session(job: &Job, source: &str) -> Result<lingxia_ui::ViewSession, String> {
@@ -73,6 +76,10 @@ fn run(job: &Job) -> Result<Value, String> {
     let display = layout(&mut page, width, height, job.scale)?;
     let cost = display.cost();
     let metrics = page.metrics().clone();
+    if let Some(path) = &job.nodes {
+        let json = serde_json::to_string_pretty(&display.nodes).map_err(|e| e.to_string())?;
+        std::fs::write(path, json).map_err(|e| e.to_string())?;
+    }
     if let Some(path) = &job.png {
         let frame = display.rasterize()?;
         let png = frame.pixels.into_png().map_err(|e| e.to_string())?;

@@ -1,6 +1,7 @@
 mod animation;
 mod environment;
 mod errors;
+pub(crate) mod frame_contract;
 mod list_keys;
 
 use super::*;

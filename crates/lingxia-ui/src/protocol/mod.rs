@@ -108,4 +108,4 @@ pub(crate) fn identities(records: &[Record]) -> Vec<String> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
