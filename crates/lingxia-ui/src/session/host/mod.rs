@@ -219,6 +219,8 @@ struct Main<F> {
     host_environment: environment::HostEnvironment,
     snapshot: Option<Arc<FrameSnapshot>>,
     prepared: Option<pump::Prepared<F>>,
+    /// A frame handed to the adapter that is not on screen yet.
+    deferred: Option<pump::Deferred>,
     failure: Option<Failure>,
     styled_press: Option<String>,
     caret: Caret,
@@ -232,6 +234,10 @@ struct Main<F> {
     disposed: bool,
     /// Bumped to revoke a pending animation or bootstrap deadline.
     animation_timer: u64,
+    /// The last presented frame asked for the next display frame.
+    animating: bool,
+    /// When the last frame was queued behind an acknowledgement; one per instant.
+    animation_queued_at: Duration,
     bootstrap_timer: u64,
     reveal: reveal::Reveal,
     telemetry: telemetry::Telemetry,
@@ -274,6 +280,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     host_environment: Default::default(),
                     snapshot: None,
                     prepared: None,
+                    deferred: None,
                     failure: None,
                     styled_press: None,
                     caret: Caret::default(),
@@ -285,6 +292,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     number_busy: false,
                     disposed: false,
                     animation_timer: 0,
+                    animating: false,
+                    animation_queued_at: Duration::ZERO,
                     bootstrap_timer: 0,
                     reveal: Default::default(),
                     telemetry: Default::default(),
@@ -406,6 +415,15 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// The display frame requested through `FrameScheduler::request_vsync`.
     pub fn vsync(&self) {
         self.inner.vsync();
+    }
+
+    /// A deferred frame of `generation` reached the screen, or `shown: false` when the
+    /// target dropped it. Any thread.
+    pub fn deferred_presented(&self, generation: CommitTicket, shown: bool) {
+        let inner = self.inner.clone();
+        self.inner.adapter.post(Box::new(move || {
+            inner.deferred_presented(generation, shown)
+        }));
     }
 
     /// Run the recovery action offered with the last failure.
@@ -871,6 +889,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.telemetry.opened(self.adapter.now());
             main.snapshot = None;
             main.prepared = None;
+            main.deferred = None;
             main.busy = false;
             main.dirty = true;
             main.caret.stop();
@@ -929,6 +948,7 @@ impl<A: PlatformAdapter> Inner<A> {
             let page = self.lifecycle.park();
             main.snapshot = None;
             main.prepared = None;
+            main.deferred = None;
             main.busy = false;
             main.dirty = true;
             main.caret.stop();
@@ -967,6 +987,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.animation_timer += 1;
             main.bootstrap_timer += 1;
             main.prepared = None;
+            main.deferred = None;
             main.caret.stop();
             let effects = main.interaction.cancel_all();
             let cancelled = main.images.inflight_tokens();

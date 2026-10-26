@@ -44,6 +44,8 @@ struct Log {
     menus: Vec<Option<crate::session::host::TextMenu>>,
     /// Threads that ran main-thread callbacks.
     main: Vec<ThreadId>,
+    /// Generations of frames the fake target accepted.
+    generations: Vec<CommitTicket>,
 }
 
 struct Fake {
@@ -55,6 +57,8 @@ struct Fake {
     restart: bool,
     /// A target still attaching: frames are declined, never produced some other way.
     pending: std::sync::atomic::AtomicBool,
+    /// Presenting only queues the frame, as a CPU raster thread does.
+    defer: std::sync::atomic::AtomicBool,
     /// Answers to the next `edit_text` calls; `Applied` once they run out.
     edit_outcomes: Mutex<std::collections::VecDeque<EditOutcome>>,
 }
@@ -79,8 +83,9 @@ impl Presenter for Fake {
         &self,
         display: DisplayList,
         _: SurfaceTicket,
-        _: CommitTicket,
+        generation: CommitTicket,
     ) -> Result<Option<Encoded>, String> {
+        self.log.lock().unwrap().generations.push(generation);
         self.log
             .lock()
             .unwrap()
@@ -110,6 +115,9 @@ impl Presenter for Fake {
         log.presented.push(frame.texts);
         log.presented_at.push(std::time::Instant::now());
         Ok(true)
+    }
+    fn deferred(&self, _: &Encoded) -> bool {
+        self.defer.load(std::sync::atomic::Ordering::Acquire)
     }
 }
 impl FrameScheduler for Fake {
@@ -260,6 +268,7 @@ impl Platform {
                 })),
                 restart: false,
                 pending: Default::default(),
+                defer: Default::default(),
                 edit_outcomes: Default::default(),
             },
             worker.clone(),
@@ -1064,13 +1073,36 @@ fn presents(host: &ViewHost<Fake>) -> usize {
     host.adapter().log.lock().unwrap().presented.len()
 }
 
-/// Advance the fake clock by `frames` display frames, firing due wakeups each frame.
+/// Advance the fake clock by `frames` display frames, firing due wakeups and at most
+/// one vsync per frame, as a display does.
 fn run_frames(platform: &Platform, host: &ViewHost<Fake>, frames: u32) {
     let frame = Duration::from_micros(16_667);
     for _ in 0..frames {
         *host.adapter().clock.lock().unwrap() += frame;
         platform.advance(frame);
-        platform.settle(&[host]);
+        let mut vsynced = false;
+        loop {
+            for worker in &platform.workers {
+                let (done, wait) = channel();
+                worker.run_background(move |_| {
+                    let _ = done.send(());
+                });
+                wait.recv_timeout(Duration::from_secs(30)).unwrap();
+            }
+            let mut ran = false;
+            while let Ok(task) = platform.tasks.try_recv() {
+                task();
+                ran = true;
+            }
+            if !vsynced && std::mem::take(&mut host.adapter().log.lock().unwrap().vsync) {
+                host.vsync();
+                vsynced = true;
+                ran = true;
+            }
+            if !ran {
+                break;
+            }
+        }
     }
 }
 
@@ -1100,6 +1132,8 @@ fn a_spinner_presents_at_display_rate_only_while_visible_and_present() {
     run_frames(&platform, &host, 60);
     let spun = presents(&host) - shown;
     assert!((58..=61).contains(&spun), "{spun} presents in one second");
+    // Each frame queues the next behind its acknowledgement; no wakeup timer round trip.
+    assert!(platform.timers.lock().unwrap().is_empty());
     assert!(animation_frames(&host) >= 55, "{}", animation_frames(&host));
 
     host.set_visible(false);
@@ -1704,4 +1738,132 @@ fn an_edit_the_platform_cannot_apply_fails_its_caller() {
         host.accessibility(id, AccessibilityAction::SetText("9".into())),
         "a later edit goes through"
     );
+}
+
+fn content_changes(host: &ViewHost<Fake>) -> usize {
+    host.adapter()
+        .log
+        .lock()
+        .unwrap()
+        .events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                AccessibilityEffect::Change(crate::semantics::projection::Event::ContentChanged)
+            )
+        })
+        .count()
+}
+
+#[test]
+fn a_held_press_keeps_its_scale_transition_and_accessibility_hears_moves_at_a_quarter_rate() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let page = source(
+        "function render(){return h('column',{},h('button',{testId:'b',onClick(){},className:'active:x',style:{width:100,height:40,padding:0,transition:{properties:['transform'],durationMs:150,delayMs:0,easing:'linear'}}},'Press'))}",
+    )
+    .replace(
+        "__lingxiaPublish(render);",
+        "configureClasses([{name:'active:x',when:{state:'active'},style:{scale:[0.95,0.95]}}]);__lingxiaPublish(render);",
+    );
+    let host = platform.host(&worker, &page, false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let bounds = |host: &ViewHost<Fake>| {
+        let snapshot = host.snapshot().unwrap();
+        snapshot
+            .frame
+            .nodes
+            .iter()
+            .find(|n| n.test_id == "b")
+            .unwrap()
+            .bounds
+    };
+    assert_eq!(bounds(&host)[2], 100.0);
+    host.pointer(Pointer {
+        phase: PointerPhase::Down,
+        x: 100.0,
+        y: 40.0,
+        slop: 8.0,
+        velocity: [0.0; 2],
+        min_fling: 50.0,
+    });
+    platform.settle(&[&host]);
+    let clears = || {
+        host.adapter()
+            .log
+            .lock()
+            .unwrap()
+            .effects
+            .iter()
+            .filter(|e| **e == Effect::ClearPress)
+            .count()
+    };
+    let (before, cleared) = (content_changes(&host), clears());
+    run_frames(&platform, &host, 48);
+    // Still held after 800 ms: fully pressed, never released by its own animation frames.
+    assert!(
+        (bounds(&host)[2] - 95.0).abs() < 0.01,
+        "{:?}",
+        bounds(&host)
+    );
+    assert_eq!(clears(), cleared);
+    // Nine moving frames report at most every fourth, plus one when they settle.
+    let moves = content_changes(&host) - before;
+    assert!((1..=4).contains(&moves), "{moves}");
+}
+
+#[test]
+fn a_deferred_present_holds_the_next_frame_until_it_reaches_the_screen() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(&format!(
+            "function render(){{return h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}})}}"
+        )),
+        false,
+    );
+    host.adapter()
+        .defer
+        .store(true, std::sync::atomic::Ordering::Release);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 10);
+    let queued = presents(&host);
+    assert_eq!(queued, 1, "nothing prepares behind a frame still rastering");
+    assert!(
+        host.snapshot().is_none(),
+        "not presented until it is on screen"
+    );
+    let generation = *host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .generations
+        .last()
+        .unwrap();
+    host.deferred_presented(generation, true);
+    platform.settle(&[&host]);
+    assert!(host.snapshot().is_some());
+    run_frames(&platform, &host, 1);
+    assert_eq!(
+        presents(&host),
+        2,
+        "the next frame follows the acknowledgement"
+    );
+    // A dropped deferred frame is prepared again.
+    let generation = *host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .generations
+        .last()
+        .unwrap();
+    host.deferred_presented(generation, false);
+    run_frames(&platform, &host, 1);
+    assert_eq!(presents(&host), 3);
 }

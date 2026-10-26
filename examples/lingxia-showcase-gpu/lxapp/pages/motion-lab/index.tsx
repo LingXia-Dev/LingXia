@@ -1,11 +1,16 @@
 // @ui-experimental motion
-import { useLocal } from '@lingxia/ui';
+import { useLocal, type View } from '@lingxia/ui';
 import '../../theme/index.css';
 import { Button, Page, Section } from '../../shared/ui';
 
 // Device acceptance fixtures for motion; the page opts into the gated lowering.
-export function render() {
+interface Actions {
+  interrupt(): void;
+}
+
+export function render({ data, actions }: View<Actions, { dipped: boolean }>) {
   const shown = useLocal('shown', true);
+  const visible = shown.value && !data.dipped;
   return (
     <Page testId="motion-lab" title="Motion lab">
       <Section title="Pressed scale" testId="motion-press">
@@ -16,7 +21,8 @@ export function render() {
       <Section title="Fade" testId="motion-fade">
         <row className="items-center gap-3">
           <Button testId="motion-fade-toggle" onClick={() => shown.set(!shown.value)}>{shown.value ? 'Fade out' : 'Fade in'}</Button>
-          <view testId="motion-fade-box" className={`w-12 h-12 rounded-lg bg-primary transition-opacity duration-200 ease-out ${shown.value ? 'opacity-100' : 'opacity-0'}`} />
+          <Button testId="motion-fade-interrupt" onClick={() => actions.interrupt()}>Interrupt</Button>
+          <view testId="motion-fade-box" className={`w-12 h-12 rounded-lg bg-primary transition-opacity duration-200 ease-out ${visible ? 'opacity-100' : 'opacity-0'}`} />
         </row>
       </Section>
       <Section title="Spin" testId="motion-spin">

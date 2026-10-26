@@ -400,3 +400,97 @@ fn reduced_motion_keeps_only_animations_authored_for_it() {
         assert_eq!(wakeup == Wakeup::NextFrame, plays, "{when}");
     }
 }
+
+/// Every span still covers the spinner's own paints after the frame's splices.
+fn assert_spans_aligned(display: &DisplayList) {
+    use crate::scene::paint::Paint;
+    let spans = display.animated_spans();
+    assert_eq!(spans.len(), 1);
+    let span = &spans[0];
+    let commands = &display.commands[span.commands.clone()];
+    assert!(
+        commands.iter().any(|p| matches!(
+            p,
+            Paint::Rect {
+                color: [0, 255, 0, 255],
+                ..
+            }
+        )),
+        "the span holds the spinner's fill"
+    );
+    assert!(
+        !commands.iter().any(|p| matches!(p, Paint::Text { .. })),
+        "no text, caret or selection paint inside the spinner's span"
+    );
+    let mut depth = 0i32;
+    for paint in commands {
+        match paint {
+            Paint::Clip(_) | Paint::Opacity { .. } | Paint::Backdrop { .. } => depth += 1,
+            Paint::PopClip | Paint::PopOpacity | Paint::PopBackdrop => depth -= 1,
+            _ => {}
+        }
+        assert!(depth >= 0);
+    }
+    assert_eq!(depth, 0);
+    assert!(matches!(
+        display.commands[span.commands.end],
+        Paint::Transform(_)
+    ));
+}
+
+#[test]
+fn spans_stay_on_their_commands_through_caret_input_and_selection_splices() {
+    use serde_json::Value;
+    let spin = r#"{"name":"spin","durationMs":1000,"delayMs":0,"iterations":null,"whenReduced":"base","easing":"linear","opacity":null,"transforms":[{"kind":"rotate","angle":[{"offset":0,"value":0},{"offset":1,"value":360}]}]}"#;
+    let module = super::source(&format!(
+        "function render(){{const draft=useLocal('draft','typed');return h('column',{{style:{{backgroundColor:'#ffffff'}}}},h('input',{{testId:'i',bind:draft,style:{{width:150}}}}),h('column',{{style:{{width:20,height:20,backgroundColor:'#00ff00',animation:{spin}}}}}),h('text',{{testId:'p',style:{{userSelect:'text',fontSize:16,width:180}}}},'hello brave new world'))}}"
+    ));
+    let mut page = ViewSession::new(&module).unwrap();
+    page.set_animation_surface(Some(SURFACE), Duration::ZERO)
+        .unwrap();
+    let frame = |page: &mut ViewSession, at: u64, caret: bool| {
+        let at = frame_time(at);
+        let checked = page
+            .prepare_view_animated(200, 160, 1.0, true, None, at, |mut display| {
+                assert_spans_aligned(&display);
+                if !caret {
+                    display.hide_caret();
+                    assert_spans_aligned(&display);
+                }
+                Ok(display.nodes.clone())
+            })
+            .unwrap();
+        page.animation_presented(SURFACE, page.generation(), at)
+            .unwrap();
+        checked
+    };
+    let nodes = frame(&mut page, 0, true);
+    let input = nodes
+        .iter()
+        .find(|n| n.test_id == "i")
+        .unwrap()
+        .identity
+        .clone();
+    let reply: Value = serde_json::from_str(
+        &page
+            .input_request(
+                &json!({"op":"focus","identity":input,"generation":page.generation()}).to_string(),
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(reply["token"].as_u64().is_some());
+    // Focused: the input decorates (caret, selection) before the span.
+    frame(&mut page, 1, true);
+    frame(&mut page, 2, false);
+    let nodes = frame(&mut page, 3, true);
+    let text = nodes.iter().find(|n| n.test_id == "p").unwrap();
+    let point = [text.bounds[0] + 60.0, text.bounds[1] + text.bounds[3] / 2.0];
+    assert!(
+        page.select_text(page.generation(), &text.identity.clone(), point)
+            .unwrap()
+    );
+    // A static-text selection decorates after the span.
+    frame(&mut page, 4, true);
+    frame(&mut page, 5, false);
+}

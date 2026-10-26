@@ -43,6 +43,12 @@ pub trait Presenter {
     }
     /// False when the target was lost; the host prepares again.
     fn present(&self, frame: Self::Frame) -> Result<bool, String>;
+    /// Main thread, before `present`: whether presenting only queues the frame (e.g. to a
+    /// raster thread). The host then holds further frames until the adapter reports
+    /// [`ViewHost::deferred_presented`](crate::session::host::ViewHost::deferred_presented).
+    fn deferred(&self, _frame: &Self::Frame) -> bool {
+        false
+    }
 }
 
 /// Display-synchronized callbacks.

@@ -37,6 +37,8 @@ pub struct ViewSession {
     environment: serde_json::Value,
     bridge: Option<ViewBridge>,
     retained: Option<Arc<crate::scene::retained::RetainedLayout>>,
+    /// Bumped whenever a frame commits a different retained layout.
+    layout_revision: u64,
     input_hits: Option<crate::interaction::input_hits::InputHitMap>,
     viewport: Option<(u16, u16, f32)>,
     scroll_offsets: HashMap<String, f32>,
@@ -126,6 +128,7 @@ impl ViewSession {
             poisoned: Cell::new(false),
             bridge: None,
             retained: None,
+            layout_revision: 0,
             input_hits: None,
             viewport: None,
             scroll_offsets: HashMap::new(),

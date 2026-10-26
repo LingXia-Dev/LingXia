@@ -69,6 +69,12 @@ impl ViewSession {
         Ok(result)
     }
 
+    /// Frames with the same revision share one retained layout: same nodes in the same
+    /// order, differing only in animated, scrolled or decorated geometry.
+    pub fn layout_revision(&self) -> u64 {
+        self.layout_revision
+    }
+
     pub fn frame_metrics(&self) -> &crate::FrameMetrics {
         &self.metrics
     }
@@ -512,6 +518,13 @@ impl ViewSession {
                 self.reveal_input = false;
                 self.pending_inputs = None;
                 self.commit_images(wanted);
+                if !self
+                    .retained
+                    .as_ref()
+                    .is_some_and(|old| Arc::ptr_eq(old, &retained))
+                {
+                    self.layout_revision += 1;
+                }
                 self.retained = Some(retained);
                 self.lists = lists;
                 self.viewport = Some((width, height, scale));

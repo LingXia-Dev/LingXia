@@ -21,6 +21,18 @@ pub(super) struct Prepared<F> {
     prepared_at: Instant,
 }
 
+/// A presented frame waiting for the adapter to put it on screen.
+pub(super) struct Deferred {
+    environment: crate::platform::FrameEnvironment,
+    snapshot: Arc<FrameSnapshot>,
+    surface: SurfaceTicket,
+    page: PageTicket,
+    revision: u64,
+    offsets: HashMap<String, f32>,
+    timing: FrameTiming,
+    vsync: Instant,
+}
+
 const DECLINED: &str = "UI_FRAME: declined by the target";
 
 fn micros(duration: Duration) -> u64 {
@@ -165,6 +177,7 @@ impl<A: PlatformAdapter> Inner<A> {
         ),
         String,
     > {
+        let page = request.page;
         let FrameEnvironment {
             width,
             height,
@@ -250,7 +263,10 @@ impl<A: PlatformAdapter> Inner<A> {
             height,
             scale,
             loaded_images,
-            frame: Arc::new(PresentedFrame::new(generation, scale, nodes)),
+            frame: Arc::new(
+                PresentedFrame::new(generation, scale, nodes)
+                    .with_layout((page.get(), session.layout_revision())),
+            ),
             images,
             image_buckets,
             json,
@@ -316,7 +332,23 @@ impl<A: PlatformAdapter> Inner<A> {
                 prepared_at,
             } = prepared;
             timing.wait_us = micros(vsync.saturating_duration_since(prepared_at));
+            let deferred = self.adapter.deferred(&frame);
             match self.adapter.present(frame) {
+                Ok(true) if deferred => {
+                    // Nothing else prepares until this frame is on screen.
+                    let mut main = self.main();
+                    main.busy = true;
+                    main.deferred = Some(Deferred {
+                        environment,
+                        snapshot,
+                        surface,
+                        page,
+                        revision,
+                        offsets,
+                        timing,
+                        vsync,
+                    });
+                }
                 Ok(true) => {
                     // The gate in `frame_is_current` trusts only a frame the target accepted.
                     let mut main = self.main();
@@ -334,6 +366,52 @@ impl<A: PlatformAdapter> Inner<A> {
             let host = self.clone();
             self.adapter
                 .post_after(Duration::from_millis(16), Box::new(move || host.schedule()));
+        }
+        let pending = {
+            let main = self.main();
+            main.pending && !main.disposed
+        };
+        if pending {
+            self.schedule();
+        }
+    }
+
+    pub(super) fn deferred_presented(self: &Arc<Self>, generation: CommitTicket, shown: bool) {
+        let Some(deferred) = ({
+            let mut main = self.main();
+            let matches = main
+                .deferred
+                .as_ref()
+                .is_some_and(|d| d.snapshot.generation == generation);
+            let deferred = matches.then(|| main.deferred.take()).flatten();
+            if deferred.is_some() {
+                main.busy = false;
+            }
+            deferred
+        }) else {
+            return;
+        };
+        let current = !self.main().disposed && self.lifecycle.is_current_surface(deferred.surface);
+        if shown && current {
+            let Deferred {
+                environment,
+                snapshot,
+                surface,
+                page,
+                revision,
+                offsets,
+                timing,
+                vsync,
+            } = deferred;
+            {
+                let mut main = self.main();
+                main.presented_environment = Some(environment);
+                main.catch_up = false;
+            }
+            self.presented(snapshot, surface, page, revision, offsets, timing, vsync);
+        } else {
+            self.main().dirty = true;
+            self.main().pending = true;
         }
         let pending = {
             let main = self.main();
@@ -370,6 +448,20 @@ impl<A: PlatformAdapter> Inner<A> {
             self.adapter.recovery(None);
         }
         self.acknowledge_animation(surface, snapshot.generation);
+        // A running animation's next frame queues right behind the acknowledgement on the
+        // worker instead of waiting for its wakeup to come back through the main thread.
+        let now = self.adapter.now();
+        let queue = {
+            let mut main = self.main();
+            let queue = main.animating && now > main.animation_queued_at;
+            if queue {
+                main.animation_queued_at = now;
+            }
+            queue
+        };
+        if queue {
+            self.schedule();
+        }
         self.adapter.reconcile(&snapshot);
         self.deliver(presented.effects);
         if let Some(reach) = presented.reach {
@@ -402,6 +494,17 @@ impl<A: PlatformAdapter> Inner<A> {
                 })
             },
             move |inner, result| {
+                let animating = matches!(result, Some(Ok(Some(Duration::ZERO))));
+                let settled = {
+                    let mut main = inner.main();
+                    main.animating = animating;
+                    if animating {
+                        Vec::new()
+                    } else {
+                        main.interaction.settled()
+                    }
+                };
+                inner.deliver(settled);
                 let delay = match result {
                     Some(Ok(Some(delay))) => delay,
                     Some(Err(error)) => {
@@ -447,7 +550,11 @@ impl<A: PlatformAdapter> Inner<A> {
 
     /// Pause the timeline while nothing can present.
     pub(super) fn park_animations(self: &Arc<Self>) {
-        self.main().animation_timer += 1;
+        {
+            let mut main = self.main();
+            main.animation_timer += 1;
+            main.animating = false;
+        }
         let at = self.adapter.now();
         self.work(
             Guard::Page(self.lifecycle.page()),
