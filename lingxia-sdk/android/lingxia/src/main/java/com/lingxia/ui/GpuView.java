@@ -244,6 +244,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     public void setSurfaceRetained(boolean retained) {
         surfaceRetained = KEEP_SURFACES && retained;
         updateSurfaceVisibility();
+        if (surfaceRetained && !gpuAttached) attachGpu();
     }
     private final java.util.ArrayList<Runnable> revealWaiters = new java.util.ArrayList<>();
     /** A returning page whose frame is stale is shown after this long, never left under a wrong highlight. */
@@ -256,9 +257,14 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     public void revealOnFirstFrame(Runnable then) {
         revealed = false; revealWaiters.add(then); updateSurfaceVisibility();
         int epoch = ++revealEpoch;
-        boolean returning = everPresented;
-        main.postDelayed(() -> {
+        // Only a surface that still holds this page's frame can be shown stale; a recreated
+        // or released one waits for its first frame like a first visit.
+        boolean returning = everPresented && hasSurfaceFrame;
+        long delay = returning ? REVEAL_DEADLINE_MS : FIRST_FRAME_WATCHDOG_MS;
+        main.postDelayed(new Runnable() { @Override public void run() {
             if (epoch != revealEpoch || revealed) return;
+            // A stopped window renders nothing; the wait resumes with it.
+            if (getWindowVisibility() != View.VISIBLE) { main.postDelayed(this, delay); return; }
             // Never show a frame drawn for another size: until one is current the surface stays off
             // screen and the activity canvas, painted with the host's page floor, shows through.
             holdSurface = !nativeFrameCurrent(host);
@@ -267,7 +273,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 + " shown before a current frame (attached=" + gpuAttached + ", stale=" + holdSurface + ")");
             else Log.e("LingXia.UI", "first-frame watchdog: page " + page + " never presented (attached=" + gpuAttached + ")");
             reveal();
-        }, returning ? REVEAL_DEADLINE_MS : FIRST_FRAME_WATCHDOG_MS);
+        }}, delay);
     }
     private void reveal() {
         if (revealed) return;
@@ -287,6 +293,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     @Override protected void onWindowVisibilityChanged(int visibility) {
         super.onWindowVisibilityChanged(visibility);
         syncVisibility();
+        // Surfaces recreated while the window was hidden attach now, a kept hidden page included.
+        if (visibility == View.VISIBLE && !gpuAttached) main.post(this::attachGpu);
     }
     /** A page being left keeps its last frame on screen but schedules nothing more. */
     private boolean frozen;
@@ -561,7 +569,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     }
 
     private void attachGpu() {
-        if (attaching || destroyed || !active || !isShown() || !surface.getHolder().getSurface().isValid()) return;
+        // A retained hidden page attaches too, so its catch-up frame is ready when it returns.
+        if (attaching || destroyed || !(active || surfaceRetained) || !isShown()
+            || !surface.getHolder().getSurface().isValid()) return;
         int width = surface.getWidth(), height = surface.getHeight();
         if (width <= 0 || height <= 0) return;
         attaching = true;

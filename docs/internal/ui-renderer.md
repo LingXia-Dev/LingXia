@@ -181,18 +181,18 @@ the Java `GpuPlatform` (vsync, posts, presentation, IME, accessibility, feedback
 chrome) and exposes host calls as `GpuView` natives. Java converts events and
 draws chrome; chrome geometry is `interaction::chrome` over the snapshot node.
 Pages of one `appId:session` share a worker by key, so nothing slow runs on it:
-image decode uses a small process pool, GPU attach its own thread, and a page
-whose attach is pending declines frames rather than rasterizing on the CPU.
+decode and CPU raster use process pools (a newer CPU frame replaces one not started),
+GPU attach its own thread, and a page whose attach is pending declines frames.
 A hidden GPU page is frozen (no frames, input or semantics). `lxapp::surface_retention`
 decides whether it keeps its surface: every tab page of the shown app plus the three
 most recently shown others (~32 MB each at 1080×2504, so at most (tabs + 3) × 32 MB),
-none under memory pressure. Android moves a kept layer off screen (SurfaceView ignores
-alpha). A kept page shows at once only when `ViewHost::frame_is_current` holds — the
-target accepted a frame for the current size and environment; a hidden page whose
-target changed renders one catch-up frame as background work. Otherwise the outgoing
-page stays on screen, frozen, until the incoming one presents: at most 300 ms when
-returning; a first visit waits for its first frame (a 2 s watchdog logs one that never
-does). Host JVM tests load the crate's cdylib built for the host.
+none under memory pressure (backgrounding alone is not). Android moves a kept layer off
+screen (SurfaceView ignores alpha) and reports its insets as it will be shown. A kept page
+shows at once only when `ViewHost::frame_is_current` holds; a hidden page whose target or
+environment changed renders one catch-up frame as background work. Otherwise the outgoing
+page stays on screen, frozen, until the incoming one presents: at most 300 ms when its
+surface still holds a stale frame; a first visit or a recreated surface waits for its first
+frame (a 2 s watchdog, paused while the window is hidden, logs one that never does).
 
 New platform: adapter traits, text scaling and insets in the environment, `renderer` frames.
 

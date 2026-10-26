@@ -816,7 +816,38 @@ class LxAppActivity : AppCompatActivity() {
                 }
                 page.setChromeInsets(left, 0, right, bottom)
             }
+            reportKeptChromeInsets()
             true
+        }
+    }
+
+    /**
+     * A kept page's insets are those it will be shown with, from its own chrome under the
+     * current bars; measured on screen they would be the shown page's, and its last frame
+     * would no longer be current when it returns.
+     */
+    private fun reportKeptChromeInsets() {
+        val bar = tabBar ?: return
+        if (!com.lingxia.ui.GpuView.keepsSurfaces() || !::webViewContainer.isInitialized ||
+            bar.width <= 0 || bar.height <= 0) return
+        val root = IntArray(2).also { rootContainer.getLocationInWindow(it) }
+        val at = IntArray(2).also { bar.getLocationInWindow(it) }
+        // The bar's laid-out frame: it keeps its place while another page hides it.
+        val barBox = KeptPageGeometry.Box(at[0] - root[0], at[1] - root[1],
+            at[0] - root[0] + bar.width, at[1] - root[1] + bar.height)
+        for (index in 0 until webViewContainer.childCount) {
+            val child = webViewContainer.getChildAt(index) as? ViewGroup ?: continue
+            val page = child.getChildAt(0) as? GpuPage ?: continue
+            if (page === currentWebView || child.visibility != View.VISIBLE) continue
+            val chrome = ownChrome[child] ?: continue
+            page.getLocationInWindow(at)
+            val left = at[0] - root[0]
+            val top = at[1] - root[1]
+            val overlap = KeptPageGeometry.overlap(
+                KeptPageGeometry.Box(left, top, left + page.width, top + page.height),
+                barBox, chrome, bar.config.position,
+            )
+            page.setChromeInsets(overlap.left, 0, overlap.right, overlap.bottom)
         }
     }
 
@@ -1030,68 +1061,47 @@ class LxAppActivity : AppCompatActivity() {
             container?.translationY = 0f
             return
         }
-        val isTabBarVisible = tabBar?.visibility == View.VISIBLE
-        val tabBarHeight = tabBar?.layoutParams?.height ?: 0
-        val tabBarWidth = tabBar?.layoutParams?.width ?: 0
-        val tabBarBgColor = tabBar?.config?.backgroundColor
-        val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
-                                 (tabBarBgColor?.let { Color.alpha(it) < 255 } == true)
-
-        // Calculate NavigationBar height for webview margin
-        val isNavBarVisible = navigationBar?.visibility == View.VISIBLE
-        val navBarHeight = if (isNavBarVisible) {
-            // WebView should start right after navbar (navbar content height + statusbar height)
-            val statusBarHeight = getStatusBarHeight(this)
-            val navBarContentHeight = navigationBar?.getCalculatedContentHeightPx() ?: 0
-            navBarContentHeight + statusBarHeight
-        } else {
-            0
-        }
-
+        val bars = currentBars()
+        val chrome = KeptPageGeometry.Chrome(
+            navigationBar = navigationBar?.visibility == View.VISIBLE,
+            tabBar = tabBar?.visibility == View.VISIBLE,
+            fullscreen = isPageFullscreen,
+        )
+        val margins = KeptPageGeometry.margins(chrome, bars, imeContentBottomInset)
         FrameLayout.LayoutParams(webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
-            topMargin = navBarHeight  // Use NavigationBar total height
-            bottomMargin = 0
-            leftMargin = 0
-            rightMargin = 0
-
-            if (!isTabBarTransparent) {
-                when (tabBar?.config?.position) {
-                    TabBarState.Position.BOTTOM -> {
-                        if (isTabBarVisible) bottomMargin = tabBarHeight
-                    }
-                    TabBarState.Position.LEFT -> {
-                        if (isTabBarVisible) leftMargin = tabBarWidth
-                    }
-                    TabBarState.Position.RIGHT -> {
-                        if (isTabBarVisible) rightMargin = tabBarWidth
-                    }
-                    null -> { }
-                }
-            }
-
-            // Pushed pages hide the TabBar; keep the WebView above the
-            // gesture / navigation zone instead of drawing into it.
-            if (!isTabBarVisible && !isPageFullscreen) {
-                bottomMargin = maxOf(bottomMargin, systemBottomInset)
-            }
-
-            bottomMargin = maxOf(bottomMargin, imeContentBottomInset)
-
+            topMargin = margins.top
+            bottomMargin = margins.bottom
+            leftMargin = margins.left
+            rightMargin = margins.right
             webViewContainer.updateFrameLayoutParamsIfChanged(this)
         }
+        val isTabBarTransparent = bars.tabBarTransparent
 
         val container = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
         container?.translationY = if (!isTabBarTransparent) calculateWebViewTranslationY() else 0f
-        (webViewContainer.layoutParams as? ViewGroup.MarginLayoutParams)?.let { params ->
-            if (container != null) ownMargins[container] = KeptPageGeometry.Margins(
-                params.topMargin, params.bottomMargin, params.leftMargin, params.rightMargin)
-        }
+        if (container != null) ownChrome[container] = chrome
         layoutKeptPages()
         pullToRefreshHelper?.restorePageOffset()
     }
 
-    /** The margins each page container had while it was the current one. */
-    private val ownMargins = java.util.WeakHashMap<ViewGroup, KeptPageGeometry.Margins>()
+    /** The chrome each page container had while it was the current one. */
+    private val ownChrome = java.util.WeakHashMap<ViewGroup, KeptPageGeometry.Chrome>()
+
+    private fun currentBars(): KeptPageGeometry.Bars {
+        val background = tabBar?.config?.backgroundColor
+        val navigation = navigationBar
+        return KeptPageGeometry.Bars(
+            // The page starts below the navbar content and the status bar.
+            navigationBar = if (navigation != null)
+                navigation.getCalculatedContentHeightPx() + getStatusBarHeight(this) else 0,
+            tabBarHeight = tabBar?.layoutParams?.height ?: 0,
+            tabBarWidth = tabBar?.layoutParams?.width ?: 0,
+            tabBarTransparent = background == Color.TRANSPARENT ||
+                (background?.let { Color.alpha(it) < 255 } == true),
+            position = tabBar?.config?.position,
+            systemBottom = systemBottomInset,
+        )
+    }
 
     /** Frames every kept GPU page container under its own chrome; see [KeptPageGeometry]. */
     private fun layoutKeptPages() {
@@ -1102,10 +1112,11 @@ class LxAppActivity : AppCompatActivity() {
         if (width <= 0 || height <= 0) return
         val params = webViewContainer.layoutParams as? ViewGroup.MarginLayoutParams ?: return
         val current = KeptPageGeometry.Margins(params.topMargin, params.bottomMargin, params.leftMargin, params.rightMargin)
+        val bars = currentBars()
         for (index in 0 until webViewContainer.childCount) {
             val child = webViewContainer.getChildAt(index) as? ViewGroup ?: continue
             if (child.tag == "current_webview_container" || child.getChildAt(0) !is GpuPage) continue
-            val own = ownMargins[child] ?: continue
+            val own = KeptPageGeometry.margins(ownChrome[child] ?: continue, bars)
             val frame = KeptPageGeometry.frame(width, height, own, current)
             child.translationX = frame.translationX
             child.translationY = frame.translationY

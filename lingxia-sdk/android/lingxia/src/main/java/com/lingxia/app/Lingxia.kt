@@ -599,7 +599,9 @@ object Lingxia {
             android.content.res.Configuration.UI_MODE_NIGHT_MASK
         application.registerComponentCallbacks(object : android.content.ComponentCallbacks2 {
             override fun onTrimMemory(level: Int) {
-                if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+                // UI_HIDDEN only reports that the app went to the background.
+                if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW &&
+                    level != android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
                     NativeApi.onMemoryPressure()
                 }
             }
