@@ -201,14 +201,15 @@ fn apply_menu_appearance() {
 }
 
 fn create_menu_icon_bitmap(icon: WindowsDesignIcon, tint: u32) -> Option<HBITMAP> {
-    const SIZE: i32 = 16;
-    let pixels = design_icon_argb_premultiplied(icon, SIZE as u32, Some(tint))?;
+    // Physical pixels at the chrome scale, matching the menu's text.
+    let size = crate::dpi::px(16);
+    let pixels = design_icon_argb_premultiplied(icon, size as u32, Some(tint))?;
     unsafe {
         let info = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: SIZE,
-                biHeight: -SIZE,
+                biWidth: size,
+                biHeight: -size,
                 biPlanes: 1,
                 biBitCount: 32,
                 biCompression: BI_RGB.0,

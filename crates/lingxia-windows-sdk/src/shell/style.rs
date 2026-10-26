@@ -76,7 +76,7 @@ fn fluent_shell_palette(dark: bool, accent: u32) -> ShellPalette {
         (
             0x202020,
             0x0dff_ffff,
-            0x0fff_ffff,
+            0x1aff_ffff,
             0xffff_ffff,
             0xc5ff_ffff,
             0x15ff_ffff,
@@ -86,7 +86,7 @@ fn fluent_shell_palette(dark: bool, accent: u32) -> ShellPalette {
         (
             0xf3f3f3,
             0xb3ff_ffff,
-            0x0900_0000,
+            0x1400_0000,
             0xe400_0000,
             0x9e00_0000,
             0x0f00_0000,
@@ -194,9 +194,9 @@ pub(super) fn shell_palette() -> ShellPalette {
 /// correctly on any surface, including colored lxapp navigation bars.
 pub(super) fn hover_overlay() -> u32 {
     if super::theme::chrome_is_dark() {
-        0x28ffffff
+        0x12ffffff
     } else {
-        0x1f000000
+        0x0f000000
     }
 }
 
@@ -350,7 +350,7 @@ mod tests {
         assert_eq!(palette.text_muted, 0x5C5C5C);
         assert_eq!(palette.accent, 0x304FFE);
         assert_eq!(palette.divider, 0xE5E5E5);
-        assert_eq!(palette.selection_background, 0xEAEAEA);
+        assert_eq!(palette.selection_background, 0xE0E0E0);
     }
 
     #[test]
@@ -362,7 +362,7 @@ mod tests {
         assert_eq!(palette.text_primary, 0xFFFFFF);
         assert_eq!(palette.text_muted, 0xCCCCCC);
         assert_eq!(palette.divider, 0x323232);
-        assert_eq!(palette.selection_background, 0x2D2D2D);
+        assert_eq!(palette.selection_background, 0x373737);
         assert_eq!(palette.accent, 0xABCDEF);
     }
 

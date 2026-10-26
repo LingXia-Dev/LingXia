@@ -107,11 +107,6 @@ pub(super) fn address_capsule_button_size() -> i32 {
     crate::dpi::px(20)
 }
 
-/// Side length of the sidebar group-header chevron hit area.
-pub(super) fn sidebar_chevron_size() -> i32 {
-    crate::dpi::px(18)
-}
-
 /// Side length of the sidebar header action buttons (settings/downloads),
 /// and the gap between them.
 pub(super) fn sidebar_header_action_size() -> i32 {
@@ -207,15 +202,33 @@ pub(super) fn sidebar_child_indent() -> i32 {
     crate::dpi::px(22)
 }
 
-/// Width of the close-glyph hit area at the trailing edge of a browser row.
-pub(super) fn sidebar_browser_close_size() -> i32 {
-    crate::dpi::px(22)
+/// Side of a sidebar row's trailing control cell (chevron, close, menu). The
+/// hover circle fills the cell, so what a press hits is what lights up.
+pub(super) fn sidebar_row_control_size() -> i32 {
+    crate::dpi::px(20)
 }
 
-/// Width of a row's vertical-ellipsis menu button; narrower than the close
-/// cell so the title keeps the difference.
-pub(super) fn sidebar_row_menu_width() -> i32 {
-    crate::dpi::px(16)
+/// The `slot`-th trailing control of `row`, counted from its trailing edge:
+/// inset from the row's rounded edge, vertically centred, 2 DIP apart.
+pub(super) fn sidebar_row_control_rect(row: RECT, slot: usize) -> RECT {
+    let size = sidebar_row_control_size();
+    let right = row.right - crate::dpi::px(6) - slot as i32 * (size + crate::dpi::px(2));
+    let top = row.top + (rect_height(&row) - size).max(0) / 2;
+    normalize_rect(RECT {
+        left: right - size,
+        top,
+        right,
+        bottom: top + size,
+    })
+}
+
+/// Trailing edge of a row title that leaves room for `visible` controls only:
+/// controls that are not drawn do not truncate the title.
+pub(super) fn sidebar_row_title_right(row: RECT, visible: usize) -> i32 {
+    match visible {
+        0 => row.right - crate::dpi::px(8),
+        count => sidebar_row_control_rect(row, count - 1).left - crate::dpi::px(4),
+    }
 }
 
 /// Close glyph for browser tab rows (multiplication X).
@@ -740,15 +753,17 @@ fn chrome_hover_rect(
                     continue;
                 };
                 let controls = aside_panel_tab_controls(rect, tab.active, tabs.len() == 1, true);
+                // The tab pill repaints with its control, or leaving through
+                // the control strands the pill's hover wash.
                 if let Some(close) = controls.close
                     && rect_contains(&close, point)
                 {
-                    return Some(close);
+                    return Some(row_with_control_hover_rect(rect, close));
                 }
                 if let Some(more) = controls.more
                     && rect_contains(&more, point)
                 {
-                    return Some(more);
+                    return Some(row_with_control_hover_rect(rect, more));
                 }
                 if rect_contains(&rect, point) {
                     return Some(rect);
@@ -851,13 +866,15 @@ pub(super) fn sidebar_hover_rect(
     if tabbar.group_closable {
         group_controls.push(sidebar_group_close_rect(tabbar_rect, tabbar, scroll_offset));
     }
+    // The row stays part of the hover rect while a control is hovered:
+    // leaving through the control must repaint the row's wash as well.
+    let group = sidebar_group_rect(tabbar_rect, tabbar, scroll_offset);
     if let Some(control) = group_controls
         .into_iter()
         .find(|control| rect_contains(control, point))
     {
-        return Some(row_control_hover_rect(control));
+        return Some(row_with_control_hover_rect(group, control));
     }
-    let group = sidebar_group_rect(tabbar_rect, tabbar, scroll_offset);
     if rect_contains(&group, point) {
         return Some(group);
     }
@@ -883,11 +900,11 @@ pub(super) fn sidebar_hover_rect(
             {
                 let menu = sidebar_auxiliary_menu_rect(*rect, item);
                 if rect_contains(&menu, point) {
-                    return Some(row_control_hover_rect(menu));
+                    return Some(row_with_control_hover_rect(*rect, menu));
                 }
                 let close = sidebar_auxiliary_close_rect(*rect);
                 if item.closable && rect_contains(&close, point) {
-                    return Some(row_control_hover_rect(close));
+                    return Some(row_with_control_hover_rect(*rect, close));
                 }
             }
             return Some(*rect);
@@ -946,7 +963,7 @@ fn sync_sidebar_surface_title_rects(hwnd: HWND, client: RECT, layout: &WindowsSh
     let mut titles = HashMap::new();
     titles.insert(
         tabbar.group_target_id.clone(),
-        sidebar_group_title_rect(tabbar_rect, tabbar, scroll_offset),
+        sidebar_group_title_rect(tabbar_rect, tabbar, scroll_offset, true),
     );
     if let Some(auxiliary) =
         sidebar_auxiliary_rects(tabbar_rect, tabbar, scroll_offset, viewport_bottom)
@@ -966,6 +983,7 @@ fn sync_sidebar_surface_title_rects(hwnd: HWND, client: RECT, layout: &WindowsSh
                     item_rect,
                     item,
                     icon_rect.right + sidebar_favicon_text_gap(),
+                    true,
                 ),
             );
         }
@@ -3335,6 +3353,21 @@ pub(super) fn rects_intersect(a: &RECT, b: &RECT) -> bool {
     a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
 }
 
+/// Hover target of a row while one of its controls is hovered: the row and
+/// the control's hover shape, one pixel wider than the bare row. Moving onto
+/// or off the control then changes the target, so both the control's circle
+/// and the row's wash repaint; returning only the control left the wash
+/// stranded when the pointer left through it.
+pub(super) fn row_with_control_hover_rect(row: RECT, control: RECT) -> RECT {
+    let shape = row_control_hover_rect(control);
+    RECT {
+        left: row.left.min(shape.left),
+        top: row.top.min(shape.top),
+        right: row.right.max(shape.right) + 1,
+        bottom: row.bottom.max(shape.bottom),
+    }
+}
+
 pub(super) fn rect_contains_rect(outer: &RECT, inner: &RECT) -> bool {
     inner.left >= outer.left
         && inner.top >= outer.top
@@ -4098,6 +4131,7 @@ mod scroll_tests {
         for control in [group_menu, group_close] {
             let rect = hover(center(control)).unwrap();
             assert_ne!(rect, group);
+            assert!(super::rect_contains_rect(&rect, &group));
             assert!(super::rect_contains_rect(
                 &rect,
                 &super::hover_circle_rect(control)
@@ -4115,6 +4149,7 @@ mod scroll_tests {
         for control in [row_menu, row_close] {
             let rect = hover(center(control)).unwrap();
             assert_ne!(rect, row);
+            assert!(super::rect_contains_rect(&rect, &row));
             assert!(super::rect_contains_rect(
                 &rect,
                 &super::hover_circle_rect(control)

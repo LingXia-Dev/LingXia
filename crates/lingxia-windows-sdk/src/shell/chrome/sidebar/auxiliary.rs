@@ -247,29 +247,14 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_hit_test(
 }
 
 pub(in crate::shell::chrome) fn sidebar_auxiliary_close_rect(item_rect: RECT) -> RECT {
-    normalize_rect(RECT {
-        left: item_rect.right - sidebar_browser_close_size(),
-        top: item_rect.top,
-        right: item_rect.right,
-        bottom: item_rect.bottom,
-    })
+    sidebar_row_control_rect(item_rect, 0)
 }
 
 pub(in crate::shell::chrome) fn sidebar_auxiliary_menu_rect(
     item_rect: RECT,
     item: &WindowsShellAuxiliaryItemLayout,
 ) -> RECT {
-    let trailing = if item.closable {
-        sidebar_auxiliary_close_rect(item_rect).left
-    } else {
-        item_rect.right
-    };
-    normalize_rect(RECT {
-        left: trailing - sidebar_row_menu_width(),
-        top: item_rect.top,
-        right: trailing,
-        bottom: item_rect.bottom,
-    })
+    sidebar_row_control_rect(item_rect, usize::from(item.closable))
 }
 
 pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
@@ -292,9 +277,9 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         let item_rect = *item_rect;
         if item.pinned {
             if item.active {
-                fill_round_rect_aa(hdc, item_rect, 6, shell_palette().selection_background);
+                fill_round_rect_aa(hdc, item_rect, px(6), shell_palette().selection_background);
             } else {
-                draw_hover_wash(hdc, item_rect, 6, cursor);
+                draw_hover_wash(hdc, item_rect, px(6), cursor);
             }
             let left =
                 item_rect.left + (rect_width(&item_rect) - pinned_shortcut_icon_size()).max(0) / 2;
@@ -335,10 +320,11 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
             continue;
         }
         if item.active {
-            fill_round_rect_aa(hdc, item_rect, 6, shell_palette().selection_background);
+            fill_round_rect_aa(hdc, item_rect, px(6), shell_palette().selection_background);
         } else {
-            draw_hover_wash(hdc, item_rect, 6, cursor);
+            draw_hover_wash(hdc, item_rect, px(6), cursor);
         }
+        let hovered = rect_contains(&item_rect, cursor.unwrap_or((-1, -1)));
 
         let close_rect = sidebar_auxiliary_close_rect(item_rect);
         let menu_rect = sidebar_auxiliary_menu_rect(item_rect, item);
@@ -361,14 +347,14 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         if icon_drawn {
             label_left = icon_rect.right + sidebar_favicon_text_gap();
         }
-        let label_rect = sidebar_auxiliary_title_rect(item_rect, item, label_left);
+        let label_rect = sidebar_auxiliary_title_rect(item_rect, item, label_left, hovered);
         let text_color = if item.active {
             shell_palette().text_primary
         } else {
             shell_palette().text_muted
         };
         draw_text(hdc, &item.title, label_rect, text_color, DT_LEFT);
-        if rect_contains(&item_rect, cursor.unwrap_or((-1, -1))) {
+        if hovered {
             draw_hover_circle(hdc, menu_rect, cursor);
             draw_design_icon_button(
                 hdc,
@@ -378,38 +364,42 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
                 px(16),
             );
         }
-        if item.closable && rect_contains(&item_rect, cursor.unwrap_or((-1, -1))) {
+        if item.closable && hovered {
             draw_hover_circle(hdc, close_rect, cursor);
-            draw_text(
+            draw_design_icon_button(
                 hdc,
-                GLYPH_TAB_CLOSE,
                 close_rect,
+                WindowsDesignIcon::CloseX,
                 shell_palette().text_muted,
-                DT_CENTER,
+                px(12),
             );
         }
     }
 
     if let Some(add_rect) = auxiliary.add {
         // Add row: a centered "+" glyph only, no label.
-        draw_hover_wash(hdc, add_rect, 8, cursor);
+        draw_hover_wash(hdc, add_rect, px(8), cursor);
         draw_frame_button_glyph(hdc, GLYPH_ADD, add_rect, shell_palette().text_muted);
     }
 }
 
+/// A row title, ending at its menu while `hovered` (when the controls show)
+/// and running to the row's edge otherwise.
 pub(in crate::shell::chrome) fn sidebar_auxiliary_title_rect(
     item_rect: RECT,
     item: &WindowsShellAuxiliaryItemLayout,
     label_left: i32,
+    hovered: bool,
 ) -> RECT {
+    let visible = if hovered && !item.pinned {
+        1 + usize::from(item.closable)
+    } else {
+        0
+    };
     normalize_rect(RECT {
         left: label_left,
         top: item_rect.top,
-        right: if item.pinned {
-            item_rect.right - px(8)
-        } else {
-            sidebar_auxiliary_menu_rect(item_rect, item).left - px(2)
-        },
+        right: sidebar_row_title_right(item_rect, visible),
         bottom: item_rect.bottom,
     })
 }
@@ -494,11 +484,17 @@ mod tests {
 
         let menu = sidebar_auxiliary_menu_rect(item_rect, &item);
         let close = sidebar_auxiliary_close_rect(item_rect);
-        let title = sidebar_auxiliary_title_rect(item_rect, &item, 40);
-        assert_eq!(menu.right, close.left);
-        assert_eq!(title.right, menu.left - 2);
-        assert_eq!(menu.right - menu.left, sidebar_row_menu_width());
-        assert_eq!(close.right - close.left, sidebar_browser_close_size());
+        assert!(menu.right < close.left);
+        // Controls sit inside the row, clear of its rounded edge.
+        assert!(close.right < item_rect.right);
+        assert!(close.top > item_rect.top && close.bottom < item_rect.bottom);
+        // The hover circle is the hit cell, so it cannot overhang the row.
+        assert_eq!(crate::shell::chrome::hover_circle_rect(close), close);
+        // Hidden controls do not cut the title short; shown ones do.
+        let resting = sidebar_auxiliary_title_rect(item_rect, &item, 40, false);
+        let hovered = sidebar_auxiliary_title_rect(item_rect, &item, 40, true);
+        assert!(resting.right > close.left);
+        assert!(hovered.right < menu.left);
     }
 
     #[test]

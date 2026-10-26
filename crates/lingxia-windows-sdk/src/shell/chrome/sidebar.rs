@@ -292,10 +292,16 @@ pub(super) fn draw_sidebar_tab_bar(
     // group header a quiet wash while its selected child carries the stronger
     // page-level card, preserving both levels without stacking white pills.
     if tabbar.group_active {
-        fill_round_rect_aa(hdc, group_rect, 6, shell_palette().group_active_background);
+        fill_round_rect_aa(
+            hdc,
+            group_rect,
+            px(6),
+            shell_palette().group_active_background,
+        );
     } else {
-        draw_hover_wash(hdc, group_rect, 6, cursor);
+        draw_hover_wash(hdc, group_rect, px(6), cursor);
     }
+    let hovered = rect_contains(&group_rect, cursor.unwrap_or((-1, -1)));
     // The lxapp's own icon (via the app-info API) leads the group header.
     let icon_rect = sidebar_top_level_icon_rect(group_rect, sidebar_icon_size());
     draw_icon_or_default(
@@ -304,8 +310,8 @@ pub(super) fn draw_sidebar_tab_bar(
         icon_rect,
         sidebar_icon_size() as u32,
     );
-    let show_chevron = !tabbar.items_api_hidden && !tabbar.items.is_empty();
-    let header_rect = sidebar_group_title_rect(rect, tabbar, scroll_offset);
+    let show_chevron = sidebar_group_shows_chevron(tabbar);
+    let header_rect = sidebar_group_title_rect(rect, tabbar, scroll_offset, hovered);
     draw_text(
         hdc,
         &title,
@@ -325,20 +331,20 @@ pub(super) fn draw_sidebar_tab_bar(
             chevron_rect,
             chevron,
             shell_palette().sidebar_header_text,
-            px(14),
+            px(12),
         );
     }
-    if tabbar.group_closable && rect_contains(&group_rect, cursor.unwrap_or((-1, -1))) {
+    if tabbar.group_closable && hovered {
         draw_hover_circle(hdc, close_rect, cursor);
-        draw_text(
+        draw_design_icon_button(
             hdc,
-            GLYPH_TAB_CLOSE,
             close_rect,
+            WindowsDesignIcon::CloseX,
             shell_palette().text_muted,
-            DT_CENTER,
+            px(12),
         );
     }
-    if rect_contains(&group_rect, cursor.unwrap_or((-1, -1))) {
+    if hovered {
         draw_hover_circle(hdc, menu_rect, cursor);
         draw_design_icon_button(
             hdc,
@@ -381,7 +387,7 @@ pub(super) fn draw_sidebar_tab_bar(
             continue;
         };
         if !action.disabled {
-            draw_hover_wash(hdc, action_rect, 6, cursor);
+            draw_hover_wash(hdc, action_rect, px(6), cursor);
         }
         let icon_rect = centered_icon_rect(action_rect, px(16));
         let _ = draw_icon_from_path(hdc, &action.icon_path, icon_rect, px(16) as u32);
@@ -429,7 +435,7 @@ pub(super) fn draw_sidebar_items(
     if !tabbar.items.is_empty() {
         let last = sidebar_item_rect(rect, tabbar, tabbar.items.len() - 1, scroll_offset);
         // Same 12pt attribution axis as macOS (group inset + 12).
-        let guide_x = rect.left + sidebar_item_inset() + 12;
+        let guide_x = rect.left + sidebar_item_inset() + px(12);
         fill_rect(
             hdc,
             RECT {
@@ -437,7 +443,7 @@ pub(super) fn draw_sidebar_items(
                 top: sidebar_group_bottom(rect, tabbar, scroll_offset) - px(2),
                 right: guide_x + px(1),
                 bottom: (last.bottom - px(7))
-                    .max(sidebar_group_bottom(rect, tabbar, scroll_offset) - 2),
+                    .max(sidebar_group_bottom(rect, tabbar, scroll_offset) - px(2)),
             },
             shell_palette().divider,
         );
@@ -445,13 +451,14 @@ pub(super) fn draw_sidebar_items(
 
     for (index, item) in tabbar.items.iter().enumerate() {
         let item_rect = sidebar_item_rect(rect, tabbar, index, scroll_offset);
-        let selected = tabbar.selected_index == item.index as i32;
+        // A page highlights only while its lxapp is what the main shows.
+        let selected = tabbar.group_active && tabbar.selected_index == item.index as i32;
         if selected {
             // A flat selection avoids the horizontal shadow residue that was
             // especially visible while the old and new rows repainted during
             // tab switches. The accent guide already carries active emphasis.
-            fill_round_rect_aa(hdc, item_rect, 5, shell_palette().selection_background);
-            let guide_x = rect.left + sidebar_item_inset() + 12;
+            fill_round_rect_aa(hdc, item_rect, px(6), shell_palette().selection_background);
+            let guide_x = rect.left + sidebar_item_inset() + px(12);
             fill_round_rect_aa(
                 hdc,
                 RECT {
@@ -464,7 +471,7 @@ pub(super) fn draw_sidebar_items(
                 tabbar.selected_color,
             );
         } else {
-            draw_hover_wash(hdc, item_rect, 6, cursor);
+            draw_hover_wash(hdc, item_rect, px(6), cursor);
         }
 
         let label_rect = RECT {
@@ -522,9 +529,9 @@ fn draw_sidebar_rail(
     }
     let app_rect = sidebar_rail_item_rect(rect, sidebar_group_rail_index(tabbar), scroll_offset);
     if tabbar.group_active {
-        fill_round_rect_aa(hdc, app_rect, 6, shell_palette().selection_background);
+        fill_round_rect_aa(hdc, app_rect, px(6), shell_palette().selection_background);
     }
-    draw_hover_wash(hdc, app_rect, 6, cursor);
+    draw_hover_wash(hdc, app_rect, px(6), cursor);
     let app_icon_rect = centered_icon_rect(app_rect, sidebar_rail_icon_size());
     draw_icon_or_default(
         hdc,
@@ -546,9 +553,9 @@ fn draw_sidebar_rail(
             scroll_offset,
         );
         if item.active {
-            fill_round_rect_aa(hdc, item_rect, 6, shell_palette().selection_background);
+            fill_round_rect_aa(hdc, item_rect, px(6), shell_palette().selection_background);
         }
-        draw_hover_wash(hdc, item_rect, 6, cursor);
+        draw_hover_wash(hdc, item_rect, px(6), cursor);
         let icon_rect = centered_icon_rect(item_rect, sidebar_rail_icon_size());
         let drew = match item.icon_png.as_deref() {
             Some(png) => draw_icon_from_png_bytes(hdc, &item.id, png, icon_rect),
@@ -571,7 +578,7 @@ fn draw_sidebar_rail(
     // auxiliary section (full browser environment only).
     if tabbar.show_auxiliary_add {
         let add_rect = sidebar_rail_add_rect(rect, tabbar, scroll_offset);
-        draw_hover_wash(hdc, add_rect, 8, cursor);
+        draw_hover_wash(hdc, add_rect, px(8), cursor);
         draw_frame_button_glyph(hdc, GLYPH_ADD, add_rect, shell_palette().text_muted);
     }
 
@@ -582,7 +589,7 @@ fn draw_sidebar_rail(
     // Keep the control outside the scrolling navigation clip. It stays
     // actionable in compact desktop, where it peeks instead of pinning.
     let expand_rect = sidebar_rail_expand_rect(rect);
-    draw_hover_wash(hdc, expand_rect, 6, cursor);
+    draw_hover_wash(hdc, expand_rect, px(6), cursor);
     draw_design_icon_button(
         hdc,
         expand_rect,
@@ -594,7 +601,7 @@ fn draw_sidebar_rail(
 
 fn draw_sidebar_rail_close(hdc: HDC, item_rect: RECT) {
     let close_rect = sidebar_rail_close_rect(item_rect);
-    fill_round_rect_aa(hdc, close_rect, 6, shell_palette().control_surface);
+    fill_round_rect_aa(hdc, close_rect, px(6), shell_palette().control_surface);
     draw_text(
         hdc,
         GLYPH_TAB_CLOSE,
@@ -606,14 +613,14 @@ fn draw_sidebar_rail_close(hdc: HDC, item_rect: RECT) {
 
 /// Direct-close target overlaid on a closable collapsed-rail switcher.
 pub(super) fn sidebar_rail_close_rect(item_rect: RECT) -> RECT {
-    const SIZE: i32 = 24;
-    let left = item_rect.left + (rect_width(&item_rect) - SIZE).max(0) / 2;
-    let top = item_rect.top + (rect_height(&item_rect) - SIZE).max(0) / 2;
+    let size = px(24);
+    let left = item_rect.left + (rect_width(&item_rect) - size).max(0) / 2;
+    let top = item_rect.top + (rect_height(&item_rect) - size).max(0) / 2;
     normalize_rect(RECT {
         left,
         top,
-        right: left + SIZE,
-        bottom: top + SIZE,
+        right: left + size,
+        bottom: top + size,
     })
 }
 
@@ -632,7 +639,7 @@ pub(super) fn sidebar_rail_pinned_divider_rect(
 
     let last_pin = sidebar_rail_item_rect(rect, pinned - 1, scroll_offset);
     let first_open = sidebar_rail_item_rect(rect, pinned, scroll_offset);
-    let width = 22.min(rect_width(&rect));
+    let width = px(22).min(rect_width(&rect));
     let left = rect.left + (rect_width(&rect) - width).max(0) / 2;
     let top = (last_pin.bottom + first_open.top) / 2;
     Some(normalize_rect(RECT {
@@ -746,15 +753,28 @@ pub(super) fn sidebar_group_rect(
     })
 }
 
+/// Whether the group header draws its disclosure chevron.
+pub(in crate::shell::chrome) fn sidebar_group_shows_chevron(
+    tabbar: &WindowsShellTabBarLayout,
+) -> bool {
+    !tabbar.items_api_hidden && !tabbar.items.is_empty()
+}
+
+/// The group title, ending at the first control that is drawn: the chevron
+/// at rest, the menu (and close) while `hovered`.
 pub(in crate::shell::chrome) fn sidebar_group_title_rect(
     rect: RECT,
     tabbar: &WindowsShellTabBarLayout,
     scroll_offset: i32,
+    hovered: bool,
 ) -> RECT {
     let group_rect = sidebar_group_rect(rect, tabbar, scroll_offset);
     let icon_rect = sidebar_top_level_icon_rect(group_rect, sidebar_icon_size());
-    // The hover ellipsis always sits here, so the title never runs under it.
-    let right = sidebar_group_menu_rect(rect, tabbar, scroll_offset).left - px(2);
+    let mut visible = usize::from(sidebar_group_shows_chevron(tabbar));
+    if hovered {
+        visible += 1 + usize::from(tabbar.group_closable);
+    }
+    let right = sidebar_row_title_right(group_rect, visible);
     normalize_rect(RECT {
         left: icon_rect.right + px(8),
         top: group_rect.top,
@@ -768,15 +788,7 @@ pub(super) fn sidebar_group_chevron_rect(
     tabbar: &WindowsShellTabBarLayout,
     scroll_offset: i32,
 ) -> RECT {
-    let group_top = sidebar_group_top(rect, tabbar, scroll_offset);
-    let group_bottom = sidebar_group_bottom(rect, tabbar, scroll_offset);
-    let top = group_top + (group_bottom - group_top - sidebar_chevron_size()).max(0) / 2;
-    normalize_rect(RECT {
-        left: rect.right - sidebar_item_inset() - sidebar_chevron_size(),
-        top,
-        right: rect.right - sidebar_item_inset(),
-        bottom: top + sidebar_chevron_size(),
-    })
+    sidebar_row_control_rect(sidebar_group_rect(rect, tabbar, scroll_offset), 0)
 }
 
 pub(super) fn sidebar_group_close_rect(
@@ -784,13 +796,10 @@ pub(super) fn sidebar_group_close_rect(
     tabbar: &WindowsShellTabBarLayout,
     scroll_offset: i32,
 ) -> RECT {
-    let chevron = sidebar_group_chevron_rect(rect, tabbar, scroll_offset);
-    normalize_rect(RECT {
-        left: chevron.left - sidebar_browser_close_size(),
-        top: sidebar_group_top(rect, tabbar, scroll_offset),
-        right: chevron.left,
-        bottom: sidebar_group_bottom(rect, tabbar, scroll_offset),
-    })
+    sidebar_row_control_rect(
+        sidebar_group_rect(rect, tabbar, scroll_offset),
+        usize::from(sidebar_group_shows_chevron(tabbar)),
+    )
 }
 
 pub(super) fn sidebar_group_menu_rect(
@@ -798,17 +807,10 @@ pub(super) fn sidebar_group_menu_rect(
     tabbar: &WindowsShellTabBarLayout,
     scroll_offset: i32,
 ) -> RECT {
-    let trailing = if tabbar.group_closable {
-        sidebar_group_close_rect(rect, tabbar, scroll_offset).left
-    } else {
-        sidebar_group_chevron_rect(rect, tabbar, scroll_offset).left
-    };
-    normalize_rect(RECT {
-        left: trailing - sidebar_row_menu_width(),
-        top: sidebar_group_top(rect, tabbar, scroll_offset),
-        right: trailing,
-        bottom: sidebar_group_bottom(rect, tabbar, scroll_offset),
-    })
+    sidebar_row_control_rect(
+        sidebar_group_rect(rect, tabbar, scroll_offset),
+        usize::from(sidebar_group_shows_chevron(tabbar)) + usize::from(tabbar.group_closable),
+    )
 }
 
 /// Width the leading controls take before the action strip can start.
