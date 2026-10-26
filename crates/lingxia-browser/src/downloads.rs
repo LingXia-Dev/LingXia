@@ -87,6 +87,20 @@ fn publish_browser_download_event(event_name: &str, payload: serde_json::Value) 
     let _ = publish_app_event(BUILTIN_BROWSER_APPID, event_name, payload_str);
 }
 
+/// The platform's report of a download, as transfer takes it.
+fn source(request: DownloadRequest) -> transfer::runtime::DownloadSource {
+    transfer::runtime::DownloadSource {
+        url: request.url,
+        user_agent: request.user_agent,
+        content_disposition: request.content_disposition,
+        mime_type: request.mime_type,
+        content_length: request.content_length,
+        suggested_filename: request.suggested_filename,
+        source_page_url: request.source_page_url,
+        cookie: request.cookie,
+    }
+}
+
 pub(crate) async fn browser_download_resource(
     owner: Arc<LxApp>,
     tab_id: String,
@@ -96,8 +110,8 @@ pub(crate) async fn browser_download_resource(
     let url = request.url.clone();
     let cancel_rx = transfer::runtime::register_active_download(&task_id);
     let task = transfer::runtime::DownloadTask::for_browser(
-        request,
-        transfer::runtime::browser_download_root(&owner.runtime.app_data_dir()),
+        source(request),
+        lingxia_service::downloads::dir(&owner.runtime.app_data_dir()),
         Some(rong::get_user_agent()),
     )
     .with_browser_persistence(owner.runtime.app_data_dir(), task_id.clone());
@@ -263,7 +277,7 @@ pub(crate) fn retry_browser_owned_download(task_id: &str) -> transfer::Result<()
         return Ok(());
     }
 
-    let request = DownloadRequest {
+    let request = transfer::runtime::DownloadSource {
         url: record.url.clone(),
         user_agent: request_context.user_agent.clone(),
         content_disposition: None,
@@ -279,7 +293,7 @@ pub(crate) fn retry_browser_owned_download(task_id: &str) -> transfer::Result<()
     let cancel_rx = transfer::runtime::register_active_download(task_id);
     let task = transfer::runtime::DownloadTask::for_browser(
         request,
-        transfer::runtime::browser_download_root(&app_data_dir),
+        lingxia_service::downloads::dir(&app_data_dir),
         Some(rong::get_user_agent()),
     )
     .with_target_path(PathBuf::from(&record.target_path))

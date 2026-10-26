@@ -4,7 +4,6 @@ use dashmap::mapref::entry::Entry as DashEntry;
 use http::Request as HttpRequest;
 use http::header;
 use http_body_util::{BodyExt, Full};
-use lingxia_webview::DownloadRequest;
 use ring::digest::{SHA256, digest};
 use rong_rt::http::{self as host_http, HttpBody, RequestOptions};
 use serde::{Deserialize, Serialize};
@@ -39,10 +38,26 @@ const BROWSER_DOWNLOAD_EVENT_COMPLETED: &str = "BrowserDownloadCompleted";
 const BROWSER_DOWNLOAD_EVENT_FAILED: &str = "BrowserDownloadFailed";
 const BROWSER_DOWNLOAD_EVENT_PAUSED: &str = "BrowserDownloadPaused";
 
+/// What the platform reported about a download it hands over.
+#[derive(Debug, Clone, Default)]
+pub struct DownloadSource {
+    pub url: String,
+    pub user_agent: Option<String>,
+    /// `Content-Disposition` response header, if exposed.
+    pub content_disposition: Option<String>,
+    pub mime_type: Option<String>,
+    pub content_length: Option<u64>,
+    pub suggested_filename: Option<String>,
+    /// The page that started the download, if known.
+    pub source_page_url: Option<String>,
+    /// Cookie header for `url`, if available.
+    pub cookie: Option<String>,
+}
+
 /// A single HTTP(S) download job with resumable semantics.
 #[derive(Debug, Clone)]
 pub struct DownloadTask {
-    request: DownloadRequest,
+    request: DownloadSource,
     root_dir: PathBuf,
     fallback_user_agent: Option<String>,
     request_headers: Vec<(String, String)>,
@@ -314,77 +329,13 @@ fn classify_transport_download_failure(error: &str) -> DownloadFailureKind {
     DownloadFailureKind::Internal
 }
 
-fn resolve_download_root(app_data_dir: &Path, default_root: impl Into<PathBuf>) -> PathBuf {
-    lingxia_settings::get_download_dir(app_data_dir)
-        .ok()
-        .flatten()
-        .unwrap_or_else(|| default_root.into())
-}
-
-fn default_download_root(app_data_dir: &Path) -> PathBuf {
-    system_downloads_dir().unwrap_or_else(|| app_data_dir.join("downloads"))
-}
-
-/// Browser "Save files to" default: the user's system Downloads folder.
-/// macOS is `~/Downloads`. Windows is Explorer's Downloads known folder
-/// (`FOLDERID_Downloads`), not `%USERPROFILE%\Downloads` and not app data.
-fn system_downloads_dir() -> Option<PathBuf> {
-    #[cfg(target_os = "macos")]
-    {
-        std::env::var_os("HOME")
-            .filter(|home| !home.is_empty())
-            .map(|home| PathBuf::from(home).join("Downloads"))
-    }
-    #[cfg(windows)]
-    {
-        windows_known_downloads_dir().or_else(windows_profile_downloads_dir)
-    }
-    #[cfg(not(any(target_os = "macos", windows)))]
-    {
-        None
-    }
-}
-
-#[cfg(windows)]
-fn windows_known_downloads_dir() -> Option<PathBuf> {
-    use windows::Win32::System::Com::CoTaskMemFree;
-    use windows::Win32::UI::Shell::{FOLDERID_Downloads, KF_FLAG_DEFAULT, SHGetKnownFolderPath};
-    use windows::core::PWSTR;
-
-    unsafe {
-        let pwstr: PWSTR = SHGetKnownFolderPath(&FOLDERID_Downloads, KF_FLAG_DEFAULT, None).ok()?;
-        let path = pwstr
-            .to_string()
-            .ok()
-            .map(PathBuf::from)
-            .filter(|path| !path.as_os_str().is_empty());
-        CoTaskMemFree(Some(pwstr.0.cast()));
-        path
-    }
-}
-
-#[cfg(windows)]
-fn windows_profile_downloads_dir() -> Option<PathBuf> {
-    std::env::var_os("USERPROFILE")
-        .filter(|profile| !profile.is_empty())
-        .map(|profile| PathBuf::from(profile).join("Downloads"))
-}
-
-pub(crate) fn download_root(app_data_dir: &Path) -> PathBuf {
-    resolve_download_root(app_data_dir, default_download_root(app_data_dir))
-}
-
-pub fn browser_download_root(app_data_dir: &Path) -> PathBuf {
-    download_root(app_data_dir)
-}
-
 fn user_cache_download_root(user_cache_dir: &Path) -> PathBuf {
     user_cache_dir.to_path_buf()
 }
 
 impl DownloadTask {
     pub fn for_browser(
-        request: DownloadRequest,
+        request: DownloadSource,
         root_dir: PathBuf,
         fallback_user_agent: Option<String>,
     ) -> Self {
@@ -666,7 +617,7 @@ fn filename_from_url(url: &str) -> Option<String> {
     Some(sanitize_filename(last))
 }
 
-fn suggest_filename(request: &DownloadRequest) -> String {
+fn suggest_filename(request: &DownloadSource) -> String {
     if let Some(name) = request
         .suggested_filename
         .as_ref()
@@ -754,8 +705,8 @@ pub fn download_request_task_id(request: &UserCacheDownloadRequest) -> String {
     user_cache_download_key(request)
 }
 
-fn build_user_cache_download_request(url: String) -> DownloadRequest {
-    DownloadRequest {
+fn build_user_cache_download_request(url: String) -> DownloadSource {
+    DownloadSource {
         url,
         user_agent: None,
         content_disposition: None,
@@ -1741,7 +1692,7 @@ async fn run_download_task(
 fn map_browser_download_event(
     task_id: &str,
     tab_id: &str,
-    request: &DownloadRequest,
+    request: &DownloadSource,
     behavior: DownloadBehavior,
     event: DownloadEvent,
 ) -> (&'static str, serde_json::Value) {
@@ -2747,7 +2698,7 @@ mod browser_proxy_tests {
 
     fn task(url: String, proxy: String) -> DownloadTask {
         DownloadTask::for_browser(
-            DownloadRequest {
+            DownloadSource {
                 url,
                 user_agent: None,
                 content_disposition: None,

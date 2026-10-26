@@ -165,7 +165,6 @@ impl From<lingxia_service::downloads::DownloadsError> for Error {
             lingxia_service::downloads::DownloadsError::Json(error) => {
                 Self::Internal(error.to_string())
             }
-            lingxia_service::downloads::DownloadsError::Settings(error) => error.into(),
         }
     }
 }

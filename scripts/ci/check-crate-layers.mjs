@@ -29,7 +29,7 @@ export const LAYERS = {
   "ui-android": 3,
   logic: 3,
   service: 3,
-  transfer: 3,
+  transfer: 2,
   media: 3,
   browser: 3,
   terminal: 3,

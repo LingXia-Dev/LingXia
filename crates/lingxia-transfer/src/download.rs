@@ -281,7 +281,7 @@ impl DownloadsStore {
         })
     }
 
-    fn snapshot(&self, app_data_dir: &Path) -> Result<DownloadsSnapshot> {
+    fn snapshot(&self) -> Result<DownloadsSnapshot> {
         let mut downloads = self.reconciled_records()?;
         downloads.sort_by(|a, b| {
             b.updated_at
@@ -293,11 +293,8 @@ impl DownloadsStore {
         });
 
         Ok(DownloadsSnapshot {
-            download_dir: Some(
-                self::manager::download_root(app_data_dir)
-                    .to_string_lossy()
-                    .to_string(),
-            ),
+            // The Downloads folder is the caller's policy; it fills this in.
+            download_dir: None,
             has_active_downloads: downloads
                 .iter()
                 .any(|record| record.status == DownloadStatus::Downloading),
@@ -633,7 +630,7 @@ pub fn record_bridge_event(app_data_dir: &Path, event_name: &str, payload: &Valu
 
 pub(crate) fn snapshot(app_data_dir: &Path) -> Result<DownloadsSnapshot> {
     let store = downloads_store(app_data_dir)?;
-    store.snapshot(app_data_dir)
+    store.snapshot()
 }
 
 pub(crate) fn subscribe(app_data_dir: &Path) -> Result<broadcast::Receiver<DownloadEvent>> {

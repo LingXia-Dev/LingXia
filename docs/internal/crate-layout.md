@@ -13,8 +13,8 @@ it has no layer for: give a new crate one there and a line below.
 | Layer | Crates | Owns |
 |---|---|---|
 | 1. Contracts | `app-context`, `provider`, `log`, `messaging`, `settings`, `surface`, `shell`, `update`, `control-protocol` | Types, policy, wire formats. No runtime. |
-| 2. Platform | `webview`, `platform`, `windows-contract`, `device-io` | OS and WebView hosting. Knows nothing of lxapps. |
-| 3. Runtime | `lxapp`, `ui`, `ui-android`, `logic`, `service`, `transfer`, `media`, `browser`, `terminal`, `terminal-config` | What a shipped app runs. |
+| 2. Platform | `webview`, `platform`, `windows-contract`, `device-io`, `transfer` | OS and WebView hosting. Knows nothing of lxapps. |
+| 3. Runtime | `lxapp`, `ui`, `ui-android`, `logic`, `service`, `media`, `browser`, `terminal`, `terminal-config` | What a shipped app runs. |
 | 4. Products and dev features | `browser-shell`, `proxy`, `control-commands`, `network-dev`, `automation` | Built on the runtime; pulled in by facade features. |
 | 5. Facade | `lingxia` | The app-author API, the platform entry surface, init. |
 | 6. Host integrations | `control-runtime`, `windows-sdk` | Linked by host apps beside the facade. |

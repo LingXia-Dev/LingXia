@@ -16,8 +16,6 @@ network-observer = ["rong_rt/network-observer"]
 [dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"], optional = true }
 futures-util = { version = "0.3", optional = true }
-lingxia-settings = { workspace = true }
-lingxia-webview = { workspace = true }
 tokio = { workspace = true }
 http = { workspace = true }
 dashmap = { workspace = true }
@@ -40,6 +38,3 @@ rong_rt = { workspace = true, default-features = false, features = ["tls-ring"] 
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios", all(target_os = "linux", target_env = "ohos"))))'.dependencies]
 rong_rt = { workspace = true, default-features = false, features = ["tls-aws-lc"] }
-
-[target.'cfg(windows)'.dependencies]
-windows = { workspace = true, features = ["Win32_System_Com", "Win32_UI_Shell"] }

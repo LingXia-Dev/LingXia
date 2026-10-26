@@ -91,7 +91,6 @@ fn map_downloads_error(err: DownloadsError) -> LxAppError {
         DownloadsError::Runtime(message) => LxAppError::Runtime(message),
         DownloadsError::Io(err) => LxAppError::IoError(err.to_string()),
         DownloadsError::Json(err) => LxAppError::Bridge(format!("JSON Processing Error: {err}")),
-        DownloadsError::Settings(err) => LxAppError::Runtime(err.to_string()),
     }
 }
 

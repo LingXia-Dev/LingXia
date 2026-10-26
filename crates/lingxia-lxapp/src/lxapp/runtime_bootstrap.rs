@@ -13,7 +13,7 @@ fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError>
         data_dir.join(LINGXIA_DIR).join(PLUGINS_DIR),
         data_dir.join(LINGXIA_DIR).join(USER_DATA_DIR),
         data_dir.join(LINGXIA_DIR).join(USER_CACHE_DIR),
-        lingxia_transfer::dir(&runtime.app_data_dir()),
+        lingxia_service::downloads::dir(&runtime.app_data_dir()),
         data_dir.join(LINGXIA_DIR).join(STORAGE_DIR),
         cache_dir.join(LINGXIA_DIR).join(LXAPPS_DIR).join(TEMP_DIR),
     ];

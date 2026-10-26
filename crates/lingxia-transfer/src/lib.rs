@@ -22,7 +22,7 @@ pub type Result<T> = std::result::Result<T, DownloadsError>;
 /// Integration hooks used by other LingXia runtime crates such as browser.
 pub mod runtime {
     pub use crate::download::manager::{
-        DownloadBehavior, DownloadTask, browser_download_failed_event, browser_download_root,
+        DownloadBehavior, DownloadSource, DownloadTask, browser_download_failed_event,
         run_browser_download_task,
     };
     pub use crate::download::{
@@ -103,32 +103,6 @@ pub enum DownloadsError {
     Io(#[from] std::io::Error),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("settings error: {0}")]
-    Settings(#[from] lingxia_settings::SettingsError),
-}
-
-pub fn dir(app_data_dir: &Path) -> PathBuf {
-    download::manager::download_root(app_data_dir)
-}
-
-pub fn set_dir(app_data_dir: &Path, path: impl Into<PathBuf>) -> Result<()> {
-    let path = path.into();
-    if path.as_os_str().is_empty() {
-        return Err(DownloadsError::InvalidParameter(
-            "download directory cannot be empty".to_string(),
-        ));
-    }
-    lingxia_settings::set_download_dir(app_data_dir, Some(path))?;
-    Ok(())
-}
-
-pub fn reset_dir(app_data_dir: &Path) -> Result<()> {
-    lingxia_settings::set_download_dir(app_data_dir, None::<&Path>)?;
-    Ok(())
-}
-
-pub fn configured_dir(app_data_dir: &Path) -> Result<Option<PathBuf>> {
-    Ok(lingxia_settings::get_download_dir(app_data_dir)?)
 }
 
 pub fn snapshot(app_data_dir: &Path) -> Result<DownloadsSnapshot> {
