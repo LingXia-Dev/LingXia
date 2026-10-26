@@ -366,51 +366,54 @@ final class GpuIme {
         final GpuInputConnection editor=connection;
         // Pages are built on the application context; dialogs need the window's.
         Context context=view.isAttachedToWindow() ? view.getRootView().getContext() : view.getContext();
-        String value=editor.getExtractedText(null,0).text.toString();
-        JSONObject bounds=ime().optJSONObject("picker");
-        String min=bounds == null || bounds.isNull("min") ? "" : bounds.optString("min");
-        String max=bounds == null || bounds.isNull("max") ? "" : bounds.optString("max");
+        // The core seeds the dialog and bounds it, as [year, month, day] or [hour, minute, 0].
+        JSONObject spec=ime().optJSONObject("picker");
+        int[] seed=parts(spec,"seed"), low=parts(spec,"min_parts"), high=parts(spec,"max_parts");
+        java.util.Calendar now=java.util.Calendar.getInstance();
+        boolean[] chosen={false};
         android.app.Dialog dialog;
         if (GpuInput.KEYBOARD_DATE.equals(kind)) {
-            java.util.Calendar seed=java.util.Calendar.getInstance();
-            int[] parsed=date(value);
-            if (parsed != null) seed.set(parsed[0],parsed[1]-1,parsed[2]);
-            android.app.DatePickerDialog picked=new android.app.DatePickerDialog(context,(widget,year,month,day) ->
-                confirm(editor,String.format(java.util.Locale.ROOT,"%04d-%02d-%02d",year,month+1,day)),
-                seed.get(java.util.Calendar.YEAR),seed.get(java.util.Calendar.MONTH),seed.get(java.util.Calendar.DAY_OF_MONTH));
-            Long low=millis(min), high=millis(max);
-            if (low != null) picked.getDatePicker().setMinDate(low);
-            if (high != null) picked.getDatePicker().setMaxDate(high);
+            android.app.DatePickerDialog picked=new android.app.DatePickerDialog(context,(widget,year,month,day) -> {
+                chosen[0]=true; pick(editor,new int[]{year,month+1,day});
+            }, seed != null ? seed[0] : now.get(java.util.Calendar.YEAR), seed != null ? seed[1]-1 : now.get(java.util.Calendar.MONTH),
+                seed != null ? seed[2] : now.get(java.util.Calendar.DAY_OF_MONTH));
+            if (low != null) picked.getDatePicker().setMinDate(millis(low));
+            if (high != null) picked.getDatePicker().setMaxDate(millis(high));
             dialog=picked;
         } else {
-            int[] parsed=time(value);
-            java.util.Calendar now=java.util.Calendar.getInstance();
-            dialog=new android.app.TimePickerDialog(context,(widget,hour,minute) ->
-                confirm(editor,String.format(java.util.Locale.ROOT,"%02d:%02d",hour,minute)), parsed != null ? parsed[0] : now.get(java.util.Calendar.HOUR_OF_DAY), parsed != null ? parsed[1] : now.get(java.util.Calendar.MINUTE),
+            dialog=new android.app.TimePickerDialog(context,(widget,hour,minute) -> {
+                chosen[0]=true; pick(editor,new int[]{hour,minute,0});
+            }, seed != null ? seed[0] : now.get(java.util.Calendar.HOUR_OF_DAY), seed != null ? seed[1] : now.get(java.util.Calendar.MINUTE),
                 android.text.format.DateFormat.is24HourFormat(context));
         }
-        // Cancel, back or outside touch blur the editor; confirm submits first.
-        dialog.setOnDismissListener(ignored -> { if (picker == dialog) { picker=null; if (connection == editor) clear(true); } });
+        // A dismissal without a choice tells the core, which ends editing.
+        dialog.setOnDismissListener(ignored -> {
+            if (picker != dialog) return;
+            picker=null;
+            if (!chosen[0] && connection == editor) pick(editor,null);
+        });
         picker=dialog;
         dialog.show();
     }
-    private void confirm(GpuInputConnection editor,String value) {
+    /** Send a choice (or a dismissal, null) to the core; submit the value it answers. */
+    private void pick(GpuInputConnection editor,int[] parts) {
         if (connection != editor) return;
-        editor.submitValue(value);
+        JSONObject message=request("pick",editor.identity,editor.token);
+        try { message.put("parts",parts == null ? JSONObject.NULL : new JSONArray(parts)); }
+        catch (org.json.JSONException impossible) { throw new IllegalArgumentException(impossible); }
+        host.request(message,reply -> {
+            if (connection != editor || reply == null) return;
+            if (!reply.isNull("value")) editor.submitValue(reply.optString("value"));
+            else host.render(reply.optBoolean("needs_view_render"));
+        });
     }
-    static int[] date(String value) {
-        if (value == null || !value.matches("\\d{4}-\\d{2}-\\d{2}")) return null;
-        return new int[]{Integer.parseInt(value.substring(0,4)),Integer.parseInt(value.substring(5,7)),Integer.parseInt(value.substring(8,10))};
+    private static int[] parts(JSONObject spec,String key) {
+        JSONArray value=spec == null ? null : spec.optJSONArray(key);
+        return value == null || value.length() != 3 ? null : new int[]{value.optInt(0),value.optInt(1),value.optInt(2)};
     }
-    static int[] time(String value) {
-        if (value == null || !value.matches("\\d{2}:\\d{2}(:\\d{2})?")) return null;
-        return new int[]{Integer.parseInt(value.substring(0,2)),Integer.parseInt(value.substring(3,5))};
-    }
-    private static Long millis(String value) {
-        int[] parsed=date(value);
-        if (parsed == null) return null;
+    private static long millis(int[] date) {
         java.util.Calendar day=java.util.Calendar.getInstance();
-        day.clear(); day.set(parsed[0],parsed[1]-1,parsed[2]);
+        day.clear(); day.set(date[0],date[1]-1,date[2]);
         return day.getTimeInMillis();
     }
 }

@@ -318,24 +318,36 @@ public class GpuImeTest {
         assertEquals(9,edit.getLong("token"));
     }
 
-    @Test public void datePickerConfirmsAnIsoValueThenBlurs() throws Exception {
+    /** The core seeds and bounds a date picker and formats its choice; Java parses nothing. */
+    @Test public void datePickerAsksTheCoreForTheValueAndADismissalEndsEditing() throws Exception {
         Host host=new Host();
         android.app.Activity activity=org.robolectric.Robolectric.buildActivity(android.app.Activity.class).setup().get();
-        GpuIme ime=new GpuIme(new View(activity),host);
-        JSONObject node=node(7,"2024-05-06"); ime(node).put("picker",new JSONObject().put("kind","date").put("min","2024-01-01").put("max",JSONObject.NULL));
+        View view=new View(activity); activity.setContentView(view);
+        GpuIme ime=new GpuIme(view,host); ime.setCaretActive(true);
+        JSONObject node=node(7,"");
+        node.getJSONObject("input").getJSONObject("ime").put("keyboard","text").put("picker",new JSONObject().put("kind","date")
+            .put("seed",new JSONArray(new int[]{2026,3,9})).put("min_parts",new JSONArray(new int[]{2026,1,1})).put("max_parts",JSONObject.NULL));
         ime.presented(new JSONObject().put("nodes",new JSONArray().put(node)),ime.capture());
-        assertNull("no keyboard connection",ime.create(new EditorInfo()));
         android.app.DatePickerDialog dialog=(android.app.DatePickerDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
-        assertNotNull(dialog);
-        assertEquals(2024,dialog.getDatePicker().getYear());
-        assertEquals(4,dialog.getDatePicker().getMonth());
-        dialog.updateDate(2024,6,9);
+        assertNotNull("a date editor opens the picker",dialog);
+        android.widget.DatePicker picker=dialog.getDatePicker();
+        assertEquals(2026,picker.getYear()); assertEquals(2,picker.getMonth()); assertEquals(9,picker.getDayOfMonth());
+        dialog.updateDate(2026,3,10);
         dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick();
         org.robolectric.shadows.ShadowLooper.idleMainLooper();
-        JSONObject submit=host.requests.get(0);
-        assertTrue(submit.getBoolean("submit"));
-        assertTrue(submit.getJSONArray("edits").toString(),submit.getJSONArray("edits").toString().contains("2024-07-09"));
-        assertEquals("blur",host.requests.get(host.requests.size()-1).getString("op"));
-        assertFalse(ime.hasFocus());
+        JSONObject pick=host.requests.get(host.requests.size()-1);
+        assertEquals("pick",pick.getString("op"));
+        assertEquals("[2026,4,10]",pick.getJSONArray("parts").toString());
+        host.replies.get(host.replies.size()-1).accept(new JSONObject().put("value","2026-04-10"));
+        assertEquals("2026-04-10",ime.menuText());
+        // Dismissed without a choice: the core is told, and ends editing.
+        Host other=new Host(); GpuIme second=new GpuIme(view,other); second.setCaretActive(true);
+        second.presented(new JSONObject().put("nodes",new JSONArray().put(node)),second.capture());
+        android.app.Dialog fresh=org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        assertNotSame(dialog,fresh);
+        fresh.dismiss();
+        org.robolectric.shadows.ShadowLooper.idleMainLooper();
+        JSONObject dismissed=other.requests.get(other.requests.size()-1);
+        assertEquals("pick",dismissed.getString("op")); assertTrue(dismissed.isNull("parts"));
     }
 }
