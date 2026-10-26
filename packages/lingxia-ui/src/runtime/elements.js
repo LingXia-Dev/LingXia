@@ -3,7 +3,7 @@ import { resolveClasses } from '../style/classes.js';
 import { lowerStyle, paintOnly, mergeStyle } from '../style/lower.js';
 import { h, readNode, isNode, nodeKey, flatten } from './nodes.js';
 import { render, page } from './state.js';
-import { cellOf } from './hooks.js';
+import { cellOf, envOf } from './hooks.js';
 import { located } from './errors.js';
 import { has, validInputText } from './data.js';
 import { fieldOptions } from '../generated/wire.js';
@@ -67,7 +67,7 @@ function envKey(env) {
 
 function nodeStyle(tag, props, extra, inherited, direction, structure) {
   if (props.style !== undefined || extra !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, extra, inherited, direction, structure);
-  const environment = envKey(render.view?.env);
+  const environment = envKey(envOf(render.view));
   if (environment !== loweredEnv) { lowered.clear(); loweredEnv = environment; }
   const key = `${tag}\u0000${props.className}\u0000${props.disabled === true}\u0000${direction}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${inherited.lineHeight}`;
   let style = lowered.get(key);
@@ -86,7 +86,7 @@ const disabledField = { color: 'text-muted', backgroundColor: 'surface-sunken', 
 
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
 function lowerNodeStyle(tag, props, extra, inherited, direction, structure) {
-  const env = { ...render.view?.env, direction, structure };
+  const env = { ...envOf(render.view), direction, structure };
   const classes = resolveClasses(props.className, env);
   // A run takes the size of `text-sm` but not the line height paired with it.
   if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
@@ -142,7 +142,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (props.dir !== undefined && !(['ltr', 'rtl'].includes(props.dir) || (editor && props.dir === 'auto')))
     throw Error(`UI_PROP: dir must be "ltr" or "rtl"${editor ? ' or "auto"' : ''}`);
   // `dir` overrides the direction inherited from the environment for its subtree; `auto` keeps the box's.
-  const direction = (props.dir === 'auto' ? undefined : props.dir) ?? parent.direction ?? (render.view?.env?.direction === 'rtl' ? 'rtl' : 'ltr');
+  const direction = (props.dir === 'auto' ? undefined : props.dir) ?? parent.direction ?? (envOf(render.view)?.direction === 'rtl' ? 'rtl' : 'ltr');
   const flat = flatten(children);
   const style = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
   const inline = child => typeof child === 'string' || typeof child === 'number';

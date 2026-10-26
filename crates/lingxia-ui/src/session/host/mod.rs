@@ -904,7 +904,9 @@ impl<A: PlatformAdapter> Inner<A> {
         };
         let main = self.main();
         main.host_environment.apply(&mut environment.value);
-        main.presented_environment.as_ref() == Some(&environment)
+        main.presented_environment
+            .as_ref()
+            .is_some_and(|presented| main.host_environment.same(presented, &environment))
     }
 
     fn current(&self, guard: Guard) -> bool {

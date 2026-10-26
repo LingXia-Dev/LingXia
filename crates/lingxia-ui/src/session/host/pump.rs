@@ -110,7 +110,14 @@ impl<A: PlatformAdapter> Inner<A> {
                 return;
             };
             main.host_environment.apply(&mut environment.value);
-            if main.environment.as_ref() != Some(&environment) {
+            let same = main
+                .environment
+                .as_ref()
+                .is_some_and(|held| main.host_environment.same(held, &environment));
+            if same {
+                // Host context only this page's View ignores: keep it for the next run, rebuild nothing.
+                main.environment = Some(environment.clone());
+            } else {
                 main.environment = Some(environment.clone());
                 self.lifecycle.invalidate_surface();
                 main.dirty = true;
@@ -179,7 +186,10 @@ impl<A: PlatformAdapter> Inner<A> {
             Guard::Page(page),
             move |inner, session| {
                 let started = Instant::now();
-                inner.prepare(session, request, now).map(|prepared| {
+                let prepared = inner.prepare(session, request, now);
+                let reads = session.reads_host_context();
+                inner.main().host_environment.set_reads_host_context(reads);
+                prepared.map(|prepared| {
                     (
                         prepared,
                         micros(started - queued),

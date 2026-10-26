@@ -441,6 +441,13 @@ impl ViewSession {
                 metrics.add_view(timings);
                 metrics.view_us += crate::session::metrics::micros(started);
                 metrics.view_passes += 1;
+                self.reads_host_context = self.execute(|| {
+                    self.context
+                        .eval::<bool>(Source::from_bytes(
+                            "typeof __lingxiaReadsHostContext !== 'function' || __lingxiaReadsHostContext()",
+                        ))
+                        .map_err(|e| e.to_string())
+                })?;
                 records
             };
             let mut inputs = self.inputs.clone();

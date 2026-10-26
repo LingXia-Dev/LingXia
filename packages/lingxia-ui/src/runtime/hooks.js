@@ -131,7 +131,27 @@ export function useLeaveGuard(name, options) {
   });
 }
 
+// The host pushes these when the lxapp's surface changes; it repaints only pages whose View read one.
+const hostContextKeys = new Set(['sizeClass', 'canDock']);
+let hostContextRead = false;
+const rawEnvs = new WeakMap();
+
 export function createView(data, env) {
   const { actions, channels } = currentActions();
-  return Object.freeze({ data: immutable(data), env: immutable(env), actions, channels });
+  hostContextRead = false;
+  const frozen = immutable(env);
+  const watched = frozen && typeof frozen === 'object' ? new Proxy(frozen, {
+    get(target, key, receiver) {
+      if (hostContextKeys.has(key)) hostContextRead = true;
+      return Reflect.get(target, key, receiver);
+    },
+  }) : frozen;
+  const view = Object.freeze({ data: immutable(data), env: watched, actions, channels });
+  rawEnvs.set(view, frozen);
+  return view;
 }
+
+/** The environment without read tracking, for the runtime's own lowering. */
+export const envOf = view => (view && rawEnvs.get(view)) ?? view?.env;
+/** Whether the View read a host-context key since its view was created. */
+export const readsHostContext = () => hostContextRead;

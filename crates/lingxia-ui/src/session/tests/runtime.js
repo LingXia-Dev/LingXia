@@ -24,6 +24,7 @@
     hasLocalUpdates: () => hasLocalUpdates,
     prepare: () => prepare,
     prepareWindows: () => prepareWindows,
+    readsHostContext: () => readsHostContext,
     receiveActionResponse: () => receiveActionResponse,
     requestLeave: () => requestLeave,
     reset: () => reset,
@@ -1647,10 +1648,25 @@
       request: guard("leave mutation", resource.request)
     });
   }
+  var hostContextKeys = /* @__PURE__ */ new Set(["sizeClass", "canDock"]);
+  var hostContextRead = false;
+  var rawEnvs = /* @__PURE__ */ new WeakMap();
   function createView(data, env) {
     const { actions: actions2, channels: channels2 } = currentActions();
-    return Object.freeze({ data: immutable(data), env: immutable(env), actions: actions2, channels: channels2 });
+    hostContextRead = false;
+    const frozen = immutable(env);
+    const watched = frozen && typeof frozen === "object" ? new Proxy(frozen, {
+      get(target, key, receiver) {
+        if (hostContextKeys.has(key)) hostContextRead = true;
+        return Reflect.get(target, key, receiver);
+      }
+    }) : frozen;
+    const view = Object.freeze({ data: immutable(data), env: watched, actions: actions2, channels: channels2 });
+    rawEnvs.set(view, frozen);
+    return view;
   }
+  var envOf = (view) => (view && rawEnvs.get(view)) ?? view?.env;
+  var readsHostContext = () => hostContextRead;
 
   // src/runtime/validate.js
   function label(value, code, required = false) {
@@ -1859,7 +1875,7 @@
   }
   function nodeStyle(tag, props, extra, inherited, direction, structure2) {
     if (props.style !== void 0 || extra !== void 0 || props.className === void 0) return lowerNodeStyle(tag, props, extra, inherited, direction, structure2);
-    const environment = envKey(render.view?.env);
+    const environment = envKey(envOf(render.view));
     if (environment !== loweredEnv) {
       lowered.clear();
       loweredEnv = environment;
@@ -1877,7 +1893,7 @@
   var runTags = /* @__PURE__ */ new Set(["span", "link"]);
   var disabledField = { color: "text-muted", backgroundColor: "surface-sunken", borderColor: "line" };
   function lowerNodeStyle(tag, props, extra, inherited, direction, structure2) {
-    const env = { ...render.view?.env, direction, structure: structure2 };
+    const env = { ...envOf(render.view), direction, structure: structure2 };
     const classes = resolveClasses(props.className, env);
     if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
     const disabled = props.disabled === true;
@@ -1934,7 +1950,7 @@
     const editor2 = ["input", "textarea", "search"].includes(tag);
     if (props.dir !== void 0 && !(["ltr", "rtl"].includes(props.dir) || editor2 && props.dir === "auto"))
       throw Error(`UI_PROP: dir must be "ltr" or "rtl"${editor2 ? ' or "auto"' : ""}`);
-    const direction = (props.dir === "auto" ? void 0 : props.dir) ?? parent.direction ?? (render.view?.env?.direction === "rtl" ? "rtl" : "ltr");
+    const direction = (props.dir === "auto" ? void 0 : props.dir) ?? parent.direction ?? (envOf(render.view)?.direction === "rtl" ? "rtl" : "ltr");
     const flat = flatten(children);
     const style2 = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
     const inline = (child) => typeof child === "string" || typeof child === "number";
@@ -2525,6 +2541,7 @@
       __lingxiaTakeActionErrors: takeActionErrors,
       __lingxiaHasLocalUpdates: hasLocalUpdates,
       __lingxiaRequestLeave: requestLeave,
+      __lingxiaReadsHostContext: readsHostContext,
       // Cleared when a render completes, so it names only a render that never returned.
       __lingxiaSite: () => render.site || ""
     });

@@ -7,7 +7,12 @@ pub(super) struct HostEnvironment {
     surface: Option<(u64, SurfaceContext)>,
     /// The lxapp's theme pack, resolved into light and dark palette pushes.
     theme: Option<(u64, [serde_json::Value; 2])>,
+    /// The View's last run read a host-context key, so a surface push must rebuild it.
+    ignores_host_context: bool,
 }
+
+/// Environment keys a surface push sets that only the View reads.
+const HOST_CONTEXT: [&str; 2] = ["sizeClass", "canDock"];
 
 /// The lxapp's adaptive context, as Logic's `lx.surface.watchContext()` reports it.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -58,7 +63,7 @@ impl HostEnvironment {
         host
     }
 
-    /// True when the update is newer than what this host holds.
+    /// True when the update is newer than what this host holds and this page must redraw.
     pub(super) fn update(&mut self, update: &str) -> Result<bool, String> {
         let update: Update =
             serde_json::from_str(update).map_err(|e| format!("UI_ENVIRONMENT: {e}"))?;
@@ -79,7 +84,8 @@ impl HostEnvironment {
                 if newer {
                     self.surface = Some((revision, context));
                 }
-                newer
+                // A View that never read the host context waits for its next frame to see it.
+                newer && !self.ignores_host_context
             }
             Update::Theme { revision, pack } => {
                 let newer = newer(self.theme.as_ref().map(|t| t.0), revision);
@@ -89,6 +95,37 @@ impl HostEnvironment {
                 newer
             }
         })
+    }
+
+    pub(super) fn set_reads_host_context(&mut self, reads: bool) {
+        self.ignores_host_context = !reads;
+    }
+
+    /// `a` and `b` are the same for this page: host-context keys count only once its View
+    /// read one, so a surface push leaves other pages (hidden ones included) as they are.
+    pub(super) fn same(
+        &self,
+        a: &crate::platform::FrameEnvironment,
+        b: &crate::platform::FrameEnvironment,
+    ) -> bool {
+        if a == b {
+            return true;
+        }
+        if !self.ignores_host_context
+            || (a.width, a.height, a.scale) != (b.width, b.height, b.scale)
+        {
+            return false;
+        }
+        let strip = |value: &serde_json::Value| {
+            let mut value = value.clone();
+            if let Some(object) = value.as_object_mut() {
+                for key in HOST_CONTEXT {
+                    object.remove(key);
+                }
+            }
+            value
+        };
+        strip(&a.value) == strip(&b.value)
     }
 
     /// Overlays pushed values on the measured `env`; `canDock` is false until a surface push.

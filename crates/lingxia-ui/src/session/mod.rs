@@ -52,6 +52,8 @@ pub struct ViewSession {
     inputs: crate::interaction::input_state::Inputs,
     input_records: Option<Vec<crate::protocol::Record>>,
     input_dirty: bool,
+    /// The View's last run read a host-context key (`env.sizeClass`, `env.canDock`).
+    reads_host_context: bool,
     input_rebuild: bool,
     reveal_input: bool,
     pending_inputs: Option<crate::interaction::input_state::Inputs>,
@@ -161,6 +163,7 @@ impl ViewSession {
             animation_inventory: Default::default(),
             animation_visible: Default::default(),
             input_dirty: false,
+            reads_host_context: true,
             input_rebuild: false,
             reveal_input: false,
             pending_inputs: None,

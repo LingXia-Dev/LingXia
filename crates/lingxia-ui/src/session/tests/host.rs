@@ -2391,3 +2391,55 @@ fn an_lxapp_pack_paints_the_first_presented_frame() {
         "the pack ends with its app session"
     );
 }
+
+#[test]
+fn a_surface_push_rebuilds_only_pages_whose_view_read_the_host_context() {
+    let worker = ViewWorker::spawn("test-host-context").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let reader = platform.host(
+        &worker,
+        &source("function render(view){ return h('text',{},String(view.env.sizeClass)) }"),
+        false,
+    );
+    let other = platform.host(
+        &worker,
+        &source("function render(){ return h('text',{},'Static') }"),
+        false,
+    );
+    for host in [&reader, &other] {
+        host.set_visible(true);
+    }
+    platform.settle(&[&reader, &other]);
+    let presented = |host: &ViewHost<Fake>| host.adapter().log.lock().unwrap().presented.len();
+    let before = (presented(&reader), presented(&other));
+    let surface = serde_json::json!({"kind": "surface", "revision": 1,
+        "context": {"sizeClass": "regular", "canDock": true, "width": 900.0, "height": 700.0}});
+    for host in [&reader, &other] {
+        host.update_environment(&surface.to_string()).unwrap();
+    }
+    platform.settle(&[&reader, &other]);
+    assert!(
+        presented(&reader) > before.0,
+        "the page that read env.sizeClass rebuilds"
+    );
+    assert_eq!(
+        presented(&other),
+        before.1,
+        "the page that never read it stays as it was"
+    );
+    assert!(
+        other.frame_is_current(),
+        "its kept frame still counts as current"
+    );
+    assert_eq!(
+        reader
+            .adapter()
+            .log
+            .lock()
+            .unwrap()
+            .presented
+            .last()
+            .unwrap(),
+        &vec!["regular".to_string()]
+    );
+}

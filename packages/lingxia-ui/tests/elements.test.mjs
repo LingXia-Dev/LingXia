@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { h, describe, prepare, commit, discard, dispatch, useLocal, useView, createView } from '../src/internal.js';
+import { h, describe, prepare, commit, discard, dispatch, useLocal, useView, createView, readsHostContext } from '../src/internal.js';
 import { decode, rendered } from './support/wire.mjs';
 
 const throwsOn = (render, pattern) => assert.throws(() => describe(render, {}), pattern);
@@ -375,4 +375,18 @@ test('a textarea takes rows and maxRows as an autosizing range', () => {
   assert.deepEqual([props.rows, props.maxRows], [2, 6]);
   for (const bad of [{ rows: 0 }, { rows: 2.5 }, { maxRows: 3 }, { rows: 4, maxRows: 2 }])
     assert.throws(() => describe(() => h('textarea', { accessibilityLabel: 'Note', ...bad }), {}), /UI_INPUT: rows/);
+});
+
+test('a View reading env.sizeClass or env.canDock is marked as reading the host context; runtime lowering is not', () => {
+  const env = { theme: 'light', viewport: { width: 400, height: 800 }, sizeClass: 'compact', canDock: false };
+  const quiet = () => h('column', { style: { padding: 4 } }, h('text', {}, 'A'));
+  prepare(quiet, createView({}, env));
+  assert.equal(readsHostContext(), false);
+  discard();
+  prepare(view => h('text', {}, view.env.sizeClass), createView({}, env));
+  assert.equal(readsHostContext(), true);
+  discard();
+  prepare(quiet, createView({}, env));
+  assert.equal(readsHostContext(), false, 'each view starts unread');
+  discard();
 });

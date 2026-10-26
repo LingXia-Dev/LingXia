@@ -1,6 +1,11 @@
 use super::*;
 
 impl ViewSession {
+    /// Whether the View's last run read a host-context key; true until it has run.
+    pub fn reads_host_context(&self) -> bool {
+        self.reads_host_context
+    }
+
     /// Native measurements are sampled with the frame; viewport stays renderer-owned.
     pub fn set_environment(&mut self, mut value: serde_json::Value) -> Result<(), String> {
         // Hover styles apply only to fine pointers; adapters that cannot tell report touch.
