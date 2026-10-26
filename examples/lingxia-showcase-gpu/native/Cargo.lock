@@ -3195,9 +3195,7 @@ dependencies = [
 name = "lingxia-service"
 version = "0.28.0"
 dependencies = [
- "bytes",
  "http",
- "http-body-util",
  "lingxia-app-context",
  "lingxia-messaging",
  "lingxia-platform",
@@ -3210,6 +3208,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "tokio",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -3282,8 +3281,7 @@ dependencies = [
  "futures-util",
  "http",
  "http-body-util",
- "lingxia-settings",
- "lingxia-webview",
+ "httpdate",
  "log",
  "redb",
  "reqwest",
@@ -3294,7 +3292,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
- "windows 0.62.2",
 ]
 
 [[package]]
