@@ -526,6 +526,15 @@ pub(crate) async fn lxapp_dev_page_tree(
     auto::page_tree(&app, page_name).await
 }
 
+/// A GPU page's presentation counters (`ui.frame`, `ui.reveal`).
+pub(crate) async fn lxapp_dev_page_frame(
+    appid: Option<&str>,
+    page_name: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
+    auto::page_frame(&app, page_name).await
+}
+
 /// Queries DOM nodes in the target page and returns a JSON description payload.
 pub(crate) async fn lxapp_dev_page_query(
     appid: Option<&str>,

@@ -606,6 +606,17 @@ pub async fn page_tree(app: &Arc<LxApp>, page_name: Option<&str>) -> Result<Valu
     page_eval(app, page_name, DOM_TREE_SCRIPT).await
 }
 
+/// A GPU page's presentation counters: `{ renderer, page, commit, firstPresentAt,
+/// lastPresentAt, frames, workerQueueUs, evalMs, imageCacheBytes,
+/// imageCacheEntries, animationFrames, wakeups, reveal: { deadlines, watchdogs,
+/// lastReveal } }`. A WebView page has none.
+pub async fn page_frame(app: &Arc<LxApp>, page_name: Option<&str>) -> Result<Value, String> {
+    match gpu::backend(app, page_name)? {
+        Some(page) => page.frame().await,
+        None => Err("E_UNSUPPORTED: frame counters are for GPU pages".into()),
+    }
+}
+
 /// Roles and names a WebView page exposes, nested like the GPU projection.
 const DOM_TREE_SCRIPT: &str = r#"(() => {
   const roles = { A: "link", BUTTON: "button", TEXTAREA: "textbox", IMG: "img", UL: "list", OL: "list", LI: "listitem", DIALOG: "dialog",

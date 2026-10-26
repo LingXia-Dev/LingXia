@@ -608,6 +608,36 @@ impl JSPageDriver {
         }
     }
 
+    /// The page's accessibility tree (role, name, test id, state, bounds) in reading order.
+    #[js_method]
+    async fn tree(
+        &self,
+        ctx: JSContext,
+        options: Optional<JSScreenshotOptions>,
+    ) -> JSResult<JSValue> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
+        let options = options.0.unwrap_or_default();
+        let value = auto::page_tree(&app, options.page.as_deref())
+            .await
+            .map_err(fail(&app, options.page.as_deref()))?;
+        json_to_js(&ctx, &value)
+    }
+
+    /// A GPU page's presentation counters (`ui.frame` and `ui.reveal`).
+    #[js_method(rename = "uiFrame")]
+    async fn ui_frame(
+        &self,
+        ctx: JSContext,
+        options: Optional<JSScreenshotOptions>,
+    ) -> JSResult<JSValue> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
+        let options = options.0.unwrap_or_default();
+        let value = auto::page_frame(&app, options.page.as_deref())
+            .await
+            .map_err(fail(&app, options.page.as_deref()))?;
+        json_to_js(&ctx, &value)
+    }
+
     #[js_method]
     async fn screenshot(
         &self,

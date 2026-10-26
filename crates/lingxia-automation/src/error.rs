@@ -21,6 +21,8 @@ pub(crate) const E_PAGE_NOT_ACTIVE: &str = "E_PAGE_NOT_ACTIVE";
 pub(crate) const E_PAGE_NOT_READY: &str = "E_PAGE_NOT_READY";
 /// A GPU page cannot answer the selector form; the message lists the forms it can.
 pub(crate) const E_SELECTOR_UNSUPPORTED: &str = "E_SELECTOR_UNSUPPORTED";
+/// The page cannot do this (a GPU page without the operation, a key it has no meaning for).
+pub(crate) const E_UNSUPPORTED: &str = "E_UNSUPPORTED";
 /// No element matched the selector at dispatch.
 pub(crate) const E_ELEMENT_NOT_FOUND: &str = "E_ELEMENT_NOT_FOUND";
 /// The element matched but cannot take the input (disabled, not editable, ...).
@@ -88,6 +90,8 @@ pub(crate) fn code_for(message: &str) -> &'static str {
         E_PAGE_NOT_READY
     } else if message.starts_with("E_SELECTOR_UNSUPPORTED:") {
         E_SELECTOR_UNSUPPORTED
+    } else if message.starts_with("E_UNSUPPORTED:") {
+        E_UNSUPPORTED
     } else if message.starts_with("Element not found:") {
         E_ELEMENT_NOT_FOUND
     } else if message.starts_with("Element not interactable:") {
@@ -290,6 +294,10 @@ mod tests {
             (
                 "E_SELECTOR_UNSUPPORTED: `.card` on a GPU page",
                 E_SELECTOR_UNSUPPORTED,
+            ),
+            (
+                "E_UNSUPPORTED: frame counters are for GPU pages",
+                E_UNSUPPORTED,
             ),
             ("Element not found: #save", E_ELEMENT_NOT_FOUND),
             (

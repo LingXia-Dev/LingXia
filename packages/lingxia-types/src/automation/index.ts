@@ -46,6 +46,10 @@ export const AUTOMATION_ERROR_CODES = [
   'E_PAGE_ACTION',
   /** No element matched the selector at dispatch. */
   'E_ELEMENT_NOT_FOUND',
+  /** A GPU page cannot answer this selector form; the message lists the forms it can. */
+  'E_SELECTOR_UNSUPPORTED',
+  /** The page cannot do this: a GPU page without the operation, a key it has no meaning for. */
+  'E_UNSUPPORTED',
   /** The element matched but cannot take the input (disabled, not editable, …). */
   'E_ELEMENT_NOT_INTERACTABLE',
   /** A driver wait (`waitFor`, `waitUntil: 'ready'`, …) ran out of time. */
@@ -358,8 +362,57 @@ export interface PageScrollOptions extends PageTarget {
 }
 
 export interface PageScrollToOptions extends PageTarget {
-  /** CSS selector of the element to reveal (first match). */
+  /** CSS selector of the element to reveal. */
   css: string;
+  /** Which match to reveal (default the first); a WebView page reveals only the first. */
+  index?: number;
+}
+
+/** One node of a page's accessibility tree; states appear only when the node has them. */
+export interface PageTreeNode {
+  role: string;
+  name: string;
+  testId?: string;
+  /** Left, top, width, height in page logical pixels. */
+  bounds: [number, number, number, number];
+  disabled?: true;
+  focused?: true;
+  offscreen?: true;
+  checked?: boolean;
+  pressed?: boolean;
+  selected?: boolean;
+  expanded?: boolean;
+  busy?: boolean;
+  /** Heading level. */
+  level?: number;
+  value?: string | number;
+  /** Scroll offset and its maximum along the region's axis. */
+  scroll?: [number, number];
+  children?: PageTreeNode[];
+}
+
+/** `page.tree()`: roots in reading order. */
+export interface PageTree {
+  renderer?: 'gpu';
+  nodes: PageTreeNode[];
+}
+
+/** `page.uiFrame()`: a GPU page's presentation counters. */
+export interface PageUiFrame {
+  renderer: 'gpu';
+  page: string;
+  commit: number;
+  /** Milliseconds since the page opened; `null` until it first presents. */
+  firstPresentAt: number | null;
+  lastPresentAt: number | null;
+  frames: number;
+  workerQueueUs: { last: number; p50: number; max: number };
+  evalMs: { last: number; max: number };
+  imageCacheBytes: number;
+  imageCacheEntries: number;
+  animationFrames: number;
+  wakeups: number;
+  reveal: { deadlines: number; watchdogs: number; lastReveal: { reason: string; atMs: number } | null };
 }
 
 /**
@@ -412,6 +465,8 @@ export interface ElementRect {
 /** A matched element. Uses JavaScript field names. */
 export interface PageElement {
   exists: true;
+  /** `gpu` on a native View page; absent on a WebView page. */
+  renderer?: 'gpu';
   index: number;
   /** Total number of matches for the selector. */
   count: number;
@@ -497,6 +552,10 @@ export interface PageDriver {
   /** Poll until the selector reaches `state`, else reject on timeout. */
   waitFor(options: PageWaitForOptions): Promise<void>;
   screenshot(options?: PageTarget): Promise<Screenshot>;
+  /** The page's accessibility tree: role, name, test id, state and bounds in reading order. */
+  tree(options?: PageTarget): Promise<PageTree>;
+  /** A GPU page's presentation counters; `E_UNSUPPORTED` on a WebView page. */
+  uiFrame(options?: PageTarget): Promise<PageUiFrame>;
   /** App-window pointer input at page coordinates (`lxdev lxapp page pointer`). */
   readonly pointer: PagePointer;
   /** App-window keyboard input (`lxdev lxapp page key`). */

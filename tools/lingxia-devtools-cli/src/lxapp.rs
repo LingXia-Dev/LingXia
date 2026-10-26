@@ -317,6 +317,18 @@ pub enum PageCommand {
         #[arg(long)]
         pretty: bool,
     },
+    /// Print a GPU page's presentation counters (frames, queue and eval time, image cache, reveal)
+    Frame {
+        /// Page name or runtime instance id; defaults to current page
+        #[arg(long)]
+        page: Option<String>,
+        /// LxApp context; defaults to current
+        #[arg(long, default_value = "current")]
+        app: String,
+        /// Print pretty JSON
+        #[arg(long)]
+        pretty: bool,
+    },
     /// Find nodes in the accessibility tree by role and, optionally, exact name
     Find {
         /// Role, e.g. button, link, heading, textbox, listitem
@@ -786,6 +798,15 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
             let data = client::execute_command(
                 ws_url,
                 methods::lxapp_page::TREE,
+                Some(json!({ "appid": app, "page": page })),
+            )?
+            .unwrap_or(Value::Null);
+            print_json(&data, pretty)?;
+        }
+        PageCommand::Frame { page, app, pretty } => {
+            let data = client::execute_command(
+                ws_url,
+                methods::lxapp_page::FRAME,
                 Some(json!({ "appid": app, "page": page })),
             )?
             .unwrap_or(Value::Null);
@@ -1286,6 +1307,10 @@ mod tests {
         assert!(matches!(
             page_command(&["page", "tree", "--pretty"]),
             PageCommand::Tree { pretty: true, .. }
+        ));
+        assert!(matches!(
+            page_command(&["page", "frame", "--page", "home"]),
+            PageCommand::Frame { page: Some(page), .. } if page == "home"
         ));
         assert!(matches!(
             page_command(&["page", "find", "button", "--name", "Pay"]),

@@ -290,7 +290,9 @@ const PAGE_DRIVER_API = [
   'screenshot',
   'scroll',
   'scrollTo',
+  'tree',
   'type',
+  'uiFrame',
   'waitFor',
 ] as const;
 const PAGE_POINTER_API = ['click', 'down', 'drag', 'move', 'scroll', 'up'] as const;

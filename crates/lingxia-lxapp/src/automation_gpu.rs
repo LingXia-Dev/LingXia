@@ -49,6 +49,12 @@ pub trait GpuPageAutomation: Send + Sync {
     fn tree(&self) -> GpuFuture<Value> {
         Box::pin(async { Err("E_UNSUPPORTED: this GPU page binding has no tree".to_owned()) })
     }
+    /// Presentation counters: `ui.frame` and `ui.reveal` (see `page_frame`).
+    fn frame(&self) -> GpuFuture<Value> {
+        Box::pin(async {
+            Err("E_UNSUPPORTED: this GPU page binding has no frame counters".to_owned())
+        })
+    }
 }
 
 type Registry = Mutex<HashMap<String, Weak<dyn GpuPageAutomation>>>;
