@@ -20,6 +20,8 @@ interface GpuPlatform {
     void announceText(int id, boolean secure, String before, String after);
     void announceSelection(int id, boolean secure, String text, int start, int end);
     void announceClicked();
+    /** A live region's text changed; assertive interrupts speech. */
+    void announceLive(int id, String text, boolean assertive);
 
     /** The presented frame snapshot, before its effects run. */
     void frame(String snapshot, float scale);
