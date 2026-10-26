@@ -8,6 +8,9 @@ pub struct PresentedFrame {
     /// Device pixels per logical pixel.
     pub scale: f32,
     pub nodes: Vec<NodeSnapshot>,
+    /// Frames with an equal key share one laid-out View: the same nodes at the same
+    /// indices, differing only in presented (animated, scrolled, decorated) geometry.
+    pub layout: Option<(u64, u64)>,
 }
 
 impl PresentedFrame {
@@ -16,7 +19,19 @@ impl PresentedFrame {
             commit,
             scale,
             nodes,
+            layout: None,
         }
+    }
+
+    pub fn with_layout(mut self, layout: (u64, u64)) -> Self {
+        self.layout = Some(layout);
+        self
+    }
+
+    pub(crate) fn same_layout(&self, other: &Self) -> bool {
+        self.layout.is_some()
+            && self.layout == other.layout
+            && self.nodes.len() == other.nodes.len()
     }
 
     pub fn node(&self, index: usize) -> Option<&NodeSnapshot> {

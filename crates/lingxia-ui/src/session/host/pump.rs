@@ -165,6 +165,7 @@ impl<A: PlatformAdapter> Inner<A> {
         ),
         String,
     > {
+        let page = request.page;
         let FrameEnvironment {
             width,
             height,
@@ -250,7 +251,10 @@ impl<A: PlatformAdapter> Inner<A> {
             height,
             scale,
             loaded_images,
-            frame: Arc::new(PresentedFrame::new(generation, scale, nodes)),
+            frame: Arc::new(
+                PresentedFrame::new(generation, scale, nodes)
+                    .with_layout((page.get(), session.layout_revision())),
+            ),
             images,
             image_buckets,
             json,
@@ -416,7 +420,17 @@ impl<A: PlatformAdapter> Inner<A> {
                 })
             },
             move |inner, result| {
-                inner.main().animating = matches!(result, Some(Ok(Some(Duration::ZERO))));
+                let animating = matches!(result, Some(Ok(Some(Duration::ZERO))));
+                let settled = {
+                    let mut main = inner.main();
+                    main.animating = animating;
+                    if animating {
+                        Vec::new()
+                    } else {
+                        main.interaction.settled()
+                    }
+                };
+                inner.deliver(settled);
                 let delay = match result {
                     Some(Ok(Some(delay))) => delay,
                     Some(Err(error)) => {

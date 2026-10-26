@@ -77,6 +77,10 @@ pub struct ViewInteraction {
     dialogs: Vec<(String, Option<String>)>,
     /// The last input was a key, not a pointer: focus moves (and its ring) follow it.
     keyboard_used: bool,
+    /// Geometry-only frames of one layout since the last content-changed event.
+    moved_frames: u32,
+    /// A geometry-only change not yet reported to accessibility.
+    moved: bool,
 }
 
 /// What a presentation produced besides pixels.
@@ -183,12 +187,52 @@ impl ViewInteraction {
             .as_ref()
             .is_none_or(|previous| previous.scale != next.scale);
         self.slider.presented(&next.nodes, scale_changed);
-        let same = previous.as_ref().is_some_and(|previous| {
-            !scale_changed
-                && serde_json::to_string(&previous.nodes).ok()
-                    == serde_json::to_string(&next.nodes).ok()
-        });
-        if same {
+        let same_layout = !scale_changed
+            && previous
+                .as_ref()
+                .is_some_and(|previous| previous.same_layout(&next));
+        let same = !same_layout
+            && previous.as_ref().is_some_and(|previous| {
+                !scale_changed
+                    && serde_json::to_string(&previous.nodes).ok()
+                        == serde_json::to_string(&next.nodes).ok()
+            });
+        if same_layout {
+            // Animation and scroll repaint one layout: indices still name the same nodes,
+            // so press and focus stay, and moving bounds are reported at a quarter rate.
+            if self.gesture.pressed.is_some() {
+                self.gesture.pressed_commit = Some(next.commit);
+            }
+            if let Some(id) = self.accessibility_focus
+                && self
+                    .ids
+                    .index(id)
+                    .and_then(|index| next.node(index))
+                    .is_none_or(|node| !frame::visible(node))
+            {
+                self.accessibility_focus = None;
+                effects.push(Effect::Accessibility(AccessibilityEffect::FocusCleared {
+                    id,
+                }));
+            }
+            let mut moved = false;
+            for event in projection::changes(previous.as_deref(), &next, &self.ids) {
+                if matches!(event, projection::Event::ContentChanged) {
+                    moved = true;
+                } else {
+                    effects.push(Effect::Accessibility(AccessibilityEffect::Change(event)));
+                }
+            }
+            if moved {
+                self.moved_frames += 1;
+                self.moved = !self.moved_frames.is_multiple_of(4);
+                if !self.moved {
+                    effects.push(Effect::Accessibility(AccessibilityEffect::Change(
+                        projection::Event::ContentChanged,
+                    )));
+                }
+            }
+        } else if same {
             if self.gesture.pressed.is_some() {
                 self.gesture.pressed_commit = Some(next.commit);
             }
@@ -238,6 +282,8 @@ impl ViewInteraction {
                 self.keyboard_focus = Some(index);
                 effects.push(Effect::FocusRing { node: index });
             }
+            self.moved_frames = 0;
+            self.moved = false;
             for event in projection::changes(previous.as_deref(), &next, &self.ids) {
                 effects.push(Effect::Accessibility(AccessibilityEffect::Change(event)));
             }
@@ -263,6 +309,18 @@ impl ViewInteraction {
             effects.push(Effect::Number);
         }
         Presented { effects, reach }
+    }
+
+    /// Presentation went quiet: report geometry still owed to accessibility.
+    pub fn settled(&mut self) -> Vec<Effect> {
+        self.moved_frames = 0;
+        if std::mem::take(&mut self.moved) {
+            vec![Effect::Accessibility(AccessibilityEffect::Change(
+                projection::Event::ContentChanged,
+            ))]
+        } else {
+            Vec::new()
+        }
     }
 
     // ---- pointer -------------------------------------------------------

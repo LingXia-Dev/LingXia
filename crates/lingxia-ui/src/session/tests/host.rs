@@ -1646,3 +1646,77 @@ fn edits_for_two_editors_reach_the_platform_one_at_a_time() {
     platform.advance(Duration::from_millis(500));
     assert_eq!(sent_edits(&host).last().unwrap().as_deref(), Some("7"));
 }
+
+fn content_changes(host: &ViewHost<Fake>) -> usize {
+    host.adapter()
+        .log
+        .lock()
+        .unwrap()
+        .events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                AccessibilityEffect::Change(crate::semantics::projection::Event::ContentChanged)
+            )
+        })
+        .count()
+}
+
+#[test]
+fn a_held_press_keeps_its_scale_transition_and_accessibility_hears_moves_at_a_quarter_rate() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let page = source(
+        "function render(){return h('column',{},h('button',{testId:'b',onClick(){},className:'active:x',style:{width:100,height:40,padding:0,transition:{properties:['transform'],durationMs:150,delayMs:0,easing:'linear'}}},'Press'))}",
+    )
+    .replace(
+        "__lingxiaPublish(render);",
+        "configureClasses([{name:'active:x',when:{state:'active'},style:{scale:[0.95,0.95]}}]);__lingxiaPublish(render);",
+    );
+    let host = platform.host(&worker, &page, false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let bounds = |host: &ViewHost<Fake>| {
+        let snapshot = host.snapshot().unwrap();
+        snapshot
+            .frame
+            .nodes
+            .iter()
+            .find(|n| n.test_id == "b")
+            .unwrap()
+            .bounds
+    };
+    assert_eq!(bounds(&host)[2], 100.0);
+    host.pointer(Pointer {
+        phase: PointerPhase::Down,
+        x: 100.0,
+        y: 40.0,
+        slop: 8.0,
+        velocity: [0.0; 2],
+        min_fling: 50.0,
+    });
+    platform.settle(&[&host]);
+    let clears = || {
+        host.adapter()
+            .log
+            .lock()
+            .unwrap()
+            .effects
+            .iter()
+            .filter(|e| **e == Effect::ClearPress)
+            .count()
+    };
+    let (before, cleared) = (content_changes(&host), clears());
+    run_frames(&platform, &host, 48);
+    // Still held after 800 ms: fully pressed, never released by its own animation frames.
+    assert!(
+        (bounds(&host)[2] - 95.0).abs() < 0.01,
+        "{:?}",
+        bounds(&host)
+    );
+    assert_eq!(clears(), cleared);
+    // Nine moving frames report at most every fourth, plus one when they settle.
+    let moves = content_changes(&host) - before;
+    assert!((1..=4).contains(&moves), "{moves}");
+}
