@@ -66,6 +66,8 @@ public class GpuNativeLoadTest {
         final ArrayList<String> copied = new ArrayList<>();
         public void copyText(String text) { copied.add(text); }
         public void revealed(boolean hold) { }
+        final ArrayList<String> menus = new ArrayList<>();
+        public void textMenu(String menu) { menus.add(menu); }
 
         /** Run posted work and vsyncs until {@code done} holds. */
         void pump(long host, java.util.function.BooleanSupplier done) throws InterruptedException {
@@ -147,6 +149,8 @@ public class GpuNativeLoadTest {
             assertFalse("nothing selected", GpuView.nativeAccessibility(host, id, GpuAccessibility.COPY, 0, ""));
             assertTrue(GpuView.nativeAccessibility(host, id, GpuAccessibility.SET_SELECTION, 6, "11"));
             fake.pump(host, () -> { try { return !new JSONObject(GpuView.nativeSemanticNode(host, id)).isNull("text_selection"); } catch (Exception e) { throw new AssertionError(e); } });
+            String menu = fake.menus.get(fake.menus.size() - 1);
+            assertTrue("the core shows the static-text menu: " + menu, menu.contains("\"copy\"") && menu.contains("\"select_all\""));
             assertTrue(GpuView.nativeAccessibility(host, id, GpuAccessibility.COPY, 0, ""));
             fake.pump(host, () -> !fake.copied.isEmpty());
             assertEquals("brave", fake.copied.get(0));

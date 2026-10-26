@@ -22,8 +22,6 @@ public class GpuImeTest {
         final ArrayList<Consumer<JSONObject>> replies=new ArrayList<>();
         boolean rebuild;
         int frames;
-        int menus;
-        public void showTextMenu() { menus++; }
         public void request(JSONObject value,Consumer<JSONObject> reply) { requests.add(value); replies.add(reply); }
         public void render(boolean rebuild) { this.rebuild|=rebuild; frames++; }
         final ArrayList<String> carets=new ArrayList<>();
@@ -173,7 +171,6 @@ public class GpuImeTest {
         assertEquals(20,host.requests.get(0).getJSONArray("point").getInt(0));
         host.replies.get(0).accept(new JSONObject().put("selection",new JSONArray(new int[]{0,5})));
         assertEquals("hello",input.getSelectedText(0));
-        assertEquals(1,host.menus);
         JSONArray edits=host.requests.get(1).getJSONArray("edits");
         assertEquals(2,edits.length()); assertEquals("finish_composition",edits.getJSONObject(0).getString("op"));
         assertEquals("selection",edits.getJSONObject(1).getString("op"));

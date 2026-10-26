@@ -18,8 +18,6 @@ final class GpuIme {
     interface Host {
         void request(JSONObject request, Consumer<JSONObject> reply);
         void render(boolean rebuild);
-        default void showTextMenu() { }
-        default void hideTextMenu() { }
         default void editingChanged() { }
         /** The focused editor's text state for the host's caret blink; null text when none is connected. */
         default void caret(boolean eligible, String text, int anchor, int focus, int compositionStart, int compositionEnd) { }
@@ -63,7 +61,7 @@ final class GpuIme {
     }
     Ticket capture() { return new Ticket(epoch,connection); }
     boolean hasFocus() { return connection != null; }
-    void setCaretActive(boolean active) { caretActive=active; if (!active) { touchSerial++; host.hideTextMenu(); } updateCaret(); }
+    void setCaretActive(boolean active) { caretActive=active; if (!active) { touchSerial++; } updateCaret(); }
     boolean menuActive() { return caretActive && connection != null; }
     boolean menuSelected() { return connection != null && connection.anchor() != connection.focus(); }
     boolean menuSecure() { return connection != null && connection.secure; }
@@ -81,10 +79,10 @@ final class GpuIme {
         return connection.sendKeyEvent(event);
     }
     void focus(JSONObject node,long generation) {
-        focus(node,generation,null,false);
+        focus(node,generation,null);
     }
     void touch(JSONObject node,long generation,float x,float y,boolean word) {
-        host.hideTextMenu();
+       
         if (!caretActive || !editable(node) || pendingFocus || Float.isNaN(x) || Float.isInfinite(x) || Float.isNaN(y) || Float.isInfinite(y)) return;
         if (connection != null && !connection.settled()) return;
         Ticket ticket=capture(); final long serial=++touchSerial;
@@ -97,11 +95,11 @@ final class GpuIme {
                 || (connection != null && (ticket.revision != connection.revision() || !connection.settled()))) return;
             JSONArray selection=reply == null ? null : reply.optJSONArray("selection");
             if (selection == null || selection.length() != 2) return;
-            focus(node,generation,new int[]{selection.optInt(0,-1),selection.optInt(1,-1)},word);
+            focus(node,generation,new int[]{selection.optInt(0,-1),selection.optInt(1,-1)});
         });
     }
-    private void focus(JSONObject node,long generation,int[] selection,boolean showMenu) {
-        focus(node,generation,selection,showMenu,null);
+    private void focus(JSONObject node,long generation,int[] selection) {
+        focus(node,generation,selection,null);
     }
     enum DragResult { EDITED, UNCHANGED, STALE_FRAME, CANCELLED, SUPERSEDED }
     boolean dragSelection(JSONObject node,long generation,float x,float y,int edgeX,int edgeY,int fixed,boolean collapsed,
@@ -137,10 +135,10 @@ final class GpuIme {
         if (text == null && start == -1 && end == -1) start=end=current ? connection.focus() : value.length();
         if (text != null ? !GpuInputConnection.validText(text)
             : !GpuInputConnection.boundary(value,start) || !GpuInputConnection.boundary(value,end)) return false;
-        host.hideTextMenu();
+       
         if (current) return text != null ? replaceAccessibilityText(connection,text) : connection.selectFromTouch(start,end);
         final int anchor=start,focus=end;
-        focus(node,generation,null,false,editor -> {
+        focus(node,generation,null,editor -> {
             if (text != null) editor.replaceAll(text); else editor.selectFromTouch(anchor,focus);
         });
         return true;
@@ -152,12 +150,12 @@ final class GpuIme {
         manager.restartInput(view);
         return true;
     }
-    private void focus(JSONObject node,long generation,int[] selection,boolean showMenu,Consumer<GpuInputConnection> afterFocus) {
+    private void focus(JSONObject node,long generation,int[] selection,Consumer<GpuInputConnection> afterFocus) {
         touchSerial++;
         if (!editable(node)) return;
         String identity=node.optString("identity");
         if (connection != null && connection.identity.equals(identity)) {
-            if (selection != null && connection.selectFromTouch(selection[0],selection[1]) && showMenu) host.showTextMenu();
+            if (selection != null) connection.selectFromTouch(selection[0],selection[1]);
             view.requestFocus();
             String kind=pickerKind();
             if (kind.isEmpty()) manager.showSoftInput(view,InputMethodManager.SHOW_IMPLICIT);
@@ -174,7 +172,7 @@ final class GpuIme {
             pendingFocus=false;
             if (reply != null) {
                 activate(node,reply.optLong("token"),reply.optJSONObject("state"),editor -> {
-                    if (selection != null && editor.selectFromTouch(selection[0],selection[1]) && showMenu) host.showTextMenu();
+                    if (selection != null) editor.selectFromTouch(selection[0],selection[1]);
                     if (afterFocus != null) afterFocus.accept(editor);
                 });
             }
@@ -284,7 +282,7 @@ final class GpuIme {
         if (editing) connection.closeConnection();
         connection=null;
         if (editing) host.editorChanged(null);
-        host.hideTextMenu();
+       
         host.caret(caretActive,null,0,0,-1,-1);
         // Without an editor there is no keyboard to hide; the IME round trip would still relayout the window.
         if (hide && editing) { manager.hideSoftInputFromWindow(view.getWindowToken(),0); manager.restartInput(view); }

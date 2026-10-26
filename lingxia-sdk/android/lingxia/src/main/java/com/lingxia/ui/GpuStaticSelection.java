@@ -2,32 +2,26 @@ package com.lingxia.ui;
 
 import android.graphics.*;
 import android.graphics.drawable.Drawable;
-import android.view.ActionMode;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/** Handles and Copy/Select all for selectable static text; the selection itself lives in the core. */
+/** Handles for selectable static text; the selection and its menu live in the core. */
 final class GpuStaticSelection extends Drawable {
     interface Host {
         JSONObject frame();
         float scale();
         void move(String identity, int which, float x, float y);
-        void select(String identity, int start, int end);
-        void copy();
-        void clear();
+        /** A handle was grabbed or let go; the core hides and restores the text menu. */
+        void dragging(boolean active);
     }
     private final View view;
     private final Host host;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private ActionMode mode;
     private String dragging;
     private int which, pointer;
     private float dx, dy;
-    private final Rect anchor = new Rect();
 
     GpuStaticSelection(View view, Host host) { this.view = view; this.host = host; paint.setColor(0xff465cda); }
 
@@ -43,12 +37,16 @@ final class GpuStaticSelection extends Drawable {
     }
     boolean dragging() { return dragging != null; }
 
-    /** After each presented frame: chrome follows the selection or goes with it. */
+    /** After each presented frame: handles follow the selection or go with it. */
     void update() {
-        JSONObject node = node();
-        if (node == null) { dragging = null; dismiss(); }
-        else if (dragging == null) show(node);
+        if (node() == null) release();
         invalidateSelf();
+    }
+
+    private void release() {
+        if (dragging == null) return;
+        dragging = null;
+        host.dragging(false);
     }
 
     boolean touch(MotionEvent event) {
@@ -62,66 +60,21 @@ final class GpuStaticSelection extends Drawable {
             if (hit == null) return false;
             dragging = node.optString("identity"); which = (int)hit[0]; pointer = event.getPointerId(0);
             dx = x - hit[1]; dy = y - hit[3];
-            dismiss();
+            host.dragging(true);
             return true;
         }
         if (dragging == null) return false;
-        if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN) { dragging = null; update(); return true; }
+        if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN) { release(); update(); return true; }
         int index = event.findPointerIndex(pointer);
-        if (index < 0) { dragging = null; update(); return true; }
+        if (index < 0) { release(); update(); return true; }
         if (action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_UP) {
             JSONObject node = node();
             float scale = host.scale();
             float[] drag = node == null ? null : GpuView.nativeHandleDrag(node.toString(), event.getX(index) / scale - dx, event.getY(index) / scale - dy);
             if (drag != null && drag[4] != 0) host.move(dragging, which, drag[0], drag[1]);
-            if (action == MotionEvent.ACTION_UP) { dragging = null; update(); }
+            if (action == MotionEvent.ACTION_UP) { release(); update(); }
         }
         return true;
-    }
-
-    private Rect bounds(JSONObject node) {
-        JSONArray rects = node.optJSONObject("text_selection").optJSONArray("selection");
-        float scale = host.scale();
-        RectF union = null;
-        for (int i = 0; rects != null && i < rects.length(); i++) {
-            JSONArray r = rects.optJSONArray(i);
-            RectF rect = new RectF((float)r.optDouble(0), (float)r.optDouble(1), (float)(r.optDouble(0) + r.optDouble(2)), (float)(r.optDouble(1) + r.optDouble(3)));
-            if (union == null) union = rect; else union.union(rect);
-        }
-        if (union == null) return GpuAccessibility.pixels(node.optJSONArray("bounds"), scale);
-        return new Rect((int)(union.left * scale), (int)(union.top * scale), (int)(union.right * scale), (int)(union.bottom * scale));
-    }
-
-    private void show(JSONObject node) {
-        anchor.set(bounds(node));
-        if (mode != null) { mode.invalidateContentRect(); return; }
-        final String identity = node.optString("identity");
-        final int length = node.optString("text").length();
-        mode = view.startActionMode(new ActionMode.Callback2() {
-            @Override public boolean onCreateActionMode(ActionMode actionMode, Menu menu) {
-                menu.add(0, android.R.id.copy, 0, android.R.string.copy).setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
-                menu.add(0, android.R.id.selectAll, 1, android.R.string.selectAll).setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
-                return true;
-            }
-            @Override public boolean onPrepareActionMode(ActionMode actionMode, Menu menu) { return true; }
-            @Override public boolean onActionItemClicked(ActionMode actionMode, MenuItem item) {
-                if (item.getItemId() == android.R.id.copy) { host.copy(); return true; }
-                if (item.getItemId() == android.R.id.selectAll) { host.select(identity, 0, length); return true; }
-                return false;
-            }
-            @Override public void onDestroyActionMode(ActionMode actionMode) {
-                if (mode != actionMode) return;
-                mode = null;
-                // Dismissed by the user (back, outside touch): the selection goes too.
-                if (dragging == null && node() != null) host.clear();
-            }
-            @Override public void onGetContentRect(ActionMode actionMode, View target, Rect outRect) { outRect.set(anchor); }
-        }, ActionMode.TYPE_FLOATING);
-    }
-
-    void dismiss() {
-        if (mode == null) return;
-        ActionMode open = mode; mode = null; open.finish();
     }
 
     @Override public void draw(Canvas canvas) {

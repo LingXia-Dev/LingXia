@@ -21,17 +21,16 @@ public class GpuSelectionHandlesTest {
         final ArrayList<Consumer<JSONObject>> replies=new ArrayList<>();
         final GpuIme ime=new GpuIme(new View(RuntimeEnvironment.getApplication()),this);
         final GpuSelectionHandles handles=new GpuSelectionHandles(ime,this);
-        JSONObject frame; boolean busy; int shown; float scale=1;
+        JSONObject frame; boolean busy; float scale=1;
+        final ArrayList<Boolean> drags=new ArrayList<>();
         Client() throws Exception { present(1,4,20,80); }
         public JSONObject frame() { return frame; }
         public float scale() { return scale; }
         public boolean busy() { return busy; }
-        public void hideMenu() { }
-        public void showMenu() { shown++; }
+        public void dragging(boolean active) { drags.add(active); }
         public void request(JSONObject request,Consumer<JSONObject> reply) { requests.add(request); replies.add(reply); }
         public void render(boolean rebuild) { }
         public void editingChanged() { handles.update(); }
-        public void hideTextMenu() { handles.update(); }
         JSONObject state(int anchor,int focus) throws Exception { return new JSONObject().put("text","abcdef").put("selection",new JSONArray(new int[]{anchor,focus})); }
         void present(int anchor,int focus,double ax,double fx) throws Exception {
             JSONObject geometry=new JSONObject().put("anchor",new JSONArray(new double[]{ax,15,1.5,20}))
@@ -59,9 +58,9 @@ public class GpuSelectionHandlesTest {
         assertEquals(3,c.requests.size());
         JSONObject edit=c.requests.get(2).getJSONArray("edits").getJSONObject(0);
         assertEquals(1,edit.getInt("anchor")); assertEquals(5,edit.getInt("focus"));
-        assertTrue(c.handles.dragging()); assertEquals(0,c.shown);
+        assertTrue(c.handles.dragging()); assertEquals(java.util.Arrays.asList(true),c.drags);
         c.ack(2,1,5); assertTrue(c.handles.dragging()); // The old frame still owns the hit geometry.
-        c.present(1,5,20,100); assertFalse(c.handles.dragging()); assertEquals(1,c.shown);
+        c.present(1,5,20,100); assertFalse(c.handles.dragging()); assertEquals(java.util.Arrays.asList(true,false),c.drags);
     }
     @Test public void edgeDragUsesContentViewportAndRepeatsOnlyAfterPresentation() throws Exception {
         Client c=new Client(); c.touch(MotionEvent.ACTION_DOWN,80.75f,43);
@@ -91,7 +90,7 @@ public class GpuSelectionHandlesTest {
         c.replies.get(0).accept(null); c.handles.update(); assertEquals(1,c.requests.size());
         c.present(1,4,20,80); assertEquals(2,c.requests.size());
         c.touch(MotionEvent.ACTION_CANCEL,90,43); c.hit(1,5); assertEquals(2,c.requests.size());
-        assertFalse(c.handles.dragging()); assertEquals(0,c.shown);
+        assertFalse(c.handles.dragging()); assertEquals(java.util.Arrays.asList(true,false),c.drags);
     }
     @Test public void offscreenEndpointsAndUnsettledMirrorsCannotStartDragging() throws Exception {
         Client c=new Client(); c.present(1,4,-30,80);

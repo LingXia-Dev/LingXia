@@ -53,6 +53,8 @@ interface GpuPlatform {
     void bootstrapOverdue(boolean overdue);
     /** Show the page from {@code GpuView.nativeReveal}; a held surface stays hidden until a later {@code revealed(false)}. */
     void revealed(boolean holdSurface);
+    /** Show or update the floating text menu ({@code {target, anchor, actions}} JSON), or close it for null. */
+    void textMenu(String menu);
     /** Put text on the clipboard: an accessibility Copy of a static selection. */
     void copyText(String text);
 }

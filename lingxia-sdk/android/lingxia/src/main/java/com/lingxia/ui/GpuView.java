@@ -41,6 +41,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native void nativePark(long host);
     static native void nativeSetVisible(long host, boolean visible);
     static native void nativeReveal(long host, boolean surfaceHoldsFrame);
+    static native boolean nativeTextMenuAction(long host, int action);
+    static native void nativeTextMenuDismissed(long host);
+    static native void nativeTextHandleDrag(long host, boolean active);
     static native void nativeWindowVisible(long host, boolean visible);
     static native void nativeSurfaceChanged(long host);
     static native void nativeSurfaceLost(long host);
@@ -155,10 +158,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         feedback.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         surface = new UiSurface();
         ime = new GpuIme(surface, new GpuIme.Host() {
-            @Override public void showTextMenu() { if (textMenu != null) textMenu.show(); }
-            @Override public void hideTextMenu() { if (textMenu != null) textMenu.dismiss(); if (selectionHandles != null) selectionHandles.update(); }
             @Override public void editingChanged() {
-                if (textMenu != null) textMenu.update();
                 if (selectionHandles != null) {
                     selectionHandles.setBounds(0, 0, feedback.getWidth(), feedback.getHeight());
                     selectionHandles.update();
@@ -195,29 +195,23 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 if (!destroyed) nativeCaret(host, eligible, text != null, text == null ? "" : text, anchor, focus, start, end);
             }
         });
-        textMenu = new GpuTextMenu(surface, ime, () -> {
-            JSONArray nodes = snapshot == null ? null : snapshot.optJSONArray("nodes");
-            for (int i = 0; nodes != null && i < nodes.length(); i++) {
-                JSONObject node = nodes.optJSONObject(i), input = node == null ? null : node.optJSONObject("input");
-                if (input != null && input.optLong("edit_token") > 0) return surface.bounds(node);
-            }
-            return new Rect();
+        textMenu = new GpuTextMenu(surface, new GpuTextMenu.Host() {
+            public boolean coreAction(int code) { return !destroyed && nativeTextMenuAction(host, code); }
+            public boolean editorAction(int itemId) { return ime.menuAction(itemId); }
+            public void dismissed() { if (!destroyed) nativeTextMenuDismissed(host); }
         });
         selectionHandles = new GpuSelectionHandles(ime, new GpuSelectionHandles.Host() {
             public JSONObject frame() { return snapshot; }
             public float scale() { return frameScale; }
             public boolean busy() { return false; }
-            public void hideMenu() { textMenu.dismiss(); }
-            public void showMenu() { textMenu.show(); }
+            public void dragging(boolean active) { if (!destroyed) nativeTextHandleDrag(host, active); }
         });
         feedback.getOverlay().add(selectionHandles);
         staticSelection = new GpuStaticSelection(surface, new GpuStaticSelection.Host() {
             public JSONObject frame() { return snapshot; }
             public float scale() { return frameScale; }
             public void move(String identity, int which, float x, float y) { if (!destroyed) nativeMoveTextSelection(host, identity, which, x, y); }
-            public void select(String identity, int start, int end) { if (!destroyed) nativeSetTextSelection(host, identity, start, end); }
-            public void copy() { copyTextSelection(); }
-            public void clear() { if (!destroyed) nativeClearTextSelection(host); }
+            public void dragging(boolean active) { if (!destroyed) nativeTextHandleDrag(host, active); }
         });
         feedback.getOverlay().add(staticSelection);
         host = nativeHostCreate(new Platform(), worker, logic, imageOwner);
@@ -751,6 +745,11 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         }
         @Override public void bootstrapOverdue(boolean overdue) { showBootstrapMessage(overdue); }
         @Override public void copyText(String text) { if (!destroyed) writeClipboard(text); }
+        @Override public void textMenu(String menu) {
+            if (destroyed) return;
+            try { textMenu.show(menu == null ? null : new JSONObject(menu), frameScale); }
+            catch (org.json.JSONException error) { throw new IllegalStateException("Invalid text menu", error); }
+        }
         /** Never show a frame drawn for another size: a held surface stays off screen and the
          *  host's page floor shows through until a current frame releases it. */
         @Override public void revealed(boolean hold) {
@@ -939,7 +938,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             }
             int phase;
             switch (action) {
-                case MotionEvent.ACTION_DOWN: phase = 0; textMenu.dismiss(); break;
+                case MotionEvent.ACTION_DOWN: phase = 0; break;
                 case MotionEvent.ACTION_MOVE: phase = 1; break;
                 case MotionEvent.ACTION_UP: phase = 2; break;
                 case MotionEvent.ACTION_CANCEL: case MotionEvent.ACTION_POINTER_DOWN: phase = 3; break;

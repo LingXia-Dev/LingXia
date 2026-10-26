@@ -721,6 +721,22 @@ impl HostEvents for AndroidAdapter {
     fn bootstrap_overdue(&self, overdue: bool) {
         self.flag(jni_str!("bootstrapOverdue"), overdue);
     }
+    fn text_menu(&self, menu: Option<&lingxia_ui::session::host::TextMenu>) {
+        let encoded = menu.and_then(|menu| serde_json::to_string(menu).ok());
+        self.java(|env, platform| {
+            let menu = match &encoded {
+                Some(menu) => JObject::from(env.new_string(menu)?),
+                None => JObject::null(),
+            };
+            env.call_method(
+                platform,
+                jni_str!("textMenu"),
+                jni_sig!("(Ljava/lang/String;)V"),
+                &[JValue::Object(&menu)],
+            )?;
+            Ok(())
+        })
+    }
     fn revealed(&self, hold_surface: bool) {
         self.flag(jni_str!("revealed"), hold_surface);
     }

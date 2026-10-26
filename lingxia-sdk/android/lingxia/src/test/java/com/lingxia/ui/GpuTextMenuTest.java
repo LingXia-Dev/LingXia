@@ -43,71 +43,43 @@ public class GpuTextMenuTest {
         public MenuInflater getMenuInflater() { return new MenuInflater(view.getContext()); }
         boolean click(int id) { return callback.onActionItemClicked(this,menu.findItem(id)); }
     }
-    static class Client implements GpuIme.Host {
-        final Surface view=new Surface(); final GpuIme ime=new GpuIme(view,this);
-        final Rect bounds=new Rect(10,20,150,70);
-        final GpuTextMenu menu=new GpuTextMenu(view,ime,() -> new Rect(bounds));
-        int edits;
-        public void request(JSONObject value,java.util.function.Consumer<JSONObject> reply) { if ("edit".equals(value.optString("op"))) edits++; }
-        public void render(boolean rebuild) { }
-        public void showTextMenu() { menu.show(); }
-        public void hideTextMenu() { menu.dismiss(); }
-        public void editingChanged() { menu.update(); }
-        void present(boolean secure) throws Exception {
-            present(secure,false,false);
-        }
-        void present(boolean secure,boolean undo,boolean redo) throws Exception {
-            JSONObject state=new JSONObject().put("text","hello").put("selection",new JSONArray(new int[]{0,5}))
-                .put("can_undo",undo).put("can_redo",redo);
-            JSONObject input=new JSONObject().put("enabled",true).put("secure",secure).put("edit_token",7).put("edit",state)
-                .put("ime",new JSONObject().put("keyboard","text").put("secure",secure).put("return_key","done").put("hide_on_submit",true));
-            JSONObject node=new JSONObject().put("identity","editor").put("tag","input").put("input",input);
-            ime.presented(new JSONObject().put("nodes",new JSONArray().put(node)),ime.capture());
+    /** Records what the menu asks of the core and the editor. */
+    static class Client implements GpuTextMenu.Host {
+        final Surface view=new Surface();
+        final GpuTextMenu menu=new GpuTextMenu(view,this);
+        final java.util.ArrayList<String> calls=new java.util.ArrayList<>();
+        boolean coreRuns;
+        public boolean coreAction(int code) { calls.add("core:"+GpuTextMenu.ACTIONS[code]); return coreRuns; }
+        public boolean editorAction(int itemId) { calls.add("editor:"+itemId); return true; }
+        public void dismissed() { calls.add("dismissed"); }
+        static JSONObject menu(String kind,double x,String... actions) throws Exception {
+            return new JSONObject().put("target",new JSONObject().put("kind",kind).put("identity","n"))
+                .put("anchor",new JSONArray(new double[]{x,20,50,10})).put("actions",new JSONArray(actions));
         }
     }
-    @Test public void menuUsesNativeActionsAndMovesWithInputBounds() throws Exception {
-        Client c=new Client(); c.present(false); c.menu.show(); Mode mode=c.view.latest;
-        assertTrue(mode.menu.findItem(android.R.id.copy).isVisible());
-        assertTrue(mode.menu.findItem(android.R.id.cut).isVisible());
-        for(int i=0;i<20;i++) c.menu.update(); assertEquals(0,mode.invalidations); assertEquals(0,mode.rectInvalidations);
-        Rect rect=new Rect(); mode.callback.onGetContentRect(mode,c.view,rect); assertEquals(c.bounds,rect);
-        c.bounds.offset(20,30); c.menu.update(); assertEquals(1,mode.rectInvalidations);
-        mode.callback.onGetContentRect(mode,c.view,rect); assertEquals(c.bounds,rect);
-        assertTrue(mode.click(android.R.id.selectAll)); assertFalse(mode.finished);
-        assertTrue(mode.click(android.R.id.copy)); assertTrue(mode.finished);
-        android.content.ClipboardManager clipboard=(android.content.ClipboardManager)c.view.getContext().getSystemService(android.content.Context.CLIPBOARD_SERVICE);
-        assertEquals("hello",clipboard.getPrimaryClip().getItemAt(0).getText().toString());
-        c.menu.show(); assertFalse(mode.click(android.R.id.cut)); assertEquals("hello",c.ime.menuText());
-        assertTrue(c.view.latest.click(android.R.id.cut));
-        assertEquals("",c.ime.menuText()); assertTrue(c.view.latest.finished);
-        c.menu.show(); assertFalse(c.view.latest.menu.findItem(android.R.id.copy).isVisible());
-        assertTrue(c.view.latest.click(android.R.id.paste)); assertEquals("hello",c.ime.menuText());
+    @Test public void drawsTheCoreActionsAndFollowsTheAnchor() throws Exception {
+        Client c=new Client();
+        c.menu.show(Client.menu("text",10,"copy","select_all"),2); Mode mode=c.view.latest;
+        assertNotNull(mode.menu.findItem(android.R.id.copy)); assertNotNull(mode.menu.findItem(android.R.id.selectAll));
+        assertNull(mode.menu.findItem(android.R.id.cut));
+        Rect rect=new Rect(); mode.callback.onGetContentRect(mode,c.view,rect); assertEquals(new Rect(20,40,120,60),rect);
+        c.menu.show(Client.menu("text",10,"select_all"),2);
+        assertSame("the same mode updates",mode,c.view.latest); assertEquals(0,mode.rectInvalidations);
+        assertNull(mode.menu.findItem(android.R.id.copy));
+        c.menu.show(Client.menu("text",30,"select_all"),2); assertEquals(1,mode.rectInvalidations);
+        c.coreRuns=true; assertTrue(mode.click(android.R.id.selectAll));
+        assertEquals(java.util.Arrays.asList("core:select_all"),c.calls);
+        c.menu.show(null,2); assertTrue(mode.finished);
+        assertEquals("closing for the core is not a user dismissal",java.util.Arrays.asList("core:select_all"),c.calls);
     }
-    @Test public void passwordChangesAndLifecycleInvalidateMenuCallbacks() throws Exception {
-        Client c=new Client(); c.present(false); c.menu.show(); Mode old=c.view.latest;
-        c.present(true); assertFalse(old.menu.findItem(android.R.id.copy).isVisible());
-        assertFalse(old.menu.findItem(android.R.id.cut).isVisible()); assertFalse(old.click(android.R.id.copy));
-        c.ime.setCaretActive(false); assertTrue(old.finished); int edits=c.edits;
-        assertFalse(old.click(android.R.id.paste)); assertEquals(edits,c.edits);
-        c.ime.setCaretActive(true); c.menu.show(); old=c.view.latest;
-        c.ime.clear(true); assertTrue(old.finished); assertFalse(old.click(android.R.id.selectAll));
-    }
-    @Test public void typingDismissesMenuWithoutDroppingEditor() throws Exception {
-        Client c=new Client(); c.present(false); c.menu.show(); Mode mode=c.view.latest;
-        InputConnection input=c.ime.create(new EditorInfo()); assertTrue(input.commitText("hello",1));
-        assertTrue(mode.finished); assertTrue(c.ime.hasFocus()); assertEquals("hello",c.ime.menuText());
-    }
-    @Test public void historyMenuTracksAvailabilityAndCannotRepeatPendingCommands() throws Exception {
-        Client c=new Client(); c.present(false,true,false); c.menu.show(); Mode mode=c.view.latest;
-        assertTrue(mode.menu.findItem(android.R.id.undo).isVisible());
-        assertFalse(mode.menu.findItem(android.R.id.redo).isVisible());
-        for(int i=0;i<10;i++) c.menu.update(); assertEquals(0,mode.invalidations);
-        assertTrue(mode.click(android.R.id.undo)); assertTrue(mode.finished); assertEquals(1,c.edits);
-        c.menu.show(); assertFalse(c.view.latest.menu.findItem(android.R.id.undo).isVisible());
-        assertFalse(c.view.latest.click(android.R.id.undo)); assertEquals(1,c.edits);
-        c.ime.reset(); c.present(false,false,true); c.menu.show();
-        assertTrue(c.view.latest.menu.findItem(android.R.id.redo).isVisible());
-        assertFalse(mode.click(android.R.id.redo)); assertEquals(1,c.edits);
-        assertTrue(c.view.latest.click(android.R.id.redo)); assertEquals(2,c.edits);
+    @Test public void editorActionsRunInTheInputConnectionAndUserDismissalIsReported() throws Exception {
+        Client c=new Client();
+        c.menu.show(Client.menu("editor",0,"cut","copy","paste","undo"),1); Mode mode=c.view.latest;
+        assertTrue(mode.click(android.R.id.paste));
+        assertEquals(java.util.Arrays.asList("core:paste","editor:"+android.R.id.paste),c.calls);
+        mode.finish();
+        assertEquals("dismissed",c.calls.get(c.calls.size()-1));
+        c.menu.show(Client.menu("text",0,"copy"),1); Mode text=c.view.latest;
+        assertFalse("a static action the core refuses never reaches an editor",text.click(android.R.id.copy));
     }
 }

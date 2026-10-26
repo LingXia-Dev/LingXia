@@ -117,6 +117,9 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeInputBlocked", "(J)Z", input_blocked),
         method!("nativeWindowFocus", "(JZ)V", window_focus),
         method!("nativeReveal", "(JZ)V", reveal),
+        method!("nativeTextMenuAction", "(JI)Z", text_menu_action),
+        method!("nativeTextMenuDismissed", "(J)V", text_menu_dismissed),
+        method!("nativeTextHandleDrag", "(JZ)V", text_handle_drag),
         method!("nativeWindowVisible", "(JZ)V", window_visible),
         method!("nativeBridgeReady", "(J)Z", bridge_ready),
         method!("nativeFail", "(JLjava/lang/String;)V", fail),
@@ -374,6 +377,47 @@ extern "system" fn frame_current<'a>(
     handle: jlong,
 ) -> jboolean {
     run(&mut env, |_| Ok(host(handle)?.frame_is_current()))
+}
+
+/// `GpuTextMenu.ACTIONS` order.
+extern "system" fn text_menu_action<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    action: jint,
+) -> jboolean {
+    use lingxia_ui::session::host::MenuAction;
+    run(&mut env, |_| {
+        let action = match action {
+            0 => MenuAction::Cut,
+            1 => MenuAction::Copy,
+            2 => MenuAction::Paste,
+            3 => MenuAction::SelectAll,
+            4 => MenuAction::Undo,
+            5 => MenuAction::Redo,
+            _ => return Err("UI_MENU: unknown action".into()),
+        };
+        Ok(host(handle)?.text_menu_action(action))
+    })
+}
+
+extern "system" fn text_menu_dismissed<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, handle: jlong) {
+    run(&mut env, |_| {
+        host(handle)?.text_menu_dismissed();
+        Ok(())
+    })
+}
+
+extern "system" fn text_handle_drag<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    active: jboolean,
+) {
+    run(&mut env, |_| {
+        host(handle)?.text_handle_drag(active);
+        Ok(())
+    })
 }
 
 extern "system" fn reveal<'a>(

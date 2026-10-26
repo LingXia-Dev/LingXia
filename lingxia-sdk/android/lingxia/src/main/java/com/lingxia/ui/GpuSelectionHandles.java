@@ -11,8 +11,8 @@ final class GpuSelectionHandles extends Drawable {
         JSONObject frame();
         float scale();
         boolean busy();
-        void hideMenu();
-        void showMenu();
+        /** A handle was grabbed or let go; the core hides and restores the text menu. */
+        void dragging(boolean active);
     }
     private final GpuIme ime;
     private final Host host;
@@ -57,8 +57,12 @@ final class GpuSelectionHandles extends Drawable {
         }
         invalidateSelf();
     }
-    void cancel() { owner=null; pending=querying=released=false; gesture++; invalidateSelf(); }
-    private void finish() { cancel(); if (ime.menuActive()) host.showMenu(); }
+    void cancel() {
+        boolean grabbed=owner != null;
+        owner=null; pending=querying=released=false; gesture++; invalidateSelf();
+        if (grabbed) host.dragging(false);
+    }
+    private void finish() { cancel(); }
     boolean touch(MotionEvent event) {
         int action=event.getActionMasked();
         if (action==MotionEvent.ACTION_DOWN) {
@@ -71,7 +75,7 @@ final class GpuSelectionHandles extends Drawable {
             owner=ime.capture(); text=ime.menuText(); scale=factor; pointer=event.getPointerId(0);
             collapsed=c.anchor()==c.focus(); fixed=chosen==0 ? c.focus() : c.anchor();
             dx=px-hit[0]; dy=py-hit[2]; x=hit[0]; y=hit[2]; movement=0; failedGeneration=-1;
-            host.hideMenu(); ime.focus(node,host.frame().optLong("generation")); return true;
+            host.dragging(true); ime.focus(node,host.frame().optLong("generation")); return true;
         }
         if (owner==null) return false;
         if (action==MotionEvent.ACTION_CANCEL || action==MotionEvent.ACTION_POINTER_DOWN) { cancel(); return true; }
