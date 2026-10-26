@@ -43,7 +43,7 @@ pub(crate) fn focus_style(value: &Value) -> Result<Vec<(usize, Value)>, String> 
         .ok_or("UI_STYLE: invalid focus style")?;
     let pairs: Vec<Value> =
         serde_json::from_str(text).map_err(|_| "UI_STYLE: invalid focus style")?;
-    if pairs.len() > 14
+    if pairs.len() > 2 * FOCUS_PAINT_FIELDS.len()
         || !pairs.len().is_multiple_of(2)
         || pairs.chunks_exact(2).any(|p| {
             p[0].as_u64()
@@ -183,6 +183,7 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             value.as_u64() == Some(1),
             "UI_PROP: invalid accessibilityHidden",
         ),
+        field::TRANSITION => transition(value),
         field::ASPECT_RATIO => ensure(
             value
                 .as_f64()
@@ -392,6 +393,51 @@ fn number(id: usize, value: &Value) -> Result<(), String> {
         return Err("UI_STYLE: font weight must be between 1 and 1000".into());
     }
     Ok(())
+}
+
+/// `{properties, durationMs, delayMs, easing}` with schema-bounded times.
+fn transition(value: &Value) -> Result<(), String> {
+    let invalid = || "UI_TRANSITION: invalid transition".to_string();
+    let value: Value = serde_json::from_str(
+        value
+            .as_str()
+            .filter(|s| s.len() <= 512)
+            .ok_or_else(invalid)?,
+    )
+    .map_err(|_| invalid())?;
+    let object = value.as_object().ok_or_else(invalid)?;
+    let allowed = super::options("transition-property").unwrap_or_default();
+    let time = |key: &str, minimum: f64| {
+        object
+            .get(key)
+            .and_then(Value::as_f64)
+            .is_some_and(|ms| ms.is_finite() && ms >= minimum && ms <= limits::TRANSITION_MS as f64)
+    };
+    let properties = object
+        .get("properties")
+        .and_then(Value::as_array)
+        .ok_or_else(invalid)?;
+    let names: std::collections::HashSet<_> = properties.iter().filter_map(Value::as_str).collect();
+    let easing = match object.get("easing") {
+        Some(Value::String(name)) => matches!(name.as_str(), "linear" | "step-end"),
+        Some(Value::Array(points)) => {
+            points.len() == 4
+                && points
+                    .iter()
+                    .all(|p| p.as_f64().is_some_and(f64::is_finite))
+        }
+        _ => false,
+    };
+    ensure(
+        object.len() == 4
+            && !properties.is_empty()
+            && names.len() == properties.len()
+            && names.iter().all(|name| allowed.contains(name))
+            && time("durationMs", f64::MIN_POSITIVE)
+            && time("delayMs", 0.0)
+            && easing,
+        "UI_TRANSITION: invalid transition",
+    )
 }
 
 fn list_anchor(value: &Value) -> Result<(), String> {

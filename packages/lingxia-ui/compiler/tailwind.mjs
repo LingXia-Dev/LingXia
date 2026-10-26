@@ -3,8 +3,8 @@ import postcss from 'postcss';
 import { parse, formatHex8 } from 'culori';
 import { readFile } from 'node:fs/promises';
 import { tokenSelectorTheme, validateTokens } from './stylesheets.mjs';
-import { lowerAnimation } from './animation.mjs';
-import { css as cssStyle, keywords, style as styleTable } from '../src/generated/contract.js';
+import { lowerAnimation, easing as lowerEasing } from './animation.mjs';
+import { css as cssStyle, keywords, style as styleTable, limits } from '../src/generated/contract.js';
 
 // Tailwind owns utility expansion and cascade order; this module lowers each
 // rule's declarations to the CSS-named style the native renderer accepts and
@@ -422,7 +422,7 @@ function longhand(prop, value) {
       return value;
   }
 }
-const transitions = /^(?:transition|transition-[a-z-]+|animation-[a-z-]+|filter|cursor|pointer-events|user-select|outline.*)$/;
+const transitions = /^(?:animation-[a-z-]+|filter|cursor|pointer-events|user-select|outline.*)$/;
 
 function angle(text) {
   const negated = text.match(/^calc\(([\s\S]+?)\s*\*\s*-1\)$/);
@@ -465,9 +465,52 @@ function transformDeclaration(prop, raw, local, style, transform) {
   transform[`${kind}Y`] = y === undefined ? (kind === 'scale' ? transform.scaleX : 0) : lower(y);
 }
 
+// CSS transition properties onto the painted properties a transition may animate.
+const transitionTargets = {
+  opacity: ['opacity'], transform: ['transform'], translate: ['transform'], scale: ['transform'], rotate: ['transform'],
+  color: ['fg'], fill: ['fg'], stroke: ['fg'], 'text-decoration-color': ['fg'], 'background-color': ['bg'],
+  '--tw-gradient-from': ['bg'], '--tw-gradient-via': ['bg'], '--tw-gradient-to': ['bg'], 'border-color': ['border'], 'box-shadow': ['shadow'],
+  all: ['opacity', 'transform', 'bg', 'fg', 'border', 'shadow'],
+};
+// Listed by Tailwind's defaults but without a native paint to animate; they never animate in CSS terms here either.
+const transitionInert = new Set(['outline-color', 'filter', '-webkit-backdrop-filter', 'backdrop-filter', 'display', 'content-visibility', 'overlay', 'pointer-events']);
+const layoutProperty = /^(?:width|height|min-|max-|padding|margin|inset|top|right|bottom|left|gap|row-gap|column-gap|flex|grid|font-size|line-height|letter-spacing|border(?:-[a-z]+)?-width|border-radius)/;
+
+function transitionMs(value) {
+  const match = value.trim().match(/^((?:\d*\.)?\d+)(ms|s)$/);
+  if (!match) unsupported(`unsupported transition time: ${value}`);
+  const ms = Number(match[1]) * (match[2] === 's' ? 1000 : 1);
+  if (ms > limits.transitionMs) unsupported(`transition time over ${limits.transitionMs}ms: ${value}`);
+  return ms;
+}
+
+function transitionDeclaration(prop, raw, local, motion) {
+  const value = variables(raw, local).trim();
+  if (prop === 'transition') unsupported(`transition: ${raw} (use transition-*, duration-*, delay-* and ease-* utilities)`);
+  if (prop === 'transition-property') {
+    const properties = new Set();
+    for (const name of value === 'none' ? [] : postcss.list.comma(value)) {
+      if (transitionTargets[name]) transitionTargets[name].forEach(target => properties.add(target));
+      else if (layoutProperty.test(name)) unsupported(`transition of ${name} animates layout; nearest supported: transition-transform (scale or translate) or transition-opacity`);
+      else if (!transitionInert.has(name)) unsupported(`transition of ${name}`);
+    }
+    motion.properties = [...properties];
+  } else if (prop === '--tw-duration') motion.duration = transitionMs(value);
+  else if (prop === 'transition-duration') {
+    // `var(--tw-duration, default)` follows whichever duration-* utility applies.
+    if (raw.includes('var(--tw-duration')) motion.durationDefault = transitionMs(value);
+    else motion.duration = transitionMs(value);
+  } else if (prop === 'transition-delay') motion.delay = transitionMs(value);
+  else if (prop === '--tw-ease') motion.easing = lowerEasing(value);
+  else if (prop === 'transition-timing-function') {
+    if (raw.includes('var(--tw-ease')) motion.easingDefault = lowerEasing(value);
+    else motion.easing = lowerEasing(value);
+  } else unsupported(`${prop}: ${raw}`);
+}
+
 function declarations(nodes, vars, root, animationLowering) {
   nodes = nodes.flatMap(node => node.type === 'atrule' && node.name === 'supports' && supportedConditions.includes(node.params) ? node.nodes : [node]);
-  const style = {}, gradient = {}, shadow = {}, backdrop = {}, transform = {}, variant = {}, local = { ...vars };
+  const style = {}, gradient = {}, shadow = {}, backdrop = {}, transform = {}, variant = {}, motion = {}, local = { ...vars };
   for (const node of nodes) if (node.type === 'decl' && node.prop.startsWith('--')) local[node.prop] = node.value;
   const clamp = nodes.some(node => node.type === 'decl' && node.prop === '-webkit-line-clamp');
   for (const node of nodes) {
@@ -479,6 +522,10 @@ function declarations(nodes, vars, root, animationLowering) {
       if (!animationLowering) throw Error('UI_ANIMATION: native presentation scheduling is not connected');
       style.animation = lowerAnimation(node.value, root, value => variables(value, local));
       continue;
+    }
+    if (/^transition(?:-property|-duration|-delay|-timing-function)?$/.test(prop) || prop === '--tw-duration' || prop === '--tw-ease') {
+      if (!animationLowering) throw Error('UI_ANIMATION: native presentation scheduling is not connected');
+      transitionDeclaration(prop, node.value, local, motion); continue;
     }
     if (prop.startsWith('--tw-backdrop-') || prop === 'backdrop-filter' || prop === '-webkit-backdrop-filter') { backdropDeclaration(prop, node.value, local, backdrop); continue; }
     if (prop.startsWith('--tw-shadow') || prop.startsWith('--tw-ring-') || prop.startsWith('--tw-inset-') || prop === 'box-shadow') { shadowDeclaration(prop, node.value, local, shadow); continue; }
@@ -538,7 +585,7 @@ function declarations(nodes, vars, root, animationLowering) {
     else if (prop in cssStyle) style[cssStyle[prop]] = longhand(prop, value);
     else unsupported(`${prop}: ${value}`);
   }
-  return { style, ...(Object.keys(transform).length ? { transform } : {}), ...(Object.keys(variant).length ? { numeric: variant } : {}), ...(Object.keys(backdrop).length ? { backdrop } : {}), ...(Object.keys(gradient).length ? { gradient } : {}), ...(Object.keys(shadow).length ? { shadow } : {}) };
+  return { style, ...(Object.keys(motion).length ? { motion } : {}), ...(Object.keys(transform).length ? { transform } : {}), ...(Object.keys(variant).length ? { numeric: variant } : {}), ...(Object.keys(backdrop).length ? { backdrop } : {}), ...(Object.keys(gradient).length ? { gradient } : {}), ...(Object.keys(shadow).length ? { shadow } : {}) };
 }
 
 function conditions(rule) {
@@ -548,6 +595,8 @@ function conditions(rule) {
     if (parent.type !== 'atrule' || parent.name !== 'media') unsupported('nested selector');
     if (parent.params === '(prefers-color-scheme: dark)') result.theme = 'dark';
     else if (parent.params === '(hover: hover)') result.hoverMedia = true;
+    else if (parent.params === '(prefers-reduced-motion: reduce)') result.reducedMotion = true;
+    else if (parent.params === '(prefers-reduced-motion: no-preference)') result.reducedMotion = false;
     else {
       const match = parent.params.match(/^\(width (>=|<) ([\d.]+(?:rem|px))\)$/);
       if (!match) unsupported(`media query ${parent.params}`);

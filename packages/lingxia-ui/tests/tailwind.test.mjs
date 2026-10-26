@@ -50,7 +50,8 @@ test('static transforms compose per-axis variables, origins and rotations; skew 
   for (const name of ['skew-x-6', 'rotate-x-45']) assert.throws(() => classStyle(name), /only translate, rotate and scale/);
   assert.deepEqual(JSON.parse(node('column', { className: 'translate-x-2 rotate-45 -scale-x-100 origin-top-left' }).transform),
     { translate: [8, 0], rotate: 45, scale: [-1, 1], origin: [0, 0] });
-  assert.throws(() => describe(() => h('button', { className: 'active:scale-95' }, 'Go'), {}), /paint properties only, not scale/);
+  // Transforms are paint, so pressed states may scale.
+  assert.deepEqual(JSON.parse(rendered(() => h('button', { className: 'active:scale-95' }, 'Go')).props.pressedStyle.transform), { scale: [0.95, 0.95] });
 });
 
 test('numeric variants compose across classes and white-space keeps CSS keywords', async () => {
@@ -414,7 +415,7 @@ test('unsupported rendering and missing dynamic candidates fail visibly', async 
   const errors = Object.fromEntries(rules.filter(rule => rule.error).map(rule => [rule.name, rule.error]));
   assert.deepEqual(Object.keys(errors).sort(), ['backdrop-invert', 'group-hover:underline', 'skew-y-3', 'transition']);
   assert.ok(Object.values(errors).every(error => error.category === 'unsupported'));
-  assert.match(errors.transition.message, /transition-property \(the native renderer has no transitions\)/);
+  assert.match(errors.transition.message, /UI_ANIMATION: native presentation scheduling is not connected/);
   configureClasses(rules);
   for (const name of ['backdrop-invert', 'transition', 'p-8']) assert.throws(() => classStyle(name), /UI_CLASS/);
   assert.throws(() => classStyle(false), /className must be a string/);

@@ -47,7 +47,7 @@ pub const RADIUS_CORNERS: [usize; 4] = [
     field::RADIUS_BOTTOM_LEFT,
 ];
 /// Paint-only fields an editor focus delta may carry.
-pub const FOCUS_PAINT_FIELDS: [usize; 7] = [
+pub const FOCUS_PAINT_FIELDS: [usize; 8] = [
     field::COLOR,
     field::BACKGROUND,
     field::OPACITY,
@@ -55,6 +55,7 @@ pub const FOCUS_PAINT_FIELDS: [usize; 7] = [
     field::BACKGROUND_GRADIENT,
     field::BOX_SHADOW,
     field::PLACEHOLDER_COLOR,
+    field::TRANSFORM,
 ];
 
 #[derive(Clone, Debug)]

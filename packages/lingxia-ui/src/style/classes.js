@@ -27,6 +27,7 @@ function applies(rule, env) {
   if (theme && (env.theme ?? 'light') !== theme) return false;
   if (direction && (env.direction ?? 'ltr') !== direction) return false;
   if (rule.when?.structure && !(env.structure ?? []).includes(rule.when.structure)) return false;
+  if (rule.when?.reducedMotion !== undefined && (env.reducedMotion === true) !== rule.when.reducedMotion) return false;
   if (minWidth !== undefined && !(env.viewport?.width >= minWidth)) return false;
   if (maxWidth !== undefined && !(env.viewport?.width < maxWidth)) return false;
   return true;
@@ -37,10 +38,11 @@ const pixels = value => `${value}px`;
 // Tailwind composes gradients, shadows and filters from independently cascading
 // variables; the cascade resolves them before they become one style value.
 function cascade(rules) {
-  const style = {}, gradient = {}, shadow = {}, backdrop = {}, transform = {};
+  const style = {}, gradient = {}, shadow = {}, backdrop = {}, transform = {}, motion = {};
   let numeric = {};
   for (const rule of rules) {
     Object.assign(style, copy(rule.style));
+    Object.assign(motion, rule.motion);
     Object.assign(transform, rule.transform);
     // `normal-nums` and literal values replace the composed keywords; utilities add to them.
     if (rule.numeric?.normal || rule.numeric?.fixed) numeric = { ...rule.numeric };
@@ -52,6 +54,12 @@ function cascade(rules) {
   const filter = backdrop.mode === 'fixed' ? backdrop.fixed : backdrop.mode === 'variables' ? backdrop : undefined;
   if (filter && (filter.blur != null || filter.saturation != null))
     style.backdropFilter = `blur(${pixels(filter.blur ?? 0)}) saturate(${filter.saturation ?? 1})`;
+  // Durations and easings from duration-*/ease-* win over a transition-* default whatever the order.
+  if (motion.properties?.length) style.transition = {
+    properties: [...motion.properties], durationMs: motion.duration ?? motion.durationDefault ?? 150, delayMs: motion.delay ?? 0,
+    easing: copy(motion.easing ?? motion.easingDefault ?? [0.4, 0, 0.2, 1]),
+  };
+  else if (motion.properties) style.transition = 'none';
   if (numeric.normal) style.fontVariantNumeric = 'normal';
   else if (numeric.fixed) style.fontVariantNumeric = numeric.fixed;
   else if (numeric.enabled) {
@@ -103,7 +111,7 @@ export function resolveClasses(className, env = {}) {
   if (className === undefined) return undefined;
   if (typeof className !== 'string') throw Error('UI_CLASS: className must be a string');
   if (className.length > 16384) throw Error('UI_CLASS: className exceeds 16384 characters');
-  const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}`;
+  const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}|${env.reducedMotion === true}`;
   if (environment !== cacheEnv) { cache.clear(); cacheEnv = environment; }
   if (cache.has(className)) return copy(cache.get(className));
   const matched = [];

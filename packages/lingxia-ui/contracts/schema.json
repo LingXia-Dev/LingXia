@@ -1,6 +1,6 @@
 {
   "uiAbi": 1,
-  "limits": {"nodes": 4096, "depth": 128, "animationBytes": 262144, "itemKeyBytes": 262144, "imageBytes": 8388608, "sourceBytes": 8192, "visibleImageBytes": 67108864, "decodedImageBytes": 100663296, "runs": 256},
+  "limits": {"nodes": 4096, "depth": 128, "animationBytes": 262144, "itemKeyBytes": 262144, "imageBytes": 8388608, "sourceBytes": 8192, "visibleImageBytes": 67108864, "decodedImageBytes": 100663296, "runs": 256, "transitionMs": 10000},
   "tags": ["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link"],
   "admission": {
     "column": {"children": "any", "content": true},
@@ -56,7 +56,8 @@
     "input-keyboard": ["text", "number", "email", "phone", "search", "date", "time"],
     "auto-complete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"],
     "enter-key-hint": ["enter", "done", "go", "next", "previous", "search", "send"],
-    "auto-capitalize": ["none", "sentences", "words", "characters"]
+    "auto-capitalize": ["none", "sentences", "words", "characters"],
+    "transition-property": ["opacity", "transform", "bg", "fg", "border", "shadow"]
   },
   "fields": [
     {"id": 0, "key": "width", "wire": "width", "kind": "number"},
@@ -229,7 +230,8 @@
     {"id": 167, "key": "spellCheck", "wire": "spellCheck", "kind": "input-flag", "tags": ["input", "textarea", "search"]},
     {"id": 168, "key": "inputMin", "wire": "min", "kind": "input-bound", "tags": ["input"]},
     {"id": 169, "key": "inputMax", "wire": "max", "kind": "input-bound", "tags": ["input"]},
-    {"id": 170, "key": "inputStep", "wire": "step", "kind": "input-step", "tags": ["input"]}
+    {"id": 170, "key": "inputStep", "wire": "step", "kind": "input-step", "tags": ["input"]},
+    {"id": 171, "key": "transition", "wire": "transition", "kind": "transition"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
@@ -302,11 +304,12 @@
     "borderColor": {"type": "string | \"currentColor\"", "group": "box", "lower": "color", "wire": "borderColor", "paint": true, "css": "border-color"},
     "boxShadow": {"type": "ReadonlyArray<BoxShadow> | \"none\"", "group": "box", "lower": "shadow", "wire": "boxShadow", "paint": true},
     "backdropFilter": {"type": "string", "group": "box", "lower": "backdrop", "wire": ["backdropBlur", "backdropSaturation"]},
-    "translate": {"type": "number | `${number}%` | readonly [number | `${number}%`, number | `${number}%`]", "group": "box", "lower": "transform", "wire": "transform"},
-    "rotate": {"type": "number", "group": "box", "lower": "transform", "wire": "transform"},
-    "scale": {"type": "number | readonly [number, number]", "group": "box", "lower": "transform", "wire": "transform"},
-    "transformOrigin": {"type": "readonly [number, number]", "group": "box", "lower": "transform", "wire": "transform"},
+    "translate": {"type": "number | `${number}%` | readonly [number | `${number}%`, number | `${number}%`]", "group": "box", "lower": "transform", "wire": "transform", "paint": true},
+    "rotate": {"type": "number", "group": "box", "lower": "transform", "wire": "transform", "paint": true},
+    "scale": {"type": "number | readonly [number, number]", "group": "box", "lower": "transform", "wire": "transform", "paint": true},
+    "transformOrigin": {"type": "readonly [number, number]", "group": "box", "lower": "transform", "wire": "transform", "paint": true},
     "animation": {"type": "unknown", "group": "box", "lower": "animation", "wire": "animation", "internal": true},
+    "transition": {"type": "unknown", "group": "box", "lower": "transition", "wire": "transition", "internal": true},
     "padding": {"type": "number", "group": "padding", "lower": "length", "wire": ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"]},
     "paddingTop": {"type": "number", "group": "padding", "lower": "length", "wire": "paddingTop", "css": ["padding-top", "padding-block-start"]},
     "paddingRight": {"type": "number", "group": "padding", "lower": "length", "wire": "paddingRight", "css": "padding-right"},

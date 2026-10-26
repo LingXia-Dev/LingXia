@@ -203,6 +203,7 @@ pub mod field {
     pub const INPUT_MIN: usize = 168;
     pub const INPUT_MAX: usize = 169;
     pub const INPUT_STEP: usize = 170;
+    pub const TRANSITION: usize = 171;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link"];
@@ -380,6 +381,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("min", "input-bound"),
     ("max", "input-bound"),
     ("step", "input-step"),
+    ("transition", "transition"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -414,6 +416,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "auto-complete" => Some(&["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"]),
         "enter-key-hint" => Some(&["enter", "done", "go", "next", "previous", "search", "send"]),
         "auto-capitalize" => Some(&["none", "sentences", "words", "characters"]),
+        "transition-property" => Some(&["opacity", "transform", "bg", "fg", "border", "shadow"]),
         _ => None,
     }
 }
@@ -429,6 +432,7 @@ pub mod limits {
     pub const VISIBLE_IMAGE_BYTES: usize = 67108864;
     pub const DECODED_IMAGE_BYTES: usize = 100663296;
     pub const RUNS: usize = 256;
+    pub const TRANSITION_MS: usize = 10000;
 }
 
 /// What a wire tag may contain.
@@ -668,4 +672,5 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::INPUT]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT]), parent: None },
+    FieldAdmission { tags: None, parent: None },
 ];

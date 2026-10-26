@@ -87,6 +87,10 @@
     {
       "name": "view-lab",
       "path": "pages/view-lab/index"
+    },
+    {
+      "name": "motion-lab",
+      "path": "pages/motion-lab/index"
     }
   ],
   "tabBar": {

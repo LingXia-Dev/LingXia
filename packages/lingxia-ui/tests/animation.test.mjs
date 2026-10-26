@@ -140,13 +140,11 @@ test('unsupported modes and unbounded effects fail explicitly', () => {
     assert.throws(()=>lower(fade,value),/UI_ANIMATION/,value);
   }
   for (const body of ['from {width:10px} to {width:20px}',
-    '50% {opacity:0} to {opacity:1}', 'from {opacity:2} to {opacity:0}',
+    'from {opacity:2} to {opacity:0}',
     'from {transform:scale(0)} to {transform:scale(1)}',
-    'from {transform:rotate(10deg)} to {transform:rotate(0deg)}',
-    'from {transform:translateY(2%)} to {transform:translateY(0)}',
     'from {transform:scale(1) translateY(2px)} to {transform:translateY(0) scale(1)}',
     'from {opacity:0!important} to {opacity:1}',
-    'from {animation-timing-function:linear;opacity:0} to {opacity:1}']) {
+    'from {transform:translateY(2%) translateX(1px)} to {transform:translateY(0) translateX(1%)}']) {
     assert.throws(()=>lower(`@keyframes enter {${body}}`),/UI_ANIMATION/,body);
   }
   assert.throws(()=>lower('@media (min-width:1px){'+fade+'}'),/conditional keyframes/);
@@ -156,4 +154,44 @@ test('unsupported modes and unbounded effects fail explicitly', () => {
 test('production utility compilation still rejects animations until scheduling is connected', async () => {
   const rules = await compileUtilities(new Set(['animate-pulse']));
   assert.ok(rules.some(rule=>rule.name==='animate-pulse'&&rule.error));
+});
+
+test('default Tailwind animations lower with implicit endpoints, rotation, relative translation and per-key easing', async () => {
+  const rules = await compileUtilities(new Set(['animate-spin','animate-ping','animate-pulse','animate-bounce']),'',experimental);
+  assert.deepEqual(rules.filter(rule=>rule.error),[]);
+  configureClasses(rules);
+  const effect = name => resolveClasses(`animate-${name}`).base.animation;
+  const spin = effect('spin');
+  assert.deepEqual([spin.iterations, spin.easing, spin.transforms], [null, 'linear', [{kind:'rotate',angle:[{offset:0,value:0},{offset:1,value:360}]}]]);
+  const ping = effect('ping');
+  assert.deepEqual(ping.opacity.map(key=>[key.offset,key.value]), [[0,1],[0.75,0],[1,0]]);
+  assert.deepEqual(ping.transforms[0].x.map(key=>key.value), [1,2,2]);
+  assert.deepEqual(effect('pulse').opacity.map(key=>[key.offset,key.value]), [[0,1],[0.5,0.5],[1,1]]);
+  const bounce = effect('bounce').transforms[0];
+  assert.equal(bounce.relative, true);
+  assert.deepEqual(bounce.y.map(key=>[key.offset,key.value,key.easing]), [[0,-0.25,[0.8,0,1,1]],[0.5,0,[0,0,0.2,1]],[1,-0.25,undefined]]);
+});
+
+test('transition utilities lower to one bounded transition of painted properties, behind the motion gate', async () => {
+  const names = ['transition', 'transition-all', 'transition-colors', 'transition-opacity', 'transition-transform', 'transition-none', 'duration-200',
+    'delay-150', 'ease-in', 'ease-[cubic-bezier(0.1,0.2,0.3,1)]', 'transition-[height]', 'duration-[12s]', 'motion-reduce:transition-none', 'motion-safe:animate-spin'];
+  assert.ok((await compileUtilities(new Set(['transition-opacity']))).every(rule => /UI_ANIMATION/.test(rule.error?.message)));
+  configureClasses(await compileUtilities(new Set(names), '', experimental));
+  const transition = (classes, env) => resolveClasses(classes, env).base.transition;
+  assert.deepEqual(transition('transition-opacity duration-200 ease-in delay-150'), { properties: ['opacity'], durationMs: 200, delayMs: 150, easing: [0.4, 0, 1, 1] });
+  assert.deepEqual(transition('duration-200 transition-opacity'), transition('transition-opacity duration-200'));
+  assert.deepEqual(transition('transition-transform').properties, ['transform']);
+  assert.deepEqual(transition('transition-colors').properties, ['fg', 'bg', 'border']);
+  assert.deepEqual(transition('transition-all').properties, ['opacity', 'transform', 'bg', 'fg', 'border', 'shadow']);
+  assert.deepEqual(transition('transition').durationMs, 150);
+  assert.deepEqual(transition('transition-opacity ease-[cubic-bezier(0.1,0.2,0.3,1)]').easing, [0.1, 0.2, 0.3, 1]);
+  assert.equal(transition('transition-opacity transition-none'), 'none');
+  assert.equal(transition('transition-opacity motion-reduce:transition-none', { reducedMotion: true }), 'none');
+  assert.deepEqual(transition('transition-opacity motion-reduce:transition-none', { reducedMotion: false }).properties, ['opacity']);
+  assert.equal(resolveClasses('motion-safe:animate-spin', { reducedMotion: true }).base.animation, undefined);
+  assert.throws(() => resolveClasses('transition-[height]'), /animates layout; nearest supported: transition-transform/);
+  assert.throws(() => resolveClasses('duration-[12s]'), /over 10000ms/);
+  const records = describe(() => h('column', { className: 'transition-opacity duration-200' }));
+  assert.equal(records[6], 171);
+  assert.deepEqual(JSON.parse(records[7]), { properties: ['opacity'], durationMs: 200, delayMs: 0, easing: [0.4, 0, 0.2, 1] });
 });

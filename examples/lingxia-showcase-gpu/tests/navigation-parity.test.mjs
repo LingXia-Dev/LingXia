@@ -5,7 +5,7 @@ import { readReference } from './reference.mjs';
 const gpu = new URL('../lxapp/', import.meta.url);
 const json = async url => JSON.parse(await readFile(url, 'utf8'));
 // Renderer fixtures with no React counterpart.
-export const gpuOnly = new Set(['view-lab']);
+export const gpuOnly = new Set(['view-lab', 'motion-lab']);
 
 test('GPU pages preserve the reference host navigation configuration', async () => {
   for (const name of await readdir(new URL('pages/', gpu))) {

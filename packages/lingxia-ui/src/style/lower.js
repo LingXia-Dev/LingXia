@@ -1,5 +1,6 @@
 import { elements, style as table } from '../generated/contract.js';
 import { fieldOptions } from '../generated/wire.js';
+import { limits, options } from '../generated/contract.js';
 import { normalizeShadows } from './shadow.js';
 import { normalizeGradient } from './gradient.js';
 import { utf8Bytes, has } from '../runtime/data.js';
@@ -157,6 +158,19 @@ function numericVariant(name, value) {
   return picked.flat().join(' ');
 }
 
+// One transition for the node's painted properties; `none` and an empty list mean no field.
+function transitionValue(value) {
+  if (value === 'none') return undefined;
+  const invalid = () => { throw Error('UI_STYLE_VALUE: transition'); };
+  if (!value || typeof value !== 'object' || Object.keys(value).some(key => !['properties', 'durationMs', 'delayMs', 'easing'].includes(key))) invalid();
+  const { properties, durationMs, delayMs = 0, easing = [0.4, 0, 0.2, 1] } = value;
+  if (!Array.isArray(properties) || !properties.length || properties.length > options['transition-property'].length ||
+      new Set(properties).size !== properties.length || properties.some(name => !options['transition-property'].includes(name)) ||
+      !finite(durationMs) || durationMs <= 0 || durationMs > limits.transitionMs || !finite(delayMs) || delayMs < 0 || delayMs > limits.transitionMs ||
+      !(easing === 'linear' || easing === 'step-end' || (Array.isArray(easing) && easing.length === 4 && easing.every(finite)))) invalid();
+  return JSON.stringify({ properties, durationMs, delayMs, easing });
+}
+
 function animation(value) {
   if (value === null) return undefined;
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('UI_ANIMATION: expected definition');
@@ -227,6 +241,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'backdrop': [out[key[0]], out[key[1]]] = backdrop(name, value); break;
       case 'animation': { const lowered = animation(value); if (lowered !== undefined) out[key] = lowered; break; }
       case 'transform': transformPart(name, value, transform); break;
+      case 'transition': { const lowered = transitionValue(value); if (lowered !== undefined) out[key] = lowered; break; }
       case 'aspect-ratio':
         if (value === 'auto') break;
         if (!finite(value) || value <= 0 || value > 10000) invalid(name);

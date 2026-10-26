@@ -16,7 +16,7 @@ const screaming = name => name.replace(/-/g, '_').replace(/([a-z0-9])([A-Z])/g, 
 const object = entries => JSON.stringify(Object.fromEntries(entries));
 
 const childKinds = ['none', 'text', 'content', 'any', 'rows', 'options', 'runs'];
-const limitNames = ['nodes', 'depth', 'animationBytes', 'itemKeyBytes', 'imageBytes', 'sourceBytes', 'visibleImageBytes', 'decodedImageBytes', 'runs'];
+const limitNames = ['nodes', 'depth', 'animationBytes', 'itemKeyBytes', 'imageBytes', 'sourceBytes', 'visibleImageBytes', 'decodedImageBytes', 'runs', 'transitionMs'];
 
 function validate(schema) {
   const ids = schema.fields.map(field => field.id);
@@ -264,6 +264,8 @@ export const admission = ${JSON.stringify(admission)};
 export const css = ${JSON.stringify(css)};
 /** Keyword-valued style keys and the author values they accept. */
 export const keywords = ${JSON.stringify(keywords)};
+/** Enumerated values by option kind. */
+export const options = ${JSON.stringify(schema.options)};
 `;
 }
 

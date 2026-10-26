@@ -20,7 +20,7 @@ function words(value) {
   if (depth) fail('unbalanced parentheses');
   return result;
 }
-function easing(value) {
+export function easing(value) {
   const named = {linear:'linear', 'step-end':'step-end', ease:[.25,.1,.25,1],
     'ease-in':[.42,0,1,1], 'ease-out':[0,0,.58,1], 'ease-in-out':[.42,0,.58,1]};
   if (Object.hasOwn(named,value)) return named[value];
@@ -56,13 +56,21 @@ function shorthand(value) {
   if (!name || name.length > 128 || result.durationMs < 1 || result.durationMs > 86400000 || result.delayMs > 86400000) fail('invalid name or timing');
   return {name, ...result};
 }
+// Pixels, or a fraction of the node's own box when `relative`.
 function length(value) {
-  if (/^[-+]?0(?:\.0*)?$/.test(value)) return 0;
-  const match = /^(-?(?:\d+(?:\.\d*)?|\.\d+))(px|rem)$/.exec(value);
+  if (/^[-+]?0(?:\.0*)?$/.test(value)) return { value: 0, relative: false };
+  const match = /^(-?(?:\d+(?:\.\d*)?|\.\d+))(px|rem|%)$/.exec(value);
   if (!match) fail(`unsupported translation ${value}`);
+  if (match[2] === '%') return { value: numeric(match[1], -1000, 1000) / 100, relative: true };
   const result = numeric(match[1], -16384,16384) * (match[2] === 'rem' ? 16 : 1);
   if (Math.abs(result) > 16384) fail('translation outside bounds');
-  return result;
+  return { value: result, relative: false };
+}
+
+function angle(value) {
+  const match = /^(-?(?:\d+(?:\.\d*)?|\.\d+))(deg|turn|rad)$/.exec(value);
+  if (!match) fail(`unsupported rotation ${value}`);
+  return numeric(match[1], -36000, 36000) * { deg: 1, turn: 360, rad: 180 / Math.PI }[match[2]];
 }
 function transforms(value) {
   if (value === 'none') return null;
@@ -72,13 +80,20 @@ function transforms(value) {
     end = match.index + match[0].length;
     const [name, body] = [match[1],match[2]];
     const args = body.trim().split(/\s*,\s*|\s+/);
+    if (name === 'rotate' || name === 'rotateZ') {
+      if (args.length !== 1) fail(`unsupported transform ${name}`);
+      result.push({kind:'rotate',angle:angle(args[0])});
+      continue;
+    }
     const scale = /^scale(?:X|Y)?$/.test(name), translate = /^translate(?:X|Y)?$/.test(name);
     if ((!scale && !translate) || args.length > (/[XY]$/.test(name) ? 1 : 2)) fail(`unsupported transform ${name}`);
-    const values = args.map(v => scale ? numeric(v,Number.MIN_VALUE,16) : length(v));
+    const lengths = translate ? args.map(length) : [];
+    if (lengths.length === 2 && lengths[0].relative !== lengths[1].relative) fail('mixed percent and length translation');
+    const values = scale ? args.map(v => numeric(v,Number.MIN_VALUE,16)) : lengths.map(l => l.value);
     const identity = scale ? 1 : 0;
     const x = name.endsWith('Y') ? identity : values[0];
     const y = name.endsWith('X') ? identity : values[1] ?? (scale || name.endsWith('Y') ? values[0] : 0);
-    result.push({kind:scale?'scale':'translate',x,y});
+    result.push({kind:scale?'scale':'translate',x,y,...(lengths[0]?.relative ? {relative:true} : {})});
   }
   if (!result.length || result.length > 8 || value.slice(end).trim()) fail('invalid transform list');
   return result;
@@ -106,6 +121,7 @@ export function lowerAnimation(value, root, resolve = value => value) {
       const value = resolve(decl.value);
       if (decl.prop === 'opacity') properties.opacity = numeric(value,0,1);
       else if (decl.prop === 'transform') properties.transform = transforms(value);
+      else if (decl.prop === 'animation-timing-function') properties.easing = easing(value);
       else fail(`unsupported animated property ${decl.prop}`);
     }
     for (const selector of rule.selector.split(',').map(v=>v.trim())) {
@@ -115,19 +131,30 @@ export function lowerAnimation(value, root, resolve = value => value) {
       if (frames.size > 64) fail('keyframe budget exceeded');
     }
   }
+  // A missing `from`/`to` is the identity (opacity 1, no transform), as for an unstyled box.
+  for (const property of ['opacity','transform']) {
+    const keyed = [...frames].filter(([,frame])=>Object.hasOwn(frame,property));
+    if (!keyed.length) continue;
+    for (const end of [0,1]) if (!keyed.some(([offset])=>offset===end))
+      frames.set(end,{...frames.get(end),[property]:property === 'opacity' ? 1 : null});
+  }
   const sorted = [...frames].sort(([a],[b])=>a-b);
-  const track = property => {
-    const keys = sorted.filter(([,frame])=>Object.hasOwn(frame,property)).map(([offset,frame])=>({offset,value:frame[property]}));
-    if (keys.length && (keys.length < 2 || keys[0].offset !== 0 || keys.at(-1).offset !== 1)) fail(`explicit endpoints required for ${property}`);
-    return keys;
-  };
+  // A keyframe's timing function eases the segment that starts there.
+  const ease = offset => frames.get(offset)?.easing;
+  const key = (offset, value) => ({offset, value, ...(ease(offset) && offset < 1 ? {easing: ease(offset)} : {})});
+  const track = property => sorted.filter(([,frame])=>Object.hasOwn(frame,property)).map(([offset,frame])=>key(offset,frame[property]));
   const opacity = track('opacity'), transform = track('transform');
   const pattern = transform.find(key=>key.value !== null)?.value ?? [];
-  const transformTracks = pattern.map(({kind},index)=>({kind,x:[],y:[]}));
-  for (const {offset,value} of transform) {
-    const ops = value ?? pattern.map(({kind})=>({kind,x:kind==='scale'?1:0,y:kind==='scale'?1:0}));
-    if (ops.length !== pattern.length || ops.some((op,i)=>op.kind !== pattern[i].kind)) fail('transform lists must preserve operation order');
-    ops.forEach((op,i)=>{for(const axis of ['x','y'])transformTracks[i][axis].push({offset,value:op[axis]});});
+  const transformTracks = pattern.map(op => op.kind === 'rotate' ? {kind:'rotate',angle:[]} : {kind:op.kind,x:[],y:[],...(op.relative ? {relative:true} : {})});
+  for (const {offset,value,easing} of transform) {
+    const ops = value ?? pattern.map(({kind})=>kind === 'rotate' ? {kind,angle:0} : {kind,x:kind==='scale'?1:0,y:kind==='scale'?1:0,relative:pattern.find(op=>op.kind===kind)?.relative});
+    if (ops.length !== pattern.length || ops.some((op,i)=>op.kind !== pattern[i].kind || (op.kind === 'translate' && value && !!op.relative !== !!pattern[i].relative)))
+      fail('transform lists must preserve operation order');
+    const extra = easing ? {easing} : {};
+    ops.forEach((op,i)=>{
+      if (op.kind === 'rotate') transformTracks[i].angle.push({offset,value:op.angle,...extra});
+      else for(const axis of ['x','y'])transformTracks[i][axis].push({offset,value:op[axis],...extra});
+    });
   }
   const result = {...timing};
   if (!opacity.length && !transformTracks.length) fail('empty animation');

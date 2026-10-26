@@ -102,7 +102,7 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
     for (const pattern of [
       /^page.tsx:3:\d+: UI_CLASS_ELEMENT: grid-cols-2 sets gridTemplateColumns, which <text> does not support$/,
       /^page.tsx:2:\d+: UI_CLASS_UNKNOWN: not-a-utility is not a Tailwind utility$/,
-      /^page.tsx:2:\d+: UI_CLASS_UNSUPPORTED: transition: the native renderer does not support transition-property/,
+      /^page.tsx:2:\d+: UI_CLASS_UNSUPPORTED: transition: the native renderer does not support UI_ANIMATION: native presentation scheduling is not connected/,
       /^page.tsx:3:\d+: UI_CLASS_ELEMENT: items-center sets alignItems, which <text> does not support$/,
       /^page.tsx:4:\d+: UI_CLASS_ELEMENT: active:bg-red-500 needs a control; <column> is never pressed$/,
       /^page.tsx:4:\d+: UI_CLASS_ELEMENT: hover:p-4: hover styles change paint only, not paddingTop, paddingRight, paddingBottom, paddingLeft$/,
@@ -117,6 +117,16 @@ test('flex-only utilities on a grid name the grid equivalent', async () => {
     assert.match(message, /flex-wrap sets flexWrap, which <grid> does not support; grid items wrap into rows by themselves/);
     assert.match(message, /flex-col sets flexDirection, which <grid> does not support; use grid-flow-col/);
     assert.doesNotMatch(message, /items-center|content-between|justify-items-center/);
+  });
+});
+
+test('motion classes compile only in pages that opt in from source', async () => {
+  const page = 'export function render(){return <button className="active:scale-95 transition-transform duration-150" onClick={() => {}}>Go</button>}';
+  await project({ 'page.tsx': page }, async (root, build) => {
+    assert.match((await build().catch(error => error)).message, /UI_ANIMATION: native presentation scheduling is not connected/);
+    await writeFile(join(root, 'page.tsx'), `// @ui-experimental motion\n${page}`);
+    await build();
+    assert.match(await readFile(join(root, 'dist/page.js'), 'utf8'), /transition-transform/);
   });
 });
 

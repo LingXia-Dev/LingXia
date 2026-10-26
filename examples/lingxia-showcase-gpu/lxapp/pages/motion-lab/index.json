@@ -1,0 +1,10 @@
+{
+  "renderer": "gpu",
+  "navigationBar": {
+    "title": {
+      "default": "Motion lab",
+      "zh-CN": "动效实验"
+    }
+  },
+  "pageOrientation": "auto"
+}

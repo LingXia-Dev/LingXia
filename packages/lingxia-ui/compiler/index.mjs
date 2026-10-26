@@ -137,6 +137,9 @@ export async function buildPages(root, pages, output, catalogs = {}) {
     if (rel.startsWith('..') || isAbsolute(rel) || base === page) throw Error(`Invalid GPU page path: ${page}`);
     const config = JSON.parse(await readFile(join(root, `${base}.json`), 'utf8'));
     if (config.renderer !== 'gpu') throw Error(`${base}.json: expected "renderer": "gpu"`);
+    // Motion stays opt-in per page (`// @ui-experimental motion` in the page source)
+    // until native presentation passes device acceptance.
+    const animationLowering = /^\/\/ @ui-experimental motion$/m.test(await readFile(source, 'utf8'));
     const catalog = catalogs[page] ?? { __names: [], __modes: {} };
     if (!Array.isArray(catalog.__names) || catalog.__names.some(name => typeof name !== 'string' || !['call', 'stream'].includes(catalog.__modes?.[name])))
       throw Error(`${page}: invalid GPU action metadata`);
@@ -150,7 +153,7 @@ export async function buildPages(root, pages, output, catalogs = {}) {
         plugins: [{ name: 'lingxia-ui-language', setup(builder) {
           builder.onLoad({ filter: /\.css$/ }, async ({ path }) => {
             const stylesheet = await loadStylesheet(path);
-            validateTokens(stylesheet);
+            validateTokens(stylesheet, { animationLowering });
             themes.set(path, stylesheet.toString());
             return { contents: '', loader: 'js' };
           });
@@ -177,7 +180,7 @@ export async function buildPages(root, pages, output, catalogs = {}) {
       if (!problems.length) throw error;
     }
     if (themes.size > 1) problems.push(`${page}: UI_CSS: import one shared @theme stylesheet per page`);
-    const classes = await compileUtilities(candidates, [...themes.values()].join('\n'));
+    const classes = await compileUtilities(candidates, [...themes.values()].join('\n'), { animationLowering });
     const checker = moduleChecker(sourceFiles);
     const rulesByName = new Map();
     for (const rule of classes) rulesByName.set(rule.name, [...(rulesByName.get(rule.name) ?? []), rule]);

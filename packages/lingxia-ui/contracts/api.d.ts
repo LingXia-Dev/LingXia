@@ -34,6 +34,8 @@ export interface Env {
   readonly formFactor: string;
   readonly sizeClass: string;
   readonly displayLanguage: string;
+  /** The system asks for reduced motion; `motion-reduce:`/`motion-safe:` follow it. */
+  readonly reducedMotion: boolean;
   /** Inline direction derived from `displayLanguage`. */
   readonly direction: "ltr" | "rtl";
   /** Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it. */
