@@ -16,6 +16,8 @@ mod editing;
 mod environment;
 mod events;
 mod frame_animation;
+#[cfg(feature = "hot-swap")]
+mod hot_swap;
 mod images;
 mod prepare;
 mod selection;

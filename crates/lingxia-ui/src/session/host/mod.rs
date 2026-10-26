@@ -19,6 +19,8 @@ mod bridge;
 pub(crate) mod decode;
 mod dispatch;
 mod environment;
+#[cfg(feature = "hot-swap")]
+mod hot_swap;
 mod images;
 mod pump;
 mod reveal;
@@ -312,6 +314,12 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// Evaluate a new module instance; earlier page work becomes stale.
     pub fn load(&self, source: String) {
         self.inner.load(Some(source));
+    }
+
+    /// Dev sessions: replace the page module in place, keeping its state.
+    #[cfg(feature = "hot-swap")]
+    pub fn swap_module(&self, source: String) {
+        self.inner.swap_module(source);
     }
 
     /// Evaluate the current module again.

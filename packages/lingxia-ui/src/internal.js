@@ -5,3 +5,4 @@ export { useLocal, useView, useRequest, useStream, useChannel, useLeaveGuard, ha
 export { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave } from './runtime/actions.js';
 export { configureClasses } from './style/classes.js';
 export { configureSourceMap } from './runtime/errors.js';
+export { enableHotSwap } from './runtime/hot-swap.js';

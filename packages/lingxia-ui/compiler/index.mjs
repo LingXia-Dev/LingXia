@@ -200,7 +200,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     let bundled;
     try {
       bundled = await build({
-        stdin: { contents: `import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureSourceMap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)});`, resolveDir: root },
+        stdin: { contents: `import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureSourceMap, enableHotSwap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)});`, resolveDir: root },
         bundle: true, write: false, format: 'esm', target: 'es2020', jsxFactory: 'h', inject: [jsx], logLevel: 'silent',
         // Dev builds keep a source map so runtime errors name the author's line.
         ...(dev ? { sourcemap: 'external', absWorkingDir: root, outfile: join(root, 'page.js') } : {}),
@@ -261,6 +261,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       // Only the author's files are named; the runtime and packages stay anonymous.
       const authored = sources.map(path => path.startsWith('..') || path.includes('node_modules') || path === '<stdin>' ? null : path.split('\\').join('/'));
       module += `configureSourceMap(${JSON.stringify({ sources: authored, mappings })});\n`;
+      module += 'enableHotSwap();\n';
     }
     await writeFile(dest, module);
     await copyFile(join(root, `${base}.json`), join(output, `${base}.json`));

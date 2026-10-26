@@ -19,6 +19,7 @@
     describe: () => describe,
     discard: () => discard,
     dispatch: () => dispatch,
+    enableHotSwap: () => enableHotSwap,
     h: () => h,
     hasLocalUpdates: () => hasLocalUpdates,
     prepare: () => prepare,
@@ -2387,6 +2388,19 @@
     const output = prepare(renderPage, view);
     commit();
     return output;
+  }
+
+  // src/runtime/hot-swap.js
+  function exportState() {
+    const locals = [];
+    for (const [key, cell] of page.locals) if (JSON.parse(key).length === 2) locals.push([key, cell.value]);
+    return JSON.stringify(locals);
+  }
+  function importState(text) {
+    for (const [key, value] of JSON.parse(text)) page.locals.set(key, { value: immutable(value, 0, true) });
+  }
+  function enableHotSwap() {
+    Object.assign(globalThis, { __lingxiaExportState: exportState, __lingxiaImportState: importState });
   }
 
   // src/host.js

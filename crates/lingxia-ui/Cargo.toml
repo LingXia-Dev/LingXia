@@ -8,6 +8,8 @@ description = "Experimental LingXia UI language and headless renderer"
 [features]
 default = []
 gpu = ["dep:vello_gpu", "dep:glifo", "dep:wgpu", "dep:pollster"]
+# Dev sessions only: swap a page module in place, keeping its state.
+hot-swap = []
 
 [dependencies]
 serde = { workspace = true }
