@@ -103,7 +103,9 @@ export function render() {
 `<link onPress>` is a pressable run: blue (`#365cdd`) and underlined unless you style it, restyled by
 `active:` while pressed, and exposed to accessibility as a link named by its text (or
 `accessibilityLabel`). Only the link's own line pieces respond to taps. `disabled` removes its handler.
-There is no `href`; navigate in `onPress` through a Logic action.
+A link may contain `<span>` runs (`<link>Read the <span className="font-semibold">terms</span></link>`); the
+whole link is one target and one accessible name. Links do not nest. There is no `href`; navigate in
+`onPress` through a Logic action.
 
 ## Selection
 

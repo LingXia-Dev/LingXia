@@ -273,7 +273,7 @@ No element-specific props.
 
 ## `<link>`
 
-Children: text, `<span>` and `<link>` runs. Only inside `<text>`. Not allowed inside a composed `<button>` or `<checkbox>`.
+Children: text and `<span>` runs; links do not nest. Only inside `<text>`. Not allowed inside a composed `<button>` or `<checkbox>`.
 
 | Prop | Type | Required |
 | --- | --- | --- |

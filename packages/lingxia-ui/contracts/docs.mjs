@@ -62,7 +62,9 @@ async function elements(schema) {
   for (const [name, element] of Object.entries(schema.elements)) {
     const admission = schema.admission[element.wire];
     out.push(`## \`<${name}>\``, '');
-    const facts = [`Children: ${childKinds[element.children]}.`];
+    // A run may hold runs, but a link never holds another link.
+    const children = element.children === 'runs' && element.wire === 'link' ? 'text and `<span>` runs; links do not nest' : childKinds[element.children];
+    const facts = [`Children: ${children}.`];
     if (element.wire !== name) facts.push(`Renders as ${code(element.wire)}.`);
     if (parents[element.wire]) facts.push(`Only inside ${code(`<${parents[element.wire]}>`)}.`);
     if (admission.root) facts.push('The page root.');
