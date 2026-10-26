@@ -143,14 +143,58 @@ pub struct Projection<'a> {
 }
 
 impl Projection<'_> {
-    /// Top-level semantic children; radio options are reached through their group.
+    /// Top-level semantic nodes; the rest are reached through their container.
     pub fn roots(&self) -> Vec<u32> {
-        self.frame
-            .nodes
-            .iter()
-            .enumerate()
-            .filter(|(_, node)| node.tag != "radio-option" && meaningful(node) && visible(node))
-            .filter_map(|(index, _)| self.ids.id(index))
+        (0..self.frame.nodes.len())
+            .filter(|index| self.published(*index) && self.container_of(*index).is_none())
+            .filter_map(|index| self.ids.id(index))
+            .collect()
+    }
+
+    fn published(&self, index: usize) -> bool {
+        let node = &self.frame.nodes[index];
+        meaningful(node) && visible(node)
+    }
+
+    /// A published layout node with a role (or a scroll) groups the published nodes
+    /// below it; unrolled wrappers collapse, so their content joins the next container up.
+    fn is_container(&self, index: usize) -> bool {
+        matches!(
+            self.frame.nodes[index].tag,
+            "column" | "row" | "grid" | "stack" | "scroll" | "list" | "radio"
+        ) && self.published(index)
+    }
+
+    /// The nearest container ancestor. Nodes are in preorder and identities extend
+    /// their parent's, so ancestors precede `index` with a prefix identity.
+    fn container_of(&self, index: usize) -> Option<usize> {
+        let node = &self.frame.nodes[index];
+        if node.tag == "radio-option" {
+            let group = node.radio_group.as_deref();
+            return self.frame.nodes.iter().position(|candidate| {
+                candidate.tag == "radio" && Some(candidate.identity.as_str()) == group
+            });
+        }
+        (0..index).rev().find(|&candidate| {
+            let ancestor = &self.frame.nodes[candidate].identity;
+            node.identity.len() > ancestor.len()
+                && node.identity.starts_with(ancestor.as_str())
+                && node.identity.as_bytes()[ancestor.len()] == b'/'
+                && self.is_container(candidate)
+        })
+    }
+
+    fn contained(&self, index: usize) -> Vec<u32> {
+        let identity = &self.frame.nodes[index].identity;
+        let subtree = |other: &NodeSnapshot| {
+            other.identity.len() > identity.len()
+                && other.identity.starts_with(identity.as_str())
+                && other.identity.as_bytes()[identity.len()] == b'/'
+        };
+        (index + 1..self.frame.nodes.len())
+            .take_while(|other| subtree(&self.frame.nodes[*other]))
+            .filter(|other| self.published(*other) && self.container_of(*other) == Some(index))
+            .filter_map(|other| self.ids.id(other))
             .collect()
     }
 
@@ -258,8 +302,14 @@ impl Projection<'_> {
                 }
             }
         }
-        let mut children = Vec::new();
-        let mut parent = None;
+        let mut children = if self.is_container(index) {
+            self.contained(index)
+        } else {
+            Vec::new()
+        };
+        let parent = self
+            .container_of(index)
+            .and_then(|container| self.ids.id(container));
         let mut position = None;
         if node.tag == "radio" {
             let members: Vec<_> = self.members(node).collect();
@@ -273,14 +323,6 @@ impl Projection<'_> {
             position = Some((0, members.len()));
         } else if node.tag == "radio-option" {
             let group = node.radio_group.as_deref();
-            parent = self
-                .frame
-                .nodes
-                .iter()
-                .position(|candidate| {
-                    candidate.tag == "radio" && Some(candidate.identity.as_str()) == group
-                })
-                .and_then(|index| self.ids.id(index));
             let row = self.frame.nodes[..index]
                 .iter()
                 .filter(|candidate| {

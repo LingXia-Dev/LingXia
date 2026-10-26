@@ -48,7 +48,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   runs take text paint only; links are accent + underline by default. `select-text` lets users
   long-press to select and copy.
 - Semantics: `role="heading" headingLevel={2}`, `list`/`listitem`, `dialog`, `alert`/`status`
-  (announced), `accessibilityHidden` for decoration.
+  (announced), `accessibilityHidden` for decoration. A layout element with a role, or a scroll,
+  groups its content for screen readers ("item 2 of 3"); plain wrappers collapse.
 - Inputs take `maxLength`, `autoComplete` (autofill), `enterKeyHint`, `autoCapitalize`, `spellCheck`;
   `keyboard="number"` with `min`/`max`/`step` clamps on blur/submit; `keyboard="date|time"` opens the
   platform picker and reports ISO strings.

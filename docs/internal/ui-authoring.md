@@ -37,6 +37,11 @@ alert, status), `accessibilityHidden` (removes the subtree from semantics, not
 paint) and `accessibilityLiveRegion`; alert and status announce assertively and
 politely by default. Controls keep their own role. The Android adapter reads the
 role and key names from the generated `GpuSemantics` class.
+The projection nests published nodes under their nearest published layout
+ancestor (a role, or a scroll); unpublished wrappers collapse and reading order
+is source order. Android's `findAccessibilityNodeInfosByViewId` does not search
+node providers, so accessibility-service automation must walk the tree by test
+id; `lx.automation` queries the projection directly.
 Composed buttons and checkboxes may contain noninteractive content; inline
 text among element children becomes text nodes. Their accessible name comes
 from descendant text unless `accessibilityLabel` is given. Empty strings,
