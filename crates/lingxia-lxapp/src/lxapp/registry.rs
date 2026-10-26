@@ -24,7 +24,6 @@ use crate::provider::{
     lxapp_registry_provider,
 };
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use rong_rt::download as service_executor;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -57,6 +56,9 @@ const REFRESH_RETRY_INTERVAL: Duration = Duration::from_secs(60);
 /// Age past which a leftover download staging file is swept. Cancellation drops
 /// the download future without running its cleanup, so some always leak.
 const STAGING_MAX_AGE: Duration = Duration::from_secs(60 * 60);
+
+/// Largest icon body accepted.
+const ICON_MAX_BYTES: u64 = 4 * 1024 * 1024;
 
 const ICONS_DIR: &str = "icons";
 const STAGING_SUFFIX: &str = ".part";
@@ -699,28 +701,25 @@ async fn resolve_icon_file(
         return Some(file.to_string());
     }
 
-    let staging = dir.join(format!(
-        "download-{}{}",
-        uuid::Uuid::new_v4(),
-        STAGING_SUFFIX
-    ));
-    let options = service_executor::DownloadOptions::new(url.to_string(), staging.clone())
-        .with_connect_timeout(Duration::from_secs(10))
-        .with_request_timeout(ICON_REQUEST_TIMEOUT);
-    let receiver = service_executor::spawn_download(options, None)
-        .map_err(|err| crate::warn!("Failed to start icon download: {}", err))
-        .ok()?;
-    match receiver.await {
-        Ok(Ok(())) => {}
-        Ok(Err(err)) => {
-            crate::warn!("Icon download failed for {}: {}", appid, err);
-            let _ = fs::remove_file(&staging);
-            return None;
-        }
-        Err(_) => {
-            let _ = fs::remove_file(&staging);
-            return None;
-        }
+    fetch_icon(&dir, url, extension, appid).await
+}
+
+/// Download `url` into `dir`, named by the bytes' hash; `None` on any failure.
+async fn fetch_icon(dir: &Path, url: &str, extension: &str, appid: &str) -> Option<String> {
+    // Staged as `download-<uuid>.part` (swept if a cancelled fetch leaves it), then named by content.
+    let staging = dir.join(format!("download-{}", uuid::Uuid::new_v4()));
+    // Shared by every app on purpose; the file name is the bytes' own hash.
+    let mut request = lingxia_transfer::store::FetchRequest::new(url, "host:registry");
+    request.max_bytes = ICON_MAX_BYTES;
+    request.timeout = ICON_REQUEST_TIMEOUT;
+    request.connect_timeout = Some(Duration::from_secs(10));
+    // The URL comes from the host's own registry provider.
+    request.allow_http = true;
+    if let Err(err) =
+        lingxia_transfer::store::download_to_path(&request, &staging, false, None).await
+    {
+        crate::warn!("Icon download failed for {}: {}", appid, err);
+        return None;
     }
 
     let digest = archive::sha256_hex(&staging).ok()?;
@@ -851,6 +850,60 @@ pub fn refresh_registry(appids: &[String]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Serves `body` to each of `count` connections and returns the request lines.
+    fn icon_origin(
+        body: &'static [u8],
+        count: usize,
+    ) -> (String, std::thread::JoinHandle<Vec<String>>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            (0..count)
+                .map(|_| {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    let mut request = [0u8; 1024];
+                    let read = stream.read(&mut request).unwrap();
+                    write!(
+                        stream,
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    )
+                    .unwrap();
+                    stream.write_all(body).unwrap();
+                    String::from_utf8_lossy(&request[..read])
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .to_string()
+                })
+                .collect()
+        });
+        (origin, server)
+    }
+
+    #[tokio::test]
+    async fn the_same_artwork_through_two_urls_is_one_file_and_no_staging_is_left() {
+        let dir = tempfile::tempdir().unwrap();
+        let (origin, server) = icon_origin(b"icon-bytes", 2);
+        let first = fetch_icon(dir.path(), &format!("{origin}/a.png"), "png", "app")
+            .await
+            .unwrap();
+        let second = fetch_icon(dir.path(), &format!("{origin}/b.png"), "png", "app")
+            .await
+            .unwrap();
+        assert_eq!(first, second);
+        assert_eq!(
+            server.join().unwrap(),
+            ["GET /a.png HTTP/1.1", "GET /b.png HTTP/1.1"]
+        );
+        let names: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(names, [first]);
+    }
 
     #[test]
     fn icon_extension_keeps_known_image_types_and_defaults_to_png() {
