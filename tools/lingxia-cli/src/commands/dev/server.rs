@@ -996,6 +996,48 @@ impl DevServerState {
         outcome
     }
 
+    /// Dev sessions: swap the GPU page at `path` in the running app, keeping its state.
+    /// `NotOpen` when no live page took it (the app shows it the next time it opens).
+    pub(crate) fn hot_swap_page(&self, appid: &str, path: &str) -> Result<RestartOutcome> {
+        let Some(sender) = self.runtime_sender() else {
+            return Ok(RestartOutcome::NotConnected);
+        };
+        let id = uuid::Uuid::new_v4().to_string();
+        let _guard = self.lock_command_forwarding();
+        if self.watch_paused() {
+            return Ok(RestartOutcome::Deferred);
+        }
+        let (tx, rx) = mpsc::channel();
+        self.register_pending_result(id.clone(), tx);
+        let request = DevSessionMessage::Request(ControlRequest {
+            id: id.clone(),
+            method: lingxia_control_protocol::methods::lxapp::HOT_SWAP.to_string(),
+            params: Some(serde_json::json!({ "appid": appid, "path": path })),
+        });
+        if sender.send(request).is_err() {
+            let _ = self.take_pending_result(&id);
+            return Err(anyhow!("Failed to forward hot swap to runtime"));
+        }
+        match rx.recv_timeout(DEFAULT_COMMAND_TIMEOUT) {
+            Ok(DevSessionMessage::Response(response)) => match response.error {
+                Some(error) => Ok(RestartOutcome::Failed(error.message)),
+                None if response.result.as_ref().and_then(|r| r["pages"].as_u64()) == Some(0) => {
+                    Ok(RestartOutcome::NotOpen)
+                }
+                None => Ok(RestartOutcome::Restarted),
+            },
+            Ok(_) => Err(anyhow!("unexpected hot swap response")),
+            Err(_) => {
+                let _ = self.take_pending_result(&id);
+                Err(anyhow!("hot swap did not answer"))
+            }
+        }
+    }
+
+    pub(super) fn refresh_manifests(&self) -> Result<()> {
+        refresh_lxapp_manifests(&self.project_root)
+    }
+
     fn forward_restart(&self, appid: &str) -> Result<RestartOutcome> {
         let Some(sender) = self.runtime_sender() else {
             return Ok(RestartOutcome::NotConnected);

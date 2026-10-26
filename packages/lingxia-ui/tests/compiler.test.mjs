@@ -326,6 +326,8 @@ export function render() {
 }` }, async root => {
     await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
     const source = await load(root);
+    const inputs = JSON.parse(await readFile(join(root, '.lingxia/gpu-inputs.json'), 'utf8'));
+    assert.deepEqual(inputs['page.tsx'], ['page.tsx']);
     assert.match(source, /\nconfigureSourceMap\(\{/);
     const error = (() => { try { describePage(); } catch (error) { return error; } })();
     assert.match(error.message, /\n  at page.tsx:3:\d+\n  at Total \(page.tsx:8:5\)/);

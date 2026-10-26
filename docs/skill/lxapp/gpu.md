@@ -36,6 +36,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - `translate`/`rotate`/`scale`/`origin` are static and state variants may set them; skew and 3D fail.
   Transitions and `animate-*` need `// @ui-experimental motion` in the page source.
 - Utilities that would draw nothing (filters, masks, text shadows, cursors, outlines) fail naming what to use.
+- In `lingxia dev`, saving View code of GPU pages swaps those pages in place, keeping `useLocal`, scroll
+  and focus; Logic or config edits rebuild and reopen. Dev builds' runtime errors name `file:line:col`.
 - The build reports every problem with `file:line:col`, split into unknown
   utilities, ones the renderer cannot draw, and ones the element ignores.
 - `useLocal(name, value)` state is keyed by name and component identity.

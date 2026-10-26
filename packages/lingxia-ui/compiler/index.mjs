@@ -183,6 +183,7 @@ function report(problems, page) {
 export async function buildPages(root, pages, output, catalogs = {}, { dev = false } = {}) {
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   root = await realpath(resolve(root)); output = resolve(output);
+  const inputs = {};
   for (const page of pages) {
     const source = resolve(root, page);
     const rel = relative(root, source);
@@ -203,7 +204,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
         stdin: { contents: `import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureSourceMap, enableHotSwap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)});`, resolveDir: root },
         bundle: true, write: false, format: 'esm', target: 'es2020', jsxFactory: 'h', inject: [jsx], logLevel: 'silent',
         // Dev builds keep a source map so runtime errors name the author's line.
-        ...(dev ? { sourcemap: 'external', absWorkingDir: root, outfile: join(root, 'page.js') } : {}),
+        ...(dev ? { sourcemap: 'external', absWorkingDir: root, outfile: join(root, 'page.js'), metafile: true } : {}),
         alias: { '@lingxia/ui': publicEntry },
         plugins: [{ name: 'lingxia-ui-language', setup(builder) {
           builder.onLoad({ filter: /\.css$/ }, async ({ path }) => {
@@ -264,6 +265,14 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       module += 'enableHotSwap();\n';
     }
     await writeFile(dest, module);
+    // Dev builds record each page's inputs so `lingxia dev` can rebuild only the pages an edit touches.
+    if (bundled.metafile) inputs[page] = Object.keys(bundled.metafile.inputs).filter(path => !path.startsWith('..') && !path.includes('node_modules') && path !== '<stdin>').map(path => path.split('\\').join('/'));
     await copyFile(join(root, `${base}.json`), join(output, `${base}.json`));
+  }
+  if (Object.keys(inputs).length) {
+    const path = join(root, '.lingxia', 'gpu-inputs.json');
+    const previous = JSON.parse(await readFile(path, 'utf8').catch(() => '{}'));
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, JSON.stringify({ ...previous, ...inputs }, null, 1) + '\n');
   }
 }

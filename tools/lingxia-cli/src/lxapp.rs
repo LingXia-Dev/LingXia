@@ -47,6 +47,21 @@ pub fn run_in_dir(args: &[String], cwd: &Path) -> Result<()> {
     build::run(args, cwd)
 }
 
+/// Dev sessions: the build output directory of the lxapp at `dir` and the action
+/// catalogs of the GPU `pages` (`pages/x/index.tsx`) it is about to recompile.
+pub(crate) fn gpu_dev_inputs(
+    dir: &Path,
+    pages: &[String],
+) -> Result<(std::path::PathBuf, serde_json::Value)> {
+    let project = project::Project::discover(dir)?;
+    let pages: Vec<&str> = pages.iter().map(String::as_str).collect();
+    let catalogs = view::gpu::catalogs(&project, &pages)?;
+    Ok((
+        project.output_dir.clone(),
+        serde_json::Value::Object(catalogs),
+    ))
+}
+
 pub fn run_in_dir_for_dev(args: &[String], cwd: &Path) -> Result<()> {
     build::run_for_dev(args, cwd)
 }

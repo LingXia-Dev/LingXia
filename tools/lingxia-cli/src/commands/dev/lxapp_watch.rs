@@ -311,6 +311,14 @@ fn run_watch(
     }
 
     let mut dirty: BTreeSet<String> = BTreeSet::new();
+    // What changed per app since its last reload, for the GPU hot-swap plan.
+    let mut changed: std::collections::BTreeMap<String, BTreeSet<PathBuf>> = Default::default();
+    // Warm the page compiler up front where a dev build has run, so the first swap is fast too.
+    let mut compilers: Vec<super::gpu_swap::Compiler> = roots
+        .iter()
+        .filter(|root| root.path.join(".lingxia").join("gpu-inputs.json").is_file())
+        .filter_map(|root| super::gpu_swap::Compiler::spawn(&root.path).ok())
+        .collect();
     let mut attached: BTreeSet<String> = BTreeSet::new();
     // Saves under `mocks/` reload the mocks only: no rebuild, no restart.
     let mut mocks_dirty: BTreeSet<String> = BTreeSet::new();
@@ -363,6 +371,10 @@ fn run_watch(
                             mocks_dirty.insert(root.app_id.clone());
                         } else {
                             dirty.insert(root.app_id.clone());
+                            changed
+                                .entry(root.app_id.clone())
+                                .or_default()
+                                .insert(path.to_path_buf());
                         }
                     }
                 }
@@ -410,6 +422,14 @@ fn run_watch(
                     if stop_flag.load(Ordering::Acquire) {
                         break;
                     }
+                    let paths = changed.remove(&app_id).unwrap_or_default();
+                    let root = roots.iter().find(|root| root.app_id == app_id);
+                    if !options.release
+                        && let Some(root) = root
+                        && hot_swap(&state, &app_id, &root.path, &paths, &mut compilers)
+                    {
+                        continue;
+                    }
                     if reload_one(&state, &app_id, &options) == Reload::Deferred {
                         // A run started while it rebuilt: restart once it ends.
                         dirty.insert(app_id);
@@ -422,6 +442,64 @@ fn run_watch(
     }
     drop(watcher);
     Ok(())
+}
+
+/// Swap the GPU pages an edit touched into the running app; false when the
+/// edit needs a full rebuild, or the swap did not land and one should follow.
+fn hot_swap(
+    state: &DevServerState,
+    app_id: &str,
+    dir: &Path,
+    changed: &BTreeSet<PathBuf>,
+    compilers: &mut Vec<super::gpu_swap::Compiler>,
+) -> bool {
+    let Some(pages) = super::gpu_swap::plan(dir, changed) else {
+        return false;
+    };
+    let started = std::time::Instant::now();
+    if !compilers.iter().any(|compiler| compiler.dir() == dir) {
+        match super::gpu_swap::Compiler::spawn(dir) {
+            Ok(compiler) => compilers.push(compiler),
+            Err(err) => {
+                eprintln!("  {} hot swap unavailable: {err:#}", "•".cyan());
+                return false;
+            }
+        }
+    }
+    let index = compilers
+        .iter()
+        .position(|compiler| compiler.dir() == dir)
+        .unwrap();
+    if let Err(err) = compilers[index].compile(&pages) {
+        // The running page stays; the next save tries again.
+        eprintln!("  {} {app_id}: {err:#}", "✗".red());
+        return true;
+    }
+    // The manifest hash moves with the new module, so a cold start serves it too.
+    if let Err(err) = state.refresh_manifests() {
+        eprintln!("  {} {app_id}: {err:#}", "✗".red());
+        return false;
+    }
+    for page in &pages {
+        let path = super::gpu_swap::page_path(page);
+        match state.hot_swap_page(app_id, &path) {
+            Ok(RestartOutcome::Restarted) => println!(
+                "  {} swapped {} in {} ms",
+                "✓".green(),
+                path.cyan(),
+                started.elapsed().as_millis()
+            ),
+            Ok(RestartOutcome::Failed(message)) => {
+                eprintln!("  {} {path}: {message}", "✗".red());
+            }
+            Ok(_) => {}
+            Err(err) => {
+                eprintln!("  {} {path}: {err:#}", "✗".red());
+                return false;
+            }
+        }
+    }
+    true
 }
 
 #[derive(Debug, PartialEq, Eq)]

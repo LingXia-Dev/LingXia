@@ -1,4 +1,4 @@
-mod gpu;
+pub(crate) mod gpu;
 mod react;
 mod vite_assets;
 mod vite_html;
