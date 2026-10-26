@@ -91,7 +91,6 @@
   // src/style/classes.js
   var byName = /* @__PURE__ */ new Map();
   var cache = /* @__PURE__ */ new Map();
-  var cacheEnv = "";
   var states = ["focus", "active", "hover", "disabled"];
   var geometryKeys = { linear: ["direction", "angle"], radial: ["shape", "size", "at"], conic: ["from", "at"] };
   function copy(value) {
@@ -186,11 +185,8 @@
     if (typeof className !== "string") throw Error("UI_CLASS: className must be a string");
     if (className.length > 16384) throw Error("UI_CLASS: className exceeds 16384 characters");
     const environment = `${env.theme ?? "light"}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? "ltr"}|${(env.structure ?? []).join(",")}|${env.reducedMotion === true}`;
-    if (environment !== cacheEnv) {
-      cache.clear();
-      cacheEnv = environment;
-    }
-    if (cache.has(className)) return copy(cache.get(className));
+    const key = `${environment}\0${className}`;
+    if (cache.has(key)) return copy(cache.get(key));
     const matched = [];
     for (const name of new Set(className.split(/\s+/).filter(Boolean))) {
       const rules = byName.get(name);
@@ -213,8 +209,8 @@
     }
     const children = matched.filter((rule) => rule.when?.children);
     if (children.length) result.children = cascade(children);
-    if (cache.size >= 256) cache.delete(cache.keys().next().value);
-    cache.set(className, copy(result));
+    if (cache.size >= 1024) cache.delete(cache.keys().next().value);
+    cache.set(key, copy(result));
     return result;
   }
 

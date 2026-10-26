@@ -3,7 +3,6 @@
 // children a `space-*`/`divide-*` rule targets.
 let byName = new Map();
 const cache = new Map();
-let cacheEnv = '';
 const states = ['focus', 'active', 'hover', 'disabled'];
 const geometryKeys = { linear: ['direction', 'angle'], radial: ['shape', 'size', 'at'], conic: ['from', 'at'] };
 
@@ -112,8 +111,9 @@ export function resolveClasses(className, env = {}) {
   if (typeof className !== 'string') throw Error('UI_CLASS: className must be a string');
   if (className.length > 16384) throw Error('UI_CLASS: className exceeds 16384 characters');
   const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}|${env.reducedMotion === true}`;
-  if (environment !== cacheEnv) { cache.clear(); cacheEnv = environment; }
-  if (cache.has(className)) return copy(cache.get(className));
+  // Keyed by environment too: sibling structure changes it node to node, so clearing on change thrashed.
+  const key = `${environment}\u0000${className}`;
+  if (cache.has(key)) return copy(cache.get(key));
   const matched = [];
   for (const name of new Set(className.split(/\s+/).filter(Boolean))) {
     const rules = byName.get(name);
@@ -138,7 +138,7 @@ export function resolveClasses(className, env = {}) {
   const children = matched.filter(rule => rule.when?.children);
   if (children.length) result.children = cascade(children);
   // Cache only the class cascade; inline values and inheritance resolve per node.
-  if (cache.size >= 256) cache.delete(cache.keys().next().value);
-  cache.set(className, copy(result));
+  if (cache.size >= 1024) cache.delete(cache.keys().next().value);
+  cache.set(key, copy(result));
   return result;
 }

@@ -3,24 +3,27 @@ import '../../theme/index.css';
 import { Button, Icon, Page, Section } from '../../shared/ui';
 
 // GPU-only renderer fixtures: one section per View capability, addressed by testId.
+// One group renders at a time: a whole-lab render exceeds the per-render budget on slower phones.
+const groups = {
+  paint: { label: 'Paint', sections: [Grid, Gradients, Vectors, Borders, Transforms] },
+  layout: { label: 'Layout', sections: [Display, Sizing, Direction, Structure, StickyHeaders] },
+  text: { label: 'Text', sections: [TextLayout, RichText, Selection] },
+  input: { label: 'Input', sections: [Accessibility, Inputs] },
+};
+type Group = keyof typeof groups;
+
 export function render() {
+  const group = useLocal<Group>('group', 'paint');
   return (
     <Page testId="view-lab" title="View lab">
-      <Grid />
-      <Gradients />
-      <Vectors />
-      <Borders />
-      <Display />
-      <Transforms />
-      <TextLayout />
-      <RichText />
-      <Sizing />
-      <Direction />
-      <Accessibility />
-      <Inputs />
-      <Structure />
-      <StickyHeaders />
-      <Selection />
+      <row className="gap-2">
+        {(Object.keys(groups) as Group[]).map(key => (
+          <Button key={key} testId={`lab-tab-${key}`} size="sm" variant={group.value === key ? 'primary' : 'secondary'} onClick={() => group.set(key)}>
+            {groups[key].label}
+          </Button>
+        ))}
+      </row>
+      {groups[group.value].sections.map(Part => <Part key={Part.name} />)}
     </Page>
   );
 }
