@@ -508,12 +508,8 @@ pub(crate) async fn lxapp_dev_page_screenshot_with_info(
     let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
     let (page, name) = resolve_dev_page(&app, page_name)?;
     let info = dev_page_info(&app, &page, name.as_deref());
-    let bytes = page
-        .webview()
-        .ok_or_else(|| "page WebView is not ready".to_string())?
-        .take_screenshot()
-        .await
-        .map_err(|err| err.to_string())?;
+    // The shared lower half answers GPU pages too.
+    let bytes = auto::page_screenshot(&app, Some(&info.instance_id)).await?;
     Ok((info, bytes))
 }
 
