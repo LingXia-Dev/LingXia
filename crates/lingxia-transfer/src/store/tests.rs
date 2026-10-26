@@ -443,3 +443,75 @@ async fn partitions_never_share_bytes() {
     store.fetch_bytes(other).await.unwrap();
     assert_eq!(origin.hits(), 2);
 }
+
+#[tokio::test]
+async fn a_resumable_download_continues_with_a_range_and_reports_progress() {
+    let full: Vec<u8> = (0..100u8).collect();
+    let served = full.clone();
+    let origin = Origin::start(move |_, headers| {
+        Some(
+            match headers.get(header::RANGE).and_then(|v| v.to_str().ok()) {
+                Some("bytes=40-") => response(
+                    "206 Partial Content",
+                    &["Content-Range: bytes 40-99/100"],
+                    &served[40..],
+                ),
+                _ => response("200 OK", &[], &served),
+            },
+        )
+    })
+    .await;
+    let dir = tempfile_dir::Dir::new();
+    let path = dir.path().join("package.zip");
+    std::fs::write(partial_path(&path), &full[..40]).unwrap();
+    assert_eq!(partial_len(&path), 40);
+    let reported = std::sync::Mutex::new(Vec::new());
+    let progress = |bytes: u64, total: Option<u64>| reported.lock().unwrap().push((bytes, total));
+    let meta = download_to_path(
+        &request(&origin, "/package.zip"),
+        &path,
+        true,
+        Some(&progress),
+    )
+    .await
+    .unwrap();
+    assert_eq!(meta.size, 100);
+    assert_eq!(std::fs::read(&path).unwrap(), full);
+    assert!(!partial_path(&path).exists());
+    assert_eq!(reported.lock().unwrap().last(), Some(&(100, Some(100))));
+}
+
+#[tokio::test]
+async fn a_server_that_ignores_the_range_starts_the_body_over() {
+    let full: Vec<u8> = (0..50u8).collect();
+    let served = full.clone();
+    let origin = Origin::start(move |_, _| Some(response("200 OK", &[], &served))).await;
+    let dir = tempfile_dir::Dir::new();
+    let path = dir.path().join("package.zip");
+    std::fs::write(partial_path(&path), b"stale bytes").unwrap();
+    download_to_path(&request(&origin, "/package.zip"), &path, true, None)
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), full);
+}
+
+#[tokio::test]
+async fn a_failed_resumable_download_keeps_its_partial_body() {
+    let origin = Origin::start(|_, _| {
+        // Declares 100 bytes and closes after 10.
+        let mut out =
+            b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\n".to_vec();
+        out.extend_from_slice(&[7; 10]);
+        Some(out)
+    })
+    .await;
+    let dir = tempfile_dir::Dir::new();
+    let path = dir.path().join("package.zip");
+    assert!(
+        download_to_path(&request(&origin, "/p"), &path, true, None)
+            .await
+            .is_err()
+    );
+    assert!(!path.exists());
+    assert_eq!(partial_len(&path), 10);
+}

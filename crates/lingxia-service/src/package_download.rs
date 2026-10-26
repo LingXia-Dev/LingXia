@@ -1,21 +1,23 @@
 //! Resumable, retrying transfer of update packages (host app and lxapp).
 
-use rong_rt::download::{self as service_executor, BodySink};
+use lingxia_transfer::store::{self, FetchErrorKind, FetchRequest, Progress};
 use std::fmt;
 use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 /// TCP/TLS connect cap. Long enough for congested store DNS, short of the OS default.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
-/// Whole-transfer ceiling. rong_rt's default request timeout (60s) bounds the
-/// body too, so a slow link would fail while bytes are still arriving. rong_rt
-/// still aborts a socket that delivers nothing for 120s.
+/// Whole-transfer ceiling for one attempt, body included.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60 * 60);
+/// Packages are bounded only by what a store serves; the checksum guards content.
+const MAX_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 /// First attempt plus two retries.
 const ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF: [Duration; 2] = [Duration::from_secs(2), Duration::from_secs(5)];
+/// Network owner for update traffic.
+const OWNER: &str = "host:update";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PackageDownloadError {
@@ -34,45 +36,33 @@ impl fmt::Display for PackageDownloadError {
 
 impl std::error::Error for PackageDownloadError {}
 
-/// Download `url` to `dest`, resuming from `dest.part`, and verify `checksum_sha256`
-/// when non-empty. On failure `dest` is removed; `.part` survives only when it can
-/// still be resumed. `make_sink` receives the byte count already on disk.
+/// Download `url` to `dest`, resuming from its staged `.part`, and verify
+/// `checksum_sha256` when non-empty. The transfer never goes through the HTTP
+/// store. On failure `dest` is removed; the `.part` survives only when it can
+/// still be resumed. `progress` gets bytes on disk, resumed ones included.
 ///
-/// Dropping the returned future aborts the transfer. Otherwise a cancelled open
-/// could leave a task appending to `.part` for up to an hour while a retry
-/// appends to the same file.
+/// Dropping the returned future aborts the transfer.
 pub async fn download_package(
     url: &str,
     dest: &Path,
     checksum_sha256: &str,
-    mut make_sink: impl FnMut(u64) -> Option<Box<dyn BodySink>>,
+    progress: Option<Progress<'_>>,
 ) -> Result<(), PackageDownloadError> {
-    let part = partial_path(dest);
+    let mut request = FetchRequest::new(url, OWNER);
+    request.max_bytes = MAX_BYTES;
+    request.timeout = REQUEST_TIMEOUT;
+    request.connect_timeout = Some(CONNECT_TIMEOUT);
+    // Update URLs come from the host's own provider; the checksum guards the bytes.
+    request.allow_http = true;
+    request.cache = store::CacheMode::Bypass;
     let mut attempt = 0;
     loop {
         attempt += 1;
         let resumed = partial_download_len(dest);
         let retries_left = attempt < ATTEMPTS;
 
-        let mut options = service_executor::DownloadOptions::new(url, dest.to_path_buf())
-            .with_resume()
-            .with_connect_timeout(CONNECT_TIMEOUT)
-            .with_request_timeout(REQUEST_TIMEOUT);
-        if let Some(sink) = make_sink(resumed) {
-            options = options.with_sink(sink);
-        }
-        // rong_rt aborts when the sender is dropped, so holding it here ties the
-        // transfer to this future.
-        let (_abort_tx, abort_rx) = tokio::sync::oneshot::channel::<()>();
-        let result = service_executor::spawn_download(options, Some(abort_rx))
-            .map_err(|error| {
-                PackageDownloadError::Transfer(format!("failed to start download: {error}"))
-            })?
-            .await
-            .map_err(|_| PackageDownloadError::Transfer("download task cancelled".to_string()))?;
-
-        let error = match result {
-            Ok(()) => match verify_sha256(dest, checksum_sha256) {
+        let error = match store::download_to_path(&request, dest, true, progress).await {
+            Ok(_) => match verify_sha256(dest, checksum_sha256) {
                 Ok(()) => return Ok(()),
                 Err(error) => {
                     let _ = fs::remove_file(dest);
@@ -85,11 +75,11 @@ pub async fn download_package(
             },
             Err(error) => {
                 let _ = fs::remove_file(dest);
-                match classify(&error) {
+                match classify(error.kind) {
                     Failure::Transient if retries_left => {}
                     // The `.part` itself may be what the server rejects.
                     Failure::Permanent if resumed > 0 && retries_left => {
-                        let _ = fs::remove_file(&part);
+                        let _ = fs::remove_file(store::partial_path(dest));
                     }
                     _ => {
                         return Err(PackageDownloadError::Transfer(format!(
@@ -97,7 +87,7 @@ pub async fn download_package(
                         )));
                     }
                 }
-                error
+                error.to_string()
             }
         };
 
@@ -112,16 +102,7 @@ pub async fn download_package(
 
 /// Bytes already on disk for an interrupted download of `dest`.
 pub fn partial_download_len(dest: &Path) -> u64 {
-    fs::metadata(partial_path(dest))
-        .ok()
-        .filter(|meta| meta.is_file())
-        .map(|meta| meta.len())
-        .unwrap_or(0)
-}
-
-/// Must match rong_rt's resume file naming.
-fn partial_path(dest: &Path) -> PathBuf {
-    dest.with_extension("part")
+    store::partial_len(dest)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -130,26 +111,12 @@ enum Failure {
     Permanent,
 }
 
-/// rong_rt reports failures as strings; only network-level ones are worth retrying.
-fn classify(error: &str) -> Failure {
-    if let Some(status) = error.strip_prefix("http status: ") {
-        let code = status.get(..3).and_then(|code| code.parse::<u16>().ok());
-        return match code {
-            Some(408 | 429) | Some(500..=599) => Failure::Transient,
-            _ => Failure::Permanent,
-        };
-    }
-    const TRANSIENT: [&str; 5] = [
-        "request failed",
-        "request timeout",
-        "read timeout",
-        "read frame",
-        "stream task",
-    ];
-    if TRANSIENT.iter().any(|prefix| error.starts_with(prefix)) {
-        Failure::Transient
-    } else {
-        Failure::Permanent
+/// Only network-level failures and overloaded servers are worth retrying.
+fn classify(kind: FetchErrorKind) -> Failure {
+    match kind {
+        FetchErrorKind::Network | FetchErrorKind::Timeout => Failure::Transient,
+        FetchErrorKind::Status(408 | 429 | 500..=599) => Failure::Transient,
+        _ => Failure::Permanent,
     }
 }
 
@@ -257,17 +224,12 @@ mod tests {
                 .map(|b| format!("{b:02x}"))
                 .collect::<String>()
         };
-        let mut resumed_from = Vec::new();
-        download_package(&url, &dest, &expected, |resumed| {
-            resumed_from.push(resumed);
-            None
-        })
-        .await
-        .unwrap();
+        download_package(&url, &dest, &expected, None)
+            .await
+            .unwrap();
 
         let start = server.join().unwrap();
         assert!(start > 0 && start <= CUT);
-        assert_eq!(resumed_from, [0, start as u64]);
         assert_eq!(fs::read(&dest).unwrap(), body());
         assert!(!dest.with_extension("part").exists());
     }
@@ -290,7 +252,7 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("pkg.zip");
-        let download = download_package(&url, &dest, "", |_| None);
+        let download = download_package(&url, &dest, "", None);
         let aborted = tokio::time::timeout(Duration::from_millis(500), download).await;
         assert!(aborted.is_err(), "the transfer must still be in flight");
 
@@ -314,25 +276,23 @@ mod tests {
 
     #[test]
     fn only_network_failures_are_transient() {
-        for error in [
-            "request failed: client error (Connect)",
-            "request timeout",
-            "read timeout",
-            "read frame: connection reset",
-            "http status: 503 Service Unavailable",
-            "http status: 429 Too Many Requests",
+        for kind in [
+            FetchErrorKind::Network,
+            FetchErrorKind::Timeout,
+            FetchErrorKind::Status(503),
+            FetchErrorKind::Status(429),
         ] {
-            assert_eq!(classify(error), Failure::Transient, "{error}");
+            assert_eq!(classify(kind), Failure::Transient, "{kind:?}");
         }
-        for error in [
-            "http status: 404 Not Found",
-            "http status: 403 Forbidden",
-            "resume content range starts at 0, expected 10",
-            "range not satisfiable; stale `.part` discarded",
-            "write chunk: No space left on device",
-            "too many redirects",
+        for kind in [
+            FetchErrorKind::Status(404),
+            FetchErrorKind::Status(403),
+            FetchErrorKind::Status(206),
+            FetchErrorKind::TooLarge,
+            FetchErrorKind::Io,
+            FetchErrorKind::InvalidUrl,
         ] {
-            assert_eq!(classify(error), Failure::Permanent, "{error}");
+            assert_eq!(classify(kind), Failure::Permanent, "{kind:?}");
         }
     }
 }

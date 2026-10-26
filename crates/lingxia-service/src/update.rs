@@ -11,7 +11,6 @@ use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::update::UpdateService;
 use lingxia_provider::BoxFuture;
 use lingxia_update::AppUpdateHost;
-use rong_rt::download::BodySink;
 use rong_rt::http as host_http;
 use std::fs;
 use std::io::Error as IoError;
@@ -317,50 +316,6 @@ impl lingxia_update::AppUpdateHost for HostAppUpdateService {
     }
 }
 
-struct ProgressSink {
-    total_bytes: Option<u64>,
-    downloaded_bytes: u64,
-    reporter: AppUpdateProgressReporter,
-}
-
-impl ProgressSink {
-    fn new(
-        total_bytes: Option<u64>,
-        downloaded_bytes: u64,
-        reporter: AppUpdateProgressReporter,
-    ) -> Self {
-        Self {
-            total_bytes,
-            downloaded_bytes,
-            reporter,
-        }
-    }
-
-    /// A server that ignores `Range` resends the whole body after the resumed
-    /// bytes were counted, so never report past the total.
-    fn shown_bytes(&self) -> u64 {
-        self.total_bytes.map_or(self.downloaded_bytes, |total| {
-            self.downloaded_bytes.min(total)
-        })
-    }
-}
-
-impl BodySink for ProgressSink {
-    fn write(&mut self, chunk: &[u8]) -> Result<(), String> {
-        self.downloaded_bytes += chunk.len() as u64;
-        self.reporter.report(self.shown_bytes(), self.total_bytes);
-        Ok(())
-    }
-
-    fn close(&mut self, result: &Result<(), String>) {
-        if result.is_ok() {
-            let shown = self.shown_bytes();
-            self.reporter
-                .report(shown, self.total_bytes.or(Some(shown)));
-        }
-    }
-}
-
 /// Remove downloaded update packages other than the current target so the
 /// cache never accumulates one file per skipped version. Keeps the target's
 /// package and its in-progress `.part` resume file, which share the target's
@@ -434,15 +389,19 @@ async fn download_host_app_update_package(
     };
 
     progress.report(partial_download_len(&dest), file_size);
-    package_download::download_package(url, &dest, checksum_sha256, |resumed| {
-        Some(Box::new(ProgressSink::new(
-            file_size,
-            resumed,
-            progress.clone(),
-        )))
-    })
-    .await
-    .map_err(|error| UpdateError::runtime(error.to_string()))?;
+    // A server that ignores `Range` resends the whole body after the resumed
+    // bytes were counted, so never report past the total.
+    let report = |bytes: u64, total: Option<u64>| {
+        let total = file_size.or(total);
+        progress.report(total.map_or(bytes, |total| bytes.min(total)), total);
+    };
+    package_download::download_package(url, &dest, checksum_sha256, Some(&report))
+        .await
+        .map_err(|error| UpdateError::runtime(error.to_string()))?;
+    progress.report(
+        fs::metadata(&dest).map(|meta| meta.len()).unwrap_or(0),
+        file_size.or_else(|| fs::metadata(&dest).ok().map(|meta| meta.len())),
+    );
     Ok(dest)
 }
 

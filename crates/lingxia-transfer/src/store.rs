@@ -51,6 +51,8 @@ pub struct FetchRequest {
     /// Bounds the whole request, body included.
     pub timeout: Duration,
     pub allow_http: bool,
+    /// Bounds the socket connect phase alone.
+    pub connect_timeout: Option<Duration>,
     pub cache: CacheMode,
     /// Serve a stale entry when the origin cannot be reached.
     pub stale_on_error: bool,
@@ -79,6 +81,7 @@ impl FetchRequest {
             max_bytes: 32 * 1024 * 1024,
             timeout: Duration::from_secs(30),
             allow_http: false,
+            connect_timeout: None,
             cache: CacheMode::Default,
             stale_on_error: false,
             guard: None,
@@ -229,13 +232,11 @@ impl Store {
         request: FetchRequest,
         path: &Path,
     ) -> Result<FetchMeta, FetchError> {
+        if request.cache == CacheMode::Bypass {
+            return download_to_path(&request, path, false, None).await;
+        }
         let staging = staging_path(path);
-        let result = if request.cache == CacheMode::Bypass {
-            check_url(&request)?;
-            network(&request, None, &staging)
-                .await
-                .map(|(_, meta, _)| meta)
-        } else {
+        let result = {
             match self.fetch_body(request).await {
                 Ok((body, meta)) => tokio::fs::copy(body.path(), &staging)
                     .await
@@ -283,9 +284,11 @@ impl Store {
         });
         if request.cache == CacheMode::Bypass || credentials {
             let temp = self.dir.join(format!("bypass-{}.part", unique()));
-            let (_, meta, _) = network(&request, None, &temp).await.inspect_err(|_| {
-                let _ = std::fs::remove_file(&temp);
-            })?;
+            let (_, meta, _) = network(&request, None, Target::fresh(&temp))
+                .await
+                .inspect_err(|_| {
+                    let _ = std::fs::remove_file(&temp);
+                })?;
             return Ok((Body::Temp(temp), meta));
         }
         let key = key(&request.partition, &request.url);
@@ -341,7 +344,7 @@ impl Store {
     async fn refresh(&self, key: &str, request: &FetchRequest) -> Outcome {
         let cached = self.lookup(key)?;
         let temp = self.dir.join(format!("{key}-{}.part", unique()));
-        let result = network(request, cached.as_ref(), &temp).await;
+        let result = network(request, cached.as_ref(), Target::fresh(&temp)).await;
         match result {
             Ok((StatusCode::NOT_MODIFIED, _, headers)) => {
                 let Some(mut entry) = cached else {
@@ -546,17 +549,44 @@ fn check_url(request: &FetchRequest) -> Result<(), FetchError> {
     }
 }
 
+/// Bytes so far (resumed ones included) and the total when known.
+pub type Progress<'a> = &'a (dyn Fn(u64, Option<u64>) + Send + Sync);
+
+/// Where a response body goes.
+struct Target<'a> {
+    path: &'a Path,
+    /// Bytes already in `path` to continue from with a `Range` request.
+    resume_from: u64,
+    /// Leave a partial body for a later resume instead of removing it.
+    keep_partial: bool,
+    progress: Option<Progress<'a>>,
+}
+
+impl<'a> Target<'a> {
+    fn fresh(path: &'a Path) -> Self {
+        Self {
+            path,
+            resume_from: 0,
+            keep_partial: false,
+            progress: None,
+        }
+    }
+}
+
 /// One GET into `target`, conditional on `cached`. A 304 writes nothing.
 async fn network(
     request: &FetchRequest,
     cached: Option<&Entry>,
-    target: &Path,
+    target: Target<'_>,
 ) -> Result<(StatusCode, FetchMeta, HeaderMap), FetchError> {
     let mut builder = HttpRequest::builder()
         .uri(&request.url)
         .header(header::USER_AGENT, rong_rt::get_user_agent());
     for (name, value) in &request.headers {
         builder = builder.header(name, value);
+    }
+    if target.resume_from > 0 {
+        builder = builder.header(header::RANGE, format!("bytes={}-", target.resume_from));
     }
     if let Some(entry) = cached {
         if let Some(etag) = &entry.etag {
@@ -578,6 +608,9 @@ async fn network(
     let (_abort, abort) = tokio::sync::oneshot::channel::<()>();
     // `timeout` below bounds the whole exchange, body included.
     let mut options = RequestOptions::new().with_abort(abort);
+    if let Some(connect) = request.connect_timeout {
+        options = options.with_connect_timeout(connect);
+    }
     if let Some(guard) = &request.guard {
         options = options.with_network_access_guard(guard.clone());
     }
@@ -601,44 +634,79 @@ async fn network(
                 format!("HTTP {status}"),
             ));
         }
+        // A 206 continues the partial body; a 200 to a range request starts over.
+        let mut size = if status == StatusCode::PARTIAL_CONTENT {
+            let start = header_string(&response.headers, header::CONTENT_RANGE).and_then(|range| {
+                range
+                    .strip_prefix("bytes ")?
+                    .split('-')
+                    .next()?
+                    .parse::<u64>()
+                    .ok()
+            });
+            if start != Some(target.resume_from) {
+                return Err(FetchError::new(
+                    FetchErrorKind::Status(206),
+                    format!(
+                        "resume range starts at {start:?}, expected {}",
+                        target.resume_from
+                    ),
+                ));
+            }
+            target.resume_from
+        } else {
+            0
+        };
         let declared = response
             .headers
             .get(header::CONTENT_LENGTH)
-            .and_then(|value| value.to_str().ok()?.parse::<u64>().ok());
+            .and_then(|value| value.to_str().ok()?.parse::<u64>().ok())
+            .map(|length| size + length);
         if declared.is_some_and(|length| length > request.max_bytes) {
             return Err(FetchError::new(
                 FetchErrorKind::TooLarge,
                 "declared length over the limit",
             ));
         }
-        let mut file = tokio::fs::File::create(target)
-            .await
-            .map_err(FetchError::io)?;
-        let mut size = 0u64;
-        match response.body {
-            HttpBody::Empty => {}
-            HttpBody::Small(bytes) => {
-                size = bytes.len() as u64;
-                if size > request.max_bytes {
-                    return Err(FetchError::new(
-                        FetchErrorKind::TooLarge,
-                        "body over the limit",
-                    ));
+        let mut file = if size > 0 {
+            tokio::fs::OpenOptions::new()
+                .append(true)
+                .open(target.path)
+                .await
+        } else {
+            tokio::fs::File::create(target.path).await
+        }
+        .map_err(FetchError::io)?;
+        let mut chunks = match response.body {
+            HttpBody::Empty => None,
+            HttpBody::Small(bytes) => Some(Err(bytes)),
+            HttpBody::Stream(chunks) => Some(Ok(chunks)),
+        };
+        loop {
+            let chunk = match &mut chunks {
+                None => break,
+                Some(Err(bytes)) => {
+                    let bytes = std::mem::take(bytes);
+                    chunks = None;
+                    bytes
                 }
-                file.write_all(&bytes).await.map_err(FetchError::io)?;
-            }
-            HttpBody::Stream(mut chunks) => {
-                while let Some(chunk) = chunks.recv().await {
-                    let chunk = chunk.map_err(|e| FetchError::new(FetchErrorKind::Network, e))?;
-                    size += chunk.len() as u64;
-                    if size > request.max_bytes {
-                        return Err(FetchError::new(
-                            FetchErrorKind::TooLarge,
-                            "body over the limit",
-                        ));
+                Some(Ok(stream)) => match stream.recv().await {
+                    Some(chunk) => {
+                        chunk.map_err(|e| FetchError::new(FetchErrorKind::Network, e))?
                     }
-                    file.write_all(&chunk).await.map_err(FetchError::io)?;
-                }
+                    None => break,
+                },
+            };
+            size += chunk.len() as u64;
+            if size > request.max_bytes {
+                return Err(FetchError::new(
+                    FetchErrorKind::TooLarge,
+                    "body over the limit",
+                ));
+            }
+            file.write_all(&chunk).await.map_err(FetchError::io)?;
+            if let Some(progress) = target.progress {
+                progress(size, declared);
             }
         }
         file.flush().await.map_err(FetchError::io)?;
@@ -662,10 +730,49 @@ async fn network(
             })
     })
     .await;
-    if result.is_err() {
-        let _ = tokio::fs::remove_file(target).await;
+    if result.is_err() && !target.keep_partial {
+        let _ = tokio::fs::remove_file(target.path).await;
     }
     result
+}
+
+/// The staging file a resumable download of `path` continues from.
+pub fn partial_path(path: &Path) -> PathBuf {
+    path.with_extension("part")
+}
+
+/// Bytes already staged for `path`.
+pub fn partial_len(path: &Path) -> u64 {
+    std::fs::metadata(partial_path(path))
+        .ok()
+        .filter(|meta| meta.is_file())
+        .map(|meta| meta.len())
+        .unwrap_or(0)
+}
+
+/// Download straight to `path`, never through a store, staging in
+/// [`partial_path`]: with `resume`, a staged partial body continues with a `Range`
+/// request and a failure keeps it for the next call. `path` appears only complete.
+pub async fn download_to_path(
+    request: &FetchRequest,
+    path: &Path,
+    resume: bool,
+    progress: Option<Progress<'_>>,
+) -> Result<FetchMeta, FetchError> {
+    check_url(request)?;
+    let staging = partial_path(path);
+    let resume_from = if resume { partial_len(path) } else { 0 };
+    let target = Target {
+        path: &staging,
+        resume_from,
+        keep_partial: resume,
+        progress,
+    };
+    let (_, meta, _) = network(request, None, target).await?;
+    tokio::fs::rename(&staging, path)
+        .await
+        .map_err(FetchError::io)?;
+    Ok(meta)
 }
 
 #[derive(Default)]

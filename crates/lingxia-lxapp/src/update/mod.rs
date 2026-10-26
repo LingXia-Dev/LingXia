@@ -502,7 +502,7 @@ impl UpdateManager {
 
         // Keep any pre-existing `.part` file so an interrupted prior attempt
         // resumes from where it stopped.
-        lingxia_service::package_download::download_package(url, &dest, checksum_sha256, |_| None)
+        lingxia_service::package_download::download_package(url, &dest, checksum_sha256, None)
             .await
             .map_err(|e| LxAppError::IoError(e.to_string()))?;
 
