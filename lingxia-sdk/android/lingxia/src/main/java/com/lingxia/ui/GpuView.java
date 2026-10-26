@@ -102,7 +102,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private final UiSurface surface;
     private final GpuIme ime;
     private final View feedback;
-    private boolean active, destroyed, attaching, gpuAttached;
+    // CPU frames are drawn from a raster thread, which reads these too.
+    private volatile boolean active, destroyed, attaching, gpuAttached;
     private boolean hasSurfaceFrame;
     // The presented frame as JSON, for the input method and its chrome.
     private JSONObject snapshot;

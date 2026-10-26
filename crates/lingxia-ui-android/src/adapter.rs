@@ -74,6 +74,8 @@ pub(super) struct AndroidAdapter {
     pub(super) host: OnceLock<WeakViewHost<AndroidAdapter>>,
     /// In-flight loads; dropping a handle cancels its transport.
     images: Mutex<HashMap<u64, Box<dyn Send>>>,
+    /// CPU frames waiting for the raster pool.
+    raster: OnceLock<Arc<super::raster::Mailbox<DisplayList>>>,
 }
 
 pub(super) enum Frame {
@@ -83,11 +85,8 @@ pub(super) enum Frame {
         revision: u64,
         metrics: serde_json::Value,
     },
-    Cpu {
-        pixels: Vec<i32>,
-        width: i32,
-        height: i32,
-    },
+    /// Rasterized off the View worker when presented.
+    Cpu(DisplayList),
 }
 
 pub(super) fn log(message: &str) {
@@ -115,6 +114,7 @@ impl AndroidAdapter {
             owner,
             host: OnceLock::new(),
             images: Mutex::new(HashMap::new()),
+            raster: OnceLock::new(),
         }
     }
 
@@ -208,26 +208,13 @@ impl Presenter for AndroidAdapter {
             Route::Cpu => {}
         }
         let _ = generation;
-        let frame = display.rasterize()?;
-        let (width, height) = (frame.pixels.width(), frame.pixels.height());
-        // The opaque root background makes these premultiplied channels also valid ARGB colors.
-        let pixels = frame
-            .pixels
-            .data_as_u8_slice()
-            .chunks_exact(4)
-            .map(|p| u32::from_be_bytes([p[3], p[0], p[1], p[2]]) as i32)
-            .collect();
-        Ok(Some(Frame::Cpu {
-            pixels,
-            width: i32::from(width),
-            height: i32::from(height),
-        }))
+        Ok(Some(Frame::Cpu(display)))
     }
 
     fn metrics(&self, frame: &Frame) -> Option<serde_json::Value> {
         Some(match frame {
             Frame::Gpu { metrics, .. } => metrics.clone(),
-            Frame::Cpu { .. } => serde_json::json!({"backend": "vello-cpu"}),
+            Frame::Cpu(_) => serde_json::json!({"backend": "vello-cpu"}),
         })
     }
 
@@ -252,26 +239,55 @@ impl Presenter for AndroidAdapter {
             }
             #[cfg(not(all(feature = "gpu", target_os = "android")))]
             Frame::Gpu { .. } => Ok(false),
-            Frame::Cpu {
-                pixels,
-                width,
-                height,
-            } => Ok(self.java(|env, platform| {
-                let array = env.new_int_array(pixels.len())?;
-                array.set_region(env, 0, &pixels)?;
-                env.call_method(
-                    platform,
-                    jni_str!("presentPixels"),
-                    jni_sig!("([III)Z"),
-                    &[
-                        JValue::Object(&array),
-                        JValue::Int(width),
-                        JValue::Int(height),
-                    ],
-                )?
-                .z()
-            })),
+            Frame::Cpu(display) => {
+                let Some(host) = self.host.get().cloned() else {
+                    return Ok(false);
+                };
+                self.raster
+                    .get_or_init(|| {
+                        super::raster::Mailbox::new(move |display| rasterize(&host, display))
+                    })
+                    .submit(display);
+                Ok(true)
+            }
         }
+    }
+}
+
+/// Raster thread. A frame the surface no longer takes is presented again.
+fn rasterize(host: &WeakViewHost<AndroidAdapter>, display: DisplayList) {
+    let Some(host) = host.upgrade() else {
+        return;
+    };
+    let frame = match display.rasterize() {
+        Ok(frame) => frame,
+        Err(error) => return host.fail(error),
+    };
+    let (width, height) = (frame.pixels.width(), frame.pixels.height());
+    // The opaque root background makes these premultiplied channels also valid ARGB colors.
+    let pixels: Vec<i32> = frame
+        .pixels
+        .data_as_u8_slice()
+        .chunks_exact(4)
+        .map(|p| u32::from_be_bytes([p[3], p[0], p[1], p[2]]) as i32)
+        .collect();
+    let presented = host.adapter().java(|env, platform| {
+        let array = env.new_int_array(pixels.len())?;
+        array.set_region(env, 0, &pixels)?;
+        env.call_method(
+            platform,
+            jni_str!("presentPixels"),
+            jni_sig!("([III)Z"),
+            &[
+                JValue::Object(&array),
+                JValue::Int(i32::from(width)),
+                JValue::Int(i32::from(height)),
+            ],
+        )?
+        .z()
+    });
+    if !presented {
+        host.redraw();
     }
 }
 
