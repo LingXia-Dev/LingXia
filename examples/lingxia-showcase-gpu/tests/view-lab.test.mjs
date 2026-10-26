@@ -21,15 +21,12 @@ test('the GPU-only view lab compiles and is a registered page', async () => {
   assert.ok(app.pages.some(page => page.path === 'pages/view-lab/index'));
 });
 
-test('the motion lab compiles only through its experimental opt-in', async () => {
+test('the motion lab compiles its transitions', async () => {
   const out = await mkdtemp(join(tmpdir(), 'motion-lab-'));
   try {
     await buildPages(root, ['pages/motion-lab/index.tsx'], out);
     const module = await readFile(join(out, 'pages/motion-lab/index.js'), 'utf8');
     assert.match(module, /"transition-transform"/);
-    // Without the source opt-in the same classes stay gated.
-    const source = await readFile(join(root, 'pages/motion-lab/index.tsx'), 'utf8');
-    assert.match(source, /^\/\/ @ui-experimental motion$/m);
   } finally {
     await rm(out, { recursive: true, force: true });
   }

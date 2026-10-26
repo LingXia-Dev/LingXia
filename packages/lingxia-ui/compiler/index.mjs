@@ -100,7 +100,7 @@ export function audit(source, filename, { literalColors = false } = {}) {
         if (style && ts.isObjectLiteralExpression(style)) for (const entry of style.properties) {
           if (!ts.isPropertyAssignment(entry) && !ts.isShorthandPropertyAssignment(entry)) continue;
           const name = entry.name.getText(file).replace(/['"]/g, '');
-          if (name === 'animation') report(entry, 'UI_ANIMATION: native presentation scheduling is not connected');
+          if (name === 'animation') report(entry, 'UI_ANIMATION: inline animation is not supported; use animate-* utilities');
           else { const problem = styleProblem(tag, name); if (problem) report(entry, problem); }
           const literal = ts.isPropertyAssignment(entry) && ts.isStringLiteralLike(entry.initializer) && entry.initializer.text;
           const colorIssue = !literalColors && literal !== false && styleTable[name]?.lower === 'color' && colorProblem(literal, name);
@@ -211,9 +211,6 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     if (rel.startsWith('..') || isAbsolute(rel) || base === page) throw Error(`Invalid GPU page path: ${page}`);
     const config = JSON.parse(await readFile(join(root, `${base}.json`), 'utf8'));
     if (config.renderer !== 'gpu') throw Error(`${base}.json: expected "renderer": "gpu"`);
-    // Motion stays opt-in per page (`// @ui-experimental motion` in the page source)
-    // until native presentation passes device acceptance.
-    const animationLowering = /^\/\/ @ui-experimental motion$/m.test(await readFile(source, 'utf8'));
     const catalog = catalogs[page] ?? { __names: [], __modes: {} };
     if (!Array.isArray(catalog.__names) || catalog.__names.some(name => typeof name !== 'string' || !['call', 'stream'].includes(catalog.__modes?.[name])))
       throw Error(`${page}: invalid GPU action metadata`);
@@ -229,7 +226,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
         plugins: [{ name: 'lingxia-ui-language', setup(builder) {
           builder.onLoad({ filter: /\.css$/ }, async ({ path }) => {
             const stylesheet = await loadStylesheet(path);
-            validateTokens(stylesheet, { animationLowering });
+            validateTokens(stylesheet);
             themes.set(path, stylesheet.toString());
             return { contents: '', loader: 'js' };
           });
@@ -256,7 +253,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       if (!problems.length) throw error;
     }
     if (themes.size > 1) problems.push(`${page}: UI_CSS: import one shared @theme stylesheet per page`);
-    const classes = await compileUtilities(candidates, [...themes.values()].join('\n'), { animationLowering, literalColors });
+    const classes = await compileUtilities(candidates, [...themes.values()].join('\n'), { literalColors });
     const checker = moduleChecker(sourceFiles);
     const rulesByName = new Map();
     for (const rule of classes) rulesByName.set(rule.name, [...(rulesByName.get(rule.name) ?? []), rule]);

@@ -91,7 +91,7 @@ test('inline styles are CSS-named and checked per element', () => {
 
 test('class diagnostics separate unknown, unsupported and wrong-element utilities and report all at once', async () => {
   await project({ 'page.tsx': `export function render(view) {
-  return <column className="grid-cols-2 not-a-utility transition">
+  return <column className="grid-cols-2 not-a-utility transition-[width]">
     <text className={view.data.on ? "grid-cols-2" : "items-center"}>A</text>
     <column className="active:bg-danger hover:p-4"/>
   </column>;
@@ -102,7 +102,7 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
     for (const pattern of [
       /^page.tsx:3:\d+: UI_CLASS_ELEMENT: grid-cols-2 sets gridTemplateColumns, which <text> does not support$/,
       /^page.tsx:2:\d+: UI_CLASS_UNKNOWN: not-a-utility is not a Tailwind utility$/,
-      /^page.tsx:2:\d+: UI_CLASS_UNSUPPORTED: transition: the native renderer does not support UI_ANIMATION: native presentation scheduling is not connected/,
+      /^page.tsx:2:\d+: UI_CLASS_UNSUPPORTED: transition-\[width\]: the native renderer does not support transition of width animates layout/,
       /^page.tsx:3:\d+: UI_CLASS_ELEMENT: items-center sets alignItems, which <text> does not support$/,
       /^page.tsx:4:\d+: UI_CLASS_ELEMENT: active:bg-danger needs a control; <column> is never pressed$/,
       /^page.tsx:4:\d+: UI_CLASS_ELEMENT: hover:p-4: hover styles change paint only, not paddingTop, paddingRight, paddingBottom, paddingLeft$/,
@@ -120,13 +120,13 @@ test('flex-only utilities on a grid name the grid equivalent', async () => {
   });
 });
 
-test('motion classes compile only in pages that opt in from source', async () => {
-  const page = 'export function render(){return <button className="active:scale-95 transition-transform duration-150" onClick={() => {}}>Go</button>}';
+test('motion classes are ordinary utilities', async () => {
+  const page = 'export function render(){return <button className="active:scale-95 transition-transform duration-150 motion-safe:animate-pulse" onClick={() => {}}>Go</button>}';
   await project({ 'page.tsx': page }, async (root, build) => {
-    assert.match((await build().catch(error => error)).message, /UI_ANIMATION: native presentation scheduling is not connected/);
-    await writeFile(join(root, 'page.tsx'), `// @ui-experimental motion\n${page}`);
     await build();
-    assert.match(await readFile(join(root, 'dist/page.js'), 'utf8'), /transition-transform/);
+    const module = await readFile(join(root, 'dist/page.js'), 'utf8');
+    assert.match(module, /transition-transform/);
+    assert.match(module, /"whenReduced":"keep"/);
   });
 });
 
@@ -208,13 +208,15 @@ test('compiled transparent and empty components follow the public children contr
   });
 });
 
-test('page builds reject animation utilities before installing a module', async () => {
-  await project({ 'page.tsx': 'export function render(){return <column className="animate-pulse"><text>Pending</text></column>;}' }, async (root, build) => {
-    await assert.rejects(build(), /UI_ANIMATION: native presentation scheduling is not connected/);
+test('page builds reject invalid keyframes and inline animation before installing a module', async () => {
+  await project({ 'page.tsx': 'export function render(){return <column style={{ animation: "spin 1s" }}><text>Pending</text></column>;}' }, async (root, build) => {
+    await assert.rejects(build(), /UI_ANIMATION: inline animation is not supported; use animate-\* utilities/);
     await assert.rejects(readFile(join(root, 'dist/page.js')), { code: 'ENOENT' });
-    await writeFile(join(root, 'tokens.css'), '@theme {--animate-enter:enter 1s;@keyframes enter{from{opacity:0}to{opacity:1}}}');
+    await writeFile(join(root, 'tokens.css'), '@theme {--animate-enter:enter 1s;@keyframes enter{from{width:0px}to{width:10px}}}');
     await writeFile(join(root, 'page.tsx'), 'import "./tokens.css";export function render(){return <column className="animate-enter"/>;}');
-    await assert.rejects(build(), /UI_ANIMATION/);
+    await assert.rejects(build(), /UI_ANIMATION|UI_CLASS_UNSUPPORTED/);
+    await writeFile(join(root, 'tokens.css'), '@theme {--animate-enter:enter 1s;@keyframes enter{from{opacity:0}to{opacity:1}}}');
+    await build();
   });
 });
 

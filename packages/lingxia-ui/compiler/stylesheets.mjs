@@ -24,7 +24,7 @@ export function tokenSelectorTheme(selector) {
   return selector.match(/^\[data-theme=(['"])(light|dark)\1\]$/)?.[2];
 }
 
-export function validateTokens(root, { animationLowering = false } = {}) {
+export function validateTokens(root) {
   for (const node of root.nodes) {
     if (node.type === 'comment') continue;
     const isTheme = node.type === 'atrule' && node.name === 'theme';
@@ -33,7 +33,6 @@ export function validateTokens(root, { animationLowering = false } = {}) {
     for (const child of node.nodes ?? []) {
       if (child.type === 'comment') continue;
       if (isTheme && child.type === 'atrule' && child.name === 'keyframes') {
-        if (!animationLowering) throw child.error('UI_ANIMATION: native presentation scheduling is not connected');
         if (!/^[-_a-zA-Z][-_a-zA-Z0-9]*$/.test(child.params) || !child.nodes) throw child.error('UI_ANIMATION: invalid keyframe name or body');
         continue;
       }

@@ -419,13 +419,13 @@ test('custom theme tokens and arbitrary values retain Tailwind semantics', async
 });
 
 test('unsupported rendering and missing dynamic candidates fail visibly', async () => {
-  const rules = await compileUtilities(new Set(['backdrop-invert', 'transition', 'skew-y-3', 'group-hover:underline', 'p-4']));
+  const rules = await compileUtilities(new Set(['backdrop-invert', 'transition-[width]', 'skew-y-3', 'group-hover:underline', 'p-4']));
   const errors = Object.fromEntries(rules.filter(rule => rule.error).map(rule => [rule.name, rule.error]));
-  assert.deepEqual(Object.keys(errors).sort(), ['backdrop-invert', 'group-hover:underline', 'skew-y-3', 'transition']);
+  assert.deepEqual(Object.keys(errors).sort(), ['backdrop-invert', 'group-hover:underline', 'skew-y-3', 'transition-[width]']);
   assert.ok(Object.values(errors).every(error => error.category === 'unsupported'));
-  assert.match(errors.transition.message, /UI_ANIMATION: native presentation scheduling is not connected/);
+  assert.match(errors['transition-[width]'].message, /animates layout/);
   configureClasses(rules);
-  for (const name of ['backdrop-invert', 'transition', 'p-8']) assert.throws(() => classStyle(name), /UI_CLASS/);
+  for (const name of ['backdrop-invert', 'transition-[width]', 'p-8']) assert.throws(() => classStyle(name), /UI_CLASS/);
   assert.throws(() => classStyle(false), /className must be a string/);
   assert.deepEqual(classStyle(undefined), {});
   assert.deepEqual(classStyle('p-4'), { paddingTop: 16, paddingRight: 16, paddingBottom: 16, paddingLeft: 16 });
@@ -459,7 +459,7 @@ test('palette rules obey source order and diagnose invalid variables in either a
   }
   for (const css of ['[data-theme="dark"] { color-scheme: light; }', '[data-theme="dark"] { --fill: black !important; }'])
     await assert.rejects(compileUtilities(new Set(['p-4']), css), /UI_CSS/);
-  await assert.rejects(compileUtilities(new Set(['p-4']), '@theme { @keyframes spin {} }'), /UI_ANIMATION/);
+  await assert.rejects(compileUtilities(new Set(['p-4']), '@theme { @keyframes 1spin { to { opacity: 0 } } }'), /UI_ANIMATION/);
 });
 
 test('relative line height and tracking follow font size across components and lists', async () => {

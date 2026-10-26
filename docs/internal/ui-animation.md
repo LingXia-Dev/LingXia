@@ -1,9 +1,8 @@
 # GPU View animation implementation contract
 
-Read [ui-renderer.md](ui-renderer.md) and [ui-styling.md](ui-styling.md) first. Authoring
-stays gated: a page opts in with `// @ui-experimental motion` and the compiler rejects
-motion classes elsewhere. The native half below accepts field 101 (keyframes) and
-consumes field 171 (transitions); physical acceptance is still pending.
+Read [ui-renderer.md](ui-renderer.md) and [ui-styling.md](ui-styling.md) first. Motion
+utilities compile on every page; native accepts field 101 (keyframes) and consumes field
+171 (transitions).
 
 ## Ownership
 
@@ -135,7 +134,6 @@ queues `nativeAnimationPresented` on the same worker; it returns -1 (no wakeup),
   routes agree at fixed times; reduced motion lands in one frame; hidden pages park.
 - Host tests (`session/tests/host.rs`): a spinner presents once per vsync only while
   shown, nothing hidden, removed or after a one-shot completes, no timers left.
-- Device acceptance (pending, from `examples/lingxia-showcase-gpu/pages/motion-lab`):
-  recorded transition frames in both themes, frame pacing at display rate, zero
-  presents while hidden or settled, reveal continuity, reduced-motion toggle,
-  hit tests during a press-scale transition, CPU fallback parity.
+- Device acceptance (`examples/lingxia-showcase-gpu/pages/motion-lab`, Pixel): fade,
+  interruption, press scale, spin at display rate, reduced motion, hidden pages and
+  CPU parity.

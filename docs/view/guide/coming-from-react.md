@@ -98,8 +98,8 @@ A render that throws keeps the previous frame on screen ([Diagnostics](diagnosti
 - There is no stylesheet cascade. Text styles inherit through containers; nothing else inherits.
 - `has-[…]`, `data-[…]`, `aria-*`, `group-*`, `peer-*` and container queries are refused: compute the
   condition in TypeScript and choose the class.
-- Transitions and animations are gated ([Motion](motion.md)); layout transitions and 3D transforms are
-  not supported at all.
+- Transitions and animations are utilities ([Motion](motion.md)); layout transitions, exit animations and
+  3D transforms are not supported.
 
 ## The DOM and the browser
 

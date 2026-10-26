@@ -69,7 +69,7 @@ rendered by the test suite. Blocks marked `tsx error UI_…` show code that is r
 | [Interaction](guide/interaction.md) | buttons, press states, gestures, hit testing |
 | [Accessibility](guide/accessibility.md) | labels, roles, headings, live regions, hidden content |
 | [RTL and i18n](guide/rtl-and-i18n.md) | direction, logical properties, `rtl:`, display language |
-| [Motion (gated)](guide/motion.md) | transitions and animations, not yet available |
+| [Motion](guide/motion.md) | transitions, keyframe animations, reduced motion |
 | [Diagnostics](guide/diagnostics.md) | build and runtime errors |
 | [Limits and compatibility](guide/limits-and-compatibility.md) | bounds, host compatibility |
 | [Coming from React](guide/coming-from-react.md) | what changes for React and DOM authors |

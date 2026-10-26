@@ -37,7 +37,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   (controls), `hover:` (fine pointers), `disabled:`, `placeholder:`,
   `space-*`/`divide-*`. `*:`, `**:`, `in-*:`, `group-*:`, `peer-*:` fail naming the TS-side form.
 - `translate`/`rotate`/`scale`/`origin` are static and state variants may set them; skew and 3D fail.
-  Transitions and `animate-*` need `// @ui-experimental motion` in the page source.
+  `transition-*`/`animate-*` animate paint and transforms only; editors/scrolls/sliders, gradients and
+  `scale-0` jump, and there are no exit or layout animations.
 - Utilities that would draw nothing (filters, masks, text shadows, cursors, outlines) fail naming what to use.
 - In `lingxia dev`, saving View code of GPU pages swaps those pages in place, keeping `useLocal`, scroll
   and focus; Logic or config edits rebuild and reopen. Dev builds' runtime errors name `file:line:col`.

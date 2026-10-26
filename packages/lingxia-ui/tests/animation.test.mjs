@@ -14,10 +14,9 @@ const lower = (css,value='enter 350ms linear') => lowerAnimation(value,postcss.p
 const fade = '@keyframes enter {from {opacity:0} to {opacity:1}}';
 const theme = `@theme { --animate-enter: enter 200ms linear; @keyframes enter {from {opacity:var(--start)} to {opacity:1}} }
 :root {--start:0} [data-theme="dark"] {--start:0.25}`;
-const experimental = {animationLowering:true};
 
 test('utility lowering carries exact showcase effects through the existing rule cascade', async () => {
-  const rules = await compileUtilities(new Set(['animate-blink','animate-chart-in']),tokens,experimental);
+  const rules = await compileUtilities(new Set(['animate-blink','animate-chart-in']),tokens);
   assert.ok(rules.length >= 2);
   assert.ok(rules.every(rule=>!rule.error),JSON.stringify(rules));
   configureClasses(rules);
@@ -28,7 +27,7 @@ test('utility lowering carries exact showcase effects through the existing rule 
 
 test('animation shorthand reset obeys Tailwind order, viewport and theme rather than class string order', async () => {
   const names = new Set(['animate-enter','animate-none','md:animate-none','dark:animate-none']);
-  configureClasses(await compileUtilities(names,theme,experimental));
+  configureClasses(await compileUtilities(names,theme));
   const style = (name,theme='light',width=400) => resolveClasses(name,{theme,viewport:{width}}).base.animation;
   assert.equal(style('animate-enter animate-none'),null);
   assert.equal(style('animate-none animate-enter'),null);
@@ -41,7 +40,7 @@ test('animation shorthand reset obeys Tailwind order, viewport and theme rather 
 });
 
 test('nested animation tracks are isolated across rule configuration, cache hits and environment changes', async () => {
-  const rules = await compileUtilities(new Set(['animate-enter']),theme,experimental);
+  const rules = await compileUtilities(new Set(['animate-enter']),theme);
   configureClasses(rules);
   rules[0].style.animation.opacity[0].value = 0.9;
   const first = resolveClasses('animate-enter',{theme:'light'}).base.animation;
@@ -51,16 +50,15 @@ test('nested animation tracks are isolated across rule configuration, cache hits
   assert.equal(resolveClasses('animate-enter',{theme:'light'}).base.animation.opacity[0].value,0);
 });
 
-test('invalid effects and focus animation report diagnostics while page builds stay gated', async () => {
-  const invalid = await compileUtilities(new Set(['animate-enter']), '@theme {--animate-enter:enter 1s;@keyframes enter{from{width:0px}to{width:10px}}}',experimental);
+test('invalid effects report diagnostics and animate-none clears an animation', async () => {
+  const invalid = await compileUtilities(new Set(['animate-enter']), '@theme {--animate-enter:enter 1s;@keyframes enter{from{width:0px}to{width:10px}}}');
   assert.match(invalid[0].error.message,/unsupported animated property width/);
-  configureClasses(await compileUtilities(new Set(['animate-enter','animate-none']),theme,experimental));
+  configureClasses(await compileUtilities(new Set(['animate-enter','animate-none']),theme));
   const records = describe(()=>h('column',{className:'animate-enter'}));
   assert.equal(records[6],101);
   assert.equal(JSON.parse(records[7]).name,'enter');
   assert.equal(describe(()=>h('column',{className:'animate-none'}))[5],0);
   assert.equal(describe(()=>h('column',{className:'animate-enter',style:{animation:null}}))[5],0);
-  await assert.rejects(()=>compileUtilities(new Set(['animate-enter']),theme),/UI_ANIMATION/);
 });
 
 test('animation wire preserves exact payload and bounds serialization before transport', () => {
@@ -109,7 +107,7 @@ test('official Tailwind output from animation tokens lowers to native fixtures',
 });
 
 test('animations authored under motion-reduce: or motion-safe: are kept under reduced motion', async () => {
-  const rules = await compileUtilities(new Set(['animate-spin','motion-reduce:animate-pulse','motion-safe:animate-bounce']),'',experimental);
+  const rules = await compileUtilities(new Set(['animate-spin','motion-reduce:animate-pulse','motion-safe:animate-bounce']),'');
   const mode = name => rules.find(rule=>rule.name===name).style.animation.whenReduced;
   assert.deepEqual(['animate-spin','motion-reduce:animate-pulse','motion-safe:animate-bounce'].map(mode),['base','keep','keep']);
 });
@@ -158,13 +156,8 @@ test('unsupported modes and unbounded effects fail explicitly', () => {
   assert.throws(()=>lower(`@keyframes enter {${Array.from({length:65},(_,i)=>`${i*100/64}%{opacity:0}`).join('')}}`),/budget/);
 });
 
-test('production utility compilation still rejects animations until scheduling is connected', async () => {
-  const rules = await compileUtilities(new Set(['animate-pulse']));
-  assert.ok(rules.some(rule=>rule.name==='animate-pulse'&&rule.error));
-});
-
 test('default Tailwind animations lower with implicit endpoints, rotation, relative translation and per-key easing', async () => {
-  const rules = await compileUtilities(new Set(['animate-spin','animate-ping','animate-pulse','animate-bounce']),'',experimental);
+  const rules = await compileUtilities(new Set(['animate-spin','animate-ping','animate-pulse','animate-bounce']),'');
   assert.deepEqual(rules.filter(rule=>rule.error),[]);
   configureClasses(rules);
   const effect = name => resolveClasses(`animate-${name}`).base.animation;
@@ -179,11 +172,10 @@ test('default Tailwind animations lower with implicit endpoints, rotation, relat
   assert.deepEqual(bounce.y.map(key=>[key.offset,key.value,key.easing]), [[0,-0.25,[0.8,0,1,1]],[0.5,0,[0,0,0.2,1]],[1,-0.25,undefined]]);
 });
 
-test('transition utilities lower to one bounded transition of painted properties, behind the motion gate', async () => {
+test('transition utilities lower to one bounded transition of painted properties', async () => {
   const names = ['transition', 'transition-all', 'transition-colors', 'transition-opacity', 'transition-transform', 'transition-none', 'duration-200',
     'delay-150', 'ease-in', 'ease-[cubic-bezier(0.1,0.2,0.3,1)]', 'transition-[height]', 'duration-[12s]', 'motion-reduce:transition-none', 'motion-safe:animate-spin'];
-  assert.ok((await compileUtilities(new Set(['transition-opacity']))).every(rule => /UI_ANIMATION/.test(rule.error?.message)));
-  configureClasses(await compileUtilities(new Set(names), '', experimental));
+  configureClasses(await compileUtilities(new Set(names), ''));
   const transition = (classes, env) => resolveClasses(classes, env).base.transition;
   assert.deepEqual(transition('transition-opacity duration-200 ease-in delay-150'), { properties: ['opacity'], durationMs: 200, delayMs: 150, easing: [0.4, 0, 1, 1] });
   assert.deepEqual(transition('duration-200 transition-opacity'), transition('transition-opacity duration-200'));

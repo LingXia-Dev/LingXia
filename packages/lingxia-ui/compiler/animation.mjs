@@ -1,4 +1,4 @@
-// Build-time lowering only. Authoring stays gated until native scheduling is wired.
+// Build-time lowering of keyframes and transitions into bounded payloads native revalidates.
 const fail = message => { throw Error(`UI_ANIMATION: ${message}`); };
 const numeric = (value, low, high) => {
   if (!/^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)) fail(`invalid number ${value}`);

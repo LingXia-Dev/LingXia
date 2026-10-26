@@ -95,7 +95,7 @@ function styles(schema) {
         by.length === names.length ? 'every element' : by.length > names.length / 2
           ? `all but ${names.filter(name => !by.includes(name)).map(name => code(`<${name}>`)).join(' ')}` : by.map(name => code(`<${name}>`)).join(' ')];
     })), '',
-    '`transition` and `animation` exist on the wire but are set only by the gated motion utilities.', '',
+    '`transition` and `animation` are set only by the motion utilities (`transition-*`, `animate-*`).', '',
     '## By element', ''];
   for (const name of names) out.push(`### \`<${name}>\``, '', accepted[name].filter(key => !schema.style[key].internal).map(code).join(', '), '');
   out.push('## Colour roles', '',
@@ -146,9 +146,8 @@ function family(name, roots) {
   return best ?? bare.split('-')[0];
 }
 
-const gated = message => message.startsWith('UI_ANIMATION');
 // Messages name concrete values; collapse them so one reason summarizes a family.
-const reason = message => gated(message) ? 'gated motion' : message
+const reason = message => message
   .replace(/^UI_[A-Z_]+: /, '')
   .replace(/^([a-z-]+): .*$/, '$1')
   .replace(/:.*$/, '')
@@ -157,7 +156,8 @@ const reason = message => gated(message) ? 'gated motion' : message
 
 // The style keys a rule sets; empty when the utility lowers to nothing the renderer draws.
 const effects = rule => [...Object.keys(rule.style ?? {}), ...(rule.gradient ? ['backgroundImage'] : []), ...(rule.shadow ? ['boxShadow'] : []),
-  ...(rule.backdrop ? ['backdropFilter'] : []), ...(rule.transform ? ['translate'] : []), ...(rule.numeric ? ['fontVariantNumeric'] : [])];
+  ...(rule.backdrop ? ['backdropFilter'] : []), ...(rule.transform ? ['translate'] : []), ...(rule.numeric ? ['fontVariantNumeric'] : []),
+  ...(rule.motion ? ['transition'] : [])];
 
 const sections = [
   ['Layout', /^(display|overflow|order)$/],
@@ -169,7 +169,7 @@ const sections = [
   ['Typography', /^(color|font.*|lineHeight|letterSpacing|text.*|whiteSpace|wordBreak|overflowWrap|lineClamp|userSelect)$/],
   ['Backgrounds', /^background/], ['Radius', /Radius$/], ['Borders', /^border/],
   ['Effects', /^(opacity|boxShadow|backdropFilter)$/], ['Transforms', /^(translate|rotate|scale|transformOrigin)$/],
-  ['Scrolling', /^(overflowX|overflowY|overscrollBehavior)$/], ['Editors', /^placeholderColor$/], ['Images and vectors', /^object(Fit|Position)$/],
+  ['Motion', /^(transition|animation)$/], ['Scrolling', /^(overflowX|overflowY|overscrollBehavior)$/], ['Editors', /^placeholderColor$/], ['Images and vectors', /^object(Fit|Position)$/],
 ];
 // The last key decides: `truncate` ends in whiteSpace, `space-x-*` in a margin.
 const sectionOf = rule => sections.find(([, test]) => test.test(effects(rule).at(-1)))?.[0] ?? 'Other';
@@ -201,8 +201,7 @@ function utilities(system, rules) {
     .map(([why, count]) => `${why} (${count})`).join('; ');
   const grouped = {};
   for (const [key, entry] of [...families].sort(([a], [b]) => strip(a).localeCompare(strip(b)))) {
-    const where = entry.supported.length ? entry.section
-      : entry.rejected.size === 1 && entry.rejected.has('gated motion') ? 'Gated' : entry.rejected.size ? 'Refused' : 'Inert';
+    const where = entry.supported.length ? entry.section : entry.rejected.size ? 'Refused' : 'Inert';
     (grouped[where] ??= []).push([key, entry]);
   }
   const out = [header, '# Utilities', '',
@@ -215,9 +214,6 @@ function utilities(system, rules) {
     if (rows?.length) out.push(`## ${title}`, '', table(['Family', 'Supported', 'Refused'],
       rows.map(([key, entry]) => [code(key), sample(entry.supported), reasons(entry.rejected)])), '');
   }
-  if (grouped.Gated?.length)
-    out.push('## Gated: motion', '', 'Refused unless the page opts into the gated motion lowering (see the motion chapter):', '',
-      grouped.Gated.map(([key, entry]) => `${code(key)} (${total(entry.rejected)})`).join(', '), '');
   const inert = [...families].filter(([, entry]) => entry.inert.length)
     .map(([key, entry]) => entry.inert.length === 1 ? code(entry.inert[0]) : `${code(key)} (${entry.inert.length})`);
   if (inert.length) out.push('## Accepted without effect', '', 'These compile but set nothing the renderer draws:', '', inert.join(', '), '');
@@ -274,14 +270,14 @@ function variants(schema, system, rules) {
 const limitNotes = {
   nodes: 'Nodes in one rendered frame, list rows included.',
   depth: 'Nesting depth of the rendered tree.',
-  animationBytes: 'Animation definitions per page, as UTF-8 JSON (gated motion).',
+  animationBytes: 'Animation definitions per page, as UTF-8 JSON.',
   itemKeyBytes: 'All `itemKeys` of a page, as UTF-8 JSON.',
   imageBytes: 'Encoded size of one image resource.',
   sourceBytes: 'Length of one image `src`.',
   visibleImageBytes: 'Decoded image bytes one page paints at once; past it an image gets `onError` and a placeholder.',
   decodedImageBytes: 'Decoded-image cache shared by every page; it evicts, never fails.',
   runs: 'Runs in one `<text>`: each `<span>`, `<link>` and the text between them.',
-  transitionMs: 'Longest transition duration or delay, in milliseconds (gated motion).',
+  transitionMs: 'Longest transition duration or delay, in milliseconds.',
   evalBudgetMs: 'Wall-clock budget for one View render or callback; past it the page fails with UI_TIMEOUT.',
   evalBudgetDebugMultiplier: 'Multiplier on that budget in unoptimized (debug) builds.',
   editorTextBytes: 'Text one editor holds, as UTF-8.',
@@ -352,7 +348,7 @@ const errorNotes = {
   UI_FRAME: 'The platform presenter kept refusing frames prepared ahead; the page falls back to one frame at a time.',
   UI_BUDGET: 'A warning, once per page and limit: a frame used at least three quarters of a page limit.',
   UI_ACTION: 'An action call was malformed or its reply invalid.',
-  UI_ANIMATION: 'Motion is gated, or an animation definition is invalid or over budget.',
+  UI_ANIMATION: 'An invalid or over-budget animation definition, or an inline `style.animation`.',
   UI_BOOTSTRAP_TIMEOUT: 'Logic did not deliver the first page state in time.',
   UI_BRIDGE: 'The View-Logic connection failed or was replaced.',
   UI_BUFFER: 'A malformed wire buffer reached the native decoder.',
@@ -413,7 +409,7 @@ const errorNotes = {
   UI_TEXT: 'A `<span>`/`<link>` outside `<text>`, a bad link label, or too many runs.',
   UI_TIMEOUT: 'View code exceeded its time budget; the page needs a reload.',
   UI_TRANSFORM: 'A transform the element cannot take (rotate/scale on editors, scrolls, sliders).',
-  UI_TRANSITION: 'An invalid transition definition (gated motion).',
+  UI_TRANSITION: 'An invalid transition definition.',
   UI_VECTOR: 'Invalid vector paths, gradients or viewBox.',
   UI_VIEWPORT: 'The host reported an invalid viewport.',
   UI_WORKER: 'The View worker thread failed to start.',

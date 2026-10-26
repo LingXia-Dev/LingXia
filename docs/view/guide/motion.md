@@ -1,12 +1,9 @@
-# Motion (gated)
+# Motion
 
-> **Not available for production pages.** Transitions and animations are implemented in the compiler
-> and the renderer but have not passed device acceptance. A page can only use them by opting into the
-> gate below, and their behavior may change before the gate is removed. Without the opt-in every motion
-> utility fails the build with `UI_ANIMATION`.
+Transitions and keyframe animations run in the renderer. The View declares them with utilities;
+no JavaScript runs per frame.
 
 ```tsx
-// @ui-experimental motion
 import { useLocal } from '@lingxia/ui';
 
 export function render() {
@@ -24,36 +21,27 @@ export function render() {
 }
 ```
 
-## The gate
-
-A page opts in with this exact line in its `index.tsx`:
-
-```ts
-// @ui-experimental motion
-```
-
-The opt-in is per page. Without it, `transition-*`, `duration-*`, `delay-*`, `ease-*`, `animate-*`,
-`@keyframes` in the stylesheet and an inline `style.animation` are refused:
-
-```tsx error UI_ANIMATION
-export function render() {
-  return <page><view className="h-10 bg-accent transition-opacity" /></page>;
-}
-```
-
-## Transitions (as designed)
+## Transitions
 
 `transition`, `transition-colors`, `transition-opacity`, `transition-transform`, `transition-shadow` and
 `transition-all` animate changes of the painted properties: opacity, transform, background, text color,
 border color and shadow. `duration-*`, `delay-*` and `ease-*` (or `ease-[cubic-bezier(…)]`) set the
 timing, up to 10 s each; the defaults are 150 ms and `cubic-bezier(0.4, 0, 0.2, 1)`. A transition runs when a re-render or
-a state variant (`active:`, `hover:`, `focus:`) changes one of those properties.
+a state variant (`active:`, `hover:`, `focus:`) changes one of those properties. A change mid-flight
+continues from the value on screen.
+
+Some changes land at once instead of animating:
+
+- an element seen for the first time (there are no enter or exit transitions yet);
+- a transform of a subtree that holds an editor, a `<scroll>` or a `<slider>`;
+- a gradient background;
+- a shadow on an element with unequal corner radii;
+- a transform to `scale-0`, which paints nothing until it lands.
 
 Layout does not animate. A transition of width, height, padding, margin, gap, insets or font size is
 refused, naming `transition-transform` or `transition-opacity` as the alternative:
 
 ```tsx error UI_CLASS_UNSUPPORTED
-// @ui-experimental motion
 export function render() {
   return <page><view className="h-10 bg-accent transition-[width]" /></page>;
 }
@@ -61,23 +49,28 @@ export function render() {
 
 Animate a scale or translate instead of a size.
 
-## Animations (as designed)
+## Animations
 
 `animate-spin`, `animate-ping`, `animate-pulse`, `animate-bounce` and your own `--animate-*` tokens with
 `@keyframes` in the stylesheet run keyframe animations of opacity and transforms (translate, including
 `%`, rotate, scale). Keyframes may omit their endpoints, and each keyframe may set its own easing.
 `animate-none` removes an animation. An element runs one animation; several comma-separated
-animations, `alternate`/`reverse` directions and fill modes are refused. An animation starts when its element first appears on screen; an
-element scrolled out of a list and back does not restart it.
+animations, `alternate`/`reverse` directions and fill modes are refused, as are keyframes of any other
+property (`UI_CLASS_UNSUPPORTED`). An animation starts when its element first appears on screen; an
+element scrolled out of a list and back does not restart it. A keyframe value wins over a transition of
+the same property.
+
+Hidden pages pause: nothing renders while a page is not on screen, and time resumes where it stopped.
 
 ## Reduced motion
 
 `motion-reduce:` and `motion-safe:` follow `env.reducedMotion`, the system's reduce-motion setting.
-They work on any utility today, outside the gate (`motion-reduce:opacity-60`). Pair every animation
-with a `motion-safe:` prefix or a `motion-reduce:animate-none` override.
+With reduced motion on, transitions land at once and an animation shows its element's base style,
+unless it was authored under `motion-safe:` or `motion-reduce:`, which keeps it playing when its
+variant applies. The system animation speed scales every duration and delay; 0 reads as reduced motion.
 
-## Not planned
+## Not supported
 
-Layout transitions, 3D transforms, `transition-behavior`, scroll-driven animations, View-side timers
-(`setTimeout`, `requestAnimationFrame`) and per-frame JavaScript animation. Motion runs in the renderer;
-the View only declares it.
+Enter and exit animations, layout transitions, 3D transforms, `transition-behavior`, scroll-driven
+animations, View-side timers (`setTimeout`, `requestAnimationFrame`) and per-frame JavaScript
+animation. An inline `style.animation` fails with `UI_ANIMATION`; use `animate-*`.

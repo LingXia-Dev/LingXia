@@ -106,10 +106,9 @@ reconciliation, so a failed frame restores the previous state.
 its rendered siblings (list rows: their row index of `count`) and combine with the
 state variants. `has-[…]`, `data-[…]` and `aria-*` fail: choose classes in TS.
 
-## Motion (gated)
+## Motion
 
-Pages opt in with a `// @ui-experimental motion` source line until native
-presentation passes device acceptance. `transition-*`, `duration-*`, `delay-*` and
+`transition-*`, `duration-*`, `delay-*` and
 `ease-*` compose into one `transition` field over opacity, transform, bg, fg,
 border and shadow (≤10 s each); layout transitions fail naming
 `transition-transform`/`transition-opacity`. `animate-*` keyframes may omit

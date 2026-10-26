@@ -46,7 +46,7 @@ fn session(job: &Job, source: &str) -> Result<lingxia_ui::ViewSession, String> {
     Ok(page)
 }
 
-/// A page with gated motion needs a presentation surface; its first frame samples time zero.
+/// A page with motion needs a presentation surface; its first frame samples time zero.
 fn layout(
     page: &mut lingxia_ui::ViewSession,
     width: u16,

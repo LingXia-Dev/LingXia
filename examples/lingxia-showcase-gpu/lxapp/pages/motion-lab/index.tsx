@@ -1,4 +1,3 @@
-// @ui-experimental motion
 import { useLocal, type View } from '@lingxia/ui';
 import '../../theme/index.css';
 import { Button, Page, Section } from '../../shared/ui';

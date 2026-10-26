@@ -226,6 +226,16 @@ is still refused on an element that does not render its style ([styles.md](style
 | `translate-x` | `-translate-x-0`, `-translate-x-0.5`, `-translate-x-1`, `-translate-x-1.5`, `-translate-x-2`, … (124) |  |
 | `translate-y` | `-translate-y-0`, `-translate-y-0.5`, `-translate-y-1`, `-translate-y-1.5`, `-translate-y-2`, … (124) |  |
 
+## Motion
+
+| Family | Supported | Refused |
+| --- | --- | --- |
+| `animate` | `animate-bounce`, `animate-none`, `animate-ping`, `animate-pulse`, `animate-spin` |  |
+| `delay` | `delay-75`, `delay-100`, `delay-150`, `delay-200`, `delay-300`, … (8) |  |
+| `duration` | `duration-75`, `duration-100`, `duration-150`, `duration-200`, `duration-300`, … (8) | unsupported transition time (1) |
+| `ease` | `ease-in`, `ease-in-out`, `ease-linear`, `ease-out` | unsupported easing initial (1) |
+| `transition` | `transition`, `transition-all`, `transition-colors`, `transition-none`, `transition-opacity`, … (7) | transition-behavior (2) |
+
 ## Scrolling
 
 | Family | Supported | Refused |
@@ -243,12 +253,6 @@ is still refused on an element that does not render its style ([styles.md](style
 | Family | Supported | Refused |
 | --- | --- | --- |
 | `object` | `object-bottom`, `object-bottom-left`, `object-bottom-right`, `object-center`, `object-contain`, … (12) | object-fit (2) |
-
-## Gated: motion
-
-Refused unless the page opts into the gated motion lowering (see the motion chapter):
-
-`animate` (5), `delay` (8), `duration` (9), `ease` (5)
 
 ## Not supported
 
@@ -387,7 +391,6 @@ Refused unless the page opts into the gated motion lowering (see the motion chap
 | `text-shadow` | 327 | text shadows (321); text-shadow (6) |
 | `touch` | 10 | touch-action (10) |
 | `transform` | 11 | transform-box (5); transform (4); transform-style (2) |
-| `transition` | 9 | gated motion (7); transition-behavior (2) |
 | `translate-z` | 70 | translate-z (70) |
 | `underline-offset` | 11 | text-underline-offset (11) |
 | `visible` | 1 | visibility (1) |

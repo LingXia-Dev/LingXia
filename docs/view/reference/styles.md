@@ -117,7 +117,7 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `objectFit` | `"cover" \| "contain" \| "fill"` | `object-fit` |  | `<image>` `<vector>` |
 | `objectPosition` | `string` | `object-position` |  | `<image>` |
 
-`transition` and `animation` exist on the wire but are set only by the gated motion utilities.
+`transition` and `animation` are set only by the motion utilities (`transition-*`, `animate-*`).
 
 ## By element
 

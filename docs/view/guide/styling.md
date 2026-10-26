@@ -105,8 +105,8 @@ standard system sans and mono stacks.
 
 `active:`, `focus:` and `hover:` may change paint only: color, background color and image, opacity,
 border color, box shadow, placeholder color and the static transforms (`active:scale-95`). They cannot
-change size or spacing (`UI_CLASS_ELEMENT`). The change is immediate; animating it is part of the gated
-[motion](motion.md) work.
+change size or spacing (`UI_CLASS_ELEMENT`). The change is immediate unless a `transition-*` utility
+animates it ([motion](motion.md)).
 `2xl:` is not recognized and fails as an unknown utility; write `min-[96rem]:`.
 
 Variants that test DOM state are refused with the alternative named in the message: `group-*`, `peer-*`,
@@ -183,7 +183,7 @@ Each of these fails the build with `UI_CLASS_UNSUPPORTED` rather than rendering 
 - `cursor-*` and `pointer-events-*`: there is no cursor, and hit testing follows the rules in [Interaction](interaction.md).
 - Floats, columns, tables, `visibility`, `static`, scroll snapping and scroll margins.
 - Serif and custom font families.
-- Transitions and animations, until motion leaves its gate ([Motion](motion.md)).
+- Layout transitions and exit animations ([Motion](motion.md)).
 
 ```tsx error UI_CLASS_UNSUPPORTED
 export function render() {

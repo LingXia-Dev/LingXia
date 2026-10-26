@@ -9,7 +9,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | Code | Raised at | Meaning |
 | --- | --- | --- |
 | `UI_ACTION` | runtime, native | An action call was malformed or its reply invalid. |
-| `UI_ANIMATION` | build, runtime, native | Motion is gated, or an animation definition is invalid or over budget. |
+| `UI_ANIMATION` | build, runtime, native | An invalid or over-budget animation definition, or an inline `style.animation`. |
 | `UI_BOOTSTRAP_TIMEOUT` | native | Logic did not deliver the first page state in time. |
 | `UI_BRIDGE` | native | The View-Logic connection failed or was replaced. |
 | `UI_BUDGET` | native | A warning, once per page and limit: a frame used at least three quarters of a page limit. |
@@ -73,7 +73,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_TEXT` | runtime, native | A `<span>`/`<link>` outside `<text>`, a bad link label, or too many runs. |
 | `UI_TIMEOUT` | native | View code exceeded its time budget; the page needs a reload. |
 | `UI_TRANSFORM` | native | A transform the element cannot take (rotate/scale on editors, scrolls, sliders). |
-| `UI_TRANSITION` | native | An invalid transition definition (gated motion). |
+| `UI_TRANSITION` | native | An invalid transition definition. |
 | `UI_VECTOR` | runtime, native | Invalid vector paths, gradients or viewBox. |
 | `UI_VIEWPORT` | native | The host reported an invalid viewport. |
 | `UI_WORKER` | native | The View worker thread failed to start. |

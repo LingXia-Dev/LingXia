@@ -543,7 +543,7 @@ function transitionDeclaration(prop, raw, local, motion) {
   } else unsupported(`${prop}: ${raw}`);
 }
 
-function declarations(nodes, vars, root, animationLowering) {
+function declarations(nodes, vars, root) {
   nodes = nodes.flatMap(node => node.type === 'atrule' && node.name === 'supports' && supportedConditions.includes(node.params) ? node.nodes : [node]);
   const style = {}, gradient = {}, shadow = {}, backdrop = {}, transform = {}, variant = {}, motion = {}, local = { ...vars };
   let pairedLeading = false;
@@ -555,12 +555,10 @@ function declarations(nodes, vars, root, animationLowering) {
     const { prop } = node;
     if (node.important) unsupported('!important utilities');
     if (prop === 'animation') {
-      if (!animationLowering) throw Error('UI_ANIMATION: native presentation scheduling is not connected');
       style.animation = lowerAnimation(node.value, root, value => variables(value, local));
       continue;
     }
     if (/^transition(?:-property|-duration|-delay|-timing-function)?$/.test(prop) || prop === '--tw-duration' || prop === '--tw-ease') {
-      if (!animationLowering) throw Error('UI_ANIMATION: native presentation scheduling is not connected');
       transitionDeclaration(prop, node.value, local, motion); continue;
     }
     if (prop.startsWith('--tw-backdrop-') || prop === 'backdrop-filter' || prop === '-webkit-backdrop-filter') { backdropDeclaration(prop, node.value, local, backdrop); continue; }
@@ -717,9 +715,9 @@ const paintsColor = result => Object.keys(result.style).some(key => styleTable[k
   Boolean(result.gradient) || result.shadow?.color !== undefined || result.shadow?.ringColor !== undefined;
 
 /** Lowered rules for every candidate Tailwind generates; unsupported ones carry an error. */
-export async function compileUtilities(candidates, theme = '', { animationLowering = false, literalColors: literal = false } = {}) {
+export async function compileUtilities(candidates, theme = '', { literalColors: literal = false } = {}) {
   const tokens = postcss.parse(theme);
-  validateTokens(tokens, { animationLowering });
+  validateTokens(tokens);
   const defaults = await readFile(new URL(import.meta.resolve('tailwindcss/theme.css')), 'utf8');
   const compiler = await compile(`${defaults}\n${theme}\n${roleTheme}\n@tailwind utilities;`);
   const root = postcss.parse(compiler.build([...candidates]));
@@ -746,7 +744,7 @@ export async function compileUtilities(candidates, theme = '', { animationLoweri
       const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.children ? { children: true } : {}),
         ...(target.direction ? { direction: target.direction } : {}), ...(target.structure ? { structure: target.structure } : {}) };
       const lower = vars => {
-        const result = declarations(rule.nodes, vars, root, animationLowering);
+        const result = declarations(rule.nodes, vars, root);
         if (!Object.keys(result.style).length && Object.keys(result).length === 1) unsupported(inert(name));
         // Native drops plain animations under reduced motion; ones authored under motion-reduce:/motion-safe: say so.
         if (result.style.animation) result.style.animation.whenReduced = when.reducedMotion === undefined ? 'base' : 'keep';

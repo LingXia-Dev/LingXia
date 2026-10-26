@@ -59,7 +59,7 @@ pages/profile/index.tsx:6:25: UI_CLASS_ELEMENT: active:p-2: active styles change
 | `UI_DOM` | `window`, `document`, `localStorage` or `HTMLElement` in View code |
 | `UI_FRAGMENT` | return one element |
 | `UI_CSS` | the stylesheet holds more than tokens, or a page imports two |
-| `UI_ANIMATION` | motion outside its gate ([Motion](motion.md)) |
+| `UI_ANIMATION` | an inline `style.animation` or invalid `@keyframes` ([Motion](motion.md)) |
 
 A class problem points at the string literal that holds the class, which may be in another module
 (a shared `const` or class map). Line and column are 1-based.
