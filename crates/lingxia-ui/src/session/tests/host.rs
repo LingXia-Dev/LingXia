@@ -1320,6 +1320,7 @@ fn automation_requests_query_and_act_through_the_core_driver() {
     assert!(frame["frames"].as_u64().unwrap() >= 2, "{frame}");
     assert_eq!(frame["firstPresentAt"], 0, "the fake clock never moves");
     assert!(frame["commit"].as_u64().unwrap() > 0);
+    assert!(frame["page"].is_string(), "PageUiFrame.page is a string");
     for key in [
         "workerQueueUs",
         "evalMs",
@@ -1397,7 +1398,7 @@ fn a_failed_session_leaves_touches_and_keys_to_the_platform() {
         velocity: [0.0; 2],
         min_fling: 50.0,
     };
-    assert!(host.pointer(down.clone()));
+    assert!(host.pointer(down));
     host.window_focus(false);
     assert!(
         host.adapter()

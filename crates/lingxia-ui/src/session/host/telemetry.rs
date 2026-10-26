@@ -73,7 +73,7 @@ impl<A: PlatformAdapter> Inner<A> {
         let (bytes, entries) = super::decode::retained();
         serde_json::json!({
             "renderer": "gpu",
-            "page": self.lifecycle.page().get(),
+            "page": self.lifecycle.page().get().to_string(),
             "commit": telemetry.commit,
             "firstPresentAt": telemetry.since_open(telemetry.first_present),
             "lastPresentAt": telemetry.since_open(telemetry.last_present),
