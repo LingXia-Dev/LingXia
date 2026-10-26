@@ -15,6 +15,7 @@ pub mod theme;
 pub use engine::evaluate;
 pub use interaction::input_state::InputReply;
 pub use layout::Renderer;
+pub use scene::cost::FrameCost;
 pub use scene::display::DisplayList;
 pub use scene::node::Frame;
 pub use scene::plot::{PieLayout, PlotSelection, PlotSnapshot};

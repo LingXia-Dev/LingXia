@@ -2,6 +2,7 @@
 pub(crate) mod backdrop_region;
 pub(crate) mod border;
 pub(crate) mod build;
+pub mod cost;
 pub mod color_filter;
 pub mod composite;
 pub(crate) mod display;

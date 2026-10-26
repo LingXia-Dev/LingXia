@@ -94,6 +94,11 @@ pub(crate) fn eval_budget() -> Duration {
 }
 
 impl ViewSession {
+    /// Timings and counters of the last prepared frame.
+    pub fn metrics(&self) -> &crate::FrameMetrics {
+        &self.metrics
+    }
+
     pub fn new(source: &str) -> Result<Self, String> {
         Self::new_with_logic(source, false)
     }
