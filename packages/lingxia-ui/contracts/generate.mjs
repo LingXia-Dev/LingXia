@@ -443,6 +443,194 @@ ${hints.join('\n')}
 `;
 }
 
+
+// ---- frame contract decoders ----------------------------------------------------------------
+
+const camel = key => key.replace(/[-_]([a-z0-9])/g, (_, c) => c.toUpperCase());
+const typeName = name => name;
+
+/** Parses a frame type string: `{ base, optional, dims: [n|null...] }`. */
+function frameType(ty) {
+  let optional = false, dims = [];
+  if (ty.endsWith('?')) { optional = true; ty = ty.slice(0, -1); }
+  for (let m; (m = ty.match(/\[(\d*)\]$/)); ty = ty.slice(0, m.index)) dims.unshift(m[1] === '' ? null : Number(m[1]));
+  return { base: ty, optional, dims };
+}
+
+function frameJava(schema) {
+  const { types, messages, doc } = schema.frame;
+  const prim = { string: 'String', bool: 'boolean', u8: 'long', u32: 'long', u64: 'long', usize: 'long', i64: 'long', f32: 'float', f64: 'double', any: 'Object' };
+  const boxed = { boolean: 'Boolean', long: 'Long', float: 'Float', double: 'Double' };
+  const kindOf = base => prim[base] ? 'prim' : types[base]?.enum ? 'enum' : 'object';
+  const javaType = ({ base, dims, optional }) => {
+    const element = kindOf(base) === 'prim' ? prim[base] : kindOf(base) === 'enum' ? 'String' : base;
+    if (dims.length) return element + '[]'.repeat(dims.length);
+    return optional && boxed[element] ? boxed[element] : element;
+  };
+  const reader = (key, t) => {
+    const k = JSON.stringify(key);
+    if (t.dims.length) {
+      const element = kindOf(t.base) === 'prim' ? prim[t.base] : kindOf(t.base) === 'enum' ? 'String' : t.base;
+      return `return GpuFrame.array(json.optJSONArray(${k}), ${t.dims.length}, ${JSON.stringify(element)});`
+        .replace(/^return GpuFrame\.array\((.*)\);$/, (_, args) => `return (${javaType(t)}) GpuFrame.array(${args});`);
+    }
+    const kind = kindOf(t.base);
+    if (kind === 'object') return `JSONObject o = json.optJSONObject(${k}); return o == null ? null : new ${t.base}(o);`;
+    const javaT = kind === 'enum' ? 'String' : prim[t.base];
+    if (t.optional && javaT !== 'String' && javaT !== 'Object')
+      return `if (json.isNull(${k})) return null; return ${opt(javaT, k)};`;
+    if (javaT === 'String') return `return json.isNull(${k}) ? null : json.optString(${k}, null);`;
+    if (javaT === 'Object') return `return json.isNull(${k}) ? null : json.opt(${k});`;
+    return `return ${opt(javaT, k)};`;
+  };
+  const opt = (javaT, k) => ({ boolean: `json.optBoolean(${k})`, long: `json.optLong(${k})`, float: `(float) json.optDouble(${k})`, double: `json.optDouble(${k})` })[javaT];
+  const fieldsOf = def => def.tagged
+    ? Object.fromEntries([[def.tagged, 'string'], ...Object.values(def.variants).flatMap(fields => Object.entries(fields).map(([k, v]) => [k, v.endsWith('?') ? v : `${v}?`]))])
+    : def;
+  const classes = [], constants = [];
+  for (const [name, def] of Object.entries(types)) {
+    if (def.enum) { constants.push(...def.enum.map(value => `    public static final String ${constant(name)}_${constant(value)} = ${JSON.stringify(value)};`)); continue; }
+    if (def.tagged) constants.push(...Object.keys(def.variants).map(value => `    public static final String ${constant(name)}_${constant(value)} = ${JSON.stringify(value)};`));
+    const methods = Object.entries(fieldsOf(def)).filter(([key]) => key !== '...').map(([key, ty]) => {
+      const t = frameType(ty);
+      return `        /** \`${key}\`: ${ty} */\n        public ${javaType(t)} ${camel(key) === 'class' ? 'klass' : camel(key)}() { ${reader(key, t)} }`;
+    });
+    classes.push(`    public static final class ${name} {
+        public final JSONObject json;
+        public ${name}(JSONObject json) { this.json = json; }
+${methods.join('\n')}
+    }`);
+  }
+  return `${header}package com.lingxia.ui.generated;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+/**
+ * Typed readers over the frame contract (schema.json \`frame\`): ${doc.split(':')[0]}.
+ * Messages: ${Object.entries(messages).map(([name, type]) => `${name} = ${type}`).join(', ')}.
+ */
+public final class GpuFrame {
+    private GpuFrame() {}
+
+${constants.join('\n')}
+
+${classes.join('\n\n')}
+
+    /** A JSON list as a Java array of \`element\` (nested \`depth\` deep); null when absent. */
+    static Object array(JSONArray list, int depth, String element) {
+        if (list == null) return null;
+        int n = list.length();
+        if (depth > 1) {
+            Object[] out = (Object[]) java.lang.reflect.Array.newInstance(arrayClass(element, depth - 1), n);
+            for (int i = 0; i < n; i++) out[i] = array(list.optJSONArray(i), depth - 1, element);
+            return out;
+        }
+        switch (element) {
+            case "float": { float[] out = new float[n]; for (int i = 0; i < n; i++) out[i] = (float) list.optDouble(i); return out; }
+            case "double": { double[] out = new double[n]; for (int i = 0; i < n; i++) out[i] = list.optDouble(i); return out; }
+            case "long": { long[] out = new long[n]; for (int i = 0; i < n; i++) out[i] = list.optLong(i); return out; }
+            case "boolean": { boolean[] out = new boolean[n]; for (int i = 0; i < n; i++) out[i] = list.optBoolean(i); return out; }
+            case "String": { String[] out = new String[n]; for (int i = 0; i < n; i++) out[i] = list.isNull(i) ? null : list.optString(i); return out; }
+            case "Object": { Object[] out = new Object[n]; for (int i = 0; i < n; i++) out[i] = list.opt(i); return out; }
+            default: {
+                Object[] out = (Object[]) java.lang.reflect.Array.newInstance(arrayClass(element, 0), n);
+                for (int i = 0; i < n; i++) out[i] = wrap(element, list.optJSONObject(i));
+                return out;
+            }
+        }
+    }
+
+    private static Class<?> arrayClass(String element, int depth) {
+        Class<?> base;
+        switch (element) {
+            case "float": base = float.class; break;
+            case "double": base = double.class; break;
+            case "long": base = long.class; break;
+            case "boolean": base = boolean.class; break;
+            case "String": base = String.class; break;
+            case "Object": base = Object.class; break;
+            default: base = typeClass(element);
+        }
+        for (int i = 0; i < depth; i++) base = java.lang.reflect.Array.newInstance(base, 0).getClass();
+        return base;
+    }
+
+    private static Class<?> typeClass(String name) {
+        switch (name) {
+${Object.entries(types).filter(([, def]) => !def.enum).map(([name]) => `            case ${JSON.stringify(name)}: return ${name}.class;`).join('\n')}
+            default: throw new IllegalArgumentException(name);
+        }
+    }
+
+    private static Object wrap(String name, JSONObject json) {
+        if (json == null) return null;
+        switch (name) {
+${Object.entries(types).filter(([, def]) => !def.enum).map(([name]) => `            case ${JSON.stringify(name)}: return new ${name}(json);`).join('\n')}
+            default: throw new IllegalArgumentException(name);
+        }
+    }
+}
+`;
+}
+
+function frameSwift(schema) {
+  const { types, messages } = schema.frame;
+  const prim = { string: 'String', bool: 'Bool', u8: 'UInt8', u32: 'UInt32', u64: 'UInt64', usize: 'UInt64', i64: 'Int64', f32: 'Float', f64: 'Double', any: 'GpuJSON' };
+  const swiftType = ty => {
+    const t = frameType(ty);
+    let element = prim[t.base] ?? (types[t.base]?.enum ? 'String' : `GpuFrame${t.base}`);
+    for (const _ of t.dims) element = `[${element}]`;
+    return t.optional ? `${element}?` : element;
+  };
+  const fieldsOf = def => def.tagged
+    ? Object.fromEntries([[def.tagged, 'string'], ...Object.values(def.variants).flatMap(fields => Object.entries(fields).map(([k, v]) => [k, v.endsWith('?') ? v : `${v}?`]))])
+    : def;
+  const structs = Object.entries(types).filter(([, def]) => !def.enum).map(([name, def]) => {
+    const fields = Object.entries(fieldsOf(def)).filter(([key]) => key !== '...');
+    const props = fields.map(([key, ty]) => `    public let ${camel(key)}: ${swiftType(ty)}`);
+    const keys = fields.map(([key]) => `        case ${camel(key)} = ${JSON.stringify(key)}`);
+    return `/// \`${name}\` in the frame contract.
+public struct GpuFrame${name}: Decodable, Sendable {
+${props.join('\n')}
+
+    enum CodingKeys: String, CodingKey {
+${keys.join('\n')}
+    }
+}`;
+  });
+  const enums = Object.entries(types).filter(([, def]) => def.enum).map(([name, def]) =>
+    `/// \`${name}\` values.\npublic enum GpuFrame${name}: String, Sendable {\n${def.enum.map(value => `    case ${camel(value)} = ${JSON.stringify(value)}`).join('\n')}\n}`);
+  return `// Generated from packages/lingxia-ui/contracts/schema.json; do not edit.
+// The frame contract every Apple platform decodes: ${Object.entries(messages).map(([name, type]) => `${name} = ${type}`).join(', ')}.
+import Foundation
+
+/// Any JSON value, for contract fields typed \`any\`.
+public enum GpuJSON: Decodable, Sendable, Equatable {
+    case null
+    case bool(Bool)
+    case number(Double)
+    case string(String)
+    case array([GpuJSON])
+    case object([String: GpuJSON])
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() { self = .null }
+        else if let value = try? container.decode(Bool.self) { self = .bool(value) }
+        else if let value = try? container.decode(Double.self) { self = .number(value) }
+        else if let value = try? container.decode(String.self) { self = .string(value) }
+        else if let value = try? container.decode([GpuJSON].self) { self = .array(value) }
+        else { self = .object(try container.decode([String: GpuJSON].self)) }
+    }
+}
+
+${enums.join('\n\n')}
+
+${structs.join('\n\n')}
+`;
+}
+
 /** Map of repository-relative path to generated content. */
 export async function generate(schema) {
   validate(schema);
@@ -457,6 +645,8 @@ export async function generate(schema) {
     'packages/lingxia-ui/src/generated/authoring.d.ts': authoring(schema, api),
     'lingxia-sdk/android/lingxia/src/main/java/com/lingxia/ui/generated/GpuSemantics.java': androidSemantics(schema),
     'lingxia-sdk/android/lingxia/src/main/java/com/lingxia/ui/generated/GpuInput.java': androidInput(schema),
+    'lingxia-sdk/android/lingxia/src/main/java/com/lingxia/ui/generated/GpuFrame.java': frameJava(schema),
+    'lingxia-sdk/apple/Sources/Platform/Gpu/GpuFrame.swift': frameSwift(schema),
   };
   generated['crates/lingxia-ui/src/session/tests/runtime.js'] = await nativeTestRuntime(generated);
   Object.assign(generated, await (await import('./docs.mjs')).docs(schema, generated));
