@@ -1376,3 +1376,40 @@ fn accessibility_selects_and_copies_static_text_through_the_session_selection() 
         host.semantics(|projection, _| projection.unwrap().node(id).unwrap().text_selection);
     assert_eq!(selection, None, "Copy drops the selection");
 }
+
+#[test]
+fn a_failed_session_leaves_touches_and_keys_to_the_platform() {
+    use crate::interaction::view::Key;
+    let worker = ViewWorker::spawn("test-failed-input").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('button',{onClick:()=>{}},'tap')}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let down = Pointer {
+        phase: PointerPhase::Down,
+        x: 10.0,
+        y: 10.0,
+        slop: 8.0,
+        velocity: [0.0; 2],
+        min_fling: 50.0,
+    };
+    assert!(host.pointer(down.clone()));
+    host.window_focus(false);
+    assert!(
+        host.adapter()
+            .log
+            .lock()
+            .unwrap()
+            .effects
+            .contains(&Effect::ClearPress),
+        "losing window focus ends the press"
+    );
+    assert!(host.key(Key::Tab, false, false));
+    host.fail("UI_TIMEOUT: View JavaScript exceeded its execution budget".into());
+    assert!(!host.pointer(down));
+    assert!(!host.key(Key::Tab, false, false));
+}

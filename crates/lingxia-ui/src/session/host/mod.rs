@@ -430,11 +430,22 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.deliver(effects);
     }
 
+    /// `false` leaves the key to the platform, as after a session failure.
     pub fn key(&self, key: Key, shift: bool, repeat: bool) -> bool {
+        if !self.inner.lifecycle.accepts_input() {
+            return false;
+        }
         let page = self.inner.lifecycle.page();
         let (handled, effects) = self.inner.main().interaction.key(key, shift, repeat, page);
         self.inner.deliver(effects);
         handled
+    }
+
+    /// The window gained or lost input focus; losing it ends every gesture in flight.
+    pub fn window_focus(&self, focused: bool) {
+        if !focused {
+            self.cancel();
+        }
     }
 
     /// End pointer, press and long-press state, e.g. when focus or the window goes away.
