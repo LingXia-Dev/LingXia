@@ -154,6 +154,27 @@ function classProblems(rule, name, tag, suggestions) {
   return problems;
 }
 
+// Problems read top-down: the page first, then the files it imports, each in
+// line order; one message found in several places is listed once with every place.
+function report(problems, page) {
+  const located = [], loose = [];
+  for (const line of new Set(problems)) {
+    const match = line.match(/^(.*?):(\d+):(\d+): (.*)$/s);
+    if (match) located.push({ file: match[1], line: Number(match[2]), column: Number(match[3]), message: match[4] });
+    else loose.push(line);
+  }
+  const files = [...new Set([page, ...located.map(problem => problem.file)])];
+  located.sort((a, b) => files.indexOf(a.file) - files.indexOf(b.file) || a.line - b.line || a.column - b.column);
+  const grouped = new Map();
+  for (const problem of located) {
+    const key = `${problem.file}\u0000${problem.message}`;
+    if (!grouped.has(key)) grouped.set(key, { ...problem, places: [] });
+    grouped.get(key).places.push(`${problem.line}:${problem.column}`);
+  }
+  const text = [...loose, ...[...grouped.values()].map(({ file, places, message }) => `${file}:${places.join(', ')}: ${message}`)];
+  return { count: text.length, text: text.join('\n') };
+}
+
 /**
  * Compiles GPU pages. `pages` are page source paths relative to `root`; each
  * page's sibling `.json` must declare `"renderer": "gpu"`, which is the only
@@ -225,8 +246,8 @@ export async function buildPages(root, pages, output, catalogs = {}) {
         for (const problem of new Set(found.flatMap(rule => classProblems(rule, name, tag, suggestions)))) problems.push(`${location}: ${problem}`);
       }
     if (problems.length) {
-      const unique = [...new Set(problems)].map(line => line.startsWith(root + sep) ? line.slice(root.length + 1) : line);
-      throw Error(`${page}: ${unique.length} authoring problem${unique.length === 1 ? '' : 's'}\n${unique.join('\n')}`);
+      const lines = report(problems.map(line => line.startsWith(root + sep) ? line.slice(root.length + 1) : line), rel);
+      throw Error(`${page}: ${lines.count} authoring problem${lines.count === 1 ? '' : 's'}\n${lines.text}`);
     }
     const dest = join(output, `${base}.js`);
     await mkdir(dirname(dest), { recursive: true });

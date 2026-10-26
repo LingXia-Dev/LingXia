@@ -287,3 +287,28 @@ test('controls a screen reader announces need a name, and the message names the 
     '<image src="x.png" alt=""/>',
   ]) clean(`export function render(){ return ${source}; }`);
 });
+
+test('build problems read top-down: the page first in line order, imports after, one line per repeated message', async () => {
+  await project({
+    'page.tsx': `import { Card } from './card';
+export function render() {
+  return <column className="itmes-center">
+    <text className="cursor-pointer">A</text>
+    <Card/>
+    <text className="cursor-pointer">B</text>
+    <button bogus={1}>Go</button>
+  </column>;
+}`,
+    'card.tsx': 'export function Card() { return <column className="blur-sm"><image src="a.png"/></column>; }',
+  }, async (root, build) => {
+    const lines = (await build().catch(error => error)).message.split('\n');
+    assert.match(lines[0], /page.tsx: 5 authoring problems/);
+    assert.deepEqual(lines.slice(1).map(line => line.match(/^([\w.]+):([\d:, ]+): (UI_\w+)/).slice(1, 4)), [
+      ['page.tsx', '3:28', 'UI_CLASS_UNKNOWN'],
+      ['page.tsx', '4:21, 6:21', 'UI_CLASS_UNSUPPORTED'],
+      ['page.tsx', '7:13', 'UI_PROP'],
+      ['card.tsx', '1:51', 'UI_CLASS_UNSUPPORTED'],
+      ['card.tsx', '1:61', 'UI_A11Y'],
+    ]);
+  });
+});
