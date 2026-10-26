@@ -242,7 +242,16 @@ export function createWorld(options = {}) {
     async scroll(options = {}) {
       pageEntry("scroll", options.page);
     },
-    async screenshot(options) {
+    async scrollTo({ css, index = 0, page: pageName }) {
+      const target = queryAll(css, pageEntry("scrollTo", pageName))[index];
+      if (!target) throw new Error(`Element not found: ${css}`);
+      target.inViewport = true;
+      target.scrolledTo = (target.scrolledTo ?? 0) + 1;
+    },
+    async screenshot(...args) {
+      // The host binding's options are optional but not nullable.
+      if (args.length > 0 && args[0] === undefined) throw new TypeError("Not JS Object");
+      const [options] = args;
       pageEntry("screenshot", options?.page);
       return { format: "png", base64: TINY_PNG, width: 1, height: 1 };
     },
@@ -406,6 +415,7 @@ export function createWorld(options = {}) {
       value: element.value ?? null,
       valueTruncated: false,
       rect: { left: 0, top: 0, width: 10, height: 10, right: 10, bottom: 10, centerX: 5, centerY: 5, viewportWidth: 100, viewportHeight: 100 },
+      ...(element.renderer ? { renderer: element.renderer } : {}),
     };
   }
 

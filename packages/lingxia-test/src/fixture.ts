@@ -1289,6 +1289,7 @@ export class LiveFixture implements Fixture {
       press: (options) => page().press(options),
       type: (options) => page().type(options),
       eval: (options) => page().eval(options),
+      scrollTo: (options) => page().scrollTo(options),
     };
     const input = lazyDriver(() => ({ owner: page() as object, value: page() }), this, "page.") as PageDriver;
     const target = bound === undefined ? {} : { page: bound };
@@ -1310,7 +1311,8 @@ export class LiveFixture implements Fixture {
       screenshot: (options?: unknown) => {
         noOptions("view.screenshot", options);
         return this.act("page.screenshot", bound ? `#${bound}` : "", () =>
-          this.readRetrying(() => page().screenshot(bound ? target : undefined)));
+          // The driver's options are optional but not nullable: pass none rather than undefined.
+          this.readRetrying(() => (bound ? page().screenshot(target) : page().screenshot())));
       },
       scroll: (options) => {
         if (options && "page" in options) {

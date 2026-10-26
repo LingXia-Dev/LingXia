@@ -214,8 +214,9 @@ pub fn describe(
     let node = &projection.frame.nodes[index];
     let semantic = projection.ids.id(index).and_then(|id| projection.node(id));
     let element = virtual_element(node, semantic.as_ref());
+    // As on the Web, visible means rendered; scrolled or clipped away is only out of the viewport.
+    let visible = node.bounds[2] > 0.0 && node.bounds[3] > 0.0;
     let [left, top, width, height] = node.visible_bounds;
-    let visible = width > 0.0 && height > 0.0 && semantic.as_ref().is_none_or(|s| s.visible);
     let viewport = projection
         .frame
         .nodes
@@ -223,6 +224,8 @@ pub fn describe(
         .map(|root| [root.bounds[2], root.bounds[3]])
         .unwrap_or_default();
     let in_viewport = visible
+        && width > 0.0
+        && height > 0.0
         && left + width > 0.0
         && top + height > 0.0
         && left < viewport[0]
@@ -246,6 +249,7 @@ pub fn describe(
     let [left, top, width, height] = node.bounds;
     json!({
         "exists": true,
+        "renderer": "gpu",
         "index": position,
         "count": count,
         "tag": element.tag,
@@ -289,13 +293,13 @@ pub fn query(
             .enumerate()
             .map(|(position, node)| describe(projection, *node, position, count, max_text))
             .collect();
-        return Ok(json!({ "count": count, "items": items }));
+        return Ok(json!({ "count": count, "renderer": "gpu", "items": items }));
     }
     let position = index.unwrap_or(0);
     Ok(match matches.get(position) {
         Some(node) => describe(projection, *node, position, count, max_text),
         None => json!({
-            "exists": false, "index": position, "count": count,
+            "exists": false, "renderer": "gpu", "index": position, "count": count,
             "visible": false, "inViewport": false, "enabled": false, "editable": false,
         }),
     })

@@ -35,6 +35,8 @@ export interface QueryMatch {
   visible?: boolean;
   /** Rendered and intersecting the viewport. */
   inViewport?: boolean;
+  /** `gpu` for a native View page; absent for a WebView page. */
+  renderer?: "gpu";
   text?: string;
   value?: string | null;
   enabled?: boolean;
@@ -62,6 +64,8 @@ export interface PageLike {
   fill(options: { css: string; text: string; page?: string; index?: number; force?: boolean }): Promise<void>;
   press?(options: { css: string; key: string; page?: string; index?: number }): Promise<void>;
   type(options: { css: string; text: string; page?: string; index?: number }): Promise<void>;
+  /** Bring a match on screen; GPU pages need it before an action. */
+  scrollTo?(options: { css: string; page?: string; index?: number }): Promise<void>;
 }
 
 export type Guard = <T>(op: () => T | Promise<T>) => Promise<T>;
@@ -83,6 +87,7 @@ export interface LocatorResolve {
   enabled?: boolean;
   editable?: boolean;
   rect?: QueryMatch["rect"];
+  renderer?: "gpu";
   /** Attribute values read for the single match, by name (`null`: absent). */
   attributes?: Record<string, string | null>;
   kind: "nothing" | "hidden" | "unique" | "many";
@@ -331,6 +336,7 @@ export class PageLocator implements Locator {
         value: unique.value ?? null,
         index: unique.index ?? items.indexOf(unique),
         enabled: unique.enabled, editable: unique.editable, rect: unique.rect,
+        ...(unique.renderer ? { renderer: unique.renderer } : {}),
         kind: "unique",
       };
     }
@@ -412,6 +418,12 @@ export class PageLocator implements Locator {
     return `while trying to ${verb} ${formatValue(this.selector)}\nat ${this.where()}`;
   }
 
+  private async reveal(index: number, verb: string, deadline: ActionDeadline): Promise<void> {
+    if (!this.page.scrollTo) return;
+    await this.guard(() => deadline.call("page.scrollTo", () =>
+      this.page.scrollTo!({ page: this.options.page, css: this.selector, index }), () => this.callContext(verb)));
+  }
+
   private async actionability(index: number, verb: string, deadline: ActionDeadline): Promise<true | string> {
     if (!this.page.eval) return true;
     const script = `(() => {
@@ -455,7 +467,12 @@ export class PageLocator implements Locator {
             last = await this.resolve(budget, verb);
             reason = this.missText(last);
             cause = undefined;
-            if (force && last.count === 1) {
+            if (last.kind === "unique" && last.renderer === "gpu" && !last.inViewport) {
+              // A GPU page acts through the presented frame, so the match must be on screen first.
+              await this.reveal(last.index, verb, budget);
+              reason = "element is outside the viewport";
+              previousRect = undefined;
+            } else if (force && last.count === 1) {
               // Forced: attached and enabled are enough; no viewport, stability
               // or hit-test wait.
               if (last.enabled === false) reason = "element is disabled";
@@ -481,7 +498,8 @@ export class PageLocator implements Locator {
               else if ((verb === "fill" || verb === "type") && last.editable === false) reason = "element is not editable";
               else if (!stable) reason = "element is moving";
               else {
-                const check = await this.actionability(last.index, verb, budget);
+                // A GPU page has no DOM to probe; the native act refuses what it cannot take.
+                const check = last.renderer === "gpu" ? true : await this.actionability(last.index, verb, budget);
                 if (check === true) {
                   try {
                     const index = last.index;

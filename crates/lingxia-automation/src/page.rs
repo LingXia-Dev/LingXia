@@ -117,6 +117,7 @@ struct JSPressOptions {
 struct JSScrollToOptions {
     css: String,
     page: Option<String>,
+    index: Option<usize>,
 }
 
 #[derive(FromJSObject, Default)]
@@ -379,7 +380,7 @@ impl JSPageDriver {
             &app,
             options.page.as_deref(),
             &options.css,
-            None,
+            options.index,
             crate::gpu::GpuAction::ScrollIntoView,
         )
         .await

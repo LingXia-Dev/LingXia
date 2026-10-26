@@ -763,7 +763,7 @@ test("app.page() binds locators, eval, screenshot and scroll to an instance; cal
   world.app.page.query = (options) => { queried.push(options.page); return query(options); };
   const shots = [];
   const screenshot = world.app.page.screenshot;
-  world.app.page.screenshot = (options) => { shots.push(options?.page); return screenshot(options); };
+  world.app.page.screenshot = (...args) => { shots.push(args[0]?.page); return screenshot(...args); };
 
   let instanceId;
   spec("bound", { forensics: false }, async (t) => {
@@ -845,4 +845,21 @@ test("app.page() waits for a page to open, times out naming it, refuses an ambig
   assert.equal(seen.detailStill, "Detail");
   const bind = report.cases[0].steps.filter((step) => step.name === "page.bind").map((step) => step.detail);
   assert.ok(bind.includes("detail"), JSON.stringify(bind));
+});
+
+test("a GPU page brings the match on screen and acts without a DOM probe", async () => {
+  const world = createWorld();
+  const save = world.add({ testId: "save", inViewport: false, renderer: "gpu", text: "Save" });
+  const { attachments } = installFakeHost(world);
+
+  spec("gpu click", async (t) => {
+    await t.app.view.testId("save").click({ timeout: 1_000 });
+    assert.equal(save.clicked, 1);
+    assert.equal(save.scrolledTo, 1);
+    await t.app.view.screenshot();
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
+  assert.ok(!world.evaluated.some((script) => script.includes("elementFromPoint")));
 });

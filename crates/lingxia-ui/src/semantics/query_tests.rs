@@ -188,3 +188,40 @@ fn reading_order_ids_and_names_are_stable_across_unchanged_frames() {
     assert_eq!(snapshots[0], snapshots[1]);
     assert_eq!(snapshots[1], snapshots[2]);
 }
+
+#[test]
+fn offscreen_matches_are_visible_but_must_be_revealed_before_input() {
+    let mut i = interaction(
+        "h('scroll',{style:{height:100}},h('column',{style:{height:400}}),h('button',{testId:'far',onClick(){}},'Far'))",
+    );
+    let far = i
+        .automation_query("[data-testid=\"far\"]", None, false, None)
+        .unwrap();
+    assert_eq!(
+        (
+            far["renderer"].as_str(),
+            far["visible"].as_bool(),
+            far["inViewport"].as_bool()
+        ),
+        (Some("gpu"), Some(true), Some(false))
+    );
+    let page = PageTicket::new(1);
+    let refused = i.automate(
+        "[data-testid=\"far\"]",
+        None,
+        AutomationAct::Click,
+        true,
+        page,
+    );
+    assert!(refused.unwrap_err().ends_with("is outside the viewport"));
+    let revealed = i
+        .automate(
+            "[data-testid=\"far\"]",
+            None,
+            AutomationAct::ScrollIntoView,
+            false,
+            page,
+        )
+        .unwrap();
+    assert!(revealed.contains(&Effect::Redraw));
+}

@@ -40,7 +40,7 @@ impl ViewInteraction {
         force: bool,
         page: PageTicket,
     ) -> Result<Vec<Effect>, String> {
-        let (id, value, enabled, editable, visible) = {
+        let (id, value, enabled, editable, visible, in_viewport) = {
             let projection = self
                 .semantics()
                 .ok_or("E_PAGE_NOT_READY: no presented frame")?;
@@ -61,19 +61,45 @@ impl ViewInteraction {
                 semantic.as_ref().is_some_and(|s| s.enabled),
                 described["editable"].as_bool().unwrap_or(false),
                 described["visible"].as_bool().unwrap_or(false),
+                described["inViewport"].as_bool().unwrap_or(false),
             )
         };
         if !force && !visible {
             return Err(format!("Element not interactable: {selector} is hidden"));
+        }
+        // Input reaches only what the presented frame shows; bring the match on screen first.
+        if !in_viewport && act != AutomationAct::ScrollIntoView {
+            return Err(format!(
+                "Element not interactable: {selector} is outside the viewport"
+            ));
         }
         if !enabled {
             return Err(format!(
                 "Element not interactable: {selector} is not enabled"
             ));
         }
+        if act == AutomationAct::ScrollIntoView {
+            // Any match can be revealed, published to assistive input or not.
+            let frame = self
+                .frame
+                .clone()
+                .ok_or("E_PAGE_NOT_READY: no presented frame")?;
+            let node = self.ids.index(id).map(|index| &frame.nodes[index]);
+            let moved = node.is_some_and(|node| self.scroll.reveal(&frame, node));
+            if !moved && !in_viewport {
+                return Err(format!(
+                    "Element not interactable: no scroll brings {selector} on screen"
+                ));
+            }
+            return Ok(if moved {
+                vec![Effect::StopFling, Effect::Redraw]
+            } else {
+                Vec::new()
+            });
+        }
         let action = match act {
             AutomationAct::Click => AccessibilityAction::Click,
-            AutomationAct::ScrollIntoView => AccessibilityAction::ShowOnScreen,
+            AutomationAct::ScrollIntoView => unreachable!("revealed above"),
             AutomationAct::Fill(_) | AutomationAct::Type(_) if !editable => {
                 return Err(format!(
                     "Element not interactable: {selector} is not editable"
