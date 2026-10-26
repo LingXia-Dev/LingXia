@@ -281,6 +281,7 @@ const LXAPP_MANAGER_API = [
 const PAGE_DRIVER_API = [
   'action',
   'click',
+  'dblclick',
   'eval',
   'fill',
   'key',

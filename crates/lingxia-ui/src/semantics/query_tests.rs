@@ -339,3 +339,49 @@ fn offscreen_selects_reveal_and_a_disabled_option_fails_at_once() {
         "{disabled}"
     );
 }
+
+#[test]
+fn a_double_click_selects_the_word_in_text_and_editors() {
+    let mut i = interaction(
+        "h('column',{},h('text',{testId:'copy',style:{userSelect:'text'}},'select this word'),h('input',{testId:'name',value:'Ada Lovelace',onInput(){}}),h('button',{testId:'go',onClick(){}},'Go'))",
+    );
+    let page = PageTicket::new(1);
+    let text = i
+        .automate(
+            "[data-testid=\"copy\"]",
+            None,
+            AutomationAct::DoubleClick,
+            false,
+            page,
+        )
+        .unwrap();
+    assert!(text.contains(&Effect::Dispatch));
+    assert!(matches!(
+        &i.take_dispatch()[..],
+        [Dispatch::SelectText { .. }]
+    ));
+    let editor = i
+        .automate(
+            "[data-testid=\"name\"]",
+            None,
+            AutomationAct::DoubleClick,
+            false,
+            page,
+        )
+        .unwrap();
+    assert!(editor.contains(&Effect::Dispatch));
+    assert!(matches!(
+        i.take_dispatch()[..],
+        [Dispatch::Editor { word: true, .. }]
+    ));
+    let button = i
+        .automate(
+            "[data-testid=\"go\"]",
+            None,
+            AutomationAct::DoubleClick,
+            false,
+            page,
+        )
+        .unwrap();
+    assert!(button.contains(&Effect::Dispatch));
+}

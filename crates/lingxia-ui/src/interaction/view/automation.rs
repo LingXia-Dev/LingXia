@@ -19,6 +19,9 @@ pub enum AutomationAct {
     Press(String),
     /// Choose a `<select>` option by value, else by label.
     SelectOption(String),
+    /// Select the word at the match's center (text and editors), as a long press or a
+    /// desktop double click does; a click on anything else.
+    DoubleClick,
 }
 
 fn key(name: &str) -> Result<(super::Key, bool), String> {
@@ -136,8 +139,13 @@ impl ViewInteraction {
                 Vec::new()
             });
         }
+        if act == AutomationAct::DoubleClick
+            && let Some(effects) = self.select_word(id)
+        {
+            return Ok(effects);
+        }
         let action = match act {
-            AutomationAct::Click => AccessibilityAction::Click,
+            AutomationAct::Click | AutomationAct::DoubleClick => AccessibilityAction::Click,
             AutomationAct::ScrollIntoView
             | AutomationAct::Press(_)
             | AutomationAct::SelectOption(_) => {
@@ -158,6 +166,26 @@ impl ViewInteraction {
             ));
         }
         Ok(effects)
+    }
+
+    /// The word at a text or editor node's center, as the pointer's long press selects it;
+    /// `None` for nodes without text to select.
+    fn select_word(&mut self, id: u32) -> Option<Vec<Effect>> {
+        let frame = self.frame.clone()?;
+        let index = self.ids.index(id)?;
+        let node = &frame.nodes[index];
+        let [x, y, w, h] = node.visible_bounds;
+        let center = [x + w / 2.0, y + h / 2.0];
+        if node.input.as_ref().is_some_and(|input| input.enabled) {
+            return Some(self.activate(index, Some(center), true, None));
+        }
+        node.selectable?;
+        self.dispatches.push(super::Dispatch::SelectText {
+            commit: frame.commit,
+            identity: node.identity.clone(),
+            point: center,
+        });
+        Some(vec![Effect::Dispatch])
     }
 
     /// A key on the match (focused first) or on whatever holds focus.

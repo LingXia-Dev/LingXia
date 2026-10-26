@@ -652,6 +652,45 @@ const DOM_TREE_SCRIPT: &str = r#"(() => {
   return { nodes: walk(document.body, 0) };
 })()"#;
 
+/// Double-click the match: GPU pages select the word at its center (text and editors), as a
+/// long press does; WebView pages get `dblclick` and the word under its center selected.
+pub async fn page_dblclick(
+    app: &Arc<LxApp>,
+    page_name: Option<&str>,
+    selector: &str,
+    index: Option<usize>,
+) -> Result<(), String> {
+    if let Some(page) = gpu::backend(app, page_name)? {
+        return page.act(selector, index, gpu::GpuAction::DoubleClick).await;
+    }
+    let script = format!(
+        r#"(() => {{
+  const el = document.querySelectorAll({selector})[{index}];
+  if (!el) return "Element not found: " + {selector};
+  const r = el.getBoundingClientRect();
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  for (const type of ["mousedown", "mouseup", "click", "mousedown", "mouseup", "click", "dblclick"])
+    el.dispatchEvent(new MouseEvent(type, {{ bubbles: true, cancelable: true, clientX: x, clientY: y, detail: type === "dblclick" ? 2 : 1 }}));
+  const range = document.caretRangeFromPoint ? document.caretRangeFromPoint(x, y) : null;
+  if (range) {{
+    const selection = getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    selection.modify("move", "backward", "word");
+    selection.modify("extend", "forward", "word");
+  }}
+  return true;
+}})()"#,
+        selector = serde_json::to_string(selector).map_err(|e| e.to_string())?,
+        index = index.unwrap_or(0),
+    );
+    match page_eval(app, page_name, &script).await? {
+        Value::Bool(true) => Ok(()),
+        Value::String(error) => Err(error),
+        other => Err(format!("page dblclick: unexpected answer {other}")),
+    }
+}
+
 /// Choose an option of the matching `<select>` by value, else by label, firing its change.
 pub async fn page_select_option(
     app: &Arc<LxApp>,

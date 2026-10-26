@@ -232,6 +232,8 @@ export interface Locator {
   /** Wait until the locator reaches `state`; rejects at the timeout. */
   waitFor(options?: LocatorWaitOptions): Promise<void>;
   click(options?: ActionOptions): Promise<void>;
+  /** Double-click: on text and editors, selects the word at the center (a long press on touch). */
+  dblclick(options?: ActionOptions): Promise<void>;
   fill(text: string, options?: ActionOptions): Promise<void>;
   /** Choose an option of a `<select>` by value, else by label. */
   selectOption(value: string, options?: ActionOptions): Promise<void>;

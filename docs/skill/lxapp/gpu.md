@@ -67,6 +67,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - `<textarea rows={2} maxRows={6}/>` grows with its lines in that range, then scrolls.
 - `<select options={[{value,label,disabled?}]} bind={cell} placeholder accessibilityLabel/>` opens the platform
   picker; arrows change the choice; automation uses `locator.selectOption(valueOrLabel)`.
+- `locator.dblclick()` selects the word at an element's center in selectable text and editors (a long press on touch).
 - `enterKeyHint="next"|"previous"` moves focus to the adjacent enabled editor in reading order
   (the last one submits); `cell.focus()` focuses the editor bound to that `useLocal` cell.
 - Buttons may contain text, icons and images; their text names them for

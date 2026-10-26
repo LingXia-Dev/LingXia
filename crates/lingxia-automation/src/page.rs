@@ -332,6 +332,15 @@ impl JSPageDriver {
         .map_err(fail(&app, options.page.as_deref()))
     }
 
+    /// Double-click: select the word at the match's center (text and editors).
+    #[js_method]
+    async fn dblclick(&self, ctx: JSContext, options: JSClickOptions) -> JSResult<()> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
+        auto::page_dblclick(&app, options.page.as_deref(), &options.css, options.index)
+            .await
+            .map_err(fail(&app, options.page.as_deref()))
+    }
+
     #[js_method(rename = "type")]
     async fn type_text(&self, ctx: JSContext, options: JSTypeOptions) -> JSResult<()> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;

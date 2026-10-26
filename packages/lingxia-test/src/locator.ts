@@ -68,6 +68,7 @@ export interface PageLike {
   press?(options: { css: string; key: string; page?: string; index?: number }): Promise<void>;
   type(options: { css: string; text: string; page?: string; index?: number }): Promise<void>;
   selectOption?(options: { css: string; value: string; page?: string; index?: number }): Promise<void>;
+  dblclick?(options: { css: string; page?: string; index?: number }): Promise<void>;
   /** Bring a match on screen; GPU pages need it before an action. */
   scrollTo?(options: { css: string; page?: string; index?: number }): Promise<void>;
 }
@@ -210,6 +211,11 @@ export class PageLocator implements Locator {
     const force = options?.force === true;
     return this.act("click", options, (css, index) =>
       this.page.click({ page: this.options.page, css, index, ...(force ? { force } : {}) }));
+  }
+
+  dblclick(options?: ActionOptions): Promise<void> {
+    if (!this.page.dblclick) return Promise.reject(new Error("This page driver does not support dblclick"));
+    return this.act("dblclick", options, (css, index) => this.page.dblclick!({ page: this.options.page, css, index }));
   }
 
   selectOption(value: string, options?: ActionOptions): Promise<void> {

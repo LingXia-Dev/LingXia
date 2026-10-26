@@ -722,7 +722,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
 
     /// One automation request from the page driver:
     /// `{op: "query", css, index, all, maxText}` or
-    /// `{op: "act", css, index, action: {kind: click|fill|type|scroll|press|select, text, key, value, force}}`,
+    /// `{op: "act", css, index, action: {kind: click|dblclick|fill|type|scroll|press|select, text, key, value, force}}`,
     /// `{op: "tree"}` or `{op: "frame"}` (presentation counters).
     /// Screenshots belong to the adapter's presenter.
     pub fn automation_request(
@@ -749,6 +749,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     Some("scroll") => AutomationAct::ScrollIntoView,
                     Some("press") => AutomationAct::Press(string("key")),
                     Some("select") => AutomationAct::SelectOption(string("value")),
+                    Some("dblclick") => AutomationAct::DoubleClick,
                     other => return Err(format!("E_UNSUPPORTED: automation action {other:?}")),
                 };
                 let force = action["force"].as_bool().unwrap_or(false);

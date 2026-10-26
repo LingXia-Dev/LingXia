@@ -33,6 +33,8 @@ pub enum GpuAction {
     SelectOption {
         value: String,
     },
+    /// Select the word at the match's center (text, editors); a click elsewhere.
+    DoubleClick,
 }
 
 /// What a live GPU page offers automation; implemented by the GPU page binding.

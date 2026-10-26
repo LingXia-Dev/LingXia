@@ -549,6 +549,8 @@ export interface PageDriver {
   query(options: PageQueryOptions): Promise<PageQueryResult | PageQueryAll>;
   /** Single dispatch; test locators provide actionability waiting. */
   click(options: PageClickOptions): Promise<void>;
+  /** Double-click: on text and editors, select the word at the element's center. */
+  dblclick(options: PageClickOptions): Promise<void>;
   /** Type text into an element without clearing existing content. */
   type(options: PageTypeOptions): Promise<void>;
   /** Replace an element's current value. */
