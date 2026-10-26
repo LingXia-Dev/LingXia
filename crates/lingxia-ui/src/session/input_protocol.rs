@@ -41,11 +41,12 @@ enum Request {
         identity: String,
         token: u64,
     },
-    /// A platform picker's choice; the reply is the editor value to submit.
+    /// A platform picker's choice, whose reply is the editor value to submit, or
+    /// its dismissal (`parts: null`), which ends editing.
     Pick {
         identity: String,
         token: u64,
-        parts: [u32; 3],
+        parts: Option<[u32; 3]>,
     },
     Edit {
         identity: String,
@@ -169,10 +170,21 @@ impl ViewSession {
             Request::Pick {
                 identity,
                 token,
-                parts,
+                parts: Some(parts),
             } => {
                 let value = self.inputs.picked(&identity, token, parts);
                 return Ok(serde_json::json!({ "value": value }).to_string());
+            }
+            // Cancel, back or an outside touch: the picker was the editor's only input.
+            Request::Pick {
+                identity,
+                token,
+                parts: None,
+            } => {
+                let blurred = self.blur_input(token, &identity)?;
+                return Ok(
+                    serde_json::json!({ "value": null, "needs_view_render": blurred }).to_string(),
+                );
             }
             Request::Edit {
                 identity,

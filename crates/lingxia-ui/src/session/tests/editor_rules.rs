@@ -130,4 +130,14 @@ fn a_picker_choice_comes_back_formatted_and_bounded_for_the_editor() {
         stale["value"].is_null(),
         "a stale editor token picks nothing"
     );
+    let dismissed =
+        serde_json::json!({"op": "pick", "identity": id, "token": token, "parts": null});
+    let dismissed: serde_json::Value =
+        serde_json::from_str(&page.input_request(&dismissed.to_string()).unwrap()).unwrap();
+    assert_eq!(
+        dismissed["needs_view_render"], true,
+        "dismissing the picker ends editing"
+    );
+    let display = page.layout(300, 300, 1.0).unwrap();
+    assert_eq!(display.nodes[1].input.as_ref().unwrap().edit_token, None);
 }
