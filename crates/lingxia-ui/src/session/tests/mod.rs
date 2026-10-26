@@ -504,20 +504,20 @@ fn native_scroll_reuses_committed_description_and_preserves_click_handles() {
         .unwrap();
     assert_eq!(scrolled.nodes[1].text, "1:0");
     assert_eq!(scrolled.nodes[0].scroll.as_ref().unwrap().offset, 60.0);
+    // A tap on the frame before the scroll still names the same layout and handles.
+    let before_scroll = crate::session::lifecycle::CommitTicket::new(1);
     assert!(
-        !page
-            .click(
-                crate::session::lifecycle::CommitTicket::new(1),
-                scrolled.nodes[1].on_click.unwrap()
-            )
-            .unwrap()
-    );
-    assert!(
-        page.click(page.generation(), scrolled.nodes[1].on_click.unwrap())
+        page.click(before_scroll, scrolled.nodes[1].on_click.unwrap())
             .unwrap()
     );
     let changed = page.layout(100, 100, 1.0).unwrap();
     assert_eq!(changed.nodes[1].text, "2:1");
+    // Once the View rebuilt, commits of the old layout are dead.
+    assert!(
+        !page
+            .click(before_scroll, scrolled.nodes[1].on_click.unwrap())
+            .unwrap()
+    );
     assert_eq!(changed.nodes[0].scroll.as_ref().unwrap().offset, 60.0);
     page.reset().unwrap();
     let reset = page.prepare_native(100, 100, 1.0, false, None, Ok).unwrap();
@@ -1616,13 +1616,13 @@ fn native_validation_failure_does_not_commit_state_or_handlers() {
 mod editor_focus;
 #[path = "editor_rules.rs"]
 mod editor_rules;
-#[path = "select.rs"]
-mod select;
 #[cfg(feature = "hot-swap")]
 #[path = "hot_swap.rs"]
 mod hot_swap;
 #[path = "motion.rs"]
 mod motion;
+#[path = "select.rs"]
+mod select;
 #[path = "text_selection.rs"]
 mod text_selection;
 #[path = "transition.rs"]

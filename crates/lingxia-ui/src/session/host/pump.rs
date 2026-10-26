@@ -34,6 +34,12 @@ pub(super) struct Deferred {
     vsync: Instant,
 }
 
+impl<F> Prepared<F> {
+    pub(super) fn layout(&self) -> Option<(u64, u64)> {
+        self.snapshot.frame.layout
+    }
+}
+
 const DECLINED: &str = "UI_FRAME: declined by the target";
 
 fn micros(duration: Duration) -> u64 {
@@ -50,11 +56,44 @@ struct Request {
     caret: bool,
     /// A hidden page's catch-up frame keeps animation time parked.
     visible: bool,
+    /// When the frame is expected on screen.
+    sample: Duration,
+    /// Built on the frame still waiting for its vsync.
+    ahead: bool,
 }
 
 impl<A: PlatformAdapter> Inner<A> {
     /// Prepare a frame when the page can present and no frame is in flight.
     pub(super) fn schedule(self: &Arc<Self>) {
+        self.schedule_frame(false);
+    }
+
+    /// While an animation runs and a prepared frame waits for its vsync, prepare the
+    /// following one now so a worker frame longer than the display interval still keeps
+    /// pace. Never while input waits to dispatch: it needs no frame in flight.
+    pub(super) fn schedule_ahead(self: &Arc<Self>) {
+        let ready = {
+            let main = self.main();
+            #[cfg(test)]
+            if main.no_frames_ahead {
+                return;
+            }
+            main.visible
+                && main.animating
+                && main.prepared.is_some()
+                && !main.ahead
+                && main.next_prepared.is_none()
+                && main.deferred.is_none()
+                && !main.number_busy
+                && !main.disposed
+                && !main.interaction.waiting()
+        };
+        if ready {
+            self.schedule_frame(true);
+        }
+    }
+
+    fn schedule_frame(self: &Arc<Self>, ahead: bool) {
         let environment = self.adapter.environment();
         let (request, background) = {
             let mut main = self.main();
@@ -76,7 +115,7 @@ impl<A: PlatformAdapter> Inner<A> {
                     main.catch_up = true;
                 }
             }
-            if main.busy || main.number_busy {
+            if (main.busy && !ahead) || main.number_busy {
                 return;
             }
             let background = !main.visible;
@@ -99,13 +138,26 @@ impl<A: PlatformAdapter> Inner<A> {
                 offsets: main.interaction.scroll().snapshot(),
                 caret: !main.caret.hidden,
                 visible: main.visible,
+                sample: Duration::ZERO,
+                ahead,
             };
             main.dirty = false;
             main.pending = false;
             main.busy = true;
+            main.ahead |= ahead;
             (request, background)
         };
         let now = self.adapter.now();
+        let mut request = request;
+        let epoch = {
+            let main = self.main();
+            if request.visible {
+                request.sample = main.expected_vsync(now, u32::from(ahead));
+            } else {
+                request.sample = now;
+            }
+            main.ahead_epoch
+        };
         let surface = request.surface;
         let page = request.page;
         let revision = request.revision;
@@ -137,7 +189,7 @@ impl<A: PlatformAdapter> Inner<A> {
                     if let Some((connection, update)) = update {
                         inner.publish(connection, update);
                     }
-                    inner.main().prepared = Some(Prepared {
+                    let prepared = Prepared {
                         frame,
                         environment,
                         snapshot,
@@ -147,17 +199,40 @@ impl<A: PlatformAdapter> Inner<A> {
                         offsets,
                         timing,
                         prepared_at: Instant::now(),
-                    });
+                    };
+                    {
+                        let mut main = inner.main();
+                        if ahead {
+                            if main.ahead_epoch != epoch {
+                                // What it was built on did not present.
+                                return;
+                            }
+                            main.ahead = false;
+                            if main.prepared.is_some() {
+                                main.next_prepared = Some(prepared);
+                                return;
+                            }
+                            main.busy = true;
+                        }
+                        main.prepared = Some(prepared);
+                    }
                     inner.adapter.request_vsync();
+                    inner.schedule_ahead();
                 }
                 Some(Ok(((None, update), ..))) => {
                     if let Some((connection, update)) = update {
                         inner.publish(connection, update);
                     }
-                    inner.unprepared(None, surface, page);
+                    if !inner.ahead_failed(ahead) {
+                        inner.unprepared(None, surface, page);
+                    }
                 }
-                Some(Err(error)) => inner.unprepared(Some(error), surface, page),
-                None => inner.unprepared(None, surface, page),
+                Some(Err(error)) if !inner.ahead_failed(ahead) => {
+                    inner.unprepared(Some(error), surface, page)
+                }
+                Some(Err(_)) => {}
+                None if !inner.ahead_failed(ahead) => inner.unprepared(None, surface, page),
+                None => {}
             },
         );
     }
@@ -189,18 +264,21 @@ impl<A: PlatformAdapter> Inner<A> {
         let mut image_buckets = Default::default();
         session.set_environment(value)?;
         session.set_animation_target(Some(request.surface), request.visible, now)?;
+        let (sample, ahead) = (request.sample, request.ahead);
         let generation = CommitTicket::new(session.generation().get() + 1);
         let caret = request.caret;
         let surface = request.surface;
         // A frame the target declines is a failed candidate: the session keeps its previous
         // commit (layout, viewport, generation) and the next attempt starts from it.
-        let prepared = session.prepare_view_animated(
+        let prepared = session.prepare_view_sampled(
             width,
             height,
             scale,
             request.rebuild,
             Some(&request.offsets),
             now,
+            sample,
+            ahead,
             |mut display| {
                 if !caret {
                     display.hide_caret();
@@ -248,7 +326,10 @@ impl<A: PlatformAdapter> Inner<A> {
             metrics.extend(extra.clone());
         }
         let generation = session.generation();
-        let feedback = crate::interaction::chrome::FeedbackStyle::for_palette(&session.renderer.palette, session.renderer.dark);
+        let feedback = crate::interaction::chrome::FeedbackStyle::for_palette(
+            &session.renderer.palette,
+            session.renderer.dark,
+        );
         let json = serde_json::json!({
             "generation": generation,
             "nodes": nodes,
@@ -273,6 +354,16 @@ impl<A: PlatformAdapter> Inner<A> {
             json,
         });
         Ok((Some((frame, snapshot)), update))
+    }
+
+    /// An ahead frame that will not present: the frame under it still waits for vsync.
+    fn ahead_failed(self: &Arc<Self>, ahead: bool) -> bool {
+        if ahead {
+            let mut main = self.main();
+            main.ahead = false;
+            main.dirty = true;
+        }
+        ahead
     }
 
     /// A frame that will not present: the next one must rebuild.
@@ -308,17 +399,36 @@ impl<A: PlatformAdapter> Inner<A> {
 
     pub(super) fn vsync(self: &Arc<Self>) {
         let vsync = Instant::now();
+        let at = self.adapter.now();
         let Some(prepared) = ({
             let mut main = self.main();
+            if let Some(last) = main.last_vsync
+                && let Some(delta) = at.checked_sub(last)
+                && delta > Duration::from_millis(4)
+                && delta < Duration::from_millis(50)
+            {
+                main.vsync_interval = (main.vsync_interval * 7 + delta) / 8;
+            }
+            main.last_vsync = Some(at);
             let prepared = main.prepared.take();
             if prepared.is_some() {
-                main.busy = false;
+                main.prepared = main.next_prepared.take();
+                main.busy = main.ahead || main.prepared.is_some();
             }
             prepared
         }) else {
             return;
         };
+        if self.main().prepared.is_some() {
+            self.adapter.request_vsync();
+        }
         let current = !self.main().disposed && self.lifecycle.is_current_surface(prepared.surface);
+        if !current {
+            let mut main = self.main();
+            main.prepared = None;
+            main.drop_ahead();
+            main.busy = main.deferred.is_some();
+        }
         let mut retry = false;
         if current {
             let Prepared {
@@ -363,6 +473,14 @@ impl<A: PlatformAdapter> Inner<A> {
             }
         }
         if retry {
+            // Frames built on the refused one cannot present either.
+            {
+                let mut main = self.main();
+                main.prepared = None;
+                main.drop_ahead();
+                main.busy = false;
+                main.dirty = true;
+            }
             // The target refused a frame; try again on a later display frame.
             let host = self.clone();
             self.adapter
@@ -375,6 +493,7 @@ impl<A: PlatformAdapter> Inner<A> {
         if pending {
             self.schedule();
         }
+        self.schedule_ahead();
     }
 
     pub(super) fn deferred_presented(self: &Arc<Self>, generation: CommitTicket, shown: bool) {
@@ -560,6 +679,7 @@ impl<A: PlatformAdapter> Inner<A> {
             let mut main = self.main();
             main.animation_timer += 1;
             main.animating = false;
+            main.drop_ahead();
         }
         let at = self.adapter.now();
         self.work(

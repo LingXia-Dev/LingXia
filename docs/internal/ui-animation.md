@@ -82,7 +82,14 @@ late frame samples current time and never replays missed frames; a page whose en
 overruns a vsync drops frames, never timing. Values that differ from what was presented
 force a catch-up frame. Removal, completion and teardown leave no timer. While the
 last wakeup was `NextFrame`, presenting queues the next prepare right behind the
-acknowledgement on the worker. An adapter whose `present` only queues a frame (CPU raster)
+acknowledgement on the worker, and once a frame is prepared the next one is prepared
+ahead while it waits for its vsync (at most one ahead, visible pages only, never while
+input waits). Every frame samples at its expected vsync (EMA of vsync deltas), so spacing
+stays even. A frame prepared ahead builds on the unpresented one as if it had presented
+at its sample time; acknowledgements arrive in order and a refused frame drops the one
+built on it. Commits of one layout stay valid for input, so a tap on the presented frame
+still dispatches while newer frames of that layout are queued; queued same-layout frames
+yield to a waiting activation. An adapter whose `present` only queues a frame (CPU raster)
 returns `Presenter::deferred` and calls `ViewHost::deferred_presented` once it is on
 screen; nothing prepares meanwhile, so each shown frame carries its own sample.
 

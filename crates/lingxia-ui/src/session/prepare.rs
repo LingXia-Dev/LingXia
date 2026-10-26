@@ -29,7 +29,7 @@ impl ViewSession {
         offsets: Option<&HashMap<String, f32>>,
         build: impl FnOnce(DisplayList) -> Result<T, String>,
     ) -> Result<T, String> {
-        self.prepare_native_visuals(
+        let frame = self.prepare_native_visuals(
             width,
             height,
             scale,
@@ -37,7 +37,11 @@ impl ViewSession {
             offsets,
             &mut FrameAnimations::Disabled,
             build,
-        )
+        )?;
+        // An unanimated frame replaces whatever animation candidates were waiting.
+        self.pending_animation = None;
+        self.presenting_animation = None;
+        Ok(frame)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -67,6 +71,15 @@ impl ViewSession {
         metrics.generation = self.generation.get();
         self.metrics = metrics;
         Ok(result)
+    }
+
+    /// Whether a presented frame's commit still names the current View: the latest commit,
+    /// or an earlier one of the same layout (frames prepared ahead repaint it, so its
+    /// handles and nodes are unchanged).
+    pub(crate) fn presented_commit(&self, generation: lifecycle::CommitTicket) -> bool {
+        generation == self.generation
+            || (self.layout_commit.get() <= generation.get()
+                && generation.get() <= self.generation.get())
     }
 
     /// Frames with the same revision share one retained layout: same nodes in the same
@@ -104,6 +117,7 @@ impl ViewSession {
         self.animations = candidate;
         if surface != self.animation_surface {
             self.pending_animation = None;
+            self.presenting_animation = None;
         }
         self.animation_surface = surface;
         Ok(())
@@ -138,6 +152,7 @@ impl ViewSession {
         )?;
         self.animations = timeline;
         self.pending_animation = Some((self.generation, surface, animation));
+        self.presenting_animation = None;
         Ok(frame)
     }
 
@@ -153,7 +168,39 @@ impl ViewSession {
         now: Duration,
         build: impl FnOnce(DisplayList) -> Result<T, String>,
     ) -> Result<T, String> {
+        self.prepare_view_sampled(
+            width, height, scale, rebuild, offsets, now, now, false, build,
+        )
+    }
+
+    /// Like `prepare_view_animated`, sampling at `sample` (when the frame is expected on
+    /// screen). With `ahead`, the frame builds on the newest unpresented frame instead of
+    /// replacing it; at most one frame may wait under it.
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_view_sampled<T>(
+        &mut self,
+        width: u16,
+        height: u16,
+        scale: f32,
+        rebuild: bool,
+        offsets: Option<&HashMap<String, f32>>,
+        now: Duration,
+        sample: Duration,
+        ahead: bool,
+        build: impl FnOnce(DisplayList) -> Result<T, String>,
+    ) -> Result<T, String> {
         let surface = self.animation_surface.ok_or("UI_ANIMATION: parked page")?;
+        let base = if ahead {
+            if self.presenting_animation.is_some() {
+                return Err("UI_ANIMATION: two frames already wait for presentation".into());
+            }
+            self.pending_animation
+                .as_ref()
+                .filter(|(_, s, _)| *s == surface)
+                .map(|(_, _, frame)| Box::new(frame.clone()))
+        } else {
+            None
+        };
         let mut timeline = self.animations.fork();
         // A zero scale already reads as reduced motion in the environment.
         let duration_scale = self.environment["animatorDurationScale"]
@@ -168,6 +215,8 @@ impl ViewSession {
             inventory: self.animation_inventory.clone(),
             timeline: Box::new(timeline),
             now,
+            sample,
+            base: base.clone(),
             frame: None,
             visible: Default::default(),
         };
@@ -193,7 +242,13 @@ impl ViewSession {
         self.animation_inventory = inventory;
         self.animations = *timeline;
         self.animation_visible = visible;
-        self.pending_animation = frame.map(|frame| (self.generation, surface, *frame));
+        let frame = frame.map(|frame| (self.generation, surface, *frame));
+        if base.is_some() && frame.is_some() {
+            self.presenting_animation = self.pending_animation.take();
+        } else {
+            self.presenting_animation = None;
+        }
+        self.pending_animation = frame;
         self.metrics.animation_frames = self.animations.frames_per_second(now);
         Ok(result)
     }
@@ -211,18 +266,30 @@ impl ViewSession {
         generation: lifecycle::CommitTicket,
         now: Duration,
     ) -> Result<bool, String> {
-        if self.animation_surface != Some(surface)
-            || self.generation != generation
-            || !self
-                .pending_animation
+        let matches = |candidate: &Option<(
+            lifecycle::CommitTicket,
+            lifecycle::SurfaceTicket,
+            crate::animation::Prepared,
+        )>| {
+            candidate
                 .as_ref()
                 .is_some_and(|(g, s, _)| *g == generation && *s == surface)
-        {
+        };
+        if self.animation_surface != Some(surface) {
             return Ok(false);
         }
+        // The older frame presents first; the newer one, built on it, stays pending.
+        let slot = if matches(&self.presenting_animation) {
+            &mut self.presenting_animation
+        } else if matches(&self.pending_animation) {
+            self.presenting_animation = None;
+            &mut self.pending_animation
+        } else {
+            return Ok(false);
+        };
         self.animations
-            .validate_presentation(&self.pending_animation.as_ref().unwrap().2, now)?;
-        let (_, _, frame) = self.pending_animation.take().unwrap();
+            .validate_presentation(&slot.as_ref().unwrap().2, now)?;
+        let (_, _, frame) = slot.take().unwrap();
         self.animations.presented(frame, now)?;
         Ok(true)
     }
@@ -518,11 +585,11 @@ impl ViewSession {
                 self.reveal_input = false;
                 self.pending_inputs = None;
                 self.commit_images(wanted);
-                if !self
+                let relaid = !self
                     .retained
                     .as_ref()
-                    .is_some_and(|old| Arc::ptr_eq(old, &retained))
-                {
+                    .is_some_and(|old| Arc::ptr_eq(old, &retained));
+                if relaid {
                     self.layout_revision += 1;
                 }
                 self.retained = Some(retained);
@@ -530,6 +597,9 @@ impl ViewSession {
                 self.viewport = Some((width, height, scale));
                 self.scroll_offsets = applied;
                 self.advance();
+                if relaid {
+                    self.layout_commit = self.generation;
+                }
                 Ok(frame)
             }
             Err(error) => {

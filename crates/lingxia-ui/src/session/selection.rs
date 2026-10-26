@@ -37,7 +37,7 @@ impl ViewSession {
         point: [f32; 2],
     ) -> Result<bool, String> {
         self.check_input_active()?;
-        if generation != self.generation || point.iter().any(|v| !v.is_finite()) {
+        if !self.presented_commit(generation) || point.iter().any(|v| !v.is_finite()) {
             return Ok(false);
         }
         let (Some(text), Some([x, y])) = (self.selectable(identity), self.local(identity, point))

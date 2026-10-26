@@ -15,6 +15,10 @@ pub(super) enum FrameAnimations<'a> {
         inventory: Inventory,
         timeline: Box<Timeline>,
         now: Duration,
+        /// When the frame is expected on screen.
+        sample: Duration,
+        /// The unpresented frame this one is prepared ahead of.
+        base: Option<Box<Prepared>>,
         frame: Option<Box<Prepared>>,
         visible: BTreeSet<String>,
     },
@@ -43,6 +47,8 @@ impl FrameAnimations<'_> {
                 inventory,
                 timeline,
                 now,
+                sample,
+                base,
                 frame,
                 visible,
             } => {
@@ -59,9 +65,11 @@ impl FrameAnimations<'_> {
                     .collect();
                 let preview = timeline.prepare_frame(
                     *now,
+                    *sample,
                     candidate.definitions(),
                     transitions.clone(),
                     realized.iter().map(String::as_str),
+                    base.as_deref(),
                 )?;
                 let mut recomposed = !preview.visuals().is_empty();
                 let base_visible = visible_nodes(&display, &realized);
@@ -74,11 +82,14 @@ impl FrameAnimations<'_> {
                     (preview, rendered)
                 } else {
                     recomposed = true;
+                    timeline.discard(&preview);
                     let prepared = timeline.prepare_frame(
                         *now,
+                        *sample,
                         candidate.definitions(),
                         transitions,
                         visible.iter().map(String::as_str),
+                        base.as_deref(),
                     )?;
                     let rendered = rendered
                         .retained

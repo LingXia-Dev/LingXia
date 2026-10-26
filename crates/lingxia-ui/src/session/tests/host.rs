@@ -59,6 +59,8 @@ struct Fake {
     pending: std::sync::atomic::AtomicBool,
     /// Presenting only queues the frame, as a CPU raster thread does.
     defer: std::sync::atomic::AtomicBool,
+    /// Simulated worker and UI-thread costs; frames present only once ready.
+    costs: Mutex<Option<Costs>>,
     /// Answers to the next `edit_text` calls; `Applied` once they run out.
     edit_outcomes: Mutex<std::collections::VecDeque<EditOutcome>>,
 }
@@ -86,6 +88,14 @@ impl Presenter for Fake {
         generation: CommitTicket,
     ) -> Result<Option<Encoded>, String> {
         self.log.lock().unwrap().generations.push(generation);
+        if let Some(costs) = self.costs.lock().unwrap().as_mut() {
+            // A worker job starts when the worker and the main thread that queued it are free.
+            let start = costs.worker_free.max(costs.main_free);
+            costs.worker_free = start + costs.worker;
+            costs
+                .ready
+                .push_back(costs.worker_free.max(costs.main_free));
+        }
         self.log
             .lock()
             .unwrap()
@@ -110,6 +120,16 @@ impl Presenter for Fake {
         }))
     }
     fn present(&self, frame: Encoded) -> Result<bool, String> {
+        if let Some(costs) = self.costs.lock().unwrap().as_mut() {
+            costs.ready.pop_front();
+            costs.main_free = *self.clock.lock().unwrap() + costs.ui;
+            if costs.decline > 0 {
+                costs.decline -= 1;
+                // Frames prepared on top of a refused one are dropped with it.
+                costs.ready.clear();
+                return Ok(false);
+            }
+        }
         let mut log = self.main();
         log.carets.push(frame.caret);
         log.presented.push(frame.texts);
@@ -269,6 +289,7 @@ impl Platform {
                 restart: false,
                 pending: Default::default(),
                 defer: Default::default(),
+                costs: Default::default(),
                 edit_outcomes: Default::default(),
             },
             worker.clone(),
@@ -1897,4 +1918,164 @@ fn a_tap_during_a_running_animation_dispatches_and_rebuilds_within_a_frame() {
         assert_eq!(last(&host), [format!("Count {round}")], "tap {round}");
         run_frames(&platform, &host, 5);
     }
+}
+
+#[derive(Default)]
+struct Costs {
+    worker: Duration,
+    ui: Duration,
+    worker_free: Duration,
+    main_free: Duration,
+    /// When each prepared frame can be taken by a vsync, in presentation order.
+    ready: std::collections::VecDeque<Duration>,
+    /// Refuse this many presentations.
+    decline: u32,
+}
+
+/// One display frame per 16.67 ms; a vsync presents only a frame that is ready by then.
+fn run_timed(platform: &Platform, host: &ViewHost<Fake>, frames: u32) {
+    let frame = Duration::from_micros(16_667);
+    for _ in 0..frames {
+        let now = {
+            let mut clock = host.adapter().clock.lock().unwrap();
+            *clock += frame;
+            *clock
+        };
+        platform.advance(frame);
+        let mut vsynced = false;
+        loop {
+            for worker in &platform.workers {
+                let (done, wait) = channel();
+                worker.run_background(move |_| {
+                    let _ = done.send(());
+                });
+                wait.recv_timeout(Duration::from_secs(30)).unwrap();
+            }
+            let mut ran = false;
+            while let Ok(task) = platform.tasks.try_recv() {
+                task();
+                ran = true;
+            }
+            let ready = host
+                .adapter()
+                .costs
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_none_or(|costs| costs.ready.front().is_some_and(|at| *at <= now));
+            if !vsynced && ready && std::mem::take(&mut host.adapter().log.lock().unwrap().vsync) {
+                host.vsync();
+                vsynced = true;
+                ran = true;
+            }
+            if !ran {
+                break;
+            }
+        }
+    }
+}
+
+fn costly_spinner(platform: &Platform, worker: &Arc<ViewWorker>, ahead: bool) -> ViewHost<Fake> {
+    let host = platform.host(
+        worker,
+        &source(&format!(
+            "function render(){{const n=useLocal('n',0);return h('column',{{}},h('button',{{onClick:()=>n.set(n.value+1),style:{{height:60}}}},`Count ${{n.value}}`),h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
+        )),
+        false,
+    );
+    if !ahead {
+        host.disable_frames_ahead();
+    }
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    *host.adapter().costs.lock().unwrap() = Some(Costs {
+        worker: Duration::from_millis(11),
+        ui: Duration::from_millis(7),
+        worker_free: *host.adapter().clock.lock().unwrap(),
+        ..Default::default()
+    });
+    host
+}
+
+#[test]
+fn frames_prepared_ahead_keep_display_rate_when_one_frame_costs_more_than_an_interval() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    // 11 ms on the worker after 7 ms of UI-thread presenting misses every other vsync.
+    let serial = costly_spinner(&platform, &worker, false);
+    run_timed(&platform, &serial, 30);
+    let start = presents(&serial);
+    run_timed(&platform, &serial, 60);
+    let rate = presents(&serial) - start;
+    assert!((28..=32).contains(&rate), "one frame at a time: {rate}/s");
+    serial.set_visible(false);
+    platform.settle(&[&serial]);
+
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let ahead = costly_spinner(&platform, &worker, true);
+    run_timed(&platform, &ahead, 30);
+    let start = presents(&ahead);
+    run_timed(&platform, &ahead, 60);
+    let rate = presents(&ahead) - start;
+    assert!(rate >= 58, "prepared ahead: {rate}/s");
+    // Taps still dispatch and rebuild within a frame of the frame already on its way.
+    for round in 1..=3 {
+        tap(&ahead, 20.0, 20.0);
+        run_timed(&platform, &ahead, 2);
+        assert_eq!(last(&ahead), [format!("Count {round}")], "tap {round}");
+        run_timed(&platform, &ahead, 5);
+    }
+    // Hidden: nothing prepares ahead or presents.
+    ahead.set_visible(false);
+    platform.settle(&[&ahead]);
+    let hidden = presents(&ahead);
+    run_timed(&platform, &ahead, 30);
+    assert_eq!(presents(&ahead), hidden);
+}
+
+#[test]
+fn a_refused_frame_drops_the_frame_prepared_on_top_of_it() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = costly_spinner(&platform, &worker, true);
+    run_timed(&platform, &host, 20);
+    let presented = presents(&host);
+    let prepared = *host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .generations
+        .last()
+        .unwrap();
+    host.adapter()
+        .costs
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .decline = 1;
+    let refused = host.snapshot().unwrap().generation;
+    // The first frame shown after the refusal was prepared after it, not on top of it.
+    let mut frames = 0;
+    while host.snapshot().unwrap().generation == refused {
+        run_timed(&platform, &host, 1);
+        frames += 1;
+        assert!(frames < 10, "presentation did not recover");
+    }
+    let shown = host.snapshot().unwrap().generation;
+    assert!(shown.get() > prepared.get(), "{prepared:?} {shown:?}");
+    run_timed(&platform, &host, 30);
+    assert!(presents(&host) >= presented + 30, "the pipeline resumes");
+    let generations: Vec<u64> = host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .generations
+        .iter()
+        .map(|g| g.get())
+        .collect();
+    assert!(generations.windows(2).all(|w| w[0] < w[1]));
 }

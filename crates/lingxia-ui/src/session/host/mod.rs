@@ -221,6 +221,17 @@ struct Main<F> {
     prepared: Option<pump::Prepared<F>>,
     /// A frame handed to the adapter that is not on screen yet.
     deferred: Option<pump::Deferred>,
+    /// A frame prepared ahead, while `prepared` waits for its vsync, is in flight.
+    ahead: bool,
+    /// An ahead frame that finished before the frame under it presented.
+    next_prepared: Option<pump::Prepared<F>>,
+    /// Bumped to drop ahead frames built on a frame that will not present.
+    ahead_epoch: u64,
+    /// Host time of the last vsync and the display interval estimate.
+    last_vsync: Option<Duration>,
+    vsync_interval: Duration,
+    #[cfg(test)]
+    no_frames_ahead: bool,
     failure: Option<Failure>,
     styled_press: Option<String>,
     caret: Caret,
@@ -243,6 +254,51 @@ struct Main<F> {
     telemetry: telemetry::Telemetry,
     text_menu: text_menu::MenuState,
     edits: edits::Edits,
+}
+
+impl<F> Main<F> {
+    /// Forget frames prepared ahead: what they build on will not present.
+    fn drop_ahead(&mut self) {
+        self.next_prepared = None;
+        self.ahead = false;
+        self.ahead_epoch += 1;
+    }
+
+    /// Input waits only for frames that change the View: animation frames still queued for
+    /// the presented layout are dropped so the activation runs now. Their commits belong
+    /// to that layout, which the session still accepts.
+    fn yield_to_input(&mut self) {
+        let layout = self.snapshot.as_ref().and_then(|s| s.frame.layout);
+        let same = |frame: &Option<pump::Prepared<F>>| {
+            frame
+                .as_ref()
+                .is_none_or(|frame| layout.is_some() && frame.layout() == layout)
+        };
+        if self.deferred.is_none()
+            && (self.prepared.is_some() || self.ahead)
+            && same(&self.prepared)
+            && same(&self.next_prepared)
+        {
+            self.prepared = None;
+            self.drop_ahead();
+            self.busy = false;
+        }
+    }
+
+    /// When a frame queued behind `queued` others should show: sampling there keeps
+    /// pipelined frames evenly spaced.
+    fn expected_vsync(&self, now: Duration, queued: u32) -> Duration {
+        let Some(last) = self.last_vsync else {
+            return now;
+        };
+        let interval = self.vsync_interval.max(Duration::from_millis(1));
+        let mut next = last + interval;
+        if next <= now {
+            let behind = (now - next).as_nanos() / interval.as_nanos() + 1;
+            next += interval * u32::try_from(behind).unwrap_or(u32::MAX);
+        }
+        next + interval * queued
+    }
 }
 
 impl<A: PlatformAdapter> Drop for Inner<A> {
@@ -281,6 +337,13 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     snapshot: None,
                     prepared: None,
                     deferred: None,
+                    ahead: false,
+                    next_prepared: None,
+                    ahead_epoch: 0,
+                    last_vsync: None,
+                    vsync_interval: Duration::from_micros(16_667),
+                    #[cfg(test)]
+                    no_frames_ahead: false,
                     failure: None,
                     styled_press: None,
                     caret: Caret::default(),
@@ -410,6 +473,12 @@ impl<A: PlatformAdapter> ViewHost<A> {
     /// Present again without rerunning the View.
     pub fn redraw(&self) {
         self.inner.schedule();
+    }
+
+    /// Prepare at most one frame at a time, as before frames could be prepared ahead.
+    #[cfg(test)]
+    pub(crate) fn disable_frames_ahead(&self) {
+        self.inner.main().no_frames_ahead = true;
     }
 
     /// The display frame requested through `FrameScheduler::request_vsync`.
@@ -890,6 +959,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.snapshot = None;
             main.prepared = None;
             main.deferred = None;
+            main.drop_ahead();
             main.busy = false;
             main.dirty = true;
             main.caret.stop();
@@ -949,6 +1019,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.snapshot = None;
             main.prepared = None;
             main.deferred = None;
+            main.drop_ahead();
             main.busy = false;
             main.dirty = true;
             main.caret.stop();
@@ -988,6 +1059,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.bootstrap_timer += 1;
             main.prepared = None;
             main.deferred = None;
+            main.drop_ahead();
             main.caret.stop();
             let effects = main.interaction.cancel_all();
             let cancelled = main.images.inflight_tokens();

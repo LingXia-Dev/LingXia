@@ -96,11 +96,13 @@ struct Instance {
     started: Option<Duration>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Prepared {
     owner: Arc<()>,
     ticket: u64,
     prepared_at: Duration,
+    /// Active time this frame sampled; a frame prepared ahead assumes its starts here.
+    elapsed: Duration,
     /// Prepared while parked: its acknowledgement commits state but starts no time.
     visible: bool,
     instances: BTreeMap<String, Instance>,
@@ -150,7 +152,9 @@ pub struct Timeline {
     observed_at: Duration,
     elapsed: Duration,
     ticket: u64,
-    pending: Option<u64>,
+    /// Tickets of prepared frames awaiting presentation, oldest first; a frame prepared
+    /// ahead of an unpresented one builds on it and queues behind it.
+    pending: std::collections::VecDeque<u64>,
     instances: BTreeMap<String, Instance>,
     transitions: transition::Transitions,
     motion: Motion,
@@ -186,7 +190,7 @@ impl Timeline {
             observed_at: self.observed_at,
             elapsed: self.elapsed,
             ticket: self.ticket,
-            pending: self.pending,
+            pending: self.pending.clone(),
             instances: self.instances.clone(),
             transitions: self.transitions.clone(),
             motion: self.motion,
@@ -330,7 +334,7 @@ impl Timeline {
             .ticket
             .checked_add(1)
             .ok_or("UI_ANIMATION: exhausted frame tickets")?;
-        self.pending = None;
+        self.pending.clear();
         Ok(())
     }
 
@@ -351,7 +355,7 @@ impl Timeline {
         now: Duration,
         definitions: impl IntoIterator<Item = (String, Definition)>,
     ) -> Result<Prepared, String> {
-        self.prepare_window(now, definitions, Vec::new(), None)
+        self.prepare_window(now, now, definitions, Vec::new(), None, None)
     }
 
     /// Definitions describe semantic lifetime, including offscreen list items.
@@ -371,17 +375,22 @@ impl Timeline {
                 return Err("UI_ANIMATION: duplicate visible identity".into());
             }
         }
-        self.prepare_window(now, definitions, Vec::new(), Some(visible))
+        self.prepare_window(now, now, definitions, Vec::new(), Some(visible), None)
     }
 
     /// Like `prepare_visible`, also reconciling transitions against each node's resolved paint.
     /// A visible identity needs a keyframe definition or a transition.
+    /// `sample` (≥ `now`) is when the frame is expected on screen. With `base`, the frame
+    /// builds on that unpresented frame, as if it had presented at its own sample time.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn prepare_frame<'a>(
         &mut self,
         now: Duration,
+        sample: Duration,
         definitions: impl IntoIterator<Item = (String, Definition)>,
         transitions: Vec<(String, transition::TransitionDef, transition::Resolved)>,
         visible_identities: impl IntoIterator<Item = &'a str>,
+        base: Option<&Prepared>,
     ) -> Result<Prepared, String> {
         let mut visible = std::collections::BTreeSet::new();
         for identity in visible_identities {
@@ -392,18 +401,41 @@ impl Timeline {
                 return Err("UI_ANIMATION: duplicate visible identity".into());
             }
         }
-        self.prepare_window(now, definitions, transitions, Some(visible))
+        self.prepare_window(now, sample, definitions, transitions, Some(visible), base)
     }
 
     fn prepare_window(
         &mut self,
         now: Duration,
+        sample: Duration,
         definitions: impl IntoIterator<Item = (String, Definition)>,
         transitions: Vec<(String, transition::TransitionDef, transition::Resolved)>,
         mut visible: Option<std::collections::BTreeSet<String>>,
+        base: Option<&Prepared>,
     ) -> Result<Prepared, String> {
-        let elapsed = self.time_at(now)?;
-        let transitions = self.transitions.reconcile(
+        self.time_at(now)?;
+        let elapsed = self.time_at(sample.max(now))?;
+        let base = match base {
+            Some(base)
+                if self.visible && base.visible && self.pending.back() == Some(&base.ticket) =>
+            {
+                let mut assumed = base.clone();
+                for (identity, instance) in &mut assumed.instances {
+                    if assumed.samples.contains_key(identity) {
+                        instance.started.get_or_insert(assumed.elapsed);
+                    }
+                }
+                assumed.transitions.start(assumed.elapsed);
+                Some(assumed)
+            }
+            Some(_) => return Err("UI_ANIMATION: stale frame to build on".into()),
+            None => None,
+        };
+        let (old_instances, old_transitions) = match &base {
+            Some(base) => (&base.instances, &base.transitions),
+            None => (&self.instances, &self.transitions),
+        };
+        let transitions = old_transitions.reconcile(
             transitions,
             elapsed,
             transition::Policy {
@@ -433,8 +465,7 @@ impl Timeline {
             if instances.contains_key(&identity) {
                 return Err("UI_ANIMATION: duplicate identity".into());
             }
-            let started = self
-                .instances
+            let started = old_instances
                 .get(&identity)
                 .filter(|old| old.definition == definition)
                 .and_then(|old| old.started);
@@ -476,18 +507,33 @@ impl Timeline {
                     .transition = overrides;
             }
         }
-        self.invalidate()?;
-        self.pending = Some(self.ticket);
+        if base.is_some() {
+            self.ticket = self
+                .ticket
+                .checked_add(1)
+                .ok_or("UI_ANIMATION: exhausted frame tickets")?;
+        } else {
+            self.invalidate()?;
+        }
+        self.pending.push_back(self.ticket);
         Ok(Prepared {
             owner: self.owner.clone(),
             ticket: self.ticket,
             prepared_at: now,
+            elapsed,
             visible: self.visible,
             instances,
             transitions,
             samples,
             visuals,
         })
+    }
+
+    /// Forget a prepared frame that will not be presented, if it is the newest.
+    pub(crate) fn discard(&mut self, frame: &Prepared) {
+        if self.pending.back() == Some(&frame.ticket) {
+            self.pending.pop_back();
+        }
     }
 
     pub(crate) fn validate_presentation(
@@ -497,7 +543,7 @@ impl Timeline {
     ) -> Result<Duration, String> {
         if !Arc::ptr_eq(&self.owner, &frame.owner)
             || self.visible != frame.visible
-            || self.pending != Some(frame.ticket)
+            || !self.pending.contains(&frame.ticket)
             || now < frame.prepared_at
         {
             return Err("UI_ANIMATION: stale or hidden presentation".into());
@@ -529,7 +575,12 @@ impl Timeline {
         self.instances = frame.instances;
         self.transitions = frame.transitions;
         self.visuals = frame.visuals;
-        self.pending = None;
+        // Frames queued before this one can no longer present.
+        while self
+            .pending
+            .pop_front()
+            .is_some_and(|ticket| ticket != frame.ticket)
+        {}
         self.elapsed = elapsed;
         self.observed_at = now;
         Ok(())
