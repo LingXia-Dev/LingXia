@@ -1,5 +1,5 @@
 // Generated from packages/lingxia-ui/contracts/schema.json; do not edit.
-// The frame contract every Apple platform decodes: snapshot = FrameSnapshot, semanticNode = SemanticNode, automationRequest = AutomationRequest, automationElement = AutomationElement, automationQueryAll = AutomationQueryAll, automationTree = AutomationTree, automationFrame = AutomationFrame.
+// The frame contract every Apple platform decodes: snapshot = FrameSnapshot, semanticNode = SemanticNode, automationRequest = AutomationRequest, automationElement = AutomationElement, automationQueryAll = AutomationQueryAll, automationTree = AutomationTree, automationFrame = AutomationFrame, inputReply = InputReply, copySelection = CopyReply, semanticRoots = SemanticRoots, textMenu = TextMenu.
 import Foundation
 
 /// Any JSON value, for contract fields typed `any`.
@@ -60,6 +60,16 @@ public enum GpuFrameReturnKey: String, Sendable {
 public enum GpuFramePickerKind: String, Sendable {
     case date = "date"
     case time = "time"
+}
+
+/// `MenuAction` values.
+public enum GpuFrameMenuAction: String, Sendable {
+    case cut = "cut"
+    case copy = "copy"
+    case paste = "paste"
+    case selectAll = "select_all"
+    case undo = "undo"
+    case redo = "redo"
 }
 
 /// `FrameSnapshot` in the frame contract.
@@ -862,5 +872,89 @@ public struct GpuFrameAutomationTreeNode: Decodable, Sendable {
         case value = "value"
         case scroll = "scroll"
         case children = "children"
+    }
+}
+
+/// `InputReply` in the frame contract.
+public struct GpuFrameInputReply: Decodable, Sendable {
+    public let token: UInt64?
+    public let state: GpuFrameEditorState?
+    public let needsViewRender: Bool?
+    public let movedTo: String?
+    public let selection: [UInt32]?
+    public let value: String?
+
+    enum CodingKeys: String, CodingKey {
+        case token = "token"
+        case state = "state"
+        case needsViewRender = "needs_view_render"
+        case movedTo = "moved_to"
+        case selection = "selection"
+        case value = "value"
+    }
+}
+
+/// `EditorState` in the frame contract.
+public struct GpuFrameEditorState: Decodable, Sendable {
+    public let text: String
+    public let selection: [UInt32]
+    public let composition: [UInt32]?
+    public let focused: Bool
+    public let canUndo: Bool
+    public let canRedo: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case text = "text"
+        case selection = "selection"
+        case composition = "composition"
+        case focused = "focused"
+        case canUndo = "can_undo"
+        case canRedo = "can_redo"
+    }
+}
+
+/// `CopyReply` in the frame contract.
+public struct GpuFrameCopyReply: Decodable, Sendable {
+    public let text: String?
+
+    enum CodingKeys: String, CodingKey {
+        case text = "text"
+    }
+}
+
+/// `SemanticRoots` in the frame contract.
+public struct GpuFrameSemanticRoots: Decodable, Sendable {
+    public let roots: [UInt32]
+    public let inputFocus: UInt32?
+    public let accessibilityFocus: UInt32?
+
+    enum CodingKeys: String, CodingKey {
+        case roots = "roots"
+        case inputFocus = "inputFocus"
+        case accessibilityFocus = "accessibilityFocus"
+    }
+}
+
+/// `TextMenu` in the frame contract.
+public struct GpuFrameTextMenu: Decodable, Sendable {
+    public let target: GpuFrameTextMenuTarget
+    public let anchor: [Float]
+    public let actions: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case target = "target"
+        case anchor = "anchor"
+        case actions = "actions"
+    }
+}
+
+/// `TextMenuTarget` in the frame contract.
+public struct GpuFrameTextMenuTarget: Decodable, Sendable {
+    public let kind: String
+    public let identity: String?
+
+    enum CodingKeys: String, CodingKey {
+        case kind = "kind"
+        case identity = "identity"
     }
 }

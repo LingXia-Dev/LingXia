@@ -77,6 +77,8 @@ public class GpuFrameVectorsTest {
         seen.clear();
     }
 
+    @org.junit.Before public void forgetEarlierReads() { seen.clear(); }
+
     @Test public void snapshotDecodesEveryField() throws Exception {
         GpuFrame.FrameSnapshot snapshot = new GpuFrame.FrameSnapshot(record(vectors().getJSONObject("snapshot")));
         walk(snapshot);
@@ -114,5 +116,28 @@ public class GpuFrameVectorsTest {
             }
         }
         assertAllRead();
+    }
+
+    @Test public void inputRepliesCopyRootsAndTextMenuDecodeEveryField() throws Exception {
+        JSONObject vectors = vectors();
+        JSONArray replies = vectors.getJSONArray("inputReplies");
+        boolean token = false, selection = false;
+        for (int i = 0; i < replies.length(); i++) {
+            walk(new GpuFrame.InputReply(record(replies.getJSONObject(i))));
+            GpuFrame.InputReply reply = new GpuFrame.InputReply(replies.getJSONObject(i));
+            token |= reply.token() != null && reply.state() != null && reply.state().focused();
+            selection |= reply.selection() != null && reply.selection().length == 2;
+        }
+        assertTrue("a focus or edit reply carries its token and state", token);
+        assertTrue("a hit test reply carries its selection", selection);
+        walk(new GpuFrame.CopyReply(record(vectors.getJSONObject("copySelection"))));
+        walk(new GpuFrame.SemanticRoots(record(vectors.getJSONObject("semanticRoots"))));
+        walk(new GpuFrame.TextMenu(record(vectors.getJSONObject("textMenu"))));
+        assertAllRead();
+        assertTrue(new GpuFrame.SemanticRoots(vectors.getJSONObject("semanticRoots")).roots().length > 0);
+        GpuFrame.TextMenu menu = new GpuFrame.TextMenu(vectors.getJSONObject("textMenu"));
+        assertEquals(GpuFrame.TEXT_MENU_TARGET_EDITOR, menu.target().kind());
+        assertEquals(GpuFrame.MENU_ACTION_SELECT_ALL, menu.actions()[0]);
+        assertEquals(4, menu.anchor().length);
     }
 }

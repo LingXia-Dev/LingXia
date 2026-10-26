@@ -290,8 +290,8 @@
     {"name": "line-strong", "on": {"surface": 3, "canvas": 3}, "doc": "Interactive boundaries: editor borders and control outlines."}
   ],
   "frame": {
-    "doc": "Every message the core hands a platform adapter: the presented frame snapshot, semantic nodes and automation exchanges. Type grammar: string, bool, u8, u32, u64, i64, usize, f32, f64, any; T? may be absent or null; T[] is a list; T[n] a fixed list; other names refer to types below.",
-    "messages": {"snapshot": "FrameSnapshot", "semanticNode": "SemanticNode", "automationRequest": "AutomationRequest", "automationElement": "AutomationElement", "automationQueryAll": "AutomationQueryAll", "automationTree": "AutomationTree", "automationFrame": "AutomationFrame"},
+    "doc": "Every message the core hands a platform adapter: the presented frame snapshot, semantic nodes, automation exchanges, input-protocol replies and the text menu. Type grammar: string, bool, u8, u32, u64, i64, usize, f32, f64, any; T? may be absent or null; T[] is a list; T[n] a fixed list; other names refer to types below.",
+    "messages": {"snapshot": "FrameSnapshot", "semanticNode": "SemanticNode", "automationRequest": "AutomationRequest", "automationElement": "AutomationElement", "automationQueryAll": "AutomationQueryAll", "automationTree": "AutomationTree", "automationFrame": "AutomationFrame", "inputReply": "InputReply", "copySelection": "CopyReply", "semanticRoots": "SemanticRoots", "textMenu": "TextMenu"},
     "types": {
       "FrameSnapshot": {"generation": "u64", "nodes": "Node[]", "images": "ImageSource[]", "metrics": "FrameMetrics", "feedback": "FeedbackStyle"},
       "ImageSource": {"source": "string", "retry_key": "string"},
@@ -330,7 +330,14 @@
       "EvalTimes": {"last": "f64", "max": "f64"},
       "AutomationRect": {"left": "f32", "top": "f32", "width": "f32", "height": "f32", "right": "f32", "bottom": "f32", "center_x": "f32", "center_y": "f32", "viewport_width": "f32", "viewport_height": "f32"},
       "AutomationTree": {"renderer": "string", "nodes": "AutomationTreeNode[]"},
-      "AutomationTreeNode": {"role": "string", "name": "string", "testId": "string?", "bounds": "f32[4]", "disabled": "bool?", "focused": "bool?", "offscreen": "bool?", "checked": "bool?", "pressed": "bool?", "selected": "bool?", "expanded": "bool?", "busy": "bool?", "level": "u8?", "value": "any?", "scroll": "f32[2]?", "children": "AutomationTreeNode[]?"}
+      "AutomationTreeNode": {"role": "string", "name": "string", "testId": "string?", "bounds": "f32[4]", "disabled": "bool?", "focused": "bool?", "offscreen": "bool?", "checked": "bool?", "pressed": "bool?", "selected": "bool?", "expanded": "bool?", "busy": "bool?", "level": "u8?", "value": "any?", "scroll": "f32[2]?", "children": "AutomationTreeNode[]?"},
+      "InputReply": {"token": "u64?", "state": "EditorState?", "needs_view_render": "bool?", "moved_to": "string?", "selection": "u32[2]?", "value": "string?"},
+      "EditorState": {"text": "string", "selection": "u32[2]", "composition": "u32[2]?", "focused": "bool", "can_undo": "bool", "can_redo": "bool"},
+      "CopyReply": {"text": "string?"},
+      "SemanticRoots": {"roots": "u32[]", "inputFocus": "u32?", "accessibilityFocus": "u32?"},
+      "TextMenu": {"target": "TextMenuTarget", "anchor": "f32[4]", "actions": "MenuAction[]"},
+      "TextMenuTarget": {"tagged": "kind", "variants": {"text": {"identity": "string"}, "editor": {"identity": "string"}}},
+      "MenuAction": {"enum": ["cut", "copy", "paste", "select_all", "undo", "redo"]}
     }
   },
   "environment": {
