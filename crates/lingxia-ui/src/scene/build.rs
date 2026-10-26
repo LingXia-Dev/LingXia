@@ -1,7 +1,7 @@
 //! Paint commands and node snapshots built from resolved layout.
 use crate::layout::Renderer;
 use crate::layout::style::*;
-use crate::protocol::{Record, color, field, tag};
+use crate::protocol::{Record, field, tag};
 use crate::scene::node::*;
 use crate::scene::paint::*;
 use crate::scene::retained::*;
@@ -55,6 +55,8 @@ impl Renderer {
         (width, height, scale): (u16, u16, f32),
     ) -> Result<RetainedLayout, String> {
         let colors: Vec<&str> = styles.iter().map(|style| style.color.as_str()).collect();
+        let dark = self.dark;
+        let color = |value: &str| crate::protocol::themed_color(value, dark);
         let button_owners = &groups.owners;
         let button_hashes = &groups.content;
         let mut commands = Vec::new();

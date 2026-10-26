@@ -64,18 +64,25 @@ pub(crate) fn focus_style(value: &Value) -> Result<Vec<(usize, Value)>, String> 
     Ok(super::decode(&record)?.remove(0).fields)
 }
 
+/// A wire color; default tokens resolve to their light value.
 pub fn color(value: &str) -> Result<[u8; 4], String> {
-    let hex = match value {
-        "background" => "f6f7fb",
-        "surface" => "ffffff",
-        "text" => "172033",
-        "textMuted" => "596579",
-        "primary" => "365cdd",
-        "primaryText" => "ffffff",
-        "danger" => "c93434",
-        "border" => "dce1ec",
-        "accent" => "0b877d",
-        value => value.strip_prefix('#').ok_or("UI_COLOR: unknown token")?,
+    themed_color(value, false)
+}
+
+/// A wire color with default tokens resolved for the page theme.
+pub fn themed_color(value: &str, dark: bool) -> Result<[u8; 4], String> {
+    let hex = match super::DEFAULT_COLORS
+        .iter()
+        .find(|(token, ..)| *token == value)
+    {
+        Some((_, light, night)) => {
+            if dark {
+                night
+            } else {
+                light
+            }
+        }
+        None => value.strip_prefix('#').ok_or("UI_COLOR: unknown token")?,
     };
     if !matches!(hex.len(), 6 | 8) {
         return Err("UI_COLOR: expected #rrggbb or #rrggbbaa".into());

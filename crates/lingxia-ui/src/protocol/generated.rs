@@ -438,6 +438,19 @@ pub mod limits {
     pub const TRANSITION_MS: usize = 10000;
 }
 
+/// Colors of unstyled elements as (token, light, dark), until the theme system supplies them.
+pub const DEFAULT_COLORS: &[(&str, &str, &str)] = &[
+    ("background", "f6f7fb", "0f131a"),
+    ("surface", "ffffff", "1a1f2b"),
+    ("text", "172033", "e6e9f0"),
+    ("textMuted", "596579", "9aa3b5"),
+    ("primary", "365cdd", "4a6cf0"),
+    ("primaryText", "ffffff", "ffffff"),
+    ("danger", "c93434", "f06565"),
+    ("border", "dce1ec", "2e3646"),
+    ("accent", "0b877d", "2bb3a6"),
+];
+
 /// What a wire tag may contain.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Children {

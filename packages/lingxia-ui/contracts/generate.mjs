@@ -30,6 +30,8 @@ function validate(schema) {
   }
   for (const name of limitNames)
     if (!Number.isSafeInteger(schema.limits?.[name]) || schema.limits[name] <= 0) throw Error(`schema.json: missing limit ${name}`);
+  for (const [token, pair] of Object.entries(schema.defaultColors ?? {}))
+    if (!Array.isArray(pair) || pair.length !== 2 || pair.some(c => !/^#[0-9a-f]{6}$/.test(c))) throw Error(`schema.json: default color ${token} needs a light and dark #rrggbb`);
   const admitted = Object.keys(schema.admission ?? {});
   if (admitted.join() !== schema.tags.join()) throw Error('schema.json: admission must list every tag in tag order');
   for (const [tag, entry] of Object.entries(schema.admission)) {
@@ -91,6 +93,11 @@ ${options}
 pub mod limits {
 ${limits}
 }
+
+/// Colors of unstyled elements as (token, light, dark), until the theme system supplies them.
+pub const DEFAULT_COLORS: &[(&str, &str, &str)] = &[
+${Object.entries(schema.defaultColors).map(([token, [light, dark]]) => `    (${JSON.stringify(token)}, ${JSON.stringify(light.slice(1))}, ${JSON.stringify(dark.slice(1))}),`).join('\n')}
+];
 
 /// What a wire tag may contain.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

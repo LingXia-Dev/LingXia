@@ -7,13 +7,13 @@ mod values;
 #[rustfmt::skip]
 mod generated;
 pub use generated::{
-    Children, FIELD_ADMISSION, FIELDS, FieldAdmission, TAG_ADMISSION, TAGS, TagAdmission, UI_ABI,
+    Children, DEFAULT_COLORS, FIELD_ADMISSION, FIELDS, FieldAdmission, TAG_ADMISSION, TAGS, TagAdmission, UI_ABI,
     field, limits, options, tag,
 };
 
 pub(crate) use decode::MAX_BUFFER_VALUES;
 pub use decode::decode;
-pub use values::color;
+pub use values::{color, themed_color};
 pub(crate) use values::{flex_basis, focus_style, length_or_percent};
 
 /// Absolute dimension fields paired with their percentage forms.

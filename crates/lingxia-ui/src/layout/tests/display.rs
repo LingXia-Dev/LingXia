@@ -94,3 +94,44 @@ fn current_color_backgrounds_follow_the_text_color() {
     let pixels = display.rasterize().unwrap().pixels;
     assert_eq!(&pixels.data_as_u8_slice()[..4], &[0, 255, 0, 255]);
 }
+
+#[test]
+fn unstyled_defaults_follow_the_page_theme() {
+    use crate::scene::paint::Paint;
+    let source = crate::session::tests::source(
+        "function render(){return h('column',{},h('text',{testId:'t'},'Hi'),h('button',{testId:'b',onClick(){}},'Go'))}",
+    );
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    let paints = |page: &mut crate::ViewSession, theme: &str| {
+        page.set_environment(serde_json::json!({"theme":theme,"insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"runner":false}))
+            .unwrap();
+        let display = page.layout(200, 200, 1.0).unwrap();
+        let of = |id: &str| {
+            let index = display.nodes.iter().position(|n| n.test_id == id).unwrap();
+            display.retained.commands[display.retained.ranges[index].clone()].to_vec()
+        };
+        let rect = |paints: &[Paint]| {
+            paints.iter().find_map(|p| match p {
+                Paint::Rect { color, .. } => Some(*color),
+                _ => None,
+            })
+        };
+        let text = |paints: &[Paint]| {
+            paints.iter().find_map(|p| match p {
+                Paint::Text { color, .. } => Some(*color),
+                _ => None,
+            })
+        };
+        let root = display.retained.commands[display.retained.ranges[0].clone()].to_vec();
+        (rect(&root), text(&of("t")), rect(&of("b")))
+    };
+    let themed =
+        |token: &str, dark: bool| Some(crate::protocol::themed_color(token, dark).unwrap());
+    for dark in [false, true] {
+        let (root, text, button) = paints(&mut page, if dark { "dark" } else { "light" });
+        assert_eq!(root, themed("background", dark), "root, dark={dark}");
+        assert_eq!(text, themed("text", dark), "text, dark={dark}");
+        assert_eq!(button, themed("primary", dark), "button, dark={dark}");
+    }
+    assert_ne!(themed("background", false), themed("background", true));
+}

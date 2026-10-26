@@ -52,6 +52,11 @@ impl ViewSession {
             self.input_dirty = true;
             crate::layout::list_layout::invalidate_measurements(&mut self.lists);
         }
+        let dark = value["theme"] == "dark";
+        if self.renderer.dark != dark {
+            self.renderer.dark = dark;
+            self.retained = None;
+        }
         let text_scale = crate::text::scale::TextScale::decode(value.get("textScale"))?;
         if self.renderer.text_scale != text_scale {
             self.renderer.text_scale = text_scale;

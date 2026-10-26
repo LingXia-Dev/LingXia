@@ -28,6 +28,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `lineHeight` is a multiplier. Each element accepts only styles it renders.
 - RTL: use `ps`/`ms`/`start-`/`text-start` etc.; they mirror with `env.direction` (from the
   display language) or a `dir` prop. Mirror icons with `rtl:-scale-x-100`.
+- Unstyled pages, text, buttons and editors take light or dark default colors from `env.theme`.
 - Supported variants: `dark:`, `rtl:`/`ltr:`, `first:`/`last:`/`odd:`/`even:`/`only:`/`empty:`, `sm:`–`2xl:`, `focus:` (editors), `active:`
   (controls), `hover:` (fine pointers), `disabled:`, `placeholder:`,
   `space-*`/`divide-*`. `*:`, `**:`, `in-*:`, `group-*:`, `peer-*:` fail naming the TS-side form.

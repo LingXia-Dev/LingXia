@@ -246,6 +246,7 @@
     "actions": ["copy", "set-selection"],
     "keys": {"headingLevel": "heading_level", "liveRegion": "live_region", "position": "position", "textSelection": "text_selection", "selectable": "selectable"}
   },
+  "defaultColors": {"background": ["#f6f7fb", "#0f131a"], "surface": ["#ffffff", "#1a1f2b"], "text": ["#172033", "#e6e9f0"], "textMuted": ["#596579", "#9aa3b5"], "primary": ["#365cdd", "#4a6cf0"], "primaryText": ["#ffffff", "#ffffff"], "danger": ["#c93434", "#f06565"], "border": ["#dce1ec", "#2e3646"], "accent": ["#0b877d", "#2bb3a6"]},
   "styleGroups": {"accent": ["color"], "run": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "textDecorationLine", "fontVariantNumeric", "backgroundColor"]},
   "style": {
     "width": {"type": "number | `${number}%` | `${number}vw` | `${number}vh` | \"auto\" | \"fit-content\" | \"max-content\" | \"min-content\"", "group": "box", "lower": "dimension", "wire": "width", "css": "width"},
