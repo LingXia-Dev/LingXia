@@ -120,7 +120,7 @@ export function render({ data, actions, env }: View) {
             {!!data.cacheNotice && <InfoRow label="Result" value={data.cacheNotice} testId="system-cache-status" />}
           </InfoList>
           <ErrorState testId="system-cache-error" error={data.cacheError ? String(data.cacheError) : null} />
-          <text className="text-xs text-muted-foreground">Running apps keep their private caches; estimates exclude WebView cache.</text>
+          <text className="text-xs text-muted">Running apps keep their private caches; estimates exclude WebView cache.</text>
           <Button variant="secondary" size="sm" testId="system-cache-refresh" disabled={!!data.cacheBusy} onClick={() => actions.refreshCacheSize()}>
             Re-read Size
           </Button>
@@ -138,7 +138,7 @@ export function render({ data, actions, env }: View) {
             ) : null
           }
         >
-          <text className="text-xs text-muted-foreground">
+          <text className="text-xs text-muted">
             page is navigateTo. route is a host-registered native location. Neither needs a product URL.
           </text>
           <Segmented
@@ -176,7 +176,7 @@ export function render({ data, actions, env }: View) {
           <Button variant="secondary" size="sm" testId="system-banner-reread" onClick={() => actions.refreshBanner()}>
             Re-read support
           </Button>
-          <text className="text-xs text-muted-foreground">Toast auto-dismisses. Prompt waits for Allow / Deny on the card.</text>
+          <text className="text-xs text-muted">Toast auto-dismisses. Prompt waits for Allow / Deny on the card.</text>
           <Segmented
             testId="system-banner-background"
             value={String(data.bannerBackground || 'system')}

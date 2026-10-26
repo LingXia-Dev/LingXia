@@ -5,11 +5,11 @@ import { Button } from './controls';
 export function EmptyState({ icon = 'note', title, message, testId }: { icon?: IconName; title: string; message?: string; testId?: string }) {
   return (
     <column className="items-center gap-2 px-5 py-10">
-      <Icon name={icon} className="w-12 h-12 text-muted-foreground" />
-      <text testId={testId} className="text-lg font-medium text-center text-foreground">
+      <Icon name={icon} className="w-12 h-12 text-muted" />
+      <text testId={testId} className="text-lg font-medium text-center text-text">
         {title}
       </text>
-      {message ? <text className="text-sm text-muted-foreground text-center">{message}</text> : null}
+      {message ? <text className="text-sm text-muted text-center">{message}</text> : null}
     </column>
   );
 }
@@ -19,9 +19,9 @@ export function ErrorState({ error, onRetry, testId }: { error: string | Resourc
   if (!error) return null;
   const message = typeof error === 'string' ? error : error.message;
   return (
-    <row className="items-start gap-3 p-4 rounded-xl bg-red-50 border border-red-200">
-      <Icon name="alert" className="w-5 h-5 text-error" />
-      <text testId={testId} className="grow basis-0 min-w-0 text-sm text-error break-words">
+    <row className="items-start gap-3 p-4 rounded-xl bg-danger-soft border border-danger/40">
+      <Icon name="alert" className="w-5 h-5 text-danger" />
+      <text testId={testId} className="grow basis-0 min-w-0 text-sm text-danger break-words">
         {message}
       </text>
       {onRetry ? (
@@ -39,14 +39,14 @@ export function Notice({ tone = 'success', children, testId }: { tone?: 'success
     <row
       className={
         success
-          ? 'items-start gap-3 p-4 rounded-xl bg-green-50 border border-green-200'
-          : 'items-start gap-3 p-4 rounded-xl bg-red-50 border border-red-200'
+          ? 'items-start gap-3 p-4 rounded-xl bg-success-soft border border-success/40'
+          : 'items-start gap-3 p-4 rounded-xl bg-danger-soft border border-danger/40'
       }
     >
-      <Icon name={success ? 'success' : 'alert'} className={success ? 'w-5 h-5 text-success' : 'w-5 h-5 text-error'} />
+      <Icon name={success ? 'success' : 'alert'} className={success ? 'w-5 h-5 text-success' : 'w-5 h-5 text-danger'} />
       <text
         testId={testId}
-        className={success ? 'grow basis-0 min-w-0 text-sm text-success leading-relaxed' : 'grow basis-0 min-w-0 text-sm text-error leading-relaxed'}
+        className={success ? 'grow basis-0 min-w-0 text-sm text-success leading-relaxed' : 'grow basis-0 min-w-0 text-sm text-danger leading-relaxed'}
       >
         {children}
       </text>

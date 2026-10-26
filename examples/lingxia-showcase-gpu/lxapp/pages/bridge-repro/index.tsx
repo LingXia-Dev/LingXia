@@ -13,7 +13,7 @@ type Data = { bootstrapMarker?: string; logicLoadedAt?: number };
 type Audit = { last: number; received: number; gaps: string[]; firstAtMs: number | null };
 
 const verdictClass = (value: string) =>
-  `px-4 py-3 rounded-lg text-lg font-bold text-white ${value === 'PASS' ? 'bg-success' : value === 'FAIL' ? 'bg-error' : 'bg-surface-400'}`;
+  `px-4 py-3 rounded-lg text-lg font-bold ${value === 'PASS' ? 'bg-success text-on-success' : value === 'FAIL' ? 'bg-danger text-on-danger' : 'bg-surface-sunken text-text'}`;
 
 export function render({ data, actions }: View<Actions, Data>) {
   const started = useLocal('started', Date.now());
@@ -66,7 +66,7 @@ export function render({ data, actions }: View<Actions, Data>) {
         <text testId="bootstrap-logic-loaded" className="text-sm">
           {snapshotReady ? `logic ready: ${loaded <= started.value ? 'preloaded' : `${loaded - started.value} ms after view`}` : 'logic ready: -'}
         </text>
-        <text className="text-xs text-muted-foreground">Restart the lxapp to repeat.</text>
+        <text className="text-xs text-muted">Restart the lxapp to repeat.</text>
       </Card>
       <text testId="stream-verdict" className={verdictClass(streamVerdict)}>{`Stream: ${streamVerdict}`}</text>
       <Card className="p-4 gap-1">
@@ -75,11 +75,11 @@ export function render({ data, actions }: View<Actions, Data>) {
         <text testId="stat-first" className="text-sm">{`first tick after: ${audit.value.firstAtMs ?? '-'} ms`}</text>
         <text
           testId="stat-gaps"
-          className={audit.value.gaps.length ? 'text-sm font-semibold text-error' : 'text-sm'}
+          className={audit.value.gaps.length ? 'text-sm font-semibold text-danger' : 'text-sm'}
         >{`gaps: ${audit.value.gaps.join(', ') || 'none'}`}</text>
         <text
           testId="stat-error"
-          className={ticks.error ? 'text-sm font-semibold text-error' : 'text-sm'}
+          className={ticks.error ? 'text-sm font-semibold text-danger' : 'text-sm'}
         >{`stream error: ${ticks.error?.message || 'none'}`}</text>
         <text testId="stat-reconnects" className="text-sm">
           reconnects: 0
@@ -109,7 +109,7 @@ export function render({ data, actions }: View<Actions, Data>) {
           Stop
         </Button>
       </grid>
-      <text className="text-xs text-muted-foreground">
+      <text className="text-xs text-muted">
         Start the stream, then reconnect. Any gap or bridge error fails the check. Echo may time out while the long stream occupies AppService.
       </text>
     </Page>

@@ -32,9 +32,9 @@ function Gradients() {
   return (
     <Section title="Gradients" testId="lab-gradients">
       <row className="gap-3">
-        <view testId="lab-gradient-radial" className="h-16 grow basis-0 rounded-xl bg-radial from-primary to-transparent" />
-        <view testId="lab-gradient-conic" className="h-16 grow basis-0 rounded-xl bg-conic-90 from-primary via-error to-primary" />
-        <view testId="lab-gradient-arbitrary" className="h-16 grow basis-0 rounded-xl bg-[radial-gradient(circle_at_top,#ffffff,#1677ff_70%)]" />
+        <view testId="lab-gradient-radial" className="h-16 grow basis-0 rounded-xl bg-radial from-accent to-transparent" />
+        <view testId="lab-gradient-conic" className="h-16 grow basis-0 rounded-xl bg-conic-90 from-accent via-danger to-accent" />
+        <view testId="lab-gradient-arbitrary" className="h-16 grow basis-0 rounded-xl bg-radial-[at_top] from-surface to-accent to-70%" />
       </row>
     </Section>
   );
@@ -56,10 +56,10 @@ function Vectors() {
             gold: { type: 'radial', fx: 0.35, fy: 0.3, stops: [{ offset: 0, color: '#fff3b0' }, { offset: 1, color: '#f59e0b' }] },
             edge: { type: 'linear', x2: 0, y2: 1, stops: [{ offset: 0, color: '#b45309' }, { offset: 1, color: '#78350f', opacity: 0.6 }] },
           }} />
-        <vector testId="lab-vector-strokes" className="w-16 h-16 text-foreground" paths={strokes} />
+        <vector testId="lab-vector-strokes" className="w-16 h-16 text-text" paths={strokes} />
         <vector testId="lab-vector-conic" className="w-16 h-16" paths={[{ d: 'M12 2a10 10 0 1 0 0.01 0Z', fill: 'url(#wheel)' }]}
           gradients={{ wheel: { type: 'conic', stops: [{ offset: 0, color: '#ef4444' }, { offset: 0.33, color: '#22c55e' }, { offset: 0.66, color: '#3b82f6' }, { offset: 1, color: '#ef4444' }] } }} />
-        <vector testId="lab-vector-transform" className="w-16 h-16 text-primary"
+        <vector testId="lab-vector-transform" className="w-16 h-16 text-accent"
           paths={[0, 45, 90, 135].map(angle => ({ d: 'M12 4h1v16h-1z', transform: `rotate(${angle} 12.5 12)` }))} />
       </row>
     </Section>
@@ -70,9 +70,9 @@ function Borders() {
   return (
     <Section title="Borders" testId="lab-borders">
       <row className="gap-3">
-        <view testId="lab-border-dashed" className="h-12 grow basis-0 rounded-xl border-2 border-dashed border-primary" />
-        <view testId="lab-border-dotted" className="h-12 grow basis-0 rounded-full border-4 border-dotted border-error" />
-        <view testId="lab-border-edges" className="h-12 grow basis-0 border-t-2 border-l-4 border-dashed border-foreground" />
+        <view testId="lab-border-dashed" className="h-12 grow basis-0 rounded-xl border-2 border-dashed border-accent" />
+        <view testId="lab-border-dotted" className="h-12 grow basis-0 rounded-full border-4 border-dotted border-danger" />
+        <view testId="lab-border-edges" className="h-12 grow basis-0 border-t-2 border-l-4 border-dashed border-text" />
       </row>
     </Section>
   );
@@ -87,14 +87,14 @@ function Display() {
         <text testId="lab-display-hidden" className={shown.value ? 'text-sm' : 'hidden'}>Toggled by hidden</text>
       </row>
       <row className="block gap-1">
-        <text className="text-xs text-muted-foreground">block: a column that stretches</text>
-        <view className="h-2 rounded bg-primary" />
+        <text className="text-xs text-muted">block: a column that stretches</text>
+        <view className="h-2 rounded bg-accent" />
       </row>
-      <row className="h-16 items-center gap-2 bg-muted rounded-lg px-2">
-        <view testId="lab-display-inline" className="inline-flex px-2 py-1 rounded bg-card"><text className="text-xs">inline-flex</text></view>
-        <view className="h-[8dvh] w-4 rounded bg-primary" />
+      <row className="h-16 items-center gap-2 bg-surface-sunken rounded-lg px-2">
+        <view testId="lab-display-inline" className="inline-flex px-2 py-1 rounded bg-surface"><text className="text-xs">inline-flex</text></view>
+        <view className="h-[8dvh] w-4 rounded bg-accent" />
       </row>
-      <view testId="lab-display-fixed" className="fixed bottom-4 right-4 px-3 py-1 rounded-full bg-primary"><text className="text-xs text-primary-foreground">fixed</text></view>
+      <view testId="lab-display-fixed" className="fixed bottom-4 right-4 px-3 py-1 rounded-full bg-accent"><text className="text-xs text-on-accent">fixed</text></view>
     </Section>
   );
 }
@@ -103,12 +103,12 @@ function Transforms() {
   return (
     <Section title="Transforms" testId="lab-transforms">
       <row className="gap-4 items-center">
-        <Icon name="chevron" className="w-6 h-6 text-foreground rotate-90" />
-        <Icon name="send" className="w-6 h-6 text-primary -scale-x-100" />
-        <view className="relative w-16 h-10 rounded-lg bg-muted">
-          <view testId="lab-transform-badge" className="absolute top-0 right-0 w-4 h-4 rounded-full bg-error translate-x-1/2 -translate-y-1/2" />
+        <Icon name="chevron" className="w-6 h-6 text-text rotate-90" />
+        <Icon name="send" className="w-6 h-6 text-accent -scale-x-100" />
+        <view className="relative w-16 h-10 rounded-lg bg-surface-sunken">
+          <view testId="lab-transform-badge" className="absolute top-0 right-0 w-4 h-4 rounded-full bg-danger translate-x-1/2 -translate-y-1/2" />
         </view>
-        <view testId="lab-transform-card" className="w-12 h-12 rounded-lg bg-primary origin-bottom-left rotate-12 scale-90" />
+        <view testId="lab-transform-card" className="w-12 h-12 rounded-lg bg-accent origin-bottom-left rotate-12 scale-90" />
       </row>
     </Section>
   );
@@ -123,7 +123,7 @@ function TextLayout() {
         </column>
         <text testId="lab-text-pre-line" className="grow basis-0 text-sm whitespace-pre-line">{'First line\n   second line keeps   one space'}</text>
       </row>
-      <text testId="lab-text-pre-wrap" className="p-2 rounded bg-muted text-xs font-mono whitespace-pre-wrap">{'{\n  "indent": true\n}'}</text>
+      <text testId="lab-text-pre-wrap" className="p-2 rounded bg-surface-sunken text-xs font-mono whitespace-pre-wrap">{'{\n  "indent": true\n}'}</text>
       <text testId="lab-text-break-all" className="text-xs break-all">https://example.com/a/very/long/path/without/any/spaces/to/break/at</text>
     </Section>
   );
@@ -133,11 +133,11 @@ function Sizing() {
   return (
     <Section title="Sizing" testId="lab-sizing">
       <row className="gap-3 items-start">
-        <view testId="lab-aspect-video" className="grow basis-0 aspect-video rounded-lg bg-primary" />
-        <view testId="lab-aspect-square" className="w-16 aspect-square rounded-lg text-error bg-current" />
+        <view testId="lab-aspect-video" className="grow basis-0 aspect-video rounded-lg bg-accent" />
+        <view testId="lab-aspect-square" className="w-16 aspect-square rounded-lg text-danger bg-current" />
       </row>
       <text testId="lab-max-ch" className="max-w-[24ch] text-sm select-none">This paragraph wraps at about twenty-four zeros of its own font.</text>
-      <scroll testId="lab-overscroll" className="h-24 rounded-lg border border-border overscroll-contain">
+      <scroll testId="lab-overscroll" className="h-24 rounded-lg border border-line overscroll-contain">
         <column className="p-3 gap-2">
           {Array.from({ length: 8 }, (_, i) => <text key={String(i)} className="text-xs">Contained row {i + 1}</text>)}
         </column>
@@ -151,13 +151,13 @@ function Grid() {
   return (
     <Section title="Grid" testId="lab-grid">
       <view testId="lab-grid-auto-fit" className="grid grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] gap-2">
-        {tiles.map(tile => <view key={tile} className="h-14 rounded-lg bg-muted place-items-center grid"><text className="text-xs">{tile}</text></view>)}
+        {tiles.map(tile => <view key={tile} className="h-14 rounded-lg bg-surface-sunken place-items-center grid"><text className="text-xs">{tile}</text></view>)}
       </view>
       <view testId="lab-grid-spans" className="grid grid-cols-3 grid-rows-[auto_auto] gap-2">
-        <view className="col-span-2 h-12 rounded-lg bg-primary" />
-        <view className="row-span-2 rounded-lg bg-error" />
-        <view className="h-12 rounded-lg bg-muted" />
-        <view className="h-12 rounded-lg bg-muted order-first" />
+        <view className="col-span-2 h-12 rounded-lg bg-accent" />
+        <view className="row-span-2 rounded-lg bg-danger" />
+        <view className="h-12 rounded-lg bg-surface-sunken" />
+        <view className="h-12 rounded-lg bg-surface-sunken order-first" />
       </view>
     </Section>
   );
@@ -168,10 +168,10 @@ function Direction() {
   return (
     <Section title={`Direction (env: ${env.direction})`} testId="lab-direction">
       {(['ltr', 'rtl'] as const).map(dir => (
-        <row key={dir} dir={dir} testId={`lab-direction-${dir}`} className="items-center gap-2 ps-3 pe-1 py-2 rounded-s-xl border-s-4 border-primary bg-muted">
-          <Icon name="chevron" className="w-5 h-5 text-foreground rtl:-scale-x-100" />
+        <row key={dir} dir={dir} testId={`lab-direction-${dir}`} className="items-center gap-2 ps-3 pe-1 py-2 rounded-s-xl border-s-4 border-accent bg-surface-sunken">
+          <Icon name="chevron" className="w-5 h-5 text-text rtl:-scale-x-100" />
           <text className="grow basis-0 text-sm text-start">{dir === 'rtl' ? 'مرحبا بالعالم' : 'Hello, world'}</text>
-          <text className="text-xs text-muted-foreground ms-auto">{dir}</text>
+          <text className="text-xs text-muted ms-auto">{dir}</text>
         </row>
       ))}
     </Section>
@@ -183,12 +183,12 @@ function RichText() {
   return (
     <Section title="Rich text" testId="lab-rich-text">
       <text testId="lab-rich-paragraph" className="text-sm leading-relaxed">
-        Plans renew <span className="font-semibold text-foreground">monthly</span> unless you{' '}
-        <span className="bg-muted font-mono">cancel</span> first. Read the{' '}
-        <link testId="lab-rich-link" onPress={() => presses.set(presses.value + 1)} className="active:text-foreground">terms of service and <span className="font-semibold">privacy policy</span></link>
-        {' '}before you <span className="italic line-through text-muted-foreground">sign</span> agree.
+        Plans renew <span className="font-semibold text-text">monthly</span> unless you{' '}
+        <span className="bg-surface-sunken font-mono">cancel</span> first. Read the{' '}
+        <link testId="lab-rich-link" onPress={() => presses.set(presses.value + 1)} className="active:text-text">terms of service and <span className="font-semibold">privacy policy</span></link>
+        {' '}before you <span className="italic line-through text-muted">sign</span> agree.
       </text>
-      <text testId="lab-rich-presses" className="text-xs text-muted-foreground tabular-nums">Link pressed {presses.value} times</text>
+      <text testId="lab-rich-presses" className="text-xs text-muted tabular-nums">Link pressed {presses.value} times</text>
     </Section>
   );
 }
@@ -202,13 +202,13 @@ function Accessibility() {
         {['Water', 'Power', 'Internet'].map(bill => (
           <row key={bill} role="listitem" className="justify-between">
             <text className="text-sm">{bill}</text>
-            <vector accessibilityHidden className="w-4 h-4 text-muted-foreground" paths={[{ d: 'M9 18l6-6-6-6', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5 }]} />
+            <vector accessibilityHidden className="w-4 h-4 text-muted" paths={[{ d: 'M9 18l6-6-6-6', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5 }]} />
           </row>
         ))}
       </column>
       <row className="items-center gap-3">
         <Button testId="lab-a11y-save" onClick={() => saves.set(saves.value + 1)}>Save</Button>
-        <text testId="lab-a11y-status" role="status" className="text-sm text-muted-foreground">{saves.value ? `Saved ${saves.value} times` : 'Not saved yet'}</text>
+        <text testId="lab-a11y-status" role="status" className="text-sm text-muted">{saves.value ? `Saved ${saves.value} times` : 'Not saved yet'}</text>
       </row>
     </Section>
   );
@@ -220,7 +220,7 @@ function Inputs() {
   const day = useLocal('day', '');
   const time = useLocal('time', '');
   const plan = useLocal('plan', '');
-  const field = 'px-3 py-2 rounded-lg border border-input bg-card text-sm';
+  const field = 'px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm';
   return (
     <Section title="Inputs" testId="lab-inputs">
       <input testId="lab-input-otp" bind={code} accessibilityLabel="One-time code" keyboard="number" maxLength={6} autoComplete="one-time-code" enterKeyHint="done" placeholder="6-digit code" className={field} />
@@ -232,7 +232,7 @@ function Inputs() {
       <select testId="lab-input-plan" bind={plan} accessibilityLabel="Billing plan" placeholder="Choose a plan" className={field}
         options={[{ value: 'monthly', label: 'Monthly' }, { value: 'quarterly', label: 'Quarterly', disabled: true }, { value: 'yearly', label: 'Yearly' }]} />
       <input testId="lab-input-name" accessibilityLabel="Name" autoComplete="name" autoCapitalize="words" spellCheck={false} placeholder="Full name" className={field} />
-      <text testId="lab-input-values" className="text-xs text-muted-foreground">{`code=${code.value} amount=${amount.value} date=${day.value} time=${time.value} plan=${plan.value}`}</text>
+      <text testId="lab-input-values" className="text-xs text-muted">{`code=${code.value} amount=${amount.value} date=${day.value} time=${time.value} plan=${plan.value}`}</text>
     </Section>
   );
 }
@@ -241,14 +241,14 @@ function Structure() {
   const rows = ['Starter', 'Plus', 'Pro', 'Max'];
   return (
     <Section title="Structural variants" testId="lab-structure">
-      <column testId="lab-structure-rows" className="rounded-lg border border-border">
+      <column testId="lab-structure-rows" className="rounded-lg border border-line">
         {rows.map(row => (
-          <text key={row} className="px-3 py-2 text-sm odd:bg-muted first:rounded-t-lg last:rounded-b-lg last:font-semibold">{row}</text>
+          <text key={row} className="px-3 py-2 text-sm odd:bg-surface-sunken first:rounded-t-lg last:rounded-b-lg last:font-semibold">{row}</text>
         ))}
       </column>
       <row className="gap-2">
-        <view testId="lab-structure-empty" className="h-8 grow basis-0 rounded-lg bg-error empty:bg-muted" />
-        <view className="h-8 grow basis-0 rounded-lg bg-muted"><text className="only:text-xs only:p-2">only child</text></view>
+        <view testId="lab-structure-empty" className="h-8 grow basis-0 rounded-lg bg-danger empty:bg-surface-sunken" />
+        <view className="h-8 grow basis-0 rounded-lg bg-surface-sunken"><text className="only:text-xs only:p-2">only child</text></view>
       </row>
     </Section>
   );
@@ -258,11 +258,11 @@ function StickyHeaders() {
   const groups = { Today: ['Top up', 'Data pack'], Yesterday: ['Bill paid', 'Roaming on', 'SMS bundle'], 'Last week': ['Plan change', 'Refund'] };
   return (
     <Section title="Sticky headers" testId="lab-sticky">
-      <scroll testId="lab-sticky-scroll" className="h-48 rounded-lg border border-border">
+      <scroll testId="lab-sticky-scroll" className="h-48 rounded-lg border border-line">
         {Object.entries(groups).map(([day, items]) => (
           <column key={day}>
-            <text className="sticky top-0 px-3 py-1.5 text-xs font-semibold bg-muted">{day}</text>
-            {items.map(item => <text key={item} className="px-3 py-3 text-sm border-b border-border">{item}</text>)}
+            <text className="sticky top-0 px-3 py-1.5 text-xs font-semibold bg-surface-sunken">{day}</text>
+            {items.map(item => <text key={item} className="px-3 py-3 text-sm border-b border-line">{item}</text>)}
           </column>
         ))}
       </scroll>
@@ -274,8 +274,8 @@ function Selection() {
   return (
     <Section title="Selectable text" testId="lab-selection">
       <text testId="lab-select-text" className="text-sm select-text">Long-press a word to select it, then drag the handles. Order reference: LX-2024-88412.</text>
-      <text testId="lab-select-all" className="font-mono text-sm px-2 py-1 rounded bg-muted select-all">8F3A-77C2-91D0</text>
-      <view className="select-text"><text testId="lab-select-inherited" className="text-xs text-muted-foreground">Selectable by inheritance.</text></view>
+      <text testId="lab-select-all" className="font-mono text-sm px-2 py-1 rounded bg-surface-sunken select-all">8F3A-77C2-91D0</text>
+      <view className="select-text"><text testId="lab-select-inherited" className="text-xs text-muted">Selectable by inheritance.</text></view>
     </Section>
   );
 }
@@ -286,13 +286,13 @@ function Focus() {
   const close = (value: string) => { choice.set(value); open.set(false); };
   return (
     <Section title="Keyboard focus" testId="lab-focus">
-      <text className="text-xs text-muted-foreground">With a keyboard: Tab to Open, press Enter; focus stays in the dialog and returns to Open when it closes.</text>
+      <text className="text-xs text-muted">With a keyboard: Tab to Open, press Enter; focus stays in the dialog and returns to Open when it closes.</text>
       <row className="gap-2 items-center">
         <Button testId="lab-focus-open" onClick={() => open.set(true)}>Open dialog</Button>
         <text testId="lab-focus-choice" className="text-sm">{`chosen: ${choice.value}`}</text>
       </row>
       {open.value ? (
-        <column testId="lab-focus-dialog" role="dialog" accessibilityLabel="Confirm payment" className="gap-3 p-4 rounded-xl border border-border bg-card">
+        <column testId="lab-focus-dialog" role="dialog" accessibilityLabel="Confirm payment" className="gap-3 p-4 rounded-xl border border-line bg-surface">
           <text role="heading" headingLevel={3} className="text-sm font-semibold">Confirm payment</text>
           <row className="gap-2">
             <Button testId="lab-focus-confirm" onClick={() => close('confirm')}>Confirm</Button>

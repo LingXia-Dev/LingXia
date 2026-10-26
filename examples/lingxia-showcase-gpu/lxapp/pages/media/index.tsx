@@ -44,12 +44,12 @@ function Setting({
       onClick={() => {
         void onClick();
       }}
-      className="px-4 py-3.5 rounded-none bg-transparent text-foreground text-left active:bg-muted disabled:opacity-60"
+      className="px-4 py-3.5 rounded-none bg-transparent text-text text-left active:bg-surface-sunken disabled:opacity-60"
     >
       <row className="items-center gap-4">
-        <text className="grow basis-0 text-sm font-medium text-muted-foreground">{label}</text>
+        <text className="grow basis-0 text-sm font-medium text-muted">{label}</text>
         <text className="text-sm font-semibold">{value}</text>
-        {!disabled && <text className="text-lg text-muted-foreground">›</text>}
+        {!disabled && <text className="text-lg text-muted">›</text>}
       </row>
     </button>
   );
@@ -73,7 +73,7 @@ function Inputs({
             value={String(data[key] ?? '')}
             placeholder={placeholder}
             onInput={value => actions[action]({ detail: { value } })}
-            className="px-3 py-2.5 text-sm rounded-xl border border-input bg-card"
+            className="px-3 py-2.5 text-sm rounded-xl border border-line-strong bg-surface"
           />
         </column>
       ))}
@@ -83,7 +83,7 @@ function Inputs({
 
 function Path({ value, testId }: { value: string; testId?: string }) {
   return (
-    <text testId={testId} className="px-3 py-2 rounded-lg bg-muted text-[11px] text-muted-foreground break-all">
+    <text testId={testId} className="px-3 py-2 rounded-lg bg-surface-sunken text-[11px] text-muted break-all">
       {value}
     </text>
   );
@@ -98,7 +98,7 @@ function Capture({ data, actions }: Pane) {
     >
       {scan ? (
         <column className="gap-4">
-          <Card className="divide-y divide-border">
+          <Card className="divide-y divide-line">
             <Setting
               testId="media-openScanSourcePicker"
               label="Source"
@@ -117,8 +117,8 @@ function Capture({ data, actions }: Pane) {
               testId="media-scan-result"
               className={
                 data.scanResult
-                  ? 'min-h-32 px-4 py-3 rounded-xl border border-border bg-muted font-mono break-all'
-                  : 'min-h-32 px-4 py-3 rounded-xl border border-border bg-muted font-mono break-all text-muted-foreground'
+                  ? 'min-h-32 px-4 py-3 rounded-xl border border-line bg-surface-sunken font-mono break-all'
+                  : 'min-h-32 px-4 py-3 rounded-xl border border-line bg-surface-sunken font-mono break-all text-muted'
               }
             >
               {String(data.scanResult || 'No result yet')}
@@ -249,7 +249,7 @@ function VideoTools({ data, actions }: Pane) {
             ['Audio Codec', info.hasAudio === false ? 'N/A' : info.audioCodec || 'Not reported'],
           ]}
         >
-          <text className="text-[11px] text-muted-foreground">
+          <text className="text-[11px] text-muted">
             Track metadata is best-effort. The receiving service must validate uploaded bytes.
           </text>
           <Path value={String(info.path || '')} />
@@ -297,7 +297,7 @@ function VideoTools({ data, actions }: Pane) {
             testId="media-thumbnail-image"
             src={String(thumb.uri)}
             alt="Thumbnail of the selected video"
-            className="w-full rounded-lg border border-border bg-black/5 object-contain"
+            className="w-full rounded-lg border border-line bg-text/5 object-contain"
             style={{ height: 280 / Math.max(0.25, ratio) }}
           />
           <Path value={String(thumb.uri)} />
@@ -322,7 +322,7 @@ function VideoTools({ data, actions }: Pane) {
         </Button>
         {!!data.videoCompressBusy && (
           <column className="gap-3">
-            <row testId="media-compression-progress" className="h-2 rounded-full bg-muted">
+            <row testId="media-compression-progress" className="h-2 rounded-full bg-surface-sunken">
               <spacer className="h-2 rounded-full bg-success" style={{ width: `${progress}%` }} />
             </row>
             <Button variant="secondary" testId="media-cancelVideoCompress" onClick={() => actions.cancelVideoCompress()}>
@@ -379,19 +379,19 @@ function Gallery({ data, actions }: Pane) {
       onClick={() => actions.launchMediaDemo()}
       className={
         video
-          ? 'h-28 rounded-2xl border-2 border-blue-300 bg-blue-50 active:opacity-80 disabled:opacity-40'
-          : 'h-24 rounded-2xl border-2 border-blue-300 bg-blue-50 active:opacity-80 disabled:opacity-40'
+          ? 'h-28 rounded-2xl border-2 border-accent/40 bg-accent-soft active:opacity-80 disabled:opacity-40'
+          : 'h-24 rounded-2xl border-2 border-accent/40 bg-accent-soft active:opacity-80 disabled:opacity-40'
       }
     >
       <column className="items-center justify-center gap-2">
-        <text className="text-4xl text-primary">+</text>
-        <text className="text-xs font-medium text-primary">{data.isRunning ? 'Opening...' : String(data.addLabel)}</text>
+        <text className="text-4xl text-accent">+</text>
+        <text className="text-xs font-medium text-accent">{data.isRunning ? 'Opening...' : String(data.addLabel)}</text>
       </column>
     </button>
   );
   return (
     <Page title="Media Manager" subtitle={String(data.headerSubtitle || 'lx.chooseMedia / lx.previewMedia')}>
-      <Card className="divide-y divide-border">
+      <Card className="divide-y divide-line">
         <Setting
           label={video ? 'Video Source' : 'Photo Source'}
           value={source}
@@ -429,7 +429,7 @@ function Gallery({ data, actions }: Pane) {
           limit > 0 ? (
             <text
               testId="media-selection-count"
-              className="px-3 py-1 rounded-full bg-blue-50 text-xs font-semibold text-primary"
+              className="px-3 py-1 rounded-full bg-accent-soft text-xs font-semibold text-accent"
             >{`${items.length}/${limit}`}</text>
           ) : null
         }
@@ -440,17 +440,17 @@ function Gallery({ data, actions }: Pane) {
           {option('openPreviewObjectFitPicker', `Preview Fit: ${fit}`)}
           {option('togglePreviewIndexIndicator', `Index Indicator: ${data.previewHideIndexIndicator ? 'Hidden' : 'Auto'}`, 'preview-index')}
         </grid>
-        <text className="text-[11px] text-muted-foreground">`next` advances and finishes on the last item; `loop` wraps back to the first.</text>
+        <text className="text-[11px] text-muted">`next` advances and finishes on the last item; `loop` wraps back to the first.</text>
         {!video && (
           <column className="gap-1">
-            <text className="text-xs font-medium text-muted-foreground">Image Duration (ms)</text>
+            <text className="text-xs font-medium text-muted">Image Duration (ms)</text>
             <input
               testId="media-previewImageDurationMs"
               accessibilityLabel="Image Duration (ms)"
               keyboard="number"
               value={String(data.previewImageDurationMs ?? '2000')}
               onInput={value => actions.onPreviewImageDurationInput({ detail: { value } })}
-              className="px-3 py-2 text-sm rounded-lg border border-input bg-card"
+              className="px-3 py-2 text-sm rounded-lg border border-line-strong bg-surface"
             />
           </column>
         )}
@@ -481,9 +481,9 @@ function Gallery({ data, actions }: Pane) {
             {items.map((item, index) => (
               <Card key={`${item.path}-${index}`} className="px-4 py-3 gap-1">
                 <text className="text-sm font-semibold">{`Video ${index + 1}`}</text>
-                <text className="text-xs text-muted-foreground">Tap Preview for fullscreen playback</text>
+                <text className="text-xs text-muted">Tap Preview for fullscreen playback</text>
                 {!!item.displayWidth && !!item.displayHeight && (
-                  <text className="text-[11px] text-muted-foreground">{`${item.displayWidth} × ${item.displayHeight}`}</text>
+                  <text className="text-[11px] text-muted">{`${item.displayWidth} × ${item.displayHeight}`}</text>
                 )}
               </Card>
             ))}
@@ -497,7 +497,7 @@ function Gallery({ data, actions }: Pane) {
                   testId={`media-image-${index}`}
                   src={item.path}
                   alt={`Selected image ${index + 1}`}
-                  className="h-32 w-full bg-muted object-cover"
+                  className="h-32 w-full bg-surface-sunken object-cover"
                 />
                 <text className="px-3 py-3 text-xs font-medium">{`Image ${index + 1}`}</text>
               </Card>

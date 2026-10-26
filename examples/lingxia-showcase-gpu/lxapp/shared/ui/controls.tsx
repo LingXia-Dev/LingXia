@@ -2,10 +2,10 @@ import type { Child, Local } from '@lingxia/ui';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'destructive' | 'ghost';
 const variants: Record<ButtonVariant, string> = {
-  primary: 'bg-primary text-primary-foreground active:opacity-80',
-  secondary: 'bg-secondary text-secondary-foreground active:bg-surface-200',
-  destructive: 'bg-destructive text-destructive-foreground active:opacity-80',
-  ghost: 'bg-transparent text-primary active:bg-muted',
+  primary: 'bg-accent text-on-accent active:opacity-80',
+  secondary: 'bg-surface-sunken text-text active:bg-line',
+  destructive: 'bg-danger text-on-danger active:opacity-80',
+  ghost: 'bg-transparent text-accent active:bg-surface-sunken',
 };
 const sizes = { md: 'min-h-11 px-4 py-2.5 rounded-xl text-sm', sm: 'min-h-9 px-3 py-1.5 rounded-lg text-xs' };
 
@@ -79,7 +79,7 @@ export function Field({
         secure={secure}
         disabled={disabled}
         onSubmit={onSubmit}
-        className="min-h-11 px-3 py-2 rounded-lg border border-input bg-card text-base placeholder:text-muted-foreground focus:border-ring"
+        className="min-h-11 px-3 py-2 rounded-lg border border-line-strong bg-surface text-base placeholder:text-muted focus:border-focus"
       />
     </column>
   );
@@ -100,7 +100,7 @@ export function Segmented<T extends string>({
   disabled?: boolean;
 }) {
   return (
-    <row testId={testId} className="gap-1 p-1 bg-muted rounded-xl">
+    <row testId={testId} className="gap-1 p-1 bg-surface-sunken rounded-xl">
       {options.map(option => (
         <button
           key={option.value}
@@ -111,8 +111,8 @@ export function Segmented<T extends string>({
           }}
           className={
             option.value === value
-              ? 'grow basis-0 min-h-8 px-2 py-1 rounded-lg text-xs font-medium text-center bg-card shadow-sm text-foreground'
-              : 'grow basis-0 min-h-8 px-2 py-1 rounded-lg text-xs font-medium text-center bg-transparent text-muted-foreground'
+              ? 'grow basis-0 min-h-8 px-2 py-1 rounded-lg text-xs font-medium text-center bg-surface shadow-sm text-text'
+              : 'grow basis-0 min-h-8 px-2 py-1 rounded-lg text-xs font-medium text-center bg-transparent text-muted'
           }
         >
           {option.label}

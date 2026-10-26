@@ -4,7 +4,7 @@ import { Button, Card, ErrorState, Page, Section } from '../../shared/ui';
 import type { ClientCommand, ServerMessage, TickerUpdate } from '../../shared/channel-types';
 
 type Actions = { tickerSession(params: Record<string, never>, channel: ChannelEndpoint<ServerMessage, ClientCommand>): void };
-const changeClass = (value: number) => (value < 0 ? 'text-error' : value > 0 ? 'text-success' : 'text-muted-foreground');
+const changeClass = (value: number) => (value < 0 ? 'text-danger' : value > 0 ? 'text-success' : 'text-muted');
 const formatChange = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(2)}`;
 
 export function render({ actions }: View<Actions>) {
@@ -43,10 +43,10 @@ export function render({ actions }: View<Actions>) {
               ? 'w-2 h-2 rounded-full bg-success'
               : channel.connecting
                 ? 'w-2 h-2 rounded-full bg-warning'
-                : 'w-2 h-2 rounded-full bg-surface-300'
+                : 'w-2 h-2 rounded-full bg-line'
           }
         />
-        <text testId="channel-status" className="text-xs text-muted-foreground">
+        <text testId="channel-status" className="text-xs text-muted">
           {status}
         </text>
       </row>
@@ -68,7 +68,7 @@ export function render({ actions }: View<Actions>) {
         </row>
       </scroll>
       <Card className="p-6 gap-1">
-        <text testId="channel-active-symbol" className="text-xs font-medium tracking-wider text-muted-foreground">
+        <text testId="channel-active-symbol" className="text-xs font-medium tracking-wider text-muted">
           {symbol.value || '---'}
         </text>
         <row className="items-baseline gap-3">
@@ -82,7 +82,7 @@ export function render({ actions }: View<Actions>) {
           )}
         </row>
         {latest.value && (
-          <text testId="channel-last-time" className="text-xs text-muted-foreground">
+          <text testId="channel-last-time" className="text-xs text-muted">
             {new Date(latest.value.timestamp).toLocaleTimeString()}
           </text>
         )}
@@ -90,9 +90,9 @@ export function render({ actions }: View<Actions>) {
       <Section title="Recent ticks">
         <scroll testId="channel-history" className="max-h-64">
           {!history.value.length ? (
-            <text className="py-6 text-sm text-center text-muted-foreground">Waiting for data...</text>
+            <text className="py-6 text-sm text-center text-muted">Waiting for data...</text>
           ) : (
-            <column className="divide-y divide-border">
+            <column className="divide-y divide-line">
               {history.value
                 .slice()
                 .reverse()
@@ -101,7 +101,7 @@ export function render({ actions }: View<Actions>) {
                     <text className="text-sm font-mono">{`$${tick.price.toFixed(2)}`}</text>
                     <row className="items-center gap-3">
                       <text className={`text-sm font-medium ${changeClass(tick.change)}`}>{formatChange(tick.change)}</text>
-                      <text className="text-xs text-muted-foreground">{new Date(tick.timestamp).toLocaleTimeString()}</text>
+                      <text className="text-xs text-muted">{new Date(tick.timestamp).toLocaleTimeString()}</text>
                     </row>
                   </row>
                 ))}

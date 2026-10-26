@@ -21,7 +21,7 @@ function UrlField({
 }) {
   return (
     <column className="gap-1.5">
-      <text className="text-sm text-muted-foreground">{label}</text>
+      <text className="text-sm text-muted">{label}</text>
       <input
         testId={testId}
         accessibilityLabel={label}
@@ -31,7 +31,7 @@ function UrlField({
         onInput={value => {
           void onInput(value);
         }}
-        className="px-3 py-2 rounded-lg border border-input bg-card text-sm"
+        className="px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm"
       />
     </column>
   );
@@ -57,11 +57,11 @@ export function render({ data, actions: raw }: View) {
           testId="file-show-menu"
           value={!!data.showMenu}
           onChange={() => actions.toggleShowMenu()}
-          className="bg-transparent text-foreground"
+          className="bg-transparent text-text"
         >
           <column className="gap-1">
             <text className="text-sm font-medium">Show Share Button</text>
-            <text className="text-xs text-muted-foreground">
+            <text className="text-xs text-muted">
               Only applies to PDF documents. Office documents always open with the system default viewer.
             </text>
           </column>
@@ -104,19 +104,19 @@ export function render({ data, actions: raw }: View) {
               {pdfLabel}
             </Button>
             {(state !== 'idle' || !!data.pdfProgressText) && (
-              <column className="p-3 gap-2 rounded-xl border border-blue-100 bg-blue-50">
+              <column className="p-3 gap-2 rounded-xl border border-accent/20 bg-accent-soft">
                 <row className="items-center justify-between">
-                  <text className="text-xs text-primary">PDF Transfer</text>
-                  <text testId="file-pdf-progress" className="text-xs text-primary">
+                  <text className="text-xs text-accent">PDF Transfer</text>
+                  <text testId="file-pdf-progress" className="text-xs text-accent">
                     {data.pdfProgressKnown ? `${Math.round(progress)}%` : 'Streaming'}
                   </text>
                 </row>
                 {data.pdfProgressKnown ? (
-                  <row className="h-2 rounded-full bg-blue-100">
-                    <spacer testId="file-progress-bar" className="h-2 rounded-full bg-primary" style={{ width: `${progress}%` }} />
+                  <row className="h-2 rounded-full bg-accent-soft">
+                    <spacer testId="file-progress-bar" className="h-2 rounded-full bg-accent" style={{ width: `${progress}%` }} />
                   </row>
                 ) : (
-                  <text className="text-[11px] text-primary">Waiting for precise progress from runtime...</text>
+                  <text className="text-[11px] text-accent">Waiting for precise progress from runtime...</text>
                 )}
                 <text testId="file-pdf-status" className="text-xs">
                   {String(data.pdfProgressText || '')}
@@ -147,7 +147,7 @@ export function render({ data, actions: raw }: View) {
               disabled={!!data.isOfficeFetching}
               onInput={value => actions.onOfficeFileTypeInput({ detail: { value } })}
             />
-            <text className="text-xs text-muted-foreground">Auto-detected from URL or enter manually</text>
+            <text className="text-xs text-muted">Auto-detected from URL or enter manually</text>
             <Button
               testId="file-office-open"
               disabled={!!data.isOfficeFetching || !String(data.officeUrl || '').trim() || !String(data.officeFileType || '').trim()}
@@ -156,7 +156,7 @@ export function render({ data, actions: raw }: View) {
               {data.isOfficeFetching ? 'Fetching and Opening File...' : 'Fetch and Open File'}
             </Button>
             {!!data.officeStatusText && (
-              <text testId="file-office-status" className="p-3 rounded-xl border border-blue-100 bg-blue-50 text-xs">
+              <text testId="file-office-status" className="p-3 rounded-xl border border-accent/20 bg-accent-soft text-xs">
                 {String(data.officeStatusText)}
               </text>
             )}

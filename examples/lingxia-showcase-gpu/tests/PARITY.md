@@ -36,10 +36,10 @@ executed and CPU-rendered after the CSS-named authoring rewrite · — not verif
 
 | Area | State |
 | --- | --- |
-| Design tokens | `lxapp/theme/tokens.css` matches the React reference (`theme-parity.test.mjs`) |
+| Design tokens | `lxapp/theme/tokens.css` holds scales only; colours are theme roles (`theme-tokens.test.mjs`) |
 | Host navigation config | page JSON and tabs match the reference (`navigation-parity.test.mjs`) |
 | API catalog | entries and order match the reference (`api-catalog-parity.test.mjs`) |
-| Charts | percentages and emphasis colors match recorded ECharts/zrender values |
+| Charts | percentages match recorded ECharts values; a selection dims the other series |
 | Accessibility | one node per composed control, named by its text; screen-reader speech unverified |
 | Hover | not exercised: Android reports a coarse pointer |
 | Animation | not authored; see `docs/internal/ui-animation.md` |

@@ -10,14 +10,14 @@ export function render({ data, actions }: View) {
       title="Pull Down Refresh Demo"
       subtitle="Pull down on this page to trigger refresh, or use the buttons below to control it programmatically."
     >
-      <text testId="pull-refresh-title" className="text-xs text-muted-foreground text-center">
+      <text testId="pull-refresh-title" className="text-xs text-muted text-center">
         Pull down to refresh
       </text>
       <Section title="Refresh Status">
         <InfoList>
           <row className="items-center justify-between gap-3 py-2.5">
-            <text className="text-sm text-muted-foreground">Status</text>
-            <text testId="pull-refresh-status" className={refreshing ? 'text-sm font-medium text-primary' : 'text-sm font-medium text-success'}>
+            <text className="text-sm text-muted">Status</text>
+            <text testId="pull-refresh-status" className={refreshing ? 'text-sm font-medium text-accent' : 'text-sm font-medium text-success'}>
               {refreshing ? 'Refreshing...' : 'Idle'}
             </text>
           </row>

@@ -18,18 +18,18 @@ export function render({ data, actions }: View) {
 const tenantName = (tenant: Tenant) => tenant.displayName || tenant.tenantName || tenant.tenantId || 'Unknown tenant';
 const tone = (status: string) => {
   const lower = status.toLowerCase();
-  if (lower.includes('failed') || lower.includes('error')) return 'text-error';
+  if (lower.includes('failed') || lower.includes('error')) return 'text-danger';
   if (lower.includes('succeeded') || lower === 'ready') return 'text-success';
-  return ['...', 'starting', 'switching', 'logging'].some(word => lower.includes(word)) ? 'text-warning' : 'text-foreground';
+  return ['...', 'starting', 'switching', 'logging'].some(word => lower.includes(word)) ? 'text-warning' : 'text-text';
 };
 
 function Avatar({ src }: { src?: string }) {
-  return src ? <image src={src} alt="" className="w-8 h-8 shrink-0 rounded-full border border-border bg-card object-cover" /> : null;
+  return src ? <image src={src} alt="" className="w-8 h-8 shrink-0 rounded-full border border-line bg-surface object-cover" /> : null;
 }
 
 function Code({ testId, children }: { testId: string; children: string }) {
   return (
-    <text testId={testId} className="p-3 rounded-lg bg-surface-950 text-surface-50 text-xs font-mono break-all whitespace-pre-wrap">
+    <text testId={testId} className="p-3 rounded-lg bg-surface-sunken text-text text-xs font-mono break-all whitespace-pre-wrap">
       {children}
     </text>
   );
@@ -62,34 +62,34 @@ function Auth({ data, actions }: Pane) {
       <Section title="Current State" description="Latest cloud auth snapshot from the runtime">
         <InfoList>
           <row className="items-center justify-between gap-4 py-2.5">
-            <text className="text-sm text-muted-foreground">Status</text>
+            <text className="text-sm text-muted">Status</text>
             <text testId="cloud-auth-status" className={`text-sm font-semibold text-right ${tone(status)}`}>
               {status}
             </text>
           </row>
           <row className="items-center gap-3 py-2.5">
-            <text className="grow basis-0 text-sm text-muted-foreground">Active Tenant</text>
+            <text className="grow basis-0 text-sm text-muted">Active Tenant</text>
             <Avatar src={tenant?.logoUrl} />
             <column className="items-end gap-1">
               <text testId="cloud-current-tenant" className="text-sm font-semibold text-right">
                 {tenant ? tenantName(tenant) : 'No active tenant'}
               </text>
               {!!tenant?.shortName && (
-                <text testId="cloud-tenant-short-name" className="px-2 py-0.5 rounded-full bg-blue-100 text-xs font-semibold text-primary">
+                <text testId="cloud-tenant-short-name" className="px-2 py-0.5 rounded-full bg-accent-soft text-xs font-semibold text-accent">
                   {tenant.shortName}
                 </text>
               )}
             </column>
           </row>
           <row className="items-center gap-3 py-2.5">
-            <text className="grow basis-0 text-sm text-muted-foreground">Active User</text>
+            <text className="grow basis-0 text-sm text-muted">Active User</text>
             <Avatar src={user?.avatar} />
             <column className="items-end gap-1">
               <text testId="cloud-current-user" className="text-sm font-semibold text-right">
                 {user?.name || 'Not signed in'}
               </text>
               {!!user?.id && (
-                <text testId="cloud-user-id" className="text-xs text-muted-foreground break-all">
+                <text testId="cloud-user-id" className="text-xs text-muted break-all">
                   {user.id}
                 </text>
               )}
@@ -101,7 +101,7 @@ function Auth({ data, actions }: Pane) {
         title="Tenants"
         description="Activate or remove identities returned by lx.auth.list()"
         action={
-          <text testId="cloud-tenants-count" className="text-xs text-muted-foreground">
+          <text testId="cloud-tenants-count" className="text-xs text-muted">
             {String(tenants.length)}
           </text>
         }
@@ -118,18 +118,18 @@ function Auth({ data, actions }: Pane) {
               onClick={() => actions.activateTenant({ tenantId: item.tenantId })}
               className={
                 active
-                  ? 'p-4 rounded-xl border border-sky-200 bg-sky-50 text-foreground text-left'
-                  : 'p-4 rounded-xl border border-border bg-card text-foreground text-left active:bg-muted'
+                  ? 'p-4 rounded-xl border border-line bg-accent-soft text-text text-left'
+                  : 'p-4 rounded-xl border border-line bg-surface text-text text-left active:bg-surface-sunken'
               }
             >
               <row className="items-center gap-3">
                 <Avatar src={item.logoUrl} />
                 <column className="grow basis-0 min-w-0 gap-1">
                   <text className="text-sm font-semibold">{tenantName(item)}</text>
-                  {!!item.shortName && <text className="text-xs font-semibold text-muted-foreground">{item.shortName}</text>}
-                  <text className="text-xs text-muted-foreground break-all">{item.tenantId || 'Missing tenantId'}</text>
+                  {!!item.shortName && <text className="text-xs font-semibold text-muted">{item.shortName}</text>}
+                  <text className="text-xs text-muted break-all">{item.tenantId || 'Missing tenantId'}</text>
                 </column>
-                <text className="px-2 py-1 rounded-full bg-muted text-xs text-muted-foreground">{state}</text>
+                <text className="px-2 py-1 rounded-full bg-surface-sunken text-xs text-muted">{state}</text>
               </row>
             </button>
           );
@@ -144,14 +144,14 @@ function Mqtt({ data, actions }: Pane) {
   const connected = state === 'connected';
   const waiting = state === 'connecting' || state === 'reconnecting';
   const failed = state === 'disconnected' || state === 'error';
-  const color = connected ? 'text-success' : waiting ? 'text-warning' : failed ? 'text-error' : 'text-muted-foreground';
-  const dot = connected ? 'bg-success' : waiting ? 'bg-warning' : failed ? 'bg-error' : 'bg-surface-400';
+  const color = connected ? 'text-success' : waiting ? 'text-warning' : failed ? 'text-danger' : 'text-muted';
+  const dot = connected ? 'bg-success' : waiting ? 'bg-warning' : failed ? 'bg-danger' : 'bg-line-strong';
   const active = !!data.mqttSubscribed;
   return (
     <Page testId="cloud-page" title="Cloud MQTT">
       <Section title="Runtime Connection" description="MQTT runtime status for the shared cloud session.">
         <row className="items-center justify-between gap-3">
-          <text className="text-xs text-muted-foreground">Connection state</text>
+          <text className="text-xs text-muted">Connection state</text>
           <row className="items-center gap-1.5">
             <spacer className={`w-2 h-2 rounded-full ${dot}`} />
             <text testId="cloud-mqtt-state" className={`font-mono text-xs font-semibold ${color}`}>
@@ -160,12 +160,12 @@ function Mqtt({ data, actions }: Pane) {
           </row>
         </row>
         <row className="items-start justify-between gap-3">
-          <text className="shrink-0 text-xs text-muted-foreground">Last error</text>
+          <text className="shrink-0 text-xs text-muted">Last error</text>
           <text
             testId="cloud-mqtt-error"
             className={
               data.mqttLastError
-                ? 'grow basis-0 min-w-0 text-right font-mono text-xs break-all text-error'
+                ? 'grow basis-0 min-w-0 text-right font-mono text-xs break-all text-danger'
                 : 'grow basis-0 min-w-0 text-right font-mono text-xs break-all'
             }
           >
@@ -180,15 +180,15 @@ function Mqtt({ data, actions }: Pane) {
           <text
             className={
               active
-                ? 'px-2.5 py-1 rounded-full bg-green-100 text-xs font-semibold text-success'
-                : 'px-2.5 py-1 rounded-full bg-muted text-xs font-semibold text-muted-foreground'
+                ? 'px-2.5 py-1 rounded-full bg-success-soft text-xs font-semibold text-success'
+                : 'px-2.5 py-1 rounded-full bg-surface-sunken text-xs font-semibold text-muted'
             }
           >
             {active ? 'active' : 'inactive'}
           </text>
         }
       >
-        <text className="text-xs text-muted-foreground uppercase">Topic</text>
+        <text className="text-xs text-muted uppercase">Topic</text>
         <text testId="cloud-mqtt-topic" className="font-mono text-sm break-all">
           {String(data.mqttTopicFilter || 'demo/mqtt')}
         </text>

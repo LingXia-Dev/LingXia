@@ -22,10 +22,10 @@ export function render({ data, actions }: View) {
   return (
     <Page title="Clipboard" subtitle="lx.clipboard reads and writes the system clipboard. Write never toasts.">
       <Section title="Status">
-        <text testId="clipboard-status" className={failure.value ? 'text-sm text-error' : 'text-sm'}>
+        <text testId="clipboard-status" className={failure.value ? 'text-sm text-danger' : 'text-sm'}>
           {status}
         </text>
-        <text testId="clipboard-types-value" className="text-xs text-muted-foreground">{`types: ${String(data.typesText || 'Not peeked')}`}</text>
+        <text testId="clipboard-types-value" className="text-xs text-muted">{`types: ${String(data.typesText || 'Not peeked')}`}</text>
       </Section>
       <Section title="Text" description="writeText / readText. An empty string is a valid write, not clear().">
         <textarea
@@ -33,7 +33,7 @@ export function render({ data, actions }: View) {
           accessibilityLabel="Text to copy"
           bind={draft}
           placeholder="Text to copy"
-          className="h-20 px-3 py-2 rounded-lg border border-input bg-card text-sm"
+          className="h-20 px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm"
         />
         <grid className="gap-3 grid-cols-2">
           <Button testId="clipboard-write-text" disabled={busy.value} onClick={() => run(() => actions.writeText({ text: draft.value }))}>
@@ -52,7 +52,7 @@ export function render({ data, actions }: View) {
           Write typed item
         </Button>
         {!!data.readTextValue && (
-          <text testId="clipboard-read-value" className="px-3 py-2 rounded-lg bg-muted text-xs text-muted-foreground break-all">
+          <text testId="clipboard-read-value" className="px-3 py-2 rounded-lg bg-surface-sunken text-xs text-muted break-all">
             {String(data.readTextValue)}
           </text>
         )}
@@ -72,9 +72,9 @@ export function render({ data, actions }: View) {
               testId="clipboard-image"
               src={String(data.imagePath)}
               alt="Image from clipboard"
-              className="w-40 h-40 rounded border border-border object-contain"
+              className="w-40 h-40 rounded border border-line object-contain"
             />
-            <text className="text-xs text-muted-foreground break-all">{String(data.imagePath)}</text>
+            <text className="text-xs text-muted break-all">{String(data.imagePath)}</text>
           </column>
         )}
       </Section>

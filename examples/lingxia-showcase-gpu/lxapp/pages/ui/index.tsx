@@ -19,7 +19,7 @@ export function render({ data, actions }: View) {
 
 function ChromeError({ data }: { data: Data }) {
   return data.chromeError ? (
-    <text testId="ui-chrome-error" className="px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-sm text-error break-all">
+    <text testId="ui-chrome-error" className="px-3 py-2 rounded-lg border border-danger/40 bg-danger-soft text-sm text-danger break-all">
       {String(data.chromeError)}
     </text>
   ) : null;
@@ -36,11 +36,11 @@ function Choice({ testId, label, value, onClick }: { testId: string; label: stri
         onClick={() => {
           void onClick();
         }}
-        className="px-3 py-2 rounded-lg border border-input bg-card text-foreground active:bg-muted"
+        className="px-3 py-2 rounded-lg border border-line-strong bg-surface text-text active:bg-surface-sunken"
       >
         <row className="items-center justify-between gap-3">
           <text className="text-base">{value}</text>
-          <text className="text-xs text-primary">Change</text>
+          <text className="text-xs text-accent">Change</text>
         </row>
       </button>
     </column>
@@ -122,7 +122,7 @@ function Dialogs({ data, actions }: Pane) {
               accessibilityLabel="Content"
               bind={modalContent}
               placeholder="Enter modal content"
-              className="h-24 px-3 py-2 rounded-lg border border-input bg-card text-base"
+              className="h-24 px-3 py-2 rounded-lg border border-line-strong bg-surface text-base"
             />
           </column>
           <checkbox testId="modal-show-cancel" bind={modalCancel} className="text-sm">
@@ -137,7 +137,7 @@ function Dialogs({ data, actions }: Pane) {
       )}
       {type === 'modal' && !!data.modalResult && (
         <Section title="Modal Result">
-          <text testId="modal-result" className="text-xs font-mono text-muted-foreground break-all whitespace-pre-wrap">
+          <text testId="modal-result" className="text-xs font-mono text-muted break-all whitespace-pre-wrap">
             {JSON.stringify(data.modalResult, null, 2)}
           </text>
           <Button variant="ghost" testId="modal-clear" onClick={() => actions.clearModalResult()}>
@@ -173,7 +173,7 @@ function Appearance({ data, actions }: Pane) {
           <InfoRow label="Preference" value={preference} testId="ui-appearance-preference" />
           <InfoRow label="Resolved" value={appearance?.resolved} testId="ui-appearance-resolved" />
         </InfoList>
-        <text className="text-xs text-muted-foreground">
+        <text className="text-xs text-muted">
           The resolved theme is in use now. Pages share one palette, so their colors update together.
         </text>
       </Section>
@@ -312,14 +312,14 @@ function NavLink({ testId, label, description, onClick }: { testId: string; labe
       onClick={() => {
         void onClick();
       }}
-      className="px-4 py-3.5 rounded-none bg-transparent text-foreground text-left active:bg-muted"
+      className="px-4 py-3.5 rounded-none bg-transparent text-text text-left active:bg-surface-sunken"
     >
       <row className="items-center justify-between gap-3">
         <column className="grow basis-0 gap-1">
           <text className="text-sm font-medium">{label}</text>
-          {!!description && <text className="text-xs text-muted-foreground">{description}</text>}
+          {!!description && <text className="text-xs text-muted">{description}</text>}
         </column>
-        <text className="text-lg text-muted-foreground">›</text>
+        <text className="text-lg text-muted">›</text>
       </row>
     </button>
   );
@@ -333,14 +333,14 @@ function Counter({ id, label, value, hint, onClick }: { id: string; label: strin
       onClick={() => {
         void onClick();
       }}
-      className="px-2 py-4 rounded-xl bg-muted text-foreground active:bg-surface-200"
+      className="px-2 py-4 rounded-xl bg-surface-sunken text-text active:bg-line"
     >
       <column className="items-center gap-1">
         <text testId={`lifecycle-${id}-counter`} className="text-2xl font-bold">
           {String(value)}
         </text>
         <text className="text-sm font-medium">{label}</text>
-        <text className="text-[10px] text-muted-foreground">{hint}</text>
+        <text className="text-[10px] text-muted">{hint}</text>
       </column>
     </button>
   );
@@ -352,11 +352,11 @@ function Navigation({ data, actions }: Pane) {
   const pages = (data.pageStack || []) as { index: number; name: string; current: boolean }[];
   const events = (data.events || []) as string[];
   return (
-    <page className="bg-background text-foreground">
+    <page className="bg-canvas text-text">
       <scroll testId="page-scroll" className="grow basis-0">
         <column className="w-full max-w-3xl self-center px-4 pt-5 pb-10 gap-4">
           <ChromeError data={data} />
-          <Card className="divide-y divide-border">
+          <Card className="divide-y divide-line">
             <NavLink
               testId="ui-navigate-to"
               label="Push this page again"
@@ -373,7 +373,7 @@ function Navigation({ data, actions }: Pane) {
             action={
               <text
                 testId="ui-page-stack-depth"
-                className="px-2.5 py-1 rounded-full bg-violet-50 text-xs font-mono text-primary"
+                className="px-2.5 py-1 rounded-full bg-accent-soft text-xs font-mono text-accent"
               >{`${pages.length}/10`}</text>
             }
           >
@@ -383,16 +383,16 @@ function Navigation({ data, actions }: Pane) {
                   key={String(page.index)}
                   className={
                     page.current
-                      ? 'items-center gap-3 px-3 py-2 rounded-lg border border-violet-200 bg-violet-50'
-                      : 'items-center gap-3 px-3 py-2 rounded-lg border border-border bg-muted'
+                      ? 'items-center gap-3 px-3 py-2 rounded-lg border border-line bg-accent-soft'
+                      : 'items-center gap-3 px-3 py-2 rounded-lg border border-line bg-surface-sunken'
                   }
                 >
-                  <text className="w-5 text-right text-xs font-mono text-muted-foreground">{String(page.index + 1)}</text>
+                  <text className="w-5 text-right text-xs font-mono text-muted">{String(page.index + 1)}</text>
                   <text className="grow basis-0 text-xs font-mono">{page.name}</text>
                   {page.current && <text className="text-[10px] font-medium">you are here</text>}
                 </row>
               ))}
-              {!pages.length && <text className="py-4 text-xs text-muted-foreground text-center">No page stack available</text>}
+              {!pages.length && <text className="py-4 text-xs text-muted text-center">No page stack available</text>}
             </column>
           </Section>
           <Section title="Logic instance" description="Push this page again to create a new Page instance with a new tag.">
@@ -400,7 +400,7 @@ function Navigation({ data, actions }: Pane) {
               <InfoRow label="This instance" value={`#${data.instanceTag || '-'}`} testId="lifecycle-instance-tag" />
               <InfoRow label="Previous instance" value={`#${data.previousInstanceTag || '-'}`} testId="lifecycle-previous-tag" />
             </InfoList>
-            <text className="text-[11px] text-muted-foreground">The previous tag is saved in app storage and survives a page reset.</text>
+            <text className="text-[11px] text-muted">The previous tag is saved in app storage and survives a page reset.</text>
           </Section>
           <Section
             title="State that resets and state that stays"
@@ -430,13 +430,13 @@ function Navigation({ data, actions }: Pane) {
           <Section title="Lifecycle of this instance" description="Stored in page data, so it starts over with every entry.">
             <column testId="lifecycle-events" className="gap-2">
               {events.map((event, index) => (
-                <text key={String(index)} className="px-3 py-2 rounded-lg border border-border bg-muted text-xs font-mono break-all">
+                <text key={String(index)} className="px-3 py-2 rounded-lg border border-line bg-surface-sunken text-xs font-mono break-all">
                   {event}
                 </text>
               ))}
-              {!events.length && <text className="text-xs text-muted-foreground">No events yet</text>}
+              {!events.length && <text className="text-xs text-muted">No events yet</text>}
             </column>
-            <text className="text-[11px] text-muted-foreground">
+            <text className="text-[11px] text-muted">
               Backgrounding fires onHide / onShow on the same instance. Leaving the page fires onUnload.
             </text>
           </Section>
@@ -448,11 +448,11 @@ function Navigation({ data, actions }: Pane) {
             testId="lifecycle-popup-backdrop"
             accessibilityLabel="Close popup"
             onClick={() => popup.set(false)}
-            className="absolute inset-0 rounded-none bg-black/50"
+            className="absolute inset-0 rounded-none bg-scrim"
           />
           <Card className="w-full max-w-xs px-5 py-6 gap-4 shadow-xl">
             <text className="text-base font-semibold text-center">View popup</text>
-            <text className="text-xs text-muted-foreground text-center">
+            <text className="text-xs text-muted text-center">
               Leave this page with the popup open. A fresh visit starts with it closed, because View state belongs to each page instance.
             </text>
             <Button variant="secondary" testId="lifecycle-popup-close" onClick={() => popup.set(false)}>
@@ -500,7 +500,7 @@ function Options({
 }) {
   return (
     <column className="gap-2">
-      <text className="text-xs text-muted-foreground uppercase">{label}</text>
+      <text className="text-xs text-muted uppercase">{label}</text>
       <grid className={options.length > 3 ? 'gap-2 grid-cols-2' : 'gap-2 grid-cols-3'}>
         {options.map(option => (
           <Button
@@ -563,12 +563,12 @@ function Surface({ data, actions }: Pane) {
           <Field testId="surface-height" label="Height (px or %)" bind={height} placeholder="optional" />
         </grid>
         {attempted.value && !!sizeError && (
-          <text testId="size-error" className="text-xs text-error">
+          <text testId="size-error" className="text-xs text-danger">
             {sizeError}
           </text>
         )}
         <Button testId="open-surface" disabled={active} onClick={open}>{`Open ${kind.value}${active ? ' (already open)' : ''}`}</Button>
-        <text className="text-xs text-muted-foreground">
+        <text className="text-xs text-muted">
           Placement applies when the surface opens; hiding and showing keeps it. Close and reopen to change it.
         </text>
         {active && (
@@ -584,7 +584,7 @@ function Surface({ data, actions }: Pane) {
             </Button>
           </grid>
         )}
-        <text testId="surface-status" className="px-3 py-2 rounded-lg bg-muted text-sm font-mono break-all">
+        <text testId="surface-status" className="px-3 py-2 rounded-lg bg-surface-sunken text-sm font-mono break-all">
           {state?.message || 'No message received yet.'}
         </text>
       </Section>

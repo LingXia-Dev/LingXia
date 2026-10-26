@@ -27,7 +27,7 @@ const paths = {
 const filled = new Set<IconName>(['success', 'send']);
 
 export type IconName = keyof typeof paths;
-export function Icon({ name, className = 'w-6 h-6 text-muted-foreground', ...props }: Omit<VectorProps, 'paths'> & { name: IconName }) {
+export function Icon({ name, className = 'w-6 h-6 text-muted', ...props }: Omit<VectorProps, 'paths'> & { name: IconName }) {
   const fill = filled.has(name);
   return (
     <vector

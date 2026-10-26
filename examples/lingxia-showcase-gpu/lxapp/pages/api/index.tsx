@@ -120,7 +120,7 @@ export function render({ data, actions, env }: View) {
   return (
     <Page testId="api-page">
       <Card className="px-4 py-6 items-center gap-3">
-        <Icon name="bolt" className="w-12 h-12 text-primary" />
+        <Icon name="bolt" className="w-12 h-12 text-accent" />
         <text className="text-center text-base font-medium line-clamp-3">Explore what you can do with LingXia.</text>
       </Card>
       {groups
@@ -131,7 +131,7 @@ export function render({ data, actions, env }: View) {
               testId={`api-${group.id}-section`}
               accessibilityLabel={`${group.label}, ${expanded.value[group.id] ? 'expanded' : 'collapsed'}`}
               onClick={() => toggle(group.id)}
-              className="px-4 py-4 rounded-2xl bg-transparent text-foreground text-left active:bg-muted"
+              className="px-4 py-4 rounded-2xl bg-transparent text-text text-left active:bg-surface-sunken"
             >
               <row className="items-center justify-between gap-3">
                 <text className="text-base">{group.label}</text>
@@ -139,7 +139,7 @@ export function render({ data, actions, env }: View) {
               </row>
             </button>
             {expanded.value[group.id] && (
-              <column className="divide-y divide-border border-t border-border">
+              <column className="divide-y divide-line border-t border-line">
                 {group.entries
                   .filter(item => !item.desktopOnly || desktop)
                   .map(item => (
@@ -147,14 +147,14 @@ export function render({ data, actions, env }: View) {
                       key={item.id}
                       testId={item.id}
                       onClick={() => actions[item.action](item.payload)}
-                      className="px-4 py-3 min-h-11 rounded-none bg-transparent text-foreground text-left active:bg-muted"
+                      className="px-4 py-3 min-h-11 rounded-none bg-transparent text-text text-left active:bg-surface-sunken"
                     >
                       <row className="items-center gap-3">
                         <column className="grow basis-0 min-w-0 gap-1">
                           <text className="text-sm">{item.label}</text>
-                          {item.description && <text className="text-xs text-muted-foreground line-clamp-3">{item.description}</text>}
+                          {item.description && <text className="text-xs text-muted line-clamp-3">{item.description}</text>}
                         </column>
-                        <Icon name={item.id === 'api-exit' ? 'exit' : 'chevron'} className="w-4 h-4 text-muted-foreground" />
+                        <Icon name={item.id === 'api-exit' ? 'exit' : 'chevron'} className="w-4 h-4 text-muted" />
                       </row>
                     </button>
                   ))}
@@ -166,7 +166,7 @@ export function render({ data, actions, env }: View) {
         <button
           testId="api-location"
           onClick={() => actions.openLocation()}
-          className="px-4 py-4 rounded-2xl bg-transparent text-foreground text-left active:bg-muted"
+          className="px-4 py-4 rounded-2xl bg-transparent text-text text-left active:bg-surface-sunken"
         >
           <row className="items-center justify-between">
             <text className="text-base">Location</text>

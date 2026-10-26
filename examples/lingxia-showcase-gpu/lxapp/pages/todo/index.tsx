@@ -11,7 +11,7 @@ const filters = [
 
 function TodoRow({ todo, blocked, onToggle, onDelete }: { todo: Todo; blocked: boolean; onToggle: () => unknown; onDelete: () => unknown }) {
   return (
-    <row testId={`todo-item-${todo.id}`} className="items-center min-h-12 px-3 gap-2 border-t border-border">
+    <row testId={`todo-item-${todo.id}`} className="items-center min-h-12 px-3 gap-2 border-t border-line">
       <checkbox
         testId={`todo-toggle-${todo.id}`}
         value={todo.completed}
@@ -22,8 +22,8 @@ function TodoRow({ todo, blocked, onToggle, onDelete }: { todo: Todo; blocked: b
         className="grow basis-0 min-w-0 py-3.5 bg-transparent"
       >
         <row className="items-center gap-3.5">
-          <Icon name={todo.completed ? 'success' : 'note'} className={todo.completed ? 'w-6 h-6 text-primary' : 'w-6 h-6 text-surface-300'} />
-          <text className={todo.completed ? 'grow basis-0 min-w-0 text-base line-through text-muted-foreground' : 'grow basis-0 min-w-0 text-base'}>
+          <Icon name={todo.completed ? 'success' : 'note'} className={todo.completed ? 'w-6 h-6 text-accent' : 'w-6 h-6 text-faint'} />
+          <text className={todo.completed ? 'grow basis-0 min-w-0 text-base line-through text-muted' : 'grow basis-0 min-w-0 text-base'}>
             {todo.text}
           </text>
         </row>
@@ -35,9 +35,9 @@ function TodoRow({ todo, blocked, onToggle, onDelete }: { todo: Todo; blocked: b
         onClick={() => {
           void onDelete();
         }}
-        className="w-11 h-11 p-3 rounded-full bg-transparent active:bg-red-50 disabled:opacity-40"
+        className="w-11 h-11 p-3 rounded-full bg-transparent active:bg-danger-soft disabled:opacity-40"
       >
-        <Icon name="close" className="w-5 h-5 text-error" />
+        <Icon name="close" className="w-5 h-5 text-danger" />
       </button>
     </row>
   );
@@ -74,11 +74,11 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
       });
   };
   return (
-    <page testId="todo-page" className="bg-background text-foreground items-center px-3 py-6 gap-4">
-      <text className="text-7xl font-thin tracking-tighter text-red-300">todos</text>
+    <page testId="todo-page" className="bg-canvas text-text items-center px-3 py-6 gap-4">
+      <text className="text-7xl font-thin tracking-tighter text-accent">todos</text>
       <column
         testId="todo-panel"
-        className="w-full max-w-xl grow basis-0 min-h-0 rounded-2xl bg-card/90 backdrop-blur-xl shadow-lg border border-border"
+        className="w-full max-w-xl grow basis-0 min-h-0 rounded-2xl bg-surface/90 backdrop-blur-xl shadow-lg border border-line"
       >
         <row className="items-center">
           {todos.length > 0 ? (
@@ -89,7 +89,7 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
               onClick={() => run(() => actions.toggleAll())}
               className="w-12 h-12 p-3 bg-transparent"
             >
-              <Icon name="expand" className={active ? 'w-6 h-6 text-surface-300' : 'w-6 h-6 text-primary'} />
+              <Icon name="expand" className={active ? 'w-6 h-6 text-faint' : 'w-6 h-6 text-accent'} />
             </button>
           ) : (
             <spacer className="w-12" />
@@ -101,11 +101,11 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
             disabled={blocked}
             placeholder="What needs to be done?"
             onSubmit={add}
-            className="grow basis-0 min-w-0 min-h-14 py-4 pr-4 bg-transparent text-base placeholder:text-muted-foreground focus:bg-muted/40"
+            className="grow basis-0 min-w-0 min-h-14 py-4 pr-4 bg-transparent text-base placeholder:text-muted focus:bg-surface-sunken/40"
           />
         </row>
         {data.loading && (
-          <text testId="todo-loading" className="p-4 text-sm text-muted-foreground">
+          <text testId="todo-loading" className="p-4 text-sm text-muted">
             Loading saved tasks...
           </text>
         )}
@@ -137,11 +137,11 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
           <view
             className={
               wide
-                ? 'flex-row items-center justify-between gap-3 px-5 py-4 border-t border-border'
-                : 'items-stretch gap-2.5 px-4 py-3.5 border-t border-border'
+                ? 'flex-row items-center justify-between gap-3 px-5 py-4 border-t border-line'
+                : 'items-stretch gap-2.5 px-4 py-3.5 border-t border-line'
             }
           >
-            <text testId="todo-count" className="text-sm text-muted-foreground">{`${active} ${active === 1 ? 'item' : 'items'} left`}</text>
+            <text testId="todo-count" className="text-sm text-muted">{`${active} ${active === 1 ? 'item' : 'items'} left`}</text>
             <Segmented
               testId="todo-filter"
               value={filter}

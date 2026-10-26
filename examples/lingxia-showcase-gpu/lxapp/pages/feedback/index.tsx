@@ -47,7 +47,7 @@ export function render({ actions }: View) {
           bind={message}
           disabled={submitting.value}
           placeholder="What happened, and what would you prefer?"
-          className="h-44 px-4 py-3 rounded-2xl border border-input bg-card text-sm leading-6"
+          className="h-44 px-4 py-3 rounded-2xl border border-line-strong bg-surface text-sm leading-6"
         />
       </column>
       <Field
@@ -62,7 +62,7 @@ export function render({ actions }: View) {
         {submitting.value ? 'Sending…' : 'Send feedback'}
       </Button>
       <ErrorState testId="feedback-error" error={failure.value || null} />
-      <text className="text-center text-xs text-muted-foreground">Demo only — submissions are written to the Logic log.</text>
+      <text className="text-center text-xs text-muted">Demo only — submissions are written to the Logic log.</text>
     </Page>
   );
 }

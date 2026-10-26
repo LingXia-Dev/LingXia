@@ -172,7 +172,7 @@ export function render({ data, actions }: View) {
               Clear logs
             </Button>
           </row>
-          <scroll testId="device-orientation-event-scroll" className="max-h-56 p-3 rounded-lg border border-border bg-muted">
+          <scroll testId="device-orientation-event-scroll" className="max-h-56 p-3 rounded-lg border border-line bg-surface-sunken">
             <text testId="device-orientation-events" className="text-xs break-all whitespace-pre-line">
               {events.join('\n') || '--'}
             </text>
