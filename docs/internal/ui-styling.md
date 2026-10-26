@@ -37,6 +37,8 @@ time (see [ui-authoring.md](ui-authoring.md)) and again at runtime.
   `textOverflow` and `lineClamp`; Tailwind's `-webkit-box` declarations are
   absorbed by the clamp.
 - `grid-cols-N` lowers to `gridTemplateColumns: N` on `<grid>`.
+- Shadow tokens and `shadow-[var(--x)]` expand every layer the variable holds
+  (≤8); layers Tailwind did not wrap in `--tw-shadow-color` keep their color.
 - `rounded-full` lowers to the native 16,384 radius bound, clamped by paint.
 - Standard system sans/mono stacks lower to `sans-serif`/`monospace`;
   custom faces and serif fail.

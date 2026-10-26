@@ -177,9 +177,12 @@ function gradientDeclaration(prop, raw, local, gradient) {
 
 function shadowLayers(value, local) {
   if (value === 'none') return [];
-  const layers = postcss.list.comma(value).map(layer => {
+  // A variable may hold several layers, so split again after substitution.
+  const layers = postcss.list.comma(value).flatMap(layer => {
     const useColor = layer.includes('var(--tw-shadow-color,');
-    const tokens = postcss.list.space(variables(layer, local));
+    return postcss.list.comma(variables(layer, local)).map(part => [part, useColor]);
+  }).map(([layer, useColor]) => {
+    const tokens = postcss.list.space(layer);
     const lengths = [], colors = [];
     for (const token of tokens) {
       if (/^-?(?:\d*\.)?\d+(?:px|rem)?$/.test(token)) {

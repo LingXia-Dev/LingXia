@@ -165,6 +165,20 @@ test('arbitrary outer shadows retain currentColor and reject unsupported or exce
     assert.throws(() => classStyle(name), /UI_CLASS/);
 });
 
+test('shadow tokens and arbitrary variables expand to every layer they hold in each appearance', async () => {
+  const theme = `@theme inline { --shadow-card: var(--card-shadow); }
+    :root { --card-shadow: 0 1px 2px #0000001a, 0 4px 8px hsl(220 13% 20% / .1); --elev: 0 1px 2px #0002, 0 4px 8px #0003; --nine: ${Array(9).fill('0 1px 2px #000').join(', ')}; }
+    [data-theme='dark'] { --card-shadow: 0 0 0 1px #ffffff1a; }`;
+  await use(['shadow-card', 'shadow-[var(--elev)]', '[box-shadow:var(--elev)]', 'shadow-[var(--nine)]', 'shadow-red-500'], theme);
+  assert.deepEqual(classStyle('shadow-card', env()).boxShadow.map(layer => layer.offsetY), [1, 4]);
+  assert.deepEqual(classStyle('shadow-card', env('dark')).boxShadow, [{ offsetX: 0, offsetY: 0, blur: 0, spread: 1, color: '#ffffff1a' }]);
+  assert.deepEqual(classStyle('shadow-[var(--elev)]').boxShadow.map(layer => layer.color), ['#00000022', '#00000033']);
+  assert.deepEqual(classStyle('[box-shadow:var(--elev)]').boxShadow.length, 2);
+  // A layer Tailwind did not wrap in --tw-shadow-color keeps its own color, as in CSS.
+  assert.equal(classStyle('shadow-[var(--elev)] shadow-red-500').boxShadow[0].color, '#00000022');
+  assert.throws(() => classStyle('shadow-[var(--nine)]'), /too many box shadows/);
+});
+
 test('outer rings compose before shadows and fixed shadows replace the composition', async () => {
   await use(['ring-2', 'ring-0', 'ring-blue-500/30', 'shadow-lg', 'shadow-none', 'focus:ring-2', 'focus:ring-blue-500/30', 'ring-offset-2', 'ring-inset', '[box-shadow:none]']);
   const style = classStyle('ring-2 ring-blue-500/30 shadow-lg');
