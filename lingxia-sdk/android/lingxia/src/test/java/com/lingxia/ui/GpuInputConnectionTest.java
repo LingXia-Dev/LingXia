@@ -170,7 +170,7 @@ public class GpuInputConnectionTest {
         return new JSONObject().put("text",text).put("selection",new JSONArray(new int[]{anchor,focus}));
     }
     @Test public void submitOnEnterPreservesShiftNewlineAndPreeditConfirmation() throws Exception {
-        Client c=new Client("hello",5,5); c.connection.multiline=true; c.connection.submitOnEnter=true;
+        Client c=new Client("hello",5,5); c.connection.multiline=true;
         android.view.KeyEvent enter=new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_ENTER);
         assertTrue(c.connection.sendKeyEvent(new android.view.KeyEvent(0,0,0,android.view.KeyEvent.KEYCODE_ENTER,0,android.view.KeyEvent.META_SHIFT_ON)));
         assertEquals("hello\n",c.text()); assertFalse(c.submit);
@@ -199,7 +199,7 @@ public class GpuInputConnectionTest {
         assertEquals("linea",c.text()); assertEquals(-1,c.connection.composeStart());
         JSONArray batch=c.batches.get(c.batches.size()-1);
         assertEquals(2,batch.length()); assertEquals("finish_composition",batch.getJSONObject(0).getString("op"));
-        c.connection.setComposingRegion(0,5); c.connection.multiline=true;
+        c.connection.setComposingRegion(0,5); c.connection.multiline=true; c.connection.returnInsertsNewline=true;
         assertTrue(c.connection.sendKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_ENTER)));
         assertEquals("linea\n",c.text()); assertFalse(c.submit);
         c.connection.closeConnection();

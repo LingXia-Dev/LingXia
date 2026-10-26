@@ -35,8 +35,8 @@ final class GpuInputConnection extends BaseInputConnection {
     private final TreeMap<Long, Integer> pending = new TreeMap<>();
     private long revision;
     int extractedToken = -1;
-    boolean multiline, secure, submitOnEnter;
-    /** `maxLength` in code points, or -1; inserts are cut to fit as a LengthFilter would. */
+    boolean multiline, secure, returnInsertsNewline;
+    /** `maxLength` in UTF-16 units like the core, or -1; inserts are cut to fit as a LengthFilter would. */
     int maxLength = -1;
 
     GpuInputConnection(View view, String identity, long token, JSONObject state, Sink sink) {
@@ -175,9 +175,12 @@ final class GpuInputConnection extends BaseInputConnection {
     }
     private String fit(String insert, int start, int end) {
         if (maxLength < 0) return insert;
-        int room = maxLength - (text.codePointCount(0, start) + text.codePointCount(end, text.length()));
+        int room = maxLength - (start + text.length() - end);
         if (room <= 0) return "";
-        return insert.codePointCount(0, insert.length()) <= room ? insert : insert.substring(0, insert.offsetByCodePoints(0, room));
+        if (insert.length() <= room) return insert;
+        // Never split a surrogate pair.
+        if (Character.isHighSurrogate(insert.charAt(room - 1))) room--;
+        return insert.substring(0, room);
     }
     @Override public boolean commitText(CharSequence text, int cursor) { return replace(text,cursor,false); }
     boolean replaceAll(String value) {
@@ -346,7 +349,7 @@ final class GpuInputConnection extends BaseInputConnection {
         }
         if (event.getKeyCode() == KeyEvent.KEYCODE_DEL || event.getKeyCode() == KeyEvent.KEYCODE_FORWARD_DEL) return deleteKey(event);
         if (event.getKeyCode() == KeyEvent.KEYCODE_ENTER) {
-            if (multiline && (!submitOnEnter || event.isShiftPressed())) return replace("\n",1,false,true);
+            if (returnInsertsNewline || (multiline && event.isShiftPressed())) return replace("\n",1,false,true);
             // A hardware Enter confirming preedit must not also send the message.
             if (multiline && composeStart >= 0) return finishComposingText();
             return performEditorAction(0);

@@ -34,20 +34,28 @@ public class GpuImeTest {
     private static JSONObject state(String text) throws Exception {
         return new JSONObject().put("text",text).put("selection",new JSONArray(new int[]{text.length(),text.length()}));
     }
+    /** The core's keyboard configuration for a plain single-line editor. */
+    private static JSONObject ime() throws Exception {
+        return new JSONObject().put("keyboard","text").put("secure",false).put("multiline",false).put("capitalize","none")
+            .put("suggestions",true).put("return_key","done").put("return_inserts_newline",false).put("hide_on_submit",true)
+            .put("picker",JSONObject.NULL).put("auto_complete",JSONObject.NULL).put("max_length",JSONObject.NULL);
+    }
     private static JSONObject node(long token,String text) throws Exception {
         return new JSONObject().put("identity","editor").put("tag","input").put("input",new JSONObject()
-            .put("enabled",true).put("keyboard","text").put("edit_token",token).put("edit",state(text)));
+            .put("enabled",true).put("keyboard","text").put("edit_token",token).put("edit",state(text)).put("ime",ime()));
     }
+    private static JSONObject ime(JSONObject node) { return node.optJSONObject("input").optJSONObject("ime"); }
     private static JSONObject frame(long token,String text) throws Exception { return new JSONObject().put("nodes",new JSONArray().put(node(token,text))); }
     private GpuIme ime(Host host) { return new GpuIme(new View(RuntimeEnvironment.getApplication()),host); }
 
     @Test public void multilineSubmitOptionUpdatesKeyboardActionAndPreservesMultiline() throws Exception {
         Host host=new Host(); GpuIme ime=ime(host);
         JSONObject node=node(7,"hello").put("tag","textarea");
+        ime(node).put("multiline",true).put("return_key","newline").put("return_inserts_newline",true).put("hide_on_submit",false);
         JSONObject frame=new JSONObject().put("nodes",new JSONArray().put(node));
         ime.presented(frame,ime.capture()); EditorInfo info=new EditorInfo(); ime.create(info);
         assertEquals(EditorInfo.IME_ACTION_NONE,info.imeOptions & EditorInfo.IME_MASK_ACTION);
-        node.getJSONObject("input").put("submit_on_enter",true);
+        ime(node).put("return_key","send").put("return_inserts_newline",false);
         ime.presented(frame,ime.capture()); info=new EditorInfo(); InputConnection connection=ime.create(info);
         assertEquals(EditorInfo.IME_ACTION_SEND,info.imeOptions & EditorInfo.IME_MASK_ACTION);
         assertNotEquals(0,info.inputType & android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);
@@ -59,7 +67,7 @@ public class GpuImeTest {
 
     @Test public void searchUsesSearchActionAndKeepsTheEditingConnectionAfterSubmit() throws Exception {
         Host host=new Host();GpuIme ime=ime(host);
-        JSONObject node=node(7,"coffee").put("tag","search");node.getJSONObject("input").put("keyboard","search");
+        JSONObject node=node(7,"coffee").put("tag","search");ime(node).put("keyboard","search").put("return_key","search").put("hide_on_submit",false);
         ime.presented(new JSONObject().put("nodes",new JSONArray().put(node)),ime.capture());
         EditorInfo info=new EditorInfo();InputConnection connection=ime.create(info);
         assertEquals(EditorInfo.IME_ACTION_SEARCH,info.imeOptions & EditorInfo.IME_MASK_ACTION);
@@ -253,7 +261,7 @@ public class GpuImeTest {
     }
     @Test public void frameRevisionProtectsTypingAndPasswordConfigIsExposed() throws Exception {
         Host host=new Host(); GpuIme ime=ime(host);
-        JSONObject node=node(7,""); node.optJSONObject("input").put("secure",true);
+        JSONObject node=node(7,""); ime(node).put("secure",true);
         ime.presented(new JSONObject().put("nodes",new JSONArray().put(node)),ime.capture());
         EditorInfo info=new EditorInfo(); InputConnection input=ime.create(info);
         assertEquals(android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD,info.inputType & android.text.InputType.TYPE_MASK_VARIATION);
@@ -272,8 +280,8 @@ public class GpuImeTest {
 
     @Test public void editorAttributesShapeTheKeyboardAndAutofillHint() throws Exception {
         Host host=new Host(); GpuIme ime=ime(host);
-        JSONObject node=node(7,""); node.getJSONObject("input").put("enter_key_hint","next").put("auto_capitalize","words")
-            .put("spell_check",false).put("auto_complete","one-time-code").put("max_length",3);
+        JSONObject node=node(7,""); ime(node).put("return_key","next").put("capitalize","words")
+            .put("suggestions",false).put("auto_complete","one-time-code").put("max_length",3);
         ime.presented(new JSONObject().put("nodes",new JSONArray().put(node)),ime.capture());
         EditorInfo info=new EditorInfo(); InputConnection input=ime.create(info);
         assertEquals(EditorInfo.IME_ACTION_NEXT,info.imeOptions & EditorInfo.IME_MASK_ACTION);
@@ -284,17 +292,17 @@ public class GpuImeTest {
         assertEquals("abc",input.getTextBeforeCursor(10,0));
         assertTrue(input.commitText("e",1));
         assertEquals("abc",input.getTextBeforeCursor(10,0));
-        JSONObject password=new JSONObject().put("keyboard","text").put("auto_complete","new-password");
-        assertEquals(android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD,GpuIme.inputType(password,false) & android.text.InputType.TYPE_MASK_VARIATION);
-        for (String hint : new String[]{"done","go","previous","search","send"}) assertTrue(hint,GpuIme.action(hint) > 0);
-        assertEquals(-1,GpuIme.action("enter"));
+        assertEquals(android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD,
+            GpuIme.inputType(ime().put("secure",true)) & android.text.InputType.TYPE_MASK_VARIATION);
+        for (String key : new String[]{"done","go","previous","search","send"}) assertTrue(key,GpuIme.action(key) != EditorInfo.IME_ACTION_NONE);
+        assertEquals(EditorInfo.IME_ACTION_NONE,GpuIme.action("newline"));
     }
 
     @Test public void nextActionRetargetsTheKeyboardToTheEditorFocusMovedTo() throws Exception {
         Host host=new Host(); GpuIme ime=ime(host);
         JSONObject first=node(7,"a"), second=node(0,"").put("identity","second");
         second.getJSONObject("input").remove("edit_token"); second.getJSONObject("input").remove("edit");
-        first.getJSONObject("input").put("enter_key_hint","next");
+        ime(first).put("return_key","next");
         ime.presented(new JSONObject().put("nodes",new JSONArray().put(first).put(second)),ime.capture());
         InputConnection input=ime.create(new EditorInfo());
         assertTrue(input.performEditorAction(EditorInfo.IME_ACTION_NEXT));
@@ -312,7 +320,7 @@ public class GpuImeTest {
         Host host=new Host();
         android.app.Activity activity=org.robolectric.Robolectric.buildActivity(android.app.Activity.class).setup().get();
         GpuIme ime=new GpuIme(new View(activity),host);
-        JSONObject node=node(7,"2024-05-06"); node.getJSONObject("input").put("picker","date").put("min","2024-01-01");
+        JSONObject node=node(7,"2024-05-06"); ime(node).put("picker",new JSONObject().put("kind","date").put("min","2024-01-01").put("max",JSONObject.NULL));
         ime.presented(new JSONObject().put("nodes",new JSONArray().put(node)),ime.capture());
         assertNull("no keyboard connection",ime.create(new EditorInfo()));
         android.app.DatePickerDialog dialog=(android.app.DatePickerDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();

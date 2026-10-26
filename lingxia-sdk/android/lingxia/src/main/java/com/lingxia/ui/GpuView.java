@@ -856,9 +856,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 JSONObject edit = input.optJSONObject("edit");
                 String value = edit != null ? edit.optString("text") : input.optString("value");
                 child.setAutofillValue(android.view.autofill.AutofillValue.forText(value));
-                String hint = GpuInput.autofillHint(input.optString(GpuInput.KEY_AUTO_COMPLETE));
+                JSONObject ime = input.optJSONObject("ime") == null ? new JSONObject() : input.optJSONObject("ime");
+                String hint = ime.isNull("auto_complete") ? null : GpuInput.autofillHint(ime.optString("auto_complete"));
                 if (hint != null) child.setAutofillHints(new String[]{hint});
-                child.setInputType(GpuIme.inputType(input, "textarea".equals(node.optString("tag"))));
+                child.setInputType(GpuIme.inputType(ime));
                 child.setHint(input.optString("placeholder"));
                 child.setDataIsSensitive(!value.isEmpty());
                 Rect rect = bounds(node);

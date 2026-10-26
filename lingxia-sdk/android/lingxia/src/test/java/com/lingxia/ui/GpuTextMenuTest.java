@@ -59,7 +59,8 @@ public class GpuTextMenuTest {
         void present(boolean secure,boolean undo,boolean redo) throws Exception {
             JSONObject state=new JSONObject().put("text","hello").put("selection",new JSONArray(new int[]{0,5}))
                 .put("can_undo",undo).put("can_redo",redo);
-            JSONObject input=new JSONObject().put("enabled",true).put("secure",secure).put("edit_token",7).put("edit",state);
+            JSONObject input=new JSONObject().put("enabled",true).put("secure",secure).put("edit_token",7).put("edit",state)
+                .put("ime",new JSONObject().put("keyboard","text").put("secure",secure).put("return_key","done").put("hide_on_submit",true));
             JSONObject node=new JSONObject().put("identity","editor").put("tag","input").put("input",input);
             ime.presented(new JSONObject().put("nodes",new JSONArray().put(node)),ime.capture());
         }
