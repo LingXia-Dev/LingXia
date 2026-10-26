@@ -32,3 +32,5 @@ gpu:
   retrying: "正在重试…"
   # Spoken role of a GPU page link.
   a11y_link: "链接"
+  # Appended to a GPU page element that reports itself busy (aria-busy).
+  a11y_busy: "忙碌"
