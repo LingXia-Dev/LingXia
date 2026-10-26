@@ -109,6 +109,9 @@ impl Renderer {
         }
         for (index, record) in records.iter().enumerate() {
             let mut layout = *tree.layout(ids[index]).map_err(|e| e.to_string())?;
+            // Taffy stretches a child to its parent minus margins, which can go below zero.
+            layout.size.width = layout.size.width.max(0.0);
+            layout.size.height = layout.size.height.max(0.0);
             layout.padding.left += layout.border.left;
             layout.padding.right += layout.border.right;
             layout.padding.top += layout.border.top;
