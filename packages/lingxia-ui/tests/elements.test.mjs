@@ -35,7 +35,7 @@ test('image sources and fits are validated; objectFit is image and vector style'
 });
 
 test('vector paths carry SVG transforms, caps, joins, dash offsets and named gradients', () => {
-  const gradients = { glow: { type: 'radial', r: 0.5, stops: [{ offset: 0, color: '#ffffff' }, { offset: 1, color: '#ff0000', opacity: 0.5 }] } };
+  const gradients = { sweep: { type: 'conic', from: 45, stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }] }, glow: { type: 'radial', r: 0.5, stops: [{ offset: 0, color: '#ffffff' }, { offset: 1, color: '#ff0000', opacity: 0.5 }] } };
   const paths = [{ d: 'M2 12h20', fill: 'url(#glow)', stroke: 'url(#glow)', strokeLinecap: 'round', strokeLinejoin: 'bevel', strokeDashoffset: 2, strokeDasharray: [4, 2], transform: 'rotate(45 12 12) translate(1,2)' }];
   const source = JSON.parse(rendered(() => h('vector', { paths, gradients })).props.vectorSource);
   assert.deepEqual(source, { viewBox: [0, 0, 24, 24], paths, gradients });

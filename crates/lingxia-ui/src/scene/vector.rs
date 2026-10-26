@@ -43,6 +43,8 @@ struct VectorGradient {
     fx: Option<f64>,
     fy: Option<f64>,
     fr: Option<f64>,
+    /// Conic start angle in degrees, clockwise from the top.
+    from: Option<f64>,
     units: Option<String>,
     spread: Option<String>,
     stops: Vec<GradientStop>,
@@ -121,11 +123,19 @@ impl VectorGradient {
             || !id
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-            || !matches!(self.r#type.as_str(), "linear" | "radial")
+            || !matches!(self.r#type.as_str(), "linear" | "radial" | "conic")
             || (linear
-                && [self.cx, self.cy, self.r, self.fx, self.fy, self.fr]
+                && [
+                    self.cx, self.cy, self.r, self.fx, self.fy, self.fr, self.from,
+                ]
+                .iter()
+                .any(Option::is_some))
+            || (self.r#type == "conic"
+                && [self.r, self.fx, self.fy, self.fr]
                     .iter()
                     .any(Option::is_some))
+            || (self.r#type == "radial" && self.from.is_some())
+            || self.from.is_some_and(|a| !bounded(a, 36000.0))
             || (!linear
                 && [self.x1, self.y1, self.x2, self.y2]
                     .iter()
@@ -181,13 +191,21 @@ impl VectorGradient {
         } else {
             stops
         };
-        let gradient = if self.r#type == "linear" {
+        let center = (self.cx.unwrap_or(0.5), self.cy.unwrap_or(0.5));
+        // A conic sweep starts at the top and turns clockwise, like CSS; peniko starts at +x.
+        let sweep = (self.r#type == "conic").then(|| {
+            Affine::translate(center)
+                * Affine::rotate((self.from.unwrap_or(0.0) - 90.0).to_radians())
+                * Affine::translate((-center.0, -center.1))
+        });
+        let gradient = if sweep.is_some() {
+            Gradient::new_sweep(center, 0.0, std::f32::consts::TAU)
+        } else if self.r#type == "linear" {
             Gradient::new_linear(
                 (self.x1.unwrap_or(0.0), self.y1.unwrap_or(0.0)),
                 (self.x2.unwrap_or(1.0), self.y2.unwrap_or(0.0)),
             )
         } else {
-            let center = (self.cx.unwrap_or(0.5), self.cy.unwrap_or(0.5));
             Gradient::new_two_point_radial(
                 (self.fx.unwrap_or(center.0), self.fy.unwrap_or(center.1)),
                 self.fr.unwrap_or(0.0) as f32,
@@ -209,7 +227,7 @@ impl VectorGradient {
         };
         GradientBrush {
             gradient,
-            transform: transform * units,
+            transform: transform * units * sweep.unwrap_or(Affine::IDENTITY),
         }
     }
 }
@@ -793,5 +811,19 @@ mod tests {
         );
         assert!(at(&radial, 12, 12)[1] > 200);
         assert_eq!(at(&radial, 0, 0), [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn conic_gradients_sweep_clockwise_from_the_top() {
+        let quarters = ",gradients:{c:{type:'conic',stops:[{offset:0,color:'#ff0000'},{offset:0.25,color:'#ff0000'},{offset:0.25,color:'#00ff00'},{offset:0.5,color:'#00ff00'},{offset:0.5,color:'#0000ff'},{offset:1,color:'#0000ff'}]},r:{type:'conic',from:90,stops:[{offset:0,color:'#ff0000'},{offset:0.25,color:'#ff0000'},{offset:0.25,color:'#00ff00'},{offset:1,color:'#00ff00'}]}}";
+        let pixels = raster("[{d:'M0 0h24v24H0z',fill:'url(#c)'}]", quarters);
+        assert!(at(&pixels, 18, 4)[0] > 200, "{:?}", at(&pixels, 18, 4));
+        assert!(at(&pixels, 18, 18)[1] > 200);
+        assert!(at(&pixels, 4, 18)[2] > 200);
+        let rotated = raster("[{d:'M0 0h24v24H0z',fill:'url(#r)'}]", quarters);
+        assert!(at(&rotated, 18, 18)[0] > 200, "{:?}", at(&rotated, 18, 18));
+        assert!(
+            Vector::parse(&json!({"viewBox":[0,0,24,24],"gradients":{"c":{"type":"conic","r":1,"stops":[{"offset":0,"color":"#000000"}]}},"paths":[{"d":"M0 0h1","fill":"url(#c)"}]}).to_string()).is_err()
+        );
     }
 }

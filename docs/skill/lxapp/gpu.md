@@ -40,7 +40,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   Errors are `{ code, message }`; reloads keep old values (`stale`). `useLeaveGuard(name, { enabled })`.
 - Lists: `<List items getKey renderItem />`; hooks inside rows need stable keys.
 - `<vector paths gradients>`: paths take SVG `transform`, caps, joins, dash offset and
-  `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear or radial, ≤8).
+  `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear, radial or conic, ≤8).
 - Rich text: `<text>Read <span className="font-bold">this</span> or <link onPress={go}>that</link></text>`;
   runs take text paint only; links are accent + underline by default. `select-text` lets users
   long-press to select and copy.

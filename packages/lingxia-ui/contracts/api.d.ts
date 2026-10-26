@@ -149,8 +149,10 @@ export interface VectorPath {
 }
 /** SVG gradient; coordinates default to `objectBoundingBox` units. */
 export interface VectorGradient {
-  type: "linear" | "radial"; x1?: number; y1?: number; x2?: number; y2?: number;
+  type: "linear" | "radial" | "conic"; x1?: number; y1?: number; x2?: number; y2?: number;
   cx?: number; cy?: number; r?: number; fx?: number; fy?: number; fr?: number;
+  /** Conic start angle, degrees clockwise from the top. */
+  from?: number;
   units?: "objectBoundingBox" | "userSpaceOnUse"; spread?: "pad" | "reflect" | "repeat";
   stops: ReadonlyArray<{ offset: number; color: string; opacity?: number }>;
 }

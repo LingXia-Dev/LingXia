@@ -12,14 +12,16 @@ export function label(value, code, required = false) {
 const finiteWithin = (value, bound) => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= bound;
 const hexColor = value => typeof value === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value);
 const pathKeys = ['d', 'fill', 'stroke', 'strokeWidth', 'strokeDasharray', 'strokeDashoffset', 'strokeLinecap', 'strokeLinejoin', 'transform', 'vectorEffect'];
-const gradientKeys = ['type', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'fx', 'fy', 'fr', 'units', 'spread', 'stops'];
+const gradientKeys = ['type', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'fx', 'fy', 'fr', 'from', 'units', 'spread', 'stops'];
 const plain = value => value && typeof value === 'object' && !Array.isArray(value);
 
 function vectorGradient(id, gradient) {
   const invalid = () => { throw Error(`UI_VECTOR: invalid gradient ${id}`); };
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || !plain(gradient) || Object.keys(gradient).some(k => !gradientKeys.includes(k)) ||
-      !['linear', 'radial'].includes(gradient.type) ||
-      (gradient.type === 'linear' ? ['cx', 'cy', 'r', 'fx', 'fy', 'fr'] : ['x1', 'y1', 'x2', 'y2']).some(k => gradient[k] !== undefined) ||
+      !['linear', 'radial', 'conic'].includes(gradient.type) ||
+      ({ linear: ['cx', 'cy', 'r', 'fx', 'fy', 'fr', 'from'], radial: ['x1', 'y1', 'x2', 'y2', 'from'], conic: ['x1', 'y1', 'x2', 'y2', 'r', 'fx', 'fy', 'fr'] }[gradient.type])
+        .some(k => gradient[k] !== undefined) ||
+      (gradient.from !== undefined && !finiteWithin(gradient.from, 36000)) ||
       ['x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'fx', 'fy'].some(k => gradient[k] !== undefined && !finiteWithin(gradient[k], 16384)) ||
       ['r', 'fr'].some(k => gradient[k] !== undefined && (!finiteWithin(gradient[k], 16384) || gradient[k] < 0)) ||
       (gradient.units !== undefined && !['objectBoundingBox', 'userSpaceOnUse'].includes(gradient.units)) ||
