@@ -721,6 +721,18 @@ impl HostEvents for AndroidAdapter {
     fn bootstrap_overdue(&self, overdue: bool) {
         self.flag(jni_str!("bootstrapOverdue"), overdue);
     }
+    fn copy_text(&self, text: &str) {
+        self.java(|env, platform| {
+            let text = env.new_string(text)?;
+            env.call_method(
+                platform,
+                jni_str!("copyText"),
+                jni_sig!("(Ljava/lang/String;)V"),
+                &[JValue::Object(&text)],
+            )?;
+            Ok(())
+        })
+    }
     fn warn(&self, message: &str) {
         log(message);
     }

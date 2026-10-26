@@ -521,6 +521,7 @@ extern "system" fn accessibility<'a>(
             ),
             9 => AccessibilityAction::ClearSelection,
             10 => AccessibilityAction::SelectItem(number as usize),
+            11 => AccessibilityAction::Copy,
             _ => return Err("UI_ACCESSIBILITY: unknown action".into()),
         };
         Ok(host(handle)?.accessibility(id as u32, action))
@@ -597,44 +598,12 @@ extern "system" fn automate<'a>(
     run(&mut env, |env| {
         let request: serde_json::Value =
             serde_json::from_str(&request.try_to_string(env)?).map_err(|e| e.to_string())?;
-        let reply = match automation(host(handle)?, &request) {
+        let reply = match host(handle)?.automation_request(&request) {
             Ok(value) => serde_json::json!({ "value": value }),
             Err(error) => serde_json::json!({ "error": error }),
         };
         Ok(env.new_string(reply.to_string())?)
     })
-}
-
-fn automation(host: &Host, request: &serde_json::Value) -> Result<serde_json::Value, String> {
-    use lingxia_ui::interaction::view::AutomationAct;
-    let css = request["css"].as_str().unwrap_or_default();
-    let index = request["index"].as_u64().map(|i| i as usize);
-    match request["op"].as_str() {
-        Some("query") => host.automation_query(
-            css,
-            index,
-            request["all"].as_bool().unwrap_or(false),
-            request["maxText"].as_u64().map(|n| n as usize),
-        ),
-        Some("act") => {
-            let action = &request["action"];
-            let text = || action["text"].as_str().unwrap_or_default().to_owned();
-            let act = match action["kind"].as_str() {
-                Some("click") => AutomationAct::Click,
-                Some("fill") => AutomationAct::Fill(text()),
-                Some("type") => AutomationAct::Type(text()),
-                Some("scroll") => AutomationAct::ScrollIntoView,
-                Some("press") => {
-                    AutomationAct::Press(action["key"].as_str().unwrap_or_default().to_owned())
-                }
-                other => return Err(format!("E_UNSUPPORTED: automation action {other:?}")),
-            };
-            let force = action["force"].as_bool().unwrap_or(false);
-            host.automate(css, index, act, force)
-                .map(|()| serde_json::Value::Null)
-        }
-        other => Err(format!("E_UNSUPPORTED: automation op {other:?}")),
-    }
 }
 
 /// Drag a static-text selection end (0 anchor, 1 focus) to a logical point.

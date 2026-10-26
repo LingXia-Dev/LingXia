@@ -420,16 +420,19 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         return nativeAutomate(host, request);
     }
 
+    private void writeClipboard(String text) {
+        android.content.ClipboardManager clipboard = (android.content.ClipboardManager)getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+        try { if (clipboard != null) clipboard.setPrimaryClip(android.content.ClipData.newPlainText("", text)); }
+        catch (SecurityException | IllegalStateException unavailable) { Log.w("LingXia.UI", "clipboard unavailable", unavailable); }
+    }
+
     /** Copy the static-text selection to the clipboard; the core then drops it. */
     private void copyTextSelection() {
         if (destroyed) return;
         long callback = ++nextInputReply;
         inputReplies.put(callback, reply -> {
             String text = reply == null || reply.isNull("text") ? null : reply.optString("text");
-            if (text == null || text.isEmpty()) return;
-            android.content.ClipboardManager clipboard = (android.content.ClipboardManager)getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-            try { if (clipboard != null) clipboard.setPrimaryClip(android.content.ClipData.newPlainText("", text)); }
-            catch (SecurityException | IllegalStateException unavailable) { Log.w("LingXia.UI", "clipboard unavailable", unavailable); }
+            if (text != null && !text.isEmpty()) writeClipboard(text);
         });
         nativeCopyTextSelection(host, callback);
     }
@@ -768,6 +771,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             showFailure(message, action, retained, error);
         }
         @Override public void bootstrapOverdue(boolean overdue) { showBootstrapMessage(overdue); }
+        @Override public void copyText(String text) { if (!destroyed) writeClipboard(text); }
     }
 
     private static final int[] KEYS = {KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
@@ -1056,19 +1060,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 }
                 @Override public boolean performAction(int id, int action, Bundle args) {
                     if (!active || destroyed) return false;
-                    if (action == AccessibilityNodeInfo.ACTION_COPY) {
-                        if (staticSelection.node() == null) return false;
-                        copyTextSelection(); return true;
-                    }
-                    JSONObject semantic = action == AccessibilityNodeInfo.ACTION_SET_SELECTION ? semantic(id) : null;
-                    if (semantic != null && semantic.isNull("text_field") && GpuAccessibility.hasAction(semantic, GpuSemantics.ACTION_SET_SELECTION)) {
-                        JSONObject node = node(semantic.optInt("index"));
-                        if (node == null || args == null) return false;
-                        nativeSetTextSelection(host, node.optString("identity"),
-                            args.getInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0),
-                            args.getInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, 0));
-                        return true;
-                    }
                     int shared = GpuAccessibility.action(action);
                     if (shared < 0) return false;
                     double number = 0; String argument = "";

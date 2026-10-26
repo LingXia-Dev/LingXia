@@ -17,7 +17,7 @@ final class GpuAccessibility {
 
     // Rust action opcodes; see the JNI accessibility codec.
     static final int FOCUS = 0, CLEAR_FOCUS = 1, CLICK = 2, SHOW_ON_SCREEN = 3, SCROLL_FORWARD = 4, SCROLL_BACKWARD = 5,
-        PROGRESS = 6, SET_TEXT = 7, SET_SELECTION = 8, CLEAR_SELECTION = 9, SELECT = 10;
+        PROGRESS = 6, SET_TEXT = 7, SET_SELECTION = 8, CLEAR_SELECTION = 9, SELECT = 10, COPY = 11;
 
     static String className(String role) {
         switch (role) {
@@ -159,6 +159,7 @@ final class GpuAccessibility {
         if (action == AccessibilityNodeInfo.ACTION_SET_TEXT) return SET_TEXT;
         if (action == AccessibilityNodeInfo.ACTION_SET_SELECTION) return SET_SELECTION;
         if (action == AccessibilityNodeInfo.ACTION_CLEAR_SELECTION) return CLEAR_SELECTION;
+        if (action == AccessibilityNodeInfo.ACTION_COPY) return COPY;
         if (action >= SELECT_ITEM && action < SELECT_ITEM + 128) return SELECT;
         return -1;
     }

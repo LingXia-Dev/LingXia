@@ -63,6 +63,8 @@ public class GpuNativeLoadTest {
         public boolean restart(long connection) { return false; }
         public void recovery(int message, int action, boolean retained, String error) { if (message >= 0) fail(error); }
         public void bootstrapOverdue(boolean overdue) { }
+        final ArrayList<String> copied = new ArrayList<>();
+        public void copyText(String text) { copied.add(text); }
 
         /** Run posted work and vsyncs until {@code done} holds. */
         void pump(long host, java.util.function.BooleanSupplier done) throws InterruptedException {
@@ -129,5 +131,25 @@ public class GpuNativeLoadTest {
         assertEquals("Count 1", new JSONObject(GpuView.nativeSemanticNode(host, button)).getString("name"));
         GpuView.nativeHostRelease(host);
         fake.release();
+    }
+
+    /** Core routes Select and Copy on static text; Java only writes the clipboard. */
+    @Test public void accessibilityCopiesStaticTextThroughTheCore() throws Exception {
+        Fake fake = new Fake();
+        long host = GpuView.nativeHostCreate(fake, "test:jvm", false, 0);
+        try {
+            GpuView.nativeLoad(host, GpuNative.module(
+                "function render(){return h('text',{testId:'p',style:{userSelect:'text'}},'hello brave world')}"));
+            GpuView.nativeSetVisible(host, true);
+            fake.pump(host, () -> fake.presented >= 1);
+            int id = new JSONObject(GpuView.nativeSemanticRoots(host)).getJSONArray("roots").getInt(0);
+            assertFalse("nothing selected", GpuView.nativeAccessibility(host, id, GpuAccessibility.COPY, 0, ""));
+            assertTrue(GpuView.nativeAccessibility(host, id, GpuAccessibility.SET_SELECTION, 6, "11"));
+            fake.pump(host, () -> { try { return !new JSONObject(GpuView.nativeSemanticNode(host, id)).isNull("text_selection"); } catch (Exception e) { throw new AssertionError(e); } });
+            assertTrue(GpuView.nativeAccessibility(host, id, GpuAccessibility.COPY, 0, ""));
+            fake.pump(host, () -> !fake.copied.isEmpty());
+            assertEquals("brave", fake.copied.get(0));
+            assertEquals(GpuAccessibility.COPY, GpuAccessibility.action(android.view.accessibility.AccessibilityNodeInfo.ACTION_COPY));
+        } finally { GpuView.nativeHostRelease(host); fake.release(); }
     }
 }
