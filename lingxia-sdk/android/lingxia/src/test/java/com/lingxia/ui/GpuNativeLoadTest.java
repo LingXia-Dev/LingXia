@@ -30,8 +30,8 @@ public class GpuNativeLoadTest {
         public void post(long task, long delay) { if (delay == 0) tasks.add(task); else synchronized (delayed) { delayed.add(task); } }
         public void requestVsync() { vsync = true; }
         public String environment() {
-            return "{\"width\":200,\"height\":300,\"scale\":2,\"env\":{\"theme\":\"light\",\"insets\":{\"top\":0,\"right\":0,\"bottom\":0,\"left\":0},"
-                + "\"keyboard\":{\"height\":0},\"os\":\"android\",\"pointer\":\"coarse\",\"formFactor\":\"phone\",\"displayLanguage\":\"en\",\"runner\":false}}";
+            return "{\"width\":200,\"height\":300,\"scale\":2,\"dark\":false,\"system_insets\":[0,0,0,0],\"chrome_insets\":[0,0,0,0],"
+                + "\"keyboard\":0,\"smallest_width\":360,\"locale\":\"en\",\"fine_pointer\":false,\"animation_scale\":1,\"reduce_motion\":false,\"runner\":false}";
         }
         public boolean presentPixels(int[] argb, int width, int height) { assertEquals(argb.length, width * height); pixels.add(argb); return true; }
         public void gpuAttached(boolean attached) { }

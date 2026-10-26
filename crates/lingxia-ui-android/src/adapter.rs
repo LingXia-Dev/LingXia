@@ -351,19 +351,40 @@ impl EnvironmentSource for AndroidAdapter {
             }
             Ok(Some(env.cast_local::<JString>(value)?.try_to_string(env)?))
         })?;
-        let value: serde_json::Value = serde_json::from_str(&encoded)
+        let facts: serde_json::Value = serde_json::from_str(&encoded)
             .map_err(|error| log(&format!("UI_ENVIRONMENT: {error}")))
             .ok()?;
-        let mut env = value["env"].clone();
-        env["renderer"] = serde_json::json!({
-            "fallback": lingxia_ui::renderer::sentinel::fallback().map(|_| "driver"),
+        let number = |key: &str| facts[key].as_f64().unwrap_or(0.0) as f32;
+        let edges = |key: &str| {
+            let mut edges = [0.0; 4];
+            for (edge, value) in edges.iter_mut().zip(facts[key].as_array()?) {
+                *edge = value.as_f64()? as f32;
+            }
+            Some(edges)
+        };
+        let text_scale = facts["text_scale"].as_array().map(|rows| {
+            rows.iter()
+                .filter_map(|row| Some([row[0].as_f64()? as f32, row[1].as_f64()? as f32]))
+                .collect()
         });
-        Some(FrameEnvironment {
-            width: u16::try_from(value["width"].as_u64()?).ok()?,
-            height: u16::try_from(value["height"].as_u64()?).ok()?,
-            scale: value["scale"].as_f64()? as f32,
-            value: env,
-        })
+        DeviceFacts {
+            width: u32::try_from(facts["width"].as_u64()?).ok()?,
+            height: u32::try_from(facts["height"].as_u64()?).ok()?,
+            scale: number("scale"),
+            os: "android".into(),
+            dark: facts["dark"].as_bool().unwrap_or(false),
+            system_insets: edges("system_insets")?,
+            chrome_insets: edges("chrome_insets")?,
+            keyboard: number("keyboard"),
+            smallest_width: number("smallest_width"),
+            locale: facts["locale"].as_str().unwrap_or_default().to_owned(),
+            fine_pointer: facts["fine_pointer"].as_bool().unwrap_or(false),
+            animation_scale: facts["animation_scale"].as_f64().map_or(1.0, |v| v as f32),
+            reduce_motion: facts["reduce_motion"].as_bool().unwrap_or(false),
+            text_scale,
+            runner: facts["runner"].as_bool().unwrap_or(false),
+        }
+        .environment()
     }
 }
 

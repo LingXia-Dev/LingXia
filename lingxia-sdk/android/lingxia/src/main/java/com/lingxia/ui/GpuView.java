@@ -524,20 +524,15 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         requestFrame();
     }
 
-    /** {@code {width, height, scale, env}} for the next frame, or null while the surface cannot present. */
+    /** Raw device facts for the next frame (device px); the core builds the environment. Null while the surface cannot present. */
     private String sampleEnvironment() {
         android.view.Surface target = surface.getHolder().getSurface();
         if (destroyed || target == null || !target.isValid()) return null;
-        int width = surface.getWidth(), height = surface.getHeight();
-        if (width <= 0 || height <= 0) return null;
-        float scale = getResources().getDisplayMetrics().density;
-        try {
-            return new JSONObject().put("width", width).put("height", height).put("scale", (double)scale)
-                .put("env", new JSONObject(measureEnvironment(scale))).toString();
-        } catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native environment", error); }
+        if (surface.getWidth() <= 0 || surface.getHeight() <= 0) return null;
+        return measureFacts();
     }
 
-    private String measureEnvironment(float scale) {
+    private String measureFacts() {
         try {
             int top = 0, right = 0, bottom = 0, left = 0, keyboard = 0;
             android.view.WindowInsets windowInsets = android.os.Build.VERSION.SDK_INT >= 23 ? getRootWindowInsets() : null;
@@ -559,7 +554,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                     }
                 }
             }
-            // Subtract space already reserved by the host; insets describe only this surface's overlap.
+            // Window insets are relative to the root; report their overlap with this surface.
             int[] origin = new int[2], rootOrigin = new int[2];
             // The surface fills this view; a hidden page moves only the surface off screen,
             // so measure from the view or the layout would take that offset as an inset.
@@ -567,19 +562,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             int x = origin[0] - rootOrigin[0], y = origin[1] - rootOrigin[1];
             int trailingX = getRootView().getWidth() - x - surface.getWidth();
             int trailingY = getRootView().getHeight() - y - surface.getHeight();
-            JSONObject insets = new JSONObject()
-                .put("top", Math.min(surface.getHeight(), Math.max(chromeInsets.top, top - y)) / scale)
-                .put("left", Math.min(surface.getWidth(), Math.max(chromeInsets.left, left - x)) / scale)
-                .put("right", Math.min(surface.getWidth(), Math.max(chromeInsets.right, right - trailingX)) / scale)
-                .put("bottom", Math.min(surface.getHeight(), Math.max(chromeInsets.bottom, bottom - trailingY)) / scale);
             android.content.res.Configuration configuration = hostConfiguration;
-            boolean dark = (configuration.uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
-                == android.content.res.Configuration.UI_MODE_NIGHT_YES;
             java.util.Locale locale = android.os.Build.VERSION.SDK_INT >= 24
                 ? configuration.getLocales().get(0) : configuration.locale;
-            // "Remove animations" sets the scale to 0, Android's reduced-motion signal.
-            float animatorScale = Math.max(0f, Math.min(10f, android.provider.Settings.Global.getFloat(
-                getContext().getContentResolver(), android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)));
             float preference = getResources().getConfiguration().fontScale;
             float density = getResources().getDisplayMetrics().density;
             // A retained page can move between Activities without a View config callback.
@@ -588,12 +573,21 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 textScalePreference = preference;
                 textScaleDensity = density;
             }
-            return (new JSONObject().put("theme", dark ? "dark" : "light").put("insets", insets)
-                .put("textScale", textScale)
-                .put("keyboard", new JSONObject().put("height", Math.min(surface.getHeight(), Math.max(0, keyboard - trailingY)) / scale))
-                .put("os", "android").put("pointer", "coarse").put("formFactor", configuration.smallestScreenWidthDp >= 600 ? "tablet" : "phone")
-                .put("displayLanguage", locale.toLanguageTag()).put("runner", false)
-                .put("animatorDurationScale", animatorScale).put("reducedMotion", animatorScale == 0)).toString();
+            return new JSONObject()
+                .put("width", surface.getWidth()).put("height", surface.getHeight()).put("scale", (double)density)
+                .put("dark", (configuration.uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                    == android.content.res.Configuration.UI_MODE_NIGHT_YES)
+                .put("system_insets", new JSONArray().put(top - y).put(right - trailingX).put(bottom - trailingY).put(left - x))
+                .put("chrome_insets", new JSONArray().put(chromeInsets.top).put(chromeInsets.right).put(chromeInsets.bottom).put(chromeInsets.left))
+                .put("keyboard", keyboard - trailingY)
+                .put("smallest_width", configuration.smallestScreenWidthDp)
+                .put("locale", locale.toLanguageTag())
+                .put("fine_pointer", false)
+                .put("animation_scale", (double)android.provider.Settings.Global.getFloat(
+                    getContext().getContentResolver(), android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f))
+                .put("reduce_motion", false)
+                .put("text_scale", textScale)
+                .put("runner", false).toString();
         } catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native environment", error); }
     }
     public void dispose() {

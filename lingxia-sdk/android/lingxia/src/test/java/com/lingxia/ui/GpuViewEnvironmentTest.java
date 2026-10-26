@@ -18,9 +18,9 @@ public class GpuViewEnvironmentTest {
     @Before public void loadCore() { GpuNative.load(); }
 
     private JSONObject sample(GpuView view) throws Exception {
-        Method method = GpuView.class.getDeclaredMethod("measureEnvironment", float.class);
+        Method method = GpuView.class.getDeclaredMethod("measureFacts");
         method.setAccessible(true);
-        return new JSONObject((String) method.invoke(view, 1.0f));
+        return new JSONObject((String) method.invoke(view));
     }
 
     @Test public void retainedPageResamplesFontsWithoutAViewConfigurationCallback() throws Exception {
@@ -36,8 +36,8 @@ public class GpuViewEnvironmentTest {
         metrics.scaledDensity = metrics.density * large.fontScale;
         context.getResources().updateConfiguration(large, metrics);
         JSONObject enlarged = sample(view);
-        assertEquals(14.0, first.getJSONArray("textScale").getJSONArray(14).getDouble(1), 0.01);
-        assertEquals(28.0, enlarged.getJSONArray("textScale").getJSONArray(14).getDouble(1), 0.01);
+        assertEquals(14.0, first.getJSONArray("text_scale").getJSONArray(14).getDouble(1), 0.01);
+        assertEquals(28.0, enlarged.getJSONArray("text_scale").getJSONArray(14).getDouble(1), 0.01);
         view.dispose();
     }
 
@@ -88,9 +88,9 @@ public class GpuViewEnvironmentTest {
         android.view.View surface = view.getChildAt(0);
         view.resume();
         assertEquals(0f, surface.getTranslationX(), 0f);
-        String shownInsets = sample(view).getJSONObject("insets").toString();
+        String shownInsets = sample(view).getJSONArray("system_insets").toString();
         view.pause();
-        assertEquals("the off-screen move is not an inset", shownInsets, sample(view).getJSONObject("insets").toString());
+        assertEquals("the off-screen move is not an inset", shownInsets, sample(view).getJSONArray("system_insets").toString());
         assertEquals("retained: the surface survives", android.view.View.VISIBLE, surface.getVisibility());
         assertTrue("moved off screen", surface.getTranslationX() < 0f);
         for (int width : new int[] {1080, 2387, 4096}) {
@@ -143,14 +143,14 @@ public class GpuViewEnvironmentTest {
         configuration.uiMode = Configuration.UI_MODE_NIGHT_YES;
         view.onConfigurationChanged(configuration);
         configuration.uiMode = Configuration.UI_MODE_NIGHT_NO;
-        assertEquals("dark", sample(view).getString("theme"));
+        assertTrue(sample(view).getBoolean("dark"));
         view.updateEnvironment("{\"kind\":\"surface\",\"revision\":1,\"context\":{\"sizeClass\":\"regular\",\"canDock\":true,\"width\":800,\"height\":600}}");
         view.reload("new module");
         JSONObject retained = sample(view);
-        assertEquals("dark", retained.getString("theme"));
+        assertTrue(retained.getBoolean("dark"));
         assertFalse("the core overlays host pushes", retained.has("sizeClass") || retained.has("canDock"));
         view.onConfigurationChanged(configuration);
-        assertEquals("light", sample(view).getString("theme"));
+        assertFalse(sample(view).getBoolean("dark"));
         view.dispose();
     }
 
