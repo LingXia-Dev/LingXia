@@ -1275,3 +1275,41 @@ fn a_page_that_never_presents_is_revealed_held_by_the_watchdog() {
     platform.advance(crate::session::host::FIRST_FRAME_WATCHDOG);
     assert_eq!(revealed(&host), [true]);
 }
+
+#[test]
+fn automation_requests_query_and_act_through_the_core_driver() {
+    let worker = ViewWorker::spawn("test-automation-request").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const n=useLocal('n',0);return h('button',{testId:'add',onClick:()=>n.set(n.value+1)},`Count ${n.value}`)}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let query = serde_json::json!({"op": "query", "css": "[data-testid=\"add\"]"});
+    let found = host.automation_request(&query).unwrap();
+    assert!(found.to_string().contains("Count 0"), "{found}");
+    let click = serde_json::json!({"op": "act", "css": "[data-testid=\"add\"]", "action": {"kind": "click"}});
+    assert_eq!(
+        host.automation_request(&click).unwrap(),
+        serde_json::Value::Null
+    );
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["Count 1"]);
+    for (request, error) in [
+        (
+            serde_json::json!({"op": "act", "css": "button", "action": {"kind": "hover"}}),
+            "automation action",
+        ),
+        (serde_json::json!({"op": "screenshot"}), "automation op"),
+    ] {
+        let failed = host.automation_request(&request).unwrap_err();
+        assert!(
+            failed.starts_with("E_UNSUPPORTED") && failed.contains(error),
+            "{failed}"
+        );
+    }
+}

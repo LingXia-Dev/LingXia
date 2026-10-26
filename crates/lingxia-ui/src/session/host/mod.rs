@@ -480,6 +480,43 @@ impl<A: PlatformAdapter> ViewHost<A> {
         main.interaction.automation_query(css, index, all, max_text)
     }
 
+    /// One automation request from the page driver:
+    /// `{op: "query", css, index, all, maxText}` or
+    /// `{op: "act", css, index, action: {kind: click|fill|type|scroll|press, text, key, force}}`.
+    /// Screenshots belong to the adapter's presenter.
+    pub fn automation_request(
+        &self,
+        request: &serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        use crate::interaction::view::AutomationAct;
+        let css = request["css"].as_str().unwrap_or_default();
+        let index = request["index"].as_u64().map(|i| i as usize);
+        match request["op"].as_str() {
+            Some("query") => self.automation_query(
+                css,
+                index,
+                request["all"].as_bool().unwrap_or(false),
+                request["maxText"].as_u64().map(|n| n as usize),
+            ),
+            Some("act") => {
+                let action = &request["action"];
+                let string = |key: &str| action[key].as_str().unwrap_or_default().to_owned();
+                let act = match action["kind"].as_str() {
+                    Some("click") => AutomationAct::Click,
+                    Some("fill") => AutomationAct::Fill(string("text")),
+                    Some("type") => AutomationAct::Type(string("text")),
+                    Some("scroll") => AutomationAct::ScrollIntoView,
+                    Some("press") => AutomationAct::Press(string("key")),
+                    other => return Err(format!("E_UNSUPPORTED: automation action {other:?}")),
+                };
+                let force = action["force"].as_bool().unwrap_or(false);
+                self.automate(css, index, act, force)
+                    .map(|()| serde_json::Value::Null)
+            }
+            other => Err(format!("E_UNSUPPORTED: automation op {other:?}")),
+        }
+    }
+
     /// Run a locator action through the assistive input paths.
     pub fn automate(
         &self,
