@@ -24,7 +24,7 @@ public class GpuNativeLoadTest {
         final ArrayList<Long> delayed = new ArrayList<>();
         final ArrayList<String> frames = new ArrayList<>(), events = new ArrayList<>();
         // CPU frames are drawn from the raster pool, not the host's thread.
-        final java.util.List<int[]> pixels = java.util.Collections.synchronizedList(new ArrayList<>());
+        final java.util.List<byte[]> pixels = java.util.Collections.synchronizedList(new ArrayList<>());
         boolean vsync;
         int loaded, presented;
         public void post(long task, long delay) { if (delay == 0) tasks.add(task); else synchronized (delayed) { delayed.add(task); } }
@@ -33,7 +33,7 @@ public class GpuNativeLoadTest {
             return "{\"width\":200,\"height\":300,\"scale\":2,\"dark\":false,\"system_insets\":[0,0,0,0],\"chrome_insets\":[0,0,0,0],"
                 + "\"keyboard\":0,\"smallest_width\":360,\"locale\":\"en\",\"fine_pointer\":false,\"animation_scale\":1,\"reduce_motion\":false,\"runner\":false}";
         }
-        public boolean presentPixels(int[] argb, int width, int height) { assertEquals(argb.length, width * height); pixels.add(argb); return true; }
+        public boolean presentPixels(java.nio.ByteBuffer rgba, int width, int height) { assertEquals(rgba.capacity(), width * height * 4); byte[] copy = new byte[rgba.capacity()]; rgba.get(copy); pixels.add(copy); return true; }
         public void gpuAttached(boolean attached) { }
         public void announce(int event, int id) { events.add("announce " + event); }
         public void announceText(int id, boolean secure, String before, String after) { }
@@ -127,7 +127,7 @@ public class GpuNativeLoadTest {
         GpuView.nativeSetVisible(host, true);
         fake.pump(host, () -> fake.presented == 1 && !fake.pixels.isEmpty());
         assertEquals("Count 0", text(last(fake), "add"));
-        assertEquals("device pixels", 200 * 300, fake.pixels.get(0).length);
+        assertEquals("device pixels", 200 * 300 * 4, fake.pixels.get(0).length);
         assertTrue(fake.events.contains("announce 6"));
         JSONObject roots = new JSONObject(GpuView.nativeSemanticRoots(host));
         int button = roots.getJSONArray("roots").getInt(0);

@@ -12,7 +12,8 @@ interface GpuPlatform {
     /** {@code {width, height, scale, env}} for the next frame, or null while unmeasured. */
     String environment();
     /** Draw a CPU-rendered ARGB frame; false when the surface refused it. */
-    boolean presentPixels(int[] argb, int width, int height);
+    /** Raster thread: premultiplied RGBA rows, readable only during the call. */
+    boolean presentPixels(java.nio.ByteBuffer rgba, int width, int height);
     void gpuAttached(boolean attached);
 
     /** 0 focused, 1 focus cleared, 2 input focused, 3 hover enter, 4 hover exit, 5 value changed, 6 content changed. */

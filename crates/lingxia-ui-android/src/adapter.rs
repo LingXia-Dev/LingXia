@@ -260,6 +260,11 @@ impl Presenter for AndroidAdapter {
     fn deferred(&self, frame: &Frame) -> bool {
         matches!(frame, Frame::Cpu(..))
     }
+
+    fn release_transient(&self) {
+        #[cfg(all(feature = "gpu", target_os = "android"))]
+        super::gpu_surface::release_transient(self.gpu.load(Ordering::Acquire));
+    }
 }
 
 /// Raster thread. Every frame is reported once, shown or dropped; the host re-prepares
@@ -268,6 +273,7 @@ fn rasterize(host: &WeakViewHost<AndroidAdapter>, display: DisplayList, generati
     let Some(host) = host.upgrade() else {
         return;
     };
+    let started = Instant::now();
     let frame = match display.rasterize() {
         Ok(frame) => frame,
         Err(error) => {
@@ -275,29 +281,32 @@ fn rasterize(host: &WeakViewHost<AndroidAdapter>, display: DisplayList, generati
             return host.fail(error);
         }
     };
+    let raster_us = started.elapsed().as_micros();
+    let started = Instant::now();
     let (width, height) = (frame.pixels.width(), frame.pixels.height());
-    // The opaque root background makes these premultiplied channels also valid ARGB colors.
-    let pixels: Vec<i32> = frame
-        .pixels
-        .data_as_u8_slice()
-        .chunks_exact(4)
-        .map(|p| u32::from_be_bytes([p[3], p[0], p[1], p[2]]) as i32)
-        .collect();
+    let mut pixels = frame.pixels;
+    let bytes = pixels.data_as_u8_slice_mut();
+    // Java copies the premultiplied RGBA bytes into its kept bitmap during the call.
     let presented = host.adapter().java(|env, platform| {
-        let array = env.new_int_array(pixels.len())?;
-        array.set_region(env, 0, &pixels)?;
+        // SAFETY: `bytes` outlives the call, and Java reads the buffer only inside it.
+        let buffer = unsafe { env.new_direct_byte_buffer(bytes.as_mut_ptr(), bytes.len())? };
         env.call_method(
             platform,
             jni_str!("presentPixels"),
-            jni_sig!("([III)Z"),
+            jni_sig!("(Ljava/nio/ByteBuffer;II)Z"),
             &[
-                JValue::Object(&array),
+                JValue::Object(&buffer),
                 JValue::Int(i32::from(width)),
                 JValue::Int(i32::from(height)),
             ],
         )?
         .z()
     });
+    info(&format!(
+        "CPU_PRESENT generation={} rasterUs={raster_us} presentUs={} shown={presented}",
+        generation.get(),
+        started.elapsed().as_micros()
+    ));
     host.deferred_presented(generation, presented);
 }
 

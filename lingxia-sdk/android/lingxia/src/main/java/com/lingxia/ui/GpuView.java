@@ -115,6 +115,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private int bootstrapSurfaceImportance;
     private final Listener listener;
     private final UiSurface surface;
+    /** CPU-route frame target, reused while the size holds; guarded by its lock. */
+    private final Object cpuFrameLock = new Object();
+    private Bitmap cpuFrame;
     private final GpuIme ime;
     private final View feedback;
     // CPU frames are drawn from a raster thread, which reads these too.
@@ -673,13 +676,20 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             Choreographer.getInstance().postFrameCallback(vsync);
         }
         @Override public String environment() { return sampleEnvironment(); }
-        @Override public boolean presentPixels(int[] argb, int width, int height) {
+        @Override public boolean presentPixels(java.nio.ByteBuffer rgba, int width, int height) {
             if (!active || !surface.getHolder().getSurface().isValid()) return false;
-            Canvas canvas = surface.getHolder().lockCanvas();
-            if (canvas == null) return false;
-            Bitmap frame = Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888);
-            try { canvas.drawBitmap(frame, 0, 0, null); }
-            finally { surface.getHolder().unlockCanvasAndPost(canvas); frame.recycle(); }
+            synchronized (cpuFrameLock) {
+                // One bitmap per size: a full-screen frame per present would churn the GC.
+                if (cpuFrame == null || cpuFrame.getWidth() != width || cpuFrame.getHeight() != height) {
+                    if (cpuFrame != null) cpuFrame.recycle();
+                    cpuFrame = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                }
+                cpuFrame.copyPixelsFromBuffer(rgba);
+                Canvas canvas = surface.getHolder().lockCanvas();
+                if (canvas == null) return false;
+                try { canvas.drawBitmap(cpuFrame, 0, 0, null); }
+                finally { surface.getHolder().unlockCanvasAndPost(canvas); }
+            }
             return true;
         }
         @Override public void gpuAttached(boolean attached) {
