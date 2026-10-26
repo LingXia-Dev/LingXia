@@ -117,11 +117,12 @@ string. Transforms (`uppercase` etc.) are paint-only.
   inner corners shared with scroll clips and hit geometry.
 - Outer shadows follow CSS spread geometry, knock out the owner and never
   change layout, hit bounds or scroll extent. Up to eight layers.
-- Linear gradients interpolate in sRGB or Oklab with premultiplied alpha.
+- Gradients (linear, radial, conic) paint through one brush and paint transform on all backends.
 - Backdrop blur/saturation is bounded (blur ≤ 64, saturation ≤ 16).
-- Vectors are bounded path data (no SVG DOM): ≤32 paths, 16,384 elements per
-  vector, 32,768 per frame, coordinates checked before and after the viewBox
-  transform. `non-scaling-stroke` expands strokes after that transform.
+- Vector paths may carry an SVG transform and url(#id) gradient paint. ≤32 paths,
+  16,384 elements per vector, 32,768 per frame, coordinates checked before and
+  after the viewBox transform; `non-scaling-stroke` expands strokes after it.
+- Clips may carry an affine; rotated subtrees clip and hit-test their true shape.
 - Plots (bar, line, pie) are leaves: TS owns axes, legends and tooltips.
   Geometry is bounded by a shared plot budget on both sides of the wire.
 
