@@ -41,6 +41,12 @@ enum Request {
         identity: String,
         token: u64,
     },
+    /// A platform picker's choice; the reply is the editor value to submit.
+    Pick {
+        identity: String,
+        token: u64,
+        parts: [u32; 3],
+    },
     Edit {
         identity: String,
         token: u64,
@@ -159,6 +165,14 @@ impl ViewSession {
             }
             Request::Blur { identity, token } => {
                 return Ok(self.blur_input(token, &identity)?.to_string());
+            }
+            Request::Pick {
+                identity,
+                token,
+                parts,
+            } => {
+                let value = self.inputs.picked(&identity, token, parts);
+                return Ok(serde_json::json!({ "value": value }).to_string());
             }
             Request::Edit {
                 identity,

@@ -56,6 +56,11 @@ pub struct Picker {
     /// Inclusive bounds in the kind's format.
     pub min: Option<String>,
     pub max: Option<String>,
+    /// The dialog's initial `[year, month, day]` or `[hour, minute, 0]`: the
+    /// editor's value when it parses, else `None` (the platform's today or now).
+    pub seed: Option<[u32; 3]>,
+    pub min_parts: Option<[u32; 3]>,
+    pub max_parts: Option<[u32; 3]>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
@@ -128,10 +133,16 @@ impl ImeConfig {
                 _ => return None,
             };
             let valid = |value: Option<String>| value.filter(|value| parse(kind, value).is_some());
+            let (min, max) = (valid(bound(&attributes.min)), valid(bound(&attributes.max)));
+            let parts =
+                |value: &Option<String>| value.as_deref().and_then(|value| parse(kind, value));
             Some(Picker {
                 kind,
-                min: valid(bound(&attributes.min)),
-                max: valid(bound(&attributes.max)),
+                min_parts: parts(&min),
+                max_parts: parts(&max),
+                min,
+                max,
+                seed: parse(kind, &input.value),
             })
         });
         Self {
@@ -147,38 +158,6 @@ impl ImeConfig {
             auto_complete,
             max_length: attributes.max_length,
         }
-    }
-
-    /// The picker's initial value: the editor's value when it parses.
-    pub fn picker_seed(&self, value: &str) -> Option<String> {
-        let picker = self.picker.as_ref()?;
-        parse(picker.kind, value).map(|_| value[..len(picker.kind)].to_owned())
-    }
-
-    /// A picked value normalized and clamped to the bounds, or `None` when invalid.
-    pub fn picked(&self, value: &str) -> Option<String> {
-        let picker = self.picker.as_ref()?;
-        parse(picker.kind, value)?;
-        let mut value = value[..len(picker.kind)].to_owned();
-        // Zero-padded ISO forms order lexically.
-        if let Some(min) = &picker.min
-            && value.as_str() < &min[..len(picker.kind)]
-        {
-            value = min[..len(picker.kind)].to_owned();
-        }
-        if let Some(max) = &picker.max
-            && value.as_str() > &max[..len(picker.kind)]
-        {
-            value = max[..len(picker.kind)].to_owned();
-        }
-        Some(value)
-    }
-}
-
-fn len(kind: PickerKind) -> usize {
-    match kind {
-        PickerKind::Date => 10,
-        PickerKind::Time => 5,
     }
 }
 
@@ -315,46 +294,40 @@ mod tests {
     }
 
     #[test]
-    fn pickers_seed_from_valid_values_and_clamp_picks_to_their_bounds() {
-        let time = ImeConfig::new(
-            &input(
-                "time",
-                EditorAttributes {
-                    picker: Some("time".into()),
-                    min: Some("09:30".into()),
-                    max: Some("18:00:00".into()),
-                    ..Default::default()
-                },
-            ),
-            false,
+    fn pickers_seed_from_valid_values_and_carry_their_bounds_as_parts() {
+        let mut time = input(
+            "time",
+            EditorAttributes {
+                picker: Some("time".into()),
+                min: Some("09:30".into()),
+                max: Some("18:00:00".into()),
+                ..Default::default()
+            },
         );
-        let picker = time.picker.as_ref().unwrap();
+        time.value = "12:05:59".into();
+        let picker = ImeConfig::new(&time, false).picker.unwrap();
         assert_eq!(picker.kind, PickerKind::Time);
-        assert_eq!(time.picked("08:00").as_deref(), Some("09:30"));
-        assert_eq!(time.picked("19:15").as_deref(), Some("18:00"));
-        assert_eq!(time.picked("12:05:59").as_deref(), Some("12:05"));
-        assert_eq!(time.picked("24:00"), None);
-        assert_eq!(time.picker_seed("7:00"), None);
-        let date = ImeConfig::new(
-            &input(
-                "date",
-                EditorAttributes {
-                    picker: Some("date".into()),
-                    min: Some(serde_json::json!(5)),
-                    max: Some("2026-12-31".into()),
-                    ..Default::default()
-                },
-            ),
-            false,
-        );
-        let picker = date.picker.as_ref().unwrap();
-        assert_eq!(picker.min, None, "a non-date bound is ignored");
-        assert_eq!(date.picked("2027-01-02").as_deref(), Some("2026-12-31"));
+        assert_eq!(picker.seed, Some([12, 5, 0]));
         assert_eq!(
-            date.picker_seed("2026-02-03").as_deref(),
-            Some("2026-02-03")
+            (picker.min_parts, picker.max_parts),
+            (Some([9, 30, 0]), Some([18, 0, 0]))
         );
-        assert_eq!(date.picked("2026-13-01"), None);
+        time.value = "7:00".into();
+        assert_eq!(ImeConfig::new(&time, false).picker.unwrap().seed, None);
+        let mut date = input(
+            "date",
+            EditorAttributes {
+                picker: Some("date".into()),
+                min: Some(serde_json::json!(5)),
+                max: Some("2026-12-31".into()),
+                ..Default::default()
+            },
+        );
+        date.value = "2026-13-01".into();
+        let picker = ImeConfig::new(&date, false).picker.unwrap();
+        assert_eq!(picker.min, None, "a non-date bound is ignored");
+        assert_eq!(picker.max_parts, Some([2026, 12, 31]));
+        assert_eq!(picker.seed, None, "an invalid value seeds nothing");
         assert!(
             ImeConfig::new(&input("text", Default::default()), false)
                 .picker

@@ -374,6 +374,21 @@ impl Inputs {
     pub fn valid(&self, id: &str, token: u64) -> bool {
         token != 0 && token == self.token && self.focused.as_deref() == Some(id)
     }
+    /// The value a platform date or time picker chose (`[year, month, day]` or
+    /// `[hour, minute, _]`), formatted and bounded for the focused editor.
+    pub fn picked(&self, id: &str, token: u64, parts: [u32; 3]) -> Option<String> {
+        if !self.valid(id, token) {
+            return None;
+        }
+        let rules = &self.entries.get(id)?.rules;
+        let value = match rules.keyboard.as_str() {
+            "date" => format!("{:04}-{:02}-{:02}", parts[0], parts[1], parts[2]),
+            "time" => format!("{:02}:{:02}", parts[0], parts[1]),
+            _ => return None,
+        };
+        rules.accepts(&value).then_some(())?;
+        Some(rules.commit(&value).unwrap_or(value))
+    }
     pub fn reply(&self, id: &str, needs_view_render: bool) -> InputReply {
         InputReply {
             token: self.token,
