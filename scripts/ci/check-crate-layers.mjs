@@ -28,6 +28,7 @@ export const LAYERS = {
   lxapp: 3,
   ui: 3,
   "ui-android": 3,
+  "ui-apple": 3,
   logic: 3,
   service: 3,
   transfer: 2,
