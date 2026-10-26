@@ -44,6 +44,7 @@ fn transformed_display(scale: f32, offset: f32, stretch: bool) -> DisplayList {
                 Transform::Translate([7.0, 4.0]),
                 Transform::Scale([0.8, if stretch { 0.6 } else { 0.8 }]),
             ],
+            ..Default::default()
         },
     )
 }

@@ -84,6 +84,17 @@ impl StaticTransform {
         self.rotate.rem_euclid(360.0) != 0.0 || self.scale != [1.0; 2]
     }
 
+    /// Independent parts for transitions, translation resolved against `size`.
+    pub fn decomposed(&self, size: [f32; 2]) -> crate::animation::transition::Decomposed {
+        let [x, y] = self.translation(size);
+        crate::animation::transition::Decomposed {
+            translate: [f64::from(x), f64::from(y)],
+            rotate: self.rotate,
+            scale: self.scale,
+            origin: self.origin,
+        }
+    }
+
     /// The paint affine about the origin of `bounds`.
     pub fn matrix(&self, [x, y, w, h]: [f32; 4]) -> Affine {
         let [x, y, w, h] = [x, y, w, h].map(f64::from);

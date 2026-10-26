@@ -16,9 +16,16 @@ struct Wire {
     easing: Ease,
     opacity: Option<Vec<Key>>,
     transforms: Vec<Transform>,
-    /// `keep` when authored under `motion-reduce:`/`motion-safe:`; otherwise reduced motion drops it.
-    #[serde(default)]
-    when_reduced: Option<String>,
+    /// `keep` when authored under `motion-reduce:`/`motion-safe:`; `base` shows the base
+    /// style under reduced motion.
+    when_reduced: WhenReduced,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum WhenReduced {
+    Base,
+    Keep,
 }
 
 #[derive(Deserialize)]
@@ -30,7 +37,7 @@ enum Iterations {
 
 #[derive(Clone, Deserialize)]
 #[serde(untagged)]
-enum Ease {
+pub(crate) enum Ease {
     Named(String),
     Bezier([f64; 4]),
 }
@@ -40,25 +47,56 @@ enum Ease {
 struct Key {
     offset: f64,
     value: f64,
+    /// Eases the segment that starts at this key.
+    easing: Option<Ease>,
 }
 
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 enum Transform {
-    Scale { x: Vec<Key>, y: Vec<Key> },
-    Translate { x: Vec<Key>, y: Vec<Key> },
+    Scale {
+        x: Vec<Key>,
+        y: Vec<Key>,
+    },
+    Translate {
+        x: Vec<Key>,
+        y: Vec<Key>,
+        #[serde(default)]
+        relative: bool,
+    },
+    Rotate {
+        angle: Vec<Key>,
+    },
 }
 
-fn track(keys: Vec<Key>, easing: Easing) -> Result<Track, String> {
-    Track::new(
-        keys.into_iter()
-            .map(|key| Keyframe {
-                offset: key.offset,
-                value: key.value,
-            })
-            .collect(),
-        easing,
-    )
+pub(crate) fn easing(ease: Ease) -> Result<Easing, String> {
+    match ease {
+        Ease::Named(name) if name == "linear" => Ok(Easing::LINEAR),
+        Ease::Named(name) if name == "step-end" => Ok(Easing::STEP_END),
+        Ease::Bezier(points) => Easing::cubic_bezier(points),
+        _ => Err("UI_ANIMATION: unsupported easing".into()),
+    }
+}
+
+fn track(keys: Vec<Key>, default: Easing) -> Result<Track, String> {
+    let mut easings = Vec::with_capacity(keys.len());
+    let mut frames = Vec::with_capacity(keys.len());
+    let last = keys.len().saturating_sub(1);
+    for (index, key) in keys.into_iter().enumerate() {
+        match key.easing {
+            Some(_) if index == last => {
+                return Err("UI_ANIMATION: final keyframe cannot ease".into());
+            }
+            Some(ease) => easings.push(easing(ease)?),
+            None if index < last => easings.push(default),
+            None => {}
+        }
+        frames.push(Keyframe {
+            offset: key.offset,
+            value: key.value,
+        });
+    }
+    Track::segmented(frames, easings)
 }
 
 /// Decode one compiled animation; this does not enable authoring or scheduling.
@@ -94,19 +132,7 @@ pub fn decode_definition(source: &str) -> Result<Definition, String> {
         interval(wire.delay_ms)?,
         iterations,
     )?;
-    let easing = match wire.easing {
-        Ease::Named(name) if name == "linear" => Easing::LINEAR,
-        Ease::Named(name) if name == "step-end" => Easing::STEP_END,
-        Ease::Bezier(points) => Easing::cubic_bezier(points)?,
-        _ => return Err("UI_ANIMATION: unsupported easing".into()),
-    };
-    if wire
-        .when_reduced
-        .as_deref()
-        .is_some_and(|mode| !matches!(mode, "base" | "keep"))
-    {
-        return Err("UI_ANIMATION: invalid whenReduced".into());
-    }
+    let easing = easing(wire.easing)?;
     if wire.transforms.len() > 8 || (wire.opacity.is_none() && wire.transforms.is_empty()) {
         return Err("UI_ANIMATION: invalid effect tracks".into());
     }
@@ -123,9 +149,20 @@ pub fn decode_definition(source: &str) -> Result<Definition, String> {
                     y: track(y, easing)?,
                 }
             }
-            Transform::Translate { x, y } => TransformTracks::Translate {
+            Transform::Translate {
+                x,
+                y,
+                relative: false,
+            } => TransformTracks::Translate {
                 x: track(x, easing)?,
                 y: track(y, easing)?,
+            },
+            Transform::Translate { x, y, .. } => TransformTracks::Relative {
+                x: track(x, easing)?,
+                y: track(y, easing)?,
+            },
+            Transform::Rotate { angle } => TransformTracks::Rotate {
+                angle: track(angle, easing)?,
             },
         });
     }
@@ -134,6 +171,7 @@ pub fn decode_definition(source: &str) -> Result<Definition, String> {
         return Err("UI_ANIMATION: effect budget exceeded".into());
     }
     Ok(Definition {
+        keep_reduced: matches!(wire.when_reduced, WhenReduced::Keep),
         name: wire.name,
         timing,
         effect,
@@ -183,6 +221,72 @@ mod tests {
         );
     }
 
+    /// The compiler's lowering of Tailwind's default `animate-*` keyframes.
+    fn defaults() -> Value {
+        json!({
+            "spin":{"name":"spin","durationMs":1000,"delayMs":0,"iterations":null,"whenReduced":"base","easing":"linear","opacity":null,
+                "transforms":[{"kind":"rotate","angle":[{"offset":0,"value":0},{"offset":1,"value":360}]}]},
+            "ping":{"name":"ping","durationMs":1000,"delayMs":0,"iterations":null,"whenReduced":"base","easing":[0,0,0.2,1],
+                "opacity":[{"offset":0,"value":1},{"offset":0.75,"value":0},{"offset":1,"value":0}],
+                "transforms":[{"kind":"scale","x":[{"offset":0,"value":1},{"offset":0.75,"value":2},{"offset":1,"value":2}],
+                    "y":[{"offset":0,"value":1},{"offset":0.75,"value":2},{"offset":1,"value":2}]}]},
+            "pulse":{"name":"pulse","durationMs":2000,"delayMs":0,"iterations":null,"whenReduced":"base","easing":[0.4,0,0.6,1],
+                "opacity":[{"offset":0,"value":1},{"offset":0.5,"value":0.5},{"offset":1,"value":1}],"transforms":[]},
+            "bounce":{"name":"bounce","durationMs":1000,"delayMs":0,"iterations":null,"whenReduced":"base","easing":[0.25,0.1,0.25,1],"opacity":null,
+                "transforms":[{"kind":"translate","relative":true,
+                    "x":[{"offset":0,"value":0,"easing":[0.8,0,1,1]},{"offset":0.5,"value":0,"easing":[0,0,0.2,1]},{"offset":1,"value":0}],
+                    "y":[{"offset":0,"value":-0.25,"easing":[0.8,0,1,1]},{"offset":0.5,"value":0,"easing":[0,0,0.2,1]},{"offset":1,"value":-0.25}]}]}
+        })
+    }
+
+    #[test]
+    fn default_tailwind_animations_rotate_translate_relatively_and_ease_per_key() {
+        use vello_cpu::kurbo::Point;
+        let defaults = defaults();
+        let decode = |name: &str| decode_definition(&defaults[name].to_string()).unwrap();
+        let spin = decode("spin");
+        assert_eq!(spin.timing.iterations, None);
+        let quarter = spin.effect.sample(0.25).unwrap();
+        // A quarter turn clockwise about the center of a 20x20 box at the origin.
+        let point = quarter.matrix_in([0.0, 0.0, 20.0, 20.0]).unwrap() * Point::new(20.0, 10.0);
+        assert!(
+            (point.x - 10.0).abs() < 1e-9 && (point.y - 20.0).abs() < 1e-9,
+            "{point:?}"
+        );
+        assert_eq!(
+            spin.effect.next_change(0.5).unwrap(),
+            super::super::interpolate::NextChange::Continuous
+        );
+
+        let ping = decode("ping").effect;
+        assert_eq!(ping.sample(0.8).unwrap().opacity, Some(0.0));
+        assert_eq!(
+            ping.sample(0.9).unwrap().matrix([0.0; 2]).unwrap(),
+            vello_cpu::kurbo::Affine::scale(2.0)
+        );
+        let pulse = decode("pulse").effect;
+        assert_eq!(pulse.sample(0.5).unwrap().opacity, Some(0.5));
+
+        let bounce = decode("bounce").effect;
+        let at = |progress: f64| {
+            (bounce
+                .sample(progress)
+                .unwrap()
+                .matrix_in([0.0, 0.0, 40.0, 40.0])
+                .unwrap()
+                * Point::ORIGIN)
+                .y
+        };
+        // -25% of a 40px box at both ends, resting at the middle key.
+        assert!((at(0.0) + 10.0).abs() < 1e-9);
+        assert!(at(0.5).abs() < 1e-9);
+        assert!((at(1.0) + 10.0).abs() < 1e-9);
+        // The falling half eases in (0.8,0,1,1): still near the top a quarter in;
+        // the rising half eases out (0,0,0.2,1): already high a quarter in.
+        assert!(at(0.25) < -8.0, "{}", at(0.25));
+        assert!(at(0.75) < -7.0, "{}", at(0.75));
+    }
+
     #[test]
     fn invalid_wire_cannot_bypass_effect_or_timing_validation() {
         let original = fixtures()["chart-in"].clone();
@@ -228,5 +332,32 @@ mod tests {
         assert!(decode_definition(&missing.to_string()).is_err());
         assert!(decode_definition(&format!("{}{}", " ".repeat(32768), original)).is_err());
         assert!(decode_definition(&original.to_string().replacen("350", "1e999", 1)).is_err());
+
+        let defaults = defaults();
+        for (name, path, value) in [
+            ("spin", "/transforms/0/angle/1/value", json!(36001)),
+            ("spin", "/transforms/0/angle/1/easing", json!("linear")),
+            ("spin", "/transforms/0/angle/0/easing", json!("bounce")),
+            ("spin", "/transforms/0/x", json!([])),
+            ("bounce", "/transforms/0/y/0/value", json!(10.5)),
+            ("bounce", "/transforms/0/relative", json!("yes")),
+            ("ping", "/transforms/0/x/1/value", json!(-2)),
+            ("ping", "/transforms/0/relative", json!(true)),
+            ("pulse", "/whenReduced", json!("sometimes")),
+            ("pulse", "/whenReduced", json!(null)),
+        ] {
+            let mut payload = defaults[name].clone();
+            match payload.pointer_mut(path) {
+                Some(slot) => *slot = value,
+                None => {
+                    let (parent, key) = path.rsplit_once('/').unwrap();
+                    payload.pointer_mut(parent).unwrap()[key] = value;
+                }
+            }
+            assert!(
+                decode_definition(&payload.to_string()).is_err(),
+                "{name}{path}: {payload}"
+            );
+        }
     }
 }

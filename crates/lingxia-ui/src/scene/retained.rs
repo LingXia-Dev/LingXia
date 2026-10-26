@@ -31,10 +31,29 @@ pub(crate) struct InputLayout {
     pub(crate) color: [u8; 4],
 }
 
+/// Where a node's transitionable paint sits in `commands`, as the scene resolved it.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct PaintStyle {
+    /// The solid background rect.
+    pub(crate) background: Option<usize>,
+    pub(crate) gradient: bool,
+    pub(crate) border: Option<usize>,
+    /// Analytic shadow layers in authored order; `None` once a layer rasterized.
+    pub(crate) shadows: Option<Vec<usize>>,
+    pub(crate) foreground: [u8; 4],
+    pub(crate) own_color: bool,
+    /// Text commands and the record whose inherited colour they paint.
+    pub(crate) texts: Vec<(usize, usize)>,
+    pub(crate) transform: Option<crate::scene::transform::StaticTransform>,
+    pub(crate) corners: Option<[[f32; 2]; 4]>,
+    pub(crate) radius: f32,
+}
+
 /// Unscrolled geometry and shaped glyphs from one committed View render.
 #[derive(Clone)]
 pub(crate) struct RetainedLayout {
     pub(crate) nodes: Vec<NodeSnapshot>,
+    pub(crate) paint_styles: Vec<PaintStyle>,
     pub(crate) commands: Vec<Paint>,
     pub(crate) ranges: Vec<Range<usize>>,
     pub(crate) parents: Vec<Option<usize>>,
@@ -138,6 +157,63 @@ impl RetainedLayout {
         }
         Some(Arc::new(next))
     }
+    /// Nodes whose subtree holds an editor, scroll or slider and so cannot take a paint affine.
+    pub(crate) fn transform_blocked(&self) -> Vec<bool> {
+        let mut blocked: Vec<bool> = self
+            .nodes
+            .iter()
+            .map(|node| node.input.is_some() || node.scroll.is_some() || node.range.is_some())
+            .collect();
+        for index in (0..blocked.len()).rev() {
+            if let Some(parent) = self.parents[index].filter(|p| *p < index) {
+                blocked[parent] |= blocked[index];
+            }
+        }
+        blocked
+    }
+
+    /// The node's transitionable paint values after state variants.
+    pub(crate) fn resolved(
+        &self,
+        index: usize,
+        blocked: bool,
+    ) -> crate::animation::transition::Resolved {
+        let style = &self.paint_styles[index];
+        let [_, _, w, h] = self.nodes[index].bounds;
+        let painted = |command: usize| match &self.commands[command] {
+            Paint::Rect { color, .. } | Paint::Border { color, .. } => *color,
+            _ => [0; 4],
+        };
+        crate::animation::transition::Resolved {
+            opacity: f64::from(self.opacities[index]),
+            transform: (!blocked).then(|| {
+                style
+                    .transform
+                    .map(|t| t.decomposed([w, h]))
+                    .unwrap_or_default()
+            }),
+            background: (!style.gradient).then(|| style.background.map(painted).unwrap_or([0; 4])),
+            foreground: style.foreground,
+            border: style.border.map(painted),
+            shadows: style.shadows.as_ref().map(|layers| {
+                layers
+                    .iter()
+                    .filter_map(|&command| match &self.commands[command] {
+                        Paint::Shadow { shadow, color, .. } => {
+                            Some(crate::animation::transition::ShadowLayer {
+                                offset: [f64::from(shadow.offset_x), f64::from(shadow.offset_y)],
+                                blur: f64::from(shadow.blur),
+                                spread: f64::from(shadow.spread),
+                                color: *color,
+                            })
+                        }
+                        _ => None,
+                    })
+                    .collect()
+            }),
+        }
+    }
+
     pub(crate) fn compose(
         self: &Arc<Self>,
         offsets: &HashMap<String, f32>,
@@ -183,6 +259,24 @@ impl RetainedLayout {
         let mut painted = Vec::new();
         let mut input_paints = Vec::new();
         let mut selectable_paints = Vec::new();
+        // A transitioning text colour reaches descendants that inherit it.
+        let mut foregrounds: Vec<Option<[u8; 4]>> = vec![None; count];
+        if !visuals.is_empty() {
+            for index in 0..count {
+                let own = visuals
+                    .get(&self.nodes[index].identity)
+                    .and_then(|v| v.transition.foreground);
+                foregrounds[index] = own.or_else(|| {
+                    if self.paint_styles[index].own_color {
+                        None
+                    } else {
+                        self.parents[index]
+                            .filter(|p| *p < index)
+                            .and_then(|p| foregrounds[p])
+                    }
+                });
+            }
+        }
         for (position, &index) in self.order.iter().enumerate() {
             let parent = self.parents[index];
             let mut translation = parent.map(|p| translations[p]).unwrap_or([0.0; 2]);
@@ -231,15 +325,29 @@ impl RetainedLayout {
             }
             let inherited = parent.map(|p| transforms[p]).unwrap_or(Affine::IDENTITY);
             let visual = visuals.get(&node.identity);
-            let inherited = match self.transforms[index] {
-                Some(transform) => {
+            let paint_style = &self.paint_styles[index];
+            let overrides = visual.map(|v| &v.transition);
+            let inherited = match (overrides.and_then(|o| o.transform), self.transforms[index]) {
+                (Some(transition), _) => {
+                    let [_, _, w, h] = node.bounds;
+                    let laid_out = paint_style
+                        .transform
+                        .map(|t| t.translation([w, h]))
+                        .unwrap_or_default();
+                    checked_paint_transform(
+                        inherited
+                            * transition
+                                .matrix(node.bounds.map(f64::from), laid_out.map(f64::from)),
+                    )?
+                }
+                (None, Some(transform)) => {
                     checked_paint_transform(inherited * transform.matrix(node.bounds))?
                 }
-                None => inherited,
+                (None, None) => inherited,
             };
             let matrix = if let Some(visual) = visual {
                 let [x, y, w, h] = node.bounds.map(f64::from);
-                checked_paint_transform(inherited * visual.matrix([x + w / 2.0, y + h / 2.0])?)?
+                checked_paint_transform(inherited * visual.matrix_in([x, y, w, h])?)?
             } else {
                 inherited
             };
@@ -251,7 +359,7 @@ impl RetainedLayout {
                 );
             }
             let alpha = visual
-                .and_then(|v| v.opacity)
+                .and_then(|v| v.opacity.or(v.transition.opacity))
                 .unwrap_or(self.opacities[index] as f64);
             if !alpha.is_finite() || !(0.0..=1.0).contains(&alpha) {
                 return Err("UI_ANIMATION: invalid visual opacity".into());
@@ -360,7 +468,20 @@ impl RetainedLayout {
                 continue;
             }
             painted.clear();
-            for paint in &self.commands[self.ranges[index].clone()] {
+            let background = overrides.and_then(|o| o.background);
+            let border = overrides.and_then(|o| o.border);
+            let shadows = overrides.and_then(|o| o.shadows.as_ref());
+            let first = self.ranges[index].start;
+            for (offset, paint) in self.commands[self.ranges[index].clone()].iter().enumerate() {
+                let command = first + offset;
+                let tint = |color: &[u8; 4], replaced: Option<[u8; 4]>, slot: Option<usize>| {
+                    replaced.filter(|_| slot == Some(command)).unwrap_or(*color)
+                };
+                if shadows.is_some()
+                    && matches!(paint, Paint::Shadow { .. } | Paint::RasterShadow { .. })
+                {
+                    continue;
+                }
                 match paint {
                     Paint::Vector {
                         path,
@@ -511,7 +632,7 @@ impl RetainedLayout {
                         {
                             painted.push(Paint::Border {
                                 corners: *corners,
-                                color: *color,
+                                color: tint(color, border, paint_style.border),
                                 bounds,
                                 widths: *widths,
                                 radius: *radius,
@@ -557,7 +678,7 @@ impl RetainedLayout {
                         {
                             painted.push(Paint::Rect {
                                 corners: *corners,
-                                color: *color,
+                                color: tint(color, background, paint_style.background),
                                 bounds,
                                 radius: *radius,
                             });
@@ -610,8 +731,13 @@ impl RetainedLayout {
                         {
                             continue;
                         }
+                        let inherited = paint_style
+                            .texts
+                            .binary_search_by_key(&command, |(command, _)| *command)
+                            .ok()
+                            .and_then(|at| foregrounds[paint_style.texts[at].1]);
                         painted.push(Paint::Text {
-                            color: *color,
+                            color: inherited.unwrap_or(*color),
                             font: font.clone(),
                             size: *size,
                             coordinates: coordinates.clone(),
@@ -629,6 +755,38 @@ impl RetainedLayout {
                     }
                     _ => unreachable!("retained paint has no clipping commands"),
                 }
+            }
+            if let Some(color) = background.filter(|_| paint_style.background.is_none()) {
+                let at = painted
+                    .iter()
+                    .take_while(|p| matches!(p, Paint::Shadow { .. } | Paint::RasterShadow { .. }))
+                    .count();
+                painted.insert(
+                    at,
+                    Paint::Rect {
+                        corners: paint_style.corners,
+                        color,
+                        bounds: node.bounds,
+                        radius: paint_style.radius,
+                    },
+                );
+            }
+            if let Some(layers) = shadows {
+                painted.splice(
+                    0..0,
+                    layers.iter().rev().map(|layer| Paint::Shadow {
+                        shadow: crate::scene::shadow::BoxShadow {
+                            offset_x: layer.offset[0] as f32,
+                            offset_y: layer.offset[1] as f32,
+                            blur: layer.blur as f32,
+                            spread: layer.spread as f32,
+                            color: "currentColor".into(),
+                        },
+                        color: layer.color,
+                        bounds: node.bounds,
+                        radius: paint_style.radius,
+                    }),
+                );
             }
             if painted.is_empty() && self.backdrops[index].is_none() {
                 continue;

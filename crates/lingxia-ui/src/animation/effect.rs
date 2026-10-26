@@ -3,8 +3,23 @@ use vello_cpu::kurbo::Affine;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TransformTracks {
-    Scale { x: Track, y: Track },
-    Translate { x: Track, y: Track },
+    Scale {
+        x: Track,
+        y: Track,
+    },
+    Translate {
+        x: Track,
+        y: Track,
+    },
+    /// Fractions of the node's own border box.
+    Relative {
+        x: Track,
+        y: Track,
+    },
+    /// Degrees.
+    Rotate {
+        angle: Track,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -13,15 +28,22 @@ pub struct Effect {
     transforms: Vec<TransformTracks>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Visual {
     pub opacity: Option<f64>,
     pub transforms: Vec<Transform>,
+    /// Running transitions; keyframe values win where both set a property.
+    pub transition: super::transition::Overrides,
 }
 
 impl Visual {
     pub fn matrix(&self, origin: [f64; 2]) -> Result<Affine, String> {
         compose(origin, &self.transforms)
+    }
+
+    /// About the center of `bounds`, resolving relative translation against it.
+    pub fn matrix_in(&self, bounds: [f64; 4]) -> Result<Affine, String> {
+        super::interpolate::compose_in(bounds, &self.transforms)
     }
 }
 
@@ -38,6 +60,8 @@ impl Effect {
             let (x, y, bound) = match transform {
                 TransformTracks::Scale { x, y } => (x, y, 16.0),
                 TransformTracks::Translate { x, y } => (x, y, 16384.0),
+                TransformTracks::Relative { x, y } => (x, y, 10.0),
+                TransformTracks::Rotate { angle } => (angle, angle, 36000.0),
             };
             if !x.values_within(-bound, bound) || !y.values_within(-bound, bound) {
                 return Err("UI_ANIMATION: transform track outside bounds".into());
@@ -54,7 +78,10 @@ impl Effect {
             self.transforms
                 .iter()
                 .flat_map(|transform| match transform {
-                    TransformTracks::Scale { x, y } | TransformTracks::Translate { x, y } => [x, y],
+                    TransformTracks::Scale { x, y }
+                    | TransformTracks::Translate { x, y }
+                    | TransformTracks::Relative { x, y } => vec![x, y],
+                    TransformTracks::Rotate { angle } => vec![angle],
                 }),
         )
     }
@@ -79,6 +106,10 @@ impl Effect {
                 TransformTracks::Translate { x, y } => {
                     Transform::Translate([x.sample(progress)?, y.sample(progress)?])
                 }
+                TransformTracks::Relative { x, y } => {
+                    Transform::Relative([x.sample(progress)?, y.sample(progress)?])
+                }
+                TransformTracks::Rotate { angle } => Transform::Rotate(angle.sample(progress)?),
             });
         }
         compose([0.0; 2], &transforms)?;
@@ -89,6 +120,7 @@ impl Effect {
                 .map(|track| track.sample(progress).map(|value| value.clamp(0.0, 1.0)))
                 .transpose()?,
             transforms,
+            transition: Default::default(),
         })
     }
 

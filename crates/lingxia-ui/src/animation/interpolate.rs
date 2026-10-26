@@ -72,7 +72,8 @@ pub struct Keyframe {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Track {
     keys: Vec<Keyframe>,
-    easing: Easing,
+    /// One easing per segment, starting at the key of the same index.
+    easings: Vec<Easing>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -84,7 +85,7 @@ pub enum NextChange {
 
 impl Track {
     pub(crate) fn storage_bytes(&self) -> usize {
-        64 + self.keys.len() * 16
+        64 + self.keys.len() * 48
     }
     pub(crate) fn values_within(&self, low: f64, high: f64) -> bool {
         self.keys
@@ -96,7 +97,14 @@ impl Track {
     }
     /// The compiler must resolve implicit endpoints and duplicate offsets first.
     pub fn new(keys: Vec<Keyframe>, easing: Easing) -> Result<Self, String> {
+        let easings = vec![easing; keys.len().saturating_sub(1)];
+        Self::segmented(keys, easings)
+    }
+
+    /// `easings[i]` eases the segment from `keys[i]` to `keys[i + 1]`.
+    pub fn segmented(keys: Vec<Keyframe>, easings: Vec<Easing>) -> Result<Self, String> {
         if !(2..=64).contains(&keys.len())
+            || easings.len() + 1 != keys.len()
             || keys[0].offset != 0.0
             || keys[keys.len() - 1].offset != 1.0
             || keys.iter().any(|k| {
@@ -106,7 +114,7 @@ impl Track {
         {
             return Err("UI_ANIMATION: invalid numeric keyframes".into());
         }
-        Ok(Self { keys, easing })
+        Ok(Self { keys, easings })
     }
 
     pub fn sample(&self, progress: f64) -> Result<f64, String> {
@@ -116,9 +124,8 @@ impl Track {
         }
         let index = self.keys.partition_point(|key| key.offset <= progress) - 1;
         let (left, right) = (self.keys[index], self.keys[index + 1]);
-        let eased = self
-            .easing
-            .sample((progress - left.offset) / (right.offset - left.offset))?;
+        let eased =
+            self.easings[index].sample((progress - left.offset) / (right.offset - left.offset))?;
         let value = left.value + (right.value - left.value) * eased;
         if !value.is_finite() || value.abs() > 16384.0 {
             return Err("UI_ANIMATION: sampled value outside bounds".into());
@@ -129,11 +136,11 @@ impl Track {
     /// Only this iteration; the timing owner also considers the next loop boundary.
     pub fn next_change(&self, progress: f64) -> Result<NextChange, String> {
         valid_progress(progress)?;
-        for pair in self.keys.windows(2) {
+        for (pair, easing) in self.keys.windows(2).zip(&self.easings) {
             if pair[1].offset <= progress || pair[0].value == pair[1].value {
                 continue;
             }
-            return Ok(if self.easing == Easing::STEP_END {
+            return Ok(if *easing == Easing::STEP_END {
                 NextChange::At(pair[1].offset)
             } else if progress < pair[0].offset {
                 NextChange::At(pair[0].offset)
@@ -148,19 +155,46 @@ impl Track {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Transform {
     Scale([f64; 2]),
+    /// Logical pixels.
     Translate([f64; 2]),
+    /// Fractions of the node's own border box.
+    Relative([f64; 2]),
+    /// Degrees, clockwise.
+    Rotate(f64),
 }
 
-/// CSS transform-list order around an explicit border-box origin.
+/// CSS transform-list order around an explicit border-box origin. Relative
+/// translations resolve against zero size; use [`compose_in`] for a node box.
 pub fn compose(origin: [f64; 2], operations: &[Transform]) -> Result<Affine, String> {
-    if operations.len() > 8 || origin.iter().any(|v| !v.is_finite() || v.abs() > 1e12) {
+    compose_sized(origin, [0.0; 2], operations)
+}
+
+/// Compose about the center of `[x, y, w, h]`, resolving relative translation against it.
+pub fn compose_in(bounds: [f64; 4], operations: &[Transform]) -> Result<Affine, String> {
+    let [x, y, w, h] = bounds;
+    compose_sized([x + w / 2.0, y + h / 2.0], [w, h], operations)
+}
+
+fn compose_sized(
+    origin: [f64; 2],
+    size: [f64; 2],
+    operations: &[Transform],
+) -> Result<Affine, String> {
+    if operations.len() > 8
+        || origin
+            .iter()
+            .chain(&size)
+            .any(|v| !v.is_finite() || v.abs() > 1e12)
+    {
         return Err("UI_ANIMATION: transform budget exceeded".into());
     }
     let mut transform = Affine::translate((origin[0], origin[1]));
     for operation in operations {
         let (values, bound) = match operation {
-            Transform::Scale(values) => (values, 16.0),
-            Transform::Translate(values) => (values, 16384.0),
+            Transform::Scale(values) => (&values[..], 16.0),
+            Transform::Translate(values) => (&values[..], 16384.0),
+            Transform::Relative(values) => (&values[..], 10.0),
+            Transform::Rotate(angle) => (std::slice::from_ref(angle), 36000.0),
         };
         if values.iter().any(|v| !v.is_finite() || v.abs() > bound) {
             return Err("UI_ANIMATION: invalid transform value".into());
@@ -168,6 +202,8 @@ pub fn compose(origin: [f64; 2], operations: &[Transform]) -> Result<Affine, Str
         transform *= match operation {
             Transform::Scale([x, y]) => Affine::scale_non_uniform(*x, *y),
             Transform::Translate([x, y]) => Affine::translate((*x, *y)),
+            Transform::Relative([x, y]) => Affine::translate((x * size[0], y * size[1])),
+            Transform::Rotate(angle) => Affine::rotate(angle.to_radians()),
         };
     }
     transform *= Affine::translate((-origin[0], -origin[1]));

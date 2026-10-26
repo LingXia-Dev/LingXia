@@ -1620,3 +1620,5 @@ mod editor_rules;
 mod motion;
 #[path = "text_selection.rs"]
 mod text_selection;
+#[path = "transition.rs"]
+mod transition;

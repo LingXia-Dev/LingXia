@@ -35,6 +35,8 @@ struct Request {
     revision: u64,
     offsets: HashMap<String, f32>,
     caret: bool,
+    /// A hidden page's catch-up frame keeps animation time parked.
+    visible: bool,
 }
 
 impl<A: PlatformAdapter> Inner<A> {
@@ -83,6 +85,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 revision: main.interaction.scroll().revision(),
                 offsets: main.interaction.scroll().snapshot(),
                 caret: !main.caret.hidden,
+                visible: main.visible,
             };
             main.dirty = false;
             main.pending = false;
@@ -171,7 +174,7 @@ impl<A: PlatformAdapter> Inner<A> {
         let mut loaded_images = 0;
         let mut image_buckets = Default::default();
         session.set_environment(value)?;
-        session.set_animation_surface(Some(request.surface), now)?;
+        session.set_animation_target(Some(request.surface), request.visible, now)?;
         let generation = CommitTicket::new(session.generation().get() + 1);
         let caret = request.caret;
         let surface = request.surface;

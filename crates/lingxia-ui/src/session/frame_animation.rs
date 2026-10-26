@@ -13,7 +13,7 @@ pub(super) enum FrameAnimations<'a> {
     Explicit(&'a Prepared),
     Collected {
         inventory: Inventory,
-        timeline: Timeline,
+        timeline: Box<Timeline>,
         now: Duration,
         frame: Option<Box<Prepared>>,
         visible: BTreeSet<String>,
@@ -47,15 +47,20 @@ impl FrameAnimations<'_> {
                 visible,
             } => {
                 let candidate = inventory.reconcile(records)?;
+                let transitions = transition_inputs(records, &display)?;
                 let realized: BTreeSet<_> = records
                     .iter()
                     .zip(&display.nodes)
-                    .filter(|(record, _)| record.string(field::ANIMATION).is_some())
+                    .filter(|(record, _)| {
+                        record.string(field::ANIMATION).is_some()
+                            || record.string(field::TRANSITION).is_some()
+                    })
                     .map(|(_, node)| node.identity.clone())
                     .collect();
-                let preview = timeline.prepare_visible(
+                let preview = timeline.prepare_frame(
                     *now,
                     candidate.definitions(),
+                    transitions.clone(),
                     realized.iter().map(String::as_str),
                 )?;
                 let mut recomposed = !preview.visuals().is_empty();
@@ -69,9 +74,10 @@ impl FrameAnimations<'_> {
                     (preview, rendered)
                 } else {
                     recomposed = true;
-                    let prepared = timeline.prepare_visible(
+                    let prepared = timeline.prepare_frame(
                         *now,
                         candidate.definitions(),
+                        transitions,
                         visible.iter().map(String::as_str),
                     )?;
                     let rendered = rendered
@@ -85,6 +91,35 @@ impl FrameAnimations<'_> {
             }
         }
     }
+}
+
+/// Each realized node with a transition, paired with its natively resolved paint.
+fn transition_inputs(
+    records: &[crate::protocol::Record],
+    display: &DisplayList,
+) -> Result<
+    Vec<(
+        String,
+        crate::animation::transition::TransitionDef,
+        crate::animation::transition::Resolved,
+    )>,
+    String,
+> {
+    let mut blocked = None;
+    let mut inputs = Vec::new();
+    for (index, record) in records.iter().enumerate() {
+        let Some(source) = record.string(field::TRANSITION) else {
+            continue;
+        };
+        let retained = &display.retained;
+        let blocked = blocked.get_or_insert_with(|| retained.transform_blocked());
+        inputs.push((
+            retained.nodes[index].identity.clone(),
+            crate::animation::transition::TransitionDef::decode(source)?,
+            retained.resolved(index, blocked[index]),
+        ));
+    }
+    Ok(inputs)
 }
 
 fn visible_nodes(display: &DisplayList, realized: &BTreeSet<String>) -> BTreeSet<String> {

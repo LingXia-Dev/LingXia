@@ -18,6 +18,8 @@ pub struct FrameMetrics {
     pub layout_passes: u32,
     pub nodes: usize,
     pub paints: usize,
+    /// Visible presentations that showed animated values in the last second.
+    pub animation_frames: usize,
 }
 
 pub(crate) fn micros(start: std::time::Instant) -> u64 {

@@ -67,6 +67,7 @@ impl Renderer {
         let mut nodes = Vec::new();
         let viewport = [0.0, 0.0, width as f32 / scale, height as f32 / scale];
         let mut ranges = Vec::new();
+        let mut paint_styles = Vec::with_capacity(records.len());
         let mut input_layouts = Vec::new();
         let identities = crate::protocol::identities(records);
         let mut scroll_parents: Vec<Option<String>> = Vec::new();
@@ -267,6 +268,15 @@ impl Renderer {
                 }
             }));
             let paint_start = commands.len();
+            let mut paint_style = PaintStyle {
+                foreground: color(colors[index]).unwrap_or([0, 0, 0, 255]),
+                own_color: record.string(field::COLOR).is_some(),
+                transform: transforms[index],
+                corners,
+                radius,
+                shadows: Some(Vec::new()),
+                ..Default::default()
+            };
             if let Some(source) = record.string(field::BOX_SHADOW) {
                 for shadow in crate::scene::shadow::BoxShadow::parse(source)?
                     .into_iter()
@@ -296,9 +306,13 @@ impl Renderer {
                                 }
                                 raster.bounds[0] += bounds[0];
                                 raster.bounds[1] += bounds[1];
+                                paint_style.shadows = None;
                                 commands.push(Paint::RasterShadow { raster });
                             }
                         } else {
+                            if let Some(layers) = &mut paint_style.shadows {
+                                layers.push(commands.len());
+                            }
                             commands.push(Paint::Shadow {
                                 shadow,
                                 color,
@@ -328,6 +342,7 @@ impl Renderer {
                 } else {
                     background
                 })?;
+                paint_style.background = Some(commands.len());
                 commands.push(Paint::Rect {
                     corners,
                     color: [r, g, b, a],
@@ -338,6 +353,7 @@ impl Renderer {
             if let Some(source) = record.string(field::BACKGROUND_GRADIENT)
                 && let Some(gradient) = crate::scene::gradient::BackgroundGradient::parse(source)?
             {
+                paint_style.gradient = true;
                 commands.push(Paint::Gradient {
                     corners,
                     gradient: Arc::new(gradient),
@@ -350,6 +366,7 @@ impl Renderer {
                     .string(field::BORDER_COLOR)
                     .filter(|value| *value != "currentColor")
                     .unwrap_or(colors[index]);
+                paint_style.border = Some(commands.len());
                 commands.push(Paint::Border {
                     corners,
                     color: color(tint)?,
@@ -649,6 +666,9 @@ impl Renderer {
                                 skew as f32,
                                 (1.0 / scale).max(1.0),
                             );
+                            if !placeholder {
+                                paint_style.texts.push((commands.len(), owner));
+                            }
                             commands.push(Paint::Text {
                                 ink,
                                 color: [r, g, b, a],
@@ -843,7 +863,16 @@ impl Renderer {
             // A run paints through its paragraph; its own box is the union of its line pieces.
             if collapsed[index] || run {
                 commands.truncate(paint_start);
+                paint_style.shadows = Some(Vec::new());
+                paint_style.background = None;
+                paint_style.border = None;
+                paint_style.texts.clear();
             }
+            if let Some(layers) = &mut paint_style.shadows {
+                // Pushed back to front; keep authored order.
+                layers.reverse();
+            }
+            paint_styles.push(paint_style);
             // A styled link arrives as consecutive pieces sharing one handle; the first
             // piece carries the whole link for hits and semantics.
             let link_group: Vec<usize> =
@@ -1040,6 +1069,7 @@ impl Renderer {
             });
         }
         Ok(RetainedLayout {
+            paint_styles,
             commands,
             nodes,
             ranges,
