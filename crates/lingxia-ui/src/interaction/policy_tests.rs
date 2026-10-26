@@ -54,6 +54,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
 
 fn region(id: &str, parent: Option<&str>, offset: f32, max: f32) -> ScrollSnapshot {
     ScrollSnapshot {
+        rtl: false,
         contain: false,
         content_insets: [0.0; 4],
         content_size: [0.0; 2],
@@ -778,4 +779,33 @@ fn long_press_on_selectable_text_selects_and_a_tap_clears() {
     interaction.pointer(press(PointerPhase::Down, 150.0, 150.0), page);
     interaction.pointer(press(PointerPhase::Up, 150.0, 150.0), page);
     assert_eq!(interaction.take_dispatch(), [Dispatch::ClearTextSelection]);
+}
+
+#[test]
+fn rtl_horizontal_drags_advance_the_offset_the_other_way() {
+    let mut scroll = ScrollModel::default();
+    let mut frame = scrolls(0.0, 50.0);
+    for node in &mut frame.nodes {
+        let region = node.scroll.as_mut().unwrap();
+        region.axis = ScrollAxis::Horizontal;
+        region.rtl = node.identity == "i";
+    }
+    scroll.accept(&frame, 0, &HashMap::new());
+    // A drag that moves content right reveals more of an RTL region.
+    assert!(scroll.drag_by("inner", -20.0));
+    assert_eq!(scroll.offset("inner"), 20.0);
+    // Semantic scrolling (accessibility) still counts toward the inline end.
+    assert!(scroll.scroll_by("inner", 10.0));
+    assert_eq!(scroll.offset("inner"), 30.0);
+    // Leftover visual distance reaches an LTR ancestor in its own sense.
+    assert!(scroll.drag_by("inner", -80.0));
+    assert_eq!(
+        (scroll.offset("inner"), scroll.offset("outer")),
+        (50.0, 0.0)
+    );
+    assert!(scroll.drag_by("inner", 70.0));
+    assert_eq!(
+        (scroll.offset("inner"), scroll.offset("outer")),
+        (0.0, 20.0)
+    );
 }

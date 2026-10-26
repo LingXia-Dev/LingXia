@@ -274,6 +274,9 @@ impl ScrollAxis {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ScrollSnapshot {
+    /// A right-to-left horizontal scroll: offsets grow toward the left.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub rtl: bool,
     /// `overscroll-behavior: contain`: leftover distance never reaches ancestors.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub contain: bool,

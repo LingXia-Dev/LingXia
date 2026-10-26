@@ -119,7 +119,7 @@ impl ViewInteraction {
                     let delta = self.gesture.last - position;
                     self.gesture.last = position;
                     let target = self.gesture.target.clone().unwrap_or_default();
-                    if self.scroll.scroll_by(&target, delta / scale) {
+                    if self.scroll.drag_by(&target, delta / scale) {
                         effects.push(Effect::Redraw);
                     } else {
                         effects.push(Effect::Claim { exclusive: false });

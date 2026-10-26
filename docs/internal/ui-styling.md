@@ -85,7 +85,8 @@ against each node's own direction, so a language switch relays out without the V
 When a node carries both, the flow-relative value wins on its side. `rtl:`/`ltr:`
 match the inherited direction like `dark:` matches the theme; mirror icons with
 `rtl:-scale-x-100`. Editors take their box's direction; `dir="auto"` (editors only)
-follows the first strong character.
+follows the first strong character. A horizontal scroll in RTL starts at its
+inline start (offset 0 = right edge) and advances leftward.
 
 ## State variants
 

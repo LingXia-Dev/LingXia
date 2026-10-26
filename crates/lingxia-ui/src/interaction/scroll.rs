@@ -91,7 +91,17 @@ impl ScrollModel {
     }
 
     /// Move a region, handing remaining distance to ancestors on the same axis.
-    pub fn scroll_by(&mut self, id: &str, mut delta: f32) -> bool {
+    pub fn scroll_by(&mut self, id: &str, delta: f32) -> bool {
+        self.move_by(id, delta, false)
+    }
+
+    /// A finger or fling distance: positive moves content toward the start of
+    /// the screen axis, which advances an RTL horizontal region's offset backwards.
+    pub fn drag_by(&mut self, id: &str, delta: f32) -> bool {
+        self.move_by(id, delta, true)
+    }
+
+    fn move_by(&mut self, id: &str, mut delta: f32, visual: bool) -> bool {
         if !delta.is_finite() {
             return false;
         }
@@ -108,13 +118,14 @@ impl ScrollModel {
             };
             let parent = region.parent.clone();
             if region.axis == axis {
+                let sign = if visual && region.rtl { -1.0 } else { 1.0 };
                 let before = self.offset(&current);
-                let after = (before + delta).clamp(0.0, region.max_offset.max(0.0));
+                let after = (before + sign * delta).clamp(0.0, region.max_offset.max(0.0));
                 if after != before {
                     self.offsets.insert(current, after);
                     changed = true;
                 }
-                delta -= after - before;
+                delta -= sign * (after - before);
                 if region.contain {
                     break;
                 }

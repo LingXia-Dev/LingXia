@@ -101,9 +101,10 @@ impl ViewInteraction {
         &self.scroll
     }
 
+    /// A fling step in screen pixels; RTL horizontal regions advance the other way.
     pub fn scroll_by(&mut self, region: &str, delta_px: f32) -> bool {
         let scale = self.scale();
-        self.scroll.scroll_by(region, delta_px / scale)
+        self.scroll.drag_by(region, delta_px / scale)
     }
 
     /// Only an interrupted session sets this; content stays readable, input stops.

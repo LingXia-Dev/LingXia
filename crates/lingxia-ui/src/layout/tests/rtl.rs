@@ -115,3 +115,25 @@ fn environment_reports_direction_to_the_view() {
     assert!(!crate::text::fonts::right_to_left("az-Latn"));
     assert!(!crate::text::fonts::right_to_left("zh-Hans-CN"));
 }
+
+#[test]
+fn rtl_horizontal_scrolls_start_at_the_inline_start_and_move_toward_the_left() {
+    let render = "h('scroll',{testId:'s',style:{overflowX:'auto',width:100,height:20}},h('row',{},h('column',{testId:'first',style:{width:80,height:10}}),h('column',{testId:'second',style:{width:80,height:10}})))";
+    for (language, start, scrolled) in [("ar", 20.0, 80.0), ("en", 0.0, -60.0)] {
+        let mut session = page(render, language);
+        let display = session.layout(100, 100, 1.0).unwrap();
+        let scroll = display.nodes.iter().find(|n| n.test_id == "s").unwrap();
+        let (id, max) = {
+            let s = scroll.scroll.as_ref().unwrap();
+            (s.id.clone(), s.max_offset)
+        };
+        assert_eq!(max, 60.0);
+        // Offset 0 shows the inline start; the full offset shows the inline end.
+        assert_eq!(bounds(&display, "first")[0], start, "{language}");
+        let end = display
+            .retained
+            .compose(&std::collections::HashMap::from([(id, 60.0)]))
+            .unwrap();
+        assert_eq!(bounds(&end, "first")[0], scrolled, "{language}");
+    }
+}

@@ -338,7 +338,12 @@ impl RetainedLayout {
             }
             let mut child_translation = translation;
             if let Some(scroll) = &node.scroll {
-                child_translation[scroll.axis.index()] += scroll.offset;
+                // RTL content overflows to the left, so its offsets move it right.
+                child_translation[scroll.axis.index()] += if scroll.rtl {
+                    -scroll.offset
+                } else {
+                    scroll.offset
+                };
             }
             translations[index] = child_translation;
             clips[index] = transformed_bounds(

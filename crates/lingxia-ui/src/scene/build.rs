@@ -175,6 +175,7 @@ impl Renderer {
                     ScrollAxis::Vertical => layout.scroll_height(),
                 };
                 ScrollSnapshot {
+                    rtl: axis == ScrollAxis::Horizontal && directions[index],
                     contain: matches!(record.string(field::OVERSCROLL), Some("contain" | "none")),
                     content_insets: [
                         layout.padding.top,
