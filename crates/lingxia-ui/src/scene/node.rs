@@ -33,6 +33,14 @@ pub struct NodeSnapshot {
     pub accessibility_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accessibility_hidden: Option<bool>,
+    /// Authored semantic role (`heading`, `list`, …); controls keep their own.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heading_level: Option<u8>,
+    /// `polite` or `assertive`; alerts and statuses imply one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub live_region: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub button_content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

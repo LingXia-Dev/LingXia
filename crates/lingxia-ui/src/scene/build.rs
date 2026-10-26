@@ -47,6 +47,14 @@ impl Renderer {
         let parents = crate::layout::style::layout_parents(records);
         let hidden = crate::layout::style::hidden(records);
         let directions = crate::layout::style::directions(records, self.rtl);
+        // `accessibilityHidden` removes a whole subtree from semantics.
+        let mut unspoken: Vec<bool> = Vec::with_capacity(records.len());
+        for record in records {
+            unspoken.push(
+                record.number(field::ACCESSIBILITY_HIDDEN) == Some(1.0)
+                    || record.parent.is_some_and(|parent| unspoken[parent]),
+            );
+        }
         let mut run_rects: std::collections::HashMap<usize, Vec<[f32; 4]>> =
             std::collections::HashMap::new();
         let transforms = records
@@ -781,7 +789,19 @@ impl Renderer {
                     .filter(|label| !label.is_empty())
                     .map(str::to_owned),
                 hit_rects,
+                role: record.string(field::ROLE).map(str::to_owned),
+                heading_level: record.number(field::HEADING_LEVEL).map(|level| level as u8),
+                live_region: match record.string(field::ACCESSIBILITY_LIVE_REGION) {
+                    Some("off") => None,
+                    Some(kind) => Some(kind.to_owned()),
+                    None => match record.string(field::ROLE) {
+                        Some("alert") => Some("assertive".into()),
+                        Some("status") => Some("polite".into()),
+                        _ => None,
+                    },
+                },
                 accessibility_hidden: (hidden[index]
+                    || unspoken[index]
                     || record.tag == tag::SPAN
                     || button_owners[index].is_some()
                     || record.string(field::IMAGE_ALT) == Some(""))

@@ -22,6 +22,12 @@ pub enum Role {
     Slider,
     Text,
     Link,
+    Heading,
+    List,
+    ListItem,
+    Dialog,
+    Alert,
+    Status,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -83,12 +89,17 @@ pub struct SemanticNode {
     /// Row within its radio group and the group's option count.
     pub position: Option<(usize, usize)>,
     pub actions: Vec<Action>,
+    /// 1..6 for headings.
+    pub heading_level: Option<u8>,
+    /// `polite` or `assertive`: announce text changes.
+    pub live_region: Option<String>,
 }
 
 /// Nodes that convey information or accept input.
 pub fn meaningful(node: &NodeSnapshot) -> bool {
     !node.accessibility_hidden.unwrap_or(false)
         && (!node.text.is_empty()
+            || node.role.is_some()
             || node.tag == "radio"
             || node.scroll.is_some()
             || node.checked.is_some()
@@ -191,6 +202,15 @@ impl Projection<'_> {
             }
         } else if node.tag == "link" {
             Role::Link
+        } else if let Some(role) = node.role.as_deref().filter(|_| !button) {
+            match role {
+                "heading" => Role::Heading,
+                "list" => Role::List,
+                "listitem" => Role::ListItem,
+                "dialog" => Role::Dialog,
+                "alert" => Role::Alert,
+                _ => Role::Status,
+            }
         } else if button {
             Role::Button
         } else if matches!(node.tag, "image" | "plot") {
@@ -199,7 +219,13 @@ impl Projection<'_> {
             Role::Text
         };
         let label = node.accessibility_label.clone().unwrap_or_default();
-        let name = if matches!(role, Role::Image | Role::Slider | Role::RadioGroup)
+        let name = if matches!(
+            role,
+            Role::Image | Role::Slider | Role::RadioGroup | Role::List | Role::Dialog
+        ) || (matches!(
+            role,
+            Role::Heading | Role::ListItem | Role::Alert | Role::Status
+        ) && !label.is_empty())
             || (input.is_some() && !label.is_empty())
         {
             label
@@ -255,6 +281,17 @@ impl Projection<'_> {
                 })
                 .count();
             position = Some((row, 1));
+        } else if role == Role::List {
+            position = Some((0, self.list_items(node).count()));
+        } else if role == Role::ListItem {
+            // Items belong to their nearest list ancestor, by identity prefix.
+            if let Some(list) = self.owning_list(node) {
+                let row = self
+                    .list_items(list)
+                    .take_while(|(_, item)| item.identity != node.identity)
+                    .count();
+                position = Some((row, 1));
+            }
         }
         let mut clickable = (button || check || input.is_some()) && enabled && node.range.is_none();
         if plot_enabled(node) {
@@ -340,7 +377,37 @@ impl Projection<'_> {
             children,
             position,
             actions,
+            heading_level: node.heading_level.or((role == Role::Heading).then_some(2)),
+            live_region: node.live_region.clone(),
         })
+    }
+
+    fn owning_list(&self, item: &NodeSnapshot) -> Option<&NodeSnapshot> {
+        self.frame
+            .nodes
+            .iter()
+            .filter(|list| {
+                list.role.as_deref() == Some("list")
+                    && item.identity.starts_with(&format!("{}/", list.identity))
+            })
+            .max_by_key(|list| list.identity.len())
+    }
+
+    fn list_items<'a>(
+        &'a self,
+        list: &'a NodeSnapshot,
+    ) -> impl Iterator<Item = (usize, &'a NodeSnapshot)> + 'a {
+        self.frame
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(move |(_, item)| {
+                item.role.as_deref() == Some("listitem")
+                    && !item.accessibility_hidden.unwrap_or(false)
+                    && self
+                        .owning_list(item)
+                        .is_some_and(|owner| owner.identity == list.identity)
+            })
     }
 
     /// The node holding input focus: the active editor, else the keyboard focus ring.
@@ -381,7 +448,32 @@ pub enum Event {
     ValueChanged {
         id: u32,
     },
+    /// A live region's spoken text changed; `assertive` interrupts speech.
+    Announce {
+        id: u32,
+        text: String,
+        assertive: bool,
+    },
     ContentChanged,
+}
+
+/// What a live region says: its own text, else its visible descendants' text in order.
+fn spoken(frame: &PresentedFrame, node: &NodeSnapshot) -> String {
+    if !node.text.is_empty() {
+        return node.text.clone();
+    }
+    let prefix = format!("{}/", node.identity);
+    frame
+        .nodes
+        .iter()
+        .filter(|other| {
+            other.identity.starts_with(&prefix)
+                && !other.text.is_empty()
+                && !other.accessibility_hidden.unwrap_or(false)
+        })
+        .map(|other| other.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 pub fn changes(
@@ -436,6 +528,18 @@ pub fn changes(
             && range.value != old.value
         {
             events.push(Event::ValueChanged { id });
+        }
+        if let (Some(kind), Some(previous)) = (&node.live_region, previous)
+            && !node.accessibility_hidden.unwrap_or(false)
+        {
+            let text = spoken(next, node);
+            if !text.is_empty() && text != spoken(previous, prior) {
+                events.push(Event::Announce {
+                    id,
+                    text,
+                    assertive: kind == "assertive",
+                });
+            }
         }
     }
     let changed = previous.is_none_or(|previous| {

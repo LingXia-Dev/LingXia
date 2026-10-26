@@ -281,6 +281,28 @@ async function nativeTestRuntime(generated) {
   return header + result.outputFiles[0].text;
 }
 
+const constant = name => screaming(name).replace(/__+/g, '_');
+
+// The Android adapter maps the semantic projection with these names only.
+function androidSemantics(schema) {
+  const { roles, liveRegions, events, keys } = schema.semantics;
+  const lines = [
+    ...roles.map(role => `    public static final String ROLE_${constant(role)} = ${JSON.stringify(role)};`),
+    ...liveRegions.map(kind => `    public static final String LIVE_${constant(kind)} = ${JSON.stringify(kind)};`),
+    ...events.map(kind => `    public static final String EVENT_${constant(kind)} = ${JSON.stringify(kind)};`),
+    ...Object.entries(keys).map(([name, key]) => `    public static final String KEY_${constant(name)} = ${JSON.stringify(key)};`),
+  ];
+  return `${header}package com.lingxia.ui.generated;
+
+/** Semantic node roles, live-region kinds, event kinds and JSON keys of the shared projection. */
+public final class GpuSemantics {
+    private GpuSemantics() {}
+
+${lines.join('\n')}
+}
+`;
+}
+
 /** Map of repository-relative path to generated content. */
 export async function generate(schema) {
   validate(schema);
@@ -292,6 +314,7 @@ export async function generate(schema) {
     'packages/lingxia-ui/src/generated/wire.js': wire(schema),
     'packages/lingxia-ui/src/generated/contract.js': contract(schema),
     'packages/lingxia-ui/src/generated/authoring.d.ts': authoring(schema, api),
+    'lingxia-sdk/android/lingxia/src/main/java/com/lingxia/ui/generated/GpuSemantics.java': androidSemantics(schema),
   };
   generated['crates/lingxia-ui/src/session/tests/runtime.js'] = await nativeTestRuntime(generated);
   return generated;

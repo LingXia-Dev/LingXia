@@ -50,7 +50,9 @@
     "overscroll": ["auto", "contain", "none"],
     "grid-auto-flow": ["row", "column", "row-dense", "column-dense"],
     "align-content": ["start", "center", "end", "between", "around", "evenly", "stretch"],
-    "direction": ["ltr", "rtl"]
+    "direction": ["ltr", "rtl"],
+    "role": ["heading", "list", "listitem", "dialog", "alert", "status"],
+    "live-region": ["off", "polite", "assertive"]
   },
   "fields": [
     {"id": 0, "key": "width", "wire": "width", "kind": "number"},
@@ -94,7 +96,7 @@
     {"id": 38, "key": "fontFamily", "wire": "fontFamily", "kind": "font-family"},
     {"id": 39, "key": "checked", "wire": "checked", "kind": "check-flag", "tags": ["checkbox", "switch", "radio-option"]},
     {"id": 40, "key": "onCheckedChange", "wire": "onChange", "kind": "check-handle", "tags": ["checkbox", "switch", "radio-option"]},
-    {"id": 41, "key": "accessibilityLabel", "wire": "accessibilityLabel", "kind": "radio-label", "tags": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link"]},
+    {"id": 41, "key": "accessibilityLabel", "wire": "accessibilityLabel", "kind": "radio-label", "tags": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link", "column", "row", "page", "text"]},
     {"id": 42, "key": "sliderValue", "wire": "value", "kind": "slider-number", "tags": ["slider"]},
     {"id": 43, "key": "sliderMin", "wire": "min", "kind": "slider-number", "tags": ["slider"]},
     {"id": 44, "key": "sliderMax", "wire": "max", "kind": "slider-number", "tags": ["slider"]},
@@ -211,8 +213,18 @@
     {"id": 155, "key": "radiusStartStart", "wire": "radiusStartStart", "kind": "number"},
     {"id": 156, "key": "radiusStartEnd", "wire": "radiusStartEnd", "kind": "number"},
     {"id": 157, "key": "radiusEndStart", "wire": "radiusEndStart", "kind": "number"},
-    {"id": 158, "key": "radiusEndEnd", "wire": "radiusEndEnd", "kind": "number"}
+    {"id": 158, "key": "radiusEndEnd", "wire": "radiusEndEnd", "kind": "number"},
+    {"id": 159, "key": "role", "wire": "role", "kind": "role"},
+    {"id": 160, "key": "headingLevel", "wire": "headingLevel", "kind": "heading-level"},
+    {"id": 161, "key": "accessibilityHidden", "wire": "accessibilityHidden", "kind": "hidden-flag"},
+    {"id": 162, "key": "accessibilityLiveRegion", "wire": "accessibilityLiveRegion", "kind": "live-region"}
   ],
+  "semantics": {
+    "roles": ["button", "check-box", "switch", "radio-group", "radio-button", "text-field", "scroll-view", "horizontal-scroll-view", "image", "slider", "text", "link", "heading", "list", "list-item", "dialog", "alert", "status"],
+    "liveRegions": ["polite", "assertive"],
+    "events": ["announce"],
+    "keys": {"headingLevel": "heading_level", "liveRegion": "live_region", "position": "position"}
+  },
   "styleGroups": {"accent": ["color"], "run": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "textDecorationLine", "fontVariantNumeric", "backgroundColor"]},
   "style": {
     "width": {"type": "number | `${number}%` | `${number}vw` | `${number}vh` | \"auto\" | \"fit-content\" | \"max-content\" | \"min-content\"", "group": "box", "lower": "dimension", "wire": "width", "css": "width"},
@@ -324,11 +336,11 @@
     "objectFit": {"type": "\"cover\" | \"contain\" | \"fill\"", "group": "media", "lower": "fit", "wire": "imageFit", "css": "object-fit"}
   },
   "elements": {
-    "view": {"wire": "column", "children": "any", "style": ["box", "padding", "flex", "align", "direction", "gap", "text", "grid"], "props": {}},
-    "column": {"wire": "column", "children": "any", "style": ["box", "padding", "flex", "align", "direction", "gap", "text", "grid"], "props": {}},
-    "row": {"wire": "row", "children": "any", "style": ["box", "padding", "flex", "align", "direction", "gap", "text", "grid"], "props": {}},
-    "page": {"wire": "page", "children": "any", "style": ["box", "padding", "flex", "align", "direction", "gap", "text", "grid"], "props": {}},
-    "text": {"wire": "text", "children": "runs", "style": ["box", "padding", "text", "textBlock"], "props": {}},
+    "view": {"wire": "column", "children": "any", "style": ["box", "padding", "flex", "align", "direction", "gap", "text", "grid"], "props": {"accessibilityLabel": {"type": "string"}}},
+    "column": {"wire": "column", "children": "any", "style": ["box", "padding", "flex", "align", "direction", "gap", "text", "grid"], "props": {"accessibilityLabel": {"type": "string"}}},
+    "row": {"wire": "row", "children": "any", "style": ["box", "padding", "flex", "align", "direction", "gap", "text", "grid"], "props": {"accessibilityLabel": {"type": "string"}}},
+    "page": {"wire": "page", "children": "any", "style": ["box", "padding", "flex", "align", "direction", "gap", "text", "grid"], "props": {"accessibilityLabel": {"type": "string"}}},
+    "text": {"wire": "text", "children": "runs", "style": ["box", "padding", "text", "textBlock"], "props": {"accessibilityLabel": {"type": "string"}}},
     "button": {"wire": "button", "children": "content", "style": ["box", "padding", "flex", "align", "gap", "text"], "props": {"onClick": {"type": "() => void"}, "disabled": {"type": "boolean"}, "accessibilityLabel": {"type": "string"}}},
     "spacer": {"wire": "spacer", "children": "none", "style": ["box"], "props": {}},
     "scroll": {"wire": "scroll", "children": "any", "style": ["box", "padding", "flex", "align", "gap", "text", "scroll", "overscroll"], "props": {"onReachStart": {"type": "() => void"}, "onReachEnd": {"type": "() => void"}}},

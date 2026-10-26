@@ -137,7 +137,16 @@ fn radio_wire_requires_bounded_unique_options_and_a_single_selection() {
         group(&[option("a", "A", 1), option("a", "Again", 0)]),
         group(&[option("", "A", 0)]),
         json!([RADIO, -1, "", "", "", 0, RADIO_OPTION, 0, "a", "", "A", 0]),
-        json!([COLUMN, -1, "", "", "", 1, ACCESSIBILITY_LABEL, "Wrong role"]),
+        json!([
+            tag::SPACER,
+            -1,
+            "",
+            "",
+            "",
+            1,
+            ACCESSIBILITY_LABEL,
+            "Wrong role"
+        ]),
     ] {
         assert!(decode(wire.as_array().unwrap()).is_err(), "{wire}");
     }

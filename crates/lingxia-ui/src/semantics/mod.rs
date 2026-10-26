@@ -2,3 +2,5 @@
 pub(crate) mod groups;
 pub mod ids;
 pub mod projection;
+#[cfg(test)]
+mod roles_tests;

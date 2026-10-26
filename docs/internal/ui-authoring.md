@@ -31,6 +31,11 @@ spans flatten into styled runs of one paragraph. Runs accept only text paint
 (color, size, weight, family, italic, decoration, numeric variants, background);
 links default to the accent color with an underline, take `active:` paint and
 hit-test only their line pieces. Static text is not selectable.
+Any element may set `role` (heading with `headingLevel`, list/listitem, dialog,
+alert, status), `accessibilityHidden` (removes the subtree from semantics, not
+paint) and `accessibilityLiveRegion`; alert and status announce assertively and
+politely by default. Controls keep their own role. The Android adapter reads the
+role and key names from the generated `GpuSemantics` class.
 Composed buttons and checkboxes may contain noninteractive content; inline
 text among element children becomes text nodes. Their accessible name comes
 from descendant text unless `accessibilityLabel` is given. Empty strings,

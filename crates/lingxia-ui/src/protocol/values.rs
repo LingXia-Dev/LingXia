@@ -167,6 +167,14 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             value.as_i64().is_some_and(|v| v.abs() <= 10_000),
             "UI_STYLE: invalid order",
         ),
+        field::HEADING_LEVEL => ensure(
+            value.as_u64().is_some_and(|v| (1..=6).contains(&v)),
+            "UI_PROP: headingLevel must be 1..6",
+        ),
+        field::ACCESSIBILITY_HIDDEN => ensure(
+            value.as_u64() == Some(1),
+            "UI_PROP: invalid accessibilityHidden",
+        ),
         field::ASPECT_RATIO => ensure(
             value
                 .as_f64()

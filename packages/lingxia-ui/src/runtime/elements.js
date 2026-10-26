@@ -6,9 +6,10 @@ import { render, page } from './state.js';
 import { cellOf } from './hooks.js';
 import { located } from './errors.js';
 import { has, validInputText } from './data.js';
+import { fieldOptions } from '../generated/wire.js';
 import * as check from './validate.js';
 
-const common = new Set(['key', 'testId', 'style', 'className', 'children', 'dir']);
+const common = new Set(['key', 'testId', 'style', 'className', 'children', 'dir', 'role', 'headingLevel', 'accessibilityHidden', 'accessibilityLiveRegion']);
 const accepts = (field, tag) => admission.fields[field].includes(elements[tag].wire);
 const bindCodes = { input: 'UI_INPUT', textarea: 'UI_INPUT', search: 'UI_INPUT', checkbox: 'UI_CHECK', switch: 'UI_CHECK', slider: 'UI_SLIDER', radio: 'UI_RADIO' };
 const optionStyle = ['fontSize', 'fontWeight', 'fontFamily', 'lineHeight', 'color', 'background'];
@@ -110,6 +111,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const on = (key, callback, kind, isolated) => result.handlers.push([key, handle(), callbackOf(callback, kind, isolated)]);
   if (disabled) wire('enabled', 0);
   if (props.dir !== undefined) wire('direction', props.dir);
+  semantics(tag, props, wire);
   switch (tag) {
     case 'link':
       check.label(props.accessibilityLabel, 'UI_TEXT');
@@ -223,6 +225,33 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     }).filter(child => child !== null);
   }
   return result;
+}
+
+// Accessibility roles and states any element may declare; controls keep their own role.
+function semantics(tag, props, wire) {
+  const { role, headingLevel, accessibilityHidden, accessibilityLiveRegion } = props;
+  if (role !== undefined) {
+    if (!fieldOptions.role.includes(role)) throw Error(`UI_PROP: role must be one of ${fieldOptions.role.join(', ')}`);
+    wire('role', role);
+  }
+  if (headingLevel !== undefined) {
+    if (role !== 'heading' || !Number.isInteger(headingLevel) || headingLevel < 1 || headingLevel > 6)
+      throw Error('UI_PROP: headingLevel is an integer 1..6 on role="heading"');
+    wire('headingLevel', headingLevel);
+  }
+  if (accessibilityHidden !== undefined) {
+    if (typeof accessibilityHidden !== 'boolean') throw Error('UI_PROP: accessibilityHidden must be boolean');
+    if (accessibilityHidden) wire('accessibilityHidden', 1);
+  }
+  if (accessibilityLiveRegion !== undefined) {
+    if (!fieldOptions.accessibilityLiveRegion.includes(accessibilityLiveRegion)) throw Error('UI_PROP: accessibilityLiveRegion must be off, polite or assertive');
+    wire('accessibilityLiveRegion', accessibilityLiveRegion);
+  }
+  // Containers and text take a label here; controls wire their own.
+  if (['view', 'column', 'row', 'page', 'text'].includes(tag) && props.accessibilityLabel !== undefined) {
+    check.label(props.accessibilityLabel, 'UI_PROP');
+    wire('accessibilityLabel', props.accessibilityLabel);
+  }
 }
 
 function radioOptions(props, identity, fields, disabled) {

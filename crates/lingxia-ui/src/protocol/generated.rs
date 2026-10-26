@@ -191,6 +191,10 @@ pub mod field {
     pub const RADIUS_START_END: usize = 156;
     pub const RADIUS_END_START: usize = 157;
     pub const RADIUS_END_END: usize = 158;
+    pub const ROLE: usize = 159;
+    pub const HEADING_LEVEL: usize = 160;
+    pub const ACCESSIBILITY_HIDDEN: usize = 161;
+    pub const ACCESSIBILITY_LIVE_REGION: usize = 162;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link"];
@@ -356,6 +360,10 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("radiusStartEnd", "number"),
     ("radiusEndStart", "number"),
     ("radiusEndEnd", "number"),
+    ("role", "role"),
+    ("headingLevel", "heading-level"),
+    ("accessibilityHidden", "hidden-flag"),
+    ("accessibilityLiveRegion", "live-region"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -384,6 +392,8 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "grid-auto-flow" => Some(&["row", "column", "row-dense", "column-dense"]),
         "align-content" => Some(&["start", "center", "end", "between", "around", "evenly", "stretch"]),
         "direction" => Some(&["ltr", "rtl"]),
+        "role" => Some(&["heading", "list", "listitem", "dialog", "alert", "status"]),
+        "live-region" => Some(&["off", "polite", "assertive"]),
         _ => None,
     }
 }
@@ -508,7 +518,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
-    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::LINK]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::LINK, tag::COLUMN, tag::ROW, tag::PAGE, tag::TEXT]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
@@ -600,6 +610,10 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },

@@ -92,6 +92,13 @@ pub(super) fn record(
     {
         return Err("UI_STYLE: conflicting automatic height".into());
     }
+    if has(fields, field::HEADING_LEVEL)
+        && !fields
+            .iter()
+            .any(|(id, value)| *id == field::ROLE && value.as_str() == Some("heading"))
+    {
+        return Err("UI_PROP: headingLevel requires role heading".into());
+    }
     let admission = TAG_ADMISSION[tag];
     if admission.root && parent.is_some() {
         return Err(format!("UI_CHILD: <{}> must be the root", TAGS[tag]));

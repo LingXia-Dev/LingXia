@@ -12,7 +12,15 @@ export declare function childrenToArray(children: Child): readonly Exclude<Child
 
 /** Props every element accepts; `style` is narrowed per element. */
 /** `dir` sets the inline direction of a subtree; otherwise it follows `env.direction`. */
-export interface Props { style?: Style; className?: string; key?: string; testId?: string; dir?: "ltr" | "rtl"; children?: Child }
+export interface Props {
+  style?: Style; className?: string; key?: string; testId?: string; dir?: "ltr" | "rtl"; children?: Child;
+  /** Semantic role; controls keep their own. Headings take `headingLevel` 1..6. */
+  role?: "heading" | "list" | "listitem" | "dialog" | "alert" | "status"; headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
+  /** Removes the node and its subtree from accessibility. */
+  accessibilityHidden?: boolean;
+  /** Announce changes; `alert` is assertive and `status` polite unless set. */
+  accessibilityLiveRegion?: "off" | "polite" | "assertive";
+}
 export type LeafProps = Omit<Props, "children"> & { children?: never };
 
 export interface Env {

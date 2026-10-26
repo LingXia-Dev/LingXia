@@ -16,6 +16,7 @@ export function render() {
       <RichText />
       <Sizing />
       <Direction />
+      <Accessibility />
     </Page>
   );
 }
@@ -179,6 +180,27 @@ function RichText() {
         {' '}before you <span className="italic line-through text-muted-foreground">sign</span> agree.
       </text>
       <text testId="lab-rich-presses" className="text-xs text-muted-foreground tabular-nums">Link pressed {presses.value} times</text>
+    </Section>
+  );
+}
+
+function Accessibility() {
+  const saves = useLocal('saves', 0);
+  return (
+    <Section title="Accessibility" testId="lab-accessibility">
+      <text testId="lab-a11y-heading" role="heading" headingLevel={3} className="text-base font-semibold">Monthly bills</text>
+      <column testId="lab-a11y-list" role="list" accessibilityLabel="Bills" className="gap-1">
+        {['Water', 'Power', 'Internet'].map(bill => (
+          <row key={bill} role="listitem" className="justify-between">
+            <text className="text-sm">{bill}</text>
+            <vector accessibilityHidden className="w-4 h-4 text-muted-foreground" paths={[{ d: 'M9 18l6-6-6-6', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5 }]} />
+          </row>
+        ))}
+      </column>
+      <row className="items-center gap-3">
+        <Button testId="lab-a11y-save" onClick={() => saves.set(saves.value + 1)}>Save</Button>
+        <text testId="lab-a11y-status" role="status" className="text-sm text-muted-foreground">{saves.value ? `Saved ${saves.value} times` : 'Not saved yet'}</text>
+      </row>
     </Section>
   );
 }

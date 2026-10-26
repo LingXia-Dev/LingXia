@@ -304,6 +304,19 @@ test('text flattens nested spans and links into styled runs under one paragraph'
   throwsOn(() => h('text', {}, Array.from({ length: 257 }, (_, i) => h('span', { key: String(i) }, 'x'))), /UI_TEXT: more than 256 runs/);
 });
 
+test('accessibility roles, heading levels, hidden subtrees and live regions are bounded props', () => {
+  const tree = rendered(() => h('column', { role: 'list', accessibilityLabel: 'Bills' },
+    h('text', { role: 'heading', headingLevel: 2 }, 'Title'), h('row', { role: 'listitem', accessibilityHidden: true }),
+    h('text', { role: 'status', accessibilityLiveRegion: 'assertive' }, 'Saved')));
+  assert.deepEqual([tree.props.role, tree.props.accessibilityLabel], ['list', 'Bills']);
+  assert.deepEqual([tree.children[0].props.role, tree.children[0].props.headingLevel], ['heading', 2]);
+  assert.equal(tree.children[1].props.accessibilityHidden, 1);
+  assert.equal(tree.children[2].props.accessibilityLiveRegion, 'assertive');
+  for (const props of [{ role: 'banner' }, { headingLevel: 2 }, { role: 'heading', headingLevel: 7 }, { accessibilityHidden: 'yes' },
+    { accessibilityLiveRegion: 'rude' }, { accessibilityLabel: '  ' }])
+    throwsOn(() => h('column', props), /UI_PROP/);
+});
+
 test('stack children position with insets', () => {
   const Child = () => h('button', { style: { position: 'absolute', left: -5, top: 12 } }, 'Top');
   const stack = rendered(() => h('stack', {}, h('text', {}, 'Back'), h(Child, {})));
