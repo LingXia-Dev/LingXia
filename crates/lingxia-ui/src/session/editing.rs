@@ -101,12 +101,32 @@ impl ViewSession {
             }
             rebuild = true;
         }
-        if submit {
+        // `enterKeyHint` next/previous moves to the adjacent editor instead of submitting;
+        // the last editor in that direction submits.
+        let moved_to = if submit {
+            inputs.adjacent(identity)
+        } else {
+            None
+        };
+        if let Some(next) = &moved_to {
+            inputs.focus(next, &mut self.renderer)?;
+        } else if submit {
             inputs.commit(identity, &mut self.renderer)?;
         }
         for (handle, text) in inputs.take_committed() {
             self.text_event(self.generation, handle, &text)?;
             rebuild = true;
+        }
+        if let Some(next) = moved_to {
+            let mut reply = inputs.reply(&next, rebuild);
+            reply.moved_to = Some(next);
+            if self.pending_inputs.is_none() {
+                self.pending_inputs = Some(self.inputs.clone());
+            }
+            self.inputs = inputs;
+            self.input_dirty = true;
+            self.input_rebuild = rebuild;
+            return Ok(Some(reply));
         }
         if submit && let Some(handle) = inputs.handler(identity, true) {
             let text = inputs.reply(identity, false).state.text;

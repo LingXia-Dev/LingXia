@@ -7,3 +7,5 @@ pub mod query;
 mod query_tests;
 #[cfg(test)]
 mod roles_tests;
+#[cfg(test)]
+mod tree_tests;

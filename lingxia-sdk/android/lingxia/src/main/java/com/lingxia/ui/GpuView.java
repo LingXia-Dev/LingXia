@@ -633,6 +633,14 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             surface.send(event);
         }
         @Override public void announceClicked() { surface.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED); }
+        @Override public void announceLive(int id, String text, boolean assertive) {
+            if (!surface.accessibilityEnabled()) return;
+            if (assertive) { surface.announceForAccessibility(text); return; }
+            AccessibilityEvent event = surface.event(id, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+            event.setContentChangeTypes(AccessibilityEvent.CONTENT_CHANGE_TYPE_TEXT);
+            event.getText().add(text);
+            surface.send(event);
+        }
         @Override public void frame(String encoded, float scale) {
             try { snapshot = new JSONObject(encoded); }
             catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native frame", error); }

@@ -469,6 +469,23 @@ impl AccessibilitySink for AndroidAdapter {
                             ],
                         )?;
                     }
+                    AccessibilityEffect::Change(Event::Announce {
+                        id,
+                        text,
+                        assertive,
+                    }) => {
+                        let text = env.new_string(text)?;
+                        env.call_method(
+                            platform,
+                            jni_str!("announceLive"),
+                            jni_sig!("(ILjava/lang/String;Z)V"),
+                            &[
+                                JValue::Int(*id as i32),
+                                JValue::Object(&text),
+                                JValue::Bool(*assertive),
+                            ],
+                        )?;
+                    }
                     _ => {}
                 }
                 Ok(())

@@ -39,6 +39,7 @@ public class GpuNativeLoadTest {
         public void announceText(int id, boolean secure, String before, String after) { }
         public void announceSelection(int id, boolean secure, String text, int start, int end) { }
         public void announceClicked() { events.add("announce-clicked"); }
+        public void announceLive(int id, String text, boolean assertive) { events.add("live:" + (assertive ? "assertive:" : "polite:") + text); }
         public void frame(String snapshot, float scale) { frames.add(snapshot); }
         public void imeFocus(int node, long commit, boolean touch, float x, float y, boolean word) { }
         public void imeActivation() { }

@@ -156,6 +156,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (tag === 'search') wire('keyboard', 'search');
       else if (props.keyboard !== undefined) wire('keyboard', props.keyboard);
       for (const name of ['secure', 'autoFocus', 'submitOnEnter']) if (props[name] !== undefined) wire(name, +props[name]);
+      if (props.bind !== undefined && cellOf(props.bind).cell.focus) wire('focusRequest', cellOf(props.bind).cell.focus);
       for (const [key, value] of attributes) wire(key, value);
       if (!disabled) for (const name of ['onInput', 'onSubmit']) if (props[name]) on(name, props[name], 'text');
       break;

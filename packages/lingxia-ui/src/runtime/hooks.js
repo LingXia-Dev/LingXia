@@ -27,6 +27,13 @@ function local(name, initial, resource = '') {
         throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
       page.updates.set(cell, immutable(value, 0, true));
     },
+    focus() {
+      outsideRender('focus');
+      if (page.locals.get(key) !== cell) throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
+      // The bound editor sends the bumped request; re-rendering with the current value carries it.
+      cell.focus = (cell.focus ?? 0) + 1;
+      page.updates.set(cell, page.updates.has(cell) ? page.updates.get(cell) : cell.value);
+    },
   });
   bindings.set(binding, { key, cell });
   return binding;

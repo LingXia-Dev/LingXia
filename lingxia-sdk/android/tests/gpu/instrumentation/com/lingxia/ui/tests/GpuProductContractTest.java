@@ -51,7 +51,8 @@ public class GpuProductContractTest {
     /** A real tap at the node's center, through the host's pointer policy. */
     void click(GpuView view,String id) throws Exception {
         JSONObject target=node(view,id);assertNotNull(target);
-        JSONArray b=target.optJSONArray("visible_bounds");if(b==null)b=target.getJSONArray("bounds");
+        JSONArray visible=target.optJSONArray("visible_bounds");
+        JSONArray b=visible!=null?visible:target.getJSONArray("bounds");
         Field scaleField=GpuView.class.getDeclaredField("frameScale");scaleField.setAccessible(true);
         Field hostField=GpuView.class.getDeclaredField("host");hostField.setAccessible(true);
         Method pointer=GpuView.class.getDeclaredMethod("nativePointer",long.class,int.class,float.class,float.class,float.class,float.class,float.class,float.class);pointer.setAccessible(true);

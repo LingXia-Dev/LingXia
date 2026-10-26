@@ -18,4 +18,4 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `runs` | 256 | Runs in one `<text>`: each `<span>`, `<link>` and the text between them. |
 | `transitionMs` | 10000 | Longest transition duration or delay, in milliseconds (gated motion). |
 
-Wire ABI: 1. Highest field id: 172.
+Wire ABI: 1. Highest field id: 173.

@@ -233,7 +233,8 @@
     {"id": 169, "key": "inputMax", "wire": "max", "kind": "input-bound", "tags": ["input"]},
     {"id": 170, "key": "inputStep", "wire": "step", "kind": "input-step", "tags": ["input"]},
     {"id": 171, "key": "transition", "wire": "transition", "kind": "transition"},
-    {"id": 172, "key": "userSelect", "wire": "userSelect", "kind": "user-select"}
+    {"id": 172, "key": "userSelect", "wire": "userSelect", "kind": "user-select"},
+    {"id": 173, "key": "focusRequest", "wire": "focusRequest", "kind": "focus-request", "tags": ["input", "textarea", "search"]}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},

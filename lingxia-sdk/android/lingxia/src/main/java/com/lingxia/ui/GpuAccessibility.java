@@ -4,6 +4,7 @@ import android.graphics.Rect;
 import android.os.Build;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
+import com.lingxia.ui.generated.GpuSemantics;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -18,16 +19,18 @@ final class GpuAccessibility {
 
     static String className(String role) {
         switch (role) {
-            case "button": return "android.widget.Button";
-            case "check-box": return "android.widget.CheckBox";
-            case "switch": return "android.widget.Switch";
-            case "radio-group": return "android.widget.RadioGroup";
-            case "radio-button": return "android.widget.RadioButton";
-            case "text-field": return "android.widget.EditText";
-            case "scroll-view": return "android.widget.ScrollView";
-            case "horizontal-scroll-view": return "android.widget.HorizontalScrollView";
-            case "image": return "android.widget.ImageView";
-            case "slider": return "android.widget.SeekBar";
+            case GpuSemantics.ROLE_BUTTON: return "android.widget.Button";
+            case GpuSemantics.ROLE_CHECK_BOX: return "android.widget.CheckBox";
+            case GpuSemantics.ROLE_SWITCH: return "android.widget.Switch";
+            case GpuSemantics.ROLE_RADIO_GROUP: return "android.widget.RadioGroup";
+            case GpuSemantics.ROLE_RADIO_BUTTON: return "android.widget.RadioButton";
+            case GpuSemantics.ROLE_TEXT_FIELD: return "android.widget.EditText";
+            case GpuSemantics.ROLE_SCROLL_VIEW: return "android.widget.ScrollView";
+            case GpuSemantics.ROLE_HORIZONTAL_SCROLL_VIEW: return "android.widget.HorizontalScrollView";
+            case GpuSemantics.ROLE_IMAGE: return "android.widget.ImageView";
+            case GpuSemantics.ROLE_SLIDER: return "android.widget.SeekBar";
+            case GpuSemantics.ROLE_LIST: return "android.widget.ListView";
+            // Links, headings, list items, alerts, status and dialogs read as text plus their traits.
             default: return "android.widget.TextView";
         }
     }
@@ -70,13 +73,28 @@ final class GpuAccessibility {
             info.setTextSelection(selection == null ? -1 : selection.optInt(0, -1), selection == null ? -1 : selection.optInt(1, -1));
             if (Build.VERSION.SDK_INT >= 26) { info.setHintText(field.optString("hint")); info.setShowingHintText(false); }
         }
-        JSONArray position = node.optJSONArray("position");
-        if (position != null && "radio-group".equals(role)) {
+        JSONArray position = node.optJSONArray(GpuSemantics.KEY_POSITION);
+        if (position != null && GpuSemantics.ROLE_RADIO_GROUP.equals(role)) {
             info.setCollectionInfo(AccessibilityNodeInfo.CollectionInfo.obtain(position.optInt(1), 1, false,
                 AccessibilityNodeInfo.CollectionInfo.SELECTION_MODE_SINGLE));
-        } else if (position != null && "radio-button".equals(role)) {
+        } else if (position != null && GpuSemantics.ROLE_RADIO_BUTTON.equals(role)) {
             info.setCollectionItemInfo(AccessibilityNodeInfo.CollectionItemInfo.obtain(position.optInt(0), 1, 0, 1, false, node.optBoolean("checked")));
+        } else if (position != null && GpuSemantics.ROLE_LIST.equals(role)) {
+            info.setCollectionInfo(AccessibilityNodeInfo.CollectionInfo.obtain(position.optInt(1), 1, false));
+        } else if (position != null && GpuSemantics.ROLE_LIST_ITEM.equals(role)) {
+            info.setCollectionItemInfo(AccessibilityNodeInfo.CollectionItemInfo.obtain(position.optInt(0), 1, 0, 1, false));
         }
+        if (GpuSemantics.ROLE_HEADING.equals(role)) {
+            if (Build.VERSION.SDK_INT >= 28) info.setHeading(true);
+            else info.setCollectionItemInfo(AccessibilityNodeInfo.CollectionItemInfo.obtain(0, 1, 0, 1, true));
+        }
+        if (GpuSemantics.ROLE_DIALOG.equals(role)) {
+            if (Build.VERSION.SDK_INT >= 28 && !name.isEmpty()) info.setPaneTitle(name);
+            info.setClickable(false);
+        }
+        String live = node.optString(GpuSemantics.KEY_LIVE_REGION);
+        if (GpuSemantics.LIVE_POLITE.equals(live)) info.setLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        else if (GpuSemantics.LIVE_ASSERTIVE.equals(live)) info.setLiveRegion(View.ACCESSIBILITY_LIVE_REGION_ASSERTIVE);
         JSONArray actions = node.optJSONArray("actions");
         for (int i = 0; actions != null && i < actions.length(); i++) {
             JSONObject action = actions.optJSONObject(i);

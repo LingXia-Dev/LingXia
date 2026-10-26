@@ -205,6 +205,7 @@ pub mod field {
     pub const INPUT_STEP: usize = 170;
     pub const TRANSITION: usize = 171;
     pub const USER_SELECT: usize = 172;
+    pub const FOCUS_REQUEST: usize = 173;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link"];
@@ -384,6 +385,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("step", "input-step"),
     ("transition", "transition"),
     ("userSelect", "user-select"),
+    ("focusRequest", "focus-request"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -690,4 +692,5 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::INPUT]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
 ];
