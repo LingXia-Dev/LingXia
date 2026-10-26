@@ -3637,6 +3637,7 @@ dependencies = [
  "lingxia-surface",
  "lingxia-terminal",
  "lingxia-terminal-config",
+ "lingxia-theme",
  "lingxia-transfer",
  "lingxia-ui-android",
  "lingxia-ui-apple",

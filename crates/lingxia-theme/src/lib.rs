@@ -4,7 +4,8 @@
 mod color;
 mod generated;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{LazyLock, Mutex};
 
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +15,27 @@ pub use generated::{CONTRAST, ROLE_COUNT, Role};
 /// The pack shipped when a host names none.
 pub fn default_pack() -> Pack {
     serde_json::from_str(include_str!("../packs/default.json")).expect("default pack parses")
+}
+
+static APP_PACKS: LazyLock<Mutex<HashMap<String, Pack>>> = LazyLock::new(Default::default);
+
+/// Sets or clears the pack an lxapp bundles, keyed by its app session's View worker key,
+/// before its pages are created; page hosts read it at creation.
+pub fn set_app_pack(key: &str, pack: Option<Pack>) {
+    let mut packs = APP_PACKS.lock().unwrap_or_else(|p| p.into_inner());
+    match pack {
+        Some(pack) => packs.insert(key.to_owned(), pack),
+        None => packs.remove(key),
+    };
+}
+
+/// The pack registered for `key`, if any.
+pub fn app_pack(key: &str) -> Option<Pack> {
+    APP_PACKS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(key)
+        .cloned()
 }
 
 /// `pack` with every role and scale step it leaves out taken from the default pack, so an

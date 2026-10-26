@@ -49,6 +49,8 @@ struct Log {
     generations: Vec<CommitTicket>,
     /// Generations the host reported presented (`HostEvents::presented`).
     shown: Vec<CommitTicket>,
+    /// The feedback style each presented frame carried.
+    feedback: Vec<serde_json::Value>,
     /// Deferred frames handed to the fake raster thread, in order.
     handed: Vec<CommitTicket>,
     released_transient: usize,
@@ -232,6 +234,8 @@ impl HostEvents for Fake {
         self.main().loaded += 1;
     }
     fn presented(&self, frame: &FrameSnapshot, _: &FrameTiming) {
+        let json: serde_json::Value = serde_json::from_str(&frame.json).unwrap();
+        self.main().feedback.push(json["feedback"].clone());
         self.main().shown.push(frame.generation);
     }
     fn message(&self, connection: ConnectionTicket, message: &str) {
@@ -2345,4 +2349,45 @@ fn scrub(mut value: serde_json::Value) -> serde_json::Value {
     }
     walk(&mut value);
     value
+}
+
+#[test]
+fn an_lxapp_pack_paints_the_first_presented_frame() {
+    let key = "test-app-pack";
+    let pack = serde_json::from_value(serde_json::json!(
+        {"name": "brand", "version": 1, "accent": {"seed": "#0f9d58", "derive": true}}))
+    .unwrap();
+    lingxia_theme::set_app_pack(key, Some(pack));
+    let worker = ViewWorker::shared(key).unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){ return h('text',{},'Hi') }"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let argb = |[r, g, b, a]: [u8; 4]| u32::from_be_bytes([a, r, g, b]);
+    let builtin = argb(crate::theme::Palette::builtin(false).role(lingxia_theme::Role::Accent));
+    let first = host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .feedback
+        .first()
+        .cloned()
+        .expect("a presented frame");
+    let handle = first["selectionHandle"].as_u64().unwrap() as u32;
+    assert_ne!(
+        handle, builtin,
+        "the first frame already paints the app's accent"
+    );
+    drop(host);
+    drop(platform);
+    drop(worker);
+    assert!(
+        lingxia_theme::app_pack(key).is_none(),
+        "the pack ends with its app session"
+    );
 }

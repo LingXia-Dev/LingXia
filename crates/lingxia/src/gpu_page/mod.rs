@@ -255,6 +255,11 @@ impl GpuPageViewFactory for Binding {
                 disposed: AtomicBool::new(false),
                 factory: factory.clone(),
             };
+            let worker = worker_key(&page.appid(), page.app_session_id());
+            // Hosts read the pack when they are created, so the first frame already carries it.
+            if let Some(pack) = page.gpu_theme_pack().as_deref().and_then(bundled_pack) {
+                lingxia_theme::set_app_pack(&worker, Some(pack));
+            }
             let (tx, rx) = oneshot::channel();
             registry().pending.insert(token, tx);
             factory.create(
@@ -262,7 +267,7 @@ impl GpuPageViewFactory for Binding {
                 &page,
                 Creation {
                     source,
-                    worker: worker_key(&page.appid(), page.app_session_id()),
+                    worker,
                     logic: page.logic_enabled(),
                 },
             )?;
@@ -270,27 +275,17 @@ impl GpuPageViewFactory for Binding {
                 .await
                 .map_err(|_| LxAppError::Runtime("GPU creation cancelled".into()))?
                 .map_err(LxAppError::Runtime)?;
-            if let Some(update) = page.gpu_theme_pack().as_deref().and_then(theme_update) {
-                // The host validates and resolves it; a bad pack keeps the default palette.
-                if let Err(error) = native.update_environment(&update) {
-                    log::warn!("GPU theme pack not applied: {error}");
-                }
-            }
             Ok(register(lease, native) as Arc<dyn GpuPageView>)
         })
     }
 }
 
-/// The lxapp's bundled pack as a host environment push; it is the app's palette unless the
-/// platform pushes its own.
-fn theme_update(pack: &str) -> Option<serde_json::Value> {
-    match serde_json::from_str::<serde_json::Value>(pack) {
-        Ok(pack) => Some(serde_json::json!({"kind": "theme", "revision": 1, "pack": pack})),
-        Err(error) => {
-            log::warn!("theme/pack.json is not JSON: {error}");
-            None
-        }
-    }
+/// The lxapp's bundled pack; the host checks and resolves it, and a bad one keeps the
+/// default palette.
+fn bundled_pack(pack: &str) -> Option<lingxia_theme::Pack> {
+    serde_json::from_str(pack)
+        .inspect_err(|error| log::warn!("theme/pack.json is not a theme pack: {error}"))
+        .ok()
 }
 
 fn register(lease: Lease, native: Arc<dyn NativePage>) -> Arc<Endpoint> {

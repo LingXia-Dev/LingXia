@@ -132,9 +132,10 @@ Colours are roles from `contracts/schema.json` (`roles`, append-only slots). The
 a project token cannot redefine one; the build refuses other colours (`UI_COLOR`) unless
 `literalColors` is set for pixel fixtures. Native resolves roles against the environment's
 internal `palette` push (`lingxia-theme` resolves packs), else the default pack for `theme`.
-An lxapp's `theme/pack.json` ships completed by `lingxia build`; core sends it as a `theme`
-host-environment push when a page opens, and the host resolves it into the palette unless the
-platform's measured environment already carries one.
+An lxapp's `theme/pack.json` ships completed by `lingxia build`; core registers it under the
+app session's worker key before a page is created (`lingxia_theme::set_app_pack`), each host
+seeds its first environment with it, and it is the palette unless the platform's measured
+environment carries one. A `theme` host-environment push replaces it later.
 
 ## Unsupported on purpose
 

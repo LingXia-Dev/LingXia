@@ -20,6 +20,8 @@ struct Queue {
 
 pub struct ViewWorker {
     queue: Arc<(Mutex<Queue>, Condvar)>,
+    /// The app session key a shared worker serves.
+    key: Option<String>,
 }
 
 impl Drop for ViewWorker {
@@ -27,6 +29,10 @@ impl Drop for ViewWorker {
         let (queue, ready) = &*self.queue;
         queue.lock().unwrap_or_else(|p| p.into_inner()).closed = true;
         ready.notify_all();
+        // The app session is over; its theme pack goes with it.
+        if let Some(key) = &self.key {
+            lingxia_theme::set_app_pack(key, None);
+        }
     }
 }
 
@@ -35,6 +41,10 @@ static SHARED: LazyLock<Mutex<HashMap<String, Weak<ViewWorker>>>> =
 
 impl ViewWorker {
     pub fn spawn(name: &str) -> Result<Arc<Self>, String> {
+        Self::start(name, None)
+    }
+
+    fn start(name: &str, key: Option<String>) -> Result<Arc<Self>, String> {
         let queue: Arc<(Mutex<Queue>, Condvar)> = Default::default();
         let (ready, started) = channel();
         let shared = queue.clone();
@@ -80,7 +90,11 @@ impl ViewWorker {
         started
             .recv()
             .map_err(|_| "UI_WORKER: worker exited during startup".to_string())??;
-        Ok(Arc::new(Self { queue }))
+        Ok(Arc::new(Self { queue, key }))
+    }
+
+    pub(crate) fn key(&self) -> Option<&str> {
+        self.key.as_deref()
     }
 
     /// The worker for `key`, started on first use and stopped after its last owner drops.
@@ -90,7 +104,7 @@ impl ViewWorker {
             return Ok(worker);
         }
         shared.retain(|_, worker| worker.strong_count() > 0);
-        let worker = Self::spawn("lingxia-gpu-view")?;
+        let worker = Self::start("lingxia-gpu-view", Some(key.into()))?;
         shared.insert(key.into(), Arc::downgrade(&worker));
         Ok(worker)
     }

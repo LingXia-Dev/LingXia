@@ -325,6 +325,8 @@ enum Guard {
 
 impl<A: PlatformAdapter> ViewHost<A> {
     pub fn new(adapter: A, worker: Arc<ViewWorker>, logic: bool) -> Self {
+        // The app's pack is part of the first environment, so no frame shows the default palette.
+        let host_environment = environment::HostEnvironment::for_worker(worker.key());
         Self {
             inner: Arc::new(Inner {
                 adapter,
@@ -338,7 +340,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     images: ImageRequests::default(),
                     environment: None,
                     presented_environment: None,
-                    host_environment: Default::default(),
+                    host_environment,
                     snapshot: None,
                     prepared: None,
                     deferred: None,

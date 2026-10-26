@@ -56,6 +56,7 @@ apple-gpu = ["dep:lingxia-ui-apple"]
 rong_rt = { workspace = true, default-features = false }
 lxapp = { workspace = true, default-features = false }
 lingxia-log = { workspace = true }
+lingxia-theme = { workspace = true }
 lingxia-provider = { workspace = true }
 lingxia-update = { workspace = true }
 lingxia-app-context = { workspace = true }

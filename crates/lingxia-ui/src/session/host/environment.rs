@@ -44,6 +44,20 @@ enum Update {
 }
 
 impl HostEnvironment {
+    /// Seeded with the pack the lxapp of `worker`'s app session registered.
+    pub(super) fn for_worker(worker: Option<&str>) -> Self {
+        let mut host = Self::default();
+        if let Some(pack) = worker.and_then(lingxia_theme::app_pack) {
+            match palettes(&pack, 0) {
+                Ok(palettes) => host.theme = Some((0, palettes)),
+                Err(error) => {
+                    log::warn!(target: "lingxia_ui", "{error}; the default palette applies")
+                }
+            }
+        }
+        host
+    }
+
     /// True when the update is newer than what this host holds.
     pub(super) fn update(&mut self, update: &str) -> Result<bool, String> {
         let update: Update =
