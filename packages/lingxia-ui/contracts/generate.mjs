@@ -374,6 +374,8 @@ export const keywords = ${JSON.stringify(keywords)};
 export const options = ${JSON.stringify(schema.options)};
 /** Props every element accepts, read from \`interface Props\` in contracts/api.d.ts. */
 export const commonProps = ${JSON.stringify(common)};
+/** Colour roles in palette-slot order. */
+export const roles = ${JSON.stringify(schema.roles.map(role => role.name))};
 `;
 }
 
