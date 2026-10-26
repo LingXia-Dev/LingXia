@@ -68,7 +68,8 @@ Put sibling controls side by side in a `<row>` instead.
 
 ## Press states
 
-While a control is pressed, its `active:` styles apply (paint only). A control without `active:` styles
+While a control is pressed, its `active:` styles apply (paint only, transforms included, so
+`active:scale-95` works). A control without `active:` styles
 gets the platform's pressed overlay over its shape instead. `disabled` removes the control's handler; its
 `disabled:` styles replace its whole class cascade. A click plays the platform's click feedback.
 

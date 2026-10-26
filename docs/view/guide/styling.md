@@ -105,13 +105,40 @@ into a light and a dark rule; the View picks one from `env.theme`, so `bg-surfac
 | `motion-reduce:`, `motion-safe:` | `env.reducedMotion` |
 
 `active:`, `focus:` and `hover:` may change paint only: color, background color and image, opacity,
-border color, box shadow and placeholder color. They cannot change size, spacing or transforms.
+border color, box shadow, placeholder color and the static transforms (`active:scale-95`). They cannot
+change size or spacing (`UI_CLASS_ELEMENT`). The change is immediate; animating it is part of the gated
+[motion](motion.md) work.
 `2xl:` is not recognized and fails as an unknown utility; write `min-[96rem]:`.
 
 Variants that test DOM state are refused with the alternative named in the message: `group-*`, `peer-*`,
 `has-[…]`, `data-[…]`, `aria-*`, `checked:`, `focus-within:`, `focus-visible:`, `nth-*`, `before:`,
 `after:` and container queries (`@md:`). Compute the condition in TypeScript and pick the class.
 The full list is in [variants](../reference/variants.md).
+
+## Transforms
+
+Transforms are static paint: they never change layout.
+
+- `translate-*` (pixels or `%` of the box) moves the box after layout; siblings stay where they were and
+  taps land where the box is drawn.
+- `rotate-*`, `scale-*`, `-scale-x-100` and `origin-*` transform the box and its subtree about the origin
+  (the center by default); hit testing follows the transformed shape.
+- Editors, scrolls and sliders may translate, but not rotate or scale.
+- Skew, `rotate-x-*`, `perspective-*` and other 3D transforms are refused; `translate-z-*` and `scale-z-*` have
+  no effect.
+
+```tsx
+export function render() {
+  return (
+    <page className="p-4">
+      <view className="relative w-16 h-10 rounded-lg bg-neutral-200">
+        <view className="absolute top-0 right-0 w-4 h-4 rounded-full bg-rose-600 translate-x-1/2 -translate-y-1/2" />
+      </view>
+      <button onClick={() => {}} className="self-start rounded-xl bg-blue-600 text-white active:scale-95 active:opacity-90">Press</button>
+    </page>
+  );
+}
+```
 
 ## Each element renders its own styles
 
