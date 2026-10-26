@@ -1634,3 +1634,20 @@ fn the_eval_budget_scales_only_in_debug_builds() {
     assert_eq!(super::eval_budget().as_millis() as usize, expected);
     assert_eq!((EVAL_BUDGET_MS, EVAL_BUDGET_DEBUG_MULTIPLIER), (100, 8));
 }
+
+#[test]
+fn a_render_that_runs_out_of_time_names_the_element_it_was_building() {
+    if !bounded_jobs() {
+        return;
+    }
+    let module = source(
+        "function Spin(){for(;;){}}\nfunction render(){return h('column',{__loc:'page.tsx:2:10'},h(Spin,{__loc:'page.tsx:3:5'}))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let error = page.layout(100, 100, 1.0).err().unwrap();
+    assert!(error.starts_with("UI_TIMEOUT"), "{error}");
+    assert!(
+        error.ends_with("while rendering Spin (page.tsx:3:5)"),
+        "{error}"
+    );
+}

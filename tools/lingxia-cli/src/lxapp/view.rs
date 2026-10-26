@@ -105,7 +105,7 @@ pub fn build(
         vite_pipeline::build(&web, options, progress, install_duration_hint)?
     };
     let started = std::time::Instant::now();
-    gpu::build(project)?;
+    gpu::build(project, !options.release)?;
     report.bundle_duration += started.elapsed();
     report.page_count = project.pages.len();
     Ok(report)

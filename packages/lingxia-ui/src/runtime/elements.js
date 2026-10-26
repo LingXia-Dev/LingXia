@@ -73,6 +73,8 @@ export function resolveNode(node, identity, depth = 0, parent = {}) {
   if (typeof node === 'string' || typeof node === 'number') node = h('text', {}, node);
   if (!isNode(node)) throw Error('UI_ROOT: expected one node');
   const [tag, original, children, location] = readNode(node);
+  // Where a render that never returns was, for UI_TIMEOUT.
+  if (location) render.site = `${typeof tag === 'function' ? tag.name || '<anonymous>' : `<${tag}>`} (${location})`;
   if (typeof tag === 'function') {
     if (!componentIds.has(tag)) componentIds.set(tag, nextComponent++);
     const previous = render.scope;

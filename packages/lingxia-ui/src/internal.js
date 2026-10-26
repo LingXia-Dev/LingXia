@@ -4,3 +4,4 @@ export { List, prepare, prepareWindows, commit, discard, reset, dispatch, descri
 export { useLocal, useView, useRequest, useStream, useChannel, useLeaveGuard, hasLocalUpdates, createView } from './runtime/hooks.js';
 export { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave } from './runtime/actions.js';
 export { configureClasses } from './style/classes.js';
+export { configureSourceMap } from './runtime/errors.js';

@@ -312,3 +312,24 @@ export function render() {
     ]);
   });
 });
+
+test('dev builds name the author line of a runtime error', async () => {
+  await project({ 'page.tsx': `function Total({ items }) {
+  const first = items[0];
+  return <text>{first.price.toFixed(2)}</text>;
+}
+export function render() {
+  return <column>
+    <button onClick={() => {}}>Clear</button>
+    <Total items={[{}]}/>
+  </column>;
+}` }, async root => {
+    await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
+    const source = await load(root);
+    assert.match(source, /\nconfigureSourceMap\(\{/);
+    const error = (() => { try { describePage(); } catch (error) { return error; } })();
+    assert.match(error.message, /\n  at page.tsx:3:\d+\n  at Total \(page.tsx:8:5\)/);
+    await buildPages(root, ['page.tsx'], join(root, 'dist'));
+    assert.doesNotMatch(await readFile(join(root, 'dist/page.js'), 'utf8'), /\nconfigureSourceMap\(\{/);
+  });
+});

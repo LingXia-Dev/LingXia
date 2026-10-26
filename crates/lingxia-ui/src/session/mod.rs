@@ -217,6 +217,16 @@ impl ViewSession {
             .is_err_and(|error| error.starts_with("UI_TIMEOUT:"))
         {
             self.poisoned.set(true);
+            // A render that ran out of time names the element it was building.
+            let site = self
+                .context
+                .eval::<String>(Source::from_bytes(
+                    "typeof __lingxiaSite === 'function' ? __lingxiaSite() : ''",
+                ))
+                .unwrap_or_default();
+            if !site.is_empty() {
+                return result.map_err(|error| format!("{error}\n  while rendering {site}"));
+            }
         }
         result
     }

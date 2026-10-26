@@ -180,7 +180,7 @@ function report(problems, page) {
  * page's sibling `.json` must declare `"renderer": "gpu"`, which is the only
  * thing that makes a page native. Output is `<base>.js` beside a copy of the config.
  */
-export async function buildPages(root, pages, output, catalogs = {}) {
+export async function buildPages(root, pages, output, catalogs = {}, { dev = false } = {}) {
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   root = await realpath(resolve(root)); output = resolve(output);
   for (const page of pages) {
@@ -200,8 +200,10 @@ export async function buildPages(root, pages, output, catalogs = {}) {
     let bundled;
     try {
       bundled = await build({
-        stdin: { contents: `import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)});`, resolveDir: root },
+        stdin: { contents: `import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureSourceMap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)});`, resolveDir: root },
         bundle: true, write: false, format: 'esm', target: 'es2020', jsxFactory: 'h', inject: [jsx], logLevel: 'silent',
+        // Dev builds keep a source map so runtime errors name the author's line.
+        ...(dev ? { sourcemap: 'external', absWorkingDir: root, outfile: join(root, 'page.js') } : {}),
         alias: { '@lingxia/ui': publicEntry },
         plugins: [{ name: 'lingxia-ui-language', setup(builder) {
           builder.onLoad({ filter: /\.css$/ }, async ({ path }) => {
@@ -251,7 +253,16 @@ export async function buildPages(root, pages, output, catalogs = {}) {
     }
     const dest = join(output, `${base}.js`);
     await mkdir(dirname(dest), { recursive: true });
-    await writeFile(dest, bundled.outputFiles[0].text + `\nconfigureClasses(${JSON.stringify(classes)});\n`);
+    const code = bundled.outputFiles.find(file => !file.path.endsWith('.map'));
+    const map = bundled.outputFiles.find(file => file.path.endsWith('.map'));
+    let module = code.text.replace(/\n\/\/# sourceMappingURL=.*\n?$/, '\n') + `\nconfigureClasses(${JSON.stringify(classes)});\n`;
+    if (map) {
+      const { sources, mappings } = JSON.parse(map.text);
+      // Only the author's files are named; the runtime and packages stay anonymous.
+      const authored = sources.map(path => path.startsWith('..') || path.includes('node_modules') || path === '<stdin>' ? null : path.split('\\').join('/'));
+      module += `configureSourceMap(${JSON.stringify({ sources: authored, mappings })});\n`;
+    }
+    await writeFile(dest, module);
     await copyFile(join(root, `${base}.json`), join(output, `${base}.json`));
   }
 }

@@ -1,3 +1,4 @@
+import { render as rendering } from './runtime/state.js';
 import { describe, prepare, prepareWindows, commit, discard, reset, dispatch } from './runtime/tree.js';
 import { createView, hasLocalUpdates } from './runtime/hooks.js';
 import { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave } from './runtime/actions.js';
@@ -11,6 +12,8 @@ export function publishHost(render, catalog) {
     __lingxiaConfigureActions: configureActions, __lingxiaTakeActionRequests: takeActionRequests,
     __lingxiaReceiveActionResponse: receiveActionResponse, __lingxiaTakeActionErrors: takeActionErrors,
     __lingxiaHasLocalUpdates: hasLocalUpdates, __lingxiaRequestLeave: requestLeave,
+    // Cleared when a render completes, so it names only a render that never returned.
+    __lingxiaSite: () => rendering.site || '',
   });
   if (catalog !== undefined) globalThis.__lingxiaActionCatalog = catalog;
 }

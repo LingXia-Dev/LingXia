@@ -4,6 +4,7 @@ import { resolveNode } from './elements.js';
 import { encodeTree, copyTree, retainCells } from './encode.js';
 import { validInputText } from './data.js';
 import { report, resetActions, actionEpochNow, hasActionEpoch } from './actions.js';
+import { sited } from './errors.js';
 
 // Candidate transactions: prepare renders and encodes without touching the
 // committed page; commit adopts the candidate, discard drops it.
@@ -26,6 +27,7 @@ function runCandidate(view, lookup, build) {
 export function prepare(renderPage, view, windows = {}) {
   return runCandidate(view, null, candidate => {
     candidate.tree = resolveNode(renderPage(view), 'root');
+    render.site = null;
     if (!candidate.tree) throw Error('UI_ROOT: page must return one layout node');
     candidate.baseLocals = new Map(candidate.locals);
     return encodeTree(candidate.tree, windows);
@@ -89,7 +91,8 @@ export function dispatch(handle, value) {
     const result = entry.kind === 'void' ? entry.callback() : entry.callback(value);
     if (result && typeof result.then === 'function') Promise.resolve(result).catch(error => { if (hasActionEpoch(epoch)) report(error); });
     return true;
-  } catch (error) {
+  } catch (thrown) {
+    const error = sited(thrown);
     page.updates.clear();
     if (!entry.isolated) throw error;
     for (const [cell, kept] of previous) page.updates.set(cell, kept);

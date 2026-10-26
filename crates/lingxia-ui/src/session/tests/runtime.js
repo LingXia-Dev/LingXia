@@ -14,6 +14,7 @@
     commit: () => commit,
     configureActions: () => configureActions,
     configureClasses: () => configureClasses,
+    configureSourceMap: () => configureSourceMap,
     createView: () => createView,
     describe: () => describe,
     discard: () => discard,
@@ -36,7 +37,7 @@
   });
 
   // src/runtime/state.js
-  var render = { active: false, candidate: null, scope: null, view: null, lookupLocals: null, collectors: [] };
+  var render = { active: false, candidate: null, scope: null, view: null, lookupLocals: null, collectors: [], site: null };
   var page = { committed: null, locals: /* @__PURE__ */ new Map(), callbacks: /* @__PURE__ */ new Map(), updates: /* @__PURE__ */ new Map(), resources: /* @__PURE__ */ new Map() };
   function outsideRender(what) {
     if (render.active) throw Error(`UI_RENDER: ${what} during render`);
@@ -628,6 +629,8 @@
     if (!base.uiFrames) {
       base.uiFrames = [];
       base.uiMessage = base.message;
+      const site = authorSite(base.stack);
+      if (site) base.uiFrames.push(site);
     }
     if (base.uiFrames.length < 12) base.uiFrames.push(frame);
     base.message = [base.uiMessage, ...base.uiFrames.map((line) => `  at ${line}`)].join("\n");
@@ -645,6 +648,68 @@
     const text = String(error?.uiMessage ?? error?.message ?? error);
     const match = text.match(/^([A-Z][A-Z0-9_]+): ([\s\S]*)$/);
     return Object.freeze(match ? { code: match[1], message: match[2] } : { code: "UI_ERROR", message: text });
+  }
+  var sourceMap = null;
+  var decoded = null;
+  function configureSourceMap(map) {
+    sourceMap = map;
+    decoded = null;
+  }
+  var base64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  function decode() {
+    const lines = [];
+    let source = 0, line = 0, column = 0;
+    for (const text of sourceMap.mappings.split(";")) {
+      const segments = [];
+      let generated = 0;
+      for (const segment of text.split(",")) {
+        if (!segment) continue;
+        const values = [];
+        let value = 0, shift = 0;
+        for (const char of segment) {
+          const digit = base64.indexOf(char);
+          value += (digit & 31) << shift;
+          if (digit & 32) shift += 5;
+          else {
+            values.push(value & 1 ? -(value >>> 1) : value >>> 1);
+            value = 0;
+            shift = 0;
+          }
+        }
+        generated += values[0];
+        if (values.length < 4) continue;
+        source += values[1];
+        line += values[2];
+        column += values[3];
+        segments.push([generated, source, line, column]);
+      }
+      lines.push(segments);
+    }
+    return lines;
+  }
+  function authorSite(stack) {
+    if (!sourceMap || typeof stack !== "string") return void 0;
+    decoded ?? (decoded = decode());
+    for (const match of stack.matchAll(/:(\d+):(\d+)\)?\s*$/gm)) {
+      const segments = decoded[Number(match[1]) - 1];
+      if (!segments?.length) continue;
+      const column = Number(match[2]) - 1;
+      let best = segments[0];
+      for (const segment of segments) if (segment[0] <= column) best = segment;
+      const file = sourceMap.sources[best[1]];
+      if (file) return `${file}:${best[2] + 1}:${best[3] + 1 + Math.max(0, column - best[0])}`;
+    }
+    return void 0;
+  }
+  function sited(error) {
+    if (!(error instanceof Error) || error.uiFrames) return error;
+    const site = authorSite(error.stack);
+    if (!site) return error;
+    error.uiFrames = [site];
+    error.uiMessage = error.message;
+    error.message = `${error.message}
+  at ${site}`;
+    return error;
   }
 
   // src/runtime/stream.js
@@ -1748,6 +1813,7 @@
     if (typeof node === "string" || typeof node === "number") node = h("text", {}, node);
     if (!isNode(node)) throw Error("UI_ROOT: expected one node");
     const [tag, original, children, location] = readNode(node);
+    if (location) render.site = `${typeof tag === "function" ? tag.name || "<anonymous>" : `<${tag}>`} (${location})`;
     if (typeof tag === "function") {
       if (!componentIds.has(tag)) componentIds.set(tag, nextComponent++);
       const previous = render.scope;
@@ -2221,6 +2287,7 @@
   function prepare(renderPage, view, windows = {}) {
     return runCandidate(view, null, (candidate) => {
       candidate.tree = resolveNode(renderPage(view), "root");
+      render.site = null;
       if (!candidate.tree) throw Error("UI_ROOT: page must return one layout node");
       candidate.baseLocals = new Map(candidate.locals);
       return encodeTree(candidate.tree, windows);
@@ -2286,7 +2353,8 @@
         if (hasActionEpoch(epoch2)) report(error);
       });
       return true;
-    } catch (error) {
+    } catch (thrown) {
+      const error = sited(thrown);
       page.updates.clear();
       if (!entry.isolated) throw error;
       for (const [cell, kept] of previous) page.updates.set(cell, kept);
@@ -2317,7 +2385,9 @@
       __lingxiaReceiveActionResponse: receiveActionResponse,
       __lingxiaTakeActionErrors: takeActionErrors,
       __lingxiaHasLocalUpdates: hasLocalUpdates,
-      __lingxiaRequestLeave: requestLeave
+      __lingxiaRequestLeave: requestLeave,
+      // Cleared when a render completes, so it names only a render that never returned.
+      __lingxiaSite: () => render.site || ""
     });
     if (catalog !== void 0) globalThis.__lingxiaActionCatalog = catalog;
   }
