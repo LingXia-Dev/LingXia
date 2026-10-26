@@ -10,6 +10,7 @@ pub mod scene;
 pub mod semantics;
 pub mod session;
 pub mod text;
+pub mod theme;
 
 pub use engine::evaluate;
 pub use interaction::input_state::InputReply;

@@ -65,37 +65,12 @@ pub(crate) fn focus_style(value: &Value) -> Result<Vec<(usize, Value)>, String> 
 }
 
 /// A wire color; default tokens resolve to their light value.
+/// A literal `#rrggbb[aa]`; vector paints and gradient stops take only these.
 pub fn color(value: &str) -> Result<[u8; 4], String> {
-    themed_color(value, false)
-}
-
-/// A wire color with default tokens resolved for the page theme.
-pub fn themed_color(value: &str, dark: bool) -> Result<[u8; 4], String> {
-    let hex = match super::DEFAULT_COLORS
-        .iter()
-        .find(|(token, ..)| *token == value)
-    {
-        Some((_, light, night)) => {
-            if dark {
-                night
-            } else {
-                light
-            }
-        }
-        None => value.strip_prefix('#').ok_or("UI_COLOR: unknown token")?,
-    };
-    if !matches!(hex.len(), 6 | 8) {
-        return Err("UI_COLOR: expected #rrggbb or #rrggbbaa".into());
+    match crate::theme::parse(value)? {
+        crate::theme::WireColor::Literal(rgba) => Ok(rgba),
+        crate::theme::WireColor::Role(..) => Err("UI_COLOR: expected #rrggbb or #rrggbbaa".into()),
     }
-    if !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err("UI_COLOR: invalid hex".into());
-    }
-    let n = u32::from_str_radix(hex, 16).map_err(|_| "UI_COLOR: invalid hex")?;
-    Ok(if hex.len() == 8 {
-        [(n >> 24) as u8, (n >> 16) as u8, (n >> 8) as u8, n as u8]
-    } else {
-        [(n >> 16) as u8, (n >> 8) as u8, n as u8, 255]
-    })
 }
 
 /// The `[x, y]` box fractions an image aligns to, bounded like CSS percentages.
@@ -420,7 +395,7 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
                 let value = value.as_str().ok_or("UI_STYLE: expected color")?;
                 if !matches!(id, field::BORDER_COLOR | field::BACKGROUND) || value != "currentColor"
                 {
-                    color(value)?;
+                    crate::theme::parse(value)?;
                 }
                 Ok(())
             }

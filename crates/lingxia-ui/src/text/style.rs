@@ -249,9 +249,9 @@ pub(crate) fn computed(records: &[Record], directions: &[bool]) -> Vec<TextStyle
             .map(str::to_owned)
             .unwrap_or_else(|| {
                 if record.tag == tag::BUTTON {
-                    "primaryText".into()
+                    "on-accent".into()
                 } else if link {
-                    "primary".into()
+                    "accent".into()
                 } else {
                     parent
                         .as_ref()

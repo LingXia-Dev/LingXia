@@ -868,10 +868,9 @@ fn input_geometry_uses_displayed_font_and_paints_selection_below_text() {
         .position(|p| {
             matches!(
                 p,
-                Paint::Rect {
-                    color: [216, 227, 255, 255],
-                    ..
-                }
+                Paint::Rect { color, .. }
+                    if *color == crate::theme::Palette::builtin(false)
+                        .role(lingxia_theme::Role::AccentSoft)
             )
         })
         .unwrap();

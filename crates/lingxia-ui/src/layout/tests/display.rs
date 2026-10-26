@@ -126,14 +126,14 @@ fn unstyled_defaults_follow_the_page_theme() {
         (rect(&root), text(&of("t")), rect(&of("b")))
     };
     let themed =
-        |token: &str, dark: bool| Some(crate::protocol::themed_color(token, dark).unwrap());
+        |role: &str, dark: bool| Some(crate::theme::Palette::builtin(dark).resolve(role).unwrap());
     for dark in [false, true] {
         let (root, text, button) = paints(&mut page, if dark { "dark" } else { "light" });
-        assert_eq!(root, themed("background", dark), "root, dark={dark}");
+        assert_eq!(root, themed("canvas", dark), "root, dark={dark}");
         assert_eq!(text, themed("text", dark), "text, dark={dark}");
-        assert_eq!(button, themed("primary", dark), "button, dark={dark}");
+        assert_eq!(button, themed("accent", dark), "button, dark={dark}");
     }
-    assert_ne!(themed("background", false), themed("background", true));
+    assert_ne!(themed("canvas", false), themed("canvas", true));
 }
 
 #[test]

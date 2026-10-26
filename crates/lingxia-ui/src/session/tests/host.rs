@@ -1489,16 +1489,16 @@ fn the_frame_says_how_to_draw_press_and_focus_feedback_for_its_theme() {
     host.set_visible(true);
     platform.settle(&[&host]);
     let snapshot: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    let feedback = |dark| FeedbackStyle::for_palette(&crate::theme::Palette::builtin(dark), dark);
     assert_eq!(
         snapshot["feedback"],
-        serde_json::to_value(FeedbackStyle::for_theme(false)).unwrap()
+        serde_json::to_value(feedback(false)).unwrap()
     );
-    assert_eq!(snapshot["feedback"]["pressOverlay"], 0x2200_0000u32);
-    assert_eq!(snapshot["feedback"]["selectionHandle"], 0xFF46_5CDAu32);
+    assert_eq!(snapshot["feedback"]["pressOverlay"], 0x2217_2033u32);
+    assert_eq!(snapshot["feedback"]["selectionHandle"], 0xFF36_5CDDu32);
     assert_eq!(snapshot["feedback"]["noticeBackground"], 0xFFFF_FFFFu32);
-    assert_ne!(dark_notice(), FeedbackStyle::for_theme(false).notice_text);
-    let dark = FeedbackStyle::for_theme(true);
-    assert_ne!(dark.focus_ring, FeedbackStyle::for_theme(false).focus_ring);
+    assert_ne!(dark_notice(), feedback(false).notice_text);
+    assert_ne!(feedback(true).focus_ring, feedback(false).focus_ring);
 }
 
 fn menu(host: &ViewHost<Fake>) -> Option<crate::session::host::TextMenu> {
@@ -1872,5 +1872,6 @@ fn a_deferred_present_holds_the_next_frame_until_it_reaches_the_screen() {
 }
 
 fn dark_notice() -> u32 {
-    crate::interaction::chrome::FeedbackStyle::for_theme(true).notice_text
+    let dark = crate::theme::Palette::builtin(true);
+    crate::interaction::chrome::FeedbackStyle::for_palette(&dark, true).notice_text
 }

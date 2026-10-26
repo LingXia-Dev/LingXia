@@ -270,12 +270,7 @@ impl DisplayList {
                 foreground.len(),
             );
             self.commands.splice(range.end..range.end, foreground);
-            let light_text = shaped.color.iter().take(3).map(|c| *c as u32).sum::<u32>() > 384;
-            let fill = if light_text {
-                [50, 78, 131, 255]
-            } else {
-                [216, 227, 255, 255]
-            };
+            let fill = self.retained.selection_fill;
             Self::spans_inserted(&mut self.animated, owner, range.start, 1 + selection.len());
             self.commands.splice(
                 range.start..range.start,
@@ -374,7 +369,7 @@ impl DisplayList {
             rects.into_iter().map(|bounds| Paint::Rect {
                 corners: None,
                 bounds,
-                color: [216, 227, 255, 255],
+                color: self.retained.selection_fill,
                 radius: 0.0,
             }),
         );

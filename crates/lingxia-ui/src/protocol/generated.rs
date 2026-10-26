@@ -481,6 +481,7 @@ pub const ENVIRONMENT_KEYS: &[(&str, &str)] = &[
     ("runner", "device"),
     ("renderer", "device"),
     ("textScale", "device"),
+    ("palette", "push"),
 ];
 
 /// Whether a native environment snapshot (device facts plus pushes) is well formed.
@@ -500,19 +501,6 @@ pub fn check_environment(value: &serde_json::Value) -> bool {
         && value["runner"].is_boolean()
         && (value.get("renderer").is_none() || (matches!(value["renderer"]["fallback"].as_str(), None | Some("driver")) && value["renderer"].as_object().is_some_and(|r| r.len() == 1)))
 }
-
-/// Colors of unstyled elements as (token, light, dark), until the theme system supplies them.
-pub const DEFAULT_COLORS: &[(&str, &str, &str)] = &[
-    ("background", "f6f7fb", "0f131a"),
-    ("surface", "ffffff", "1a1f2b"),
-    ("text", "172033", "e6e9f0"),
-    ("textMuted", "596579", "9aa3b5"),
-    ("primary", "365cdd", "4a6cf0"),
-    ("primaryText", "ffffff", "ffffff"),
-    ("danger", "c93434", "f06565"),
-    ("border", "dce1ec", "2e3646"),
-    ("accent", "0b877d", "2bb3a6"),
-];
 
 /// What a wire tag may contain.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

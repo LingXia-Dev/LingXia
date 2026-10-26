@@ -8,6 +8,7 @@ use crate::scene::retained::*;
 use crate::semantics::groups::ControlGroups;
 use crate::text::shape::glyph_ink;
 use crate::text::style::{Decoration, TextStyle};
+use lingxia_theme::Role;
 use parley::{AlignmentOptions, Layout, PositionedLayoutItem};
 use std::hash::Hasher;
 use std::sync::Arc;
@@ -55,8 +56,8 @@ impl Renderer {
         (width, height, scale): (u16, u16, f32),
     ) -> Result<RetainedLayout, String> {
         let colors: Vec<&str> = styles.iter().map(|style| style.color.as_str()).collect();
-        let dark = self.dark;
-        let color = |value: &str| crate::protocol::themed_color(value, dark);
+        let palette = self.palette;
+        let color = |value: &str| palette.resolve(value);
         let button_owners = &groups.owners;
         let button_hashes = &groups.content;
         let mut commands = Vec::new();
@@ -330,14 +331,14 @@ impl Renderer {
                 record
                     .string(field::BACKGROUND)
                     .or(if record.tag == tag::BUTTON {
-                        Some("primary")
+                        Some("accent")
                     } else if matches!(
                         record.tag,
                         tag::INPUT | tag::TEXTAREA | tag::SEARCH | tag::SELECT
                     ) {
                         Some("surface")
                     } else if index == 0 {
-                        Some("background")
+                        Some("canvas")
                     } else {
                         None
                     })
@@ -367,10 +368,15 @@ impl Renderer {
                 });
             }
             if border.is_some() {
-                let tint = record
-                    .string(field::BORDER_COLOR)
-                    .filter(|value| *value != "currentColor")
-                    .unwrap_or(colors[index]);
+                let editor = matches!(
+                    record.tag,
+                    tag::INPUT | tag::TEXTAREA | tag::SEARCH | tag::SELECT
+                );
+                let tint = match record.string(field::BORDER_COLOR) {
+                    Some(value) if value != "currentColor" => value,
+                    None if editor => "line-strong",
+                    _ => colors[index],
+                };
                 paint_style.border = Some(commands.len());
                 commands.push(Paint::Border {
                     corners,
@@ -469,13 +475,13 @@ impl Renderer {
                 let center = control_bounds[1] + control_bounds[3] / 2.0;
                 let fraction = ((range.value - range.min) / (range.max - range.min)) as f32;
                 let accent = if range.enabled {
-                    color(record.string(field::COLOR).unwrap_or("primary"))?
+                    color(record.string(field::COLOR).unwrap_or("accent"))?
                 } else {
-                    [160, 168, 190, 255]
+                    palette.role(Role::TextFaint)
                 };
                 commands.push(Paint::Rect {
                     corners: None,
-                    color: [193, 199, 210, 255],
+                    color: palette.role(Role::Line),
                     bounds: [left, center - 2.0, track_width, 4.0],
                     radius: 2.0,
                 });
@@ -504,7 +510,7 @@ impl Renderer {
                     + (layout.size.height - layout.padding.top - layout.padding.bottom).max(0.0)
                         / 2.0;
                 let tint = if record.number(field::ENABLED) == Some(0.0) {
-                    [193, 199, 210, 255]
+                    palette.role(Role::TextFaint)
                 } else {
                     color(colors[index])?
                 };
@@ -757,16 +763,8 @@ impl Renderer {
                             || records[p].number(field::ENABLED) != Some(0.0)
                     })
                     && record.number(field::ON_CHECKED_CHANGE).is_some();
-                let accent = if enabled {
-                    [67, 93, 217, 255]
-                } else {
-                    [160, 168, 190, 255]
-                };
-                let neutral = if enabled {
-                    [131, 143, 163, 255]
-                } else {
-                    [193, 199, 210, 255]
-                };
+                let accent = palette.role(if enabled { Role::Accent } else { Role::TextFaint });
+                let neutral = palette.role(if enabled { Role::LineStrong } else { Role::Line });
                 let cy = y
                     + layout.padding.top
                     + (layout.size.height - layout.padding.top - layout.padding.bottom).max(0.0)
@@ -804,7 +802,7 @@ impl Renderer {
                     if checked {
                         commands.push(Paint::Stroke {
                             round: true,
-                            color: [255; 4],
+                            color: palette.role(Role::OnAccent),
                             points: vec![
                                 [cx + 6.0, cy],
                                 [cx + 10.0, cy + 4.0],
@@ -1151,6 +1149,7 @@ impl Renderer {
             });
         }
         Ok(RetainedLayout {
+            selection_fill: palette.role(Role::AccentSoft),
             paint_styles,
             commands,
             nodes,
