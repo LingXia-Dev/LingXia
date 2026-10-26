@@ -7,10 +7,56 @@ pub const MAX_DIMENSION: u32 = 4096;
 pub const MAX_PIXELS: u64 = 4 * 1024 * 1024;
 const MAX_SOURCE_PIXELS: u64 = 12 * 1024 * 1024;
 
+/// A decode size: the painted box in device pixels, each side rounded up to a
+/// half-octave step from 64 to [`MAX_DIMENSION`], so small layout changes reuse a decode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize)]
+pub struct Bucket {
+    pub width: u32,
+    pub height: u32,
+}
+
+impl Bucket {
+    /// The source at its own size, within [`MAX_PIXELS`].
+    pub const FULL: Self = Self {
+        width: u32::MAX,
+        height: u32::MAX,
+    };
+
+    pub fn of(width: f32, height: f32) -> Self {
+        Self {
+            width: step(width),
+            height: step(height),
+        }
+    }
+    pub fn covers(self, other: Self) -> bool {
+        self.width >= other.width && self.height >= other.height
+    }
+    pub fn union(self, other: Self) -> Self {
+        Self {
+            width: self.width.max(other.width),
+            height: self.height.max(other.height),
+        }
+    }
+}
+
+fn step(extent: f32) -> u32 {
+    let mut step = 64.0_f64;
+    while step < f64::from(extent) && step < f64::from(MAX_DIMENSION) {
+        step *= std::f64::consts::SQRT_2;
+    }
+    (step.round() as u32).min(MAX_DIMENSION)
+}
+
 /// Decoded pixels are immutable and premultiplied, shared by reference frames.
 #[derive(Clone, Debug)]
 pub struct Bitmap {
     pixels: Arc<Pixmap>,
+    /// Decoded size over source size.
+    scale: f64,
+    /// Oriented source size.
+    source: [u32; 2],
+    /// No larger decode exists: the source or the pixel budget bounded this one.
+    best: bool,
 }
 
 impl PartialEq for Bitmap {
@@ -22,12 +68,20 @@ impl Eq for Bitmap {}
 
 impl Bitmap {
     pub(crate) fn from_pixels(pixels: Pixmap) -> Self {
+        let source = [u32::from(pixels.width()), u32::from(pixels.height())];
         Self {
             pixels: Arc::new(pixels),
+            scale: 1.0,
+            source,
+            best: true,
         }
     }
     /// The host supplies authorized bytes; call off the UI thread.
     pub fn decode(bytes: &[u8]) -> Result<Self, String> {
+        Self::decode_to(bytes, Bucket::FULL)
+    }
+    /// Decode no larger than a `bucket` box needs to draw without upsampling.
+    pub fn decode_to(bytes: &[u8], bucket: Bucket) -> Result<Self, String> {
         if bytes.is_empty() || bytes.len() > crate::protocol::limits::IMAGE_BYTES {
             return Err("UI_IMAGE: encoded size exceeds limit or is empty".into());
         }
@@ -50,10 +104,13 @@ impl Bitmap {
         let orientation = decoder.orientation().map_err(image_error)?;
         let mut decoded = DynamicImage::from_decoder(decoder).map_err(image_error)?;
         decoded.apply_orientation(orientation);
+        let (width, height) = (f64::from(decoded.width()), f64::from(decoded.height()));
         // Keep UHD sources useful without increasing the retained texture budget.
-        let pixels = u64::from(decoded.width()) * u64::from(decoded.height());
-        if pixels > MAX_PIXELS {
-            let scale = (MAX_PIXELS as f64 / pixels as f64).sqrt();
+        let budget = (MAX_PIXELS as f64 / (width * height)).sqrt();
+        let fit = need(bucket, [width, height]);
+        let scale = budget.min(fit).min(1.0);
+        let source = [decoded.width(), decoded.height()];
+        if scale < 1.0 {
             decoded = decoded.resize_exact(
                 ((decoded.width() as f64 * scale).floor() as u32).max(1),
                 ((decoded.height() as f64 * scale).floor() as u32).max(1),
@@ -75,15 +132,35 @@ impl Bitmap {
         }
         Ok(Self {
             pixels: Arc::new(pixels),
+            scale,
+            source,
+            // Pixels bounded by the source or the budget serve every larger box too.
+            best: fit >= budget.min(1.0),
         })
     }
 
     pub fn pixels(&self) -> &Arc<Pixmap> {
         &self.pixels
     }
+    /// Whether these pixels draw any box in `bucket` without upsampling.
+    pub fn serves(&self, bucket: Bucket) -> bool {
+        self.best || self.scale >= need(bucket, self.source.map(f64::from))
+    }
+    /// Whether `other` serves every box these pixels serve.
+    pub(crate) fn superseded_by(&self, other: &Self) -> bool {
+        other.best || (!self.best && other.scale >= self.scale)
+    }
     pub fn byte_len(&self) -> usize {
         usize::from(self.pixels.width()) * usize::from(self.pixels.height()) * 4
     }
+}
+
+/// The source scale a `bucket` box needs under any fit: cover's, the larger ratio.
+fn need(bucket: Bucket, [width, height]: [f64; 2]) -> f64 {
+    if bucket == Bucket::FULL {
+        return f64::INFINITY;
+    }
+    (f64::from(bucket.width) / width).max(f64::from(bucket.height) / height)
 }
 
 fn image_error(error: impl std::fmt::Display) -> String {

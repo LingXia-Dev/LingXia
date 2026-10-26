@@ -41,6 +41,8 @@ pub struct FrameSnapshot {
     pub loaded_images: usize,
     pub frame: Arc<PresentedFrame>,
     pub images: Vec<ImageSource>,
+    /// Each source's decode size in this frame.
+    pub image_buckets: std::collections::HashMap<String, crate::scene::image::Bucket>,
     /// `{generation, nodes, images, metrics}` for adapters that marshal the frame.
     pub json: String,
 }

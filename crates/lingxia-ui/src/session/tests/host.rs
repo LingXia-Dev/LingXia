@@ -320,11 +320,20 @@ fn last(host: &ViewHost<Fake>) -> Vec<String> {
 }
 
 fn png() -> Vec<u8> {
+    png_of(0)
+}
+
+/// Distinct bytes per `seed`: decodes are cached process-wide by content.
+fn png_of(seed: u8) -> Vec<u8> {
     let mut bytes = Vec::new();
     image::codecs::png::PngEncoder::new(&mut bytes)
-        .write_image(&[255, 0, 0, 255], 1, 1, image::ExtendedColorType::Rgba8)
+        .write_image(&[255, seed, 0, 255], 1, 1, image::ExtendedColorType::Rgba8)
         .unwrap();
     bytes
+}
+
+fn loaded_images(host: &ViewHost<Fake>) -> usize {
+    host.snapshot().map_or(0, |snapshot| snapshot.loaded_images)
 }
 
 #[test]
@@ -563,7 +572,7 @@ fn a_stalled_image_decode_never_holds_up_another_page_on_the_worker() {
     let (image, _) = photo.adapter().log.lock().unwrap().fetched[0].clone();
     let (release, stalled) = channel();
     crate::session::host::decode::occupy(stalled);
-    photo.image_loaded(image, Ok(png()));
+    photo.image_loaded(image, Ok(png_of(7)));
     let other = platform.host(
         &worker,
         &source("function render(){return h('text',{},'B')}"),
@@ -576,14 +585,103 @@ fn a_stalled_image_decode_never_holds_up_another_page_on_the_worker() {
         ["B"],
         "B presents while A's decode is stalled"
     );
-    assert_eq!(
-        photo.adapter().log.lock().unwrap().loaded,
-        1,
-        "A's image is not bound yet"
-    );
+    assert_eq!(loaded_images(&photo), 0, "A's image is not bound yet");
     drop(release);
     platform.settle(&[&photo, &other]);
-    assert!(photo.adapter().log.lock().unwrap().loaded >= 1);
+    assert_eq!(loaded_images(&photo), 1);
+}
+
+#[test]
+fn images_past_the_visible_budget_fail_to_their_author_instead_of_the_page() {
+    let worker = ViewWorker::shared("test:visible-budget").unwrap();
+    let platform = Platform::new(&[&worker]);
+    // Five stacked 2048px images: 16 MiB each decoded, past the 64 MiB a frame binds.
+    let page = platform.host(
+        &worker,
+        &source("function render(){const s=[0,1,2,3,4].map(i=>useLocal('s'+i,'-'));return h('column',{},h('text',{},s.map(x=>x.value).join('')),...s.map((x,i)=>h('image',{src:'lx://big'+i+'.png',alt:'',onLoad:()=>x.set('L'),onError:()=>x.set('E'),style:{position:'absolute',top:0,left:0,width:2048,height:2048}})))}"),
+        false,
+    );
+    page.set_visible(true);
+    platform.settle(&[&page]);
+    let fetched = page.adapter().log.lock().unwrap().fetched.clone();
+    assert_eq!(fetched.len(), 4, "four loads run at once");
+    let big = |seed: u8| {
+        let mut bytes = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut bytes)
+            .write_image(
+                &vec![seed; 2048 * 2048 * 4],
+                2048,
+                2048,
+                image::ExtendedColorType::Rgba8,
+            )
+            .unwrap();
+        bytes
+    };
+    for (n, (token, _)) in fetched.iter().enumerate() {
+        page.image_loaded(*token, Ok(big(40 + n as u8)));
+    }
+    platform.settle(&[&page]);
+    let (token, _) = page.adapter().log.lock().unwrap().fetched[4].clone();
+    page.image_loaded(token, Ok(big(44)));
+    platform.settle(&[&page]);
+    assert!(page.failure().is_none(), "the page keeps running");
+    assert_eq!(last(&page)[0], "LLLLE");
+    assert_eq!(loaded_images(&page), 4);
+}
+
+const SHARED_IMAGE: &str = "function render(){return h('image',{src:'lx://shared.png',alt:'',style:{width:20,height:20}})}";
+
+#[test]
+fn a_source_shared_by_two_pages_is_decoded_once() {
+    let worker = ViewWorker::shared("test:shared-decode").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let pages = [0, 1].map(|_| {
+        let page = platform.host(&worker, &source(SHARED_IMAGE), false);
+        page.set_visible(true);
+        page
+    });
+    platform.settle(&[&pages[0], &pages[1]]);
+    let bytes = png_of(11);
+    let (release, stalled) = channel();
+    crate::session::host::decode::occupy(stalled);
+    for page in &pages {
+        let (image, _) = page.adapter().log.lock().unwrap().fetched[0].clone();
+        page.image_loaded(image, Ok(bytes.clone()));
+    }
+    drop(release);
+    platform.settle(&[&pages[0], &pages[1]]);
+    assert_eq!(crate::session::host::decode::decodes_of(&bytes), 1);
+    assert_eq!(pages.each_ref().map(loaded_images), [1, 1]);
+}
+
+#[test]
+fn an_image_cancelled_mid_decode_is_never_bound_and_its_pixels_are_reused() {
+    let worker = ViewWorker::shared("test:cancel-decode").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let closing = platform.host(&worker, &source(SHARED_IMAGE), false);
+    closing.set_visible(true);
+    platform.settle(&[&closing]);
+    let bytes = png_of(13);
+    let (release, stalled) = channel();
+    crate::session::host::decode::occupy(stalled);
+    let (image, _) = closing.adapter().log.lock().unwrap().fetched[0].clone();
+    closing.image_loaded(image, Ok(bytes.clone()));
+    closing.dispose();
+    drop(release);
+    platform.settle(&[&closing]);
+    assert_eq!(loaded_images(&closing), 0, "a disposed page binds nothing");
+    let next = platform.host(&worker, &source(SHARED_IMAGE), false);
+    next.set_visible(true);
+    platform.settle(&[&next]);
+    let (image, _) = next.adapter().log.lock().unwrap().fetched[0].clone();
+    next.image_loaded(image, Ok(bytes.clone()));
+    platform.settle(&[&next]);
+    assert_eq!(loaded_images(&next), 1);
+    assert_eq!(
+        crate::session::host::decode::decodes_of(&bytes),
+        1,
+        "the cancelled decode's pixels serve the next request"
+    );
 }
 
 #[test]

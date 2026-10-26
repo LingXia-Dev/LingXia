@@ -169,6 +169,7 @@ impl<A: PlatformAdapter> Inner<A> {
             value,
         } = request.environment;
         let mut loaded_images = 0;
+        let mut image_buckets = Default::default();
         session.set_environment(value)?;
         session.set_animation_surface(Some(request.surface), now)?;
         let generation = CommitTicket::new(session.generation().get() + 1);
@@ -189,6 +190,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 }
                 let nodes = display.nodes.clone();
                 loaded_images = display.loaded_image_count();
+                image_buckets = display.image_buckets();
                 match self.adapter.prepare(display, surface, generation)? {
                     Some(frame) => Ok((frame, nodes)),
                     None => Err(DECLINED.into()),
@@ -216,6 +218,12 @@ impl<A: PlatformAdapter> Inner<A> {
         let images = session.image_requests();
         let mut metrics =
             serde_json::to_value(session.frame_metrics()).map_err(|e| e.to_string())?;
+        if let Some(metrics) = metrics.as_object_mut() {
+            metrics.insert(
+                "imageCacheBytes".into(),
+                super::decode::retained_bytes().into(),
+            );
+        }
         if let (Some(extra), Some(metrics)) =
             (self.adapter.metrics(&frame), metrics.as_object_mut())
             && let Some(extra) = extra.as_object()
@@ -238,6 +246,7 @@ impl<A: PlatformAdapter> Inner<A> {
             loaded_images,
             frame: Arc::new(PresentedFrame::new(generation, scale, nodes)),
             images,
+            image_buckets,
             json,
         });
         Ok((Some((frame, snapshot)), update))
@@ -360,7 +369,7 @@ impl<A: PlatformAdapter> Inner<A> {
         if let Some(reach) = presented.reach {
             self.reach(page, reach);
         }
-        self.update_images(snapshot.images.clone());
+        self.update_images(snapshot.images.clone(), snapshot.image_buckets.clone());
         self.flush_image_events();
         timing.main_us = micros(vsync.elapsed());
         self.adapter.presented(&snapshot, &timing);

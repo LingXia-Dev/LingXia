@@ -1,3 +1,4 @@
+use crate::scene::image::Bucket;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -5,6 +6,8 @@ pub struct ImageRequest {
     pub source: String,
     pub retry_key: String,
     pub token: u64,
+    /// Decode size for the painted box.
+    pub bucket: Bucket,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -41,6 +44,17 @@ impl ImageRequests {
     }
 
     pub fn update_resources(&mut self, sources: &[ImageSource]) -> Result<(), String> {
+        self.update_sized(sources, &HashMap::new())
+    }
+
+    /// As [`Self::update_resources`]; a source laid out beyond the box its request was
+    /// sized for is requested again for both. Sizes never shrink.
+    pub fn update_sized(
+        &mut self,
+        sources: &[ImageSource],
+        buckets: &HashMap<String, Bucket>,
+    ) -> Result<(), String> {
+        let bucket = |source: &str| buckets.get(source).copied().unwrap_or(Bucket::FULL);
         let wanted: HashSet<(&str, &str)> = sources
             .iter()
             .map(|s| (s.source.as_str(), s.retry_key.as_str()))
@@ -55,7 +69,12 @@ impl ImageRequests {
                 )
             })
             .collect();
-        let added = wanted.difference(&existing).count() as u64;
+        let grown = self
+            .wanted
+            .iter()
+            .filter(|entry| !entry.request.bucket.covers(bucket(&entry.request.source)))
+            .count();
+        let added = (wanted.difference(&existing).count() + grown) as u64;
         if self
             .next
             .checked_add(added)
@@ -69,6 +88,15 @@ impl ImageRequests {
                 entry.request.retry_key.as_str(),
             ))
         });
+        for entry in &mut self.wanted {
+            let wanted = bucket(&entry.request.source);
+            if !entry.request.bucket.covers(wanted) {
+                self.next += 1;
+                entry.request.token = self.next;
+                entry.request.bucket = entry.request.bucket.union(wanted);
+                entry.started = false;
+            }
+        }
         let current: HashSet<u64> = self
             .wanted
             .iter()
@@ -95,6 +123,7 @@ impl ImageRequests {
                     source: source.source.clone(),
                     retry_key: source.retry_key.clone(),
                     token: self.next,
+                    bucket: bucket(&source.source),
                 },
                 started: false,
             });
@@ -189,6 +218,46 @@ mod tests {
         assert_ne!(old[0].token, next[0].token);
         assert!(!queue.complete(old[0].token));
         assert!(queue.current(next[0].token));
+    }
+
+    #[test]
+    fn a_source_laid_out_larger_is_requested_again_and_never_for_smaller() {
+        let mut queue = ImageRequests::default();
+        let photo = ImageSource {
+            source: "photo".into(),
+            retry_key: String::new(),
+        };
+        let sized = |w, h| HashMap::from([("photo".to_string(), Bucket::of(w, h))]);
+        queue
+            .update_sized(std::slice::from_ref(&photo), &sized(100., 100.))
+            .unwrap();
+        let small = queue.start();
+        assert_eq!(
+            small[0].bucket,
+            Bucket {
+                width: 128,
+                height: 128
+            }
+        );
+        queue
+            .update_sized(std::slice::from_ref(&photo), &sized(500., 50.))
+            .unwrap();
+        assert!(!queue.current(small[0].token), "the small load is obsolete");
+        let large = queue.start();
+        assert_eq!(large.len(), 1);
+        assert_eq!(
+            large[0].bucket,
+            Bucket {
+                width: 512,
+                height: 128
+            }
+        );
+        queue.complete(large[0].token);
+        queue.update_sized(&[photo], &sized(300., 120.)).unwrap();
+        assert!(
+            queue.start().is_empty(),
+            "a smaller box reuses the larger decode"
+        );
     }
 
     #[test]

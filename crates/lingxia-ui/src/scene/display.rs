@@ -254,6 +254,19 @@ impl DisplayList {
             _ => None,
         })
     }
+    /// Each painted source's decode bucket: the union of its boxes, in device pixels.
+    pub fn image_buckets(&self) -> HashMap<String, crate::scene::image::Bucket> {
+        let mut buckets = HashMap::new();
+        for paint in &self.commands {
+            if let Paint::Image { src, bounds, .. } = paint {
+                let bucket =
+                    crate::scene::image::Bucket::of(bounds[2] * self.scale, bounds[3] * self.scale);
+                let entry = buckets.entry(src.clone()).or_insert(bucket);
+                *entry = entry.union(bucket);
+            }
+        }
+        buckets
+    }
     /// Bind authorized, decoded pixels without rerunning View or changing layout.
     pub fn bind_images(
         &mut self,
@@ -267,15 +280,11 @@ impl DisplayList {
         {
             return Err("UI_IMAGE: too many visible sources".into());
         }
+        // The session binds at most `VISIBLE_IMAGE_BYTES` of painted sources.
         let bound: HashMap<_, _> = self
             .image_sources()
             .filter_map(|src| images.get(src).map(|image| (src.to_owned(), image.clone())))
             .collect();
-        if bound.len() > 128
-            || bound.values().map(|image| image.byte_len()).sum::<usize>() > 64 * 1024 * 1024
-        {
-            return Err("UI_IMAGE: visible image budget exceeded".into());
-        }
         self.images = bound;
         Ok(())
     }

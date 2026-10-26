@@ -1,8 +1,7 @@
 # GPU UI renderer
 
-Invariants of the native page renderer. Authoring (TSX, Tailwind, hooks) is in
-[ui-authoring.md](ui-authoring.md) and [ui-styling.md](ui-styling.md); timing is
-in [ui-animation.md](ui-animation.md).
+Invariants of the native page renderer. Authoring: [ui-authoring.md](ui-authoring.md),
+[ui-styling.md](ui-styling.md); timing: [ui-animation.md](ui-animation.md).
 
 ## Ownership
 
@@ -156,13 +155,16 @@ convert OS events and report pointer state; they compute no geometry.
 
 ## Images
 
-Loads are asynchronous and cancellable. Identity is `(src, retryKey)`; the
-session owns settled outcomes and delivers `onLoad`/`onError` once per
-identity, after presentation. Obsolete request tokens cancel queued and
-running loads. Resource authority and caches stay in lxapp. On Android the
-adapter's `ImageProvider` calls an `ImageLoader` the facade installs
-(`gpu_page::load_image`, keyed by the page's token); dropping a load's handle
-drops its future and transport. Image bytes never cross JNI.
+Loads are asynchronous and cancellable. Identity is `(src, retryKey)`; the session
+owns settled outcomes and delivers `onLoad`/`onError` once per identity, after
+presentation. Obsolete tokens cancel queued and running loads. Resource authority and
+byte caches stay in lxapp. Decodes are sized to the painted box (half-octave steps per
+side; only growth re-requests) and shared through one process LRU (`decodedImageBytes`,
+keyed by content hash and size) that evicts, never errors. A page binds at most
+`visibleImageBytes` of painted sources; past it a source gets `onError` and a
+placeholder. Both schema limits are ~5% and ~3% of a 2 GB device. On Android the
+`ImageProvider` calls the facade's `ImageLoader` (`gpu_page::load_image`, keyed by the
+page's token); dropping a handle drops its future and transport. Bytes never cross JNI.
 
 ## Platform adapters
 
@@ -210,10 +212,8 @@ New platform: adapter traits, text scaling and insets in the environment, `rende
 
 ## Verification
 
-- `cargo test -p lingxia-ui` covers layout, text, scene, interaction,
-  semantics, controller and session behavior with real JS.
-- `npm test --workspace @lingxia/ui` covers authoring, lowering, the compiler
-  and resources; `contracts/generate.mjs --check` covers drift.
+- `cargo test -p lingxia-ui` covers layout through session behavior with real JS.
+- `npm test --workspace @lingxia/ui` covers authoring through resources; `generate.mjs --check`, drift.
 - Android unit tests run the JNI adapter against the host-built `lingxia-ui-android` cdylib.
 - Device probes and renderer fixtures live in `lingxia-sdk/android/tests/gpu`.
   CPU and unit evidence is not device evidence; say which one a change has.

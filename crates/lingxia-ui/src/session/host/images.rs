@@ -6,11 +6,15 @@ use crate::platform::PlatformAdapter;
 use std::sync::Arc;
 
 impl<A: PlatformAdapter> Inner<A> {
-    pub(super) fn update_images(self: &Arc<Self>, sources: Vec<ImageSource>) {
+    pub(super) fn update_images(
+        self: &Arc<Self>,
+        sources: Vec<ImageSource>,
+        buckets: std::collections::HashMap<String, crate::scene::image::Bucket>,
+    ) {
         let result = {
             let mut main = self.main();
             let before = main.images.inflight_tokens();
-            main.images.update_resources(&sources).map(|()| {
+            main.images.update_sized(&sources, &buckets).map(|()| {
                 before
                     .into_iter()
                     .filter(|token| !main.images.current(*token))
@@ -60,7 +64,8 @@ impl<A: PlatformAdapter> Inner<A> {
         match bytes {
             Ok(bytes) => {
                 let inner = self.clone();
-                super::decode::decode(bytes, move |bitmap| {
+                let bucket = request.bucket;
+                super::decode::decode(bytes, bucket, move |bitmap| {
                     let host = inner.clone();
                     inner
                         .adapter

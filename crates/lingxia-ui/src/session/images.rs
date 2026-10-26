@@ -121,14 +121,16 @@ impl ViewSession {
         if !self.image_sources.contains(src) {
             return Ok(false);
         }
-        let retained_bytes: usize = self
+        // Only painted sources are bound, each decoded to its box. Past the visible budget
+        // the source fails (`onError`, placeholder); the process cache only evicts.
+        let retained: usize = self
             .images
             .iter()
             .filter(|(key, _)| key.as_str() != src)
-            .map(|(_, value)| value.byte_len())
+            .map(|(_, image)| image.byte_len())
             .sum();
-        if retained_bytes + bitmap.byte_len() > 64 * 1024 * 1024 {
-            return Err("UI_IMAGE: page image budget exceeded".into());
+        if retained + bitmap.byte_len() > crate::protocol::limits::VISIBLE_IMAGE_BYTES {
+            return Err("UI_IMAGE: visible image budget exceeded".into());
         }
         self.images.insert(src.to_owned(), bitmap);
         Ok(true)

@@ -329,6 +329,8 @@ pub mod limits {
     pub const ITEM_KEY_BYTES: usize = 262144;
     pub const IMAGE_BYTES: usize = 8388608;
     pub const SOURCE_BYTES: usize = 8192;
+    pub const VISIBLE_IMAGE_BYTES: usize = 67108864;
+    pub const DECODED_IMAGE_BYTES: usize = 100663296;
 }
 
 /// What a wire tag may contain.
