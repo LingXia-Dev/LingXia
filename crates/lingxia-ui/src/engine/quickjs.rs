@@ -7,25 +7,25 @@ impl Engine for QuickJs {
     const FEATURES: &'static [Feature] = &[Feature::CandidateTransactions, Feature::BoundedJobs];
     const PREEMPTIBLE: bool = true;
 
-    fn evaluate_module(context: &rong::JSContext, source: &str) -> Result<(), String> {
+    fn evaluate_module(context: &super::JSContext, source: &str) -> Result<(), String> {
         evaluate(context, source)
     }
-    fn drain_jobs(context: &rong::JSContext) -> Result<(), String> {
+    fn drain_jobs(context: &super::JSContext) -> Result<(), String> {
         drain_jobs(context)
     }
-    fn discard_jobs(context: &rong::JSContext) {
+    fn discard_jobs(context: &super::JSContext) {
         discard_jobs(context)
     }
 }
 
-fn drain_jobs(context: &rong::JSContext) -> Result<(), String> {
+fn drain_jobs(context: &super::JSContext) -> Result<(), String> {
     use rong_core::engine::JSContextImpl;
     use rong_quickjs_sys as qjs;
     let started = std::time::Instant::now();
     unsafe {
         let runtime = qjs::JS_GetRuntime(*context.as_ref().as_raw());
         while qjs::JS_IsJobPending(runtime) {
-            if started.elapsed() >= std::time::Duration::from_millis(100) {
+            if started.elapsed() >= crate::session::eval_budget() {
                 return Err("UI_TIMEOUT: microtask budget exceeded".into());
             }
             let mut owner = std::ptr::null_mut();
@@ -41,7 +41,7 @@ fn drain_jobs(context: &rong::JSContext) -> Result<(), String> {
 }
 
 /// Drain under an interrupt before dropping a failed context or running a sibling page.
-fn discard_jobs(context: &rong::JSContext) {
+fn discard_jobs(context: &super::JSContext) {
     use rong_core::engine::JSContextImpl;
     use rong_quickjs_sys as qjs;
     let _interrupt = context.runtime().interrupt_handle().interrupt_scoped();
@@ -61,7 +61,7 @@ fn discard_jobs(context: &rong::JSContext) {
     }
 }
 
-fn evaluate(context: &rong::JSContext, source: &str) -> Result<(), String> {
+fn evaluate(context: &super::JSContext, source: &str) -> Result<(), String> {
     use rong_core::engine::JSContextImpl;
     use rong_quickjs_sys as qjs;
 

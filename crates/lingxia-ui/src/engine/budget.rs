@@ -16,7 +16,7 @@ pub(crate) struct Budget {
 }
 
 impl Budget {
-    pub(crate) fn new(runtime: &rong::JSRuntime) -> Arc<Self> {
+    pub(crate) fn new(runtime: &super::JSRuntime) -> Arc<Self> {
         let shared = Arc::new((Mutex::new(State::default()), Condvar::new()));
         let enabled = <super::Active as super::Engine>::PREEMPTIBLE;
         let thread = enabled.then(|| {

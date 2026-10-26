@@ -3648,6 +3648,7 @@ dependencies = [
  "napi-ohos",
  "ohos_hilog",
  "oslog",
+ "rong",
  "rong_rt",
  "serde",
  "serde_json",
@@ -7544,8 +7545,6 @@ dependencies = [
 [[package]]
 name = "rong"
 version = "0.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e166f75145f323c31648357eecf7a0ac4d7797c41e2d61f1e0d849036aa52d0"
 dependencies = [
  "futures",
  "rong_arkjs",
@@ -7572,8 +7571,6 @@ dependencies = [
 [[package]]
 name = "rong_arkjs"
 version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfce80e96d743990ada41c1e5cd00c029cf5ad457bc81ca46ee3d6ecddb285c4"
 dependencies = [
  "rong_arkjs_sys",
  "rong_core",
@@ -7582,8 +7579,6 @@ dependencies = [
 [[package]]
 name = "rong_arkjs_sys"
 version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "106b77374a3f94e906e8193787d25419b5607a46b49ab184eb068188fc8f765c"
 dependencies = [
  "bindgen",
 ]
@@ -7647,9 +7642,7 @@ dependencies = [
 
 [[package]]
 name = "rong_core"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4415f7ccf10a54cae5ed029878badc0cd6e4155a23738581ecbca8ac307117ac"
+version = "0.6.4"
 dependencies = [
  "bytes",
  "futures",
@@ -7769,8 +7762,6 @@ dependencies = [
 [[package]]
 name = "rong_jscore"
 version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25993fb728b2e240dd62ec46590602a89da913eb01bf76d80fab0ef740ab7523"
 dependencies = [
  "rong_core",
  "rong_jscore_sys",
@@ -7780,8 +7771,6 @@ dependencies = [
 [[package]]
 name = "rong_jscore_sys"
 version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0829e78bc588dedf0f87f1891d4de3f9c6de2c2a7f58cbfaecf5ba51b11d3dee"
 dependencies = [
  "bindgen",
  "cc",
@@ -7790,8 +7779,6 @@ dependencies = [
 [[package]]
 name = "rong_macro"
 version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d2067ead8a67ea03ddcc6de2250d15f3ccb5d0f6f745ee3de7511d1be5f8eb2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7831,10 +7818,9 @@ dependencies = [
 
 [[package]]
 name = "rong_quickjs"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ab739a87c2f41f5adefdd919307aa75b8154a3e7dbda62a21a602c62f60695e"
+version = "0.6.2"
 dependencies = [
+ "libc",
  "rong_core",
  "rong_quickjs_sys",
  "smallvec",
@@ -7843,8 +7829,6 @@ dependencies = [
 [[package]]
 name = "rong_quickjs_sys"
 version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab32d31d5a4534f44a6f0ded7ef82fd5e48b952acc2ddf822d0715866b1aa940"
 dependencies = [
  "bindgen",
  "cc",
@@ -7866,8 +7850,6 @@ dependencies = [
 [[package]]
 name = "rong_rt"
 version = "0.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8841f978944b057e977d125d41ae010262ece8e0de822fbf6424ba06c792453"
 dependencies = [
  "bytes",
  "futures",
@@ -7959,8 +7941,6 @@ dependencies = [
 [[package]]
 name = "rong_typegen"
 version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b2f3f5c0e544bf555f8fd5fbde2c0f5f5150ed78d6b416d081b7217891deb6c"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -7,9 +7,9 @@ pub mod lifecycle;
 pub mod metrics;
 pub mod state;
 
-use crate::engine::decode_context_timed;
+use crate::engine::{RongJS, decode_context_timed};
 use crate::{DisplayList, Frame, Renderer};
-use rong::{JSEngine, RongJS, Source};
+use rong::{JSEngine, Source};
 use std::{cell::Cell, collections::HashMap, sync::Arc, time::Duration};
 mod bridge;
 mod editing;
@@ -25,8 +25,8 @@ use frame_animation::FrameAnimations;
 
 /// Thread-confined View context. Candidates commit only after native validation and layout.
 pub struct ViewSession {
-    context: rong::JSContext,
-    _runtime: rong::JSRuntime,
+    context: crate::engine::JSContext,
+    _runtime: crate::engine::JSRuntime,
     renderer: Renderer,
     generation: lifecycle::CommitTicket,
     state: crate::session::state::StateReplica,
@@ -93,7 +93,7 @@ impl ViewSession {
     }
 
     pub(crate) fn with_runtime(
-        runtime: rong::JSRuntime,
+        runtime: crate::engine::JSRuntime,
         budget: Arc<crate::engine::budget::Budget>,
         source: &str,
         logic: bool,

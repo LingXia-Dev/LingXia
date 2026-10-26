@@ -52,10 +52,12 @@ before author code runs. Release hardening preserves that first line.
 
 | Engine | Platform | Candidate transactions | Bounded jobs (preemption) |
 | --- | --- | --- | --- |
-| QuickJS | Android, Windows, Linux | yes | yes |
-| JavaScriptCore | Apple | yes | no |
-| ArkJS | HarmonyOS | yes | no |
+| QuickJS | all | yes | yes |
 
+View isolates run on QuickJS everywhere, linked beside the platform's Logic
+engine (JavaScriptCore on Apple, ArkJS on HarmonyOS) through rong's per-engine
+types (`rong::quickjs::JSRuntime`). The Logic engine stays rong's primary:
+`lingxia` pins `primary-jscore` on Apple, so linking QuickJS cannot flip it.
 A page that needs bounded jobs (all compiled modules do) cannot load on an
 engine without them. `Engine::FEATURES` is the only source of these flags.
 

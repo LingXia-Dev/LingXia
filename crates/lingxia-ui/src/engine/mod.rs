@@ -1,18 +1,10 @@
 //! JavaScript engine adapters for View isolates.
 pub(crate) mod budget;
 pub(crate) mod compatibility;
-#[cfg(not(any(
-    target_os = "android",
-    target_os = "windows",
-    all(target_os = "linux", not(target_env = "ohos"))
-)))]
-mod portable;
-#[cfg(any(
-    target_os = "android",
-    target_os = "windows",
-    all(target_os = "linux", not(target_env = "ohos"))
-))]
 mod quickjs;
+
+// QuickJS on every target, beside whatever engine the app's Logic runtime uses.
+pub(crate) use rong::quickjs::{JSArray, JSContext, JSRuntime, RongJS};
 
 /// A module feature an engine adapter implements for compiled UI bundles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,23 +29,13 @@ pub(crate) trait Engine {
     const FEATURES: &'static [Feature];
     /// Whether the budget watchdog can interrupt running script.
     const PREEMPTIBLE: bool;
-    fn evaluate_module(context: &rong::JSContext, source: &str) -> Result<(), String>;
-    fn drain_jobs(context: &rong::JSContext) -> Result<(), String>;
+    fn evaluate_module(context: &JSContext, source: &str) -> Result<(), String>;
+    fn drain_jobs(context: &JSContext) -> Result<(), String>;
     /// Drain under interruption before dropping a failed context or running a sibling page.
-    fn discard_jobs(context: &rong::JSContext);
+    fn discard_jobs(context: &JSContext);
 }
 
-// Rong links exactly one engine per target; this is the only engine selection.
-#[cfg(any(
-    target_os = "android",
-    target_os = "windows",
-    all(target_os = "linux", not(target_env = "ohos"))
-))]
 pub(crate) type Active = quickjs::QuickJs;
-#[cfg(target_vendor = "apple")]
-pub(crate) type Active = portable::JavaScriptCore;
-#[cfg(target_env = "ohos")]
-pub(crate) type Active = portable::ArkJs;
 
 /// Features the linked engine provides.
 pub fn features() -> &'static [Feature] {
@@ -64,7 +46,7 @@ pub(crate) fn supports(feature: Feature) -> bool {
     features().contains(&feature)
 }
 
-use rong::{JSEngine, RongJS, Source};
+use rong::{JSEngine, Source};
 
 /// Called on a dedicated View thread. No host capabilities are installed.
 /// `environment` is the platform's View `env`; the viewport is added to it.
@@ -95,7 +77,7 @@ pub fn evaluate(
 }
 
 pub(crate) fn decode_context(
-    context: &rong::JSContext,
+    context: &JSContext,
     invoke: &str,
 ) -> Result<Vec<crate::protocol::Record>, String> {
     decode_context_timed(context, invoke).map(|(records, _)| records)
@@ -103,7 +85,7 @@ pub(crate) fn decode_context(
 
 /// A JS failure as text. Thrown values keep their own message, which carries
 /// the `UI_*` code and the JSX trace; rong's display of them drops both.
-pub(crate) fn js_error(context: &rong::JSContext, error: rong::RongJSError) -> String {
+pub(crate) fn js_error(context: &JSContext, error: rong::RongJSError) -> String {
     if error.is_thrown() {
         if let Some(host) = error.into_host_in(context).into_host_error() {
             return host.message;
@@ -114,7 +96,7 @@ pub(crate) fn js_error(context: &rong::JSContext, error: rong::RongJSError) -> S
 }
 
 pub(crate) fn decode_context_timed(
-    context: &rong::JSContext,
+    context: &JSContext,
     invoke: &str,
 ) -> Result<
     (
@@ -124,7 +106,7 @@ pub(crate) fn decode_context_timed(
     String,
 > {
     let started = std::time::Instant::now();
-    let values: rong::JSArray = context
+    let values: JSArray = context
         .eval(Source::from_bytes(invoke.as_bytes()))
         .map_err(|e| js_error(context, e))?;
     let eval_us = crate::session::metrics::micros(started);

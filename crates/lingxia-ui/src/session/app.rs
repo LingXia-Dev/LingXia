@@ -1,5 +1,6 @@
 use crate::ViewSession;
-use rong::{JSEngine, RongJS};
+use crate::engine::RongJS;
+use rong::JSEngine;
 use std::collections::HashMap;
 
 /// Native-owned identity; never reuse an id after its context is discarded.
@@ -11,7 +12,7 @@ pub struct ViewPageId(u64);
 pub struct ViewApp {
     // Drop contexts before the runtime that owns them.
     pages: HashMap<ViewPageId, ViewSession>,
-    runtime: rong::JSRuntime,
+    runtime: crate::engine::JSRuntime,
     budget: std::sync::Arc<crate::engine::budget::Budget>,
     next: u64,
     limit: usize,
@@ -156,11 +157,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(
-        target_os = "android",
-        target_os = "windows",
-        all(target_os = "linux", not(target_env = "ohos"))
-    ))]
     fn infinite_guest_code_is_interrupted_without_poisoning_other_pages() {
         let mut app = ViewApp::new(3).unwrap();
         let started = std::time::Instant::now();

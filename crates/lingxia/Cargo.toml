@@ -88,6 +88,8 @@ android_logger = "0.15.1"
 lingxia-ui-android = { workspace = true, features = ["gpu"] }
 
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+# JavaScriptCore stays rong's primary engine (Logic) when QuickJS is linked for View isolates.
+rong = { workspace = true, features = ["jscore", "primary-jscore"] }
 swift-bridge = "0.1.59"
 oslog = "0.2.0"
 

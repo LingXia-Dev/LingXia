@@ -24,17 +24,10 @@ vello_gpu = { version = "=0.3.0", optional = true, default-features = false, fea
 glifo = { version = "=0.4.0", optional = true, features = ["png"] }
 wgpu = { version = "=30.0.0", optional = true, default-features = false, features = ["vulkan", "dx12", "metal", "wgsl"] }
 pollster = { version = "=0.4.0", optional = true }
-
-[target.'cfg(any(target_os = "android", target_os = "windows", all(target_os = "linux", not(target_env = "ohos"))))'.dependencies]
+# The View isolate runs on QuickJS everywhere, beside the platform's Logic engine.
 rong = { workspace = true, features = ["quickjs"] }
-rong_core = "=0.6.2"
+rong_core = "=0.6.4"
 rong_quickjs_sys = "=0.6.1"
-
-[target.'cfg(target_vendor = "apple")'.dependencies]
-rong = { workspace = true, features = ["jscore"] }
-
-[target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
-rong = { workspace = true, features = ["arkjs"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 # GLES is the fallback for Vulkan drivers the crash sentinel blocks.

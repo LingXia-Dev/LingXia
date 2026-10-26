@@ -58,7 +58,7 @@ pub(crate) fn validate(source: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn install(context: &rong::JSContext) -> Result<(), String> {
+pub(crate) fn install(context: &super::JSContext) -> Result<(), String> {
     let features: Vec<&str> = super::features()
         .iter()
         .map(|feature| feature.name())
