@@ -646,7 +646,9 @@ Declaration model (owned by the single runtime writer, §7.2):
   resource resolver before native projection. Native absolute paths, network
   URLs, and parent traversal are rejected. The portable asset profile is a
   square, transparent, monochrome SVG or PNG designed for a 16-point visual.
-  Hosts may tint it to match shell theme and disabled state.
+  An SVG is a template: hosts draw its shape in the shell's muted text colour,
+  dimmed while disabled, so it follows theme and contrast. A PNG draws as
+  authored.
 - Hosts do not infer target metadata, open lxapps, toggle providers, or render
   fallback glyphs. A callback explicitly opens a declared Surface with
   `lx.shell.openDeclared(id, options?)`, a dynamic business app with

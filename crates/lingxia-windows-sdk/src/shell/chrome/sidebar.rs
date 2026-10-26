@@ -389,9 +389,39 @@ pub(super) fn draw_sidebar_tab_bar(
         if !action.disabled {
             draw_hover_wash(hdc, action_rect, px(6), cursor);
         }
-        let icon_rect = centered_icon_rect(action_rect, px(16));
-        let _ = draw_icon_from_path(hdc, &action.icon_path, icon_rect, px(16) as u32);
+        draw_header_action_icon(hdc, action_rect, action);
     }
+}
+
+/// Draws a header action's glyph centred in `rect`: the built-in Settings
+/// action as the tinted design icon (like the collapse toggle beside it),
+/// an app action's icon as a template.
+pub(in crate::shell::chrome) fn draw_header_action_icon(
+    hdc: HDC,
+    rect: RECT,
+    action: &WindowsShellHeaderActionLayout,
+) {
+    if matches!(
+        action.source,
+        WindowsShellSidebarActionSource::StaticSettings(_)
+    ) {
+        draw_design_icon_button(
+            hdc,
+            rect,
+            WindowsDesignIcon::BrowserSettings,
+            action_icon_tint(action.disabled),
+            px(16),
+        );
+        return;
+    }
+    let icon_rect = centered_icon_rect(rect, px(16));
+    let _ = draw_action_icon(
+        hdc,
+        &action.icon_path,
+        icon_rect,
+        px(16) as u32,
+        action.disabled,
+    );
 }
 
 /// Shared icon box for top-level lxapp and web tabs. Keeping this geometry in

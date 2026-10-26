@@ -9,7 +9,9 @@ use windows::Win32::Graphics::Gdi::{CreateBitmap, DeleteObject, HGDIOBJ};
 use windows::Win32::UI::WindowsAndMessaging::{self, HICON, ICONINFO};
 use windows::core::BOOL;
 
-type IconCacheKey = (PathBuf, u32);
+/// (path, size, template tint). A tint recolours an SVG glyph; raster icons
+/// ignore it, so the same file may be cached once per tint.
+type IconCacheKey = (PathBuf, u32, Option<u32>);
 /// (mtime, len) of the source file when the handle was created. Favicon
 /// cache files are rewritten in place on refresh, so a path-only key would
 /// serve the old icon (or a memoized failure) forever.
@@ -21,11 +23,18 @@ static PANEL_ICON_HANDLES: OnceLock<Mutex<IconHandleCache>> = OnceLock::new();
 static BYTES_ICON_HANDLES: OnceLock<Mutex<BytesIconCache>> = OnceLock::new();
 
 pub(super) fn cached_png_icon_handle(path: &str, size: u32) -> Option<isize> {
+    cached_icon_handle(path, size, None)
+}
+
+/// An icon from `path`; an SVG is a template whose glyph takes `tint`
+/// (0xRRGGBB), as on macOS. Raster icons keep their own colours.
+pub(super) fn cached_icon_handle(path: &str, size: u32, tint: Option<u32>) -> Option<isize> {
     let path = PathBuf::from(path);
     // A missing file (e.g. mid-replace during a favicon refresh) is never
     // memoized — the next repaint retries.
     let stamp = file_stamp(&path)?;
-    let key = (path.clone(), size);
+    let tint = tint.filter(|_| is_svg_path(&path));
+    let key = (path.clone(), size, tint);
     let handles = PANEL_ICON_HANDLES.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut handles) = handles.lock() {
         if let Some((cached_stamp, handle)) = handles.get(&key)
@@ -33,7 +42,10 @@ pub(super) fn cached_png_icon_handle(path: &str, size: u32) -> Option<isize> {
         {
             return *handle;
         }
-        let handle = create_icon_from_path(&path, size).ok();
+        // A failure is memoized until the file changes, so it logs once.
+        let handle = create_icon_from_path(&path, size, tint)
+            .inspect_err(|err| log::warn!("{err}"))
+            .ok();
         if let Some((_, Some(previous))) = handles.insert(key, (stamp, handle))
             && Some(previous) != handle
         {
@@ -41,7 +53,13 @@ pub(super) fn cached_png_icon_handle(path: &str, size: u32) -> Option<isize> {
         }
         return handle;
     }
-    create_icon_from_path(&path, size).ok()
+    create_icon_from_path(&path, size, tint).ok()
+}
+
+fn is_svg_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
 }
 
 fn file_stamp(path: &Path) -> Option<IconStamp> {
@@ -79,15 +97,17 @@ pub(super) fn cached_png_bytes_icon_handle(
     create_icon_from_png_bytes(png, size).ok()
 }
 
-fn create_icon_from_path(path: &Path, size: u32) -> Result<isize, String> {
-    let is_svg = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"));
-    if is_svg {
+fn create_icon_from_path(path: &Path, size: u32, tint: Option<u32>) -> Result<isize, String> {
+    if is_svg_path(path) {
         let data = std::fs::read(path)
             .map_err(|err| format!("Failed to read SVG icon {}: {err}", path.display()))?;
-        let image = rasterize_svg(&data, size)?;
+        let mut image = rasterize_svg(&data, size)?;
+        if let Some(tint) = tint {
+            let [_, r, g, b] = tint.to_be_bytes();
+            for pixel in image.pixels_mut() {
+                pixel.0 = [r, g, b, pixel.0[3]];
+            }
+        }
         return create_icon_from_image(
             image::DynamicImage::ImageRgba8(image),
             size,
@@ -177,6 +197,19 @@ fn create_icon_from_image(
     source: &str,
     tile_corners: bool,
 ) -> Result<isize, String> {
+    // A non-square raster is centre-cropped to a square first, as macOS
+    // does, instead of being squashed.
+    let side = image.width().min(image.height());
+    let image = if image.width() != image.height() {
+        image.crop_imm(
+            (image.width() - side) / 2,
+            (image.height() - side) / 2,
+            side,
+            side,
+        )
+    } else {
+        image
+    };
     let mut image = image
         .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
         .into_rgba8();
