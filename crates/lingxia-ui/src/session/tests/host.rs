@@ -78,6 +78,7 @@ impl Fake {
 struct Encoded {
     texts: Vec<String>,
     caret: bool,
+    generation: CommitTicket,
 }
 
 impl Presenter for Fake {
@@ -118,12 +119,19 @@ impl Presenter for Fake {
                 .filter(|t| !t.is_empty())
                 .collect(),
             caret: display.caret_paint.is_some(),
+            generation,
         }))
     }
     fn present(&self, frame: Encoded) -> Result<bool, String> {
         if let Some(costs) = self.costs.lock().unwrap().as_mut() {
             costs.ready.pop_front();
             costs.main_free = *self.clock.lock().unwrap() + costs.ui;
+            let newest = self.log.lock().unwrap().generations.last().copied();
+            if costs.single_target && newest.is_some_and(|newest| newest != frame.generation) {
+                // One offscreen target: a later prepare overwrote this frame.
+                costs.ready.clear();
+                return Ok(false);
+            }
             if costs.decline > 0 {
                 costs.decline -= 1;
                 // Frames prepared on top of a refused one are dropped with it.
@@ -1943,6 +1951,8 @@ struct Costs {
     ready: std::collections::VecDeque<Duration>,
     /// Refuse this many presentations.
     decline: u32,
+    /// Keep only the newest prepared frame, as a presenter with one target does.
+    single_target: bool,
 }
 
 /// One display frame per 16.67 ms; a vsync presents only a frame that is ready by then.
@@ -2091,4 +2101,40 @@ fn a_refused_frame_drops_the_frame_prepared_on_top_of_it() {
         .map(|g| g.get())
         .collect();
     assert!(generations.windows(2).all(|w| w[0] < w[1]));
+}
+
+#[test]
+fn a_single_target_presenter_is_named_in_the_log_and_falls_back_to_one_frame_at_a_time() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = costly_spinner(&platform, &worker, true);
+    host.adapter()
+        .costs
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .single_target = true;
+    run_timed(&platform, &host, 30);
+    let start = presents(&host);
+    run_timed(&platform, &host, 60);
+    let rate = presents(&host) - start;
+    let warnings: Vec<String> = host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .warnings
+        .iter()
+        .filter(|w| w.contains("presenterSingleTarget"))
+        .cloned()
+        .collect();
+    assert_eq!(warnings.len(), 1, "warned once: {warnings:?}");
+    assert!(warnings[0].contains("Presenter::prepare must keep each prepared frame presentable"));
+    let json: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    assert_eq!(json["metrics"]["presenterSingleTarget"], true);
+    assert!(
+        rate >= 26,
+        "one frame at a time instead of a collapse: {rate}/s"
+    );
 }
