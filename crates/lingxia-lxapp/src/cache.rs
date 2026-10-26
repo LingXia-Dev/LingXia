@@ -161,6 +161,9 @@ pub mod product {
             }
         }
         total += lingxia_service::storage::dir_size(&roots.icons);
+        total += lingxia_transfer::store::shared()
+            .and_then(|store| store.size().ok())
+            .unwrap_or(0);
         for session in session_dirs(&roots.temp) {
             if !super::is_protected_from_cleanup(&session) {
                 total += lingxia_service::storage::dir_size(&session);
@@ -269,8 +272,19 @@ pub mod product {
         let mut report = ClearReport::default();
         clear_private_storage(roots, &mut report);
         empty_dir(&roots.icons, &mut report);
+        if let Some(store) = lingxia_transfer::store::shared() {
+            clear_http_store(&store, &mut report);
+        }
         sweep_orphaned_packages(roots, &mut report);
         report
+    }
+
+    /// The host HTTP store refetches or revalidates whatever it loses.
+    fn clear_http_store(store: &lingxia_transfer::store::Store, report: &mut ClearReport) {
+        match store.clear() {
+            Ok(bytes) => report.freed_bytes += bytes,
+            Err(error) => report.failures.push(format!("HTTP store: {error}")),
+        }
     }
 
     fn clear_private_storage(roots: &Roots, report: &mut ClearReport) {
@@ -421,6 +435,31 @@ pub mod product {
         use super::*;
         use filetime::FileTime;
         use std::collections::BTreeSet;
+
+        #[tokio::test]
+        async fn a_clear_empties_the_http_store_and_counts_its_bytes() {
+            use std::io::{Read, Write};
+            let root = tempfile::tempdir().unwrap();
+            let store =
+                lingxia_transfer::store::Store::open(root.path().join("http"), 1 << 20).unwrap();
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!("http://{}/a", listener.local_addr().unwrap());
+            std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0u8; 1024];
+                assert!(stream.read(&mut request).unwrap() > 0);
+                stream
+                    .write_all(b"HTTP/1.1 200 OK\r\nCache-Control: max-age=60\r\nContent-Length: 5\r\nConnection: close\r\n\r\nbytes")
+                    .unwrap();
+            });
+            let mut request = lingxia_transfer::store::FetchRequest::new(url, "app");
+            request.allow_http = true;
+            store.fetch_bytes(request).await.unwrap();
+            let mut report = ClearReport::default();
+            clear_http_store(&store, &mut report);
+            assert_eq!((report.freed_bytes, report.failures.len()), (5, 0));
+            assert_eq!(store.size().unwrap(), 0);
+        }
 
         #[test]
         fn orphan_classifier_preserves_referenced_recent_and_uncertain_paths() {

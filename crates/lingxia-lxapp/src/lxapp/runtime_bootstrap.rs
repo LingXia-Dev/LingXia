@@ -41,6 +41,15 @@ fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError>
 }
 
 fn spawn_cache_cleanup(runtime: Arc<Platform>) {
+    // The HTTP store keeps its own budget; a pass here catches a budget lowered
+    // since the last run.
+    if let Some(store) = lingxia_transfer::store::shared() {
+        std::mem::drop(crate::executor::spawn(async move {
+            if let Err(error) = store.trim(lingxia_transfer::store::STORE_BUDGET_BYTES) {
+                warn!("HTTP store trim failed: {error}");
+            }
+        }));
+    }
     let max_bytes = lingxia_app_context::cache_max_size_bytes();
     if max_bytes == 0 {
         info!("Cache cleanup disabled (cacheMaxSizeMB=0)");

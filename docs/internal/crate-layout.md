@@ -13,7 +13,7 @@ it has no layer for: give a new crate one there and a line below.
 | Layer | Crates | Owns |
 |---|---|---|
 | 1. Contracts | `app-context`, `provider`, `log`, `messaging`, `settings`, `surface`, `shell`, `update`, `control-protocol` | Types, policy, wire formats. No runtime. |
-| 2. Platform | `webview`, `platform`, `windows-contract`, `device-io`, `transfer` | OS and WebView hosting. Knows nothing of lxapps. |
+| 2. Platform | `webview`, `platform`, `windows-contract`, `device-io`, `transfer` | OS, WebView hosting and HTTP transfer. Knows nothing of lxapps. |
 | 3. Runtime | `lxapp`, `ui`, `ui-android`, `logic`, `service`, `media`, `browser`, `terminal`, `terminal-config` | What a shipped app runs. |
 | 4. Products and dev features | `browser-shell`, `proxy`, `control-commands`, `network-dev`, `automation` | Built on the runtime; pulled in by facade features. |
 | 5. Facade | `lingxia` | The app-author API, the platform entry surface, init. |
@@ -62,7 +62,9 @@ Names omit the `lingxia-` prefix.
 - `ui-android`: the Android adapter for `ui`: `GpuView` JNI natives, presentation and platform mechanics.
 - `logic`: the JavaScript (Logic) runtime.
 - `service`: service APIs shared by JS bindings, shell and facade.
-- `transfer`: downloads and uploads; network owner attribution.
+- `transfer`: every HTTP fetch LingXia makes for itself: the content-addressed
+  HTTP store, resumable downloads, uploads; network owner attribution. Callers
+  pass the destination folder and the network guard; it has no policy of its own.
 - `media`: media playback and streaming contracts.
 - `browser`: the browser runtime capability.
 - `terminal`, `terminal-config`: terminal backend, and its configuration.

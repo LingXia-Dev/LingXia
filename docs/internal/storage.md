@@ -34,10 +34,24 @@ reads, `readDir`, `stat`, `exists`, copy/move from usercache, and WebView
 On `ENOSPC`, `lx.fs` writes and `downloadFile` finalization evict LRU usercache
 (never userdata) and retry once; a second failure surfaces the IO error.
 
+## HTTP store
+
+Bytes LingXia fetches for itself (remote GPU page images, favicons, registry
+icons, preview media) go through `transfer::store`, under the OS cache dir at
+`lingxia/http`. Entries are keyed by partition and URL: an appid, or
+`host:<name>` for bytes shared across apps on purpose. Callers check their own
+grants before a lookup. Freshness follows `Cache-Control`/`Expires`, else 10% of
+the age since `Last-Modified` (at most 24 h); stale entries revalidate with
+validators, and a 304 serves the stored body. Package downloads (updates,
+plugins) bypass the store and resume from a `.part` file instead. The store
+evicts LRU by bytes within `STORE_BUDGET_BYTES`; the OS may delete its files at
+any time, which reads as a miss.
+
 ## Host cache maintenance
 
 `lx.host.cache.clear()` removes unprotected lxapp usercache, idle session temp,
-shared runtime artwork, and WebView HTTP cache where supported. Package
+shared runtime artwork, the HTTP store, and WebView HTTP cache where supported.
+The startup pass trims the HTTP store to its budget. Package
 maintenance also reclaims orphaned installs and staged archives, preserving
 referenced paths, active work, recent writes, and paths with uncertain
 timestamps.
