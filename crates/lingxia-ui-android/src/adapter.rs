@@ -75,7 +75,7 @@ pub(super) struct AndroidAdapter {
     /// In-flight loads; dropping a handle cancels its transport.
     images: Mutex<HashMap<u64, Box<dyn Send>>>,
     /// CPU frames waiting for the raster pool.
-    raster: OnceLock<Arc<super::raster::Mailbox<DisplayList>>>,
+    raster: OnceLock<Arc<lingxia_ui::renderer::pool::Mailbox<DisplayList>>>,
 }
 
 pub(super) enum Frame {
@@ -245,7 +245,9 @@ impl Presenter for AndroidAdapter {
                 };
                 self.raster
                     .get_or_init(|| {
-                        super::raster::Mailbox::new(move |display| rasterize(&host, display))
+                        lingxia_ui::renderer::pool::Mailbox::new(move |display| {
+                            rasterize(&host, display)
+                        })
                     })
                     .submit(display);
                 Ok(true)

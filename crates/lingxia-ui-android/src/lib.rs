@@ -14,7 +14,6 @@ use lingxia_ui::session::lifecycle::ConnectionTicket;
 mod adapter;
 #[cfg(all(feature = "gpu", target_os = "android"))]
 mod gpu_surface;
-mod raster;
 
 use adapter::AndroidAdapter;
 pub use adapter::{ImageLoader, set_image_loader};
