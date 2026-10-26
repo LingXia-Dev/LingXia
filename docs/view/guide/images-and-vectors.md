@@ -111,6 +111,34 @@ export function render() {
 
 There is no `<svg>` element and no SVG file import; convert icons to path data at authoring time.
 
+## Charts
+
+`<plot>` draws a bar, line or pie chart from up to 128 values as one leaf. Axes, legends, labels and
+tooltips are yours to lay out around it.
+
+```tsx
+import { useLocal } from '@lingxia/ui';
+
+const sales = [12, 18, 9, 24, 16];
+
+export function render() {
+  const picked = useLocal('picked', -1);
+  return (
+    <page className="p-4 gap-2">
+      <plot kind="bar" values={sales} colors={['#2563eb']} accessibilityLabel="Weekly sales"
+        selectedIndex={picked.value} onSelect={index => picked.set(index)} className="h-40" />
+      <text className="text-sm tabular-nums">{picked.value >= 0 ? `Day ${picked.value + 1}: ${sales[picked.value]}` : 'Tap a bar'}</text>
+    </page>
+  );
+}
+```
+
+`colors` takes 1–16 hex colors, cycled over bars and slices; a line uses the first. Line charts take `smooth`, `area` and
+`markerEmphasisScale`; bar and line charts take `domainMin`/`domainMax`, which must contain zero and every
+value; pie charts take `pieLayout` (`center`, `innerRadius`, `outerRadius` as fractions of the box).
+`onSelect` receives the tapped index, or `-1` when a tap outside clears the selection; keep the index in
+state and pass it back as `selectedIndex`.
+
 ## Icons
 
 Keep icons as path data in a component, as in the first example:
