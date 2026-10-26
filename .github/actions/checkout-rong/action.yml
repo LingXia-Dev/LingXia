@@ -1,0 +1,41 @@
+name: Check out the patched rong
+description: >
+  While the workspace patches `rong` to a sibling checkout (`path = "../rong"`, temporary until
+  rong's multi-engine branch is published), clone it at a pinned ref beside the repository.
+  A no-op once the patch is gone.
+
+inputs:
+  repository:
+    description: Git URL of the rong repository (the RONG_GIT variable or secret).
+    required: false
+    default: ""
+  ref:
+    description: Commit, tag or branch to check out (the RONG_REF variable or secret).
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Clone rong beside the repository
+      shell: bash
+      env:
+        RONG_GIT: ${{ inputs.repository }}
+        RONG_REF: ${{ inputs.ref }}
+      run: |
+        set -euo pipefail
+        if ! grep -q 'path = "\.\./rong' Cargo.toml; then
+          echo "Cargo.toml does not patch rong; nothing to clone"
+          exit 0
+        fi
+        if [[ -z "$RONG_GIT" || -z "$RONG_REF" ]]; then
+          echo "::error::Cargo.toml patches rong to ../rong; set RONG_GIT and RONG_REF (repository variables or secrets) to its multi-engine branch"
+          exit 1
+        fi
+        target="$GITHUB_WORKSPACE/../rong"
+        rm -rf "$target"
+        git init -q "$target"
+        git -C "$target" remote add origin "$RONG_GIT"
+        git -C "$target" fetch -q --depth=1 origin "$RONG_REF"
+        git -C "$target" checkout -q FETCH_HEAD
+        echo "rong $(git -C "$target" rev-parse HEAD) at $target"

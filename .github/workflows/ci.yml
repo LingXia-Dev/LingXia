@@ -514,6 +514,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: ./.github/actions/checkout-rong
+        with:
+          repository: ${{ vars.RONG_GIT || secrets.RONG_GIT }}
+          ref: ${{ vars.RONG_REF || secrets.RONG_REF }}
+
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -894,6 +899,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/checkout-rong
+        with:
+          repository: ${{ vars.RONG_GIT || secrets.RONG_GIT }}
+          ref: ${{ vars.RONG_REF || secrets.RONG_REF }}
 
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
@@ -1402,6 +1412,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: ./.github/actions/checkout-rong
+        with:
+          repository: ${{ vars.RONG_GIT || secrets.RONG_GIT }}
+          ref: ${{ vars.RONG_REF || secrets.RONG_REF }}
+
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -1725,6 +1740,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: ./.github/actions/checkout-rong
+        with:
+          repository: ${{ vars.RONG_GIT || secrets.RONG_GIT }}
+          ref: ${{ vars.RONG_REF || secrets.RONG_REF }}
+
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -1761,6 +1781,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/checkout-rong
+        with:
+          repository: ${{ vars.RONG_GIT || secrets.RONG_GIT }}
+          ref: ${{ vars.RONG_REF || secrets.RONG_REF }}
 
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
