@@ -2,6 +2,7 @@
 //! the presented frame's effects, reach, images and animation wakeup.
 use super::{FrameSnapshot, FrameTiming, Guard, Inner};
 use crate::interaction::frame::PresentedFrame;
+use crate::interaction::view::Effect;
 use crate::platform::{FrameEnvironment, PlatformAdapter};
 use crate::session::lifecycle::{CommitTicket, PageTicket, SurfaceTicket};
 use std::collections::HashMap;
@@ -450,10 +451,15 @@ impl<A: PlatformAdapter> Inner<A> {
         self.acknowledge_animation(surface, snapshot.generation);
         // A running animation's next frame queues right behind the acknowledgement on the
         // worker instead of waiting for its wakeup to come back through the main thread.
+        // Not while activations wait: they dispatch only when no frame is being prepared.
+        let waiting = presented
+            .effects
+            .iter()
+            .any(|effect| matches!(effect, Effect::Dispatch | Effect::Number));
         let now = self.adapter.now();
         let queue = {
             let mut main = self.main();
-            let queue = main.animating && now > main.animation_queued_at;
+            let queue = !waiting && main.animating && now > main.animation_queued_at;
             if queue {
                 main.animation_queued_at = now;
             }

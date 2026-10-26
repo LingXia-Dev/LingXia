@@ -1875,3 +1875,26 @@ fn dark_notice() -> u32 {
     let dark = crate::theme::Palette::builtin(true);
     crate::interaction::chrome::FeedbackStyle::for_palette(&dark, true).notice_text
 }
+
+#[test]
+fn a_tap_during_a_running_animation_dispatches_and_rebuilds_within_a_frame() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(&format!(
+            "function render(){{const n=useLocal('n',0);return h('column',{{}},h('button',{{onClick:()=>n.set(n.value+1),style:{{height:60}}}},`Count ${{n.value}}`),h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}}))}}"
+        )),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 10);
+    assert_eq!(last(&host), ["Count 0"]);
+    for round in 1..=3 {
+        tap(&host, 20.0, 20.0);
+        run_frames(&platform, &host, 2);
+        assert_eq!(last(&host), [format!("Count {round}")], "tap {round}");
+        run_frames(&platform, &host, 5);
+    }
+}
