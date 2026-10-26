@@ -75,7 +75,7 @@ pub(super) struct AndroidAdapter {
     /// In-flight loads; dropping a handle cancels its transport.
     images: Mutex<HashMap<u64, Box<dyn Send>>>,
     /// CPU frames waiting for the raster pool.
-    raster: OnceLock<Arc<lingxia_ui::renderer::pool::Mailbox<DisplayList>>>,
+    raster: OnceLock<Arc<lingxia_ui::renderer::pool::Mailbox<(DisplayList, CommitTicket)>>>,
 }
 
 pub(super) enum Frame {
@@ -86,7 +86,7 @@ pub(super) enum Frame {
         metrics: serde_json::Value,
     },
     /// Rasterized off the View worker when presented.
-    Cpu(DisplayList),
+    Cpu(DisplayList, CommitTicket),
 }
 
 pub(super) fn log(message: &str) {
@@ -207,14 +207,13 @@ impl Presenter for AndroidAdapter {
             Route::Gpu(_) => return Ok(None),
             Route::Cpu => {}
         }
-        let _ = generation;
-        Ok(Some(Frame::Cpu(display)))
+        Ok(Some(Frame::Cpu(display, generation)))
     }
 
     fn metrics(&self, frame: &Frame) -> Option<serde_json::Value> {
         Some(match frame {
             Frame::Gpu { metrics, .. } => metrics.clone(),
-            Frame::Cpu(_) => serde_json::json!({"backend": "vello-cpu"}),
+            Frame::Cpu(..) => serde_json::json!({"backend": "vello-cpu"}),
         })
     }
 
@@ -239,31 +238,39 @@ impl Presenter for AndroidAdapter {
             }
             #[cfg(not(all(feature = "gpu", target_os = "android")))]
             Frame::Gpu { .. } => Ok(false),
-            Frame::Cpu(display) => {
+            Frame::Cpu(display, generation) => {
                 let Some(host) = self.host.get().cloned() else {
                     return Ok(false);
                 };
                 self.raster
                     .get_or_init(|| {
-                        lingxia_ui::renderer::pool::Mailbox::new(move |display| {
-                            rasterize(&host, display)
+                        lingxia_ui::renderer::pool::Mailbox::new(move |(display, generation)| {
+                            rasterize(&host, display, generation)
                         })
                     })
-                    .submit(display);
+                    .submit((display, generation));
                 Ok(true)
             }
         }
     }
+
+    fn deferred(&self, frame: &Frame) -> bool {
+        matches!(frame, Frame::Cpu(..))
+    }
 }
 
-/// Raster thread. A frame the surface no longer takes is presented again.
-fn rasterize(host: &WeakViewHost<AndroidAdapter>, display: DisplayList) {
+/// Raster thread. Every frame is reported once, shown or dropped; the host re-prepares
+/// a dropped one.
+fn rasterize(host: &WeakViewHost<AndroidAdapter>, display: DisplayList, generation: CommitTicket) {
     let Some(host) = host.upgrade() else {
         return;
     };
     let frame = match display.rasterize() {
         Ok(frame) => frame,
-        Err(error) => return host.fail(error),
+        Err(error) => {
+            host.deferred_presented(generation, false);
+            return host.fail(error);
+        }
     };
     let (width, height) = (frame.pixels.width(), frame.pixels.height());
     // The opaque root background makes these premultiplied channels also valid ARGB colors.
@@ -288,9 +295,7 @@ fn rasterize(host: &WeakViewHost<AndroidAdapter>, display: DisplayList) {
         )?
         .z()
     });
-    if !presented {
-        host.redraw();
-    }
+    host.deferred_presented(generation, presented);
 }
 
 pub(super) fn info(message: &str) {
