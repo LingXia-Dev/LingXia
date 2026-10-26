@@ -316,6 +316,10 @@ pub mod windows;
 
 pub(crate) mod browser;
 #[cfg(feature = "browser-runtime")]
+mod browser_menu;
+#[cfg(feature = "browser-runtime")]
+pub use browser_menu::{browser_tab_menu, move_browser_tab_to_side_panel};
+#[cfg(feature = "browser-runtime")]
 pub mod embedded_browser;
 pub(crate) mod push;
 pub(crate) use bootstrap::init_with_platform;

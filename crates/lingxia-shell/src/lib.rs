@@ -34,7 +34,8 @@ pub use sidebar_chrome::{
 };
 pub use store::{PIN_STORE_FILE, SHELL_WINDOW_FILE, ShellStore};
 pub use surface_menu::{
-    LxappSurfaceMenuAction, SurfaceMenuAction, SurfaceMenuBuiltinAction, SurfaceMenuContext,
-    SurfaceMenuIntent, SurfaceMenuItem, SurfaceMenuItemRole, SurfaceMenuSection,
-    SurfaceMenuSectionKind, SurfaceMenuSnapshot, compose_surface_menu,
+    BrowserSurfaceMenuAction, LxappSurfaceMenuAction, SurfaceMenuAction, SurfaceMenuBuiltinAction,
+    SurfaceMenuContext, SurfaceMenuIntent, SurfaceMenuItem, SurfaceMenuItemRole, SurfaceMenuParts,
+    SurfaceMenuSection, SurfaceMenuSectionKind, SurfaceMenuSnapshot, compose_surface_menu,
+    compose_surface_menu_parts,
 };

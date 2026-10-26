@@ -73,6 +73,18 @@ enum SurfaceMenuBridge {
         }
     }
 
+    /// The menu of a main-area browser tab, keyed by its tab id.
+    /// `orderedTabIds` is the sidebar's tab order, which the close family
+    /// follows.
+    static func browserTabSnapshot(orderedTabIds: [String], tabId: String) -> SurfaceMenuSnapshot? {
+        guard let idsData = try? JSONEncoder().encode(orderedTabIds),
+              let idsJson = String(data: idsData, encoding: .utf8)
+        else { return nil }
+        let json = browserTabMenu(idsJson, tabId).toString()
+        guard !json.isEmpty, let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(SurfaceMenuSnapshot.self, from: data)
+    }
+
     static func perform(
         ownerAppId: String,
         revision: UInt64,
@@ -111,49 +123,44 @@ final class SurfaceMenuPresenter: NSObject {
 
     @discardableResult
     func present(_ snapshot: SurfaceMenuSnapshot, event: NSEvent, from view: NSView) -> Bool {
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        for (sectionIndex, section) in snapshot.sections.enumerated() {
-            if sectionIndex > 0 { menu.addItem(.separator()) }
-            for item in section.items {
-                let title = Self.title(for: item)
-                guard !title.isEmpty || item.action.owner == "information" else { continue }
-                let menuItem = NSMenuItem(
-                    title: title,
-                    action: item.enabled ? #selector(menuItemSelected(_:)) : nil,
-                    keyEquivalent: ""
-                )
-                menuItem.target = item.enabled ? self : nil
-                menuItem.isEnabled = item.enabled
-                menuItem.image = Self.icon(for: item)
-                menuItem.representedObject = Selection(
-                    revision: snapshot.revision,
-                    surfaceId: snapshot.surfaceId,
-                    action: item.action
-                )
-                menu.addItem(menuItem)
-            }
+        let menu = Self.makeMenu(snapshot) { [weak self] revision, surfaceId, action in
+            self?.onAction?(revision, surfaceId, action, nil)
         }
         guard !menu.items.isEmpty else { return false }
         NSMenu.popUpContextMenu(menu, with: event, for: view)
         return true
     }
 
-    private final class Selection: NSObject {
-        let revision: UInt64
-        let surfaceId: String
-        let action: SurfaceMenuSnapshot.Item.Action
-
-        init(revision: UInt64, surfaceId: String, action: SurfaceMenuSnapshot.Item.Action) {
-            self.revision = revision
-            self.surfaceId = surfaceId
-            self.action = action
+    /// The NSMenu for `snapshot`; one separator between sections. Every row
+    /// menu of the main area renders through here.
+    static func makeMenu(
+        _ snapshot: SurfaceMenuSnapshot,
+        onSelect: @escaping (UInt64, String, SurfaceMenuSnapshot.Item.Action) -> Void
+    ) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for section in snapshot.sections {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            for item in section.items {
+                let title = Self.title(for: item)
+                guard !title.isEmpty || item.action.owner == "information" else { continue }
+                let menuItem: NSMenuItem
+                if item.enabled {
+                    let revision = snapshot.revision
+                    let surfaceId = snapshot.surfaceId
+                    let action = item.action
+                    menuItem = MenuActionItem(title: title) {
+                        onSelect(revision, surfaceId, action)
+                    }
+                } else {
+                    menuItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+                }
+                menuItem.isEnabled = item.enabled
+                menuItem.image = Self.icon(for: item)
+                menu.addItem(menuItem)
+            }
         }
-    }
-
-    @objc private func menuItemSelected(_ sender: NSMenuItem) {
-        guard let selection = sender.representedObject as? Selection else { return }
-        onAction?(selection.revision, selection.surfaceId, selection.action, nil)
+        return menu
     }
 
     private static func title(for item: SurfaceMenuSnapshot.Item) -> String {
@@ -173,6 +180,9 @@ final class SurfaceMenuPresenter: NSObject {
         case "closeOthers": L10n.string("lx_surface_close_others")
         case "closeAfter": L10n.string("lx_surface_close_after")
         case "openInSide": L10n.string("lx_aside_open_in_side")
+        case "pin": L10n.string("lx_browser_pin_to_sidebar")
+        case "unpin": L10n.string("lx_browser_unpin")
+        case "copyLink": L10n.string("lx_browser_copy_link")
         case "restart": L10n.string("lx_capsule_restart")
         case "cleanCacheRestart": L10n.string("lx_capsule_clean_cache")
         case "uninstall": L10n.string("lx_capsule_uninstall")
@@ -188,7 +198,13 @@ final class SurfaceMenuPresenter: NSObject {
             return LxIcon.menuImage(fromPath: path)
         }
         switch (item.action.owner, item.action.action) {
-        case ("lxapp", "openInSide"):
+        case (_, "pin"):
+            return LxIcon.menuSymbol("icon_pin")
+        case (_, "unpin"):
+            return LxIcon.menuSymbol("icon_unpin")
+        case ("browser", "copyLink"):
+            return LxIcon.menuSymbol("icon_link")
+        case (_, "openInSide"):
             return NSImage(systemSymbolName: "sidebar.trailing", accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
         case ("lxapp", "restart"):

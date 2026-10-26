@@ -320,6 +320,7 @@ mod bridge {
             modal: bool,
             ephemeral_web_data: bool,
             url_callback: bool,
+            browser_tab_id: &str,
             chrome: i32,
         ) -> bool;
 

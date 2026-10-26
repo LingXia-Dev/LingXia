@@ -1652,6 +1652,17 @@ final class LxAppMacAppUIRuntime: NSObject {
             shell.beginManagedMainRename(surfaceId: surfaceId)
             return
         }
+        // Pin runs here so a full Pin grid can say so.
+        if action.owner == "lxapp", action.action == "pin" || action.action == "unpin" {
+            if let ownerAppId = graphOwnerAppId,
+               let appId = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId)?
+                   .items.first(where: { $0.surfaceId == surfaceId })?.content.appId,
+               shellSetPinned("lxapp", appId, action.action == "pin") == -1 {
+                showShellPinLimitAlert()
+            }
+            shell.refreshSidebarBookmarks()
+            return
+        }
         guard let ownerAppId = graphOwnerAppId,
               let previousSwitcher = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId),
               let result = SurfaceMenuBridge.perform(

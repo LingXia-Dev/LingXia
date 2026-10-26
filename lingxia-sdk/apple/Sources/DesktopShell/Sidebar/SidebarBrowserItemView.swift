@@ -2,7 +2,8 @@
 import AppKit
 
 /// A sidebar entry for a browser tab (36pt top-level row).
-/// Displays globe icon + page title + close button (selected tab only).
+/// Displays globe icon + page title, a "···" menu button on hover and a close
+/// button on the selected tab.
 @MainActor
 class SidebarBrowserItemView: NSView {
 
@@ -23,9 +24,12 @@ class SidebarBrowserItemView: NSView {
     private let iconView = NSImageView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let closeButton = NSButton()
+    private let moreButton = NSButton()
+    private let trailingControls = NSStackView()
 
     private var trackingArea: NSTrackingArea?
     private var closeTrackingArea: NSTrackingArea?
+    private var moreTrackingArea: NSTrackingArea?
     private(set) var isHovered = false
     var isSelected = false { didSet { updateAppearance() } }
 
@@ -92,7 +96,29 @@ class SidebarBrowserItemView: NSView {
         closeButton.isHidden = true
         closeButton.wantsLayer = true
         closeButton.layer?.cornerRadius = Layout.closeButtonSize / 2
-        addSubview(closeButton)
+
+        // "⋮": the same menu as a right-click, shown on hover; the lxapp
+        // group header's glyph.
+        moreButton.translatesAutoresizingMaskIntoConstraints = false
+        moreButton.image = SidebarGroupView.verticalEllipsisImage()
+        moreButton.isBordered = false
+        moreButton.bezelStyle = .regularSquare
+        moreButton.imagePosition = .imageOnly
+        moreButton.imageScaling = .scaleProportionallyDown
+        moreButton.contentTintColor = LxAppHostTheme.mutedForeground
+        moreButton.target = self
+        moreButton.action = #selector(moreClicked)
+        moreButton.isHidden = true
+        moreButton.wantsLayer = true
+        moreButton.layer?.cornerRadius = Layout.closeButtonSize / 2
+
+        trailingControls.translatesAutoresizingMaskIntoConstraints = false
+        trailingControls.orientation = .horizontal
+        trailingControls.spacing = 2
+        trailingControls.detachesHiddenViews = true
+        trailingControls.addArrangedSubview(moreButton)
+        trailingControls.addArrangedSubview(closeButton)
+        addSubview(trailingControls)
 
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: Layout.height),
@@ -109,12 +135,14 @@ class SidebarBrowserItemView: NSView {
 
             titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: Layout.iconTitleSpacing),
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -4),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingControls.leadingAnchor, constant: -4),
 
-            closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.trailingPadding),
-            closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            trailingControls.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.trailingPadding),
+            trailingControls.centerYAnchor.constraint(equalTo: centerYAnchor),
             closeButton.widthAnchor.constraint(equalToConstant: Layout.closeButtonSize),
             closeButton.heightAnchor.constraint(equalToConstant: Layout.closeButtonSize),
+            moreButton.widthAnchor.constraint(equalToConstant: Layout.closeButtonSize),
+            moreButton.heightAnchor.constraint(equalToConstant: Layout.closeButtonSize),
         ])
 
         updateAppearance()
@@ -141,6 +169,8 @@ class SidebarBrowserItemView: NSView {
 
     private func updateAppearance() {
         closeButton.isHidden = !isSelected
+        moreButton.isHidden = !isHovered || contextMenuProvider == nil
+        moreButton.contentTintColor = isSelected ? LxAppHostTheme.accent : LxAppHostTheme.mutedForeground
 
         // Only tint the icon when it's the globe SF symbol (contentTintColor nil = favicon, skip tinting)
         let isFavicon = iconView.contentTintColor == nil
@@ -171,15 +201,23 @@ class SidebarBrowserItemView: NSView {
         onClose?(browserId)
     }
 
+    @objc private func moreClicked() {
+        guard let menu = contextMenuProvider?(browserId) else { return }
+        menu.popUp(
+            positioning: nil,
+            at: NSPoint(x: 0, y: moreButton.bounds.maxY + 4),
+            in: moreButton
+        )
+    }
+
     // MARK: - Hit testing
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard !isHidden, frame.contains(point) else { return nil }
         let localPoint = convert(point, from: superview)
-        if !closeButton.isHidden {
-            let closePoint = convert(localPoint, to: closeButton)
-            if closeButton.bounds.contains(closePoint) {
-                return closeButton
+        for button in [closeButton, moreButton] where !button.isHidden {
+            if button.bounds.contains(convert(localPoint, to: button)) {
+                return button
             }
         }
         return self
@@ -220,6 +258,18 @@ class SidebarBrowserItemView: NSView {
         )
         closeButton.addTrackingArea(closeArea)
         closeTrackingArea = closeArea
+
+        if let existing = moreTrackingArea {
+            moreButton.removeTrackingArea(existing)
+        }
+        let moreArea = NSTrackingArea(
+            rect: moreButton.bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: ["zone": "more"]
+        )
+        moreButton.addTrackingArea(moreArea)
+        moreTrackingArea = moreArea
     }
 
     override func mouseEntered(with event: NSEvent) {
@@ -229,6 +279,8 @@ class SidebarBrowserItemView: NSView {
             updateAppearance()
         } else if zone == "close" {
             closeButton.layer?.backgroundColor = themeCGColor(LxAppHostTheme.foreground.withAlphaComponent(0.12))
+        } else if zone == "more" {
+            moreButton.layer?.backgroundColor = themeCGColor(LxAppHostTheme.foreground.withAlphaComponent(0.12))
         }
     }
 
@@ -237,9 +289,12 @@ class SidebarBrowserItemView: NSView {
         if zone == "item" {
             isHovered = false
             closeButton.layer?.backgroundColor = nil
+            moreButton.layer?.backgroundColor = nil
             updateAppearance()
         } else if zone == "close" {
             closeButton.layer?.backgroundColor = nil
+        } else if zone == "more" {
+            moreButton.layer?.backgroundColor = nil
         }
     }
 

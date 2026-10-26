@@ -235,11 +235,14 @@ fn resolve_url_surface_as_browser_tab(
     url: &str,
     data_mode: WebViewDataMode,
 ) -> Option<lingxia_platform::WindowsUrlSurfaceWebTag> {
+    // A tab moved in from the main area is reused as it is: no URL, so no
+    // load.
+    let adopted = request.browser_tab_id.as_deref();
     let tab_id = crate::browser::open_standalone_for_app(
         &request.app_id,
         request.owner_session_id,
-        url,
-        None,
+        if adopted.is_some() { "" } else { url },
+        adopted,
         data_mode,
         request.url_callback,
     )

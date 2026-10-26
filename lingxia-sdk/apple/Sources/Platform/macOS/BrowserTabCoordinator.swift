@@ -372,6 +372,36 @@ final class BrowserTabCoordinator: NSObject {
         host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
     }
 
+    /// Move a main-area tab into the side panel without reloading it: the main
+    /// browser lets go of the tab (a neighbour takes its place) before the
+    /// side panel takes the same WebView over. A tab backing a declared main
+    /// stays put. On refusal the tab is shown in the main browser again.
+    @discardableResult
+    func moveTabToSidePanel(id: String) -> Bool {
+        guard tabIds.contains(id), declaredSurfaceIds[id] == nil else { return false }
+        guard removeTabState(id: id, closeCoreTab: false) != nil else { return false }
+        if activeTabId == nil {
+            if let neighbour = tabIds.last {
+                switchToTab(id: neighbour)
+            } else {
+                hideBrowserView()
+                host?.forceHideNavigationToolbar(false)
+                if host?.browserDidLoseAllTabs() != true,
+                   let appId = host?.activeAppTabId() {
+                    host?.switchToLxAppTab(appId)
+                }
+            }
+        }
+        host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
+        refreshCompactBrowserBar()
+        guard !moveBrowserTabToSidePanel(tabIdString(id)).toString().isEmpty else {
+            presentInternalBrowserTab(id: id)
+            host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
+            return false
+        }
+        return true
+    }
+
     /// Reconcile shell-owned browser chrome after the Rust tab registry changes
     /// through another control path (for example lxdev automation). Shell-originated
     /// mutations also emit this callback, but arrive after local state was updated
@@ -529,6 +559,7 @@ final class BrowserTabCoordinator: NSObject {
     func openDockedAsideTab(
         surfaceId: String,
         url: String,
+        adoptedBrowserTabId: String? = nil,
         ephemeralWebData: Bool,
         urlCallback: Bool,
         onCloseTab: @escaping (String) -> Void,
@@ -538,6 +569,7 @@ final class BrowserTabCoordinator: NSObject {
             if existing.addOrFocusTab(
                 surfaceId: surfaceId,
                 url: url,
+                adoptedBrowserTabId: adoptedBrowserTabId,
                 ephemeralWebData: ephemeralWebData,
                 urlCallback: urlCallback) {
                 return (existing, false)
@@ -556,6 +588,7 @@ final class BrowserTabCoordinator: NSObject {
             owner: owner,
             surfaceId: surfaceId,
             url: url,
+            adoptedBrowserTabId: adoptedBrowserTabId,
             ephemeralWebData: ephemeralWebData,
             urlCallback: urlCallback,
             onCloseTab: onCloseTab,
