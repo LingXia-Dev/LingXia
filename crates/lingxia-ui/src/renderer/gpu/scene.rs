@@ -59,6 +59,18 @@ pub(crate) struct Segment {
 /// Each pass reloads the full target, so many spans cost more than one full encode.
 const MAX_SPANS: usize = 8;
 
+/// Static commands that cost less to encode again each frame than a pass of their own.
+fn cheap(commands: &[Paint]) -> bool {
+    let glyphs: usize = commands
+        .iter()
+        .map(|paint| match paint {
+            Paint::Text { glyphs, .. } => glyphs.len(),
+            _ => 0,
+        })
+        .sum();
+    commands.len() <= 24 && glyphs <= 48
+}
+
 /// Split a frame at its animated spans so commands outside them keep their scenes. A
 /// boundary never sits inside an opacity or backdrop group: a span inside one widens to
 /// the outermost group, since a group's pixels only combine correctly in one scene.
@@ -96,7 +108,9 @@ fn segments(display: &DisplayList) -> Option<Vec<Segment>> {
             range = range.start.min(group)..range.end.max(group_end[&group] + 1);
         }
         match ranges.last_mut() {
-            Some(last) if range.start <= last.end => last.end = last.end.max(range.end),
+            Some(last) if range.start <= last.end || cheap(&commands[last.end..range.start]) => {
+                last.end = last.end.max(range.end)
+            }
             _ if range.is_empty() => {}
             _ => ranges.push(range),
         }
@@ -446,6 +460,37 @@ mod tests {
         assert!(!cache.prepare(&display, &mut glyphs).unwrap());
         assert_eq!(cache.scenes().count(), 1);
         assert!(cache.segments.is_empty());
+    }
+
+    #[test]
+    fn spans_split_by_a_few_static_paints_share_one_pass() {
+        let module = crate::session::tests::source(
+            "function render(){return h('column',{style:{width:96,height:96}},h('text',{},'Before'),h('column',{testId:'a',style:{width:10,height:10,backgroundColor:'#00ff00'}}),h('column',{style:{width:10,height:10,backgroundColor:'#000000'}}),h('column',{testId:'b',style:{width:10,height:10,backgroundColor:'#0000ff'}}),h('text',{},'After'))}",
+        );
+        let mut page = crate::ViewSession::new(&module).unwrap();
+        let display = page.layout(96, 96, 1.0).unwrap();
+        let visuals = display
+            .nodes
+            .iter()
+            .filter(|n| n.test_id == "a" || n.test_id == "b")
+            .map(|n| {
+                let visual = Visual {
+                    transforms: vec![Transform::Rotate(20.0)],
+                    ..Default::default()
+                };
+                (n.identity.clone(), visual)
+            })
+            .collect::<BTreeMap<_, _>>();
+        let frame = display
+            .retained
+            .compose_animated(&HashMap::new(), &visuals)
+            .unwrap();
+        assert_eq!(frame.animated_spans().len(), 2);
+        let plan = segments(&frame).unwrap();
+        assert_eq!(
+            plan.iter().map(|s| s.animated).collect::<Vec<_>>(),
+            [false, true, false]
+        );
     }
 
     #[test]
