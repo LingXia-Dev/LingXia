@@ -114,7 +114,8 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
             request_leave
         ),
         method!("nativeConnection", "(J)J", connection),
-        method!("nativeSessionFailed", "(J)Z", session_failed),
+        method!("nativeInputBlocked", "(J)Z", input_blocked),
+        method!("nativeWindowFocus", "(JZ)V", window_focus),
         method!("nativeBridgeReady", "(J)Z", bridge_ready),
         method!("nativeFail", "(JLjava/lang/String;)V", fail),
         method!(
@@ -373,12 +374,24 @@ extern "system" fn frame_current<'a>(
     run(&mut env, |_| Ok(host(handle)?.frame_is_current()))
 }
 
-extern "system" fn session_failed<'a>(
+extern "system" fn window_focus<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    focused: jboolean,
+) {
+    run(&mut env, |_| {
+        host(handle)?.window_focus(focused);
+        Ok(())
+    })
+}
+
+extern "system" fn input_blocked<'a>(
     mut env: EnvUnowned<'a>,
     _: JClass<'a>,
     handle: jlong,
 ) -> jboolean {
-    run(&mut env, |_| Ok(host(handle)?.lifecycle().session_failed()))
+    run(&mut env, |_| Ok(host(handle)?.input_blocked()))
 }
 
 extern "system" fn bridge_ready<'a>(

@@ -449,6 +449,12 @@ impl<A: PlatformAdapter> ViewHost<A> {
         handled
     }
 
+    /// After a session failure the page takes no input at all, platform gestures
+    /// (refresh, selection handles) included, until it reloads.
+    pub fn input_blocked(&self) -> bool {
+        self.inner.lifecycle.session_failed()
+    }
+
     /// The window gained or lost input focus; losing it ends every gesture in flight.
     pub fn window_focus(&self, focused: bool) {
         if !focused {

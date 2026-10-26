@@ -104,7 +104,6 @@ final class GpuAccessibility {
         }
         if (GpuSemantics.ROLE_DIALOG.equals(role)) {
             if (Build.VERSION.SDK_INT >= 28 && !name.isEmpty()) info.setPaneTitle(name);
-            info.setClickable(false);
         }
         String live = node.optString(GpuSemantics.KEY_LIVE_REGION);
         if (GpuSemantics.LIVE_POLITE.equals(live)) info.setLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);

@@ -51,7 +51,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native void nativeReceive(long host, long connection, String frame);
     static native void nativeRequestLeave(long host, long connection, String reason);
     static native long nativeConnection(long host);
-    static native boolean nativeSessionFailed(long host);
+    static native boolean nativeInputBlocked(long host);
+    static native void nativeWindowFocus(long host, boolean focused);
     static native boolean nativeBridgeReady(long host);
     /** A platform-detected failure; the host classifies it and shows recovery. */
     static native void nativeFail(long host, String error);
@@ -357,7 +358,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     @Override public void onWindowFocusChanged(boolean focused) {
         super.onWindowFocusChanged(focused);
         if (ime != null) {
-            if (!focused) { surface.cancelRefreshGesture(); cancel(); }
+            if (!focused) surface.cancelRefreshGesture();
+            if (!destroyed) nativeWindowFocus(host, focused);
             updateCaretActivity();
         }
     }
@@ -923,7 +925,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
         }
         @Override public boolean onTouchEvent(MotionEvent event) {
-            if (destroyed || !active || nativeSessionFailed(host)) return false;
+            if (destroyed || !active || nativeInputBlocked(host)) return false;
             if (staticSelection.touch(event)) {
                 cancel();
                 getParent().requestDisallowInterceptTouchEvent(staticSelection.dragging());
@@ -973,7 +975,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             return ime == null ? null : ime.create(info);
         }
         @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
-            if (destroyed || nativeSessionFailed(host)) return super.onKeyDown(keyCode, event);
+            if (destroyed || nativeInputBlocked(host)) return super.onKeyDown(keyCode, event);
             if (ime.hasFocus() && keyCode != KeyEvent.KEYCODE_TAB) return ime.key(event) || super.onKeyDown(keyCode, event);
             if (ime.hasFocus()) ime.clear(true);
             int key = key(keyCode);
@@ -981,7 +983,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             return super.onKeyDown(keyCode, event);
         }
         @Override public boolean onKeyShortcut(int keyCode, KeyEvent event) {
-            if (destroyed || nativeSessionFailed(host)) return super.onKeyShortcut(keyCode, event);
+            if (destroyed || nativeInputBlocked(host)) return super.onKeyShortcut(keyCode, event);
             return ime.hasFocus() ? ime.key(event) : super.onKeyShortcut(keyCode, event);
         }
         @Override protected void onFocusChanged(boolean focused, int direction, Rect previouslyFocusedRect) {
