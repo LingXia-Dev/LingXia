@@ -224,7 +224,10 @@ fn broker_name() -> std::io::Result<Name<'static>> {
 
 #[cfg(windows)]
 fn windows_broker_name(user_sid: &str) -> String {
-    format!("lingxia-dev-broker-{user_sid}")
+    match instance() {
+        Some(instance) => format!("lingxia-dev-broker-{user_sid}-{instance}"),
+        None => format!("lingxia-dev-broker-{user_sid}"),
+    }
 }
 
 #[cfg(windows)]
@@ -284,6 +287,40 @@ impl Drop for OwnedHandle {
     }
 }
 
+/// Names a private broker beside the user's default one, so a second CLI build (an export,
+/// another checkout) neither replaces nor joins the default broker.
+pub const INSTANCE_ENV: &str = "LINGXIA_RUNNER_INSTANCE";
+
+fn instance() -> Option<String> {
+    std::env::var(INSTANCE_ENV)
+        .ok()
+        .and_then(|value| instance_suffix(&value))
+}
+
+/// `value` reduced to a file- and pipe-safe suffix; `None` when empty.
+fn instance_suffix(value: &str) -> Option<String> {
+    let suffix: String = value
+        .trim()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .take(64)
+        .collect();
+    (!suffix.is_empty()).then_some(suffix)
+}
+
+fn socket_file(instance: Option<&str>) -> String {
+    match instance {
+        Some(instance) => format!("broker-{instance}.sock"),
+        None => "broker.sock".into(),
+    }
+}
+
 #[cfg(unix)]
 fn socket_path() -> std::io::Result<PathBuf> {
     let home = std::env::var_os("HOME")
@@ -291,7 +328,7 @@ fn socket_path() -> std::io::Result<PathBuf> {
         .ok_or_else(|| std::io::Error::other("HOME not set"))?;
     let dir = home.join(".lingxia");
     std::fs::create_dir_all(&dir)?;
-    Ok(dir.join("broker.sock"))
+    Ok(dir.join(socket_file(instance().as_deref())))
 }
 
 fn write_json<W: Write, T: Serialize>(w: &mut W, value: &T) -> std::io::Result<()> {
@@ -623,6 +660,17 @@ pub fn register_session(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn an_instance_gets_its_own_broker_and_none_keeps_the_default() {
+        assert_eq!(socket_file(None), "broker.sock");
+        assert_eq!(instance_suffix("  "), None);
+        assert_eq!(instance_suffix("gpu-agent_2"), Some("gpu-agent_2".into()));
+        assert_eq!(instance_suffix("a/b c.d"), Some("a-b-c-d".into()));
+        assert_eq!(instance_suffix(&"x".repeat(100)).unwrap().len(), 64);
+        assert_eq!(socket_file(Some("gpu")), "broker-gpu.sock");
+    }
+
     use super::*;
 
     fn session(id: &str) -> SessionInfo {

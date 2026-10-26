@@ -47,6 +47,11 @@ struct Cli {
     #[arg(long, global = true, value_name = "SESSION")]
     session: Option<String>,
 
+    /// Use the dev broker of this instance (`LINGXIA_RUNNER_INSTANCE`), as the
+    /// `lingxia dev` that started the session did
+    #[arg(long, global = true, value_name = "NAME")]
+    instance: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -166,6 +171,15 @@ fn run() -> Result<()> {
     let argv = test_preset::carry_last_failed(std::env::args_os().collect(), &cwd);
     let argv = test_preset::expand(argv, &cwd)?;
     let cli = Cli::try_parse_from(&argv)?;
+    if let Some(instance) = &cli.instance {
+        // SAFETY: set before any broker connection or worker thread starts.
+        unsafe {
+            std::env::set_var(
+                lingxia_control_protocol::dev_session::broker::INSTANCE_ENV,
+                instance,
+            )
+        };
+    }
     let selector = SessionSelector {
         query: cli.session.or_else(|| std::env::var("LXDEV_SESSION").ok()),
     };

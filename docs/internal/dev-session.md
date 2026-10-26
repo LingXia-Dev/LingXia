@@ -21,6 +21,11 @@ an older `lingxia` is replaced before a new session registers (its sessions
 re-register), and a session that cannot register under its `--name` fails to
 start instead of running unnamed.
 
+`LINGXIA_RUNNER_INSTANCE` gives a CLI build its own broker (`~/.lingxia/broker-<instance>.sock`, or a
+suffixed pipe on Windows): sessions of an export or second checkout register there, the build check
+replaces only that broker, and `lxdev` reaches them with the same variable or `--instance <name>`.
+Without it every build shares the default broker, and a different build replaces it.
+
 Printed hints (a failed spec's `Rerun:` line, the stop command) never carry a
 session id: they omit `--session` when not needed and otherwise use the name
 or target.
