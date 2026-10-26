@@ -449,10 +449,13 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         }
         if (bootstrapMessage != null) return;
         bootstrapMessage = new TextView(getContext());
-        bootstrapMessage.setText("This page is taking longer to load. You can go back and try again.");
-        bootstrapMessage.setTextColor(android.graphics.Color.BLACK);
-        bootstrapMessage.setBackgroundColor(android.graphics.Color.WHITE);
-        bootstrapMessage.setPadding(32, 48, 32, 32);
+        bootstrapMessage.setText(com.lingxia.lxapp.R.string.lx_gpu_bootstrap_overdue);
+        // The core picks the notice colours for the page's theme; before any frame, the light pair.
+        JSONObject style = snapshot == null ? null : snapshot.optJSONObject("feedback");
+        bootstrapMessage.setTextColor(style == null ? android.graphics.Color.BLACK : (int)style.optLong("noticeText"));
+        bootstrapMessage.setBackgroundColor(style == null ? android.graphics.Color.WHITE : (int)style.optLong("noticeBackground"));
+        int padding = Math.round(16 * getResources().getDisplayMetrics().density);
+        bootstrapMessage.setPadding(padding, padding, padding, padding);
         bootstrapMessage.setClickable(true);
         bootstrapSurfaceImportance = surface.getImportantForAccessibility();
         surface.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);

@@ -174,4 +174,22 @@ public class GpuViewEnvironmentTest {
         assertEquals(0, errors[0]);
         view.dispose();
     }
+    /** The overdue notice is localized and takes its colours from the frame's feedback style. */
+    @Test public void overdueNoticeIsLocalizedAndThemedByTheFrame() throws Exception {
+        GpuView view = new GpuView(RuntimeEnvironment.getApplication(), "", "test:environment", null);
+        java.lang.reflect.Field snapshot = GpuView.class.getDeclaredField("snapshot");
+        snapshot.setAccessible(true);
+        snapshot.set(view, new JSONObject().put("feedback", new JSONObject().put("noticeText", 0xFFFFFFFFL).put("noticeBackground", 0xFF202226L)));
+        Method show = GpuView.class.getDeclaredMethod("showBootstrapMessage", boolean.class);
+        show.setAccessible(true);
+        show.invoke(view, true);
+        android.widget.TextView notice = null;
+        for (int i = 0; i < view.getChildCount(); i++)
+            if (view.getChildAt(i) instanceof android.widget.TextView) notice = (android.widget.TextView)view.getChildAt(i);
+        assertNotNull(notice);
+        assertEquals(RuntimeEnvironment.getApplication().getString(com.lingxia.lxapp.R.string.lx_gpu_bootstrap_overdue), notice.getText().toString());
+        assertEquals(0xFFFFFFFF, notice.getCurrentTextColor());
+        assertEquals(0xFF202226, ((android.graphics.drawable.ColorDrawable)notice.getBackground()).getColor());
+        view.dispose();
+    }
 }

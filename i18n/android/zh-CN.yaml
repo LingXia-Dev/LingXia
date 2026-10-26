@@ -34,3 +34,5 @@ gpu:
   a11y_link: "链接"
   # Appended to a GPU page element that reports itself busy (aria-busy).
   a11y_busy: "忙碌"
+  # Shown over a GPU page whose first frame is overdue.
+  bootstrap_overdue: "页面加载时间较长，你可以返回后重试。"
