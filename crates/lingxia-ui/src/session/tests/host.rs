@@ -39,6 +39,8 @@ struct Log {
     /// `hold_surface` of each reveal.
     revealed: Vec<bool>,
     copied: Vec<String>,
+    /// Edits offered to the input method and what it answered.
+    edits: Vec<(Effect, EditOutcome)>,
     menus: Vec<Option<crate::session::host::TextMenu>>,
     /// Threads that ran main-thread callbacks.
     main: Vec<ThreadId>,
@@ -53,6 +55,8 @@ struct Fake {
     restart: bool,
     /// A target still attaching: frames are declined, never produced some other way.
     pending: std::sync::atomic::AtomicBool,
+    /// Answers to the next `edit_text` calls; `Applied` once they run out.
+    edit_outcomes: Mutex<std::collections::VecDeque<EditOutcome>>,
 }
 
 impl Fake {
@@ -151,6 +155,24 @@ impl InputMethod for Fake {
     }
     fn activation(&self) {}
     fn reset(&self) {}
+    fn edit_text(&self, node: usize, text: Option<&str>, start: i32, end: i32) -> EditOutcome {
+        let outcome = self
+            .edit_outcomes
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(EditOutcome::Applied);
+        self.main().edits.push((
+            Effect::EditText {
+                node,
+                text: text.map(str::to_owned),
+                start,
+                end,
+            },
+            outcome,
+        ));
+        outcome
+    }
 }
 impl Feedback for Fake {
     fn apply(&self, effects: &[Effect]) {
@@ -238,6 +260,7 @@ impl Platform {
                 })),
                 restart: false,
                 pending: Default::default(),
+                edit_outcomes: Default::default(),
             },
             worker.clone(),
             logic,
@@ -1560,9 +1583,9 @@ fn sent_edits(host: &ViewHost<Fake>) -> Vec<Option<String>> {
         .log
         .lock()
         .unwrap()
-        .effects
+        .edits
         .iter()
-        .filter_map(|effect| match effect {
+        .filter_map(|(effect, _)| match effect {
             Effect::EditText { text, .. } => Some(text.clone()),
             _ => None,
         })
@@ -1584,10 +1607,16 @@ fn edits_for_two_editors_reach_the_platform_one_at_a_time() {
     platform.settle(&[&host]);
     let fill = |id: &str, text: &str| {
         let request = serde_json::json!({"op": "act", "css": format!("[data-testid=\"{id}\"]"), "action": {"kind": "fill", "text": text}});
-        host.automation_request(&request).unwrap();
+        host.automation_request(&request)
     };
-    fill("amount", "12");
-    fill("code", "ABC");
+    // As on a cold start: the second editor is still connecting when its edit arrives.
+    host.adapter()
+        .edit_outcomes
+        .lock()
+        .unwrap()
+        .extend([EditOutcome::Applied, EditOutcome::NotReady]);
+    fill("amount", "12").unwrap();
+    fill("code", "ABC").unwrap();
     assert_eq!(
         sent_edits(&host),
         [Some("12".to_owned())],
@@ -1615,36 +1644,64 @@ fn edits_for_two_editors_reach_the_platform_one_at_a_time() {
         [Some("12".to_owned()), Some("ABC".to_owned())],
         "the frame showing the first releases the second"
     );
-    // The platform dropped "ABC" (its editor was still connecting, as on a cold start):
-    // the edit is sent again rather than lost, and the next waits behind it.
-    fill("amount", "7");
-    assert_eq!(sent_edits(&host).len(), 2);
-    platform.advance(Duration::from_millis(500));
-    assert_eq!(sent_edits(&host).last().unwrap().as_deref(), Some("ABC"));
-    let (identity, generation) = {
-        let snapshot = host.snapshot().unwrap();
-        (
-            snapshot.frame.nodes[2].identity.clone(),
-            snapshot.generation.get(),
-        )
-    };
-    let (replied, reply) = channel();
-    let focus = serde_json::json!({"op": "focus", "identity": identity, "generation": generation});
-    host.input(focus.to_string(), move |r| replied.send(r).unwrap());
-    platform.settle(&[&host]);
-    let focused: serde_json::Value =
-        serde_json::from_str(&reply.try_recv().unwrap().unwrap()).unwrap();
-    let applied = serde_json::json!({
-        "op": "edit", "identity": identity, "token": focused["token"], "submit": false,
-        "edits": [{"op": "replace", "text": "ABC", "cursor": 1, "composing": false}],
-    });
-    host.input(applied.to_string(), |_| {});
-    platform.settle(&[&host]);
-    host.request_frame();
-    platform.settle(&[&host]);
+    // Not ready: offered again shortly, without waiting out an applied edit's patience.
+    platform.advance(Duration::from_millis(50));
     assert_eq!(
-        sent_edits(&host).last().unwrap().as_deref(),
-        Some("7"),
-        "once \"ABC\" shows, the next edit goes"
+        sent_edits(&host),
+        [
+            Some("12".to_owned()),
+            Some("ABC".to_owned()),
+            Some("ABC".to_owned())
+        ]
+    );
+    let outcomes: Vec<EditOutcome> = host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .edits
+        .iter()
+        .map(|(_, o)| *o)
+        .collect();
+    assert_eq!(
+        outcomes,
+        [
+            EditOutcome::Applied,
+            EditOutcome::NotReady,
+            EditOutcome::Applied
+        ]
+    );
+}
+
+#[test]
+fn an_edit_the_platform_cannot_apply_fails_its_caller() {
+    use crate::interaction::view::AccessibilityAction;
+    let worker = ViewWorker::spawn("test-edit-failed").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){const a=useLocal('a','');return h('input',{testId:'amount',bind:a})}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    host.adapter()
+        .edit_outcomes
+        .lock()
+        .unwrap()
+        .push_back(EditOutcome::Failed);
+    let id = host.semantics(|projection, _| projection.unwrap().ids.id(0).unwrap());
+    assert!(!host.accessibility(id, AccessibilityAction::SetText("12".into())));
+    host.adapter()
+        .edit_outcomes
+        .lock()
+        .unwrap()
+        .push_back(EditOutcome::Failed);
+    let request = serde_json::json!({"op": "act", "css": "[data-testid=\"amount\"]", "action": {"kind": "fill", "text": "7"}});
+    let failed = host.automation_request(&request).unwrap_err();
+    assert!(failed.contains("refused the edit"), "{failed}");
+    assert!(
+        host.accessibility(id, AccessibilityAction::SetText("9".into())),
+        "a later edit goes through"
     );
 }

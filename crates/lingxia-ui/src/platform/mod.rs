@@ -88,6 +88,20 @@ pub trait InputMethod {
     fn activation(&self);
     /// The page instance ended; drop the connection without blurring.
     fn reset(&self);
+    /// Apply an accessibility or automation edit to `node`'s editor: replace its
+    /// text, or with `text` absent select `start..end` (-1, -1: the end).
+    fn edit_text(&self, node: usize, text: Option<&str>, start: i32, end: i32) -> EditOutcome;
+}
+
+/// What became of an [`InputMethod::edit_text`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EditOutcome {
+    /// Accepted; it shows in a coming frame.
+    Applied,
+    /// The editor is still connecting; the core sends it again shortly.
+    NotReady,
+    /// It can never apply (not editable, invalid text or range).
+    Failed,
 }
 
 /// Pressed/focus feedback, haptics, gesture claims and fling physics.

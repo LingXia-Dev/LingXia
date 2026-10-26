@@ -128,20 +128,26 @@ final class GpuIme {
         });
         return true;
     }
-    boolean accessibilityEdit(JSONObject node,long generation,String text,int start,int end) {
-        if (!caretActive || !editable(node) || pendingFocus) return false;
+    /** `GpuPlatform.editText` codes: the core resends a not-ready edit and fails its caller on a failed one. */
+    static final int EDIT_APPLIED=0, EDIT_NOT_READY=1, EDIT_FAILED=2;
+    int accessibilityEdit(JSONObject node,long generation,String text,int start,int end) {
+        if (!editable(node)) return EDIT_FAILED;
+        if (!caretActive || pendingFocus) return EDIT_NOT_READY;
         boolean current=connection != null && connection.identity.equals(node.optString("identity"));
         String value=current ? menuText() : node.optJSONObject("input").optString("value");
         if (text == null && start == -1 && end == -1) start=end=current ? connection.focus() : value.length();
         if (text != null ? !GpuInputConnection.validText(text)
-            : !GpuInputConnection.boundary(value,start) || !GpuInputConnection.boundary(value,end)) return false;
-       
-        if (current) return text != null ? replaceAccessibilityText(connection,text) : connection.selectFromTouch(start,end);
+            : !GpuInputConnection.boundary(value,start) || !GpuInputConnection.boundary(value,end)) return EDIT_FAILED;
+        if (current) {
+            // The mirror refuses only while its edit queue is full.
+            boolean applied=text != null ? replaceAccessibilityText(connection,text) : connection.selectFromTouch(start,end);
+            return applied ? EDIT_APPLIED : EDIT_NOT_READY;
+        }
         final int anchor=start,focus=end;
         focus(node,generation,null,editor -> {
             if (text != null) editor.replaceAll(text); else editor.selectFromTouch(anchor,focus);
         });
-        return true;
+        return EDIT_APPLIED;
     }
     private boolean replaceAccessibilityText(GpuInputConnection editor,String text) {
         if (!editor.replaceAll(text)) return false;

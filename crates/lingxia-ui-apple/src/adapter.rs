@@ -178,6 +178,9 @@ impl InputMethod for AppleAdapter {
     fn focus(&self, _: &Dispatch, _: &FrameSnapshot) {}
     fn activation(&self) {}
     fn reset(&self) {}
+    fn edit_text(&self, _: usize, _: Option<&str>, _: i32, _: i32) -> EditOutcome {
+        EditOutcome::Failed
+    }
 }
 
 impl Feedback for AppleAdapter {
