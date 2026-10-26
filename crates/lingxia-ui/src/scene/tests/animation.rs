@@ -290,3 +290,61 @@ fn a_transitioning_background_is_painted_on_a_node_that_has_none() {
     assert_eq!(at(0, 0), [255, 255, 255, 255]);
     assert_eq!(at(30, 30), [255, 255, 255, 255]);
 }
+
+#[test]
+fn animated_subtrees_are_self_contained_spans_and_the_rest_is_unchanged() {
+    use crate::scene::paint::Paint;
+    let mut page = crate::ViewSession::new(&crate::session::tests::source(
+        "function render(){return h('column',{style:{backgroundColor:'#ffffff',width:100,height:100,opacity:0.9}},h('column',{style:{height:20,backgroundColor:'#ff0000'}}),h('column',{testId:'spin',style:{width:20,height:20,opacity:0.5,backgroundColor:'#00ff00'}},h('column',{testId:'inner',style:{width:10,height:10,backgroundColor:'#0000ff'}})),h('column',{style:{height:20,backgroundColor:'#000000'}}))}",
+    ))
+    .unwrap();
+    let display = page.layout(100, 100, 1.0).unwrap();
+    let spin = display
+        .nodes
+        .iter()
+        .position(|n| n.test_id == "spin")
+        .unwrap();
+    let inner = display
+        .nodes
+        .iter()
+        .position(|n| n.test_id == "inner")
+        .unwrap();
+    let frame = |angle: f64| {
+        let visual = |angle| Visual {
+            transforms: vec![Transform::Rotate(angle)],
+            ..Default::default()
+        };
+        let visuals = BTreeMap::from([
+            (display.nodes[spin].identity.clone(), visual(angle)),
+            (display.nodes[inner].identity.clone(), visual(-angle)),
+        ]);
+        display
+            .retained
+            .compose_animated(&HashMap::new(), &visuals)
+            .unwrap()
+    };
+    let (a, b) = (frame(10.0), frame(40.0));
+    assert_eq!(
+        a.animated_spans().len(),
+        1,
+        "nested visuals share the outer span"
+    );
+    let (sa, sb) = (&a.animated_spans()[0], &b.animated_spans()[0]);
+    assert_eq!(sa.identity, display.nodes[spin].identity);
+    assert!(a.commands[..sa.commands.start] == b.commands[..sb.commands.start]);
+    assert!(a.commands[sa.commands.end..] == b.commands[sb.commands.end..]);
+    assert!(a.commands[sa.commands.clone()] != b.commands[sb.commands.clone()]);
+    let mut depth = 0i32;
+    for paint in &a.commands[sa.commands.clone()] {
+        match paint {
+            Paint::Clip(_) | Paint::Opacity { .. } | Paint::Backdrop { .. } => depth += 1,
+            Paint::PopClip | Paint::PopOpacity | Paint::PopBackdrop => depth -= 1,
+            _ => {}
+        }
+        assert!(depth >= 0);
+    }
+    assert_eq!(depth, 0, "a span's layers balance inside it");
+    assert!(matches!(a.commands[sa.commands.end], Paint::Transform(_)));
+    let none = display.retained.compose(&HashMap::new()).unwrap();
+    assert!(none.animated_spans().is_empty());
+}

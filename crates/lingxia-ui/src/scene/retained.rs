@@ -277,8 +277,57 @@ impl RetainedLayout {
                 });
             }
         }
+        // Outermost animated subtrees become self-contained command spans: they open from
+        // and close back to the parent's layers, so everything outside them is unchanged
+        // between animation frames.
+        let mut subtree_end = vec![0usize; count];
+        let mut spans = Vec::new();
+        let mut open: Option<(usize, usize, usize)> = None;
+        if !visuals.is_empty() {
+            let mut sizes = vec![1usize; count];
+            for index in (0..count).rev() {
+                if let Some(parent) = self.parents[index].filter(|p| *p < index) {
+                    sizes[parent] += sizes[index];
+                }
+            }
+            for (position, &index) in self.order.iter().enumerate() {
+                subtree_end[index] = position + sizes[index];
+            }
+        }
+        let close = |commands: &mut Vec<Paint>,
+                     active_layers: &mut Vec<Paint>,
+                     child_layers: &[Vec<Paint>],
+                     spans: &mut Vec<AnimatedSpan>,
+                     (root, start, _): (usize, usize, usize)| {
+            let parent_layers = self.parents[root]
+                .map(|p| child_layers[p].clone())
+                .unwrap_or_default();
+            sync_layers(commands, active_layers, parent_layers.clone());
+            if commands.len() > start {
+                spans.push(AnimatedSpan {
+                    identity: self.nodes[root].identity.clone(),
+                    commands: start..commands.len(),
+                });
+            }
+            commands.push(Paint::Transform(last_transform(&parent_layers)));
+        };
         for (position, &index) in self.order.iter().enumerate() {
+            if let Some(span) = open.filter(|(_, _, end)| position >= *end) {
+                close(
+                    &mut commands,
+                    &mut active_layers,
+                    &child_layers,
+                    &mut spans,
+                    span,
+                );
+                open = None;
+            }
             let parent = self.parents[index];
+            if open.is_none() && visuals.contains_key(&self.nodes[index].identity) {
+                let parent_layers = parent.map(|p| child_layers[p].clone()).unwrap_or_default();
+                sync_layers(&mut commands, &mut active_layers, parent_layers);
+                open = Some((index, commands.len(), subtree_end[index]));
+            }
             let mut translation = parent.map(|p| translations[p]).unwrap_or([0.0; 2]);
             if let Some(sticky) = &self.stickies[index] {
                 // The scroll is composed already; its content box is the sticky viewport.
@@ -799,38 +848,7 @@ impl RetainedLayout {
             if painted.is_empty() && self.backdrops[index].is_none() {
                 continue;
             }
-            let shared = active_layers
-                .iter()
-                .zip(&desired)
-                .take_while(|(a, b)| a == b)
-                .count();
-            let mut left_transform = false;
-            for layer in active_layers[shared..].iter().rev() {
-                if matches!(layer, Paint::Transform(_)) {
-                    left_transform = true;
-                    continue;
-                }
-                commands.push(match layer {
-                    Paint::Opacity { .. } => Paint::PopOpacity,
-                    Paint::Backdrop { .. } => Paint::PopBackdrop,
-                    _ => Paint::PopClip,
-                });
-            }
-            // Transforms are set, not pushed: leaving one restores the shared ancestor's,
-            // which may compare equal to a sibling's and so is not in `desired[shared..]`.
-            if left_transform {
-                let restored = desired[..shared]
-                    .iter()
-                    .rev()
-                    .find_map(|layer| match layer {
-                        Paint::Transform(matrix) => Some(*matrix),
-                        _ => None,
-                    })
-                    .unwrap_or(Affine::IDENTITY);
-                commands.push(Paint::Transform(restored));
-            }
-            commands.extend_from_slice(&desired[shared..]);
-            active_layers = desired;
+            sync_layers(&mut commands, &mut active_layers, desired);
             let shadows = painted
                 .iter()
                 .take_while(|p| matches!(p, Paint::Shadow { .. } | Paint::RasterShadow { .. }))
@@ -890,6 +908,15 @@ impl RetainedLayout {
                 commands.push(Paint::PopClip);
             }
         }
+        if let Some(span) = open {
+            close(
+                &mut commands,
+                &mut active_layers,
+                &child_layers,
+                &mut spans,
+                span,
+            );
+        }
         for layer in active_layers.iter().rev() {
             if matches!(layer, Paint::Transform(_)) {
                 continue;
@@ -941,6 +968,7 @@ impl RetainedLayout {
             }
         }
         Ok(DisplayList {
+            animated: spans,
             images: HashMap::new(),
             commands,
             input_paints,
@@ -953,6 +981,45 @@ impl RetainedLayout {
             retained: Arc::clone(self),
         })
     }
+}
+
+/// Pop and push from the active layer stack to `desired`.
+fn sync_layers(commands: &mut Vec<Paint>, active_layers: &mut Vec<Paint>, desired: Vec<Paint>) {
+    let shared = active_layers
+        .iter()
+        .zip(&desired)
+        .take_while(|(a, b)| a == b)
+        .count();
+    let mut left_transform = false;
+    for layer in active_layers[shared..].iter().rev() {
+        if matches!(layer, Paint::Transform(_)) {
+            left_transform = true;
+            continue;
+        }
+        commands.push(match layer {
+            Paint::Opacity { .. } => Paint::PopOpacity,
+            Paint::Backdrop { .. } => Paint::PopBackdrop,
+            _ => Paint::PopClip,
+        });
+    }
+    // Transforms are set, not pushed: leaving one restores the shared ancestor's,
+    // which may compare equal to a sibling's and so is not in `desired[shared..]`.
+    if left_transform {
+        commands.push(Paint::Transform(last_transform(&desired[..shared])));
+    }
+    commands.extend_from_slice(&desired[shared..]);
+    *active_layers = desired;
+}
+
+fn last_transform(layers: &[Paint]) -> Affine {
+    layers
+        .iter()
+        .rev()
+        .find_map(|layer| match layer {
+            Paint::Transform(matrix) => Some(*matrix),
+            _ => None,
+        })
+        .unwrap_or(Affine::IDENTITY)
 }
 
 /// Depth-first paint order with siblings stably sorted by z-index, then CSS
