@@ -860,6 +860,10 @@ impl Renderer {
                     Some("fill") => crate::scene::image::Fit::Fill,
                     _ => crate::scene::image::Fit::Cover,
                 };
+                let position = record
+                    .string(field::IMAGE_POSITION)
+                    .and_then(crate::protocol::image_position)
+                    .unwrap_or([0.5, 0.5]);
                 // A small stand-in, scaled smooth, shows until the image covers it.
                 if let Some(placeholder) = record.string(field::IMAGE_PLACEHOLDER) {
                     commands.push(Paint::Image {
@@ -867,6 +871,7 @@ impl Renderer {
                         bounds: control_bounds,
                         radius: if content_clip.is_some() { 0.0 } else { radius },
                         fit,
+                        position,
                     });
                 }
                 commands.push(Paint::Image {
@@ -877,6 +882,7 @@ impl Renderer {
                     bounds: control_bounds,
                     radius: if content_clip.is_some() { 0.0 } else { radius },
                     fit,
+                    position,
                 });
             }
             input_layouts.push(

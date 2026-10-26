@@ -746,6 +746,7 @@ impl RetainedLayout {
                         bounds,
                         radius,
                         fit,
+                        position,
                     } => {
                         let mut bounds = *bounds;
                         bounds[0] -= translation[0];
@@ -760,6 +761,7 @@ impl RetainedLayout {
                                 bounds,
                                 radius: *radius,
                                 fit: *fit,
+                                position: *position,
                             });
                         }
                     }

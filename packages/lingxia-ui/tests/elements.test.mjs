@@ -34,6 +34,18 @@ test('image sources and fits are validated; objectFit is image and vector style'
   throwsOn(() => h('text', { style: { objectFit: 'cover' } }, 'x'), /UI_STYLE: objectFit is not supported on <text>/);
 });
 
+test('objectPosition lowers CSS keywords and percentages to box fractions on images only', () => {
+  const at = position => rendered(() => h('image', { src: 'a', style: { objectPosition: position } })).props.imagePosition;
+  assert.equal(at('center'), '[0.5,0.5]');
+  assert.equal(at('top'), '[0.5,0]');
+  assert.equal(at('right'), '[1,0.5]');
+  assert.equal(at('bottom left'), '[0,1]');
+  assert.equal(at('center top'), '[0.5,0]');
+  assert.equal(at('25% 75%'), '[0.25,0.75]');
+  for (const bad of ['10px 0', 'left right', 'top top', 'a b c', 42]) throwsOn(() => h('image', { src: 'a', style: { objectPosition: bad } }), /UI_STYLE_VALUE: objectPosition/);
+  throwsOn(() => h('vector', { paths: [{ d: 'M0 0H1', stroke: '#000000' }], style: { objectPosition: 'top' } }), /UI_STYLE: objectPosition is not supported on <vector>/);
+});
+
 test('vector paths carry SVG transforms, caps, joins, dash offsets and named gradients', () => {
   const gradients = { sweep: { type: 'conic', from: 45, stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }] }, glow: { type: 'radial', r: 0.5, stops: [{ offset: 0, color: '#ffffff' }, { offset: 1, color: '#ff0000', opacity: 0.5 }] } };
   const paths = [{ d: 'M2 12h20', fill: 'url(#glow)', stroke: 'url(#glow)', strokeLinecap: 'round', strokeLinejoin: 'bevel', strokeDashoffset: 2, strokeDasharray: [4, 2], transform: 'rotate(45 12 12) translate(1,2)' }];

@@ -60,6 +60,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `keyboard="number"` with `min`/`max`/`step` clamps on blur/submit; `keyboard="date|time"` opens the
   platform picker and reports ISO strings.
 - While an image loads its background colour shows; `placeholder="tiny.jpg"` paints a small stand-in scaled smooth.
+- `object-top`, `object-left-bottom` or `object-[25%_75%]` (`objectPosition`) align a covered or contained image; pixel offsets fail.
 - `<textarea rows={2} maxRows={6}/>` grows with its lines in that range, then scrolls.
 - `<select options={[{value,label,disabled?}]} bind={cell} placeholder accessibilityLabel/>` opens the platform
   picker; arrows change the choice; automation uses `locator.selectOption(valueOrLabel)`.

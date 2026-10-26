@@ -535,6 +535,40 @@ fn late_images_share_layout_and_obey_fit_rounding_and_scroll_clipping() {
     );
 }
 #[test]
+fn object_position_aligns_a_contained_image() {
+    use ::image::ImageEncoder;
+    let mut bytes = Vec::new();
+    ::image::codecs::png::PngEncoder::new(&mut bytes)
+        .write_image(
+            &[0, 0, 255, 255, 0, 0, 255, 255],
+            2,
+            1,
+            ::image::ExtendedColorType::Rgba8,
+        )
+        .unwrap();
+    let images = HashMap::from([(
+        "photo".to_string(),
+        crate::scene::image::Bitmap::decode(&bytes).unwrap(),
+    )]);
+    let source = crate::session::tests::source(
+        "function render(){return h('column',{style:{backgroundColor:'#ffffff'}},h('image',{src:'photo',style:{width:100,height:100,objectFit:'contain',objectPosition:'bottom'}}))}",
+    );
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    let mut display = page
+        .layout(100, 100, 1.0)
+        .unwrap()
+        .retained
+        .compose(&HashMap::new())
+        .unwrap();
+    display.bind_images(&images).unwrap();
+    let frame = display.rasterize().unwrap();
+    let pixel =
+        |y: usize| &frame.pixels.data_as_u8_slice()[(y * 100 + 50) * 4..(y * 100 + 50) * 4 + 4];
+    assert_eq!(pixel(25), &[255, 255, 255, 255]);
+    assert_eq!(pixel(75), &[0, 0, 255, 255]);
+}
+
+#[test]
 fn node_identity_tracks_keyed_ancestry_and_tag_not_callback_or_label() {
     let mut renderer = Renderer::default();
     let mut records = vec![

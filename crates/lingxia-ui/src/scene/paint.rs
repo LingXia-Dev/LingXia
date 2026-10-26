@@ -191,6 +191,8 @@ pub(crate) enum Paint {
         bounds: [f32; 4],
         radius: f32,
         fit: crate::scene::image::Fit,
+        /// Box fractions the image aligns to, as CSS `object-position`.
+        position: [f32; 2],
     },
     Clip(ClipSnapshot),
     PopClip,

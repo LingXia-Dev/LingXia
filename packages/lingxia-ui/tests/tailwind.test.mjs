@@ -199,7 +199,7 @@ test('percentages, fractions, viewport units and sizing keywords preserve relati
 });
 
 test('margins, positioning, layering and line clamps are native utilities', async () => {
-  await use(['m-2', 'mx-auto', '-mt-1', 'relative', 'absolute', 'inset-0', 'inset-x-4', 'top-1/2', 'z-10', 'truncate', 'line-clamp-3', 'grid-cols-3', 'object-cover']);
+  await use(['m-2', 'mx-auto', '-mt-1', 'relative', 'absolute', 'inset-0', 'inset-x-4', 'top-1/2', 'z-10', 'truncate', 'line-clamp-3', 'grid-cols-3', 'object-cover', 'object-top-left', 'object-bottom', 'object-[25%_75%]']);
   assert.deepEqual(classStyle('m-2 mx-auto -mt-1'), { marginTop: -4, marginRight: 'auto', marginBottom: 8, marginLeft: 'auto' });
   assert.deepEqual(classStyle('absolute inset-0 inset-x-4 z-10'), { position: 'absolute', top: 0, right: 16, bottom: 0, left: 16, zIndex: 10 });
   assert.equal(classStyle('top-1/2').top, '50%');
@@ -208,6 +208,9 @@ test('margins, positioning, layering and line clamps are native utilities', asyn
   assert.equal(node('text', { className: 'line-clamp-3' }).textLines, 3);
   assert.equal(node('grid', { className: 'grid-cols-3' }).gridTemplateColumns, 'repeat(3, minmax(0, 1fr))');
   assert.equal(node('image', { src: 'a.png', className: 'object-cover' }).imageFit, 'cover');
+  assert.equal(node('image', { src: 'a.png', className: 'object-top-left' }).imagePosition, '[0,0]');
+  assert.equal(node('image', { src: 'a.png', className: 'object-bottom' }).imagePosition, '[0.5,1]');
+  assert.equal(node('image', { src: 'a.png', className: 'object-[25%_75%]' }).imagePosition, '[0.25,0.75]');
   assert.throws(() => describe(() => h('column', { className: 'line-clamp-3' }), {}), /lineClamp is not supported on <column>/);
 });
 

@@ -242,7 +242,7 @@ is still refused on an element that does not render its style ([styles.md](style
 
 | Family | Supported | Refused |
 | --- | --- | --- |
-| `object` | `object-contain`, `object-cover`, `object-fill` | object-position (9); object-fit (2) |
+| `object` | `object-bottom`, `object-bottom-left`, `object-bottom-right`, `object-center`, `object-contain`, … (12) | object-fit (2) |
 
 ## Gated: motion
 

@@ -216,6 +216,7 @@ pub mod field {
     pub const ROWS: usize = 180;
     pub const MAX_ROWS: usize = 181;
     pub const IMAGE_PLACEHOLDER: usize = 182;
+    pub const IMAGE_POSITION: usize = 183;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page", "span", "link", "select"];
@@ -405,6 +406,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("rows", "textarea-rows"),
     ("maxRows", "textarea-rows"),
     ("placeholderSrc", "image-src"),
+    ("objectPosition", "image-position"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -761,5 +763,6 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::SELECT]), parent: None },
     FieldAdmission { tags: Some(&[tag::TEXTAREA]), parent: None },
     FieldAdmission { tags: Some(&[tag::TEXTAREA]), parent: None },
+    FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
     FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
 ];

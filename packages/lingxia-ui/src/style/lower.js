@@ -192,6 +192,27 @@ function animation(value) {
  * over shorthands regardless of order; `inherited` carries font size and the
  * line-height multiplier the way CSS inherits them.
  */
+// CSS `object-position` as box fractions: keywords in either order, or percentages.
+function objectPosition(value) {
+  const parts = typeof value === 'string' ? value.trim().split(/\s+/) : [];
+  const horizontal = { left: 0, right: 1 }, vertical = { top: 0, bottom: 1 };
+  const fraction = part => {
+    if (part === 'center') return 0.5;
+    const match = /^(-?(?:\d*\.)?\d+)%$/.exec(part);
+    if (!match || Math.abs(Number(match[1])) > 1600) invalid('objectPosition');
+    return Number(match[1]) / 100;
+  };
+  if (parts.length === 1) {
+    const [part] = parts;
+    return part in vertical ? [0.5, vertical[part]] : [part in horizontal ? horizontal[part] : fraction(part), 0.5];
+  }
+  if (parts.length !== 2) invalid('objectPosition');
+  let [x, y] = parts;
+  if (x in vertical || y in horizontal) [x, y] = [y, x];
+  if (x in vertical || y in horizontal) invalid('objectPosition');
+  return [x in horizontal ? horizontal[x] : fraction(x), y in vertical ? vertical[y] : fraction(y)];
+}
+
 export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
   admitStyle(tag, style);
   const out = {};
@@ -278,6 +299,8 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'fit':
         if (!(tag === 'vector' ? ['contain', 'fill'] : ['cover', 'contain', 'fill']).includes(value)) invalid(name);
         out[key] = value; break;
+      case 'object-position':
+        out[key] = JSON.stringify(objectPosition(value)); break;
       default: throw Error(`UI_STYLE: ${name} has no native lowering`);
     }
   }

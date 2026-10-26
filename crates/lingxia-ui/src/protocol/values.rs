@@ -98,6 +98,15 @@ pub fn themed_color(value: &str, dark: bool) -> Result<[u8; 4], String> {
     })
 }
 
+/// The `[x, y]` box fractions an image aligns to, bounded like CSS percentages.
+pub(crate) fn image_position(text: &str) -> Option<[f32; 2]> {
+    let [x, y] = serde_json::from_str::<[f32; 2]>(text).ok()?;
+    [x, y]
+        .iter()
+        .all(|v| v.is_finite() && v.abs() <= 16.0)
+        .then_some([x, y])
+}
+
 fn handle(value: &Value) -> bool {
     value.as_u64().is_some_and(|v| v > 0 && v <= MAX_HANDLE)
 }
@@ -361,6 +370,12 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         field::IMAGE_FIT => ensure(
             matches!(value.as_str(), Some("cover" | "contain" | "fill")),
             "UI_IMAGE: invalid fit",
+        ),
+        field::IMAGE_POSITION => ensure(
+            value
+                .as_str()
+                .is_some_and(|text| image_position(text).is_some()),
+            "UI_IMAGE: invalid position",
         ),
         field::ON_REACH_START | field::ON_REACH_END => {
             ensure(handle(value), "UI_SCROLL: invalid endpoint handle")

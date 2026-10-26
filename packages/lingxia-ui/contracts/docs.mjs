@@ -162,7 +162,7 @@ const sections = [
   ['Typography', /^(color|font.*|lineHeight|letterSpacing|text.*|whiteSpace|wordBreak|overflowWrap|lineClamp|userSelect)$/],
   ['Backgrounds', /^background/], ['Radius', /Radius$/], ['Borders', /^border/],
   ['Effects', /^(opacity|boxShadow|backdropFilter)$/], ['Transforms', /^(translate|rotate|scale|transformOrigin)$/],
-  ['Scrolling', /^(overflowX|overflowY|overscrollBehavior)$/], ['Editors', /^placeholderColor$/], ['Images and vectors', /^objectFit$/],
+  ['Scrolling', /^(overflowX|overflowY|overscrollBehavior)$/], ['Editors', /^placeholderColor$/], ['Images and vectors', /^object(Fit|Position)$/],
 ];
 // The last key decides: `truncate` ends in whiteSpace, `space-x-*` in a margin.
 const sectionOf = rule => sections.find(([, test]) => test.test(effects(rule).at(-1)))?.[0] ?? 'Other';

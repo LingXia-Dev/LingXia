@@ -149,6 +149,7 @@ impl DisplayList {
                         raster.bounds,
                         0.0,
                         crate::scene::image::Fit::Fill,
+                        [0.5, 0.5],
                     )?;
                     let id = image_ids
                         .get(&(Arc::as_ptr(raster.bitmap.pixels()) as usize))
@@ -270,10 +271,11 @@ impl DisplayList {
                     bounds,
                     radius,
                     fit,
+                    position,
                 } => {
                     if let Some(bitmap) = self.images.get(src) {
                         let (rect, transform, clip) =
-                            image_geometry(bitmap, *bounds, *radius, *fit)?;
+                            image_geometry(bitmap, *bounds, *radius, *fit, *position)?;
                         let id = image_ids
                             .get(&(Arc::as_ptr(bitmap.pixels()) as usize))
                             .ok_or("UI_IMAGE: texture not uploaded")?;

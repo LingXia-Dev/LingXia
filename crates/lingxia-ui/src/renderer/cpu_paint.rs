@@ -118,6 +118,7 @@ impl DisplayList {
                         raster.bounds,
                         0.0,
                         crate::scene::image::Fit::Fill,
+                        [0.5, 0.5],
                     )?;
                     context.push_clip_layer(&clip);
                     context.set_paint(vello_cpu::Image {
@@ -235,9 +236,11 @@ impl DisplayList {
                     bounds,
                     radius,
                     fit,
+                    position,
                 } => {
                     if let Some(bitmap) = self.images.get(&src) {
-                        let (rect, transform, clip) = image_geometry(bitmap, bounds, radius, fit)?;
+                        let (rect, transform, clip) =
+                            image_geometry(bitmap, bounds, radius, fit, position)?;
                         context.push_clip_layer(&clip);
                         context.set_paint(vello_cpu::Image {
                             image: vello_cpu::ImageSource::Pixmap(bitmap.pixels().clone()),
@@ -278,10 +281,11 @@ pub(crate) fn image_geometry(
     bounds: [f32; 4],
     radius: f32,
     fit: crate::scene::image::Fit,
+    position: [f32; 2],
 ) -> Result<(PaintRect, Affine, vello_cpu::kurbo::BezPath), String> {
     let pixels = bitmap.pixels();
     let [x, y, w, h] =
-        crate::scene::image::placement([pixels.width(), pixels.height()], bounds, fit)?;
+        crate::scene::image::placement([pixels.width(), pixels.height()], bounds, fit, position)?;
     let rect = PaintRect::new(x as f64, y as f64, (x + w) as f64, (y + h) as f64);
     let transform = Affine::translate((x as f64, y as f64))
         * Affine::scale_non_uniform(

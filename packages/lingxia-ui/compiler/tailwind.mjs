@@ -396,7 +396,7 @@ function longhand(prop, value) {
       // Lengths reach native in pixels; the track grammar itself is checked there.
       return value.replace(/(-?(?:\d*\.)?\d+)rem\b/g, (_, n) => `${Number(n) * 16}px`).replace(/\s+/g, ' ').trim();
     }
-    case 'grid-line': return value.replace(/\s+/g, ' ').trim();
+    case 'grid-line': case 'object-position': return value.replace(/\s+/g, ' ').trim();
     case 'grid-flow': return value.replace(/\s+/g, ' ').trim();
     case 'order': {
       if (/^calc\(-infinity\)$/.test(value)) return -10000;

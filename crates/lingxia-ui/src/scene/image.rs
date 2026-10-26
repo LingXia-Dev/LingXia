@@ -179,8 +179,13 @@ pub enum Fit {
     Fill,
 }
 
-/// Centered image rectangle; the caller clips cover images to the node bounds.
-pub fn placement(size: [u16; 2], bounds: [f32; 4], fit: Fit) -> Result<[f32; 4], String> {
+/// Image rectangle aligned at `position` box fractions; the caller clips to the node bounds.
+pub fn placement(
+    size: [u16; 2],
+    bounds: [f32; 4],
+    fit: Fit,
+    position: [f32; 2],
+) -> Result<[f32; 4], String> {
     if size.contains(&0)
         || !bounds.iter().all(|value| value.is_finite())
         || bounds[2] < 0.0
@@ -202,8 +207,8 @@ pub fn placement(size: [u16; 2], bounds: [f32; 4], fit: Fit) -> Result<[f32; 4],
         }
     };
     let placed = [
-        (x + (width - w) / 2.0) as f32,
-        (y + (height - h) / 2.0) as f32,
+        (x + (width - w) * f64::from(position[0])) as f32,
+        (y + (height - h) * f64::from(position[1])) as f32,
         w as f32,
         h as f32,
     ];
@@ -281,11 +286,19 @@ mod tests {
         let lossy = Bitmap::decode(include_bytes!("tests/images/red-lossy.webp")).unwrap();
         assert_eq!((lossy.pixels.width(), lossy.pixels.height()), (16, 12));
         let [r, g, b, a] = center(&lossy);
-        assert!(r > 230 && g < 30 && b < 30 && a == 255, "lossy red: {r},{g},{b},{a}");
+        assert!(
+            r > 230 && g < 30 && b < 30 && a == 255,
+            "lossy red: {r},{g},{b},{a}"
+        );
 
         let mut lossless = Vec::new();
         ::image::codecs::webp::WebPEncoder::new_lossless(&mut lossless)
-            .write_image(&[0, 0, 255, 128].repeat(6), 3, 2, ::image::ExtendedColorType::Rgba8)
+            .write_image(
+                &[0, 0, 255, 128].repeat(6),
+                3,
+                2,
+                ::image::ExtendedColorType::Rgba8,
+            )
             .unwrap();
         let decoded = Bitmap::decode(&lossless).unwrap();
         assert_eq!(center(&decoded), [0, 0, 128, 128], "premultiplied like PNG");
@@ -299,7 +312,12 @@ mod tests {
     fn webp_and_gif_decode_to_the_painted_size() {
         let mut lossless = Vec::new();
         ::image::codecs::webp::WebPEncoder::new_lossless(&mut lossless)
-            .write_image(&[200; 512 * 512 * 4], 512, 512, ::image::ExtendedColorType::Rgba8)
+            .write_image(
+                &[200; 512 * 512 * 4],
+                512,
+                512,
+                ::image::ExtendedColorType::Rgba8,
+            )
             .unwrap();
         let small = Bitmap::decode_to(&lossless, Bucket::of(64.0, 64.0)).unwrap();
         assert!(small.pixels.width() < 512 && small.pixels.width() >= 64);
@@ -307,7 +325,12 @@ mod tests {
         {
             let mut encoder = ::image::codecs::gif::GifEncoder::new(&mut gif);
             encoder
-                .encode(&[90; 512 * 512 * 4], 512, 512, ::image::ExtendedColorType::Rgba8)
+                .encode(
+                    &[90; 512 * 512 * 4],
+                    512,
+                    512,
+                    ::image::ExtendedColorType::Rgba8,
+                )
                 .unwrap();
         }
         let small = Bitmap::decode_to(&gif, Bucket::of(64.0, 64.0)).unwrap();
@@ -363,25 +386,48 @@ mod tests {
         );
     }
 
+    const C: [f32; 2] = [0.5, 0.5];
+
     #[test]
     fn fit_centers_without_distorting_and_rejects_invalid_geometry() {
         let bounds = [10., 20., 100., 100.];
         assert_eq!(
-            placement([200, 100], bounds, Fit::Contain).unwrap(),
+            placement([200, 100], bounds, Fit::Contain, C).unwrap(),
             [10., 45., 100., 50.]
         );
         assert_eq!(
-            placement([200, 100], bounds, Fit::Cover).unwrap(),
+            placement([200, 100], bounds, Fit::Cover, C).unwrap(),
             [-40., 20., 200., 100.]
         );
-        assert_eq!(placement([200, 100], bounds, Fit::Fill).unwrap(), bounds);
+        assert_eq!(placement([200, 100], bounds, Fit::Fill, C).unwrap(), bounds);
         assert_eq!(
-            placement([100, 200], bounds, Fit::Cover).unwrap(),
+            placement([100, 200], bounds, Fit::Cover, C).unwrap(),
             [10., -30., 100., 200.]
         );
-        assert!(placement([0, 1], bounds, Fit::Cover).is_err());
-        assert!(placement([1, 1], [0., 0., f32::NAN, 1.], Fit::Cover).is_err());
-        assert!(placement([1, 1], [0., 0., -1., 1.], Fit::Cover).is_err());
-        assert!(placement([1, u16::MAX], [0., 0., f32::MAX, 1.], Fit::Cover).is_err());
+        assert!(placement([0, 1], bounds, Fit::Cover, C).is_err());
+        assert!(placement([1, 1], [0., 0., f32::NAN, 1.], Fit::Cover, C).is_err());
+        assert!(placement([1, 1], [0., 0., -1., 1.], Fit::Cover, C).is_err());
+        assert!(placement([1, u16::MAX], [0., 0., f32::MAX, 1.], Fit::Cover, C).is_err());
+    }
+
+    #[test]
+    fn position_aligns_the_overflow_or_the_slack() {
+        let bounds = [10., 20., 100., 100.];
+        assert_eq!(
+            placement([200, 100], bounds, Fit::Cover, [0., 0.]).unwrap(),
+            [10., 20., 200., 100.]
+        );
+        assert_eq!(
+            placement([200, 100], bounds, Fit::Cover, [1., 0.]).unwrap(),
+            [-90., 20., 200., 100.]
+        );
+        assert_eq!(
+            placement([200, 100], bounds, Fit::Contain, [0.5, 1.]).unwrap(),
+            [10., 70., 100., 50.]
+        );
+        assert_eq!(
+            placement([200, 100], bounds, Fit::Fill, [0., 1.]).unwrap(),
+            bounds
+        );
     }
 }
