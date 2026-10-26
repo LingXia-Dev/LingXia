@@ -9,7 +9,7 @@ public class GpuHomeImageProbe {
   try{
    UiAutomation.class.getMethod("connect").invoke(a);
    android.accessibilityservice.AccessibilityServiceInfo service=a.getServiceInfo();service.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;a.setServiceInfo(service);
-   GpuApiProbe.node("home-background").recycle();
+   GpuApiProbe.node("home-name").recycle();
    boolean loaded=false;
    for(int attempt=0;attempt<40&&!loaded;attempt++){
     android.graphics.Bitmap shot=a.takeScreenshot(),pixels=shot.copy(android.graphics.Bitmap.Config.ARGB_8888,false);shot.recycle();

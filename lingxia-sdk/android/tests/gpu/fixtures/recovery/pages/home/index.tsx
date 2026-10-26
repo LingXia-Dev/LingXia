@@ -13,7 +13,7 @@ export function render() {
   }
   return <column style={{ padding: 24, gap: 20, backgroundColor: '#f0f4f8' }}>
     <text testId="recovery-count">{`Count ${count.value}`}</text>
-    <input testId="recovery-draft" bind={draft} />
+    <input testId="recovery-draft" accessibilityLabel="Draft" bind={draft} />
     <button testId="recovery-increment" onClick={() => count.set(count.value + 1)}>Save count</button>
     <button testId="recovery-trigger" onClick={() => {
       failNext = true;

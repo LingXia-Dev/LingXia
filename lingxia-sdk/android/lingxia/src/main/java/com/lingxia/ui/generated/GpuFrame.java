@@ -6,7 +6,7 @@ import org.json.JSONObject;
 
 /**
  * Typed readers over the frame contract (schema.json `frame`): Every message the core hands a platform adapter.
- * Messages: snapshot = FrameSnapshot, semanticNode = SemanticNode, automationRequest = AutomationRequest, automationElement = AutomationElement, automationQueryAll = AutomationQueryAll, automationTree = AutomationTree, automationFrame = AutomationFrame.
+ * Messages: snapshot = FrameSnapshot, semanticNode = SemanticNode, automationRequest = AutomationRequest, automationElement = AutomationElement, automationQueryAll = AutomationQueryAll, automationTree = AutomationTree, automationFrame = AutomationFrame, inputReply = InputReply, copySelection = CopyReply, semanticRoots = SemanticRoots, textMenu = TextMenu.
  */
 public final class GpuFrame {
     private GpuFrame() {}
@@ -52,6 +52,14 @@ public final class GpuFrame {
     public static final String AUTOMATION_ACTION_PRESS = "press";
     public static final String AUTOMATION_ACTION_SELECT = "select";
     public static final String AUTOMATION_ACTION_DBLCLICK = "dblclick";
+    public static final String TEXT_MENU_TARGET_TEXT = "text";
+    public static final String TEXT_MENU_TARGET_EDITOR = "editor";
+    public static final String MENU_ACTION_CUT = "cut";
+    public static final String MENU_ACTION_COPY = "copy";
+    public static final String MENU_ACTION_PASTE = "paste";
+    public static final String MENU_ACTION_SELECT_ALL = "select_all";
+    public static final String MENU_ACTION_UNDO = "undo";
+    public static final String MENU_ACTION_REDO = "redo";
 
     public static final class FrameSnapshot {
         public final JSONObject json;
@@ -790,6 +798,78 @@ public final class GpuFrame {
         public AutomationTreeNode[] children() { return (AutomationTreeNode[]) GpuFrame.array(json.optJSONArray("children"), 1, "AutomationTreeNode"); }
     }
 
+    public static final class InputReply {
+        public final JSONObject json;
+        public InputReply(JSONObject json) { this.json = json; }
+        /** `token`: u64? */
+        public Long token() { if (json.isNull("token")) return null; return json.optLong("token"); }
+        /** `state`: EditorState? */
+        public EditorState state() { JSONObject o = json.optJSONObject("state"); return o == null ? null : new EditorState(o); }
+        /** `needs_view_render`: bool? */
+        public Boolean needsViewRender() { if (json.isNull("needs_view_render")) return null; return json.optBoolean("needs_view_render"); }
+        /** `moved_to`: string? */
+        public String movedTo() { return json.isNull("moved_to") ? null : json.optString("moved_to", null); }
+        /** `selection`: u32[2]? */
+        public long[] selection() { return (long[]) GpuFrame.array(json.optJSONArray("selection"), 1, "long"); }
+        /** `value`: string? */
+        public String value() { return json.isNull("value") ? null : json.optString("value", null); }
+    }
+
+    public static final class EditorState {
+        public final JSONObject json;
+        public EditorState(JSONObject json) { this.json = json; }
+        /** `text`: string */
+        public String text() { return json.isNull("text") ? null : json.optString("text", null); }
+        /** `selection`: u32[2] */
+        public long[] selection() { return (long[]) GpuFrame.array(json.optJSONArray("selection"), 1, "long"); }
+        /** `composition`: u32[2]? */
+        public long[] composition() { return (long[]) GpuFrame.array(json.optJSONArray("composition"), 1, "long"); }
+        /** `focused`: bool */
+        public boolean focused() { return json.optBoolean("focused"); }
+        /** `can_undo`: bool */
+        public boolean canUndo() { return json.optBoolean("can_undo"); }
+        /** `can_redo`: bool */
+        public boolean canRedo() { return json.optBoolean("can_redo"); }
+    }
+
+    public static final class CopyReply {
+        public final JSONObject json;
+        public CopyReply(JSONObject json) { this.json = json; }
+        /** `text`: string? */
+        public String text() { return json.isNull("text") ? null : json.optString("text", null); }
+    }
+
+    public static final class SemanticRoots {
+        public final JSONObject json;
+        public SemanticRoots(JSONObject json) { this.json = json; }
+        /** `roots`: u32[] */
+        public long[] roots() { return (long[]) GpuFrame.array(json.optJSONArray("roots"), 1, "long"); }
+        /** `inputFocus`: u32? */
+        public Long inputFocus() { if (json.isNull("inputFocus")) return null; return json.optLong("inputFocus"); }
+        /** `accessibilityFocus`: u32? */
+        public Long accessibilityFocus() { if (json.isNull("accessibilityFocus")) return null; return json.optLong("accessibilityFocus"); }
+    }
+
+    public static final class TextMenu {
+        public final JSONObject json;
+        public TextMenu(JSONObject json) { this.json = json; }
+        /** `target`: TextMenuTarget */
+        public TextMenuTarget target() { JSONObject o = json.optJSONObject("target"); return o == null ? null : new TextMenuTarget(o); }
+        /** `anchor`: f32[4] */
+        public float[] anchor() { return (float[]) GpuFrame.array(json.optJSONArray("anchor"), 1, "float"); }
+        /** `actions`: MenuAction[] */
+        public String[] actions() { return (String[]) GpuFrame.array(json.optJSONArray("actions"), 1, "String"); }
+    }
+
+    public static final class TextMenuTarget {
+        public final JSONObject json;
+        public TextMenuTarget(JSONObject json) { this.json = json; }
+        /** `kind`: string */
+        public String kind() { return json.isNull("kind") ? null : json.optString("kind", null); }
+        /** `identity`: string? */
+        public String identity() { return json.isNull("identity") ? null : json.optString("identity", null); }
+    }
+
     /** A JSON list as a Java array of `element` (nested `depth` deep); null when absent. */
     static Object array(JSONArray list, int depth, String element) {
         if (list == null) return null;
@@ -864,6 +944,12 @@ public final class GpuFrame {
             case "AutomationRect": return AutomationRect.class;
             case "AutomationTree": return AutomationTree.class;
             case "AutomationTreeNode": return AutomationTreeNode.class;
+            case "InputReply": return InputReply.class;
+            case "EditorState": return EditorState.class;
+            case "CopyReply": return CopyReply.class;
+            case "SemanticRoots": return SemanticRoots.class;
+            case "TextMenu": return TextMenu.class;
+            case "TextMenuTarget": return TextMenuTarget.class;
             default: throw new IllegalArgumentException(name);
         }
     }
@@ -904,6 +990,12 @@ public final class GpuFrame {
             case "AutomationRect": return new AutomationRect(json);
             case "AutomationTree": return new AutomationTree(json);
             case "AutomationTreeNode": return new AutomationTreeNode(json);
+            case "InputReply": return new InputReply(json);
+            case "EditorState": return new EditorState(json);
+            case "CopyReply": return new CopyReply(json);
+            case "SemanticRoots": return new SemanticRoots(json);
+            case "TextMenu": return new TextMenu(json);
+            case "TextMenuTarget": return new TextMenuTarget(json);
             default: throw new IllegalArgumentException(name);
         }
     }

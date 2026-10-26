@@ -2284,11 +2284,100 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
         )
         .is_empty()
     );
+    // Input-protocol replies, the copy reply, semantic roots and the text menu, as adapters get them.
+    platform.settle(&[&host]);
+    let current: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    let node = |test_id: &str| {
+        current["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["test_id"] == test_id)
+            .unwrap()
+            .clone()
+    };
+    let (name, plan, note) = (node("name"), node("plan"), node("note"));
+    let (identity, generation) = (name["identity"].clone(), current["generation"].clone());
+    let ask = |request: serde_json::Value| -> serde_json::Value {
+        let (tx, rx) = channel();
+        host.input(request.to_string(), move |reply| {
+            let _ = tx.send(reply);
+        });
+        platform.settle(&[&host]);
+        serde_json::from_str(&rx.recv_timeout(Duration::from_secs(5)).unwrap().unwrap()).unwrap()
+    };
+    let focused =
+        ask(serde_json::json!({"op": "focus", "identity": identity, "generation": generation}));
+    let token = focused["token"].clone();
+    // Hit tests answer for an editor that is not the focused one.
+    let bounds = &note["bounds"];
+    let center = [
+        bounds[0].as_f64().unwrap() + bounds[2].as_f64().unwrap() / 2.0,
+        bounds[1].as_f64().unwrap() + bounds[3].as_f64().unwrap() / 2.0,
+    ];
+    let mut input = vec![focused];
+    input.push(ask(
+        serde_json::json!({"op": "query", "identity": identity, "token": token}),
+    ));
+    input.push(ask(
+        serde_json::json!({"op": "edit", "identity": identity, "token": token, "submit": false,
+        "edits": [{"op": "replace", "text": "Ada", "cursor": 1, "composing": false}]}),
+    ));
+    // The adapter renders when the edit reply asks for it.
+    host.request_frame();
+    platform.settle(&[&host]);
+    let generation = serde_json::from_str::<serde_json::Value>(&host.snapshot().unwrap().json)
+        .unwrap()["generation"]
+        .clone();
+    input.push(ask(
+        serde_json::json!({"op": "hit_test", "identity": note["identity"], "generation": generation,
+        "point": center, "word": true}),
+    ));
+    input.push(ask(serde_json::json!({"op": "select", "identity": plan["identity"], "generation": generation, "index": 0})));
+    for reply in &input {
+        assert_eq!(
+            conform("inputReply", reply),
+            Vec::<String>::new(),
+            "{reply}"
+        );
+    }
+    let (tx, rx) = channel();
+    host.copy_text_selection(move |selected| {
+        let _ = tx.send(serde_json::json!({ "text": selected }));
+    });
+    platform.settle(&[&host]);
+    let copied = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    let roots = host.semantics(|projection, focus| {
+        let projection = projection.unwrap();
+        serde_json::json!({"roots": projection.roots(), "inputFocus": projection.input_focus(), "accessibilityFocus": focus})
+    });
+    let menu = serde_json::to_value(crate::session::host::TextMenu {
+        target: crate::session::host::MenuTarget::Editor {
+            identity: identity.as_str().unwrap().into(),
+        },
+        anchor: [10.0, 20.0, 80.0, 24.0],
+        actions: vec![
+            crate::session::host::MenuAction::SelectAll,
+            crate::session::host::MenuAction::Paste,
+        ],
+    })
+    .unwrap();
+    for (message, value) in [
+        ("copySelection", &copied),
+        ("semanticRoots", &roots),
+        ("textMenu", &menu),
+    ] {
+        assert_eq!(conform(message, value), Vec::<String>::new(), "{message}");
+    }
     // Golden vectors the platform decoders replay; re-record with LINGXIA_UPDATE_VECTORS=1.
     let recorded = serde_json::json!({
         "snapshot": scrub(snapshot),
         "semanticNodes": nodes,
         "automation": exchanges.into_iter().map(scrub).collect::<Vec<_>>(),
+        "inputReplies": input,
+        "copySelection": copied,
+        "semanticRoots": roots,
+        "textMenu": menu,
     });
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -2326,6 +2415,16 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
             conform(reply, &exchange["value"]),
             Vec::<String>::new(),
             "{reply}"
+        );
+    }
+    for reply in vectors["inputReplies"].as_array().unwrap() {
+        assert_eq!(conform("inputReply", reply), Vec::<String>::new());
+    }
+    for message in ["copySelection", "semanticRoots", "textMenu"] {
+        assert_eq!(
+            conform(message, &vectors[message]),
+            Vec::<String>::new(),
+            "{message}"
         );
     }
 }

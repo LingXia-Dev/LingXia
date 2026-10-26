@@ -59,4 +59,16 @@ final class GpuFrameVectorsTests: XCTestCase {
             }
         }
     }
+
+    func testInputRepliesCopyRootsAndTextMenuDecode() throws {
+        let replies = try JSONDecoder().decode([GpuFrameInputReply].self, from: section("inputReplies"))
+        XCTAssertTrue(replies.contains { $0.token != nil && $0.state?.focused == true })
+        XCTAssertTrue(replies.contains { $0.selection?.count == 2 })
+        _ = try JSONDecoder().decode(GpuFrameCopyReply.self, from: section("copySelection"))
+        let roots = try JSONDecoder().decode(GpuFrameSemanticRoots.self, from: section("semanticRoots"))
+        XCTAssertFalse(roots.roots.isEmpty)
+        let menu = try JSONDecoder().decode(GpuFrameTextMenu.self, from: section("textMenu"))
+        XCTAssertEqual(menu.target.kind, "editor")
+        XCTAssertEqual(menu.actions.first, GpuFrameMenuAction.selectAll.rawValue)
+    }
 }

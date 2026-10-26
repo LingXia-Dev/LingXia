@@ -340,6 +340,65 @@
       }
     }
   ],
+  "copySelection": {
+    "text": null
+  },
+  "inputReplies": [
+    {
+      "needs_view_render": false,
+      "state": {
+        "can_redo": false,
+        "can_undo": false,
+        "composition": null,
+        "focused": true,
+        "selection": [
+          3,
+          3
+        ],
+        "text": "Ada"
+      },
+      "token": 1
+    },
+    {
+      "needs_view_render": false,
+      "state": {
+        "can_redo": false,
+        "can_undo": false,
+        "composition": null,
+        "focused": true,
+        "selection": [
+          3,
+          3
+        ],
+        "text": "Ada"
+      },
+      "token": 1
+    },
+    {
+      "needs_view_render": true,
+      "state": {
+        "can_redo": false,
+        "can_undo": true,
+        "composition": null,
+        "focused": true,
+        "selection": [
+          6,
+          6
+        ],
+        "text": "AdaAda"
+      },
+      "token": 1
+    },
+    {
+      "selection": [
+        0,
+        4
+      ]
+    },
+    {
+      "needs_view_render": true
+    }
+  ],
   "semanticNodes": [
     {
       "actions": [
@@ -964,6 +1023,13 @@
       "visible": false
     }
   ],
+  "semanticRoots": {
+    "accessibilityFocus": null,
+    "inputFocus": 3,
+    "roots": [
+      1
+    ]
+  },
   "snapshot": {
     "feedback": {
       "focusRing": 4281752797,
@@ -1660,5 +1726,21 @@
         ]
       }
     ]
+  },
+  "textMenu": {
+    "actions": [
+      "select_all",
+      "paste"
+    ],
+    "anchor": [
+      10.0,
+      20.0,
+      80.0,
+      24.0
+    ],
+    "target": {
+      "identity": "/i:0:5/i:1:8",
+      "kind": "editor"
+    }
   }
 }
