@@ -1,4 +1,4 @@
-import { elements, admission, limits } from '../generated/contract.js';
+import { elements, admission, limits, commonProps } from '../generated/contract.js';
 import { resolveClasses } from '../style/classes.js';
 import { lowerStyle, paintOnly, mergeStyle } from '../style/lower.js';
 import { h, readNode, isNode, nodeKey, flatten } from './nodes.js';
@@ -9,7 +9,7 @@ import { has, validInputText } from './data.js';
 import { fieldOptions } from '../generated/wire.js';
 import * as check from './validate.js';
 
-const common = new Set(['key', 'testId', 'style', 'className', 'children', 'dir', 'role', 'headingLevel', 'accessibilityHidden', 'accessibilityLiveRegion', 'accessibilityState']);
+const common = new Set(commonProps);
 const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy' };
 const accepts = (field, tag) => admission.fields[field].includes(elements[tag].wire);
 const bindCodes = { input: 'UI_INPUT', textarea: 'UI_INPUT', search: 'UI_INPUT', checkbox: 'UI_CHECK', switch: 'UI_CHECK', slider: 'UI_SLIDER', radio: 'UI_RADIO' };

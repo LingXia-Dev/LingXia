@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import ts from 'typescript';
 
 export const packageRoot = fileURLToPath(new URL('..', import.meta.url));
 export const repositoryRoot = join(packageRoot, '../..');
@@ -236,7 +237,21 @@ ${intrinsics}
 `;
 }
 
-function contract(schema) {
+/** Member names of `interface Props` in api.d.ts: the props every element accepts. */
+function commonProps(api) {
+  const file = ts.createSourceFile('api.d.ts', api, ts.ScriptTarget.ES2020, true);
+  const names = [];
+  const visit = node => {
+    if (ts.isInterfaceDeclaration(node) && node.name.text === 'Props')
+      for (const member of node.members) if (ts.isPropertySignature(member)) names.push(member.name.getText(file));
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  if (!names.length) throw Error('api.d.ts: interface Props not found');
+  return names;
+}
+
+function contract(schema, common) {
   const elements = Object.fromEntries(Object.entries(schema.elements).map(([name, element]) => [name, {
     wire: element.wire,
     children: element.children,
@@ -273,6 +288,8 @@ export const css = ${JSON.stringify(css)};
 export const keywords = ${JSON.stringify(keywords)};
 /** Enumerated values by option kind. */
 export const options = ${JSON.stringify(schema.options)};
+/** Props every element accepts, read from \`interface Props\` in contracts/api.d.ts. */
+export const commonProps = ${JSON.stringify(common)};
 `;
 }
 
@@ -347,7 +364,7 @@ export async function generate(schema) {
     'crates/lingxia-ui/src/protocol/generated.rs': rust(schema),
     'crates/lingxia-lxapp/src/page/ui_limits.rs': lxappLimits(schema),
     'packages/lingxia-ui/src/generated/wire.js': wire(schema),
-    'packages/lingxia-ui/src/generated/contract.js': contract(schema),
+    'packages/lingxia-ui/src/generated/contract.js': contract(schema, commonProps(api)),
     'packages/lingxia-ui/src/generated/authoring.d.ts': authoring(schema, api),
     'lingxia-sdk/android/lingxia/src/main/java/com/lingxia/ui/generated/GpuSemantics.java': androidSemantics(schema),
     'lingxia-sdk/android/lingxia/src/main/java/com/lingxia/ui/generated/GpuInput.java': androidInput(schema),

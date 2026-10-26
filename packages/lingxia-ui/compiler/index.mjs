@@ -9,7 +9,7 @@ import { loadStylesheet, validateTokens } from './stylesheets.mjs';
 import { readFile, mkdir, writeFile, copyFile, realpath } from 'node:fs/promises';
 import { resolve, dirname, join, relative, isAbsolute, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { elements, style as styleTable } from '../src/generated/contract.js';
+import { elements, style as styleTable, commonProps } from '../src/generated/contract.js';
 
 const runtime = fileURLToPath(new URL('../src/internal.js', import.meta.url));
 const publicEntry = fileURLToPath(new URL('../src/index.js', import.meta.url));
@@ -17,7 +17,7 @@ const jsx = fileURLToPath(new URL('../src/runtime/jsx.js', import.meta.url));
 const host = fileURLToPath(new URL('../src/host.js', import.meta.url));
 const runtimeRoot = dirname(runtime).toLowerCase();
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
-const common = new Set(['key', 'testId', 'style', 'className', 'children', 'dir', 'role', 'headingLevel', 'accessibilityHidden', 'accessibilityLiveRegion', 'accessibilityState']);
+const common = new Set(commonProps);
 const editors = new Set(['input', 'textarea', 'search']);
 const controls = new Set(['button', 'checkbox', 'switch', 'radio', 'link']);
 
