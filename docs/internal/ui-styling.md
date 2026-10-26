@@ -84,7 +84,8 @@ Flow-relative utilities (`ps`/`pe`, `ms`/`me`, `start-`/`end-`, `border-s`/`-e`,
 against each node's own direction, so a language switch relays out without the View.
 When a node carries both, the flow-relative value wins on its side. `rtl:`/`ltr:`
 match the inherited direction like `dark:` matches the theme; mirror icons with
-`rtl:-scale-x-100`. Editors in LTR boxes take their first strong character's direction.
+`rtl:-scale-x-100`. Editors take their box's direction; `dir="auto"` (editors only)
+follows the first strong character.
 
 ## State variants
 

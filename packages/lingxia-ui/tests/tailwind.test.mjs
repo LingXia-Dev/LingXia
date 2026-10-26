@@ -117,6 +117,7 @@ test('flow-relative utilities stay logical on the wire and rtl:/ltr: follow the 
   assert.deepEqual([tree.children[1].children[0].props.marginLeft, tree.children[1].children[0].props.marginRight], [8, undefined]);
   assert.equal(rendered(() => h('column', { className: 'rtl:mr-2' }), { env: { direction: 'rtl' } }).props.marginRight, 8);
   assert.throws(() => describe(() => h('column', { dir: 'auto' }), {}), /UI_PROP: dir/);
+  assert.equal(rendered(() => h('input', { value: '', dir: 'auto' })).props.direction, 'auto');
 });
 
 test('structural variants match sibling position, list rows and emptiness; DOM-state variants name the TS alternative', async () => {

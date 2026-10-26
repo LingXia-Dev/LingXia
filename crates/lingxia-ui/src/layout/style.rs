@@ -113,9 +113,11 @@ pub(crate) fn layout_parents(records: &[Record]) -> Vec<Option<usize>> {
 pub(crate) fn directions(records: &[Record], rtl: bool) -> Vec<bool> {
     let mut out: Vec<bool> = Vec::with_capacity(records.len());
     for record in records {
+        // `auto` (editors only) leaves the box direction to its parent.
         out.push(match record.string(field::DIRECTION) {
-            Some(value) => value == "rtl",
-            None => record.parent.map(|parent| out[parent]).unwrap_or(rtl),
+            Some("rtl") => true,
+            Some("ltr") => false,
+            _ => record.parent.map(|parent| out[parent]).unwrap_or(rtl),
         });
     }
     out

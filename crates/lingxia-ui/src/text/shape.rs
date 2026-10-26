@@ -1,6 +1,6 @@
 //! Text shaping, shaped extents and glyph ink bounds.
 use crate::layout::Renderer;
-use crate::protocol::{Record, tag};
+use crate::protocol::{Record, field, tag};
 use crate::text::style::TextStyle;
 use parley::Layout;
 use parley::StyleProperty;
@@ -140,11 +140,11 @@ impl Renderer {
             layout
         } else {
             let mut builder = self.text.ranged_builder(&mut self.fonts, text, 1.0, true);
-            // Editors in a left-to-right box follow their first strong character, like `dir="auto"`.
-            builder.set_base_direction(if style.rtl {
-                parley::BaseDirection::Rtl
-            } else if matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
+            // `dir="auto"` editors follow their first strong character; others the box.
+            builder.set_base_direction(if record.string(field::DIRECTION) == Some("auto") {
                 parley::BaseDirection::Auto
+            } else if style.rtl {
+                parley::BaseDirection::Rtl
             } else {
                 parley::BaseDirection::Ltr
             });

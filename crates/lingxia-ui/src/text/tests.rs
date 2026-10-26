@@ -110,7 +110,7 @@ fn inherited_text_alignment_respects_each_line_and_direction() {
                 "MMMM\\nM"
             };
             let source = crate::session::tests::source(&format!(
-                "function render(){{return h('column',{{style:{{textAlign:'{alignment}'}}}},h('textarea',{{value:'{value}',style:{{width:160,height:100,padding:8,borderWidth:2}}}}))}}"
+                "function render(){{return h('column',{{style:{{textAlign:'{alignment}'}}}},h('textarea',{{dir:'auto',value:'{value}',style:{{width:160,height:100,padding:8,borderWidth:2}}}}))}}"
             ));
             let mut page = crate::ViewSession::new(&source).unwrap();
             let display = page.layout(200, 160, 1.0).unwrap();
@@ -706,3 +706,34 @@ fn numeric_variants_inherit_as_opentype_features_and_reset_with_normal() {
 
 #[path = "tests/runs.rs"]
 mod runs;
+
+#[test]
+fn editors_take_the_box_direction_unless_dir_is_auto() {
+    for (dir, rtl) in [("", false), ("dir:'auto',", true), ("dir:'rtl',", true)] {
+        let source = crate::session::tests::source(&format!(
+            "function render(){{return h('column',{{}},h('input',{{{dir}value:'\\u05d0\\u05d1\\u05d2'}}))}}"
+        ));
+        let mut page = crate::ViewSession::new(&source).unwrap();
+        let display = page.layout(200, 100, 1.0).unwrap();
+        assert_eq!(
+            display.retained.inputs[1].as_ref().unwrap().layout.is_rtl(),
+            rtl,
+            "{dir}"
+        );
+    }
+    let wire = serde_json::json!([
+        crate::protocol::tag::COLUMN,
+        -1,
+        "",
+        "",
+        "",
+        1,
+        crate::protocol::field::DIRECTION,
+        "auto"
+    ]);
+    assert!(
+        crate::protocol::decode(wire.as_array().unwrap())
+            .unwrap_err()
+            .contains("editors")
+    );
+}

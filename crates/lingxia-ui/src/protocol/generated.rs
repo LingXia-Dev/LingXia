@@ -411,7 +411,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "overscroll" => Some(&["auto", "contain", "none"]),
         "grid-auto-flow" => Some(&["row", "column", "row-dense", "column-dense"]),
         "align-content" => Some(&["start", "center", "end", "between", "around", "evenly", "stretch"]),
-        "direction" => Some(&["ltr", "rtl"]),
+        "direction" => Some(&["ltr", "rtl", "auto"]),
         "role" => Some(&["heading", "list", "listitem", "dialog", "alert", "status"]),
         "live-region" => Some(&["off", "polite", "assertive"]),
         "input-keyboard" => Some(&["text", "number", "email", "phone", "search", "date", "time"]),

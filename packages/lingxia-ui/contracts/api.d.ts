@@ -11,9 +11,9 @@ export type ComponentProps<C> = C extends (props: infer P) => unknown ? P : neve
 export declare function childrenToArray(children: Child): readonly Exclude<Child, readonly Child[] | boolean | null | undefined>[];
 
 /** Props every element accepts; `style` is narrowed per element. */
-/** `dir` sets the inline direction of a subtree; otherwise it follows `env.direction`. */
+/** `dir` sets the inline direction of a subtree; otherwise it follows `env.direction`. Editors also take `"auto"` (first strong character). */
 export interface Props {
-  style?: Style; className?: string; key?: string; testId?: string; dir?: "ltr" | "rtl"; children?: Child;
+  style?: Style; className?: string; key?: string; testId?: string; dir?: "ltr" | "rtl" | "auto"; children?: Child;
   /** Semantic role; controls keep their own. Headings take `headingLevel` 1..6. */
   role?: "heading" | "list" | "listitem" | "dialog" | "alert" | "status"; headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
   /** Removes the node and its subtree from accessibility. */

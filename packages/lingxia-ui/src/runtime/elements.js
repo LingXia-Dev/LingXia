@@ -92,9 +92,11 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   admit(tag, element, props);
   if (parent.inControl && !admission.tags[element.wire].content) throw Error('UI_BUTTON: descendants must be noninteractive content');
   if (element.binding) bind(tag, element, props);
-  if (props.dir !== undefined && !['ltr', 'rtl'].includes(props.dir)) throw Error('UI_PROP: dir must be "ltr" or "rtl"');
-  // `dir` overrides the direction inherited from the environment for its subtree.
-  const direction = props.dir ?? parent.direction ?? (render.view?.env?.direction === 'rtl' ? 'rtl' : 'ltr');
+  const editor = ['input', 'textarea', 'search'].includes(tag);
+  if (props.dir !== undefined && !(['ltr', 'rtl'].includes(props.dir) || (editor && props.dir === 'auto')))
+    throw Error(`UI_PROP: dir must be "ltr" or "rtl"${editor ? ' or "auto"' : ''}`);
+  // `dir` overrides the direction inherited from the environment for its subtree; `auto` keeps the box's.
+  const direction = (props.dir === 'auto' ? undefined : props.dir) ?? parent.direction ?? (render.view?.env?.direction === 'rtl' ? 'rtl' : 'ltr');
   const flat = flatten(children);
   const style = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
   const inline = child => typeof child === 'string' || typeof child === 'number';

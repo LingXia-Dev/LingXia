@@ -122,6 +122,12 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             .as_str()
             .filter(|v| options.contains(v))
             .ok_or("UI_STYLE: invalid style option")?;
+        if id == field::DIRECTION
+            && value == "auto"
+            && !matches!(tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH)
+        {
+            return Err("UI_PROP: dir=\"auto\" is for editors".into());
+        }
         if id == field::KEYBOARD {
             if (tag == tag::SEARCH) != (value == "search") {
                 return Err("UI_INPUT: search requires search keyboard".into());
