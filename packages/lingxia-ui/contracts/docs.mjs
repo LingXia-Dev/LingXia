@@ -299,6 +299,8 @@ const limitNotes = {
   vectorWork: 'Path elements all vectors of one frame draw.',
   plotWork: 'Geometry all plots of one frame draw.',
   shadowMaskBytes: 'Blurred shadow masks one frame rasterizes.',
+  compositeFrames: 'Frame-sized working surfaces nested opacity, clip and backdrop layers may hold at once (at least 64 MiB); past it the deepest groups flatten.',
+  compositeBytes: 'Absolute ceiling on those working surfaces, for very large windows.',
 };
 
 const size = value => value >= 1 << 20 && value % (1 << 20) === 0 ? `${value / (1 << 20)} MiB`

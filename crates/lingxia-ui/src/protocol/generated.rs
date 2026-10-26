@@ -476,6 +476,8 @@ pub mod limits {
     pub const VECTOR_WORK: usize = 32768;
     pub const PLOT_WORK: usize = 16384;
     pub const SHADOW_MASK_BYTES: usize = 16777216;
+    pub const COMPOSITE_FRAMES: usize = 6;
+    pub const COMPOSITE_BYTES: usize = 268435456;
 }
 
 /// Environment keys and where each comes from: `device` facts, a host `push`, or the `session`.

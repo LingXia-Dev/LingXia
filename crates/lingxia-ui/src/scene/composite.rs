@@ -74,7 +74,31 @@ pub struct Plan {
     height: u16,
 }
 
+const OVER_BUDGET: &str = "UI_COMPOSITE: working surfaces exceed limit";
+
 impl Plan {
+    /// [`Plan::new`], flattening the deepest groups until the working surfaces fit: a frame
+    /// loses its innermost opacity or blur before it fails. Returns how many were flattened.
+    pub fn flattened(
+        width: u16,
+        height: u16,
+        draw_count: usize,
+        mut steps: Vec<Step>,
+    ) -> Result<(Self, usize), String> {
+        let mut flattened = 0;
+        loop {
+            match Self::new(width, height, draw_count, steps.clone()) {
+                Err(error) if error == OVER_BUDGET => {
+                    if !flatten_deepest(&mut steps) {
+                        return Err(error);
+                    }
+                    flattened += 1;
+                }
+                result => return result.map(|plan| (plan, flattened)),
+            }
+        }
+    }
+
     pub fn steps(&self) -> &[Step] {
         &self.steps
     }
@@ -88,13 +112,7 @@ impl Plan {
         steps: Vec<Step>,
     ) -> Result<Self, String> {
         let pixels = u64::from(width) * u64::from(height);
-        if width == 0
-            || height == 0
-            || width > 4096
-            || height > 4096
-            || pixels > 4 * 1024 * 1024
-            || steps.len() > 4096
-        {
+        if width == 0 || height == 0 || width > 4096 || height > 4096 || steps.len() > 4096 {
             return Err("UI_COMPOSITE: frame or program limit exceeded".into());
         }
         let mut depth = 1u64;
@@ -158,8 +176,13 @@ impl Plan {
         // later writes are ordered behind those reads. CPU writes finish before
         // old pixels are released. Filter padding and depth-cache pixels have
         // separate bounds; these figures do not describe total driver memory.
-        if peak > 32 || working_bytes > 64 * 1024 * 1024 {
-            return Err("UI_COMPOSITE: working surfaces exceed limit".into());
+        // Working surfaces are frame-sized, so the bound scales with the frame: a tablet or a
+        // 3x phone nests as deep as a small phone, under one absolute ceiling for huge windows.
+        let budget = (crate::protocol::limits::COMPOSITE_FRAMES as u64 * frame_bytes)
+            .max(64 * 1024 * 1024)
+            .min(crate::protocol::limits::COMPOSITE_BYTES as u64);
+        if peak > 32 || working_bytes > budget {
+            return Err(OVER_BUDGET.into());
         }
         Ok(Self {
             steps,
@@ -229,6 +252,43 @@ pub trait Backend {
     fn filter(&mut self, source: Self::Surface, layer: &Layer) -> Result<Self::Surface, String>;
 }
 
+/// Removes the deepest group, preferring opacity and backdrop groups over clips, which keep
+/// content inside its box. False when no group is left.
+fn flatten_deepest(steps: &mut Vec<Step>) -> bool {
+    let mut depth = 0usize;
+    let mut best: Option<(bool, usize, usize)> = None;
+    for (index, step) in steps.iter().enumerate() {
+        match step {
+            Step::Push(layer) => {
+                depth += 1;
+                let effect = !matches!(layer, Layer::Clip(_));
+                if best.is_none_or(|(e, d, _)| (effect, depth) > (e, d)) {
+                    best = Some((effect, depth, index));
+                }
+            }
+            Step::Pop => depth = depth.saturating_sub(1),
+            Step::Draw(_) => {}
+        }
+    }
+    let Some((_, _, push)) = best else {
+        return false;
+    };
+    let mut open = 0usize;
+    let Some(pop) = steps[push..].iter().position(|step| {
+        match step {
+            Step::Push(_) => open += 1,
+            Step::Pop => open -= 1,
+            Step::Draw(_) => {}
+        }
+        open == 0
+    }) else {
+        return false;
+    };
+    steps.remove(push + pop);
+    steps.remove(push);
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,10 +303,28 @@ mod tests {
         ] {
             assert!(Plan::new(96, 96, 1, steps).is_err());
         }
-        assert!(Plan::new(4096, 4096, 0, vec![]).is_err());
-        let mut steps = vec![Step::Push(Layer::Opacity(0.5)); 4];
-        steps.extend(vec![Step::Pop; 4]);
-        assert!(Plan::new(2048, 2048, 0, steps).is_err());
+        assert!(Plan::new(4097, 2048, 0, vec![]).is_err());
+        let nested = |depth| {
+            let mut steps = vec![Step::Push(Layer::Opacity(0.5)); depth];
+            steps.push(Step::Draw(0..1));
+            steps.extend(vec![Step::Pop; depth]);
+            steps
+        };
+        // The working budget scales with the frame: a 2x tablet nests as deep as a phone does.
+        assert!(Plan::new(393 * 2, 852 * 2, 1, nested(4)).is_ok());
+        assert!(Plan::new(1640, 2360, 1, nested(4)).is_ok());
+        assert!(Plan::new(2732, 2048, 1, nested(4)).is_ok());
+        assert!(Plan::new(1640, 2360, 1, nested(6)).is_err());
+        // Over the budget, the deepest groups flatten instead of failing the frame.
+        let (plan, flattened) = Plan::flattened(1640, 2360, 1, nested(8)).unwrap();
+        assert!(flattened >= 1);
+        assert!(
+            plan.steps()
+                .iter()
+                .filter(|s| matches!(s, Step::Push(_)))
+                .count()
+                < 8
+        );
         let steps: Vec<_> = (0..20).map(|index| Step::Draw(index..index + 1)).collect();
         assert!(
             Plan::new(1024, 1024, 20, steps).is_ok(),

@@ -509,7 +509,8 @@ impl DisplayList {
         if start < self.commands.len() + 1 {
             steps.push(Step::Draw(start..self.commands.len() + 1));
         }
-        Plan::new(self.width, self.height, self.commands.len() + 1, steps)
+        Plan::flattened(self.width, self.height, self.commands.len() + 1, steps)
+            .map(|(plan, _)| plan)
     }
 
     pub(crate) fn composition_span(

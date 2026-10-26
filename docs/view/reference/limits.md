@@ -34,5 +34,7 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `vectorWork` | 32768 | Path elements all vectors of one frame draw. |
 | `plotWork` | 16384 | Geometry all plots of one frame draw. |
 | `shadowMaskBytes` | 16777216 (16 MiB) | Blurred shadow masks one frame rasterizes. |
+| `compositeFrames` | 6 | Frame-sized working surfaces nested opacity, clip and backdrop layers may hold at once (at least 64 MiB); past it the deepest groups flatten. |
+| `compositeBytes` | 268435456 (256 MiB) | Absolute ceiling on those working surfaces, for very large windows. |
 
 Wire ABI: 1. Highest field id: 183.
