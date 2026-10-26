@@ -2,12 +2,11 @@
 // authoring API types, the real Tailwind lowering and the sources that raise UI_* codes.
 // `--check` fails on drift instead of writing.
 import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
-import { createRequire } from 'node:module';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { readSchema, elementStyle, packageRoot, repositoryRoot } from './generate.mjs';
-import { compileUtilities } from '../compiler/tailwind.mjs';
+import { build } from 'esbuild';
+import { readSchema, elementStyle, generate, packageRoot, repositoryRoot } from './generate.mjs';
 
 const header = '_Generated from the View schema (`schema.json`) and the compiler; do not edit._\n';
 // A code span that may itself hold backticks (template literal types).
@@ -104,11 +103,30 @@ function styles(schema) {
 
 // ---- utilities and variants -------------------------------------------------------------
 
+const contractPath = 'packages/lingxia-ui/src/generated/contract.js';
+
+// The Tailwind lowering bound to this generation's contract, not the committed one, so one
+// `generate` pass converges. Packages stay external and load from their resolved files.
+async function lowering(generated) {
+  const contract = generated[contractPath];
+  if (!contract) throw Error(`docs.mjs: the generation lacks ${contractPath}`);
+  // This module sits in the compiler's package, so its ESM resolution matches the compiler's imports.
+  const theme = import.meta.resolve('tailwindcss/theme.css');
+  const plugin = { name: 'fresh-contract', setup(builder) {
+    builder.onResolve({ filter: /^[^./]/ }, ({ path }) => ({ path: path.startsWith('node:') ? path : import.meta.resolve(path), external: true }));
+    builder.onResolve({ filter: /generated\/contract\.js$/ }, ({ path, resolveDir }) => ({ path: resolve(resolveDir, path) }));
+    builder.onLoad({ filter: /generated[\\/]contract\.js$/ }, () => ({ contents: contract, loader: 'js' }));
+  } };
+  const result = await build({ entryPoints: [join(packageRoot, 'compiler/tailwind.mjs')], bundle: true, write: false, format: 'esm',
+    platform: 'node', legalComments: 'none', plugins: [plugin], define: { 'import.meta.resolve': '__lingxiaResolve' },
+    banner: { js: `const __lingxiaResolve = specifier => { if (specifier !== 'tailwindcss/theme.css') throw Error('docs.mjs: unexpected resolve ' + specifier); return ${JSON.stringify(theme)}; };` } });
+  const source = result.outputFiles[0].text;
+  return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+}
+
 async function designSystem() {
-  const require = createRequire(join(packageRoot, 'package.json'));
-  const tailwind = await import(require.resolve('tailwindcss'));
-  const load = tailwind.__unstable__loadDesignSystem ?? tailwind.default.__unstable__loadDesignSystem;
-  const theme = await readFile(require.resolve('tailwindcss/theme.css'), 'utf8');
+  const { __unstable__loadDesignSystem: load } = await import('tailwindcss');
+  const theme = await readFile(new URL(import.meta.resolve('tailwindcss/theme.css')), 'utf8');
   return load(`${theme}\n@tailwind utilities;`);
 }
 
@@ -149,10 +167,9 @@ const sections = [
 // The last key decides: `truncate` ends in whiteSpace, `space-x-*` in a margin.
 const sectionOf = rule => sections.find(([, test]) => test.test(effects(rule).at(-1)))?.[0] ?? 'Other';
 
-async function utilities(system) {
+function utilities(system, rules) {
   const names = system.getClassList().map(([name]) => name);
   const roots = [...system.utilities.keys('functional')].map(strip);
-  const rules = await compileUtilities(new Set(names));
   const ok = new Map(), errors = new Map();
   for (const rule of rules) {
     if (rule.error) { if (!errors.has(rule.name)) errors.set(rule.name, rule.error.message); }
@@ -210,10 +227,11 @@ const variantSamples = {
   supports: 'supports-[display:grid]', max: 'max-md', min: 'min-md', '@max': '@max-md', '@': '@md', '@min': '@min-md',
 };
 
-async function variants(schema, system) {
-  const probe = 'opacity-50';
-  const candidates = system.getVariants().map(variant => [variant.name, `${variantSamples[variant.name] ?? variant.name}:${probe}`]);
-  const rules = await compileUtilities(new Set([...candidates.map(([, candidate]) => candidate), 'placeholder:text-red-500']));
+const probe = 'opacity-50';
+const variantCandidates = system => system.getVariants().map(variant => [variant.name, `${variantSamples[variant.name] ?? variant.name}:${probe}`]);
+
+function variants(schema, system, rules) {
+  const candidates = variantCandidates(system);
   const result = name => {
     const matched = rules.filter(rule => rule.name === name);
     const error = matched.find(rule => rule.error)?.error.message;
@@ -406,15 +424,22 @@ async function errors() {
     table(['Code', 'Raised at', 'Meaning'], rows), ''].join('\n');
 }
 
-/** Map of repository-relative path to generated reference page. */
-export async function docs(schema) {
-  const system = await designSystem();
+/**
+ * Map of repository-relative path to generated reference page. `generated` is the
+ * contract generation the pages describe; it defaults to a fresh one from `schema`.
+ */
+export async function docs(schema, generated) {
+  generated ??= await generate(schema);
+  const [system, { compileUtilities }] = await Promise.all([designSystem(), lowering(generated)]);
+  // One lowering pass covers every utility and every variant probe.
+  const names = system.getClassList().map(([name]) => name);
+  const rules = await compileUtilities(new Set([...names, ...variantCandidates(system).map(([, candidate]) => candidate), 'placeholder:text-red-500']));
   const base = 'docs/view/reference';
   return {
     [`${base}/elements.md`]: await elements(schema),
     [`${base}/styles.md`]: styles(schema),
-    [`${base}/utilities.md`]: await utilities(system),
-    [`${base}/variants.md`]: await variants(schema, system),
+    [`${base}/utilities.md`]: utilities(system, rules),
+    [`${base}/variants.md`]: variants(schema, system, rules),
     [`${base}/limits.md`]: limits(schema),
     [`${base}/errors.md`]: await errors(),
     [`${base}/environment.md`]: await environment(),
@@ -423,7 +448,11 @@ export async function docs(schema) {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const generated = await docs(await readSchema());
+  const schema = await readSchema();
+  // Once generate.mjs includes the reference, its generation already holds these pages.
+  const fresh = await generate(schema);
+  const generated = Object.fromEntries(Object.entries(fresh).filter(([path]) => path.startsWith('docs/view/reference/')));
+  if (!Object.keys(generated).length) Object.assign(generated, await docs(schema, fresh));
   if (process.argv.includes('--check')) {
     const stale = [];
     for (const [path, content] of Object.entries(generated))
