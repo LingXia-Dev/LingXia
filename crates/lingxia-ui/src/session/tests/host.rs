@@ -47,6 +47,10 @@ struct Log {
     main: Vec<ThreadId>,
     /// Generations of frames the fake target accepted.
     generations: Vec<CommitTicket>,
+    /// Generations the host reported presented (`HostEvents::presented`).
+    shown: Vec<CommitTicket>,
+    /// Deferred frames handed to the fake raster thread, in order.
+    handed: Vec<CommitTicket>,
     released_transient: usize,
 }
 
@@ -124,6 +128,9 @@ impl Presenter for Fake {
         }))
     }
     fn present(&self, frame: Encoded) -> Result<bool, String> {
+        if self.defer.load(std::sync::atomic::Ordering::Acquire) {
+            self.log.lock().unwrap().handed.push(frame.generation);
+        }
         if let Some(costs) = self.costs.lock().unwrap().as_mut() {
             costs.ready.pop_front();
             costs.main_free = *self.clock.lock().unwrap() + costs.ui;
@@ -224,7 +231,9 @@ impl HostEvents for Fake {
     fn loaded(&self) {
         self.main().loaded += 1;
     }
-    fn presented(&self, _: &FrameSnapshot, _: &FrameTiming) {}
+    fn presented(&self, frame: &FrameSnapshot, _: &FrameTiming) {
+        self.main().shown.push(frame.generation);
+    }
     fn message(&self, connection: ConnectionTicket, message: &str) {
         self.main()
             .messages
@@ -1909,17 +1918,16 @@ fn a_deferred_present_holds_the_next_frame_until_it_reaches_the_screen() {
         "the next frame follows the acknowledgement"
     );
     // A dropped deferred frame is prepared again.
-    let generation = *host
-        .adapter()
-        .log
-        .lock()
-        .unwrap()
-        .generations
-        .last()
-        .unwrap();
+    let generation = *host.adapter().log.lock().unwrap().handed.last().unwrap();
     host.deferred_presented(generation, false);
-    run_frames(&platform, &host, 1);
+    run_frames(&platform, &host, 2);
     assert_eq!(presents(&host), 3);
+    let log = host.adapter().log.lock().unwrap();
+    assert!(
+        log.handed.last().unwrap().get() > generation.get() + 1,
+        "the frame prepared on the dropped one is dropped too: {:?}",
+        log.handed
+    );
 }
 
 fn dark_notice() -> u32 {
@@ -2145,5 +2153,42 @@ fn a_single_target_presenter_is_named_in_the_log_and_falls_back_to_one_frame_at_
     assert!(
         rate >= 26,
         "one frame at a time instead of a collapse: {rate}/s"
+    );
+}
+
+#[test]
+fn every_deferred_frame_the_adapter_shows_is_reported_presented_once() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(&format!(
+            "function render(){{return h('column',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}})}}"
+        )),
+        false,
+    );
+    host.adapter()
+        .defer
+        .store(true, std::sync::atomic::Ordering::Release);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let (mut acked, mut earlier) = (0, 0);
+    for _ in 0..40 {
+        // Rastering takes longer than a display frame: a frame handed over shows one
+        // display frame later, after the next vsync.
+        let handed = host.adapter().log.lock().unwrap().handed.clone();
+        for generation in &handed[acked..earlier] {
+            host.deferred_presented(*generation, true);
+        }
+        acked = earlier;
+        earlier = handed.len();
+        run_frames(&platform, &host, 1);
+    }
+    let log = host.adapter().log.lock().unwrap();
+    assert!(acked >= 15, "{:?}", log.handed);
+    assert_eq!(
+        log.shown[..acked],
+        log.handed[..acked],
+        "each frame the raster thread showed is presented once, by its own generation"
     );
 }

@@ -415,6 +415,11 @@ impl<A: PlatformAdapter> Inner<A> {
         let at = self.adapter.now();
         let Some(prepared) = ({
             let mut main = self.main();
+            // One deferred frame at a time: the next waits until the adapter shows this one,
+            // or its acknowledgement would no longer match.
+            if main.deferred.is_some() {
+                return;
+            }
             if let Some(last) = main.last_vsync
                 && let Some(delta) = at.checked_sub(last)
                 && delta > Duration::from_millis(4)
@@ -547,7 +552,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 .is_some_and(|d| d.snapshot.generation == generation);
             let deferred = matches.then(|| main.deferred.take()).flatten();
             if deferred.is_some() {
-                main.busy = false;
+                main.busy = main.prepared.is_some() || main.ahead;
             }
             deferred
         }) else {
@@ -572,8 +577,16 @@ impl<A: PlatformAdapter> Inner<A> {
             }
             self.presented(snapshot, surface, page, revision, offsets, timing, vsync);
         } else {
-            self.main().dirty = true;
-            self.main().pending = true;
+            // Frames built on the dropped one cannot present either.
+            let mut main = self.main();
+            main.prepared = None;
+            main.drop_ahead();
+            main.busy = false;
+            main.dirty = true;
+            main.pending = true;
+        }
+        if self.main().prepared.is_some() {
+            self.adapter.request_vsync();
         }
         let pending = {
             let main = self.main();
