@@ -22,7 +22,7 @@ test('plot uses append-only wire fields with bounded JSON arrays', () => {
   const { tag, props } = rendered(() => plot({ kind: 'pie' }), view);
   assert.equal(tag, 'plot');
   assert.deepEqual([props.plotValues, props.plotColors, props.plotKind], ['[10,20]', '["#435DD9"]', 'pie']);
-  assert.deepEqual(audit('const view = <plot kind="line" values={[1,2]} colors={["#123456"]} />;', 'plot.tsx'), []);
+  assert.deepEqual(audit('const view = <plot kind="line" accessibilityLabel="Trend" values={[1,2]} colors={["#123456"]} />;', 'plot.tsx'), []);
 });
 
 test('invalid plot data, palette and children fail before commit', () => {
@@ -76,7 +76,7 @@ test('smooth area fields are optional and share the expanded geometry budget', (
   reset();
   const { props } = rendered(() => plot({ kind: 'line', smooth: true, area: true }), view);
   assert.equal(props.plotSmooth, 1); assert.equal(props.plotArea, 1);
-  assert.deepEqual(audit('const v = <plot kind="line" values={[1,2]} colors={["#123456"]} smooth area />;', 'plot.tsx'), []);
+  assert.deepEqual(audit('const v = <plot kind="line" accessibilityLabel="Trend" values={[1,2]} colors={["#123456"]} smooth area />;', 'plot.tsx'), []);
   reset();
   assert.throws(() => describe(() => h('column', {}, Array.from({ length: 8 }, (_, i) =>
     plot({ key: String(i), kind: 'line', smooth: true, area: true, values: Array(128).fill(1) }))), view), /plot geometry budget/);

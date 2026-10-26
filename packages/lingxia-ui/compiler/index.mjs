@@ -38,6 +38,36 @@ const position = (file, node) => {
 };
 
 /** Every authoring problem in one module, as `file:line:col: CODE: message`. */
+// Controls a screen reader announces need a name; the fix is named in the message.
+const labelled = new Set(['input', 'textarea', 'search', 'slider', 'radio', 'plot']);
+const contentNamed = new Set(['button', 'link', 'checkbox', 'switch']);
+function unnamed(tag, node, file) {
+  const attributes = node.attributes.properties;
+  if (attributes.some(ts.isJsxSpreadAttribute)) return undefined;
+  const has = name => attributes.some(prop => prop.name?.getText(file) === name);
+  if (tag === 'image' && !has('alt')) return 'UI_A11Y: <image> needs alt (describe it, or alt="" when decorative)';
+  if (labelled.has(tag) && !has('accessibilityLabel'))
+    return `UI_A11Y: <${tag}> needs an accessible name; add accessibilityLabel="…"${editors.has(tag) ? ' (a placeholder is a hint, not a name)' : ''}`;
+  if (contentNamed.has(tag) && !has('accessibilityLabel') && ts.isJsxOpeningElement(node) && !spoken(node.parent))
+    return `UI_A11Y: <${tag}> has no text to name it; add text or accessibilityLabel="…"`;
+  if (contentNamed.has(tag) && !has('accessibilityLabel') && ts.isJsxSelfClosingElement(node))
+    return `UI_A11Y: <${tag}> has no text to name it; add text or accessibilityLabel="…"`;
+  return undefined;
+}
+// Whether children may produce text: literal text, an expression, or a text element.
+function spoken(element) {
+  return element.children.some(child => {
+    if (ts.isJsxText(child)) return child.text.trim() !== '';
+    if (ts.isJsxExpression(child)) return Boolean(child.expression);
+    if (ts.isJsxElement(child)) {
+      const name = child.openingElement.tagName.getText();
+      return ['text', 'span'].includes(name) || /^[A-Z]/.test(name) || spoken(child);
+    }
+    if (ts.isJsxSelfClosingElement(child)) return /^[A-Z]/.test(child.tagName.getText());
+    return false;
+  });
+}
+
 export function audit(source, filename) {
   const file = parseSource(filename, source);
   const checker = sourceChecker(file);
@@ -47,6 +77,8 @@ export function audit(source, filename) {
     if (ts.isJsxFragment(node)) report(node, 'UI_FRAGMENT: return one layout node; fragments are not supported');
     if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && ts.isIdentifier(node.tagName) && /^[a-z]/.test(node.tagName.text)) {
       const tag = node.tagName.text;
+      const problem = has(elements, tag) && unnamed(tag, node, file);
+      if (problem) report(node, problem);
       if (!has(elements, tag)) report(node, `UI_TAG: unsupported tag <${tag}>`);
       else for (const prop of node.attributes.properties) {
         if (ts.isJsxSpreadAttribute(prop)) {

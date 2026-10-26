@@ -58,6 +58,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   (the last one submits); `cell.focus()` focuses the editor bound to that `useLocal` cell.
 - Buttons may contain text, icons and images; their text names them for
   accessibility. Images need `alt` (`""` for decoration).
+- The build fails with `UI_A11Y` when an editor, slider, radio group or plot lacks `accessibilityLabel`,
+  or a button, link, checkbox or switch has neither text nor a label; a placeholder is not a name.
 - Remote `<image>` sources follow HTTP caching: revalidated, and shown stale while offline.
 - Text follows the system font size; prefer `min-h-*` over fixed heights. Whitespace
   collapses as in CSS: use `whitespace-pre-line`/`pre-wrap` for authored newlines.

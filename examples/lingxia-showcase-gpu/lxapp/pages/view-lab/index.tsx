@@ -222,8 +222,8 @@ function Inputs() {
       <input testId="lab-input-otp" bind={code} accessibilityLabel="One-time code" keyboard="number" maxLength={6} autoComplete="one-time-code" enterKeyHint="done" placeholder="6-digit code" className={field} />
       <input testId="lab-input-amount" bind={amount} accessibilityLabel="Amount" keyboard="number" min={1} max={500} step={0.5} enterKeyHint="next" placeholder="1 to 500, steps of 0.5" className={field} />
       <row className="gap-2">
-        <input testId="lab-input-date" bind={day} accessibilityLabel="Date" keyboard="date" min="2024-01-01" placeholder="Date" className={`grow basis-0 ${field}`} />
-        <input testId="lab-input-time" bind={time} accessibilityLabel="Time" keyboard="time" placeholder="Time" className={`grow basis-0 ${field}`} />
+        <input testId="lab-input-date" bind={day} accessibilityLabel="Billing date" keyboard="date" min="2024-01-01" placeholder="Pick a date" className={`grow basis-0 ${field}`} />
+        <input testId="lab-input-time" bind={time} accessibilityLabel="Reminder time" keyboard="time" placeholder="Pick a time" className={`grow basis-0 ${field}`} />
       </row>
       <input testId="lab-input-name" accessibilityLabel="Name" autoComplete="name" autoCapitalize="words" spellCheck={false} placeholder="Full name" className={field} />
       <text testId="lab-input-values" className="text-xs text-muted-foreground">{`code=${code.value} amount=${amount.value} date=${day.value} time=${time.value}`}</text>

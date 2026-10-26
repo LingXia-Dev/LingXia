@@ -67,8 +67,8 @@ test('spread and explicit props obey one element contract', () => {
   clean('const props = {children:"Hello",className:"text-sm"}; const view = <text {...props}/>;');
   clean('const view = <list count={keys.length} itemKeys={keys} row={renderRow}/>;');
   flags('const view = <scroll itemKeys={keys}/>;', /UI_PROP: itemKeys is not a property of <scroll>/);
-  clean('const x = <input bind={draft} placeholder="Write" keyboard="text" autoFocus onSubmit={save} disabled/>;');
-  clean('const x = <textarea value="" onInput={change} disabled={false}/>;');
+  clean('const x = <input bind={draft} accessibilityLabel="Note" placeholder="Write" keyboard="text" autoFocus onSubmit={save} disabled/>;');
+  clean('const x = <textarea accessibilityLabel="Note" value="" onInput={change} disabled={false}/>;');
   flags('const x = <textarea enabled={false}/>;', /UI_PROP: enabled/);
   clean('const x = <checkbox value={true}><row><text>Task</text></row></checkbox>;');
   clean('const x = <switch accessibilityLabel="Task" bind={on}/>;');
@@ -224,8 +224,8 @@ test('compiler emits executable ESM UI, carries the action catalog and preserves
     'page.tsx': `export function render() { return <column>
       <stack><text>Back</text><text style={{position:"absolute",left:12,top:-4}}>Front</text></stack>
       <grid style={{gridTemplateColumns:2}}><text style={{lineClamp:2}}>Hello, world!</text><text>Second card</text></grid>
-      <search placeholder="Find a moment"/><slider accessibilityLabel="Volume" value={40}/>
-      <radio value="daily" options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"}]} />
+      <search accessibilityLabel="Search" placeholder="Find a moment"/><slider accessibilityLabel="Volume" value={40}/>
+      <radio accessibilityLabel="Repeat" value="daily" options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"}]} />
     </column>; }`,
   }, async root => {
     const catalog = { __names: ['increment'], __modes: { increment: 'call' } };
@@ -267,4 +267,23 @@ test('bundled TSX classes use theme tokens, conditional strings and explicit sty
     await writeFile(join(root, 'page.tsx'), 'export function render() { return <text className="backdrop-invert">Hello</text>; }');
     await assert.rejects(build(), /page.tsx:1:\d+: UI_CLASS_UNSUPPORTED: backdrop-invert/);
   });
+});
+
+test('controls a screen reader announces need a name, and the message names the fix', () => {
+  for (const [source, pattern] of [
+    ['<input placeholder="Date"/>', /UI_A11Y: <input> needs an accessible name; add accessibilityLabel="…" \(a placeholder is a hint, not a name\)/],
+    ['<slider value={1}/>', /UI_A11Y: <slider> needs an accessible name/],
+    ['<button onClick={f}><image src="x.png" alt=""/></button>', /UI_A11Y: <button> has no text to name it/],
+    ['<checkbox value={v}/>', /UI_A11Y: <checkbox> has no text to name it/],
+    ['<image src="x.png"/>', /UI_A11Y: <image> needs alt/],
+  ]) flags(`export function render(){ return ${source}; }`, pattern);
+  for (const source of [
+    '<input accessibilityLabel="Date" placeholder="Pick a date"/>',
+    '<button onClick={f}>Save</button>',
+    '<button onClick={f}>{label}</button>',
+    '<button onClick={f} accessibilityLabel="Close"><image src="x.png" alt=""/></button>',
+    '<button onClick={f}><row><text>Pay</text></row></button>',
+    '<input {...props}/>',
+    '<image src="x.png" alt=""/>',
+  ]) clean(`export function render(){ return ${source}; }`);
 });

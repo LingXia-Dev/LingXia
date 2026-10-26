@@ -29,7 +29,7 @@ export function Page({
 export function Header({ title, subtitle, testId }: { title: string; subtitle?: string; testId?: string }) {
   return (
     <column className="items-center gap-2 pb-1">
-      <text testId={testId} className="text-2xl font-light text-center">
+      <text testId={testId} role="heading" headingLevel={1} className="text-2xl font-light text-center">
         {title}
       </text>
       {subtitle ? <text className="text-sm text-muted-foreground text-center line-clamp-3">{subtitle}</text> : null}
@@ -55,7 +55,7 @@ export function Section({
     <column testId={testId} className="bg-card text-card-foreground rounded-2xl border border-border shadow-sm">
       <row className="items-center gap-3 px-4 py-4 border-b border-border">
         <column className="grow basis-0 min-w-0 gap-0.5">
-          <text className="text-sm font-semibold">{title}</text>
+          <text role="heading" headingLevel={2} className="text-sm font-semibold">{title}</text>
           {description ? <text className="text-xs text-muted-foreground line-clamp-4">{description}</text> : null}
         </column>
         {action}
