@@ -809,7 +809,12 @@ impl Renderer {
                 &parents,
                 &records
                     .iter()
-                    .map(|record| record.number(field::Z_INDEX).unwrap_or(0.0) as i32)
+                    .map(|record| {
+                        (
+                            record.number(field::Z_INDEX).unwrap_or(0.0) as i32,
+                            record.number(field::ORDER).unwrap_or(0.0) as i32,
+                        )
+                    })
                     .collect::<Vec<_>>(),
             ),
             parents,

@@ -151,6 +151,22 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             }),
             "UI_STYLE: invalid font-variant-numeric",
         ),
+        field::GRID_TEMPLATE_COLUMNS | field::GRID_TEMPLATE_ROWS => {
+            crate::layout::grid::template(value.as_str().ok_or("UI_GRID: expected track list")?)
+                .map(drop)
+        }
+        field::GRID_AUTO_COLUMNS | field::GRID_AUTO_ROWS => {
+            crate::layout::grid::auto_tracks(value.as_str().ok_or("UI_GRID: expected track list")?)
+                .map(drop)
+        }
+        field::GRID_COLUMN | field::GRID_ROW => {
+            crate::layout::grid::placement(value.as_str().ok_or("UI_GRID: expected line")?)
+                .map(drop)
+        }
+        field::ORDER => ensure(
+            value.as_i64().is_some_and(|v| v.abs() <= 10_000),
+            "UI_STYLE: invalid order",
+        ),
         field::ASPECT_RATIO => ensure(
             value
                 .as_f64()

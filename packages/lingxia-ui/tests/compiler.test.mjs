@@ -83,7 +83,8 @@ test('spread and explicit props obey one element contract', () => {
 test('inline styles are CSS-named and checked per element', () => {
   clean('const x=<grid style={{gridTemplateColumns:3}}><text style={{lineClamp:2}}>Card</text></grid>;');
   clean('const x=<stack><text style={{position:"absolute",top:-5,left:10}}>Top</text></stack>;');
-  flags('const x=<column style={{gridTemplateColumns:3}}/>;', /UI_STYLE: gridTemplateColumns is not supported on <column>/);
+  clean('const x=<column style={{display:"grid",gridTemplateColumns:3}}/>;');
+  flags('const x=<text style={{gridTemplateColumns:3}}>A</text>;', /UI_STYLE: gridTemplateColumns is not supported on <text>/);
   flags('const x=<text style={{offset:{x:1}}}/>;', /UI_STYLE: unknown style property offset/);
   flags('const view = <column style={{animation:null}}/>;', /UI_ANIMATION/);
 });
@@ -91,7 +92,7 @@ test('inline styles are CSS-named and checked per element', () => {
 test('class diagnostics separate unknown, unsupported and wrong-element utilities and report all at once', async () => {
   await project({ 'page.tsx': `export function render(view) {
   return <column className="grid-cols-2 not-a-utility transition">
-    <text className={view.data.on ? "text-sm" : "items-center"}>A</text>
+    <text className={view.data.on ? "grid-cols-2" : "items-center"}>A</text>
     <column className="active:bg-red-500 hover:p-4"/>
   </column>;
 }` }, async (root, build) => {
@@ -99,7 +100,7 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
     const lines = error.message.split('\n');
     assert.match(lines[0], /page.tsx: 6 authoring problems/);
     for (const pattern of [
-      /^page.tsx:2:\d+: UI_CLASS_ELEMENT: grid-cols-2 sets gridTemplateColumns, which <column> does not support$/,
+      /^page.tsx:3:\d+: UI_CLASS_ELEMENT: grid-cols-2 sets gridTemplateColumns, which <text> does not support$/,
       /^page.tsx:2:\d+: UI_CLASS_UNKNOWN: not-a-utility is not a Tailwind utility$/,
       /^page.tsx:2:\d+: UI_CLASS_UNSUPPORTED: transition: the native renderer does not support transition-property/,
       /^page.tsx:3:\d+: UI_CLASS_ELEMENT: items-center sets alignItems, which <text> does not support$/,
@@ -217,7 +218,7 @@ test('compiler emits executable ESM UI, carries the action catalog and preserves
     const named = text => records.find(record => record.text === text);
     assert.equal(named('Hello, world!').props.textLines, 2);
     assert.deepEqual([named('Front').props.insetLeft, named('Front').props.insetTop], [12, -4]);
-    assert.equal(records.find(record => record.tag === 'grid').props.gridColumns, 2);
+    assert.equal(records.find(record => record.tag === 'grid').props.gridTemplateColumns, 'repeat(2, minmax(0, 1fr))');
     assert.equal(records.find(record => record.tag === 'search').props.placeholder, 'Find a moment');
     assert.equal(records.find(record => record.tag === 'slider').props.sliderValue, 40);
     assert.deepEqual(records.filter(record => record.tag === 'radio-option').map(record => record.text), ['Daily', 'Weekly']);

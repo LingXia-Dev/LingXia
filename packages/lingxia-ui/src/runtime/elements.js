@@ -175,9 +175,6 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
       result.children = radioOptions(props, identity, result.fields, disabled);
       break;
-    case 'grid':
-      if (result.fields.gridColumns === undefined) throw Error('UI_GRID: <grid> requires style gridTemplateColumns');
-      break;
   }
   if (tag === 'scroll' || tag === 'list') for (const name of ['onReachStart', 'onReachEnd']) {
     if (props[name] === undefined) continue;

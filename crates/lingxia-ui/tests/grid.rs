@@ -6,7 +6,7 @@ use lingxia_ui::{Renderer, protocol::decode};
 use serde_json::{Value, json};
 
 #[test]
-fn grid_columns_are_required_bounded_and_tag_specific() {
+fn grid_columns_are_bounded_and_tag_specific() {
     for value in [
         json!(0),
         json!(65),
@@ -24,12 +24,16 @@ fn grid_columns_are_required_bounded_and_tag_specific() {
             .is_err()
         );
     }
-    for wire in [
-        json!([GRID, -1, "", "", "", 0]),
-        json!([COLUMN, -1, "", "", "", 1, GRID_COLUMNS, 3]),
-    ] {
-        assert!(decode(wire.as_array().unwrap()).is_err());
-    }
+    // A grid without columns is one implicit column, as in CSS.
+    assert!(decode(json!([GRID, -1, "", "", "", 0]).as_array().unwrap()).is_ok());
+    assert!(
+        decode(
+            json!([COLUMN, -1, "", "", "", 1, GRID_COLUMNS, 3])
+                .as_array()
+                .unwrap()
+        )
+        .is_err()
+    );
     for columns in [1, 64] {
         assert!(
             decode(

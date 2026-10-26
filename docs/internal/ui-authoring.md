@@ -23,7 +23,7 @@ The schema's `elements` table is the single admission contract: the generated
 d.ts, the compiler audit and the runtime all read it. Each element lists its
 children kind (any, content, text, none), its props, an optional binding
 (`bind` or `value` plus `onInput`/`onChange`) and the style groups it renders.
-`view` is a column. `disabled` replaces `enabled`. Grid columns, line clamps
+`view` is a column. `disabled` replaces `enabled`. Grid tracks, line clamps
 and image fit are style (`gridTemplateColumns`, `lineClamp`, `objectFit`).
 
 Composed buttons and checkboxes may contain noninteractive content; inline

@@ -22,6 +22,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 
 - `<page>` is the root: it absorbs safe-area insets and the keyboard. `view` is a column.
   `fixed` positions against the page; `hidden` removes a node entirely.
+- Layout is flex or CSS Grid (`grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] col-span-2`).
 - Style with complete Tailwind classes or CSS-named `style` (`backgroundColor`,
   `marginTop`, `gridTemplateColumns`, `lineClamp`, `objectFit`). Unitless
   `lineHeight` is a multiplier. Each element accepts only styles it renders.

@@ -391,10 +391,18 @@ function longhand(prop, value) {
     case 'z-index':
       if (!/^-?\d+$/.test(value)) unsupported(`z-index: ${value}`);
       return Number(value);
-    case 'columns': {
-      const columns = value.match(/^repeat\((\d+),\s*minmax\(0,\s*1fr\)\)$/);
-      if (!columns) unsupported(`grid-template-columns: ${value}`);
-      return Number(columns[1]);
+    case 'grid-template': case 'grid-auto': {
+      if (/\[|subgrid|masonry|calc\(|var\(/.test(value)) unsupported(`${prop}: ${value} (named lines, subgrid and calc are not supported)`);
+      // Lengths reach native in pixels; the track grammar itself is checked there.
+      return value.replace(/(-?(?:\d*\.)?\d+)rem\b/g, (_, n) => `${Number(n) * 16}px`).replace(/\s+/g, ' ').trim();
+    }
+    case 'grid-line': return value.replace(/\s+/g, ' ').trim();
+    case 'grid-flow': return value.replace(/\s+/g, ' ').trim();
+    case 'order': {
+      if (/^calc\(-infinity\)$/.test(value)) return -10000;
+      if (/^calc\(infinity\)$/.test(value)) return 10000;
+      if (!/^-?\d+$/.test(value)) unsupported(`order: ${value}`);
+      return Number(value);
     }
     case 'line-clamp':
       if (!/^\d+$/.test(value)) unsupported(`line clamp: ${value}`);
@@ -504,6 +512,12 @@ function declarations(nodes, vars, root, animationLowering) {
     else if (/^border(?:-(?:top|right|bottom|left|inline|block|x|y))?-style$/.test(prop) && node.value.replace(/\s/g, '') === 'var(--tw-border-style)') { /* set by --tw-border-style */ }
     else if (/^border-(?:top|right|bottom|left|inline|block|x|y)-style$/.test(prop)) {
       if (value !== 'solid') unsupported(`${prop}: ${value} (per-edge border styles)`);
+    }
+    else if (['place-items', 'place-content', 'place-self'].includes(prop)) {
+      const [block, inline = block] = postcss.list.space(value);
+      const [first, second] = { 'place-items': ['align-items', 'justify-items'], 'place-content': ['align-content', 'justify-content'], 'place-self': ['align-self', 'justify-self'] }[prop];
+      style[cssStyle[first]] = longhand(first, block);
+      style[cssStyle[second]] = longhand(second, inline);
     }
     else if (prop === 'gap') {
       const [row, column = row] = postcss.list.space(value).map(part => number(part, true));

@@ -6,6 +6,7 @@ import { Button, Icon, Page, Section } from '../../shared/ui';
 export function render() {
   return (
     <Page testId="view-lab" title="View lab">
+      <Grid />
       <Gradients />
       <Vectors />
       <Borders />
@@ -129,6 +130,23 @@ function Sizing() {
           {Array.from({ length: 8 }, (_, i) => <text key={String(i)} className="text-xs">Contained row {i + 1}</text>)}
         </column>
       </scroll>
+    </Section>
+  );
+}
+
+function Grid() {
+  const tiles = ['Calls', 'Data', 'SMS', 'Roaming', 'Top up', 'Bills'];
+  return (
+    <Section title="Grid" testId="lab-grid">
+      <view testId="lab-grid-auto-fit" className="grid grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] gap-2">
+        {tiles.map(tile => <view key={tile} className="h-14 rounded-lg bg-muted place-items-center grid"><text className="text-xs">{tile}</text></view>)}
+      </view>
+      <view testId="lab-grid-spans" className="grid grid-cols-3 grid-rows-[auto_auto] gap-2">
+        <view className="col-span-2 h-12 rounded-lg bg-primary" />
+        <view className="row-span-2 rounded-lg bg-error" />
+        <view className="h-12 rounded-lg bg-muted" />
+        <view className="h-12 rounded-lg bg-muted order-first" />
+      </view>
     </Section>
   );
 }

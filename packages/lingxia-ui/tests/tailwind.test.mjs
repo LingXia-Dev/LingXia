@@ -82,6 +82,22 @@ test('aspect ratios, ch widths, current-color backgrounds, overscroll and select
   for (const name of ['select-text', 'select-all']) assert.throws(() => classStyle(name), /selectable text is not supported yet/);
 });
 
+test('CSS grid utilities lower to tracks, placements, alignment and order; named lines and areas fail', async () => {
+  await use(['grid', 'grid-cols-3', 'grid-rows-[auto_1fr]', 'grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))]', 'col-span-2', 'col-start-2',
+    'col-end-4', 'row-span-full', 'grid-flow-col-dense', 'auto-rows-fr', 'place-items-center', 'content-between', 'place-self-end',
+    'order-2', 'order-first', 'grid-cols-[[a]_1fr]', 'grid-cols-[subgrid]', '[grid-template-areas:"a_b"]']);
+  assert.deepEqual(classStyle('grid grid-cols-3'), { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' });
+  assert.equal(classStyle('grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))]').gridTemplateColumns, 'repeat(auto-fit,minmax(120px,1fr))');
+  const item = node('column', { className: 'col-span-2 col-end-4 row-span-full place-self-end order-first' });
+  assert.deepEqual([item.gridColumn, item.gridRow, item.alignSelf, item.justifySelf, item.order], ['span 2 / 4', '1 / -1', 'end', 'end', -9999]);
+  assert.equal(node('column', { className: 'col-start-2' }).gridColumn, '2');
+  const box = node('view', { className: 'grid grid-flow-col-dense auto-rows-fr place-items-center content-between' });
+  assert.deepEqual([box.display, box.gridAutoFlow, box.gridAutoRows, box.align, box.justifyItems, box.alignContent],
+    ['grid', 'column-dense', 'minmax(0, 1fr)', 'center', 'center', 'between']);
+  for (const name of ['grid-cols-[[a]_1fr]', 'grid-cols-[subgrid]']) assert.throws(() => classStyle(name), /named lines, subgrid and calc/);
+  assert.throws(() => classStyle('[grid-template-areas:"a_b"]'), /UI_CLASS/);
+});
+
 test('horizontal overflow lowers only onto scroll containers', async () => {
   await use(['overflow-x-auto', 'md:overflow-x-auto', 'overflow-hidden']);
   assert.deepEqual(classStyle('overflow-x-auto'), { overflowX: 'auto' });
@@ -150,7 +166,7 @@ test('margins, positioning, layering and line clamps are native utilities', asyn
   assert.deepEqual(classStyle('truncate'), { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
   assert.deepEqual(classStyle('line-clamp-3'), { overflow: 'hidden', lineClamp: 3 });
   assert.equal(node('text', { className: 'line-clamp-3' }).textLines, 3);
-  assert.equal(node('grid', { className: 'grid-cols-3' }).gridColumns, 3);
+  assert.equal(node('grid', { className: 'grid-cols-3' }).gridTemplateColumns, 'repeat(3, minmax(0, 1fr))');
   assert.equal(node('image', { src: 'a.png', className: 'object-cover' }).imageFit, 'cover');
   assert.throws(() => describe(() => h('column', { className: 'line-clamp-3' }), {}), /lineClamp is not supported on <column>/);
 });

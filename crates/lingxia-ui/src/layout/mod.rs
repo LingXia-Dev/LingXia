@@ -1,5 +1,6 @@
 //! Box geometry, virtual-list window reconciliation and the layout pass.
 use crate::protocol::{field, tag};
+pub(crate) mod grid;
 pub mod list;
 pub(crate) mod list_layout;
 pub(crate) mod style;
@@ -122,6 +123,7 @@ impl Renderer {
         let parents = style::layout_parents(records);
         let mut tree: TaffyTree<usize> = TaffyTree::new();
         let mut ids = Vec::new();
+        let mut children: Vec<Vec<usize>> = vec![Vec::new(); records.len()];
         for (index, record) in records.iter().enumerate() {
             let mut style =
                 style::node_style(records, index, (width, height, scale), self.safe_area)?;
@@ -132,7 +134,11 @@ impl Renderer {
                 .new_leaf_with_context(style, index)
                 .map_err(|e| e.to_string())?;
             if let Some(parent) = parents[index] {
-                tree.add_child(ids[parent], id).map_err(|e| e.to_string())?;
+                if records[parent].tag == tag::LIST {
+                    tree.add_child(ids[parent], id).map_err(|e| e.to_string())?;
+                } else {
+                    children[parent].push(index);
+                }
             }
             if record.tag == tag::LIST {
                 // Zero-width spacers do not contribute to Taffy's scroll overflow.
@@ -149,6 +155,16 @@ impl Renderer {
                 tree.add_child(id, spacer).map_err(|e| e.to_string())?;
             }
             ids.push(id);
+        }
+        // CSS `order` reorders flex and grid items for layout; reading order keeps the source.
+        for (parent, mut items) in children.into_iter().enumerate() {
+            if items.is_empty() {
+                continue;
+            }
+            items.sort_by_key(|item| records[*item].number(field::ORDER).unwrap_or(0.0) as i32);
+            let items: Vec<_> = items.into_iter().map(|item| ids[item]).collect();
+            tree.set_children(ids[parent], &items)
+                .map_err(|e| e.to_string())?;
         }
         for (index, record) in records
             .iter()

@@ -165,6 +165,17 @@ pub mod field {
     pub const OVERSCROLL: usize = 132;
     pub const ASPECT_RATIO: usize = 133;
     pub const MAX_WIDTH_CH: usize = 134;
+    pub const GRID_TEMPLATE_COLUMNS: usize = 135;
+    pub const GRID_TEMPLATE_ROWS: usize = 136;
+    pub const GRID_AUTO_COLUMNS: usize = 137;
+    pub const GRID_AUTO_ROWS: usize = 138;
+    pub const GRID_AUTO_FLOW: usize = 139;
+    pub const GRID_COLUMN: usize = 140;
+    pub const GRID_ROW: usize = 141;
+    pub const JUSTIFY_ITEMS: usize = 142;
+    pub const JUSTIFY_SELF: usize = 143;
+    pub const ALIGN_CONTENT: usize = 144;
+    pub const ORDER: usize = 145;
 }
 
 pub const TAGS: &[&str] = &["column", "row", "text", "button", "spacer", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "grid", "stack", "plot", "vector", "page"];
@@ -306,6 +317,17 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("overscroll", "overscroll"),
     ("aspectRatio", "aspect-ratio"),
     ("maxWidthCh", "dimension-ch"),
+    ("gridTemplateColumns", "grid-template"),
+    ("gridTemplateRows", "grid-template"),
+    ("gridAutoColumns", "grid-auto"),
+    ("gridAutoRows", "grid-auto"),
+    ("gridAutoFlow", "grid-auto-flow"),
+    ("gridColumn", "grid-line"),
+    ("gridRow", "grid-line"),
+    ("justifyItems", "alignment"),
+    ("justifySelf", "alignment"),
+    ("alignContent", "align-content"),
+    ("order", "order"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -315,7 +337,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "font-style" => Some(&["normal", "italic"]),
         "flex-wrap" => Some(&["nowrap", "wrap", "wrap-reverse"]),
         "flex-direction" => Some(&["row", "column", "row-reverse", "column-reverse"]),
-        "display" => Some(&["flex", "none", "block", "inline-flex", "inline-block"]),
+        "display" => Some(&["flex", "grid", "none", "block", "inline-flex", "inline-block"]),
         "scroll-axis" => Some(&["horizontal", "vertical"]),
         "word-break" => Some(&["normal", "break-all", "keep-all"]),
         "overflow-wrap" => Some(&["normal", "break-word", "anywhere"]),
@@ -331,6 +353,8 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "sizing-keyword" => Some(&["fit-content", "max-content", "min-content"]),
         "border-style" => Some(&["solid", "dashed", "dotted"]),
         "overscroll" => Some(&["auto", "contain", "none"]),
+        "grid-auto-flow" => Some(&["row", "column", "row-dense", "column-dense"]),
+        "align-content" => Some(&["start", "center", "end", "between", "around", "evenly", "stretch"]),
         _ => None,
     }
 }
@@ -393,7 +417,7 @@ pub const TAG_ADMISSION: &[TagAdmission] = &[
     TagAdmission { children: Children::Text, content: false, parent: Some(tag::RADIO), root: false, keyed: true, requires: &[field::CHECKED] },
     TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
-    TagAdmission { children: Children::Any, content: true, parent: None, root: false, keyed: false, requires: &[field::GRID_COLUMNS] },
+    TagAdmission { children: Children::Any, content: true, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::Any, content: true, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::None, content: true, parent: None, root: false, keyed: false, requires: &[] },
@@ -542,6 +566,17 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
 ];

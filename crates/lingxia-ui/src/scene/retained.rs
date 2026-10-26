@@ -717,8 +717,9 @@ impl RetainedLayout {
     }
 }
 
-/// Depth-first paint order with siblings stably sorted by z-index; subtrees stay contiguous.
-pub(crate) fn paint_order(parents: &[Option<usize>], z: &[i32]) -> Vec<usize> {
+/// Depth-first paint order with siblings stably sorted by z-index, then CSS
+/// `order`; subtrees stay contiguous.
+pub(crate) fn paint_order(parents: &[Option<usize>], z: &[(i32, i32)]) -> Vec<usize> {
     let mut children: Vec<Vec<usize>> = vec![Vec::new(); parents.len()];
     let mut roots = Vec::new();
     for (index, parent) in parents.iter().enumerate() {

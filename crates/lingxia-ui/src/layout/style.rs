@@ -184,12 +184,14 @@ pub(crate) fn node_style(
     Ok(Style {
         display: if display == Some("none") {
             Display::None
-        } else if matches!(record.tag, tag::GRID | tag::STACK) {
+        } else if display == Some("grid") || matches!(record.tag, tag::GRID | tag::STACK) {
             Display::Grid
         } else {
             Display::Flex
         },
-        grid_column: if record.parent.is_some_and(|p| records[p].tag == tag::STACK) {
+        grid_column: if let Some(source) = record.string(field::GRID_COLUMN) {
+            crate::layout::grid::placement(source)?
+        } else if record.parent.is_some_and(|p| records[p].tag == tag::STACK) {
             Line {
                 start: line(1),
                 end: line(2),
@@ -197,7 +199,9 @@ pub(crate) fn node_style(
         } else {
             Default::default()
         },
-        grid_row: if record.parent.is_some_and(|p| records[p].tag == tag::STACK) {
+        grid_row: if let Some(source) = record.string(field::GRID_ROW) {
+            crate::layout::grid::placement(source)?
+        } else if record.parent.is_some_and(|p| records[p].tag == tag::STACK) {
             Line {
                 start: line(1),
                 end: line(2),
@@ -216,11 +220,47 @@ pub(crate) fn node_style(
             right: inset(record, field::INSET_RIGHT),
             bottom: inset(record, field::INSET_BOTTOM),
         },
-        grid_template_columns: if record.tag == tag::GRID {
-            vec![flex(1.0); record.number(field::GRID_COLUMNS).unwrap_or(1.0) as usize]
+        grid_template_columns: if let Some(source) = record.string(field::GRID_TEMPLATE_COLUMNS) {
+            crate::layout::grid::template(source)?
+        } else if let Some(columns) = record.number(field::GRID_COLUMNS) {
+            vec![flex(1.0); columns as usize]
         } else {
             Vec::new()
         },
+        grid_template_rows: record
+            .string(field::GRID_TEMPLATE_ROWS)
+            .map(crate::layout::grid::template)
+            .transpose()?
+            .unwrap_or_default(),
+        grid_auto_columns: record
+            .string(field::GRID_AUTO_COLUMNS)
+            .map(crate::layout::grid::auto_tracks)
+            .transpose()?
+            .unwrap_or_default(),
+        grid_auto_rows: record
+            .string(field::GRID_AUTO_ROWS)
+            .map(crate::layout::grid::auto_tracks)
+            .transpose()?
+            .unwrap_or_default(),
+        grid_auto_flow: match record.string(field::GRID_AUTO_FLOW) {
+            Some("column") => GridAutoFlow::Column,
+            Some("row-dense") => GridAutoFlow::RowDense,
+            Some("column-dense") => GridAutoFlow::ColumnDense,
+            _ => GridAutoFlow::Row,
+        },
+        justify_items: record.string(field::JUSTIFY_ITEMS).map(cross_alignment),
+        justify_self: record.string(field::JUSTIFY_SELF).map(cross_alignment),
+        align_content: record
+            .string(field::ALIGN_CONTENT)
+            .map(|value| match value {
+                "center" => AlignContent::SAFE_CENTER,
+                "end" => AlignContent::SAFE_END,
+                "between" => AlignContent::SPACE_BETWEEN,
+                "around" => AlignContent::SPACE_AROUND,
+                "evenly" => AlignContent::SPACE_EVENLY,
+                "stretch" => AlignContent::STRETCH,
+                _ => AlignContent::START,
+            }),
         flex_direction: match record.string(field::FLEX_DIRECTION) {
             Some("row") => FlexDirection::Row,
             Some("row-reverse") => FlexDirection::RowReverse,

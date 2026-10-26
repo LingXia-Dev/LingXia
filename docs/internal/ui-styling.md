@@ -53,7 +53,11 @@ time (see [ui-authoring.md](ui-authoring.md)) and again at runtime.
 - `truncate` and `line-clamp-N` lower to `overflow`, `whiteSpace`,
   `textOverflow` and `lineClamp`; Tailwind's `-webkit-box` declarations are
   absorbed by the clamp.
-- `grid-cols-N` lowers to `gridTemplateColumns: N` on `<grid>`.
+- `grid` makes any container a CSS Grid (`<grid>` is sugar for it). Track lists
+  take lengths, `%`, `fr`, `auto`, `min-/max-content`, `minmax()`, `fit-content()` and
+  `repeat(N | auto-fit | auto-fill, …)`, ≤64 tracks; named lines, areas, subgrid and
+  `calc()` fail. A number `gridTemplateColumns` is N equal columns.
+- `order` reorders flex and grid items for layout and paint, not reading or focus order.
 - Shadow tokens and `shadow-[var(--x)]` expand every layer the variable holds
   (≤8); layers Tailwind did not wrap in `--tw-shadow-color` keep their color.
 - `bg-linear-*`, `bg-radial-*`, `bg-conic-*` and complete `linear-|radial-|conic-gradient()`

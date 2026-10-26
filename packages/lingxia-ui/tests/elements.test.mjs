@@ -266,16 +266,23 @@ test('composed controls reject interactive descendants through components and co
   assert.equal(dispatch(box.props.onCheckedChange), true); assert.equal(checked, true);
 });
 
-test('grid columns are a style with bounded integer counts', () => {
-  for (const gridTemplateColumns of [undefined, null, 0, -1, 1.5, 65, Infinity, '2'])
+test('grid templates are a style; counts expand to equal tracks and any container may be a grid', () => {
+  for (const gridTemplateColumns of [null, 0, -1, 1.5, 65, Infinity, '[a] 1fr', '1fr; x'])
     throwsOn(() => h('grid', { style: { gridTemplateColumns } }), /UI_(GRID|STYLE_VALUE)/);
-  throwsOn(() => h('column', { style: { gridTemplateColumns: 2 } }), /UI_STYLE: gridTemplateColumns is not supported on <column>/);
+  assert.doesNotThrow(() => describe(() => h('grid', {}, h('text', {}, 'one column')), {}));
   for (const columns of [1, 3, 64]) {
     const grid = rendered(() => h('grid', { style: { gridTemplateColumns: columns } }, h('text', { key: 'a' }, 'A'), h('text', { key: 'b' }, 'B')));
-    assert.equal(grid.props.gridColumns, columns);
+    assert.equal(grid.props.gridTemplateColumns, `repeat(${columns}, minmax(0, 1fr))`);
     assert.deepEqual(grid.children.map(child => child.key), ['a', 'b']);
   }
-  assert.equal(rendered(() => h('grid', { style: { gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' } })).props.gridColumns, 4);
+  const view = rendered(() => h('view', { style: { display: 'grid', gridTemplateColumns: '100px  1fr', gridAutoFlow: 'row dense', alignContent: 'space-between' } },
+    h('text', { style: { gridColumn: 'span 2', gridColumnEnd: -1, gridRowStart: 2, justifySelf: 'end', order: -1 } }, 'A')));
+  assert.deepEqual([view.props.gridTemplateColumns, view.props.gridAutoFlow, view.props.alignContent], ['100px 1fr', 'row-dense', 'between']);
+  assert.deepEqual(view.children[0].props, { ...view.children[0].props, gridColumn: 'span 2 / -1', gridRow: '2', justifySelf: 'end', order: -1 });
+  for (const style of [{ gridColumn: 'span 0' }, { gridRow: '1 / 2 / 3' }, { order: 1.5 }, { order: 20000 }])
+    throwsOn(() => h('text', { style }, 'x'), /UI_STYLE_VALUE/);
+  throwsOn(() => h('view', { style: { gridAutoFlow: 'dense' } }), /UI_STYLE_VALUE/);
+  throwsOn(() => h('text', { style: { gridAutoFlow: 'row' } }, 'x'), /gridAutoFlow is not supported on <text>/);
 });
 
 test('stack children position with insets', () => {

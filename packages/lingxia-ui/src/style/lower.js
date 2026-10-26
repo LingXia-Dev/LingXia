@@ -77,6 +77,30 @@ function backdrop(name, value) {
   return [blur, saturation];
 }
 
+// Track lists are parsed natively; here they only need a bounded, function-only alphabet.
+function tracks(name, value) {
+  if (typeof value !== 'string' || value.length > 1024 || !/^[a-z0-9\s().,%-]+$/.test(value)) invalid(name);
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function gridEdge(name, value) {
+  const text = typeof value === 'number' ? String(value) : typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
+  if (!/^(?:auto|-?[1-9]\d?|span [1-9]\d?)$/.test(text)) invalid(name);
+  return text;
+}
+
+function gridLine(name, value, lines) {
+  const axis = name.startsWith('gridColumn') ? 'Column' : 'Row';
+  const line = lines[axis] ??= {};
+  if (name.endsWith('Start')) line.start = gridEdge(name, value);
+  else if (name.endsWith('End')) line.end = gridEdge(name, value);
+  else {
+    const parts = String(value).split('/');
+    if (parts.length > 2) invalid(name);
+    line.shorthand = [gridEdge(name, parts[0]), parts[1] === undefined ? 'auto' : gridEdge(name, parts[1])];
+  }
+}
+
 const translateLength = value => finite(value) ? Math.abs(value) <= 16384
   : typeof value === 'string' && /^-?(?:\d+(?:\.\d+)?|\.\d+)%$/.test(value) && Math.abs(parseFloat(value)) <= 1000;
 
@@ -129,7 +153,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
   const fontSize = style.fontSize === undefined ? inherited.fontSize : length('fontSize', style.fontSize);
   if (style.fontSize !== undefined && style.fontSize <= 0) invalid('fontSize');
   let lineHeight = inherited.lineHeight;
-  const transform = {};
+  const transform = {}, lines = {};
   const names = Object.keys(style).sort((a, b) => Number(shorthand(b)) - Number(shorthand(a)));
   for (const name of names) {
     const value = style[name], entry = table[name], key = entry.wire;
@@ -152,11 +176,17 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'z-index':
         if (!Number.isInteger(value) || Math.abs(value) > 10000) invalid(name);
         out[key] = value; break;
-      case 'columns': {
-        const count = typeof value === 'string' ? Number(value.match(/^repeat\((\d+),\s*minmax\(0,\s*1fr\)\)$/)?.[1]) : value;
-        if (!Number.isInteger(count) || count < 1 || count > 64) invalid(name);
-        out[key] = count; break;
-      }
+      case 'grid-template':
+        if (Number.isInteger(value) && value >= 1 && value <= 64) out[key] = `repeat(${value}, minmax(0, 1fr))`;
+        else out[key] = tracks(name, value);
+        break;
+      case 'grid-auto': out[key] = tracks(name, value); break;
+      case 'grid-flow': out[key] = option(name, key, typeof value === 'string' ? value.trim().replace(/\s+/, '-') : value); break;
+      case 'grid-line': gridLine(name, value, lines); break;
+      case 'order':
+        if (!Number.isInteger(value) || Math.abs(value) > 10000) invalid(name);
+        out[key] = value; break;
+      case 'align-content': out[key] = option(name, key, justification[value] ?? value); break;
       case 'line-clamp':
         if (!Number.isInteger(value) || value < 1 || value > 1024) invalid(name);
         out[key] = value; break;
@@ -204,6 +234,13 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
     }
   }
   if (Object.keys(transform).length) out.transform = JSON.stringify(transform);
+  // Longhands win over the shorthand whatever their order, as in CSS.
+  for (const axis of ['Column', 'Row']) {
+    const line = lines[axis];
+    if (!line) continue;
+    const start = line.start ?? line.shorthand?.[0] ?? 'auto', end = line.end ?? line.shorthand?.[1] ?? 'auto';
+    out[`grid${axis}`] = end === 'auto' ? start : `${start} / ${end}`;
+  }
   // A multiplier recomputes against each node's font size; pixels inherit natively.
   if (style.lineHeight !== undefined || typeof lineHeight === 'object') {
     const pixels = typeof lineHeight === 'object' ? fontSize * lineHeight.multiplier : lineHeight;
