@@ -187,6 +187,8 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeHandleDrag", "(Ljava/lang/String;FF)[F", handle_drag),
         #[cfg(all(feature = "gpu", target_os = "android"))]
         method!("nativeAttach", "(JLandroid/view/Surface;II)V", attach),
+        #[cfg(feature = "hot-swap")]
+        method!("nativeSwapModule", "(JLjava/lang/String;)V", swap_module),
     ];
     // SAFETY: every entry above names a function with the matching signature.
     unsafe { env.register_native_methods(class, &methods) }
@@ -288,6 +290,21 @@ extern "system" fn surface_lost<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, hand
                 .gpu
                 .load(std::sync::atomic::Ordering::Acquire),
         );
+        Ok(())
+    })
+}
+
+/// Dev builds: replace the module in place, keeping committed state.
+#[cfg(feature = "hot-swap")]
+extern "system" fn swap_module<'a>(
+    mut env: EnvUnowned<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    source: JString<'a>,
+) {
+    run(&mut env, |env| {
+        let source = text(env, &source)?;
+        host(handle)?.swap_module(source);
         Ok(())
     })
 }
