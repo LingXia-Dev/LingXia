@@ -494,3 +494,54 @@ fn spans_stay_on_their_commands_through_caret_input_and_selection_splices() {
     frame(&mut page, 4, true);
     frame(&mut page, 5, false);
 }
+
+#[test]
+fn a_transition_continues_evenly_through_frames_prepared_ahead() {
+    let mut page = page(
+        transition(&["opacity"], 200),
+        "backgroundColor:'#000000'",
+        "opacity:0",
+        "''",
+    );
+    let (display, _) = present(&mut page, frame_time(0));
+    press(&mut page, &display, true);
+    let sampled = |page: &mut ViewSession, now: u64, sample: u64, ahead: bool| {
+        let shot = page
+            .prepare_view_sampled(
+                200,
+                100,
+                1.0,
+                false,
+                None,
+                frame_time(now),
+                frame_time(sample),
+                ahead,
+                |display| Ok(shoot(display, false)),
+            )
+            .unwrap();
+        (pixel(&shot, 50, 20)[0], page.generation())
+    };
+    // N samples the vsync after next; N+1 is prepared before N presents and samples the
+    // one after that; both acknowledge in order.
+    let (n, gn) = sampled(&mut page, 1, 2, false);
+    let (n1, gn1) = sampled(&mut page, 1, 3, true);
+    assert!(
+        page.animation_presented(SURFACE, gn, frame_time(2))
+            .unwrap()
+    );
+    assert!(
+        page.animation_presented(SURFACE, gn1, frame_time(3))
+            .unwrap()
+    );
+    let (n2, gn2) = sampled(&mut page, 3, 4, false);
+    assert!(
+        page.animation_presented(SURFACE, gn2, frame_time(4))
+            .unwrap()
+    );
+    let (n3, _) = sampled(&mut page, 4, 5, true);
+    // Starts where it was and moves one frame's worth (255 / 12) per frame.
+    assert_eq!(n, 0);
+    for (a, b) in [(n, n1), (n1, n2), (n2, n3)] {
+        assert!((18..=25).contains(&(b - a)), "{n} {n1} {n2} {n3}");
+    }
+}

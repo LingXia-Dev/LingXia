@@ -39,6 +39,8 @@ pub struct ViewSession {
     retained: Option<Arc<crate::scene::retained::RetainedLayout>>,
     /// Bumped whenever a frame commits a different retained layout.
     layout_revision: u64,
+    /// The first commit of the current layout revision.
+    layout_commit: lifecycle::CommitTicket,
     input_hits: Option<crate::interaction::input_hits::InputHitMap>,
     viewport: Option<(u16, u16, f32)>,
     scroll_offsets: HashMap<String, f32>,
@@ -56,6 +58,12 @@ pub struct ViewSession {
     metrics: crate::FrameMetrics,
     animations: crate::animation::Timeline,
     animation_surface: Option<lifecycle::SurfaceTicket>,
+    /// An unpresented frame that a newer, prepared-ahead frame builds on.
+    presenting_animation: Option<(
+        lifecycle::CommitTicket,
+        lifecycle::SurfaceTicket,
+        crate::animation::Prepared,
+    )>,
     pending_animation: Option<(
         lifecycle::CommitTicket,
         lifecycle::SurfaceTicket,
@@ -129,6 +137,7 @@ impl ViewSession {
             bridge: None,
             retained: None,
             layout_revision: 0,
+            layout_commit: lifecycle::CommitTicket::new(0),
             input_hits: None,
             viewport: None,
             scroll_offsets: HashMap::new(),
@@ -149,6 +158,7 @@ impl ViewSession {
             animations: Default::default(),
             animation_surface: None,
             pending_animation: None,
+            presenting_animation: None,
             pressed: None,
             hovered: None,
             environment: serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":std::env::consts::OS,"formFactor":"phone","canDock":false,"displayLanguage":"en","runner":true,"pointer":"coarse"}),
@@ -174,6 +184,7 @@ impl ViewSession {
         self.eval("__lingxiaReset()")?;
         self.animations.clear()?;
         self.pending_animation = None;
+        self.presenting_animation = None;
         self.renderer.clear_text_cache();
         self.retained = None;
         self.input_hits = None;
@@ -194,6 +205,7 @@ impl ViewSession {
         self.pending_inputs = None;
         self.metrics = Default::default();
         self.advance();
+        self.layout_commit = self.generation;
         Ok(())
     }
 

@@ -381,6 +381,11 @@ impl ViewInteraction {
         vec![Effect::Dispatch]
     }
 
+    /// Activations, dispatches or slider numbers wait for the host.
+    pub fn waiting(&self) -> bool {
+        self.activation.is_some() || !self.dispatches.is_empty() || self.slider.pending.is_some()
+    }
+
     /// Resolve queued work against the current frame, rebinding a control whose callbacks changed.
     pub fn take_dispatch(&mut self) -> Vec<Dispatch> {
         let mut dispatches = std::mem::take(&mut self.dispatches);

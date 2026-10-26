@@ -7,7 +7,7 @@ impl ViewSession {
         generation: lifecycle::CommitTicket,
         handle: u64,
     ) -> Result<bool, String> {
-        if generation != self.generation || handle == 0 {
+        if !self.presented_commit(generation) || handle == 0 {
             return Ok(false);
         }
         self.execute(|| {
@@ -51,7 +51,7 @@ impl ViewSession {
         handle: u64,
         text: &str,
     ) -> Result<bool, String> {
-        if generation != self.generation || handle == 0 {
+        if !self.presented_commit(generation) || handle == 0 {
             return Ok(false);
         }
         if text.len() > crate::text::input::MAX_TEXT_BYTES {
@@ -75,7 +75,7 @@ impl ViewSession {
         selection: crate::PlotSelection,
     ) -> Result<bool, String> {
         self.check_input_active()?;
-        if generation != self.generation || self.input_dirty || self.pending_inputs.is_some() {
+        if !self.presented_commit(generation) || self.input_dirty || self.pending_inputs.is_some() {
             return Ok(false);
         }
         let Some(node) = self
@@ -116,7 +116,7 @@ impl ViewSession {
         handle: u64,
         value: f64,
     ) -> Result<bool, String> {
-        if generation != self.generation || handle == 0 {
+        if !self.presented_commit(generation) || handle == 0 {
             return Ok(false);
         }
         if !value.is_finite() || value.abs() > 1e9 {

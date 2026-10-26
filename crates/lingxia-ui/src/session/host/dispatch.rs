@@ -82,6 +82,9 @@ impl<A: PlatformAdapter> Inner<A> {
     fn drain_dispatch(self: &Arc<Self>) {
         let (dispatches, snapshot) = {
             let mut main = self.main();
+            if main.busy && !main.disposed {
+                main.yield_to_input();
+            }
             if main.busy || main.disposed {
                 return;
             }
@@ -199,6 +202,8 @@ impl<A: PlatformAdapter> Inner<A> {
                     inner.schedule();
                 }
                 Some(Err(error)) if inner.lifecycle.is_current_page(page) => inner.fail(error),
+                // A running animation whose queued frames gave way to this input resumes.
+                _ if inner.main().animating => inner.schedule(),
                 _ => {}
             },
         );
