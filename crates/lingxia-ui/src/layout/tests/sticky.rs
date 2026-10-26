@@ -93,3 +93,44 @@ fn sticky_needs_a_scroll_and_stays_out_of_list_rows() {
             .contains("pixel insets")
     );
 }
+
+#[test]
+fn a_pinned_header_pushes_the_previous_one_fully_out() {
+    // The view-lab shape: a bordered, rounded scroll; headers with padding over bordered rows.
+    let group = |id: &str, rows: usize| {
+        format!(
+            "h('column',{{}},h('text',{{testId:'{id}',style:{{position:'sticky',top:0,paddingTop:6,paddingBottom:6,fontSize:12,lineHeight:'16px',backgroundColor:'#eeeeee'}}}},'{id}'){})",
+            (0..rows)
+                .map(|row| format!(",h('text',{{style:{{paddingTop:12,paddingBottom:12,borderBottomWidth:1,borderColor:'#cccccc'}}}},'row {row}')"))
+                .collect::<String>()
+        )
+    };
+    let base = display(&format!(
+        "h('column',{{style:{{padding:16}}}},h('scroll',{{testId:'s',style:{{height:192,borderWidth:1,borderColor:'#cccccc',borderRadius:12}}}},{},{},{}))",
+        group("today", 2),
+        group("yesterday", 3),
+        group("week", 2)
+    ));
+    let rect = |d: &crate::DisplayList, id: &str| {
+        let n = d.nodes.iter().find(|n| n.test_id == id).unwrap();
+        (n.bounds, n.visible_bounds)
+    };
+    for offset in 0..300 {
+        let d = scrolled(&base, &[("s", offset as f32)]);
+        for (earlier, later) in [("today", "yesterday"), ("yesterday", "week")] {
+            let (_, shown) = rect(&d, earlier);
+            let (next, _) = rect(&d, later);
+            if shown[3] > 0.0 {
+                let (scroll, _) = rect(&d, "s");
+                assert!(
+                    shown[1] >= scroll[1] + 1.0,
+                    "offset {offset}: {earlier} above the scroll {shown:?}"
+                );
+                assert!(
+                    shown[1] + shown[3] <= next[1] + 0.01,
+                    "offset {offset}: {earlier} shows {shown:?} below {later} at {next:?}"
+                );
+            }
+        }
+    }
+}
