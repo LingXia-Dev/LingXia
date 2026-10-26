@@ -319,12 +319,9 @@ async fn capture_window_id_macos(surface: Option<&str>) -> Result<Option<String>
     use objc2_foundation::NSString;
 
     const LOOKUP_TIMEOUT: Duration = Duration::from_secs(2);
-    let mut wanted: Vec<String> = surface
-        .map(|id| format!("lingxia.surface.{id}"))
-        .into_iter()
-        .collect();
-    wanted.push("lingxia.host".to_string());
-    let (tx, rx) = oneshot::channel::<Option<i64>>();
+    let surface_tag = surface.map(|id| format!("lingxia.surface.{id}"));
+    // Err: the surface's window exists but is hidden.
+    let (tx, rx) = oneshot::channel::<Result<Option<i64>, ()>>();
     DispatchQueue::main().exec_async(move || unsafe {
         let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
         let windows: *mut AnyObject = if app.is_null() {
@@ -342,21 +339,30 @@ async fn capture_window_id_macos(surface: Option<&str>) -> Result<Option<String>
             let window: *mut AnyObject = msg_send![windows, objectAtIndex: index];
             let visible: bool = msg_send![window, isVisible];
             let identifier: *mut NSString = msg_send![window, identifier];
-            if visible && !identifier.is_null() {
+            if !identifier.is_null() {
                 let number: i64 = msg_send![window, windowNumber];
-                tagged.push(((&*identifier).to_string(), number));
+                tagged.push(((&*identifier).to_string(), number, visible));
             }
         }
-        let found = wanted.iter().find_map(|tag| {
-            tagged
+        let surface_window = surface_tag
+            .as_deref()
+            .and_then(|tag| tagged.iter().find(|(identifier, _, _)| identifier == tag));
+        let found = match surface_window {
+            Some((_, number, true)) => Ok(Some(*number)),
+            Some((_, _, false)) => Err(()),
+            None => Ok(tagged
                 .iter()
-                .find(|(identifier, _)| identifier == tag)
-                .map(|(_, number)| *number)
-        });
+                .find(|(identifier, _, visible)| *visible && identifier == "lingxia.host")
+                .map(|(_, number, _)| *number)),
+        };
         let _ = tx.send(found);
     });
     match timeout(LOOKUP_TIMEOUT, rx).await {
-        Ok(Ok(found)) => Ok(found.map(|number| number.to_string())),
+        Ok(Ok(Ok(found))) => Ok(found.map(|number| number.to_string())),
+        Ok(Ok(Err(()))) => Err(PlatformError::Platform(format!(
+            "the window showing surface {:?} is hidden",
+            surface.unwrap_or_default()
+        ))),
         _ => Err(PlatformError::Platform(
             "looking up the capture window timed out".to_string(),
         )),
