@@ -118,6 +118,8 @@ pub struct InputSnapshot {
     pub edit_token: Option<u64>,
     pub geometry: Option<InputGeometry>,
     pub scroll_offset: [f32; 2],
+    /// The platform keyboard's configuration, decided from the fields above.
+    pub ime: crate::interaction::ime::ImeConfig,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]

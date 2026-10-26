@@ -99,3 +99,15 @@ fn attribute_wire_is_bounded_and_tag_specific() {
     assert!(one(tag::SEARCH, field::KEYBOARD, json!("text")).is_err());
     assert!(one(tag::INPUT, field::SPELL_CHECK, json!(1)).is_ok());
 }
+
+#[test]
+fn the_frame_carries_the_keyboard_configuration_core_decided() {
+    let (mut page, _, _) = page("enterKeyHint:'go',autoComplete:'current-password'");
+    let display = page.layout(300, 300, 1.0).unwrap();
+    let json = serde_json::to_value(display.nodes[1].input.as_ref().unwrap()).unwrap();
+    assert_eq!(json["ime"]["return_key"], "go");
+    assert_eq!(json["ime"]["secure"], true);
+    assert_eq!(json["ime"]["suggestions"], false);
+    assert_eq!(json["ime"]["hide_on_submit"], true);
+    assert_eq!(json["ime"]["auto_complete"], "current-password");
+}

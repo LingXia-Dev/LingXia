@@ -449,6 +449,7 @@ fn projection_exposes_roles_ranges_masked_text_and_only_enabled_actions() {
         edit_token: Some(7),
         geometry: None,
         scroll_offset: [0.0; 2],
+        ime: Default::default(),
     });
     let presented = frame(vec![volume.clone(), editor.clone()]);
     let mut ids = SemanticIds::default();

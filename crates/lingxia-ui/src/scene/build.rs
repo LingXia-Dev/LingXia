@@ -965,7 +965,7 @@ impl Renderer {
                     .then(|| record.number(field::CHECKED) == Some(1.0)),
                 range,
                 input: matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH).then(|| {
-                    InputSnapshot {
+                    let mut input = InputSnapshot {
                         edit: None,
                         edit_token: None,
                         geometry: None,
@@ -1010,7 +1010,13 @@ impl Renderer {
                                 .filter(|k| matches!(*k, "date" | "time"))
                                 .map(str::to_owned),
                         },
-                    }
+                        ime: Default::default(),
+                    };
+                    input.ime = crate::interaction::ime::ImeConfig::new(
+                        &input,
+                        record.tag == tag::TEXTAREA,
+                    );
+                    input
                 }),
                 tag: crate::protocol::TAGS[record.tag],
                 test_id: record.test_id.clone(),
