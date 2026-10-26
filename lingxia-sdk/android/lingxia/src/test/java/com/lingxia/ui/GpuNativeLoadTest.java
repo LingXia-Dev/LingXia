@@ -23,7 +23,8 @@ public class GpuNativeLoadTest {
         final LinkedBlockingQueue<Long> tasks = new LinkedBlockingQueue<>();
         final ArrayList<Long> delayed = new ArrayList<>();
         final ArrayList<String> frames = new ArrayList<>(), events = new ArrayList<>();
-        final ArrayList<int[]> pixels = new ArrayList<>();
+        // CPU frames are drawn from the raster pool, not the host's thread.
+        final java.util.List<int[]> pixels = java.util.Collections.synchronizedList(new ArrayList<>());
         boolean vsync;
         int loaded, presented;
         public void post(long task, long delay) { if (delay == 0) tasks.add(task); else synchronized (delayed) { delayed.add(task); } }
@@ -110,7 +111,7 @@ public class GpuNativeLoadTest {
             "function render(){const n=useLocal('n',0);return h('column',{},h('button',{testId:'add',onClick:()=>n.set(n.value+1),style:{height:60}},'Count '+n.value),h('image',{src:'lx://pic.png',style:{width:20,height:20}}))}"));
         fake.pump(host, () -> fake.loaded == 1);
         GpuView.nativeSetVisible(host, true);
-        fake.pump(host, () -> fake.presented == 1);
+        fake.pump(host, () -> fake.presented == 1 && !fake.pixels.isEmpty());
         assertEquals("Count 0", text(last(fake), "add"));
         assertEquals("device pixels", 200 * 300, fake.pixels.get(0).length);
         assertTrue(fake.events.contains("announce 6"));

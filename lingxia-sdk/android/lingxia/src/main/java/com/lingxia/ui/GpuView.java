@@ -264,7 +264,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         main.postDelayed(new Runnable() { @Override public void run() {
             if (epoch != revealEpoch || revealed) return;
             // A stopped window renders nothing; the wait resumes with it.
-            if (getWindowVisibility() != View.VISIBLE) { main.postDelayed(this, delay); return; }
+            if (isAttachedToWindow() && getWindowVisibility() != View.VISIBLE) { main.postDelayed(this, delay); return; }
             // Never show a frame drawn for another size: until one is current the surface stays off
             // screen and the activity canvas, painted with the host's page floor, shows through.
             holdSurface = !nativeFrameCurrent(host);
@@ -570,8 +570,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
 
     private void attachGpu() {
         // A retained hidden page attaches too, so its catch-up frame is ready when it returns.
+        android.view.Surface target = surface.getHolder().getSurface();
         if (attaching || destroyed || !(active || surfaceRetained) || !isShown()
-            || !surface.getHolder().getSurface().isValid()) return;
+            || target == null || !target.isValid()) return;
         int width = surface.getWidth(), height = surface.getHeight();
         if (width <= 0 || height <= 0) return;
         attaching = true;
