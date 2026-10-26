@@ -227,6 +227,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn malformed_patch_operations_are_ui_patch() {
+        let mut root = json!({});
+        for ops in [
+            json!({}),
+            json!([{"op": "move", "path": "/a"}]),
+            json!([{"op": "add"}]),
+        ] {
+            assert!(
+                apply_patch(&mut root, &ops)
+                    .unwrap_err()
+                    .starts_with("UI_PATCH:")
+            );
+        }
+    }
+
+    #[test]
     fn patch_ack_follows_atomic_application_and_pointer_rules() {
         let mut state = StateReplica::default();
         assert!(state.data().is_none());

@@ -327,7 +327,14 @@ function semantics(schema) {
 
 // ---- error codes ------------------------------------------------------------------------
 
+// Codes no host test can trigger, and why; every other code needs a test that names it.
+const untestable = {
+  UI_SURFACE: 'needs a device without a compatible GPU or surface format',
+  UI_WORKER: 'needs the OS to refuse a thread',
+};
+
 const errorNotes = {
+  UI_SELECT: 'Invalid `<select>` options, value or selection reply.',
   UI_ACTION: 'An action call was malformed or its reply invalid.',
   UI_ANIMATION: 'Motion is gated, or an animation definition is invalid or over budget.',
   UI_BOOTSTRAP_TIMEOUT: 'Logic did not deliver the first page state in time.',
@@ -353,7 +360,6 @@ const errorNotes = {
   UI_FIELD: 'A wire field on a tag that does not accept it.',
   UI_FIELDS: 'A malformed field list reached the native decoder.',
   UI_FILTER: 'A backdrop filter outside its bounds.',
-  UI_FRAME: 'The platform declined a frame; the next one retries.',
   UI_FRAGMENT: 'A JSX fragment; return one element.',
   UI_GRADIENT: 'A gradient with geometry its kind does not take, or invalid stops.',
   UI_GRID: 'An invalid grid track list or line.',
@@ -409,6 +415,22 @@ async function files(dir, test) {
 // Native modules keep their tests after `#[cfg(test)]`; only shipped code raises codes.
 const shipped = (path, text) => path.endsWith('.rs') ? text.split(/^#\[cfg\(test\)\]/m)[0] : text;
 
+// Test sources: Rust test modules and files, JS tests and the compiled docs examples.
+async function testText() {
+  const all = async (dir, test) => (await readdir(dir, { withFileTypes: true, recursive: true }))
+    .filter(entry => entry.isFile() && test(entry.name) && !join(entry.parentPath, entry.name).includes('node_modules'))
+    .map(entry => join(entry.parentPath, entry.name));
+  let text = '';
+  for (const path of await all(join(repositoryRoot, 'crates/lingxia-ui'), name => name.endsWith('.rs'))) {
+    const source = await readFile(path, 'utf8');
+    if (/[/\\]tests?[/\\]|tests?\.rs$|_tests\.rs$/.test(path)) text += source;
+    else if (source.includes('#[cfg(test)]')) text += source.slice(source.indexOf('#[cfg(test)]'));
+  }
+  for (const dir of [join(packageRoot, 'tests'), join(repositoryRoot, 'docs/view/guide')])
+    for (const path of await all(dir, name => /\.(mjs|md)$/.test(name))) text += await readFile(path, 'utf8');
+  return text;
+}
+
 async function errors() {
   const sources = [
     // The compatibility banner is emitted by the compiler but runs when the page loads.
@@ -428,6 +450,9 @@ async function errors() {
     }
   }
   for (const key of Object.keys(errorNotes)) if (!found.has(key)) throw Error(`docs.mjs: error note for ${key}, which no source raises`);
+  const tested = await testText();
+  const gaps = [...found.keys()].filter(key => !errorNotes[key] || (!tested.includes(key) && !untestable[key]));
+  if (gaps.length) throw Error(`docs.mjs: every error code needs a note and a test that names it: ${gaps.join(', ')}`);
   const order = ['build', 'runtime', 'native'];
   const rows = [...found].sort(([a], [b]) => a.localeCompare(b))
     .map(([key, entry]) => [code(key), order.filter(where => entry.where.has(where)).join(', '), errorNotes[key] ?? '']);

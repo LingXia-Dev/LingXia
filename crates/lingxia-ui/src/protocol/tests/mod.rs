@@ -1,5 +1,6 @@
 mod animation;
 mod environment;
+mod errors;
 mod list_keys;
 
 use super::*;

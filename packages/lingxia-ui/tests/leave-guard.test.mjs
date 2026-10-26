@@ -119,3 +119,11 @@ test('registration failure is visible to the page and reported', async () => {
   assert.deepEqual(guard.state.error, { code: 'UI_ERROR', message: 'registration unavailable' });
   assert.equal(errors.length, 1);
 });
+
+test('hooks, JSX and commits outside their phase fail by code', () => {
+  reset();
+  assert.throws(() => useLeaveGuard('draft', { enabled: true }), /^Error: UI_SCOPE:/);
+  assert.throws(() => h('text', {}, 'x'), /^Error: UI_SCOPE: JSX outside render/);
+  assert.throws(() => commit(), /^Error: UI_COMMIT: no candidate/);
+  assert.throws(() => describe(() => { useLeaveGuard('draft', {}); return h('text', {}, 'x'); }, {}), /UI_LEAVE: expected \{ enabled: boolean \}/);
+});

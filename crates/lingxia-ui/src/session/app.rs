@@ -136,7 +136,7 @@ mod tests {
         assert!(!app.discard(a));
         let c = app.create(&source, false).unwrap();
         assert_ne!(a, c);
-        assert!(app.page(a).is_err());
+        assert!(app.page(a).err().is_some_and(|e| e.starts_with("UI_PAGE:")));
         assert_eq!(
             app.page(c).unwrap().layout(300, 500, 1.0).unwrap().nodes[0].text,
             "0/0"

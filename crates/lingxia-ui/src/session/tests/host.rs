@@ -32,6 +32,7 @@ struct Log {
     messages: Vec<(u64, String)>,
     recovery: Vec<Option<Failure>>,
     overdue: Vec<bool>,
+    warnings: Vec<String>,
     loaded: usize,
     clicked: usize,
     vsync: bool,
@@ -235,7 +236,10 @@ impl HostEvents for Fake {
     fn text_menu(&self, menu: Option<&crate::session::host::TextMenu>) {
         self.main().menus.push(menu.cloned());
     }
-    fn warn(&self, _: &str) {}
+    // Warnings may come from the worker, so they skip the main-thread record.
+    fn warn(&self, message: &str) {
+        self.log.lock().unwrap().warnings.push(message.to_owned());
+    }
 }
 impl Clock for Fake {
     fn now(&self) -> Duration {
@@ -1049,6 +1053,15 @@ fn connections_say_hello_and_report_an_overdue_bootstrap() {
     assert_eq!(
         host.adapter().log.lock().unwrap().overdue.last(),
         Some(&true)
+    );
+    assert!(
+        host.adapter()
+            .log
+            .lock()
+            .unwrap()
+            .warnings
+            .iter()
+            .any(|w| w.starts_with("UI_BOOTSTRAP_TIMEOUT:"))
     );
     host.receive(
         connection,

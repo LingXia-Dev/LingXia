@@ -35,8 +35,10 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
         let tag = header[0]
             .as_u64()
             .filter(|v| *v < TAGS.len() as u64)
-            .ok_or("UI_TAG")? as usize;
-        let parent_offset = header[1].as_i64().ok_or("UI_PARENT")?;
+            .ok_or("UI_TAG: unknown tag id")? as usize;
+        let parent_offset = header[1]
+            .as_i64()
+            .ok_or("UI_PARENT: expected a parent offset")?;
         let parent = if records.is_empty() && parent_offset == -1 {
             None
         } else {
@@ -47,7 +49,10 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
             Some(index)
         };
         let parent_tag = parent.map(|p| records[p].tag);
-        let key = header[2].as_str().ok_or("UI_KEY")?.to_owned();
+        let key = header[2]
+            .as_str()
+            .ok_or("UI_KEY: expected a string key")?
+            .to_owned();
         let depth = parent.map(|p| depths[p] + 1).unwrap_or(0);
         if depth > limits::DEPTH {
             return Err("UI_LIMIT: tree too deep".into());
@@ -56,8 +61,14 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
         if !key.is_empty() && !keys.insert((parent, key.clone())) {
             return Err("UI_KEY: duplicate sibling".into());
         }
-        let test_id = header[3].as_str().ok_or("UI_TEST_ID")?.to_owned();
-        let text = header[4].as_str().ok_or("UI_TEXT")?.to_owned();
+        let test_id = header[3]
+            .as_str()
+            .ok_or("UI_TEST_ID: expected a string test id")?
+            .to_owned();
+        let text = header[4]
+            .as_str()
+            .ok_or("UI_TEXT: expected string text")?
+            .to_owned();
         if text.len() > 65536 || test_id.len() > 256 || key.len() > 256 {
             return Err("UI_LIMIT: string too large".into());
         }
@@ -65,7 +76,7 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
         let count = header[5]
             .as_u64()
             .filter(|v| *v <= FIELDS.len() as u64)
-            .ok_or("UI_FIELDS")? as usize;
+            .ok_or("UI_FIELDS: field count out of range")? as usize;
         cursor += 6;
         let pairs = buffer
             .get(cursor..cursor + count * 2)
@@ -75,7 +86,7 @@ pub fn decode(buffer: &[Value]) -> Result<Vec<Record>, String> {
             let id = pair[0]
                 .as_u64()
                 .filter(|v| *v < FIELDS.len() as u64)
-                .ok_or("UI_FIELD")? as usize;
+                .ok_or("UI_FIELD: unknown field id")? as usize;
             if fields.iter().any(|(old, _)| *old == id) {
                 return Err("UI_FIELD: duplicate".into());
             }

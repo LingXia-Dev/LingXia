@@ -40,7 +40,8 @@ impl<F> Prepared<F> {
     }
 }
 
-const DECLINED: &str = "UI_FRAME: declined by the target";
+// An internal signal, never surfaced; the frame is simply skipped.
+const DECLINED: &str = "frame declined by the target";
 
 fn micros(duration: Duration) -> u64 {
     u64::try_from(duration.as_micros()).unwrap_or(u64::MAX)

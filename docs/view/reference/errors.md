@@ -34,7 +34,6 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_FIELDS` | native | A malformed field list reached the native decoder. |
 | `UI_FILTER` | native | A backdrop filter outside its bounds. |
 | `UI_FRAGMENT` | build | A JSX fragment; return one element. |
-| `UI_FRAME` | native | The platform declined a frame; the next one retries. |
 | `UI_GRADIENT` | runtime, native | A gradient with geometry its kind does not take, or invalid stops. |
 | `UI_GRID` | native | An invalid grid track list or line. |
 | `UI_IMAGE` | runtime, native | Invalid image source, alt, retry key or callback, or a failed load. |
@@ -56,7 +55,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_ROOT` | runtime, native | The page did not return exactly one element. |
 | `UI_SCOPE` | runtime | A hook or JSX used outside render. |
 | `UI_SCROLL` | native | Invalid scroll position from the host. |
-| `UI_SELECT` | runtime, native |  |
+| `UI_SELECT` | runtime, native | Invalid `<select>` options, value or selection reply. |
 | `UI_SESSION` | native | A call reached a page session that is not loaded. |
 | `UI_SHADOW` | runtime, native | An invalid or over-budget box shadow. |
 | `UI_SLIDER` | runtime, native | Invalid slider range, step, value or label. |
