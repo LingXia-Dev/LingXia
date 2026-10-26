@@ -110,6 +110,16 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
   });
 });
 
+test('unknown utilities name the nearest form the native renderer supports', async () => {
+  await project({ 'page.tsx': 'export function render(){return <column className="itmes-center md:roundd-lg tabluar-nums zzqqxx"/>}' }, async (root, build) => {
+    const message = (await build().catch(error => error)).message;
+    assert.match(message, /UI_CLASS_UNKNOWN: itmes-center is not a Tailwind utility; nearest supported: items-center/);
+    assert.match(message, /UI_CLASS_UNKNOWN: md:roundd-lg is not a Tailwind utility; nearest supported: md:rounded-lg/);
+    assert.match(message, /UI_CLASS_UNKNOWN: tabluar-nums is not a Tailwind utility; nearest supported: tabular-nums/);
+    assert.match(message, /UI_CLASS_UNKNOWN: zzqqxx is not a Tailwind utility$/m);
+  });
+});
+
 test('class usage follows lexical constants, hidden branches and imported maps to their defining module', async () => {
   await project({ 'styles.ts': 'export const bad = "nope-utility"; export const variants = {good:"text-sm", bad};' }, async (root, build) => {
     for (const expression of ['"nope-utility"', 'view.data.active ? "text-sm" : "nope-utility"', 'view.data.active && "nope-utility"', 'local', '(local as string)']) {

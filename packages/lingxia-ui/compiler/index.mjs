@@ -4,6 +4,7 @@ import { collectClassUsage } from './class-usage.mjs';
 import { sourceChecker, moduleChecker, parseSource } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
 import { compileUtilities } from './tailwind.mjs';
+import { nearestSupported } from './suggest.mjs';
 import { loadStylesheet, validateTokens } from './stylesheets.mjs';
 import { readFile, mkdir, writeFile, copyFile, realpath } from 'node:fs/promises';
 import { resolve, dirname, join, relative, isAbsolute, sep } from 'node:path';
@@ -93,8 +94,11 @@ export function annotate(source, filename, label) {
   return output;
 }
 
-function classProblems(rule, name, tag) {
-  if (!rule) return [`UI_CLASS_UNKNOWN: ${name} is not a Tailwind utility`];
+function classProblems(rule, name, tag, suggestions) {
+  if (!rule) {
+    const nearest = suggestions.get(name);
+    return [`UI_CLASS_UNKNOWN: ${name} is not a Tailwind utility${nearest ? `; nearest supported: ${nearest}` : ''}`];
+  }
   if (rule.error) return [`UI_CLASS_UNSUPPORTED: ${name}: the native renderer does not support ${rule.error.message}`];
   if (!has(elements, tag) || rule.when?.children) return [];
   const props = [...Object.keys(rule.style ?? {}), ...(rule.gradient ? ['backgroundImage'] : []),
@@ -171,10 +175,13 @@ export async function buildPages(root, pages, output, catalogs = {}) {
     const checker = moduleChecker(sourceFiles);
     const rulesByName = new Map();
     for (const rule of classes) rulesByName.set(rule.name, [...(rulesByName.get(rule.name) ?? []), rule]);
-    for (const { value, location, tag } of sourceFiles.flatMap(file => collectClassUsage(file, checker)))
+    const usages = sourceFiles.flatMap(file => collectClassUsage(file, checker));
+    const unknown = [...new Set(usages.flatMap(({ value }) => value.split(/\s+/)).filter(name => name && !rulesByName.has(name)))];
+    const suggestions = await nearestSupported(unknown, [...themes.values()].join('\n'));
+    for (const { value, location, tag } of usages)
       for (const name of value.split(/\s+/).filter(Boolean)) {
         const found = rulesByName.get(name) ?? [undefined];
-        for (const problem of new Set(found.flatMap(rule => classProblems(rule, name, tag)))) problems.push(`${location}: ${problem}`);
+        for (const problem of new Set(found.flatMap(rule => classProblems(rule, name, tag, suggestions)))) problems.push(`${location}: ${problem}`);
       }
     if (problems.length) {
       const unique = [...new Set(problems)].map(line => line.startsWith(root + sep) ? line.slice(root.length + 1) : line);
