@@ -17,6 +17,7 @@ Styles each element accepts are in [styles.md](styles.md).
 | `headingLevel` | `1 \| 2 \| 3 \| 4 \| 5 \| 6` |  |
 | `accessibilityHidden` | `boolean` | Removes the node and its subtree from accessibility. |
 | `accessibilityLiveRegion` | `"off" \| "polite" \| "assertive"` | Announce changes; `alert` is assertive and `status` polite unless set. |
+| `accessibilityState` | `{ pressed?: boolean; selected?: boolean; expanded?: boolean; busy?: boolean }` | States assistive input announces; leave a key out when the element has no such state. |
 
 `style` takes the element's own style subset; `className` takes complete Tailwind utilities.
 

@@ -50,6 +50,9 @@ pub struct NodeSnapshot {
     /// `polite` or `assertive`; alerts and statuses imply one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub live_region: Option<String>,
+    /// Authored `accessibilityState` (pressed, selected, expanded, busy); absent keys are `None`.
+    #[serde(skip)]
+    pub states: [Option<bool>; 4],
     #[serde(skip_serializing_if = "Option::is_none")]
     pub button_content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

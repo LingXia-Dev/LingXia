@@ -33,4 +33,9 @@ public final class GpuSemantics {
     public static final String KEY_POSITION = "position";
     public static final String KEY_TEXT_SELECTION = "text_selection";
     public static final String KEY_SELECTABLE = "selectable";
+    public static final String KEY_PRESSED = "pressed";
+    public static final String KEY_SELECTED = "selected";
+    public static final String KEY_EXPANDED = "expanded";
+    public static final String KEY_BUSY = "busy";
+    public static final String KEY_SCROLL = "scroll";
 }

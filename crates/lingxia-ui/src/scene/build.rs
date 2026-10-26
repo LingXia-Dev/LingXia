@@ -941,6 +941,13 @@ impl Renderer {
                 selection_range: None,
                 role: record.string(field::ROLE).map(str::to_owned),
                 heading_level: record.number(field::HEADING_LEVEL).map(|level| level as u8),
+                states: [
+                    field::STATE_PRESSED,
+                    field::STATE_SELECTED,
+                    field::STATE_EXPANDED,
+                    field::STATE_BUSY,
+                ]
+                .map(|id| record.number(id).map(|v| v == 1.0)),
                 live_region: match record.string(field::ACCESSIBILITY_LIVE_REGION) {
                     Some("off") => None,
                     Some(kind) => Some(kind.to_owned()),

@@ -192,6 +192,10 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             value.as_u64().is_some_and(|v| (1..=6).contains(&v)),
             "UI_PROP: headingLevel must be 1..6",
         ),
+        field::STATE_PRESSED
+        | field::STATE_SELECTED
+        | field::STATE_EXPANDED
+        | field::STATE_BUSY => ensure(flag(value), "UI_PROP: invalid accessibilityState"),
         field::ACCESSIBILITY_HIDDEN => ensure(
             value.as_u64() == Some(1),
             "UI_PROP: invalid accessibilityHidden",

@@ -234,7 +234,11 @@
     {"id": 170, "key": "inputStep", "wire": "step", "kind": "input-step", "tags": ["input"]},
     {"id": 171, "key": "transition", "wire": "transition", "kind": "transition"},
     {"id": 172, "key": "userSelect", "wire": "userSelect", "kind": "user-select"},
-    {"id": 173, "key": "focusRequest", "wire": "focusRequest", "kind": "focus-request", "tags": ["input", "textarea", "search"]}
+    {"id": 173, "key": "focusRequest", "wire": "focusRequest", "kind": "focus-request", "tags": ["input", "textarea", "search"]},
+    {"id": 174, "key": "statePressed", "wire": "statePressed", "kind": "semantic-state"},
+    {"id": 175, "key": "stateSelected", "wire": "stateSelected", "kind": "semantic-state"},
+    {"id": 176, "key": "stateExpanded", "wire": "stateExpanded", "kind": "semantic-state"},
+    {"id": 177, "key": "stateBusy", "wire": "stateBusy", "kind": "semantic-state"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
@@ -245,7 +249,7 @@
     "liveRegions": ["polite", "assertive"],
     "events": ["announce"],
     "actions": ["copy", "set-selection"],
-    "keys": {"headingLevel": "heading_level", "liveRegion": "live_region", "position": "position", "textSelection": "text_selection", "selectable": "selectable"}
+    "keys": {"headingLevel": "heading_level", "liveRegion": "live_region", "position": "position", "textSelection": "text_selection", "selectable": "selectable", "pressed": "pressed", "selected": "selected", "expanded": "expanded", "busy": "busy", "scroll": "scroll"}
   },
   "defaultColors": {"background": ["#f6f7fb", "#0f131a"], "surface": ["#ffffff", "#1a1f2b"], "text": ["#172033", "#e6e9f0"], "textMuted": ["#596579", "#9aa3b5"], "primary": ["#365cdd", "#4a6cf0"], "primaryText": ["#ffffff", "#ffffff"], "danger": ["#c93434", "#f06565"], "border": ["#dce1ec", "#2e3646"], "accent": ["#0b877d", "#2bb3a6"]},
   "styleGroups": {"accent": ["color"], "run": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "textDecorationLine", "fontVariantNumeric", "backgroundColor"]},

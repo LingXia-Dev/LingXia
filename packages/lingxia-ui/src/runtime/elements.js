@@ -9,7 +9,8 @@ import { has, validInputText } from './data.js';
 import { fieldOptions } from '../generated/wire.js';
 import * as check from './validate.js';
 
-const common = new Set(['key', 'testId', 'style', 'className', 'children', 'dir', 'role', 'headingLevel', 'accessibilityHidden', 'accessibilityLiveRegion']);
+const common = new Set(['key', 'testId', 'style', 'className', 'children', 'dir', 'role', 'headingLevel', 'accessibilityHidden', 'accessibilityLiveRegion', 'accessibilityState']);
+const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy' };
 const accepts = (field, tag) => admission.fields[field].includes(elements[tag].wire);
 const bindCodes = { input: 'UI_INPUT', textarea: 'UI_INPUT', search: 'UI_INPUT', checkbox: 'UI_CHECK', switch: 'UI_CHECK', slider: 'UI_SLIDER', radio: 'UI_RADIO' };
 const optionStyle = ['fontSize', 'fontWeight', 'fontFamily', 'lineHeight', 'color', 'background'];
@@ -271,6 +272,16 @@ function semantics(tag, props, wire) {
   if (accessibilityLiveRegion !== undefined) {
     if (!fieldOptions.accessibilityLiveRegion.includes(accessibilityLiveRegion)) throw Error('UI_PROP: accessibilityLiveRegion must be off, polite or assertive');
     wire('accessibilityLiveRegion', accessibilityLiveRegion);
+  }
+  const { accessibilityState: state } = props;
+  if (state !== undefined) {
+    if (!state || typeof state !== 'object' || Array.isArray(state)) throw Error('UI_PROP: accessibilityState must be an object');
+    for (const [name, value] of Object.entries(state)) {
+      if (!has(semanticStates, name)) throw Error(`UI_PROP: accessibilityState.${name}; known: ${Object.keys(semanticStates).join(', ')}`);
+      if (value === undefined) continue;
+      if (typeof value !== 'boolean') throw Error(`UI_PROP: accessibilityState.${name} must be boolean`);
+      wire(semanticStates[name], +value);
+    }
   }
   // Containers and text take a label here; controls wire their own.
   if (['view', 'column', 'row', 'page', 'text'].includes(tag) && props.accessibilityLabel !== undefined) {

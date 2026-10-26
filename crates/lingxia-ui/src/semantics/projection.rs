@@ -100,6 +100,25 @@ pub struct SemanticNode {
     pub live_region: Option<String>,
     /// Selected range of selectable static text, as UTF-16 offsets.
     pub text_selection: Option<[u32; 2]>,
+    /// Authored states; `None` when the element has no such state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pressed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expanded: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub busy: Option<bool>,
+    /// A scroll region's position and extent along its axis, in logical pixels.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scroll: Option<ScrollPosition>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct ScrollPosition {
+    pub offset: f32,
+    pub max_offset: f32,
+    pub horizontal: bool,
 }
 
 /// Nodes that convey information or accept input.
@@ -435,6 +454,15 @@ impl Projection<'_> {
             heading_level: node.heading_level.or((role == Role::Heading).then_some(2)),
             live_region: node.live_region.clone(),
             text_selection: node.selection_range,
+            pressed: node.states[0],
+            selected: node.states[1],
+            expanded: node.states[2],
+            busy: node.states[3],
+            scroll: node.scroll.as_ref().map(|scroll| ScrollPosition {
+                offset: scroll.offset,
+                max_offset: scroll.max_offset,
+                horizontal: scroll.axis == ScrollAxis::Horizontal,
+            }),
         })
     }
 

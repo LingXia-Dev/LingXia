@@ -19,6 +19,8 @@ export interface Props {
   accessibilityHidden?: boolean;
   /** Announce changes; `alert` is assertive and `status` polite unless set. */
   accessibilityLiveRegion?: "off" | "polite" | "assertive";
+  /** States assistive input announces; leave a key out when the element has no such state. */
+  accessibilityState?: { pressed?: boolean; selected?: boolean; expanded?: boolean; busy?: boolean };
 }
 export type LeafProps = Omit<Props, "children"> & { children?: never };
 

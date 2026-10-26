@@ -335,3 +335,10 @@ test('line clamps are text styles and preserve the source string', () => {
   for (const tag of ['button', 'input', 'column', 'stack']) throwsOn(() => h(tag, { style: { lineClamp: 2 } }), /UI_STYLE: lineClamp is not supported/);
 });
 
+
+test('accessibilityState wires each declared state and refuses unknown keys or non-booleans', () => {
+  const { props } = rendered(() => h('button', { onClick() {}, accessibilityState: { pressed: true, expanded: false } }, 'Bold'));
+  assert.deepEqual([props.statePressed, props.stateExpanded, props.stateSelected], [1, 0, undefined]);
+  for (const state of [{ checked: true }, { busy: 'yes' }, []])
+    assert.throws(() => describe(() => h('column', { accessibilityState: state }), {}), /UI_PROP: accessibilityState/);
+});

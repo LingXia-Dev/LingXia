@@ -97,3 +97,44 @@ fn every_visible_node_has_painted_bounds_at_any_scroll_offset() {
         assert!(seen > 2);
     }
 }
+
+#[test]
+fn authored_states_and_scroll_position_reach_the_projection() {
+    let mut session = page(
+        "h('column',{},h('button',{testId:'b',onClick(){},accessibilityState:{pressed:true,expanded:false}},'Bold'),h('column',{testId:'l',role:'list',accessibilityState:{busy:true}},h('text',{testId:'i',role:'listitem',accessibilityState:{selected:true}},'One')),h('scroll',{testId:'s',style:{height:50}},h('column',{style:{height:200}})))",
+    );
+    let first = session.layout(300, 400, 1.0).unwrap();
+    let scroll = first.nodes.iter().find(|n| n.test_id == "s").unwrap();
+    let offsets = HashMap::from([(scroll.scroll.as_ref().unwrap().id.clone(), 30.0)]);
+    let i = present(
+        session
+            .prepare_native(300, 400, 1.0, false, Some(&offsets), Ok)
+            .unwrap(),
+    );
+    let p = i.semantics().unwrap();
+    let by = |id: &str| {
+        let index = p.frame.nodes.iter().position(|n| n.test_id == id).unwrap();
+        p.node(p.ids.id(index).unwrap()).unwrap()
+    };
+    let button = by("b");
+    assert_eq!(
+        (
+            button.pressed,
+            button.selected,
+            button.expanded,
+            button.busy
+        ),
+        (Some(true), None, Some(false), None)
+    );
+    assert_eq!((by("l").busy, by("i").selected), (Some(true), Some(true)));
+    let scroll = by("s").scroll.unwrap();
+    assert_eq!(
+        (scroll.offset, scroll.max_offset, scroll.horizontal),
+        (30.0, 150.0, false)
+    );
+    let json = serde_json::to_value(&button).unwrap();
+    assert_eq!(
+        (json["pressed"].as_bool(), json.get("busy")),
+        (Some(true), None)
+    );
+}
