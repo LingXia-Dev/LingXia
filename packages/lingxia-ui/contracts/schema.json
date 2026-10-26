@@ -258,6 +258,24 @@
     "keys": {"headingLevel": "heading_level", "liveRegion": "live_region", "position": "position", "textSelection": "text_selection", "selectable": "selectable", "pressed": "pressed", "selected": "selected", "expanded": "expanded", "busy": "busy", "scroll": "scroll"}
   },
   "defaultColors": {"background": ["#f6f7fb", "#0f131a"], "surface": ["#ffffff", "#1a1f2b"], "text": ["#172033", "#e6e9f0"], "textMuted": ["#596579", "#9aa3b5"], "primary": ["#365cdd", "#4a6cf0"], "primaryText": ["#ffffff", "#ffffff"], "danger": ["#c93434", "#f06565"], "border": ["#dce1ec", "#2e3646"], "accent": ["#0b877d", "#2bb3a6"]},
+  "environment": {
+    "theme": {"type": "\"light\" | \"dark\"", "check": "enum", "values": ["light", "dark"], "origin": "device"},
+    "viewport": {"type": "Readonly<{ width: number; height: number }>", "check": "none", "origin": "session", "doc": "The page surface in logical pixels."},
+    "insets": {"type": "Readonly<{ top: number; right: number; bottom: number; left: number }>", "check": "edges", "origin": "device", "doc": "System bars and host chrome over the surface, logical pixels."},
+    "keyboard": {"type": "Readonly<{ height: number }>", "check": "keyboard", "origin": "device"},
+    "pointer": {"type": "\"fine\" | \"coarse\"", "check": "enum", "values": ["fine", "coarse"], "origin": "device", "default": "coarse", "doc": "`fine` pointers (mouse, trackpad) hover; `coarse` ones (touch) do not."},
+    "os": {"type": "string", "check": "name", "origin": "device"},
+    "formFactor": {"type": "string", "check": "name", "origin": "device", "doc": "`phone` or `tablet` from the smallest screen width; other hosts may report their own."},
+    "sizeClass": {"type": "\"compact\" | \"regular\"", "check": "enum", "values": ["compact", "regular"], "origin": "push", "optional": true, "doc": "`compact` below 600 logical pixels of page width, else `regular`."},
+    "displayLanguage": {"type": "string", "check": "name", "origin": "device"},
+    "reducedMotion": {"type": "boolean", "check": "bool", "origin": "device", "optional": true, "doc": "The system asks for reduced motion; `motion-reduce:`/`motion-safe:` follow it."},
+    "animatorDurationScale": {"type": "number", "check": "range", "range": [0, 10], "origin": "device", "optional": true, "doc": "The platform's animation duration multiplier (0..10, default 1); 0 also sets `reducedMotion`."},
+    "direction": {"type": "\"ltr\" | \"rtl\"", "check": "none", "origin": "session", "doc": "Inline direction derived from `displayLanguage`."},
+    "canDock": {"type": "boolean", "check": "bool", "origin": "push", "doc": "Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it."},
+    "runner": {"type": "boolean", "check": "bool", "origin": "device"},
+    "renderer": {"type": "Readonly<{ fallback: \"driver\" | null }>", "check": "renderer", "origin": "device", "optional": true, "absent": true, "doc": "`fallback: \"driver\"` when this device's GPU driver failed and pages render on the CPU."},
+    "textScale": {"type": "never", "check": "external", "origin": "device", "optional": true, "internal": true}
+  },
   "styleGroups": {"accent": ["color"], "run": ["color", "fontSize", "fontWeight", "fontFamily", "fontStyle", "textDecorationLine", "fontVariantNumeric", "backgroundColor"]},
   "style": {
     "width": {"type": "number | `${number}%` | `${number}vw` | `${number}vh` | \"auto\" | \"fit-content\" | \"max-content\" | \"min-content\"", "group": "box", "lower": "dimension", "wire": "width", "css": "width"},

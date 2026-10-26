@@ -7,36 +7,7 @@ impl ViewSession {
         if value.is_object() && value.get("pointer").is_none() {
             value["pointer"] = serde_json::json!("coarse");
         }
-        let valid = value.is_object()
-            && matches!(value["pointer"].as_str(), Some("fine" | "coarse"))
-            && matches!(value["theme"].as_str(), Some("light" | "dark"))
-            && ["top", "right", "bottom", "left"].iter().all(|edge| {
-                value["insets"][edge]
-                    .as_f64()
-                    .is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))
-            })
-            && value["keyboard"]["height"]
-                .as_f64()
-                .is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))
-            && ["os", "formFactor", "displayLanguage"].iter().all(|key| {
-                value[key]
-                    .as_str()
-                    .is_some_and(|s| !s.is_empty() && s.len() <= 128)
-            })
-            && (value.get("sizeClass").is_none()
-                || matches!(value["sizeClass"].as_str(), Some("compact" | "regular")))
-            && value["canDock"].is_boolean()
-            && (value.get("reducedMotion").is_none() || value["reducedMotion"].is_boolean())
-            && (value.get("animatorDurationScale").is_none()
-                || value["animatorDurationScale"]
-                    .as_f64()
-                    .is_some_and(|n| n.is_finite() && (0.0..=10.0).contains(&n)))
-            && value["runner"].is_boolean()
-            && (value.get("renderer").is_none()
-                || (matches!(
-                    value["renderer"]["fallback"].as_str(),
-                    None | Some("driver")
-                ) && value["renderer"].as_object().is_some_and(|r| r.len() == 1)));
+        let valid = crate::protocol::check_environment(&value);
         if !valid {
             return Err("UI_ENVIRONMENT: invalid native snapshot".into());
         }

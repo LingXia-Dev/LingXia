@@ -24,31 +24,6 @@ export interface Props {
 }
 export type LeafProps = Omit<Props, "children"> & { children?: never };
 
-export interface Env {
-  readonly theme: "light" | "dark";
-  readonly viewport: Readonly<{ width: number; height: number }>;
-  readonly insets: Readonly<{ top: number; right: number; bottom: number; left: number }>;
-  readonly keyboard: Readonly<{ height: number }>;
-  /** `fine` pointers (mouse, trackpad) hover; `coarse` ones (touch) do not. */
-  readonly pointer: "fine" | "coarse";
-  readonly os: string;
-  /** `phone` or `tablet` from the smallest screen width; other hosts may report their own. */
-  readonly formFactor: string;
-  /** `compact` below 600 logical pixels of page width, else `regular`. */
-  readonly sizeClass: "compact" | "regular";
-  readonly displayLanguage: string;
-  /** The system asks for reduced motion; `motion-reduce:`/`motion-safe:` follow it. */
-  readonly reducedMotion: boolean;
-  /** The platform's animation duration multiplier (0..10, default 1); 0 also sets `reducedMotion`. */
-  readonly animatorDurationScale: number;
-  /** Inline direction derived from `displayLanguage`. */
-  readonly direction: "ltr" | "rtl";
-  /** Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it. */
-  readonly canDock: boolean;
-  readonly runner: boolean;
-  /** `fallback: "driver"` when this device's GPU driver failed and pages render on the CPU. */
-  readonly renderer?: Readonly<{ fallback: "driver" | null }>;
-}
 
 export type ReadonlyData<T> = T extends object ? { readonly [K in keyof T]: ReadonlyData<T[K]> } : T;
 /** A failed resource or action, as reported by the bridge. */
@@ -166,6 +141,35 @@ export interface VectorGradient {
 export interface RadioOption { readonly value: string; readonly label: string; readonly disabled?: boolean; readonly testId?: string }
 /** HTML autocomplete tokens; Android maps them to autofill hints. */
 export type AutoComplete = "off" | "on" | "username" | "current-password" | "new-password" | "one-time-code" | "email" | "tel" | "name" | "given-name" | "family-name" | "street-address" | "postal-code" | "country" | "cc-number" | "cc-exp" | "cc-csc" | "bday";
+
+/** The page's environment (`view.env`): read-only, and a change re-renders the page. */
+export interface Env {
+  readonly theme: "light" | "dark";
+  /** The page surface in logical pixels. */
+  readonly viewport: Readonly<{ width: number; height: number }>;
+  /** System bars and host chrome over the surface, logical pixels. */
+  readonly insets: Readonly<{ top: number; right: number; bottom: number; left: number }>;
+  readonly keyboard: Readonly<{ height: number }>;
+  /** `fine` pointers (mouse, trackpad) hover; `coarse` ones (touch) do not. */
+  readonly pointer: "fine" | "coarse";
+  readonly os: string;
+  /** `phone` or `tablet` from the smallest screen width; other hosts may report their own. */
+  readonly formFactor: string;
+  /** `compact` below 600 logical pixels of page width, else `regular`. */
+  readonly sizeClass: "compact" | "regular";
+  readonly displayLanguage: string;
+  /** The system asks for reduced motion; `motion-reduce:`/`motion-safe:` follow it. */
+  readonly reducedMotion: boolean;
+  /** The platform's animation duration multiplier (0..10, default 1); 0 also sets `reducedMotion`. */
+  readonly animatorDurationScale: number;
+  /** Inline direction derived from `displayLanguage`. */
+  readonly direction: "ltr" | "rtl";
+  /** Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it. */
+  readonly canDock: boolean;
+  readonly runner: boolean;
+  /** `fallback: "driver"` when this device's GPU driver failed and pages render on the CPU. */
+  readonly renderer?: Readonly<{ fallback: "driver" | null }>;
+}
 
 /** CSS-named style; each element accepts the subset its `*Style` type lists. */
 export interface Style {

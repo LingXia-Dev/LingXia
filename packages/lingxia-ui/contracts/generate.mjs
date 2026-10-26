@@ -33,6 +33,9 @@ function validate(schema) {
     if (!Number.isSafeInteger(schema.limits?.[name]) || schema.limits[name] <= 0) throw Error(`schema.json: missing limit ${name}`);
   for (const [token, pair] of Object.entries(schema.defaultColors ?? {}))
     if (!Array.isArray(pair) || pair.length !== 2 || pair.some(c => !/^#[0-9a-f]{6}$/.test(c))) throw Error(`schema.json: default color ${token} needs a light and dark #rrggbb`);
+  for (const [key, entry] of Object.entries(schema.environment ?? {}))
+    if (!['none', 'external', ...Object.keys(environmentChecks)].includes(entry.check) || !['device', 'push', 'session'].includes(entry.origin) || typeof entry.type !== 'string')
+      throw Error(`schema.json: environment ${key} needs a type, a known check and an origin`);
   const admitted = Object.keys(schema.admission ?? {});
   if (admitted.join() !== schema.tags.join()) throw Error('schema.json: admission must list every tag in tag order');
   for (const [tag, entry] of Object.entries(schema.admission)) {
@@ -41,6 +44,35 @@ function validate(schema) {
     for (const field of entry.requires ?? [])
       if (!keys.has(field)) throw Error(`schema.json: tag ${tag} requires unknown field ${field}`);
   }
+}
+
+const environmentChecks = {
+  enum: (key, entry) => `matches!(value[${JSON.stringify(key)}].as_str(), ${entry.values.map(v => `Some(${JSON.stringify(v)})`).join(' | ')})`,
+  bool: key => `value[${JSON.stringify(key)}].is_boolean()`,
+  range: (key, entry) => `value[${JSON.stringify(key)}].as_f64().is_some_and(|n| n.is_finite() && (${entry.range[0]}.0..=${entry.range[1]}.0).contains(&n))`,
+  name: key => `value[${JSON.stringify(key)}].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)`,
+  edges: key => `["top", "right", "bottom", "left"].iter().all(|edge| value[${JSON.stringify(key)}][edge].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n)))`,
+  keyboard: key => `value[${JSON.stringify(key)}]["height"].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))`,
+  renderer: key => `(matches!(value[${JSON.stringify(key)}]["fallback"].as_str(), None | Some("driver")) && value[${JSON.stringify(key)}].as_object().is_some_and(|r| r.len() == 1))`,
+};
+
+/** The native environment snapshot check, from the schema's \`environment\` section. */
+function environmentRust(schema) {
+  const checks = Object.entries(schema.environment).filter(([, entry]) => environmentChecks[entry.check]).map(([key, entry]) => {
+    const check = environmentChecks[entry.check](key, entry);
+    return entry.optional ? `(value.get(${JSON.stringify(key)}).is_none() || ${check})` : check;
+  });
+  const keys = Object.entries(schema.environment).map(([key, entry]) => `    (${JSON.stringify(key)}, ${JSON.stringify(entry.origin)}),`).join('\n');
+  return `/// Environment keys and where each comes from: \`device\` facts, a host \`push\`, or the \`session\`.
+pub const ENVIRONMENT_KEYS: &[(&str, &str)] = &[
+${keys}
+];
+
+/// Whether a native environment snapshot (device facts plus pushes) is well formed.
+pub fn check_environment(value: &serde_json::Value) -> bool {
+    value.is_object()
+        && ${checks.join('\n        && ')}
+}`;
 }
 
 function rust(schema) {
@@ -94,6 +126,8 @@ ${options}
 pub mod limits {
 ${limits}
 }
+
+${environmentRust(schema)}
 
 /// Colors of unstyled elements as (token, light, dark), until the theme system supplies them.
 pub const DEFAULT_COLORS: &[(&str, &str, &str)] = &[
@@ -216,6 +250,11 @@ function authoring(schema, api) {
   }
   const intrinsics = Object.keys(schema.elements).map(name => `      ${JSON.stringify(name)}: ${pascal(name)}Props;`).join('\n');
   return `${header}${api.replace(/^\/\/.*\n/gm, '')}
+/** The page's environment (\`view.env\`): read-only, and a change re-renders the page. */
+export interface Env {
+${Object.entries(schema.environment).filter(([, entry]) => !entry.internal).map(([key, entry]) => `${entry.doc ? `  /** ${entry.doc} */\n` : ''}  readonly ${key}${entry.absent ? '?' : ''}: ${entry.type};`).join('\n')}
+}
+
 /** CSS-named style; each element accepts the subset its \`*Style\` type lists. */
 export interface Style {
 ${style}

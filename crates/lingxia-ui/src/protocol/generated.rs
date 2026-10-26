@@ -461,6 +461,44 @@ pub mod limits {
     pub const EVAL_BUDGET_DEBUG_MULTIPLIER: usize = 8;
 }
 
+/// Environment keys and where each comes from: `device` facts, a host `push`, or the `session`.
+pub const ENVIRONMENT_KEYS: &[(&str, &str)] = &[
+    ("theme", "device"),
+    ("viewport", "session"),
+    ("insets", "device"),
+    ("keyboard", "device"),
+    ("pointer", "device"),
+    ("os", "device"),
+    ("formFactor", "device"),
+    ("sizeClass", "push"),
+    ("displayLanguage", "device"),
+    ("reducedMotion", "device"),
+    ("animatorDurationScale", "device"),
+    ("direction", "session"),
+    ("canDock", "push"),
+    ("runner", "device"),
+    ("renderer", "device"),
+    ("textScale", "device"),
+];
+
+/// Whether a native environment snapshot (device facts plus pushes) is well formed.
+pub fn check_environment(value: &serde_json::Value) -> bool {
+    value.is_object()
+        && matches!(value["theme"].as_str(), Some("light") | Some("dark"))
+        && ["top", "right", "bottom", "left"].iter().all(|edge| value["insets"][edge].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n)))
+        && value["keyboard"]["height"].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))
+        && matches!(value["pointer"].as_str(), Some("fine") | Some("coarse"))
+        && value["os"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)
+        && value["formFactor"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)
+        && (value.get("sizeClass").is_none() || matches!(value["sizeClass"].as_str(), Some("compact") | Some("regular")))
+        && value["displayLanguage"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)
+        && (value.get("reducedMotion").is_none() || value["reducedMotion"].is_boolean())
+        && (value.get("animatorDurationScale").is_none() || value["animatorDurationScale"].as_f64().is_some_and(|n| n.is_finite() && (0.0..=10.0).contains(&n)))
+        && value["canDock"].is_boolean()
+        && value["runner"].is_boolean()
+        && (value.get("renderer").is_none() || (matches!(value["renderer"]["fallback"].as_str(), None | Some("driver")) && value["renderer"].as_object().is_some_and(|r| r.len() == 1)))
+}
+
 /// Colors of unstyled elements as (token, light, dark), until the theme system supplies them.
 pub const DEFAULT_COLORS: &[(&str, &str, &str)] = &[
     ("background", "f6f7fb", "0f131a"),

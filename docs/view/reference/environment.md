@@ -7,8 +7,8 @@ _Generated from the View schema (`schema.json`) and the compiler; do not edit._
 | Field | Type | Notes |
 | --- | --- | --- |
 | `theme` | `"light" \| "dark"` |  |
-| `viewport` | `Readonly<{ width: number; height: number }>` |  |
-| `insets` | `Readonly<{ top: number; right: number; bottom: number; left: number }>` |  |
+| `viewport` | `Readonly<{ width: number; height: number }>` | The page surface in logical pixels. |
+| `insets` | `Readonly<{ top: number; right: number; bottom: number; left: number }>` | System bars and host chrome over the surface, logical pixels. |
 | `keyboard` | `Readonly<{ height: number }>` |  |
 | `pointer` | `"fine" \| "coarse"` | `fine` pointers (mouse, trackpad) hover; `coarse` ones (touch) do not. |
 | `os` | `string` |  |
