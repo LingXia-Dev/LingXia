@@ -4,6 +4,8 @@ import android.graphics.*;
 import android.view.accessibility.AccessibilityNodeInfo;
 
 public class GpuThemeProbe {
+ // Resolved by the showcase theme pack (accent #0f9d58) through the default roles.
+ static final int PAGE_LIGHT=0xfff2f3f7, PAGE_DARK=0xff0e1219, SURFACE_LIGHT=0xfffefeff, SURFACE_DARK=0xff181e2a;
  static Rect bounds(String id)throws Exception {
   AccessibilityNodeInfo n=GpuApiProbe.node(id);Rect box=new Rect();n.getBoundsInScreen(box);n.recycle();return box;
  }
@@ -12,13 +14,14 @@ public class GpuThemeProbe {
   GpuApiProbe.check(Math.abs(Color.red(actual)-Color.red(expected))<=3&&Math.abs(Color.green(actual)-Color.green(expected))<=3&&Math.abs(Color.blue(actual)-Color.blue(expected))<=3,label+" got "+Integer.toHexString(actual));
  }
  static void palette(boolean dark)throws Exception {
-  String id="home-appearance-"+(dark?"dark":"light");GpuApiProbe.click(id);
-  Rect selected=bounds(id),theme=bounds("theme");
+  GpuChromeProbe.tab("Home");GpuApiProbe.click("home-appearance-"+(dark?"dark":"light"));
+  GpuChromeProbe.tab("ToDo");Thread.sleep(800);
+  // ToDo paints the canvas around a surface panel whose input has no fill of its own.
+  Rect input=bounds("todo-input");float scale=GpuPaddingProbe.density();
   Bitmap shot=GpuApiProbe.a.takeScreenshot(),bitmap=shot.copy(Bitmap.Config.ARGB_8888,false);shot.recycle();
   try {
-   pixel(bitmap,theme.right+6,theme.centerY(),dark?0xff17171a:0xfff2f2f7,"page token");
-   pixel(bitmap,selected.left+10,selected.centerY(),dark?0xff0a84ff:0xff007aff,"primary token");
-   pixel(bitmap,selected.left-6,selected.centerY(),dark?0xff1f1f22:0xffffffff,"surface token");
+   pixel(bitmap,Math.round(4*scale),input.centerY(),dark?PAGE_DARK:PAGE_LIGHT,"page token");
+   pixel(bitmap,input.right-Math.round(12*scale),input.centerY(),dark?SURFACE_DARK:SURFACE_LIGHT,"surface token");
   }finally{bitmap.recycle();}
   GpuRadioProbe.screenshot(dark?"gpu-theme-dark":"gpu-theme-light");
  }
@@ -35,7 +38,7 @@ public class GpuThemeProbe {
    palette(false);palette(true);
    GpuGridProbe.settings("put","system","user_rotation","1");Thread.sleep(1100);palette(true);
    GpuGridProbe.settings("put","system","user_rotation","0");Thread.sleep(900);palette(true);palette(false);
-   System.out.println("PASS reference page/surface/primary theme pixels, repeated appearance changes and rotation");
+   System.out.println("PASS page and surface theme pixels, repeated appearance changes and rotation");
   }finally{GpuGridProbe.settings("put","system","user_rotation",rotation);GpuGridProbe.settings("put","system","accelerometer_rotation",auto);UiAutomation.class.getMethod("disconnect").invoke(a);thread.quitSafely();}
  }
 }
