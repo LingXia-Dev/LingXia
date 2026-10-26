@@ -424,8 +424,8 @@ fn run_watch(
                     }
                     let paths = changed.remove(&app_id).unwrap_or_default();
                     let root = roots.iter().find(|root| root.app_id == app_id);
-                    if !options.release
-                        && let Some(root) = root
+                    // Any dev session swaps, `--release` included: the host's dev features decide.
+                    if let Some(root) = root
                         && hot_swap(&state, &app_id, &root.path, &paths, &mut compilers)
                     {
                         continue;
@@ -492,9 +492,15 @@ fn hot_swap(
             Ok(RestartOutcome::Failed(message)) => {
                 eprintln!("  {} {path}: {message}", "✗".red());
             }
-            Ok(_) => {}
+            Ok(RestartOutcome::NotOpen) => println!(
+                "  {} compiled {}; it is not open, so its next open loads it",
+                "•".cyan(),
+                path.cyan()
+            ),
+            // No runtime, or a test run holds the app: the full reload path handles both.
+            Ok(RestartOutcome::NotConnected | RestartOutcome::Deferred) => return false,
             Err(err) => {
-                eprintln!("  {} {path}: {err:#}", "✗".red());
+                eprintln!("  {} {path}: {err:#}; reloading instead", "✗".red());
                 return false;
             }
         }

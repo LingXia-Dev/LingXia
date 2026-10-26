@@ -13,10 +13,15 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 pub(super) fn plan(dir: &Path, changed: &BTreeSet<PathBuf>) -> Option<Vec<String>> {
     let text = std::fs::read_to_string(dir.join(".lingxia").join("gpu-inputs.json")).ok()?;
     let inputs: BTreeMap<String, Vec<String>> = serde_json::from_str(&text).ok()?;
+    let dir = canonical(dir);
     let mut pages = BTreeSet::new();
     for path in changed {
+        // Editors save atomically: a temp file written, then renamed over the real one.
+        // The temp path is gone by now and the rename's target is in `changed` too.
+        let exists = path.exists();
+        let path = canonical(path);
         let relative = path
-            .strip_prefix(dir)
+            .strip_prefix(&dir)
             .ok()?
             .to_string_lossy()
             .replace('\\', "/");
@@ -30,11 +35,23 @@ pub(super) fn plan(dir: &Path, changed: &BTreeSet<PathBuf>) -> Option<Vec<String
             .map(|(page, _)| page)
             .collect();
         if touched.is_empty() {
+            if !exists {
+                continue;
+            }
             return None;
         }
         pages.extend(touched.into_iter().cloned());
     }
     (!pages.is_empty()).then(|| pages.into_iter().collect())
+}
+
+/// `path` with symlinks resolved; a vanished file resolves through its directory.
+fn canonical(path: &Path) -> PathBuf {
+    path.canonicalize()
+        .unwrap_or_else(|_| match (path.parent(), path.file_name()) {
+            (Some(parent), Some(name)) => canonical(parent).join(name),
+            _ => path.to_path_buf(),
+        })
 }
 
 const COMPILER: &str = "import { buildPages } from '@lingxia/ui/compiler';
@@ -153,6 +170,20 @@ mod tests {
         ] {
             assert_eq!(plan(dir.path(), &changed(&[other])), None, "{other}");
         }
+        // An atomic save: the vanished temp file is skipped, the renamed-to page swaps.
+        std::fs::create_dir_all(dir.path().join("pages/a")).unwrap();
+        std::fs::write(dir.path().join("pages/a/index.tsx"), "").unwrap();
+        assert_eq!(
+            plan(
+                dir.path(),
+                &changed(&[
+                    "pages/a/.index.tsx.swp",
+                    "pages/a/index.tsx~tmp",
+                    "pages/a/index.tsx"
+                ])
+            ),
+            Some(vec!["pages/a/index.tsx".to_owned()])
+        );
         assert_eq!(page_path("pages/a/index.tsx"), "pages/a/index");
         assert_eq!(
             plan(

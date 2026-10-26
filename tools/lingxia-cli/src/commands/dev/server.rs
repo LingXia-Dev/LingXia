@@ -20,6 +20,8 @@ use tungstenite::protocol::Message;
 use tungstenite::{Error as WsError, WebSocket, accept_hdr};
 
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
+/// A swap is one module eval; a runtime that has not answered by then never will.
+const HOT_SWAP_TIMEOUT: Duration = Duration::from_secs(10);
 const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
 const RUNTIME_EVENT_QUEUE_CAPACITY: usize = 64;
 const DEV_LXAPP_HTTP_PREFIX: &str = "/__lingxia/dev/lxapp/";
@@ -1018,7 +1020,7 @@ impl DevServerState {
             let _ = self.take_pending_result(&id);
             return Err(anyhow!("Failed to forward hot swap to runtime"));
         }
-        match rx.recv_timeout(DEFAULT_COMMAND_TIMEOUT) {
+        match rx.recv_timeout(HOT_SWAP_TIMEOUT) {
             Ok(DevSessionMessage::Response(response)) => match response.error {
                 Some(error) => Ok(RestartOutcome::Failed(error.message)),
                 None if response.result.as_ref().and_then(|r| r["pages"].as_u64()) == Some(0) => {
