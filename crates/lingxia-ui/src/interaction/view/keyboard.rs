@@ -174,6 +174,27 @@ impl ViewInteraction {
                 return (true, Vec::new());
             }
         }
+        // Arrows change a select's choice without opening its picker, as on the Web.
+        if matches!(key, Key::Left | Key::Right | Key::Up | Key::Down)
+            && let Some(index) = origin
+            && let Some(select) = frame.nodes[index].select.as_ref().filter(|s| s.on_select.is_some())
+        {
+            let forward = matches!(key, Key::Right | Key::Down);
+            let count = select.options.len();
+            let start = select.selected.unwrap_or(if forward { count - 1 } else { 0 });
+            let next = (1..count)
+                .map(|step| if forward { (start + step) % count } else { (start + count - step) % count })
+                .find(|candidate| select.options[*candidate].enabled);
+            if let Some(next) = next {
+                self.dispatches.push(Dispatch::Select {
+                    commit: frame.commit,
+                    identity: frame.nodes[index].identity.clone(),
+                    index: next,
+                });
+                return (true, vec![Effect::Dispatch]);
+            }
+            return (true, Vec::new());
+        }
         if matches!(key, Key::Left | Key::Right | Key::Up | Key::Down)
             && let Some(index) = origin.filter(|index| navigation::is_option(&frame, *index))
         {

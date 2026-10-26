@@ -324,6 +324,8 @@ export type SpanStyle = Pick<Style, "color" | "fontSize" | "fontWeight" | "fontF
 export type SpanProps = Omit<Props, "style" | "children"> & { style?: SpanStyle; children?: RunChild };
 export type LinkStyle = Pick<Style, "color" | "fontSize" | "fontWeight" | "fontFamily" | "fontStyle" | "textDecorationLine" | "fontVariantNumeric" | "backgroundColor">;
 export type LinkProps = Omit<Props, "style" | "children"> & { style?: LinkStyle; children?: RunChild; onPress?: () => void; accessibilityLabel?: string; disabled?: boolean; };
+export type SelectStyle = Pick<Style, "width" | "height" | "minWidth" | "minHeight" | "maxWidth" | "aspectRatio" | "maxHeight" | "margin" | "marginTop" | "marginRight" | "marginBottom" | "marginLeft" | "marginInlineStart" | "marginInlineEnd" | "position" | "inset" | "top" | "right" | "bottom" | "left" | "insetInlineStart" | "insetInlineEnd" | "zIndex" | "flexGrow" | "flexShrink" | "flexBasis" | "alignSelf" | "gridColumn" | "gridColumnStart" | "gridColumnEnd" | "gridRow" | "gridRowStart" | "gridRowEnd" | "justifySelf" | "order" | "opacity" | "overflow" | "backgroundColor" | "backgroundImage" | "borderRadius" | "borderTopLeftRadius" | "borderTopRightRadius" | "borderBottomRightRadius" | "borderBottomLeftRadius" | "borderStartStartRadius" | "borderStartEndRadius" | "borderEndStartRadius" | "borderEndEndRadius" | "borderWidth" | "borderTopWidth" | "borderRightWidth" | "borderBottomWidth" | "borderLeftWidth" | "borderInlineStartWidth" | "borderInlineEndWidth" | "borderStyle" | "borderColor" | "boxShadow" | "backdropFilter" | "translate" | "rotate" | "scale" | "transformOrigin" | "display" | "padding" | "paddingTop" | "paddingRight" | "paddingBottom" | "paddingLeft" | "paddingInlineStart" | "paddingInlineEnd" | "color" | "fontSize" | "fontWeight" | "fontFamily" | "fontStyle" | "lineHeight" | "letterSpacing" | "fontVariantNumeric" | "userSelect" | "textAlign" | "textDecorationLine" | "textTransform" | "whiteSpace" | "wordBreak" | "overflowWrap">;
+export type SelectProps = Omit<Props, "style" | "children"> & { style?: SelectStyle; children?: never; options: readonly RadioOption[]; placeholder?: string; accessibilityLabel?: string; disabled?: boolean; } & ({ bind: Local<string>; value?: never; onChange?: never } | { bind?: never; value?: string; onChange?: (value: string) => void });
 
 declare global {
   namespace JSX {
@@ -355,6 +357,7 @@ declare global {
       "vector": VectorProps;
       "span": SpanProps;
       "link": LinkProps;
+      "select": SelectProps;
     }
   }
 }

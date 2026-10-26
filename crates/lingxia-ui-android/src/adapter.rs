@@ -576,6 +576,8 @@ impl Feedback for AndroidAdapter {
                 Effect::Press { node: index, .. } => self.int(jni_str!("press"), node(*index)),
                 Effect::ClearPress => self.void(jni_str!("clearPress")),
                 Effect::FocusRing { node: index } => self.int(jni_str!("focusRing"), node(*index)),
+                // Shows the platform single-choice picker; GpuPlatform.openPicker answers through `{op:"select"}`.
+                Effect::OpenPicker { node: index } => self.int(jni_str!("openPicker"), node(*index)),
                 Effect::ClearFocusRing => self.void(jni_str!("clearFocusRing")),
                 Effect::Claim { exclusive } => self.flag(jni_str!("claim"), *exclusive),
                 Effect::ArmLongPress => self.void(jni_str!("armLongPress")),

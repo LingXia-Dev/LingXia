@@ -243,7 +243,7 @@ impl Renderer {
                     |_, _| 0.0,
                     |known, available| {
                         let tag = context.as_ref().map(|i| records[**i].tag).unwrap_or(0);
-                        let single_line = matches!(tag, tag::INPUT | tag::SEARCH)
+                        let single_line = matches!(tag, tag::INPUT | tag::SEARCH | tag::SELECT)
                             || context.as_ref().is_some_and(|i| styles[**i].nowrap);
                         let limit = context
                             .as_ref()
@@ -309,6 +309,7 @@ impl Renderer {
                             | tag::SWITCH
                             | tag::RADIO_OPTION
                             | tag::SEARCH
+                            | tag::SELECT
                     ) {
                         ((output.size.height - top - bottom - text.height()) / 2.0).max(0.0)
                     } else {

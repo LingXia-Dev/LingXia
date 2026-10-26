@@ -67,6 +67,7 @@ export interface PageLike {
   fill(options: { css: string; text: string; page?: string; index?: number; force?: boolean }): Promise<void>;
   press?(options: { css: string; key: string; page?: string; index?: number }): Promise<void>;
   type(options: { css: string; text: string; page?: string; index?: number }): Promise<void>;
+  selectOption?(options: { css: string; value: string; page?: string; index?: number }): Promise<void>;
   /** Bring a match on screen; GPU pages need it before an action. */
   scrollTo?(options: { css: string; page?: string; index?: number }): Promise<void>;
 }
@@ -141,6 +142,7 @@ export const ROLE_SELECTORS: Readonly<Record<LocatorRole, string>> = {
   dialog: 'dialog, [role="dialog"]',
   alert: '[role="alert"]',
   status: '[role="status"]',
+  combobox: 'select, [role="combobox"]',
 };
 
 export function roleSelector(role: string): string {
@@ -208,6 +210,12 @@ export class PageLocator implements Locator {
     const force = options?.force === true;
     return this.act("click", options, (css, index) =>
       this.page.click({ page: this.options.page, css, index, ...(force ? { force } : {}) }));
+  }
+
+  selectOption(value: string, options?: ActionOptions): Promise<void> {
+    if (!this.page.selectOption) return Promise.reject(new Error("This page driver does not support selectOption"));
+    return this.act("selectOption", options, (css, index) =>
+      this.page.selectOption!({ page: this.options.page, css, value, index }), `value=${formatValue(value)}`);
   }
 
   fill(text: string, options?: ActionOptions): Promise<void> {

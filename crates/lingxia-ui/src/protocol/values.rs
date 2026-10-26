@@ -310,6 +310,21 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         field::SECURE | field::AUTO_FOCUS | field::SPELL_CHECK => {
             ensure(flag(value), "UI_INPUT: invalid flag")
         }
+        field::SELECT_OPTIONS => ensure(
+            value
+                .as_str()
+                .filter(|text| text.len() <= 65536)
+                .and_then(|text| serde_json::from_str::<Vec<Value>>(text).ok())
+                .is_some_and(|options| {
+                    (1..=64).contains(&options.len())
+                        && options.iter().all(|option| {
+                            option["value"].as_str().is_some_and(|v| !v.is_empty())
+                                && option["label"].is_string()
+                        })
+                }),
+            "UI_SELECT: invalid options",
+        ),
+        field::ON_SELECT => ensure(handle(value), "UI_SELECT: invalid handle"),
         field::FOCUS_REQUEST => ensure(
             value.as_u64().is_some_and(|v| v <= MAX_HANDLE),
             "UI_INPUT: invalid focus request",

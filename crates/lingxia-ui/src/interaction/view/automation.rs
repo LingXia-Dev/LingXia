@@ -17,6 +17,8 @@ pub enum AutomationAct {
     /// A key by its DOM name (`Enter`, `Tab`, `Shift+Tab`, `ArrowUp`, `Home`, ` `, …),
     /// on the match or, with an empty selector, on what has focus.
     Press(String),
+    /// Choose a `<select>` option by value, else by label.
+    SelectOption(String),
 }
 
 fn key(name: &str) -> Result<(super::Key, bool), String> {
@@ -73,6 +75,9 @@ impl ViewInteraction {
     ) -> Result<Vec<Effect>, String> {
         if let AutomationAct::Press(name) = &act {
             return self.press(selector, index, name, page);
+        }
+        if let AutomationAct::SelectOption(choice) = &act {
+            return self.select_option(selector, index, choice);
         }
         let (id, value, enabled, editable, visible, in_viewport) = {
             let projection = self
@@ -133,7 +138,9 @@ impl ViewInteraction {
         }
         let action = match act {
             AutomationAct::Click => AccessibilityAction::Click,
-            AutomationAct::ScrollIntoView | AutomationAct::Press(_) => {
+            AutomationAct::ScrollIntoView
+            | AutomationAct::Press(_)
+            | AutomationAct::SelectOption(_) => {
                 unreachable!("handled above")
             }
             AutomationAct::Fill(_) | AutomationAct::Type(_) if !editable => {
@@ -198,5 +205,61 @@ impl ViewInteraction {
             return Err(format!("Element not interactable: {name} had no effect"));
         }
         Ok(effects)
+    }
+
+    fn select_option(
+        &mut self,
+        selector: &str,
+        index: Option<usize>,
+        choice: &str,
+    ) -> Result<Vec<Effect>, String> {
+        let frame = self
+            .frame
+            .clone()
+            .ok_or("E_PAGE_NOT_READY: no presented frame")?;
+        let node = {
+            let projection = self
+                .semantics()
+                .ok_or("E_PAGE_NOT_READY: no presented frame")?;
+            let matches = query::select(&projection, selector)?;
+            let position = index.unwrap_or(0);
+            *matches
+                .get(position)
+                .ok_or_else(|| format!("Element not found: {selector} (index {position})"))?
+        };
+        let target = &frame.nodes[node];
+        let select = target
+            .select
+            .as_ref()
+            .ok_or_else(|| format!("Element not interactable: {selector} is not a select"))?;
+        if select.on_select.is_none() {
+            return Err(format!(
+                "Element not interactable: {selector} is not enabled"
+            ));
+        }
+        let option = select
+            .options
+            .iter()
+            .position(|option| option.value == choice)
+            .or_else(|| {
+                select
+                    .options
+                    .iter()
+                    .position(|option| option.label == choice)
+            })
+            .ok_or_else(|| {
+                format!("Element not interactable: {selector} has no option {choice:?}")
+            })?;
+        if !select.options[option].enabled {
+            return Err(format!(
+                "Element not interactable: option {choice:?} is disabled"
+            ));
+        }
+        self.dispatches.push(super::Dispatch::Select {
+            commit: frame.commit,
+            identity: target.identity.clone(),
+            index: option,
+        });
+        Ok(vec![Effect::Dispatch])
     }
 }

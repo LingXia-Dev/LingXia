@@ -120,6 +120,14 @@ struct JSScrollToOptions {
     index: Option<usize>,
 }
 
+#[derive(FromJSObject)]
+struct JSSelectOptionOptions {
+    css: String,
+    value: String,
+    page: Option<String>,
+    index: Option<usize>,
+}
+
 #[derive(FromJSObject, Default)]
 struct JSScrollOptions {
     dx: Option<f64>,
@@ -362,6 +370,21 @@ impl JSPageDriver {
             &options.key,
             options.css.as_deref(),
             options.index,
+        )
+        .await
+        .map_err(fail(&app, options.page.as_deref()))
+    }
+
+    /// Choose a `<select>` option by value, else by label.
+    #[js_method(rename = "selectOption")]
+    async fn select_option(&self, ctx: JSContext, options: JSSelectOptionOptions) -> JSResult<()> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
+        auto::page_select_option(
+            &app,
+            options.page.as_deref(),
+            &options.css,
+            options.index,
+            &options.value,
         )
         .await
         .map_err(fail(&app, options.page.as_deref()))

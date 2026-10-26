@@ -31,6 +31,12 @@ enum Request {
         identity: String,
         token: u64,
     },
+    /// The platform picker of a `<select>` chose option `index`.
+    Select {
+        identity: String,
+        generation: crate::session::lifecycle::CommitTicket,
+        index: usize,
+    },
     Blur {
         identity: String,
         token: u64,
@@ -143,6 +149,14 @@ impl ViewSession {
                 generation,
             } => self.focus_input(generation, &identity)?,
             Request::Query { identity, token } => self.input_state(token, &identity),
+            Request::Select {
+                identity,
+                generation,
+                index,
+            } => {
+                let changed = self.select_option(generation, &identity, index)?;
+                return Ok(serde_json::json!({ "needs_view_render": changed }).to_string());
+            }
             Request::Blur { identity, token } => {
                 return Ok(self.blur_input(token, &identity)?.to_string());
             }

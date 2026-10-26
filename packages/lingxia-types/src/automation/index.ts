@@ -345,6 +345,15 @@ export interface PageFillOptions extends PageTypeOptions {
   force?: boolean;
 }
 
+export interface PageSelectOptionOptions extends PageTarget {
+  /** CSS selector of the `<select>`. */
+  css: string;
+  /** Option value, else label. */
+  value: string;
+  /** Which match (default the first). */
+  index?: number;
+}
+
 export interface PagePressOptions extends PageTarget {
   /** Key name, e.g. `Enter`, `Escape`, `Tab`. */
   key: string;
@@ -547,6 +556,8 @@ export interface PageDriver {
   press(options: PagePressOptions): Promise<void>;
   /** Scroll the first matching element into view. */
   scrollTo(options: PageScrollToOptions): Promise<void>;
+  /** Choose a `<select>` option by value, else by label, as the user would. */
+  selectOption(options: PageSelectOptionOptions): Promise<void>;
   /** Scroll the page DOM by a pixel delta (nearest scrollable container). */
   scroll(options?: PageScrollOptions): Promise<void>;
   /** Poll until the selector reaches `state`, else reject on timeout. */

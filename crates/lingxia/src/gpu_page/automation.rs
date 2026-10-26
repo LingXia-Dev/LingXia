@@ -53,6 +53,7 @@ impl GpuPageAutomation for GpuAutomation {
             GpuAction::Type { text } => json!({"kind": "type", "text": text}),
             GpuAction::ScrollIntoView => json!({"kind": "scroll"}),
             GpuAction::Press { key } => json!({"kind": "press", "key": key}),
+            GpuAction::SelectOption { value } => json!({"kind": "select", "value": value}),
         };
         let reply =
             self.request(json!({"op": "act", "css": css, "index": index, "action": action}));

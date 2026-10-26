@@ -39,7 +39,7 @@ const position = (file, node) => {
 
 /** Every authoring problem in one module, as `file:line:col: CODE: message`. */
 // Controls a screen reader announces need a name; the fix is named in the message.
-const labelled = new Set(['input', 'textarea', 'search', 'slider', 'radio', 'plot']);
+const labelled = new Set(['input', 'textarea', 'search', 'slider', 'radio', 'plot', 'select']);
 const contentNamed = new Set(['button', 'link', 'checkbox', 'switch']);
 function unnamed(tag, node, file) {
   const attributes = node.attributes.properties;

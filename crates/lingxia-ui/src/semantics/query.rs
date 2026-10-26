@@ -100,6 +100,7 @@ fn aria(role: Role) -> Option<&'static str> {
         Role::Switch => "switch",
         Role::RadioGroup => "radiogroup",
         Role::RadioButton => "radio",
+        Role::ComboBox => "combobox",
         Role::TextField => "textbox",
         Role::Image => "img",
         Role::Slider => "slider",
@@ -133,6 +134,7 @@ fn virtual_element(node: &NodeSnapshot, semantic: Option<&SemanticNode>) -> Virt
         "radio-option" => ("input", Some("radio")),
         "slider" => ("input", Some("range")),
         "image" => ("img", None),
+        "select" => ("select", None),
         _ => match role {
             Some(Role::Heading) => ("h", None),
             Some(Role::List) => ("ul", None),
@@ -231,12 +233,19 @@ pub fn describe(
         && left < viewport[0]
         && top < viewport[1];
     let input = node.input.as_ref();
-    let value = input.map(|input| {
-        input
-            .edit
-            .as_ref()
-            .map(|edit| edit.text.clone())
-            .unwrap_or_else(|| input.value.clone())
+    let chosen = node.select.as_ref().and_then(|select| {
+        select
+            .selected
+            .map(|index| select.options[index].value.clone())
+    });
+    let value = chosen.or_else(|| {
+        input.map(|input| {
+            input
+                .edit
+                .as_ref()
+                .map(|edit| edit.text.clone())
+                .unwrap_or_else(|| input.value.clone())
+        })
     });
     let (text, text_truncated) = truncate(
         &semantic

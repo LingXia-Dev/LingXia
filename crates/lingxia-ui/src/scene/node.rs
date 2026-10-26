@@ -3,6 +3,21 @@ use serde::Serialize;
 use vello_cpu::Pixmap;
 use vello_cpu::kurbo::{Affine, RoundedRect, Shape};
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct SelectOption {
+    pub value: String,
+    pub label: String,
+    pub enabled: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct SelectSnapshot {
+    pub options: Vec<SelectOption>,
+    pub selected: Option<usize>,
+    /// Absent when the select is disabled.
+    pub on_select: Option<u64>,
+}
+
 #[derive(Clone, Serialize)]
 pub struct NodeSnapshot {
     pub identity: String,
@@ -53,6 +68,9 @@ pub struct NodeSnapshot {
     /// Authored `accessibilityState` (pressed, selected, expanded, busy); absent keys are `None`.
     #[serde(skip)]
     pub states: [Option<bool>; 4],
+    /// A `<select>`: its options, the chosen one and the handle that reports a choice.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub select: Option<SelectSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub button_content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

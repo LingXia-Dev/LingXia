@@ -20,7 +20,7 @@ the `role` prop sets one of the authored roles on any non-control element.
 
 ## All exposed roles
 
-`button`, `check-box`, `switch`, `radio-group`, `radio-button`, `text-field`, `scroll-view`, `horizontal-scroll-view`, `image`, `slider`, `text`, `link`, `heading`, `list`, `list-item`, `dialog`, `alert`, `status`
+`button`, `check-box`, `switch`, `radio-group`, `radio-button`, `combo-box`, `text-field`, `scroll-view`, `horizontal-scroll-view`, `image`, `slider`, `text`, `link`, `heading`, `list`, `list-item`, `dialog`, `alert`, `status`
 
 ## Live regions
 

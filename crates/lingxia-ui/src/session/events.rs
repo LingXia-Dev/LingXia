@@ -20,6 +20,31 @@ impl ViewSession {
     }
 
     /// Only text callbacks accept this payload; stale displayed-frame events are ignored.
+    /// A `<select>` chose option `index` (picker, arrow key or automation); false when stale or unchanged.
+    pub fn select_option(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        identity: &str,
+        index: usize,
+    ) -> Result<bool, String> {
+        let Some(select) = self.retained.as_ref().and_then(|retained| {
+            retained
+                .nodes
+                .iter()
+                .find(|node| node.identity == identity)
+                .and_then(|node| node.select.clone())
+        }) else {
+            return Ok(false);
+        };
+        let (Some(option), Some(handle)) = (select.options.get(index), select.on_select) else {
+            return Ok(false);
+        };
+        if !option.enabled || select.selected == Some(index) {
+            return Ok(false);
+        }
+        self.text_event(generation, handle, &option.value)
+    }
+
     pub fn text_event(
         &mut self,
         generation: lifecycle::CommitTicket,

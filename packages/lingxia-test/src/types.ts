@@ -233,6 +233,8 @@ export interface Locator {
   waitFor(options?: LocatorWaitOptions): Promise<void>;
   click(options?: ActionOptions): Promise<void>;
   fill(text: string, options?: ActionOptions): Promise<void>;
+  /** Choose an option of a `<select>` by value, else by label. */
+  selectOption(value: string, options?: ActionOptions): Promise<void>;
   type(text: string, options?: InputOptions): Promise<void>;
   press(key: string, options?: InputOptions): Promise<void>;
   /** Pick the match at `index` (of the filtered matches, after `.filter()`). */
@@ -399,7 +401,7 @@ export type ViewFunction<R, A extends unknown[]> = ((scope: ViewScope, ...args: 
 /** Roles `getByRole` resolves on both renderers. */
 export type LocatorRole =
   | "button" | "link" | "heading" | "textbox" | "checkbox" | "switch" | "radio" | "radiogroup"
-  | "slider" | "img" | "list" | "listitem" | "dialog" | "alert" | "status";
+  | "slider" | "img" | "list" | "listitem" | "dialog" | "alert" | "status" | "combobox";
 
 export interface TestView {
   testId(id: string): Locator;

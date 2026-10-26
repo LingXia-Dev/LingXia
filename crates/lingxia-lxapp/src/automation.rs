@@ -652,6 +652,45 @@ const DOM_TREE_SCRIPT: &str = r#"(() => {
   return { nodes: walk(document.body, 0) };
 })()"#;
 
+/// Choose an option of the matching `<select>` by value, else by label, firing its change.
+pub async fn page_select_option(
+    app: &Arc<LxApp>,
+    page_name: Option<&str>,
+    selector: &str,
+    index: Option<usize>,
+    value: &str,
+) -> Result<(), String> {
+    if let Some(page) = gpu::backend(app, page_name)? {
+        let value = value.to_owned();
+        return page
+            .act(selector, index, gpu::GpuAction::SelectOption { value })
+            .await;
+    }
+    let script = format!(
+        r#"(() => {{
+  const el = document.querySelectorAll({selector})[{index}];
+  if (!el) return "Element not found: " + {selector};
+  if (el.tagName !== "SELECT") return "Element not interactable: " + {selector} + " is not a select";
+  if (el.disabled) return "Element not interactable: " + {selector} + " is not enabled";
+  const option = [...el.options].find(o => o.value === {value}) || [...el.options].find(o => o.label === {value});
+  if (!option) return "Element not interactable: " + {selector} + " has no option " + {value};
+  if (option.disabled) return "Element not interactable: option " + {value} + " is disabled";
+  el.value = option.value;
+  el.dispatchEvent(new Event("input", {{ bubbles: true }}));
+  el.dispatchEvent(new Event("change", {{ bubbles: true }}));
+  return true;
+}})()"#,
+        selector = serde_json::to_string(selector).map_err(|e| e.to_string())?,
+        index = index.unwrap_or(0),
+        value = serde_json::to_string(value).map_err(|e| e.to_string())?,
+    );
+    match page_eval(app, page_name, &script).await? {
+        Value::Bool(true) => Ok(()),
+        Value::String(error) => Err(error),
+        other => Err(format!("page selectOption: unexpected answer {other}")),
+    }
+}
+
 /// Scroll the target page WebView by a pixel delta.
 pub async fn page_scroll(
     app: &Arc<LxApp>,

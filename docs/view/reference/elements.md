@@ -281,3 +281,16 @@ Children: text and `<span>` runs; links do not nest. Only inside `<text>`. Not a
 | `onPress` | `() => void` |  |
 | `accessibilityLabel` | `string` |  |
 | `disabled` | `boolean` |  |
+
+## `<select>`
+
+Children: none. Not allowed inside a composed `<button>` or `<checkbox>`.
+
+Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChange(value: string)`; not both.
+
+| Prop | Type | Required |
+| --- | --- | --- |
+| `options` | `readonly RadioOption[]` | yes |
+| `placeholder` | `string` |  |
+| `accessibilityLabel` | `string` |  |
+| `disabled` | `boolean` |  |

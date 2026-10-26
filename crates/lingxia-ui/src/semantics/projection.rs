@@ -15,6 +15,7 @@ pub enum Role {
     Switch,
     RadioGroup,
     RadioButton,
+    ComboBox,
     TextField,
     ScrollView,
     HorizontalScrollView,
@@ -250,7 +251,10 @@ impl Projection<'_> {
         let button = matches!(node.tag, "button" | "link");
         let check = node.checked.is_some();
         let input = node.input.as_ref();
-        let role = if input.is_some() {
+        let select = node.select.as_ref();
+        let role = if select.is_some() {
+            Role::ComboBox
+        } else if input.is_some() {
             Role::TextField
         } else if let Some(scroll) = &node.scroll {
             if scroll.axis == ScrollAxis::Horizontal {
@@ -291,7 +295,12 @@ impl Projection<'_> {
         let label = node.accessibility_label.clone().unwrap_or_default();
         let name = if matches!(
             role,
-            Role::Image | Role::Slider | Role::RadioGroup | Role::List | Role::Dialog
+            Role::Image
+                | Role::Slider
+                | Role::RadioGroup
+                | Role::List
+                | Role::Dialog
+                | Role::ComboBox
         ) || (matches!(
             role,
             Role::Heading | Role::ListItem | Role::Alert | Role::Status
@@ -304,10 +313,11 @@ impl Projection<'_> {
         };
         let mut enabled = match input {
             Some(input) => input.enabled,
+            None if select.is_some() => select.is_some_and(|select| select.on_select.is_some()),
             None => !(button || check) || activatable,
         };
         let mut actions = Vec::new();
-        let mut focusable = button || check || input.is_some();
+        let mut focusable = button || check || input.is_some() || select.is_some();
         if let Some(range) = &node.range {
             enabled = slider_enabled(node);
             focusable = true;
@@ -361,7 +371,8 @@ impl Projection<'_> {
                 position = Some((row, 1));
             }
         }
-        let mut clickable = (button || check || input.is_some()) && enabled && node.range.is_none();
+        let mut clickable =
+            (button || check || input.is_some() || select.is_some()) && enabled && node.range.is_none();
         if plot_enabled(node) {
             focusable = true;
             clickable = true;

@@ -29,6 +29,10 @@ pub enum GpuAction {
     Press {
         key: String,
     },
+    /// Choose a `<select>` option by value, else by label.
+    SelectOption {
+        value: String,
+    },
 }
 
 /// What a live GPU page offers automation; implemented by the GPU page binding.
