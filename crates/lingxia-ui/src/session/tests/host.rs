@@ -1041,13 +1041,36 @@ fn presents(host: &ViewHost<Fake>) -> usize {
     host.adapter().log.lock().unwrap().presented.len()
 }
 
-/// Advance the fake clock by `frames` display frames, firing due wakeups each frame.
+/// Advance the fake clock by `frames` display frames, firing due wakeups and at most
+/// one vsync per frame, as a display does.
 fn run_frames(platform: &Platform, host: &ViewHost<Fake>, frames: u32) {
     let frame = Duration::from_micros(16_667);
     for _ in 0..frames {
         *host.adapter().clock.lock().unwrap() += frame;
         platform.advance(frame);
-        platform.settle(&[host]);
+        let mut vsynced = false;
+        loop {
+            for worker in &platform.workers {
+                let (done, wait) = channel();
+                worker.run_background(move |_| {
+                    let _ = done.send(());
+                });
+                wait.recv_timeout(Duration::from_secs(30)).unwrap();
+            }
+            let mut ran = false;
+            while let Ok(task) = platform.tasks.try_recv() {
+                task();
+                ran = true;
+            }
+            if !vsynced && std::mem::take(&mut host.adapter().log.lock().unwrap().vsync) {
+                host.vsync();
+                vsynced = true;
+                ran = true;
+            }
+            if !ran {
+                break;
+            }
+        }
     }
 }
 
@@ -1077,6 +1100,8 @@ fn a_spinner_presents_at_display_rate_only_while_visible_and_present() {
     run_frames(&platform, &host, 60);
     let spun = presents(&host) - shown;
     assert!((58..=61).contains(&spun), "{spun} presents in one second");
+    // Each frame queues the next behind its acknowledgement; no wakeup timer round trip.
+    assert!(platform.timers.lock().unwrap().is_empty());
     assert!(animation_frames(&host) >= 55, "{}", animation_frames(&host));
 
     host.set_visible(false);

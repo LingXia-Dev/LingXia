@@ -370,6 +370,20 @@ impl<A: PlatformAdapter> Inner<A> {
             self.adapter.recovery(None);
         }
         self.acknowledge_animation(surface, snapshot.generation);
+        // A running animation's next frame queues right behind the acknowledgement on the
+        // worker instead of waiting for its wakeup to come back through the main thread.
+        let now = self.adapter.now();
+        let queue = {
+            let mut main = self.main();
+            let queue = main.animating && now > main.animation_queued_at;
+            if queue {
+                main.animation_queued_at = now;
+            }
+            queue
+        };
+        if queue {
+            self.schedule();
+        }
         self.adapter.reconcile(&snapshot);
         self.deliver(presented.effects);
         if let Some(reach) = presented.reach {
@@ -402,6 +416,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 })
             },
             move |inner, result| {
+                inner.main().animating = matches!(result, Some(Ok(Some(Duration::ZERO))));
                 let delay = match result {
                     Some(Ok(Some(delay))) => delay,
                     Some(Err(error)) => {
@@ -447,7 +462,11 @@ impl<A: PlatformAdapter> Inner<A> {
 
     /// Pause the timeline while nothing can present.
     pub(super) fn park_animations(self: &Arc<Self>) {
-        self.main().animation_timer += 1;
+        {
+            let mut main = self.main();
+            main.animation_timer += 1;
+            main.animating = false;
+        }
         let at = self.adapter.now();
         self.work(
             Guard::Page(self.lifecycle.page()),

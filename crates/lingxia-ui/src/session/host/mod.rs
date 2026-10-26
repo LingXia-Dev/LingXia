@@ -232,6 +232,10 @@ struct Main<F> {
     disposed: bool,
     /// Bumped to revoke a pending animation or bootstrap deadline.
     animation_timer: u64,
+    /// The last presented frame asked for the next display frame.
+    animating: bool,
+    /// When the last frame was queued behind an acknowledgement; one per instant.
+    animation_queued_at: Duration,
     bootstrap_timer: u64,
     reveal: reveal::Reveal,
     telemetry: telemetry::Telemetry,
@@ -285,6 +289,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     number_busy: false,
                     disposed: false,
                     animation_timer: 0,
+                    animating: false,
+                    animation_queued_at: Duration::ZERO,
                     bootstrap_timer: 0,
                     reveal: Default::default(),
                     telemetry: Default::default(),
