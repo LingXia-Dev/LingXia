@@ -543,16 +543,16 @@
           [out[key[0]], out[key[1]]] = backdrop(name, value);
           break;
         case "animation": {
-          const lowered = animation(value);
-          if (lowered !== void 0) out[key] = lowered;
+          const lowered2 = animation(value);
+          if (lowered2 !== void 0) out[key] = lowered2;
           break;
         }
         case "transform":
           transformPart(name, value, transform);
           break;
         case "transition": {
-          const lowered = transitionValue(value);
-          if (lowered !== void 0) out[key] = lowered;
+          const lowered2 = transitionValue(value);
+          if (lowered2 !== void 0) out[key] = lowered2;
           break;
         }
         case "aspect-ratio":
@@ -1786,7 +1786,28 @@
     }
     if (props[event] !== void 0 && typeof props[event] !== "function") throw Error(`${code}: ${event}`);
   }
+  var lowered = /* @__PURE__ */ new Map();
+  var loweredEnv = null;
+  function envKey(env) {
+    return JSON.stringify([env?.theme, env?.viewport, env?.pointer, env?.reducedMotion, env?.insets, env?.keyboard]);
+  }
   function nodeStyle(tag, props, extra, inherited, direction, structure2) {
+    if (props.style !== void 0 || extra !== void 0 || props.className === void 0) return lowerNodeStyle(tag, props, extra, inherited, direction, structure2);
+    const environment = envKey(render.view?.env);
+    if (environment !== loweredEnv) {
+      lowered.clear();
+      loweredEnv = environment;
+    }
+    const key = `${tag}\0${props.className}\0${props.disabled === true}\0${direction}\0${(structure2 ?? []).join(",")}\0${inherited.fontSize}\0${inherited.lineHeight}`;
+    let style2 = lowered.get(key);
+    if (!style2) {
+      style2 = lowerNodeStyle(tag, props, extra, inherited, direction, structure2);
+      if (lowered.size >= 2048) lowered.delete(lowered.keys().next().value);
+      lowered.set(key, style2);
+    }
+    return { ...style2, fields: { ...style2.fields } };
+  }
+  function lowerNodeStyle(tag, props, extra, inherited, direction, structure2) {
     const env = { ...render.view?.env, direction, structure: structure2 };
     const classes = resolveClasses(props.className, env);
     const disabled = props.disabled === true;

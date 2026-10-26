@@ -44,8 +44,31 @@ function bind(tag, element, props) {
   if (props[event] !== undefined && typeof props[event] !== 'function') throw Error(`${code}: ${event}`);
 }
 
-// Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
+// The lowered style of class-only nodes repeats across a page; it depends on
+// nothing but these inputs, so one lowering serves every node that shares them.
+const lowered = new Map();
+let loweredEnv = null;
+function envKey(env) {
+  return JSON.stringify([env?.theme, env?.viewport, env?.pointer, env?.reducedMotion, env?.insets, env?.keyboard]);
+}
+
 function nodeStyle(tag, props, extra, inherited, direction, structure) {
+  if (props.style !== undefined || extra !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, extra, inherited, direction, structure);
+  const environment = envKey(render.view?.env);
+  if (environment !== loweredEnv) { lowered.clear(); loweredEnv = environment; }
+  const key = `${tag}\u0000${props.className}\u0000${props.disabled === true}\u0000${direction}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${inherited.lineHeight}`;
+  let style = lowered.get(key);
+  if (!style) {
+    style = lowerNodeStyle(tag, props, extra, inherited, direction, structure);
+    if (lowered.size >= 2048) lowered.delete(lowered.keys().next().value);
+    lowered.set(key, style);
+  }
+  // Callers may edit the fields of their node (an image's fit moves to its own field).
+  return { ...style, fields: { ...style.fields } };
+}
+
+// Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
+function lowerNodeStyle(tag, props, extra, inherited, direction, structure) {
   const env = { ...render.view?.env, direction, structure };
   const classes = resolveClasses(props.className, env);
   const disabled = props.disabled === true;
