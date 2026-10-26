@@ -213,6 +213,14 @@ fn handle_lxapp_page_command_impl(
                 ],
             )))
         }
+        // Routed here by its `lxapp.page.` prefix.
+        methods::lxapp::HOT_SWAP => {
+            let args: HotSwapArgs = parse_args(handler, args)?;
+            let swapped = lingxia::dev::hot_swap_gpu_page(&args.appid, &args.path)?;
+            Ok(Some(
+                json!({ "ok": true, "action": "hot_swap", "pages": swapped }),
+            ))
+        }
         _ => Err(format!("unknown lxapp page handler: {}", handler)),
     }
 }
@@ -367,4 +375,10 @@ mod tests {
         assert!(response.get("pages").is_some());
         assert!(response.get("surfaces").is_none());
     }
+}
+
+#[derive(serde::Deserialize)]
+struct HotSwapArgs {
+    appid: String,
+    path: String,
 }

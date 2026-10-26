@@ -230,13 +230,6 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
                 "page": page,
             })))
         }
-        methods::lxapp::HOT_SWAP => {
-            let args: HotSwapArgs = parse_args(handler, args)?;
-            let swapped = lingxia::dev::hot_swap_gpu_page(&args.appid, &args.path)?;
-            Ok(Some(
-                json!({ "ok": true, "action": "hot_swap", "pages": swapped }),
-            ))
-        }
         methods::lxapp::UNINSTALL => {
             let args: AppArgs = parse_args(handler, args)?;
             let appid = resolve_appid(&args.appid)?;
@@ -247,12 +240,6 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
         }
         _ => Err(format!("unknown lxapp handler: {}", handler)),
     }
-}
-
-#[derive(serde::Deserialize)]
-struct HotSwapArgs {
-    appid: String,
-    path: String,
 }
 
 fn page_paths_match(left: &str, right: &str) -> bool {
