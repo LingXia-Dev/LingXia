@@ -755,7 +755,9 @@ class LxAppActivity : AppCompatActivity() {
             .coerceAtLeast(0)
         val viewportWidthPx = (webViewContainer.width - webViewContainer.paddingLeft - webViewContainer.paddingRight)
             .coerceAtLeast(0)
-        val viewportHeightPx = (webViewContainer.height - webViewContainer.paddingTop - webViewContainer.paddingBottom)
+        // The app's surface, not the current page's area: a page's title bar or tab bar
+        // must not change the context every View reads on a tab switch.
+        val viewportHeightPx = (rootContainer.height - rootContainer.paddingTop - rootContainer.paddingBottom)
             .coerceAtLeast(0)
         val shellWidthDp = (shellWidthPx / density).toInt()
         val viewportWidthDp = (viewportWidthPx / density).toInt()
