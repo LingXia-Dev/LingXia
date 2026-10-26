@@ -104,7 +104,7 @@ object Lingxia {
     ) {
         appLinkDeliveryEnabled = deliverAppLinks
         if (LxApp.homeAppId != null) {
-            // Warm relaunch: the runtime is up, go straight home.
+            // Warm relaunch: the runtime is up; resume the live app, else open home.
             openHomeFrom(activity)
             return
         }
@@ -151,7 +151,7 @@ object Lingxia {
         val existingLxAppActivity = LxApp.getCurrentActivity()?.takeUnless {
             it.isFinishing || it.isDestroyed
         }
-        LxApp.openHome()
+        if (bootstrapOpensHome(existingLxAppActivity?.taskId)) LxApp.openHome()
         if (SplashOverlay.launchActive()) {
             // Keep the bootstrap-to-home handoff still while the launch
             // cover or theme starting window is waiting for content.

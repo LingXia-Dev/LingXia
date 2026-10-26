@@ -37,3 +37,10 @@ internal fun bootstrapHandoff(isTaskRoot: Boolean, taskId: Int, liveAppTaskId: I
         isTaskRoot -> BootstrapHandoff.STAY
         else -> BootstrapHandoff.FINISH
     }
+
+/**
+ * Whether a bootstrap asks the runtime to open home. Only a cold start does: over a
+ * live app it would reset the activity to home's first page while the runtime's tab
+ * state stays where the user was.
+ */
+internal fun bootstrapOpensHome(liveAppTaskId: Int?): Boolean = liveAppTaskId == null

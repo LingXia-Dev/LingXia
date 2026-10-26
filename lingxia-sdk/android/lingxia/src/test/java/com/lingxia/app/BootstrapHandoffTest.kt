@@ -36,4 +36,10 @@ class BootstrapHandoffTest {
             bootstrapHandoff(isTaskRoot = true, taskId = 9, liveAppTaskId = 7),
         )
     }
+
+    @Test
+    fun onlyAColdStartOpensHome() {
+        assertEquals(true, bootstrapOpensHome(liveAppTaskId = null))
+        assertEquals(false, bootstrapOpensHome(liveAppTaskId = 7))
+    }
 }
