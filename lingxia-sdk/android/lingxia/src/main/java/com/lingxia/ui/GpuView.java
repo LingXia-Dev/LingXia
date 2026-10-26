@@ -1094,7 +1094,6 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                         number = args.getFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, Float.NaN);
                     } else if (shared == GpuAccessibility.SET_TEXT) {
                         CharSequence value = args == null ? null : args.getCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE);
-                        if (value != null && value.length() > 65536) return false;
                         argument = value == null ? "" : value.toString();
                     } else if (shared == GpuAccessibility.SET_SELECTION) {
                         number = args == null ? -1 : args.getInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, -1);

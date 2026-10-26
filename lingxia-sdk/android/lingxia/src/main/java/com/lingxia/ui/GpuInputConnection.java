@@ -1,5 +1,6 @@
 package com.lingxia.ui;
 
+import com.lingxia.ui.generated.GpuInput;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.View;
@@ -18,7 +19,11 @@ final class GpuInputConnection extends BaseInputConnection {
         void send(long revision, JSONArray edits, boolean submit);
         void changed();
     }
-    private static final int MAX_BYTES = 65536, MAX_PENDING_BYTES = 512 * 1024;
+    // The core's editor limits; the mirror refuses what the core would reject.
+    private static final int MAX_BYTES = GpuInput.LIMIT_EDITOR_TEXT_BYTES, MAX_PENDING_BYTES = GpuInput.LIMIT_INPUT_REQUEST_BYTES,
+        MAX_EDITS = GpuInput.LIMIT_INPUT_BATCH_EDITS;
+    /** A request's JSON envelope per edit, beyond the edit itself. */
+    private static final int EDIT_OVERHEAD = 64;
     private final Sink sink;
     private final View targetView;
     private static final android.text.method.BaseKeyListener DELETE_KEYS=new android.text.method.BaseKeyListener() {
@@ -94,7 +99,7 @@ final class GpuInputConnection extends BaseInputConnection {
     // Unsupported BaseInputConnection operations must not mutate a second, hidden buffer.
     @Override public android.text.Editable getEditable() { return null; }
     @Override public boolean beginBatchEdit() {
-        if (closed || historyPending || depth >= 64) return false;
+        if (closed || historyPending || depth >= MAX_EDITS) return false;
         depth++; return true;
     }
     @Override public boolean endBatchEdit() {
@@ -111,9 +116,9 @@ final class GpuInputConnection extends BaseInputConnection {
         return result;
     }
     private boolean reserve(JSONObject... edits) {
-        if (closed || historyPending || submitting || queued.length() + edits.length > 64 || pending.size() >= 64) return false;
+        if (closed || historyPending || submitting || queued.length() + edits.length > MAX_EDITS || pending.size() >= MAX_EDITS) return false;
         int bytes = 0;
-        for (JSONObject edit : edits) bytes += edit.toString().getBytes(StandardCharsets.UTF_8).length + 64;
+        for (JSONObject edit : edits) bytes += edit.toString().getBytes(StandardCharsets.UTF_8).length + EDIT_OVERHEAD;
         if (pendingBytes + queuedBytes + bytes > MAX_PENDING_BYTES) return false;
         for (JSONObject edit : edits) queued.put(edit);
         queuedBytes += bytes; return true;
@@ -259,7 +264,7 @@ final class GpuInputConnection extends BaseInputConnection {
         return sent;
     }
     @Override public boolean performEditorAction(int action) {
-        if (closed || historyPending || submitting || queued.length() >= 64 || pending.size() >= 64) return false;
+        if (closed || historyPending || submitting || queued.length() >= MAX_EDITS || pending.size() >= MAX_EDITS) return false;
         submitting=true; composeStart=composeEnd=-1; changed(); return true;
     }
     private boolean copy(String value) {
@@ -273,7 +278,7 @@ final class GpuInputConnection extends BaseInputConnection {
         if (clipboard == null) return null;
         try {
             android.content.ClipData clip=clipboard.getPrimaryClip();
-            if (clip == null || clip.getItemCount() == 0 || clip.getItemCount() > 128) return null;
+            if (clip == null || clip.getItemCount() == 0 || clip.getItemCount() > GpuInput.LIMIT_CLIPBOARD_ITEMS) return null;
             StringBuilder value=new StringBuilder();
             for (int i=0;i<clip.getItemCount();i++) {
                 // URI coercion can block or read external content on the UI thread.
