@@ -77,7 +77,11 @@ function dimension(name, value, env, out, key) {
   }
   const viewport = typeof value === 'string' && value.match(/^(\d+(?:\.\d+)?)(vw|vh)$/);
   if (viewport) {
-    const extent = env?.viewport?.[viewport[2] === 'vw' ? 'width' : 'height'];
+    // Viewport units measure the page's safe content box: inside the insets, above the keyboard.
+    const insets = env?.insets ?? {}, keyboard = env?.keyboard?.height ?? 0;
+    const extent = viewport[2] === 'vw'
+      ? env?.viewport?.width - (insets.left ?? 0) - (insets.right ?? 0)
+      : env?.viewport?.height - (insets.top ?? 0) - Math.max(insets.bottom ?? 0, keyboard);
     if (!finite(extent)) invalid(name);
     out[key] = length(name, extent * Number(viewport[1]) / 100);
   } else if (percent(value) !== undefined) out[`${key}Percent`] = length(name, percent(value));

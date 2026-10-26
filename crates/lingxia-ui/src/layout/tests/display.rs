@@ -182,3 +182,70 @@ fn a_growing_aspect_box_in_a_start_aligned_row_derives_its_height() {
     assert!((video[3] - video[2] * 9.0 / 16.0).abs() < 0.5, "{video:?}");
     assert_eq!(bounds("square")[2..], [64.0, 64.0]);
 }
+
+#[test]
+fn fixed_boxes_measure_insets_from_the_safe_content_box() {
+    let source = crate::session::tests::source(
+        "function render(){return h('page',{},h('scroll',{},h('column',{testId:'fab',style:{position:'fixed',bottom:16,right:16,width:40,height:20}}),h('column',{testId:'pin',style:{position:'fixed',top:8,left:8,width:10,height:10}})))}",
+    );
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    let mut place = |size: [u16; 2], insets: [f32; 4], keyboard: f32| {
+        let [top, right, bottom, left] = insets;
+        page.set_environment(serde_json::json!({"theme":"light","insets":{"top":top,"right":right,"bottom":bottom,"left":left},"keyboard":{"height":keyboard},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"runner":false}))
+            .unwrap();
+        let display = page.layout(size[0], size[1], 1.0).unwrap();
+        let at = |id: &str| {
+            display
+                .nodes
+                .iter()
+                .find(|n| n.test_id == id)
+                .unwrap()
+                .bounds
+        };
+        (at("fab"), at("pin"))
+    };
+    // Portrait: status bar on top, tab and navigation bars below.
+    let (fab, pin) = place([360, 640], [24.0, 0.0, 80.0, 0.0], 0.0);
+    assert_eq!(
+        fab,
+        [360.0 - 16.0 - 40.0, 640.0 - 80.0 - 16.0 - 20.0, 40.0, 20.0]
+    );
+    assert_eq!(pin[..2], [8.0, 24.0 + 8.0]);
+    // Landscape: the navigation bar moves to a side.
+    let (fab, pin) = place([640, 360], [24.0, 48.0, 56.0, 0.0], 0.0);
+    assert_eq!(
+        fab[..2],
+        [640.0 - 48.0 - 16.0 - 40.0, 360.0 - 56.0 - 16.0 - 20.0]
+    );
+    assert_eq!(pin[..2], [8.0, 32.0]);
+    // An open keyboard taller than the bottom inset lifts the box above it.
+    let (fab, _) = place([360, 640], [24.0, 0.0, 80.0, 0.0], 300.0);
+    assert_eq!(fab[1], 640.0 - 300.0 - 16.0 - 20.0);
+}
+
+#[test]
+fn viewport_units_measure_the_safe_content_box() {
+    let source = crate::session::tests::source(
+        "function render(){return h('page',{},h('column',{testId:'half',style:{height:'50vh',width:'50vw'}}))}",
+    );
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    for (keyboard, height) in [
+        (0.0, (640.0 - 24.0 - 80.0) / 2.0),
+        (300.0, (640.0 - 24.0 - 300.0) / 2.0),
+    ] {
+        page.set_environment(serde_json::json!({"theme":"light","insets":{"top":24,"right":20,"bottom":80,"left":20},"keyboard":{"height":keyboard},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"runner":false}))
+            .unwrap();
+        let display = page.layout(360, 640, 1.0).unwrap();
+        let half = display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == "half")
+            .unwrap()
+            .bounds;
+        assert_eq!(
+            half[2..],
+            [(360.0 - 40.0) / 2.0, height],
+            "keyboard {keyboard}"
+        );
+    }
+}

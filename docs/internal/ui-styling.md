@@ -30,11 +30,12 @@ time (see [ui-authoring.md](ui-authoring.md)) and again at runtime.
   font size; `'24px'` is absolute and inherits as pixels.
 - `letterSpacing` in `em` resolves on its owner; descendants inherit pixels.
 - `rem` is 16 logical pixels. `vw`/`vh` (and `d`/`s`/`l` variants) resolve against
-  the View viewport.
+  the page's safe content box (viewport minus insets, above an open keyboard).
 - `hidden` is `display: none`: no layout, paint, hits or semantics. `block` and
   `inline-block` lay children in a stretched column; `inline-flex` and
   `inline-block` default `align-self` to start.
-- `fixed` is absolute against the root `<page>`; it escapes ancestor scrolls and clips.
+- `fixed` is absolute against the root `<page>`; it escapes ancestor scrolls and clips,
+  and its length insets measure from the safe content box (percentages from the surface).
 - `sticky` (pixel insets) offsets a box inside its nearest `<scroll>` at composition,
   bounded by its parent's content box, and lifts it above in-flow siblings; list rows
   and transformed boxes cannot stick.

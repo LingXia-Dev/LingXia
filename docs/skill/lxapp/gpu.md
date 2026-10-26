@@ -21,7 +21,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 ```
 
 - `<page>` is the root: it absorbs safe-area insets and the keyboard. `view` is a column.
-  `fixed` positions against the page; `hidden` removes a node entirely.
+  `fixed` insets and `vh`/`dvh` measure the page's safe box (inside system bars, above the keyboard);
+  `hidden` removes a node entirely.
 - Layout is flex or CSS Grid (`grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] col-span-2`).
 - Style with complete Tailwind classes or CSS-named `style` (`backgroundColor`,
   `marginTop`, `gridTemplateColumns`, `lineClamp`, `objectFit`). Unitless

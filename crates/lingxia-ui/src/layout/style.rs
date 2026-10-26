@@ -66,7 +66,8 @@ fn margin(record: &Record, field: usize) -> LengthPercentageAuto {
     }
 }
 
-fn inset(record: &Record, field: usize) -> LengthPercentageAuto {
+/// `offset` moves a length inset in from the containing edge.
+fn inset(record: &Record, field: usize, offset: f32) -> LengthPercentageAuto {
     record
         .fields
         .iter()
@@ -76,7 +77,7 @@ fn inset(record: &Record, field: usize) -> LengthPercentageAuto {
             if relative {
                 percent(value / 100.0)
             } else {
-                length(value)
+                length(value + offset)
             }
         })
         .unwrap_or(auto())
@@ -212,6 +213,19 @@ pub(crate) fn node_style(
     let left = |physical, start, end| side(record, physical, start, end, true, rtl);
     let right = |physical, start, end| side(record, physical, start, end, false, rtl);
     let page = index == 0 && record.tag == tag::PAGE;
+    // Fixed boxes measure their length insets from the page's safe content box:
+    // inside the system insets and above the keyboard.
+    let [safe_top, safe_right, safe_bottom, safe_left] =
+        if records[0].tag == tag::PAGE && record.string(field::POSITION) == Some("fixed") {
+            [
+                safe.insets[0],
+                safe.insets[1],
+                safe.insets[2].max(safe.keyboard),
+                safe.insets[3],
+            ]
+        } else {
+            [0.0; 4]
+        };
     // Opposing insets size an absolute box, so fixed media defaults must not override them.
     let spans = |a: usize, b: usize| {
         let (a, b) = (
@@ -348,8 +362,9 @@ pub(crate) fn node_style(
                         field::INSET_INLINE_START,
                         field::INSET_INLINE_END,
                     ),
+                    safe_left,
                 ),
-                top: inset(record, field::INSET_TOP),
+                top: inset(record, field::INSET_TOP, safe_top),
                 right: inset(
                     record,
                     right(
@@ -357,8 +372,9 @@ pub(crate) fn node_style(
                         field::INSET_INLINE_START,
                         field::INSET_INLINE_END,
                     ),
+                    safe_right,
                 ),
-                bottom: inset(record, field::INSET_BOTTOM),
+                bottom: inset(record, field::INSET_BOTTOM, safe_bottom),
             }
         },
         direction: if rtl {
