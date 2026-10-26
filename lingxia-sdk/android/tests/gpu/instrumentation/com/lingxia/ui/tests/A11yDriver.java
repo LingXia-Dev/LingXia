@@ -99,6 +99,19 @@ final class A11yDriver {
         Thread.sleep(1500);
     }
 
+    /** View lab renders one group at a time: scroll back to its group buttons and pick one. */
+    void openGroup(String label) throws Exception {
+        String button = id("lab-tab-" + label.toLowerCase());
+        for (int i = 0; i < 40 && byId(root(), button) == null; i++) {
+            AccessibilityNodeInfo page = largestScrollable(root());
+            if (page != null) page.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD);
+            Thread.sleep(400);
+        }
+        if (byId(root(), button) == null) capture("open-group-" + label + ".png", 0, 1);
+        assertTrue(node("lab-tab-" + label.toLowerCase()).performAction(AccessibilityNodeInfo.ACTION_CLICK));
+        Thread.sleep(1500);
+    }
+
     /** Scroll the page until `testId` is in the tree, then onto the screen. */
     AccessibilityNodeInfo reveal(String testId) throws Exception {
         for (int i = 0; i < 30 && byId(root(), id(testId)) == null; i++) {

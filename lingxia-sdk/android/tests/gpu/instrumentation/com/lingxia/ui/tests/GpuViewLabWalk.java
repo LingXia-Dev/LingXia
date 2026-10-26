@@ -153,6 +153,7 @@ public class GpuViewLabWalk {
     /** A locator click through the page shell's automation entry, as lx.automation sends it. */
     @Test public void automationClick() throws Exception {
         driver.openTab("Lab");
+        driver.openGroup("Input");
         driver.reveal("lab-a11y-save");
         driver.instrumentation.runOnMainSync(() -> {
             try {
@@ -172,6 +173,7 @@ public class GpuViewLabWalk {
     /** Sticky headers mid-scroll: a screenshot per inner scroll step with the frame's scroll offset and header bounds. */
     @Test public void sticky() throws Exception {
         driver.openTab("Lab");
+        driver.openGroup("Layout");
         driver.reveal("lab-sticky-scroll");
         try (FileWriter log = new FileWriter(driver.out("sticky.txt"))) {
             for (int step = 0; step < 8; step++) {
