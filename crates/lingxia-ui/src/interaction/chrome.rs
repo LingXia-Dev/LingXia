@@ -20,6 +20,8 @@ pub struct FeedbackStyle {
     pub focus_ring: u32,
     /// Ring stroke width, logical pixels.
     pub focus_ring_width: f32,
+    /// ARGB of text selection handles.
+    pub selection_handle: u32,
 }
 
 impl FeedbackStyle {
@@ -29,12 +31,14 @@ impl FeedbackStyle {
                 press_overlay: 0x33FF_FFFF,
                 focus_ring: 0xFFE6_EBF5,
                 focus_ring_width: 2.0,
+                selection_handle: 0xFF8C_9BFF,
             }
         } else {
             Self {
                 press_overlay: 0x2200_0000,
                 focus_ring: 0xFF17_2033,
                 focus_ring_width: 2.0,
+                selection_handle: 0xFF46_5CDA,
             }
         }
     }

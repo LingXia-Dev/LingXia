@@ -1494,6 +1494,7 @@ fn the_frame_says_how_to_draw_press_and_focus_feedback_for_its_theme() {
         serde_json::to_value(FeedbackStyle::for_theme(false)).unwrap()
     );
     assert_eq!(snapshot["feedback"]["pressOverlay"], 0x2200_0000u32);
+    assert_eq!(snapshot["feedback"]["selectionHandle"], 0xFF46_5CDAu32);
     let dark = FeedbackStyle::for_theme(true);
     assert_ne!(dark.focus_ring, FeedbackStyle::for_theme(false).focus_ring);
 }
