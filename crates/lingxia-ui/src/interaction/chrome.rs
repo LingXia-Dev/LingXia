@@ -22,6 +22,9 @@ pub struct FeedbackStyle {
     pub focus_ring_width: f32,
     /// ARGB of text selection handles.
     pub selection_handle: u32,
+    /// ARGB background and text of host notices over the page (a slow first load).
+    pub notice_background: u32,
+    pub notice_text: u32,
 }
 
 impl FeedbackStyle {
@@ -32,6 +35,8 @@ impl FeedbackStyle {
                 focus_ring: 0xFFE6_EBF5,
                 focus_ring_width: 2.0,
                 selection_handle: 0xFF8C_9BFF,
+                notice_background: 0xFF20_2226,
+                notice_text: 0xFFFF_FFFF,
             }
         } else {
             Self {
@@ -39,6 +44,8 @@ impl FeedbackStyle {
                 focus_ring: 0xFF17_2033,
                 focus_ring_width: 2.0,
                 selection_handle: 0xFF46_5CDA,
+                notice_background: 0xFFFF_FFFF,
+                notice_text: 0xFF20_2226,
             }
         }
     }

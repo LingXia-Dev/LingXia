@@ -1495,6 +1495,8 @@ fn the_frame_says_how_to_draw_press_and_focus_feedback_for_its_theme() {
     );
     assert_eq!(snapshot["feedback"]["pressOverlay"], 0x2200_0000u32);
     assert_eq!(snapshot["feedback"]["selectionHandle"], 0xFF46_5CDAu32);
+    assert_eq!(snapshot["feedback"]["noticeBackground"], 0xFFFF_FFFFu32);
+    assert_ne!(dark_notice(), FeedbackStyle::for_theme(false).notice_text);
     let dark = FeedbackStyle::for_theme(true);
     assert_ne!(dark.focus_ring, FeedbackStyle::for_theme(false).focus_ring);
 }
@@ -1867,4 +1869,8 @@ fn a_deferred_present_holds_the_next_frame_until_it_reaches_the_screen() {
     host.deferred_presented(generation, false);
     run_frames(&platform, &host, 1);
     assert_eq!(presents(&host), 3);
+}
+
+fn dark_notice() -> u32 {
+    crate::interaction::chrome::FeedbackStyle::for_theme(true).notice_text
 }
