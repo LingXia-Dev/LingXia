@@ -589,7 +589,7 @@ fn committed_channel_resource_opens_without_input_and_quiesces_after_redraw() {
     }
     use serde_json::json;
     let module = source(
-        "function render(view){const last=useLocal('last','waiting');const feed=useChannel('feed','ticker',{onData:v=>last.set(v)});return h('column',{},h('text',{},feed.connected?'connected':'waiting'),h('text',{},last.value));}",
+        "function render(view){const last=useLocal('last','waiting');const feed=useChannel('feed',view.actions.ticker,{params:{},onData:v=>last.set(v)});return h('column',{},h('text',{},feed.connected?'connected':'waiting'),h('text',{},last.value));}",
     ) + "\nglobalThis.__lingxiaActionCatalog={__names:['ticker'],__modes:{ticker:'call'}};";
     let mut page = ViewSession::new_with_logic(&module, true).unwrap();
     page.begin_bridge("nonce").unwrap();
@@ -1472,7 +1472,7 @@ fn leave_request_updates_view_and_waits_for_explicit_confirmation() {
     }
     use serde_json::{Value, json};
     let source = source(
-        "function render(){const guard=useLeaveGuard('draft',true);return h('button',{onClick:()=>guard.answer(true)},guard.pending??'editing')}",
+        "function render(){const guard=useLeaveGuard('draft',{enabled:true});return h('button',{onClick:()=>guard.answer(true)},guard.pending??'editing')}",
     );
     let mut session = ViewSession::new(&source).unwrap();
     session

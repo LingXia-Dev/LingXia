@@ -961,7 +961,9 @@ fn connections_say_hello_and_report_an_overdue_bootstrap() {
     let platform = Platform::new(&[&worker]);
     let host = platform.host(
         &worker,
-        &source("function render({data}){return h('text',{},`count ${data.count}`)}"),
+        // Compiled Logic pages always publish their action catalog, even an empty one.
+        &(source("function render({data}){return h('text',{},`count ${data.count}`)}")
+            + "\nglobalThis.__lingxiaActionCatalog={__names:[],__modes:{}};"),
         true,
     );
     host.set_visible(true);
