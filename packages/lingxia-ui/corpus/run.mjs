@@ -1,7 +1,7 @@
 // The View corpus: compiles real pages, renders each at phone and tablet size in both
 // appearances through `examples/corpus.rs`, and fails on any UI_* error or on a deterministic
 // cost counter above its budget in budgets.json. Timings are informative only.
-//   node corpus/run.mjs [--update-budgets] [--png] [--only <substring>]
+//   node corpus/run.mjs [--update-budgets] [--png] [--nodes] [--only <substring>]
 import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -66,11 +66,13 @@ for (const app of apps) {
           if (only && !id.includes(only)) continue;
           jobs.push({ id, module: join(dist, page.replace(/\.tsx$/, '.js')), width: viewport.width, height: viewport.height,
             scale: viewport.scale, dark: theme === 'dark', locale: state.__locale ?? 'en', state,
-            ...(flag('--png') ? { png: join(out, 'png', `${id.replace(/[/@]/g, '_')}.png`) } : {}) });
+            ...(flag('--png') ? { png: join(out, 'png', `${id.replace(/[/@]/g, '_')}.png`) } : {}),
+            ...(flag('--nodes') ? { nodes: join(out, 'nodes', `${id.replace(/[/@]/g, '_')}.json`) } : {}) });
         }
   }
 }
 await mkdir(join(out, 'png'), { recursive: true });
+await mkdir(join(out, 'nodes'), { recursive: true });
 const jobsPath = join(out, 'jobs.json'), resultsPath = join(out, 'results.json');
 await writeFile(jobsPath, JSON.stringify(jobs));
 execFileSync('cargo', ['run', '-q', '-p', 'lingxia-ui', '--example', 'corpus', '--', jobsPath, resultsPath], { cwd: repo, stdio: 'inherit' });

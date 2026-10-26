@@ -2192,3 +2192,85 @@ fn every_deferred_frame_the_adapter_shows_is_reported_presented_once() {
         "each frame the raster thread showed is presented once, by its own generation"
     );
 }
+
+#[test]
+fn every_message_adapters_receive_matches_the_frame_schema() {
+    use crate::protocol::tests::frame_contract::conform;
+    let worker = ViewWorker::spawn("test-frame-contract").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let page = "function render(){
+      const name=useLocal('name','Ada'), on=useLocal('on',true), level=useLocal('level',3), plan=useLocal('plan','b');
+      return h('scroll',{testId:'page',style:{height:400}},
+        h('text',{testId:'title',role:'heading',headingLevel:1,style:{userSelect:'text'}},'Frame contract'),
+        h('input',{testId:'name',bind:name,accessibilityLabel:'Name',autoFocus:true,keyboard:'email',enterKeyHint:'next',maxLength:40,placeholder:'Name'}),
+        h('input',{testId:'day',accessibilityLabel:'Day',keyboard:'date',min:'2024-01-01'}),
+        h('textarea',{testId:'note',accessibilityLabel:'Note',rows:2,maxRows:4,value:'line'}),
+        h('select',{testId:'plan',bind:plan,accessibilityLabel:'Plan',options:[{value:'a',label:'A'},{value:'b',label:'B',disabled:true}]}),
+        h('slider',{testId:'level',bind:level,accessibilityLabel:'Level',min:0,max:10,step:1}),
+        h('checkbox',{testId:'on',bind:on},'On'),
+        h('plot',{testId:'chart',kind:'pie',values:[1,2,3],accessibilityLabel:'Share',onSelect(){},style:{height:80}}),
+        h('vector',{testId:'icon',accessibilityHidden:true,paths:[{d:'M0 0H10V10Z'}],style:{width:10,height:10}}),
+        h('image',{testId:'photo',src:'a.png',alt:'Photo',style:{width:20,height:20,borderRadius:4}}),
+        h('text',{},'Read the ',h('link',{onPress(){}},'terms')),
+        h('button',{testId:'go',onClick(){}},'Go'),
+        h('scroll',{testId:'inner',style:{height:20,overflowX:'auto'}},h('row',{style:{width:900,height:20}})))
+    }";
+    let host = platform.host(&worker, &source(page), false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let snapshot: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    assert_eq!(conform("snapshot", &snapshot), Vec::<String>::new());
+    let nodes: Vec<serde_json::Value> = host.semantics(|projection, _| {
+        let projection = projection.unwrap();
+        (0..projection.frame.nodes.len())
+            .filter_map(|index| projection.ids.id(index))
+            .filter_map(|id| projection.node(id))
+            .map(|node| serde_json::to_value(node).unwrap())
+            .collect()
+    });
+    assert!(nodes.len() > 8);
+    for node in &nodes {
+        assert_eq!(
+            conform("semanticNode", node),
+            Vec::<String>::new(),
+            "{node}"
+        );
+    }
+    let requests = [
+        serde_json::json!({"op":"query","css":"[data-testid=\"name\"]","maxText":64}),
+        serde_json::json!({"op":"query","css":"[data-testid=\"nothing\"]"}),
+        serde_json::json!({"op":"query","css":"text","all":true}),
+        serde_json::json!({"op":"tree"}),
+        serde_json::json!({"op":"frame"}),
+        serde_json::json!({"op":"act","css":"[data-testid=\"name\"]","action":{"kind":"fill","text":"Bo"}}),
+    ];
+    let replies = [
+        "automationElement",
+        "automationElement",
+        "automationQueryAll",
+        "automationTree",
+        "automationFrame",
+    ];
+    for (index, request) in requests.iter().enumerate() {
+        assert_eq!(
+            conform("automationRequest", request),
+            Vec::<String>::new(),
+            "{request}"
+        );
+        let reply = host.automation_request(request).unwrap();
+        if let Some(message) = replies.get(index) {
+            assert_eq!(
+                conform(message, &reply),
+                Vec::<String>::new(),
+                "{request} → {reply}"
+            );
+        }
+    }
+    assert!(
+        !conform(
+            "automationRequest",
+            &serde_json::json!({"op":"act","css":"x","action":{"kind":"hover"}})
+        )
+        .is_empty()
+    );
+}
