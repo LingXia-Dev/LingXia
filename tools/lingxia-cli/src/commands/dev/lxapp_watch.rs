@@ -21,6 +21,8 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 const DEBOUNCE: Duration = Duration::from_millis(400);
+/// An edit that only swaps GPU pages settles faster: atomic saves finish within milliseconds.
+const SWAP_DEBOUNCE: Duration = Duration::from_millis(100);
 const IDLE_POLL: Duration = Duration::from_millis(200);
 
 const IGNORED_DIR_NAMES: &[&str] = &[
@@ -359,8 +361,18 @@ fn run_watch(
                 &mut mocks_dirty,
             );
         }
+        let swaps_only = mocks_dirty.is_empty()
+            && dirty.iter().all(|app_id| {
+                roots
+                    .iter()
+                    .find(|root| &root.app_id == app_id)
+                    .zip(changed.get(app_id))
+                    .is_some_and(|(root, paths)| super::gpu_swap::plan(&root.path, paths).is_some())
+            });
         let timeout = if dirty.is_empty() && mocks_dirty.is_empty() {
             IDLE_POLL
+        } else if swaps_only {
+            SWAP_DEBOUNCE
         } else {
             DEBOUNCE
         };
@@ -498,19 +510,24 @@ fn hot_swap(
         eprintln!("  {} {app_id}: {err:#}", "✗".red());
         return true;
     }
+    let compiled = started.elapsed();
     // The manifest hash moves with the new module, so a cold start serves it too.
     if let Err(err) = state.refresh_manifests() {
         eprintln!("  {} {app_id}: {err:#}", "✗".red());
         return false;
     }
+    let published = started.elapsed();
     for page in &pages {
         let path = super::gpu_swap::page_path(page);
         match state.hot_swap_page(app_id, &path) {
             Ok(RestartOutcome::Restarted) => println!(
-                "  {} swapped {} in {} ms",
+                "  {} swapped {} in {} ms (compile {} ms, manifests {} ms, runtime {} ms)",
                 "✓".green(),
                 path.cyan(),
-                started.elapsed().as_millis()
+                started.elapsed().as_millis(),
+                compiled.as_millis(),
+                (published - compiled).as_millis(),
+                (started.elapsed() - published).as_millis()
             ),
             Ok(RestartOutcome::Failed(message)) => {
                 eprintln!("  {} {path}: {message}", "✗".red());
