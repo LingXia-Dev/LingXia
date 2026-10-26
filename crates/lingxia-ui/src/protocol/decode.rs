@@ -222,10 +222,8 @@ fn budgets(records: &[Record]) -> Result<(), String> {
         let mut ancestor = record.parent;
         loop {
             match ancestor.map(|a| records[a].tag) {
-                Some(tag::SCROLL) => break,
-                Some(tag::LIST) => {
-                    return Err("UI_STYLE: sticky is not supported inside list rows".into());
-                }
+                // A list row's sticky box pins inside its row while the row is in view.
+                Some(tag::SCROLL | tag::LIST) => break,
                 Some(_) => ancestor = records[ancestor.unwrap()].parent,
                 None => return Err("UI_STYLE: sticky needs an ancestor scroll".into()),
             }

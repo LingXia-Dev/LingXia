@@ -85,10 +85,6 @@ fn sticky_needs_a_scroll_and_stays_out_of_list_rows() {
             .contains("ancestor scroll")
     );
     assert!(
-        fails("h('list',{count:1,row:()=>h('text',{style:{position:'sticky',top:0}},'x')})")
-            .contains("list rows")
-    );
-    assert!(
         fails("h('scroll',{},h('text',{style:{position:'sticky',top:'10%'}},'x'))")
             .contains("pixel insets")
     );
@@ -160,4 +156,18 @@ fn a_pinned_header_and_its_scroll_edge_share_a_device_pixel_row() {
             pinned.bounds[1]
         );
     }
+}
+
+#[test]
+fn a_header_inside_a_list_row_pins_while_its_row_is_in_view() {
+    let base = display(
+        "h('list',{testId:'l',count:3,height:()=>150,style:{height:200},row:(i)=>h('column',{testId:'row'+i,style:{height:150}},h('text',{testId:'h'+i,style:{position:'sticky',top:0,height:30}},'Group '+i),h('column',{style:{height:120}}))})",
+    );
+    assert_eq!(top(&base, "h0"), 0.0);
+    // Row 0 spans 0..150: scrolled 60, its header stays at the top.
+    assert_eq!(top(&scrolled(&base, &[("l", 60.0)]), "h0"), 0.0);
+    // Scrolled 140: row 0 ends at 10, so its header is pushed up to -20.
+    let pushed = scrolled(&base, &[("l", 140.0)]);
+    assert_eq!(top(&pushed, "h0"), -20.0);
+    assert_eq!(top(&pushed, "h1"), 10.0);
 }

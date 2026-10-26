@@ -37,8 +37,8 @@ time (see [ui-authoring.md](ui-authoring.md)) and again at runtime.
 - `fixed` is absolute against the root `<page>`; it escapes ancestor scrolls and clips,
   and its length insets measure from the safe content box (percentages from the surface).
 - `sticky` (pixel insets) offsets a box inside its nearest `<scroll>` at composition,
-  bounded by its parent's content box, and lifts it above in-flow siblings; list rows
-  and transformed boxes cannot stick.
+  bounded by its parent's content box, and lifts it above in-flow siblings; inside a
+  `<list>` row it pins within its row; transformed boxes cannot stick.
 - `translate-*` moves layout geometry after layout (siblings stay put, hits stay exact);
   `rotate-*`, `scale-*` and `origin-*` paint an affine about the origin and hit-test the
   transformed shape. Editors, scrolls and sliders may translate but not rotate or scale;

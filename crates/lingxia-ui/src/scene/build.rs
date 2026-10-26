@@ -252,7 +252,9 @@ impl Renderer {
                     )
                 };
                 let mut scroll = parents[index];
-                while let Some(ancestor) = scroll.filter(|a| records[*a].tag != tag::SCROLL) {
+                while let Some(ancestor) =
+                    scroll.filter(|a| !matches!(records[*a].tag, tag::SCROLL | tag::LIST))
+                {
                     scroll = parents[ancestor];
                 }
                 let parent = parents[index].unwrap_or(0);
