@@ -146,3 +146,16 @@ fn a_crash_on_a_driver_with_multi_line_build_info_blocks_it_on_relaunch() {
     );
     assert_eq!(relaunch.fallback(), Some(Fallback::Driver));
 }
+
+#[test]
+fn a_blocked_adapter_is_reported_without_arming_probation() {
+    let disk = Disk::default();
+    let crashed = Sentinel::new(Box::new(disk.clone()));
+    assert!(crashed.arm(VULKAN));
+    drop(crashed);
+    let relaunch = Sentinel::new(Box::new(disk.clone()));
+    assert!(relaunch.blocked(VULKAN));
+    assert!(relaunch.blocked(MALEOON));
+    assert!(!relaunch.blocked(GLES));
+    assert!(relaunch.arm(GLES), "checking left no probation behind");
+}

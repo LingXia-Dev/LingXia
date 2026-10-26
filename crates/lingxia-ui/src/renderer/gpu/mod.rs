@@ -53,6 +53,52 @@ impl Context {
             .map_err(|_| "UI_SURFACE: poisoned GPU context".into())
     }
 
+    /// Ok when some adapter offers the limits the renderer's device requests; else
+    /// which limits fall short.
+    fn meets_renderer_limits(&self) -> Result<(), String> {
+        let adapters = {
+            let context = self.lock()?;
+            pollster::block_on(context.instance.enumerate_adapters(wgpu::Backends::all()))
+        };
+        let mut short = Vec::new();
+        for adapter in &adapters {
+            let mut missing = Vec::new();
+            wgpu::Limits::default().check_limits_with_fail_fn(
+                &adapter.limits(),
+                false,
+                |name, needed, has| missing.push(format!("{name} {has} < {needed}")),
+            );
+            if missing.is_empty() {
+                return Ok(());
+            }
+            short.push(format!(
+                "{}: {}",
+                adapter.get_info().name,
+                missing.join(", ")
+            ));
+        }
+        Err(if short.is_empty() {
+            "no adapter".into()
+        } else {
+            format!("below required limits ({})", short.join("; "))
+        })
+    }
+
+    /// Backends with an adapter the crash sentinel refuses.
+    fn blocked_backends(&self) -> Result<wgpu::Backends, String> {
+        let adapters = {
+            let context = self.lock()?;
+            pollster::block_on(context.instance.enumerate_adapters(wgpu::Backends::all()))
+        };
+        Ok(adapters
+            .iter()
+            .map(|adapter| adapter.get_info())
+            .filter(|info| crate::renderer::sentinel::blocked(&adapter_record(info)))
+            .fold(wgpu::Backends::empty(), |blocked, info| {
+                blocked | wgpu::Backends::from(info.backend)
+            }))
+    }
+
     pub fn device_count(&self) -> Result<usize, String> {
         Ok(self.lock()?.devices.len())
     }
@@ -144,20 +190,48 @@ impl Presenter {
         W: Send + Sync + 'static,
     {
         let rebind = window.clone();
+        // A surface binds the window to its backend; a backend that is going to be
+        // refused must not touch the window, or the fallback cannot bind it (Adreno:
+        // GLES then finds no compatible device).
+        if context.blocked_backends()?.contains(wgpu::Backends::VULKAN) {
+            return Self::gles_fallback(BLOCKED.to_string(), window, width, height).map(
+                |mut presenter| {
+                    presenter.target = Some(Box::new(move || rebind.clone().into()));
+                    presenter
+                },
+            );
+        }
         let presenter = match Self::with_context(context, window.clone(), width, height) {
-            Err(error) if error.starts_with(BLOCKED) => Self::with_context(
-                Context::with_backends(wgpu::Backends::GL),
-                window,
-                width,
-                height,
-            )
-            .map_err(|fallback| format!("{error}; GLES: {fallback}")),
+            Err(error) if error.starts_with(BLOCKED) => {
+                Self::gles_fallback(error, window, width, height)
+            }
             result => result,
         };
         presenter.map(|mut presenter| {
             presenter.target = Some(Box::new(move || rebind.clone().into()));
             presenter
         })
+    }
+
+    /// GLES once the Vulkan driver is refused. An adapter below the limits the renderer
+    /// requests (Adreno 630 GLES: 4 storage buffers per stage, 8 required) is not
+    /// attempted, so the page goes to the CPU renderer without a failed device request.
+    fn gles_fallback<W>(
+        error: String,
+        window: Arc<W>,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, String>
+    where
+        Arc<W>: Into<wgpu::SurfaceTarget<'static>>,
+        W: Send + Sync + 'static,
+    {
+        let context = Context::with_backends(wgpu::Backends::GL);
+        context
+            .meets_renderer_limits()
+            .map_err(|short| format!("{error}; GLES: {short}"))?;
+        Self::with_context(context, window, width, height)
+            .map_err(|fallback| format!("{error}; GLES: {fallback}"))
     }
 
     pub fn with_context(

@@ -129,6 +129,12 @@ impl Sentinel {
         true
     }
 
+    /// Whether `adapter` is refused: a known-crashing driver or one blocked on record.
+    pub fn blocked(&self, adapter: &str) -> bool {
+        let adapter = one_line(adapter);
+        known_crashing(&adapter) || self.state().record.blocked.contains(&adapter)
+    }
+
     /// A GPU frame from `adapter` reached the screen.
     pub fn presented(&self, adapter: &str) {
         let adapter = &one_line(adapter);
@@ -187,6 +193,14 @@ pub fn arm(adapter: &str) -> bool {
     match INSTALLED.get() {
         Some(sentinel) => sentinel.arm(adapter),
         None => !known_crashing(adapter),
+    }
+}
+
+/// Whether `adapter` would be refused, without arming anything.
+pub fn blocked(adapter: &str) -> bool {
+    match INSTALLED.get() {
+        Some(sentinel) => sentinel.blocked(adapter),
+        None => known_crashing(adapter),
     }
 }
 
