@@ -63,6 +63,7 @@ struct Request {
     ahead: bool,
     /// Reported in frame metrics once frames ahead were given up.
     single_target: bool,
+    dropped_activations: u64,
 }
 
 impl<A: PlatformAdapter> Inner<A> {
@@ -152,6 +153,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 sample: Duration::ZERO,
                 ahead,
                 single_target: main.single_target,
+                dropped_activations: main.dropped_activations,
             };
             main.dirty = false;
             main.pending = false;
@@ -279,7 +281,12 @@ impl<A: PlatformAdapter> Inner<A> {
         let mut image_buckets = Default::default();
         session.set_environment(value)?;
         session.set_animation_target(Some(request.surface), request.visible, now)?;
-        let (sample, ahead, single_target) = (request.sample, request.ahead, request.single_target);
+        let (sample, ahead, single_target, dropped_activations) = (
+            request.sample,
+            request.ahead,
+            request.single_target,
+            request.dropped_activations,
+        );
         let generation = CommitTicket::new(session.generation().get() + 1);
         let caret = request.caret;
         let surface = request.surface;
@@ -341,6 +348,7 @@ impl<A: PlatformAdapter> Inner<A> {
             if single_target {
                 metrics.insert("presenterSingleTarget".into(), true.into());
             }
+            metrics.insert("droppedActivations".into(), dropped_activations.into());
         }
         if let (Some(extra), Some(metrics)) =
             (self.adapter.metrics(&frame), metrics.as_object_mut())

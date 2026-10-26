@@ -1706,3 +1706,19 @@ fn a_page_near_a_limit_is_warned_once() {
     assert!(page.take_budget_warnings().is_empty(), "once per page");
     assert_eq!(page.frame_metrics().cost.images, 1);
 }
+
+#[test]
+fn a_click_refused_for_a_superseded_frame_is_recorded_for_the_host() {
+    let module = source(
+        "function render(){const n=useLocal('n',0);return h('button',{onClick:()=>n.set(n.value+1)},`n ${n.value}`)}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let first = page.layout(100, 50, 1.0).unwrap();
+    let (old, handle) = (page.generation(), first.nodes[0].on_click.unwrap());
+    assert!(page.click(old, handle).unwrap());
+    page.layout(100, 50, 1.0).unwrap();
+    assert!(page.take_rejected_clicks().is_empty());
+    assert!(!page.click(old, handle).unwrap());
+    assert_eq!(page.take_rejected_clicks(), [(old, page.generation())]);
+    assert!(page.take_rejected_clicks().is_empty());
+}

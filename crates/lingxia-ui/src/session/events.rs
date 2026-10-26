@@ -7,7 +7,13 @@ impl ViewSession {
         generation: lifecycle::CommitTicket,
         handle: u64,
     ) -> Result<bool, String> {
-        if !self.presented_commit(generation) || handle == 0 {
+        if handle == 0 {
+            return Ok(false);
+        }
+        if !self.presented_commit(generation) {
+            if self.rejected_clicks.len() < 16 {
+                self.rejected_clicks.push((generation, self.generation));
+            }
             return Ok(false);
         }
         self.execute(|| {

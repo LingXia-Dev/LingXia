@@ -2643,3 +2643,58 @@ fn taps_at_any_phase_of_a_pipelined_animation_dispatch_within_two_frames() {
         "taps not counted within two frames of release (phase, hold, counted, eventually): {failed:?}"
     );
 }
+
+fn dropped_warnings(host: &ViewHost<Fake>) -> Vec<String> {
+    host.adapter()
+        .log
+        .lock()
+        .unwrap()
+        .warnings
+        .iter()
+        .filter(|w| w.starts_with("UI_INPUT: dropped activation"))
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn an_activation_whose_control_changed_before_dispatch_is_reported_not_silent() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const n=useLocal('n',0);return h('column',{},h('button',{testId:'b',onClick:()=>n.set(n.value+1),style:{height:60}},`Count ${n.value}`))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    tap(&host, 20.0, 20.0);
+    // Its rebuild is in flight; the second tap is made on "Count 0", which is gone by then.
+    let worker_done = {
+        let (done, wait) = channel();
+        worker.run_background(move |_| {
+            let _ = done.send(());
+        });
+        wait
+    };
+    worker_done.recv_timeout(Duration::from_secs(30)).unwrap();
+    // The click's result reaches the main thread and schedules its rebuild.
+    while let Ok(task) = platform.tasks.try_recv() {
+        task();
+    }
+    tap(&host, 20.0, 20.0);
+    platform.settle(&[&host]);
+    let warnings = dropped_warnings(&host);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0].contains("reason=control changed before it was dispatched")
+            && warnings[0].contains("node=\""),
+        "{}",
+        warnings[0]
+    );
+    host.request_frame();
+    platform.settle(&[&host]);
+    let json: serde_json::Value = serde_json::from_str(&host.snapshot().unwrap().json).unwrap();
+    assert_eq!(json["metrics"]["droppedActivations"], 1);
+}

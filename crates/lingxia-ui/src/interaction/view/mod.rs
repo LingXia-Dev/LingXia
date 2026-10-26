@@ -27,6 +27,16 @@ pub use effects::{AccessibilityEffect, Dispatch, Effect};
 pub use keyboard::Key;
 pub use pointer::{Pointer, PointerPhase};
 
+/// A user activation that resolved to nothing; the host reports it, it is never silent.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DroppedActivation {
+    pub identity: String,
+    pub reason: &'static str,
+    /// The frame the activation was made on and the frame it was resolved against.
+    pub commit: CommitTicket,
+    pub frame: CommitTicket,
+}
+
 struct Activation {
     node: NodeSnapshot,
     commit: CommitTicket,
@@ -77,6 +87,8 @@ pub struct ViewInteraction {
     dialogs: Vec<(String, Option<String>)>,
     /// The last input was a key, not a pointer: focus moves (and its ring) follow it.
     keyboard_used: bool,
+    /// Activations that could not be resolved against the presented frame.
+    dropped: Vec<DroppedActivation>,
     /// Geometry-only frames of one layout since the last content-changed event.
     moved_frames: u32,
     /// A geometry-only change not yet reported to accessibility.
@@ -448,10 +460,33 @@ impl ViewInteraction {
                         commit: frame.commit,
                         handle,
                     });
+                } else {
+                    self.dropped.push(DroppedActivation {
+                        identity: activation.node.identity.clone(),
+                        reason: "no longer clickable",
+                        commit: activation.commit,
+                        frame: frame.commit,
+                    });
                 }
+            } else {
+                self.dropped.push(DroppedActivation {
+                    identity: activation.node.identity.clone(),
+                    reason: if activation.scale != frame.scale {
+                        "display scale changed"
+                    } else {
+                        "control changed before it was dispatched"
+                    },
+                    commit: activation.commit,
+                    frame: frame.commit,
+                });
             }
         }
         dispatches
+    }
+
+    /// Activations dropped since the last call.
+    pub fn take_dropped(&mut self) -> Vec<DroppedActivation> {
+        std::mem::take(&mut self.dropped)
     }
 
     // ---- sliders -------------------------------------------------------

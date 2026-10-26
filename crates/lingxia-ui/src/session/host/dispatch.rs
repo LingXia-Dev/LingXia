@@ -112,7 +112,7 @@ impl<A: PlatformAdapter> Inner<A> {
 
     /// Run queued activations against the frame the core resolved them on.
     fn drain_dispatch(self: &Arc<Self>) {
-        let (dispatches, snapshot) = {
+        let (dispatches, dropped, snapshot) = {
             let mut main = self.main();
             if main.busy && !main.disposed {
                 main.yield_to_input();
@@ -120,9 +120,23 @@ impl<A: PlatformAdapter> Inner<A> {
             if main.busy || main.disposed {
                 return;
             }
-            (main.interaction.take_dispatch(), main.snapshot.clone())
+            let dispatches = main.interaction.take_dispatch();
+            (
+                dispatches,
+                main.interaction.take_dropped(),
+                main.snapshot.clone(),
+            )
         };
         let page = self.lifecycle.page();
+        for dropped in dropped {
+            self.report_dropped(
+                page,
+                &dropped.identity,
+                dropped.reason,
+                dropped.commit,
+                dropped.frame,
+            );
+        }
         for dispatch in dispatches {
             match dispatch {
                 Dispatch::Editor { node, word, .. } => {
@@ -136,9 +150,21 @@ impl<A: PlatformAdapter> Inner<A> {
                 }
                 Dispatch::Click { commit, handle } => {
                     self.adapter.activation();
-                    self.activate(
+                    let identity = snapshot
+                        .as_ref()
+                        .and_then(|snapshot| {
+                            snapshot
+                                .frame
+                                .nodes
+                                .iter()
+                                .find(|node| node.on_click == Some(handle))
+                        })
+                        .map(|node| node.identity.clone())
+                        .unwrap_or_default();
+                    self.activate_reporting(
                         page,
                         true,
+                        identity,
                         Box::new(move |session| session.click(commit, handle)),
                     );
                 }
@@ -211,20 +237,65 @@ impl<A: PlatformAdapter> Inner<A> {
 
     /// Run an activation; a changed View drains Logic actions and rebuilds.
     fn activate(self: &Arc<Self>, page: PageTicket, announce: bool, activation: Activation) {
+        self.activate_reporting(page, announce, String::new(), activation);
+    }
+
+    /// Like `activate`, naming `identity` when the session refuses a superseded click.
+    fn activate_reporting(
+        self: &Arc<Self>,
+        page: PageTicket,
+        announce: bool,
+        identity: String,
+        activation: Activation,
+    ) {
         self.main().activating += 1;
         self.work(
             Guard::Page(page),
             move |inner, session| {
-                if !activation(session)? {
-                    return Ok(None);
+                let changed = activation(session);
+                let rejected = session.take_rejected_clicks();
+                if !changed? {
+                    return Ok((rejected, None));
                 }
-                inner.drained(session).map(Some)
+                Ok((rejected, Some(inner.drained(session)?)))
             },
             move |inner, result| {
                 inner.main().activating -= 1;
+                let result = result.map(|result| {
+                    result.map(|(rejected, drained)| {
+                        for (commit, current) in rejected {
+                            inner.report_dropped(
+                                page,
+                                &identity,
+                                "its frame was superseded before the click ran",
+                                commit,
+                                current,
+                            );
+                        }
+                        drained
+                    })
+                });
                 inner.activated(page, announce, result)
             },
         );
+    }
+
+    /// A user activation that did nothing is never silent: warn and count it.
+    pub(super) fn report_dropped(
+        &self,
+        page: PageTicket,
+        identity: &str,
+        reason: &str,
+        commit: crate::session::lifecycle::CommitTicket,
+        current: crate::session::lifecycle::CommitTicket,
+    ) {
+        self.main().dropped_activations += 1;
+        self.adapter.warn(&format!(
+            "UI_INPUT: dropped activation page={} node={identity:?} reason={reason} commit={} current={}",
+            page.get(),
+            commit.get(),
+            current.get()
+        ));
     }
 
     fn activated(
@@ -273,6 +344,8 @@ impl<A: PlatformAdapter> Inner<A> {
                 for handle in handles {
                     changed |= session.click(commit, handle)?;
                 }
+                // Edges a superseded frame reached are reached again by the current one.
+                session.take_rejected_clicks();
                 let update = if changed {
                     inner.drained(session)?
                 } else {

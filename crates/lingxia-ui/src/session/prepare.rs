@@ -83,6 +83,13 @@ impl ViewSession {
                 && generation.get() <= self.generation.get())
     }
 
+    /// Clicks refused since the last call because their frame was superseded.
+    pub fn take_rejected_clicks(
+        &mut self,
+    ) -> Vec<(lifecycle::CommitTicket, lifecycle::CommitTicket)> {
+        std::mem::take(&mut self.rejected_clicks)
+    }
+
     /// Editor geometry queries need the frame's exact layout, not only its nodes: a commit
     /// is valid while no relayout (focus, decoration, paint delta) followed it.
     pub(crate) fn presented_layout_commit(&self, generation: lifecycle::CommitTicket) -> bool {
