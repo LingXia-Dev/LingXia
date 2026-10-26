@@ -244,10 +244,11 @@ impl Platform {
             if decodes {
                 crate::session::host::decode::wait_idle();
             }
-            // The worker is FIFO: once a marker runs, earlier jobs have posted their results.
+            // Each queue is FIFO and background work runs after foreground work: once a
+            // background marker runs, earlier jobs of both levels have posted their results.
             for worker in &self.workers {
                 let (done, wait) = channel();
-                worker.run(move |_| {
+                worker.run_background(move |_| {
                     let _ = done.send(());
                 });
                 wait.recv_timeout(Duration::from_secs(30)).unwrap();
@@ -665,6 +666,46 @@ fn a_declined_frame_leaves_the_session_as_it_was() {
         "declined candidates take no generation"
     );
     assert_eq!(last(&host), ["A"]);
+}
+
+#[test]
+fn a_hidden_page_catches_up_when_its_environment_changes_without_a_new_target() {
+    let worker = ViewWorker::shared("test:catch-up-environment").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let hidden = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'H')}"),
+        false,
+    );
+    hidden.set_visible(true);
+    platform.settle(&[&hidden]);
+    hidden.set_visible(false);
+    let frames = hidden.adapter().log.lock().unwrap().presented.len();
+    // Insets move with the window's bars (a rotation), the surface stays the same size.
+    hidden
+        .adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .value["insets"] = serde_json::json!({"top": 0, "left": 0, "right": 0, "bottom": 40});
+    assert!(!hidden.frame_is_current());
+    hidden.request_frame();
+    platform.settle(&[&hidden]);
+    assert_eq!(
+        hidden.adapter().log.lock().unwrap().presented.len(),
+        frames + 1,
+        "one catch-up frame"
+    );
+    assert!(hidden.frame_is_current(), "returning needs no new frame");
+    hidden.request_frame();
+    platform.settle(&[&hidden]);
+    assert_eq!(
+        hidden.adapter().log.lock().unwrap().presented.len(),
+        frames + 1,
+        "an unchanged environment stays frozen"
+    );
 }
 
 #[test]

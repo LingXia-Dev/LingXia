@@ -56,6 +56,10 @@ impl<A: PlatformAdapter> Inner<A> {
                 main.environment = Some(environment.clone());
                 self.lifecycle.invalidate_surface();
                 main.dirty = true;
+                // A kept hidden frame no longer matches; catch up so a return can show at once.
+                if !main.visible && main.presented_environment.is_some() {
+                    main.catch_up = true;
+                }
             }
             if main.busy || main.number_busy {
                 return;
