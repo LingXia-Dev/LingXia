@@ -4329,6 +4329,7 @@ dependencies = [
  "glifo",
  "image",
  "lingxia-theme",
+ "log",
  "memmap2",
  "parley",
  "pollster",
@@ -4361,6 +4362,7 @@ name = "lingxia-ui-apple"
 version = "0.28.0"
 dependencies = [
  "lingxia-ui",
+ "raw-window-handle",
  "serde_json",
 ]
 

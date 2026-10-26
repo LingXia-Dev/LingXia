@@ -316,9 +316,10 @@ impl<A: PlatformAdapter> Inner<A> {
             None
         };
         let images = session.image_requests();
-        // A page near a limit says so once in the dev log, before a frame fails on it.
+        // A page near a limit says so once, through the app's log pipeline so `lingxia dev`
+        // and `lxdev logs` show it, before a frame fails on it.
         for warning in session.take_budget_warnings() {
-            self.adapter.warn(&warning);
+            log::warn!(target: "lingxia_ui", "{warning}");
         }
         let mut metrics =
             serde_json::to_value(session.frame_metrics()).map_err(|e| e.to_string())?;
