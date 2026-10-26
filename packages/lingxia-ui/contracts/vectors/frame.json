@@ -1,0 +1,1664 @@
+{
+  "automation": [
+    {
+      "reply": "automationElement",
+      "request": {
+        "css": "[data-testid=\"name\"]",
+        "maxText": 64,
+        "op": "query"
+      },
+      "value": {
+        "aria_label": "Name",
+        "checked": null,
+        "count": 1,
+        "editable": true,
+        "enabled": true,
+        "exists": true,
+        "id": null,
+        "inViewport": true,
+        "index": 0,
+        "name": null,
+        "placeholder": "Name",
+        "rect": {
+          "bottom": 62.0,
+          "center_x": 50.0,
+          "center_y": 38.0,
+          "height": 48.0,
+          "left": 0.0,
+          "right": 100.0,
+          "top": 14.0,
+          "viewport_height": 400.0,
+          "viewport_width": 100.0,
+          "width": 100.0
+        },
+        "renderer": "gpu",
+        "role": "textbox",
+        "tag": "input",
+        "text": "Ada",
+        "text_truncated": false,
+        "type": "text",
+        "value": "Ada",
+        "value_truncated": false,
+        "visible": true
+      }
+    },
+    {
+      "reply": "automationElement",
+      "request": {
+        "css": "[data-testid=\"nothing\"]",
+        "op": "query"
+      },
+      "value": {
+        "count": 0,
+        "editable": false,
+        "enabled": false,
+        "exists": false,
+        "inViewport": false,
+        "index": 0,
+        "renderer": "gpu",
+        "visible": false
+      }
+    },
+    {
+      "reply": "automationQueryAll",
+      "request": {
+        "all": true,
+        "css": "input",
+        "op": "query"
+      },
+      "value": {
+        "count": 4,
+        "items": [
+          {
+            "aria_label": "Name",
+            "checked": null,
+            "count": 4,
+            "editable": true,
+            "enabled": true,
+            "exists": true,
+            "id": null,
+            "inViewport": true,
+            "index": 0,
+            "name": null,
+            "placeholder": "Name",
+            "rect": {
+              "bottom": 62.0,
+              "center_x": 50.0,
+              "center_y": 38.0,
+              "height": 48.0,
+              "left": 0.0,
+              "right": 100.0,
+              "top": 14.0,
+              "viewport_height": 400.0,
+              "viewport_width": 100.0,
+              "width": 100.0
+            },
+            "renderer": "gpu",
+            "role": "textbox",
+            "tag": "input",
+            "text": "Ada",
+            "text_truncated": false,
+            "type": "text",
+            "value": "Ada",
+            "value_truncated": false,
+            "visible": true
+          },
+          {
+            "aria_label": "Day",
+            "checked": null,
+            "count": 4,
+            "editable": true,
+            "enabled": true,
+            "exists": true,
+            "id": null,
+            "inViewport": true,
+            "index": 1,
+            "name": null,
+            "placeholder": null,
+            "rect": {
+              "bottom": 110.0,
+              "center_x": 50.0,
+              "center_y": 86.0,
+              "height": 48.0,
+              "left": 0.0,
+              "right": 100.0,
+              "top": 62.0,
+              "viewport_height": 400.0,
+              "viewport_width": 100.0,
+              "width": 100.0
+            },
+            "renderer": "gpu",
+            "role": "textbox",
+            "tag": "input",
+            "text": "",
+            "text_truncated": false,
+            "type": "text",
+            "value": "",
+            "value_truncated": false,
+            "visible": true
+          },
+          {
+            "aria_label": "Level",
+            "checked": null,
+            "count": 4,
+            "editable": false,
+            "enabled": true,
+            "exists": true,
+            "id": null,
+            "inViewport": false,
+            "index": 2,
+            "name": null,
+            "placeholder": null,
+            "rect": {
+              "bottom": 248.0,
+              "center_x": 60.0,
+              "center_y": 224.0,
+              "height": 48.0,
+              "left": 0.0,
+              "right": 120.0,
+              "top": 200.0,
+              "viewport_height": 400.0,
+              "viewport_width": 100.0,
+              "width": 120.0
+            },
+            "renderer": "gpu",
+            "role": "slider",
+            "tag": "input",
+            "text": "",
+            "text_truncated": false,
+            "type": "range",
+            "value": null,
+            "value_truncated": false,
+            "visible": true
+          },
+          {
+            "aria_label": "On",
+            "checked": true,
+            "count": 4,
+            "editable": false,
+            "enabled": true,
+            "exists": true,
+            "id": null,
+            "inViewport": false,
+            "index": 3,
+            "name": null,
+            "placeholder": null,
+            "rect": {
+              "bottom": 296.0,
+              "center_x": 50.0,
+              "center_y": 272.0,
+              "height": 48.0,
+              "left": 0.0,
+              "right": 100.0,
+              "top": 248.0,
+              "viewport_height": 400.0,
+              "viewport_width": 100.0,
+              "width": 100.0
+            },
+            "renderer": "gpu",
+            "role": "checkbox",
+            "tag": "input",
+            "text": "On",
+            "text_truncated": false,
+            "type": "checkbox",
+            "value": null,
+            "value_truncated": false,
+            "visible": true
+          }
+        ],
+        "renderer": "gpu"
+      }
+    },
+    {
+      "reply": "automationTree",
+      "request": {
+        "op": "tree"
+      },
+      "value": {
+        "nodes": [
+          {
+            "bounds": [
+              0.0,
+              0.0,
+              100.0,
+              200.0
+            ],
+            "children": [
+              {
+                "bounds": [
+                  0.0,
+                  0.0,
+                  100.0,
+                  14.0
+                ],
+                "level": 1,
+                "name": "Frame contract",
+                "role": "heading",
+                "testId": "title"
+              },
+              {
+                "bounds": [
+                  0.0,
+                  14.0,
+                  100.0,
+                  48.0
+                ],
+                "focused": true,
+                "name": "Name",
+                "role": "textbox",
+                "testId": "name",
+                "value": "Ada"
+              },
+              {
+                "bounds": [
+                  0.0,
+                  62.0,
+                  100.0,
+                  48.0
+                ],
+                "name": "Day",
+                "role": "textbox",
+                "testId": "day",
+                "value": ""
+              },
+              {
+                "bounds": [
+                  0.0,
+                  110.0,
+                  100.0,
+                  52.0
+                ],
+                "name": "Note",
+                "role": "textbox",
+                "testId": "note",
+                "value": "line"
+              },
+              {
+                "bounds": [
+                  0.0,
+                  162.0,
+                  100.0,
+                  38.0
+                ],
+                "name": "Plan",
+                "role": "combobox",
+                "testId": "plan"
+              }
+            ],
+            "name": "",
+            "role": "scroll-view",
+            "scroll": [
+              0.0,
+              78.0
+            ],
+            "testId": "page"
+          }
+        ],
+        "renderer": "gpu"
+      }
+    },
+    {
+      "reply": "automationFrame",
+      "request": {
+        "op": "frame"
+      },
+      "value": {
+        "animationFrames": 0,
+        "commit": 1,
+        "evalMs": {
+          "last": 0,
+          "max": 0
+        },
+        "firstPresentAt": 0,
+        "frames": 1,
+        "imageCacheBytes": 0,
+        "imageCacheEntries": 0,
+        "lastPresentAt": 0,
+        "page": "1",
+        "renderer": "gpu",
+        "reveal": {
+          "deadlines": 0,
+          "lastReveal": null,
+          "watchdogs": 0
+        },
+        "wakeups": 0,
+        "workerQueueUs": {
+          "last": 0,
+          "max": 0,
+          "p50": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "action": {
+          "kind": "fill",
+          "text": "Bo"
+        },
+        "css": "[data-testid=\"name\"]",
+        "op": "act"
+      }
+    }
+  ],
+  "semanticNodes": [
+    {
+      "actions": [
+        {
+          "kind": "scroll-forward"
+        },
+        {
+          "kind": "show-on-screen"
+        }
+      ],
+      "bounds": [
+        0.0,
+        0.0,
+        100.0,
+        200.0
+      ],
+      "checked": null,
+      "children": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "clickable": false,
+      "enabled": true,
+      "focusable": false,
+      "focused": false,
+      "heading_level": null,
+      "id": 1,
+      "index": 0,
+      "live_region": null,
+      "name": "",
+      "parent": null,
+      "position": null,
+      "range": null,
+      "role": "scroll-view",
+      "scroll": {
+        "horizontal": false,
+        "max_offset": 78.0,
+        "offset": 0.0
+      },
+      "scrollable": true,
+      "test_id": "page",
+      "text": "",
+      "text_field": null,
+      "text_selection": null,
+      "visible": true
+    },
+    {
+      "actions": [
+        {
+          "kind": "set-selection"
+        },
+        {
+          "kind": "show-on-screen"
+        }
+      ],
+      "bounds": [
+        0.0,
+        0.0,
+        100.0,
+        14.0
+      ],
+      "checked": null,
+      "children": [],
+      "clickable": false,
+      "enabled": true,
+      "focusable": false,
+      "focused": false,
+      "heading_level": 1,
+      "id": 2,
+      "index": 1,
+      "live_region": null,
+      "name": "Frame contract",
+      "parent": 1,
+      "position": null,
+      "range": null,
+      "role": "heading",
+      "scrollable": false,
+      "test_id": "title",
+      "text": "Frame contract",
+      "text_field": null,
+      "text_selection": null,
+      "visible": true
+    },
+    {
+      "actions": [
+        {
+          "kind": "set-text"
+        },
+        {
+          "kind": "set-selection"
+        },
+        {
+          "kind": "show-on-screen"
+        },
+        {
+          "kind": "click"
+        }
+      ],
+      "bounds": [
+        0.0,
+        14.0,
+        100.0,
+        48.0
+      ],
+      "checked": null,
+      "children": [],
+      "clickable": true,
+      "enabled": true,
+      "focusable": true,
+      "focused": true,
+      "heading_level": null,
+      "id": 3,
+      "index": 2,
+      "live_region": null,
+      "name": "Name",
+      "parent": 1,
+      "position": null,
+      "range": null,
+      "role": "text-field",
+      "scrollable": false,
+      "test_id": "name",
+      "text": "Ada",
+      "text_field": {
+        "hint": "Name",
+        "multiline": false,
+        "secure": false,
+        "selection": [
+          3,
+          3
+        ],
+        "text": "Ada"
+      },
+      "text_selection": null,
+      "visible": true
+    },
+    {
+      "actions": [
+        {
+          "kind": "set-text"
+        },
+        {
+          "kind": "set-selection"
+        },
+        {
+          "kind": "show-on-screen"
+        },
+        {
+          "kind": "click"
+        }
+      ],
+      "bounds": [
+        0.0,
+        62.0,
+        100.0,
+        48.0
+      ],
+      "checked": null,
+      "children": [],
+      "clickable": true,
+      "enabled": true,
+      "focusable": true,
+      "focused": false,
+      "heading_level": null,
+      "id": 4,
+      "index": 3,
+      "live_region": null,
+      "name": "Day",
+      "parent": 1,
+      "position": null,
+      "range": null,
+      "role": "text-field",
+      "scrollable": false,
+      "test_id": "day",
+      "text": "",
+      "text_field": {
+        "hint": "",
+        "multiline": false,
+        "secure": false,
+        "selection": null,
+        "text": ""
+      },
+      "text_selection": null,
+      "visible": true
+    },
+    {
+      "actions": [
+        {
+          "kind": "set-text"
+        },
+        {
+          "kind": "set-selection"
+        },
+        {
+          "kind": "show-on-screen"
+        },
+        {
+          "kind": "click"
+        }
+      ],
+      "bounds": [
+        0.0,
+        110.0,
+        100.0,
+        52.0
+      ],
+      "checked": null,
+      "children": [],
+      "clickable": true,
+      "enabled": true,
+      "focusable": true,
+      "focused": false,
+      "heading_level": null,
+      "id": 5,
+      "index": 4,
+      "live_region": null,
+      "name": "Note",
+      "parent": 1,
+      "position": null,
+      "range": null,
+      "role": "text-field",
+      "scrollable": false,
+      "test_id": "note",
+      "text": "line",
+      "text_field": {
+        "hint": "",
+        "multiline": true,
+        "secure": false,
+        "selection": null,
+        "text": "line"
+      },
+      "text_selection": null,
+      "visible": true
+    },
+    {
+      "actions": [
+        {
+          "kind": "show-on-screen"
+        },
+        {
+          "kind": "click"
+        }
+      ],
+      "bounds": [
+        0.0,
+        162.0,
+        100.0,
+        38.0
+      ],
+      "checked": null,
+      "children": [],
+      "clickable": true,
+      "enabled": true,
+      "focusable": true,
+      "focused": false,
+      "heading_level": null,
+      "id": 6,
+      "index": 5,
+      "live_region": null,
+      "name": "Plan",
+      "parent": 1,
+      "position": null,
+      "range": null,
+      "role": "combo-box",
+      "scrollable": false,
+      "test_id": "plan",
+      "text": "B",
+      "text_field": null,
+      "text_selection": null,
+      "visible": true
+    },
+    {
+      "actions": [
+        {
+          "kind": "set-progress"
+        },
+        {
+          "kind": "scroll-forward"
+        },
+        {
+          "kind": "scroll-backward"
+        },
+        {
+          "kind": "show-on-screen"
+        }
+      ],
+      "bounds": [
+        0.0,
+        200.0,
+        100.0,
+        0.0
+      ],
+      "checked": null,
+      "children": [],
+      "clickable": false,
+      "enabled": true,
+      "focusable": true,
+      "focused": false,
+      "heading_level": null,
+      "id": 7,
+      "index": 6,
+      "live_region": null,
+      "name": "Level",
+      "parent": 1,
+      "position": null,
+      "range": {
+        "max": 10.0,
+        "min": 0.0,
+        "value": 3.0
+      },
+      "role": "slider",
+      "scrollable": false,
+      "test_id": "level",
+      "text": "",
+      "text_field": null,
+      "text_selection": null,
+      "visible": false
+    },
+    {
+      "actions": [
+        {
+          "kind": "show-on-screen"
+        },
+        {
+          "kind": "click"
+        }
+      ],
+      "bounds": [
+        0.0,
+        248.0,
+        100.0,
+        0.0
+      ],
+      "checked": true,
+      "children": [],
+      "clickable": true,
+      "enabled": true,
+      "focusable": true,
+      "focused": false,
+      "heading_level": null,
+      "id": 8,
+      "index": 7,
+      "live_region": null,
+      "name": "On",
+      "parent": 1,
+      "position": null,
+      "range": null,
+      "role": "check-box",
+      "scrollable": false,
+      "test_id": "on",
+      "text": "On",
+      "text_field": null,
+      "text_selection": null,
+      "visible": false
+    },
+    {
+      "actions": [
+        {
+          "index": 0,
+          "kind": "select-item",
+          "label": "Select item 1: 1"
+        },
+        {
+          "index": 1,
+          "kind": "select-item",
+          "label": "Select item 2: 2"
+        },
+        {
+          "index": 2,
+          "kind": "select-item",
+          "label": "Select item 3: 3"
+        },
+        {
+          "kind": "show-on-screen"
+        },
+        {
+          "kind": "click"
+        }
+      ],
+      "bounds": [
+        0.0,
+        296.0,
+        100.0,
+        0.0
+      ],
+      "checked": null,
+      "children": [],
+      "clickable": true,
+      "enabled": true,
+      "focusable": true,
+      "focused": false,
+      "heading_level": null,
+      "id": 9,
+      "index": 8,
+      "live_region": null,
+      "name": "Share",
+      "parent": 1,
+      "position": null,
+      "range": null,
+      "role": "image",
+      "scrollable": false,
+      "test_id": "chart",
+      "text": "",
+      "text_field": null,
+      "text_selection": null,
+      "visible": false
+    },
+    {
+      "actions": [
+        {
+          "kind": "show-on-screen"
+        }
+      ],
+      "bounds": [
+        0.0,
+        386.0,
+        20.0,
+        0.0
+      ],
+      "checked": null,
+      "children": [],
+      "clickable": false,
+      "enabled": true,
+      "focusable": false,
+      "focused": false,
+      "heading_level": null,
+      "id": 11,
+      "index": 10,
+      "live_region": null,
+      "name": "Photo",
+      "parent": 1,
+      "position": null,
+      "range": null,
+      "role": "image",
+      "scrollable": false,
+      "test_id": "photo",
+      "text": "",
+      "text_field": null,
+      "text_selection": null,
+      "visible": false
+    },
+    {
+      "actions": [
+        {
+          "kind": "show-on-screen"
+        }
+      ],
+      "bounds": [
+        0.0,
+        406.0,
+        100.0,
+        0.0
+      ],
+      "checked": null,
+      "children": [],
+      "clickable": false,
+      "enabled": true,
+      "focusable": false,
+      "focused": false,
+      "heading_level": null,
+      "id": 12,
+      "index": 11,
+      "live_region": null,
+      "name": "Read the terms",
+      "parent": 1,
+      "position": null,
+      "range": null,
+      "role": "text",
+      "scrollable": false,
+      "test_id": "",
+      "text": "Read the terms",
+      "text_field": null,
+      "text_selection": null,
+      "visible": false
+    },
+    {
+      "actions": [
+        {
+          "kind": "show-on-screen"
+        },
+        {
+          "kind": "click"
+        }
+      ],
+      "bounds": [
+        60.7099609375,
+        406.0,
+        35.0,
+        0.0
+      ],
+      "checked": null,
+      "children": [],
+      "clickable": true,
+      "enabled": true,
+      "focusable": true,
+      "focused": false,
+      "heading_level": null,
+      "id": 14,
+      "index": 13,
+      "live_region": null,
+      "name": "terms",
+      "parent": 1,
+      "position": null,
+      "range": null,
+      "role": "link",
+      "scrollable": false,
+      "test_id": "",
+      "text": "terms",
+      "text_field": null,
+      "text_selection": null,
+      "visible": false
+    },
+    {
+      "actions": [
+        {
+          "kind": "show-on-screen"
+        },
+        {
+          "kind": "click"
+        }
+      ],
+      "bounds": [
+        0.0,
+        420.0,
+        100.0,
+        0.0
+      ],
+      "checked": null,
+      "children": [],
+      "clickable": true,
+      "enabled": true,
+      "focusable": true,
+      "focused": false,
+      "heading_level": null,
+      "id": 15,
+      "index": 14,
+      "live_region": null,
+      "name": "Go",
+      "parent": 1,
+      "position": null,
+      "range": null,
+      "role": "button",
+      "scrollable": false,
+      "test_id": "go",
+      "text": "Go",
+      "text_field": null,
+      "text_selection": null,
+      "visible": false
+    },
+    {
+      "actions": [
+        {
+          "kind": "scroll-forward"
+        },
+        {
+          "kind": "show-on-screen"
+        }
+      ],
+      "bounds": [
+        0.0,
+        458.0,
+        100.0,
+        0.0
+      ],
+      "checked": null,
+      "children": [],
+      "clickable": false,
+      "enabled": true,
+      "focusable": false,
+      "focused": false,
+      "heading_level": null,
+      "id": 16,
+      "index": 15,
+      "live_region": null,
+      "name": "",
+      "parent": 1,
+      "position": null,
+      "range": null,
+      "role": "horizontal-scroll-view",
+      "scroll": {
+        "horizontal": true,
+        "max_offset": 800.0,
+        "offset": 0.0
+      },
+      "scrollable": true,
+      "test_id": "inner",
+      "text": "",
+      "text_field": null,
+      "text_selection": null,
+      "visible": false
+    },
+    {
+      "actions": [],
+      "bounds": [
+        0.0,
+        458.0,
+        100.0,
+        0.0
+      ],
+      "checked": null,
+      "children": [],
+      "clickable": false,
+      "enabled": true,
+      "focusable": false,
+      "focused": false,
+      "heading_level": null,
+      "id": 17,
+      "index": 16,
+      "live_region": null,
+      "name": "",
+      "parent": 1,
+      "position": null,
+      "range": null,
+      "role": "text",
+      "scrollable": false,
+      "test_id": "",
+      "text": "",
+      "text_field": null,
+      "text_selection": null,
+      "visible": false
+    }
+  ],
+  "snapshot": {
+    "feedback": {
+      "focusRing": 4281752797,
+      "focusRingWidth": 2.0,
+      "noticeBackground": 4294967295,
+      "noticeText": 4279705651,
+      "pressOverlay": 571940915,
+      "selectionHandle": 4281752797
+    },
+    "generation": 1,
+    "images": [],
+    "metrics": {
+      "animationFrames": 0,
+      "buildUs": 0,
+      "composeUs": 0,
+      "cost": {
+        "backdrops": 0,
+        "glyphs": 22,
+        "imagePixels": 0,
+        "images": 0,
+        "layers": 5,
+        "nodes": 17,
+        "paints": 21,
+        "shadows": 0,
+        "vectorElements": 3
+      },
+      "generation": 1,
+      "imageCacheBytes": 0,
+      "layoutPasses": 1,
+      "layoutUs": 0,
+      "nodes": 17,
+      "paints": 21,
+      "textUs": 0,
+      "totalUs": 0,
+      "viewDecodeUs": 0,
+      "viewEvalUs": 0,
+      "viewPasses": 1,
+      "viewTransferUs": 0,
+      "viewUs": 0,
+      "wireValues": 216
+    },
+    "nodes": [
+      {
+        "bounds": [
+          0.0,
+          0.0,
+          100.0,
+          400.0
+        ],
+        "identity": "/i:0:5",
+        "on_click": null,
+        "order": 0,
+        "radius": 0.0,
+        "scroll": {
+          "axis": "vertical",
+          "id": "/i:0:5",
+          "max_offset": 78.0,
+          "offset": 0.0,
+          "parent": null
+        },
+        "tag": "scroll",
+        "test_id": "page",
+        "text": "",
+        "visible_bounds": [
+          0.0,
+          0.0,
+          100.0,
+          200.0
+        ]
+      },
+      {
+        "bounds": [
+          0.0,
+          0.0,
+          100.0,
+          14.0
+        ],
+        "heading_level": 1,
+        "identity": "/i:0:5/i:0:2",
+        "on_click": null,
+        "order": 1,
+        "radius": 0.0,
+        "role": "heading",
+        "scroll_parent": "/i:0:5",
+        "selectable": "text",
+        "tag": "text",
+        "test_id": "title",
+        "text": "Frame contract",
+        "visible_bounds": [
+          0.0,
+          0.0,
+          100.0,
+          14.0
+        ]
+      },
+      {
+        "accessibility_label": "Name",
+        "bounds": [
+          0.0,
+          14.0,
+          100.0,
+          48.0
+        ],
+        "identity": "/i:0:5/i:1:8",
+        "input": {
+          "auto_focus": true,
+          "edit": {
+            "can_redo": false,
+            "can_undo": false,
+            "composition": null,
+            "focused": true,
+            "selection": [
+              3,
+              3
+            ],
+            "text": "Ada"
+          },
+          "edit_token": 1,
+          "enabled": true,
+          "enter_key_hint": "next",
+          "geometry": {
+            "anchor": [
+              36.91015625,
+              31.0,
+              1.5,
+              14.0
+            ],
+            "caret": [
+              36.91015625,
+              31.0,
+              1.5,
+              14.0
+            ],
+            "composition": [],
+            "content_bounds": [
+              12.0,
+              26.0,
+              76.0,
+              24.0
+            ],
+            "selection": []
+          },
+          "ime": {
+            "auto_complete": null,
+            "capitalize": "none",
+            "hide_on_submit": true,
+            "keyboard": "email",
+            "max_length": 40,
+            "multiline": false,
+            "picker": null,
+            "return_inserts_newline": false,
+            "return_key": "next",
+            "secure": false,
+            "suggestions": true
+          },
+          "keyboard": "email",
+          "max_length": 40,
+          "on_input": 1,
+          "on_submit": null,
+          "placeholder": "Name",
+          "raise_keyboard": true,
+          "scroll_offset": [
+            0.0,
+            0.0
+          ],
+          "secure": false,
+          "submit_on_enter": false,
+          "value": "Ada"
+        },
+        "on_click": null,
+        "order": 2,
+        "radius": 12.0,
+        "scroll_parent": "/i:0:5",
+        "tag": "input",
+        "test_id": "name",
+        "text": "Ada",
+        "visible_bounds": [
+          0.0,
+          14.0,
+          100.0,
+          48.0
+        ]
+      },
+      {
+        "accessibility_label": "Day",
+        "bounds": [
+          0.0,
+          62.0,
+          100.0,
+          48.0
+        ],
+        "identity": "/i:0:5/i:2:8",
+        "input": {
+          "auto_focus": false,
+          "edit": {
+            "can_redo": false,
+            "can_undo": false,
+            "composition": null,
+            "focused": false,
+            "selection": [
+              0,
+              0
+            ],
+            "text": ""
+          },
+          "edit_token": null,
+          "enabled": true,
+          "geometry": null,
+          "ime": {
+            "auto_complete": null,
+            "capitalize": "none",
+            "hide_on_submit": true,
+            "keyboard": "text",
+            "max_length": null,
+            "multiline": false,
+            "picker": {
+              "kind": "date",
+              "max": null,
+              "max_parts": null,
+              "min": "2024-01-01",
+              "min_parts": [
+                2024,
+                1,
+                1
+              ],
+              "seed": null
+            },
+            "return_inserts_newline": false,
+            "return_key": "done",
+            "secure": false,
+            "suggestions": true
+          },
+          "keyboard": "date",
+          "min": "2024-01-01",
+          "on_input": null,
+          "on_submit": null,
+          "picker": "date",
+          "placeholder": "",
+          "raise_keyboard": false,
+          "scroll_offset": [
+            0.0,
+            0.0
+          ],
+          "secure": false,
+          "submit_on_enter": false,
+          "value": ""
+        },
+        "on_click": null,
+        "order": 3,
+        "radius": 12.0,
+        "scroll_parent": "/i:0:5",
+        "tag": "input",
+        "test_id": "day",
+        "text": "",
+        "visible_bounds": [
+          0.0,
+          62.0,
+          100.0,
+          48.0
+        ]
+      },
+      {
+        "accessibility_label": "Note",
+        "bounds": [
+          0.0,
+          110.0,
+          100.0,
+          52.0
+        ],
+        "identity": "/i:0:5/i:3:9",
+        "input": {
+          "auto_focus": false,
+          "edit": {
+            "can_redo": false,
+            "can_undo": false,
+            "composition": null,
+            "focused": false,
+            "selection": [
+              4,
+              4
+            ],
+            "text": "line"
+          },
+          "edit_token": null,
+          "enabled": true,
+          "geometry": null,
+          "ime": {
+            "auto_complete": null,
+            "capitalize": "none",
+            "hide_on_submit": false,
+            "keyboard": "text",
+            "max_length": null,
+            "multiline": true,
+            "picker": null,
+            "return_inserts_newline": true,
+            "return_key": "newline",
+            "secure": false,
+            "suggestions": true
+          },
+          "keyboard": "text",
+          "on_input": null,
+          "on_submit": null,
+          "placeholder": "",
+          "raise_keyboard": false,
+          "scroll_offset": [
+            0.0,
+            0.0
+          ],
+          "secure": false,
+          "submit_on_enter": false,
+          "value": "line"
+        },
+        "on_click": null,
+        "order": 4,
+        "radius": 12.0,
+        "scroll_parent": "/i:0:5",
+        "tag": "textarea",
+        "test_id": "note",
+        "text": "line",
+        "visible_bounds": [
+          0.0,
+          110.0,
+          100.0,
+          52.0
+        ]
+      },
+      {
+        "accessibility_label": "Plan",
+        "bounds": [
+          0.0,
+          162.0,
+          100.0,
+          38.0
+        ],
+        "identity": "/i:0:5/i:4:23",
+        "on_click": null,
+        "order": 5,
+        "radius": 12.0,
+        "scroll_parent": "/i:0:5",
+        "select": {
+          "on_select": 2,
+          "options": [
+            {
+              "enabled": true,
+              "label": "A",
+              "value": "a"
+            },
+            {
+              "enabled": false,
+              "label": "B",
+              "value": "b"
+            }
+          ],
+          "selected": 1
+        },
+        "tag": "select",
+        "test_id": "plan",
+        "text": "B",
+        "visible_bounds": [
+          0.0,
+          162.0,
+          100.0,
+          38.0
+        ]
+      },
+      {
+        "accessibility_label": "Level",
+        "bounds": [
+          0.0,
+          200.0,
+          120.0,
+          48.0
+        ],
+        "identity": "/i:0:5/i:5:15",
+        "on_click": null,
+        "order": 6,
+        "radius": 0.0,
+        "range": {
+          "enabled": true,
+          "inset": 24.0,
+          "max": 10.0,
+          "min": 0.0,
+          "on_change": 3,
+          "step": 1.0,
+          "value": 3.0
+        },
+        "scroll_parent": "/i:0:5",
+        "tag": "slider",
+        "test_id": "level",
+        "text": "",
+        "visible_bounds": [
+          0.0,
+          200.0,
+          100.0,
+          0.0
+        ]
+      },
+      {
+        "bounds": [
+          0.0,
+          248.0,
+          100.0,
+          48.0
+        ],
+        "checked": true,
+        "identity": "/i:0:5/i:6:10",
+        "on_click": 4,
+        "order": 7,
+        "radius": 0.0,
+        "scroll_parent": "/i:0:5",
+        "tag": "checkbox",
+        "test_id": "on",
+        "text": "On",
+        "visible_bounds": [
+          0.0,
+          248.0,
+          100.0,
+          0.0
+        ]
+      },
+      {
+        "accessibility_label": "Share",
+        "bounds": [
+          0.0,
+          296.0,
+          100.0,
+          80.0
+        ],
+        "content_clip": {
+          "bounds": [
+            0.0,
+            296.0,
+            100.0,
+            80.0
+          ],
+          "radii": [
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ]
+          ],
+          "radius": 0.0
+        },
+        "identity": "/i:0:5/i:7:18",
+        "on_click": null,
+        "order": 8,
+        "plot": {
+          "domain": [
+            0.0,
+            3.0
+          ],
+          "kind": "pie",
+          "on_select": 5,
+          "pie_layout": {
+            "center": [
+              0.5,
+              0.5
+            ],
+            "emphasisScale": 0.0,
+            "innerRadius": 0.5336,
+            "outerRadius": 0.92
+          },
+          "selected_index": -1,
+          "values": [
+            1.0,
+            2.0,
+            3.0
+          ]
+        },
+        "radius": 0.0,
+        "scroll_parent": "/i:0:5",
+        "tag": "plot",
+        "test_id": "chart",
+        "text": "",
+        "visible_bounds": [
+          0.0,
+          296.0,
+          100.0,
+          0.0
+        ]
+      },
+      {
+        "accessibility_hidden": true,
+        "bounds": [
+          0.0,
+          376.0,
+          10.0,
+          10.0
+        ],
+        "identity": "/i:0:5/i:8:19",
+        "on_click": null,
+        "order": 9,
+        "radius": 0.0,
+        "scroll_parent": "/i:0:5",
+        "tag": "vector",
+        "test_id": "icon",
+        "text": "",
+        "visible_bounds": [
+          0.0,
+          376.0,
+          10.0,
+          0.0
+        ]
+      },
+      {
+        "accessibility_label": "Photo",
+        "bounds": [
+          0.0,
+          386.0,
+          20.0,
+          20.0
+        ],
+        "identity": "/i:0:5/i:9:7",
+        "on_click": null,
+        "order": 10,
+        "radius": 4.0,
+        "scroll_parent": "/i:0:5",
+        "tag": "image",
+        "test_id": "photo",
+        "text": "",
+        "visible_bounds": [
+          0.0,
+          386.0,
+          20.0,
+          0.0
+        ]
+      },
+      {
+        "bounds": [
+          0.0,
+          406.0,
+          100.0,
+          14.0
+        ],
+        "identity": "/i:0:5/i:10:2",
+        "on_click": null,
+        "order": 11,
+        "radius": 0.0,
+        "scroll_parent": "/i:0:5",
+        "tag": "text",
+        "test_id": "",
+        "text": "Read the terms",
+        "visible_bounds": [
+          0.0,
+          406.0,
+          100.0,
+          0.0
+        ]
+      },
+      {
+        "accessibility_hidden": true,
+        "bounds": [
+          0.0,
+          406.0,
+          60.7099609375,
+          14.0
+        ],
+        "hit_rects": [
+          [
+            0.0,
+            406.0,
+            60.7099609375,
+            14.0
+          ]
+        ],
+        "identity": "/i:0:5/i:10:2/i:0:21",
+        "on_click": null,
+        "order": 12,
+        "radius": 0.0,
+        "scroll_parent": "/i:0:5",
+        "tag": "span",
+        "test_id": "",
+        "text": "Read the ",
+        "visible_bounds": [
+          0.0,
+          406.0,
+          60.7099609375,
+          0.0
+        ]
+      },
+      {
+        "bounds": [
+          60.7099609375,
+          406.0,
+          35.0,
+          14.0
+        ],
+        "hit_rects": [
+          [
+            60.7099609375,
+            406.0,
+            35.0,
+            14.0
+          ]
+        ],
+        "identity": "/i:0:5/i:10:2/i:1:22",
+        "on_click": 6,
+        "order": 13,
+        "radius": 0.0,
+        "scroll_parent": "/i:0:5",
+        "tag": "link",
+        "test_id": "",
+        "text": "terms",
+        "visible_bounds": [
+          60.7099609375,
+          406.0,
+          35.0,
+          0.0
+        ]
+      },
+      {
+        "bounds": [
+          0.0,
+          420.0,
+          100.0,
+          38.0
+        ],
+        "identity": "/i:0:5/i:11:3",
+        "on_click": 7,
+        "order": 14,
+        "radius": 12.0,
+        "scroll_parent": "/i:0:5",
+        "tag": "button",
+        "test_id": "go",
+        "text": "Go",
+        "visible_bounds": [
+          0.0,
+          420.0,
+          100.0,
+          0.0
+        ]
+      },
+      {
+        "bounds": [
+          0.0,
+          458.0,
+          100.0,
+          20.0
+        ],
+        "identity": "/i:0:5/i:12:5",
+        "on_click": null,
+        "order": 15,
+        "radius": 0.0,
+        "scroll": {
+          "axis": "horizontal",
+          "id": "/i:0:5/i:12:5",
+          "max_offset": 800.0,
+          "offset": 0.0,
+          "parent": "/i:0:5"
+        },
+        "scroll_parent": "/i:0:5",
+        "tag": "scroll",
+        "test_id": "inner",
+        "text": "",
+        "visible_bounds": [
+          0.0,
+          458.0,
+          100.0,
+          0.0
+        ]
+      },
+      {
+        "bounds": [
+          0.0,
+          458.0,
+          900.0,
+          20.0
+        ],
+        "identity": "/i:0:5/i:12:5/i:0:1",
+        "on_click": null,
+        "order": 16,
+        "radius": 0.0,
+        "scroll_parent": "/i:0:5/i:12:5",
+        "tag": "row",
+        "test_id": "",
+        "text": "",
+        "visible_bounds": [
+          0.0,
+          458.0,
+          100.0,
+          0.0
+        ]
+      }
+    ]
+  }
+}

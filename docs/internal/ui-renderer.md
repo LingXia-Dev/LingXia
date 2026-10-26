@@ -40,6 +40,13 @@ native-test runtime bundle; no consumer keeps its own copy. `--check` fails on
 drift; a Rust test compares every compiled table with the schema. Field and
 tag ids are append-only and dense; reserved fields are rejected by the decoder.
 
+The schema `frame` section types what adapters receive (snapshot, semantics,
+automation); it generates `GpuFrame.java` and `GpuFrame.swift`.
+`contracts/vectors/frame.json` holds real host output, re-recorded with
+`LINGXIA_UPDATE_VECTORS=1 cargo test -p lingxia-ui --lib every_message`; Rust
+holds it to the schema, the Android JVM and Swift suites decode it, and the
+JVM suite fails on any key the decoder never reads.
+
 JS lowers author style to wire fields; native validation is independent and
 re-checks every record. Never trust that a field reached native through the
 runtime: decode bounds strings, numbers, JSON payloads and tag applicability.

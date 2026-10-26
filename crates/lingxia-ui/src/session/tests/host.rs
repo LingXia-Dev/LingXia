@@ -2239,7 +2239,7 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
     let requests = [
         serde_json::json!({"op":"query","css":"[data-testid=\"name\"]","maxText":64}),
         serde_json::json!({"op":"query","css":"[data-testid=\"nothing\"]"}),
-        serde_json::json!({"op":"query","css":"text","all":true}),
+        serde_json::json!({"op":"query","css":"input","all":true}),
         serde_json::json!({"op":"tree"}),
         serde_json::json!({"op":"frame"}),
         serde_json::json!({"op":"act","css":"[data-testid=\"name\"]","action":{"kind":"fill","text":"Bo"}}),
@@ -2251,6 +2251,7 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
         "automationTree",
         "automationFrame",
     ];
+    let mut exchanges = Vec::new();
     for (index, request) in requests.iter().enumerate() {
         assert_eq!(
             conform("automationRequest", request),
@@ -2264,6 +2265,10 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
                 Vec::<String>::new(),
                 "{request} → {reply}"
             );
+            exchanges
+                .push(serde_json::json!({"request": request, "reply": message, "value": reply}));
+        } else {
+            exchanges.push(serde_json::json!({ "request": request }));
         }
     }
     assert!(
@@ -2273,4 +2278,71 @@ fn every_message_adapters_receive_matches_the_frame_schema() {
         )
         .is_empty()
     );
+    // Golden vectors the platform decoders replay; re-record with LINGXIA_UPDATE_VECTORS=1.
+    let recorded = serde_json::json!({
+        "snapshot": scrub(snapshot),
+        "semanticNodes": nodes,
+        "automation": exchanges.into_iter().map(scrub).collect::<Vec<_>>(),
+    });
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../packages/lingxia-ui/contracts/vectors/frame.json"
+    );
+    if std::env::var_os("LINGXIA_UPDATE_VECTORS").is_some() {
+        std::fs::create_dir_all(std::path::Path::new(path).parent().unwrap()).unwrap();
+        std::fs::write(
+            path,
+            serde_json::to_string_pretty(&recorded).unwrap() + "\n",
+        )
+        .unwrap();
+    }
+    let vectors: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(path)
+            .expect("golden vectors; record with LINGXIA_UPDATE_VECTORS=1"),
+    )
+    .unwrap();
+    assert_eq!(
+        conform("snapshot", &vectors["snapshot"]),
+        Vec::<String>::new()
+    );
+    for node in vectors["semanticNodes"].as_array().unwrap() {
+        assert_eq!(conform("semanticNode", node), Vec::<String>::new());
+    }
+    for exchange in vectors["automation"].as_array().unwrap() {
+        assert_eq!(
+            conform("automationRequest", &exchange["request"]),
+            Vec::<String>::new()
+        );
+        let Some(reply) = exchange["reply"].as_str() else {
+            continue;
+        };
+        assert_eq!(
+            conform(reply, &exchange["value"]),
+            Vec::<String>::new(),
+            "{reply}"
+        );
+    }
+}
+
+/// Zeroes timings so recorded vectors are stable across runs.
+fn scrub(mut value: serde_json::Value) -> serde_json::Value {
+    fn walk(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, item) in map.iter_mut() {
+                    if !(key.ends_with("Us") || key.ends_with("Ms")) {
+                        walk(item);
+                    } else if item.is_number() {
+                        *item = serde_json::json!(0);
+                    } else if let Some(stats) = item.as_object_mut() {
+                        stats.values_mut().for_each(|v| *v = serde_json::json!(0));
+                    }
+                }
+            }
+            serde_json::Value::Array(items) => items.iter_mut().for_each(walk),
+            _ => {}
+        }
+    }
+    walk(&mut value);
+    value
 }
