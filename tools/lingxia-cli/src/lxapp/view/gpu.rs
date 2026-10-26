@@ -27,6 +27,11 @@ pub(super) fn build(project: &Project, dev: bool) -> Result<()> {
     if pages.is_empty() {
         return Ok(());
     }
+    // A pack the lxapp ships must prove its contrast before any page builds against it.
+    let pack = project.root.join(crate::r#gen::tokens::PACK_PATH);
+    if pack.exists() {
+        crate::r#gen::tokens::load(Some(&pack))?;
+    }
     let catalogs = catalogs(project, &pages)?;
     let script = "import { buildPages } from '@lingxia/ui/compiler'; await buildPages(process.cwd(), JSON.parse(process.argv[1]), process.argv[2], JSON.parse(process.argv[3]), { dev: process.argv[4] === 'dev' });";
     let result = Command::new("node")
