@@ -25,10 +25,12 @@ import {
   normalizeText,
   sleep,
   testIdSelector,
+  roleSelector,
   type LocatorResolve,
   type PageLike,
   type QueryMatch,
   type LocatorTarget,
+  type LocatorRefine,
 } from "./locator.js";
 import type {
   ArgOptions,
@@ -1303,6 +1305,13 @@ export class LiveFixture implements Fixture {
         noOptions("view.testId", options);
         return this.locator(lazyPage, testIdSelector(id), location(), target);
       },
+      getByRole: (role: string, options?: { name?: string | RegExp }) => {
+        const name = options?.name;
+        if (name !== undefined && typeof name !== "string" && !(name instanceof RegExp)) {
+          throw new TypeError("getByRole() name must be a string or RegExp");
+        }
+        return this.locator(lazyPage, roleSelector(role), location(), target, name === undefined ? {} : { name });
+      },
       css: (selector: string, options?: unknown) => {
         noOptions("view.css", options);
         return this.locator(lazyPage, selector, location(), target);
@@ -1328,6 +1337,7 @@ export class LiveFixture implements Fixture {
     selector: string,
     location: SourceLocation,
     options?: LocatorTarget,
+    refine?: LocatorRefine,
   ): Locator {
     this.usedPage = true;
     return new PageLocator(
@@ -1338,6 +1348,7 @@ export class LiveFixture implements Fixture {
       location,
       options,
       () => this.budgetRoom(),
+      refine,
     );
   }
 

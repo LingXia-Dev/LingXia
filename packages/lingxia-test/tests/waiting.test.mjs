@@ -863,3 +863,25 @@ test("a GPU page brings the match on screen and acts without a DOM probe", async
   assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
   assert.ok(!world.evaluated.some((script) => script.includes("elementFromPoint")));
 });
+
+test("getByRole matches the role on either renderer and narrows by exact accessible name", async () => {
+  const world = createWorld();
+  world.add({ tag: "button", text: "Pay now" });
+  const gpu = world.add({ tag: "div", role: "button", text: "Later", ariaLabel: "Pay later" });
+  world.add({ tag: "h2", text: "Bills" });
+  const { attachments } = installFakeHost(world);
+
+  spec("roles", async (t) => {
+    await expect(t.app.view.getByRole("button")).toHaveCount(2);
+    await expect(t.app.view.getByRole("button", { name: "Pay now" })).toHaveText("Pay now");
+    await expect(t.app.view.getByRole("button", { name: "Pay" })).toHaveCount(0);
+    await expect(t.app.view.getByRole("button", { name: /later/i })).toHaveCount(1);
+    await t.app.view.getByRole("button", { name: "Pay later" }).click({ timeout: 500 });
+    assert.equal(gpu.clicked, 1);
+    await expect(t.app.view.getByRole("heading", { name: "Bills" })).toBeVisible();
+    assert.throws(() => t.app.view.getByRole("banner"), /unknown role "banner"/);
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
+});

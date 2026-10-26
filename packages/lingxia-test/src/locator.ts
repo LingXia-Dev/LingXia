@@ -14,6 +14,7 @@ import type {
   ActionOptions,
   InputOptions,
   Locator,
+  LocatorRole,
   LocatorFilterOptions,
   LocatorState,
   LocatorWaitOptions,
@@ -35,6 +36,8 @@ export interface QueryMatch {
   visible?: boolean;
   /** Rendered and intersecting the viewport. */
   inViewport?: boolean;
+  /** The `aria-label`; on a GPU page, the accessible name. */
+  ariaLabel?: string | null;
   /** `gpu` for a native View page; absent for a WebView page. */
   renderer?: "gpu";
   text?: string;
@@ -103,6 +106,8 @@ export interface LocatorTarget {
 /** Narrowing applied to the raw matches before `nth`/`first`/`last` picks one. */
 export interface LocatorRefine {
   hasText?: string | RegExp;
+  /** The accessible name (`aria-label`, else the text), whole and exact, or a pattern. */
+  name?: string | RegExp;
   /** Pick the last match (`.last()`); `LocatorTarget.index` picks from the start. */
   last?: boolean;
 }
@@ -112,6 +117,37 @@ export const LOCATOR_BRAND = Symbol.for("lingxia.test.locator");
 
 export function testIdSelector(id: string): string {
   return `[data-testid="${cssEscape(id)}"]`;
+}
+
+/**
+ * The elements that carry `role`, natively or by ARIA, as one selector both
+ * renderers answer: a WebView by tag and attribute, a GPU page by the role
+ * its semantic projection gives each node. A WebView `<input>` must state
+ * its `type` to count as a textbox.
+ */
+export const ROLE_SELECTORS: Readonly<Record<LocatorRole, string>> = {
+  button: 'button, [role="button"], input[type="button"], input[type="submit"]',
+  link: 'a[href], [role="link"]',
+  heading: 'h1, h2, h3, h4, h5, h6, [role="heading"]',
+  textbox: 'input[type="text"], input[type="search"], input[type="email"], input[type="tel"], input[type="url"], input[type="password"], input[type="number"], textarea, [role="textbox"]',
+  checkbox: 'input[type="checkbox"], [role="checkbox"]',
+  switch: '[role="switch"]',
+  radio: 'input[type="radio"], [role="radio"]',
+  radiogroup: '[role="radiogroup"]',
+  slider: 'input[type="range"], [role="slider"]',
+  img: 'img, [role="img"]',
+  list: 'ul, ol, [role="list"]',
+  listitem: 'li, [role="listitem"]',
+  dialog: 'dialog, [role="dialog"]',
+  alert: '[role="alert"]',
+  status: '[role="status"]',
+};
+
+export function roleSelector(role: string): string {
+  if (!Object.prototype.hasOwnProperty.call(ROLE_SELECTORS, role)) {
+    throw new TypeError(`getByRole: unknown role ${JSON.stringify(role)}; known: ${Object.keys(ROLE_SELECTORS).join(", ")}`);
+  }
+  return ROLE_SELECTORS[role as LocatorRole];
 }
 
 export class PageLocator implements Locator {
@@ -288,11 +324,15 @@ export class PageLocator implements Locator {
       ...(typeof item.text === "string" ? { text: normalizeText(item.text) } : {}),
     }));
     const hasText = this.refine.hasText;
-    const matches = hasText === undefined ? indexed : indexed.filter((item) => textMatches(item.text ?? "", hasText));
+    const name = this.refine.name;
+    const matches = indexed
+      .filter((item) => hasText === undefined || textMatches(item.text ?? "", hasText))
+      .filter((item) => name === undefined || nameMatches(item, name));
     const pick = this.refine.last ? matches.length - 1 : this.options.index;
     const picked = pick === undefined ? undefined : matches[pick];
     const items: QueryMatch[] = pick === undefined ? matches : picked ? [picked] : [];
-    const count = pick !== undefined ? items.length : hasText === undefined ? (all.count ?? items.length) : items.length;
+    const narrowed = hasText !== undefined || name !== undefined;
+    const count = pick !== undefined ? items.length : narrowed ? items.length : (all.count ?? items.length);
     const visibleItems = items.filter((item) => item.visible);
     const visibleCount = visibleItems.length;
     let resolved: LocatorResolve;
@@ -405,7 +445,8 @@ export class PageLocator implements Locator {
   }
 
   private target(): string {
-    const filter = this.refine.hasText === undefined ? "" : ` filter(hasText=${formatValue(this.refine.hasText)})`;
+    const filter = (this.refine.hasText === undefined ? "" : ` filter(hasText=${formatValue(this.refine.hasText)})`)
+      + (this.refine.name === undefined ? "" : ` name=${formatValue(this.refine.name)}`);
     const pick = this.refine.last ? " [last]" : this.options.index === undefined ? "" : ` [${this.options.index}]`;
     return `${this.options.page ? `#${this.options.page} ` : ""}${this.selector}${filter}${pick}`;
   }
@@ -636,6 +677,12 @@ export function pageVisibility(value: unknown): PageVisibility | undefined {
 /** Collapse every run of whitespace (newlines included) to one space and trim. */
 export function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+/** The accessible name: `aria-label` when set, else the visible text; a string matches whole. */
+function nameMatches(item: QueryMatch, expected: string | RegExp): boolean {
+  const label = typeof item.ariaLabel === "string" && item.ariaLabel.trim() ? normalizeText(item.ariaLabel) : item.text ?? "";
+  return typeof expected === "string" ? label === normalizeText(expected) : expected.test(label);
 }
 
 export function textMatches(text: string, expected: string | RegExp): boolean {

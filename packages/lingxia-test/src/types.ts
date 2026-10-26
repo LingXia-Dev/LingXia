@@ -396,9 +396,20 @@ export type ViewFunction<R, A extends unknown[]> = ((scope: ViewScope, ...args: 
  * one fixed page instance. Read elements and act on them through locators;
  * they wait for the element and retry, where a raw driver call would not.
  */
+/** Roles `getByRole` resolves on both renderers. */
+export type LocatorRole =
+  | "button" | "link" | "heading" | "textbox" | "checkbox" | "switch" | "radio" | "radiogroup"
+  | "slider" | "img" | "list" | "listitem" | "dialog" | "alert" | "status";
+
 export interface TestView {
   testId(id: string): Locator;
   css(selector: string): Locator;
+  /**
+   * Elements with an ARIA role, natively or by `role`, optionally with an exact
+   * accessible `name` (`aria-label`, else the text) or a pattern. The same
+   * locator reads a WebView page and a GPU page.
+   */
+  getByRole(role: LocatorRole, options?: { name?: string | RegExp }): Locator;
   /**
    * Run `fn` in the page's WebView with JSON `args` and resolve to its JSON
    * result. `fn` must be self-contained (see `ViewFunction`).

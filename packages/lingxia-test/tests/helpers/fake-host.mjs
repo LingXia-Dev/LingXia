@@ -160,6 +160,20 @@ export function createWorld(options = {}) {
   }
 
   function matches(element, css) {
+    // Role selectors are comma lists of `tag`, `tag[attr="v"]` and `[role="v"]`.
+    if (css.includes(", ")) return css.split(", ").some((part) => matchesOne(element, part));
+    return matchesOne(element, css);
+  }
+
+  function matchesOne(element, css) {
+    const attribute = css.match(/^([a-z0-9]*)\[(role|type|href)(?:="([^"]*)")?\]$/);
+    if (attribute) {
+      const [, tag, name, value] = attribute;
+      if (tag && element.tag !== tag) return false;
+      if (name === "role") return element.role === value;
+      if (name === "type") return element.type === value;
+      return element.href !== undefined;
+    }
     const testId = testIdFromCss(css);
     if (testId) return element.testId === testId;
     if (css.startsWith("#")) return element.id === css.slice(1);
@@ -404,7 +418,7 @@ export function createWorld(options = {}) {
       id: element.id ?? null,
       name: element.name ?? null,
       role: element.role ?? null,
-      ariaLabel: null,
+      ariaLabel: element.ariaLabel ?? null,
       placeholder: null,
       visible: element.visible !== false,
       inViewport: element.visible !== false && element.inViewport !== false,

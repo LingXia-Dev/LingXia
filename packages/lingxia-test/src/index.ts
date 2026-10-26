@@ -19,6 +19,7 @@ export type {
   Jsonable,
   Locator,
   LocatorFilterOptions,
+  LocatorRole,
   LocatorMatchers,
   LocatorState,
   LocatorWaitOptions,
