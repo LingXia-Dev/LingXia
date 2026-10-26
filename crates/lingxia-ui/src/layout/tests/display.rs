@@ -135,3 +135,29 @@ fn unstyled_defaults_follow_the_page_theme() {
     }
     assert_ne!(themed("background", false), themed("background", true));
 }
+
+#[test]
+fn a_transform_ends_with_its_node_and_never_reaches_the_next_sibling() {
+    use crate::scene::paint::Paint;
+    let source = crate::session::tests::source(
+        "function render(){return h('column',{},h('column',{},h('row',{},h('column',{testId:'card',style:{width:48,height:48,backgroundColor:'#ff0000',rotate:12,scale:[0.9,0.9],transformOrigin:[0,1]}}))),h('column',{},h('text',{testId:'after'},'Text')))}",
+    );
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    let display = page.layout(300, 300, 1.0).unwrap();
+    let mut current = vello_cpu::kurbo::Affine::IDENTITY;
+    let mut transforms_at_text = Vec::new();
+    for paint in &display.commands {
+        match paint {
+            Paint::Transform(matrix) => current = *matrix,
+            Paint::Text { .. } => transforms_at_text.push(current),
+            _ => {}
+        }
+    }
+    assert!(!transforms_at_text.is_empty());
+    assert!(
+        transforms_at_text
+            .iter()
+            .all(|m| *m == vello_cpu::kurbo::Affine::IDENTITY),
+        "{transforms_at_text:?}"
+    );
+}

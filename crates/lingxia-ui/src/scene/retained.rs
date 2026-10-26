@@ -638,8 +638,10 @@ impl RetainedLayout {
                 .zip(&desired)
                 .take_while(|(a, b)| a == b)
                 .count();
+            let mut left_transform = false;
             for layer in active_layers[shared..].iter().rev() {
                 if matches!(layer, Paint::Transform(_)) {
+                    left_transform = true;
                     continue;
                 }
                 commands.push(match layer {
@@ -647,6 +649,19 @@ impl RetainedLayout {
                     Paint::Backdrop { .. } => Paint::PopBackdrop,
                     _ => Paint::PopClip,
                 });
+            }
+            // Transforms are set, not pushed: leaving one restores the shared ancestor's,
+            // which may compare equal to a sibling's and so is not in `desired[shared..]`.
+            if left_transform {
+                let restored = desired[..shared]
+                    .iter()
+                    .rev()
+                    .find_map(|layer| match layer {
+                        Paint::Transform(matrix) => Some(*matrix),
+                        _ => None,
+                    })
+                    .unwrap_or(Affine::IDENTITY);
+                commands.push(Paint::Transform(restored));
             }
             commands.extend_from_slice(&desired[shared..]);
             active_layers = desired;
