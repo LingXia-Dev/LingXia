@@ -180,7 +180,10 @@ object LxApp {
             LxLog.e(TAG, "Missing valid session for home app: $homeId")
             return
         }
-        openInCurrentActivity(LxAppActivityStartGate.Open(homeId, "", sessionId))
+        // A live runtime keeps its page and tab state when the activity was destroyed;
+        // reopening at home's first page would show it under the old tab highlight.
+        val path = current?.takeIf { it.appId == homeId }?.path.orEmpty()
+        openInCurrentActivity(LxAppActivityStartGate.Open(homeId, path, sessionId))
     }
 
     @JvmStatic
