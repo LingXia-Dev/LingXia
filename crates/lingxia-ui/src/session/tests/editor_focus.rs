@@ -47,3 +47,13 @@ fn next_and_previous_walk_enabled_editors_in_reading_order_and_the_last_submits(
     let json: serde_json::Value = serde_json::to_value(&reply).unwrap();
     assert!(json.get("moved_to").is_none());
 }
+
+#[test]
+fn submitting_an_unfocused_editor_runs_its_input_method_action() {
+    let mut page = ViewSession::new(&super::source(FORM)).unwrap();
+    let frame = page.layout(300, 400, 1.0).unwrap();
+    let c = frame.nodes[4].identity.clone();
+    assert!(page.submit_editor(page.generation(), &c).unwrap());
+    let frame = page.layout(300, 400, 1.0).unwrap();
+    assert_eq!(frame.nodes[5].text, "[c]");
+}

@@ -567,6 +567,12 @@ pub async fn page_press(
     selector: Option<&str>,
     index: Option<usize>,
 ) -> Result<(), String> {
+    if let Some(page) = gpu::backend(app, page_name)? {
+        let key = key.to_owned();
+        return page
+            .act(selector.unwrap_or(""), index, gpu::GpuAction::Press { key })
+            .await;
+    }
     resolve_webview(app, page_name)?
         .press(
             key,

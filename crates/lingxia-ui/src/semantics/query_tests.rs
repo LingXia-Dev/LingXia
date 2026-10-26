@@ -225,3 +225,38 @@ fn offscreen_matches_are_visible_but_must_be_revealed_before_input() {
         .unwrap();
     assert!(revealed.contains(&Effect::Redraw));
 }
+
+#[test]
+fn press_submits_editors_and_drives_keyboard_focus() {
+    let mut i = interaction(PAGE);
+    let page = PageTicket::new(1);
+    let effects = i
+        .automate(
+            "[data-testid=\"amount\"]",
+            None,
+            AutomationAct::Press("Enter".into()),
+            false,
+            page,
+        )
+        .unwrap();
+    assert!(effects.contains(&Effect::Dispatch));
+    assert!(
+        matches!(&i.take_dispatch()[..], [Dispatch::SubmitEditor { identity, .. }] if !identity.is_empty())
+    );
+    let effects = i
+        .automate(
+            "[data-testid=\"pay\"]",
+            None,
+            AutomationAct::Press("Enter".into()),
+            false,
+            page,
+        )
+        .unwrap();
+    assert!(effects.contains(&Effect::Dispatch));
+    assert!(matches!(i.take_dispatch()[..], [Dispatch::Click { .. }]));
+    assert!(
+        i.automate("", None, AutomationAct::Press("F13".into()), false, page)
+            .unwrap_err()
+            .starts_with("E_UNSUPPORTED")
+    );
+}

@@ -14,10 +14,21 @@ pub type GpuFuture<T> = Pin<Box<dyn Future<Output = Result<T, String>> + Send>>;
 /// A locator action on a GPU page, addressed like the WebView path (`css` + `index`).
 #[derive(Clone, Debug, PartialEq)]
 pub enum GpuAction {
-    Click { force: bool },
-    Fill { text: String, force: bool },
-    Type { text: String },
+    Click {
+        force: bool,
+    },
+    Fill {
+        text: String,
+        force: bool,
+    },
+    Type {
+        text: String,
+    },
     ScrollIntoView,
+    /// A key by its DOM name; an empty selector presses on what has focus.
+    Press {
+        key: String,
+    },
 }
 
 /// What a live GPU page offers automation; implemented by the GPU page binding.

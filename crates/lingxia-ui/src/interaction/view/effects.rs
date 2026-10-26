@@ -101,6 +101,11 @@ pub enum Dispatch {
         identity: String,
         point: [f32; 2],
     },
+    /// Enter on an editor: the session submits it as the input method's action would.
+    SubmitEditor {
+        commit: CommitTicket,
+        identity: String,
+    },
     /// A tap outside the selection: the session drops it (`clear_text_selection`).
     ClearTextSelection,
     /// Edges reached by a presented frame.

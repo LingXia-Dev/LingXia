@@ -14,6 +14,29 @@ pub enum AutomationAct {
     /// Append to an editor's text.
     Type(String),
     ScrollIntoView,
+    /// A key by its DOM name (`Enter`, `Tab`, `Shift+Tab`, `ArrowUp`, `Home`, ` `, …),
+    /// on the match or, with an empty selector, on what has focus.
+    Press(String),
+}
+
+fn key(name: &str) -> Result<(super::Key, bool), String> {
+    use super::Key;
+    let (shift, name) = match name.strip_prefix("Shift+") {
+        Some(rest) => (true, rest),
+        None => (false, name),
+    };
+    let key = match name {
+        "Tab" => Key::Tab,
+        "ArrowUp" => Key::Up,
+        "ArrowDown" => Key::Down,
+        "ArrowLeft" => Key::Left,
+        "ArrowRight" => Key::Right,
+        "Home" => Key::Home,
+        "End" => Key::End,
+        "Enter" | " " | "Space" => Key::Activate,
+        other => return Err(format!("E_UNSUPPORTED: key {other:?} on a GPU page")),
+    };
+    Ok((key, shift))
 }
 
 impl ViewInteraction {
@@ -40,6 +63,9 @@ impl ViewInteraction {
         force: bool,
         page: PageTicket,
     ) -> Result<Vec<Effect>, String> {
+        if let AutomationAct::Press(name) = &act {
+            return self.press(selector, index, name, page);
+        }
         let (id, value, enabled, editable, visible, in_viewport) = {
             let projection = self
                 .semantics()
@@ -99,7 +125,9 @@ impl ViewInteraction {
         }
         let action = match act {
             AutomationAct::Click => AccessibilityAction::Click,
-            AutomationAct::ScrollIntoView => unreachable!("revealed above"),
+            AutomationAct::ScrollIntoView | AutomationAct::Press(_) => {
+                unreachable!("handled above")
+            }
             AutomationAct::Fill(_) | AutomationAct::Type(_) if !editable => {
                 return Err(format!(
                     "Element not interactable: {selector} is not editable"
@@ -113,6 +141,53 @@ impl ViewInteraction {
             return Err(format!(
                 "Element not interactable: {selector} refused the action"
             ));
+        }
+        Ok(effects)
+    }
+
+    /// A key on the match (focused first) or on whatever holds focus.
+    fn press(
+        &mut self,
+        selector: &str,
+        index: Option<usize>,
+        name: &str,
+        page: PageTicket,
+    ) -> Result<Vec<Effect>, String> {
+        let (key, shift) = key(name)?;
+        let frame = self
+            .frame
+            .clone()
+            .ok_or("E_PAGE_NOT_READY: no presented frame")?;
+        if !selector.is_empty() {
+            let node = {
+                let projection = self
+                    .semantics()
+                    .ok_or("E_PAGE_NOT_READY: no presented frame")?;
+                let matches = query::select(&projection, selector)?;
+                let position = index.unwrap_or(0);
+                *matches
+                    .get(position)
+                    .ok_or_else(|| format!("Element not found: {selector} (index {position})"))?
+            };
+            let target = &frame.nodes[node];
+            if target.input.is_some() {
+                if key != super::Key::Activate {
+                    return Err(format!(
+                        "E_UNSUPPORTED: {name} in an editor; use type or fill"
+                    ));
+                }
+                // Enter in an editor is its input method action: submit, or move on for next/previous.
+                self.dispatches.push(super::Dispatch::SubmitEditor {
+                    commit: frame.commit,
+                    identity: target.identity.clone(),
+                });
+                return Ok(vec![Effect::Dispatch]);
+            }
+            self.keyboard_focus = Some(node);
+        }
+        let (handled, effects) = self.key(key, shift, false, page);
+        if !handled {
+            return Err(format!("Element not interactable: {name} had no effect"));
         }
         Ok(effects)
     }

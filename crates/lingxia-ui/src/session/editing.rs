@@ -69,6 +69,20 @@ impl ViewSession {
         Ok(Some(reply))
     }
 
+    /// Submit an editor as its input method action would, focusing it first.
+    pub fn submit_editor(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        identity: &str,
+    ) -> Result<bool, String> {
+        let Some(focused) = self.focus_input(generation, identity)? else {
+            return Ok(false);
+        };
+        Ok(self
+            .edit_input(focused.token, identity, &[], true)?
+            .is_some())
+    }
+
     /// A focus token survives presentation; it cannot target a later input connection.
     pub fn input_state(&self, token: u64, identity: &str) -> Option<crate::InputReply> {
         self.inputs

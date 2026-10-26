@@ -145,6 +145,11 @@ impl<A: PlatformAdapter> Inner<A> {
                         Box::new(move |session| session.select_text(commit, &identity, point)),
                     );
                 }
+                Dispatch::SubmitEditor { commit, identity } => self.activate(
+                    page,
+                    true,
+                    Box::new(move |session| session.submit_editor(commit, &identity)),
+                ),
                 Dispatch::ClearTextSelection => self.activate(
                     page,
                     false,
