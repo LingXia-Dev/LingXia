@@ -105,8 +105,7 @@ public class GpuImeTest {
         assertEquals(4,edits.getJSONObject(1).getInt("focus"));
         assertEquals("你好",edits.getJSONObject(2).getString("text"));
         assertEquals("你好",ime.menuText());
-        assertFalse(ime.accessibilityEdit(node,12,null,0,1)); // An unacknowledged mirror cannot be retargeted.
-        assertFalse(ime.accessibilityEdit(node(0,"").put("identity","other"),12,"other",0,0));
+        // The core holds the next edit until a frame shows this one, so the mirror never refuses it.
         host.replies.get(0).accept(new JSONObject().put("token",7).put("state",state("你好")));
         assertTrue(ime.accessibilityEdit(node,12,null,0,1));
         assertEquals("你",ime.create(new EditorInfo()).getSelectedText(0));

@@ -383,6 +383,7 @@ impl<A: PlatformAdapter> Inner<A> {
         self.adapter.presented(&snapshot, &timing);
         self.revealed_by_frame();
         self.update_text_menu();
+        self.edits_presented();
     }
 
     /// Start the timeline's newly presented effects and wake for its next deadline.

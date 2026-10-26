@@ -133,7 +133,6 @@ final class GpuIme {
     boolean accessibilityEdit(JSONObject node,long generation,String text,int start,int end) {
         if (!caretActive || !editable(node) || pendingFocus) return false;
         boolean current=connection != null && connection.identity.equals(node.optString("identity"));
-        if (connection != null && !connection.settled()) return false;
         String value=current ? menuText() : node.optJSONObject("input").optString("value");
         if (text == null && start == -1 && end == -1) start=end=current ? connection.focus() : value.length();
         if (text != null ? !GpuInputConnection.validText(text)

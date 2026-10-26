@@ -18,6 +18,7 @@ use std::time::Duration;
 mod bridge;
 pub(crate) mod decode;
 mod dispatch;
+mod edits;
 mod environment;
 #[cfg(feature = "hot-swap")]
 mod hot_swap;
@@ -235,6 +236,7 @@ struct Main<F> {
     reveal: reveal::Reveal,
     telemetry: telemetry::Telemetry,
     text_menu: text_menu::MenuState,
+    edits: edits::Edits,
 }
 
 impl<A: PlatformAdapter> Drop for Inner<A> {
@@ -287,6 +289,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     reveal: Default::default(),
                     telemetry: Default::default(),
                     text_menu: Default::default(),
+                    edits: Default::default(),
                 }),
             }),
         }

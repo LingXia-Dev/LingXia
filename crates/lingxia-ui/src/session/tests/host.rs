@@ -1554,3 +1554,70 @@ fn an_editor_menu_offers_what_the_editor_allows_and_goes_when_its_text_changes()
     );
     assert!(menu(&host).is_none());
 }
+
+fn sent_edits(host: &ViewHost<Fake>) -> Vec<Option<String>> {
+    host.adapter()
+        .log
+        .lock()
+        .unwrap()
+        .effects
+        .iter()
+        .filter_map(|effect| match effect {
+            Effect::EditText { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn edits_for_two_editors_reach_the_platform_one_at_a_time() {
+    let worker = ViewWorker::spawn("test-edit-queue").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const a=useLocal('a','');const b=useLocal('b','');return h('column',{},h('input',{testId:'amount',bind:a,autoFocus:true}),h('input',{testId:'code',bind:b}))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let fill = |id: &str, text: &str| {
+        let request = serde_json::json!({"op": "act", "css": format!("[data-testid=\"{id}\"]"), "action": {"kind": "fill", "text": text}});
+        host.automation_request(&request).unwrap();
+    };
+    fill("amount", "12");
+    fill("code", "ABC");
+    assert_eq!(
+        sent_edits(&host),
+        [Some("12".to_owned())],
+        "the second waits"
+    );
+    // The platform applies the first through its input connection.
+    let (identity, token) = {
+        let snapshot = host.snapshot().unwrap();
+        let node = &snapshot.frame.nodes[1];
+        (
+            node.identity.clone(),
+            node.input.as_ref().unwrap().edit_token.unwrap(),
+        )
+    };
+    let applied = serde_json::json!({
+        "op": "edit", "identity": identity, "token": token, "submit": false,
+        "edits": [{"op": "replace", "text": "12", "cursor": 1, "composing": false}],
+    });
+    host.input(applied.to_string(), |_| {});
+    platform.settle(&[&host]);
+    host.request_frame();
+    platform.settle(&[&host]);
+    assert_eq!(
+        sent_edits(&host),
+        [Some("12".to_owned()), Some("ABC".to_owned())],
+        "the frame showing the first releases the second"
+    );
+    // "ABC" is never applied by this fake: it holds up the next edit only briefly.
+    fill("amount", "7");
+    assert_eq!(sent_edits(&host).len(), 2);
+    platform.advance(Duration::from_millis(500));
+    assert_eq!(sent_edits(&host).last().unwrap().as_deref(), Some("7"));
+}

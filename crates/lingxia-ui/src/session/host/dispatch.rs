@@ -11,7 +11,8 @@ type Activation = Box<dyn FnOnce(&mut ViewSession) -> Result<bool, String> + Sen
 
 impl<A: PlatformAdapter> Inner<A> {
     /// Run host-owned effects and hand the rest to the adapter, in order.
-    pub(super) fn deliver(self: &Arc<Self>, effects: Vec<Effect>) {
+    pub(super) fn deliver(self: &Arc<Self>, mut effects: Vec<Effect>) {
+        self.queue_edits(&mut effects);
         if effects.is_empty() {
             return;
         }
