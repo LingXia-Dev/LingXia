@@ -213,6 +213,7 @@ mod tests {
             geometry: None,
             scroll_offset: [0.0; 2],
             ime: Default::default(),
+            raise_keyboard: false,
         }
     }
 

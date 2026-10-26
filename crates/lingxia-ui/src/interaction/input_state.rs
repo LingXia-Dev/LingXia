@@ -47,6 +47,9 @@ pub(crate) struct Inputs {
     committed: Vec<(u64, String)>,
     /// The one static-text selection a page may hold; editors never share it.
     pub(crate) text_selection: Option<TextSelection>,
+    /// The platform ended editing: a focus the page makes itself (autoFocus,
+    /// `focus()`) shows no keyboard until the user focuses an editor again.
+    keyboard_held: bool,
 }
 
 /// A static-text selection: byte offsets into the node's display text.
@@ -71,6 +74,11 @@ impl Inputs {
         self.entries.clear();
         self.focused = None;
         self.token = self.token.saturating_add(1);
+        self.keyboard_held = false;
+    }
+    /// The platform blurred (`true`) or the user focused (`false`) an editor.
+    pub fn hold_keyboard(&mut self, held: bool) {
+        self.keyboard_held = held;
     }
 
     fn advance(&mut self) -> Result<(), String> {
@@ -249,6 +257,7 @@ impl Inputs {
                 input.edit = Some(snapshot);
                 input.edit_token =
                     (self.focused.as_deref() == Some(&node.identity)).then_some(self.token);
+                input.raise_keyboard = input.edit_token.is_some() && !self.keyboard_held;
             }
         }
         display.decorate_inputs();

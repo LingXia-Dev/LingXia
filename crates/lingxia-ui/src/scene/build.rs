@@ -1086,6 +1086,7 @@ impl Renderer {
                                 .map(str::to_owned),
                         },
                         ime: Default::default(),
+                        raise_keyboard: false,
                     };
                     input.ime = crate::interaction::ime::ImeConfig::new(
                         &input,

@@ -141,6 +141,9 @@ pub struct InputSnapshot {
     pub scroll_offset: [f32; 2],
     /// The platform keyboard's configuration, decided from the fields above.
     pub ime: crate::interaction::ime::ImeConfig,
+    /// The focused editor should bring up the keyboard; false for a focus the page
+    /// made itself after the user ended editing.
+    pub raise_keyboard: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]

@@ -56,6 +56,7 @@ impl ViewSession {
         if !inputs.focus(identity, &mut self.renderer)? {
             return Ok(None);
         }
+        inputs.hold_keyboard(false);
         for (handle, text) in inputs.take_committed() {
             self.text_event(self.generation, handle, &text)?;
             self.input_rebuild = true;
@@ -166,6 +167,7 @@ impl ViewSession {
         }
         let mut inputs = self.inputs.clone();
         inputs.blur(&mut self.renderer)?;
+        inputs.hold_keyboard(true);
         for (handle, text) in inputs.take_committed() {
             self.text_event(self.generation, handle, &text)?;
             self.input_rebuild = true;

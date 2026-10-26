@@ -57,3 +57,34 @@ fn submitting_an_unfocused_editor_runs_its_input_method_action() {
     let frame = page.layout(300, 400, 1.0).unwrap();
     assert_eq!(frame.nodes[5].text, "[c]");
 }
+
+#[test]
+fn after_the_user_ends_editing_a_focus_the_page_makes_raises_no_keyboard() {
+    let mut page = ViewSession::new(&super::source(
+        "function render(){const a=useLocal('a','');return h('column',{},h('input',{key:'a',bind:a,autoFocus:true}),h('button',{onClick:()=>a.focus()},'again'))}",
+    ))
+    .unwrap();
+    let frame = page.layout(300, 400, 1.0).unwrap();
+    let input = frame.nodes[1].input.as_ref().unwrap();
+    assert!(
+        input.raise_keyboard,
+        "autoFocus on open raises the keyboard"
+    );
+    let (a, token) = (frame.nodes[1].identity.clone(), input.edit_token.unwrap());
+    assert!(page.blur_input(token, &a).unwrap());
+    let frame = page.prepare_native(300, 400, 1.0, false, None, Ok).unwrap();
+    let click = frame.nodes[2].on_click.unwrap();
+    assert!(page.click(page.generation(), click).unwrap());
+    let frame = page.layout(300, 400, 1.0).unwrap();
+    let input = frame.nodes[1].input.as_ref().unwrap();
+    assert!(input.edit_token.is_some(), "the page focused its editor");
+    assert!(!input.raise_keyboard, "but the user had ended editing");
+    let focused = page.focus_input(page.generation(), &a).unwrap().unwrap();
+    let frame = page.prepare_native(300, 400, 1.0, false, None, Ok).unwrap();
+    let input = frame.nodes[1].input.as_ref().unwrap();
+    assert_eq!(input.edit_token, Some(focused.token));
+    assert!(
+        input.raise_keyboard,
+        "a focus the user asks for raises it again"
+    );
+}
