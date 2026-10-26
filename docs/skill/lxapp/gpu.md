@@ -28,7 +28,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `lineHeight` is a multiplier. Each element accepts only styles it renders.
 - RTL: use `ps`/`ms`/`start-`/`text-start` etc.; they mirror with `env.direction` (from the
   display language) or a `dir` prop. Mirror icons with `rtl:-scale-x-100`.
-- Supported variants: `dark:`, `rtl:`/`ltr:`, breakpoints, `focus:` (editors), `active:`
+- Supported variants: `dark:`, `rtl:`/`ltr:`, `first:`/`last:`/`odd:`/`even:`/`only:`/`empty:`, breakpoints, `focus:` (editors), `active:`
   (controls), `hover:` (fine pointers), `disabled:`, `placeholder:`,
   `space-*`/`divide-*`. Transitions, skew and 3D transforms are
   rejected; `translate`/`rotate`/`scale`/`origin` are static.

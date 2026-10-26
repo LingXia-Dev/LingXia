@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { compileUtilities } from '../compiler/tailwind.mjs';
 import { configureClasses, resolveClasses } from '../src/style/classes.js';
-import { describe, h } from '../src/internal.js';
+import { describe, h, prepare, discard } from '../src/internal.js';
 import { rendered, decode } from './support/wire.mjs';
 
 // Tailwind rules lower to CSS-named style; rendering then lowers that to the native box.
@@ -115,6 +115,24 @@ test('flow-relative utilities stay logical on the wire and rtl:/ltr: follow the 
   assert.deepEqual([tree.children[1].children[0].props.marginLeft, tree.children[1].children[0].props.marginRight], [8, undefined]);
   assert.equal(rendered(() => h('column', { className: 'rtl:mr-2' }), { env: { direction: 'rtl' } }).props.marginRight, 8);
   assert.throws(() => describe(() => h('column', { dir: 'auto' }), {}), /UI_PROP: dir/);
+});
+
+test('structural variants match sibling position, list rows and emptiness; DOM-state variants name the TS alternative', async () => {
+  await use(['first:pt-1', 'last:pb-2', 'odd:bg-white', 'even:bg-black', 'only:p-4', 'empty:hidden', 'first:hover:p-3', 'md:first:pt-3',
+    'has-[input]:p-2', 'data-[state=open]:p-2', 'aria-checked:p-2']);
+  const tree = rendered(() => h('column', {}, ...['a', 'b', 'c'].map(key => h('text', { key, className: 'first:pt-1 last:pb-2 odd:bg-white even:bg-black' }, key))));
+  const rows = tree.children.map(child => [child.props.paddingTop, child.props.paddingBottom, child.props.background]);
+  assert.deepEqual(rows, [[4, undefined, '#ffffffff'], [undefined, undefined, '#000000ff'], [undefined, 8, '#ffffffff']]);
+  assert.equal(rendered(() => h('column', {}, h('text', { className: 'only:p-4' }, 'x'))).children[0].props.paddingTop, 16);
+  assert.equal(rendered(() => h('column', {}, false, h('text', { className: 'only:p-4' }, 'x'), null)).children[0].props.paddingTop, 16);
+  assert.equal(rendered(() => h('column', { className: 'empty:hidden' })).props.display, 'none');
+  assert.equal(rendered(() => h('column', { className: 'empty:hidden' }, h('text', {}, 'x'))).props.display, undefined);
+  const page = () => h('list', { count: 3, row: i => h('text', { className: 'first:pt-1 last:pb-2' }, String(i)) });
+  const texts = decode(prepare(page, {}, { root: { start: 0, end: 3, leading: 0, trailing: 0 } })).filter(node => node.tag === 'text').map(node => node.props);
+  discard();
+  assert.deepEqual([texts[0].paddingTop, texts[2].paddingBottom, texts[1].paddingTop], [4, 8, undefined]);
+  for (const [name, hint] of [['has-[input]:p-2', /compute the condition in TS/], ['data-[state=open]:p-2', /no data attributes/], ['aria-checked:p-2', /set accessibility props/]])
+    assert.throws(() => classStyle(name), hint);
 });
 
 test('horizontal overflow lowers only onto scroll containers', async () => {

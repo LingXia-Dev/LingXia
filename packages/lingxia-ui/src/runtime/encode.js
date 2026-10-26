@@ -136,7 +136,8 @@ function renderRow(node, i, cells, depth) {
       if (!Number.isFinite(height) || height < 0 || height > 16384) throw Error('UI_LIST: invalid row height');
       fields.height = height;
     }
-    const content = resolveNode(value, render.scope, depth + 2, { typography: node.typography });
+    // Rows are siblings in the list, so structural variants see their row index.
+    const content = resolveNode(value, render.scope, depth + 2, { typography: node.typography, sibling: { index: i, count: props.count } });
     const row = { tag: 'column', element: 'column', props: { key }, fields, states: {}, wire: [], handlers: [], identity: render.scope,
       rowIndex: i, text: '', children: content === null ? [] : [content] };
     return { row, key };

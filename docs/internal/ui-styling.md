@@ -94,6 +94,10 @@ Paint properties are color, background color/image, opacity, border color,
 box shadow and placeholder color. Native applies state deltas to a copy after
 reconciliation, so a failed frame restores the previous state.
 
+`first:`, `last:`, `odd:`, `even:`, `only:` and `empty:` match a node's position among
+its rendered siblings (list rows: their row index of `count`) and combine with the
+state variants. `has-[…]`, `data-[…]` and `aria-*` fail: choose classes in TS.
+
 ## Themes
 
 A page imports one stylesheet; it may `@import` relative token files, expanded

@@ -110,6 +110,7 @@
     const { theme, minWidth, maxWidth, direction } = rule.when ?? {};
     if (theme && (env.theme ?? "light") !== theme) return false;
     if (direction && (env.direction ?? "ltr") !== direction) return false;
+    if (rule.when?.structure && !(env.structure ?? []).includes(rule.when.structure)) return false;
     if (minWidth !== void 0 && !(env.viewport?.width >= minWidth)) return false;
     if (maxWidth !== void 0 && !(env.viewport?.width < maxWidth)) return false;
     return true;
@@ -174,7 +175,7 @@
     if (className === void 0) return void 0;
     if (typeof className !== "string") throw Error("UI_CLASS: className must be a string");
     if (className.length > 16384) throw Error("UI_CLASS: className exceeds 16384 characters");
-    const environment = `${env.theme ?? "light"}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? "ltr"}`;
+    const environment = `${env.theme ?? "light"}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? "ltr"}|${(env.structure ?? []).join(",")}`;
     if (environment !== cacheEnv) {
       cache.clear();
       cacheEnv = environment;
@@ -1689,8 +1690,8 @@
     }
     if (props[event] !== void 0 && typeof props[event] !== "function") throw Error(`${code}: ${event}`);
   }
-  function nodeStyle(tag, props, extra, inherited, direction) {
-    const env = { ...render.view?.env, direction };
+  function nodeStyle(tag, props, extra, inherited, direction, structure2) {
+    const env = { ...render.view?.env, direction, structure: structure2 };
     const classes = resolveClasses(props.className, env);
     const disabled = props.disabled === true;
     const author = mergeStyle(direction, extra, disabled && classes?.disabled ? classes.disabled : classes?.base, props.style);
@@ -1744,8 +1745,8 @@
     if (element.binding) bind(tag, element, props);
     if (props.dir !== void 0 && !["ltr", "rtl"].includes(props.dir)) throw Error('UI_PROP: dir must be "ltr" or "rtl"');
     const direction = props.dir ?? parent.direction ?? (render.view?.env?.direction === "rtl" ? "rtl" : "ltr");
-    const style2 = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction);
     const flat = flatten(children);
+    const style2 = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
     const inline = (child) => typeof child === "string" || typeof child === "number";
     if ((tag === "span" || tag === "link") && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>`);
     const composed = element.children === "content" && flat.some((child) => !inline(child));
@@ -1901,11 +1902,22 @@
           typography: style2.typography,
           direction,
           extra: position < last ? style2.children : void 0,
+          sibling: { index: position, count: flat.length },
           inControl: parent.inControl || admission.tags[element.wire].children === "content"
         });
       }).filter((child) => child !== null);
     }
     return result;
+  }
+  function structure(sibling, flat) {
+    const out = flat.length ? [] : ["empty"];
+    if (!sibling) return out;
+    const { index, count } = sibling;
+    if (index === 0) out.push("first");
+    if (index === count - 1) out.push("last");
+    if (count === 1) out.push("only");
+    out.push(index % 2 === 0 ? "odd" : "even");
+    return out;
   }
   function semantics(tag, props, wire) {
     const { role, headingLevel, accessibilityHidden, accessibilityLiveRegion } = props;
@@ -2104,7 +2116,7 @@
         if (!Number.isFinite(height) || height < 0 || height > 16384) throw Error("UI_LIST: invalid row height");
         fields.height = height;
       }
-      const content = resolveNode(value, render.scope, depth + 2, { typography: node.typography });
+      const content = resolveNode(value, render.scope, depth + 2, { typography: node.typography, sibling: { index: i, count: props.count } });
       const row = {
         tag: "column",
         element: "column",

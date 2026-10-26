@@ -44,8 +44,8 @@ function bind(tag, element, props) {
 }
 
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
-function nodeStyle(tag, props, extra, inherited, direction) {
-  const env = { ...render.view?.env, direction };
+function nodeStyle(tag, props, extra, inherited, direction, structure) {
+  const env = { ...render.view?.env, direction, structure };
   const classes = resolveClasses(props.className, env);
   const disabled = props.disabled === true;
   const author = mergeStyle(direction, extra, disabled && classes?.disabled ? classes.disabled : classes?.base, props.style);
@@ -95,8 +95,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (props.dir !== undefined && !['ltr', 'rtl'].includes(props.dir)) throw Error('UI_PROP: dir must be "ltr" or "rtl"');
   // `dir` overrides the direction inherited from the environment for its subtree.
   const direction = props.dir ?? parent.direction ?? (render.view?.env?.direction === 'rtl' ? 'rtl' : 'ltr');
-  const style = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction);
   const flat = flatten(children);
+  const style = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
   const inline = child => typeof child === 'string' || typeof child === 'number';
   if ((tag === 'span' || tag === 'link') && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>`);
   const composed = element.children === 'content' && flat.some(child => !inline(child));
@@ -221,11 +221,24 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       const part = key === undefined ? `position:${position}` : `key:${JSON.stringify(key)}`;
       return resolveNode(child, `${identity}/${tag}/${part}`, depth + 1, {
         tag, typography: style.typography, direction, extra: position < last ? style.children : undefined,
+        sibling: { index: position, count: flat.length },
         inControl: parent.inControl || admission.tags[element.wire].children === 'content',
       });
     }).filter(child => child !== null);
   }
   return result;
+}
+
+// The structural pseudo-classes a node matches: position among its siblings, or no content.
+function structure(sibling, flat) {
+  const out = flat.length ? [] : ['empty'];
+  if (!sibling) return out;
+  const { index, count } = sibling;
+  if (index === 0) out.push('first');
+  if (index === count - 1) out.push('last');
+  if (count === 1) out.push('only');
+  out.push(index % 2 === 0 ? 'odd' : 'even');
+  return out;
 }
 
 // Accessibility roles and states any element may declare; controls keep their own role.

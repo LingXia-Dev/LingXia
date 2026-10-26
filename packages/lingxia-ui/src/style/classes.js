@@ -26,6 +26,7 @@ function applies(rule, env) {
   const { theme, minWidth, maxWidth, direction } = rule.when ?? {};
   if (theme && (env.theme ?? 'light') !== theme) return false;
   if (direction && (env.direction ?? 'ltr') !== direction) return false;
+  if (rule.when?.structure && !(env.structure ?? []).includes(rule.when.structure)) return false;
   if (minWidth !== undefined && !(env.viewport?.width >= minWidth)) return false;
   if (maxWidth !== undefined && !(env.viewport?.width < maxWidth)) return false;
   return true;
@@ -102,7 +103,7 @@ export function resolveClasses(className, env = {}) {
   if (className === undefined) return undefined;
   if (typeof className !== 'string') throw Error('UI_CLASS: className must be a string');
   if (className.length > 16384) throw Error('UI_CLASS: className exceeds 16384 characters');
-  const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? 'ltr'}`;
+  const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.pointer}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}`;
   if (environment !== cacheEnv) { cache.clear(); cacheEnv = environment; }
   if (cache.has(className)) return copy(cache.get(className));
   const matched = [];

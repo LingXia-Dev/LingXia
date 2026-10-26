@@ -570,6 +570,14 @@ function selectorTarget(source) {
   return target && dir ? { ...target, direction: dir[1] } : target;
 }
 
+// Variants that test DOM state the View does not have; name the TS-side way to say the same.
+function alternative(rest) {
+  if (rest.startsWith(':has(')) return ' (has-[…]: compute the condition in TS and choose the class, e.g. hasError ? "border-error" : "border-input")';
+  if (rest.startsWith('[data-')) return ' (data-[…]: there are no data attributes; choose classes from the state in TS)';
+  if (rest.startsWith('[aria-')) return ' (aria-*: choose classes from the state in TS and set accessibility props such as role separately)';
+  return '';
+}
+
 function selectorParts(selector) {
   const children = selector.match(/^:where\(\.((?:\\.|[^\s>])+) > :not\(:last-child\)\)$/);
   if (children) return { name: unescape(children[1]), children: true };
@@ -578,8 +586,14 @@ function selectorParts(selector) {
   const name = unescape(match[1]), rest = match[2];
   if (!rest) return { name };
   if (rest === '::placeholder') return { name, placeholder: true };
-  const state = rest.match(/^:(focus|active|hover|disabled)$/)?.[1];
-  return state ? { name, state } : { name, error: `selector ${rest}` };
+  // Structural pseudo-classes resolve against the node's position among its siblings.
+  const structures = { ':first-child': 'first', ':last-child': 'last', ':only-child': 'only', ':nth-child(odd)': 'odd', ':nth-child(even)': 'even', ':empty': 'empty' };
+  let remaining = rest, structure;
+  for (const [pseudo, kind] of Object.entries(structures))
+    if (remaining.startsWith(pseudo) && !structure) { structure = kind; remaining = remaining.slice(pseudo.length); }
+  const state = remaining.match(/^:(focus|active|hover|disabled)$/)?.[1];
+  if (!remaining || state) return { name, ...(state ? { state } : {}), ...(structure ? { structure } : {}) };
+  return { name, error: `selector ${rest}${alternative(rest)}` };
 }
 
 /** Lowered rules for every candidate Tailwind generates; unsupported ones carry an error. */
@@ -609,7 +623,7 @@ export async function compileUtilities(candidates, theme = '', { animationLoweri
       const { hoverMedia, ...media } = conditions(rule);
       if (hoverMedia && target.state !== 'hover') unsupported('(hover: hover) outside a hover variant');
       const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.children ? { children: true } : {}),
-        ...(target.direction ? { direction: target.direction } : {}) };
+        ...(target.direction ? { direction: target.direction } : {}), ...(target.structure ? { structure: target.structure } : {}) };
       const lower = vars => {
         const result = declarations(rule.nodes, vars, root, animationLowering);
         if (!target.placeholder) return result;

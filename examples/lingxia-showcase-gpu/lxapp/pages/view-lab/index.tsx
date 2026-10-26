@@ -18,6 +18,7 @@ export function render() {
       <Direction />
       <Accessibility />
       <Inputs />
+      <Structure />
     </Page>
   );
 }
@@ -222,6 +223,23 @@ function Inputs() {
       </row>
       <input testId="lab-input-name" accessibilityLabel="Name" autoComplete="name" autoCapitalize="words" spellCheck={false} placeholder="Full name" className={field} />
       <text testId="lab-input-values" className="text-xs text-muted-foreground">{`code=${code.value} amount=${amount.value} date=${day.value} time=${time.value}`}</text>
+    </Section>
+  );
+}
+
+function Structure() {
+  const rows = ['Starter', 'Plus', 'Pro', 'Max'];
+  return (
+    <Section title="Structural variants" testId="lab-structure">
+      <column testId="lab-structure-rows" className="rounded-lg border border-border">
+        {rows.map(row => (
+          <text key={row} className="px-3 py-2 text-sm odd:bg-muted first:rounded-t-lg last:rounded-b-lg last:font-semibold">{row}</text>
+        ))}
+      </column>
+      <row className="gap-2">
+        <view testId="lab-structure-empty" className="h-8 grow basis-0 rounded-lg bg-error empty:bg-muted" />
+        <view className="h-8 grow basis-0 rounded-lg bg-muted"><text className="only:text-xs only:p-2">only child</text></view>
+      </row>
     </Section>
   );
 }
