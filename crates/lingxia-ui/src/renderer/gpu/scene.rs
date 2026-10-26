@@ -480,7 +480,11 @@ mod tests {
         );
         assert!(!cache.prepare(&hidden, &mut glyphs).unwrap());
         assert!(cache.prepare(&hidden, &mut glyphs).unwrap());
-        assert_eq!(cache.base(), base, "the caret blinks above the bottom segment");
+        assert_eq!(
+            cache.base(),
+            base,
+            "the caret blinks above the bottom segment"
+        );
         assert!(!cache.prepare(&display, &mut glyphs).unwrap());
         assert_eq!(cache.scenes().count(), 1);
         assert_eq!(cache.base(), None, "a still page keeps no base");

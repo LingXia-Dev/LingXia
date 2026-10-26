@@ -522,6 +522,13 @@ impl Presenter {
         self.keep_base = false;
     }
 
+    /// Bytes of composition textures (layers and backdrops), leased and idle; depth excluded.
+    pub fn composite_bytes(&self) -> u64 {
+        self.compositor
+            .as_ref()
+            .map_or(0, |compositor| compositor.texture_stats().bytes)
+    }
+
     /// Bytes held only to speed up coming frames.
     pub fn transient_bytes(&self) -> u64 {
         self.base.as_ref().map_or(0, |(_, view)| {

@@ -176,6 +176,7 @@ pub(super) fn prepare(
         "prepare": {"sceneUs": scene, "imagesUs": images, "encodeUs": encode, "submitUs": submit},
         "passes": presenter.pass_timings_us(),
         "transientBytes": presenter.transient_bytes(),
+        "compositeBytes": presenter.composite_bytes(),
         "sceneCacheHit": presenter.scene_cache_hit(),
         "gpuDevices": presenter.context().device_count()?,
         "gpuRenderers": presenter.context().renderer_count()?,
