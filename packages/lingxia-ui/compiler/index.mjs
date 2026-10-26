@@ -94,6 +94,12 @@ export function annotate(source, filename, label) {
   return output;
 }
 
+// Flex-only properties on a grid name the grid property that does the same job.
+const hints = { grid: {
+  flexWrap: '; grid items wrap into rows by themselves (use grid-cols-[repeat(auto-fit,minmax(…,1fr))])',
+  flexDirection: '; use grid-flow-col to fill columns first',
+} };
+
 function classProblems(rule, name, tag, suggestions) {
   if (!rule) {
     const nearest = suggestions.get(name);
@@ -107,7 +113,7 @@ function classProblems(rule, name, tag, suggestions) {
     ...(rule.shadow ? ['boxShadow'] : []), ...(rule.backdrop ? ['backdropFilter'] : [])];
   const state = rule.when?.state;
   const problems = props.filter(prop => !elements[tag].style.includes(prop))
-    .map(prop => `UI_CLASS_ELEMENT: ${name} sets ${prop}, which <${tag}> does not support`);
+    .map(prop => `UI_CLASS_ELEMENT: ${name} sets ${prop}, which <${tag}> does not support${hints[tag]?.[prop] ?? ''}`);
   if (state === 'focus' && !editors.has(tag)) problems.push(`UI_CLASS_ELEMENT: ${name} needs an editor; <${tag}> never takes focus`);
   if (state === 'active' && !controls.has(tag)) problems.push(`UI_CLASS_ELEMENT: ${name} needs a control; <${tag}> is never pressed`);
   const layout = state && state !== 'disabled' ? props.filter(prop => !styleTable[prop]?.paint) : [];

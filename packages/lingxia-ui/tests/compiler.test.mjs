@@ -111,6 +111,15 @@ test('class diagnostics separate unknown, unsupported and wrong-element utilitie
   });
 });
 
+test('flex-only utilities on a grid name the grid equivalent', async () => {
+  await project({ 'page.tsx': 'export function render(){return <grid className="flex-wrap flex-col items-center content-between justify-items-center"/>}' }, async (root, build) => {
+    const message = (await build().catch(error => error)).message;
+    assert.match(message, /flex-wrap sets flexWrap, which <grid> does not support; grid items wrap into rows by themselves/);
+    assert.match(message, /flex-col sets flexDirection, which <grid> does not support; use grid-flow-col/);
+    assert.doesNotMatch(message, /items-center|content-between|justify-items-center/);
+  });
+});
+
 test('unknown utilities name the nearest form the native renderer supports', async () => {
   await project({ 'page.tsx': 'export function render(){return <column className="itmes-center md:roundd-lg tabluar-nums zzqqxx"/>}' }, async (root, build) => {
     const message = (await build().catch(error => error)).message;
