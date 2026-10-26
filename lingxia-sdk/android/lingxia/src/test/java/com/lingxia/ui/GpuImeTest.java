@@ -269,4 +269,63 @@ public class GpuImeTest {
         ime.presented(new JSONObject().put("nodes",new JSONArray()),ime.capture());
         assertFalse(ime.hasFocus()); assertFalse(input.commitText("late",1));
     }
+
+    @Test public void editorAttributesShapeTheKeyboardAndAutofillHint() throws Exception {
+        Host host=new Host(); GpuIme ime=ime(host);
+        JSONObject node=node(7,""); node.getJSONObject("input").put("enter_key_hint","next").put("auto_capitalize","words")
+            .put("spell_check",false).put("auto_complete","one-time-code").put("max_length",3);
+        ime.presented(new JSONObject().put("nodes",new JSONArray().put(node)),ime.capture());
+        EditorInfo info=new EditorInfo(); InputConnection input=ime.create(info);
+        assertEquals(EditorInfo.IME_ACTION_NEXT,info.imeOptions & EditorInfo.IME_MASK_ACTION);
+        assertNotEquals(0,info.inputType & android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        assertNotEquals(0,info.inputType & android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        assertEquals("smsOTPCode",com.lingxia.ui.generated.GpuInput.autofillHint("one-time-code"));
+        assertTrue(input.commitText("abcd",1));
+        assertEquals("abc",input.getTextBeforeCursor(10,0));
+        assertTrue(input.commitText("e",1));
+        assertEquals("abc",input.getTextBeforeCursor(10,0));
+        JSONObject password=new JSONObject().put("keyboard","text").put("auto_complete","new-password");
+        assertEquals(android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD,GpuIme.inputType(password,false) & android.text.InputType.TYPE_MASK_VARIATION);
+        for (String hint : new String[]{"done","go","previous","search","send"}) assertTrue(hint,GpuIme.action(hint) > 0);
+        assertEquals(-1,GpuIme.action("enter"));
+    }
+
+    @Test public void nextActionRetargetsTheKeyboardToTheEditorFocusMovedTo() throws Exception {
+        Host host=new Host(); GpuIme ime=ime(host);
+        JSONObject first=node(7,"a"), second=node(0,"").put("identity","second");
+        second.getJSONObject("input").remove("edit_token"); second.getJSONObject("input").remove("edit");
+        first.getJSONObject("input").put("enter_key_hint","next");
+        ime.presented(new JSONObject().put("nodes",new JSONArray().put(first).put(second)),ime.capture());
+        InputConnection input=ime.create(new EditorInfo());
+        assertTrue(input.performEditorAction(EditorInfo.IME_ACTION_NEXT));
+        assertTrue(host.requests.get(0).getBoolean("submit"));
+        host.replies.get(0).accept(new JSONObject().put("moved_to","second").put("token",9).put("state",state("")));
+        assertTrue(ime.hasFocus());
+        InputConnection moved=ime.create(new EditorInfo());
+        assertTrue(moved.commitText("b",1));
+        JSONObject edit=host.requests.get(host.requests.size()-1);
+        assertEquals("second",edit.getString("identity"));
+        assertEquals(9,edit.getLong("token"));
+    }
+
+    @Test public void datePickerConfirmsAnIsoValueThenBlurs() throws Exception {
+        Host host=new Host();
+        android.app.Activity activity=org.robolectric.Robolectric.buildActivity(android.app.Activity.class).setup().get();
+        GpuIme ime=new GpuIme(new View(activity),host);
+        JSONObject node=node(7,"2024-05-06"); node.getJSONObject("input").put("picker","date").put("min","2024-01-01");
+        ime.presented(new JSONObject().put("nodes",new JSONArray().put(node)),ime.capture());
+        assertNull("no keyboard connection",ime.create(new EditorInfo()));
+        android.app.DatePickerDialog dialog=(android.app.DatePickerDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        assertNotNull(dialog);
+        assertEquals(2024,dialog.getDatePicker().getYear());
+        assertEquals(4,dialog.getDatePicker().getMonth());
+        dialog.updateDate(2024,6,9);
+        dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick();
+        org.robolectric.shadows.ShadowLooper.idleMainLooper();
+        JSONObject submit=host.requests.get(0);
+        assertTrue(submit.getBoolean("submit"));
+        assertTrue(submit.getJSONArray("edits").toString(),submit.getJSONArray("edits").toString().contains("2024-07-09"));
+        assertEquals("blur",host.requests.get(host.requests.size()-1).getString("op"));
+        assertFalse(ime.hasFocus());
+    }
 }

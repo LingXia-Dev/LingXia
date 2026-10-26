@@ -19,6 +19,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.FrameLayout;
 import android.widget.TextView;
+import com.lingxia.ui.generated.GpuInput;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -170,6 +171,23 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         textMenu = new GpuTextMenu(surface, ime, () -> {
             JSONArray nodes = snapshot == null ? null : snapshot.optJSONArray("nodes");
             for (int i = 0; nodes != null && i < nodes.length(); i++) {
+            private int autofilled = -1;
+            @Override public void editorChanged(String identity) {
+                if (android.os.Build.VERSION.SDK_INT < 26) return;
+                android.view.autofill.AutofillManager autofill = getContext().getSystemService(android.view.autofill.AutofillManager.class);
+                if (autofill == null) return;
+                if (autofilled >= 0) { autofill.notifyViewExited(surface, autofilled); autofilled = -1; }
+                JSONObject node = null;
+                JSONArray nodes = identity == null || snapshot == null ? null : snapshot.optJSONArray("nodes");
+                for (int i = 0; nodes != null && i < nodes.length(); i++)
+                    if (identity.equals(nodes.optJSONObject(i).optString("identity"))) node = nodes.optJSONObject(i);
+                if (node == null) return;
+                autofilled = surface.autofillId(node);
+                Rect bounds = surface.bounds(node);
+                int[] origin = new int[2]; surface.getLocationOnScreen(origin);
+                bounds.offset(origin[0], origin[1]);
+                autofill.notifyViewEntered(surface, autofilled, bounds);
+            }
                 JSONObject node = nodes.optJSONObject(i), input = node == null ? null : node.optJSONObject("input");
                 if (input != null && input.optLong("edit_token") > 0) return surface.bounds(node);
             }
@@ -438,6 +456,19 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         // The parent clips it; View.env.keyboard drives the content's usable height.
         int surfaceHeight = Math.max(height, unoccludedHeight);
         surface.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+    private final android.database.ContentObserver animatorScale = new android.database.ContentObserver(main) {
+        @Override public void onChange(boolean selfChange) { requestFrame(); }
+    };
+    @Override protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        getContext().getContentResolver().registerContentObserver(
+            android.provider.Settings.Global.getUriFor(android.provider.Settings.Global.ANIMATOR_DURATION_SCALE), false, animatorScale);
+        requestFrame();
+    }
+    @Override protected void onDetachedFromWindow() {
+        getContext().getContentResolver().unregisterContentObserver(animatorScale);
+        super.onDetachedFromWindow();
+    }
             MeasureSpec.makeMeasureSpec(surfaceHeight, MeasureSpec.EXACTLY));
     }
 
@@ -526,7 +557,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 .put("textScale", textScale)
                 .put("keyboard", new JSONObject().put("height", Math.min(surface.getHeight(), Math.max(0, keyboard - trailingY)) / scale))
                 .put("os", "android").put("pointer", "coarse").put("formFactor", configuration.smallestScreenWidthDp >= 600 ? "tablet" : "phone")
-                .put("displayLanguage", locale.toLanguageTag()).put("runner", false)).toString();
+                .put("displayLanguage", locale.toLanguageTag()).put("runner", false)
+                .put("animatorDurationScale", animatorScale).put("reducedMotion", animatorScale == 0)).toString();
         } catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native environment", error); }
     }
     public void dispose() {
@@ -544,6 +576,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         host = 0;
         nativeHostRelease(released);
     }
+            // "Remove animations" sets the scale to 0, Android's reduced-motion signal.
+            float animatorScale = Math.max(0f, Math.min(10f, android.provider.Settings.Global.getFloat(
+                getContext().getContentResolver(), android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)));
     @Override public void surfaceCreated(SurfaceHolder holder) { updateCaretActivity(); }
     @Override public void surfaceDestroyed(SurfaceHolder holder) {
         surface.cancelRefreshGesture();
@@ -747,7 +782,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
             setFocusable(true);
             setFocusableInTouchMode(true);
-            if (android.os.Build.VERSION.SDK_INT >= 26) setDefaultFocusHighlightEnabled(false);
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                setDefaultFocusHighlightEnabled(false);
+                setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES);
+            }
             pressedOverlay.setColor(0x22000000);
             focusOverlay.setColor(Color.TRANSPARENT);
         }
@@ -787,6 +825,55 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             if (flingHorizontal) scroller.fling(0, 0, (int)speed, 0, -100000000, 100000000, 0, 0);
             else scroller.fling(0, 0, 0, (int)speed, 0, 0, -100000000, 100000000);
             Choreographer.getInstance().postFrameCallback(flingFrame);
+        /** Autofill addresses an editor by a virtual id stable across frames. */
+        int autofillId(JSONObject node) { return node.optString("identity").hashCode() & 0x7fffffff; }
+        JSONObject editor(int autofillId) {
+            JSONArray nodes = snapshot == null ? null : snapshot.optJSONArray("nodes");
+            for (int i = 0; nodes != null && i < nodes.length(); i++) {
+                JSONObject node = nodes.optJSONObject(i);
+                if (node != null && node.optJSONObject("input") != null && autofillId(node) == autofillId) return node;
+            }
+            return null;
+        }
+        @Override public void onProvideAutofillVirtualStructure(android.view.ViewStructure structure, int flags) {
+            if (android.os.Build.VERSION.SDK_INT < 26) return;
+            structure.setClassName(getClass().getName());
+            JSONArray nodes = snapshot == null || !active ? null : snapshot.optJSONArray("nodes");
+            java.util.List<JSONObject> editors = new java.util.ArrayList<>();
+            for (int i = 0; nodes != null && i < nodes.length(); i++) {
+                JSONObject node = nodes.optJSONObject(i);
+                if (GpuIme.editable(node)) editors.add(node);
+            }
+            int index = structure.addChildCount(editors.size());
+            for (JSONObject node : editors) {
+                JSONObject input = node.optJSONObject("input");
+                android.view.ViewStructure child = structure.newChild(index++);
+                child.setAutofillId(structure.getAutofillId(), autofillId(node));
+                child.setClassName("android.widget.EditText");
+                child.setAutofillType(View.AUTOFILL_TYPE_TEXT);
+                JSONObject edit = input.optJSONObject("edit");
+                String value = edit != null ? edit.optString("text") : input.optString("value");
+                child.setAutofillValue(android.view.autofill.AutofillValue.forText(value));
+                String hint = GpuInput.autofillHint(input.optString(GpuInput.KEY_AUTO_COMPLETE));
+                if (hint != null) child.setAutofillHints(new String[]{hint});
+                child.setInputType(GpuIme.inputType(input, "textarea".equals(node.optString("tag"))));
+                child.setHint(input.optString("placeholder"));
+                child.setDataIsSensitive(!value.isEmpty());
+                Rect rect = bounds(node);
+                child.setDimens(rect.left, rect.top, 0, 0, rect.width(), rect.height());
+                child.setVisibility(View.VISIBLE);
+                child.setEnabled(input.optBoolean("enabled", true));
+            }
+        }
+        @Override public void autofill(android.util.SparseArray<android.view.autofill.AutofillValue> values) {
+            if (android.os.Build.VERSION.SDK_INT < 26 || destroyed || snapshot == null) return;
+            for (int i = 0; i < values.size(); i++) {
+                android.view.autofill.AutofillValue value = values.valueAt(i);
+                JSONObject node = editor(values.keyAt(i));
+                if (node != null && value != null && value.isText())
+                    ime.accessibilityEdit(node, snapshot.optLong("generation"), value.getTextValue().toString(), -1, -1);
+            }
+        }
         }
         void stopFling() {
             scroller.abortAnimation();

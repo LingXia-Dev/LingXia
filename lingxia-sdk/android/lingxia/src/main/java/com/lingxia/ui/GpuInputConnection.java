@@ -36,6 +36,8 @@ final class GpuInputConnection extends BaseInputConnection {
     private long revision;
     int extractedToken = -1;
     boolean multiline, secure, submitOnEnter;
+    /** `maxLength` in code points, or -1; inserts are cut to fit as a LengthFilter would. */
+    int maxLength = -1;
 
     GpuInputConnection(View view, String identity, long token, JSONObject state, Sink sink) {
         super(view, true);
@@ -153,6 +155,7 @@ final class GpuInputConnection extends BaseInputConnection {
         if (!validText(insert)) return false;
         int start = composeStart >= 0 && !key ? composeStart : Math.min(anchor, focus);
         int end = composeEnd >= 0 && !key ? composeEnd : Math.max(anchor, focus);
+        insert = fit(insert, start, end);
         String next = text.substring(0,start) + insert + text.substring(end);
         long position = cursor > 0 ? (long)start + insert.length() + cursor - 1 : (long)start + cursor;
         int selection = (int)Math.max(0, Math.min(next.length(), position));
@@ -170,8 +173,15 @@ final class GpuInputConnection extends BaseInputConnection {
         composeEnd = composeStart >= 0 ? start + insert.length() : -1;
         changed(); return true;
     }
+    private String fit(String insert, int start, int end) {
+        if (maxLength < 0) return insert;
+        int room = maxLength - (text.codePointCount(0, start) + text.codePointCount(end, text.length()));
+        if (room <= 0) return "";
+        return insert.codePointCount(0, insert.length()) <= room ? insert : insert.substring(0, insert.offsetByCodePoints(0, room));
+    }
     @Override public boolean commitText(CharSequence text, int cursor) { return replace(text,cursor,false); }
     boolean replaceAll(String value) {
+        value = fit(value, 0, text.length());
         if (!validText(value) || !reserve(command("finish_composition"),
             command("selection","anchor",0,"focus",text.length()),
             command("replace","text",value,"cursor",1,"composing",false))) return false;
@@ -237,6 +247,13 @@ final class GpuInputConnection extends BaseInputConnection {
         if (!(composeStart >= 0 ? reserve(command("finish_composition"),selection,replacement) : reserve(selection,replacement))) return false;
         text=candidate.toString(); anchor=focus=start; composeStart=composeEnd=-1;
         changed(); return true;
+    }
+    /** Replace the whole value and submit in one message, e.g. a picker's confirmed value. */
+    boolean submitValue(String value) {
+        if (!beginBatchEdit()) return false;
+        boolean sent = replaceAll(value) && performEditorAction(0);
+        endBatchEdit();
+        return sent;
     }
     @Override public boolean performEditorAction(int action) {
         if (closed || historyPending || submitting || queued.length() >= 64 || pending.size() >= 64) return false;

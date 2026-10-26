@@ -8,6 +8,7 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputConnectionWrapper;
 import android.view.inputmethod.InputMethodManager;
+import com.lingxia.ui.generated.GpuInput;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.function.Consumer;
@@ -22,6 +23,8 @@ final class GpuIme {
         default void editingChanged() { }
         /** The focused editor's text state for the host's caret blink; null text when none is connected. */
         default void caret(boolean eligible, String text, int anchor, int focus, int compositionStart, int compositionEnd) { }
+        /** The connected editor changed (null when none), for autofill. */
+        default void editorChanged(String identity) { }
     }
     static final class Ticket {
         final long epoch, revision;
@@ -37,6 +40,9 @@ final class GpuIme {
     private GpuInputConnection connection;
     private InputConnectionWrapper wrapper;
     private JSONObject config;
+    /** The last presented frame, to find the editor a NEXT/PREVIOUS action moved to. */
+    private JSONObject frame;
+    private android.app.Dialog picker;
     private boolean multiline, pendingFocus, allowAutofocus=true;
     private long epoch, touchSerial;
     private boolean caretActive = true;
@@ -151,7 +157,11 @@ final class GpuIme {
         String identity=node.optString("identity");
         if (connection != null && connection.identity.equals(identity)) {
             if (selection != null && connection.selectFromTouch(selection[0],selection[1]) && showMenu) host.showTextMenu();
-            view.requestFocus(); manager.showSoftInput(view,InputMethodManager.SHOW_IMPLICIT); return;
+            view.requestFocus();
+            String kind=config.optString(GpuInput.KEY_PICKER);
+            if (kind.isEmpty()) manager.showSoftInput(view,InputMethodManager.SHOW_IMPLICIT);
+            else if (picker == null) showPicker(kind);
+            return;
         }
         drop(false); pendingFocus=true;
         final long requested=epoch;
@@ -171,6 +181,7 @@ final class GpuIme {
         });
     }
     void presented(JSONObject frame,Ticket ticket) {
+        this.frame=frame;
         if (ticket.epoch != epoch || pendingFocus) return;
         JSONArray nodes=frame.optJSONArray("nodes");
         JSONObject focused=null;
@@ -187,13 +198,27 @@ final class GpuIme {
             connection.multiline=multiline;
             connection.submitOnEnter=config.optBoolean("submit_on_enter");
             connection.secure=input.optBoolean("secure");
+            connection.maxLength=input.optInt(GpuInput.KEY_MAX_LENGTH,-1);
             if (!previous.equals(configurationKey())) manager.restartInput(view);
             host.editingChanged();
         } else if (connection != null || allowAutofocus) {
             activate(focused,input.optLong("edit_token"),input.optJSONObject("edit"));
         }
     }
-    private String configurationKey() { return config.optString("keyboard")+":"+config.optBoolean("secure")+":"+multiline+":"+config.optBoolean("submit_on_enter"); }
+    private String configurationKey() {
+        return config.optString("keyboard")+":"+config.optBoolean("secure")+":"+multiline+":"+config.optBoolean("submit_on_enter")
+            +":"+config.optString(GpuInput.KEY_ENTER_KEY_HINT)+":"+config.optString(GpuInput.KEY_AUTO_CAPITALIZE)
+            +":"+config.optBoolean(GpuInput.KEY_SPELL_CHECK,true)+":"+config.optString(GpuInput.KEY_AUTO_COMPLETE)
+            +":"+config.optString(GpuInput.KEY_PICKER);
+    }
+    private JSONObject node(String identity) {
+        JSONArray nodes=frame == null ? null : frame.optJSONArray("nodes");
+        for (int i=0; nodes != null && i<nodes.length(); i++) {
+            JSONObject node=nodes.optJSONObject(i);
+            if (node != null && identity.equals(node.optString("identity"))) return node;
+        }
+        return null;
+    }
     private void activate(JSONObject node,long token,JSONObject state) {
         activate(node,token,state,null);
     }
@@ -210,6 +235,15 @@ final class GpuIme {
                 catch (org.json.JSONException impossible) { throw new IllegalArgumentException(impossible); }
                 host.request(message,reply -> {
                     if (created != epoch || current != connection) return;
+                    String moved=reply == null ? null : reply.optString("moved_to",null);
+                    if (moved != null) {
+                        // NEXT/PREVIOUS: the reply's token and state belong to the editor focus moved to.
+                        JSONObject next=node(moved);
+                        if (next != null && editable(next)) activate(next,reply.optLong("token"),reply.optJSONObject("state"));
+                        else { drop(true); }
+                        host.render(reply.optBoolean("needs_view_render"));
+                        return;
+                    }
                     if (reply == null || reply.optLong("token") != current.token) {
                         drop(true); host.render(false); return;
                     }
@@ -225,10 +259,14 @@ final class GpuIme {
         connection.multiline=multiline;
         connection.submitOnEnter=config.optBoolean("submit_on_enter");
         connection.secure=config.optBoolean("secure");
+        connection.maxLength=config.optInt(GpuInput.KEY_MAX_LENGTH,-1);
         // Publish external text/selection before the keyboard can read its initial state.
         if (initialize != null) initialize.accept(connection);
         view.requestFocus(); manager.restartInput(view);
-        manager.showSoftInput(view,InputMethodManager.SHOW_IMPLICIT);
+        String kind=config.optString(GpuInput.KEY_PICKER);
+        if (kind.isEmpty()) manager.showSoftInput(view,InputMethodManager.SHOW_IMPLICIT);
+        else { manager.hideSoftInputFromWindow(view.getWindowToken(),0); showPicker(kind); }
+        host.editorChanged(connection.identity);
         selectionChanged();
     }
     private void selectionChanged() {
@@ -240,10 +278,12 @@ final class GpuIme {
     }
     private void drop(boolean hide) {
         epoch++; pendingFocus=false;
+        if (picker != null) { android.app.Dialog open=picker; picker=null; open.setOnDismissListener(null); open.dismiss(); }
         invalidateWrapper();
         boolean editing = connection != null;
         if (editing) connection.closeConnection();
         connection=null;
+        if (editing) host.editorChanged(null);
         host.hideTextMenu();
         host.caret(caretActive,null,0,0,-1,-1);
         // Without an editor there is no keyboard to hide; the IME round trip would still relayout the window.
@@ -266,17 +306,48 @@ final class GpuIme {
     private void invalidateWrapper() {
         if (wrapper != null) { wrapper.setTarget(inert()); wrapper=null; }
     }
-    InputConnection create(EditorInfo info) {
-        if (connection == null) return null;
+    /** The IME action for an `enterKeyHint`, or -1 for the keyboard's default. */
+    static int action(String hint) {
+        switch (hint) {
+            case GpuInput.ENTER_DONE: return EditorInfo.IME_ACTION_DONE;
+            case GpuInput.ENTER_GO: return EditorInfo.IME_ACTION_GO;
+            case GpuInput.ENTER_NEXT: return EditorInfo.IME_ACTION_NEXT;
+            case GpuInput.ENTER_PREVIOUS: return EditorInfo.IME_ACTION_PREVIOUS;
+            case GpuInput.ENTER_SEARCH: return EditorInfo.IME_ACTION_SEARCH;
+            case GpuInput.ENTER_SEND: return EditorInfo.IME_ACTION_SEND;
+            default: return -1;
+        }
+    }
+    /** EditorInfo input type for an editor's `input` configuration. */
+    static int inputType(JSONObject config,boolean multiline) {
         String keyboard=config.optString("keyboard"); boolean secure=config.optBoolean("secure");
+        String complete=config.optString(GpuInput.KEY_AUTO_COMPLETE);
+        if (complete.equals("current-password") || complete.equals("new-password")) secure=true;
         int type=InputType.TYPE_CLASS_TEXT;
-        if (keyboard.equals("number")) type=InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL|InputType.TYPE_NUMBER_FLAG_SIGNED;
-        else if (keyboard.equals("phone")) type=InputType.TYPE_CLASS_PHONE;
-        else if (keyboard.equals("email")) type|=InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS;
-        if (secure) type=keyboard.equals("number") ? InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_VARIATION_PASSWORD : InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD;
-        if (multiline) type|=InputType.TYPE_TEXT_FLAG_MULTI_LINE;
-        info.inputType=type;
-        info.imeOptions=EditorInfo.IME_FLAG_NO_EXTRACT_UI | (multiline ? (config.optBoolean("submit_on_enter") ? EditorInfo.IME_ACTION_SEND : EditorInfo.IME_ACTION_NONE) : keyboard.equals("search") ? EditorInfo.IME_ACTION_SEARCH : EditorInfo.IME_ACTION_DONE);
+        if (keyboard.equals(GpuInput.KEYBOARD_NUMBER)) type=InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL|InputType.TYPE_NUMBER_FLAG_SIGNED;
+        else if (keyboard.equals(GpuInput.KEYBOARD_PHONE)) type=InputType.TYPE_CLASS_PHONE;
+        else if (keyboard.equals(GpuInput.KEYBOARD_EMAIL)) type|=InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS;
+        if (secure) type=keyboard.equals(GpuInput.KEYBOARD_NUMBER) ? InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_VARIATION_PASSWORD : InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD;
+        if ((type & InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT) {
+            switch (config.optString(GpuInput.KEY_AUTO_CAPITALIZE)) {
+                case GpuInput.CAPITALIZE_SENTENCES: type|=InputType.TYPE_TEXT_FLAG_CAP_SENTENCES; break;
+                case GpuInput.CAPITALIZE_WORDS: type|=InputType.TYPE_TEXT_FLAG_CAP_WORDS; break;
+                case GpuInput.CAPITALIZE_CHARACTERS: type|=InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS; break;
+                default: break;
+            }
+            if (!config.optBoolean(GpuInput.KEY_SPELL_CHECK,true)) type|=InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+            if (multiline) type|=InputType.TYPE_TEXT_FLAG_MULTI_LINE;
+        }
+        return type;
+    }
+    InputConnection create(EditorInfo info) {
+        // A picker editor takes its value from a dialog, never a keyboard.
+        if (connection == null || !config.optString(GpuInput.KEY_PICKER).isEmpty()) return null;
+        String keyboard=config.optString("keyboard"); boolean secure=config.optBoolean("secure");
+        info.inputType=inputType(config,multiline);
+        int hinted=action(config.optString(GpuInput.KEY_ENTER_KEY_HINT));
+        info.imeOptions=EditorInfo.IME_FLAG_NO_EXTRACT_UI | (hinted >= 0 && !(multiline && !config.optBoolean("submit_on_enter")) ? hinted
+            : multiline ? (config.optBoolean("submit_on_enter") ? EditorInfo.IME_ACTION_SEND : EditorInfo.IME_ACTION_NONE) : keyboard.equals("search") ? EditorInfo.IME_ACTION_SEARCH : EditorInfo.IME_ACTION_DONE);
         if (secure && android.os.Build.VERSION.SDK_INT >= 26) info.imeOptions|=EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING;
         info.initialSelStart=connection.anchor(); info.initialSelEnd=connection.focus();
         // Android may close an old wrapper after asking for its replacement.
@@ -287,5 +358,59 @@ final class GpuIme {
             }
         };
         return wrapper;
+    }
+    /** Date or time from a platform dialog, seeded from the value and bounded by min/max. */
+    private void showPicker(String kind) {
+        final GpuInputConnection editor=connection;
+        // Pages are built on the application context; dialogs need the window's.
+        Context context=view.isAttachedToWindow() ? view.getRootView().getContext() : view.getContext();
+        String value=editor.getExtractedText(null,0).text.toString();
+        String min=config.optString(GpuInput.KEY_MIN), max=config.optString(GpuInput.KEY_MAX);
+        android.app.Dialog dialog;
+        if (GpuInput.KEYBOARD_DATE.equals(kind)) {
+            java.util.Calendar seed=java.util.Calendar.getInstance();
+            int[] parsed=date(value);
+            if (parsed != null) seed.set(parsed[0],parsed[1]-1,parsed[2]);
+            android.app.DatePickerDialog picked=new android.app.DatePickerDialog(context,(widget,year,month,day) ->
+                confirm(editor,String.format(java.util.Locale.ROOT,"%04d-%02d-%02d",year,month+1,day)),
+                seed.get(java.util.Calendar.YEAR),seed.get(java.util.Calendar.MONTH),seed.get(java.util.Calendar.DAY_OF_MONTH));
+            Long low=millis(min), high=millis(max);
+            if (low != null) picked.getDatePicker().setMinDate(low);
+            if (high != null) picked.getDatePicker().setMaxDate(high);
+            dialog=picked;
+        } else {
+            int[] parsed=time(value);
+            java.util.Calendar now=java.util.Calendar.getInstance();
+            dialog=new android.app.TimePickerDialog(context,(widget,hour,minute) -> {
+                String picked=String.format(java.util.Locale.ROOT,"%02d:%02d",hour,minute);
+                if (time(min) != null && picked.compareTo(min) < 0) picked=min.substring(0,5);
+                if (time(max) != null && picked.compareTo(max) > 0) picked=max.substring(0,5);
+                confirm(editor,picked);
+            }, parsed != null ? parsed[0] : now.get(java.util.Calendar.HOUR_OF_DAY), parsed != null ? parsed[1] : now.get(java.util.Calendar.MINUTE),
+                android.text.format.DateFormat.is24HourFormat(context));
+        }
+        // Cancel, back or outside touch blur the editor; confirm submits first.
+        dialog.setOnDismissListener(ignored -> { if (picker == dialog) { picker=null; if (connection == editor) clear(true); } });
+        picker=dialog;
+        dialog.show();
+    }
+    private void confirm(GpuInputConnection editor,String value) {
+        if (connection != editor) return;
+        editor.submitValue(value);
+    }
+    static int[] date(String value) {
+        if (value == null || !value.matches("\\d{4}-\\d{2}-\\d{2}")) return null;
+        return new int[]{Integer.parseInt(value.substring(0,4)),Integer.parseInt(value.substring(5,7)),Integer.parseInt(value.substring(8,10))};
+    }
+    static int[] time(String value) {
+        if (value == null || !value.matches("\\d{2}:\\d{2}(:\\d{2})?")) return null;
+        return new int[]{Integer.parseInt(value.substring(0,2)),Integer.parseInt(value.substring(3,5))};
+    }
+    private static Long millis(String value) {
+        int[] parsed=date(value);
+        if (parsed == null) return null;
+        java.util.Calendar day=java.util.Calendar.getInstance();
+        day.clear(); day.set(parsed[0],parsed[1]-1,parsed[2]);
+        return day.getTimeInMillis();
     }
 }
