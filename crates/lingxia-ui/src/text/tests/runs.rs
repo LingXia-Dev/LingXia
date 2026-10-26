@@ -211,3 +211,30 @@ fn pressed_links_repaint_their_run_through_the_pressed_delta() {
     let pressed = page.layout(200, 50, 1.0).unwrap();
     assert!(text_colors(&pressed).contains(&[255, 0, 0, 255]));
 }
+
+#[test]
+fn styled_links_are_one_target_and_one_semantic_link() {
+    let display = layout(
+        "h('text',{style:{fontSize:16}},'Read ',h('link',{testId:'l',onPress(){}},'the ',h('span',{style:{fontWeight:700}},'terms'),' now'))",
+        400,
+    );
+    let links: Vec<_> = display.nodes.iter().filter(|n| n.tag == "link").collect();
+    assert_eq!(links.len(), 3);
+    let leader = links[0];
+    assert!(leader.on_click.is_some() && leader.accessibility_hidden.is_none());
+    assert_eq!(leader.text, "the terms now");
+    assert_eq!(leader.hit_rects.len(), 3);
+    for piece in &links[1..] {
+        assert_eq!(
+            (piece.on_click, piece.accessibility_hidden),
+            (None, Some(true))
+        );
+    }
+    // A point on the bold piece hits the link.
+    let bold = leader.hit_rects[1];
+    assert!(crate::interaction::frame::contains(
+        leader,
+        [bold[0] + bold[2] / 2.0, bold[1] + bold[3] / 2.0],
+        false
+    ));
+}

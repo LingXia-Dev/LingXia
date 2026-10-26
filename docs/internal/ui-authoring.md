@@ -30,7 +30,8 @@ and image fit are style (`gridTemplateColumns`, `lineClamp`, `objectFit`).
 spans flatten into styled runs of one paragraph. Runs accept only text paint
 (color, size, weight, family, italic, decoration, numeric variants, background);
 links default to the accent color with an underline, take `active:` paint and
-hit-test only their line pieces. Rich text selects as one paragraph.
+hit-test only their line pieces. A link may hold spans; its pieces share one
+handle, press together and read as one link. Rich text selects as one paragraph.
 Any element may set `role` (heading with `headingLevel`, list/listitem, dialog,
 alert, status), `accessibilityHidden` (removes the subtree from semantics, not
 paint) and `accessibilityLiveRegion`; alert and status announce assertively and

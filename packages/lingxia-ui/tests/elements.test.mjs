@@ -299,7 +299,10 @@ test('text flattens nested spans and links into styled runs under one paragraph'
   assert.equal(rendered(() => h('text', {}, 'plain ', 'text')).text, 'plain text');
   throwsOn(() => h('column', {}, h('span', {}, 'loose')), /UI_TEXT: <span> belongs inside <text>/);
   throwsOn(() => h('button', {}, h('text', {}, h('link', { onPress() {} }, 'nested'))), /UI_BUTTON/);
-  throwsOn(() => h('text', {}, h('link', {}, h('link', {}, 'x'))), /UI_CHILD/);
+  throwsOn(() => h('text', {}, h('link', {}, h('link', {}, 'x'))), /UI_TEXT: links do not nest/);
+  const pieces = rendered(() => h('text', {}, h('link', { onPress() {}, accessibilityLabel: 'Terms' }, 'the ', h('span', { style: { fontWeight: 700 } }, 'terms')))).children;
+  assert.deepEqual(pieces.map(piece => [piece.tag, piece.text, piece.props.fontWeight, piece.props.accessibilityLabel]), [['link', 'the ', undefined, 'Terms'], ['link', 'terms', 700, undefined]]);
+  assert.equal(pieces[0].props.onClick, pieces[1].props.onClick);
   throwsOn(() => h('text', {}, h('span', { style: { padding: 4 } }, 'x')), /UI_STYLE: padding is not supported on <span>/);
   throwsOn(() => h('text', {}, Array.from({ length: 257 }, (_, i) => h('span', { key: String(i) }, 'x'))), /UI_TEXT: more than 256 runs/);
 });

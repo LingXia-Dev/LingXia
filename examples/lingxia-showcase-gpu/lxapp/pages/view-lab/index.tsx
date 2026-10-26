@@ -182,7 +182,7 @@ function RichText() {
       <text testId="lab-rich-paragraph" className="text-sm leading-relaxed">
         Plans renew <span className="font-semibold text-foreground">monthly</span> unless you{' '}
         <span className="bg-muted font-mono">cancel</span> first. Read the{' '}
-        <link testId="lab-rich-link" onPress={() => presses.set(presses.value + 1)} className="active:text-foreground">terms of service and privacy policy</link>
+        <link testId="lab-rich-link" onPress={() => presses.set(presses.value + 1)} className="active:text-foreground">terms of service and <span className="font-semibold">privacy policy</span></link>
         {' '}before you <span className="italic line-through text-muted-foreground">sign</span> agree.
       </text>
       <text testId="lab-rich-presses" className="text-xs text-muted-foreground tabular-nums">Link pressed {presses.value} times</text>

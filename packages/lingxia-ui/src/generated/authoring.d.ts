@@ -315,7 +315,7 @@ export type VectorProps = Omit<Props, "style" | "children"> & { style?: VectorSt
 export type SpanStyle = Pick<Style, "color" | "fontSize" | "fontWeight" | "fontFamily" | "fontStyle" | "textDecorationLine" | "fontVariantNumeric" | "backgroundColor">;
 export type SpanProps = Omit<Props, "style" | "children"> & { style?: SpanStyle; children?: RunChild };
 export type LinkStyle = Pick<Style, "color" | "fontSize" | "fontWeight" | "fontFamily" | "fontStyle" | "textDecorationLine" | "fontVariantNumeric" | "backgroundColor">;
-export type LinkProps = Omit<Props, "style" | "children"> & { style?: LinkStyle; children?: TextChild; onPress?: () => void; accessibilityLabel?: string; disabled?: boolean; };
+export type LinkProps = Omit<Props, "style" | "children"> & { style?: LinkStyle; children?: RunChild; onPress?: () => void; accessibilityLabel?: string; disabled?: boolean; };
 
 declare global {
   namespace JSX {

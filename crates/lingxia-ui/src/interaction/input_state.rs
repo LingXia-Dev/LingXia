@@ -397,8 +397,16 @@ pub(crate) fn apply_state_style(
     state: usize,
 ) -> Result<(), String> {
     let ids = identities(records);
-    for (record, id) in records.iter_mut().zip(ids) {
-        if id != identity {
+    let Some(target) = ids.iter().position(|id| id == identity) else {
+        return Ok(());
+    };
+    // Pressing one piece of a styled link presses all of it.
+    let leader = crate::scene::build::link_leader(records, target);
+    let group: Vec<usize> = (leader..records.len())
+        .take_while(|i| *i == target || crate::scene::build::link_leader(records, *i) == leader)
+        .collect();
+    for (index, record) in records.iter_mut().enumerate() {
+        if !group.contains(&index) {
             continue;
         }
         if let Some((_, value)) = record.fields.iter().find(|(field, _)| *field == state) {

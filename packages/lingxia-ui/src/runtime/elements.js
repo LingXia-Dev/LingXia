@@ -101,6 +101,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const style = nodeStyle(tag, props, parent.extra, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat));
   const inline = child => typeof child === 'string' || typeof child === 'number';
   if ((tag === 'span' || tag === 'link') && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>`);
+  if (tag === 'link' && parent.inLink) throw Error('UI_TEXT: links do not nest');
   const composed = element.children === 'content' && flat.some(child => !inline(child));
   const runs = element.children === 'runs' && flat.some(child => !inline(child));
   const leaf = element.children === 'text' || (element.children === 'content' && !composed) || (element.children === 'runs' && !runs);
@@ -204,14 +205,19 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     result.list = listState(props, identity);
   } else if (runs) {
     // Nested spans flatten into one run list; inner runs layer over the outer span's style.
-    const extra = tag === 'span' ? style.author : undefined;
+    const extra = tag === 'span' || tag === 'link' ? style.author : undefined;
     result.children = flat.flatMap((child, position) => {
       const run = resolveNode(inline(child) ? h('span', {}, child) : child, `${identity}/${tag}/position:${position}`, depth + 1, {
-        tag, typography: style.typography, direction, extra, inText: true, inControl: parent.inControl,
+        tag, typography: style.typography, direction, extra, inText: true, inControl: parent.inControl, inLink: parent.inLink || tag === 'link',
       });
       if (run === null) return [];
-      return run.element === 'span' && run.children.length ? run.children : [run];
+      return (run.element === 'span' || run.element === 'link') && run.children.length ? run.children : [run];
     });
+    // A styled link becomes consecutive link pieces sharing one handle, label and pressed style.
+    if (tag === 'link') result.children = result.children.map((piece, i) => ({
+      ...piece, tag: 'link', element: 'link', states: result.states, handlers: result.handlers.map(entry => [...entry]),
+      wire: [...piece.wire, ...result.wire.filter(([key]) => i === 0 || key !== 'accessibilityLabel')],
+    }));
     if (tag === 'text' && result.children.length > limits.runs) throw Error(`UI_TEXT: more than ${limits.runs} runs`);
   } else if (!leaf && tag !== 'radio') {
     const keys = new Set(), last = flat.length - 1;

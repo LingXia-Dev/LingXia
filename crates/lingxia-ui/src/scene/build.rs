@@ -14,6 +14,22 @@ use std::sync::Arc;
 use taffy::prelude::*;
 use vello_cpu::Glyph;
 
+/// The first of the consecutive link pieces that share `index`'s handle.
+pub(crate) fn link_leader(records: &[Record], index: usize) -> usize {
+    let handle = |i: usize| records[i].number(field::ON_CLICK);
+    let mut leader = index;
+    while leader > 0
+        && records[leader].tag == tag::LINK
+        && records[leader - 1].tag == tag::LINK
+        && records[leader - 1].parent == records[leader].parent
+        && handle(leader).is_some()
+        && handle(leader - 1) == handle(leader)
+    {
+        leader -= 1;
+    }
+    leader
+}
+
 fn field_value(record: &Record, id: usize) -> Option<serde_json::Value> {
     record
         .fields
@@ -826,7 +842,23 @@ impl Renderer {
             if collapsed[index] || run {
                 commands.truncate(paint_start);
             }
-            let hit_rects = if run {
+            // A styled link arrives as consecutive pieces sharing one handle; the first
+            // piece carries the whole link for hits and semantics.
+            let link_group: Vec<usize> =
+                if record.tag == tag::LINK && link_leader(records, index) == index {
+                    (index..records.len())
+                        .take_while(|member| link_leader(records, *member) == index)
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+            let piece = record.tag == tag::LINK && link_leader(records, index) != index;
+            let hit_rects = if !link_group.is_empty() {
+                link_group
+                    .iter()
+                    .flat_map(|member| run_rects.remove(member).unwrap_or_default())
+                    .collect()
+            } else if run {
                 run_rects.remove(&index).unwrap_or_default()
             } else {
                 Vec::new()
@@ -890,6 +922,7 @@ impl Renderer {
                 accessibility_hidden: (hidden[index]
                     || unspoken[index]
                     || record.tag == tag::SPAN
+                    || piece
                     || button_owners[index].is_some()
                     || record.string(field::IMAGE_ALT) == Some(""))
                 .then_some(true),
@@ -959,6 +992,11 @@ impl Renderer {
                         .to_owned()
                 } else if matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH) {
                     texts[index].clone()
+                } else if link_group.len() > 1 {
+                    link_group
+                        .iter()
+                        .map(|member| records[*member].text.as_str())
+                        .collect()
                 } else if let Some(paragraph) = &paragraphs[index] {
                     paragraph
                         .runs
@@ -974,6 +1012,7 @@ impl Renderer {
                 scroll,
                 radius,
                 on_click: if collapsed[index]
+                    || piece
                     || record.number(field::ENABLED) == Some(0.0)
                     || record.parent.is_some_and(|p| {
                         records[p].tag == tag::RADIO
