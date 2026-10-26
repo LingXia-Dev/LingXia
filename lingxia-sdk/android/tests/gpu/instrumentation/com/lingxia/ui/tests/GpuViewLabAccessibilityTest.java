@@ -18,7 +18,7 @@ import static org.junit.Assert.*;
  * its speech in the host's external `gpu-a11y-*.png` screenshots (Developer settings, Display speech output).
  */
 @RunWith(AndroidJUnit4.class)
-public class GpuAccessibilityProbe {
+public class GpuViewLabAccessibilityTest {
     private final A11yDriver driver = new A11yDriver(InstrumentationRegistry.getInstrumentation());
 
     private static void collectionItems(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> out) {
