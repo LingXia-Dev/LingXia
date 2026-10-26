@@ -79,6 +79,39 @@ fn cleanup_cache_base_dir(cache_base_dir: &Path, max_bytes: u64) {
     }
 }
 
+/// Beside the installs: the content hash of the bundle a dev build last installed.
+const DEV_BUNDLE_HASH_SUFFIX: &str = ".dev-bundle-hash";
+
+/// Hash of `appid`'s bundled assets, paths and bytes; `None` when they cannot be read.
+fn bundled_home_hash(runtime: &Platform, appid: &str) -> Option<String> {
+    let mut files = Vec::new();
+    for entry in runtime.asset_dir_iter(appid) {
+        let mut entry = entry.ok()?;
+        let mut bytes = Vec::new();
+        entry.reader.read_to_end(&mut bytes).ok()?;
+        files.push((entry.path.to_string(), bytes));
+    }
+    Some(content_hash(files))
+}
+
+/// Order-independent over the listing: files are sorted by path first.
+fn content_hash(mut files: Vec<(String, Vec<u8>)>) -> String {
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut context = ring::digest::Context::new(&ring::digest::SHA256);
+    for (path, bytes) in &files {
+        context.update(path.as_bytes());
+        context.update(&[0]);
+        context.update(&(bytes.len() as u64).to_le_bytes());
+        context.update(bytes);
+    }
+    context
+        .finish()
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
 fn installed_home_version(
     appid: &str,
     release_type: Channel,
@@ -311,7 +344,20 @@ fn init_with_native_authority(
     };
 
     let dev_session_active = dev_session_active();
+    // A dev build reinstalls when the bundled bytes changed, whatever the version says.
+    let dev_bundle = (lingxia_app_context::env() == lingxia_app_context::AppEnv::Dev)
+        .then(|| bundled_home_hash(&runtime_arc, &home_app_id))
+        .flatten();
+    let marker = runtime_arc
+        .app_data_dir()
+        .join(LINGXIA_DIR)
+        .join(LXAPPS_DIR)
+        .join(format!("{home_app_id}{DEV_BUNDLE_HASH_SUFFIX}"));
+    let dev_bundle_changed = dev_bundle
+        .as_ref()
+        .is_some_and(|hash| fs::read_to_string(&marker).ok().as_deref() != Some(hash.as_str()));
     let should_reinstall_home = dev_session_active
+        || dev_bundle_changed
         || installed_home_version
             .as_ref()
             .map(|installed| installed < &bundled_home_version)
@@ -332,6 +378,8 @@ fn init_with_native_authority(
     } else if should_reinstall_home {
         let reason = if dev_session_active {
             "dev session active; refreshing from bundled assets".to_string()
+        } else if dev_bundle_changed {
+            "dev build's bundled assets changed".to_string()
         } else {
             match installed_home_version {
                 None => "home lxapp is not installed or install is invalid".to_string(),
@@ -350,6 +398,9 @@ fn init_with_native_authority(
         ) {
             error!("Failed to install home LxApp: {}", e);
             return Err(e);
+        }
+        if let Some(hash) = &dev_bundle {
+            let _ = fs::write(&marker, hash);
         }
     } else {
         let has_pending_home_update = metadata::downloaded_get(&home_app_id, home_channel)
@@ -395,6 +446,28 @@ fn init_with_native_authority(
         terminal_authority,
         browser_registration_authority,
     ))
+}
+
+#[cfg(test)]
+mod dev_bundle_tests {
+    use super::content_hash;
+
+    #[test]
+    fn the_hash_follows_content_and_paths_not_listing_order() {
+        let a = vec![
+            ("x/a.js".to_string(), b"1".to_vec()),
+            ("x/b.js".to_string(), b"2".to_vec()),
+        ];
+        let mut reordered = a.clone();
+        reordered.reverse();
+        assert_eq!(content_hash(a.clone()), content_hash(reordered));
+        let mut edited = a.clone();
+        edited[1].1 = b"3".to_vec();
+        assert_ne!(content_hash(a.clone()), content_hash(edited));
+        let mut renamed = a.clone();
+        renamed[0].0 = "x/c.js".to_string();
+        assert_ne!(content_hash(a), content_hash(renamed));
+    }
 }
 
 #[cfg(test)]
