@@ -210,6 +210,7 @@ New platform: adapter traits, text scaling and insets in the environment, `rende
 | Accessibility projection | yes | — | — | — | — |
 | Hover state styles | no (reports a coarse pointer) | — | — | — | — |
 | GPU driver crash sentinel | yes (Maleoon Vulkan → GLES) | — | — | — | — |
+| GPU device limits | `wgpu::Limits::default()` (8 storage buffers per stage, from the device request; the pipelines bind none), else CPU | — | — | — | — |
 
 ## Verification
 
