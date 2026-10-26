@@ -354,7 +354,7 @@ fn focus_style_rejects_recursive_geometry_and_invalid_paints() {
 
 #[test]
 fn placeholder_color_validates_wire_colors() {
-    for value in [json!("#12345680"), json!("textMuted")] {
+    for value in [json!("#12345680"), json!("text-muted/60")] {
         assert!(
             decode(
                 json!([8, -1, "", "", "", 2, 97, value, 21, ""])

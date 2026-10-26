@@ -4327,6 +4327,7 @@ version = "0.28.0"
 dependencies = [
  "glifo",
  "image",
+ "lingxia-theme",
  "memmap2",
  "parley",
  "pollster",

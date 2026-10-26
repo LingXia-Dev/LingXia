@@ -35,8 +35,17 @@ impl ViewSession {
             crate::layout::list_layout::invalidate_measurements(&mut self.lists);
         }
         let dark = value["theme"] == "dark";
-        if self.renderer.dark != dark {
+        // Pages never read colours: the palette is taken out before the View sees the snapshot.
+        let palette = match value
+            .as_object_mut()
+            .and_then(|object| object.remove("palette"))
+        {
+            Some(pushed) => crate::theme::Palette::decode(&pushed, dark)?,
+            None => crate::theme::Palette::builtin(dark),
+        };
+        if self.renderer.dark != dark || self.renderer.palette != palette {
             self.renderer.dark = dark;
+            self.renderer.palette = palette;
             self.retained = None;
         }
         let text_scale = crate::text::scale::TextScale::decode(value.get("textScale"))?;

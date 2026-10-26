@@ -28,8 +28,9 @@ pub struct Renderer {
     pub(crate) safe_area: style::SafeArea,
     /// The environment's inline direction; `dir` overrides it per subtree.
     pub(crate) rtl: bool,
-    /// Unstyled elements take the dark default colors.
+    /// The environment's appearance; colours come from `palette`.
     pub(crate) dark: bool,
+    pub(crate) palette: crate::theme::Palette,
 }
 
 #[cfg(test)]
@@ -50,6 +51,7 @@ impl Default for Renderer {
             safe_area: Default::default(),
             rtl: false,
             dark: false,
+            palette: crate::theme::Palette::builtin(false),
         }
     }
 }

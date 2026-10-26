@@ -20,11 +20,16 @@ fn node(wire: &mut Vec<Value>, tag: usize, parent: i64, text: &str, fields: Valu
 }
 
 #[test]
-fn colors_accept_only_rgb_rgba_or_known_tokens() {
+fn colors_accept_only_rgb_rgba_or_roles() {
     assert_eq!(color("#1234AB").unwrap(), [0x12, 0x34, 0xab, 255]);
     assert_eq!(color("#1234ab80").unwrap(), [0x12, 0x34, 0xab, 128]);
     assert_eq!(color("#ffffff00").unwrap(), [255, 255, 255, 0]);
-    assert_eq!(color("surface").unwrap(), [255, 255, 255, 255]);
+    // Literal parsing takes hex only; the wire also takes roles with an optional alpha.
+    assert!(color("surface").is_err());
+    for role in ["surface", "text/8", "line-strong/100"] {
+        let wire = json!([TEXT, -1, "", "", "label", 1, BACKGROUND, role]);
+        assert!(decode(wire.as_array().unwrap()).is_ok(), "{role}");
+    }
     for invalid in [
         "#abc",
         "#abcd",
@@ -37,6 +42,8 @@ fn colors_accept_only_rgb_rgba_or_known_tokens() {
         "123456",
         "transparent",
         "unknown",
+        "primary",
+        "text/101",
     ] {
         assert!(color(invalid).is_err(), "{invalid}");
         for field in [COLOR, BACKGROUND] {

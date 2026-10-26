@@ -38,7 +38,9 @@ fn runs_share_one_paragraph_with_their_own_paint() {
         .collect();
     assert!(colors.contains(&[0, 0, 0, 255]) && colors.contains(&[255, 0, 0, 255]));
     // Links default to the accent colour and an underline in that colour.
-    let accent = crate::protocol::color("primary").unwrap();
+    let accent = crate::theme::Palette::builtin(false)
+        .resolve("accent")
+        .unwrap();
     assert!(colors.contains(&accent));
     assert!(paints.iter().any(
         |p| matches!(p, Paint::Rect { color, bounds, .. } if *color == accent && bounds[3] <= 2.0)

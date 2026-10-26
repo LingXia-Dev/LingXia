@@ -248,7 +248,7 @@ impl<A: PlatformAdapter> Inner<A> {
             metrics.extend(extra.clone());
         }
         let generation = session.generation();
-        let feedback = crate::interaction::chrome::FeedbackStyle::for_theme(session.renderer.dark);
+        let feedback = crate::interaction::chrome::FeedbackStyle::for_palette(&session.renderer.palette, session.renderer.dark);
         let json = serde_json::json!({
             "generation": generation,
             "nodes": nodes,

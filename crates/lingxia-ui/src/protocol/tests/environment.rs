@@ -58,13 +58,55 @@ fn the_session_fills_the_session_keys() {
     let mut page = crate::ViewSession::new(&source).unwrap();
     let mut env = facts().environment().unwrap().value;
     env["canDock"] = false.into();
+    env["palette"] = serde_json::json!({"revision": 1, "colors": ["#000000"]});
     page.set_environment(env).unwrap();
     let shown = page.layout(400, 400, 1.0).unwrap().nodes[0].text.clone();
     let keys: Vec<&str> = shown.split(',').collect();
     for (key, _) in ENVIRONMENT_KEYS
         .iter()
-        .filter(|(key, _)| *key != "textScale")
+        .filter(|(key, _)| !matches!(*key, "textScale" | "palette"))
     {
         assert!(keys.contains(key), "{key} missing from env: {shown}");
     }
+    assert!(
+        !keys.contains(&"palette"),
+        "pages never see colours: {shown}"
+    );
+}
+
+#[test]
+fn a_pushed_palette_repaints_roles_and_editors_default_to_line_strong() {
+    let source = crate::session::tests::source(
+        "function render(){return h('column',{},h('input',{style:{borderWidth:1,width:100,height:30}}))}",
+    );
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    let rects = |page: &mut crate::ViewSession| {
+        let display = page.layout(200, 200, 1.0).unwrap();
+        let commands = &display.retained.commands;
+        let canvas = commands.iter().find_map(|paint| match paint {
+            crate::scene::paint::Paint::Rect { color, .. } => Some(*color),
+            _ => None,
+        });
+        let border = commands.iter().find_map(|paint| match paint {
+            crate::scene::paint::Paint::Border { color, .. } => Some(*color),
+            _ => None,
+        });
+        (canvas.unwrap(), border.unwrap())
+    };
+    let mut env = facts().environment().unwrap().value;
+    env["canDock"] = false.into();
+    page.set_environment(env.clone()).unwrap();
+    let builtin = crate::theme::Palette::builtin(false);
+    assert_eq!(
+        rects(&mut page),
+        (
+            builtin.role(lingxia_theme::Role::Canvas),
+            builtin.role(lingxia_theme::Role::LineStrong)
+        )
+    );
+    let mut colors = vec!["#000000"; lingxia_theme::ROLE_COUNT];
+    colors[lingxia_theme::Role::LineStrong as usize] = "#ff0000";
+    env["palette"] = serde_json::json!({"revision": 2, "colors": colors});
+    page.set_environment(env).unwrap();
+    assert_eq!(rects(&mut page), ([0, 0, 0, 255], [255, 0, 0, 255]));
 }

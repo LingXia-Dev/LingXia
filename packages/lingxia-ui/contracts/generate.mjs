@@ -32,8 +32,6 @@ function validate(schema) {
   }
   for (const name of limitNames)
     if (!Number.isSafeInteger(schema.limits?.[name]) || schema.limits[name] <= 0) throw Error(`schema.json: missing limit ${name}`);
-  for (const [token, pair] of Object.entries(schema.defaultColors ?? {}))
-    if (!Array.isArray(pair) || pair.length !== 2 || pair.some(c => !/^#[0-9a-f]{6}$/.test(c))) throw Error(`schema.json: default color ${token} needs a light and dark #rrggbb`);
   for (const [key, entry] of Object.entries(schema.environment ?? {}))
     if (!['none', 'external', ...Object.keys(environmentChecks)].includes(entry.check) || !['device', 'push', 'session'].includes(entry.origin) || typeof entry.type !== 'string')
       throw Error(`schema.json: environment ${key} needs a type, a known check and an origin`);
@@ -180,11 +178,6 @@ ${limits}
 }
 
 ${environmentRust(schema)}
-
-/// Colors of unstyled elements as (token, light, dark), until the theme system supplies them.
-pub const DEFAULT_COLORS: &[(&str, &str, &str)] = &[
-${Object.entries(schema.defaultColors).map(([token, [light, dark]]) => `    (${JSON.stringify(token)}, ${JSON.stringify(light.slice(1))}, ${JSON.stringify(dark.slice(1))}),`).join('\n')}
-];
 
 /// What a wire tag may contain.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

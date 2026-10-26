@@ -69,6 +69,8 @@ pub(crate) struct RetainedLayout {
     pub(crate) scale: f32,
     pub(crate) inputs: Vec<Option<InputLayout>>,
     pub(crate) selectables: Vec<Option<Arc<SelectableText>>>,
+    /// Behind selected text, resolved from the palette.
+    pub(crate) selection_fill: [u8; 4],
 }
 
 impl RetainedLayout {
