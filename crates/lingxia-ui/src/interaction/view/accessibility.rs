@@ -13,6 +13,8 @@ pub enum AccessibilityAction {
     SetSelection(i32, i32),
     ClearSelection,
     SelectItem(usize),
+    /// Copy the selected static text to the clipboard.
+    Copy,
 }
 
 impl ViewInteraction {

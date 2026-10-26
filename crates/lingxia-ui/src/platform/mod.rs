@@ -115,6 +115,10 @@ pub trait HostEvents {
     fn revealed(&self, hold_surface: bool) {
         let _ = hold_surface;
     }
+    /// Put `text` on the system clipboard (an accessibility Copy).
+    fn copy_text(&self, text: &str) {
+        let _ = text;
+    }
     fn warn(&self, message: &str);
 }
 

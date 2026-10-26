@@ -458,6 +458,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
     }
 
     pub fn accessibility(&self, id: u32, action: AccessibilityAction) -> bool {
+        if let Some(handled) = self.static_text_action(id, &action) {
+            return handled;
+        }
         let page = self.inner.lifecycle.page();
         let (handled, effects) = self
             .inner
@@ -466,6 +469,50 @@ impl<A: PlatformAdapter> ViewHost<A> {
             .accessibility(id, action, page);
         self.inner.deliver(effects);
         handled
+    }
+
+    /// Selection and Copy on selectable static text act on the session's text
+    /// selection, not on an editor.
+    fn static_text_action(&self, id: u32, action: &AccessibilityAction) -> Option<bool> {
+        use crate::semantics::projection::Action;
+        if !matches!(
+            action,
+            AccessibilityAction::SetSelection(..) | AccessibilityAction::Copy
+        ) {
+            return None;
+        }
+        let node = self
+            .semantics(|projection, _| projection.and_then(|projection| projection.node(id)))
+            .filter(|node| node.text_field.is_none())?;
+        match *action {
+            AccessibilityAction::SetSelection(start, end)
+                if node.actions.contains(&Action::SetSelection) =>
+            {
+                let identity = self
+                    .snapshot()?
+                    .frame
+                    .nodes
+                    .get(node.index)?
+                    .identity
+                    .clone();
+                let offset = |n: i32| u32::try_from(n).unwrap_or(0);
+                self.set_text_selection(identity, offset(start), offset(end));
+                Some(true)
+            }
+            AccessibilityAction::Copy if node.text_selection.is_some() => {
+                let host = self.downgrade();
+                self.copy_text_selection(move |text| {
+                    if let (Some(host), Some(text)) = (host.upgrade(), text)
+                        && !text.is_empty()
+                    {
+                        host.adapter().copy_text(&text);
+                    }
+                });
+                Some(true)
+            }
+            AccessibilityAction::Copy => Some(false),
+            _ => None,
+        }
     }
 
     /// The WebView-shaped automation query over the presented frame.

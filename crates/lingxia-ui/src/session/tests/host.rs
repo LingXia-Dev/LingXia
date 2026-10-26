@@ -38,6 +38,7 @@ struct Log {
     carets: Vec<bool>,
     /// `hold_surface` of each reveal.
     revealed: Vec<bool>,
+    copied: Vec<String>,
     /// Threads that ran main-thread callbacks.
     main: Vec<ThreadId>,
 }
@@ -176,6 +177,9 @@ impl HostEvents for Fake {
     }
     fn revealed(&self, hold_surface: bool) {
         self.main().revealed.push(hold_surface);
+    }
+    fn copy_text(&self, text: &str) {
+        self.main().copied.push(text.into());
     }
     fn warn(&self, _: &str) {}
 }
@@ -1312,4 +1316,34 @@ fn automation_requests_query_and_act_through_the_core_driver() {
             "{failed}"
         );
     }
+}
+
+#[test]
+fn accessibility_selects_and_copies_static_text_through_the_session_selection() {
+    use crate::interaction::view::AccessibilityAction;
+    let worker = ViewWorker::spawn("test-static-copy").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('text',{testId:'p',style:{userSelect:'text'}},'hello brave world')}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let id = host.semantics(|projection, _| projection.unwrap().ids.id(0).unwrap());
+    assert!(
+        !host.accessibility(id, AccessibilityAction::Copy),
+        "nothing is selected yet"
+    );
+    assert!(host.accessibility(id, AccessibilityAction::SetSelection(6, 11)));
+    platform.settle(&[&host]);
+    let selection =
+        host.semantics(|projection, _| projection.unwrap().node(id).unwrap().text_selection);
+    assert_eq!(selection, Some([6, 11]));
+    assert!(host.accessibility(id, AccessibilityAction::Copy));
+    platform.settle(&[&host]);
+    assert_eq!(host.adapter().log.lock().unwrap().copied, ["brave"]);
+    let selection =
+        host.semantics(|projection, _| projection.unwrap().node(id).unwrap().text_selection);
+    assert_eq!(selection, None, "Copy drops the selection");
 }
