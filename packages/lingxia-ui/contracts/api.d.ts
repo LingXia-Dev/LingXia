@@ -84,7 +84,9 @@ export type LocalData<T> = T extends string | number | boolean | null ? T
   : T extends (...args: any[]) => any ? never
   : T extends readonly unknown[] ? { [K in keyof T]: LocalData<T[K]> }
   : T extends object ? { [K in keyof T]: T[K] extends undefined ? undefined : LocalData<T[K]> } : never;
-export interface Local<T> { readonly [localCell]: true; readonly value: ReadonlyData<T>; set(value: ReadonlyData<LocalData<T>>): void }
+export interface Local<T> { readonly [localCell]: true; readonly value: ReadonlyData<T>; set(value: ReadonlyData<LocalData<T>>): void;
+  /** Focus the editor this cell is bound to (`bind`), on the next frame. */
+  focus(): void }
 export declare function useLocal<T>(name: string, initial: T, ...invalid: [T] extends [LocalData<T>] ? [] : [never]): Local<T>;
 
 export interface RequestResource<T> {

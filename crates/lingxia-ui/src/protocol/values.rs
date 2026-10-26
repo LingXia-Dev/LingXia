@@ -306,6 +306,10 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         field::SECURE | field::AUTO_FOCUS | field::SPELL_CHECK => {
             ensure(flag(value), "UI_INPUT: invalid flag")
         }
+        field::FOCUS_REQUEST => ensure(
+            value.as_u64().is_some_and(|v| v <= MAX_HANDLE),
+            "UI_INPUT: invalid focus request",
+        ),
         field::MAX_LENGTH => ensure(
             value.as_u64().is_some_and(|v| (1..=65536).contains(&v)),
             "UI_INPUT: maxLength must be 1..65536",

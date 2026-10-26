@@ -1614,6 +1614,8 @@ fn native_validation_failure_does_not_commit_state_or_handlers() {
 }
 #[path = "editor_rules.rs"]
 mod editor_rules;
+#[path = "editor_focus.rs"]
+mod editor_focus;
 #[path = "motion.rs"]
 mod motion;
 #[path = "text_selection.rs"]

@@ -15,6 +15,9 @@ pub struct InputReply {
     pub token: u64,
     pub state: Snapshot,
     pub needs_view_render: bool,
+    /// `enterKeyHint` next/previous moved focus: token and state belong to this editor.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub moved_to: Option<String>,
 }
 
 #[derive(Clone)]
@@ -23,6 +26,12 @@ struct Entry {
     enabled: bool,
     visible: bool,
     autofocus: bool,
+    /// A `focus()` request moves focus here even from another editor.
+    refocus: bool,
+    focus_request: u64,
+    /// Record order, which is reading order.
+    order: usize,
+    enter_key_hint: Option<String>,
     on_input: Option<u64>,
     on_submit: Option<u64>,
     scroll_offset: [f32; 2],
@@ -106,12 +115,14 @@ impl Inputs {
             self.focused = None;
             self.advance()?;
         }
-        for (record, id) in records
+        for (order, (record, id)) in records
             .iter()
             .zip(ids)
-            .filter(|(r, _)| matches!(r.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH))
+            .enumerate()
+            .filter(|(_, (r, _))| matches!(r.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH))
         {
             let value = record.string(field::INPUT_VALUE).unwrap_or("");
+            let focus_request = record.number(field::FOCUS_REQUEST).unwrap_or(0.0) as u64;
             if !self.entries.contains_key(&id) {
                 self.entries.insert(
                     id.clone(),
@@ -120,6 +131,10 @@ impl Inputs {
                         enabled: true,
                         visible: false,
                         autofocus: record.number(field::AUTO_FOCUS) == Some(1.0),
+                        refocus: false,
+                        focus_request,
+                        order,
+                        enter_key_hint: None,
                         on_input: None,
                         on_submit: None,
                         scroll_offset: [0.0; 2],
@@ -129,6 +144,12 @@ impl Inputs {
             }
             let entry = self.entries.get_mut(&id).unwrap();
             entry.enabled = record.number(field::ENABLED) != Some(0.0);
+            entry.order = order;
+            entry.enter_key_hint = record.string(field::ENTER_KEY_HINT).map(str::to_owned);
+            if focus_request > entry.focus_request {
+                entry.focus_request = focus_request;
+                entry.refocus = true;
+            }
             entry.rules = crate::interaction::input_rules::Rules::from_record(record);
             entry.on_input = record
                 .fields
@@ -203,6 +224,18 @@ impl Inputs {
                     self.focus(&node.identity, renderer)?;
                 }
             }
+        }
+        let requested = display.nodes.iter().find(|node| {
+            self.entries
+                .get(&node.identity)
+                .is_some_and(|e| e.refocus && e.visible)
+        });
+        if let Some(node) = requested {
+            let identity = node.identity.clone();
+            self.focus(&identity, renderer)?;
+        }
+        for entry in self.entries.values_mut() {
+            entry.refocus &= !entry.visible;
         }
         for node in &mut display.nodes {
             if let (Some(input), Some(entry)) = (&mut node.input, self.entries.get(&node.identity))
@@ -313,6 +346,31 @@ impl Inputs {
         Ok(())
     }
 
+    /// The enabled, visible editor before or after `id` in reading order, when its
+    /// `enterKeyHint` is `previous` or `next`.
+    pub fn adjacent(&self, id: &str) -> Option<String> {
+        let entry = self.entries.get(id)?;
+        let forward = match entry.enter_key_hint.as_deref() {
+            Some("next") => true,
+            Some("previous") => false,
+            _ => return None,
+        };
+        let candidates = self
+            .entries
+            .iter()
+            .filter(|(other, e)| *other != id && e.enabled && e.visible);
+        if forward {
+            candidates
+                .filter(|(_, e)| e.order > entry.order)
+                .min_by_key(|(_, e)| e.order)
+        } else {
+            candidates
+                .filter(|(_, e)| e.order < entry.order)
+                .max_by_key(|(_, e)| e.order)
+        }
+        .map(|(other, _)| other.clone())
+    }
+
     pub fn valid(&self, id: &str, token: u64) -> bool {
         token != 0 && token == self.token && self.focused.as_deref() == Some(id)
     }
@@ -321,6 +379,7 @@ impl Inputs {
             token: self.token,
             state: self.entries[id].editor.snapshot(),
             needs_view_render,
+            moved_to: None,
         }
     }
     pub fn handler(&self, id: &str, submit: bool) -> Option<u64> {

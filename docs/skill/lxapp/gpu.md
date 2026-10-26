@@ -52,6 +52,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - Inputs take `maxLength`, `autoComplete` (autofill), `enterKeyHint`, `autoCapitalize`, `spellCheck`;
   `keyboard="number"` with `min`/`max`/`step` clamps on blur/submit; `keyboard="date|time"` opens the
   platform picker and reports ISO strings.
+- `enterKeyHint="next"|"previous"` moves focus to the adjacent enabled editor in reading order
+  (the last one submits); `cell.focus()` focuses the editor bound to that `useLocal` cell.
 - Buttons may contain text, icons and images; their text names them for
   accessibility. Images need `alt` (`""` for decoration).
 - Remote `<image>` sources follow HTTP caching: revalidated, and shown stale while offline.
