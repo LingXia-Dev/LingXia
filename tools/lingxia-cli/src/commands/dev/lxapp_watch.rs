@@ -182,7 +182,12 @@ pub(super) fn is_ignored_path(path: &Path) -> bool {
 }
 
 fn is_ignored_file_name(name: &str) -> bool {
+    // Editors' atomic-save temporaries: Vim, JetBrains, Chromium-based editors.
     name.ends_with('~')
+        || name == "4913"
+        || name.contains("___jb_tmp___")
+        || name.contains("___jb_old___")
+        || name.ends_with(".crswap")
         || name.ends_with(".swp")
         || name.ends_with(".swo")
         || name.ends_with(".tmp")
@@ -338,6 +343,8 @@ fn run_watch(
     let mut dirty: BTreeSet<String> = BTreeSet::new();
     // What changed per app since its last reload, for the GPU hot-swap plan.
     let mut changed: std::collections::BTreeMap<String, BTreeSet<PathBuf>> = Default::default();
+    // When each app's pending edit was first seen, so a swap reports the wait before it.
+    let mut first_seen: std::collections::BTreeMap<String, std::time::Instant> = Default::default();
     // Warm the page compiler up front where a dev build has run, so the first swap is fast too.
     let mut compilers: Vec<super::gpu_swap::Compiler> = roots
         .iter()
@@ -406,6 +413,9 @@ fn run_watch(
                             mocks_dirty.insert(root.app_id.clone());
                         } else {
                             dirty.insert(root.app_id.clone());
+                            first_seen
+                                .entry(root.app_id.clone())
+                                .or_insert_with(std::time::Instant::now);
                             changed
                                 .entry(root.app_id.clone())
                                 .or_default()
@@ -458,10 +468,14 @@ fn run_watch(
                         break;
                     }
                     let paths = changed.remove(&app_id).unwrap_or_default();
+                    let waited = first_seen
+                        .remove(&app_id)
+                        .map(|seen| seen.elapsed())
+                        .unwrap_or_default();
                     let root = roots.iter().find(|root| root.app_id == app_id);
                     // Any dev session swaps, `--release` included: the host's dev features decide.
                     if let Some(root) = root
-                        && hot_swap(&state, &app_id, &root.path, &paths, &mut compilers)
+                        && hot_swap(&state, &app_id, &root.path, &paths, &mut compilers, waited)
                     {
                         continue;
                     }
@@ -487,6 +501,7 @@ fn hot_swap(
     dir: &Path,
     changed: &BTreeSet<PathBuf>,
     compilers: &mut Vec<super::gpu_swap::Compiler>,
+    waited: Duration,
 ) -> bool {
     let Some(pages) = super::gpu_swap::plan(dir, changed) else {
         return false;
@@ -521,10 +536,11 @@ fn hot_swap(
         let path = super::gpu_swap::page_path(page);
         match state.hot_swap_page(app_id, &path) {
             Ok(RestartOutcome::Restarted) => println!(
-                "  {} swapped {} in {} ms (compile {} ms, manifests {} ms, runtime {} ms)",
+                "  {} swapped {} in {} ms (edit settled {} ms, compile {} ms, manifests {} ms, runtime {} ms)",
                 "✓".green(),
                 path.cyan(),
-                started.elapsed().as_millis(),
+                (waited + started.elapsed()).as_millis(),
+                waited.as_millis(),
                 compiled.as_millis(),
                 (published - compiled).as_millis(),
                 (started.elapsed() - published).as_millis()
@@ -844,6 +860,20 @@ mod tests {
         ));
         assert!(!is_output(&root.join("pages/home/index.tsx"), &outputs));
         assert!(test_output_dir(tempfile::tempdir().unwrap().path()).is_none());
+    }
+
+    #[test]
+    fn editor_save_temporaries_are_never_edits() {
+        for name in [
+            "index.tsx~",
+            "4913",
+            "index.tsx___jb_tmp___",
+            "index.tsx___jb_old___",
+            "index.tsx.crswap",
+        ] {
+            assert!(is_ignored_path(Path::new(name)), "{name}");
+        }
+        assert!(!is_ignored_path(Path::new("pages/home/index.tsx")));
     }
 
     #[test]
