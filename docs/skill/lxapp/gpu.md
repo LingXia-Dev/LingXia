@@ -41,6 +41,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear or radial, ≤8).
 - Buttons may contain text, icons and images; their text names them for
   accessibility. Images need `alt` (`""` for decoration).
+- Remote `<image>` sources follow HTTP caching: revalidated, and shown stale while offline.
 - Text follows the system font size; prefer `min-h-*` over fixed heights. Whitespace
   collapses as in CSS: use `whitespace-pre-line`/`pre-wrap` for authored newlines.
 - `UI_COMPAT` means the installed host is older than the bundle: update it.
