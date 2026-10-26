@@ -51,7 +51,8 @@ public class GpuAccessibilityRolesTest {
                 + "h('text',{testId:'h',role:'heading',headingLevel:3},'Plans'),"
                 + "h('column',{testId:'list',role:'list'},h('row',{testId:'a',role:'listitem'},h('text',{},'Water')),h('row',{testId:'b',role:'listitem'},h('text',{},'Power'))),"
                 + "h('column',{testId:'d',role:'dialog',accessibilityLabel:'Confirm'},h('text',{},'Sure?')),"
-                + "h('text',{testId:'s',role:'status'},'Saved '+n.value))}"));
+                + "h('text',{testId:'s',role:'status'},'Saved '+n.value),"
+                + "h('text',{},'Read the ',h('link',{testId:'l',onPress(){}},'terms')))}"));
             GpuView.nativeSetVisible(host, true);
             fake.pump(host, () -> fake.presented >= 1);
             Map<String, JSONObject> nodes = nodes(host);
@@ -64,6 +65,7 @@ public class GpuAccessibilityRolesTest {
             assertEquals("Confirm", dialog.getPaneTitle());
             assertTrue(!dialog.isClickable());
             assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, info(nodes.get("s")).getLiveRegion());
+            assertEquals("Link", String.valueOf(info(nodes.get("l")).getExtras().getCharSequence(GpuAccessibility.ROLE_DESCRIPTION)));
             assertTrue(GpuView.nativePointer(host, 0, 40, 40, 8, 0, 0, 50));
             GpuView.nativePointer(host, 2, 40, 40, 8, 0, 0, 50);
             fake.pump(host, () -> fake.events.contains("live:polite:Saved 1"));

@@ -12,6 +12,8 @@ import org.json.JSONObject;
 final class GpuAccessibility {
     static final int SELECT_ITEM = 0x02010000;
     static final int SET_PROGRESS = 16908349;
+    /** AndroidX `AccessibilityNodeInfoCompat.setRoleDescription` key, read by TalkBack. */
+    static final String ROLE_DESCRIPTION = "AccessibilityNodeInfo.roleDescription";
 
     // Rust action opcodes; see the JNI accessibility codec.
     static final int FOCUS = 0, CLEAR_FOCUS = 1, CLICK = 2, SHOW_ON_SCREEN = 3, SCROLL_FORWARD = 4, SCROLL_BACKWARD = 5,
@@ -30,7 +32,7 @@ final class GpuAccessibility {
             case GpuSemantics.ROLE_IMAGE: return "android.widget.ImageView";
             case GpuSemantics.ROLE_SLIDER: return "android.widget.SeekBar";
             case GpuSemantics.ROLE_LIST: return "android.widget.ListView";
-            // Links, headings, list items, alerts, status and dialogs read as text plus their traits.
+            // Links (with a role description), headings, list items, alerts, status and dialogs read as text plus their traits.
             default: return "android.widget.TextView";
         }
     }
@@ -55,6 +57,9 @@ final class GpuAccessibility {
         String testId = node.optString("test_id");
         if (!testId.isEmpty()) info.setViewIdResourceName(packageName + ":id/" + testId);
         info.setEnabled(node.optBoolean("enabled"));
+        // TalkBack speaks this in place of the class role; a link has no widget class of its own.
+        if (GpuSemantics.ROLE_LINK.equals(role))
+            info.getExtras().putCharSequence(ROLE_DESCRIPTION, host.getContext().getString(com.lingxia.lxapp.R.string.lx_gpu_a11y_link));
         info.setFocusable(node.optBoolean("focusable"));
         info.setClickable(node.optBoolean("clickable"));
         info.setFocused(node.optBoolean("focused"));

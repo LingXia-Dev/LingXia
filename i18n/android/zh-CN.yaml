@@ -30,3 +30,5 @@ gpu:
   session_failed: "页面已停止响应，请重新载入后继续。尚未保存的输入可能丢失。"
   reload: "重新载入页面"
   retrying: "正在重试…"
+  # Spoken role of a GPU page link.
+  a11y_link: "链接"
