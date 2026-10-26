@@ -20,6 +20,8 @@ pub struct FrameMetrics {
     pub paints: usize,
     /// Visible presentations that showed animated values in the last second.
     pub animation_frames: usize,
+    /// Deterministic counters of the frame, compared against the page limits.
+    pub cost: crate::FrameCost,
 }
 
 pub(crate) fn micros(start: std::time::Instant) -> u64 {
@@ -39,5 +41,52 @@ impl FrameMetrics {
         self.view_transfer_us += timings.transfer_us;
         self.view_decode_us += timings.decode_us;
         self.wire_values += timings.values;
+    }
+}
+
+/// Share of a limit past which a page is warned, once per limit.
+const BUDGET_WARN: f64 = 0.75;
+
+impl crate::ViewSession {
+    /// Warns once per page per limit when a frame uses at least three quarters of it.
+    pub(crate) fn check_budgets(&mut self) {
+        use crate::protocol::limits;
+        let metrics = &self.metrics;
+        let cost = &metrics.cost;
+        let fails = "past it the frame fails";
+        let uses: [(&'static str, u64, u64, &str); 4] = [
+            ("nodes", metrics.nodes as u64, limits::NODES as u64, fails),
+            (
+                "wireValues",
+                metrics.wire_values as u64,
+                limits::WIRE_VALUES as u64,
+                fails,
+            ),
+            (
+                "vectorWork",
+                cost.vector_elements as u64,
+                limits::VECTOR_WORK as u64,
+                fails,
+            ),
+            (
+                "visibleImageBytes",
+                cost.image_pixels * 4,
+                limits::VISIBLE_IMAGE_BYTES as u64,
+                "past it further images show their placeholder",
+            ),
+        ];
+        for (name, used, limit, consequence) in uses {
+            if used as f64 >= BUDGET_WARN * limit as f64 && self.budget_warned.insert(name) {
+                let share = (used as f64 / limit as f64 * 100.0).round();
+                self.budget_warnings.push(format!(
+                    "UI_BUDGET: this page uses {share}% of `{name}` ({used} of {limit}); {consequence}"
+                ));
+            }
+        }
+    }
+
+    /// Budget warnings since the last call, for the host to log.
+    pub fn take_budget_warnings(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.budget_warnings)
     }
 }

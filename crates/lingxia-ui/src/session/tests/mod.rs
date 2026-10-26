@@ -1687,3 +1687,22 @@ fn a_focused_select_paints_its_focus_classes_without_the_view() {
         vec![255; 4]
     );
 }
+
+#[test]
+fn a_page_near_a_limit_is_warned_once() {
+    // One image box covering 13.4M device pixels: 80% of the visible image budget.
+    let module = source(
+        "function render(){return h('column',{},h('image',{src:'big.png',alt:'',style:{width:4000,height:3355}}))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    page.layout(4096, 4096, 1.0).unwrap();
+    let warnings = page.take_budget_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0].starts_with("UI_BUDGET: this page uses 80% of `visibleImageBytes`"),
+        "{warnings:?}"
+    );
+    page.layout(4096, 4096, 1.0).unwrap();
+    assert!(page.take_budget_warnings().is_empty(), "once per page");
+    assert_eq!(page.frame_metrics().cost.images, 1);
+}

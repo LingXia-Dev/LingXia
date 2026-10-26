@@ -316,6 +316,10 @@ impl<A: PlatformAdapter> Inner<A> {
             None
         };
         let images = session.image_requests();
+        // A page near a limit says so once in the dev log, before a frame fails on it.
+        for warning in session.take_budget_warnings() {
+            self.adapter.warn(&warning);
+        }
         let mut metrics =
             serde_json::to_value(session.frame_metrics()).map_err(|e| e.to_string())?;
         if let Some(metrics) = metrics.as_object_mut() {

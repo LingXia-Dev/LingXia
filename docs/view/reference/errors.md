@@ -12,6 +12,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_ANIMATION` | build, runtime, native | Motion is gated, or an animation definition is invalid or over budget. |
 | `UI_BOOTSTRAP_TIMEOUT` | native | Logic did not deliver the first page state in time. |
 | `UI_BRIDGE` | native | The View-Logic connection failed or was replaced. |
+| `UI_BUDGET` | native | A warning, once per page and limit: a frame used at least three quarters of a page limit. |
 | `UI_BUFFER` | native | A malformed wire buffer reached the native decoder. |
 | `UI_BUTTON` | runtime, native | Invalid button label, or an interactive element inside a composed control. |
 | `UI_CHANNEL` | runtime | Invalid `useChannel` call or channel failure. |

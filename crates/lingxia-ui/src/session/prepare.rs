@@ -70,6 +70,7 @@ impl ViewSession {
         metrics.total_us = crate::session::metrics::micros(started);
         metrics.generation = self.generation.get();
         self.metrics = metrics;
+        self.check_budgets();
         Ok(result)
     }
 
@@ -379,6 +380,7 @@ impl ViewSession {
                     let input_hits = crate::interaction::input_hits::InputHitMap::capture(&display);
                     metrics.nodes = display.nodes.len();
                     metrics.paints = display.paint_count();
+                    metrics.cost = display.cost();
                     let started = std::time::Instant::now();
                     let frame = build(display)?;
                     metrics.build_us += crate::session::metrics::micros(started);
@@ -537,6 +539,7 @@ impl ViewSession {
                     let input_hits = crate::interaction::input_hits::InputHitMap::capture(&display);
                     metrics.nodes = display.nodes.len();
                     metrics.paints = display.paint_count();
+                    metrics.cost = display.cost();
                     let started = std::time::Instant::now();
                     let frame = build(display)?;
                     metrics.build_us += crate::session::metrics::micros(started);
