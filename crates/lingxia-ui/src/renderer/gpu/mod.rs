@@ -137,6 +137,9 @@ pub struct Presenter {
     pass_us: Vec<[u64; 2]>,
     /// The bottom static segment rendered once while the rest of the page animates.
     base: Option<(u64, wgpu::TextureView)>,
+    /// False from a release until the next present: frames prepared meanwhile (a hidden
+    /// page's in-flight ones) must not keep a new base.
+    keep_base: bool,
     scene_cache_hit: bool,
     renderer: crate::renderer::gpu::pass::SceneRenderer,
     scenes: crate::renderer::gpu::scene::SceneCache,
@@ -269,6 +272,7 @@ impl Presenter {
             preparation_us: [0; 4],
             pass_us: Vec::new(),
             base: None,
+            keep_base: true,
             scene_cache_hit: false,
             renderer,
             scenes: Default::default(),
@@ -434,7 +438,7 @@ impl Presenter {
         let target = &surface.target_views[slot];
         let mut scenes = self.scenes.scenes();
         // A kept bottom segment is copied in; only the passes above it draw again.
-        let base = self.scenes.base();
+        let base = self.scenes.base().filter(|_| self.keep_base);
         self.base = self.base.take().filter(|(id, view)| {
             Some(*id) == base && view.texture().size() == target.texture().size()
         });
@@ -512,6 +516,20 @@ impl Presenter {
         self.preparation_us
     }
 
+    /// Drop the kept bottom segment; the next animated frame renders it again.
+    pub fn release_transient(&mut self) {
+        self.base = None;
+        self.keep_base = false;
+    }
+
+    /// Bytes held only to speed up coming frames.
+    pub fn transient_bytes(&self) -> u64 {
+        self.base.as_ref().map_or(0, |(_, view)| {
+            let size = view.texture().size();
+            u64::from(size.width) * u64::from(size.height) * 4
+        })
+    }
+
     /// Per scene pass of the last direct preparation: CPU encode and submit time.
     pub fn pass_timings_us(&self) -> &[[u64; 2]] {
         &self.pass_us
@@ -578,6 +596,7 @@ impl Presenter {
         device.queue.present(texture);
         self.presentation_us[3] = started.elapsed().as_micros() as u64;
         crate::renderer::sentinel::presented(&self.adapter);
+        self.keep_base = true;
         Ok(true)
     }
 }

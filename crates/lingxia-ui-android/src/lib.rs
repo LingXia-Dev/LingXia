@@ -18,6 +18,12 @@ mod gpu_surface;
 use adapter::AndroidAdapter;
 pub use adapter::{ImageLoader, set_image_loader};
 
+/// Memory pressure: GPU pages drop memory kept only to speed up coming frames.
+pub fn release_transient() {
+    #[cfg(all(feature = "gpu", target_os = "android"))]
+    gpu_surface::release_transient_all();
+}
+
 type Host = ViewHost<AndroidAdapter>;
 
 #[derive(Debug)]

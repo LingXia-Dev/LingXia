@@ -132,6 +132,10 @@ GPU presenters on one device share a `gpu::Context`; caches stay per presenter.
 A presenter holds at least two in-flight targets: `present(revision)` must not be
 invalidated by a later `prepare` (depth-2 pipelining prepares the next frame while
 one waits for its vsync).
+While a page animates over a static bottom segment, the presenter keeps that segment
+rendered as one surface-sized texture (8.5 MB at 1080x1962). It counts against the
+page's budget only while visible and animating, and `Presenter::release_transient`
+drops it when the page hides or the system reports memory pressure.
 A driver crash during pipeline compilation cannot be caught: `renderer::sentinel`
 records the adapter (backend, ids, driver, renderer release) before its first
 compile and clears it after the first GPU frame presents. An adapter a dead

@@ -75,6 +75,27 @@ fn presenter(id: u64) -> Result<Option<Shared>, String> {
     Ok(registry()?.get(&id).cloned())
 }
 
+/// Drop what `id`'s presenter keeps only to speed up coming frames.
+pub(super) fn release_transient(id: u64) {
+    if let Ok(Some(presenter)) = presenter(id)
+        && let Ok(mut presenter) = lock(&presenter)
+    {
+        presenter.release_transient();
+    }
+}
+
+/// Memory pressure: every presenter drops its transient memory.
+pub fn release_transient_all() {
+    let Ok(presenters) = registry().map(|r| r.values().cloned().collect::<Vec<_>>()) else {
+        return;
+    };
+    for presenter in presenters {
+        if let Ok(mut presenter) = lock(&presenter) {
+            presenter.release_transient();
+        }
+    }
+}
+
 fn lock(presenter: &Shared) -> Result<std::sync::MutexGuard<'_, Presenter>, String> {
     presenter
         .lock()
@@ -154,6 +175,7 @@ pub(super) fn prepare(
         "loadedImages": display.loaded_image_count(),
         "prepare": {"sceneUs": scene, "imagesUs": images, "encodeUs": encode, "submitUs": submit},
         "passes": presenter.pass_timings_us(),
+        "transientBytes": presenter.transient_bytes(),
         "sceneCacheHit": presenter.scene_cache_hit(),
         "gpuDevices": presenter.context().device_count()?,
         "gpuRenderers": presenter.context().renderer_count()?,

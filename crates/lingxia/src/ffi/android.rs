@@ -582,6 +582,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_onMemoryPressure(
     _class: JClass,
 ) {
     lxapp::release_retained_surfaces();
+    lingxia_ui_android::release_transient();
 }
 
 #[unsafe(no_mangle)]

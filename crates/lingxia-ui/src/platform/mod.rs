@@ -49,6 +49,9 @@ pub trait Presenter {
     fn deferred(&self, _frame: &Self::Frame) -> bool {
         false
     }
+    /// Main thread: drop memory kept only to speed up coming frames; the page is hidden
+    /// or the system is short of memory.
+    fn release_transient(&self) {}
 }
 
 /// Display-synchronized callbacks.

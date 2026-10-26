@@ -1102,6 +1102,7 @@ impl<A: PlatformAdapter> Inner<A> {
         } else {
             self.park_animations();
             self.clear_text_selection();
+            self.adapter.release_transient();
         }
     }
 

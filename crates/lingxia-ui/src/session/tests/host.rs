@@ -47,6 +47,7 @@ struct Log {
     main: Vec<ThreadId>,
     /// Generations of frames the fake target accepted.
     generations: Vec<CommitTicket>,
+    released_transient: usize,
 }
 
 struct Fake {
@@ -147,6 +148,9 @@ impl Presenter for Fake {
     }
     fn deferred(&self, _: &Encoded) -> bool {
         self.defer.load(std::sync::atomic::Ordering::Acquire)
+    }
+    fn release_transient(&self) {
+        self.log.lock().unwrap().released_transient += 1;
     }
 }
 impl FrameScheduler for Fake {
@@ -926,6 +930,11 @@ fn hiding_a_page_drops_its_text_selection_from_the_kept_frame() {
     assert!(
         !host.snapshot().unwrap().frame.has_text_selection(),
         "the kept frame carries no handles"
+    );
+    assert_eq!(
+        host.adapter().log.lock().unwrap().released_transient,
+        1,
+        "hiding releases memory kept for coming frames"
     );
     assert!(host.frame_is_current(), "returning needs no new frame");
 }
