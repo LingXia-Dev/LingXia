@@ -1712,6 +1712,45 @@ jobs:
   # The release scripts have their own tests but no change signal of their own:
   # they used to ride on the showcase automation job, which a release-plumbing
   # PR never triggers.
+  # Renders every GPU page of the showcase and the View corpus at phone and tablet size in both
+  # appearances, and fails on a UI_* error or any deterministic cost counter above budgets.json.
+  # Glyph counts follow the system fonts the budgets were recorded with, hence macOS; timings are
+  # printed for information only.
+  view-corpus:
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.npm == 'true' }}
+    name: View corpus cost
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos
+          save-if: false
+
+      - uses: ./.github/actions/build-web-runtime
+
+      - name: Install the GPU showcase
+        working-directory: examples/lingxia-showcase-gpu/lxapp
+        run: npm ci
+
+      - name: Render the corpus against its budgets
+        run: node packages/lingxia-ui/corpus/run.mjs
+
+      - name: Upload the corpus report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: view-corpus-report
+          path: target/corpus/report.json
+          if-no-files-found: ignore
+
   release-tooling:
     needs: changes
     if: ${{ needs.changes.outputs.release_tooling == 'true' }}
@@ -1762,6 +1801,7 @@ jobs:
       - sdk-apple
       - sdk-android
       - npm-packages
+      - view-corpus
       - harmony-native
       - harmony-har
       - showcase-automation-types
