@@ -56,7 +56,7 @@ public class GpuNativeLoadTest {
         public void stopFling() { }
         public void clicked() { events.add("clicked"); }
         public void haptic() { }
-        public void editText(int node, String text, int start, int end) { events.add("edit:" + text); }
+        public int editText(int node, String text, int start, int end) { events.add("edit:" + text); return 0; }
         public void loaded() { loaded++; }
         public void presented() { presented++; }
         public void message(long connection, String message) { }
@@ -82,7 +82,13 @@ public class GpuNativeLoadTest {
         void release() {
             // Every posted task runs exactly once so its native box is freed.
             for (Long task; (task = tasks.poll()) != null;) GpuView.nativeRunTask(task);
-            synchronized (delayed) { for (long task : delayed) GpuView.nativeRunTask(task); delayed.clear(); }
+            // A task may post another (a retry timer), so drain until none is left.
+            while (true) {
+                ArrayList<Long> due;
+                synchronized (delayed) { if (delayed.isEmpty()) break; due = new ArrayList<>(delayed); delayed.clear(); }
+                for (long task : due) GpuView.nativeRunTask(task);
+                for (Long task; (task = tasks.poll()) != null;) GpuView.nativeRunTask(task);
+            }
         }
     }
 

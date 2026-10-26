@@ -94,10 +94,10 @@ public class GpuImeTest {
     @Test public void accessibilityReplacementIsAtomicAndSelectionRejectsSplitSurrogates() throws Exception {
         Host host=new Host(); GpuIme ime=ime(host); JSONObject node=node(7,"a😀b");
         ime.presented(frame(7,"a😀b"),ime.capture());
-        assertFalse(ime.accessibilityEdit(node,12,null,2,3));
-        assertFalse(ime.accessibilityEdit(node,12,"\ud800",0,0));
+        assertEquals(GpuIme.EDIT_FAILED,ime.accessibilityEdit(node,12,null,2,3));
+        assertEquals(GpuIme.EDIT_FAILED,ime.accessibilityEdit(node,12,"\ud800",0,0));
         assertTrue(host.requests.isEmpty());
-        assertTrue(ime.accessibilityEdit(node,12,"你好",0,0));
+        assertEquals(GpuIme.EDIT_APPLIED,ime.accessibilityEdit(node,12,"你好",0,0));
         JSONArray edits=host.requests.get(0).getJSONArray("edits");
         assertEquals(3,edits.length()); assertEquals("finish_composition",edits.getJSONObject(0).getString("op"));
         assertEquals(4,edits.getJSONObject(1).getInt("focus"));
@@ -105,14 +105,14 @@ public class GpuImeTest {
         assertEquals("你好",ime.menuText());
         // The core holds the next edit until a frame shows this one, so the mirror never refuses it.
         host.replies.get(0).accept(new JSONObject().put("token",7).put("state",state("你好")));
-        assertTrue(ime.accessibilityEdit(node,12,null,0,1));
+        assertEquals(GpuIme.EDIT_APPLIED,ime.accessibilityEdit(node,12,null,0,1));
         assertEquals("你",ime.create(new EditorInfo()).getSelectedText(0));
     }
     @Test public void accessibilityReplacementInvalidatesKeyboardComposition() throws Exception {
         Host host=new Host(); GpuIme ime=ime(host);
         ime.presented(frame(7,"old"),ime.capture());
         InputConnection old=ime.create(new EditorInfo());
-        assertTrue(ime.accessibilityEdit(node(7,"old"),12,"100",0,0));
+        assertEquals(GpuIme.EDIT_APPLIED,ime.accessibilityEdit(node(7,"old"),12,"100",0,0));
         assertFalse(old.commitText("100",1));
         assertFalse(old.setComposingText("",1));
         assertEquals("100",ime.menuText());
@@ -141,23 +141,29 @@ public class GpuImeTest {
             }
         };
         GpuIme ime=owner[0]=new GpuIme(view,host);
-        assertTrue(ime.accessibilityEdit(node(0,""),12,"100",0,0));
+        assertEquals(GpuIme.EDIT_APPLIED,ime.accessibilityEdit(node(0,""),12,"100",0,0));
         host.replies.get(0).accept(new JSONObject().put("token",7).put("state",state("")));
         assertEquals(java.util.Collections.singletonList("100"),initialText);
         assertEquals("100",ime.create(new EditorInfo()).getTextBeforeCursor(10,0));
     }
     @Test public void accessibilityReplacementCanFocusAndCancelledFocusCannotEdit() throws Exception {
         Host host=new Host(); GpuIme ime=ime(host); JSONObject node=node(0,"");
-        assertTrue(ime.accessibilityEdit(node,12,"hello",0,0));
+        assertEquals(GpuIme.EDIT_APPLIED,ime.accessibilityEdit(node,12,"hello",0,0));
         assertEquals("focus",host.requests.get(0).getString("op"));
         host.replies.get(0).accept(new JSONObject().put("token",7).put("state",state("")));
         assertEquals("hello",ime.menuText()); assertEquals("edit",host.requests.get(1).getString("op"));
         ime.clear(false);
-        assertTrue(ime.accessibilityEdit(node,13,"discard",0,0));
+        assertEquals(GpuIme.EDIT_APPLIED,ime.accessibilityEdit(node,13,"discard",0,0));
         int pending=host.requests.size()-1; ime.clear(false);
         host.replies.get(pending).accept(new JSONObject().put("token",8).put("state",state("")));
         assertFalse(ime.hasFocus()); assertEquals("blur",host.requests.get(host.requests.size()-1).getString("op"));
-        ime.setCaretActive(false); assertFalse(ime.accessibilityEdit(node,13,"hidden",0,0));
+        // Not connected yet is reported, never dropped silently: the core sends the edit again.
+        ime.setCaretActive(false); assertEquals(GpuIme.EDIT_NOT_READY,ime.accessibilityEdit(node,13,"hidden",0,0));
+        ime.setCaretActive(true);
+        assertEquals(GpuIme.EDIT_APPLIED,ime.accessibilityEdit(node,14,"first",0,0));
+        assertEquals("a focus still pending",GpuIme.EDIT_NOT_READY,ime.accessibilityEdit(node(9,"").put("identity","other"),14,"second",0,0));
+        JSONObject disabled=node(9,"").put("identity","other"); disabled.getJSONObject("input").put("enabled",false);
+        assertEquals(GpuIme.EDIT_FAILED,ime.accessibilityEdit(disabled,14,"x",0,0));
     }
     @Test public void touchHitFinishesPreeditAndSelectsInOneBatch() throws Exception {
         Host host=new Host(); GpuIme ime=ime(host);

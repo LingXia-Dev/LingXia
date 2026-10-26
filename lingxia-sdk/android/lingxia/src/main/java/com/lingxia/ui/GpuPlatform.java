@@ -41,7 +41,8 @@ interface GpuPlatform {
     void stopFling();
     void clicked();
     void haptic();
-    void editText(int node, String text, int start, int end);
+    /** Apply an accessibility edit: {@link GpuIme#EDIT_APPLIED}, {@code EDIT_NOT_READY} (the core resends) or {@code EDIT_FAILED}. */
+    int editText(int node, String text, int start, int end);
 
     void loaded();
     /** A frame reached the screen and its effects ran. */

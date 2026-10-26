@@ -1,18 +1,21 @@
 //! Accessibility and automation edits reach the platform input method one at a
-//! time: the next waits until a presented frame shows the previous applied, so
-//! an input connection still settling an edit never has to refuse one. An edit
-//! the platform did not apply (its editor was still connecting) is sent again.
+//! time. The platform says whether each applied; one whose editor is still
+//! connecting is sent again shortly, and the next waits until a presented frame
+//! shows the previous applied.
 use super::Inner;
 use crate::interaction::view::Effect;
-use crate::platform::PlatformAdapter;
+use crate::platform::{EditOutcome, PlatformAdapter};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Presented frames, or time when nothing presents, an edit may take to show.
+/// Presented frames, or time when nothing presents, an applied edit may take to show.
 const PATIENCE: u32 = 30;
 const PATIENCE_TIME: Duration = Duration::from_millis(500);
-/// Sends of one edit before it is given up.
+/// How soon an edit whose editor was connecting is offered again, and for how long.
+const RETRY: Duration = Duration::from_millis(50);
+const CONNECT_TIME: Duration = Duration::from_secs(3);
+/// Sends of an applied edit that never shows before it is given up.
 const ATTEMPTS: u32 = 4;
 
 #[derive(Clone, Debug)]
@@ -22,15 +25,21 @@ struct Edit {
     start: i32,
     end: i32,
     sends: u32,
+    /// Platform clock time of the first not-ready answer.
+    waiting_since: Option<Duration>,
 }
 
 #[derive(Debug, Default)]
 pub(super) struct Edits {
     waiting: VecDeque<Edit>,
-    /// Sent, not yet seen in a frame, and frames presented since.
+    /// Applied, not yet seen in a frame, and frames presented since.
     sent: Option<(Edit, u32)>,
-    /// Bumped per send to revoke its time limit.
+    /// A not-ready edit waits for its retry.
+    retrying: bool,
+    /// Bumped per send to revoke its timers.
     serial: u64,
+    /// An edit failed outright while the current call delivered it.
+    failed: bool,
 }
 
 impl Edit {
@@ -51,7 +60,7 @@ impl Edit {
 }
 
 impl<A: PlatformAdapter> Inner<A> {
-    /// Queue `EditText` effects; the rest go to the platform as they are.
+    /// Take `EditText` effects into the queue; the rest go to the platform as they are.
     pub(super) fn queue_edits(self: &Arc<Self>, effects: &mut Vec<Effect>) {
         if !effects.iter().any(|e| matches!(e, Effect::EditText { .. })) {
             return;
@@ -59,6 +68,7 @@ impl<A: PlatformAdapter> Inner<A> {
         {
             let mut main = self.main();
             let Some(snapshot) = main.snapshot.clone() else {
+                effects.retain(|e| !matches!(e, Effect::EditText { .. }));
                 return;
             };
             effects.retain(|effect| {
@@ -78,6 +88,7 @@ impl<A: PlatformAdapter> Inner<A> {
                         start: *start,
                         end: *end,
                         sends: 0,
+                        waiting_since: None,
                     });
                 }
                 false
@@ -86,41 +97,54 @@ impl<A: PlatformAdapter> Inner<A> {
         self.send_next_edit();
     }
 
-    /// A frame reached the screen: a shown edit lets the next one go.
-    pub(super) fn edits_presented(self: &Arc<Self>) {
-        let outcome = {
-            let mut main = self.main();
-            let snapshot = main.snapshot.clone();
-            let Some((edit, frames)) = main.edits.sent.as_mut() else {
-                return;
-            };
-            *frames += 1;
-            let shown = snapshot.is_some_and(|s| {
-                s.frame
-                    .nodes
-                    .iter()
-                    .any(|node| node.identity == edit.identity && edit.shown_in(node))
-            });
-            if shown {
-                main.edits.sent = None;
-                None
-            } else if *frames > PATIENCE {
-                main.edits.sent.take().map(|(edit, _)| edit)
-            } else {
-                return;
-            }
-        };
-        self.edit_settled(outcome);
+    /// Whether an edit failed outright since the last call; clears the flag.
+    pub(super) fn take_edit_failure(&self) -> bool {
+        std::mem::take(&mut self.main().edits.failed)
     }
 
-    /// `unshown` is an edit whose patience ran out: send it again or give it up.
-    fn edit_settled(self: &Arc<Self>, unshown: Option<Edit>) {
+    /// A frame reached the screen: a shown edit lets the next one go, and a
+    /// connecting editor may be ready now.
+    pub(super) fn edits_presented(self: &Arc<Self>) {
+        let unshown = {
+            let mut main = self.main();
+            let snapshot = main.snapshot.clone();
+            let retrying = main.edits.retrying;
+            match main.edits.sent.as_mut() {
+                None if retrying => {
+                    main.edits.retrying = false;
+                    None
+                }
+                None => return,
+                Some((edit, frames)) => {
+                    *frames += 1;
+                    let shown = snapshot.is_some_and(|s| {
+                        s.frame
+                            .nodes
+                            .iter()
+                            .any(|node| node.identity == edit.identity && edit.shown_in(node))
+                    });
+                    if shown {
+                        main.edits.sent = None;
+                        None
+                    } else if *frames > PATIENCE {
+                        main.edits.sent.take().map(|(edit, _)| edit)
+                    } else {
+                        return;
+                    }
+                }
+            }
+        };
+        self.edit_unshown(unshown);
+    }
+
+    /// An applied edit that never showed is sent again, a few times.
+    fn edit_unshown(self: &Arc<Self>, unshown: Option<Edit>) {
         if let Some(edit) = unshown {
             if edit.sends < ATTEMPTS {
                 self.main().edits.waiting.push_front(edit);
             } else {
                 self.adapter.warn(&format!(
-                    "accessibility edit of {} never applied after {ATTEMPTS} sends",
+                    "accessibility edit of {} never showed after {ATTEMPTS} sends",
                     edit.identity
                 ));
             }
@@ -129,16 +153,20 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     fn send_next_edit(self: &Arc<Self>) {
-        let (effect, serial) = {
-            let mut main = self.main();
-            if main.edits.sent.is_some() {
-                return;
-            }
-            let Some(snapshot) = main.snapshot.clone() else {
-                return;
-            };
-            loop {
-                let Some(mut edit) = main.edits.waiting.pop_front() else {
+        loop {
+            let (mut edit, index, serial) = {
+                let mut main = self.main();
+                if main.disposed {
+                    main.edits = Edits::default();
+                    return;
+                }
+                if main.edits.sent.is_some() || main.edits.retrying {
+                    return;
+                }
+                let Some(snapshot) = main.snapshot.clone() else {
+                    return;
+                };
+                let Some(edit) = main.edits.waiting.pop_front() else {
                     return;
                 };
                 // Nodes move between frames; an editor that left drops its edit.
@@ -150,34 +178,59 @@ impl<A: PlatformAdapter> Inner<A> {
                 else {
                     continue;
                 };
-                let effect = Effect::EditText {
-                    node: index,
-                    text: edit.text.clone(),
-                    start: edit.start,
-                    end: edit.end,
-                };
-                edit.sends += 1;
-                main.edits.sent = Some((edit, 0));
                 main.edits.serial += 1;
-                break (effect, main.edits.serial);
+                (edit, index, main.edits.serial)
+            };
+            let outcome = self
+                .adapter
+                .edit_text(index, edit.text.as_deref(), edit.start, edit.end);
+            match outcome {
+                EditOutcome::Applied => {
+                    edit.sends += 1;
+                    self.main().edits.sent = Some((edit, 0));
+                    self.edit_timer(serial, PATIENCE_TIME);
+                    return;
+                }
+                EditOutcome::NotReady => {
+                    let now = self.adapter.now();
+                    let since = *edit.waiting_since.get_or_insert(now);
+                    if now.saturating_sub(since) >= CONNECT_TIME {
+                        self.adapter
+                            .warn(&format!("editor {} never became ready", edit.identity));
+                        self.main().edits.failed = true;
+                        continue;
+                    }
+                    {
+                        let mut main = self.main();
+                        main.edits.waiting.push_front(edit);
+                        main.edits.retrying = true;
+                    }
+                    self.edit_timer(serial, RETRY);
+                    return;
+                }
+                EditOutcome::Failed => {
+                    self.main().edits.failed = true;
+                    continue;
+                }
             }
-        };
-        self.adapter.apply(&[effect]);
-        // Frames stop when nothing changes; time settles an edit that never shows.
+        }
+    }
+
+    /// Frames stop when nothing changes; time moves a pending edit along.
+    fn edit_timer(self: &Arc<Self>, serial: u64, delay: Duration) {
         let host = self.clone();
         self.adapter.post_after(
-            PATIENCE_TIME,
+            delay,
             Box::new(move || {
                 let unshown = {
                     let mut main = host.main();
                     if main.edits.serial != serial {
                         return;
                     }
+                    main.edits.retrying = false;
                     main.edits.sent.take().map(|(edit, _)| edit)
                 };
-                if unshown.is_some() {
-                    host.edit_settled(unshown);
-                }
+                host.edit_unshown(unshown);
             }),
         );
     }

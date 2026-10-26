@@ -584,7 +584,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
             .interaction
             .accessibility(id, action, page);
         self.inner.deliver(effects);
-        handled
+        handled && !self.inner.take_edit_failure()
     }
 
     /// Selection and Copy on selectable static text act on the session's text
@@ -645,7 +645,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
 
     /// One automation request from the page driver:
     /// `{op: "query", css, index, all, maxText}` or
-    /// `{op: "act", css, index, action: {kind: click|fill|type|scroll|press, text, key, force}}`,
+    /// `{op: "act", css, index, action: {kind: click|fill|type|scroll|press|select, text, key, value, force}}`,
     /// `{op: "tree"}` or `{op: "frame"}` (presentation counters).
     /// Screenshots belong to the adapter's presenter.
     pub fn automation_request(
@@ -671,6 +671,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     Some("type") => AutomationAct::Type(string("text")),
                     Some("scroll") => AutomationAct::ScrollIntoView,
                     Some("press") => AutomationAct::Press(string("key")),
+                    Some("select") => AutomationAct::SelectOption(string("value")),
                     other => return Err(format!("E_UNSUPPORTED: automation action {other:?}")),
                 };
                 let force = action["force"].as_bool().unwrap_or(false);
@@ -698,6 +699,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
             .interaction
             .automate(css, index, act, force, page)?;
         self.inner.deliver(effects);
+        if self.inner.take_edit_failure() {
+            return Err(format!("Element not editable: {css} refused the edit"));
+        }
         Ok(())
     }
 

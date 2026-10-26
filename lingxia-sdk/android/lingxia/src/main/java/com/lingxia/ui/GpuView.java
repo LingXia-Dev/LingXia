@@ -734,9 +734,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public void stopFling() { surface.stopFling(); }
         @Override public void clicked() { surface.performClick(); }
         @Override public void haptic() { surface.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); }
-        @Override public void editText(int index, String text, int start, int end) {
+        @Override public int editText(int index, String text, int start, int end) {
             JSONObject node = surface.node(index);
-            if (node != null && snapshot != null) ime.accessibilityEdit(node, snapshot.optLong("generation"), text, start, end);
+            if (node == null || snapshot == null) return GpuIme.EDIT_FAILED;
+            return ime.accessibilityEdit(node, snapshot.optLong("generation"), text, start, end);
         }
         @Override public void loaded() { if (listener != null) listener.onLoaded(); }
         @Override public void presented() {

@@ -567,6 +567,33 @@ impl InputMethod for AndroidAdapter {
     fn reset(&self) {
         self.void(jni_str!("imeReset"));
     }
+    fn edit_text(&self, index: usize, text: Option<&str>, start: i32, end: i32) -> EditOutcome {
+        let code = self.java(|env, platform| {
+            let text = match text {
+                Some(text) => JObject::from(env.new_string(text)?),
+                None => JObject::null(),
+            };
+            env.call_method(
+                platform,
+                jni_str!("editText"),
+                jni_sig!("(ILjava/lang/String;II)I"),
+                &[
+                    JValue::Int(node(index)),
+                    JValue::Object(&text),
+                    JValue::Int(start),
+                    JValue::Int(end),
+                ],
+            )?
+            .i()
+            .map(Some)
+        });
+        // `GpuPlatform.editText`: 0 applied, 1 not ready, anything else failed.
+        match code {
+            Some(0) => EditOutcome::Applied,
+            Some(1) => EditOutcome::NotReady,
+            _ => EditOutcome::Failed,
+        }
+    }
 }
 
 impl Feedback for AndroidAdapter {
@@ -577,7 +604,9 @@ impl Feedback for AndroidAdapter {
                 Effect::ClearPress => self.void(jni_str!("clearPress")),
                 Effect::FocusRing { node: index } => self.int(jni_str!("focusRing"), node(*index)),
                 // Shows the platform single-choice picker; GpuPlatform.openPicker answers through `{op:"select"}`.
-                Effect::OpenPicker { node: index } => self.int(jni_str!("openPicker"), node(*index)),
+                Effect::OpenPicker { node: index } => {
+                    self.int(jni_str!("openPicker"), node(*index))
+                }
                 Effect::ClearFocusRing => self.void(jni_str!("clearFocusRing")),
                 Effect::Claim { exclusive } => self.flag(jni_str!("claim"), *exclusive),
                 Effect::ArmLongPress => self.void(jni_str!("armLongPress")),
@@ -603,31 +632,13 @@ impl Feedback for AndroidAdapter {
                 Effect::StopFling => self.void(jni_str!("stopFling")),
                 Effect::Clicked => self.void(jni_str!("clicked")),
                 Effect::Haptic => self.void(jni_str!("haptic")),
-                Effect::EditText {
-                    node: index,
-                    text,
-                    start,
-                    end,
-                } => self.java(|env, platform| {
-                    let text = match text {
-                        Some(text) => JObject::from(env.new_string(text)?),
-                        None => JObject::null(),
-                    };
-                    env.call_method(
-                        platform,
-                        jni_str!("editText"),
-                        jni_sig!("(ILjava/lang/String;II)V"),
-                        &[
-                            JValue::Int(node(*index)),
-                            JValue::Object(&text),
-                            JValue::Int(*start),
-                            JValue::Int(*end),
-                        ],
-                    )?;
-                    Ok(())
-                }),
+
                 // The host runs these itself.
-                Effect::Redraw | Effect::Dispatch | Effect::Number | Effect::Accessibility(_) => {}
+                Effect::Redraw
+                | Effect::Dispatch
+                | Effect::Number
+                | Effect::Accessibility(_)
+                | Effect::EditText { .. } => {}
             }
         }
     }
