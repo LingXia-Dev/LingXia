@@ -99,6 +99,7 @@ impl Sentinel {
 
     /// Before compiling pipelines on `adapter`; false when it must not be used.
     pub fn arm(&self, adapter: &str) -> bool {
+        let adapter = &one_line(adapter);
         let mut state = self.state();
         if known_crashing(adapter) {
             state.refused = true;
@@ -130,6 +131,7 @@ impl Sentinel {
 
     /// A GPU frame from `adapter` reached the screen.
     pub fn presented(&self, adapter: &str) {
+        let adapter = &one_line(adapter);
         let mut state = self.state();
         state.proven.insert(adapter.into());
         self.end(&mut state, adapter);
@@ -137,6 +139,7 @@ impl Sentinel {
 
     /// The adapter's GPU attach failed without crashing; release its probation.
     pub fn released(&self, adapter: &str) {
+        let adapter = &one_line(adapter);
         let mut state = self.state();
         self.end(&mut state, adapter);
     }
@@ -159,6 +162,11 @@ impl Sentinel {
         (state.inherited || state.refused || !state.record.blocked.is_empty())
             .then_some(Fallback::Driver)
     }
+}
+
+/// The record is line-based, and some drivers report multi-line build info (Adreno).
+fn one_line(adapter: &str) -> String {
+    adapter.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Drivers whose shader compiler crashes on wgpu's bounds-checked shaders.

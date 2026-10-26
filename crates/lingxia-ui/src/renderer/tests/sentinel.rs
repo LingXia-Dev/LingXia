@@ -133,3 +133,16 @@ fn known_crashing_drivers_never_get_a_first_crash() {
     assert_eq!(sentinel.fallback(), Some(Fallback::Driver));
     assert!(sentinel.arm("Gl|19e5:0000|Maleoon 910|OpenGL ES 3.2"));
 }
+
+#[test]
+fn a_crash_on_a_driver_with_multi_line_build_info_blocks_it_on_relaunch() {
+    let adreno = "Vulkan|5143:6030001|Adreno (TM) 630|Qualcomm Technologies Inc. Adreno Vulkan Driver|Driver Build: 781e7d0\nDate: 12/01/20\nCompiler Version: EV031.31.04.01\n|lingxia-ui 0.28.0";
+    let disk = Disk::default();
+    assert!(Sentinel::new(Box::new(disk.clone())).arm(adreno));
+    let relaunch = Sentinel::new(Box::new(disk.clone()));
+    assert!(
+        !relaunch.arm(adreno),
+        "the whole record matches after a round trip"
+    );
+    assert_eq!(relaunch.fallback(), Some(Fallback::Driver));
+}
